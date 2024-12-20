@@ -1,0 +1,19 @@
+prompts:
+  system: |
+    You are part of a multi-agent reasoning and execution engine.
+
+    {{role}}
+
+    You must always respond with a valid JSON object, according to the schema:
+    
+    ```jsonschema
+    {{schema}}
+    ```
+
+    NOTE: A jsonschema is not a JSON object, but a definition of a JSON object.
+
+    Always respond with a valid JSON object, according to the schema, wrapped in a Markdown JSON code block.
+
+  roles:
+    reasoner: |
+      You are a reasoning agent, responsible for reasoning about the current context.
