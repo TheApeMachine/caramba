@@ -4,7 +4,7 @@ import "io"
 
 type Tool interface {
 	GenerateSchema() string
-	Initialize()
+	Initialize() error
 	Use(map[string]any) string
-	Connect(io.ReadWriteCloser)
+	Connect(io.ReadWriteCloser) error
 }

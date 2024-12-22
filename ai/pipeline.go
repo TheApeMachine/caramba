@@ -1,10 +1,12 @@
 package ai
 
 import (
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/caramba/utils"
 )
 
 type Pipeline struct {
@@ -15,6 +17,12 @@ type Stage struct {
 	agents     []*Agent
 	parallel   bool
 	aggregator func([]string) string
+}
+
+// Add this new type to represent combined context
+type StageContext struct {
+	originalPrompt string
+	currentContext string
 }
 
 func NewPipeline() *Pipeline {
@@ -51,28 +59,37 @@ Execute the pipeline with the given input, orchestrating the flow between stages
 func (p *Pipeline) Execute(input string) <-chan provider.Event {
 	out := make(chan provider.Event)
 
+	utils.JoinWith("\n",
+		"<user-prompt>",
+		input,
+		"</user-prompt>",
+	)
+
 	go func() {
 		defer close(out)
 
-		// Current context that gets passed between stages
-		context := input
+		// Initialize context with both original prompt and current context
+		ctx := StageContext{
+			originalPrompt: input,
+			currentContext: input,
+		}
 
 		// Process each stage
 		for _, stage := range p.stages {
 			var outputs []string
 
 			if stage.parallel {
-				outputs = p.executeParallel(stage, context, out)
+				outputs = p.executeParallel(stage, ctx, out)
 			} else {
-				outputs = p.executeSequential(stage, context, out)
+				outputs = p.executeSequential(stage, ctx, out)
 			}
 
 			// If there's an aggregator, use it to combine outputs for next stage
 			if stage.aggregator != nil && len(outputs) > 0 {
-				context = stage.aggregator(outputs)
+				ctx.currentContext = stage.aggregator(outputs)
 			} else if len(outputs) > 0 {
 				// If no aggregator, use the last output as context
-				context = outputs[len(outputs)-1]
+				ctx.currentContext = outputs[len(outputs)-1]
 			}
 		}
 	}()
@@ -81,7 +98,7 @@ func (p *Pipeline) Execute(input string) <-chan provider.Event {
 }
 
 // executeParallel runs all agents in a stage concurrently
-func (p *Pipeline) executeParallel(stage Stage, input string, out chan<- provider.Event) []string {
+func (p *Pipeline) executeParallel(stage Stage, ctx StageContext, out chan<- provider.Event) []string {
 	var (
 		wg      sync.WaitGroup
 		mu      sync.Mutex
@@ -94,17 +111,21 @@ func (p *Pipeline) executeParallel(stage Stage, input string, out chan<- provide
 			defer wg.Done()
 
 			var response strings.Builder
-			for event := range agent.Generate(input) {
-				// Forward all events to the output channel
-				out <- event
 
-				// Accumulate the response
+			// Wrap context for each parallel agent
+			agentContext := utils.JoinWith("\n",
+				"<parallel_context agent="+agent.name+" index="+strconv.Itoa(index)+">",
+				ctx.currentContext,
+				"</parallel_context>",
+			)
+
+			for event := range agent.Generate(agentContext) {
+				out <- event
 				if event.Type == provider.EventToken {
 					response.WriteString(event.Content)
 				}
 			}
 
-			// Store the complete response
 			mu.Lock()
 			outputs[index] = response.String()
 			mu.Unlock()
@@ -116,25 +137,29 @@ func (p *Pipeline) executeParallel(stage Stage, input string, out chan<- provide
 }
 
 // executeSequential runs agents in a stage one after another
-func (p *Pipeline) executeSequential(stage Stage, input string, out chan<- provider.Event) []string {
+func (p *Pipeline) executeSequential(stage Stage, ctx StageContext, out chan<- provider.Event) []string {
 	var outputs []string
+	currentInput := ctx.currentContext
 
-	for _, agent := range stage.agents {
+	for i, agent := range stage.agents {
 		var response strings.Builder
 
-		for event := range agent.Generate(input) {
-			// Forward all events to the output channel
-			out <- event
+		// Wrap context for each sequential agent
+		agentContext := utils.JoinWith("\n",
+			"<sequential_context agent="+agent.name+" index="+strconv.Itoa(i)+">",
+			currentInput,
+			"</sequential_context>",
+		)
 
-			// Accumulate the response
+		for event := range agent.Generate(agentContext) {
+			out <- event
 			if event.Type == provider.EventToken {
 				response.WriteString(event.Content)
 			}
 		}
 
 		outputs = append(outputs, response.String())
-		// Use the last response as input for the next agent
-		input = response.String()
+		currentInput = response.String()
 	}
 
 	return outputs

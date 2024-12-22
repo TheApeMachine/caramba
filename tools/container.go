@@ -82,18 +82,20 @@ func (c *Container) Use(params map[string]any) string {
 
 	ctx := context.Background()
 	output := c.runner.ExecuteCommand(ctx, []string{cmd})
-	
+
 	return string(output)
 }
 
-func (c *Container) Connect(conn io.ReadWriteCloser) {
+func (c *Container) Connect(conn io.ReadWriteCloser) error {
 	c.conn = conn
 	ctx := context.Background()
 	containerConn, err := c.runner.RunContainer(ctx, "caramba-dev")
 	if err != nil {
-		return
+		return err
 	}
 	c.conn = containerConn
+
+	return nil
 }
 
 func (c *Container) executeCommand(command string, out chan<- *data.Artifact) error {

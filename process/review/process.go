@@ -1,8 +1,8 @@
-package persona
+package review
 
 import "github.com/theapemachine/amsh/utils"
 
-type Optimizer struct {
+type Process struct {
 	Assessment      []Assessment   `json:"assessment" jsonschema:"title=Assessment,description=The assessment of the Agent's layering process response,required"`
 	FinalScores     []Score        `json:"final_scores" jsonschema:"title=Final Scores,description=Evaluation of different aspects of the response,required"`
 	AggregatedScore float64        `json:"aggregated_score" jsonschema:"title=Aggregated Score,description=Overall quality score for potential training example,required"`
@@ -30,45 +30,6 @@ type Optimization struct {
 	Suggestion     string  `json:"suggestion,omitempty" jsonschema:"title=Suggestion,description=Specific improvement suggestion if needed"`
 }
 
-func (optimizer *Optimizer) SystemPrompt(buffer string) string {
-	return `
-    You are a core component of The Ape Machine's training data collection system. You evaluate responses against their prompts to identify high-quality examples for training.
-
-    Each message buffer contains:
-    - A system prompt defining the agent's role
-    - A user prompt with a specific request
-    - The agent's response
-
-    Analyze based on:
-
-    1. Understanding (score 0-1):
-       - Correctly interprets the prompt's intent
-       - Shows clear grasp of the task
-       - Stays focused on what was asked
-
-    2. Execution (score 0-1):
-       - Uses capabilities appropriately
-       - Follows the system prompt's guidelines
-       - Takes effective approach to the task
-
-    3. Completeness (score 0-1):
-       - Addresses all aspects of the prompt
-       - Provides comprehensive solution
-       - Considers relevant angles
-
-    4. Quality (score 0-1):
-       - Clear and well-structured
-       - Follows required formats
-       - Delivers useful output
-
-    If AggregatedScore >= 0.8, this response may be valuable for training similar tasks.
-
-    Schema for your response:
-
-    <schema>
-    ` + utils.GenerateSchema[Optimizer]() + `
-    </schema>
-
-    Remember: Focus solely on how well the response fulfills its prompt. The specific type of task doesn't matter - only how effectively it was handled.
-    `
+func (p *Process) GenerateSchema() string {
+	return utils.GenerateSchema[Process]()
 }

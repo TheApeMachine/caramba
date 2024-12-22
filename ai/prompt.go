@@ -9,12 +9,14 @@ import (
 type Prompt struct {
 	role   string
 	schema string
+	name   string
 }
 
-func NewPrompt(role string, process Process) *Prompt {
+func NewPrompt(name, role string, process Process) *Prompt {
 	return &Prompt{
 		role:   viper.GetString("prompts.roles." + role),
 		schema: process.GenerateSchema(),
+		name:   name,
 	}
 }
 
@@ -24,6 +26,7 @@ func (p *Prompt) Build() string {
 	substitutions := map[string]string{
 		"role":   p.role,
 		"schema": p.schema,
+		"name":   p.name,
 	}
 
 	for key, value := range substitutions {
