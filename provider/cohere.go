@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/charmbracelet/log"
 	cohereCore "github.com/cohere-ai/cohere-go/v2"
 	cohereclient "github.com/cohere-ai/cohere-go/v2/client"
 )
@@ -34,6 +35,7 @@ func NewCohere(apiKey string, model string) *Cohere {
 }
 
 func (c *Cohere) Generate(params GenerationParams) <-chan Event {
+	log.Info("generating with", "model", c.model)
 	out := make(chan Event)
 
 	go func() {
@@ -57,7 +59,7 @@ func (c *Cohere) Generate(params GenerationParams) <-chan Event {
 		for {
 			resp, err := stream.Recv()
 			if err == io.EOF {
-				out <- Event{Type: EventDone}
+				out <- Event{Type: EventDone, Content: "\n"}
 				break
 			}
 			if err != nil {

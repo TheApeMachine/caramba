@@ -21,16 +21,33 @@ func NewPipeline() *Pipeline {
 	return &Pipeline{}
 }
 
-func (p *Pipeline) AddStage(parallel bool, aggregator func([]string) string, agents ...*Agent) *Pipeline {
+func (p *Pipeline) AddSequentialStage(
+	aggregator func([]string) string,
+	agents ...*Agent,
+) *Pipeline {
 	p.stages = append(p.stages, Stage{
 		agents:     agents,
-		parallel:   parallel,
+		parallel:   false,
 		aggregator: aggregator,
 	})
 	return p
 }
 
-// Execute runs the pipeline with the given input, orchestrating the flow between stages
+func (pipeline *Pipeline) AddParallelStage(
+	aggregator func([]string) string,
+	agents ...*Agent,
+) *Pipeline {
+	pipeline.stages = append(pipeline.stages, Stage{
+		agents:     agents,
+		parallel:   true,
+		aggregator: aggregator,
+	})
+	return pipeline
+}
+
+/*
+Execute the pipeline with the given input, orchestrating the flow between stages
+*/
 func (p *Pipeline) Execute(input string) <-chan provider.Event {
 	out := make(chan provider.Event)
 
@@ -58,8 +75,6 @@ func (p *Pipeline) Execute(input string) <-chan provider.Event {
 				context = outputs[len(outputs)-1]
 			}
 		}
-
-		out <- provider.Event{Type: provider.EventDone}
 	}()
 
 	return out

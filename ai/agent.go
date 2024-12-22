@@ -1,28 +1,37 @@
 package ai
 
 import (
-	"io"
+	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
 )
 
 type Agent struct {
-	provider provider.Provider
-	tools    map[string]Tool
-	process  Process
-	prompt   *Prompt
-	buf      strings.Builder
-	buffer   *Buffer
+	provider    provider.Provider
+	name        string
+	role        string
+	process     Process
+	prompt      *Prompt
+	buffer      *Buffer
+	temperature float64
+	topP        float64
+	topK        int
 }
 
-func NewAgent() *Agent {
+func NewAgent(role string, process Process) *Agent {
 	agent := &Agent{
-		provider: provider.NewBalancedProvider(),
-		tools:    make(map[string]Tool),
-		prompt:   NewPrompt(),
-		buffer:   NewBuffer(),
+		provider:    provider.NewBalancedProvider(),
+		name:        utils.NewName(),
+		role:        role,
+		process:     process,
+		prompt:      NewPrompt(role, process),
+		buffer:      NewBuffer(),
+		temperature: 0.0,
+		topP:        0.0,
+		topK:        0,
 	}
 
 	// Set system prompt once during initialization
@@ -34,119 +43,74 @@ func NewAgent() *Agent {
 	return agent
 }
 
-func (agent *Agent) RegisterProcess(name string, process Process) {
-	agent.process = process
-	agent.prompt.WithRole("process").WithSchema(process.GenerateSchema())
-}
-
-func (agent *Agent) RegisterTool(name string, tool Tool) {
-	agent.tools[name] = tool
-	agent.prompt.WithRole("tool").WithSchema(tool.GenerateSchema())
-}
-
-// Implement io.ReadWriteCloser
-func (agent *Agent) Write(p []byte) (n int, err error) {
-	// Container output becomes the prompt
-	for event := range agent.Generate(string(p)) {
-		if event.Type == provider.EventToken {
-			agent.buf.WriteString(event.Content)
-		}
-	}
-	return len(p), nil
-}
-
-func (agent *Agent) Read(p []byte) (n int, err error) {
-	// Return accumulated response
-	if agent.buf.Len() == 0 {
-		return 0, io.EOF
-	}
-
-	n = copy(p, agent.buf.String())
-	agent.buf.Reset()
-	return n, nil
-}
-
-func (agent *Agent) Close() error {
-	return nil
-}
-
 func (agent *Agent) Generate(prompt string) <-chan provider.Event {
-	agent.buffer.Poke(provider.Message{
-		Role:    "user",
-		Content: prompt,
-	})
-
-	params := provider.GenerationParams{
-		Messages: agent.buffer.Peek(),
-	}
+	log.Info("generating", "agent", agent.name, "role", agent.role)
 
 	out := make(chan provider.Event)
+
 	go func() {
 		defer close(out)
 
-		var response strings.Builder
-
-		// Stream events from provider
-		for event := range agent.provider.Generate(params) {
-			// Always stream non-token events immediately
-			if event.Type != provider.EventToken {
-				out <- event
-				continue
-			}
-
-			response.WriteString(event.Content)
-			out <- event
-		}
-
-		// Store the complete response
-		responseStr := response.String()
 		agent.buffer.Poke(provider.Message{
-			Role:    "assistant",
-			Content: responseStr,
+			Role:    "user",
+			Content: prompt,
 		})
 
-		// Handle tool usage if we have tools
-		if len(agent.tools) > 0 {
-			// Try to extract JSON from the response
-			blocks := utils.ExtractJSONBlocks(responseStr)
-			if len(blocks) > 0 {
-				// Use the first valid tool command
-				for _, block := range blocks {
-					if toolOutput := agent.tryExecuteTool(block); toolOutput != "" {
-						out <- provider.Event{
-							Type:    provider.EventToken,
-							Content: toolOutput,
-						}
-						break
-					}
-				}
-			}
+		if _, ok := agent.process.(Tool); ok {
+			agent.process.(Tool).Initialize()
 		}
 
-		out <- provider.Event{Type: provider.EventDone}
+		for {
+			var response strings.Builder
+			for event := range agent.provider.Generate(provider.GenerationParams{
+				Messages:    agent.buffer.Peek(),
+				Temperature: agent.temperature,
+				TopP:        agent.topP,
+				TopK:        agent.topK,
+			}) {
+				response.WriteString(event.Content)
+				out <- event
+			}
+
+			agent.buffer.Poke(provider.Message{
+				Role:    "assistant",
+				Content: response.String(),
+			})
+
+			if _, ok := agent.process.(Tool); ok {
+				toolResponse := agent.toolCall(response.String())
+
+				agent.buffer.Poke(provider.Message{
+					Role:    "assistant",
+					Content: toolResponse,
+				})
+
+				out <- provider.Event{
+					Type:    provider.EventFunctionCall,
+					Content: toolResponse,
+				}
+			}
+
+			if strings.Contains(response.String(), "<task-complete>") {
+				break
+			}
+		}
 	}()
 
 	return out
 }
 
-// tryExecuteTool attempts to execute a tool command from a JSON block
-func (agent *Agent) tryExecuteTool(block interface{}) string {
-	// Try to convert block to map
-	params, ok := block.(map[string]interface{})
-	if !ok {
-		return ""
+func (agent *Agent) toolCall(response string) string {
+	blocks := utils.ExtractJSONBlocks(response)
+	log.Info("Extracted JSON blocks", "blocks", blocks)
+
+	var output strings.Builder
+
+	for _, block := range blocks {
+		tool := agent.process.(Tool)
+		log.Info("Calling tool with block", "block", block)
+		output.WriteString(tool.Use(block))
 	}
 
-	// Look for tool name in params
-	toolName, _ := params["tool"].(string)
-	if tool, exists := agent.tools[toolName]; exists {
-		// Check if tool needs connection and hasn't been connected yet
-		if _, ok := tool.(io.ReadWriteCloser); ok {
-			// Connect the tool to the agent itself as the ReadWriteCloser
-			tool.Connect(agent)
-		}
-		return tool.Use(params)
-	}
-
-	return ""
+	return output.String()
 }

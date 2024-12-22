@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/charmbracelet/log"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
@@ -38,11 +39,14 @@ This method abstracts the image building process, handling the creation of a tar
 and the configuration of build options.
 */
 func (b *Builder) BuildImage(ctx context.Context, dockerfilePath, imageName string) error {
+	log.Info("Building image", "dockerfilePath", dockerfilePath, "imageName", imageName)
 
 	tar, err := archive.TarWithOptions(dockerfilePath, &archive.TarOptions{})
 	if err != nil {
 		return err
 	}
+
+	targetArch := "arm64"
 
 	opts := types.ImageBuildOptions{
 		Dockerfile: "Dockerfile",
@@ -51,7 +55,7 @@ func (b *Builder) BuildImage(ctx context.Context, dockerfilePath, imageName stri
 		Remove:     true,
 		// Add these options for better compatibility:
 		BuildArgs: map[string]*string{
-			"TARGETARCH": nil, // This will use the default architecture
+			"TARGETARCH": &targetArch,
 		},
 	}
 

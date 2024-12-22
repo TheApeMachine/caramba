@@ -1,8 +1,8 @@
-package process
+package planning
 
 import "github.com/theapemachine/amsh/utils"
 
-type Planning struct {
+type Process struct {
 	Epics []Epic `json:"epics" jsonschema:"title=Epics,description=The epics that are needed to achieve the goal,required"`
 }
 
@@ -23,6 +23,6 @@ type Task struct {
 	Description string `json:"description" jsonschema:"title=Description,description=The description of the task,required"`
 }
 
-func (p *Planning) SystemPrompt(key string) string {
-	return utils.SystemPrompt(key, "planning", utils.GenerateSchema[Planning]())
+func (p *Process) GenerateSchema() string {
+	return utils.GenerateSchema[Process]()
 }

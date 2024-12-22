@@ -2,7 +2,7 @@ package process
 
 import "github.com/theapemachine/amsh/utils"
 
-type Code struct {
+type Process struct {
 	Language string `json:"language" jsonschema:"Title=language,Description=The language of the code block,required"`
 	Files    []File `json:"files" jsonschema:"Title=files,Description=List of files,required"`
 }
@@ -18,9 +18,6 @@ type Change struct {
 	Code  string `json:"code" jsonschema:"Title=code,Description=Code to be changed,required"`
 }
 
-/*
-SystemPrompt returns the system prompt for the Code process.
-*/
-func (code *Code) SystemPrompt(key string) string {
-	return utils.SystemPrompt(key, "code", utils.GenerateSchema[Code]())
+func (process *Process) GenerateSchema() string {
+	return utils.GenerateSchema[Process]()
 }

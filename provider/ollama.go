@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/charmbracelet/log"
 	"github.com/ollama/ollama/api"
 )
 
@@ -31,6 +32,7 @@ func NewOllama(model string) *Ollama {
 }
 
 func (o *Ollama) Generate(params GenerationParams) <-chan Event {
+	log.Info("generating with", "model", o.model)
 	out := make(chan Event)
 
 	go func() {
@@ -63,7 +65,7 @@ func (o *Ollama) Generate(params GenerationParams) <-chan Event {
 			return
 		}
 
-		out <- Event{Type: EventDone}
+		out <- Event{Type: EventDone, Content: "\n"}
 	}()
 
 	return out

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/charmbracelet/log"
 	sdk "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )
@@ -23,6 +24,7 @@ func NewOpenAI(apiKey, model string) *OpenAI {
 }
 
 func (o *OpenAI) Generate(params GenerationParams) <-chan Event {
+	log.Info("generating with", "model", o.model)
 	out := make(chan Event)
 
 	go func() {
@@ -62,7 +64,7 @@ func (o *OpenAI) Generate(params GenerationParams) <-chan Event {
 			return
 		}
 
-		out <- Event{Type: EventDone}
+		out <- Event{Type: EventDone, Content: "\n"}
 	}()
 
 	return out

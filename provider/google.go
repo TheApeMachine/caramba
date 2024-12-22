@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 
+	"github.com/charmbracelet/log"
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -29,6 +30,7 @@ func NewGoogle(apiKey string, model string) *Google {
 }
 
 func (g *Google) Generate(params GenerationParams) <-chan Event {
+	log.Info("generating with", "model", g.model)
 	out := make(chan Event)
 
 	go func() {
@@ -44,7 +46,7 @@ func (g *Google) Generate(params GenerationParams) <-chan Event {
 		for {
 			resp, err := iter.Next()
 			if err == iterator.Done {
-				out <- Event{Type: EventDone}
+				out <- Event{Type: EventDone, Content: "\n"}
 				break
 			}
 

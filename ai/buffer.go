@@ -38,7 +38,7 @@ func (buffer *Buffer) truncate() {
 		return
 	}
 
-	maxTokens := buffer.maxContextTokens - 500 // Reserve tokens for response
+	maxTokens := buffer.maxContextTokens - 1024 // Reserve tokens for response
 	totalTokens := 0
 	var truncatedMessages []provider.Message
 

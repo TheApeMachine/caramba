@@ -11,18 +11,11 @@ type Prompt struct {
 	schema string
 }
 
-func NewPrompt() *Prompt {
-	return &Prompt{}
-}
-
-func (p *Prompt) WithRole(role string) *Prompt {
-	p.role = viper.GetString("prompts.roles." + role)
-	return p
-}
-
-func (p *Prompt) WithSchema(schema string) *Prompt {
-	p.schema = schema
-	return p
+func NewPrompt(role string, process Process) *Prompt {
+	return &Prompt{
+		role:   viper.GetString("prompts.roles." + role),
+		schema: process.GenerateSchema(),
+	}
 }
 
 func (p *Prompt) Build() string {
