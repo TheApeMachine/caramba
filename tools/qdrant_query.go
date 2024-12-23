@@ -48,31 +48,33 @@ func (q *QdrantQuery) Connect(rw io.ReadWriteCloser) error {
 
 func (q *QdrantQuery) Use(args map[string]any) string {
 	var (
-		query string
-		ok    bool
+		query   string
+		ok      bool
+		buf     []byte
+		err     error
+		results []map[string]interface{}
 	)
 
 	if query, ok = args["query"].(string); !ok {
 		return "query is required"
 	}
 
-	results := errnie.SafeMust(func() ([]map[string]interface{}, error) {
-		docs, err := q.client.SimilaritySearch(q.ctx, query, 1, vectorstores.WithScoreThreshold(0.7))
-		if err != nil {
-			return nil, err
-		}
+	docs, err := q.client.SimilaritySearch(q.ctx, query, 1, vectorstores.WithScoreThreshold(0.7))
+	if err != nil {
+		return err.Error()
+	}
 
-		var out []map[string]interface{}
-		for _, doc := range docs {
-			out = append(out, map[string]interface{}{
-				"metadata": doc.Metadata,
-				"content":  doc.PageContent,
-			})
-		}
-		return out, nil
-	})
+	var out []map[string]interface{}
+	for _, doc := range docs {
+		out = append(out, map[string]interface{}{
+			"metadata": doc.Metadata,
+			"content":  doc.PageContent,
+		})
+	}
 
-	return string(errnie.SafeMust(func() ([]byte, error) {
-		return json.Marshal(results)
-	}))
+	if buf, err = json.Marshal(results); err != nil {
+		return err.Error()
+	}
+
+	return string(buf)
 }

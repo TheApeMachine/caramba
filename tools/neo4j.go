@@ -38,7 +38,7 @@ func NewNeo4j() *Neo4j {
 	ctx := context.Background()
 
 	client := errnie.SafeMust(func() (neo4j.DriverWithContext, error) {
-		return neo4j.NewDriverWithContext("neo4j://192.168.1.55:7687", neo4j.BasicAuth("neo4j", "securepassword", ""))
+		return neo4j.NewDriverWithContext("neo4j://localhost:7687", neo4j.BasicAuth("neo4j", "securepassword", ""))
 	})
 
 	errnie.MustVoid(client.VerifyConnectivity(ctx))

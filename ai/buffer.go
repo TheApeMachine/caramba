@@ -63,7 +63,7 @@ func (buffer *Buffer) truncate() {
 	buffer.messages = truncatedMessages
 }
 
-func (buffer *Buffer) estimateTokens(msg provider.Message) int { // Use tiktoken-go to estimate tokens
+func (buffer *Buffer) estimateTokens(msg provider.Message) int {
 	encoding, err := tiktoken.EncodingForModel("gpt-4o-mini")
 	if err != nil {
 		log.Error("Error getting encoding", "error", err)

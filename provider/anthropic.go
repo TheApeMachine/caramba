@@ -5,7 +5,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/charmbracelet/log"
 )
 
 type Anthropic struct {
@@ -34,7 +33,6 @@ func (a *Anthropic) Configure(config map[string]interface{}) {
 }
 
 func (a *Anthropic) Generate(params GenerationParams) <-chan Event {
-	log.Info("generating with", "model", a.model)
 	out := make(chan Event)
 
 	go func() {

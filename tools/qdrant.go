@@ -33,6 +33,52 @@ type Qdrant struct {
 }
 
 /*
+NewQdrant creates a new Qdrant tool.
+*/
+func NewQdrant(collection string, dimension uint64) *Qdrant {
+	ctx := context.Background()
+
+	var (
+		llm    *openai.LLM
+		err    error
+		e      embeddings.Embedder
+		url    *url.URL
+		client qdrant.Store
+	)
+
+	if llm, err = openai.New(); err != nil {
+		return nil
+	}
+
+	if e, err = embeddings.NewEmbedder(llm); err != nil {
+		return nil
+	}
+
+	if url, err = url.Parse("http://localhost:6333"); err != nil {
+		return nil
+	}
+
+	createCollectionIfNotExists(collection, url, dimension)
+
+	if client, err = qdrant.New(
+		qdrant.WithURL(*url),
+		qdrant.WithCollectionName(collection),
+		qdrant.WithEmbedder(e),
+		qdrant.WithAPIKey("qdrant-api-key"),
+	); err != nil {
+		return nil
+	}
+
+	return &Qdrant{
+		ctx:        ctx,
+		client:     &client,
+		embedder:   e,
+		collection: collection,
+		dimension:  dimension,
+	}
+}
+
+/*
 Initialize initializes the Qdrant client.
 */
 func (q *Qdrant) Initialize() error {
@@ -83,44 +129,6 @@ func (qdrant *Qdrant) GenerateSchema() string {
 	return string(errnie.SafeMust(func() ([]byte, error) {
 		return json.MarshalIndent(schema, "", "  ")
 	}))
-}
-
-/*
-NewQdrant creates a new Qdrant tool.
-*/
-func NewQdrant(collection string, dimension uint64) *Qdrant {
-	ctx := context.Background()
-
-	llm := errnie.SafeMust(func() (*openai.LLM, error) {
-		return openai.New()
-	})
-
-	e := errnie.SafeMust(func() (embeddings.Embedder, error) {
-		return embeddings.NewEmbedder(llm)
-	})
-
-	url := errnie.SafeMust(func() (*url.URL, error) {
-		return url.Parse("http://localhost:6333")
-	})
-
-	createCollectionIfNotExists(collection, url, dimension)
-
-	client := errnie.SafeMust(func() (qdrant.Store, error) {
-		return qdrant.New(
-			qdrant.WithURL(*url),
-			qdrant.WithCollectionName(collection),
-			qdrant.WithEmbedder(e),
-			qdrant.WithAPIKey("qdrant-api-key"),
-		)
-	})
-
-	return &Qdrant{
-		ctx:        ctx,
-		client:     &client,
-		embedder:   e,
-		collection: collection,
-		dimension:  dimension,
-	}
 }
 
 /*
@@ -207,6 +215,7 @@ func createCollectionIfNotExists(collection string, uri *url.URL, dimension uint
 	// Add API key to request headers
 	headers := map[string]string{
 		"Content-Type": "application/json",
+		"api-key":      "qdrant-api-key",
 	}
 
 	// First we do a GET call to check if the collection exists

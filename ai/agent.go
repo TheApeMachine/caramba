@@ -1,15 +1,20 @@
 package ai
 
 import (
-	"os"
-	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
+	"github.com/theapemachine/errnie"
 )
 
+/*
+Agent is a wrapper around a provider, which can be used to generate text.
+An agent has either a process, or a tool. A tool is also a process, but
+a process is not a tool. A process is just a jsonschema that is used by
+the model to respond with a (partially) structured response. A tool
+interfaces with anything that gives the agent additional functionality.
+*/
 type Agent struct {
 	provider    provider.Provider
 	name        string
@@ -23,6 +28,9 @@ type Agent struct {
 	maxIter     int
 }
 
+/*
+NewAgent creates a new Agent instance.
+*/
 func NewAgent(role string, process Process, maxIter int) *Agent {
 	name := utils.NewName()
 
@@ -39,7 +47,6 @@ func NewAgent(role string, process Process, maxIter int) *Agent {
 		maxIter:     maxIter,
 	}
 
-	// Set system prompt once during initialization
 	agent.buffer.Poke(provider.Message{
 		Role:    "system",
 		Content: agent.prompt.Build(),
@@ -48,30 +55,15 @@ func NewAgent(role string, process Process, maxIter int) *Agent {
 	return agent
 }
 
-func (agent *Agent) Generate(prompt string) <-chan provider.Event {
-	log.Info("generating", "agent", agent.name, "role", agent.role)
-
+/*
+Generate calls the underlying provider to have a Large Language Model
+generate text for the agent.
+*/
+func (agent *Agent) Generate() <-chan provider.Event {
 	out := make(chan provider.Event)
 
 	go func() {
 		defer close(out)
-
-		// Wrap incoming prompt with context metadata
-		agent.buffer.Poke(provider.Message{
-			Role: "user",
-			Content: utils.JoinWith("\n",
-				"<input_context agent="+agent.name+" role="+agent.role+">",
-				prompt,
-				"</input_context>",
-			),
-		})
-
-		if _, ok := agent.process.(Tool); ok {
-			if err := agent.process.(Tool).Initialize(); err != nil {
-				log.Error("Failed to initialize tool", "error", err)
-				os.Exit(1)
-			}
-		}
 
 		iteration := 0
 
@@ -84,64 +76,30 @@ func (agent *Agent) Generate(prompt string) <-chan provider.Event {
 				break
 			}
 
-			var response strings.Builder
-			// Add task wrapper before generation
-			currentMessages := agent.buffer.Peek()
-			currentMessages = append(currentMessages, provider.Message{
-				Role: "system",
-				Content: utils.JoinWith("\n",
-					"<task>",
-					"  Based on the provided context:",
-					"    1. Consider only information relevant to your role as "+agent.role,
-					"    2. Focus on your specific responsibility in the current stage",
-					"    3. Generate exactly one meaningful step towards the goal",
-					"    4. Respond according to the required protocol",
-					"    5. Do not let the context distract or confuse you, use only what is relevant to you right now",
-					"",
-					"  <iteration_status>",
-					"    Current iteration: "+strconv.Itoa(iteration),
-					"    Remaining iterations: "+strconv.Itoa(agent.maxIter-iteration),
-					"    Complete task when either:",
-					"      - No more meaningful steps are needed",
-					"      - Reached maximum iterations ("+strconv.Itoa(agent.maxIter)+")",
-					"  </iteration_status>",
-					"</task>",
-				),
+			agent.buffer.Poke(provider.Message{
+				Role:    "assistant",
+				Content: agent.prompt.BuildStatus(iteration, agent.maxIter-iteration),
 			})
 
-			for event := range agent.provider.Generate(provider.GenerationParams{
-				Messages:    currentMessages,
+			var response strings.Builder
+
+			params := provider.GenerationParams{
+				Messages:    agent.buffer.Peek(),
 				Temperature: agent.temperature,
 				TopP:        agent.topP,
 				TopK:        agent.topK,
-			}) {
+			}
+
+			errnie.Log("===AGENT=== %s", params)
+
+			for event := range agent.provider.Generate(params) {
 				response.WriteString(event.Content)
 				out <- event
 			}
 
-			for _, ignore := range []string{"apologize", "sorry", "apologies"} {
-				if strings.Contains(response.String(), ignore) {
-					if strings.Contains(response.String(), "<task-complete>") {
-						out <- provider.Event{
-							Type:    provider.EventDone,
-							Content: "\n",
-						}
-						return
-					}
-				}
-			}
-
 			agent.buffer.Poke(provider.Message{
-				Role: "assistant",
-				Content: utils.JoinWith("\n",
-					"<agent_response",
-					"  name=\""+agent.name+"\"",
-					"  role=\""+agent.role+"\"",
-					"  iteration=\""+strconv.Itoa(iteration)+"\"",
-					">",
-					response.String(),
-					"</agent_response>",
-				),
+				Role:    "assistant",
+				Content: response.String(),
 			})
 
 			if _, ok := agent.process.(Tool); ok {
@@ -149,19 +107,13 @@ func (agent *Agent) Generate(prompt string) <-chan provider.Event {
 
 				agent.buffer.Poke(provider.Message{
 					Role: "assistant",
-					Content: utils.JoinWith("\n",
-						"<tool_response",
-						"  agent=\""+agent.name+"\"",
-						"  role=\""+agent.role+"\"",
-						"  iteration=\""+strconv.Itoa(iteration)+"\"",
-						">",
-						toolResponse,
-						"</tool_response>",
+					Content: utils.QuickWrap(
+						"tool", toolResponse,
 					),
 				})
 
 				out <- provider.Event{
-					Type:    provider.EventFunctionCall,
+					Type:    provider.EventToken,
 					Content: toolResponse,
 				}
 			}

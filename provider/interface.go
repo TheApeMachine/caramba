@@ -8,11 +8,12 @@ import (
 
 // Event represents different types of provider events
 type Event struct {
-	TeamID  string
-	AgentID string
-	Type    EventType
-	Content string
-	Error   error
+	Sequence int64
+	TeamID   string
+	AgentID  string
+	Type     EventType
+	Content  string
+	Error    error
 }
 
 type EventType int

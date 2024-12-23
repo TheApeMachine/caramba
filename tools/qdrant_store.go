@@ -49,8 +49,12 @@ func (q *QdrantStore) Connect(rw io.ReadWriteCloser) error {
 }
 
 func (q *QdrantStore) Use(args map[string]any) string {
-	// Convert documents from []interface{} to []string
-	var docs []string
+	var (
+		docs     []string
+		metadata map[string]any
+		ok       bool
+	)
+
 	if docsInterface, ok := args["documents"].([]interface{}); ok {
 		docs = make([]string, len(docsInterface))
 		for i, doc := range docsInterface {
@@ -60,24 +64,26 @@ func (q *QdrantStore) Use(args map[string]any) string {
 		}
 	}
 
-	metadata, _ := args["metadata"].(map[string]any)
-
-	if q.Reasoning != "" {
-		if metadata == nil {
-			metadata = make(map[string]any)
+	if metadata, ok = args["metadata"].(map[string]any); ok {
+		if q.Reasoning != "" {
+			if metadata == nil {
+				metadata = make(map[string]any)
+			}
+			metadata["reasoning"] = q.Reasoning
 		}
-		metadata["reasoning"] = q.Reasoning
 	}
 
 	for _, doc := range docs {
-		errnie.SafeMust(func() ([]string, error) {
-			return q.client.AddDocuments(q.ctx, []schema.Document{
-				{
-					PageContent: doc,
-					Metadata:    metadata,
-				},
-			})
+		_, err := q.client.AddDocuments(q.ctx, []schema.Document{
+			{
+				PageContent: doc,
+				Metadata:    metadata,
+			},
 		})
+		
+		if err != nil {
+			return err.Error()
+		}
 	}
 
 	return "memory saved in vector store"

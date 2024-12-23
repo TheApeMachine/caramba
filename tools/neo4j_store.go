@@ -42,8 +42,10 @@ func (n *Neo4jStore) Connect(rw io.ReadWriteCloser) error {
 
 func (n *Neo4jStore) Use(args map[string]any) string {
 	var (
-		cypher string
-		ok     bool
+		cypher  string
+		ok      bool
+		err error
+		results neo4j.ResultWithContext
 	)
 
 	if cypher, ok = args["cypher"].(string); !ok {
@@ -53,15 +55,11 @@ func (n *Neo4jStore) Use(args map[string]any) string {
 	session := n.client.NewSession(n.ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(n.ctx)
 
-	result := errnie.SafeMust(func() (neo4j.ResultWithContext, error) {
-		return session.Run(n.ctx, cypher, nil)
-	})
-
-	if result == nil {
-		return "something went wrong"
+	if results, err = session.Run(n.ctx, cypher, nil); err != nil {
+		return err.Error()
 	}
 
-	if err := result.Err(); err != nil {
+	if err := results.Err(); err != nil {
 		return err.Error()
 	}
 

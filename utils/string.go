@@ -103,3 +103,15 @@ func GenerateSchema[T any]() string {
 		return json.MarshalIndent(jsonschema.Reflect(&instance), "", "  ")
 	}))
 }
+
+/*
+QuickWrap wraps a string into faux-XML section tags, which helps the
+LLM to have more clarity on a large, shared context.
+*/
+func QuickWrap(tag, content string) string {
+	return JoinWith("\n",
+		"<"+tag+">",
+		"  "+content,
+		"</"+tag+">",
+	)
+}

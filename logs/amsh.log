@@ -1,0 +1,950 @@
+[21:11:46] collection creation response: {"result":{"status":"green","optimizer_status":"ok","indexed_vectors_count":0,"points_count":15,"segments_count":8,"config":{"params":{"vectors":{"size":1536,"distance":"Cosine"},"shard_number":1,"replication_factor":1,"write_consistency_factor":1,"on_disk_payload":true},"hnsw_config":{"m":16,"ef_construct":100,"full_scan_threshold":10000,"max_indexing_threads":0,"on_disk":false},"optimizer_config":{"deleted_threshold":0.2,"vacuum_min_vector_number":1000,"default_segment_number":0,"max_segment_size":null,"memmap_threshold":null,"indexing_threshold":20000,"flush_interval_sec":5,"max_optimization_threads":null},"wal_config":{"wal_capacity_mb":32,"wal_segments_ahead":0},"quantization_config":null,"strict_mode_config":{"enabled":false}},"payload_schema":{}},"status":"ok","time":0.002412042}
+[21:11:46] collection creation response: {"result":{"status":"green","optimizer_status":"ok","indexed_vectors_count":0,"points_count":15,"segments_count":8,"config":{"params":{"vectors":{"size":1536,"distance":"Cosine"},"shard_number":1,"replication_factor":1,"write_consistency_factor":1,"on_disk_payload":true},"hnsw_config":{"m":16,"ef_construct":100,"full_scan_threshold":10000,"max_indexing_threads":0,"on_disk":false},"optimizer_config":{"deleted_threshold":0.2,"vacuum_min_vector_number":1000,"default_segment_number":0,"max_segment_size":null,"memmap_threshold":null,"indexing_threshold":20000,"flush_interval_sec":5,"max_optimization_threads":null},"wal_config":{"wal_capacity_mb":32,"wal_segments_ahead":0},"quantization_config":null,"strict_mode_config":{"enabled":false}},"payload_schema":{}},"status":"ok","time":0.000079292}
+[21:11:46] ===AGENT=== system: <system>
+  You are part of a multi-agent reasoning and execution engine.
+  
+  <identity>
+    Your unique identifier is: wispy-wildflower
+    <note>
+      Keep track of your unique identifier, as it will help you understand which parts of the context you own.
+    </note>
+  </identity>
+
+  <role>
+  You are a reasoning agent focused on deep analysis and context generation.
+  You should not try to answer the user prompt, instead you focus on generating a richer context
+  by adding insights and observations. It does not matter if the user prompt looks very simple,
+  obvious, or easy, you should treat each iteration as a new opportunity to add value to the context,
+  and go as deep as possible. Utilize the full potential of your schema, including branching, self-doubt, etc.
+  You are not meant to produce concrete answers, solutions, or results, but instead you are meant to break
+  down the context into small details, and look at each detail from all angles, and make observations,
+  or connections that nobody else sees. It is a waste of time to engage with the prompt or context in any other way.
+  This is essential to the success of the agents downstream that rely on your context.
+</role>
+
+
+  <instructions>
+    1. You ALWAYS have to include the correct JSON that is part of your protocol, or <task-complete>
+    2. As long as you adhere to instruction 1, you can add any additional thoughts before or after the JSON object
+    3. While only the JSON object is evaluated, especially adding thoughts before the JSON object can help you think more clearly
+    4. Understand your role, and that you are part of a multi-agent pipeline, so you should not add chaos to the system by stepping out of your role
+    5. No matter how simple the task is, you should ONLY focus on your part, defined by your role, this is extremely important
+  </instructions>
+
+  <protocol>
+    <schema>
+      ```jsonschema
+      {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/theapemachine/caramba/process/chainofthought/process",
+  "$ref": "#/$defs/Process",
+  "$defs": {
+    "Process": {
+      "properties": {
+        "thoughts": {
+          "items": {
+            "$ref": "#/$defs/Thought"
+          },
+          "type": "array",
+          "title": "Thoughts",
+          "description": "Your thoughts"
+        },
+        "final_answer": {
+          "type": "string",
+          "title": "FinalAnswer",
+          "description": "The final answer that forms your response"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "thoughts",
+        "final_answer"
+      ]
+    },
+    "Thought": {
+      "properties": {
+        "root_thought": {
+          "type": "string",
+          "title": "RootThought",
+          "description": "A root thought from which other thoughts branch off"
+        },
+        "branches": {
+          "items": {
+            "$ref": "#/$defs/Thought"
+          },
+          "type": "array",
+          "title": "Branches",
+          "description": "A branch of thoughts related to the root thought"
+        },
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "description": "An identifier for the type of thought"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "root_thought",
+        "branches",
+        "type"
+      ]
+    }
+  }
+}
+      ```
+      <note>
+        A jsonschema is not a valid JSON object, but a definition of a JSON object.
+        You must generate a valid JSON object that matches the schema's definitions.
+        You should NOT use the schema directly in your response, it just tells you how to format your JSON object.
+      </note>
+    </schema>
+
+    <instructions>
+      1. Wrap your JSON object in a Markdown JSON code block.
+      2. You will only stop iterating by responding with <task-complete>.
+      3. Never exceed your assigned role, when in doubt, you are not sure what to do, or don't have any active part to play, write <task-complete>.
+      4. Be mindful of your iteration count, and limit, which are reported to you at the end of each context you receive.
+      5. Add as much detail as possible to your JSON object.
+    </instructions>
+  </protocol>
+
+  SPECIAL NOTE: THE ONE QUALITY THAT IS MORE VALUABLE THAN ANY OTHERS COMBINED IS THE ABILITY TO DOUBT YOURSELF.
+                AN AGENT THAT CAN ACTIVELY APPLY SELF-DOUBT AS A FIRST-CLASS CITIZEN OF THEIR PROCESS INSTANTLY
+                INCREASES THEIR VALUE, ABILITIES, PERFORMANCE, AND CONTRIBUTION.
+</system>
+
+user: <user-prompt>
+  What can you tell me about a Dutch company called Fan Factory, who measure employee well-being?
+</user-prompt>
+
+
+
+<feedback>
+  
+</feedback>
+
+<task>
+  Based on the provided context above, making sure to only focus on what is relevant to you right now,
+  in your role as <role>
+  You are a reasoning agent focused on deep analysis and context generation.
+  You should not try to answer the user prompt, instead you focus on generating a richer context
+  by adding insights and observations. It does not matter if the user prompt looks very simple,
+  obvious, or easy, you should treat each iteration as a new opportunity to add value to the context,
+  and go as deep as possible. Utilize the full potential of your schema, including branching, self-doubt, etc.
+  You are not meant to produce concrete answers, solutions, or results, but instead you are meant to break
+  down the context into small details, and look at each detail from all angles, and make observations,
+  or connections that nobody else sees. It is a waste of time to engage with the prompt or context in any other way.
+  This is essential to the success of the agents downstream that rely on your context.
+</role>
+, work on the following task:
+
+  <user-prompt>
+  What can you tell me about a Dutch company called Fan Factory, who measure employee well-being?
+</user-prompt>
+</task>
+
+assistant: <task>
+  Based on the provided context above, making sure to only focus on what is relevant to you right now,
+  in your role as {{role}}, work on the following task:
+
+  {{task}}
+</task>
+
+
+Temperature: 0.000000
+PresencePenalty: 0.000000
+FrequencyPenalty: 0.000000
+TopP: 0.000000
+TopK: 0
+[21:11:50] ===AGENT=== system: <system>
+  You are part of a multi-agent reasoning and execution engine.
+  
+  <identity>
+    Your unique identifier is: wispy-wildflower
+    <note>
+      Keep track of your unique identifier, as it will help you understand which parts of the context you own.
+    </note>
+  </identity>
+
+  <role>
+  You are a reasoning agent focused on deep analysis and context generation.
+  You should not try to answer the user prompt, instead you focus on generating a richer context
+  by adding insights and observations. It does not matter if the user prompt looks very simple,
+  obvious, or easy, you should treat each iteration as a new opportunity to add value to the context,
+  and go as deep as possible. Utilize the full potential of your schema, including branching, self-doubt, etc.
+  You are not meant to produce concrete answers, solutions, or results, but instead you are meant to break
+  down the context into small details, and look at each detail from all angles, and make observations,
+  or connections that nobody else sees. It is a waste of time to engage with the prompt or context in any other way.
+  This is essential to the success of the agents downstream that rely on your context.
+</role>
+
+
+  <instructions>
+    1. You ALWAYS have to include the correct JSON that is part of your protocol, or <task-complete>
+    2. As long as you adhere to instruction 1, you can add any additional thoughts before or after the JSON object
+    3. While only the JSON object is evaluated, especially adding thoughts before the JSON object can help you think more clearly
+    4. Understand your role, and that you are part of a multi-agent pipeline, so you should not add chaos to the system by stepping out of your role
+    5. No matter how simple the task is, you should ONLY focus on your part, defined by your role, this is extremely important
+  </instructions>
+
+  <protocol>
+    <schema>
+      ```jsonschema
+      {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/theapemachine/caramba/process/chainofthought/process",
+  "$ref": "#/$defs/Process",
+  "$defs": {
+    "Process": {
+      "properties": {
+        "thoughts": {
+          "items": {
+            "$ref": "#/$defs/Thought"
+          },
+          "type": "array",
+          "title": "Thoughts",
+          "description": "Your thoughts"
+        },
+        "final_answer": {
+          "type": "string",
+          "title": "FinalAnswer",
+          "description": "The final answer that forms your response"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "thoughts",
+        "final_answer"
+      ]
+    },
+    "Thought": {
+      "properties": {
+        "root_thought": {
+          "type": "string",
+          "title": "RootThought",
+          "description": "A root thought from which other thoughts branch off"
+        },
+        "branches": {
+          "items": {
+            "$ref": "#/$defs/Thought"
+          },
+          "type": "array",
+          "title": "Branches",
+          "description": "A branch of thoughts related to the root thought"
+        },
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "description": "An identifier for the type of thought"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "root_thought",
+        "branches",
+        "type"
+      ]
+    }
+  }
+}
+      ```
+      <note>
+        A jsonschema is not a valid JSON object, but a definition of a JSON object.
+        You must generate a valid JSON object that matches the schema's definitions.
+        You should NOT use the schema directly in your response, it just tells you how to format your JSON object.
+      </note>
+    </schema>
+
+    <instructions>
+      1. Wrap your JSON object in a Markdown JSON code block.
+      2. You will only stop iterating by responding with <task-complete>.
+      3. Never exceed your assigned role, when in doubt, you are not sure what to do, or don't have any active part to play, write <task-complete>.
+      4. Be mindful of your iteration count, and limit, which are reported to you at the end of each context you receive.
+      5. Add as much detail as possible to your JSON object.
+    </instructions>
+  </protocol>
+
+  SPECIAL NOTE: THE ONE QUALITY THAT IS MORE VALUABLE THAN ANY OTHERS COMBINED IS THE ABILITY TO DOUBT YOURSELF.
+                AN AGENT THAT CAN ACTIVELY APPLY SELF-DOUBT AS A FIRST-CLASS CITIZEN OF THEIR PROCESS INSTANTLY
+                INCREASES THEIR VALUE, ABILITIES, PERFORMANCE, AND CONTRIBUTION.
+</system>
+
+user: <user-prompt>
+  What can you tell me about a Dutch company called Fan Factory, who measure employee well-being?
+</user-prompt>
+
+
+
+<feedback>
+  
+</feedback>
+
+<task>
+  Based on the provided context above, making sure to only focus on what is relevant to you right now,
+  in your role as <role>
+  You are a reasoning agent focused on deep analysis and context generation.
+  You should not try to answer the user prompt, instead you focus on generating a richer context
+  by adding insights and observations. It does not matter if the user prompt looks very simple,
+  obvious, or easy, you should treat each iteration as a new opportunity to add value to the context,
+  and go as deep as possible. Utilize the full potential of your schema, including branching, self-doubt, etc.
+  You are not meant to produce concrete answers, solutions, or results, but instead you are meant to break
+  down the context into small details, and look at each detail from all angles, and make observations,
+  or connections that nobody else sees. It is a waste of time to engage with the prompt or context in any other way.
+  This is essential to the success of the agents downstream that rely on your context.
+</role>
+, work on the following task:
+
+  <user-prompt>
+  What can you tell me about a Dutch company called Fan Factory, who measure employee well-being?
+</user-prompt>
+</task>
+
+assistant: ```json
+{
+    "thoughts": [
+        {
+            "root_thought": "Fan Factory is a Dutch company focused on measuring employee well-being.",
+            "branches": [
+                {
+                    "root_thought": "What key aspects should be considered when evaluating employee well-being?",
+                    "branches": [
+                        {
+                            "root_thought": "Job Satisfaction",
+                            "branches": [
+                                {
+                                    "root_thought": "This includes assessing employees' overall satisfaction with their jobs, their motivation, and engagement.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Work-Life Balance",
+                            "branches": [
+                                {
+                                    "root_thought": "Examining the equilibrium between work and personal life, and understanding how it impacts employee health and productivity.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Physical & Mental Health",
+                            "branches": [
+                                {
+                                    "root_thought": "Investigating the company's approach to supporting employee physical and mental health, including stress management and wellness initiatives.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Organizational Culture",
+                            "branches": [
+                                {
+                                    "root_thought": "Exploring the climate and values within the organization that may impact employee well-being, such as leadership style, communication, and support systems.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Employee Benefits",
+                            "branches": [
+                                {
+                                    "root_thought": "Analyzing the benefits package offered by the company and its relevance to employee well-being, e.g., healthcare, vacation days, etc.",
+                                    "branches": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "final_answer": "There are multiple facets to evaluating employee well-being, including job satisfaction, work-life balance, health, organizational culture, and benefits."
+}
+```
+
+assistant: ```json
+{
+    "thoughts": [
+        {
+            "root_thought": "Fan Factory is a Dutch company focused on measuring employee well-being.",
+            "branches": [
+                {
+                    "root_thought": "What key aspects should be considered when evaluating employee well-being?",
+                    "branches": [
+                        {
+                            "root_thought": "Job Satisfaction",
+                            "branches": [
+                                {
+                                    "root_thought": "This includes assessing employees' overall satisfaction with their jobs, their motivation, and engagement.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Work-Life Balance",
+                            "branches": [
+                                {
+                                    "root_thought": "Examining the equilibrium between work and personal life, and understanding how it impacts employee health and productivity.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Physical & Mental Health",
+                            "branches": [
+                                {
+                                    "root_thought": "Investigating the company's approach to supporting employee physical and mental health, including stress management and wellness initiatives.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Organizational Culture",
+                            "branches": [
+                                {
+                                    "root_thought": "Exploring the climate and values within the organization that may impact employee well-being, such as leadership style, communication, and support systems.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Employee Benefits",
+                            "branches": [
+                                {
+                                    "root_thought": "Analyzing the benefits package offered by the company and its relevance to employee well-being, e.g., healthcare, vacation days, etc.",
+                                    "branches": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "final_answer": "There are multiple facets to evaluating employee well-being, including job satisfaction, work-life balance, health, organizational culture, and benefits."
+}
+```
+
+assistant: <task>
+  Based on the provided context above, making sure to only focus on what is relevant to you right now,
+  in your role as {{role}}, work on the following task:
+
+  {{task}}
+</task>
+
+
+Temperature: 0.000000
+PresencePenalty: 0.000000
+FrequencyPenalty: 0.000000
+TopP: 0.000000
+TopK: 0
+[21:11:58] ===AGENT=== system: <system>
+  You are part of a multi-agent reasoning and execution engine.
+  
+  <identity>
+    Your unique identifier is: wispy-wildflower
+    <note>
+      Keep track of your unique identifier, as it will help you understand which parts of the context you own.
+    </note>
+  </identity>
+
+  <role>
+  You are a reasoning agent focused on deep analysis and context generation.
+  You should not try to answer the user prompt, instead you focus on generating a richer context
+  by adding insights and observations. It does not matter if the user prompt looks very simple,
+  obvious, or easy, you should treat each iteration as a new opportunity to add value to the context,
+  and go as deep as possible. Utilize the full potential of your schema, including branching, self-doubt, etc.
+  You are not meant to produce concrete answers, solutions, or results, but instead you are meant to break
+  down the context into small details, and look at each detail from all angles, and make observations,
+  or connections that nobody else sees. It is a waste of time to engage with the prompt or context in any other way.
+  This is essential to the success of the agents downstream that rely on your context.
+</role>
+
+
+  <instructions>
+    1. You ALWAYS have to include the correct JSON that is part of your protocol, or <task-complete>
+    2. As long as you adhere to instruction 1, you can add any additional thoughts before or after the JSON object
+    3. While only the JSON object is evaluated, especially adding thoughts before the JSON object can help you think more clearly
+    4. Understand your role, and that you are part of a multi-agent pipeline, so you should not add chaos to the system by stepping out of your role
+    5. No matter how simple the task is, you should ONLY focus on your part, defined by your role, this is extremely important
+  </instructions>
+
+  <protocol>
+    <schema>
+      ```jsonschema
+      {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/theapemachine/caramba/process/chainofthought/process",
+  "$ref": "#/$defs/Process",
+  "$defs": {
+    "Process": {
+      "properties": {
+        "thoughts": {
+          "items": {
+            "$ref": "#/$defs/Thought"
+          },
+          "type": "array",
+          "title": "Thoughts",
+          "description": "Your thoughts"
+        },
+        "final_answer": {
+          "type": "string",
+          "title": "FinalAnswer",
+          "description": "The final answer that forms your response"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "thoughts",
+        "final_answer"
+      ]
+    },
+    "Thought": {
+      "properties": {
+        "root_thought": {
+          "type": "string",
+          "title": "RootThought",
+          "description": "A root thought from which other thoughts branch off"
+        },
+        "branches": {
+          "items": {
+            "$ref": "#/$defs/Thought"
+          },
+          "type": "array",
+          "title": "Branches",
+          "description": "A branch of thoughts related to the root thought"
+        },
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "description": "An identifier for the type of thought"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "root_thought",
+        "branches",
+        "type"
+      ]
+    }
+  }
+}
+      ```
+      <note>
+        A jsonschema is not a valid JSON object, but a definition of a JSON object.
+        You must generate a valid JSON object that matches the schema's definitions.
+        You should NOT use the schema directly in your response, it just tells you how to format your JSON object.
+      </note>
+    </schema>
+
+    <instructions>
+      1. Wrap your JSON object in a Markdown JSON code block.
+      2. You will only stop iterating by responding with <task-complete>.
+      3. Never exceed your assigned role, when in doubt, you are not sure what to do, or don't have any active part to play, write <task-complete>.
+      4. Be mindful of your iteration count, and limit, which are reported to you at the end of each context you receive.
+      5. Add as much detail as possible to your JSON object.
+    </instructions>
+  </protocol>
+
+  SPECIAL NOTE: THE ONE QUALITY THAT IS MORE VALUABLE THAN ANY OTHERS COMBINED IS THE ABILITY TO DOUBT YOURSELF.
+                AN AGENT THAT CAN ACTIVELY APPLY SELF-DOUBT AS A FIRST-CLASS CITIZEN OF THEIR PROCESS INSTANTLY
+                INCREASES THEIR VALUE, ABILITIES, PERFORMANCE, AND CONTRIBUTION.
+</system>
+
+user: <user-prompt>
+  What can you tell me about a Dutch company called Fan Factory, who measure employee well-being?
+</user-prompt>
+
+
+
+<feedback>
+  
+</feedback>
+
+<task>
+  Based on the provided context above, making sure to only focus on what is relevant to you right now,
+  in your role as <role>
+  You are a reasoning agent focused on deep analysis and context generation.
+  You should not try to answer the user prompt, instead you focus on generating a richer context
+  by adding insights and observations. It does not matter if the user prompt looks very simple,
+  obvious, or easy, you should treat each iteration as a new opportunity to add value to the context,
+  and go as deep as possible. Utilize the full potential of your schema, including branching, self-doubt, etc.
+  You are not meant to produce concrete answers, solutions, or results, but instead you are meant to break
+  down the context into small details, and look at each detail from all angles, and make observations,
+  or connections that nobody else sees. It is a waste of time to engage with the prompt or context in any other way.
+  This is essential to the success of the agents downstream that rely on your context.
+</role>
+, work on the following task:
+
+  <user-prompt>
+  What can you tell me about a Dutch company called Fan Factory, who measure employee well-being?
+</user-prompt>
+</task>
+
+assistant: ```json
+{
+    "thoughts": [
+        {
+            "root_thought": "Fan Factory is a Dutch company focused on measuring employee well-being.",
+            "branches": [
+                {
+                    "root_thought": "What key aspects should be considered when evaluating employee well-being?",
+                    "branches": [
+                        {
+                            "root_thought": "Job Satisfaction",
+                            "branches": [
+                                {
+                                    "root_thought": "This includes assessing employees' overall satisfaction with their jobs, their motivation, and engagement.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Work-Life Balance",
+                            "branches": [
+                                {
+                                    "root_thought": "Examining the equilibrium between work and personal life, and understanding how it impacts employee health and productivity.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Physical & Mental Health",
+                            "branches": [
+                                {
+                                    "root_thought": "Investigating the company's approach to supporting employee physical and mental health, including stress management and wellness initiatives.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Organizational Culture",
+                            "branches": [
+                                {
+                                    "root_thought": "Exploring the climate and values within the organization that may impact employee well-being, such as leadership style, communication, and support systems.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Employee Benefits",
+                            "branches": [
+                                {
+                                    "root_thought": "Analyzing the benefits package offered by the company and its relevance to employee well-being, e.g., healthcare, vacation days, etc.",
+                                    "branches": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "final_answer": "There are multiple facets to evaluating employee well-being, including job satisfaction, work-life balance, health, organizational culture, and benefits."
+}
+```
+
+
+assistant: ```json
+{
+    "thoughts": [
+        {
+            "root_thought": "Fan Factory is a Dutch company focused on measuring employee well-being.",
+            "branches": [
+                {
+                    "root_thought": "What key aspects should be considered when evaluating employee well-being?",
+                    "branches": [
+                        {
+                            "root_thought": "Job Satisfaction",
+                            "branches": [
+                                {
+                                    "root_thought": "This includes assessing employees' overall satisfaction with their jobs, their motivation, and engagement.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Work-Life Balance",
+                            "branches": [
+                                {
+                                    "root_thought": "Examining the equilibrium between work and personal life, and understanding how it impacts employee health and productivity.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Physical & Mental Health",
+                            "branches": [
+                                {
+                                    "root_thought": "Investigating the company's approach to supporting employee physical and mental health, including stress management and wellness initiatives.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Organizational Culture",
+                            "branches": [
+                                {
+                                    "root_thought": "Exploring the climate and values within the organization that may impact employee well-being, such as leadership style, communication, and support systems.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Employee Benefits",
+                            "branches": [
+                                {
+                                    "root_thought": "Analyzing the benefits package offered by the company and its relevance to employee well-being, e.g., healthcare, vacation days, etc.",
+                                    "branches": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "final_answer": "There are multiple facets to evaluating employee well-being, including job satisfaction, work-life balance, health, organizational culture, and benefits."
+}
+```
+
+
+assistant: <task>
+  Based on the provided context above, making sure to only focus on what is relevant to you right now,
+  in your role as {{role}}, work on the following task:
+
+  {{task}}
+</task>
+
+assistant: ```json
+{
+    "thoughts": [
+        {
+            "root_thought": "Fan Factory is a Dutch company focused on measuring employee well-being.",
+            "branches": [
+                {
+                    "root_thought": "What key aspects should be considered when evaluating employee well-being?",
+                    "branches": [
+                        {
+                            "root_thought": "Job Satisfaction",
+                            "branches": [
+                                {
+                                    "root_thought": "This includes assessing employees' overall satisfaction with their jobs, their motivation, and engagement.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Work-Life Balance",
+                            "branches": [
+                                {
+                                    "root_thought": "Examining the equilibrium between work and personal life, and understanding how it impacts employee health and productivity.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Physical & Mental Health",
+                            "branches": [
+                                {
+                                    "root_thought": "Investigating the company's approach to supporting employee physical and mental health, including stress management and wellness initiatives.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Organizational Culture",
+                            "branches": [
+                                {
+                                    "root_thought": "Exploring the climate and values within the organization that may impact employee well-being, such as leadership style, communication, and support systems.",
+                                    "branches": []
+                                }
+                            ]
+                        },
+                        {
+                            "root_thought": "Employee Benefits",
+                            "branches": [
+                                {
+                                    "root_thought": "Analyzing the benefits package offered by the company and its relevance to employee well-being, e.g., healthcare, vacation days, etc.",
+                                    "branches": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "final_answer": "There are multiple facets to evaluating employee well-being, including job satisfaction, work-life balance, health, organizational culture, and benefits."
+}
+```
+
+
+assistant: <task>
+  Based on the provided context above, making sure to only focus on what is relevant to you right now,
+  in your role as {{role}}, work on the following task:
+
+  {{task}}
+</task>
+
+
+Temperature: 0.000000
+PresencePenalty: 0.000000
+FrequencyPenalty: 0.000000
+TopP: 0.000000
+TopK: 0
+[21:11:58] ===AGENT=== system: <system>
+  You are part of a multi-agent reasoning and execution engine.
+  
+  <identity>
+    Your unique identifier is: empty-resonance
+    <note>
+      Keep track of your unique identifier, as it will help you understand which parts of the context you own.
+    </note>
+  </identity>
+
+  <role>
+  You are a reviewer.
+  You are responsible for assessing the performance of an agent, by reviewing its actions and outcomes.
+
+  <review_process>
+    It is extremely important that you do not make any assumptions, and for this reason 
+    YOU SHOULD NOT CONCERN YOURSELF WITH THE ACCURACY OF THE AGENT'S ANSWER.
+    Instead, you should focus on the quality of the agent's process, which you can do by asking simple questions.
+
+    1. Did the agent respond with a valid JSON object?
+    2. Is the JSON object filled out with lots of detail?
+    3. Did the agent include claims that are no supported by the context?
+    4. Did the agent follow a logical process, or did it make leaps of faith?
+    5. Did the agent make any assumptions?
+
+    The questions above are not exhaustive, but they are a good starting point.
+  </review_process>
+
+  Your reviews feed directly into the auto fine-tuning process, and self-improvement mechanisms, so you
+  are expected to be highly critical, objective, and apply high amounts of scrutiny, doubt, and skepticism.
+
+  UNDER NO CIRCUMSTANCE SHOULD YOU QUESTION OR DISPUTE THE AGENT'S RESPONSE, YOU MUST ACCEPT IT AS IS.
+  DO NOT CLAIM THAT THE AGENT'S RESPONSE IS INCORRECT, DO NOT RECONTEXTUALIZE THE AGENT'S RESPONSE, AND
+  DO NOT MAKE ANY CLAIMS BASED ON YOUR OWN OPINIONS, OR ASSUMPTIONS WHAT THE CORRECT ANSWER SHOULD BE.
+</role>
+
+
+  <instructions>
+    1. You ALWAYS have to include the correct JSON that is part of your protocol, or <task-complete>
+    2. As long as you adhere to instruction 1, you can add any additional thoughts before or after the JSON object
+    3. While only the JSON object is evaluated, especially adding thoughts before the JSON object can help you think more clearly
+    4. Understand your role, and that you are part of a multi-agent pipeline, so you should not add chaos to the system by stepping out of your role
+    5. No matter how simple the task is, you should ONLY focus on your part, defined by your role, this is extremely important
+  </instructions>
+
+  <protocol>
+    <schema>
+      ```jsonschema
+      {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/theapemachine/caramba/process/review/process",
+  "$ref": "#/$defs/Process",
+  "$defs": {
+    "Assessment": {
+      "properties": {
+        "question": {
+          "type": "string",
+          "title": "Question",
+          "description": "A evaluation question that has a provable yes or no answer present in the response"
+        },
+        "answer": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no"
+          ],
+          "title": "Answer",
+          "description": "The answer to the question"
+        },
+        "fragment": {
+          "type": "string",
+          "title": "Fragment",
+          "description": "The fragment of the response that supports the answer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "question",
+        "answer",
+        "fragment"
+      ]
+    },
+    "Process": {
+      "properties": {
+        "assessments": {
+          "items": {
+            "$ref": "#/$defs/Assessment"
+          },
+          "type": "array",
+          "title": "Assessments",
+          "description": "Your objective assessments of the agent's performance"
+        },
+        "performance": {
+          "type": "string",
+          "enum": [
+            "insufficient",
+            "sufficient",
+            "excellent"
+          ],
+          "title": "Performance",
+          "description": "Performance of the agent"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "assessments",
+        "performance"
+      ]
+    }
+  }
+}
+      ```
+      <note>
+        A jsonschema is not a valid JSON object, but a definition of a JSON object.
+        You must generate a valid JSON object that matches the schema's definitions.
+        You should NOT use the schema directly in your response, it just tells you how to format your JSON object.
+      </note>
+    </schema>
+
+    <instructions>
+      1. Wrap your JSON object in a Markdown JSON code block.
+      2. You will only stop iterating by responding with <task-complete>.
+      3. Never exceed your assigned role, when in doubt, you are not sure what to do, or don't have any active part to play, write <task-complete>.
+      4. Be mindful of your iteration count, and limit, which are reported to you at the end of each context you receive.
+      5. Add as much detail as possible to your JSON object.
+    </instructions>
+  </protocol>
+
+  SPECIAL NOTE: THE ONE QUALITY THAT IS MORE VALUABLE THAN ANY OTHERS COMBINED IS THE ABILITY TO DOUBT YOURSELF.
+                AN AGENT THAT CAN ACTIVELY APPLY SELF-DOUBT AS A FIRST-CLASS CITIZEN OF THEIR PROCESS INSTANTLY
+                INCREASES THEIR VALUE, ABILITIES, PERFORMANCE, AND CONTRIBUTION.
+</system>
+
+assistant: 
+assistant: <task>
+  Based on the provided context above, making sure to only focus on what is relevant to you right now,
+  in your role as {{role}}, work on the following task:
+
+  {{task}}
+</task>
+
+
+Temperature: 0.000000
+PresencePenalty: 0.000000
+FrequencyPenalty: 0.000000
+TopP: 0.000000
+TopK: 0

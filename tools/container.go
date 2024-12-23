@@ -74,6 +74,12 @@ Use the docker container to run the command. This allows the agent to use a full
 featured, isolated Debian environment.
 */
 func (c *Container) Use(params map[string]any) string {
+	if c.conn == nil {
+		if err := c.Initialize(); err != nil {
+			return err.Error()
+		}
+	}
+
 	cmd, ok := params["command"].(string)
 	if !ok {
 		log.Error("Invalid command parameter received", "params", params)

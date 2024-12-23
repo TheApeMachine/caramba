@@ -42,8 +42,11 @@ func (n *Neo4jQuery) Connect(rw io.ReadWriteCloser) error {
 
 func (n *Neo4jQuery) Use(args map[string]any) string {
 	var (
-		cypher string
-		ok     bool
+		cypher  string
+		ok      bool
+		results neo4j.ResultWithContext
+		err     error
+		buf     []byte
 	)
 
 	if cypher, ok = args["cypher"].(string); !ok {
@@ -53,25 +56,23 @@ func (n *Neo4jQuery) Use(args map[string]any) string {
 	session := n.client.NewSession(n.ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close(n.ctx)
 
-	result := errnie.SafeMust(func() (neo4j.ResultWithContext, error) {
-		return session.Run(n.ctx, cypher, nil)
-	})
+	if results, err = session.Run(n.ctx, cypher, nil); err != nil {
+		return err.Error()
+	}
 
-	if result.Err() != nil {
-		return result.Err().Error()
+	if err := results.Err(); err != nil {
+		return err.Error()
 	}
 
 	var records []map[string]interface{}
-	for result.Next(n.ctx) {
-		record := result.Record()
+	for results.Next(n.ctx) {
+		record := results.Record()
 		records = append(records, record.Values[0].(neo4j.Node).Props)
 	}
 
-	if result == nil {
-		return "something went wrong"
+	if buf, err = json.Marshal(records); err != nil {
+		return err.Error()
 	}
 
-	return string(errnie.SafeMust(func() ([]byte, error) {
-		return json.Marshal(records)
-	}))
+	return string(buf)
 }

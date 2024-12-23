@@ -3,8 +3,8 @@ package provider
 import (
 	"context"
 	"errors"
+	"time"
 
-	"github.com/charmbracelet/log"
 	sdk "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 )
@@ -24,7 +24,6 @@ func NewOpenAI(apiKey, model string) *OpenAI {
 }
 
 func (o *OpenAI) Generate(params GenerationParams) <-chan Event {
-	log.Info("generating with", "model", o.model)
 	out := make(chan Event)
 
 	go func() {
@@ -50,8 +49,9 @@ func (o *OpenAI) Generate(params GenerationParams) <-chan Event {
 			evt := stream.Current()
 			if len(evt.Choices) > 0 && evt.Choices[0].Delta.Content != "" {
 				out <- Event{
-					Type:    EventToken,
-					Content: evt.Choices[0].Delta.Content,
+					Sequence: time.Now().UnixNano(),
+					Type:     EventToken,
+					Content:  evt.Choices[0].Delta.Content,
 				}
 			}
 		}
