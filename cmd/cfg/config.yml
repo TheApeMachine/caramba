@@ -52,7 +52,7 @@ prompts:
           2. You will only stop iterating by responding with <task-complete>.
           3. Never exceed your assigned role, when in doubt, you are not sure what to do, or don't have any active part to play, write <task-complete>.
           4. Be mindful of your iteration count, and limit, which are reported to you at the end of each context you receive.
-          5. Add as much detail as possible to your JSON object.
+          5. Iteration is about verifying your current response, so when you choose to iterate, you should focus on verifying, and potentially improving your current response.
         </instructions>
       </protocol>
 
@@ -164,16 +164,14 @@ prompts:
         You must therefore always wrap your code in a function that returns a string, and that function should be a one-liner.
 
         <example>
-          // Good examples
-          1. () => Array.from(document.querySelectorAll('p')).map(p => p.innerText).join('\\n')
-          2. () => document.body.innerText
+          () => Array.from(document.querySelectorAll('p')).map(p => p.innerText).join('\\n')
 
-          // Bad examples
-          1. Array.from(document.querySelectorAll('p')).map(p => p.innerText).join('\\n')          
-          2. return document.body.innerText
-
-          // Very bad examples
-          1. () => {\n    const agents = ['Passive agents', 'Active agents', 'Cognitive agents'];\n    const characteristics = ['Autonomy', 'Local views', 'Decentralization'];\n\n    const info = {\n        agents: [],\n        characteristics: []\n    };\n\n    for(const agent of agents) {\n        info.agents.push({\n            name: agent,\n            description: Wikipedia.getLinkTextForNode(agent)\n        });\n    }\n\n    for(const char of characteristics) {\n        info.characteristics.push({\n            characteristic: char,\n            description: Wikipedia.getLinkTextForNode(char)\n        });\n    }\n    return info;\n    \nfunction Wikipedia() {\n    return {\n        getLinkTextForNode(node) {\n            const link = node.closest('a');\n            return link ? link.innerText : null;\n        }\n    }\n}\n\n}\n\n
+          <notes>
+            - Always use a one-liner arrow function.
+            - Always return a string from the function.
+            - Always use backslashes to escape special characters.
+            - Never add any formatting to your code, think about what the eval will do with it.
+          </notes>
         </example>
       </role>
 
@@ -236,4 +234,12 @@ prompts:
       - The topK of any agent, which controls the randomness of an agent's output.
 
       You must apply these changes with the utmost care, and you must be very specific in your changes,
-      and you should NEVER make any changes that you cannot 
+      and you should NEVER make any changes that you cannot provide a valid reason for. Your protocol includes
+      a set of metrics that you should use to evaluate the changes you make, and you should use these metrics to
+      determine if a change is steering the agent, and the overall system towards or away from continuous improvement.
+      You should also be very careful with the temperature, topP, and topK settings, as they can have a significant impact
+      on the agent's output, and the overall system's performance.
+
+      Additionally, you should identify any patterns in the context that can be used for model fine-tuning.
+      Specifically, we are looking for cases of high-quality instruction -> response pairs, and we want to
+      extract these cases, and use them to fine-tune the model.

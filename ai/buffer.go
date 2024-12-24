@@ -18,6 +18,16 @@ func NewBuffer() *Buffer {
 	}
 }
 
+func (buffer *Buffer) Reset() *Buffer {
+	system := buffer.System()
+	buffer.messages = make([]provider.Message, 0)
+	return buffer.Poke(system)
+}
+
+func (buffer *Buffer) System() provider.Message {
+	return buffer.messages[0]
+}
+
 func (buffer *Buffer) Peek() []provider.Message {
 	buffer.truncate()
 	return buffer.messages

@@ -3,6 +3,7 @@ package ai
 import (
 	"strings"
 
+	"github.com/theapemachine/caramba/process/mechanic"
 	"github.com/theapemachine/caramba/process/prompt"
 	"github.com/theapemachine/caramba/process/review"
 	"github.com/theapemachine/caramba/provider"
@@ -23,10 +24,12 @@ type Context struct {
 	feedback        map[string]string
 	vectorQuery     *Agent
 	graphQuery      *Agent
+	currentAgent    *Agent
 	vectorMemorizer *Agent
 	graphMemorizer  *Agent
 	reviewer        *Agent
 	promptEngineer  *Agent
+	mechanic        *Agent
 }
 
 /*
@@ -42,6 +45,7 @@ func NewContext(userPrompt string) *Context {
 		graphMemorizer:  NewAgent("graph-memorizer", tools.NewNeo4jStore(), 1),
 		reviewer:        NewAgent("reviewer", &review.Process{}, 1),
 		promptEngineer:  NewAgent("prompt-engineer", &prompt.Process{}, 1),
+		mechanic:        NewAgent("mechanic", &mechanic.Process{}, 1),
 	}
 }
 
@@ -53,92 +57,75 @@ func (ctx *Context) Feedback(name string) string {
 }
 
 /*
-Peek returns the cleaned context, which is the context after all the feedback
-has been injected into the context.
+SetCurrentAgent sets the current agent, so we can use it to generate feedback.
 */
-func (ctx *Context) Peek() string {
-	return ctx.userPrompt + "\n\n" + ctx.cleanedContext.String()
+func (ctx *Context) SetCurrentAgent(agent *Agent) {
+	ctx.currentAgent = agent
 }
 
 /*
-Poke is a helper function that allows us to poke the reviewer and prompt engineer
-agents, so they can generate feedback and update the context.
+Generate produces the next context, wrapping the agent's response into a process
+that provides a pre- and post-flight setup. High-level, this comes down to the
+following:
+
+- Query, and potentially inject, memories from the vector store.
+- Query, and potentially inject, memories from the graph store.
+- Generate the agent's response.
+- Review the agent's response.
+- Dynamically adjust/cleanup the current context.
+- Extract, and potentially store, memories for the vector store.
+- Extract, and potentially store, memories for the graph store.
+- Evaluate the overall performance, and potentially adjust the agent's internals.
 */
-func (ctx *Context) Poke(currentContext string) <-chan provider.Event {
+func (ctx *Context) Generate() <-chan provider.Event {
 	out := make(chan provider.Event)
 
 	go func() {
 		defer close(out)
 
-		// Review the output of the last agent.
-		ctx.reviewer.buffer.Poke(provider.Message{
-			Role:    "assistant",
-			Content: ctx.currentContext.String(),
-		})
-
-		for event := range ctx.reviewer.Generate() {
-			ctx.currentContext.WriteString(event.Content)
-			out <- event
-		}
-
-		ctx.extractFeedback(ctx.currentContext.String())
-
 		for _, agent := range []*Agent{
+			ctx.vectorQuery,
+			ctx.graphQuery,
+			ctx.currentAgent,
+			ctx.reviewer,
 			ctx.promptEngineer,
 			ctx.vectorMemorizer,
 			ctx.graphMemorizer,
+			ctx.mechanic,
 		} {
+			agent.buffer.Reset()
+
+			agent.buffer.Poke(provider.Message{
+				Role:    "user",
+				Content: ctx.userPrompt,
+			})
+
 			agent.buffer.Poke(provider.Message{
 				Role:    "assistant",
 				Content: ctx.currentContext.String(),
 			})
 
 			for event := range agent.Generate() {
-				ctx.cleanedContext.WriteString(event.Content)
+				ctx.currentContext.WriteString(event.Content)
 				out <- event
 			}
 		}
-
-		// Query the memory stores for any relevant information, and inject it into the context.
-		ctx.cleanedContext.WriteString("\n")
-		ctx.cleanedContext.WriteString("<memories>")
-
-		ctx.vectorQuery.buffer.Poke(provider.Message{
-			Role:    "assistant",
-			Content: ctx.currentContext.String(),
-		})
-
-		for event := range ctx.vectorQuery.Generate() {
-			ctx.cleanedContext.WriteString(event.Content)
-			out <- event
-		}
-
-		ctx.graphQuery.buffer.Poke(provider.Message{
-			Role:    "assistant",
-			Content: ctx.currentContext.String(),
-		})
-
-		for event := range ctx.graphQuery.Generate() {
-			ctx.cleanedContext.WriteString(event.Content)
-			out <- event
-		}
-
-		ctx.cleanedContext.WriteString("</memories>")
-		ctx.cleanedContext.WriteString("\n")
 	}()
 
 	return out
 }
 
 /*
-extractFeedback extracts the feedback from the given context, and returns it
-as a map, with the agent name as the key, and the feedback as the value.
+extractBlocks extracts any markdown code blocks from the current response.
 */
-func (ctx *Context) extractFeedback(response string) {
+func (ctx *Context) extractBlocks(response string) {
 	blocks := utils.ExtractJSONBlocks(response)
 
 	for _, blockMap := range blocks {
-		feedback := blockMap["content"].(string)
-		ctx.feedback[blockMap["name"].(string)] = feedback
+		if _, ok := blockMap["improved"].(string); !ok {
+			// Reset the current context, and replace with the cleaned context.
+			ctx.currentContext.Reset()
+			ctx.currentContext.WriteString(blockMap["improved"].(string))
+		}
 	}
 }

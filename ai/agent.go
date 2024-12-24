@@ -69,10 +69,6 @@ func (agent *Agent) Generate() <-chan provider.Event {
 
 		for {
 			if iteration >= agent.maxIter {
-				out <- provider.Event{
-					Type:    provider.EventDone,
-					Content: "\n",
-				}
 				break
 			}
 
@@ -89,8 +85,6 @@ func (agent *Agent) Generate() <-chan provider.Event {
 				TopP:        agent.topP,
 				TopK:        agent.topK,
 			}
-
-			errnie.Log("===AGENT=== %s", params)
 
 			for event := range agent.provider.Generate(params) {
 				response.WriteString(event.Content)
@@ -127,6 +121,8 @@ func (agent *Agent) Generate() <-chan provider.Event {
 				}
 				break
 			}
+
+			errnie.Log("\n\n\n===AGENT===\n%s\n\n\n===========", agent.buffer.Peek())
 		}
 	}()
 

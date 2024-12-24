@@ -1,34 +1,47 @@
 package ai
 
 import (
-	"strings"
-
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/caramba/utils"
 )
 
+/*
+Pipeline is a sequence of stages, which are executed sequentially.
+*/
 type Pipeline struct {
 	ctx    *Context
 	stages []Stage
 }
 
+/*
+Stage is a sequence of agents, which are executed sequentially.
+*/
 type Stage struct {
 	agents     []*Agent
 	parallel   bool
 	aggregator func([]string) string
 }
 
+/*
+StageContext is the context for a stage, which is used to pass information
+between stages.
+*/
 type StageContext struct {
 	originalPrompt string
 	currentContext string
 }
 
+/*
+NewPipeline creates a new pipeline, with the given user prompt.
+*/
 func NewPipeline(userPrompt string) *Pipeline {
 	return &Pipeline{
 		ctx: NewContext(userPrompt),
 	}
 }
 
+/*
+AddSequentialStage adds a new sequential stage to the pipeline.
+*/
 func (p *Pipeline) AddSequentialStage(
 	agents ...*Agent,
 ) *Pipeline {
@@ -39,6 +52,9 @@ func (p *Pipeline) AddSequentialStage(
 	return p
 }
 
+/*
+AddParallelStage adds a new parallel stage to the pipeline.
+*/
 func (pipeline *Pipeline) AddParallelStage(
 	agents ...*Agent,
 ) *Pipeline {
@@ -52,46 +68,22 @@ func (pipeline *Pipeline) AddParallelStage(
 /*
 Execute the pipeline with the given input, orchestrating the flow between stages
 */
-func (p *Pipeline) Execute() <-chan provider.Event {
+func (pipeline *Pipeline) Execute() <-chan provider.Event {
 	out := make(chan provider.Event)
 
 	go func() {
 		defer close(out)
 
-		for _, stage := range p.stages {
-			p.executeSequential(stage, out)
+		for _, stage := range pipeline.stages {
+			for _, agent := range stage.agents {
+				pipeline.ctx.SetCurrentAgent(agent)
+
+				for event := range pipeline.ctx.Generate() {
+					out <- event
+				}
+			}
 		}
 	}()
 
 	return out
-}
-
-func (p *Pipeline) executeSequential(stage Stage, out chan<- provider.Event) {
-	var outputs []string
-
-	for _, agent := range stage.agents {
-		var response strings.Builder
-
-		agent.buffer.Poke(provider.Message{
-			Role: "user",
-			Content: utils.JoinWith("\n\n",
-				p.ctx.Peek(),
-				p.ctx.Feedback(agent.name),
-				agent.prompt.BuildTask(p.ctx.userPrompt),
-			),
-		})
-
-		for event := range agent.Generate() {
-			out <- event
-
-			if event.Type == provider.EventToken {
-				response.WriteString(event.Content)
-			}
-		}
-
-		outputs = append(outputs, response.String())
-		for event := range p.ctx.Poke(response.String()) {
-			out <- event
-		}
-	}
 }

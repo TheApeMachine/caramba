@@ -243,7 +243,5 @@ func createCollectionIfNotExists(collection string, uri *url.URL, dimension uint
 		})
 	}
 
-	errnie.Debug("collection creation response: %s", response.String())
-
 	return nil
 }
