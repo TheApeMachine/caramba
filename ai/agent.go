@@ -113,6 +113,7 @@ func (agent *Agent) Generate() <-chan provider.Event {
 			}
 
 			iteration++
+			errnie.Log("\n\n\n===AGENT===\n%s\n\n\n===========", agent.buffer.Peek())
 
 			if strings.Contains(response.String(), "<task-complete>") {
 				out <- provider.Event{
@@ -121,8 +122,6 @@ func (agent *Agent) Generate() <-chan provider.Event {
 				}
 				break
 			}
-
-			errnie.Log("\n\n\n===AGENT===\n%s\n\n\n===========", agent.buffer.Peek())
 		}
 	}()
 

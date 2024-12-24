@@ -72,6 +72,10 @@ func (q *QdrantQuery) Use(args map[string]any) string {
 		})
 	}
 
+	if len(out) == 0 {
+		return "No results found"
+	}
+
 	if buf, err = json.Marshal(results); err != nil {
 		return err.Error()
 	}

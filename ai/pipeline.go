@@ -1,7 +1,11 @@
 package ai
 
 import (
+	"strings"
+
+	"github.com/theapemachine/caramba/process/ui"
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/caramba/utils"
 )
 
 /*
@@ -10,6 +14,7 @@ Pipeline is a sequence of stages, which are executed sequentially.
 type Pipeline struct {
 	ctx    *Context
 	stages []Stage
+	ui     *Agent
 }
 
 /*
@@ -36,6 +41,7 @@ NewPipeline creates a new pipeline, with the given user prompt.
 func NewPipeline(userPrompt string) *Pipeline {
 	return &Pipeline{
 		ctx: NewContext(userPrompt),
+		ui:  NewAgent("ui", &ui.Process{}, 1),
 	}
 }
 
@@ -74,12 +80,31 @@ func (pipeline *Pipeline) Execute() <-chan provider.Event {
 	go func() {
 		defer close(out)
 
-		for _, stage := range pipeline.stages {
-			for _, agent := range stage.agents {
-				pipeline.ctx.SetCurrentAgent(agent)
+		for {
+			for _, stage := range pipeline.stages {
+				for _, agent := range stage.agents {
+					pipeline.ctx.SetCurrentAgent(agent)
 
-				for event := range pipeline.ctx.Generate() {
-					out <- event
+					for event := range pipeline.ctx.Generate() {
+						out <- event
+					}
+				}
+			}
+
+			accumulator := strings.Builder{}
+
+			for event := range pipeline.ui.Generate() {
+				accumulator.WriteString(event.Content)
+				out <- event
+			}
+
+			blocks := utils.ExtractJSONBlocks(accumulator.String())
+
+			for _, blockMap := range blocks {
+				if value, ok := blockMap["needs_iteration"].(bool); ok {
+					if !value {
+						return
+					}
 				}
 			}
 		}

@@ -39,10 +39,10 @@ func NewContext(userPrompt string) *Context {
 	return &Context{
 		userPrompt:      utils.QuickWrap("user-prompt", userPrompt),
 		feedback:        make(map[string]string),
-		vectorQuery:     NewAgent("vector-query", tools.NewQdrantQuery("caramba", 1536), 1),
-		graphQuery:      NewAgent("graph-query", tools.NewNeo4jQuery(), 1),
-		vectorMemorizer: NewAgent("vector-memorizer", tools.NewQdrantStore("caramba", 1536), 1),
-		graphMemorizer:  NewAgent("graph-memorizer", tools.NewNeo4jStore(), 1),
+		vectorQuery:     NewAgent("vector-query", tools.NewQdrantQuery("caramba", 1536), 2),
+		graphQuery:      NewAgent("graph-query", tools.NewNeo4jQuery(), 2),
+		vectorMemorizer: NewAgent("vector-memorizer", tools.NewQdrantStore("caramba", 1536), 2),
+		graphMemorizer:  NewAgent("graph-memorizer", tools.NewNeo4jStore(), 2),
 		reviewer:        NewAgent("reviewer", &review.Process{}, 1),
 		promptEngineer:  NewAgent("prompt-engineer", &prompt.Process{}, 1),
 		mechanic:        NewAgent("mechanic", &mechanic.Process{}, 1),
@@ -106,9 +106,10 @@ func (ctx *Context) Generate() <-chan provider.Event {
 			})
 
 			for event := range agent.Generate() {
-				ctx.currentContext.WriteString(event.Content)
 				out <- event
 			}
+
+			ctx.currentContext.WriteString(agent.buffer.String())
 		}
 	}()
 

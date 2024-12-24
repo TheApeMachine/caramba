@@ -24,7 +24,7 @@ var testCmd = &cobra.Command{
 		// go consumer.Print(in)
 
 		for event := range ai.NewPipeline(
-			"What can you tell me about a Dutch company called Fan Factory, who measure employee well-being?",
+			"Are influencers responsible for the spread of influenza?",
 		).AddSequentialStage(
 			ai.NewAgent("reasoner", &chainofthought.Process{}, 3),
 			ai.NewAgent("researcher", tools.NewBrowser(), 5),

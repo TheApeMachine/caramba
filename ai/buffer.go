@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/log"
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/theapemachine/caramba/provider"
@@ -22,6 +24,21 @@ func (buffer *Buffer) Reset() *Buffer {
 	system := buffer.System()
 	buffer.messages = make([]provider.Message, 0)
 	return buffer.Poke(system)
+}
+
+func (buffer *Buffer) String() string {
+	out := strings.Builder{}
+	out.WriteString("<context>")
+
+	for _, message := range buffer.messages[1:] {
+		out.WriteString("\n")
+		out.WriteString(message.Content)
+	}
+
+	out.WriteString("\n")
+	out.WriteString("</context>")
+
+	return out.String()
 }
 
 func (buffer *Buffer) System() provider.Message {

@@ -70,6 +70,10 @@ func (n *Neo4jQuery) Use(args map[string]any) string {
 		records = append(records, record.Values[0].(neo4j.Node).Props)
 	}
 
+	if len(records) == 0 {
+		return "No results found"
+	}
+
 	if buf, err = json.Marshal(records); err != nil {
 		return err.Error()
 	}

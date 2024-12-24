@@ -65,10 +65,10 @@ func (prompt *Prompt) BuildStatus(
 	maxIter int,
 ) string {
 	return prompt.applySubstitutions(
-		viper.GetString("prompts.templates.task"),
+		viper.GetString("prompts.templates.status"),
 		map[string]string{
-			"iteration": strconv.Itoa(iteration),
-			"maxIter":   strconv.Itoa(maxIter),
+			"iteration": strconv.Itoa(iteration + 1),
+			"maxIter":   strconv.Itoa(maxIter + 1),
 		},
 	)
 }
