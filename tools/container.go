@@ -3,16 +3,15 @@ package tools
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/charmbracelet/log"
-	"github.com/invopop/jsonschema"
 	"github.com/theapemachine/amsh/data"
 	"github.com/theapemachine/caramba/tools/container"
+	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
 
@@ -31,13 +30,8 @@ func NewContainer() *Container {
 	}
 }
 
-func (c *Container) GenerateSchema() string {
-	schema := jsonschema.Reflect(&Container{})
-	out, err := json.MarshalIndent(schema, "", "  ")
-	if err != nil {
-		errnie.Error(err)
-	}
-	return string(out)
+func (c *Container) GenerateSchema() interface{} {
+	return utils.GenerateSchema[*Container]()
 }
 
 func (c *Container) Initialize() error {
@@ -73,7 +67,7 @@ func (c *Container) Initialize() error {
 Use the docker container to run the command. This allows the agent to use a fully
 featured, isolated Debian environment.
 */
-func (c *Container) Use(params map[string]any) string {
+func (c *Container) Use(ctx context.Context, params map[string]any) string {
 	if c.conn == nil {
 		if err := c.Initialize(); err != nil {
 			return err.Error()
@@ -86,15 +80,13 @@ func (c *Container) Use(params map[string]any) string {
 		return "error: invalid command parameter"
 	}
 
-	ctx := context.Background()
 	output := c.runner.ExecuteCommand(ctx, []string{cmd})
 
 	return string(output)
 }
 
-func (c *Container) Connect(conn io.ReadWriteCloser) error {
+func (c *Container) Connect(ctx context.Context, conn io.ReadWriteCloser) error {
 	c.conn = conn
-	ctx := context.Background()
 	containerConn, err := c.runner.RunContainer(ctx, "caramba-dev")
 	if err != nil {
 		return err

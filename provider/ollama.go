@@ -2,100 +2,98 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 
-	"github.com/ollama/ollama/api"
+	sdk "github.com/ollama/ollama/api"
+	"github.com/theapemachine/caramba/utils"
+	"github.com/theapemachine/errnie"
 )
 
-func Bool(b bool) *bool {
-	return &b
-}
-
 type Ollama struct {
-	client *api.Client
+	client *sdk.Client
 	model  string
-	system string
 }
 
-func NewOllama(model string) *Ollama {
-	client := api.NewClient(
-		&url.URL{Scheme: "http", Host: "localhost:11434"},
-		&http.Client{},
-	)
-
+func NewOllama(host string) *Ollama {
+	hostURL, _ := url.Parse(host)
 	return &Ollama{
-		client: client,
-		model:  model,
+		client: sdk.NewClient(hostURL, http.DefaultClient),
+		model:  "llama3.2:3b",
 	}
 }
 
-func (o *Ollama) Generate(params GenerationParams) <-chan Event {
+func (ollama *Ollama) Generate(ctx context.Context, params *GenerationParams) <-chan Event {
 	out := make(chan Event)
 
 	go func() {
 		defer close(out)
 
-		prompt := o.convertToOllamaPrompt(params.Messages)
-
-		req := &api.GenerateRequest{
-			Model:  o.model,
-			Prompt: prompt,
-			Stream: Bool(true),
-			Options: map[string]interface{}{
-				"temperature": params.Temperature,
-			},
+		// Convert our tools to Ollama format only if tools exist
+		var tools []sdk.Tool
+		if len(params.Tools) > 0 {
+			tools = make([]sdk.Tool, len(params.Tools))
+			for i, tool := range params.Tools {
+				tools[i] = sdk.Tool{
+					Type: "function",
+					Function: sdk.ToolFunction{
+						Name:        tool.Name,
+						Description: tool.Description,
+						Parameters:  tool.Schema.(sdk.ToolFunction).Parameters,
+					},
+				}
+			}
 		}
 
-		respFunc := func(resp api.GenerateResponse) error {
-			out <- Event{
-				Type:    EventToken,
-				Content: resp.Response,
+		// Convert our messages to Ollama format only if messages exist
+		var messages []sdk.Message
+		if len(params.Thread.Messages) > 0 {
+			messages = make([]sdk.Message, len(params.Thread.Messages))
+			for i, msg := range params.Thread.Messages {
+				if msg.Content != "" {
+					messages[i] = sdk.Message{
+						Role:    string(msg.Role),
+						Content: msg.Content,
+					}
+				}
 			}
-			return nil
 		}
 
-		if err := o.client.Generate(context.Background(), req, respFunc); err != nil {
-			out <- Event{
-				Type:  EventError,
-				Error: err,
-			}
+		// Only proceed if we have messages
+		if len(messages) == 0 {
+			errnie.Error(errors.New("no valid messages to process"))
+			out <- Event{Type: EventError, Error: errors.New("no valid messages to process")}
 			return
 		}
 
-		out <- Event{Type: EventDone, Content: "\n"}
+		// Build request with only non-empty fields
+		request := &sdk.ChatRequest{
+			Model:    ollama.model,
+			Messages: messages,
+			Stream:   utils.BoolPtr(true),
+		}
+
+		// Only add tools if we have any
+		if len(tools) > 0 {
+			request.Tools = sdk.Tools(tools)
+		}
+
+		err := ollama.client.Chat(ctx, request, func(resp sdk.ChatResponse) error {
+			if resp.Message.Content != "" {
+				out <- Event{Type: EventChunk, Text: resp.Message.Content}
+			}
+			return nil
+		})
+
+		if err != nil {
+			errnie.Error(err)
+			out <- Event{Type: EventError, Error: err}
+			return
+		}
+
+		out <- Event{Type: EventDone, Text: "\n"}
 	}()
 
 	return out
-}
-
-func (o *Ollama) convertToOllamaPrompt(messages []Message) string {
-	var prompt string
-
-	// Add system message if available
-	if o.system != "" {
-		prompt += "System: " + o.system + "\n"
-	}
-
-	for _, msg := range messages {
-		switch msg.Role {
-		case "system":
-			o.system = msg.Content
-		case "user":
-			prompt += "Human: " + msg.Content + "\n"
-		case "assistant":
-			prompt += "Assistant: " + msg.Content + "\n"
-		}
-	}
-
-	return prompt
-}
-
-func (o *Ollama) Configure(config map[string]interface{}) {
-	if systemMsg, ok := config["system_message"].(string); ok {
-		o.system = systemMsg
-	}
-	if model, ok := config["model"].(string); ok {
-		o.model = model
-	}
 }

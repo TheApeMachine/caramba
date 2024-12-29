@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/goombaio/namegenerator"
 	"github.com/invopop/jsonschema"
-	"github.com/theapemachine/errnie"
 )
 
 func JoinWith(delim string, args ...string) string {
@@ -97,11 +96,16 @@ func ParseJSON(s string) map[string]interface{} {
 GenerateSchema is a generic function that generates the JSON schema for
 an object that has jsonschema struct tags
 */
-func GenerateSchema[T any]() string {
-	var instance T
-	return string(errnie.SafeMust(func() ([]byte, error) {
-		return json.MarshalIndent(jsonschema.Reflect(&instance), "", "  ")
-	}))
+func GenerateSchema[T any]() interface{} {
+	reflector := jsonschema.Reflector{
+		AllowAdditionalProperties: false,
+		DoNotReference:            true,
+	}
+
+	var v T
+	schema := reflector.Reflect(v)
+
+	return schema
 }
 
 /*

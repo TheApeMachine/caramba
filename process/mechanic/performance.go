@@ -37,6 +37,6 @@ type FineTuning struct {
 	Response    string `json:"response" jsonschema:"title=Response,description=The response that the agent provided,required"`
 }
 
-func (process *Process) GenerateSchema() string {
+func (process *Process) GenerateSchema() interface{} {
 	return utils.GenerateSchema[Process]()
 }

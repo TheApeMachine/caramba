@@ -1,10 +1,37 @@
 package ai
 
-import "io"
+import (
+	"context"
+	"io"
+
+	"github.com/theapemachine/caramba/tools"
+)
 
 type Tool interface {
-	GenerateSchema() string
-	Initialize() error
-	Use(map[string]any) string
-	Connect(io.ReadWriteCloser) error
+	GenerateSchema() interface{}
+	Use(context.Context, map[string]any) string
+	Connect(context.Context, io.ReadWriteCloser) error
+}
+
+func NewToolset(role string) []Tool {
+	return []Tool{
+		toolMap[role],
+	}
+}
+
+var toolsets = map[string][]Tool{
+	"manager": {
+		tools.NewAzure(),
+	},
+	"researcher": {
+		tools.NewBrowser(),
+	},
+	"developer": {
+		tools.NewContainer(),
+	},
+}
+
+var toolMap = map[string]Tool{
+	"browser": tools.NewBrowser(),
+	"azure":   tools.NewAzure(),
 }

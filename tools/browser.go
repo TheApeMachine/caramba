@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"encoding/json"
+	"context"
 	"io"
 	"net/url"
 	"time"
@@ -9,7 +9,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/stealth"
-	"github.com/invopop/jsonschema"
+	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
 
@@ -65,11 +65,11 @@ func (browser *Browser) Initialize() error {
 	return nil
 }
 
-func (browser *Browser) Connect(conn io.ReadWriteCloser) error {
+func (browser *Browser) Connect(ctx context.Context, conn io.ReadWriteCloser) error {
 	return nil
 }
 
-func (browser *Browser) Use(args map[string]any) string {
+func (browser *Browser) Use(ctx context.Context, args map[string]any) string {
 	var (
 		result string
 		err    error
@@ -82,11 +82,8 @@ func (browser *Browser) Use(args map[string]any) string {
 	return result
 }
 
-func (browser *Browser) GenerateSchema() string {
-	return string(errnie.SafeMust(func() ([]byte, error) {
-		schema := jsonschema.Reflect(&Browser{})
-		return json.MarshalIndent(schema, "", "  ")
-	}))
+func (browser *Browser) GenerateSchema() interface{} {
+	return utils.GenerateSchema[*Browser]()
 }
 
 // SetProxy configures a proxy for the browser

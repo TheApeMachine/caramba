@@ -15,6 +15,6 @@ type CandidateAnswer struct {
 	Explanation string  `json:"explanation" jsonschema:"title=Explanation,description=The explanation of the candidate answer"`
 }
 
-func (process *Process) GenerateSchema() string {
+func (process *Process) GenerateSchema() interface{} {
 	return utils.GenerateSchema[Process]()
 }

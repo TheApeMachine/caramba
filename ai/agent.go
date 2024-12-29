@@ -1,142 +1,165 @@
 package ai
 
 import (
-	"strings"
+	"context"
+	"encoding/json"
+	"strconv"
 
+	"github.com/spf13/viper"
+	"github.com/theapemachine/caramba/process/reasoning"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
 
 /*
-Agent is a wrapper around a provider, which can be used to generate text.
-An agent has either a process, or a tool. A tool is also a process, but
-a process is not a tool. A process is just a jsonschema that is used by
-the model to respond with a (partially) structured response. A tool
-interfaces with anything that gives the agent additional functionality.
+Agent wraps the requirements and functionality to turn a prompt and
+response sequence into behavior. It enhances the default functionality
+of a large language model, by adding optional structured responses and
+tool calling.
 */
 type Agent struct {
-	provider    provider.Provider
-	name        string
-	role        string
-	process     Process
-	prompt      *Prompt
-	buffer      *Buffer
-	temperature float64
-	topP        float64
-	topK        int
-	maxIter     int
+	System        *System   `json:"system" jsonschema:"title=System,description=The system prompt for the agent,required"`
+	Identity      *Identity `json:"identity" jsonschema:"title=Identity,description=The identity of the agent,required"`
+	MaxIterations int       `json:"max_iterations" jsonschema:"title=Max Iterations,description=The maximum number of iterations to perform,required"`
+	params        *provider.GenerationParams
+	provider      provider.Provider
 }
 
 /*
 NewAgent creates a new Agent instance.
 */
-func NewAgent(role string, process Process, maxIter int) *Agent {
-	name := utils.NewName()
+func NewAgent(ctx context.Context, role string, maxIterations int) *Agent {
+	return &Agent{
+		Identity:      NewIdentity(ctx, role),
+		provider:      provider.NewBalancedProvider(),
+		MaxIterations: maxIterations,
+	}
+}
 
-	agent := &Agent{
-		provider:    provider.NewBalancedProvider(),
-		name:        name,
-		role:        role,
-		process:     process,
-		prompt:      NewPrompt(name, role, process),
-		buffer:      NewBuffer(),
-		temperature: 0.0,
-		topP:        0.0,
-		topK:        0,
-		maxIter:     maxIter,
+/*
+GenerateSchema adheres the Agent type to the Tool interface, meaning Agent
+is also a Tool. This allows agents to create new agents for task delegation,
+provided that have been given access to the Agent tool.
+*/
+func (agent *Agent) GenerateSchema() interface{} {
+	return utils.GenerateSchema[*Agent]()
+}
+
+func (agent *Agent) Initialize() {
+	if agent.params != nil && agent.System != nil {
+		return
 	}
 
-	agent.buffer.Poke(provider.Message{
-		Role:    "system",
-		Content: agent.prompt.Build(),
-	})
+	agent.System = NewSystem(agent.Identity)
+	agent.params = provider.NewGenerationParams()
+	agent.params.Thread.AddMessage(
+		provider.NewMessage(provider.RoleSystem, agent.System.String()),
+	)
+}
 
-	return agent
+func (agent *Agent) AddTools(tools ...provider.Tool) {
+	if agent.params == nil {
+		agent.Initialize()
+	}
+
+	agent.params.Tools = append(agent.params.Tools, tools...)
+}
+
+/*
+AddProcess activates structured outputs for the agent, in which it
+will follow the specific jsonschema defined by the process.
+*/
+func (agent *Agent) AddProcess(process provider.Process) {
+	agent.params.Process = process
+}
+
+/*
+RemoveProcess deactivates structured outputs for the agent, and it
+will revert back to generating freeform text.
+*/
+func (agent *Agent) RemoveProcess() {
+	agent.params.Process = nil
 }
 
 /*
 Generate calls the underlying provider to have a Large Language Model
 generate text for the agent.
 */
-func (agent *Agent) Generate() <-chan provider.Event {
+func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan provider.Event {
 	out := make(chan provider.Event)
+
+	if agent.params == nil {
+		agent.Initialize()
+	}
+
+	// Only add non-empty messages to the thread
+	if msg.Content == "" {
+		errnie.Warn("empty message received %s (%s)", agent.Identity.Name, msg.Role)
+		return nil
+	}
+
+	errnie.Info("%s (%s) generating response", agent.Identity.Name, msg.Role)
+
+	agent.params.Thread.AddMessage(msg)
+	iteration := 0
 
 	go func() {
 		defer close(out)
 
-		iteration := 0
-
-		for {
-			if iteration >= agent.maxIter {
-				break
+		for iteration < agent.MaxIterations {
+			// Only add status if we have a valid status template
+			if status := agent.getStatus(iteration); status != "" {
+				agent.params.Thread.AddMessage(provider.NewMessage(provider.RoleUser, status))
 			}
 
-			agent.buffer.Poke(provider.Message{
-				Role:    "assistant",
-				Content: agent.prompt.BuildStatus(iteration, agent.maxIter-iteration),
-			})
+			// Accumulate the response chunks into a single message
+			accumulator := provider.NewMessage(provider.RoleAssistant, "")
 
-			var response strings.Builder
+			for event := range agent.provider.Generate(ctx, agent.params) {
+				if event.Type == provider.EventChunk && event.Text != "" {
+					accumulator.Append(event.Text)
+				}
 
-			params := provider.GenerationParams{
-				Messages:    agent.buffer.Peek(),
-				Temperature: agent.temperature,
-				TopP:        agent.topP,
-				TopK:        agent.topK,
-			}
-
-			for event := range agent.provider.Generate(params) {
-				response.WriteString(event.Content)
 				out <- event
 			}
 
-			agent.buffer.Poke(provider.Message{
-				Role:    "assistant",
-				Content: response.String(),
-			})
+			// Log accumulated response
+			errnie.Log("Accumulated response for %s: %s", agent.Identity.Name, accumulator.Content)
 
-			if _, ok := agent.process.(Tool); ok {
-				toolResponse := agent.toolCall(response.String())
+			// Only add non-empty messages to the thread
+			if accumulator.Content != "" {
+				agent.params.Thread.AddMessage(accumulator)
+			}
 
-				agent.buffer.Poke(provider.Message{
-					Role: "assistant",
-					Content: utils.QuickWrap(
-						"tool", toolResponse,
-					),
-				})
+			proc := &reasoning.Process{}
 
-				out <- provider.Event{
-					Type:    provider.EventToken,
-					Content: toolResponse,
-				}
+			errnie.Error(json.Unmarshal([]byte(accumulator.Content), proc))
+
+			if proc.FinalAnswer != "" {
+				break
 			}
 
 			iteration++
-			errnie.Log("\n\n\n===AGENT===\n%s\n\n\n===========", agent.buffer.Peek())
-
-			if strings.Contains(response.String(), "<task-complete>") {
-				out <- provider.Event{
-					Type:    provider.EventDone,
-					Content: "\n",
-				}
-				break
-			}
 		}
 	}()
 
 	return out
 }
 
-func (agent *Agent) toolCall(response string) string {
-	blocks := utils.ExtractJSONBlocks(response)
-
-	var output strings.Builder
-
-	for _, block := range blocks {
-		tool := agent.process.(Tool)
-		output.WriteString(tool.Use(block))
+// Split status creation from adding to thread
+func (agent *Agent) getStatus(iteration int) string {
+	v := viper.GetViper()
+	template := v.GetString("prompts.template.status")
+	if template == "" {
+		return ""
 	}
 
-	return output.String()
+	return utils.ReplaceWith(
+		template,
+		[][]string{
+			{"iteration", strconv.Itoa(iteration + 1)},
+			{"remaining", strconv.Itoa(agent.MaxIterations - iteration)},
+		},
+	)
 }
