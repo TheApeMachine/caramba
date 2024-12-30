@@ -36,3 +36,10 @@ AddMessage adds a message to the thread.
 func (thread *Thread) AddMessage(message *Message) {
 	thread.Messages = append(thread.Messages, message)
 }
+
+func (thread *Thread) Scrathpad() *Message {
+	// Remove the most message from the thread.
+	message := thread.Messages[:len(thread.Messages)-1]
+
+	return message
+}

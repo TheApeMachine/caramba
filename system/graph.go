@@ -103,8 +103,11 @@ func (graph *Graph) processNode(
 	}
 
 	if accumulator.Content != "" {
-		errnie.Log("Node %s accumulated response: %s", node.ID, accumulator.Content)
-		nextMessage := provider.NewMessage(provider.RoleUser, accumulator.Content)
+		nextMessage := provider.NewMessage(provider.RoleUser, utils.JoinWith("\n",
+			"<previous-agent-response>",
+			accumulator.Content,
+			"</previous-agent-response>",
+		))
 
 		for _, edge := range edgeMap[node.ID] {
 			if nextNode, exists := nodeMap[edge.To]; exists {

@@ -27,6 +27,7 @@ resulting in human-readable output.
 type Consumer struct {
 	state  State
 	indent int
+	color  func(string) string
 }
 
 func NewConsumer() *Consumer {
@@ -62,6 +63,9 @@ func (consumer *Consumer) undetermined(char rune) {
 	switch char {
 	case '"':
 		consumer.state = StateInKey
+	case ',':
+		fmt.Print("\n")
+		consumer.state = StateUndetermined
 	}
 }
 
@@ -77,7 +81,7 @@ func (consumer *Consumer) inKey(char rune) {
 func (consumer *Consumer) hasKey(char rune) {
 	switch char {
 	case ':':
-		consumer.state = StateInValue
+		consumer.state = StateHasColon
 	default:
 		fmt.Print(string(char))
 	}
@@ -98,6 +102,11 @@ func (consumer *Consumer) inValue(char rune) {
 func (consumer *Consumer) hasValue(char rune) {
 	switch char {
 	case ',':
+		fmt.Print("\n")
+		consumer.state = StateUndetermined
+	case '}':
+		fmt.Print("\n")
+		consumer.indent--
 		consumer.state = StateUndetermined
 	default:
 		fmt.Print(string(char))
@@ -124,6 +133,7 @@ func (consumer *Consumer) hasColon(char rune) {
 	case '[':
 		fmt.Print("\n")
 		consumer.indent++
+		fmt.Print("- ")
 		consumer.state = StateInArray
 	default:
 		fmt.Print(string(char))
@@ -143,8 +153,14 @@ func (consumer *Consumer) inArray(char rune) {
 	case ']':
 		consumer.state = StateUndetermined
 	case ',':
+		fmt.Print("\n- ")
+	case '{':
 		fmt.Print("\n")
+		consumer.indent++
+	case '}':
+		fmt.Print("\n")
+		consumer.indent--
 	default:
-		fmt.Print("-", string(char))
+		fmt.Print(string(char))
 	}
 }

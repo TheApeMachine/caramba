@@ -3,16 +3,20 @@ package prompt
 import "github.com/theapemachine/amsh/utils"
 
 type Process struct {
-	Assessment []Assessment `json:"assessment" jsonschema:"title=Assessment,description=The assessment of the prompt and context,required"`
-	Improved   string       `json:"improved" jsonschema:"title=Improved,description=The improved and cleaned context,required"`
+	Keywords    []string `json:"keywords" jsonschema:"description=The keywords extracted from the prompt,required"`
+	Objectives  []string `json:"objectives" jsonschema:"description=The objectives extracted from the prompt,required"`
+	Ambiguities []string `json:"ambiguities" jsonschema:"description=The ambiguities extracted from the prompt,required"`
+	FinalPrompt string   `json:"final_prompt" jsonschema:"description=The final re-engineered, optimized prompt,required"`
 }
 
-type Assessment struct {
-	Irrelevant []string `json:"irrelevant" jsonschema:"title=Irrelevant,description=Irrelevant parts of the current context,required"`
-	Incorrect  []string `json:"incorrect" jsonschema:"title=Incorrect,description=Incorrect parts of the current context,required"`
-	Confusing  []string `json:"confusing" jsonschema:"title=Confusing,description=Confusing parts of the current context,required"`
+func (p *Process) Name() string {
+	return "Prompt"
 }
 
-func (p *Process) GenerateSchema() string {
-	return utils.GenerateSchema[Process]()
+func (p *Process) Description() string {
+	return "A structured prompt (re)engineering process to improve the prompt's clarity, specificity, and effectiveness."
+}
+
+func (p *Process) GenerateSchema() interface{} {
+	return utils.GenerateSchema[*Process]()
 }

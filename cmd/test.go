@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/ai"
+	"github.com/theapemachine/caramba/process/prompt"
 	"github.com/theapemachine/caramba/process/reasoning"
 	"github.com/theapemachine/caramba/process/reflection"
 	"github.com/theapemachine/caramba/provider"
@@ -27,7 +28,7 @@ var testCmd = &cobra.Command{
 		graph := createTestGraph()
 
 		// Create a properly formatted test message
-		message := provider.NewMessage(provider.RoleUser, "Solve the riddle: In a fruit's sweet name, I'm hidden three, A triple threat within its juicy spree. Find me and you'll discover a secret delight.")
+		message := provider.NewMessage(provider.RoleUser, "Consider the state-of-the-art in AI today, then propose a radically new, never before seen approach to AI that can be implemented on consumer hardware.")
 
 		// Create context
 		ctx := context.Background()
@@ -45,15 +46,20 @@ func createTestGraph() *system.Graph {
 	ctx := context.Background()
 
 	// Initialize agents with the message
+	node0 := system.NewNode("node0", ai.NewAgent(ctx, "prompt", 1), false)
 	node1 := system.NewNode("node1", ai.NewAgent(ctx, "reasoner", 1), false)
 	node2 := system.NewNode("node2", ai.NewAgent(ctx, "challenger", 1), false)
 	node3 := system.NewNode("node3", ai.NewAgent(ctx, "solver", 1), false)
 
 	// Initialize each agent
+	node0.Agent.Initialize()
 	node1.Agent.Initialize()
 	node2.Agent.Initialize()
 	node3.Agent.Initialize()
 
+	node0.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
+		&prompt.Process{},
+	}))
 	node1.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
 		&reasoning.Process{},
 		&reflection.Process{},
@@ -67,6 +73,11 @@ func createTestGraph() *system.Graph {
 		&reflection.Process{},
 	}))
 
+	edge0 := &system.Edge{
+		From:      "node0",
+		To:        "node1",
+		Direction: system.DirectionTypeOut,
+	}
 	edge1 := &system.Edge{
 		From:      "node1",
 		To:        "node2",
@@ -79,8 +90,8 @@ func createTestGraph() *system.Graph {
 	}
 
 	return &system.Graph{
-		Nodes: []*system.Node{node1, node2, node3},
-		Edges: []*system.Edge{edge1, edge2},
+		Nodes: []*system.Node{node0, node1, node2, node3},
+		Edges: []*system.Edge{edge0, edge1, edge2},
 	}
 }
 

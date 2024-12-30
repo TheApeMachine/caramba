@@ -13,6 +13,7 @@ type ReflectionPoint struct {
 type Process struct {
 	PreviousResponse string            `json:"previous_response" jsonschema:"title=PreviousResponse,description=The response being reflected upon,required"`
 	ReflectionPoints []ReflectionPoint `json:"reflection_points" jsonschema:"title=ReflectionPoints,description=Different aspects of self-reflection"`
+	LLMAbilities     []string          `json:"llm_abilities" jsonschema:"title=LLMAbilities,description=Is there anything in the previous response that an LLM is not able to do?"`
 	RevisionNeeded   bool              `json:"revision_needed" jsonschema:"title=RevisionNeeded,description=Whether the previous response needs significant revision"`
 	Conclusion       string            `json:"conclusion" jsonschema:"title=Conclusion,description=Final reflection summary and action items"`
 }
