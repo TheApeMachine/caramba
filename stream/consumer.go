@@ -17,24 +17,29 @@ const (
 	StateHasColon
 	StateHasEscape
 	StateInArray
+	StateInArrayItem
+	StateInObject
 )
 
-/*
-Consumer is a specialized logging type designed to handle streaming, chunked JSON strings.
-It strips away the structural elements of the JSON while maintaining indentation levels,
-resulting in human-readable output.
-*/
 type Consumer struct {
 	state  State
 	indent int
-	color  func(string) string
+	stack  []State // To track nesting levels
 }
 
 func NewConsumer() *Consumer {
-	return &Consumer{}
+	return &Consumer{indent: 0, stack: make([]State, 0)}
 }
 
-func (consumer *Consumer) Print(stream <-chan provider.Event) {
+func (consumer *Consumer) Print(stream <-chan provider.Event, structured bool) {
+	if !structured {
+		for chunk := range stream {
+			fmt.Print(chunk.Text)
+		}
+
+		return
+	}
+
 	for chunk := range stream {
 		for _, char := range chunk.Text {
 			switch consumer.state {
@@ -54,6 +59,10 @@ func (consumer *Consumer) Print(stream <-chan provider.Event) {
 				consumer.hasEscape(char)
 			case StateInArray:
 				consumer.inArray(char)
+			case StateInArrayItem:
+				consumer.inArrayItem(char)
+			case StateInObject:
+				consumer.inObject(char)
 			}
 		}
 	}
@@ -65,6 +74,7 @@ func (consumer *Consumer) undetermined(char rune) {
 		consumer.state = StateInKey
 	case ',':
 		fmt.Print("\n")
+		consumer.printIndent()
 		consumer.state = StateUndetermined
 	}
 }
@@ -81,6 +91,7 @@ func (consumer *Consumer) inKey(char rune) {
 func (consumer *Consumer) hasKey(char rune) {
 	switch char {
 	case ':':
+		fmt.Print(": ")
 		consumer.state = StateHasColon
 	default:
 		fmt.Print(string(char))
@@ -90,7 +101,6 @@ func (consumer *Consumer) hasKey(char rune) {
 func (consumer *Consumer) inValue(char rune) {
 	switch char {
 	case '"':
-		fmt.Print("\n")
 		consumer.state = StateHasValue
 	case '\\':
 		consumer.state = StateHasEscape
@@ -103,10 +113,14 @@ func (consumer *Consumer) hasValue(char rune) {
 	switch char {
 	case ',':
 		fmt.Print("\n")
+		consumer.printIndent()
 		consumer.state = StateUndetermined
-	case '}':
+	case '}', ']':
 		fmt.Print("\n")
-		consumer.indent--
+		if len(consumer.stack) > 0 {
+			consumer.indent--
+			consumer.stack = consumer.stack[:len(consumer.stack)-1]
+		}
 		consumer.state = StateUndetermined
 	default:
 		fmt.Print(string(char))
@@ -117,24 +131,19 @@ func (consumer *Consumer) hasColon(char rune) {
 	switch char {
 	case '"':
 		consumer.state = StateInValue
-	case ' ':
-		consumer.state = StateHasColon
-	case ',':
-		fmt.Print("\n")
-		consumer.state = StateUndetermined
 	case '{':
 		fmt.Print("\n")
 		consumer.indent++
-		consumer.state = StateUndetermined
-	case '}':
-		fmt.Print("\n")
-		consumer.indent--
+		consumer.stack = append(consumer.stack, StateInObject)
+		consumer.printIndent()
 		consumer.state = StateUndetermined
 	case '[':
 		fmt.Print("\n")
 		consumer.indent++
+		consumer.stack = append(consumer.stack, StateInArray)
+		consumer.printIndent()
 		fmt.Print("- ")
-		consumer.state = StateInArray
+		consumer.state = StateInArrayItem
 	default:
 		fmt.Print(string(char))
 	}
@@ -150,17 +159,48 @@ func (consumer *Consumer) hasEscape(char rune) {
 
 func (consumer *Consumer) inArray(char rune) {
 	switch char {
+	case '"':
+		consumer.state = StateInArrayItem
+	case '[':
+		fmt.Print("[")
+		consumer.indent++
+		consumer.stack = append(consumer.stack, StateInArray)
 	case ']':
+		fmt.Print("]")
+		if len(consumer.stack) > 0 {
+			consumer.indent--
+			consumer.stack = consumer.stack[:len(consumer.stack)-1]
+		}
 		consumer.state = StateUndetermined
 	case ',':
-		fmt.Print("\n- ")
-	case '{':
 		fmt.Print("\n")
-		consumer.indent++
-	case '}':
-		fmt.Print("\n")
-		consumer.indent--
+		consumer.printIndent()
+		fmt.Print("- ")
 	default:
 		fmt.Print(string(char))
+	}
+}
+
+func (consumer *Consumer) inArrayItem(char rune) {
+	switch char {
+	case ']':
+		consumer.state = StateUndetermined
+	default:
+		fmt.Print(string(char))
+	}
+}
+
+func (consumer *Consumer) inObject(char rune) {
+	switch char {
+	case '}':
+		consumer.state = StateUndetermined
+	default:
+		fmt.Print(string(char))
+	}
+}
+
+func (consumer *Consumer) printIndent() {
+	for i := 0; i < consumer.indent; i++ {
+		fmt.Print("  ")
 	}
 }

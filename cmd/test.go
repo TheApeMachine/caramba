@@ -7,9 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/ai"
-	"github.com/theapemachine/caramba/process/prompt"
-	"github.com/theapemachine/caramba/process/reasoning"
-	"github.com/theapemachine/caramba/process/reflection"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/system"
@@ -28,7 +25,11 @@ var testCmd = &cobra.Command{
 		graph := createTestGraph()
 
 		// Create a properly formatted test message
-		message := provider.NewMessage(provider.RoleUser, "Consider the state-of-the-art in AI today, then propose a radically new, never before seen approach to AI that can be implemented on consumer hardware.")
+		message := provider.NewMessage(provider.RoleUser, `
+		    Question: What's the best way to sort a list of numbers?
+
+    		Internal reasoning process:
+		`)
 
 		// Create context
 		ctx := context.Background()
@@ -38,7 +39,7 @@ var testCmd = &cobra.Command{
 
 		// Print formatted responses
 		fmt.Println("\n=== Agent Responses ===")
-		consumer.Print(graph.Generate(ctx, message))
+		consumer.Print(graph.Generate(ctx, message), false)
 	},
 }
 
@@ -47,9 +48,9 @@ func createTestGraph() *system.Graph {
 
 	// Initialize agents with the message
 	node0 := system.NewNode("node0", ai.NewAgent(ctx, "prompt", 1), false)
-	node1 := system.NewNode("node1", ai.NewAgent(ctx, "reasoner", 1), false)
-	node2 := system.NewNode("node2", ai.NewAgent(ctx, "challenger", 1), false)
-	node3 := system.NewNode("node3", ai.NewAgent(ctx, "solver", 1), false)
+	node1 := system.NewNode("node1", ai.NewAgent(ctx, "reasoner", 2), false)
+	node2 := system.NewNode("node2", ai.NewAgent(ctx, "challenger", 2), false)
+	node3 := system.NewNode("node3", ai.NewAgent(ctx, "solver", 2), false)
 
 	// Initialize each agent
 	node0.Agent.Initialize()
@@ -57,21 +58,21 @@ func createTestGraph() *system.Graph {
 	node2.Agent.Initialize()
 	node3.Agent.Initialize()
 
-	node0.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
-		&prompt.Process{},
-	}))
-	node1.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
-		&reasoning.Process{},
-		&reflection.Process{},
-	}))
-	node2.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
-		&reasoning.Process{},
-		&reflection.Process{},
-	}))
-	node3.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
-		&reasoning.Process{},
-		&reflection.Process{},
-	}))
+	// node0.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
+	// 	&prompt.Process{},
+	// }))
+	// node1.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
+	// 	&reasoning.Process{},
+	// 	&reflection.Process{},
+	// }))
+	// node2.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
+	// 	&reasoning.Process{},
+	// 	&reflection.Process{},
+	// }))
+	// node3.Agent.AddProcess(provider.NewCompoundProcess([]provider.Process{
+	// 	&reasoning.Process{},
+	// 	&reflection.Process{},
+	// }))
 
 	edge0 := &system.Edge{
 		From:      "node0",

@@ -52,7 +52,7 @@ func NewBalancedProvider() *BalancedProvider {
 
 		providers := []*ProviderStatus{
 			{provider: NewOpenAI(os.Getenv("OPENAI_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
-			// {provider: NewAnthropic(os.Getenv("ANTHROPIC_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
+			{provider: NewAnthropic(os.Getenv("ANTHROPIC_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
 			{provider: NewOpenAICompatible(os.Getenv("GEMINI_API_KEY"), v.GetString("endpoints.gemini"), v.GetString("models.gemini")), occupied: false, lastUsed: time.Time{}, failures: 0},
 		}
 
@@ -65,6 +65,13 @@ func NewBalancedProvider() *BalancedProvider {
 
 	// Return the ambient context of the provider.
 	return balancedProviderInstance
+}
+
+/*
+Name returns the name of the provider.
+*/
+func (lb *BalancedProvider) Name() string {
+	return "balanced"
 }
 
 /*
@@ -88,6 +95,7 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *GenerationPara
 		provider.lastUsed = time.Now()
 		provider.mu.Unlock()
 
+		errnie.Info("generating response from %s", provider.provider.Name())
 		for event := range provider.provider.Generate(ctx, params) {
 			out <- event
 		}

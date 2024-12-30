@@ -21,6 +21,13 @@ func NewAnthropic(apiKey string) *Anthropic {
 	}
 }
 
+/*
+Name returns the name of the provider.
+*/
+func (anthropic *Anthropic) Name() string {
+	return "anthropic (claude 3.5 sonnet)"
+}
+
 func (anthropic *Anthropic) Generate(ctx context.Context, params *GenerationParams) <-chan Event {
 	out := make(chan Event)
 

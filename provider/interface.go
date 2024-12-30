@@ -8,4 +8,5 @@ present themselves as an LLM provider.
 */
 type Provider interface {
 	Generate(context.Context, *GenerationParams) <-chan Event
+	Name() string
 }

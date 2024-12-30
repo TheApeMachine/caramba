@@ -24,6 +24,10 @@ func NewOllama(host string) *Ollama {
 	}
 }
 
+func (ollama *Ollama) Name() string {
+	return "ollama (llama3.2:3b)"
+}
+
 func (ollama *Ollama) Generate(ctx context.Context, params *GenerationParams) <-chan Event {
 	out := make(chan Event)
 

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	sdk "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -26,6 +27,10 @@ func NewOpenAICompatible(apiKey, endpoint, model string) *OpenAI {
 		client: sdk.NewClient(option.WithAPIKey(apiKey), option.WithBaseURL(endpoint)),
 		model:  model,
 	}
+}
+
+func (openai *OpenAI) Name() string {
+	return fmt.Sprintf("openai (%s)", openai.model)
 }
 
 func (openai *OpenAI) Generate(ctx context.Context, params *GenerationParams) <-chan Event {

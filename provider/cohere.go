@@ -23,6 +23,10 @@ func NewCohere(apiKey string) *Cohere {
 	}
 }
 
+func (cohere *Cohere) Name() string {
+	return "cohere (command-r)"
+}
+
 func (cohere *Cohere) Generate(ctx context.Context, params *GenerationParams) <-chan Event {
 	out := make(chan Event)
 

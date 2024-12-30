@@ -31,6 +31,10 @@ func NewGemini(apiKey string) *Gemini {
 	}
 }
 
+func (gemini *Gemini) Name() string {
+	return "google (gemini)"
+}
+
 func (gemini *Gemini) Generate(ctx context.Context, params *GenerationParams) <-chan Event {
 	out := make(chan Event)
 

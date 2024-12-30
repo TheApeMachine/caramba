@@ -37,9 +37,13 @@ func (thread *Thread) AddMessage(message *Message) {
 	thread.Messages = append(thread.Messages, message)
 }
 
-func (thread *Thread) Scrathpad() *Message {
-	// Remove the most message from the thread.
-	message := thread.Messages[:len(thread.Messages)-1]
-
-	return message
+/*
+Scratchpad keeps track of an agent's current working memory across multiple
+iterations. It replaces the most recent message, which is the scratchpad, after
+each new iteration, to reduce agent confusion while also keeping the context
+window small.
+*/
+func (thread *Thread) Scratchpad(message *Message) {
+	// Remove the message from the thread.
+	thread.Messages = append(thread.Messages[:len(thread.Messages)-1], message)
 }

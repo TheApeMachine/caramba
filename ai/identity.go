@@ -57,9 +57,7 @@ func NewIdentity(ctx context.Context, role string) (identity *Identity) {
 func (identity *Identity) String() string {
 	return utils.JoinWith(
 		"\n",
-		"\t<identity>",
 		fmt.Sprintf("\t\tName: %s", identity.Name),
 		fmt.Sprintf("\t\tRole: %s", identity.Role),
-		"\t</identity>",
 	)
 }

@@ -47,11 +47,7 @@ func (agent *Agent) GenerateSchema() interface{} {
 }
 
 func (agent *Agent) Initialize() {
-	if agent.params != nil && agent.System != nil {
-		return
-	}
-
-	agent.System = NewSystem(agent.Identity)
+	agent.System = NewSystem(agent.Identity, (agent.params != nil && agent.params.Process != nil))
 	agent.params = provider.NewGenerationParams()
 	agent.params.Thread.AddMessage(
 		provider.NewMessage(provider.RoleSystem, agent.System.String()),
@@ -72,6 +68,10 @@ will follow the specific jsonschema defined by the process.
 */
 func (agent *Agent) AddProcess(process provider.Process) {
 	agent.params.Process = process
+
+	// We have to reinitialize the agent, because the system prompt
+	// is different when structured outputs are enabled.
+	agent.Initialize()
 }
 
 /*
@@ -114,7 +114,7 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 			}
 
 			// Accumulate the response chunks into a single message
-			accumulator := provider.NewMessage(provider.RoleAssistant, "")
+			accumulator := agent.makeAccumulator(iteration)
 
 			for event := range agent.provider.Generate(ctx, agent.params) {
 				if event.Type == provider.EventChunk && event.Text != "" {
@@ -124,20 +124,19 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 				out <- event
 			}
 
-			// Log accumulated response
-			errnie.Log("Accumulated response for %s: %s", agent.Identity.Name, accumulator.Content)
-
 			// Only add non-empty messages to the thread
 			if accumulator.Content != "" {
-				agent.params.Thread.AddMessage(accumulator)
+				agent.params.Thread.AddMessage(agent.closeAccumulator(accumulator))
 			}
 
 			proc := &reasoning.Process{}
 
-			errnie.Error(json.Unmarshal([]byte(accumulator.Content), proc))
-
-			if proc.FinalAnswer != "" {
-				break
+			if agent.params.Process != nil && errnie.Error(
+				json.Unmarshal([]byte(accumulator.Content), agent.params.Process),
+			) != nil {
+				if proc.FinalAnswer != "" {
+					break
+				}
 			}
 
 			iteration++
@@ -145,6 +144,26 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 	}()
 
 	return out
+}
+
+/*
+makeAccumulator creates a new Message with the appropriate tags for
+the agent's response.
+*/
+func (agent *Agent) makeAccumulator(iteration int) *provider.Message {
+	return provider.NewMessage(
+		provider.RoleAssistant,
+		"\t<response agent="+agent.Identity.Name+" role="+agent.Identity.Role+" iteration="+strconv.Itoa(iteration)+" >",
+	)
+}
+
+/*
+closeAccumulator closes the accumulator message, and adds the appropriate
+tags to the end of the message.
+*/
+func (agent *Agent) closeAccumulator(accumulator *provider.Message) *provider.Message {
+	accumulator.Append("\t</response>")
+	return accumulator
 }
 
 // Split status creation from adding to thread
