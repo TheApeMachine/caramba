@@ -21,16 +21,34 @@ const (
 	StateInObject
 )
 
+/*
+Consumer takes an input event stream and dynamically parses streaming JSON chunks in real-time.
+This allows for a human-readable format to be displayed to a user, while a streaming model is
+generating a response for instant feedback, while still being able to accumulate the chunks
+anywhere else in the application to be used as a fully structured format.
+*/
 type Consumer struct {
 	state  State
 	indent int
-	stack  []State // To track nesting levels
+	stack  []State
 }
 
+/*
+NewConsumer intializes a ready-to-go Consumer and returns a pointer reference to it.
+It can take in a stream and will drain it, while simultaniously printing the
+human-readable output.
+*/
 func NewConsumer() *Consumer {
 	return &Consumer{indent: 0, stack: make([]State, 0)}
 }
 
+/*
+Print the incoming stream while at the same time consuming it. This uses a relatively
+simple state-machine to parse the structured JSON format, stripping away and ignoring
+all structural characters, and just printing the keys and value inside. It respects
+the original nesting levels, which makes for a very well structured output, with
+significant noise-reduction.
+*/
 func (consumer *Consumer) Print(stream <-chan provider.Event, structured bool) {
 	if !structured {
 		for chunk := range stream {
@@ -72,6 +90,10 @@ func (consumer *Consumer) Print(stream <-chan provider.Event, structured bool) {
 	consumer.stack = consumer.stack[:0]
 }
 
+/*
+undetermined describes a state where we do not directly know where
+we are within the structure, or if we are even in any structure yet.
+*/
 func (consumer *Consumer) undetermined(char rune) {
 	switch char {
 	case '"':
@@ -83,6 +105,10 @@ func (consumer *Consumer) undetermined(char rune) {
 	}
 }
 
+/*
+inKey tells us that we are currently somewhere after an opening quote of
+a key, and have not seen the closing quote yet.
+*/
 func (consumer *Consumer) inKey(char rune) {
 	switch char {
 	case '"':
@@ -92,6 +118,11 @@ func (consumer *Consumer) inKey(char rune) {
 	}
 }
 
+/*
+hasKey tell us that we have seen the closing quote, and that we have successfully
+captured the key part of a key/value pair, but we have not seen enough yet to determine
+what the following state will be.
+*/
 func (consumer *Consumer) hasKey(char rune) {
 	switch char {
 	case ':':
@@ -102,6 +133,10 @@ func (consumer *Consumer) hasKey(char rune) {
 	}
 }
 
+/*
+inValue means we have encountered the opening quote of a string value, and have not seen
+the closing quote yet.
+*/
 func (consumer *Consumer) inValue(char rune) {
 	switch char {
 	case '"':
@@ -113,6 +148,10 @@ func (consumer *Consumer) inValue(char rune) {
 	}
 }
 
+/*
+hasValue means we have seen the closing quote of a string value, and have successfully
+captured the value part of the key/value pair.
+*/
 func (consumer *Consumer) hasValue(char rune) {
 	switch char {
 	case ',':
@@ -127,7 +166,6 @@ func (consumer *Consumer) hasValue(char rune) {
 			consumer.printIndent()
 			fmt.Print(string(char))
 		} else {
-			// If we're at the root level, reset everything
 			consumer.state = StateUndetermined
 			consumer.indent = 0
 			consumer.stack = consumer.stack[:0]
@@ -137,6 +175,11 @@ func (consumer *Consumer) hasValue(char rune) {
 	}
 }
 
+/*
+hasColon works almost like a waiting station of some kind, which allows
+us to consume potential whitespace, or other non-printable characters,
+until we see something that is more interesting again to move us forwards.
+*/
 func (consumer *Consumer) hasColon(char rune) {
 	switch char {
 	case '"':

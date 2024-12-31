@@ -9,6 +9,9 @@ import (
 	"github.com/theapemachine/caramba/utils"
 )
 
+/*
+Neo4jQuery is a tool wrapper for querying a Neo4j database.
+*/
 type Neo4jQuery struct {
 	ctx       context.Context         `json:"-"`
 	client    neo4j.DriverWithContext `json:"-"`
