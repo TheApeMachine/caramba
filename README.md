@@ -105,6 +105,54 @@ func main() {
 }
 ```
 
+### Infrastructure Setup
+
+#### Docker Compose
+
+The project includes a comprehensive Docker Compose setup that provides all necessary infrastructure:
+
+```bash
+# Start the infrastructure
+docker compose up -d
+
+# Available Services:
+# - Ollama (GPU-enabled LLM server) - Port 11434
+# - MinIO (Object Storage) - Ports 9000, 9001
+# - Qdrant (Vector Database) - Port 6333
+# - Redis (Cache) - Port 6379
+# - Neo4j (Graph Database) - Ports 7474, 7687
+```
+
+#### Environment Setup
+
+Create a `.env` file in your project root with the following variables:
+
+```bash
+# AI Provider Keys
+OPENAI_API_KEY="your-key"
+ANTHROPIC_API_KEY="your-key"
+GEMINI_API_KEY="your-key"
+COHERE_API_KEY="your-key"
+HF_API_KEY="your-key"
+
+# Integration Keys
+GITHUB_PAT="your-github-pat"
+AZDO_ORG_URL="your-azure-devops-url"
+AZDO_PAT="your-azure-devops-pat"
+TRENGO_API_KEY="your-trengo-key"
+MARVIN_APP_KEY="your-marvin-app-key"
+MARVIN_BOT_KEY="your-marvin-bot-key"
+MARVIN_USER_KEY="your-marvin-user-key"
+NVIDIA_API_KEY="your-nvidia-key"
+
+# Infrastructure Credentials
+MINIO_USER="your-minio-user"
+MINIO_PASSWORD="your-minio-password"
+QDRANT_API_KEY="your-qdrant-key"
+NEO4J_USERNAME="neo4j"
+NEO4J_PASSWORD="your-neo4j-password"
+```
+
 ## 🏗 Architecture
 
 The system follows a sophisticated multi-layered architecture:
