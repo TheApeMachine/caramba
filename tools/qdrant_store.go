@@ -15,19 +15,16 @@ type QdrantStore struct {
 	client     *qdrant.Store       `json:"-"`
 	embedder   embeddings.Embedder `json:"-"`
 	collection string              `json:"-"`
+	dimension  uint64              `json:"-"`
 	Documents  []string            `json:"documents" jsonschema:"title=Documents,description=The text content to store,required"`
 	Metadata   map[string]any      `json:"metadata" jsonschema:"title=Metadata,description=Additional context for stored documents"`
 	Reasoning  string              `json:"reasoning" jsonschema:"title=Reasoning,description=Explanation of why this content should be stored"`
 }
 
 func NewQdrantStore(collection string, dimension uint64) *QdrantStore {
-	// Reuse the existing connection logic from NewQdrant
-	qdrantTool := NewQdrant(collection, dimension)
 	return &QdrantStore{
-		ctx:        qdrantTool.ctx,
-		client:     qdrantTool.client,
-		embedder:   qdrantTool.embedder,
 		collection: collection,
+		dimension:  dimension,
 	}
 }
 
@@ -44,6 +41,10 @@ func (q *QdrantStore) GenerateSchema() interface{} {
 }
 
 func (q *QdrantStore) Initialize() error {
+	qdrantTool := NewQdrant(q.collection, q.dimension)
+	q.client = qdrantTool.client
+	q.embedder = qdrantTool.embedder
+	q.ctx = qdrantTool.ctx
 	return nil
 }
 

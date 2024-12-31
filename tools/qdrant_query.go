@@ -16,17 +16,15 @@ type QdrantQuery struct {
 	client     *qdrant.Store       `json:"-"`
 	embedder   embeddings.Embedder `json:"-"`
 	collection string              `json:"-"`
+	dimension  uint64              `json:"-"`
 	Query      string              `json:"query" jsonschema:"title=Query,description=The search text to find similar content,required"`
 	Reasoning  string              `json:"reasoning" jsonschema:"title=Reasoning,description=Explanation of why this search is relevant"`
 }
 
 func NewQdrantQuery(collection string, dimension uint64) *QdrantQuery {
-	qdrantTool := NewQdrant(collection, dimension)
 	return &QdrantQuery{
-		ctx:        qdrantTool.ctx,
-		client:     qdrantTool.client,
-		embedder:   qdrantTool.embedder,
 		collection: collection,
+		dimension:  dimension,
 	}
 }
 
@@ -43,6 +41,10 @@ func (q *QdrantQuery) GenerateSchema() interface{} {
 }
 
 func (q *QdrantQuery) Initialize() error {
+	qdrantTool := NewQdrant(q.collection, q.dimension)
+	q.client = qdrantTool.client
+	q.embedder = qdrantTool.embedder
+	q.ctx = qdrantTool.ctx
 	return nil
 }
 

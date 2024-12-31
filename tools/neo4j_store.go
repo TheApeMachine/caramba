@@ -16,10 +16,8 @@ type Neo4jStore struct {
 }
 
 func NewNeo4jStore() *Neo4jStore {
-	neo4jTool := NewNeo4j()
 	return &Neo4jStore{
-		ctx:    context.Background(),
-		client: neo4jTool.client,
+		ctx: context.Background(),
 	}
 }
 
@@ -36,6 +34,8 @@ func (n *Neo4jStore) GenerateSchema() interface{} {
 }
 
 func (n *Neo4jStore) Initialize() error {
+	neo4jTool := NewNeo4j()
+	n.client = neo4jTool.client
 	return nil
 }
 

@@ -17,10 +17,8 @@ type Neo4jQuery struct {
 }
 
 func NewNeo4jQuery() *Neo4jQuery {
-	neo4jTool := NewNeo4j()
 	return &Neo4jQuery{
-		ctx:    context.Background(),
-		client: neo4jTool.client,
+		ctx: context.Background(),
 	}
 }
 
@@ -37,6 +35,8 @@ func (n *Neo4jQuery) GenerateSchema() interface{} {
 }
 
 func (n *Neo4jQuery) Initialize() error {
+	neo4jTool := NewNeo4j()
+	n.client = neo4jTool.client
 	return nil
 }
 
