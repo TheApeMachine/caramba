@@ -45,9 +45,9 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *GenerationPara
 			tools := make([]sdk.ToolParam, len(params.Tools))
 			for i, tool := range params.Tools {
 				tools[i] = sdk.ToolParam{
-					Name:        sdk.F(tool.Name),
-					Description: sdk.F(tool.Description),
-					InputSchema: sdk.F(tool.Schema),
+					Name:        sdk.F(tool.Name()),
+					Description: sdk.F(tool.Description()),
+					InputSchema: sdk.F(tool.GenerateSchema()),
 				}
 			}
 			messageParams.Tools = sdk.F(tools)

@@ -61,6 +61,18 @@ func NewBrowser() *Browser {
 	}
 }
 
+func (browser *Browser) Name() string {
+	return "browser"
+}
+
+func (browser *Browser) Description() string {
+	return "Interact with the web"
+}
+
+func (browser *Browser) GenerateSchema() interface{} {
+	return utils.GenerateSchema[*Browser]()
+}
+
 func (browser *Browser) Initialize() error {
 	return nil
 }
@@ -80,10 +92,6 @@ func (browser *Browser) Use(ctx context.Context, args map[string]any) string {
 	}
 
 	return result
-}
-
-func (browser *Browser) GenerateSchema() interface{} {
-	return utils.GenerateSchema[*Browser]()
 }
 
 // SetProxy configures a proxy for the browser

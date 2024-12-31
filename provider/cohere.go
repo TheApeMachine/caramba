@@ -39,9 +39,9 @@ func (cohere *Cohere) Generate(ctx context.Context, params *GenerationParams) <-
 			tools = make([]*sdk.Tool, len(params.Tools))
 			for i, tool := range params.Tools {
 				tools[i] = &sdk.Tool{
-					Name:                 tool.Name,
-					Description:          tool.Description,
-					ParameterDefinitions: tool.Schema.(map[string]*sdk.ToolParameterDefinitionsValue),
+					Name:                 tool.Name(),
+					Description:          tool.Description(),
+					ParameterDefinitions: tool.GenerateSchema().(map[string]*sdk.ToolParameterDefinitionsValue),
 				}
 			}
 		}

@@ -158,9 +158,9 @@ func (*OpenAI) convertTools(params *GenerationParams) []sdk.ChatCompletionToolPa
 			tools[i] = sdk.ChatCompletionToolParam{
 				Type: sdk.F(sdk.ChatCompletionToolTypeFunction),
 				Function: sdk.F(sdk.FunctionDefinitionParam{
-					Name:        sdk.F(tool.Name),
-					Description: sdk.F(tool.Description),
-					Parameters:  sdk.F(tool.Schema.(sdk.FunctionParameters)),
+					Name:        sdk.F(tool.Name()),
+					Description: sdk.F(tool.Description()),
+					Parameters:  sdk.F(tool.GenerateSchema().(sdk.FunctionParameters)),
 				}),
 			}
 		}

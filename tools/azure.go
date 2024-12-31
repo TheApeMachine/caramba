@@ -15,6 +15,14 @@ func NewAzure() *Azure {
 	return &Azure{}
 }
 
+func (azure *Azure) Name() string {
+	return "azure"
+}
+
+func (azure *Azure) Description() string {
+	return "Interact with Azure"
+}
+
 func (azure *Azure) GenerateSchema() interface{} {
 	return utils.GenerateSchema[*Azure]()
 }

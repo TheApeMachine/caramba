@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/invopop/jsonschema"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/utils"
 )
 
 type Neo4jQuery struct {
@@ -25,22 +24,27 @@ func NewNeo4jQuery() *Neo4jQuery {
 	}
 }
 
-func (n *Neo4jQuery) GenerateSchema() string {
-	schema := jsonschema.Reflect(n)
-	return string(errnie.SafeMust(func() ([]byte, error) {
-		return json.MarshalIndent(schema, "", "  ")
-	}))
+func (n *Neo4jQuery) Name() string {
+	return "neo4j"
+}
+
+func (n *Neo4jQuery) Description() string {
+	return "Interact with Neo4j"
+}
+
+func (n *Neo4jQuery) GenerateSchema() interface{} {
+	return utils.GenerateSchema[*Neo4jQuery]()
 }
 
 func (n *Neo4jQuery) Initialize() error {
 	return nil
 }
 
-func (n *Neo4jQuery) Connect(rw io.ReadWriteCloser) error {
+func (n *Neo4jQuery) Connect(ctx context.Context, rw io.ReadWriteCloser) error {
 	return nil
 }
 
-func (n *Neo4jQuery) Use(args map[string]any) string {
+func (n *Neo4jQuery) Use(ctx context.Context, args map[string]any) string {
 	var (
 		cypher  string
 		ok      bool

@@ -2,12 +2,10 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 
-	"github.com/invopop/jsonschema"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/utils"
 )
 
 type Neo4jStore struct {
@@ -25,26 +23,31 @@ func NewNeo4jStore() *Neo4jStore {
 	}
 }
 
-func (n *Neo4jStore) GenerateSchema() string {
-	schema := jsonschema.Reflect(n)
-	return string(errnie.SafeMust(func() ([]byte, error) {
-		return json.MarshalIndent(schema, "", "  ")
-	}))
+func (n *Neo4jStore) Name() string {
+	return "neo4j"
+}
+
+func (n *Neo4jStore) Description() string {
+	return "Interact with Neo4j"
+}
+
+func (n *Neo4jStore) GenerateSchema() interface{} {
+	return utils.GenerateSchema[*Neo4jStore]()
 }
 
 func (n *Neo4jStore) Initialize() error {
 	return nil
 }
 
-func (n *Neo4jStore) Connect(rw io.ReadWriteCloser) error {
+func (n *Neo4jStore) Connect(ctx context.Context, rw io.ReadWriteCloser) error {
 	return nil
 }
 
-func (n *Neo4jStore) Use(args map[string]any) string {
+func (n *Neo4jStore) Use(ctx context.Context, args map[string]any) string {
 	var (
 		cypher  string
 		ok      bool
-		err error
+		err     error
 		results neo4j.ResultWithContext
 	)
 

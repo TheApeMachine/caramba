@@ -5,8 +5,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/invopop/jsonschema"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/utils"
 	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/vectorstores"
 	"github.com/tmc/langchaingo/vectorstores/qdrant"
@@ -31,22 +30,27 @@ func NewQdrantQuery(collection string, dimension uint64) *QdrantQuery {
 	}
 }
 
-func (q *QdrantQuery) GenerateSchema() string {
-	schema := jsonschema.Reflect(q)
-	return string(errnie.SafeMust(func() ([]byte, error) {
-		return json.MarshalIndent(schema, "", "  ")
-	}))
+func (q *QdrantQuery) Name() string {
+	return "qdrant"
+}
+
+func (q *QdrantQuery) Description() string {
+	return "Interact with Qdrant"
+}
+
+func (q *QdrantQuery) GenerateSchema() interface{} {
+	return utils.GenerateSchema[*QdrantQuery]()
 }
 
 func (q *QdrantQuery) Initialize() error {
 	return nil
 }
 
-func (q *QdrantQuery) Connect(rw io.ReadWriteCloser) error {
+func (q *QdrantQuery) Connect(ctx context.Context, rw io.ReadWriteCloser) error {
 	return nil
 }
 
-func (q *QdrantQuery) Use(args map[string]any) string {
+func (q *QdrantQuery) Use(ctx context.Context, args map[string]any) string {
 	var (
 		query   string
 		ok      bool

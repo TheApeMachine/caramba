@@ -2,11 +2,9 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 
-	"github.com/invopop/jsonschema"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/utils"
 	"github.com/tmc/langchaingo/embeddings"
 	"github.com/tmc/langchaingo/schema"
 	"github.com/tmc/langchaingo/vectorstores/qdrant"
@@ -33,22 +31,27 @@ func NewQdrantStore(collection string, dimension uint64) *QdrantStore {
 	}
 }
 
-func (q *QdrantStore) GenerateSchema() string {
-	schema := jsonschema.Reflect(q)
-	return string(errnie.SafeMust(func() ([]byte, error) {
-		return json.MarshalIndent(schema, "", "  ")
-	}))
+func (q *QdrantStore) Name() string {
+	return "qdrant"
+}
+
+func (q *QdrantStore) Description() string {
+	return "Interact with Qdrant"
+}
+
+func (q *QdrantStore) GenerateSchema() interface{} {
+	return utils.GenerateSchema[*QdrantStore]()
 }
 
 func (q *QdrantStore) Initialize() error {
 	return nil
 }
 
-func (q *QdrantStore) Connect(rw io.ReadWriteCloser) error {
+func (q *QdrantStore) Connect(ctx context.Context, rw io.ReadWriteCloser) error {
 	return nil
 }
 
-func (q *QdrantStore) Use(args map[string]any) string {
+func (q *QdrantStore) Use(ctx context.Context, args map[string]any) string {
 	var (
 		docs     []string
 		metadata map[string]any
@@ -80,7 +83,7 @@ func (q *QdrantStore) Use(args map[string]any) string {
 				Metadata:    metadata,
 			},
 		})
-		
+
 		if err != nil {
 			return err.Error()
 		}

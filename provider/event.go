@@ -22,6 +22,7 @@ type Event struct {
 	TeamID      string
 	AgentID     string
 	Type        EventType
+	Name        string
 	Text        string
 	PartialJSON string
 	Error       error

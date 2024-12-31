@@ -48,7 +48,7 @@ func (gemini *Gemini) Generate(ctx context.Context, params *GenerationParams) <-
 			for i, tool := range params.Tools {
 				// Fix parameters type conversion
 				parameters := make(map[string]*genai.Schema)
-				if toolSchema, ok := tool.Schema.(map[string]interface{}); ok {
+				if toolSchema, ok := tool.GenerateSchema().(map[string]interface{}); ok {
 					for k, v := range toolSchema {
 						if schemaMap, ok := v.(map[string]interface{}); ok {
 							var schemaType genai.Type
@@ -80,8 +80,8 @@ func (gemini *Gemini) Generate(ctx context.Context, params *GenerationParams) <-
 				tools[i] = &genai.Tool{
 					FunctionDeclarations: []*genai.FunctionDeclaration{
 						{
-							Name:        tool.Name,
-							Description: tool.Description,
+							Name:        tool.Name(),
+							Description: tool.Description(),
 							Parameters: &genai.Schema{
 								Type:       genai.TypeObject,
 								Properties: parameters,

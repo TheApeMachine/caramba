@@ -26,28 +26,24 @@ which allows a developer to easily override the config file.
 //go:embed cfg/*
 var embedded embed.FS
 
-// rootCmd represents the base command when called without any subcommands
+/*
+rootCmd represents the base command when called without any subcommands
+*/
 var (
 	projectName = "caramba"
 	cfgFile     string
 
 	rootCmd = &cobra.Command{
 		Use:   "caramba",
-		Short: "A brief description of your application",
-		Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-		// Uncomment the following line if your bare application
-		// has an action associated with it:
-		// Run: func(cmd *cobra.Command, args []string) { },
+		Short: "A sophisticated multi-agent AI orchestration system",
+		Long:  longRoot,
 	}
 )
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
+/*
+Execute is the main entry point for the Caramba CLI. It initializes the root command
+and executes it.
+*/
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
@@ -55,6 +51,9 @@ func Execute() {
 	}
 }
 
+/*
+init is a function that initializes the root command and sets up the persistent flags.
+*/
 func init() {
 	cobra.OnInitialize(initConfig)
 
@@ -64,6 +63,11 @@ func init() {
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
+/*
+initConfig is a function that initializes the configuration for the Caramba CLI.
+It writes the default config file to the user's home directory if it doesn't exist,
+and then reads the config file from the user's home directory.
+*/
 func initConfig() {
 	var err error
 
@@ -83,6 +87,9 @@ func initConfig() {
 	}
 }
 
+/*
+writeConfig is a function that writes the default config file to the user's home directory.
+*/
 func writeConfig() (err error) {
 	var (
 		home, _ = os.UserHomeDir()
@@ -117,3 +124,22 @@ func writeConfig() (err error) {
 
 	return
 }
+
+var longRoot = `
+Caramba is a powerful multi-agent AI orchestration system built in Go, designed to 
+coordinate multiple AI providers and facilitate complex reasoning tasks through a 
+pipeline-based architecture.
+
+Key Features:
+  - Multi-provider intelligence with smart load balancing
+  - Graph-based pipeline architecture
+  - Extensive tool system with browser, container, and database support
+  - Advanced context management with 128k context window
+  - Thread-safe operations and error handling
+
+Examples:
+  caramba example research - Run the research pipeline example
+  caramba example dev      - Run the development pipeline example
+  caramba example chat     - Run the simple chat example
+  caramba test             - Run the test setup
+`

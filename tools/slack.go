@@ -18,6 +18,18 @@ type Slack struct {
 	Message   string `json:"message" jsonschema:"title=Message,description=The message to send"`
 }
 
+func NewSlack() *Slack {
+	return &Slack{}
+}
+
+func (slack *Slack) Name() string {
+	return "slack"
+}
+
+func (slack *Slack) Description() string {
+	return "Interact with Slack"
+}
+
 func (slack *Slack) GenerateSchema() interface{} {
 	return utils.GenerateSchema[*Slack]()
 }
@@ -26,6 +38,6 @@ func (slack *Slack) Use(ctx context.Context, params map[string]any) string {
 	return ""
 }
 
-func (slack *Slack) Connect(rw io.ReadWriteCloser) error {
+func (slack *Slack) Connect(ctx context.Context, rw io.ReadWriteCloser) error {
 	return nil
 }

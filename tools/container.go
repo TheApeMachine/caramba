@@ -30,6 +30,14 @@ func NewContainer() *Container {
 	}
 }
 
+func (c *Container) Name() string {
+	return "container"
+}
+
+func (c *Container) Description() string {
+	return "Execute commands in an isolated Debian environment"
+}
+
 func (c *Container) GenerateSchema() interface{} {
 	return utils.GenerateSchema[*Container]()
 }

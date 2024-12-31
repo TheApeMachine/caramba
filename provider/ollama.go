@@ -42,9 +42,9 @@ func (ollama *Ollama) Generate(ctx context.Context, params *GenerationParams) <-
 				tools[i] = sdk.Tool{
 					Type: "function",
 					Function: sdk.ToolFunction{
-						Name:        tool.Name,
-						Description: tool.Description,
-						Parameters:  tool.Schema.(sdk.ToolFunction).Parameters,
+						Name:        tool.Name(),
+						Description: tool.Description(),
+						Parameters:  tool.GenerateSchema().(sdk.ToolFunction).Parameters,
 					},
 				}
 			}
