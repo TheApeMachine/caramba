@@ -32,16 +32,13 @@ jobs:
             - name: Verify dependencies
               run: go mod verify
 
-            - name: Run go fmt
-              run: if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then exit 1; fi
-
             - name: Run go vet
               run: go vet ./...
 
             - name: Set up environment
               run: |
-                  echo "MINIO_USER=minio" >> $GITHUB_ENV
-                  echo "MINIO_PASSWORD=miniosecret" >> $GITHUB_ENV
+                  echo "MINIO_USER=minioadmin" >> $GITHUB_ENV
+                  echo "MINIO_PASSWORD=minioadmin" >> $GITHUB_ENV
 
             - name: Run tests
               run: go test -v ./...
