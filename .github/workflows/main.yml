@@ -1,0 +1,61 @@
+name: Go CI/CD
+
+on:
+    push:
+        branches: ["main"]
+    pull_request:
+        branches: ["main"]
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        services:
+            minio:
+                image: minio/minio
+                env:
+                    MINIO_ROOT_USER: minio
+                    MINIO_ROOT_PASSWORD: miniosecret
+                ports:
+                    - 9000:9000
+                    - 9001:9001
+                options: >-
+                    --health-cmd "curl -f http://localhost:9000/minio/health/live"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+                    --name minio-test
+                    --entrypoint "minio server /data --console-address ':9001'"
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Go
+              uses: actions/setup-go@v4
+              with:
+                  go-version: "1.21"
+
+            - name: Install dependencies
+              run: go mod download
+
+            - name: Verify dependencies
+              run: go mod verify
+
+            - name: Run go fmt
+              run: if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then exit 1; fi
+
+            - name: Run go vet
+              run: go vet ./...
+
+            - name: Set up environment
+              run: |
+                  echo "MINIO_USER=minio" >> $GITHUB_ENV
+                  echo "MINIO_PASSWORD=miniosecret" >> $GITHUB_ENV
+
+            - name: Run tests
+              run: go test -v ./...
+              env:
+                  MINIO_USER: ${{ env.MINIO_USER }}
+                  MINIO_PASSWORD: ${{ env.MINIO_PASSWORD }}
+
+            - name: Build
+              run: go build -v ./...

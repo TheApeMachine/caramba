@@ -1,5 +1,10 @@
 # 🤖 Caramba
 
+[![Go CI/CD](https://github.com/theapemachine/caramba/actions/workflows/main.yml/badge.svg)](https://github.com/theapemachine/caramba/actions/workflows/main.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/theapemachine/caramba)](https://goreportcard.com/report/github.com/theapemachine/caramba)
+[![GoDoc](https://godoc.org/github.com/theapemachine/caramba?status.svg)](https://godoc.org/github.com/theapemachine/caramba)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A sophisticated multi-agent AI orchestration system built in Go, designed to coordinate multiple AI providers and facilitate complex reasoning tasks through a pipeline-based architecture.
 
 ## ✨ Features
