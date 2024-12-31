@@ -35,11 +35,11 @@ func NewConn() *Conn {
 		return nil
 	}
 
-	// errnie.Error(client.MakeBucket(
-	// 	context.Background(),
-	// 	"datalake",
-	// 	minio.MakeBucketOptions{Region: "us-east2"},
-	// ))
+	client.MakeBucket(
+		context.Background(),
+		"datalake",
+		minio.MakeBucketOptions{Region: "us-east2"},
+	)
 
 	return &Conn{client: client, bucket: "datalake"}
 }
