@@ -36,7 +36,6 @@ func (consumer *Consumer) Print(stream <-chan provider.Event, structured bool) {
 		for chunk := range stream {
 			fmt.Print(chunk.Text)
 		}
-
 		return
 	}
 
@@ -66,6 +65,11 @@ func (consumer *Consumer) Print(stream <-chan provider.Event, structured bool) {
 			}
 		}
 	}
+
+	// Reset state when stream ends
+	consumer.state = StateUndetermined
+	consumer.indent = 0
+	consumer.stack = consumer.stack[:0]
 }
 
 func (consumer *Consumer) undetermined(char rune) {
@@ -120,8 +124,14 @@ func (consumer *Consumer) hasValue(char rune) {
 		if len(consumer.stack) > 0 {
 			consumer.indent--
 			consumer.stack = consumer.stack[:len(consumer.stack)-1]
+			consumer.printIndent()
+			fmt.Print(string(char))
+		} else {
+			// If we're at the root level, reset everything
+			consumer.state = StateUndetermined
+			consumer.indent = 0
+			consumer.stack = consumer.stack[:0]
 		}
-		consumer.state = StateUndetermined
 	default:
 		fmt.Print(string(char))
 	}

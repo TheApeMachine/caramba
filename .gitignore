@@ -1,2 +1,5 @@
 id_marvin
 id_marvin.pub
+log*
+logs/
+utils/english.json

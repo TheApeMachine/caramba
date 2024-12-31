@@ -25,11 +25,7 @@ var testCmd = &cobra.Command{
 		graph := createTestGraph()
 
 		// Create a properly formatted test message
-		message := provider.NewMessage(provider.RoleUser, `
-		    Question: What's the best way to sort a list of numbers?
-
-    		Internal reasoning process:
-		`)
+		message := provider.NewMessage(provider.RoleUser, `How many times do we find the letter r in the word strawberry?`)
 
 		// Create context
 		ctx := context.Background()

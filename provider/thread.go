@@ -38,12 +38,8 @@ func (thread *Thread) AddMessage(message *Message) {
 }
 
 /*
-Scratchpad keeps track of an agent's current working memory across multiple
-iterations. It replaces the most recent message, which is the scratchpad, after
-each new iteration, to reduce agent confusion while also keeping the context
-window small.
+Reset clears the thread.
 */
-func (thread *Thread) Scratchpad(message *Message) {
-	// Remove the message from the thread.
-	thread.Messages = append(thread.Messages[:len(thread.Messages)-1], message)
+func (thread *Thread) Reset() {
+	thread.Messages = make([]*Message, 0)
 }

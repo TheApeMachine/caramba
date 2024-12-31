@@ -2,11 +2,7 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
-	"strconv"
 
-	"github.com/spf13/viper"
-	"github.com/theapemachine/caramba/process/reasoning"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
@@ -21,6 +17,7 @@ tool calling.
 type Agent struct {
 	System        *System   `json:"system" jsonschema:"title=System,description=The system prompt for the agent,required"`
 	Identity      *Identity `json:"identity" jsonschema:"title=Identity,description=The identity of the agent,required"`
+	Context       *Context  `json:"context" jsonschema:"title=Context,description=The context of the agent,required"`
 	MaxIterations int       `json:"max_iterations" jsonschema:"title=Max Iterations,description=The maximum number of iterations to perform,required"`
 	params        *provider.GenerationParams
 	provider      provider.Provider
@@ -47,11 +44,15 @@ func (agent *Agent) GenerateSchema() interface{} {
 }
 
 func (agent *Agent) Initialize() {
-	agent.System = NewSystem(agent.Identity, (agent.params != nil && agent.params.Process != nil))
+	var instructions = "unstructured"
+
+	if agent.params != nil && agent.params.Process != nil {
+		instructions = "structured"
+	}
+
+	agent.System = NewSystem(agent.Identity, instructions, instructions == "structured")
 	agent.params = provider.NewGenerationParams()
-	agent.params.Thread.AddMessage(
-		provider.NewMessage(provider.RoleSystem, agent.System.String()),
-	)
+	agent.Context = NewContext(agent.System, agent.params)
 }
 
 func (agent *Agent) AddTools(tools ...provider.Tool) {
@@ -93,50 +94,31 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		agent.Initialize()
 	}
 
-	// Only add non-empty messages to the thread
-	if msg.Content == "" {
-		errnie.Warn("empty message received %s (%s)", agent.Identity.Name, msg.Role)
-		return nil
-	}
+	agent.Context.Compile()
+	iteration := 0
 
 	errnie.Info("%s (%s) generating response", agent.Identity.Name, msg.Role)
-
-	agent.params.Thread.AddMessage(msg)
-	iteration := 0
 
 	go func() {
 		defer close(out)
 
 		for iteration < agent.MaxIterations {
-			// Only add status if we have a valid status template
-			if status := agent.getStatus(iteration); status != "" {
-				agent.params.Thread.AddMessage(provider.NewMessage(provider.RoleUser, status))
-			}
+			scratchpad := agent.Context.GetScratchpad()
 
-			// Accumulate the response chunks into a single message
-			accumulator := agent.makeAccumulator(iteration)
-
-			for event := range agent.provider.Generate(ctx, agent.params) {
+			for event := range agent.provider.Generate(ctx, agent.Context.Compile()) {
 				if event.Type == provider.EventChunk && event.Text != "" {
-					accumulator.Append(event.Text)
+					scratchpad.Append(event)
+				}
+
+				if event.Type == provider.EventToolCall {
+					scratchpad.ToolCall(event)
 				}
 
 				out <- event
 			}
 
-			// Only add non-empty messages to the thread
-			if accumulator.Content != "" {
-				agent.params.Thread.AddMessage(agent.closeAccumulator(accumulator))
-			}
-
-			proc := &reasoning.Process{}
-
-			if agent.params.Process != nil && errnie.Error(
-				json.Unmarshal([]byte(accumulator.Content), agent.params.Process),
-			) != nil {
-				if proc.FinalAnswer != "" {
-					break
-				}
+			if agent.Context.Done() {
+				break
 			}
 
 			iteration++
@@ -144,41 +126,4 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 	}()
 
 	return out
-}
-
-/*
-makeAccumulator creates a new Message with the appropriate tags for
-the agent's response.
-*/
-func (agent *Agent) makeAccumulator(iteration int) *provider.Message {
-	return provider.NewMessage(
-		provider.RoleAssistant,
-		"\t<response agent="+agent.Identity.Name+" role="+agent.Identity.Role+" iteration="+strconv.Itoa(iteration)+" >",
-	)
-}
-
-/*
-closeAccumulator closes the accumulator message, and adds the appropriate
-tags to the end of the message.
-*/
-func (agent *Agent) closeAccumulator(accumulator *provider.Message) *provider.Message {
-	accumulator.Append("\t</response>")
-	return accumulator
-}
-
-// Split status creation from adding to thread
-func (agent *Agent) getStatus(iteration int) string {
-	v := viper.GetViper()
-	template := v.GetString("prompts.template.status")
-	if template == "" {
-		return ""
-	}
-
-	return utils.ReplaceWith(
-		template,
-		[][]string{
-			{"iteration", strconv.Itoa(iteration + 1)},
-			{"remaining", strconv.Itoa(agent.MaxIterations - iteration)},
-		},
-	)
 }
