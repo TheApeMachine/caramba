@@ -5,7 +5,6 @@ import (
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/theapemachine/errnie"
 )
 
@@ -99,7 +98,6 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *GenerationPara
 
 		if err := stream.Err(); err != nil {
 			errnie.Error(err)
-			spew.Dump(params)
 			out <- Event{Type: EventError, Error: err}
 			return
 		}

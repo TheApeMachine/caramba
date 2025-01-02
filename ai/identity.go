@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/theapemachine/caramba/datalake"
@@ -24,34 +25,34 @@ type Identity struct {
 NewIdentity attempts to load an existing identity from the datalake, or
 creates a new one if it doesn't exist, and then saves it to the datalake.
 */
-func NewIdentity(ctx context.Context, role string) (identity *Identity) {
-	identity = &Identity{}
+func NewIdentity(ctx context.Context, role string) *Identity {
+	var (
+		identity *Identity = &Identity{}
+		loaded   *minio.Object
+		buf      []byte
+		err      error
+	)
 
-	if loaded := errnie.SafeMust(func() (*minio.Object, error) {
-		return datalake.NewConn().Get(ctx, "identities/"+role)
-	}); loaded != nil {
-		errnie.SafeMustVoid(func() error {
-			return json.NewDecoder(loaded).Decode(identity)
-		})
-
-		if identity.Name == "" {
-			identity = &Identity{
-				Name: utils.NewName(),
-				Role: role,
-			}
-
-			datalake.NewConn().Put(ctx, "identities/"+role, errnie.SafeMust(func() ([]byte, error) {
-				return json.Marshal(identity)
-			}), nil)
-
-			errnie.Info("Created new identity: %s (%s)", identity.Name, identity.Role)
-			return
+	if loaded, err = datalake.NewConn().Get(ctx, "identities/"+role); err == nil && loaded != nil {
+		if buf, err = io.ReadAll(loaded); err != nil {
+			return nil
 		}
 
-		errnie.Info("Loaded identity: %s (%s)", identity.Name, identity.Role)
+		if err = json.Unmarshal(buf, identity); err != nil {
+			errnie.Error(err)
+		}
+	} else {
+		identity = &Identity{
+			Name: utils.NewName(),
+			Role: role,
+		}
+
+		datalake.NewConn().Put(ctx, "identities/"+role, errnie.SafeMust(func() ([]byte, error) {
+			return json.Marshal(identity)
+		}), nil)
 	}
 
-	return
+	return identity
 }
 
 func (identity *Identity) String() string {

@@ -10,19 +10,20 @@ import (
 	"github.com/theapemachine/qpool"
 )
 
-func RunStrawberry() {
-	ctx := context.Background()
+func RunPipeline() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
 
-	// Initialize agents
-	promptAgent := ai.NewAgent(ctx, "prompt", 1)
-	reasonerAgent := ai.NewAgent(ctx, "reasoner", 2)
-	challengerAgent := ai.NewAgent(ctx, "challenger", 2)
-	solverAgent := ai.NewAgent(ctx, "solver", 2)
+	// Initialize agents with specific roles
+	analyzeAgent := ai.NewAgent(ctx, "analyzer", 1)
+	researcher1 := ai.NewAgent(ctx, "researcher1", 2)
+	researcher2 := ai.NewAgent(ctx, "researcher2", 2)
+	writerAgent := ai.NewAgent(ctx, "writer", 1)
 
-	promptAgent.Initialize()
-	reasonerAgent.Initialize()
-	challengerAgent.Initialize()
-	solverAgent.Initialize()
+	analyzeAgent.Initialize()
+	researcher1.Initialize()
+	researcher2.Initialize()
+	writerAgent.Initialize()
 
 	// Configure and create the worker pool
 	config := &qpool.Config{
@@ -32,76 +33,80 @@ func RunStrawberry() {
 	defer pool.Close()
 
 	// Create a broadcast group for events
-	broadcast := pool.CreateBroadcastGroup("strawberry-events", time.Minute)
-	events := pool.Subscribe("strawberry-events")
+	broadcast := pool.CreateBroadcastGroup("pipeline-events", time.Minute)
+	events := pool.Subscribe("pipeline-events")
 
-	// Create and configure the conversation thread
-	message := provider.NewMessage(provider.RoleUser, `How many times do we find the letter r in the word strawberry?`)
-	thread := provider.NewThread()
-	thread.AddMessage(message)
+	// Initial message
+	message := provider.NewMessage(provider.RoleUser, "Explain how quantum computing works")
 
-	// Schedule prompt processing
-	promptResult := pool.Schedule("prompt",
+	fmt.Println("🔄 Pipeline Example")
+	fmt.Println("=== Processing Pipeline ===")
+	fmt.Println("1. Analyzing input...")
+
+	// Schedule analyzer job
+	analyzeResult := pool.Schedule("analyze",
 		func() (any, error) {
-			for event := range promptAgent.Generate(ctx, message) {
+			for event := range analyzeAgent.Generate(ctx, message) {
 				broadcast.Send(qpool.QuantumValue{Value: event})
 			}
 			return nil, nil
 		},
-		qpool.WithCircuitBreaker("prompt", 3, time.Minute),
+		qpool.WithCircuitBreaker("analyzer", 3, time.Minute),
 		qpool.WithRetry(3, &qpool.ExponentialBackoff{Initial: time.Second}),
 		qpool.WithTTL(time.Minute),
 	)
 
-	// Schedule reasoning after prompt
-	reasonerResult := pool.Schedule("reasoner",
+	// Schedule researcher jobs
+	research1Result := pool.Schedule("research1",
 		func() (any, error) {
-			if err := (<-promptResult).Error; err != nil {
+			if err := (<-analyzeResult).Error; err != nil {
 				return nil, err
 			}
-			for event := range reasonerAgent.Generate(ctx, message) {
+			for event := range researcher1.Generate(ctx, message) {
 				broadcast.Send(qpool.QuantumValue{Value: event})
 			}
 			return nil, nil
 		},
-		qpool.WithCircuitBreaker("reasoner", 3, time.Minute),
+		qpool.WithCircuitBreaker("research1", 3, time.Minute),
 		qpool.WithRetry(3, &qpool.ExponentialBackoff{Initial: time.Second}),
 		qpool.WithTTL(time.Minute),
 	)
 
-	// Schedule challenger after reasoner
-	challengerResult := pool.Schedule("challenger",
+	research2Result := pool.Schedule("research2",
 		func() (any, error) {
-			if err := (<-reasonerResult).Error; err != nil {
+			if err := (<-analyzeResult).Error; err != nil {
 				return nil, err
 			}
-			for event := range challengerAgent.Generate(ctx, message) {
+			for event := range researcher2.Generate(ctx, message) {
 				broadcast.Send(qpool.QuantumValue{Value: event})
 			}
 			return nil, nil
 		},
-		qpool.WithCircuitBreaker("challenger", 3, time.Minute),
+		qpool.WithCircuitBreaker("research2", 3, time.Minute),
 		qpool.WithRetry(3, &qpool.ExponentialBackoff{Initial: time.Second}),
 		qpool.WithTTL(time.Minute),
 	)
 
-	// Schedule solver after challenger
-	solverResult := pool.Schedule("solver",
+	// Schedule writer job
+	writerResult := pool.Schedule("write",
 		func() (any, error) {
-			if err := (<-challengerResult).Error; err != nil {
+			// Wait for all results
+			if err := (<-research1Result).Error; err != nil {
 				return nil, err
 			}
-			for event := range solverAgent.Generate(ctx, message) {
+			if err := (<-research2Result).Error; err != nil {
+				return nil, err
+			}
+
+			for event := range writerAgent.Generate(ctx, message) {
 				broadcast.Send(qpool.QuantumValue{Value: event})
 			}
 			return nil, nil
 		},
-		qpool.WithCircuitBreaker("solver", 3, time.Minute),
+		qpool.WithCircuitBreaker("writer", 3, time.Minute),
 		qpool.WithRetry(3, &qpool.ExponentialBackoff{Initial: time.Second}),
 		qpool.WithTTL(time.Minute),
 	)
-
-	fmt.Println("\n=== Agent Responses ===")
 
 	// Handle events from the broadcast group
 	done := make(chan struct{})
@@ -127,11 +132,11 @@ func RunStrawberry() {
 
 	// Wait for final result or timeout
 	select {
-	case result := <-solverResult:
+	case result := <-writerResult:
 		if result.Error != nil {
-			fmt.Printf("\n❌ Processing failed: %v\n", result.Error)
+			fmt.Printf("\n❌ Pipeline failed: %v\n", result.Error)
 		} else {
-			fmt.Println("\n=== Processing Complete ===")
+			fmt.Println("\n=== Pipeline Complete ===")
 		}
 	case <-ctx.Done():
 		fmt.Printf("\n⚠️  Processing timed out: %v\n", ctx.Err())

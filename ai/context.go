@@ -40,8 +40,13 @@ Compile the current context to curate the messages in the thread, so they are
 all formatted correctly, in the right order, and with the correct roles.
 */
 func (ctx *Context) Compile() *provider.GenerationParams {
+	// Store existing messages
+	existingMessages := make([]*provider.Message, len(ctx.Thread.Messages))
+	copy(existingMessages, ctx.Thread.Messages)
+	
 	ctx.Thread.Reset()
 
+	// Add system message first
 	ctx.Thread.AddMessage(provider.NewMessage(
 		provider.RoleSystem,
 		utils.QuickWrap(
@@ -50,6 +55,13 @@ func (ctx *Context) Compile() *provider.GenerationParams {
 			ctx.indent,
 		),
 	))
+
+	// Restore existing messages
+	for _, msg := range existingMessages {
+		if msg.Role != provider.RoleSystem {
+			ctx.Thread.AddMessage(msg)
+		}
+	}
 
 	userCount := 0
 
@@ -106,6 +118,9 @@ func (ctx *Context) GetScratchpad() *Context {
 Append to the context, so we can accumulate messages before compiling.
 */
 func (ctx *Context) Append(event provider.Event) {
+	if len(ctx.Scratchpad.Messages) == 0 {
+		ctx.Scratchpad.AddMessage(provider.NewMessage(provider.RoleAssistant, ""))
+	}
 	ctx.Scratchpad.Messages[len(ctx.Scratchpad.Messages)-1].Content += event.Text
 }
 

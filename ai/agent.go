@@ -83,6 +83,10 @@ func (agent *Agent) RemoveProcess() {
 	agent.params.Process = nil
 }
 
+func (agent *Agent) GetRole() string {
+	return agent.Identity.Role
+}
+
 /*
 Generate calls the underlying provider to have a Large Language Model
 generate text for the agent.

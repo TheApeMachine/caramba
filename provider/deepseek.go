@@ -49,10 +49,10 @@ func (d *DeepSeek) Generate(ctx context.Context, params *GenerationParams) <-cha
 
 		// Add optional parameters
 		if params.MaxTokens > 0 {
-			request.MaxTokens = params.MaxTokens
+			request.MaxTokens = int(params.MaxTokens)
 		}
 		if params.Temperature > 0 {
-			request.Temperature = params.Temperature
+			request.Temperature = float32(params.Temperature)
 		}
 
 		stream, err := d.client.CreateChatCompletionStream(ctx, request)

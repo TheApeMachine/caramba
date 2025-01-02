@@ -14,19 +14,30 @@ var (
 	exampleType string
 
 	exampleCmd = &cobra.Command{
-		Use:   "example",
-		Short: "Run example scenarios",
-		Long:  longExample,
+		Use:   "example [type]",
+		Short: "Run an example",
+		Long: `Run one of the available examples:
+  - research: Run the research pipeline example
+  - dev: Run the development pipeline example
+  - chat: Run the simple chat example
+  - pipeline: Run the graph-based pipeline example`,
 		Run: func(cmd *cobra.Command, args []string) {
-			switch exampleType {
+			if len(args) == 0 {
+				fmt.Println("Please specify an example type")
+				return
+			}
+
+			switch args[0] {
 			case "research":
 				examples.RunResearch()
 			case "dev":
 				examples.RunDev()
 			case "chat":
 				examples.RunChat()
+			case "pipeline":
+				examples.RunPipeline()
 			default:
-				fmt.Printf("Unknown example type: %s\nAvailable types: research, dev, chat\n", exampleType)
+				fmt.Printf("Unknown example type: %s\n", args[0])
 			}
 		},
 	}

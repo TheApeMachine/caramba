@@ -18,7 +18,7 @@ type OpenAI struct {
 func NewOpenAI(apiKey string) *OpenAI {
 	return &OpenAI{
 		client: sdk.NewClient(),
-		model:  sdk.ChatModelGPT4o,
+		model:  sdk.ChatModelGPT4oMini,
 	}
 }
 
