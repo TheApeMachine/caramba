@@ -1,6 +1,10 @@
 package stream
 
-import "github.com/theapemachine/caramba/provider"
+import (
+	"context"
+
+	"github.com/theapemachine/caramba/provider"
+)
 
 /*
 Accumulator is a wrapper for a provider Event stream which has both
@@ -17,7 +21,7 @@ func NewAccumulator() *Accumulator {
 	return &Accumulator{}
 }
 
-func (accumulator *Accumulator) Generate(in <-chan provider.Event) <-chan provider.Event {
+func (accumulator *Accumulator) Generate(ctx context.Context, in <-chan provider.Event) <-chan provider.Event {
 	out := make(chan provider.Event)
 
 	go func() {

@@ -4,130 +4,130 @@ import (
 	"context"
 
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
 
 /*
+AgentState represents the current operational state of an Agent during its lifecycle.
+It tracks whether the agent is idle, generating responses, calling tools, or completed its task.
+*/
+type AgentState uint
+
+const (
+	AgentStateIdle AgentState = iota
+	AgentStateGenerating
+	AgentStateToolCalling
+	AgentStateIterating
+	AgentStateDone
+)
+
+/*
 Agent wraps the requirements and functionality to turn a prompt and
 response sequence into behavior. It enhances the default functionality
-of a large language model, by adding optional structured responses and
-tool calling.
+of a large language model by adding optional structured responses and
+tool calling capabilities.
+
+The Agent maintains its own identity, context, and state while coordinating
+with providers to generate responses and execute tools.
 */
 type Agent struct {
-	System        *System   `json:"system" jsonschema:"title=System,description=The system prompt for the agent,required"`
 	Identity      *Identity `json:"identity" jsonschema:"title=Identity,description=The identity of the agent,required"`
 	Context       *Context  `json:"context" jsonschema:"title=Context,description=The context of the agent,required"`
 	MaxIterations int       `json:"max_iterations" jsonschema:"title=Max Iterations,description=The maximum number of iterations to perform,required"`
-	params        *provider.GenerationParams
 	provider      provider.Provider
+	accumulator   *stream.Accumulator
+	state         AgentState
 }
 
 /*
-NewAgent creates a new Agent instance.
+NewAgent creates a new Agent instance with the specified role and maximum iterations.
+It initializes the agent with a new identity, balanced provider, and accumulator,
+setting its initial state to idle.
+
+Parameters:
+  - ctx: The context for operations
+  - role: The role designation for the AI agent
+  - maxIterations: The maximum number of response generation iterations
 */
 func NewAgent(ctx context.Context, role string, maxIterations int) *Agent {
 	return &Agent{
-		Identity:      NewIdentity(ctx, role),
+		Identity:      NewIdentity(ctx, role).Initialize(),
 		provider:      provider.NewBalancedProvider(),
 		MaxIterations: maxIterations,
+		accumulator:   stream.NewAccumulator(),
+		state:         AgentStateIdle,
 	}
 }
 
 /*
-GenerateSchema adheres the Agent type to the Tool interface, meaning Agent
-is also a Tool. This allows agents to create new agents for task delegation,
-provided that have been given access to the Agent tool.
+GenerateSchema implements the Tool interface for Agent, allowing agents to create
+new agents for task delegation when given access to the Agent tool.
+It returns a JSON schema representation of the Agent type.
 */
 func (agent *Agent) GenerateSchema() interface{} {
 	return utils.GenerateSchema[*Agent]()
 }
 
-func (agent *Agent) Initialize() {
-	var instructions = "unstructured"
+/*
+AddTools appends the provided tools to the agent's available toolset,
+expanding its capabilities for task execution.
 
-	if agent.params != nil && agent.params.Process != nil {
-		instructions = "structured"
-	}
-
-	agent.System = NewSystem(agent.Identity, instructions, instructions == "structured")
-	agent.params = provider.NewGenerationParams()
-	agent.Context = NewContext(agent.System, agent.params)
-}
-
+Parameters:
+  - tools: Variable number of tools to add to the agent
+*/
 func (agent *Agent) AddTools(tools ...provider.Tool) {
-	if agent.params == nil {
-		agent.Initialize()
-	}
-
-	agent.params.Tools = append(agent.params.Tools, tools...)
+	agent.Identity.Params.Tools = append(agent.Identity.Params.Tools, tools...)
 }
 
 /*
-AddProcess activates structured outputs for the agent, in which it
-will follow the specific jsonschema defined by the process.
+AddProcess activates structured outputs for the agent by setting a process
+that defines a specific JSON schema for response formatting.
+
+Parameters:
+  - process: The process definition containing the output schema
 */
 func (agent *Agent) AddProcess(process provider.Process) {
-	agent.params.Process = process
-
-	// We have to reinitialize the agent, because the system prompt
-	// is different when structured outputs are enabled.
-	agent.Initialize()
+	agent.Identity.Params.Process = process
 }
 
 /*
-RemoveProcess deactivates structured outputs for the agent, and it
-will revert back to generating freeform text.
+RemoveProcess deactivates structured outputs for the agent,
+reverting it back to generating freeform text responses.
 */
 func (agent *Agent) RemoveProcess() {
-	agent.params.Process = nil
+	agent.Identity.Params.Process = nil
 }
 
+/*
+GetRole returns the role designation assigned to this agent,
+as defined in its identity.
+*/
 func (agent *Agent) GetRole() string {
 	return agent.Identity.Role
 }
 
 /*
 Generate calls the underlying provider to have a Large Language Model
-generate text for the agent.
+generate text for the agent. It compiles the context and streams the
+response through an accumulator.
+
+Parameters:
+  - ctx: The context for the generation operation
+  - msg: The message to generate a response for
+
+Returns:
+  - A channel of provider.Event containing the generated response
 */
 func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan provider.Event {
-	out := make(chan provider.Event)
+	agent.Context.Compile(msg)
+	errnie.Info("generating response for %s (%s)", agent.Identity.Name, msg.Role)
 
-	if agent.params == nil {
-		agent.Initialize()
-	}
+	agent.state = AgentStateGenerating
 
-	agent.Context.Compile()
-	iteration := 0
-
-	errnie.Info("%s (%s) generating response", agent.Identity.Name, msg.Role)
-
-	go func() {
-		defer close(out)
-
-		for iteration < agent.MaxIterations {
-			scratchpad := agent.Context.GetScratchpad()
-
-			for event := range agent.provider.Generate(ctx, agent.Context.Compile()) {
-				if event.Type == provider.EventChunk && event.Text != "" {
-					scratchpad.Append(event)
-				}
-
-				if event.Type == provider.EventToolCall {
-					scratchpad.ToolCall(event)
-				}
-
-				out <- event
-			}
-
-			if agent.Context.Done() {
-				break
-			}
-
-			iteration++
-		}
-	}()
-
-	return out
+	return agent.accumulator.Generate(
+		ctx,
+		agent.provider.Generate(ctx, agent.Identity.Params),
+	)
 }

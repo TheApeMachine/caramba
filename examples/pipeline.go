@@ -15,21 +15,16 @@ func RunPipeline() {
 	defer cancel()
 
 	// Initialize agents with specific roles
-	analyzeAgent := ai.NewAgent(ctx, "analyzer", 1)
-	researcher1 := ai.NewAgent(ctx, "researcher1", 2)
-	researcher2 := ai.NewAgent(ctx, "researcher2", 2)
+	analyzeAgent := ai.NewAgent(ctx, "analyzer", 2)
+	researcher1 := ai.NewAgent(ctx, "researcher", 2)
+	researcher2 := ai.NewAgent(ctx, "researcher", 2)
 	writerAgent := ai.NewAgent(ctx, "writer", 1)
 
-	analyzeAgent.Initialize()
-	researcher1.Initialize()
-	researcher2.Initialize()
-	writerAgent.Initialize()
-
 	// Configure and create the worker pool
-	config := &qpool.Config{
+	pool := qpool.NewQ(ctx, 2, 4, &qpool.Config{
 		SchedulingTimeout: time.Second * 60,
-	}
-	pool := qpool.NewQ(ctx, 2, 4, config)
+	})
+
 	defer pool.Close()
 
 	// Create a broadcast group for events

@@ -32,7 +32,7 @@ tools:
   qdrant:
     collection: "test"
     dimension: 1536
-  
+
 prompts:
   templates:
     task: |
@@ -83,6 +83,12 @@ prompts:
       CHALLENGER: highly skilled in critical thinking, logic, and breaking down big ideas into fundamental concepts.
     solver: |
       SOLVER: highly skilled in problem-solving, connecting multiple points of view, and generating solutions.
+    analyzer: |
+      ANALYZER: highly skilled in analyzing complex problems, and breaking them down into smaller, more manageable parts.
+    writer: |
+      WRITER: highly skilled in writing, and formatting responses.
+    researcher: |
+      RESEARCHER: highly skilled in researching, and gathering information.
   instructions:
     schema: |
       - A jsonschema is NOT a JSON object. It is a description of the structure of a JSON object.
@@ -100,7 +106,7 @@ prompts:
         - You should always avoid rigid lists, or any other structured format while thinking.
         - Your thoughts should flow naturally between elements, ideas, knowledge, concepts, connections, etc.
         - You should think through each received input with complex, abstract, multi-dimensional, and multi-layered reasoning.
-      
+
       CORE THINKING SEQUENCE:
        
         Initial Engagement:

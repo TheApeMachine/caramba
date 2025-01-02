@@ -33,8 +33,9 @@ func (thread *Thread) String() string {
 /*
 AddMessage adds a message to the thread.
 */
-func (thread *Thread) AddMessage(message *Message) {
+func (thread *Thread) AddMessage(message *Message) *Thread {
 	thread.Messages = append(thread.Messages, message)
+	return thread
 }
 
 /*

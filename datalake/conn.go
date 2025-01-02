@@ -17,6 +17,7 @@ uses S3 compatible storage.
 type Conn struct {
 	client *minio.Client
 	bucket string
+	err    error
 }
 
 func NewConn() *Conn {
@@ -53,7 +54,13 @@ func (conn *Conn) List(ctx context.Context, path string) <-chan minio.ObjectInfo
 }
 
 func (conn *Conn) Get(ctx context.Context, path string) (*minio.Object, error) {
-	return conn.client.GetObject(ctx, conn.bucket, path, minio.GetObjectOptions{})
+	var obj *minio.Object
+
+	if obj, conn.err = conn.client.GetObject(ctx, conn.bucket, path, minio.GetObjectOptions{}); conn.err != nil {
+		return nil, conn.err
+	}
+
+	return obj, nil
 }
 
 func (conn *Conn) Put(ctx context.Context, path string, data []byte, metadata map[string]string) (err error) {
