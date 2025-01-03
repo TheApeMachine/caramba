@@ -85,15 +85,20 @@ load attempts to retrieve an existing identity from storage based on its role.
 Returns true if successful, false if the identity doesn't exist or couldn't be loaded.
 */
 func (identity *Identity) load() bool {
+	errnie.Info("attempting to load identity for role: %s", identity.Role)
+	
 	if identity.loaded, identity.err = identity.conn.Get(identity.ctx, "identities/"+identity.Role); identity.err != nil {
-		errnie.Info("no existing identity found for %s", identity.Role)
+		errnie.Info("no existing identity found for %s: %v", identity.Role, identity.err)
 		return false
 	}
 
 	identity.Params = &provider.GenerationParams{}
-	json.NewDecoder(identity.loaded).Decode(identity.Params)
+	if err := json.NewDecoder(identity.loaded).Decode(identity.Params); err != nil {
+		errnie.Info("failed to decode identity params: %v", err)
+		return false
+	}
 
-	errnie.Info("identity loaded %s (%s)", identity.Name, identity.Role)
+	errnie.Info("identity loaded successfully for %s (%s)", identity.Name, identity.Role)
 	return true
 }
 
@@ -103,23 +108,31 @@ a new unique name, and default generation parameters.
 It validates and saves the new identity to storage.
 */
 func (identity *Identity) create() {
+	errnie.Info("creating new identity for role: %s", identity.Role)
 	v := viper.GetViper()
 
-	subkey := "unstructured"
+	// Initialize params first
+	identity.Name = utils.NewName()
+	identity.Params = provider.NewGenerationParams()
 
+	// Now we can safely check Process
+	// TODO: This still does not make sense at the moment, but we will deal with
+	//       being able to add a process at identity creation time later.
+	subkey := "unstructured"
 	if identity.Params.Process != nil {
 		subkey = "structured"
 	}
 
 	identity.System = v.GetString("prompts.system." + subkey)
-	identity.Name = utils.NewName()
-	identity.Params = provider.NewGenerationParams()
+	errnie.Info("loaded system prompt with subkey: %s", subkey)
 
 	if identity.err = identity.validate(); identity.err != nil {
+		errnie.Info("identity validation failed: %v", identity.err)
 		errnie.Error(identity.err)
 		return
 	}
 
+	errnie.Info("identity validated successfully, proceeding to save")
 	identity.save()
 	errnie.Info("identity created %s (%s)", identity.Name, identity.Role)
 }
@@ -129,11 +142,20 @@ save persists the current Identity's parameters to storage,
 using the role as the storage key.
 */
 func (identity *Identity) save() {
+	errnie.Info("attempting to save identity %s (%s)", identity.Name, identity.Role)
+	
 	var buf bytes.Buffer
-	json.NewEncoder(&buf).Encode(identity.Params)
+	if err := json.NewEncoder(&buf).Encode(identity.Params); err != nil {
+		errnie.Error(err)
+		return
+	}
 
-	identity.conn.Put(identity.ctx, "identities/"+identity.Role, buf.Bytes(), nil)
-	errnie.Info("identity saved %s (%s)", identity.Name, identity.Role)
+	if err := identity.conn.Put(identity.ctx, "identities/"+identity.Role, buf.Bytes(), nil); err != nil {
+		errnie.Error(err)
+		return
+	}
+
+	errnie.Info("identity saved successfully %s (%s)", identity.Name, identity.Role)
 }
 
 /*

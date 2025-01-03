@@ -19,6 +19,7 @@ wrong, and it's a good way to test the agent's ability to reason.
 type Strawberry struct {
 	ctx    context.Context
 	agents map[string][]*ai.Agent
+	pool   *qpool.Q
 }
 
 /*
@@ -39,6 +40,9 @@ func NewStrawberry(ctx context.Context, role string) *Strawberry {
 			"challenger": {ai.NewAgent(ctx, "challenger", 2)},
 			"solver":     {ai.NewAgent(ctx, "solver", 2)},
 		},
+		pool: qpool.NewQ(ctx, 4, 8, &qpool.Config{
+			SchedulingTimeout: time.Second * 60,
+		}),
 	}
 }
 
@@ -48,15 +52,10 @@ It initializes the agents and creates a worker pool to handle the different
 steps of the strawberry problem.
 */
 func (strawberry *Strawberry) Run() error {
-	// Configure and create the worker pool
-	config := &qpool.Config{
-		SchedulingTimeout: time.Second * 60,
-	}
-	pool := qpool.NewQ(strawberry.ctx, 2, 4, config)
-	defer pool.Close()
+	defer strawberry.pool.Close()
 
 	// Create a broadcast group for events
-	broadcast := pool.CreateBroadcastGroup("strawberry-events", time.Minute)
+	broadcast := strawberry.pool.CreateBroadcastGroup("strawberry-events", time.Minute)
 	// events := pool.Subscribe("strawberry-events")
 
 	// Create and configure the conversation thread
@@ -66,14 +65,14 @@ func (strawberry *Strawberry) Run() error {
 
 	for _, agents := range strawberry.agents {
 		for _, agent := range agents {
-			pool.Schedule(agent.Identity.Name,
+			strawberry.pool.Schedule(agent.Identity.Name,
 				func() (any, error) {
 					accumulator := stream.NewAccumulator()
 					for event := range accumulator.Generate(
 						strawberry.ctx,
 						agent.Generate(strawberry.ctx, message),
 					) {
-						broadcast.Send(qpool.QuantumValue{Value: event})
+						broadcast.Send(qpool.NewQValue(event, []qpool.State{}))
 					}
 
 					return nil, nil
@@ -81,6 +80,10 @@ func (strawberry *Strawberry) Run() error {
 				qpool.WithCircuitBreaker(agent.Identity.Name, 3, time.Minute),
 				qpool.WithRetry(3, &qpool.ExponentialBackoff{Initial: time.Second}),
 				qpool.WithTTL(time.Minute),
+				// qpool.WithDependencyRetry(dependency, qpool.RetryStrategy{
+				// 	MaxRetries: 3,
+				// 	Backoff:    &qpool.ExponentialBackoff{Initial: time.Second},
+				// }),
 			)
 		}
 	}

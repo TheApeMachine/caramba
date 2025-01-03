@@ -56,10 +56,21 @@ func (conn *Conn) List(ctx context.Context, path string) <-chan minio.ObjectInfo
 func (conn *Conn) Get(ctx context.Context, path string) (*minio.Object, error) {
 	var obj *minio.Object
 
+	errnie.Info("attempting to get object from path: %s", path)
+	
 	if obj, conn.err = conn.client.GetObject(ctx, conn.bucket, path, minio.GetObjectOptions{}); conn.err != nil {
+		errnie.Info("failed to get object: %v", conn.err)
 		return nil, conn.err
 	}
 
+	// Check if the object exists by trying to get its stat
+	_, err := obj.Stat()
+	if err != nil {
+		errnie.Info("object does not exist or cannot be accessed: %v", err)
+		return nil, err
+	}
+
+	errnie.Info("successfully retrieved object from path: %s", path)
 	return obj, nil
 }
 
