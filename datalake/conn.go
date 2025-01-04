@@ -20,6 +20,14 @@ type Conn struct {
 	err    error
 }
 
+/*
+NewConn creates a new connection to the S3-compatible storage.
+It initializes the Minio client with the provided credentials and
+creates a default bucket if it doesn't exist.
+
+Returns:
+  - *Conn: A new connection instance with initialized client and bucket
+*/
 func NewConn() *Conn {
 	endpoint := "localhost:9000"
 	accessKeyID := os.Getenv("MINIO_USER")
@@ -45,6 +53,17 @@ func NewConn() *Conn {
 	return &Conn{client: client, bucket: "datalake"}
 }
 
+/*
+List returns a channel of ObjectInfo for all objects in the specified path.
+It recursively lists all objects and includes their metadata.
+
+Parameters:
+  - ctx: Context for the operation
+  - path: The path prefix to list objects from
+
+Returns:
+  - <-chan minio.ObjectInfo: Channel streaming object information
+*/
 func (conn *Conn) List(ctx context.Context, path string) <-chan minio.ObjectInfo {
 	return conn.client.ListObjects(ctx, conn.bucket, minio.ListObjectsOptions{
 		Prefix:       path,
@@ -53,6 +72,18 @@ func (conn *Conn) List(ctx context.Context, path string) <-chan minio.ObjectInfo
 	})
 }
 
+/*
+Get retrieves an object from the specified path in the datalake.
+It verifies the object's existence before returning it.
+
+Parameters:
+  - ctx: Context for the operation
+  - path: The path to the object to retrieve
+
+Returns:
+  - *minio.Object: The retrieved object
+  - error: Any error that occurred during retrieval
+*/
 func (conn *Conn) Get(ctx context.Context, path string) (*minio.Object, error) {
 	var obj *minio.Object
 
@@ -74,6 +105,19 @@ func (conn *Conn) Get(ctx context.Context, path string) (*minio.Object, error) {
 	return obj, nil
 }
 
+/*
+Put stores data at the specified path in the datalake with optional metadata.
+It creates a new object or overwrites an existing one.
+
+Parameters:
+  - ctx: Context for the operation
+  - path: The path where the object should be stored
+  - data: The byte data to store
+  - metadata: Optional metadata to attach to the object
+
+Returns:
+  - error: Any error that occurred during the operation
+*/
 func (conn *Conn) Put(ctx context.Context, path string, data []byte, metadata map[string]string) (err error) {
 	reader := bytes.NewReader(data)
 

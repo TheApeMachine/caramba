@@ -39,19 +39,32 @@ type ConsensusSpace struct {
 	waveFunction   *qpool.WaveFunction // Store the current wave function
 }
 
-// ConsensusRule defines how perspectives are evaluated for consensus
+/*
+ConsensusRule defines how perspectives are evaluated for consensus
+*/
 type ConsensusRule struct {
 	Name     string
 	Weight   float64
 	Evaluate func([]Perspective) (interface{}, float64)
 }
 
+/*
+ConsensusConfig defines the configuration for a consensus space.
+*/
 type ConsensusConfig struct {
 	CollapseThreshold float64
 	MinPerspectives   int
 	Rules             []ConsensusRule
 }
 
+/*
+NewConsensusSpace creates a new ConsensusSpace instance with the specified ID and configuration.
+It initializes all the necessary maps and sets default values for the consensus parameters.
+
+Parameters:
+  - id: Unique identifier for the consensus space
+  - config: Configuration settings for consensus rules and thresholds
+*/
 func NewConsensusSpace(id string, config ConsensusConfig) *ConsensusSpace {
 	return &ConsensusSpace{
 		ID:                id,
@@ -64,6 +77,13 @@ func NewConsensusSpace(id string, config ConsensusConfig) *ConsensusSpace {
 	}
 }
 
+/*
+AddPerspective adds a new perspective to the consensus space and updates the quantum state.
+It calculates method diversity, adjusts confidence, and attempts to reach consensus if possible.
+
+Parameters:
+  - p: The perspective to add to the consensus space
+*/
 func (cs *ConsensusSpace) AddPerspective(p Perspective) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -98,7 +118,14 @@ func (cs *ConsensusSpace) AddPerspective(p Perspective) {
 	cs.tryCollapse()
 }
 
-// AddDependency establishes a dependency between agents
+/*
+AddDependency establishes dependencies between agents in the consensus space.
+It updates both the Dependencies map and WaitGroup to track agent relationships.
+
+Parameters:
+  - agentID: The ID of the agent that has dependencies
+  - dependsOn: List of agent IDs that this agent depends on
+*/
 func (cs *ConsensusSpace) AddDependency(agentID string, dependsOn []string) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -113,7 +140,11 @@ func (cs *ConsensusSpace) AddDependency(agentID string, dependsOn []string) {
 	}
 }
 
-// tryCollapse attempts to collapse the perspectives into a consensus
+/*
+tryCollapse attempts to reach consensus by evaluating current perspectives.
+It checks if minimum conditions are met and collapses the quantum state if
+confidence threshold is exceeded.
+*/
 func (cs *ConsensusSpace) tryCollapse() {
 	if cs.isCollapsed || len(cs.Perspectives) < cs.minPerspectives {
 		return
@@ -130,7 +161,14 @@ func (cs *ConsensusSpace) tryCollapse() {
 	}
 }
 
-// evaluateConsensus applies consensus rules to current perspectives
+/*
+evaluateConsensus applies all consensus rules to the current perspectives
+and returns the best result along with its confidence score.
+
+Returns:
+  - interface{}: The consensus result
+  - float64: The confidence score for the consensus
+*/
 func (cs *ConsensusSpace) evaluateConsensus() (interface{}, float64) {
 	var totalConfidence float64
 	var weightedResults []struct {
@@ -166,7 +204,13 @@ func (cs *ConsensusSpace) evaluateConsensus() (interface{}, float64) {
 	return bestResult, normalizedConfidence
 }
 
-// collapse finalizes the consensus and notifies observers
+/*
+collapse finalizes the consensus state, sets minimum uncertainty,
+and notifies observers of the final consensus value.
+
+Parameters:
+  - consensus: The final consensus value to be set
+*/
 func (cs *ConsensusSpace) collapse(consensus interface{}) {
 	cs.isCollapsed = true
 	cs.consensus = consensus
@@ -177,7 +221,13 @@ func (cs *ConsensusSpace) collapse(consensus interface{}) {
 	}
 }
 
-// notifyDependents checks and notifies agents waiting on this one
+/*
+notifyDependents checks for agents waiting on the completed agent
+and notifies them if all their dependencies are met.
+
+Parameters:
+  - completedAgentID: ID of the agent that just completed its task
+*/
 func (cs *ConsensusSpace) notifyDependents(completedAgentID string) {
 	// Check agents waiting on this one
 	for _, waitingID := range cs.WaitGroup[completedAgentID] {
@@ -200,7 +250,16 @@ func (cs *ConsensusSpace) notifyDependents(completedAgentID string) {
 	}
 }
 
-// Helper functions
+/*
+HasPerspective checks if a perspective from a specific agent exists
+in the consensus space.
+
+Parameters:
+  - agentID: The ID of the agent to check for
+
+Returns:
+  - bool: True if the agent has submitted a perspective, false otherwise
+*/
 func (cs *ConsensusSpace) HasPerspective(agentID string) bool {
 	for _, p := range cs.Perspectives {
 		if p.ID == agentID {
@@ -210,6 +269,14 @@ func (cs *ConsensusSpace) HasPerspective(agentID string) bool {
 	return false
 }
 
+/*
+removeFromWaitGroup removes a waiting agent from the wait group
+after its dependency is satisfied.
+
+Parameters:
+  - completedID: ID of the completed dependency
+  - waitingID: ID of the waiting agent to remove
+*/
 func (cs *ConsensusSpace) removeFromWaitGroup(completedID, waitingID string) {
 	waiting := cs.WaitGroup[completedID]
 	for i, id := range waiting {
@@ -220,7 +287,16 @@ func (cs *ConsensusSpace) removeFromWaitGroup(completedID, waitingID string) {
 	}
 }
 
-// calculateMethodDiversity returns a diversity score (0-1) for a given method
+/*
+calculateMethodDiversity calculates and caches the diversity score
+for a given method based on the current method registry.
+
+Parameters:
+  - method: The method to calculate diversity for
+
+Returns:
+  - float64: A diversity score between 0 and 1
+*/
 func (cs *ConsensusSpace) calculateMethodDiversity(method string) float64 {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()

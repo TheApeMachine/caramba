@@ -2,7 +2,7 @@ module github.com/theapemachine/caramba
 
 go 1.23.4
 
-replace github.com/theapemachine/qpool => /Users/theapemachine/go/src/github.com/theapemachine/qpool
+replace github.com/theapemachine/qpool => ../qpool
 
 require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.8
