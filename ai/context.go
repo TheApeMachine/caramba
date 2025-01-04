@@ -1,7 +1,11 @@
 package ai
 
 import (
+	"errors"
+	"os"
+
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -54,6 +58,21 @@ Returns:
   - Generation parameters containing the compiled conversation thread
 */
 func (ctx *Context) Compile(msg *provider.Message) *provider.GenerationParams {
+	if ctx.identity == nil {
+		errnie.Error(errors.New("identity is nil"))
+		os.Exit(1)
+	}
+
+	if ctx.identity.Params == nil {
+		errnie.Error(errors.New("params are nil"))
+		os.Exit(1)
+	}
+
+	if ctx.identity.Params.Thread == nil {
+		errnie.Error(errors.New("thread is nil"))
+		os.Exit(1)
+	}
+
 	ctx.identity.Params.Thread.Reset()
 
 	ctx.identity.Params.Thread.AddMessage(
