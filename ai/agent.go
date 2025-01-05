@@ -2,6 +2,8 @@ package ai
 
 import (
 	"context"
+	"errors"
+	"os"
 
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
@@ -121,13 +123,49 @@ Returns:
   - A channel of provider.Event containing the generated response
 */
 func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan provider.Event {
-	agent.Context.Compile(msg)
+	agent.Context = NewContext(agent.Identity)
+
+	if !agent.Validate() {
+		os.Exit(1)
+	}
+
 	errnie.Info("generating response for %s (%s)", agent.Identity.Name, msg.Role)
 
 	agent.state = AgentStateGenerating
 
-	return agent.accumulator.Generate(
-		ctx,
-		agent.provider.Generate(ctx, agent.Identity.Params),
-	)
+	out := make(chan provider.Event)
+
+	go func() {
+		defer close(out)
+
+		for event := range agent.provider.Generate(ctx, agent.Context.Compile(msg)) {
+			out <- event
+		}
+	}()
+
+	return out
+}
+
+func (agent *Agent) Validate() bool {
+	if err := agent.Identity.validate(); err != nil {
+		errnie.Error(err)
+		return false
+	}
+
+	if agent.Context == nil {
+		errnie.Error(errors.New("context is nil"))
+		return false
+	}
+
+	if agent.Identity == nil {
+		errnie.Error(errors.New("identity is nil"))
+		return false
+	}
+
+	if agent.provider == nil {
+		errnie.Error(errors.New("provider is nil"))
+		return false
+	}
+
+	return true
 }

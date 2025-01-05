@@ -79,7 +79,11 @@ func (ctx *Context) Compile(msg *provider.Message) *provider.GenerationParams {
 		provider.NewMessage(provider.RoleSystem, ctx.identity.System),
 	).AddMessage(msg)
 
-	ctx.identity.Params.Thread.AddMessage(ctx.Scratchpad)
+	// Make sure we don't add empty messages to the thread, it pisses Claude off.
+	if ctx.Scratchpad != nil && ctx.Scratchpad.Content != "" {
+		ctx.identity.Params.Thread.AddMessage(ctx.Scratchpad)
+	}
+
 	return ctx.identity.Params
 }
 

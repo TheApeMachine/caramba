@@ -79,6 +79,26 @@ Generate a response from an LLM provider, passing in the parameters, which
 include the messages, and model settings to use.
 */
 func (lb *BalancedProvider) Generate(ctx context.Context, params *GenerationParams) <-chan Event {
+	hasSystem := false
+	hasUser := false
+
+	for _, message := range params.Thread.Messages {
+		if message.Role == "system" {
+			hasSystem = true
+		} else if message.Role == "user" {
+			hasUser = true
+		}
+	}
+
+	if !hasSystem {
+		errnie.Error(errors.New("no system message found"))
+		os.Exit(1)
+	}
+
+	if !hasUser {
+		errnie.Warn("no user message found")
+	}
+
 	out := make(chan Event)
 
 	go func() {

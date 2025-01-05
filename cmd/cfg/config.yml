@@ -75,8 +75,8 @@ prompts:
 
       {{instructions}}
   roles:
-    prompt: |
-      PROMT ENGINEER: highly skilled in creating clear, specific, and effective prompts.
+    prompt_engineer: |
+      PROMPT ENGINEER: highly skilled in creating clear, specific, and effective prompts.
     reasoner: |
       REASONER: highly skilled in abstract reasoning, connecting disparate concepts, and generating new ideas.
     challenger: |

@@ -10,6 +10,7 @@ import (
 	"github.com/theapemachine/caramba/ai"
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/qpool"
 )
 
@@ -38,10 +39,10 @@ func NewStrawberry(ctx context.Context, role string) *Strawberry {
 	return &Strawberry{
 		ctx: ctx,
 		agents: map[string][]*ai.Agent{
-			"prompt":     {ai.NewAgent(ctx, "prompt", 1)},
-			"reasoner":   {ai.NewAgent(ctx, "reasoner", 2)},
-			"challenger": {ai.NewAgent(ctx, "challenger", 2)},
-			"solver":     {ai.NewAgent(ctx, "solver", 2)},
+			"prompt_engineer": {ai.NewAgent(ctx, "prompt_engineer", 1)},
+			"reasoner":        {ai.NewAgent(ctx, "reasoner", 2)},
+			"challenger":      {ai.NewAgent(ctx, "challenger", 2)},
+			"solver":          {ai.NewAgent(ctx, "solver", 2)},
 		},
 		pool: qpool.NewQ(ctx, 4, 8, &qpool.Config{
 			SchedulingTimeout: time.Second * 60,
@@ -114,7 +115,7 @@ func (s *Strawberry) Run() error {
 	})
 
 	// Set up dependencies between agents
-	consensus.AddDependency("reasoner", []string{"prompt"})
+	consensus.AddDependency("reasoner", []string{"prompt_engineer"})
 	consensus.AddDependency("challenger", []string{"reasoner"})
 	consensus.AddDependency("solver", []string{"challenger", "reasoner"})
 
@@ -129,106 +130,137 @@ func (s *Strawberry) Run() error {
 	}
 
 	// Schedule the agent interactions
-	s.pool.Schedule("agent-interactions",
+	s.pool.Schedule("prompt_engineer",
 		func() (any, error) {
 			// Start with prompt agent
-			promptChan := s.agents["prompt"][0].Generate(s.ctx, &provider.Message{
+			promptChan := s.agents["prompt_engineer"][0].Generate(s.ctx, &provider.Message{
 				Role:    "user",
-				Content: "Count the number of times the letter 'r' appears in the word 'strawberry'",
+				Content: "How many times do we find the letter r in the word strawberry?",
 			})
 
-			// Process prompt agent's response
-			for event := range promptChan {
-				if event.Type == provider.EventChunk {
-					count := s.extractCount(event.Text)
-					perspective := drknow.Perspective{
-						ID:         "prompt",
-						Owner:      "prompt",
-						Content:    count,
-						Confidence: 0.6, // We'll need to derive this from the response
-						Method:     "llm-generation",
-						Reasoning:  []string{event.Text}, // Using the text as reasoning
-						Timestamp:  time.Now(),
-					}
-					consensus.AddPerspective(perspective)
-				}
+			accumulator := stream.NewAccumulator()
+			for event := range accumulator.Generate(s.ctx, promptChan) {
+				fmt.Print(event.Text)
 			}
 
+			perspective := drknow.Perspective{
+				ID:         "prompt_engineer",
+				Owner:      "prompt_engineer",
+				Content:    accumulator.Compile().Text,
+				Confidence: 0.6, // We'll need to derive this from the response
+				Method:     "llm-generation",
+				Reasoning:  []string{accumulator.Compile().Text},
+				Timestamp:  time.Now(),
+			}
+			consensus.AddPerspective(perspective)
+
+			return nil, nil
+		},
+	)
+
+	s.pool.Schedule("reasoner",
+		func() (any, error) {
 			// Only proceed with reasoner if prompt is done
-			if consensus.HasPerspective("prompt") {
+			if consensus.HasPerspective("prompt_engineer") {
 				reasonerChan := s.agents["reasoner"][0].Generate(s.ctx, &provider.Message{
 					Role:    "user",
-					Content: "Verify the count of 'r' in 'strawberry' using systematic character analysis",
+					Content: "Verify the answer provided by the previous agent by presenting your own empirical evidence.",
 				})
 
-				for event := range reasonerChan {
-					if event.Type == provider.EventChunk {
-						count := s.extractCount(event.Text)
-						perspective := drknow.Perspective{
-							ID:         "reasoner",
-							Owner:      "reasoner",
-							Content:    count,
-							Confidence: 0.9, // Higher confidence for systematic analysis
-							Method:     "systematic-analysis",
-							Reasoning:  []string{event.Text},
-							Timestamp:  time.Now(),
-						}
-						consensus.AddPerspective(perspective)
-					}
+				accumulator := stream.NewAccumulator()
+				for event := range accumulator.Generate(s.ctx, reasonerChan) {
+					fmt.Print(event.Text)
 				}
-			}
 
-			// Only proceed with challenger if reasoner is done
-			if consensus.HasPerspective("reasoner") {
-				challengerChan := s.agents["challenger"][0].Generate(s.ctx, &provider.Message{
-					Role:    "user",
-					Content: "Challenge and verify the current count of 'r' in 'strawberry'. Look for edge cases.",
-				})
-
-				for event := range challengerChan {
-					if event.Type == provider.EventChunk {
-						count := s.extractCount(event.Text)
-						perspective := drknow.Perspective{
-							ID:         "challenger",
-							Owner:      "challenger",
-							Content:    count,
-							Confidence: 0.95, // High confidence for verification
-							Method:     "verification",
-							Reasoning:  []string{event.Text},
-							Timestamp:  time.Now(),
-						}
-						consensus.AddPerspective(perspective)
-					}
+				perspective := drknow.Perspective{
+					ID:         "reasoner",
+					Owner:      "reasoner",
+					Content:    accumulator.Compile().Text,
+					Confidence: 0.9, // Higher confidence for systematic analysis
+					Method:     "systematic-analysis",
+					Reasoning:  []string{accumulator.Compile().Text},
+					Timestamp:  time.Now(),
 				}
-			}
 
-			// Only proceed with solver if both challenger and reasoner are done
-			if consensus.HasPerspective("challenger") && consensus.HasPerspective("reasoner") {
-				solverChan := s.agents["solver"][0].Generate(s.ctx, &provider.Message{
-					Role:    "user",
-					Content: "Make a final determination of the count of 'r' in 'strawberry' based on all previous analyses",
-				})
-
-				for event := range solverChan {
-					if event.Type == provider.EventChunk {
-						count := s.extractCount(event.Text)
-						perspective := drknow.Perspective{
-							ID:         "solver",
-							Owner:      "solver",
-							Content:    count,
-							Confidence: 1.0, // Maximum confidence for final solution
-							Method:     "final-verification",
-							Reasoning:  []string{event.Text},
-							Timestamp:  time.Now(),
-						}
-						consensus.AddPerspective(perspective)
-					}
-				}
+				consensus.AddPerspective(perspective)
 			}
 
 			return nil, nil
 		},
-		qpool.WithCircuitBreaker("agent-interactions", 3, time.Minute),
+		qpool.WithDependencies([]string{"prompt_engineer"}),
+		qpool.WithDependencyRetry(3, &qpool.ExponentialBackoff{
+			Initial: time.Second * 10,
+		}),
+	)
+
+	s.pool.Schedule("challenger",
+		func() (any, error) {
+			// Only proceed with challenger if reasoner is done
+			if consensus.HasPerspective("reasoner") {
+				challengerChan := s.agents["challenger"][0].Generate(s.ctx, &provider.Message{
+					Role:    "user",
+					Content: "Challenge the work of the previous agent by presenting alternative angles, counter-examples, or edge cases.",
+				})
+
+				accumulator := stream.NewAccumulator()
+
+				for event := range accumulator.Generate(s.ctx, challengerChan) {
+					fmt.Print(event.Text)
+				}
+
+				perspective := drknow.Perspective{
+					ID:         "challenger",
+					Owner:      "challenger",
+					Content:    accumulator.Compile().Text,
+					Confidence: 0.95, // High confidence for verification
+					Method:     "verification",
+					Reasoning:  []string{accumulator.Compile().Text},
+					Timestamp:  time.Now(),
+				}
+
+				consensus.AddPerspective(perspective)
+			}
+
+			return nil, nil
+		},
+		qpool.WithDependencies([]string{"reasoner"}),
+		qpool.WithDependencyRetry(3, &qpool.ExponentialBackoff{
+			Initial: time.Second * 10,
+		}),
+	)
+
+	s.pool.Schedule("solver",
+		func() (any, error) {
+			// Only proceed with solver if both challenger and reasoner are done
+			if consensus.HasPerspective("challenger") && consensus.HasPerspective("reasoner") {
+				solverChan := s.agents["solver"][0].Generate(s.ctx, &provider.Message{
+					Role:    "user",
+					Content: "Consider the work of the previous agents and motivate the final answer, and the confidence in that answer.",
+				})
+
+				accumulator := stream.NewAccumulator()
+				for event := range accumulator.Generate(s.ctx, solverChan) {
+					fmt.Print(event.Text)
+				}
+
+				perspective := drknow.Perspective{
+					ID:         "solver",
+					Owner:      "solver",
+					Content:    accumulator.Compile().Text,
+					Confidence: 1.0, // Maximum confidence for final solution
+					Method:     "final-verification",
+					Reasoning:  []string{accumulator.Compile().Text},
+					Timestamp:  time.Now(),
+				}
+				consensus.AddPerspective(perspective)
+			}
+
+			return nil, nil
+		},
+		qpool.WithDependencies([]string{"challenger", "reasoner"}),
+		qpool.WithDependencyRetry(3, &qpool.ExponentialBackoff{
+			Initial: time.Second * 10,
+		}),
 	)
 
 	// Wait for consensus to be reached

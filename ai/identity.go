@@ -86,14 +86,13 @@ Returns true if successful, false if the identity doesn't exist or couldn't be l
 */
 func (identity *Identity) load() bool {
 	errnie.Info("attempting to load identity for role: %s", identity.Role)
-	
+
 	if identity.loaded, identity.err = identity.conn.Get(identity.ctx, "identities/"+identity.Role); identity.err != nil {
 		errnie.Info("no existing identity found for %s: %v", identity.Role, identity.err)
 		return false
 	}
 
-	identity.Params = &provider.GenerationParams{}
-	if err := json.NewDecoder(identity.loaded).Decode(identity.Params); err != nil {
+	if err := json.NewDecoder(identity.loaded).Decode(identity); err != nil {
 		errnie.Info("failed to decode identity params: %v", err)
 		return false
 	}
@@ -115,16 +114,14 @@ func (identity *Identity) create() {
 	identity.Name = utils.NewName()
 	identity.Params = provider.NewGenerationParams()
 
-	// Now we can safely check Process
-	// TODO: This still does not make sense at the moment, but we will deal with
-	//       being able to add a process at identity creation time later.
-	subkey := "unstructured"
-	if identity.Params.Process != nil {
-		subkey = "structured"
-	}
+	identity.System = v.GetString("prompts.system.unstructured")
+	errnie.Info("loaded system prompt")
 
-	identity.System = v.GetString("prompts.system." + subkey)
-	errnie.Info("loaded system prompt with subkey: %s", subkey)
+	identity.System = utils.Substitute(identity.System, map[string]string{
+		"role":         identity.Role,
+		"identity":     utils.QuickWrap("identity", identity.String(), 1),
+		"instructions": utils.QuickWrap("instructions", v.GetString("prompts.instructions.thinking"), 1),
+	}, 1)
 
 	if identity.err = identity.validate(); identity.err != nil {
 		errnie.Info("identity validation failed: %v", identity.err)
@@ -143,9 +140,9 @@ using the role as the storage key.
 */
 func (identity *Identity) save() {
 	errnie.Info("attempting to save identity %s (%s)", identity.Name, identity.Role)
-	
+
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(identity.Params); err != nil {
+	if err := json.NewEncoder(&buf).Encode(identity); err != nil {
 		errnie.Error(err)
 		return
 	}

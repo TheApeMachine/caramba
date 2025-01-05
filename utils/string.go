@@ -148,13 +148,14 @@ func QuickWrap(tag, content string, indent int) string {
 QuickWrapWithAttributes is a variant of QuickWrap that allows for additional attributes to be added to the tag.
 */
 func QuickWrapWithAttributes(tag, content string, indent int, attributes map[string]string) string {
-	attr := ""
+	attr := []string{tag}
+
 	for key, value := range attributes {
-		attr += " " + key + "=\"" + value + "\""
+		attr = append(attr, key+"=\""+value+"\"")
 	}
 
 	return JoinWith("\n",
-		Indent("<"+tag+attr+">", indent),
+		Indent("<"+strings.Join(attr, " ")+">", indent),
 		Indent(Reflow(content), indent+1),
 		Indent("</"+tag+">", indent),
 	)

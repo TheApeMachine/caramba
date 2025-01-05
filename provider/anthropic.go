@@ -98,6 +98,7 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *GenerationPara
 
 		if err := stream.Err(); err != nil {
 			errnie.Error(err)
+			errnie.Log("DUMP %v", params)
 			out <- Event{Type: EventError, Error: err}
 			return
 		}

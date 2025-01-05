@@ -2,6 +2,7 @@ package stream
 
 import (
 	"context"
+	"sync"
 
 	"github.com/theapemachine/caramba/provider"
 )
@@ -14,18 +15,25 @@ user, or frontend of some kind, while also being able to use the
 full output once the provider model is finished generating a response.
 */
 type Accumulator struct {
+	wg     *sync.WaitGroup
 	chunks []provider.Event
 }
 
 func NewAccumulator() *Accumulator {
-	return &Accumulator{}
+	return &Accumulator{
+		wg: &sync.WaitGroup{},
+	}
 }
 
 func (accumulator *Accumulator) Generate(ctx context.Context, in <-chan provider.Event) <-chan provider.Event {
 	out := make(chan provider.Event)
 
+	accumulator.wg.Add(1)
+
 	go func() {
 		defer close(out)
+		defer accumulator.wg.Done()
+
 		for event := range in {
 			accumulator.chunks = append(accumulator.chunks, event)
 			out <- event
@@ -33,6 +41,15 @@ func (accumulator *Accumulator) Generate(ctx context.Context, in <-chan provider
 	}()
 
 	return out
+}
+
+/*
+Wait provides a method to wait for the accumulator to finish processing.
+Useful if you are at the end of a pipeline and there is no out channel to
+for throughputting the final result.
+*/
+func (accumulator *Accumulator) Wait() {
+	accumulator.wg.Wait()
 }
 
 /*
