@@ -10,28 +10,49 @@ import (
 	"github.com/theapemachine/caramba/ai"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/tools"
+	"github.com/theapemachine/errnie"
 )
 
-func RunChat() {
-	ctx := context.Background()
+/*
+Chat shows off the basic chat example, where the user goes back and forth
+with an AI agent, that keeps track of the conversation in a thread.
+We will also add the browser tool to the agent, so that it can browse the web.
+*/
+type Chat struct {
+	ctx   context.Context
+	agent *ai.Agent
+}
 
-	agent := ai.NewAgent(ctx, "assistant", 1)
+/*
+NewChat creates a new Chat instance with the specified context and role.
+It initializes an empty scratchpad for accumulating assistant responses
+and sets up the basic formatting configuration.
 
-	agent.AddTools(
+Parameters:
+  - ctx: The context for operations
+  - role: The role designation for the AI agent
+*/
+func NewChat(ctx context.Context, role string) *Chat {
+	return &Chat{
+		ctx:   ctx,
+		agent: ai.NewAgent(ctx, role, 1),
+	}
+}
+
+/*
+Run starts the chat loop, which allows the user to interact with the agent.
+It adds the browser tool to the agent, so that it can browse the web.
+*/
+func (chat *Chat) Run() error {
+	chat.agent.AddTools(
 		tools.NewBrowser(),
-		tools.NewContainer(),
 	)
-
-	agent.Initialize()
-
-	fmt.Println("💬 Simple Chat Example")
-	fmt.Println("Type 'exit' to quit")
-	fmt.Println("Enter your message:")
 
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for {
 		fmt.Print("\n> ")
+
 		if !scanner.Scan() {
 			break
 		}
@@ -41,21 +62,27 @@ func RunChat() {
 			break
 		}
 
-		message := provider.NewMessage(provider.RoleUser, input)
-
-		for event := range agent.Generate(ctx, message) {
-			switch event.Type {
-			case provider.EventChunk:
-				if event.Text != "" {
-					fmt.Print(event.Text)
+		for event := range chat.agent.Generate(
+			chat.ctx,
+			provider.NewMessage(provider.RoleUser, input),
+		) {
+			switch event.Type() {
+			case "chunk":
+				if data, ok := event.Data().(map[string]interface{}); ok {
+					if text, ok := data["text"].(string); ok {
+						fmt.Print(text)
+					}
 				}
-			case provider.EventToolCall:
-				fmt.Printf("\n🛠  Using tool: %s\n", event.Name)
-			case provider.EventError:
-				fmt.Printf("\n❌ Error: %s\n", event.Error)
+			case "error":
+				if data, ok := event.Data().(map[string]interface{}); ok {
+					if err, ok := data["error"].(error); ok {
+						return errnie.Error(err)
+					}
+				}
+				return errnie.Error(fmt.Errorf("unknown error"))
 			}
 		}
 	}
 
-	fmt.Println("\n👋 Goodbye!")
+	return nil
 }

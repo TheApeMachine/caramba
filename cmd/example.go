@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -14,19 +16,31 @@ var (
 	exampleType string
 
 	exampleCmd = &cobra.Command{
-		Use:   "example",
-		Short: "Run example scenarios",
+		Use:   "example [type]",
+		Short: "Run an example",
 		Long:  longExample,
 		Run: func(cmd *cobra.Command, args []string) {
-			switch exampleType {
-			case "research":
-				examples.RunResearch()
-			case "dev":
-				examples.RunDev()
-			case "chat":
-				examples.RunChat()
+			os.Setenv("LOG_LEVEL", "debug")
+			os.Setenv("LOGFILE", "true")
+
+			errnie.InitLogger()
+
+			if len(args) == 0 {
+				fmt.Println("Please specify an example type")
+				return
+			}
+
+			switch args[0] {
+			case "strawberry":
+				strawberry := examples.NewStrawberry(cmd.Context(), "strawberry")
+				errnie.Error(strawberry.Run())
+			case "architecture":
+				architecture := examples.NewArchitecture(cmd.Context(), "architecture")
+				errnie.Error(architecture.Run())
+			case "analysis":
+				errnie.Error(examples.RunAnalysis(cmd.Context(), "How many strawberries are in the world?"))
 			default:
-				fmt.Printf("Unknown example type: %s\nAvailable types: research, dev, chat\n", exampleType)
+				fmt.Printf("Unknown example type: %s\n", args[0])
 			}
 		},
 	}

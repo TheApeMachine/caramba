@@ -3,3 +3,5 @@ id_marvin.pub
 log*
 logs/
 utils/english.json
+.env
+.env.local

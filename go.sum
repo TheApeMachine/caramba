@@ -60,6 +60,8 @@ github.com/charmbracelet/x/ansi v0.2.3 h1:VfFN0NUpcjBRd4DnKfRaIRo53KRgey/nhOoEqo
 github.com/charmbracelet/x/ansi v0.2.3/go.mod h1:dk73KoMTT5AX5BsX0KrqhsTqAnhZZoCBjs7dGWp4Ktw=
 github.com/cohere-ai/cohere-go/v2 v2.12.0 h1:ihSlK14elvCEPjO0RT9xuMwORhQND8aXmCZzsPEHF4c=
 github.com/cohere-ai/cohere-go/v2 v2.12.0/go.mod h1:MuiJkCxlR18BDV2qQPbz2Yb/OCVphT1y6nD2zYaKeR0=
+github.com/cohesion-org/deepseek-go v0.0.0-20241216210207-8ae1bb3c99dc h1:F39hO6SdqxdSaEGDga4WPt2vYtqvQX73Nb7fVD5IVxY=
+github.com/cohesion-org/deepseek-go v0.0.0-20241216210207-8ae1bb3c99dc/go.mod h1:je2+GYTRsFGimyZNP4hpAcARQ7dcMaidT5YisexH0w0=
 github.com/colega/zeropool v0.0.0-20230505084239-6fb4a4f75381 h1:d5EKgQfRQvO97jnISfR89AiCCCJMwMFoSxUiU0OGCRU=
 github.com/colega/zeropool v0.0.0-20230505084239-6fb4a4f75381/go.mod h1:OU76gHeRo8xrzGJU3F3I1CqX1ekM8dfJw0+wPeMwnp0=
 github.com/containerd/log v0.1.0 h1:TCJt7ioM2cr/tfR8GPbGf9/VRAX8D2B4PjzCpfX540I=

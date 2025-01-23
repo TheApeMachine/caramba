@@ -20,7 +20,9 @@ func TestConsumer(t *testing.T) {
 				done <- true
 			}()
 
-			stream <- provider.Event{Text: `{"name": "test"}`}
+			event := provider.NewEventData()
+			event.Text = `{"name": "test"}`
+			stream <- event
 			close(stream)
 			<-done
 
@@ -37,12 +39,14 @@ func TestConsumer(t *testing.T) {
 				done <- true
 			}()
 
-			stream <- provider.Event{Text: `{
+			event := provider.NewEventData()
+			event.Text = `{
 				"user": {
 					"name": "test",
 					"age": 25
 				}
-			}`}
+			}`
+			stream <- event
 			close(stream)
 			<-done
 
@@ -59,9 +63,11 @@ func TestConsumer(t *testing.T) {
 				done <- true
 			}()
 
-			stream <- provider.Event{Text: `{
+			event := provider.NewEventData()
+			event.Text = `{
 				"items": ["one", "two", "three"]
-			}`}
+			}`
+			stream <- event
 			close(stream)
 			<-done
 
@@ -78,7 +84,9 @@ func TestConsumer(t *testing.T) {
 				done <- true
 			}()
 
-			stream <- provider.Event{Text: `{"message": "Hello \"World\""}`}
+			event := provider.NewEventData()
+			event.Text = `{"message": "Hello \"World\""}`
+			stream <- event
 			close(stream)
 			<-done
 

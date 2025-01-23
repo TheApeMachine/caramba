@@ -2,13 +2,16 @@ module github.com/theapemachine/caramba
 
 go 1.23.4
 
-replace github.com/henomis/lingoose => /home/theapemachine/go/src/github.com/henomis/lingoose
+toolchain go1.23.5
+
+replace github.com/theapemachine/qpool => ../qpool
 
 require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.8
 	github.com/charmbracelet/lipgloss v0.13.0
 	github.com/charmbracelet/log v0.4.0
 	github.com/cohere-ai/cohere-go/v2 v2.12.0
+	github.com/cohesion-org/deepseek-go v0.0.0-20241216210207-8ae1bb3c99dc
 	github.com/docker/docker v27.2.0+incompatible
 	github.com/go-rod/rod v0.116.2
 	github.com/go-rod/stealth v0.4.9
@@ -25,6 +28,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/theapemachine/amsh v0.0.0-20241219021147-90290810fcb8
 	github.com/theapemachine/errnie v0.0.4
+	github.com/theapemachine/qpool v0.0.1
 	github.com/tmc/langchaingo v0.1.12
 	google.golang.org/api v0.214.0
 )
@@ -78,7 +82,7 @@ require (
 	github.com/colega/zeropool v0.0.0-20230505084239-6fb4a4f75381 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
