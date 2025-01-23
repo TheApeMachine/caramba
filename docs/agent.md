@@ -6,11 +6,11 @@ The Agent System is the core component of Caramba, responsible for coordinating 
 
 Agents in Caramba are sophisticated entities that combine:
 
--   System prompts for behavior definition
--   Identity management for tracking and persistence
--   Context management for maintaining conversation state
--   Tool integration for extended capabilities
--   Provider interaction for AI model access
+- System prompts for behavior definition
+- Identity management for tracking and persistence
+- Context management for maintaining conversation state
+- Tool integration for extended capabilities
+- Provider interaction for AI model access
 
 ## Components
 
@@ -23,22 +23,22 @@ type Identity struct {
 }
 ```
 
--   Provides trackable parameters for agent identification
--   Persists agent state across sessions
--   Enables role-based behavior modification
+- Provides trackable parameters for agent identification
+- Persists agent state across sessions
+- Enables role-based behavior modification
 
 ### System
 
--   Manages system prompts and instructions
--   Controls agent behavior and capabilities
--   Supports both structured and unstructured outputs
+- Manages system prompts and instructions
+- Controls agent behavior and capabilities
+- Supports both structured and unstructured outputs
 
 ### Context
 
--   Maintains message history with 128k context window
--   Implements intelligent message truncation
--   Preserves critical system and user messages
--   Optimizes token usage with tiktoken-go
+- Maintains message history with 128k context window
+- Implements intelligent message truncation
+- Preserves critical system and user messages
+- Optimizes token usage with tiktoken-go
 
 ## Usage
 
@@ -81,24 +81,24 @@ for event := range response {
 
 ### Provider Management
 
--   Smart load balancing across multiple AI providers
--   Automatic failover and recovery
--   Health monitoring and cooldown periods
--   Thread-safe operations
+- Smart load balancing across multiple AI providers
+- Automatic failover and recovery
+- Health monitoring and cooldown periods
+- Thread-safe operations
 
 ### Tool Integration
 
--   Dynamic tool registration and discovery
--   JSON schema-based tool definition
--   Streaming tool execution support
--   Generic parameter handling
+- Dynamic tool registration and discovery
+- JSON schema-based tool definition
+- Streaming tool execution support
+- Generic parameter handling
 
 ### Error Handling
 
--   Graceful error recovery
--   Comprehensive error reporting
--   Automatic retry mechanisms
--   Context preservation during failures
+- Graceful error recovery
+- Comprehensive error reporting
+- Automatic retry mechanisms
+- Context preservation during failures
 
 ## Best Practices
 
@@ -168,7 +168,7 @@ Common issues and their solutions:
 
 Planned improvements:
 
--   Enhanced context management
--   Advanced tool orchestration
--   Improved provider balancing
--   Extended error recovery mechanisms
+- Enhanced context management
+- Advanced tool orchestration
+- Improved provider balancing
+- Extended error recovery mechanisms

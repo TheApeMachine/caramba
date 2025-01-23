@@ -9,14 +9,17 @@ import (
 )
 
 type Anthropic struct {
+	*BaseProvider
 	client *sdk.Client
 	model  string
+	cancel context.CancelFunc
 }
 
 func NewAnthropic(apiKey string) *Anthropic {
 	return &Anthropic{
-		client: sdk.NewClient(option.WithAPIKey(apiKey)),
-		model:  sdk.ModelClaude3_5SonnetLatest,
+		BaseProvider: NewBaseProvider(),
+		client:       sdk.NewClient(option.WithAPIKey(apiKey)),
+		model:        sdk.ModelClaude3_5SonnetLatest,
 	}
 }
 
@@ -27,11 +30,20 @@ func (anthropic *Anthropic) Name() string {
 	return "anthropic (claude 3.5 sonnet)"
 }
 
-func (anthropic *Anthropic) Generate(ctx context.Context, params *GenerationParams) <-chan Event {
+func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationParams) (<-chan Event, error) {
 	out := make(chan Event)
+	ctx, cancel := context.WithCancel(ctx)
+	anthropic.cancel = cancel
 
 	go func() {
 		defer close(out)
+		defer cancel()
+
+		// Send start event
+		startEvent := NewEventData()
+		startEvent.EventType = EventStart
+		startEvent.Name = "anthropic_generation_start"
+		out <- startEvent
 
 		// Initialize base params
 		messageParams := sdk.MessageNewParams{
@@ -80,29 +92,110 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *GenerationPara
 		stream := anthropic.client.Messages.NewStreaming(ctx, messageParams)
 
 		for stream.Next() {
-			event := stream.Current()
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				event := stream.Current()
 
-			switch event := event.AsUnion().(type) {
-			case sdk.ContentBlockStartEvent:
-				if event.ContentBlock.Name != "" {
-					out <- Event{Type: EventStart, Text: event.ContentBlock.Name}
+				switch event := event.AsUnion().(type) {
+				case sdk.ContentBlockStartEvent:
+					if event.ContentBlock.Name != "" {
+						startEvent := NewEventData()
+						startEvent.EventType = EventStart
+						startEvent.Name = "anthropic_block_start"
+						startEvent.Text = event.ContentBlock.Name
+						out <- startEvent
+					}
+				case sdk.ContentBlockDeltaEvent:
+					chunkEvent := NewEventData()
+					chunkEvent.EventType = EventChunk
+					chunkEvent.Name = "anthropic_chunk"
+					chunkEvent.Text = event.Delta.Text
+					chunkEvent.PartialJSON = event.Delta.PartialJSON
+					out <- chunkEvent
+				case sdk.ContentBlockStopEvent:
+					doneEvent := NewEventData()
+					doneEvent.EventType = EventDone
+					doneEvent.Name = "anthropic_block_complete"
+					doneEvent.Text = "\n"
+					out <- doneEvent
+				case sdk.MessageStopEvent:
+					doneEvent := NewEventData()
+					doneEvent.EventType = EventDone
+					doneEvent.Name = "anthropic_generation_complete"
+					doneEvent.Text = "\n"
+					out <- doneEvent
 				}
-			case sdk.ContentBlockDeltaEvent:
-				out <- Event{Type: EventChunk, Text: event.Delta.Text, PartialJSON: event.Delta.PartialJSON}
-			case sdk.ContentBlockStopEvent:
-				out <- Event{Type: EventDone, Text: "\n"}
-			case sdk.MessageStopEvent:
-				out <- Event{Type: EventDone, Text: "\n"}
 			}
 		}
 
 		if err := stream.Err(); err != nil {
 			errnie.Error(err)
 			errnie.Log("DUMP %v", params)
-			out <- Event{Type: EventError, Error: err}
+			errEvent := NewEventData()
+			errEvent.EventType = EventError
+			errEvent.Name = "anthropic_error"
+			errEvent.Error = err
+			out <- errEvent
 			return
 		}
 	}()
 
-	return out
+	return out, nil
+}
+
+func (anthropic *Anthropic) CancelGeneration(ctx context.Context) error {
+	if anthropic.cancel != nil {
+		anthropic.cancel()
+	}
+	return nil
+}
+
+// Version returns the provider version
+func (a *Anthropic) Version() string {
+	return "1.0.0"
+}
+
+// Initialize sets up the provider
+func (a *Anthropic) Initialize(ctx context.Context) error {
+	return nil
+}
+
+// PauseGeneration pauses the current generation
+func (a *Anthropic) PauseGeneration() error {
+	return nil
+}
+
+// ResumeGeneration resumes the current generation
+func (a *Anthropic) ResumeGeneration() error {
+	return nil
+}
+
+// GetCapabilities returns the provider capabilities
+func (a *Anthropic) GetCapabilities() map[string]interface{} {
+	return map[string]interface{}{
+		"streaming": true,
+		"tools":     true,
+	}
+}
+
+// SupportsFeature checks if a feature is supported
+func (a *Anthropic) SupportsFeature(feature string) bool {
+	caps := a.GetCapabilities()
+	supported, ok := caps[feature].(bool)
+	return ok && supported
+}
+
+// ValidateConfig validates the provider configuration
+func (a *Anthropic) ValidateConfig() error {
+	return nil
+}
+
+// Cleanup performs any necessary cleanup
+func (a *Anthropic) Cleanup(ctx context.Context) error {
+	if a.client != nil {
+		a.client = nil
+	}
+	return nil
 }

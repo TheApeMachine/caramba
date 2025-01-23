@@ -89,9 +89,22 @@ Parameters:
   - p: The perspective to add to the consensus space
 */
 func (cs *ConsensusSpace) AddPerspective(p Perspective) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
 	errnie.Info("Adding perspective: %s", p.ID)
 
-	errnie.Info("About to acquire lock for perspective: %s", p.ID)
+	// Check if dependencies are met
+	if deps, hasDeps := cs.Dependencies[p.ID]; hasDeps {
+		for _, dep := range deps {
+			if !cs.HasPerspective(dep) {
+				errnie.Info("Skipping perspective %s: dependency %s not met", p.ID, dep)
+				// Add to wait group
+				cs.WaitGroup[dep] = append(cs.WaitGroup[dep], p.ID)
+				return
+			}
+		}
+	}
 
 	// Store the perspective
 	cs.Perspectives = append(cs.Perspectives, p)
@@ -117,7 +130,11 @@ func (cs *ConsensusSpace) AddPerspective(p Perspective) {
 		adjustedConfidence,
 	)
 
-	errnie.Info("Notifying observers")
+	// Notify waiting agents
+	if waitingAgents, ok := cs.WaitGroup[p.ID]; ok {
+		errnie.Info("Notifying waiting agents for %s: %v", p.ID, waitingAgents)
+		delete(cs.WaitGroup, p.ID)
+	}
 
 	if cs.OnNewPerspective != nil {
 		cs.OnNewPerspective(p)
@@ -285,19 +302,11 @@ func (cs *ConsensusSpace) notifyDependents(completedAgentID string) {
 }
 
 /*
-HasPerspective checks if a perspective from a specific agent exists
-in the consensus space.
-
-Parameters:
-  - agentID: The ID of the agent to check for
-
-Returns:
-  - bool: True if the agent has submitted a perspective, false otherwise
+HasPerspective checks if a perspective from a given agent exists
 */
 func (cs *ConsensusSpace) HasPerspective(agentID string) bool {
 	for _, p := range cs.Perspectives {
 		if p.ID == agentID {
-			errnie.Info("Has perspective: %s", agentID)
 			return true
 		}
 	}
@@ -358,4 +367,15 @@ func (cs *ConsensusSpace) calculateMethodDiversity(method string) float64 {
 	cs.diversity[method] = 1.0 / totalMethods
 	errnie.Info("New diversity score: %f", cs.diversity[method])
 	return cs.diversity[method]
+}
+
+// GetDependencies returns the list of dependencies for a given role
+func (cs *ConsensusSpace) GetDependencies(role string) []string {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	if deps, ok := cs.Dependencies[role]; ok {
+		return deps
+	}
+	return []string{}
 }

@@ -138,7 +138,13 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 	go func() {
 		defer close(out)
 
-		for event := range agent.provider.Generate(ctx, agent.Context.Compile(msg)) {
+		events, err := agent.provider.Generate(ctx, agent.Context.Compile(msg))
+		if err != nil {
+			errnie.Error(err)
+			return
+		}
+
+		for event := range events {
 			out <- event
 		}
 	}()

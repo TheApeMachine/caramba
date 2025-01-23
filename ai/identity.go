@@ -26,7 +26,7 @@ type Identity struct {
 	System string `json:"system" jsonschema:"title=System,description=The system prompt for the agent,required"`
 	Name   string `json:"name" jsonschema:"title=Name,description=A unique name for the agent,required"`
 	Role   string `json:"role" jsonschema:"title=Role,description=The role of the agent,required"`
-	Params *provider.GenerationParams
+	Params *provider.LLMGenerationParams
 	conn   *datalake.Conn
 	ctx    context.Context
 	err    error

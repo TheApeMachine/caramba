@@ -37,6 +37,8 @@ var (
 			case "architecture":
 				architecture := examples.NewArchitecture(cmd.Context(), "architecture")
 				errnie.Error(architecture.Run())
+			case "analysis":
+				errnie.Error(examples.RunAnalysis(cmd.Context(), "How many strawberries are in the world?"))
 			default:
 				fmt.Printf("Unknown example type: %s\n", args[0])
 			}

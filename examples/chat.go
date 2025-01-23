@@ -66,11 +66,20 @@ func (chat *Chat) Run() error {
 			chat.ctx,
 			provider.NewMessage(provider.RoleUser, input),
 		) {
-			switch event.Type {
-			case provider.EventChunk:
-				fmt.Print(event.Text)
-			case provider.EventError:
-				return errnie.Error(event.Error)
+			switch event.Type() {
+			case "chunk":
+				if data, ok := event.Data().(map[string]interface{}); ok {
+					if text, ok := data["text"].(string); ok {
+						fmt.Print(text)
+					}
+				}
+			case "error":
+				if data, ok := event.Data().(map[string]interface{}); ok {
+					if err, ok := data["error"].(error); ok {
+						return errnie.Error(err)
+					}
+				}
+				return errnie.Error(fmt.Errorf("unknown error"))
 			}
 		}
 	}

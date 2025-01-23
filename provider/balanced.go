@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
 
@@ -34,6 +35,7 @@ type BalancedProvider struct {
 	selectIndex int
 	initMu      sync.Mutex
 	initialized bool
+	cancel      context.CancelFunc
 }
 
 var (
@@ -54,6 +56,9 @@ func NewBalancedProvider() *BalancedProvider {
 			{provider: NewOpenAI(os.Getenv("OPENAI_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
 			{provider: NewAnthropic(os.Getenv("ANTHROPIC_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
 			{provider: NewOpenAICompatible(os.Getenv("GEMINI_API_KEY"), v.GetString("endpoints.gemini"), v.GetString("models.gemini")), occupied: false, lastUsed: time.Time{}, failures: 0},
+			{provider: NewDeepSeek(os.Getenv("DEEPSEEK_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
+			{provider: NewOllama(os.Getenv("OLLAMA_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
+			{provider: NewCohere(os.Getenv("COHERE_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
 		}
 
 		balancedProviderInstance = &BalancedProvider{providers: providers}
@@ -78,7 +83,7 @@ func (lb *BalancedProvider) Name() string {
 Generate a response from an LLM provider, passing in the parameters, which
 include the messages, and model settings to use.
 */
-func (lb *BalancedProvider) Generate(ctx context.Context, params *GenerationParams) <-chan Event {
+func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationParams) (<-chan Event, error) {
 	hasSystem := false
 	hasUser := false
 
@@ -92,7 +97,7 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *GenerationPara
 
 	if !hasSystem {
 		errnie.Error(errors.New("no system message found"))
-		os.Exit(1)
+		return nil, errors.New("no system message found")
 	}
 
 	if !hasUser {
@@ -100,13 +105,26 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *GenerationPara
 	}
 
 	out := make(chan Event)
+	ctx, cancel := context.WithCancel(ctx)
+	lb.cancel = cancel
 
 	go func() {
 		defer close(out)
+		defer cancel()
+
+		// Send start event
+		startEvent := NewEventData()
+		startEvent.EventType = EventStart
+		startEvent.Name = "balanced_generation_start"
+		out <- startEvent
 
 		provider := lb.getAvailableProvider()
 		if provider == nil || provider.provider == nil {
-			out <- Event{Type: EventError, Error: errors.New("no available provider found")}
+			errEvent := NewEventData()
+			errEvent.EventType = EventError
+			errEvent.Error = errors.New("no available provider found")
+			errEvent.Name = "balanced_error"
+			out <- errEvent
 			return
 		}
 
@@ -116,16 +134,46 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *GenerationPara
 		provider.mu.Unlock()
 
 		errnie.Info("generating response from %s", provider.provider.Name())
-		for event := range provider.provider.Generate(ctx, params) {
-			out <- event
+		events, err := provider.provider.Generate(ctx, params)
+		if err != nil {
+			errEvent := NewEventData()
+			errEvent.EventType = EventError
+			errEvent.Error = err
+			errEvent.Name = "balanced_error"
+			out <- errEvent
+			return
+		}
+
+		for event := range events {
+			select {
+			case <-ctx.Done():
+				return
+			case out <- event:
+			}
 		}
 
 		provider.mu.Lock()
 		provider.occupied = false
 		provider.mu.Unlock()
+
+		// Send done event
+		doneEvent := NewEventData()
+		doneEvent.EventType = EventDone
+		doneEvent.Name = "balanced_generation_complete"
+		out <- doneEvent
 	}()
 
-	return out
+	return out, nil
+}
+
+/*
+CancelGeneration cancels any ongoing generation.
+*/
+func (lb *BalancedProvider) CancelGeneration(ctx context.Context) error {
+	if lb.cancel != nil {
+		lb.cancel()
+	}
+	return nil
 }
 
 func (lb *BalancedProvider) getAvailableProvider() *ProviderStatus {
@@ -257,4 +305,128 @@ func (lb *BalancedProvider) selectBestProvider() *ProviderStatus {
 	}
 
 	return bestProvider
+}
+
+// Cleanup performs any necessary cleanup
+func (bp *BalancedProvider) Cleanup(ctx context.Context) error {
+	for _, p := range bp.providers {
+		if err := p.provider.Cleanup(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Configure sets up the provider with the given configuration
+func (bp *BalancedProvider) Configure(config *ProviderConfig) error {
+	for _, p := range bp.providers {
+		if err := p.provider.Configure(config); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetCapabilities returns the provider capabilities
+func (bp *BalancedProvider) GetCapabilities() map[string]interface{} {
+	// Return capabilities supported by all providers
+	return map[string]interface{}{
+		"streaming": true,
+		"tools":     true,
+	}
+}
+
+// GetConfig returns the current provider configuration
+func (bp *BalancedProvider) GetConfig() *ProviderConfig {
+	// Return config from first available provider since they all share the same config
+	for _, p := range bp.providers {
+		if p.provider != nil {
+			return p.provider.GetConfig()
+		}
+	}
+	return nil
+}
+
+// GetMetrics returns the provider metrics
+func (bp *BalancedProvider) GetMetrics() (*ProviderMetrics, error) {
+	metrics := &ProviderMetrics{
+		CustomMetrics: make(map[string]interface{}),
+	}
+
+	for i, p := range bp.providers {
+		if p.provider != nil {
+			metrics.CustomMetrics[p.provider.Name()] = map[string]interface{}{
+				"failures": p.failures,
+				"occupied": p.occupied,
+				"lastUsed": p.lastUsed,
+				"index":    i,
+			}
+		}
+	}
+	return metrics, nil
+}
+
+// HealthCheck performs a health check on all providers
+func (bp *BalancedProvider) HealthCheck(ctx context.Context) *utils.HealthStatus {
+	status := utils.StatusHealthy
+	for _, p := range bp.providers {
+		if p.provider != nil && p.failures > 3 {
+			status = utils.StatusDegraded
+			break
+		}
+	}
+	return &status
+}
+
+// Initialize sets up the provider
+func (bp *BalancedProvider) Initialize(ctx context.Context) error {
+	for _, p := range bp.providers {
+		if err := p.provider.Initialize(ctx); err != nil {
+			return err
+		}
+	}
+	bp.initialized = true
+	return nil
+}
+
+// PauseGeneration pauses generation for all providers
+func (bp *BalancedProvider) PauseGeneration() error {
+	for _, p := range bp.providers {
+		if err := p.provider.PauseGeneration(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ResumeGeneration resumes generation for all providers
+func (bp *BalancedProvider) ResumeGeneration() error {
+	for _, p := range bp.providers {
+		if err := p.provider.ResumeGeneration(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SupportsFeature checks if a feature is supported
+func (bp *BalancedProvider) SupportsFeature(feature string) bool {
+	caps := bp.GetCapabilities()
+	supported, ok := caps[feature].(bool)
+	return ok && supported
+}
+
+// ValidateConfig validates the configuration for all providers
+func (bp *BalancedProvider) ValidateConfig() error {
+	for _, p := range bp.providers {
+		if err := p.provider.ValidateConfig(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Version returns the provider version
+func (bp *BalancedProvider) Version() string {
+	return "1.0.0"
 }

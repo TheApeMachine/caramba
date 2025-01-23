@@ -57,7 +57,7 @@ Parameters:
 Returns:
   - Generation parameters containing the compiled conversation thread
 */
-func (ctx *Context) Compile(msg *provider.Message) *provider.GenerationParams {
+func (ctx *Context) Compile(msg *provider.Message) *provider.LLMGenerationParams {
 	if ctx.identity == nil {
 		errnie.Error(errors.New("identity is nil"))
 		os.Exit(1)
@@ -98,12 +98,20 @@ Parameters:
   - event: The provider.Event to be processed and added to the context
 */
 func (ctx *Context) Append(event provider.Event) {
-	switch event.Type {
-	case provider.EventToolCall:
+	switch event.Type() {
+	case "tool_call":
 		ctx.Toolcalls = append(ctx.Toolcalls, &event)
-	case provider.EventChunk:
-		ctx.Scratchpad.Append(event.Text)
-	case provider.EventError:
-		ctx.Scratchpad.Append(event.Text)
+	case "chunk":
+		if data, ok := event.Data().(map[string]interface{}); ok {
+			if text, ok := data["text"].(string); ok {
+				ctx.Scratchpad.Append(text)
+			}
+		}
+	case "error":
+		if data, ok := event.Data().(map[string]interface{}); ok {
+			if text, ok := data["text"].(string); ok {
+				ctx.Scratchpad.Append(text)
+			}
+		}
 	}
 }

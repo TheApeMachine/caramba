@@ -137,16 +137,23 @@ func (s *Architecture) Run() error {
 
 			accumulator := stream.NewAccumulator()
 			for event := range accumulator.Generate(s.ctx, promptChan) {
-				fmt.Print(event.Text)
+				if data, ok := event.Data().(map[string]interface{}); ok {
+					if text, ok := data["text"].(string); ok {
+						fmt.Print(text)
+					}
+				}
 			}
 
+			response := accumulator.Compile()
+			data := response.Data().(map[string]interface{})
+			text, _ := data["text"].(string)
 			perspective := drknow.Perspective{
 				ID:         "prompt_engineer",
 				Owner:      "prompt_engineer",
-				Content:    accumulator.Compile().Text,
+				Content:    text,
 				Confidence: 0.6, // We'll need to derive this from the response
 				Method:     "llm-generation",
-				Reasoning:  []string{accumulator.Compile().Text},
+				Reasoning:  []string{text},
 				Timestamp:  time.Now(),
 			}
 			consensus.AddPerspective(perspective)
@@ -166,16 +173,23 @@ func (s *Architecture) Run() error {
 
 				accumulator := stream.NewAccumulator()
 				for event := range accumulator.Generate(s.ctx, reasonerChan) {
-					fmt.Print(event.Text)
+					if data, ok := event.Data().(map[string]interface{}); ok {
+						if text, ok := data["text"].(string); ok {
+							fmt.Print(text)
+						}
+					}
 				}
 
+				response := accumulator.Compile()
+				data := response.Data().(map[string]interface{})
+				text, _ := data["text"].(string)
 				perspective := drknow.Perspective{
 					ID:         "reasoner",
 					Owner:      "reasoner",
-					Content:    accumulator.Compile().Text,
-					Confidence: 0.9, // Higher confidence for systematic analysis
+					Content:    text,
+					Confidence: 0.9,
 					Method:     "systematic-analysis",
-					Reasoning:  []string{accumulator.Compile().Text},
+					Reasoning:  []string{text},
 					Timestamp:  time.Now(),
 				}
 
@@ -200,18 +214,24 @@ func (s *Architecture) Run() error {
 				})
 
 				accumulator := stream.NewAccumulator()
-
 				for event := range accumulator.Generate(s.ctx, challengerChan) {
-					fmt.Print(event.Text)
+					if data, ok := event.Data().(map[string]interface{}); ok {
+						if text, ok := data["text"].(string); ok {
+							fmt.Print(text)
+						}
+					}
 				}
 
+				response := accumulator.Compile()
+				data := response.Data().(map[string]interface{})
+				text, _ := data["text"].(string)
 				perspective := drknow.Perspective{
 					ID:         "challenger",
 					Owner:      "challenger",
-					Content:    accumulator.Compile().Text,
-					Confidence: 0.95, // High confidence for verification
+					Content:    text,
+					Confidence: 0.95,
 					Method:     "verification",
-					Reasoning:  []string{accumulator.Compile().Text},
+					Reasoning:  []string{text},
 					Timestamp:  time.Now(),
 				}
 
@@ -237,16 +257,23 @@ func (s *Architecture) Run() error {
 
 				accumulator := stream.NewAccumulator()
 				for event := range accumulator.Generate(s.ctx, solverChan) {
-					fmt.Print(event.Text)
+					if data, ok := event.Data().(map[string]interface{}); ok {
+						if text, ok := data["text"].(string); ok {
+							fmt.Print(text)
+						}
+					}
 				}
 
+				response := accumulator.Compile()
+				data := response.Data().(map[string]interface{})
+				text, _ := data["text"].(string)
 				perspective := drknow.Perspective{
 					ID:         "solver",
 					Owner:      "solver",
-					Content:    accumulator.Compile().Text,
-					Confidence: 1.0, // Maximum confidence for final solution
+					Content:    text,
+					Confidence: 1.0,
 					Method:     "final-verification",
-					Reasoning:  []string{accumulator.Compile().Text},
+					Reasoning:  []string{text},
 					Timestamp:  time.Now(),
 				}
 				consensus.AddPerspective(perspective)

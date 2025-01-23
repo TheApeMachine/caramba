@@ -120,22 +120,28 @@ func (s *Strawberry) Run() error {
 
 			accumulator := stream.NewAccumulator()
 			for event := range accumulator.Generate(s.ctx, promptChan) {
-				fmt.Print(event.Text)
+				if data, ok := event.Data().(map[string]interface{}); ok {
+					if text, ok := data["text"].(string); ok {
+						fmt.Print(text)
+					}
+				}
 			}
-			response := accumulator.Compile().Text
+			response := accumulator.Compile()
+			data := response.Data().(map[string]interface{})
+			text, _ := data["text"].(string)
 
 			// Update shared state
-			entanglement.UpdateState("prompt_engineer_response", response)
-			entanglement.UpdateState("prompt_engineer_count", s.extractCount(response))
+			entanglement.UpdateState("prompt_engineer_response", text)
+			entanglement.UpdateState("prompt_engineer_count", s.extractCount(text))
 			entanglement.UpdateState("prompt_engineer_confidence", 0.6)
 
 			perspective := drknow.Perspective{
 				ID:         "prompt_engineer",
 				Owner:      "prompt_engineer",
-				Content:    response,
+				Content:    text,
 				Confidence: 0.6,
 				Method:     "llm-generation",
-				Reasoning:  []string{response},
+				Reasoning:  []string{text},
 				Timestamp:  time.Now(),
 			}
 			consensus.AddPerspective(perspective)
@@ -170,22 +176,28 @@ Please verify this answer by:
 
 			accumulator := stream.NewAccumulator()
 			for event := range accumulator.Generate(s.ctx, reasonerChan) {
-				fmt.Print(event.Text)
+				if data, ok := event.Data().(map[string]interface{}); ok {
+					if text, ok := data["text"].(string); ok {
+						fmt.Print(text)
+					}
+				}
 			}
-			response := accumulator.Compile().Text
+			response := accumulator.Compile()
+			data := response.Data().(map[string]interface{})
+			text, _ := data["text"].(string)
 
 			// Update shared state
-			entanglement.UpdateState("reasoner_response", response)
-			entanglement.UpdateState("reasoner_count", s.extractCount(response))
+			entanglement.UpdateState("reasoner_response", text)
+			entanglement.UpdateState("reasoner_count", s.extractCount(text))
 			entanglement.UpdateState("reasoner_confidence", 0.9)
 
 			perspective := drknow.Perspective{
 				ID:         "reasoner",
 				Owner:      "reasoner",
-				Content:    response,
+				Content:    text,
 				Confidence: 0.9,
 				Method:     "systematic-analysis",
-				Reasoning:  []string{response},
+				Reasoning:  []string{text},
 				Timestamp:  time.Now(),
 			}
 			consensus.AddPerspective(perspective)
@@ -229,22 +241,28 @@ Please challenge these analyses by:
 
 			accumulator := stream.NewAccumulator()
 			for event := range accumulator.Generate(s.ctx, challengerChan) {
-				fmt.Print(event.Text)
+				if data, ok := event.Data().(map[string]interface{}); ok {
+					if text, ok := data["text"].(string); ok {
+						fmt.Print(text)
+					}
+				}
 			}
-			response := accumulator.Compile().Text
+			response := accumulator.Compile()
+			data := response.Data().(map[string]interface{})
+			text, _ := data["text"].(string)
 
 			// Update shared state
-			entanglement.UpdateState("challenger_response", response)
-			entanglement.UpdateState("challenger_count", s.extractCount(response))
+			entanglement.UpdateState("challenger_response", text)
+			entanglement.UpdateState("challenger_count", s.extractCount(text))
 			entanglement.UpdateState("challenger_confidence", 0.95)
 
 			perspective := drknow.Perspective{
 				ID:         "challenger",
 				Owner:      "challenger",
-				Content:    response,
+				Content:    text,
 				Confidence: 0.95,
 				Method:     "verification",
-				Reasoning:  []string{response},
+				Reasoning:  []string{text},
 				Timestamp:  time.Now(),
 			}
 			consensus.AddPerspective(perspective)
@@ -285,7 +303,7 @@ Please provide a final analysis:
 1. Evaluate all previous counts and reasoning
 2. Determine the correct count with explanation
 3. Assess the confidence level of your conclusion
-4. Explain any corrections needed to previous analyses`, 
+4. Explain any corrections needed to previous analyses`,
 				promptResponse, promptCount,
 				reasonerResponse, reasonerCount,
 				challengerResponse, challengerCount)
@@ -297,22 +315,28 @@ Please provide a final analysis:
 
 			accumulator := stream.NewAccumulator()
 			for event := range accumulator.Generate(s.ctx, solverChan) {
-				fmt.Print(event.Text)
+				if data, ok := event.Data().(map[string]interface{}); ok {
+					if text, ok := data["text"].(string); ok {
+						fmt.Print(text)
+					}
+				}
 			}
-			response := accumulator.Compile().Text
+			response := accumulator.Compile()
+			data := response.Data().(map[string]interface{})
+			text, _ := data["text"].(string)
 
 			// Update shared state
-			entanglement.UpdateState("solver_response", response)
-			entanglement.UpdateState("solver_count", s.extractCount(response))
+			entanglement.UpdateState("solver_response", text)
+			entanglement.UpdateState("solver_count", s.extractCount(text))
 			entanglement.UpdateState("solver_confidence", 1.0)
 
 			perspective := drknow.Perspective{
 				ID:         "solver",
 				Owner:      "solver",
-				Content:    response,
+				Content:    text,
 				Confidence: 1.0,
 				Method:     "final-verification",
-				Reasoning:  []string{response},
+				Reasoning:  []string{text},
 				Timestamp:  time.Now(),
 			}
 			consensus.AddPerspective(perspective)
