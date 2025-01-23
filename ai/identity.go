@@ -93,7 +93,7 @@ func (identity *Identity) load() bool {
 	}
 
 	if err := json.NewDecoder(identity.loaded).Decode(identity); err != nil {
-		errnie.Info("failed to decode identity params: %v", err)
+		errnie.Error(errors.New("failed to decode identity params: " + err.Error()))
 		return false
 	}
 
@@ -139,6 +139,11 @@ save persists the current Identity's parameters to storage,
 using the role as the storage key.
 */
 func (identity *Identity) save() {
+	if !identity.conn.IsConnected() {
+		errnie.Warn("no connection to datalake, skipping save")
+		return
+	}
+
 	errnie.Info("attempting to save identity %s (%s)", identity.Name, identity.Role)
 
 	var buf bytes.Buffer

@@ -117,10 +117,8 @@ func (cs *ConsensusSpace) AddPerspective(p Perspective) {
 		adjustedConfidence,
 	)
 
-	errnie.Info("Wave function: %v", cs.waveFunction)
-
-	// Notify observers
 	errnie.Info("Notifying observers")
+
 	if cs.OnNewPerspective != nil {
 		cs.OnNewPerspective(p)
 	}

@@ -34,6 +34,9 @@ var (
 			case "strawberry":
 				strawberry := examples.NewStrawberry(cmd.Context(), "strawberry")
 				errnie.Error(strawberry.Run())
+			case "architecture":
+				architecture := examples.NewArchitecture(cmd.Context(), "architecture")
+				errnie.Error(architecture.Run())
 			default:
 				fmt.Printf("Unknown example type: %s\n", args[0])
 			}

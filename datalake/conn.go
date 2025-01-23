@@ -3,6 +3,7 @@ package datalake
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/minio/minio-go/v7"
@@ -39,18 +40,34 @@ func NewConn() *Conn {
 		Secure: useSSL,
 	})
 
-	if err != nil {
-		errnie.Error(err)
-		return nil
+	if err == nil {
+		client.MakeBucket(
+			context.Background(),
+			"datalake",
+			minio.MakeBucketOptions{Region: "us-east2"},
+		)
 	}
 
-	client.MakeBucket(
-		context.Background(),
-		"datalake",
-		minio.MakeBucketOptions{Region: "us-east2"},
-	)
+	return &Conn{err: err, client: client, bucket: "datalake"}
+}
 
-	return &Conn{client: client, bucket: "datalake"}
+/*
+Error implements the error interface.
+*/
+func (conn *Conn) Error() string {
+	return conn.err.Error()
+}
+
+/*
+IsConnected returns true if the connection is successful.
+*/
+func (conn *Conn) IsConnected() bool {
+	healthy := conn.err == nil && conn.client != nil && conn.client.IsOnline()
+	fmt.Println("conn.err", conn.err)
+	fmt.Println("conn.client", conn.client)
+	fmt.Println("conn.client.IsOnline()", conn.client.IsOnline())
+	fmt.Println("healthy", healthy)
+	return healthy
 }
 
 /*
@@ -88,17 +105,17 @@ func (conn *Conn) Get(ctx context.Context, path string) (*minio.Object, error) {
 	var obj *minio.Object
 
 	errnie.Info("attempting to get object from path: %s", path)
-	
+
 	if obj, conn.err = conn.client.GetObject(ctx, conn.bucket, path, minio.GetObjectOptions{}); conn.err != nil {
 		errnie.Info("failed to get object: %v", conn.err)
 		return nil, conn.err
 	}
 
 	// Check if the object exists by trying to get its stat
-	_, err := obj.Stat()
-	if err != nil {
-		errnie.Info("object does not exist or cannot be accessed: %v", err)
-		return nil, err
+	_, conn.err = obj.Stat()
+	if conn.err != nil {
+		errnie.Info("object does not exist or cannot be accessed: %v", conn.err)
+		return nil, conn.err
 	}
 
 	errnie.Info("successfully retrieved object from path: %s", path)
