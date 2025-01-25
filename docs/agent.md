@@ -11,6 +11,11 @@ Agents in Caramba are sophisticated entities that combine:
 - Context management for maintaining conversation state
 - Tool integration for extended capabilities
 - Provider interaction for AI model access
+- System prompts for behavior definition
+- Identity management for tracking and persistence
+- Context management for maintaining conversation state
+- Tool integration for extended capabilities
+- Provider interaction for AI model access
 
 ## Components
 
@@ -26,9 +31,15 @@ type Identity struct {
 - Provides trackable parameters for agent identification
 - Persists agent state across sessions
 - Enables role-based behavior modification
+- Provides trackable parameters for agent identification
+- Persists agent state across sessions
+- Enables role-based behavior modification
 
 ### System
 
+- Manages system prompts and instructions
+- Controls agent behavior and capabilities
+- Supports both structured and unstructured outputs
 - Manages system prompts and instructions
 - Controls agent behavior and capabilities
 - Supports both structured and unstructured outputs
@@ -85,6 +96,10 @@ for event := range response {
 - Automatic failover and recovery
 - Health monitoring and cooldown periods
 - Thread-safe operations
+- Smart load balancing across multiple AI providers
+- Automatic failover and recovery
+- Health monitoring and cooldown periods
+- Thread-safe operations
 
 ### Tool Integration
 
@@ -92,9 +107,17 @@ for event := range response {
 - JSON schema-based tool definition
 - Streaming tool execution support
 - Generic parameter handling
+- Dynamic tool registration and discovery
+- JSON schema-based tool definition
+- Streaming tool execution support
+- Generic parameter handling
 
 ### Error Handling
 
+- Graceful error recovery
+- Comprehensive error reporting
+- Automatic retry mechanisms
+- Context preservation during failures
 - Graceful error recovery
 - Comprehensive error reporting
 - Automatic retry mechanisms
@@ -168,6 +191,10 @@ Common issues and their solutions:
 
 Planned improvements:
 
+- Enhanced context management
+- Advanced tool orchestration
+- Improved provider balancing
+- Extended error recovery mechanisms
 - Enhanced context management
 - Advanced tool orchestration
 - Improved provider balancing

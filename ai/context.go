@@ -125,7 +125,21 @@ Parameters:
 func (ctx *Context) Append(event provider.Event) {
 	switch event.Type() {
 	case "tool_call":
+	switch event.Type() {
+	case "tool_call":
 		ctx.Toolcalls = append(ctx.Toolcalls, &event)
+	case "chunk":
+		if data, ok := event.Data().(map[string]interface{}); ok {
+			if text, ok := data["text"].(string); ok {
+				ctx.Scratchpad.Append(text)
+			}
+		}
+	case "error":
+		if data, ok := event.Data().(map[string]interface{}); ok {
+			if text, ok := data["text"].(string); ok {
+				ctx.Scratchpad.Append(text)
+			}
+		}
 	case "chunk":
 		if data, ok := event.Data().(map[string]interface{}); ok {
 			if text, ok := data["text"].(string); ok {

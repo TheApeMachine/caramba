@@ -18,6 +18,7 @@ type Gemini struct {
 	client *genai.Client
 	model  *genai.GenerativeModel
 	cancel context.CancelFunc
+	cancel context.CancelFunc
 }
 
 func NewGemini(apiKey string) *Gemini {
@@ -43,9 +44,18 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 	out := make(chan Event)
 	ctx, cancel := context.WithCancel(ctx)
 	gemini.cancel = cancel
+	ctx, cancel := context.WithCancel(ctx)
+	gemini.cancel = cancel
 
 	go func() {
 		defer close(out)
+		defer cancel()
+
+		// Send start event
+		startEvent := NewEventData()
+		startEvent.EventType = EventStart
+		startEvent.Name = "gemini_generation_start"
+		out <- startEvent
 		defer cancel()
 
 		// Send start event
@@ -147,6 +157,13 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 			errEvent.Error = err
 			errEvent.Name = "gemini_error"
 			out <- errEvent
+			err := errors.New("no valid messages to process")
+			errnie.Error(err)
+			errEvent := NewEventData()
+			errEvent.EventType = EventError
+			errEvent.Error = err
+			errEvent.Name = "gemini_error"
+			out <- errEvent
 			return
 		}
 
@@ -155,6 +172,28 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 		stream := gemini.model.GenerateContentStream(ctx, genai.Text(lastMessage))
 
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				resp, err := stream.Next()
+				if err == iterator.Done {
+					doneEvent := NewEventData()
+					doneEvent.EventType = EventDone
+					doneEvent.Name = "gemini_generation_complete"
+					doneEvent.Text = "\n"
+					out <- doneEvent
+					return
+				}
+				if err != nil {
+					errnie.Error(err)
+					errEvent := NewEventData()
+					errEvent.EventType = EventError
+					errEvent.Error = err
+					errEvent.Name = "gemini_error"
+					out <- errEvent
+					return
+				}
 			select {
 			case <-ctx.Done():
 				return
@@ -206,7 +245,43 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 						}
 					}
 				}
+				if len(resp.Candidates) > 0 {
+					for _, part := range resp.Candidates[0].Content.Parts {
+						switch v := part.(type) {
+						case genai.Text:
+							chunkEvent := NewEventData()
+							chunkEvent.EventType = EventChunk
+							chunkEvent.Name = "gemini_chunk"
+							chunkEvent.Text = string(v)
+							out <- chunkEvent
+						case genai.FunctionCall:
+							jsonArgs, err := json.Marshal(v.Args)
+							if err != nil {
+								errnie.Error(fmt.Errorf("failed to marshal function args: %w", err))
+								errEvent := NewEventData()
+								errEvent.EventType = EventError
+								errEvent.Error = fmt.Errorf("failed to marshal function args: %w", err)
+								errEvent.Name = "gemini_error"
+								out <- errEvent
+								return
+							}
+							toolEvent := NewEventData()
+							toolEvent.EventType = EventToolCall
+							toolEvent.Name = "gemini_tool_call"
+							toolEvent.PartialJSON = string(jsonArgs)
+							out <- toolEvent
+						}
+					}
+				}
 
+				if resp.PromptFeedback != nil && resp.PromptFeedback.BlockReason != genai.BlockReasonUnspecified {
+					errEvent := NewEventData()
+					errEvent.EventType = EventError
+					errEvent.Error = fmt.Errorf("blocked: %v", resp.PromptFeedback.BlockReason)
+					errEvent.Name = "gemini_error"
+					out <- errEvent
+					return
+				}
 				if resp.PromptFeedback != nil && resp.PromptFeedback.BlockReason != genai.BlockReasonUnspecified {
 					errEvent := NewEventData()
 					errEvent.EventType = EventError

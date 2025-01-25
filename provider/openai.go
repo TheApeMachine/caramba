@@ -12,13 +12,18 @@ import (
 
 type OpenAI struct {
 	*BaseProvider
+	*BaseProvider
 	client *sdk.Client
 	model  string
+	cancel context.CancelFunc
 	cancel context.CancelFunc
 }
 
 func NewOpenAI(apiKey string) *OpenAI {
 	return &OpenAI{
+		BaseProvider: NewBaseProvider(),
+		client:       sdk.NewClient(),
+		model:        sdk.ChatModelGPT4oMini,
 		BaseProvider: NewBaseProvider(),
 		client:       sdk.NewClient(),
 		model:        sdk.ChatModelGPT4oMini,
@@ -40,9 +45,18 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 	out := make(chan Event)
 	ctx, cancel := context.WithCancel(ctx)
 	openai.cancel = cancel
+	ctx, cancel := context.WithCancel(ctx)
+	openai.cancel = cancel
 
 	go func() {
 		defer close(out)
+		defer cancel()
+
+		// Send start event
+		startEvent := NewEventData()
+		startEvent.EventType = EventStart
+		startEvent.Name = "openai_generation_start"
+		out <- startEvent
 		defer cancel()
 
 		// Send start event
@@ -63,9 +77,16 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 			event.EventType = EventError
 			event.Error = err
 			out <- event
+			err := errors.New("no valid messages to process")
+			errnie.Error(err)
+			event := NewEventData()
+			event.EventType = EventError
+			event.Error = err
+			out <- event
 			return
 		}
 
+		// Create completion request
 		// Create completion request
 		request := sdk.ChatCompletionNewParams{
 			Model:    sdk.F(openai.model),
@@ -87,6 +108,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 		}
 
 		// Stream the response
+		// Stream the response
 		stream := openai.client.Chat.Completions.NewStreaming(ctx, request)
 		acc := sdk.ChatCompletionAccumulator{}
 
@@ -97,7 +119,21 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 			default:
 				chunk := stream.Current()
 				acc.AddChunk(chunk)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				chunk := stream.Current()
+				acc.AddChunk(chunk)
 
+				// Handle content streaming
+				if content, ok := acc.JustFinishedContent(); ok {
+					chunkEvent := NewEventData()
+					chunkEvent.EventType = EventChunk
+					chunkEvent.Name = "openai_chunk"
+					chunkEvent.Text = content
+					out <- chunkEvent
+				}
 				// Handle content streaming
 				if content, ok := acc.JustFinishedContent(); ok {
 					chunkEvent := NewEventData()
@@ -115,7 +151,23 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 					toolEvent.PartialJSON = tool.Arguments
 					out <- toolEvent
 				}
+				// Handle tool calls
+				if tool, ok := acc.JustFinishedToolCall(); ok {
+					toolEvent := NewEventData()
+					toolEvent.EventType = EventToolCall
+					toolEvent.Name = "openai_tool_call"
+					toolEvent.PartialJSON = tool.Arguments
+					out <- toolEvent
+				}
 
+				// Stream regular content chunks
+				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+					chunkEvent := NewEventData()
+					chunkEvent.EventType = EventChunk
+					chunkEvent.Name = "openai_chunk"
+					chunkEvent.Text = chunk.Choices[0].Delta.Content
+					chunkEvent.PartialJSON = chunk.Choices[0].Delta.JSON.RawJSON()
+					out <- chunkEvent
 				// Stream regular content chunks
 				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 					chunkEvent := NewEventData()
@@ -130,6 +182,10 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 
 		if err := stream.Err(); err != nil {
 			errnie.Error(err)
+			errEvent := NewEventData()
+			errEvent.EventType = EventError
+			errEvent.Error = err
+			out <- errEvent
 			errEvent := NewEventData()
 			errEvent.EventType = EventError
 			errEvent.Error = err
@@ -179,6 +235,7 @@ func (*OpenAI) convertProcesses(params *LLMGenerationParams) *sdk.ResponseFormat
 }
 
 func (*OpenAI) convertMessages(params *LLMGenerationParams) []sdk.ChatCompletionMessageParamUnion {
+func (*OpenAI) convertMessages(params *LLMGenerationParams) []sdk.ChatCompletionMessageParamUnion {
 	var messages []sdk.ChatCompletionMessageParamUnion
 	if len(params.Thread.Messages) > 0 {
 		messages = make([]sdk.ChatCompletionMessageParamUnion, 0, len(params.Thread.Messages))
@@ -201,6 +258,7 @@ func (*OpenAI) convertMessages(params *LLMGenerationParams) []sdk.ChatCompletion
 }
 
 func (*OpenAI) convertTools(params *LLMGenerationParams) []sdk.ChatCompletionToolParam {
+func (*OpenAI) convertTools(params *LLMGenerationParams) []sdk.ChatCompletionToolParam {
 	var tools []sdk.ChatCompletionToolParam
 	if len(params.Tools) > 0 {
 		tools = make([]sdk.ChatCompletionToolParam, len(params.Tools))
@@ -217,6 +275,46 @@ func (*OpenAI) convertTools(params *LLMGenerationParams) []sdk.ChatCompletionToo
 	}
 
 	return tools
+}
+
+// Version returns the provider version
+func (openai *OpenAI) Version() string {
+	return "1.0.0"
+}
+
+// Initialize sets up the provider
+func (openai *OpenAI) Initialize(ctx context.Context) error {
+	return nil
+}
+
+// PauseGeneration pauses the current generation
+func (openai *OpenAI) PauseGeneration() error {
+	return nil
+}
+
+// ResumeGeneration resumes the current generation
+func (openai *OpenAI) ResumeGeneration() error {
+	return nil
+}
+
+// GetCapabilities returns the provider capabilities
+func (openai *OpenAI) GetCapabilities() map[string]interface{} {
+	return map[string]interface{}{
+		"streaming": true,
+		"tools":     true,
+	}
+}
+
+// SupportsFeature checks if a feature is supported
+func (openai *OpenAI) SupportsFeature(feature string) bool {
+	caps := openai.GetCapabilities()
+	supported, ok := caps[feature].(bool)
+	return ok && supported
+}
+
+// ValidateConfig validates the provider configuration
+func (openai *OpenAI) ValidateConfig() error {
+	return nil
 }
 
 // Version returns the provider version

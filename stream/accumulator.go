@@ -97,6 +97,14 @@ func (accumulator *Accumulator) Compile() provider.Event {
 				out.PartialJSON += json
 			}
 		}
+		if data, ok := chunk.Data().(map[string]interface{}); ok {
+			if text, ok := data["text"].(string); ok {
+				out.Text += text
+			}
+			if json, ok := data["partial_json"].(string); ok {
+				out.PartialJSON += json
+			}
+		}
 	}
 
 	return out
