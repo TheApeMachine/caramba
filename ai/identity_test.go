@@ -16,7 +16,7 @@ func TestNewIdentity(t *testing.T) {
 
 		Convey("When creating a new identity with a role", func() {
 			role := "test-role"
-			identity := NewIdentity(ctx, role)
+			identity := NewIdentity(ctx, role, "You are a test role")
 
 			Convey("Should initialize with correct values", func() {
 				So(identity, ShouldNotBeNil)
@@ -37,7 +37,7 @@ func TestNewIdentity(t *testing.T) {
 			datalake.NewConn().Put(ctx, "identities/"+role, data, nil)
 
 			// Try to load it
-			loadedIdentity := NewIdentity(ctx, role)
+			loadedIdentity := NewIdentity(ctx, role, "You are a test role")
 
 			Convey("Should load existing identity", func() {
 				So(loadedIdentity, ShouldNotBeNil)
@@ -58,7 +58,7 @@ func TestNewIdentity(t *testing.T) {
 			datalake.NewConn().Put(ctx, "identities/"+role, data, nil)
 
 			// Try to load it
-			newIdentity := NewIdentity(ctx, role)
+			newIdentity := NewIdentity(ctx, role, "You are a test role")
 
 			Convey("Should create new identity", func() {
 				So(newIdentity, ShouldNotBeNil)

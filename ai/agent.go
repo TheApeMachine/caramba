@@ -3,8 +3,11 @@ package ai
 import (
 	"context"
 	"errors"
-	"os"
+	"fmt"
+	"strings"
+	"time"
 
+	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/utils"
@@ -53,9 +56,9 @@ Parameters:
   - role: The role designation for the AI agent
   - maxIterations: The maximum number of response generation iterations
 */
-func NewAgent(ctx context.Context, role string, maxIterations int) *Agent {
+func NewAgent(ctx *Context, role string, maxIterations int) *Agent {
 	return &Agent{
-		Identity:      NewIdentity(ctx, role).Initialize(),
+		Context:       ctx,
 		provider:      provider.NewBalancedProvider(),
 		MaxIterations: maxIterations,
 		accumulator:   stream.NewAccumulator(),
@@ -123,42 +126,128 @@ Returns:
   - A channel of provider.Event containing the generated response
 */
 func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan provider.Event {
-	agent.Context = NewContext(agent.Identity)
-
-	if !agent.Validate() {
-		os.Exit(1)
-	}
-
-	errnie.Info("generating response for %s (%s)", agent.Identity.Name, msg.Role)
-
-	agent.state = AgentStateGenerating
-
+	errnie.Info("generating response for %s (%s)", agent.Context.identity.Name, msg.Role)
 	out := make(chan provider.Event)
 
 	go func() {
 		defer close(out)
 
-		for event := range agent.provider.Generate(ctx, agent.Context.Compile(msg)) {
-			out <- event
+		if !agent.Validate() {
+			errEvent := provider.NewEventData()
+			errEvent.EventType = provider.EventError
+			errEvent.Error = fmt.Errorf("agent validation failed")
+			errEvent.Name = "agent_validation_error"
+			out <- errEvent
+			return
 		}
+
+		shouldBreak := false
+		cycle := 0
+
+		for !shouldBreak {
+			errnie.Info("cycle %d", cycle)
+			agent.state = AgentStateGenerating
+
+			cycle++
+			if cycle > agent.MaxIterations {
+				shouldBreak = true
+			}
+
+			// Add timeout for agent generation
+			genCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+
+			for event := range agent.accumulator.Generate(
+				genCtx,
+				agent.provider.Generate(
+					genCtx,
+					agent.Context.Compile(msg, cycle, agent.MaxIterations),
+				),
+			) {
+				out <- event
+			}
+
+			if strings.Contains(
+				strings.ToLower(agent.accumulator.String()),
+				"<break>",
+			) {
+				shouldBreak = true
+			}
+		}
+
+		errnie.Info("optimization started")
+		agent.Optimize(ctx, out)
+		errnie.Info("optimization complete")
 	}()
 
 	return out
 }
 
-func (agent *Agent) Validate() bool {
-	if err := agent.Identity.validate(); err != nil {
-		errnie.Error(err)
-		return false
+func (agent *Agent) Optimize(ctx context.Context, out chan<- provider.Event) {
+	accumulator := stream.NewAccumulator()
+	v := viper.GetViper()
+	system := v.GetString("prompts.templates.systems.optimizer")
+
+	if system == "" {
+		errnie.Error(errors.New("optimizer system is empty"))
+		return
 	}
 
+	thread := provider.NewThread().AddMessage(
+		provider.NewMessage(
+			provider.RoleSystem,
+			system,
+		),
+	).AddMessage(
+		provider.NewMessage(
+			provider.RoleUser,
+			utils.ReplaceWith(
+				v.GetString("prompts.templates.tasks.optimize"),
+				[][]string{
+					{"<{context}>", agent.Context.String()},
+				},
+			),
+		),
+	)
+
+	errnie.Log("THREAD\n\n%v", thread)
+
+	for event := range accumulator.Generate(
+		ctx,
+		agent.provider.Generate(
+			ctx,
+			&provider.LLMGenerationParams{
+				Thread: thread,
+			},
+		),
+	) {
+		// Forward the event to the output channel
+		out <- event
+	}
+
+	// Process the optimization response using the interpreter
+	interpreter := NewInterpreter(accumulator.String())
+	interpreter.Interpret().Execute()
+}
+
+func (agent *Agent) Validate() bool {
 	if agent.Context == nil {
 		errnie.Error(errors.New("context is nil"))
 		return false
 	}
 
-	if agent.Identity == nil {
+	if agent.Context.identity == nil {
 		errnie.Error(errors.New("identity is nil"))
+		return false
+	}
+
+	if err := agent.Context.identity.validate(); err != nil {
+		errnie.Error(err)
+		return false
+	}
+
+	if agent.Context.identity.System == "" {
+		errnie.Error(errors.New("system is empty"))
 		return false
 	}
 

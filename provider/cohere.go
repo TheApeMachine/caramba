@@ -11,27 +11,94 @@ import (
 )
 
 type Cohere struct {
+	*BaseProvider
 	client *client.Client
 	model  string
+	cancel context.CancelFunc
 }
 
 func NewCohere(apiKey string) *Cohere {
-	client := client.NewClient(client.WithToken(apiKey))
 	return &Cohere{
-		client: client,
-		model:  "command-r",
+		BaseProvider: NewBaseProvider(),
+		client:       client.NewClient(client.WithToken(apiKey)),
+		model:        "command-r",
 	}
+}
+
+// Version returns the provider version
+func (c *Cohere) Version() string {
+	return "1.0.0"
+}
+
+// Initialize sets up the provider
+func (c *Cohere) Initialize(ctx context.Context) error {
+	return nil
+}
+
+// PauseGeneration pauses the current generation
+func (c *Cohere) PauseGeneration() error {
+	return nil
+}
+
+// ResumeGeneration resumes the current generation
+func (c *Cohere) ResumeGeneration() error {
+	return nil
+}
+
+// GetCapabilities returns the provider capabilities
+func (c *Cohere) GetCapabilities() map[string]interface{} {
+	return map[string]interface{}{
+		"streaming": true,
+		"tools":     true,
+	}
+}
+
+// SupportsFeature checks if a feature is supported
+func (c *Cohere) SupportsFeature(feature string) bool {
+	caps := c.GetCapabilities()
+	supported, ok := caps[feature].(bool)
+	return ok && supported
+}
+
+// ValidateConfig validates the provider configuration
+func (c *Cohere) ValidateConfig() error {
+	return nil
+}
+
+// Cleanup performs any necessary cleanup
+func (c *Cohere) Cleanup(ctx context.Context) error {
+	if c.client != nil {
+		c.client = nil
+	}
+	return nil
+}
+
+// CancelGeneration cancels any ongoing generation
+func (c *Cohere) CancelGeneration(ctx context.Context) error {
+	if c.cancel != nil {
+		c.cancel()
+	}
+	return nil
 }
 
 func (cohere *Cohere) Name() string {
 	return "cohere (command-r)"
 }
 
-func (cohere *Cohere) Generate(ctx context.Context, params *GenerationParams) <-chan Event {
+func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
 	out := make(chan Event)
+	ctx, cancel := context.WithCancel(ctx)
+	cohere.cancel = cancel
 
 	go func() {
 		defer close(out)
+		defer cancel()
+
+		// Send start event
+		startEvent := NewEventData()
+		startEvent.EventType = EventStart
+		startEvent.Name = "cohere_generation_start"
+		out <- startEvent
 
 		// Only add tools if they exist
 		var tools []*sdk.Tool
@@ -86,41 +153,73 @@ func (cohere *Cohere) Generate(ctx context.Context, params *GenerationParams) <-
 		stream, err := cohere.client.ChatStream(ctx, request)
 		if err != nil {
 			errnie.Error(err)
-			out <- Event{Type: EventError, Error: err}
+			errEvent := NewEventData()
+			errEvent.EventType = EventError
+			errEvent.Error = err
+			errEvent.Name = "cohere_error"
+			out <- errEvent
 			return
 		}
 
 		for {
 			resp, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
-				out <- Event{Type: EventDone, Text: "\n"}
+				doneEvent := NewEventData()
+				doneEvent.EventType = EventDone
+				doneEvent.Name = "cohere_generation_complete"
+				doneEvent.Text = "\n"
+				out <- doneEvent
 				return
 			}
 
 			if err != nil {
 				errnie.Error(err)
-				out <- Event{Type: EventError, Error: err}
+				errEvent := NewEventData()
+				errEvent.EventType = EventError
+				errEvent.Error = err
+				errEvent.Name = "cohere_error"
+				out <- errEvent
 				return
 			}
 
 			if event := resp.StreamStart; event != nil {
-				out <- Event{Type: EventStart, Text: event.String()}
+				startEvent := NewEventData()
+				startEvent.EventType = EventStart
+				startEvent.Name = "cohere_stream_start"
+				startEvent.Text = event.String()
+				out <- startEvent
 			}
 
 			if event := resp.TextGeneration; event != nil {
-				out <- Event{Type: EventChunk, Text: event.String()}
+				chunkEvent := NewEventData()
+				chunkEvent.EventType = EventChunk
+				chunkEvent.Name = "cohere_chunk"
+				chunkEvent.Text = event.String()
+				out <- chunkEvent
 			}
 
 			if event := resp.ToolCallsChunk; event != nil {
-				out <- Event{Type: EventToolCall, Text: event.String()}
+				toolEvent := NewEventData()
+				toolEvent.EventType = EventToolCall
+				toolEvent.Name = "cohere_tool_call"
+				toolEvent.Text = event.String()
+				out <- toolEvent
 			}
 
 			if event := resp.ToolCallsGeneration; event != nil {
-				out <- Event{Type: EventToolCall, Text: event.String()}
+				toolEvent := NewEventData()
+				toolEvent.EventType = EventToolCall
+				toolEvent.Name = "cohere_tool_call"
+				toolEvent.Text = event.String()
+				out <- toolEvent
 			}
 
 			if event := resp.StreamEnd; event != nil {
-				out <- Event{Type: EventDone, Text: event.String()}
+				doneEvent := NewEventData()
+				doneEvent.EventType = EventDone
+				doneEvent.Name = "cohere_stream_end"
+				doneEvent.Text = event.String()
+				out <- doneEvent
 			}
 		}
 	}()

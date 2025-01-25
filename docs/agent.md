@@ -38,7 +38,7 @@ type Identity struct {
 - Maintains message history with 128k context window
 - Implements intelligent message truncation
 - Preserves critical system and user messages
-- Optimizes token usage with tiktoken-go
+- Optimizes token usage with `tiktoken-go`
 
 ## Usage
 
@@ -104,26 +104,26 @@ for event := range response {
 
 1. **Initialization**
 
-    - Always initialize agents before use
-    - Configure appropriate tools based on agent role
-    - Set reasonable iteration limits
+   - Always initialize agents before use
+   - Configure appropriate tools based on agent role
+   - Set reasonable iteration limits
 
 2. **Context Management**
 
-    - Monitor context window usage
-    - Implement proper message truncation
-    - Preserve critical system messages
+   - Monitor context window usage
+   - Implement proper message truncation
+   - Preserve critical system messages
 
 3. **Tool Usage**
 
-    - Register only necessary tools
-    - Handle tool errors appropriately
-    - Implement proper cleanup
+   - Register only necessary tools
+   - Handle tool errors appropriately
+   - Implement proper cleanup
 
 4. **Provider Configuration**
-    - Configure multiple providers when possible
-    - Set appropriate timeouts
-    - Monitor provider health
+   - Configure multiple providers when possible
+   - Set appropriate timeouts
+   - Monitor provider health
 
 ## Examples
 
@@ -149,20 +149,20 @@ Common issues and their solutions:
 
 1. **Context Overflow**
 
-    - Implement proper message truncation
-    - Monitor token usage
-    - Clear context when appropriate
+   - Implement proper message truncation
+   - Monitor token usage
+   - Clear context when appropriate
 
 2. **Tool Failures**
 
-    - Check tool initialization
-    - Verify required credentials
-    - Monitor tool execution timeouts
+   - Check tool initialization
+   - Verify required credentials
+   - Monitor tool execution timeouts
 
 3. **Provider Issues**
-    - Verify API keys
-    - Check provider status
-    - Monitor rate limits
+   - Verify API keys
+   - Check provider status
+   - Monitor rate limits
 
 ## Future Development
 

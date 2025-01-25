@@ -3,8 +3,10 @@ package ai
 import (
 	"errors"
 	"os"
+	"strings"
 
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
 
@@ -57,7 +59,7 @@ Parameters:
 Returns:
   - Generation parameters containing the compiled conversation thread
 */
-func (ctx *Context) Compile(msg *provider.Message) *provider.GenerationParams {
+func (ctx *Context) Compile(msg *provider.Message, cycle int, maxIterations int) *provider.LLMGenerationParams {
 	if ctx.identity == nil {
 		errnie.Error(errors.New("identity is nil"))
 		os.Exit(1)
@@ -88,6 +90,29 @@ func (ctx *Context) Compile(msg *provider.Message) *provider.GenerationParams {
 }
 
 /*
+String compiles the current context and returns it as a string.
+*/
+func (ctx *Context) String() string {
+	builder := strings.Builder{}
+
+	builder.WriteString(utils.JoinWith("\n",
+		"SYSTEM PROMPT:",
+		ctx.identity.System,
+	))
+	builder.WriteString("\n\n")
+
+	for _, message := range ctx.identity.Params.Thread.Messages {
+		builder.WriteString(utils.JoinWith("\n",
+			string(message.Role),
+			message.Content,
+		))
+		builder.WriteString("\n\n")
+	}
+
+	return builder.String()
+}
+
+/*
 Append adds a new event to the context based on its type.
 It handles different types of events appropriately:
   - Tool calls are collected in the Toolcalls slice
@@ -98,12 +123,20 @@ Parameters:
   - event: The provider.Event to be processed and added to the context
 */
 func (ctx *Context) Append(event provider.Event) {
-	switch event.Type {
-	case provider.EventToolCall:
+	switch event.Type() {
+	case "tool_call":
 		ctx.Toolcalls = append(ctx.Toolcalls, &event)
-	case provider.EventChunk:
-		ctx.Scratchpad.Append(event.Text)
-	case provider.EventError:
-		ctx.Scratchpad.Append(event.Text)
+	case "chunk":
+		if data, ok := event.Data().(map[string]interface{}); ok {
+			if text, ok := data["text"].(string); ok {
+				ctx.Scratchpad.Append(text)
+			}
+		}
+	case "error":
+		if data, ok := event.Data().(map[string]interface{}); ok {
+			if text, ok := data["text"].(string); ok {
+				ctx.Scratchpad.Append(text)
+			}
+		}
 	}
 }

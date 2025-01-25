@@ -31,8 +31,8 @@ Returns:
 */
 func NewConn() *Conn {
 	endpoint := "localhost:9000"
-	accessKeyID := os.Getenv("MINIO_USER")
-	secretAccessKey := os.Getenv("MINIO_PASSWORD")
+	accessKeyID := os.Getenv("MINIO_ROOT_USER")
+	secretAccessKey := os.Getenv("MINIO_ROOT_PASSWORD")
 	useSSL := false
 
 	client, err := minio.New(endpoint, &minio.Options{

@@ -52,34 +52,42 @@ significant noise-reduction.
 func (consumer *Consumer) Print(stream <-chan provider.Event, structured bool) {
 	if !structured {
 		for chunk := range stream {
-			fmt.Print(chunk.Text)
+			if data, ok := chunk.Data().(map[string]interface{}); ok {
+				if text, ok := data["text"].(string); ok {
+					fmt.Print(text)
+				}
+			}
 		}
 		return
 	}
 
 	for chunk := range stream {
-		for _, char := range chunk.Text {
-			switch consumer.state {
-			case StateUndetermined:
-				consumer.undetermined(char)
-			case StateInKey:
-				consumer.inKey(char)
-			case StateInValue:
-				consumer.inValue(char)
-			case StateHasKey:
-				consumer.hasKey(char)
-			case StateHasValue:
-				consumer.hasValue(char)
-			case StateHasColon:
-				consumer.hasColon(char)
-			case StateHasEscape:
-				consumer.hasEscape(char)
-			case StateInArray:
-				consumer.inArray(char)
-			case StateInArrayItem:
-				consumer.inArrayItem(char)
-			case StateInObject:
-				consumer.inObject(char)
+		if data, ok := chunk.Data().(map[string]interface{}); ok {
+			if text, ok := data["text"].(string); ok {
+				for _, char := range text {
+					switch consumer.state {
+					case StateUndetermined:
+						consumer.undetermined(char)
+					case StateInKey:
+						consumer.inKey(char)
+					case StateInValue:
+						consumer.inValue(char)
+					case StateHasKey:
+						consumer.hasKey(char)
+					case StateHasValue:
+						consumer.hasValue(char)
+					case StateHasColon:
+						consumer.hasColon(char)
+					case StateHasEscape:
+						consumer.hasEscape(char)
+					case StateInArray:
+						consumer.inArray(char)
+					case StateInArrayItem:
+						consumer.inArrayItem(char)
+					case StateInObject:
+						consumer.inObject(char)
+					}
+				}
 			}
 		}
 	}

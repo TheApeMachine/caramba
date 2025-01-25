@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/minio/minio-go/v7"
-	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/datalake"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
@@ -26,7 +25,7 @@ type Identity struct {
 	System string `json:"system" jsonschema:"title=System,description=The system prompt for the agent,required"`
 	Name   string `json:"name" jsonschema:"title=Name,description=A unique name for the agent,required"`
 	Role   string `json:"role" jsonschema:"title=Role,description=The role of the agent,required"`
-	Params *provider.GenerationParams
+	Params *provider.LLMGenerationParams
 	conn   *datalake.Conn
 	ctx    context.Context
 	err    error
@@ -41,12 +40,16 @@ initialized using the Initialize method.
 Parameters:
   - ctx: The context for operations
   - role: The role designation for the AI agent
+  - system: The system prompt for the AI agent
 */
-func NewIdentity(ctx context.Context, role string) *Identity {
+func NewIdentity(ctx context.Context, role string, system string) *Identity {
 	return &Identity{
-		Role: role,
-		conn: datalake.NewConn(),
-		ctx:  ctx,
+		System: system,
+		Name:   utils.NewName(),
+		Role:   role,
+		Params: provider.NewGenerationParams(),
+		conn:   datalake.NewConn(),
+		ctx:    ctx,
 	}
 }
 
@@ -108,20 +111,10 @@ It validates and saves the new identity to storage.
 */
 func (identity *Identity) create() {
 	errnie.Info("creating new identity for role: %s", identity.Role)
-	v := viper.GetViper()
 
 	// Initialize params first
 	identity.Name = utils.NewName()
 	identity.Params = provider.NewGenerationParams()
-
-	identity.System = v.GetString("prompts.system.unstructured")
-	errnie.Info("loaded system prompt")
-
-	identity.System = utils.Substitute(identity.System, map[string]string{
-		"role":         identity.Role,
-		"identity":     utils.QuickWrap("identity", identity.String(), 1),
-		"instructions": utils.QuickWrap("instructions", v.GetString("prompts.instructions.thinking"), 1),
-	}, 1)
 
 	if identity.err = identity.validate(); identity.err != nil {
 		errnie.Info("identity validation failed: %v", identity.err)

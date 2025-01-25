@@ -1,6 +1,6 @@
 package provider
 
-type GenerationParams struct {
+type LLMGenerationParams struct {
 	Thread           *Thread
 	Tools            []Tool
 	Process          Process
@@ -12,8 +12,8 @@ type GenerationParams struct {
 	PresencePenalty  float64
 }
 
-func NewGenerationParams() *GenerationParams {
-	return &GenerationParams{
+func NewGenerationParams() *LLMGenerationParams {
+	return &LLMGenerationParams{
 		Thread:           NewThread(),
 		Tools:            make([]Tool, 0),
 		Process:          nil,
