@@ -35,7 +35,6 @@ type BalancedProvider struct {
 	initMu      sync.Mutex
 	initialized bool
 	cancel      context.CancelFunc
-	cancel      context.CancelFunc
 }
 
 var (
@@ -90,8 +89,6 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 	out := make(chan Event)
 	ctx, cancel := context.WithCancel(ctx)
 	lb.cancel = cancel
-	ctx, cancel := context.WithCancel(ctx)
-	lb.cancel = cancel
 
 	go func() {
 		defer close(out)
@@ -102,21 +99,9 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		startEvent.EventType = EventStart
 		startEvent.Name = "balanced_generation_start"
 		out <- startEvent
-		defer cancel()
-
-		// Send start event
-		startEvent := NewEventData()
-		startEvent.EventType = EventStart
-		startEvent.Name = "balanced_generation_start"
-		out <- startEvent
 
 		provider := lb.getAvailableProvider()
 		if provider == nil || provider.provider == nil {
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = errors.New("no available provider found")
-			errEvent.Name = "balanced_error"
-			out <- errEvent
 			errEvent := NewEventData()
 			errEvent.EventType = EventError
 			errEvent.Error = errors.New("no available provider found")
@@ -149,12 +134,6 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		provider.mu.Lock()
 		provider.occupied = false
 		provider.mu.Unlock()
-
-		// Send done event
-		doneEvent := NewEventData()
-		doneEvent.EventType = EventDone
-		doneEvent.Name = "balanced_generation_complete"
-		out <- doneEvent
 
 		// Send done event
 		doneEvent := NewEventData()

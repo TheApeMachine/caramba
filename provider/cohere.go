@@ -12,10 +12,8 @@ import (
 
 type Cohere struct {
 	*BaseProvider
-	*BaseProvider
 	client *client.Client
 	model  string
-	cancel context.CancelFunc
 	cancel context.CancelFunc
 }
 
@@ -24,66 +22,7 @@ func NewCohere(apiKey string) *Cohere {
 		BaseProvider: NewBaseProvider(),
 		client:       client.NewClient(client.WithToken(apiKey)),
 		model:        "command-r",
-		BaseProvider: NewBaseProvider(),
-		client:       client.NewClient(client.WithToken(apiKey)),
-		model:        "command-r",
 	}
-}
-
-// Version returns the provider version
-func (c *Cohere) Version() string {
-	return "1.0.0"
-}
-
-// Initialize sets up the provider
-func (c *Cohere) Initialize(ctx context.Context) error {
-	return nil
-}
-
-// PauseGeneration pauses the current generation
-func (c *Cohere) PauseGeneration() error {
-	return nil
-}
-
-// ResumeGeneration resumes the current generation
-func (c *Cohere) ResumeGeneration() error {
-	return nil
-}
-
-// GetCapabilities returns the provider capabilities
-func (c *Cohere) GetCapabilities() map[string]interface{} {
-	return map[string]interface{}{
-		"streaming": true,
-		"tools":     true,
-	}
-}
-
-// SupportsFeature checks if a feature is supported
-func (c *Cohere) SupportsFeature(feature string) bool {
-	caps := c.GetCapabilities()
-	supported, ok := caps[feature].(bool)
-	return ok && supported
-}
-
-// ValidateConfig validates the provider configuration
-func (c *Cohere) ValidateConfig() error {
-	return nil
-}
-
-// Cleanup performs any necessary cleanup
-func (c *Cohere) Cleanup(ctx context.Context) error {
-	if c.client != nil {
-		c.client = nil
-	}
-	return nil
-}
-
-// CancelGeneration cancels any ongoing generation
-func (c *Cohere) CancelGeneration(ctx context.Context) error {
-	if c.cancel != nil {
-		c.cancel()
-	}
-	return nil
 }
 
 // Version returns the provider version
@@ -150,18 +89,9 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 	out := make(chan Event)
 	ctx, cancel := context.WithCancel(ctx)
 	cohere.cancel = cancel
-	ctx, cancel := context.WithCancel(ctx)
-	cohere.cancel = cancel
 
 	go func() {
 		defer close(out)
-		defer cancel()
-
-		// Send start event
-		startEvent := NewEventData()
-		startEvent.EventType = EventStart
-		startEvent.Name = "cohere_generation_start"
-		out <- startEvent
 		defer cancel()
 
 		// Send start event
@@ -228,22 +158,12 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 			errEvent.Error = err
 			errEvent.Name = "cohere_error"
 			out <- errEvent
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = err
-			errEvent.Name = "cohere_error"
-			out <- errEvent
 			return
 		}
 
 		for {
 			resp, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
-				doneEvent := NewEventData()
-				doneEvent.EventType = EventDone
-				doneEvent.Name = "cohere_generation_complete"
-				doneEvent.Text = "\n"
-				out <- doneEvent
 				doneEvent := NewEventData()
 				doneEvent.EventType = EventDone
 				doneEvent.Name = "cohere_generation_complete"
@@ -259,20 +179,10 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				errEvent.Error = err
 				errEvent.Name = "cohere_error"
 				out <- errEvent
-				errEvent := NewEventData()
-				errEvent.EventType = EventError
-				errEvent.Error = err
-				errEvent.Name = "cohere_error"
-				out <- errEvent
 				return
 			}
 
 			if event := resp.StreamStart; event != nil {
-				startEvent := NewEventData()
-				startEvent.EventType = EventStart
-				startEvent.Name = "cohere_stream_start"
-				startEvent.Text = event.String()
-				out <- startEvent
 				startEvent := NewEventData()
 				startEvent.EventType = EventStart
 				startEvent.Name = "cohere_stream_start"
@@ -286,19 +196,9 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				chunkEvent.Name = "cohere_chunk"
 				chunkEvent.Text = event.String()
 				out <- chunkEvent
-				chunkEvent := NewEventData()
-				chunkEvent.EventType = EventChunk
-				chunkEvent.Name = "cohere_chunk"
-				chunkEvent.Text = event.String()
-				out <- chunkEvent
 			}
 
 			if event := resp.ToolCallsChunk; event != nil {
-				toolEvent := NewEventData()
-				toolEvent.EventType = EventToolCall
-				toolEvent.Name = "cohere_tool_call"
-				toolEvent.Text = event.String()
-				out <- toolEvent
 				toolEvent := NewEventData()
 				toolEvent.EventType = EventToolCall
 				toolEvent.Name = "cohere_tool_call"
@@ -312,19 +212,9 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				toolEvent.Name = "cohere_tool_call"
 				toolEvent.Text = event.String()
 				out <- toolEvent
-				toolEvent := NewEventData()
-				toolEvent.EventType = EventToolCall
-				toolEvent.Name = "cohere_tool_call"
-				toolEvent.Text = event.String()
-				out <- toolEvent
 			}
 
 			if event := resp.StreamEnd; event != nil {
-				doneEvent := NewEventData()
-				doneEvent.EventType = EventDone
-				doneEvent.Name = "cohere_stream_end"
-				doneEvent.Text = event.String()
-				out <- doneEvent
 				doneEvent := NewEventData()
 				doneEvent.EventType = EventDone
 				doneEvent.Name = "cohere_stream_end"
@@ -334,5 +224,5 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 		}
 	}()
 
-	return out, nil
+	return out
 }
