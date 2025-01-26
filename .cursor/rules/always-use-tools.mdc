@@ -1,0 +1,13 @@
+---
+description: For any task that requires understanding the codebase
+globs: *.go,*.yml
+---
+
+# Always Use Tools
+
+- Your current context could be misleading, especially after you have made some mistakes
+- You have powerful tools at your disposal that allow you to search the codebase and read files
+- Using those tools can heal the current context
+- Never modify ANY file, before first reading it in full
+
+Now, let's reason through the current task step-by-step, follow the rules above, and once we are ready, let's make one small improvement and test.

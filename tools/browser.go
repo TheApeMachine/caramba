@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/stealth"
 	"github.com/theapemachine/caramba/utils"
@@ -21,13 +22,14 @@ type BrowserArgs struct {
 }
 
 type Browser struct {
-	Operation  string `json:"operation" jsonschema:"title=Operation,description=The operation to perform,enum=navigate,enum=script"`
-	URL        string `json:"url" jsonschema:"title=URL,description=The URL to navigate to,required"`
-	Javascript string `json:"javascript" jsonschema:"title=JavaScript,description=JavaScript code to execute in the developer console. Must always be a function that returns a string, example: () => Array.from(document.querySelectorAll('p')).map(p => p.innerText).join('\\n')"`
-	instance   *rod.Browser
-	page       *rod.Page
-	history    []BrowseAction
-	proxy      *url.URL
+	Operation      string `json:"operation" jsonschema:"title=Operation,description=The operation to perform,enum=navigate,enum=script"`
+	URL            string `json:"url" jsonschema:"title=URL,description=The URL to navigate to,required"`
+	Javascript     string `json:"javascript" jsonschema:"title=JavaScript,description=JavaScript code to execute in the developer console. Must always be a function that returns a string, example: () => Array.from(document.querySelectorAll('p')).map(p => p.innerText).join('\\n')"`
+	instance       *rod.Browser
+	page           *rod.Page
+	currentElement *rod.Element
+	history        []BrowseAction
+	proxy          *url.URL
 }
 
 type BrowseAction struct {
@@ -189,7 +191,24 @@ func (browser *Browser) Run(args map[string]any) (string, error) {
 		return browser.ExecuteScript(script), nil
 	}
 
-	return browser.page.MustInfo().Title, nil
+	if selector, ok := args["selector"].(string); ok && selector != "" {
+		browser.currentElement = browser.page.MustElement(selector)
+	}
+
+	if action, ok := args["action"].(string); ok && action != "" {
+		switch action {
+		case "click":
+			browser.currentElement.MustClick()
+		default:
+			keys := make([]input.Key, len(action))
+			for i, r := range action {
+				keys[i] = input.Key(r)
+			}
+			browser.currentElement.MustType(keys...)
+		}
+	}
+
+	return "", nil
 }
 
 func (browser *Browser) Close() error {

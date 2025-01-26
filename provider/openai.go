@@ -36,7 +36,7 @@ func (openai *OpenAI) Name() string {
 	return fmt.Sprintf("openai (%s)", openai.model)
 }
 
-func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams) (<-chan Event, error) {
+func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
 	out := make(chan Event)
 	ctx, cancel := context.WithCancel(ctx)
 	openai.cancel = cancel
@@ -67,6 +67,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 		}
 
 		// Create completion request
+		// Create completion request
 		request := sdk.ChatCompletionNewParams{
 			Model:    sdk.F(openai.model),
 			Messages: sdk.F(messages),
@@ -87,6 +88,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 		}
 
 		// Stream the response
+		// Stream the response
 		stream := openai.client.Chat.Completions.NewStreaming(ctx, request)
 		acc := sdk.ChatCompletionAccumulator{}
 
@@ -106,7 +108,6 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 					chunkEvent.Text = content
 					out <- chunkEvent
 				}
-
 				// Handle tool calls
 				if tool, ok := acc.JustFinishedToolCall(); ok {
 					toolEvent := NewEventData()
@@ -115,7 +116,6 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 					toolEvent.PartialJSON = tool.Arguments
 					out <- toolEvent
 				}
-
 				// Stream regular content chunks
 				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 					chunkEvent := NewEventData()
@@ -144,7 +144,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 		out <- doneEvent
 	}()
 
-	return out, nil
+	return out
 }
 
 func (openai *OpenAI) CancelGeneration(ctx context.Context) error {
@@ -219,6 +219,11 @@ func (*OpenAI) convertTools(params *LLMGenerationParams) []sdk.ChatCompletionToo
 	return tools
 }
 
+// ValidateConfig validates the provider configuration
+func (openai *OpenAI) ValidateConfig() error {
+	return nil
+}
+
 // Version returns the provider version
 func (openai *OpenAI) Version() string {
 	return "1.0.0"
@@ -252,9 +257,4 @@ func (openai *OpenAI) SupportsFeature(feature string) bool {
 	caps := openai.GetCapabilities()
 	supported, ok := caps[feature].(bool)
 	return ok && supported
-}
-
-// ValidateConfig validates the provider configuration
-func (openai *OpenAI) ValidateConfig() error {
-	return nil
 }

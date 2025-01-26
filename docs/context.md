@@ -28,31 +28,31 @@ type Message struct {
 
 ### Token Management
 
--   128k context window support
--   Intelligent message truncation
--   Token counting optimization
--   Window size monitoring
+- 128k context window support
+- Intelligent message truncation
+- Token counting optimization
+- Window size monitoring
 
 ### Message History
 
--   System message preservation
--   User message tracking
--   Assistant response management
--   Tool call recording
+- System message preservation
+- User message tracking
+- Assistant response management
+- Tool call recording
 
 ### Thread Safety
 
--   Mutex-based synchronization
--   Atomic operations
--   Race condition prevention
--   Safe state updates
+- Mutex-based synchronization
+- Atomic operations
+- Race condition prevention
+- Safe state updates
 
 ### Optimization
 
--   Smart message pruning
--   Context window maximization
--   Token usage efficiency
--   Memory optimization
+- Smart message pruning
+- Context window maximization
+- Token usage efficiency
+- Memory optimization
 
 ## Usage
 
@@ -93,53 +93,53 @@ scratchpad.ToolCall(event)
 
 ### Message Roles
 
--   System: Configuration and behavior definition
--   User: Input messages and queries
--   Assistant: AI-generated responses
--   Tool: Tool execution results
+- System: Configuration and behavior definition
+- User: Input messages and queries
+- Assistant: AI-generated responses
+- Tool: Tool execution results
 
 ### Context Compilation
 
--   Message ordering
--   Role assignment
--   Token counting
--   Window optimization
+- Message ordering
+- Role assignment
+- Token counting
+- Window optimization
 
 ### State Management
 
--   Thread state tracking
--   Scratchpad management
--   System state preservation
--   Context window monitoring
+- Thread state tracking
+- Scratchpad management
+- System state preservation
+- Context window monitoring
 
 ## Best Practices
 
 1. **Message Management**
 
-    - Monitor message length
-    - Preserve critical messages
-    - Implement proper truncation
-    - Track token usage
+   - Monitor message length
+   - Preserve critical messages
+   - Implement proper truncation
+   - Track token usage
 
 2. **Context Window**
 
-    - Monitor window size
-    - Implement smart pruning
-    - Preserve important context
-    - Optimize token usage
+   - Monitor window size
+   - Implement smart pruning
+   - Preserve important context
+   - Optimize token usage
 
 3. **Thread Safety**
 
-    - Use proper synchronization
-    - Handle concurrent access
-    - Prevent race conditions
-    - Maintain state consistency
+   - Use proper synchronization
+   - Handle concurrent access
+   - Prevent race conditions
+   - Maintain state consistency
 
 4. **Performance**
-    - Optimize message storage
-    - Implement efficient pruning
-    - Monitor memory usage
-    - Cache when appropriate
+   - Optimize message storage
+   - Implement efficient pruning
+   - Monitor memory usage
+   - Cache when appropriate
 
 ## Examples
 
@@ -191,31 +191,31 @@ Common issues and solutions:
 
 1. **Context Overflow**
 
-    - Monitor token count
-    - Implement proper truncation
-    - Preserve critical messages
-    - Optimize message storage
+   - Monitor token count
+   - Implement proper truncation
+   - Preserve critical messages
+   - Optimize message storage
 
 2. **Memory Issues**
 
-    - Monitor memory usage
-    - Implement efficient pruning
-    - Cache appropriately
-    - Clean up unused context
+   - Monitor memory usage
+   - Implement efficient pruning
+   - Cache appropriately
+   - Clean up unused context
 
 3. **Performance Problems**
-    - Optimize compilation
-    - Implement efficient storage
-    - Use appropriate data structures
-    - Monitor resource usage
+   - Optimize compilation
+   - Implement efficient storage
+   - Use appropriate data structures
+   - Monitor resource usage
 
 ## Future Development
 
 Planned improvements:
 
--   Enhanced token management
--   Advanced context optimization
--   Improved memory efficiency
--   Extended window support
--   Performance enhancements
--   Advanced pruning strategies
+- Enhanced token management
+- Advanced context optimization
+- Improved memory efficiency
+- Extended window support
+- Performance enhancements
+- Advanced pruning strategies

@@ -30,7 +30,7 @@ func (anthropic *Anthropic) Name() string {
 	return "anthropic (claude 3.5 sonnet)"
 }
 
-func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationParams) (<-chan Event, error) {
+func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
 	out := make(chan Event)
 	ctx, cancel := context.WithCancel(ctx)
 	anthropic.cancel = cancel
@@ -142,7 +142,7 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationP
 		}
 	}()
 
-	return out, nil
+	return out
 }
 
 func (anthropic *Anthropic) CancelGeneration(ctx context.Context) error {

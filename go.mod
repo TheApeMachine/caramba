@@ -28,7 +28,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/theapemachine/amsh v0.0.0-20241219021147-90290810fcb8
 	github.com/theapemachine/errnie v0.0.4
-	github.com/theapemachine/qpool v0.0.1
+	github.com/theapemachine/qpool v0.0.2
 	github.com/tmc/langchaingo v0.1.12
 	google.golang.org/api v0.214.0
 )

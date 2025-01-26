@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/errnie"
 )
 
@@ -28,19 +27,6 @@ var (
 			if len(args) == 0 {
 				fmt.Println("Please specify an example type")
 				return
-			}
-
-			switch args[0] {
-			case "strawberry":
-				strawberry := examples.NewStrawberry(cmd.Context(), "strawberry")
-				errnie.Error(strawberry.Run())
-			case "architecture":
-				architecture := examples.NewArchitecture(cmd.Context(), "architecture")
-				errnie.Error(architecture.Run())
-			case "analysis":
-				errnie.Error(examples.RunAnalysis(cmd.Context(), "How many strawberries are in the world?"))
-			default:
-				fmt.Printf("Unknown example type: %s\n", args[0])
 			}
 		},
 	}

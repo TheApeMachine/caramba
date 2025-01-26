@@ -85,7 +85,7 @@ func (cohere *Cohere) Name() string {
 	return "cohere (command-r)"
 }
 
-func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams) (<-chan Event, error) {
+func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
 	out := make(chan Event)
 	ctx, cancel := context.WithCancel(ctx)
 	cohere.cancel = cancel
@@ -186,7 +186,6 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				startEvent := NewEventData()
 				startEvent.EventType = EventStart
 				startEvent.Name = "cohere_stream_start"
-				startEvent.Text = event.String()
 				out <- startEvent
 			}
 
@@ -194,7 +193,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				chunkEvent := NewEventData()
 				chunkEvent.EventType = EventChunk
 				chunkEvent.Name = "cohere_chunk"
-				chunkEvent.Text = event.String()
+				chunkEvent.Text = event.Text
 				out <- chunkEvent
 			}
 
@@ -202,7 +201,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				toolEvent := NewEventData()
 				toolEvent.EventType = EventToolCall
 				toolEvent.Name = "cohere_tool_call"
-				toolEvent.Text = event.String()
+				toolEvent.Text = "Tool called"
 				out <- toolEvent
 			}
 
@@ -210,7 +209,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				toolEvent := NewEventData()
 				toolEvent.EventType = EventToolCall
 				toolEvent.Name = "cohere_tool_call"
-				toolEvent.Text = event.String()
+				toolEvent.Text = "Tool called"
 				out <- toolEvent
 			}
 
@@ -218,11 +217,13 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				doneEvent := NewEventData()
 				doneEvent.EventType = EventDone
 				doneEvent.Name = "cohere_stream_end"
-				doneEvent.Text = event.String()
+				if event.Response != nil {
+					doneEvent.Text = event.Response.Text
+				}
 				out <- doneEvent
 			}
 		}
 	}()
 
-	return out, nil
+	return out
 }

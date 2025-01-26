@@ -64,7 +64,6 @@ func NewQdrant(collection string, dimension uint64) *Qdrant {
 		qdrant.WithURL(*url),
 		qdrant.WithCollectionName(collection),
 		qdrant.WithEmbedder(e),
-		qdrant.WithAPIKey("qdrant-api-key"),
 	); err != nil {
 		return nil
 	}

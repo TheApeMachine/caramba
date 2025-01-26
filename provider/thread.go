@@ -14,9 +14,9 @@ type Thread struct {
 /*
 NewThread creates a new thread.
 */
-func NewThread() *Thread {
+func NewThread(msgs ...*Message) *Thread {
 	return &Thread{
-		Messages: make([]*Message, 0),
+		Messages: msgs,
 	}
 }
 

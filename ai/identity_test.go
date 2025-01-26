@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/datalake"
 	"github.com/theapemachine/caramba/utils"
 )
@@ -16,7 +17,7 @@ func TestNewIdentity(t *testing.T) {
 
 		Convey("When creating a new identity with a role", func() {
 			role := "test-role"
-			identity := NewIdentity(ctx, role)
+			identity := drknow.NewIdentity(ctx, role, "You are a test role")
 
 			Convey("Should initialize with correct values", func() {
 				So(identity, ShouldNotBeNil)
@@ -27,7 +28,7 @@ func TestNewIdentity(t *testing.T) {
 
 		Convey("When loading an existing identity", func() {
 			role := "existing-role"
-			existingIdentity := &Identity{
+			existingIdentity := &drknow.Identity{
 				Name: "TestBot",
 				Role: role,
 			}
@@ -37,7 +38,7 @@ func TestNewIdentity(t *testing.T) {
 			datalake.NewConn().Put(ctx, "identities/"+role, data, nil)
 
 			// Try to load it
-			loadedIdentity := NewIdentity(ctx, role)
+			loadedIdentity := drknow.NewIdentity(ctx, role, "You are a test role")
 
 			Convey("Should load existing identity", func() {
 				So(loadedIdentity, ShouldNotBeNil)
@@ -48,7 +49,7 @@ func TestNewIdentity(t *testing.T) {
 
 		Convey("When identity exists but has empty name", func() {
 			role := "empty-name-role"
-			emptyIdentity := &Identity{
+			emptyIdentity := &drknow.Identity{
 				Name: "",
 				Role: role,
 			}
@@ -58,7 +59,7 @@ func TestNewIdentity(t *testing.T) {
 			datalake.NewConn().Put(ctx, "identities/"+role, data, nil)
 
 			// Try to load it
-			newIdentity := NewIdentity(ctx, role)
+			newIdentity := drknow.NewIdentity(ctx, role, "You are a test role")
 
 			Convey("Should create new identity", func() {
 				So(newIdentity, ShouldNotBeNil)
@@ -72,7 +73,7 @@ func TestNewIdentity(t *testing.T) {
 func TestIdentityString(t *testing.T) {
 	Convey("Given Identity String method", t, func() {
 		Convey("When converting identity to string", func() {
-			identity := &Identity{
+			identity := &drknow.Identity{
 				Name: "TestBot",
 				Role: "assistant",
 			}
@@ -90,7 +91,7 @@ func TestIdentityString(t *testing.T) {
 		})
 
 		Convey("When identity has empty values", func() {
-			identity := &Identity{
+			identity := &drknow.Identity{
 				Name: "",
 				Role: "",
 			}

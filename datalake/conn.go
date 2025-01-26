@@ -3,8 +3,6 @@ package datalake
 import (
 	"bytes"
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -31,8 +29,8 @@ Returns:
 */
 func NewConn() *Conn {
 	endpoint := "localhost:9000"
-	accessKeyID := os.Getenv("MINIO_USER")
-	secretAccessKey := os.Getenv("MINIO_PASSWORD")
+	accessKeyID := "minio"
+	secretAccessKey := "miniominio"
 	useSSL := false
 
 	client, err := minio.New(endpoint, &minio.Options{
@@ -62,12 +60,7 @@ func (conn *Conn) Error() string {
 IsConnected returns true if the connection is successful.
 */
 func (conn *Conn) IsConnected() bool {
-	healthy := conn.err == nil && conn.client != nil && conn.client.IsOnline()
-	fmt.Println("conn.err", conn.err)
-	fmt.Println("conn.client", conn.client)
-	fmt.Println("conn.client.IsOnline()", conn.client.IsOnline())
-	fmt.Println("healthy", healthy)
-	return healthy
+	return conn.err == nil && conn.client != nil && conn.client.IsOnline()
 }
 
 /*

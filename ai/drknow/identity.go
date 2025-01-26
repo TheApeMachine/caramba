@@ -1,4 +1,4 @@
-package ai
+package drknow
 
 import (
 	"bytes"
@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/minio/minio-go/v7"
-	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/datalake"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
@@ -28,7 +27,7 @@ type Identity struct {
 	Role   string `json:"role" jsonschema:"title=Role,description=The role of the agent,required"`
 	Params *provider.LLMGenerationParams
 	conn   *datalake.Conn
-	ctx    context.Context
+	Ctx    context.Context
 	err    error
 	loaded *minio.Object
 }
@@ -41,31 +40,25 @@ initialized using the Initialize method.
 Parameters:
   - ctx: The context for operations
   - role: The role designation for the AI agent
+  - system: The system prompt for the AI agent
 */
-func NewIdentity(ctx context.Context, role string) *Identity {
+func NewIdentity(ctx context.Context, role string, system string) *Identity {
+	params := provider.NewGenerationParams()
+	params.Thread = provider.NewThread(
+		provider.NewMessage(
+			provider.RoleSystem,
+			system,
+		),
+	)
+
 	return &Identity{
-		Role: role,
-		conn: datalake.NewConn(),
-		ctx:  ctx,
+		System: system,
+		Name:   utils.NewName(),
+		Role:   role,
+		Params: params,
+		conn:   datalake.NewConn(),
+		Ctx:    ctx,
 	}
-}
-
-/*
-Initialize loads an existing identity from storage or creates a new one if none exists.
-It ensures the Identity has valid generation parameters, using defaults if necessary.
-Returns the initialized Identity instance.
-*/
-func (identity *Identity) Initialize() *Identity {
-	if ok := identity.load(); !ok {
-		identity.create()
-	}
-
-	if identity.Params == nil {
-		errnie.Warn("identity has no params, going with defaults")
-		identity.Params = provider.NewGenerationParams()
-	}
-
-	return identity
 }
 
 /*
@@ -85,10 +78,7 @@ load attempts to retrieve an existing identity from storage based on its role.
 Returns true if successful, false if the identity doesn't exist or couldn't be loaded.
 */
 func (identity *Identity) load() bool {
-	errnie.Info("attempting to load identity for role: %s", identity.Role)
-
-	if identity.loaded, identity.err = identity.conn.Get(identity.ctx, "identities/"+identity.Role); identity.err != nil {
-		errnie.Info("no existing identity found for %s: %v", identity.Role, identity.err)
+	if identity.loaded, identity.err = identity.conn.Get(identity.Ctx, "identities/"+identity.Role); identity.err != nil {
 		return false
 	}
 
@@ -97,7 +87,6 @@ func (identity *Identity) load() bool {
 		return false
 	}
 
-	errnie.Info("identity loaded successfully for %s (%s)", identity.Name, identity.Role)
 	return true
 }
 
@@ -107,31 +96,15 @@ a new unique name, and default generation parameters.
 It validates and saves the new identity to storage.
 */
 func (identity *Identity) create() {
-	errnie.Info("creating new identity for role: %s", identity.Role)
-	v := viper.GetViper()
-
-	// Initialize params first
 	identity.Name = utils.NewName()
 	identity.Params = provider.NewGenerationParams()
 
-	identity.System = v.GetString("prompts.system.unstructured")
-	errnie.Info("loaded system prompt")
-
-	identity.System = utils.Substitute(identity.System, map[string]string{
-		"role":         identity.Role,
-		"identity":     utils.QuickWrap("identity", identity.String(), 1),
-		"instructions": utils.QuickWrap("instructions", v.GetString("prompts.instructions.thinking"), 1),
-	}, 1)
-
-	if identity.err = identity.validate(); identity.err != nil {
-		errnie.Info("identity validation failed: %v", identity.err)
+	if identity.err = identity.Validate(); identity.err != nil {
 		errnie.Error(identity.err)
 		return
 	}
 
-	errnie.Info("identity validated successfully, proceeding to save")
 	identity.save()
-	errnie.Info("identity created %s (%s)", identity.Name, identity.Role)
 }
 
 /*
@@ -144,27 +117,23 @@ func (identity *Identity) save() {
 		return
 	}
 
-	errnie.Info("attempting to save identity %s (%s)", identity.Name, identity.Role)
-
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(identity); err != nil {
 		errnie.Error(err)
 		return
 	}
 
-	if err := identity.conn.Put(identity.ctx, "identities/"+identity.Role, buf.Bytes(), nil); err != nil {
+	if err := identity.conn.Put(identity.Ctx, "identities/"+identity.Role, buf.Bytes(), nil); err != nil {
 		errnie.Error(err)
 		return
 	}
-
-	errnie.Info("identity saved successfully %s (%s)", identity.Name, identity.Role)
 }
 
 /*
-validate checks if all required fields of the Identity are properly set.
+Validate checks if all required fields of the Identity are properly set.
 Returns an error if any required field is missing or invalid.
 */
-func (identity *Identity) validate() error {
+func (identity *Identity) Validate() error {
 	if identity.System == "" {
 		return errors.New("system is required")
 	}

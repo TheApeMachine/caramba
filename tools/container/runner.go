@@ -58,13 +58,13 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWri
 		Mounts: []mount.Mount{
 			{
 				Type:   mount.TypeBind,
-				Source: "/tmp/out",
+				Source: "/tmp/workspace",
 				Target: "/tmp/out",
 			},
 			{
 				Type:   mount.TypeBind,
 				Source: "/tmp/.ssh",
-				Target: "/root/.ssh",
+				Target: "/home/user/.ssh",
 			},
 		},
 	}

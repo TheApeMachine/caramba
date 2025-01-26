@@ -7,12 +7,14 @@ import (
 	"fmt"
 
 	"github.com/google/generative-ai-go/genai"
+	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
 type Gemini struct {
+	*BaseProvider
 	client *genai.Client
 	model  *genai.GenerativeModel
 	cancel context.CancelFunc
@@ -27,8 +29,9 @@ func NewGemini(apiKey string) *Gemini {
 	}
 	model := client.GenerativeModel("gemini-pro")
 	return &Gemini{
-		client: client,
-		model:  model,
+		BaseProvider: NewBaseProvider(),
+		client:       client,
+		model:        model,
 	}
 }
 
@@ -36,7 +39,7 @@ func (gemini *Gemini) Name() string {
 	return "google (gemini)"
 }
 
-func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams) (<-chan Event, error) {
+func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
 	out := make(chan Event)
 	ctx, cancel := context.WithCancel(ctx)
 	gemini.cancel = cancel
@@ -216,7 +219,7 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 		}
 	}()
 
-	return out, nil
+	return out
 }
 
 func (gemini *Gemini) CancelGeneration(ctx context.Context) error {
@@ -224,4 +227,74 @@ func (gemini *Gemini) CancelGeneration(ctx context.Context) error {
 		gemini.cancel()
 	}
 	return nil
+}
+
+// Version returns the provider version
+func (g *Gemini) Version() string {
+	return "1.0.0"
+}
+
+// Initialize sets up the provider
+func (g *Gemini) Initialize(ctx context.Context) error {
+	return nil
+}
+
+// PauseGeneration pauses the current generation
+func (g *Gemini) PauseGeneration() error {
+	return nil
+}
+
+// ResumeGeneration resumes the current generation
+func (g *Gemini) ResumeGeneration() error {
+	return nil
+}
+
+// GetCapabilities returns the provider capabilities
+func (g *Gemini) GetCapabilities() map[string]interface{} {
+	return map[string]interface{}{
+		"streaming": true,
+		"tools":     true,
+	}
+}
+
+// SupportsFeature checks if a feature is supported
+func (g *Gemini) SupportsFeature(feature string) bool {
+	caps := g.GetCapabilities()
+	supported, ok := caps[feature].(bool)
+	return ok && supported
+}
+
+// ValidateConfig validates the provider configuration
+func (g *Gemini) ValidateConfig() error {
+	return nil
+}
+
+// Cleanup performs any necessary cleanup
+func (g *Gemini) Cleanup(ctx context.Context) error {
+	if g.client != nil {
+		g.client.Close()
+		g.client = nil
+	}
+	return nil
+}
+
+// Configure sets up the provider with the given configuration
+func (g *Gemini) Configure(config *ProviderConfig) error {
+	return nil
+}
+
+// GetConfig returns the current provider configuration
+func (g *Gemini) GetConfig() *ProviderConfig {
+	return nil
+}
+
+// GetMetrics returns the provider metrics
+func (g *Gemini) GetMetrics() (*ProviderMetrics, error) {
+	return &ProviderMetrics{}, nil
+}
+
+// HealthCheck performs a health check
+func (g *Gemini) HealthCheck(ctx context.Context) *utils.HealthStatus {
+	status := utils.StatusHealthy
+	return &status
 }

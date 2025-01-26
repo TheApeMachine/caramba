@@ -11,6 +11,11 @@ Agents in Caramba are sophisticated entities that combine:
 - Context management for maintaining conversation state
 - Tool integration for extended capabilities
 - Provider interaction for AI model access
+- System prompts for behavior definition
+- Identity management for tracking and persistence
+- Context management for maintaining conversation state
+- Tool integration for extended capabilities
+- Provider interaction for AI model access
 
 ## Components
 
@@ -26,9 +31,15 @@ type Identity struct {
 - Provides trackable parameters for agent identification
 - Persists agent state across sessions
 - Enables role-based behavior modification
+- Provides trackable parameters for agent identification
+- Persists agent state across sessions
+- Enables role-based behavior modification
 
 ### System
 
+- Manages system prompts and instructions
+- Controls agent behavior and capabilities
+- Supports both structured and unstructured outputs
 - Manages system prompts and instructions
 - Controls agent behavior and capabilities
 - Supports both structured and unstructured outputs
@@ -38,7 +49,7 @@ type Identity struct {
 - Maintains message history with 128k context window
 - Implements intelligent message truncation
 - Preserves critical system and user messages
-- Optimizes token usage with tiktoken-go
+- Optimizes token usage with `tiktoken-go`
 
 ## Usage
 
@@ -85,9 +96,17 @@ for event := range response {
 - Automatic failover and recovery
 - Health monitoring and cooldown periods
 - Thread-safe operations
+- Smart load balancing across multiple AI providers
+- Automatic failover and recovery
+- Health monitoring and cooldown periods
+- Thread-safe operations
 
 ### Tool Integration
 
+- Dynamic tool registration and discovery
+- JSON schema-based tool definition
+- Streaming tool execution support
+- Generic parameter handling
 - Dynamic tool registration and discovery
 - JSON schema-based tool definition
 - Streaming tool execution support
@@ -99,31 +118,35 @@ for event := range response {
 - Comprehensive error reporting
 - Automatic retry mechanisms
 - Context preservation during failures
+- Graceful error recovery
+- Comprehensive error reporting
+- Automatic retry mechanisms
+- Context preservation during failures
 
 ## Best Practices
 
 1. **Initialization**
 
-    - Always initialize agents before use
-    - Configure appropriate tools based on agent role
-    - Set reasonable iteration limits
+   - Always initialize agents before use
+   - Configure appropriate tools based on agent role
+   - Set reasonable iteration limits
 
 2. **Context Management**
 
-    - Monitor context window usage
-    - Implement proper message truncation
-    - Preserve critical system messages
+   - Monitor context window usage
+   - Implement proper message truncation
+   - Preserve critical system messages
 
 3. **Tool Usage**
 
-    - Register only necessary tools
-    - Handle tool errors appropriately
-    - Implement proper cleanup
+   - Register only necessary tools
+   - Handle tool errors appropriately
+   - Implement proper cleanup
 
 4. **Provider Configuration**
-    - Configure multiple providers when possible
-    - Set appropriate timeouts
-    - Monitor provider health
+   - Configure multiple providers when possible
+   - Set appropriate timeouts
+   - Monitor provider health
 
 ## Examples
 
@@ -149,25 +172,29 @@ Common issues and their solutions:
 
 1. **Context Overflow**
 
-    - Implement proper message truncation
-    - Monitor token usage
-    - Clear context when appropriate
+   - Implement proper message truncation
+   - Monitor token usage
+   - Clear context when appropriate
 
 2. **Tool Failures**
 
-    - Check tool initialization
-    - Verify required credentials
-    - Monitor tool execution timeouts
+   - Check tool initialization
+   - Verify required credentials
+   - Monitor tool execution timeouts
 
 3. **Provider Issues**
-    - Verify API keys
-    - Check provider status
-    - Monitor rate limits
+   - Verify API keys
+   - Check provider status
+   - Monitor rate limits
 
 ## Future Development
 
 Planned improvements:
 
+- Enhanced context management
+- Advanced tool orchestration
+- Improved provider balancing
+- Extended error recovery mechanisms
 - Enhanced context management
 - Advanced tool orchestration
 - Improved provider balancing

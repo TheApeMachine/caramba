@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
@@ -31,6 +30,7 @@ requests across them. The main reason behind this is to avoid rate-limiting,
 single-point-of-failure, and single-provider bias.
 */
 type BalancedProvider struct {
+	*BaseProvider
 	providers   []*ProviderStatus
 	selectIndex int
 	initMu      sync.Mutex
@@ -48,28 +48,12 @@ NewBalancedProvider returns a provider that agents can use, which makes
 the balancing process transparent to the user.
 */
 func NewBalancedProvider() *BalancedProvider {
-	// Make sure we only intialize the provider once.
-	onceBalancedProvider.Do(func() {
-		v := viper.GetViper()
-
-		providers := []*ProviderStatus{
-			{provider: NewOpenAI(os.Getenv("OPENAI_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
-			{provider: NewAnthropic(os.Getenv("ANTHROPIC_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
-			{provider: NewOpenAICompatible(os.Getenv("GEMINI_API_KEY"), v.GetString("endpoints.gemini"), v.GetString("models.gemini")), occupied: false, lastUsed: time.Time{}, failures: 0},
-			{provider: NewDeepSeek(os.Getenv("DEEPSEEK_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
-			{provider: NewOllama(os.Getenv("OLLAMA_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
-			{provider: NewCohere(os.Getenv("COHERE_API_KEY")), occupied: false, lastUsed: time.Time{}, failures: 0},
-		}
-
-		balancedProviderInstance = &BalancedProvider{providers: providers}
-
-		if len(providers) == 0 {
-			errnie.Error(errors.New("no valid providers initialized"))
-		}
-	})
-
-	// Return the ambient context of the provider.
-	return balancedProviderInstance
+	rand.Seed(time.Now().UnixNano())
+	return &BalancedProvider{
+		BaseProvider: NewBaseProvider(),
+		providers:    make([]*ProviderStatus, 0),
+		selectIndex:  0,
+	}
 }
 
 /*
@@ -83,7 +67,7 @@ func (lb *BalancedProvider) Name() string {
 Generate a response from an LLM provider, passing in the parameters, which
 include the messages, and model settings to use.
 */
-func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationParams) (<-chan Event, error) {
+func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
 	hasSystem := false
 	hasUser := false
 
@@ -97,7 +81,7 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 
 	if !hasSystem {
 		errnie.Error(errors.New("no system message found"))
-		return nil, errors.New("no system message found")
+		return nil
 	}
 
 	if !hasUser {
@@ -134,13 +118,10 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		provider.mu.Unlock()
 
 		errnie.Info("generating response from %s", provider.provider.Name())
-		events, err := provider.provider.Generate(ctx, params)
-		if err != nil {
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = err
-			errEvent.Name = "balanced_error"
-			out <- errEvent
+		events := provider.provider.Generate(ctx, params)
+
+		if events == nil {
+			errnie.Error(errors.New("events channel is nil"))
 			return
 		}
 
@@ -163,7 +144,7 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		out <- doneEvent
 	}()
 
-	return out, nil
+	return out
 }
 
 /*
@@ -177,8 +158,11 @@ func (lb *BalancedProvider) CancelGeneration(ctx context.Context) error {
 }
 
 func (lb *BalancedProvider) getAvailableProvider() *ProviderStatus {
-	if provider := lb.handleFirstRequest(); provider != nil {
-		return provider
+	// Try to handle first request if not initialized
+	if !lb.initialized {
+		if provider := lb.handleFirstRequest(); provider != nil {
+			return provider
+		}
 	}
 
 	cooldownPeriod := 60 * time.Second
@@ -186,27 +170,61 @@ func (lb *BalancedProvider) getAvailableProvider() *ProviderStatus {
 	maxAttempts := 10
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		var bestProvider *ProviderStatus
-		oldestUse := time.Now()
-
+		// First try to find providers that have never been used
+		var unusedProviders []*ProviderStatus
 		for _, ps := range lb.providers {
 			ps.mu.Lock()
-			if !ps.occupied && ps.provider != nil &&
-				(ps.failures < maxFailures || time.Since(ps.lastUsed) >= cooldownPeriod) &&
-				(bestProvider == nil || ps.failures < bestProvider.failures ||
-					(ps.failures == bestProvider.failures && ps.lastUsed.Before(oldestUse))) {
-				bestProvider = ps
-				oldestUse = ps.lastUsed
+			if !ps.occupied && ps.provider != nil && ps.lastUsed.IsZero() {
+				unusedProviders = append(unusedProviders, ps)
 			}
 			ps.mu.Unlock()
 		}
 
-		if bestProvider != nil {
-			bestProvider.mu.Lock()
-			bestProvider.occupied = true
-			bestProvider.lastUsed = time.Now()
-			bestProvider.mu.Unlock()
-			return bestProvider
+		// Randomly select from unused providers if available
+		if len(unusedProviders) > 0 {
+			selected := unusedProviders[rand.Intn(len(unusedProviders))]
+			selected.mu.Lock()
+			selected.occupied = true
+			selected.lastUsed = time.Now()
+			selected.mu.Unlock()
+			return selected
+		}
+
+		// If no unused providers, collect all eligible providers
+		var eligibleProviders []*ProviderStatus
+		lowestFailures := maxFailures
+
+		// First pass to find the lowest failure count among available providers
+		for _, ps := range lb.providers {
+			ps.mu.Lock()
+			if !ps.occupied && ps.provider != nil &&
+				(ps.failures < maxFailures || time.Since(ps.lastUsed) >= cooldownPeriod) {
+				if ps.failures < lowestFailures {
+					lowestFailures = ps.failures
+				}
+			}
+			ps.mu.Unlock()
+		}
+
+		// Second pass to collect all providers with the lowest failure count
+		for _, ps := range lb.providers {
+			ps.mu.Lock()
+			if !ps.occupied && ps.provider != nil &&
+				(ps.failures < maxFailures || time.Since(ps.lastUsed) >= cooldownPeriod) &&
+				ps.failures == lowestFailures {
+				eligibleProviders = append(eligibleProviders, ps)
+			}
+			ps.mu.Unlock()
+		}
+
+		// Randomly select from eligible providers
+		if len(eligibleProviders) > 0 {
+			selected := eligibleProviders[rand.Intn(len(eligibleProviders))]
+			selected.mu.Lock()
+			selected.occupied = true
+			selected.lastUsed = time.Now()
+			selected.mu.Unlock()
+			return selected
 		}
 
 		errnie.Warn("all providers occupied or in cooldown, attempt %d, waiting...", attempt+1)
@@ -221,29 +239,33 @@ func (lb *BalancedProvider) handleFirstRequest() *ProviderStatus {
 	lb.initMu.Lock()
 	defer lb.initMu.Unlock()
 
+	// If already initialized, let the normal selection process handle it
 	if lb.initialized {
 		return nil
 	}
 
-	available := make([]*ProviderStatus, 0)
+	// Initialize providers if not done yet
+	if len(lb.providers) == 0 {
+		if err := lb.InitializeProviders(); err != nil {
+			errnie.Error(err)
+			return nil
+		}
+	}
+
+	// Find an available provider
 	for _, ps := range lb.providers {
 		ps.mu.Lock()
-		if !ps.occupied {
-			available = append(available, ps)
+		if !ps.occupied && ps.provider != nil {
+			ps.occupied = true
+			ps.lastUsed = time.Now()
+			ps.mu.Unlock()
+			lb.initialized = true
+			return ps
 		}
 		ps.mu.Unlock()
 	}
 
-	if len(available) > 0 {
-		selected := available[rand.Intn(len(available))]
-		selected.mu.Lock()
-		selected.occupied = true
-		selected.lastUsed = time.Now()
-		selected.mu.Unlock()
-		lb.initialized = true
-		return selected
-	}
-
+	// If we get here, no providers were available
 	return nil
 }
 
@@ -329,8 +351,9 @@ func (bp *BalancedProvider) Configure(config *ProviderConfig) error {
 
 // GetCapabilities returns the provider capabilities
 func (bp *BalancedProvider) GetCapabilities() map[string]interface{} {
-	// Return capabilities supported by all providers
 	return map[string]interface{}{
+		"balanced":  true,
+		"providers": len(bp.providers),
 		"streaming": true,
 		"tools":     true,
 	}
@@ -380,11 +403,29 @@ func (bp *BalancedProvider) HealthCheck(ctx context.Context) *utils.HealthStatus
 
 // Initialize sets up the provider
 func (bp *BalancedProvider) Initialize(ctx context.Context) error {
+	bp.initMu.Lock()
+	defer bp.initMu.Unlock()
+
+	// Initialize providers if not done yet
+	if len(bp.providers) == 0 {
+		if err := bp.InitializeProviders(); err != nil {
+			return err
+		}
+	}
+
+	// Initialize each provider
 	for _, p := range bp.providers {
 		if err := p.provider.Initialize(ctx); err != nil {
 			return err
 		}
+		// Ensure provider starts in unoccupied state
+		p.mu.Lock()
+		p.occupied = false
+		p.lastUsed = time.Time{}
+		p.failures = 0
+		p.mu.Unlock()
 	}
+
 	bp.initialized = true
 	return nil
 }
@@ -411,9 +452,7 @@ func (bp *BalancedProvider) ResumeGeneration() error {
 
 // SupportsFeature checks if a feature is supported
 func (bp *BalancedProvider) SupportsFeature(feature string) bool {
-	caps := bp.GetCapabilities()
-	supported, ok := caps[feature].(bool)
-	return ok && supported
+	return feature == "balanced"
 }
 
 // ValidateConfig validates the configuration for all providers
@@ -429,4 +468,44 @@ func (bp *BalancedProvider) ValidateConfig() error {
 // Version returns the provider version
 func (bp *BalancedProvider) Version() string {
 	return "1.0.0"
+}
+
+// AddProvider adds a new provider to the balanced provider
+func (bp *BalancedProvider) AddProvider(provider Provider) {
+	bp.providers = append(bp.providers, &ProviderStatus{
+		provider: provider,
+		occupied: false,
+		lastUsed: time.Time{},
+		failures: 0,
+	})
+}
+
+// InitializeProviders initializes all configured providers based on environment variables
+func (bp *BalancedProvider) InitializeProviders() error {
+	// OpenAI
+	if openaiKey := os.Getenv("OPENAI_API_KEY"); openaiKey != "" {
+		bp.AddProvider(NewOpenAI(openaiKey))
+	}
+
+	// Anthropic
+	if anthropicKey := os.Getenv("ANTHROPIC_API_KEY"); anthropicKey != "" {
+		bp.AddProvider(NewAnthropic(anthropicKey))
+	}
+
+	// Gemini
+	if geminiKey := os.Getenv("GEMINI_API_KEY"); geminiKey != "" {
+		bp.AddProvider(NewGemini(geminiKey))
+	}
+
+	// Cohere
+	if cohereKey := os.Getenv("COHERE_API_KEY"); cohereKey != "" {
+		bp.AddProvider(NewCohere(cohereKey))
+	}
+
+	// Check if any providers were added
+	if len(bp.providers) == 0 {
+		return errors.New("no providers were initialized")
+	}
+
+	return nil
 }
