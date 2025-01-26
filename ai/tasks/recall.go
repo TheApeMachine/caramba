@@ -23,7 +23,7 @@ func NewRecall() *Recall {
 	}
 }
 
-func (r *Recall) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]string) {
+func (r *Recall) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]any) {
 	// Initialize databases
 	if err := r.initializeDatabases(); err != nil {
 		ctx.AddMessage(
@@ -91,32 +91,43 @@ func (r *Recall) initializeDatabases() error {
 	return nil
 }
 
-func (r *Recall) prepareQueries(args map[string]string) (*queryParams, error) {
-	params := &queryParams{
-		query:  args["query"],
-		cypher: args["cypher"],
+func (r *Recall) prepareQueries(args map[string]any) (*queryParams, error) {
+	params := &queryParams{}
+
+	if queryRaw, ok := args["query"]; ok {
+		if query, ok := queryRaw.(string); ok {
+			params.query = query
+		}
+	}
+
+	if cypherRaw, ok := args["cypher"]; ok {
+		if cypher, ok := cypherRaw.(string); ok {
+			params.cypher = cypher
+		}
 	}
 
 	// Process keywords if provided
-	if keywordsStr, ok := args["keywords"]; ok {
-		if err := json.Unmarshal([]byte(keywordsStr), &params.keywords); err != nil {
-			return nil, fmt.Errorf("keywords unmarshal: %w", err)
-		}
+	if keywordsRaw, ok := args["keywords"]; ok {
+		if keywordsStr, ok := keywordsRaw.(string); ok {
+			if err := json.Unmarshal([]byte(keywordsStr), &params.keywords); err != nil {
+				return nil, fmt.Errorf("keywords unmarshal: %w", err)
+			}
 
-		// Prepare semantic search query
-		params.query = strings.Join(params.keywords, " ")
+			// Prepare semantic search query
+			params.query = strings.Join(params.keywords, " ")
 
-		// Prepare graph search query
-		cypherConditions := make([]string, len(params.keywords))
-		for i, keyword := range params.keywords {
-			cypherConditions[i] = fmt.Sprintf("n.content CONTAINS '%s'", keyword)
+			// Prepare graph search query
+			cypherConditions := make([]string, len(params.keywords))
+			for i, keyword := range params.keywords {
+				cypherConditions[i] = fmt.Sprintf("n.content CONTAINS '%s'", keyword)
+			}
+			params.cypher = fmt.Sprintf(`
+				MATCH (n:Memory)
+				WHERE %s
+				RETURN n
+				LIMIT 5
+			`, strings.Join(cypherConditions, " OR "))
 		}
-		params.cypher = fmt.Sprintf(`
-			MATCH (n:Memory)
-			WHERE %s
-			RETURN n
-			LIMIT 5
-		`, strings.Join(cypherConditions, " OR "))
 	}
 
 	return params, nil

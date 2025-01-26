@@ -33,7 +33,7 @@ func NewOptimize() *Optimize {
 func (o *Optimize) Execute(
 	ctx *drknow.Context,
 	accumulator *stream.Accumulator,
-	args map[string]string,
+	args map[string]any,
 ) {
 	// Create artifacts directory if it doesn't exist
 	artifactsDir := "artifacts"
@@ -53,7 +53,7 @@ func (o *Optimize) Execute(
 	defer file.Close()
 
 	// Parse and write artifacts
-	if artifactsStr, ok := args["artifacts"]; ok {
+	if artifactsStr, ok := args["artifacts"].(string); ok {
 		var artifacts []FinetuningArtifact
 		if err := json.Unmarshal([]byte(artifactsStr), &artifacts); err != nil {
 			fmt.Printf("Error parsing artifacts: %v\n", err)

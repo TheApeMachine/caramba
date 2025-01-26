@@ -6,5 +6,5 @@ import (
 )
 
 type Task interface {
-	Execute(*drknow.Context, *stream.Accumulator, map[string]string)
+	Execute(*drknow.Context, *stream.Accumulator, map[string]any)
 }

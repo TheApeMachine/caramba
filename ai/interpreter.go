@@ -14,12 +14,14 @@ var taskMap = map[string]tasks.Task{
 	"ignore":   tasks.NewIgnore(),
 	"break":    tasks.NewBreak(),
 	"recall":   tasks.NewRecall(),
+	"memory":   tasks.NewMemory(),
 	"optimize": tasks.NewOptimize(),
+	"web":      tasks.NewWeb(),
 }
 
 type Command struct {
 	Task tasks.Task
-	Args map[string]string
+	Args map[string]any
 }
 
 /*
@@ -59,7 +61,7 @@ func (interpreter *Interpreter) Interpret() *Interpreter {
 
 	for _, match := range matches {
 		command := strings.ToLower(match[1])
-		args := make(map[string]string)
+		args := make(map[string]any)
 
 		// The full match is at index 0, command name at index 1
 		// After that, every group of 3 elements represents: key, quoted value, array value
