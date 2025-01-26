@@ -8,12 +8,33 @@ The Context Management system in Caramba handles message history, token counting
 
 ```go
 type Context struct {
-    Thread     *provider.Thread
-    Scratchpad *provider.Thread
-    System     *System
-    indent     int
+    Identity  *Identity
+    Toolcalls []*provider.Event
+    indent    int
 }
 ```
+
+The Context structure now focuses on identity-based management and tool call tracking, with the following components:
+
+- `Identity`: Manages agent identity and system prompts
+- `Toolcalls`: Tracks tool interactions during conversation
+- `indent`: Handles structural formatting
+
+### Identity Management
+
+```go
+type Identity struct {
+    System string
+    Params *provider.LLMGenerationParams
+}
+```
+
+The Identity component manages:
+
+- System prompts and instructions
+- Generation parameters
+- Thread management
+- Agent behavior definition
 
 ### Message Structure
 
@@ -54,26 +75,72 @@ type Message struct {
 - Token usage efficiency
 - Memory optimization
 
+### Quick Context Creation
+
+```go
+// Create a context with specific steering instructions
+ctx := QuickContext(
+    systemPrompt,
+    "codeswitch",  // Optional steering additions
+    "noexplain",
+    "silentfail",
+)
+```
+
+### Iteration Management
+
+```go
+// Compile context for a specific iteration
+params := ctx.Compile(currentCycle, maxIterations)
+
+// Reset context state
+ctx.Reset()
+
+// Add new message
+ctx.AddMessage(provider.NewMessage(
+    provider.RoleUser,
+    "Message content",
+))
+```
+
 ## Usage
 
 ### Basic Context Creation
 
 ```go
-context := ai.NewContext(system, params)
-context.Compile()
+// Create a new context with identity
+identity := NewIdentity(ctx, "reasoner", systemPrompt)
+context := NewContext(identity)
+
+// Add messages and compile
+context.AddMessage(provider.NewMessage(
+    provider.RoleUser,
+    "What is the weather like?",
+))
+params := context.Compile(0, 3) // First iteration of max 3
 ```
 
-### Message Management
+### Advanced Context Management
 
 ```go
-// Add a message to the thread
-thread.AddMessage(provider.NewMessage(
+// Create a context with steering instructions
+context := QuickContext(
+    systemPrompt,
+    "codeswitch",
+    "noexplain",
+)
+
+// Add messages
+context.AddMessage(provider.NewMessage(
     provider.RoleUser,
-    "Message content",
+    "Help me with a task.",
 ))
 
-// Compile context for generation
-params := context.Compile()
+// Get string representation
+contextStr := context.String(false) // Exclude system messages
+
+// Reset context
+context.Reset()
 ```
 
 ### Scratchpad Usage
@@ -95,22 +162,31 @@ scratchpad.ToolCall(event)
 
 - System: Configuration and behavior definition
 - User: Input messages and queries
-- Assistant: AI-generated responses
-- Tool: Tool execution results
+- Assistant: AI-generated responses and iteration markers
+- Tool: Tool execution results and tracking
 
 ### Context Compilation
 
-- Message ordering
-- Role assignment
-- Token counting
-- Window optimization
+- Message ordering and formatting
+- Iteration cycle management
+- System prompt inclusion
+- Tool call tracking
 
 ### State Management
 
-- Thread state tracking
-- Scratchpad management
-- System state preservation
-- Context window monitoring
+- Identity-based configuration
+- Tool call history
+- System prompt preservation
+- Iteration state tracking
+
+### Steering Instructions
+
+Available steering options:
+
+- `codeswitch`: Modify response style
+- `noexplain`: Reduce explanatory content
+- `silentfail`: Handle failures quietly
+- `scratchpad`: Enable working memory
 
 ## Best Practices
 

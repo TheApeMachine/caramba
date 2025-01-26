@@ -14,6 +14,34 @@ type Tool interface {
 }
 ```
 
+### Command System Interface
+
+The system now supports a structured command syntax for tool interaction:
+
+```
+<COMMAND param1=value1 param2=value2>
+```
+
+Available Commands:
+
+#### Core Commands
+
+- `<HELP command=string>`: Get help about a specific command
+- `<BREAK reason=string>`: Break out of an iteration loop or task
+- `<TERMINAL>`: Connect directly to a Debian-based Linux terminal
+
+#### Memory Commands
+
+- `<RECALL keywords=[string] query=string cypher=string>`: Query long-term memory
+- `<REMEMBER raw=string documents=[{content,metadata}] cypher=string>`: Store in long-term memory
+
+#### Tool Commands
+
+- `<BASH commands=[string]>`: Run commands in Debian bash terminal
+- `<WEB url=string javascript=string selector=string action=string hotkeys=[string]>`: Web automation
+
+Each command supports specific parameters and can be used in combination with the standard tool interface.
+
 ## Available Tools
 
 ### Browser Tool
@@ -28,11 +56,11 @@ type Browser struct {
 
 Features:
 
--   Headless browser automation
--   Stealth mode support
--   Proxy configuration
--   JavaScript execution
--   Screenshot capability
+- Headless browser automation
+- Stealth mode support
+- Proxy configuration
+- JavaScript execution
+- Screenshot capability
 
 ### Container Tool
 
@@ -45,11 +73,11 @@ type Container struct {
 
 Features:
 
--   Isolated Debian environment
--   Command execution
--   Interactive shell
--   File system access
--   Resource management
+- Isolated Debian environment
+- Command execution
+- Interactive shell
+- File system access
+- Resource management
 
 ### Database Tools
 
@@ -69,10 +97,10 @@ type Neo4jStore struct {
 
 Features:
 
--   Graph database operations
--   Cypher query execution
--   Relationship management
--   Data persistence
+- Graph database operations
+- Cypher query execution
+- Relationship management
+- Data persistence
 
 #### Qdrant Tool
 
@@ -91,10 +119,10 @@ type QdrantStore struct {
 
 Features:
 
--   Vector similarity search
--   Document storage
--   Metadata management
--   Semantic querying
+- Vector similarity search
+- Document storage
+- Metadata management
+- Semantic querying
 
 ### Integration Tools
 
@@ -108,10 +136,10 @@ type Azure struct {
 
 Features:
 
--   Cloud service operations
--   Ticket management
--   Resource search
--   Status updates
+- Cloud service operations
+- Ticket management
+- Resource search
+- Status updates
 
 #### GitHub Tool
 
@@ -124,10 +152,10 @@ type Github struct {
 
 Features:
 
--   Repository operations
--   Version control
--   Code management
--   Collaboration support
+- Repository operations
+- Version control
+- Code management
+- Collaboration support
 
 #### Slack Tool
 
@@ -141,10 +169,10 @@ type Slack struct {
 
 Features:
 
--   Message sending
--   Channel management
--   Search functionality
--   Event handling
+- Message sending
+- Channel management
+- Search functionality
+- Event handling
 
 #### Trengo Tool
 
@@ -156,10 +184,10 @@ type Trengo struct {
 
 Features:
 
--   Customer communication
--   Label management
--   Search functionality
--   Integration support
+- Customer communication
+- Label management
+- Search functionality
+- Integration support
 
 ## Usage
 
@@ -196,30 +224,30 @@ result = containerTool.Use(ctx, map[string]any{
 
 1. **Tool Selection**
 
-    - Choose appropriate tools for tasks
-    - Consider resource implications
-    - Handle tool dependencies
-    - Manage tool lifecycle
+   - Choose appropriate tools for tasks
+   - Consider resource implications
+   - Handle tool dependencies
+   - Manage tool lifecycle
 
 2. **Error Handling**
 
-    - Implement proper error checking
-    - Handle tool failures gracefully
-    - Provide meaningful error messages
-    - Implement recovery mechanisms
+   - Implement proper error checking
+   - Handle tool failures gracefully
+   - Provide meaningful error messages
+   - Implement recovery mechanisms
 
 3. **Resource Management**
 
-    - Clean up tool resources
-    - Monitor resource usage
-    - Implement timeouts
-    - Handle concurrent access
+   - Clean up tool resources
+   - Monitor resource usage
+   - Implement timeouts
+   - Handle concurrent access
 
 4. **Security**
-    - Validate tool inputs
-    - Manage credentials securely
-    - Implement access controls
-    - Monitor tool usage
+   - Validate tool inputs
+   - Manage credentials securely
+   - Implement access controls
+   - Monitor tool usage
 
 ## Advanced Features
 
@@ -260,31 +288,31 @@ Common issues and solutions:
 
 1. **Connection Issues**
 
-    - Check network connectivity
-    - Verify credentials
-    - Monitor timeouts
-    - Check resource availability
+   - Check network connectivity
+   - Verify credentials
+   - Monitor timeouts
+   - Check resource availability
 
 2. **Resource Constraints**
 
-    - Monitor memory usage
-    - Check disk space
-    - Handle concurrent access
-    - Implement resource limits
+   - Monitor memory usage
+   - Check disk space
+   - Handle concurrent access
+   - Implement resource limits
 
 3. **Tool Failures**
-    - Check error messages
-    - Verify input parameters
-    - Monitor tool state
-    - Implement retries
+   - Check error messages
+   - Verify input parameters
+   - Monitor tool state
+   - Implement retries
 
 ## Future Development
 
 Planned improvements:
 
--   Enhanced tool discovery
--   Advanced tool orchestration
--   Improved error handling
--   Extended tool capabilities
--   Performance optimizations
--   Additional tool integrations
+- Enhanced tool discovery
+- Advanced tool orchestration
+- Improved error handling
+- Extended tool capabilities
+- Performance optimizations
+- Additional tool integrations

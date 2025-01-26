@@ -4,10 +4,14 @@ The Provider Management system in Caramba handles interactions with multiple AI 
 
 ## Supported Providers
 
--   OpenAI (GPT-4)
--   Anthropic (Claude)
--   Google (Gemini)
--   Cohere (Command)
+- OpenAI (GPT-4o-mini)
+- Anthropic (Claude-3-5-sonnet)
+- Google (Gemini-1.5-flash)
+- Cohere (Command-r)
+- HuggingFace (GPT2)
+- NVIDIA (Llama-3.1-nemotron-70b)
+- Ollama (llama3.2:3b)
+- LMStudio (Llama-3.1-8B-Lexi)
 
 ## Architecture
 
@@ -24,20 +28,25 @@ type Provider interface {
 
 The `BalancedProvider` implements smart load balancing across multiple providers:
 
--   Health monitoring
--   Automatic failover
--   Cooldown periods
--   Thread-safe operations
+- Health monitoring
+- Automatic failover
+- Cooldown periods
+- Thread-safe operations
 
 ## Configuration
 
 ### Environment Variables
 
 ```bash
+# Required Provider Keys
 export OPENAI_API_KEY="your-key"
 export ANTHROPIC_API_KEY="your-key"
 export GOOGLE_API_KEY="your-key"
 export COHERE_API_KEY="your-key"
+
+# Optional Provider Keys
+export HF_API_KEY="your-key"
+export NVIDIA_API_KEY="your-key"
 ```
 
 ### Provider Status
@@ -55,31 +64,31 @@ type ProviderStatus struct {
 
 ### Load Balancing
 
--   Round-robin distribution
--   Failure-aware routing
--   Occupancy tracking
--   Dynamic provider selection
+- Round-robin distribution
+- Failure-aware routing
+- Occupancy tracking
+- Dynamic provider selection
 
 ### Health Monitoring
 
--   Failure tracking
--   Automatic recovery
--   Cooldown periods
--   Health status reporting
+- Failure tracking
+- Automatic recovery
+- Cooldown periods
+- Health status reporting
 
 ### Thread Safety
 
--   Mutex-based synchronization
--   Atomic operations
--   Race condition prevention
--   Safe provider selection
+- Mutex-based synchronization
+- Atomic operations
+- Race condition prevention
+- Safe provider selection
 
 ### Error Handling
 
--   Automatic retries
--   Graceful degradation
--   Error event propagation
--   Provider-specific error handling
+- Automatic retries
+- Graceful degradation
+- Error event propagation
+- Provider-specific error handling
 
 ## Usage
 
@@ -109,30 +118,30 @@ provider := provider.NewOpenAICompatible(
 
 1. **Provider Configuration**
 
-    - Configure multiple providers when possible
-    - Set appropriate API keys
-    - Monitor rate limits
-    - Configure model parameters
+   - Configure multiple providers when possible
+   - Set appropriate API keys
+   - Monitor rate limits
+   - Configure model parameters
 
 2. **Error Handling**
 
-    - Implement proper retry logic
-    - Handle provider-specific errors
-    - Monitor provider health
-    - Implement graceful degradation
+   - Implement proper retry logic
+   - Handle provider-specific errors
+   - Monitor provider health
+   - Implement graceful degradation
 
 3. **Performance Optimization**
 
-    - Monitor provider latency
-    - Implement request caching
-    - Optimize request parameters
-    - Balance load appropriately
+   - Monitor provider latency
+   - Implement request caching
+   - Optimize request parameters
+   - Balance load appropriately
 
 4. **Security**
-    - Secure API key storage
-    - Implement request logging
-    - Monitor usage patterns
-    - Implement access controls
+   - Secure API key storage
+   - Implement request logging
+   - Monitor usage patterns
+   - Implement access controls
 
 ## Advanced Features
 
@@ -166,31 +175,31 @@ Common issues and solutions:
 
 1. **Rate Limiting**
 
-    - Implement exponential backoff
-    - Monitor request frequency
-    - Use multiple providers
-    - Cache responses when possible
+   - Implement exponential backoff
+   - Monitor request frequency
+   - Use multiple providers
+   - Cache responses when possible
 
 2. **Provider Failures**
 
-    - Check API credentials
-    - Verify network connectivity
-    - Monitor provider status
-    - Check request parameters
+   - Check API credentials
+   - Verify network connectivity
+   - Monitor provider status
+   - Check request parameters
 
 3. **Performance Issues**
-    - Monitor response times
-    - Check provider load
-    - Optimize request size
-    - Implement caching
+   - Monitor response times
+   - Check provider load
+   - Optimize request size
+   - Implement caching
 
 ## Future Development
 
 Planned improvements:
 
--   Enhanced provider selection algorithms
--   Advanced caching mechanisms
--   Improved error recovery
--   Extended provider support
--   Performance optimizations
--   Advanced monitoring capabilities
+- Enhanced provider selection algorithms
+- Advanced caching mechanisms
+- Improved error recovery
+- Extended provider support
+- Performance optimizations
+- Advanced monitoring capabilities
