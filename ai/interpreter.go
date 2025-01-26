@@ -12,8 +12,13 @@ import (
 
 var taskMap = map[string]tasks.Task{
 	"ignore":   tasks.NewIgnore(),
+	"help":     tasks.NewHelp(),
 	"break":    tasks.NewBreak(),
 	"recall":   tasks.NewRecall(),
+	"remember": tasks.NewRemember(),
+	"bash":     tasks.NewBash(),
+	"terminal": tasks.NewTerminal(),
+	"web":      tasks.NewWeb(),
 	"optimize": tasks.NewOptimize(),
 }
 

@@ -136,19 +136,15 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		genCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 
-		if !agent.Validate() {
-			errEvent := provider.NewEventData()
-			errEvent.EventType = provider.EventError
-			errEvent.Error = fmt.Errorf("agent validation failed")
-			errEvent.Name = "agent_validation_error"
-			out <- errEvent
-			return
-		}
-
 		shouldBreak := false
 		cycle := 0
 
-		// Add the user message only once at the start
+		msg.Content = utils.JoinWith(
+			"[USER PROMPT]",
+			msg.Content,
+			"[/USER PROMPT]",
+		)
+
 		agent.Context.AddMessage(msg)
 
 		for !shouldBreak {
@@ -191,7 +187,7 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 				shouldBreak = true
 			}
 
-			agent.Context.Identity.Params.Thread.AddMessage(
+			agent.Context.AddMessage(
 				provider.NewMessage(
 					provider.RoleAssistant,
 					fmt.Sprintf("<<< END iteration %d of %d", cycle+1, agent.MaxIterations),
