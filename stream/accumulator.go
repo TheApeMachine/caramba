@@ -2,9 +2,11 @@ package stream
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -37,14 +39,10 @@ func (accumulator *Accumulator) Generate(ctx context.Context, in <-chan provider
 
 		for event := range in {
 			// Check for error events
-			if data, ok := event.Data().(map[string]interface{}); ok {
-				if errVal, ok := data["error"]; ok {
-					if err, ok := errVal.(error); ok {
-						accumulator.err = err
-						out <- event
-						return
-					}
-				}
+			if event.Type() == provider.EventError {
+				accumulator.err = event.Data().Error
+				out <- event
+				return
 			}
 
 			accumulator.chunks = append(accumulator.chunks, event)
@@ -68,7 +66,11 @@ func (accumulator *Accumulator) Wait() {
 String returns the accumulated text as a string
 */
 func (accumulator *Accumulator) String() string {
-	return accumulator.Compile().Data().(map[string]interface{})["text"].(string)
+	out := strings.TrimSpace(
+		accumulator.Compile().Data().Text,
+	)
+	errnie.Log("%s", out)
+	return out
 }
 
 /*
@@ -89,20 +91,13 @@ func (accumulator *Accumulator) Compile() provider.Event {
 	out.EventType = provider.EventDone
 
 	for _, chunk := range accumulator.chunks {
-		if data, ok := chunk.Data().(map[string]interface{}); ok {
-			if text, ok := data["text"].(string); ok {
-				out.Text += text
+		if chunk.Type() == provider.EventChunk {
+			if chunk.Data().Text != "" {
+				out.Text += chunk.Data().Text
 			}
-			if json, ok := data["partial_json"].(string); ok {
-				out.PartialJSON += json
-			}
-		}
-		if data, ok := chunk.Data().(map[string]interface{}); ok {
-			if text, ok := data["text"].(string); ok {
-				out.Text += text
-			}
-			if json, ok := data["partial_json"].(string); ok {
-				out.PartialJSON += json
+
+			if chunk.Data().PartialJSON != "" {
+				out.PartialJSON += chunk.Data().PartialJSON
 			}
 		}
 	}
@@ -115,4 +110,12 @@ Error returns any error that occurred during accumulation
 */
 func (accumulator *Accumulator) Error() error {
 	return accumulator.err
+}
+
+func (accumulator *Accumulator) Write(text []byte) *Accumulator {
+	event := provider.NewEventData()
+	event.EventType = provider.EventChunk
+	event.Text = string(text)
+	accumulator.chunks = append(accumulator.chunks, event)
+	return accumulator
 }

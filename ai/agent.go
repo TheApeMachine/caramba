@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/utils"
@@ -38,9 +39,9 @@ The Agent maintains its own identity, context, and state while coordinating
 with providers to generate responses and execute tools.
 */
 type Agent struct {
-	Identity      *Identity `json:"identity" jsonschema:"title=Identity,description=The identity of the agent,required"`
-	Context       *Context  `json:"context" jsonschema:"title=Context,description=The context of the agent,required"`
-	MaxIterations int       `json:"max_iterations" jsonschema:"title=Max Iterations,description=The maximum number of iterations to perform,required"`
+	Identity      *drknow.Identity `json:"identity" jsonschema:"title=Identity,description=The identity of the agent,required"`
+	Context       *drknow.Context  `json:"context" jsonschema:"title=Context,description=The context of the agent,required"`
+	MaxIterations int              `json:"max_iterations" jsonschema:"title=Max Iterations,description=The maximum number of iterations to perform,required"`
 	provider      provider.Provider
 	accumulator   *stream.Accumulator
 	state         AgentState
@@ -56,10 +57,10 @@ Parameters:
   - role: The role designation for the AI agent
   - maxIterations: The maximum number of response generation iterations
 */
-func NewAgent(ctx *Context, role string, maxIterations int) *Agent {
+func NewAgent(ctx *drknow.Context, prvdr provider.Provider, role string, maxIterations int) *Agent {
 	return &Agent{
 		Context:       ctx,
-		provider:      provider.NewBalancedProvider(),
+		provider:      prvdr,
 		MaxIterations: maxIterations,
 		accumulator:   stream.NewAccumulator(),
 		state:         AgentStateIdle,
@@ -126,11 +127,15 @@ Returns:
   - A channel of provider.Event containing the generated response
 */
 func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan provider.Event {
-	errnie.Info("generating response for %s (%s)", agent.Context.identity.Name, msg.Role)
+	errnie.Info("generating response for %s (%s)", agent.Context.Identity.Name, msg.Role)
 	out := make(chan provider.Event)
 
 	go func() {
 		defer close(out)
+
+		// Add timeout for agent generation
+		genCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
 
 		if !agent.Validate() {
 			errEvent := provider.NewEventData()
@@ -144,89 +149,110 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		shouldBreak := false
 		cycle := 0
 
+		// Add the user message only once at the start
+		agent.Context.AddMessage(msg)
+
 		for !shouldBreak {
 			errnie.Info("cycle %d", cycle)
 			agent.state = AgentStateGenerating
 
 			cycle++
-			if cycle > agent.MaxIterations {
+			if cycle >= agent.MaxIterations {
 				shouldBreak = true
 			}
 
-			// Add timeout for agent generation
-			genCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
+			// Run recall task and add results to context
+			errnie.Info("recall started")
+			agent.task("recaller", "recall", out)
+			errnie.Info("recall complete")
+
+			compiled := agent.Context.Compile(cycle, agent.MaxIterations)
+			errnie.Log("compiled: %v", compiled)
 
 			for event := range agent.accumulator.Generate(
 				genCtx,
 				agent.provider.Generate(
 					genCtx,
-					agent.Context.Compile(msg, cycle, agent.MaxIterations),
+					compiled,
 				),
 			) {
 				out <- event
 			}
 
+			response := agent.accumulator.String()
+
+			agent.Context.AddMessage(
+				provider.NewMessage(
+					provider.RoleAssistant,
+					response,
+				),
+			)
+
 			if strings.Contains(
-				strings.ToLower(agent.accumulator.String()),
+				strings.ToLower(response),
 				"<break>",
 			) {
 				shouldBreak = true
 			}
+
+			agent.Context.Identity.Params.Thread.AddMessage(
+				provider.NewMessage(
+					provider.RoleAssistant,
+					fmt.Sprintf("<<< END iteration %d of %d", cycle+1, agent.MaxIterations),
+				),
+			)
 		}
 
+		// Run optimization task with full context but don't add results
 		errnie.Info("optimization started")
-		agent.Optimize(ctx, out)
+		agent.task("optimizer", "optimize", out)
 		errnie.Info("optimization complete")
 	}()
 
 	return out
 }
 
-func (agent *Agent) Optimize(ctx context.Context, out chan<- provider.Event) {
+func (agent *Agent) task(system string, task string, out chan<- provider.Event) {
 	accumulator := stream.NewAccumulator()
 	v := viper.GetViper()
-	system := v.GetString("prompts.templates.systems.optimizer")
+	systemPrompt := v.GetString("prompts.templates.systems." + system)
 
-	if system == "" {
-		errnie.Error(errors.New("optimizer system is empty"))
-		return
-	}
+	ctx := drknow.QuickContext(
+		systemPrompt,
+		"codeswitch",
+		"noexplain",
+		"silentfail",
+		"scratchpad",
+	)
 
-	thread := provider.NewThread().AddMessage(
-		provider.NewMessage(
-			provider.RoleSystem,
-			system,
-		),
-	).AddMessage(
+	taskPrompt := v.GetString("prompts.templates.tasks." + task)
+
+	errnie.Info("performing task %s", task)
+
+	// Add task prompt with context
+	ctx.AddMessage(
 		provider.NewMessage(
 			provider.RoleUser,
-			utils.ReplaceWith(
-				v.GetString("prompts.templates.tasks.optimize"),
-				[][]string{
-					{"<{context}>", agent.Context.String()},
-				},
-			),
+			taskPrompt,
 		),
 	)
 
-	errnie.Log("THREAD\n\n%v", thread)
+	errnie.Log("THREAD for task:\n%v", task)
 
+	// Generate response and process through accumulator once
 	for event := range accumulator.Generate(
-		ctx,
+		ctx.Identity.Ctx,
 		agent.provider.Generate(
-			ctx,
-			&provider.LLMGenerationParams{
-				Thread: thread,
-			},
+			ctx.Identity.Ctx,
+			ctx.Compile(1, 1),
 		),
 	) {
-		// Forward the event to the output channel
+		// Forward the event
 		out <- event
 	}
 
-	// Process the optimization response using the interpreter
-	interpreter := NewInterpreter(accumulator.String())
+	// Process the task response using the interpreter
+	interpreter := NewInterpreter(agent.Context, accumulator)
 	interpreter.Interpret().Execute()
 }
 
@@ -236,17 +262,17 @@ func (agent *Agent) Validate() bool {
 		return false
 	}
 
-	if agent.Context.identity == nil {
+	if agent.Context.Identity == nil {
 		errnie.Error(errors.New("identity is nil"))
 		return false
 	}
 
-	if err := agent.Context.identity.validate(); err != nil {
+	if err := agent.Context.Identity.Validate(); err != nil {
 		errnie.Error(err)
 		return false
 	}
 
-	if agent.Context.identity.System == "" {
+	if agent.Context.Identity.System == "" {
 		errnie.Error(errors.New("system is empty"))
 		return false
 	}

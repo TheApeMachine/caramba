@@ -8,9 +8,9 @@ It provides a common interface for handling different types of events uniformly.
 */
 type Event interface {
 	ID() string
-	Type() string
+	Type() EventType
 	Timestamp() time.Time
-	Data() interface{}
+	Data() *EventData
 	Metadata() map[string]interface{}
 }
 
@@ -58,21 +58,8 @@ func (e *EventData) ID() string {
 }
 
 // Type returns the string representation of the event type
-func (e *EventData) Type() string {
-	switch e.EventType {
-	case EventStart:
-		return "start"
-	case EventChunk:
-		return "chunk"
-	case EventToolCall:
-		return "tool_call"
-	case EventError:
-		return "error"
-	case EventDone:
-		return "done"
-	default:
-		return "unknown"
-	}
+func (e *EventData) Type() EventType {
+	return e.EventType
 }
 
 // Timestamp returns when the event occurred
@@ -81,16 +68,8 @@ func (e *EventData) Timestamp() time.Time {
 }
 
 // Data returns the event payload
-func (e *EventData) Data() interface{} {
-	return map[string]interface{}{
-		"sequence":     e.Sequence,
-		"team_id":      e.TeamID,
-		"agent_id":     e.AgentID,
-		"name":         e.Name,
-		"text":         e.Text,
-		"partial_json": e.PartialJSON,
-		"error":        e.Error,
-	}
+func (e *EventData) Data() *EventData {
+	return e
 }
 
 // Metadata returns additional event context

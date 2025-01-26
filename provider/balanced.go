@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -47,6 +48,7 @@ NewBalancedProvider returns a provider that agents can use, which makes
 the balancing process transparent to the user.
 */
 func NewBalancedProvider() *BalancedProvider {
+	rand.Seed(time.Now().UnixNano())
 	return &BalancedProvider{
 		BaseProvider: NewBaseProvider(),
 		providers:    make([]*ProviderStatus, 0),
@@ -168,40 +170,61 @@ func (lb *BalancedProvider) getAvailableProvider() *ProviderStatus {
 	maxAttempts := 10
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		var bestProvider *ProviderStatus
-		oldestUse := time.Now()
-
-		// First try to find a provider that's never been used
+		// First try to find providers that have never been used
+		var unusedProviders []*ProviderStatus
 		for _, ps := range lb.providers {
 			ps.mu.Lock()
 			if !ps.occupied && ps.provider != nil && ps.lastUsed.IsZero() {
-				ps.occupied = true
-				ps.lastUsed = time.Now()
-				ps.mu.Unlock()
-				return ps
+				unusedProviders = append(unusedProviders, ps)
 			}
 			ps.mu.Unlock()
 		}
 
-		// If no unused providers, try to find the best available one
+		// Randomly select from unused providers if available
+		if len(unusedProviders) > 0 {
+			selected := unusedProviders[rand.Intn(len(unusedProviders))]
+			selected.mu.Lock()
+			selected.occupied = true
+			selected.lastUsed = time.Now()
+			selected.mu.Unlock()
+			return selected
+		}
+
+		// If no unused providers, collect all eligible providers
+		var eligibleProviders []*ProviderStatus
+		lowestFailures := maxFailures
+
+		// First pass to find the lowest failure count among available providers
+		for _, ps := range lb.providers {
+			ps.mu.Lock()
+			if !ps.occupied && ps.provider != nil &&
+				(ps.failures < maxFailures || time.Since(ps.lastUsed) >= cooldownPeriod) {
+				if ps.failures < lowestFailures {
+					lowestFailures = ps.failures
+				}
+			}
+			ps.mu.Unlock()
+		}
+
+		// Second pass to collect all providers with the lowest failure count
 		for _, ps := range lb.providers {
 			ps.mu.Lock()
 			if !ps.occupied && ps.provider != nil &&
 				(ps.failures < maxFailures || time.Since(ps.lastUsed) >= cooldownPeriod) &&
-				(bestProvider == nil || ps.failures < bestProvider.failures ||
-					(ps.failures == bestProvider.failures && ps.lastUsed.Before(oldestUse))) {
-				bestProvider = ps
-				oldestUse = ps.lastUsed
+				ps.failures == lowestFailures {
+				eligibleProviders = append(eligibleProviders, ps)
 			}
 			ps.mu.Unlock()
 		}
 
-		if bestProvider != nil {
-			bestProvider.mu.Lock()
-			bestProvider.occupied = true
-			bestProvider.lastUsed = time.Now()
-			bestProvider.mu.Unlock()
-			return bestProvider
+		// Randomly select from eligible providers
+		if len(eligibleProviders) > 0 {
+			selected := eligibleProviders[rand.Intn(len(eligibleProviders))]
+			selected.mu.Lock()
+			selected.occupied = true
+			selected.lastUsed = time.Now()
+			selected.mu.Unlock()
+			return selected
 		}
 
 		errnie.Warn("all providers occupied or in cooldown, attempt %d, waiting...", attempt+1)

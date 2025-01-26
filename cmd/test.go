@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/ai"
+	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/errnie"
@@ -32,12 +33,22 @@ var testCmd = &cobra.Command{
 			return
 		}
 
+		prvdr := provider.NewBalancedProvider()
+		err := prvdr.Initialize(cmd.Context())
+		if err != nil {
+			errnie.Error(err)
+			return
+		}
+
 		agent := ai.NewAgent(
-			ai.NewContext(
-				ai.NewIdentity(
-					cmd.Context(), "reasoner", system,
-				).Initialize(),
+			drknow.QuickContext(
+				system,
+				"codeswitch",
+				"noexplain",
+				"silentfail",
+				"scratchpad",
 			),
+			prvdr,
 			"reasoner",
 			3,
 		)

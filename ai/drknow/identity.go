@@ -1,4 +1,4 @@
-package ai
+package drknow
 
 import (
 	"bytes"
@@ -27,7 +27,7 @@ type Identity struct {
 	Role   string `json:"role" jsonschema:"title=Role,description=The role of the agent,required"`
 	Params *provider.LLMGenerationParams
 	conn   *datalake.Conn
-	ctx    context.Context
+	Ctx    context.Context
 	err    error
 	loaded *minio.Object
 }
@@ -49,26 +49,8 @@ func NewIdentity(ctx context.Context, role string, system string) *Identity {
 		Role:   role,
 		Params: provider.NewGenerationParams(),
 		conn:   datalake.NewConn(),
-		ctx:    ctx,
+		Ctx:    ctx,
 	}
-}
-
-/*
-Initialize loads an existing identity from storage or creates a new one if none exists.
-It ensures the Identity has valid generation parameters, using defaults if necessary.
-Returns the initialized Identity instance.
-*/
-func (identity *Identity) Initialize() *Identity {
-	if ok := identity.load(); !ok {
-		identity.create()
-	}
-
-	if identity.Params == nil {
-		errnie.Warn("identity has no params, going with defaults")
-		identity.Params = provider.NewGenerationParams()
-	}
-
-	return identity
 }
 
 /*
@@ -90,7 +72,7 @@ Returns true if successful, false if the identity doesn't exist or couldn't be l
 func (identity *Identity) load() bool {
 	errnie.Info("attempting to load identity for role: %s", identity.Role)
 
-	if identity.loaded, identity.err = identity.conn.Get(identity.ctx, "identities/"+identity.Role); identity.err != nil {
+	if identity.loaded, identity.err = identity.conn.Get(identity.Ctx, "identities/"+identity.Role); identity.err != nil {
 		errnie.Info("no existing identity found for %s: %v", identity.Role, identity.err)
 		return false
 	}
@@ -116,7 +98,7 @@ func (identity *Identity) create() {
 	identity.Name = utils.NewName()
 	identity.Params = provider.NewGenerationParams()
 
-	if identity.err = identity.validate(); identity.err != nil {
+	if identity.err = identity.Validate(); identity.err != nil {
 		errnie.Info("identity validation failed: %v", identity.err)
 		errnie.Error(identity.err)
 		return
@@ -145,7 +127,7 @@ func (identity *Identity) save() {
 		return
 	}
 
-	if err := identity.conn.Put(identity.ctx, "identities/"+identity.Role, buf.Bytes(), nil); err != nil {
+	if err := identity.conn.Put(identity.Ctx, "identities/"+identity.Role, buf.Bytes(), nil); err != nil {
 		errnie.Error(err)
 		return
 	}
@@ -154,10 +136,10 @@ func (identity *Identity) save() {
 }
 
 /*
-validate checks if all required fields of the Identity are properly set.
+Validate checks if all required fields of the Identity are properly set.
 Returns an error if any required field is missing or invalid.
 */
-func (identity *Identity) validate() error {
+func (identity *Identity) Validate() error {
 	if identity.System == "" {
 		return errors.New("system is required")
 	}
