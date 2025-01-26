@@ -12,6 +12,6 @@ func NewRemember() *Remember {
 	return &Remember{}
 }
 
-func (task *Remember) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]string) {
+func (task *Remember) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]any) {
 
 }

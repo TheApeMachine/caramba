@@ -20,7 +20,6 @@ var taskMap = map[string]tasks.Task{
 	"terminal": tasks.NewTerminal(),
 	"web":      tasks.NewWeb(),
 	"optimize": tasks.NewOptimize(),
-	"web":      tasks.NewWeb(),
 }
 
 type Command struct {

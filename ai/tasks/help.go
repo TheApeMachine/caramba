@@ -12,6 +12,6 @@ func NewHelp() *Help {
 	return &Help{}
 }
 
-func (task *Help) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]string) {
+func (task *Help) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]any) {
 
 }
