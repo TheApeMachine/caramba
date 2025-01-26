@@ -14,7 +14,7 @@ func NewBreak() *Break {
 func (b *Break) Execute(
 	ctx *drknow.Context,
 	accumulator *stream.Accumulator,
-	args map[string]string,
+	args map[string]any,
 ) {
 	// no-op.
 }

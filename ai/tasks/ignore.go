@@ -14,7 +14,7 @@ func NewIgnore() *Ignore {
 func (i *Ignore) Execute(
 	ctx *drknow.Context,
 	accumulator *stream.Accumulator,
-	args map[string]string,
+	args map[string]any,
 ) {
 	// no-op.
 }
