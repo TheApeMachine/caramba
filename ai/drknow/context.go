@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
-	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -21,11 +20,9 @@ a scratchpad for accumulating responses, and a record of tool calls made during
 the conversation.
 */
 type Context struct {
-	Identity   *Identity
-	messages   []*provider.Message
-	Scratchpad *provider.Message
-	Toolcalls  []*provider.Event
-	indent     int
+	Identity  *Identity
+	Toolcalls []*provider.Event
+	indent    int
 }
 
 /*
@@ -40,20 +37,9 @@ Returns:
   - A new Context instance ready for message management
 */
 func NewContext(identity *Identity) *Context {
-	messages := make([]*provider.Message, 0)
-	messages = append(
-		messages,
-		provider.NewMessage(
-			provider.RoleSystem,
-			strings.TrimSpace(identity.System),
-		),
-	)
-
 	return &Context{
-		Identity:   identity,
-		messages:   messages,
-		Scratchpad: provider.NewMessage(provider.RoleAssistant, ""),
-		indent:     0,
+		Identity: identity,
+		indent:   0,
 	}
 }
 
@@ -100,10 +86,6 @@ Returns:
   - Generation parameters containing the compiled conversation thread
 */
 func (ctx *Context) Compile(cycle int, maxIterations int) *provider.LLMGenerationParams {
-	for _, message := range ctx.messages {
-		ctx.Identity.Params.Thread.AddMessage(message)
-	}
-
 	ctx.Identity.Params.Thread.AddMessage(
 		provider.NewMessage(
 			provider.RoleAssistant,
@@ -120,7 +102,7 @@ String compiles the current context and returns it as a string.
 func (ctx *Context) String(includeSystem bool) string {
 	builder := strings.Builder{}
 
-	for _, message := range ctx.messages {
+	for _, message := range ctx.Identity.Params.Thread.Messages {
 		if !includeSystem && message.Role == provider.RoleSystem {
 			continue
 		}
@@ -138,15 +120,14 @@ func (ctx *Context) String(includeSystem bool) string {
 Reset the context to start fresh
 */
 func (ctx *Context) Reset() {
-	ctx.messages = make([]*provider.Message, 0)
-	ctx.messages = append(
-		ctx.messages,
+	ctx.Identity.Params.Thread.Messages = make([]*provider.Message, 0)
+	ctx.Identity.Params.Thread.Messages = append(
+		ctx.Identity.Params.Thread.Messages,
 		provider.NewMessage(
 			provider.RoleSystem,
 			strings.TrimSpace(ctx.Identity.System),
 		),
 	)
-	ctx.Scratchpad = provider.NewMessage(provider.RoleAssistant, "")
 	ctx.Toolcalls = make([]*provider.Event, 0)
 }
 
@@ -154,6 +135,5 @@ func (ctx *Context) Reset() {
 AddMessage adds a new message to the context.
 */
 func (ctx *Context) AddMessage(msg *provider.Message) {
-	errnie.Log("adding message to context: %s", msg.Content)
-	ctx.messages = append(ctx.messages, msg)
+	ctx.Identity.Params.Thread.AddMessage(msg)
 }

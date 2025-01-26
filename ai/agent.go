@@ -127,7 +127,6 @@ Returns:
   - A channel of provider.Event containing the generated response
 */
 func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan provider.Event {
-	errnie.Info("generating response for %s (%s)", agent.Context.Identity.Name, msg.Role)
 	out := make(chan provider.Event)
 
 	go func() {
@@ -153,7 +152,6 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		agent.Context.AddMessage(msg)
 
 		for !shouldBreak {
-			errnie.Info("cycle %d", cycle)
 			agent.state = AgentStateGenerating
 
 			cycle++
@@ -161,10 +159,8 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 				shouldBreak = true
 			}
 
-			// Run recall task and add results to context
-			errnie.Info("recall started")
-			agent.task("recaller", "recall", out)
-			errnie.Info("recall complete")
+			// // Run recall task and add results to context
+			// agent.task("recaller", "recall", out)
 
 			compiled := agent.Context.Compile(cycle, agent.MaxIterations)
 			errnie.Log("compiled: %v", compiled)
@@ -204,9 +200,7 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		}
 
 		// Run optimization task with full context but don't add results
-		errnie.Info("optimization started")
-		agent.task("optimizer", "optimize", out)
-		errnie.Info("optimization complete")
+		// agent.task("optimizer", "optimize", out)
 	}()
 
 	return out
@@ -226,8 +220,6 @@ func (agent *Agent) task(system string, task string, out chan<- provider.Event) 
 	)
 
 	taskPrompt := v.GetString("prompts.templates.tasks." + task)
-
-	errnie.Info("performing task %s", task)
 
 	// Add task prompt with context
 	ctx.AddMessage(
@@ -269,11 +261,6 @@ func (agent *Agent) Validate() bool {
 
 	if err := agent.Context.Identity.Validate(); err != nil {
 		errnie.Error(err)
-		return false
-	}
-
-	if agent.Context.Identity.System == "" {
-		errnie.Error(errors.New("system is empty"))
 		return false
 	}
 

@@ -43,11 +43,19 @@ Parameters:
   - system: The system prompt for the AI agent
 */
 func NewIdentity(ctx context.Context, role string, system string) *Identity {
+	params := provider.NewGenerationParams()
+	params.Thread = provider.NewThread(
+		provider.NewMessage(
+			provider.RoleSystem,
+			system,
+		),
+	)
+
 	return &Identity{
 		System: system,
 		Name:   utils.NewName(),
 		Role:   role,
-		Params: provider.NewGenerationParams(),
+		Params: params,
 		conn:   datalake.NewConn(),
 		Ctx:    ctx,
 	}
@@ -70,10 +78,7 @@ load attempts to retrieve an existing identity from storage based on its role.
 Returns true if successful, false if the identity doesn't exist or couldn't be loaded.
 */
 func (identity *Identity) load() bool {
-	errnie.Info("attempting to load identity for role: %s", identity.Role)
-
 	if identity.loaded, identity.err = identity.conn.Get(identity.Ctx, "identities/"+identity.Role); identity.err != nil {
-		errnie.Info("no existing identity found for %s: %v", identity.Role, identity.err)
 		return false
 	}
 
@@ -82,7 +87,6 @@ func (identity *Identity) load() bool {
 		return false
 	}
 
-	errnie.Info("identity loaded successfully for %s (%s)", identity.Name, identity.Role)
 	return true
 }
 
@@ -92,21 +96,15 @@ a new unique name, and default generation parameters.
 It validates and saves the new identity to storage.
 */
 func (identity *Identity) create() {
-	errnie.Info("creating new identity for role: %s", identity.Role)
-
-	// Initialize params first
 	identity.Name = utils.NewName()
 	identity.Params = provider.NewGenerationParams()
 
 	if identity.err = identity.Validate(); identity.err != nil {
-		errnie.Info("identity validation failed: %v", identity.err)
 		errnie.Error(identity.err)
 		return
 	}
 
-	errnie.Info("identity validated successfully, proceeding to save")
 	identity.save()
-	errnie.Info("identity created %s (%s)", identity.Name, identity.Role)
 }
 
 /*
@@ -119,8 +117,6 @@ func (identity *Identity) save() {
 		return
 	}
 
-	errnie.Info("attempting to save identity %s (%s)", identity.Name, identity.Role)
-
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(identity); err != nil {
 		errnie.Error(err)
@@ -131,8 +127,6 @@ func (identity *Identity) save() {
 		errnie.Error(err)
 		return
 	}
-
-	errnie.Info("identity saved successfully %s (%s)", identity.Name, identity.Role)
 }
 
 /*

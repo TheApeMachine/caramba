@@ -40,25 +40,29 @@ var testCmd = &cobra.Command{
 			return
 		}
 
+		dctx := drknow.QuickContext(
+			system,
+			"codeswitch",
+			"noexplain",
+			"silentfail",
+			"scratchpad",
+		)
+
 		agent := ai.NewAgent(
-			drknow.QuickContext(
-				system,
-				"codeswitch",
-				"noexplain",
-				"silentfail",
-				"scratchpad",
-			),
+			dctx,
 			prvdr,
 			"reasoner",
 			3,
 		)
+
+		errnie.Raw(dctx)
 
 		stream.NewConsumer().Print(
 			agent.Generate(
 				cmd.Context(),
 				provider.NewMessage(
 					provider.RoleUser,
-					"How many times do we find the letter r in the word strawberry?",
+					"Please design an entirely unique new approach to AI, one that can be run on consumer hardware, and is not based on anything we currently have.",
 				),
 			),
 			false,
