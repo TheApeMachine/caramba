@@ -2,7 +2,7 @@ package tasks
 
 import (
 	"github.com/theapemachine/caramba/ai/drknow"
-	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/tools"
 	"github.com/theapemachine/errnie"
 )
@@ -14,7 +14,7 @@ func NewWeb() *Web {
 	return &Web{}
 }
 
-func (task *Web) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]any) {
+func (task *Web) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 	browser := tools.NewBrowser()
 	defer browser.Close()
 
@@ -23,5 +23,7 @@ func (task *Web) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, a
 		errnie.Warn("browser error: %v", err)
 	}
 
-	accumulator.Write([]byte(result))
+	ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, result))
+
+	return nil
 }

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/theapemachine/caramba/ai/drknow"
-	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/tools"
 )
 
@@ -26,24 +26,24 @@ type Document struct {
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
-func (r *Remember) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]any) {
+func (r *Remember) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 	// Initialize databases
 	if err := r.initializeDatabases(); err != nil {
-		accumulator.Write([]byte(fmt.Sprintf("Database initialization failed: %v", err)))
-		return
+		ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, fmt.Sprintf("Database initialization failed: %v", err)))
+		return nil
 	}
 
 	// Verify database clients are properly initialized
 	if r.neo4j == nil || r.qdrant == nil {
-		accumulator.Write([]byte("Database clients not properly initialized"))
-		return
+		ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, "Database clients not properly initialized"))
+		return nil
 	}
 
 	// Process raw string if provided
 	if rawStr, ok := args["raw"].(string); ok {
 		if err := r.storeRawMemory(ctx, rawStr); err != nil {
-			accumulator.Write([]byte(fmt.Sprintf("Failed to store raw memory: %v", err)))
-			return
+			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, fmt.Sprintf("Failed to store raw memory: %v", err)))
+			return nil
 		}
 	}
 
@@ -51,24 +51,26 @@ func (r *Remember) Execute(ctx *drknow.Context, accumulator *stream.Accumulator,
 	if docsStr, ok := args["documents"].(string); ok {
 		var docs []Document
 		if err := json.Unmarshal([]byte(docsStr), &docs); err != nil {
-			accumulator.Write([]byte(fmt.Sprintf("Failed to parse documents: %v", err)))
-			return
+			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, fmt.Sprintf("Failed to parse documents: %v", err)))
+			return nil
 		}
 		if err := r.storeDocuments(ctx, docs); err != nil {
-			accumulator.Write([]byte(fmt.Sprintf("Failed to store documents: %v", err)))
-			return
+			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, fmt.Sprintf("Failed to store documents: %v", err)))
+			return nil
 		}
 	}
 
 	// Process cypher query if provided
 	if cypher, ok := args["cypher"].(string); ok {
 		if err := r.storeCypherQuery(ctx, cypher); err != nil {
-			accumulator.Write([]byte(fmt.Sprintf("Failed to execute cypher query: %v", err)))
-			return
+			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, fmt.Sprintf("Failed to execute cypher query: %v", err)))
+			return nil
 		}
 	}
 
-	accumulator.Write([]byte("Memory storage successful"))
+	ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, "Memory storage successful"))
+
+	return nil
 }
 
 func (r *Remember) initializeDatabases() error {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
 )
@@ -42,6 +43,26 @@ This method abstracts the image building process, handling the creation of a tar
 and the configuration of build options.
 */
 func (b *Builder) BuildImage(ctx context.Context, dockerfilePath, imageName string) error {
+	// Check if container already exists
+	containers, err := b.client.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return err
+	}
+
+	var existingContainer string
+	for _, c := range containers {
+		for _, name := range c.Names {
+			if name == "/"+ContainerName {
+				existingContainer = c.ID
+				break
+			}
+		}
+	}
+
+	if existingContainer != "" {
+		return nil
+	}
+
 	log.Info("Building image", "dockerfilePath", dockerfilePath, "imageName", imageName)
 
 	tar, err := archive.TarWithOptions(dockerfilePath, &archive.TarOptions{})

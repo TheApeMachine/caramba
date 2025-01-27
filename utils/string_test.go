@@ -104,12 +104,12 @@ func TestQuickWrap(t *testing.T) {
 	Convey("Given QuickWrap function", t, func() {
 		Convey("Should wrap content in XML-like tags", func() {
 			result := QuickWrap("test", "content", 0)
-			So(result, ShouldEqual, "<test>\n\tcontent\n</test>")
+			So(result, ShouldEqual, "[test]\n\tcontent\n[/test]")
 		})
 
 		Convey("Should handle empty content", func() {
 			result := QuickWrap("test", "", 0)
-			So(result, ShouldEqual, "<test>\n\t\n</test>")
+			So(result, ShouldEqual, "[test]\n\t\n[/test]")
 		})
 	})
 }

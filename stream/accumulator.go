@@ -27,6 +27,11 @@ func NewAccumulator() *Accumulator {
 	}
 }
 
+func (accumulator *Accumulator) Clear() {
+	accumulator.chunks = []provider.Event{}
+	accumulator.err = nil
+}
+
 func (accumulator *Accumulator) Generate(ctx context.Context, in <-chan provider.Event) <-chan provider.Event {
 	out := make(chan provider.Event)
 

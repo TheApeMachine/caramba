@@ -71,6 +71,7 @@ func NewQdrant(collection string, dimension uint64) *Qdrant {
 		qdrant.WithURL(*url),
 		qdrant.WithCollectionName(collection),
 		qdrant.WithEmbedder(e),
+		qdrant.WithAPIKey("qdrantapikey"),
 	); err != nil {
 		errnie.Error(fmt.Errorf("failed to create Qdrant client: %w", err))
 		return nil

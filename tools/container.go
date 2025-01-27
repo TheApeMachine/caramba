@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/theapemachine/amsh/data"
@@ -21,7 +20,7 @@ type Container struct {
 	Command   string `json:"command" jsonschema:"title=Command,description=The valid bash command to execute for the next step."`
 	builder   *container.Builder
 	runner    *container.Runner
-	conn      io.ReadWriteCloser
+	Conn      io.ReadWriteCloser
 }
 
 func NewContainer() *Container {
@@ -44,7 +43,7 @@ func (c *Container) GenerateSchema() interface{} {
 }
 
 func (c *Container) Initialize() error {
-	if c.conn == nil {
+	if c.Conn == nil {
 		if err := os.MkdirAll("/tmp/out", 0755); err != nil {
 			return errnie.Error(err)
 		}
@@ -59,6 +58,7 @@ func (c *Container) Initialize() error {
 		if err != nil {
 			return errnie.Error(err)
 		}
+		
 		c.builder.BuildImage(
 			context.Background(),
 			filepath.Join(wd, "tools", "container", "Dockerfile"),
@@ -69,7 +69,7 @@ func (c *Container) Initialize() error {
 		if err != nil {
 			return errnie.Error(err)
 		}
-		c.conn = conn
+		c.Conn = conn
 	}
 
 	return nil
@@ -80,7 +80,7 @@ Use the docker container to run the command. This allows the agent to use a full
 featured, isolated Debian environment.
 */
 func (c *Container) Use(ctx context.Context, params map[string]any) string {
-	if c.conn == nil {
+	if c.Conn == nil {
 		if err := c.Initialize(); err != nil {
 			return err.Error()
 		}
@@ -97,91 +97,24 @@ func (c *Container) Use(ctx context.Context, params map[string]any) string {
 	return string(output)
 }
 
-func (c *Container) Connect(ctx context.Context, bridge io.ReadWriteCloser) error {
-	// If we already have a connection, just use the existing one
-	if c.conn != nil {
-		c.conn = bridge
-		return nil
-	}
-
+func (c *Container) Connect(ctx context.Context, bridge io.ReadWriteCloser) (err error) {
 	// Initialize container if needed
 	if err := c.Initialize(); err != nil {
 		return err
 	}
 
 	// Get container connection
-	containerConn, err := c.runner.RunContainer(ctx, container.DefaultImageName)
+	c.Conn, err = c.runner.RunContainer(ctx, container.DefaultImageName)
 	if err != nil {
 		return err
 	}
-
-	// Set up bidirectional connection
-	c.conn = bridge
-
-	// Start goroutine to copy container output to bridge
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := containerConn.Read(buf)
-			if err != nil {
-				if err != io.EOF {
-					log.Error("error reading from container", "error", err)
-				}
-				return
-			}
-			if n > 0 {
-				if _, err := c.conn.Write(buf[:n]); err != nil {
-					log.Error("error writing to bridge", "error", err)
-					return
-				}
-			}
-		}
-	}()
-
-	// Start goroutine to copy bridge input to container
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := c.conn.Read(buf)
-			if err != nil {
-				if err != io.EOF {
-					log.Error("error reading from bridge", "error", err)
-				}
-				return
-			}
-			if n > 0 {
-				if _, err := containerConn.Write(buf[:n]); err != nil {
-					log.Error("error writing to container", "error", err)
-					return
-				}
-			}
-		}
-	}()
-
-	// Send initial setup commands
-	setupCmds := []string{
-		"export PS1='\\u@\\h:\\w\\$ '\n", // Set a standard prompt
-		"export TERM=xterm\n",            // Set terminal type
-		"stty -echo\n",                   // Disable terminal echo
-		"cd /tmp/workspace\n",            // Set working directory
-	}
-
-	for _, cmd := range setupCmds {
-		if _, err := containerConn.Write([]byte(cmd)); err != nil {
-			log.Error("error writing setup command", "error", err)
-			return err
-		}
-	}
-
-	// Wait a bit for setup commands to take effect
-	time.Sleep(100 * time.Millisecond)
 
 	return nil
 }
 
 func (c *Container) executeCommand(command string, out chan<- *data.Artifact) error {
 	// Write command
-	if _, err := c.conn.Write([]byte(command + "\n")); err != nil {
+	if _, err := c.Conn.Write([]byte(command + "\n")); err != nil {
 		return fmt.Errorf("failed to write command: %w", err)
 	}
 
@@ -189,7 +122,7 @@ func (c *Container) executeCommand(command string, out chan<- *data.Artifact) er
 	promptEnd := []byte("# ")
 
 	for {
-		n, err := c.conn.Read(buffer)
+		n, err := c.Conn.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
 				// Handle EOF: Tool might have finished, but process any remaining data

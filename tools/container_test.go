@@ -30,8 +30,8 @@ func TestContainerInitialization(t *testing.T) {
 		container := NewContainer()
 
 		Reset(func() {
-			if container.conn != nil {
-				container.conn.Close()
+			if container.Conn != nil {
+				container.Conn.Close()
 			}
 			cleanupContainer()
 		})
@@ -40,7 +40,7 @@ func TestContainerInitialization(t *testing.T) {
 			So(container, ShouldNotBeNil)
 			So(container.builder, ShouldNotBeNil)
 			So(container.runner, ShouldNotBeNil)
-			So(container.conn, ShouldBeNil)
+			So(container.Conn, ShouldBeNil)
 		})
 
 		Convey("It should have correct metadata", func() {
@@ -56,8 +56,8 @@ func TestContainerInitialize(t *testing.T) {
 		container := NewContainer()
 
 		Reset(func() {
-			if container.conn != nil {
-				container.conn.Close()
+			if container.Conn != nil {
+				container.Conn.Close()
 			}
 			cleanupContainer()
 		})
@@ -67,14 +67,14 @@ func TestContainerInitialize(t *testing.T) {
 
 			Convey("It should setup the container environment", func() {
 				So(err, ShouldBeNil)
-				So(container.conn, ShouldNotBeNil)
+				So(container.Conn, ShouldNotBeNil)
 			})
 
 			Convey("Calling Initialize again should reuse the connection", func() {
-				firstConn := container.conn
+				firstConn := container.Conn
 				err := container.Initialize()
 				So(err, ShouldBeNil)
-				So(container.conn, ShouldEqual, firstConn)
+				So(container.Conn, ShouldEqual, firstConn)
 			})
 		})
 	})
@@ -90,8 +90,8 @@ func TestContainerUse(t *testing.T) {
 
 		Reset(func() {
 			cancel()
-			if container.conn != nil {
-				container.conn.Close()
+			if container.Conn != nil {
+				container.Conn.Close()
 			}
 			cleanupContainer()
 		})
@@ -130,8 +130,8 @@ func TestContainerConnect(t *testing.T) {
 
 		Reset(func() {
 			cancel()
-			if container.conn != nil {
-				container.conn.Close()
+			if container.Conn != nil {
+				container.Conn.Close()
 			}
 			cleanupContainer()
 		})
@@ -142,17 +142,17 @@ func TestContainerConnect(t *testing.T) {
 			Convey("It should establish a connection", func() {
 				err := container.Connect(ctx, mockBridge)
 				So(err, ShouldBeNil)
-				So(container.conn, ShouldNotBeNil)
+				So(container.Conn, ShouldNotBeNil)
 			})
 
 			Convey("It should reuse the bridge for subsequent connections", func() {
 				err := container.Connect(ctx, mockBridge)
 				So(err, ShouldBeNil)
-				firstConn := container.conn
+				firstConn := container.Conn
 
 				err = container.Connect(ctx, mockBridge)
 				So(err, ShouldBeNil)
-				So(container.conn, ShouldEqual, firstConn)
+				So(container.Conn, ShouldEqual, firstConn)
 			})
 		})
 	})

@@ -7,7 +7,6 @@ import (
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/ai/tasks"
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/errnie"
 )
 
@@ -33,9 +32,8 @@ Interpreter is an object that extracts and interprets commands from unstructured
 It maps any commands to handler methods.
 */
 type Interpreter struct {
-	ctx         *drknow.Context
-	commands    []Command
-	accumulator *stream.Accumulator
+	ctx      *drknow.Context
+	commands []Command
 }
 
 /*
@@ -43,39 +41,44 @@ NewInterpreter creates a new Interpreter.
 */
 func NewInterpreter(
 	ctx *drknow.Context,
-	accumulator *stream.Accumulator,
 ) *Interpreter {
 	return &Interpreter{
-		ctx:         ctx,
-		commands:    make([]Command, 0),
-		accumulator: accumulator,
+		ctx:      ctx,
+		commands: make([]Command, 0),
 	}
 }
 
-func (interpreter *Interpreter) Execute() {
+func (interpreter *Interpreter) Execute() tasks.Bridge {
+	var bridge tasks.Bridge
+
 	for _, command := range interpreter.commands {
-		command.Task.Execute(interpreter.ctx, interpreter.accumulator, command.Args)
+		bridge = command.Task.Execute(interpreter.ctx, command.Args)
 	}
+
+	return bridge
 }
 
-func (interpreter *Interpreter) Interpret() *Interpreter {
+func (interpreter *Interpreter) Interpret() (*Interpreter, AgentState) {
 	// Clear previous commands
 	interpreter.commands = make([]Command, 0)
+
+	agentState := AgentStateGenerating
 
 	// Get the last message from context
 	messages := interpreter.ctx.Identity.Params.Thread.Messages
 	if len(messages) == 0 {
-		return interpreter
+		return interpreter, agentState
 	}
 	lastMsg := messages[len(messages)-1]
 
 	// Only process assistant messages
 	if lastMsg.Role != provider.RoleAssistant {
-		return interpreter
+		return interpreter, AgentStateGenerating
 	}
 
-	// This regex matches: <command param1="value1" param2=[value2]>
-	regexpattern := regexp.MustCompile(`<(\w+)(?:\s+(\w+)\s*=\s*(?:"([^"]*)"|(\[[^\]]*\])))*>`)
+	// This regex matches both:
+	// <<command>> and <<command param1="value1" param2=[value2]>>
+	regexpattern := regexp.MustCompile(`<<(\w+)(?:\s+(\w+)\s*=\s*(?:"([^"]*)"|(\[[^\]]*\])))?>>`)
 	matches := regexpattern.FindAllStringSubmatch(lastMsg.Content, -1)
 
 	for _, match := range matches {
@@ -103,11 +106,15 @@ func (interpreter *Interpreter) Interpret() *Interpreter {
 			continue
 		}
 
+		if command == "terminal" {
+			agentState = AgentStateTerminal
+		}
+
 		interpreter.commands = append(interpreter.commands, Command{
 			Task: taskMap[command],
 			Args: args,
 		})
 	}
 
-	return interpreter
+	return interpreter, agentState
 }

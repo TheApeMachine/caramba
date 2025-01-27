@@ -5,7 +5,6 @@ import (
 
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/tools"
 )
 
@@ -19,17 +18,17 @@ func NewBash() *Bash {
 	}
 }
 
-func (task *Bash) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]any) {
+func (task *Bash) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 	if err := task.container.Initialize(); err != nil {
-		accumulator.Write([]byte(err.Error()))
-		return
+		ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, err.Error()))
+		return nil
 	}
 
 	// Extract commands array and join into single command
 	cmds, ok := args["commands"].([]any)
 	if !ok {
-		accumulator.Write([]byte("error: invalid commands parameter"))
-		return
+		ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, "error: invalid commands parameter"))
+		return nil
 	}
 
 	// Convert commands to strings and join with &&
@@ -52,4 +51,6 @@ func (task *Bash) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, 
 			result,
 		),
 	)
+
+	return nil
 }

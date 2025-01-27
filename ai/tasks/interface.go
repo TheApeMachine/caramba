@@ -1,10 +1,15 @@
 package tasks
 
 import (
+	"io"
+
 	"github.com/theapemachine/caramba/ai/drknow"
-	"github.com/theapemachine/caramba/stream"
 )
 
 type Task interface {
-	Execute(*drknow.Context, *stream.Accumulator, map[string]any)
+	Execute(*drknow.Context, map[string]any) Bridge
+}
+
+type Bridge interface {
+	io.ReadWriteCloser
 }

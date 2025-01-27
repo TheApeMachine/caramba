@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/theapemachine/caramba/ai/drknow"
-	"github.com/theapemachine/caramba/stream"
 )
 
 // FinetuningMessage represents a single message in the fine-tuning data
@@ -32,9 +31,8 @@ func NewOptimize() *Optimize {
 
 func (o *Optimize) Execute(
 	ctx *drknow.Context,
-	accumulator *stream.Accumulator,
 	args map[string]any,
-) {
+) Bridge {
 	// Create artifacts directory if it doesn't exist
 	artifactsDir := "artifacts"
 	if err := os.MkdirAll(artifactsDir, 0755); err != nil {
@@ -72,4 +70,6 @@ func (o *Optimize) Execute(
 	} else {
 		fmt.Println("No artifacts provided in the STORE command")
 	}
+
+	return nil
 }

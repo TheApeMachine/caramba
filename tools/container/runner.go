@@ -38,6 +38,27 @@ func NewRunner() *Runner {
 }
 
 /*
+Attach to the running container.
+*/
+func (r *Runner) Attach(ctx context.Context, containerID string) (io.ReadWriteCloser, error) {
+	// Attach to the container
+	attachResp, err := r.client.ContainerAttach(ctx, containerID, container.AttachOptions{
+		Stream: true,
+		Stdin:  true,
+		Stdout: true,
+		Stderr: true,
+		Logs:   true,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	r.containerID = containerID
+	return attachResp.Conn, nil
+}
+
+/*
 RunContainer creates, starts, and attaches to a new container based on the specified image.
 It provides channels for stdin and stdout/stderr, enabling interactive communication with the container.
 This method is particularly useful for integrating with language models or other interactive processes.
@@ -82,16 +103,7 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWri
 		if inspect.State.Running {
 			r.containerID = existingContainer
 			// Reattach to the existing container
-			attachResp, err := r.client.ContainerAttach(ctx, existingContainer, container.AttachOptions{
-				Stream: true,
-				Stdin:  true,
-				Stdout: true,
-				Stderr: true,
-			})
-			if err != nil {
-				return nil, err
-			}
-			return attachResp.Conn, nil
+			return r.Attach(ctx, existingContainer)
 		}
 
 		// If container exists but not running, remove it
@@ -130,30 +142,32 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWri
 		},
 		WorkingDir: "/tmp/workspace",
 	}, hostConfig, nil, nil, ContainerName)
+
 	if err != nil {
 		return nil, err
 	}
 
-	// Start the container
-	if err := r.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	if err = r.client.ContainerStart(
+		context.Background(), resp.ID, container.StartOptions{},
+	); err != nil {
 		return nil, err
 	}
 
-	// Attach to the container
-	attachResp, err := r.client.ContainerAttach(ctx, resp.ID, container.AttachOptions{
-		Stream: true,
-		Stdin:  true,
-		Stdout: true,
-		Stderr: true,
-	})
-	if err != nil {
-		return nil, err
+	statusCh, errCh := r.client.ContainerWait(
+		context.Background(),
+		resp.ID,
+		container.WaitConditionNotRunning,
+	)
+
+	select {
+	case err = <-errCh:
+		if err != nil {
+			return nil, err
+		}
+	case <-statusCh:
 	}
 
-	fmt.Printf("Container %s is running\n", resp.ID)
-
-	r.containerID = resp.ID
-	return attachResp.Conn, nil
+	return r.Attach(ctx, resp.ID)
 }
 
 /*

@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/ai/drknow"
+	"github.com/theapemachine/caramba/ai/tasks"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/utils"
@@ -24,6 +23,7 @@ type AgentState uint
 const (
 	AgentStateIdle AgentState = iota
 	AgentStateGenerating
+	AgentStateTerminal
 	AgentStateToolCalling
 	AgentStateIterating
 	AgentStateDone
@@ -45,6 +45,7 @@ type Agent struct {
 	provider      provider.Provider
 	accumulator   *stream.Accumulator
 	state         AgentState
+	bridge        tasks.Bridge
 }
 
 /*
@@ -132,13 +133,11 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 	go func() {
 		defer close(out)
 
-		// Add timeout for agent generation
-		genCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
-		defer cancel()
-
 		shouldBreak := false
 		cycle := 0
 
+		// Add the user prompt, and wrap it in some tags, to keep clarity along an ever
+		// growing complexity in the current context.
 		msg.Content = utils.QuickWrap(
 			"USER PROMPT",
 			msg.Content,
@@ -155,23 +154,25 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 				shouldBreak = true
 			}
 
+			// Compile the context, which will add the current iteration message
+			// to the thread.
 			compiled := agent.Context.Compile(cycle, agent.MaxIterations)
 
-			// Create a new accumulator for this iteration
-			iterAccumulator := stream.NewAccumulator()
-			for event := range iterAccumulator.Generate(
-				genCtx,
+			// Let's make sure to reset the accumulator.
+			agent.accumulator.Clear()
+
+			for event := range agent.accumulator.Generate(
+				ctx,
 				agent.provider.Generate(
-					genCtx,
+					ctx,
 					compiled,
 				),
 			) {
 				out <- event
-				agent.accumulator.Write([]byte(event.Data().Text))
 			}
 
 			// Get only this iteration's response
-			response := iterAccumulator.String()
+			response := agent.accumulator.String()
 
 			// Add the response to context
 			agent.Context.AddMessage(
@@ -182,8 +183,37 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 			)
 
 			// Process commands in the response using the interpreter
-			interpreter := NewInterpreter(agent.Context, iterAccumulator)
-			interpreter.Interpret().Execute()
+			if agent.bridge == nil {
+				interpreter := NewInterpreter(agent.Context)
+				interpreter, agent.state = interpreter.Interpret()
+				agent.bridge = interpreter.Execute()
+
+				// Start reading from the bridge if it was just initialized
+				if agent.bridge != nil {
+					go func() {
+						buf := make([]byte, 4096)
+						for {
+							n, err := agent.bridge.Read(buf)
+							if err != nil {
+								break
+							}
+							if n > 0 {
+								// Add the bridge output to context
+								agent.Context.AddMessage(
+									provider.NewMessage(
+										provider.RoleAssistant,
+										string(buf[:n]),
+									),
+								)
+							}
+						}
+					}()
+				}
+			}
+
+			if agent.bridge != nil {
+				agent.bridge.Write([]byte(response))
+			}
 
 			if strings.Contains(
 				strings.ToLower(response),
@@ -202,46 +232,6 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 	}()
 
 	return out
-}
-
-func (agent *Agent) task(system string, task string, out chan<- provider.Event) {
-	accumulator := stream.NewAccumulator()
-	v := viper.GetViper()
-	systemPrompt := v.GetString("prompts.templates.systems." + system)
-
-	ctx := drknow.QuickContext(
-		systemPrompt,
-		"codeswitch",
-		"noexplain",
-		"silentfail",
-		"scratchpad",
-	)
-
-	taskPrompt := v.GetString("prompts.templates.tasks." + task)
-
-	// Add task prompt with context
-	ctx.AddMessage(
-		provider.NewMessage(
-			provider.RoleUser,
-			taskPrompt,
-		),
-	)
-
-	// Generate response and process through accumulator once
-	for event := range accumulator.Generate(
-		ctx.Identity.Ctx,
-		agent.provider.Generate(
-			ctx.Identity.Ctx,
-			ctx.Compile(1, 1),
-		),
-	) {
-		// Forward the event
-		out <- event
-	}
-
-	// Process the task response using the interpreter
-	interpreter := NewInterpreter(agent.Context, accumulator)
-	interpreter.Interpret().Execute()
 }
 
 func (agent *Agent) Validate() bool {

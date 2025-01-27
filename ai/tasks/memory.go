@@ -7,7 +7,6 @@ import (
 
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/tools"
 )
 
@@ -28,7 +27,7 @@ func NewMemory() *Memory {
 	}
 }
 
-func (m *Memory) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]any) {
+func (m *Memory) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 	// Initialize databases
 	if err := m.initializeDatabases(); err != nil {
 		ctx.AddMessage(
@@ -37,7 +36,7 @@ func (m *Memory) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, a
 				fmt.Sprintf("Failed to initialize databases: %v", err),
 			),
 		)
-		return
+		return nil
 	}
 
 	// Parse documents from the args
@@ -49,7 +48,7 @@ func (m *Memory) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, a
 				"No documents provided to store in memory",
 			),
 		)
-		return
+		return nil
 	}
 
 	// Convert raw documents to proper format
@@ -62,7 +61,7 @@ func (m *Memory) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, a
 				fmt.Sprintf("Failed to parse documents: %v", err),
 			),
 		)
-		return
+		return nil
 	}
 
 	if err := json.Unmarshal(documentsJSON, &documents); err != nil {
@@ -72,7 +71,7 @@ func (m *Memory) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, a
 				fmt.Sprintf("Failed to parse documents: %v", err),
 			),
 		)
-		return
+		return nil
 	}
 
 	var results []string
@@ -129,6 +128,8 @@ func (m *Memory) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, a
 			),
 		),
 	)
+
+	return nil
 }
 
 func (m *Memory) initializeDatabases() error {

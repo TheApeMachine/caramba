@@ -7,7 +7,6 @@ import (
 
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/tools"
 )
 
@@ -23,7 +22,7 @@ func NewRecall() *Recall {
 	}
 }
 
-func (r *Recall) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, args map[string]any) {
+func (r *Recall) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 	// Initialize databases
 	if err := r.initializeDatabases(); err != nil {
 		ctx.AddMessage(
@@ -73,6 +72,8 @@ func (r *Recall) Execute(ctx *drknow.Context, accumulator *stream.Accumulator, a
 			string(result),
 		),
 	)
+
+	return nil
 }
 
 type queryParams struct {
