@@ -4,7 +4,7 @@ go 1.23.4
 
 toolchain go1.23.5
 
-replace github.com/theapemachine/qpool => ../qpool
+//replace github.com/theapemachine/qpool => ../qpool
 
 require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.8

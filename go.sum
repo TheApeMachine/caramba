@@ -296,6 +296,8 @@ github.com/theapemachine/amsh v0.0.0-20241219021147-90290810fcb8 h1:+D1vce0IR7Rc
 github.com/theapemachine/amsh v0.0.0-20241219021147-90290810fcb8/go.mod h1:EDNIOJb3TdztM3aYc8mZHXq4QTcfmdEeFNr2H2luzdE=
 github.com/theapemachine/errnie v0.0.4 h1:wHX+4LgqfC24pxPKz+b1O62Q9q/7ih7PaNwA7HlUuak=
 github.com/theapemachine/errnie v0.0.4/go.mod h1:b5TD/mCOSXuRa9+qqYRSWZPkulhRtRxSoVa9b8K85Lg=
+github.com/theapemachine/qpool v0.0.2 h1:a0S2+7qNC8iXnFxk5sCbR/pxmAAQnYh9rRHMChF/pzw=
+github.com/theapemachine/qpool v0.0.2/go.mod h1:kH95B+O+Tk2pbMe3OvC0CuJHh6V0ddT/s1niB0xoZb0=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
 github.com/tidwall/gjson v1.18.0/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
