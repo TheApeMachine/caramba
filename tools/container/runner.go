@@ -2,10 +2,11 @@ package container
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"strings"
 
-	"github.com/charmbracelet/log"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
@@ -26,51 +27,12 @@ type Runner struct {
 NewRunner initializes a new Runner instance with a Docker client.
 This setup allows for interaction with the Docker daemon on the host system.
 */
-func NewRunner() *Runner {
+func NewRunner() (*Runner, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		return nil
-	}
-	return &Runner{client: cli}
-}
-
-/*
-Attach to the running container.
-*/
-func (r *Runner) Attach(ctx context.Context, containerID string) (io.ReadWriteCloser, error) {
-	// Attach to the container
-	attachResp, err := r.client.ContainerAttach(ctx, containerID, container.AttachOptions{
-		Stream: true,
-		Stdin:  true,
-		Stdout: true,
-		Stderr: true,
-		Logs:   true,
-	})
-
 	if err != nil {
 		return nil, err
 	}
-
-	r.containerID = containerID
-	return attachResp.Conn, nil
-}
-
-/*
-StartContainer starts a running container.
-*/
-func (r *Runner) StartContainer(ctx context.Context, containerID string) (err error) {
-	if err = r.client.ContainerStart(
-		context.Background(), containerID, container.StartOptions{},
-	); err != nil {
-		log.Error("Error starting container", "error", err)
-		return err
-	}
-
-	return nil
-}
-
-func (r *Runner) GetContainerID() string {
-	return r.containerID
+	return &Runner{client: cli}, nil
 }
 
 /*
@@ -90,81 +52,63 @@ Returns:
   - out: A channel for receiving output from the container
   - err: Any error encountered during the process
 */
-func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWriteCloser, error) {
-	// Check if container already exists
-	containers, err := r.client.ContainerList(ctx, container.ListOptions{All: true})
-	if err != nil {
-		log.Error("Error listing containers", "error", err)
-		return nil, err
-	}
-
-	log.Info("Checking for existing container")
-	for _, c := range containers {
-		for _, name := range c.Names {
-			log.Info("Checking container", "name", name)
-			if name == "/caramba-terminal" {
-				r.containerID = c.ID
-				break
-			}
-		}
-	}
-
-	// If container exists and is running, reuse it
-	if r.containerID != "" {
-		// Check if container is running
-		inspect, err := r.client.ContainerInspect(ctx, r.containerID)
-		if err != nil {
-			log.Error("Error inspecting container", "error", err)
-			return nil, err
-		}
-
-		if inspect.State.Running {
-			return r.Attach(ctx, r.containerID)
-		}
-
-		// If container exists but not running, remove it
-		if err := r.client.ContainerRemove(ctx, r.containerID, container.RemoveOptions{Force: true}); err != nil {
-			log.Error("Error removing container", "error", err)
-			return nil, err
-		}
-	}
-
+func (r *Runner) RunContainer(ctx context.Context, imageName string, cmd []string, username, customMessage string) (io.WriteCloser, io.ReadCloser, error) {
 	// Create host config with volume mount
 	hostConfig := &container.HostConfig{
 		Mounts: []mount.Mount{
 			{
 				Type:   mount.TypeBind,
 				Source: "/tmp/workspace",
-				Target: "/tmp/out",
+				Target: "/tmp/workspace",
 			},
 			{
 				Type:   mount.TypeBind,
 				Source: "/tmp/.ssh",
-				Target: "/home/user/.ssh",
+				Target: "/root/.ssh",
 			},
 		},
-		AutoRemove: true,
 	}
 
 	// Create the container with specific configuration
 	resp, err := r.client.ContainerCreate(ctx, &container.Config{
-		Image:        DefaultImageName,
-		AttachStdin:  true,
-		AttachStdout: true,
-		AttachStderr: true,
-		Tty:          true,
-		OpenStdin:    true,
-		StdinOnce:    false,
-		WorkingDir:   "/tmp/workspace",
-	}, hostConfig, nil, nil, "caramba-terminal")
-
+		Image:     imageName,
+		Cmd:       cmd,
+		Tty:       true,
+		OpenStdin: true,
+		StdinOnce: false,
+		Env: []string{
+			fmt.Sprintf("USERNAME=%s", username),
+			fmt.Sprintf("CUSTOM_MESSAGE=%s", customMessage),
+		},
+		WorkingDir: "/tmp/workspace", // Set the working directory to the mounted volume
+	}, hostConfig, nil, nil, "")
 	if err != nil {
-		log.Error("Error creating container", "error", err)
-		return nil, err
+		return nil, nil, err
 	}
 
+	// Start the container
+	if err := r.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		return nil, nil, err
+	}
+
+	// Attach to the container
+	attachResp, err := r.client.ContainerAttach(ctx, resp.ID, container.AttachOptions{
+		Stream: true,
+		Stdin:  true,
+		Stdout: true,
+		Stderr: true,
+		Logs:   true,
+	})
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	fmt.Printf("Container %s is running with user %s\n", resp.ID, username)
+
 	r.containerID = resp.ID
-	return r.Attach(ctx, resp.ID)
+
+	return attachResp.Conn, attachResp.Conn, nil
 }
 
 /*
@@ -181,37 +125,68 @@ func (r *Runner) StopContainer(ctx context.Context) error {
 }
 
 /*
+sanitizeCommand ensures that the command is not empty and contains valid parts.
+*/
+func sanitizeCommand(cmd []string) ([]string, error) {
+	for _, part := range cmd {
+		if strings.TrimSpace(part) == "" {
+			return nil, errors.New("command contains empty parts")
+		}
+	}
+	return cmd, nil
+}
+
+/*
 ExecuteCommand executes a command in the container and returns the output.
 */
-func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) []byte {
-	commandStr := strings.Join(cmd, " ")
-	fullCmd := []string{"/bin/bash", "-c", commandStr}
+func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) ([]byte, error) {
+	// Join command parts into a single string for shell execution
+	fullCmd := cmd
 
+	// Set up the exec configuration
 	execConfig := container.ExecOptions{
+		User:         "user",
 		Cmd:          fullCmd,
+		Tty:          true,
+		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
 	}
 
+	// Create the exec instance
 	execIDResp, err := r.client.ContainerExecCreate(ctx, r.containerID, execConfig)
 	if err != nil {
-		log.Error("Error creating exec", "error", err)
-		return nil
+		return nil, fmt.Errorf("failed to create exec instance: %w", err)
 	}
 
-	execAttachResp, err := r.client.ContainerExecAttach(ctx, execIDResp.ID, container.ExecStartOptions{})
+	// Attach to the exec instance
+	execAttachResp, err := r.client.ContainerExecAttach(ctx, execIDResp.ID, container.ExecStartOptions{
+		Detach: false,
+		Tty:    true,
+	})
 	if err != nil {
-		log.Error("Error attaching to exec", "error", err)
-		return nil
+		return nil, fmt.Errorf("failed to attach to exec instance: %w", err)
 	}
 	defer execAttachResp.Close()
 
+	// Read the output
 	var stdout, stderr strings.Builder
+
 	_, err = stdcopy.StdCopy(&stdout, &stderr, execAttachResp.Reader)
 	if err != nil {
-		log.Error("Error copying exec output", "error", err)
-		return nil
+		return nil, fmt.Errorf("failed to read exec output: %w", err)
 	}
 
-	return []byte(stdout.String() + stderr.String())
+	// Log and return both stdout and stderr if needed
+	output := stdout.String()
+	errorOutput := stderr.String()
+
+	fmt.Printf("Command stdout: %s\n", output)
+
+	// You can choose to treat non-empty `stderr` differently based on your needs
+	if errorOutput != "" {
+		fmt.Printf("Command stderr: %s\n", errorOutput)
+	}
+
+	return []byte(output), errors.New(errorOutput)
 }

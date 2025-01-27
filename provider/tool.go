@@ -64,9 +64,9 @@ var qdrantCollection = viper.GetViper().GetString("tools.qdrant.collection")
 var qdrantDimension = viper.GetViper().GetUint64("tools.qdrant.dimension")
 
 var toolMap = map[string]Tool{
-	"azure":        tools.NewAzure(),
-	"browser":      tools.NewBrowser(),
-	"container":    tools.NewContainer(),
+	"azure":   tools.NewAzure(),
+	"browser": tools.NewBrowser(),
+	// "container":    tools.NewContainer(),
 	"github":       tools.NewGithub(),
 	"neo4j_query":  tools.NewNeo4jQuery(),
 	"neo4j_store":  tools.NewNeo4jStore(),

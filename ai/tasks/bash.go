@@ -19,11 +19,6 @@ func NewBash() *Bash {
 }
 
 func (task *Bash) Execute(ctx *drknow.Context, args map[string]any) Bridge {
-	if err := task.container.Initialize(); err != nil {
-		ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, err.Error()))
-		return nil
-	}
-
 	// Extract commands array and join into single command
 	cmds, ok := args["commands"].([]any)
 	if !ok {

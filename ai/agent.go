@@ -2,8 +2,6 @@ package ai
 
 import (
 	"context"
-	"io"
-	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/log"
@@ -136,8 +134,7 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		shouldBreak := false
 		cycle := 0
 
-		// Add the user prompt, and wrap it in some tags, to keep clarity along an ever
-		// growing complexity in the current context.
+		// Add the user prompt, and wrap it in some tags
 		msg.Content = utils.QuickWrap(
 			"USER PROMPT",
 			msg.Content,
@@ -160,98 +157,60 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 			}
 
 			response := agent.accumulator.String()
+			agent.accumulator.Clear()
 
-			agent.Context.AddMessage(
-				provider.NewMessage(
-					provider.RoleAssistant,
-					response,
-				),
-			)
-
-			interpreter := NewInterpreter(agent.Context)
-			interpreter, agent.state = interpreter.Interpret()
-			agent.bridge = interpreter.Execute()
-
-			if agent.state == AgentStateTerminal {
-				agent.handleContainer(out)
+			if cycle == 1 {
+				response = "<<TERMINAL>>"
 			}
 
-			if strings.Contains(
-				strings.ToLower(response),
-				"<break",
-			) {
+			// Add a newline if the response doesn't end with one
+			if !strings.HasSuffix(response, "\n") {
+				response += "\n"
+			}
+
+			if agent.state != AgentStateTerminal {
+				agent.Context.AddMessage(
+					provider.NewMessage(
+						provider.RoleAssistant,
+						response,
+					),
+				)
+
+				interpreter := NewInterpreter(agent.Context)
+				interpreter, agent.state = interpreter.Interpret()
+				agent.bridge = interpreter.Execute()
+
+				// Only send terminal instruction and initial prompt on first transition to terminal state
+				if agent.state == AgentStateTerminal {
+					agent.Context.AddMessage(
+						provider.NewMessage(
+							provider.RoleAssistant,
+							"You are now in the terminal. Please enter valid bash commands.\n$ ",
+						),
+					)
+					continue
+				}
+
+				continue
+			}
+
+			if agent.state == AgentStateTerminal {
+				terminalOutput := agent.bridge.Execute(response)
+				if terminalOutput != "" {
+					agent.Context.AddMessage(
+						provider.NewMessage(provider.RoleAssistant, terminalOutput),
+					)
+				}
+			}
+
+			// Only process break commands outside terminal mode
+			if agent.state != AgentStateTerminal && strings.Contains(strings.ToLower(response), "<break") {
 				shouldBreak = true
 			}
 		}
 	}()
 
 	return out
-}
-
-func (agent *Agent) handleContainer(out chan provider.Event) {
-	// Start the bridge first
-	agent.bridge.Start()
-
-	// Regex to match the bash prompt pattern
-	promptRegex := regexp.MustCompile(`user@[^:]+:[^$]+\$`)
-
-	// We'll collect output in a buffer
-	var lineBuf strings.Builder
-
-	for {
-		buf := make([]byte, 4096)
-		for {
-			n, err := agent.bridge.Read(buf)
-			if err != nil {
-				if err != io.EOF {
-					log.Error("Error reading from container bridge", "error", err)
-				}
-				return
-			}
-
-			if n > 0 {
-				output := string(buf[:n])
-				lineBuf.WriteString(output)
-
-				// Send the chunk as an event immediately
-				eventData := provider.NewEventData()
-				eventData.EventType = provider.EventChunk
-				eventData.Name = "container_output"
-				eventData.Text = output
-				out <- eventData
-
-				// If we see a prompt, send it to the agent
-				if promptRegex.MatchString(strings.TrimSpace(output)) {
-					agent.Context.AddMessage(
-						provider.NewMessage(
-							provider.RoleAssistant,
-							output,
-						),
-					)
-					lineBuf.Reset()
-					break
-				}
-			}
-		}
-
-		agent.accumulator.Clear()
-
-		// Generate new response from the agent
-		for event := range agent.accumulator.Generate(
-			context.Background(),
-			agent.provider.Generate(
-				context.Background(),
-				agent.Context.Compile(0, 0),
-			),
-		) {
-			out <- event
-		}
-
-		if _, err := agent.bridge.Write([]byte(agent.accumulator.String())); err != nil {
-			log.Error("Error writing to container bridge", "error", err)
-			return
-		}
-	}
 }
 
 func (agent *Agent) Validate() bool {

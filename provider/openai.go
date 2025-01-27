@@ -102,7 +102,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 				chunk := stream.Current()
 				acc.AddChunk(chunk)
 
-				// Handle content streaming
+				// Handle finished content from accumulator
 				if content, ok := acc.JustFinishedContent(); ok {
 					chunkEvent := NewEventData()
 					chunkEvent.EventType = EventChunk
@@ -111,7 +111,8 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 					out <- chunkEvent
 					continue
 				}
-				// Handle tool calls
+
+				// Handle tool calls from accumulator
 				if tool, ok := acc.JustFinishedToolCall(); ok {
 					toolEvent := NewEventData()
 					toolEvent.EventType = EventToolCall
@@ -120,15 +121,24 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 					out <- toolEvent
 					continue
 				}
-				// Stream regular content chunks
-				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+
+				// Handle refusals from accumulator
+				if refusal, ok := acc.JustFinishedRefusal(); ok {
+					refusalEvent := NewEventData()
+					refusalEvent.EventType = EventError
+					refusalEvent.Name = "openai_refusal"
+					refusalEvent.Error = errors.New(refusal)
+					out <- refusalEvent
+					continue
+				}
+
+				// Only send raw JSON data from chunks, not content
+				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.JSON.RawJSON() != "" {
 					chunkEvent := NewEventData()
 					chunkEvent.EventType = EventChunk
-					chunkEvent.Name = "openai_chunk"
-					chunkEvent.Text = chunk.Choices[0].Delta.Content
+					chunkEvent.Name = "openai_chunk_json"
 					chunkEvent.PartialJSON = chunk.Choices[0].Delta.JSON.RawJSON()
 					out <- chunkEvent
-					continue
 				}
 			}
 		}
@@ -148,7 +158,6 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 		doneEvent.EventType = EventDone
 		doneEvent.Name = "openai_generation_complete"
 		out <- doneEvent
-		return
 	}()
 
 	return out

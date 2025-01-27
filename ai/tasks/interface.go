@@ -18,4 +18,5 @@ type Task interface {
 type Bridge interface {
 	io.ReadWriteCloser
 	Start()
+	Execute(string) string
 }

@@ -49,7 +49,14 @@ func (accumulator *Accumulator) Generate(ctx context.Context, in <-chan provider
 				return
 			}
 
-			accumulator.chunks = append(accumulator.chunks, event)
+			if event.Type() == provider.EventChunk {
+				accumulator.chunks = append(accumulator.chunks, event)
+			}
+
+			if event.Type() == provider.EventDone {
+				accumulator.chunks = append(accumulator.chunks, event)
+			}
+
 			out <- event
 		}
 	}()

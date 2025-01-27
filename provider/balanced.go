@@ -422,20 +422,20 @@ func (bp *BalancedProvider) InitializeProviders() error {
 		bp.AddProvider(NewOpenAI(openaiKey))
 	}
 
-	// Anthropic
-	if anthropicKey := os.Getenv("ANTHROPIC_API_KEY"); anthropicKey != "" {
-		bp.AddProvider(NewAnthropic(anthropicKey))
-	}
+	// // Anthropic
+	// if anthropicKey := os.Getenv("ANTHROPIC_API_KEY"); anthropicKey != "" {
+	// 	bp.AddProvider(NewAnthropic(anthropicKey))
+	// }
 
-	// Gemini
-	if geminiKey := os.Getenv("GEMINI_API_KEY"); geminiKey != "" {
-		bp.AddProvider(NewGemini(geminiKey))
-	}
+	// // Gemini
+	// if geminiKey := os.Getenv("GEMINI_API_KEY"); geminiKey != "" {
+	// 	bp.AddProvider(NewGemini(geminiKey))
+	// }
 
-	// Cohere
-	if cohereKey := os.Getenv("COHERE_API_KEY"); cohereKey != "" {
-		bp.AddProvider(NewCohere(cohereKey))
-	}
+	// // Cohere
+	// if cohereKey := os.Getenv("COHERE_API_KEY"); cohereKey != "" {
+	// 	bp.AddProvider(NewCohere(cohereKey))
+	// }
 
 	// Check if any providers were added
 	if len(bp.providers) == 0 {

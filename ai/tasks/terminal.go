@@ -1,8 +1,6 @@
 package tasks
 
 import (
-	"context"
-
 	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/tools"
@@ -28,23 +26,16 @@ returns a Bridge that streams user input/output to the container shell.
 func (t *Terminal) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 	// Find or create our Container tool
 	containerTool := tools.NewContainer()
-
-	// Connect if needed
-	if containerTool.Conn == nil {
-		if err := containerTool.Connect(context.Background(), nil); err != nil {
-			log.Error("Error connecting to container", "error", err)
-			return nil
-		}
-	}
-
-	if err := containerTool.Start(); err != nil {
-		log.Error("Error starting container", "error", err)
+	if err := containerTool.Initialize(); err != nil {
+		log.Error("Failed to initialize container", "error", err)
 		return nil
 	}
 
 	// Return a Bridge wrapping the container I/O
-	return &IOBridge{
+	bridge := &IOBridge{
 		container: containerTool,
 		Conn:      containerTool.Conn,
 	}
+
+	return bridge
 }

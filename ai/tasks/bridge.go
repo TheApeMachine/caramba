@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"io"
+	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/tools"
@@ -14,11 +15,25 @@ type IOBridge struct {
 }
 
 func (b *IOBridge) Start() {
-	// Start the container if it's not already running
-	if err := b.container.Start(); err != nil {
-		log.Error("Error starting container", "error", err)
+
+}
+
+func (b *IOBridge) Execute(cmd string) string {
+	// Handle exit command specially
+	if cmd == "exit" {
+		b.Close()
+		return "Terminal session ended.\n"
 	}
 
+	log.Info("Executing command", "command", cmd)
+
+	// Execute command and ensure output ends with newline
+	output := b.container.ExecuteCommand(cmd)
+	if !strings.HasSuffix(output, "\n") {
+		output += "\n"
+	}
+
+	return output
 }
 
 func (b *IOBridge) Read(p []byte) (n int, err error) {
@@ -30,5 +45,10 @@ func (b *IOBridge) Write(p []byte) (n int, err error) {
 }
 
 func (b *IOBridge) Close() error {
-	return b.Conn.Close()
+	if b.Conn != nil {
+		err := b.Conn.Close()
+		b.Conn = nil
+		return err
+	}
+	return nil
 }
