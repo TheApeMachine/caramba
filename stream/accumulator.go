@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -69,7 +68,6 @@ func (accumulator *Accumulator) String() string {
 	out := strings.TrimSpace(
 		accumulator.Compile().Data().Text,
 	)
-	errnie.Log("%s", out)
 	return out
 }
 

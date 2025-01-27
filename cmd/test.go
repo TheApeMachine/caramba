@@ -52,17 +52,15 @@ var testCmd = &cobra.Command{
 			dctx,
 			prvdr,
 			"reasoner",
-			3,
+			10,
 		)
-
-		errnie.Raw(dctx)
 
 		stream.NewConsumer().Print(
 			agent.Generate(
 				cmd.Context(),
 				provider.NewMessage(
 					provider.RoleUser,
-					"Please design an entirely unique new approach to AI, one that can be run on consumer hardware, and is not based on anything we currently have.",
+					"Please connect to the terminal and try out some commands as part of a system test.",
 				),
 			),
 			false,

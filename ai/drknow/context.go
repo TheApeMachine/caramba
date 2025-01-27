@@ -89,7 +89,7 @@ func (ctx *Context) Compile(cycle int, maxIterations int) *provider.LLMGeneratio
 	ctx.Identity.Params.Thread.AddMessage(
 		provider.NewMessage(
 			provider.RoleAssistant,
-			fmt.Sprintf(">>> START iteration %d of %d", cycle+1, maxIterations),
+			fmt.Sprintf(">>> START iteration %d of %d", cycle, maxIterations),
 		),
 	)
 

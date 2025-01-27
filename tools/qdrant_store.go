@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/theapemachine/caramba/utils"
@@ -42,6 +43,15 @@ func (q *QdrantStore) GenerateSchema() interface{} {
 
 func (q *QdrantStore) Initialize() error {
 	qdrantTool := NewQdrant(q.collection, q.dimension)
+	if qdrantTool == nil {
+		return fmt.Errorf("failed to create Qdrant tool")
+	}
+	if qdrantTool.client == nil {
+		return fmt.Errorf("Qdrant client is nil")
+	}
+	if qdrantTool.embedder == nil {
+		return fmt.Errorf("embedder is nil")
+	}
 	q.client = qdrantTool.client
 	q.embedder = qdrantTool.embedder
 	q.ctx = qdrantTool.ctx

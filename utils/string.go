@@ -138,9 +138,9 @@ maintain clear boundaries between different content sections.
 */
 func QuickWrap(tag, content string, indent int) string {
 	return JoinWith("\n",
-		Indent("<"+tag+">", indent),
-		Indent(Reflow(content), indent+1),
-		Indent("</"+tag+">", indent),
+		"["+tag+"]",
+		Reflow(content),
+		"[/"+tag+"]",
 	)
 }
 

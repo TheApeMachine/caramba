@@ -6,6 +6,7 @@ import (
 
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/ai/tasks"
+	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/errnie"
 )
@@ -58,9 +59,24 @@ func (interpreter *Interpreter) Execute() {
 }
 
 func (interpreter *Interpreter) Interpret() *Interpreter {
+	// Clear previous commands
+	interpreter.commands = make([]Command, 0)
+
+	// Get the last message from context
+	messages := interpreter.ctx.Identity.Params.Thread.Messages
+	if len(messages) == 0 {
+		return interpreter
+	}
+	lastMsg := messages[len(messages)-1]
+
+	// Only process assistant messages
+	if lastMsg.Role != provider.RoleAssistant {
+		return interpreter
+	}
+
 	// This regex matches: <command param1="value1" param2=[value2]>
 	regexpattern := regexp.MustCompile(`<(\w+)(?:\s+(\w+)\s*=\s*(?:"([^"]*)"|(\[[^\]]*\])))*>`)
-	matches := regexpattern.FindAllStringSubmatch(interpreter.accumulator.String(), -1)
+	matches := regexpattern.FindAllStringSubmatch(lastMsg.Content, -1)
 
 	for _, match := range matches {
 		command := strings.ToLower(match[1])

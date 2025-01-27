@@ -133,16 +133,16 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		defer close(out)
 
 		// Add timeout for agent generation
-		genCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		genCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 		defer cancel()
 
 		shouldBreak := false
 		cycle := 0
 
-		msg.Content = utils.JoinWith(
-			"[USER PROMPT]",
+		msg.Content = utils.QuickWrap(
+			"USER PROMPT",
 			msg.Content,
-			"[/USER PROMPT]",
+			1,
 		)
 
 		agent.Context.AddMessage(msg)
@@ -155,13 +155,11 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 				shouldBreak = true
 			}
 
-			// // Run recall task and add results to context
-			// agent.task("recaller", "recall", out)
-
 			compiled := agent.Context.Compile(cycle, agent.MaxIterations)
-			errnie.Log("compiled: %v", compiled)
 
-			for event := range agent.accumulator.Generate(
+			// Create a new accumulator for this iteration
+			iterAccumulator := stream.NewAccumulator()
+			for event := range iterAccumulator.Generate(
 				genCtx,
 				agent.provider.Generate(
 					genCtx,
@@ -169,10 +167,13 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 				),
 			) {
 				out <- event
+				agent.accumulator.Write([]byte(event.Data().Text))
 			}
 
-			response := agent.accumulator.String()
+			// Get only this iteration's response
+			response := iterAccumulator.String()
 
+			// Add the response to context
 			agent.Context.AddMessage(
 				provider.NewMessage(
 					provider.RoleAssistant,
@@ -180,9 +181,13 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 				),
 			)
 
+			// Process commands in the response using the interpreter
+			interpreter := NewInterpreter(agent.Context, iterAccumulator)
+			interpreter.Interpret().Execute()
+
 			if strings.Contains(
 				strings.ToLower(response),
-				"<break>",
+				"<break",
 			) {
 				shouldBreak = true
 			}
@@ -190,13 +195,10 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 			agent.Context.AddMessage(
 				provider.NewMessage(
 					provider.RoleAssistant,
-					fmt.Sprintf("<<< END iteration %d of %d", cycle+1, agent.MaxIterations),
+					fmt.Sprintf("<<< END iteration %d of %d", cycle, agent.MaxIterations),
 				),
 			)
 		}
-
-		// Run optimization task with full context but don't add results
-		// agent.task("optimizer", "optimize", out)
 	}()
 
 	return out
@@ -224,8 +226,6 @@ func (agent *Agent) task(system string, task string, out chan<- provider.Event) 
 			taskPrompt,
 		),
 	)
-
-	errnie.Log("THREAD for task:\n%v", task)
 
 	// Generate response and process through accumulator once
 	for event := range accumulator.Generate(

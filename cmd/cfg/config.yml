@@ -67,15 +67,18 @@ prompts:
             At least one of the parameters must be supplied, but you can supply all of them, or any combination of them.
           <BASH commands=[string, ...]> used to run a command, or script, in a Debian-based Linux bash terminal.
             commands : [string, ...] (required, either a single command in an array, a list of commands, or a bash script).
+
+            After each command, you must stop and wait for the terminal to provide you with the output on the next iteration.
           <TERMINAL>
             This command does not have any parameters. It will connect you directly to the TTY of a Debian-based Linux terminal.
+            You will have to stop responding and wait for the next iteration to interact with the terminal.
             From the moment you use this command, you will have to limit your responses to always be a valid bash command.
             After each command, you must stop and wait for the terminal to provide you with the output.
             This command is very useful for highly dynamic computer-use, and when you need to perform a series of actions.
             Use the standard exit command to disconnect from the terminal.
             Any files written to /tmp/workspace will be preserved between sessions.
           <WEB url=string javascript=string selector=string action=string hotkeys=[string, ...]>
-            url : string (the url to navigate to)
+            url : string (the url to navigate to, does not return any output)
             javascript : string (the javascript to run, must be a function that returns a string, example: () => [...document.body.querySelectorAll("h1, h2, h3, h4, h5, h6, p")].map(x => x.textContent.split(" ").filter(x => x !== " ").join(" ")).join();)
             selector : string (the css selector to use)
             action : string (the action to perform)
@@ -91,6 +94,12 @@ prompts:
             Iteration is on by default, and to take advantage of it, all you have to do is stop responding, after you have the <BREAK> command in your response.
             You can also leverage iteration to retrieve the output of any commands you ran, because as an LLM you are not able to do this in a single cycle.
           [/ITERATION]
+          [COMMANDS]
+            In most cases it is best to stop responding after you have used a command, and wait for the next iteration to get the output.
+            Of course, if you know what you are doing, there are many situations where you can issue multiple commands in a single response.
+            The most important thing to remember is that the Operating System will interpret any instance of a command, and will execute it.
+            This means you should never respond with a command if the intent is not to execute it.
+          [/COMMANDS]
           [SCRATCHPAD]
             Placing part of your response in [SCRATCHPAD] and [/SCRATCHPAD] tags, allows you to work things out first, or take notes, without having to worry about the context of the response.
           [/SCRATCHPAD]

@@ -132,7 +132,6 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationP
 
 		if err := stream.Err(); err != nil {
 			errnie.Error(err)
-			errnie.Log("DUMP %v", params)
 			errEvent := NewEventData()
 			errEvent.EventType = EventError
 			errEvent.Name = "anthropic_error"

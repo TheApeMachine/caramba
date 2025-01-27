@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/theapemachine/amsh/data"
@@ -50,6 +51,9 @@ func (c *Container) Initialize() error {
 		if err := os.MkdirAll("/tmp/.ssh", 0755); err != nil {
 			return errnie.Error(err)
 		}
+		if err := os.MkdirAll("/tmp/workspace", 0755); err != nil {
+			return errnie.Error(err)
+		}
 
 		wd, err := os.Getwd()
 		if err != nil {
@@ -58,10 +62,10 @@ func (c *Container) Initialize() error {
 		c.builder.BuildImage(
 			context.Background(),
 			filepath.Join(wd, "tools", "container", "Dockerfile"),
-			"caramba-dev",
+			container.DefaultImageName,
 		)
 
-		conn, err := c.runner.RunContainer(context.Background(), "caramba-dev")
+		conn, err := c.runner.RunContainer(context.Background(), container.DefaultImageName)
 		if err != nil {
 			return errnie.Error(err)
 		}
@@ -93,13 +97,84 @@ func (c *Container) Use(ctx context.Context, params map[string]any) string {
 	return string(output)
 }
 
-func (c *Container) Connect(ctx context.Context, conn io.ReadWriteCloser) error {
-	c.conn = conn
-	containerConn, err := c.runner.RunContainer(ctx, "caramba-dev")
+func (c *Container) Connect(ctx context.Context, bridge io.ReadWriteCloser) error {
+	// If we already have a connection, just use the existing one
+	if c.conn != nil {
+		c.conn = bridge
+		return nil
+	}
+
+	// Initialize container if needed
+	if err := c.Initialize(); err != nil {
+		return err
+	}
+
+	// Get container connection
+	containerConn, err := c.runner.RunContainer(ctx, container.DefaultImageName)
 	if err != nil {
 		return err
 	}
-	c.conn = containerConn
+
+	// Set up bidirectional connection
+	c.conn = bridge
+
+	// Start goroutine to copy container output to bridge
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := containerConn.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					log.Error("error reading from container", "error", err)
+				}
+				return
+			}
+			if n > 0 {
+				if _, err := c.conn.Write(buf[:n]); err != nil {
+					log.Error("error writing to bridge", "error", err)
+					return
+				}
+			}
+		}
+	}()
+
+	// Start goroutine to copy bridge input to container
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := c.conn.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					log.Error("error reading from bridge", "error", err)
+				}
+				return
+			}
+			if n > 0 {
+				if _, err := containerConn.Write(buf[:n]); err != nil {
+					log.Error("error writing to container", "error", err)
+					return
+				}
+			}
+		}
+	}()
+
+	// Send initial setup commands
+	setupCmds := []string{
+		"export PS1='\\u@\\h:\\w\\$ '\n", // Set a standard prompt
+		"export TERM=xterm\n",            // Set terminal type
+		"stty -echo\n",                   // Disable terminal echo
+		"cd /tmp/workspace\n",            // Set working directory
+	}
+
+	for _, cmd := range setupCmds {
+		if _, err := containerConn.Write([]byte(cmd)); err != nil {
+			log.Error("error writing setup command", "error", err)
+			return err
+		}
+	}
+
+	// Wait a bit for setup commands to take effect
+	time.Sleep(100 * time.Millisecond)
 
 	return nil
 }

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 
 	"github.com/gofiber/fiber/v3/client"
@@ -47,24 +48,31 @@ func NewQdrant(collection string, dimension uint64) *Qdrant {
 	)
 
 	if llm, err = openai.New(); err != nil {
+		errnie.Error(fmt.Errorf("failed to initialize OpenAI: %w", err))
 		return nil
 	}
 
 	if e, err = embeddings.NewEmbedder(llm); err != nil {
+		errnie.Error(fmt.Errorf("failed to create embedder: %w", err))
 		return nil
 	}
 
 	if url, err = url.Parse("http://localhost:6333"); err != nil {
+		errnie.Error(fmt.Errorf("failed to parse Qdrant URL: %w", err))
 		return nil
 	}
 
-	createCollectionIfNotExists(collection, url, dimension)
+	if err = createCollectionIfNotExists(collection, url, dimension); err != nil {
+		errnie.Error(fmt.Errorf("failed to create/verify collection: %w", err))
+		return nil
+	}
 
 	if client, err = qdrant.New(
 		qdrant.WithURL(*url),
 		qdrant.WithCollectionName(collection),
 		qdrant.WithEmbedder(e),
 	); err != nil {
+		errnie.Error(fmt.Errorf("failed to create Qdrant client: %w", err))
 		return nil
 	}
 

@@ -1,49 +1,32 @@
 # Build stage
-FROM bitnami/minideb:latest AS builder
-
-# Install system packages including Python and development tools
-RUN install_packages \
-    python3 \
-    python3-pip \
-    python3-dev \
-    build-essential \
-    libssl-dev \
-    libffi-dev
-
-# Install Python packages
-RUN pip3 install --no-cache-dir \
-    numpy \
-    pandas \
-    scikit-learn \
-    matplotlib \
-    seaborn \
-    requests \
-    pytest \
-    black \
-    flake8 \
-    mypy \
-    ipython \
-    jupyter \
-    poetry
-
-# Final stage
 FROM bitnami/minideb:latest
 
-# Install runtime packages only
+# Install system packages including Python and development tools
 RUN install_packages \
     ca-certificates \
     curl \
     git \
     python3 \
-    python3-pip
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    build-essential \
+    libssl-dev \
+    libffi-dev
 
-# Copy Python environment from builder
-COPY --from=builder /usr/local/lib/python3.* /usr/local/lib/
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Create and activate virtual environment
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Set Python aliases
-RUN ln -s /usr/bin/python3 /usr/bin/python && \
-    ln -s /usr/bin/pip3 /usr/bin/pip
+# Install Python packages in virtual environment
+RUN pip3 install --no-cache-dir \
+    requests \
+    pytest \
+    black \
+    flake8 \
+    mypy \
+    poetry
 
 # Create non-root user
 RUN useradd -m -s /bin/bash user && \

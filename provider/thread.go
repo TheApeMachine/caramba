@@ -1,6 +1,10 @@
 package provider
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/theapemachine/errnie"
+)
 
 /*
 Thread is a collection of messages, which will be used to generate a response.
@@ -34,6 +38,7 @@ func (thread *Thread) String() string {
 AddMessage adds a message to the thread.
 */
 func (thread *Thread) AddMessage(message *Message) *Thread {
+	errnie.Log("===AddMessage===\n%s: %s\n", message.Role, message.Content)
 	thread.Messages = append(thread.Messages, message)
 	return thread
 }

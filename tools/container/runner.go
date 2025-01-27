@@ -13,6 +13,8 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
+const ContainerName = "caramba-terminal"
+
 /*
 Runner encapsulates the functionality for running and interacting with Docker containers.
 It provides methods to create, start, and attach to containers, allowing for seamless
@@ -53,6 +55,51 @@ Returns:
   - err: Any error encountered during the process
 */
 func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWriteCloser, error) {
+	// Check if container already exists
+	containers, err := r.client.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return nil, err
+	}
+
+	var existingContainer string
+	for _, c := range containers {
+		for _, name := range c.Names {
+			if name == "/"+ContainerName {
+				existingContainer = c.ID
+				break
+			}
+		}
+	}
+
+	// If container exists and is running, reuse it
+	if existingContainer != "" {
+		// Check if container is running
+		inspect, err := r.client.ContainerInspect(ctx, existingContainer)
+		if err != nil {
+			return nil, err
+		}
+
+		if inspect.State.Running {
+			r.containerID = existingContainer
+			// Reattach to the existing container
+			attachResp, err := r.client.ContainerAttach(ctx, existingContainer, container.AttachOptions{
+				Stream: true,
+				Stdin:  true,
+				Stdout: true,
+				Stderr: true,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return attachResp.Conn, nil
+		}
+
+		// If container exists but not running, remove it
+		if err := r.client.ContainerRemove(ctx, existingContainer, container.RemoveOptions{Force: true}); err != nil {
+			return nil, err
+		}
+	}
+
 	// Create host config with volume mount
 	hostConfig := &container.HostConfig{
 		Mounts: []mount.Mount{
@@ -71,16 +118,18 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWri
 
 	// Create the container with specific configuration
 	resp, err := r.client.ContainerCreate(ctx, &container.Config{
-		Image:     imageName,
-		Cmd:       []string{"/bin/sh"},
+		Image:     DefaultImageName,
+		Cmd:       []string{"/bin/bash"},
 		Tty:       true,
 		OpenStdin: true,
 		StdinOnce: false,
 		Env: []string{
 			fmt.Sprintf("USERNAME=%s", "user"),
+			"TERM=xterm",
+			"PS1=\\u@\\h:\\w\\$ ",
 		},
-		WorkingDir: "/tmp/workspace", // Set the working directory to the mounted volume
-	}, hostConfig, nil, nil, "")
+		WorkingDir: "/tmp/workspace",
+	}, hostConfig, nil, nil, ContainerName)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +146,6 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWri
 		Stdout: true,
 		Stderr: true,
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +153,6 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWri
 	fmt.Printf("Container %s is running\n", resp.ID)
 
 	r.containerID = resp.ID
-
 	return attachResp.Conn, nil
 }
 
@@ -126,33 +173,27 @@ func (r *Runner) StopContainer(ctx context.Context) error {
 ExecuteCommand executes a command in the container and returns the output.
 */
 func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) []byte {
-	// Join command parts into a single string for shell execution
 	commandStr := strings.Join(cmd, " ")
-	fullCmd := []string{"/bin/sh", "-c", commandStr}
+	fullCmd := []string{"/bin/bash", "-c", commandStr}
 
-	// Set up the exec configuration
 	execConfig := container.ExecOptions{
 		Cmd:          fullCmd,
 		AttachStdout: true,
 		AttachStderr: true,
 	}
 
-	// Create the exec instance
 	execIDResp, err := r.client.ContainerExecCreate(ctx, r.containerID, execConfig)
 	if err != nil {
 		return nil
 	}
 
-	// Attach to the exec instance
 	execAttachResp, err := r.client.ContainerExecAttach(ctx, execIDResp.ID, container.ExecStartOptions{})
 	if err != nil {
 		return nil
 	}
 	defer execAttachResp.Close()
 
-	// Read the output
 	var stdout, stderr strings.Builder
-
 	_, err = stdcopy.StdCopy(&stdout, &stderr, execAttachResp.Reader)
 	if err != nil {
 		log.Error(err)
