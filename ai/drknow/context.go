@@ -2,7 +2,6 @@ package drknow
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -86,13 +85,6 @@ Returns:
   - Generation parameters containing the compiled conversation thread
 */
 func (ctx *Context) Compile(cycle int, maxIterations int) *provider.LLMGenerationParams {
-	ctx.Identity.Params.Thread.AddMessage(
-		provider.NewMessage(
-			provider.RoleAssistant,
-			fmt.Sprintf(">>> START iteration %d of %d", cycle, maxIterations),
-		),
-	)
-
 	return ctx.Identity.Params
 }
 

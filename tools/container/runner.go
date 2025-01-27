@@ -2,7 +2,6 @@ package container
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"strings"
 
@@ -12,8 +11,6 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 )
-
-const ContainerName = "caramba-terminal"
 
 /*
 Runner encapsulates the functionality for running and interacting with Docker containers.
@@ -59,6 +56,24 @@ func (r *Runner) Attach(ctx context.Context, containerID string) (io.ReadWriteCl
 }
 
 /*
+StartContainer starts a running container.
+*/
+func (r *Runner) StartContainer(ctx context.Context, containerID string) (err error) {
+	if err = r.client.ContainerStart(
+		context.Background(), containerID, container.StartOptions{},
+	); err != nil {
+		log.Error("Error starting container", "error", err)
+		return err
+	}
+
+	return nil
+}
+
+func (r *Runner) GetContainerID() string {
+	return r.containerID
+}
+
+/*
 RunContainer creates, starts, and attaches to a new container based on the specified image.
 It provides channels for stdin and stdout/stderr, enabling interactive communication with the container.
 This method is particularly useful for integrating with language models or other interactive processes.
@@ -79,35 +94,37 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWri
 	// Check if container already exists
 	containers, err := r.client.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
+		log.Error("Error listing containers", "error", err)
 		return nil, err
 	}
 
-	var existingContainer string
+	log.Info("Checking for existing container")
 	for _, c := range containers {
 		for _, name := range c.Names {
-			if name == "/"+ContainerName {
-				existingContainer = c.ID
+			log.Info("Checking container", "name", name)
+			if name == "/caramba-terminal" {
+				r.containerID = c.ID
 				break
 			}
 		}
 	}
 
 	// If container exists and is running, reuse it
-	if existingContainer != "" {
+	if r.containerID != "" {
 		// Check if container is running
-		inspect, err := r.client.ContainerInspect(ctx, existingContainer)
+		inspect, err := r.client.ContainerInspect(ctx, r.containerID)
 		if err != nil {
+			log.Error("Error inspecting container", "error", err)
 			return nil, err
 		}
 
 		if inspect.State.Running {
-			r.containerID = existingContainer
-			// Reattach to the existing container
-			return r.Attach(ctx, existingContainer)
+			return r.Attach(ctx, r.containerID)
 		}
 
 		// If container exists but not running, remove it
-		if err := r.client.ContainerRemove(ctx, existingContainer, container.RemoveOptions{Force: true}); err != nil {
+		if err := r.client.ContainerRemove(ctx, r.containerID, container.RemoveOptions{Force: true}); err != nil {
+			log.Error("Error removing container", "error", err)
 			return nil, err
 		}
 	}
@@ -126,47 +143,27 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string) (io.ReadWri
 				Target: "/home/user/.ssh",
 			},
 		},
+		AutoRemove: true,
 	}
 
 	// Create the container with specific configuration
 	resp, err := r.client.ContainerCreate(ctx, &container.Config{
-		Image:     DefaultImageName,
-		Cmd:       []string{"/bin/bash"},
-		Tty:       true,
-		OpenStdin: true,
-		StdinOnce: false,
-		Env: []string{
-			fmt.Sprintf("USERNAME=%s", "user"),
-			"TERM=xterm",
-			"PS1=\\u@\\h:\\w\\$ ",
-		},
-		WorkingDir: "/tmp/workspace",
-	}, hostConfig, nil, nil, ContainerName)
+		Image:        DefaultImageName,
+		AttachStdin:  true,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          true,
+		OpenStdin:    true,
+		StdinOnce:    false,
+		WorkingDir:   "/tmp/workspace",
+	}, hostConfig, nil, nil, "caramba-terminal")
 
 	if err != nil {
+		log.Error("Error creating container", "error", err)
 		return nil, err
 	}
 
-	if err = r.client.ContainerStart(
-		context.Background(), resp.ID, container.StartOptions{},
-	); err != nil {
-		return nil, err
-	}
-
-	statusCh, errCh := r.client.ContainerWait(
-		context.Background(),
-		resp.ID,
-		container.WaitConditionNotRunning,
-	)
-
-	select {
-	case err = <-errCh:
-		if err != nil {
-			return nil, err
-		}
-	case <-statusCh:
-	}
-
+	r.containerID = resp.ID
 	return r.Attach(ctx, resp.ID)
 }
 
@@ -198,11 +195,13 @@ func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) []byte {
 
 	execIDResp, err := r.client.ContainerExecCreate(ctx, r.containerID, execConfig)
 	if err != nil {
+		log.Error("Error creating exec", "error", err)
 		return nil
 	}
 
 	execAttachResp, err := r.client.ContainerExecAttach(ctx, execIDResp.ID, container.ExecStartOptions{})
 	if err != nil {
+		log.Error("Error attaching to exec", "error", err)
 		return nil
 	}
 	defer execAttachResp.Close()
@@ -210,7 +209,7 @@ func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) []byte {
 	var stdout, stderr strings.Builder
 	_, err = stdcopy.StdCopy(&stdout, &stderr, execAttachResp.Reader)
 	if err != nil {
-		log.Error(err)
+		log.Error("Error copying exec output", "error", err)
 		return nil
 	}
 

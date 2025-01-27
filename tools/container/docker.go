@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
 	dc "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
@@ -52,7 +51,7 @@ func (docker *Docker) Start() *Docker {
 	)
 
 	if err = docker.cli.ContainerStart(
-		context.Background(), docker.ID, container.StartOptions{},
+		context.Background(), docker.ID, dc.StartOptions{},
 	); errnie.Error(err) != nil {
 		return docker
 	}
@@ -72,7 +71,7 @@ func (docker *Docker) Start() *Docker {
 	}
 
 	if out, err = docker.cli.ContainerLogs(
-		context.Background(), docker.ID, container.LogsOptions{
+		context.Background(), docker.ID, dc.LogsOptions{
 			ShowStdout: true,
 		},
 	); err != nil {

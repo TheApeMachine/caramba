@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/utils"
-	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -37,11 +37,6 @@ type BalancedProvider struct {
 	initialized bool
 	cancel      context.CancelFunc
 }
-
-var (
-	balancedProviderInstance *BalancedProvider
-	onceBalancedProvider     sync.Once
-)
 
 /*
 NewBalancedProvider returns a provider that agents can use, which makes
@@ -80,12 +75,12 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 	}
 
 	if !hasSystem {
-		errnie.Error(errors.New("no system message found"))
+		log.Error("No system message found")
 		return nil
 	}
 
 	if !hasUser {
-		errnie.Warn("no user message found")
+		log.Warn("No user message found")
 	}
 
 	out := make(chan Event)
@@ -117,11 +112,11 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		provider.lastUsed = time.Now()
 		provider.mu.Unlock()
 
-		errnie.Info("generating response from %s", provider.provider.Name())
+		log.Info("Generating response", "provider", provider.provider.Name())
 		events := provider.provider.Generate(ctx, params)
 
 		if events == nil {
-			errnie.Error(errors.New("events channel is nil"))
+			log.Error("Events channel is nil")
 			return
 		}
 
@@ -227,11 +222,11 @@ func (lb *BalancedProvider) getAvailableProvider() *ProviderStatus {
 			return selected
 		}
 
-		errnie.Warn("all providers occupied or in cooldown, attempt %d, waiting...", attempt+1)
+		log.Warn("All providers occupied or in cooldown, attempt %d, waiting...", attempt+1)
 		time.Sleep(time.Second)
 	}
 
-	errnie.Error(errors.New("no providers available after maximum attempts"))
+	log.Error("No providers available after maximum attempts")
 	return nil
 }
 
@@ -247,7 +242,7 @@ func (lb *BalancedProvider) handleFirstRequest() *ProviderStatus {
 	// Initialize providers if not done yet
 	if len(lb.providers) == 0 {
 		if err := lb.InitializeProviders(); err != nil {
-			errnie.Error(err)
+			log.Error("Error initializing providers", "error", err)
 			return nil
 		}
 	}
@@ -267,66 +262,6 @@ func (lb *BalancedProvider) handleFirstRequest() *ProviderStatus {
 
 	// If we get here, no providers were available
 	return nil
-}
-
-func (lb *BalancedProvider) isProviderAvailable(ps *ProviderStatus, cooldownPeriod time.Duration, maxFailures int) bool {
-	if ps.occupied || ps.provider == nil {
-		return false
-	}
-
-	if ps.failures >= maxFailures && time.Since(ps.lastUsed) < cooldownPeriod {
-		return false
-	}
-
-	if ps.failures >= maxFailures && time.Since(ps.lastUsed) >= cooldownPeriod {
-		ps.failures = 0
-	}
-
-	return true
-}
-
-func (lb *BalancedProvider) isBetterProvider(candidate, current *ProviderStatus, oldestUse time.Time) bool {
-	return current == nil ||
-		candidate.failures < current.failures ||
-		(candidate.failures == current.failures && candidate.lastUsed.Before(oldestUse))
-}
-
-func (lb *BalancedProvider) getUnoccupiedProviders() []*ProviderStatus {
-	available := make([]*ProviderStatus, 0)
-	for _, ps := range lb.providers {
-		ps.mu.Lock()
-		if !ps.occupied {
-			available = append(available, ps)
-		}
-		ps.mu.Unlock()
-	}
-	return available
-}
-
-func (lb *BalancedProvider) selectBestProvider() *ProviderStatus {
-	var bestProvider *ProviderStatus
-	oldestUse := time.Now()
-	cooldownPeriod := 60 * time.Second
-	maxFailures := 3
-
-	for _, ps := range lb.providers {
-		ps.mu.Lock()
-		if lb.isProviderAvailable(ps, cooldownPeriod, maxFailures) &&
-			lb.isBetterProvider(ps, bestProvider, oldestUse) {
-			bestProvider = ps
-			oldestUse = ps.lastUsed
-		}
-		ps.mu.Unlock()
-	}
-
-	if bestProvider != nil {
-		bestProvider.mu.Lock()
-		bestProvider.occupied = true
-		bestProvider.lastUsed = time.Now()
-		bestProvider.mu.Unlock()
-	}
-
-	return bestProvider
 }
 
 // Cleanup performs any necessary cleanup

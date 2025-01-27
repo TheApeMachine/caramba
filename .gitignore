@@ -5,3 +5,5 @@ logs/
 utils/english.json
 .env
 .env.local
+id_marvin
+id_marvin.pub

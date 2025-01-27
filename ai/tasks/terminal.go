@@ -2,11 +2,10 @@ package tasks
 
 import (
 	"context"
-	"io"
 
+	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/tools"
-	"github.com/theapemachine/errnie"
 )
 
 // Terminal implements a Task that connects to an isolated Debian-based
@@ -21,40 +20,23 @@ func NewTerminal() Task {
 // Execute locates the Container tool, ensures it is initialized, and
 // returns a Bridge that streams user input/output to the container shell.
 func (t *Terminal) Execute(ctx *drknow.Context, args map[string]any) Bridge {
-	// Find the first Container tool in the agent's tool list
+	// Find or create our Container tool
 	containerTool := tools.NewContainer()
 
-	// Initialize the container if needed
-	if err := containerTool.Initialize(); err != nil {
-		errnie.Error(err)
-		return nil
-	}
-
-	// If not already connected, connect now
+	// Connect if needed
 	if containerTool.Conn == nil {
 		if err := containerTool.Connect(context.Background(), nil); err != nil {
-			errnie.Error(err)
+			log.Error("Error connecting to container", "error", err)
 			return nil
 		}
 	}
 
-	// Return a simple I/O bridge to pass data between user input and the container
-	return &ioBridge{Conn: containerTool.Conn}
-}
+	// Start the container if it's not already running
+	if err := containerTool.Start(); err != nil {
+		log.Error("Error starting container", "error", err)
+		return nil
+	}
 
-// ioBridge is a minimal tasks.Bridge implementation around an io.ReadWriteCloser.
-type ioBridge struct {
-	Conn io.ReadWriteCloser
-}
-
-func (b *ioBridge) Read(p []byte) (n int, err error) {
-	return b.Conn.Read(p)
-}
-
-func (b *ioBridge) Write(p []byte) (n int, err error) {
-	return b.Conn.Write(p)
-}
-
-func (b *ioBridge) Close() error {
-	return b.Conn.Close()
+	// Return a Bridge wrapping the container I/O
+	return &IOBridge{Conn: containerTool.Conn}
 }

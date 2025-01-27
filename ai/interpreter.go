@@ -4,10 +4,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/ai/tasks"
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/errnie"
 )
 
 var taskMap = map[string]tasks.Task{
@@ -102,7 +102,7 @@ func (interpreter *Interpreter) Interpret() (*Interpreter, AgentState) {
 		}
 
 		if _, ok := taskMap[command]; !ok {
-			errnie.Warn("unknown command: %s", command)
+			log.Warn("Unknown command", "command", command)
 			continue
 		}
 

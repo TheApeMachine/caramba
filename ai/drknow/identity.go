@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/charmbracelet/log"
 	"github.com/minio/minio-go/v7"
 	"github.com/theapemachine/caramba/datalake"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
-	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -83,7 +83,7 @@ func (identity *Identity) load() bool {
 	}
 
 	if err := json.NewDecoder(identity.loaded).Decode(identity); err != nil {
-		errnie.Error(errors.New("failed to decode identity params: " + err.Error()))
+		log.Error("Failed to decode identity params", "error", err)
 		return false
 	}
 
@@ -100,7 +100,7 @@ func (identity *Identity) create() {
 	identity.Params = provider.NewGenerationParams()
 
 	if identity.err = identity.Validate(); identity.err != nil {
-		errnie.Error(identity.err)
+		log.Error("Identity is invalid", "error", identity.err)
 		return
 	}
 
@@ -113,18 +113,18 @@ using the role as the storage key.
 */
 func (identity *Identity) save() {
 	if !identity.conn.IsConnected() {
-		errnie.Warn("no connection to datalake, skipping save")
+		log.Warn("No connection to datalake, skipping save")
 		return
 	}
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(identity); err != nil {
-		errnie.Error(err)
+		log.Error("Error encoding identity", "error", err)
 		return
 	}
 
 	if err := identity.conn.Put(identity.Ctx, "identities/"+identity.Role, buf.Bytes(), nil); err != nil {
-		errnie.Error(err)
+		log.Error("Error saving identity", "error", err)
 		return
 	}
 }

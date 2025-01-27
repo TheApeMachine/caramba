@@ -12,7 +12,6 @@ import (
 	"github.com/theapemachine/amsh/data"
 	"github.com/theapemachine/caramba/tools/container"
 	"github.com/theapemachine/caramba/utils"
-	"github.com/theapemachine/errnie"
 )
 
 type Container struct {
@@ -44,32 +43,31 @@ func (c *Container) GenerateSchema() interface{} {
 
 func (c *Container) Initialize() error {
 	if c.Conn == nil {
-		if err := os.MkdirAll("/tmp/out", 0755); err != nil {
-			return errnie.Error(err)
-		}
-		if err := os.MkdirAll("/tmp/.ssh", 0755); err != nil {
-			return errnie.Error(err)
-		}
-		if err := os.MkdirAll("/tmp/workspace", 0755); err != nil {
-			return errnie.Error(err)
+		// Create required directories
+		dirs := []string{"/tmp/out", "/tmp/.ssh", "/tmp/workspace"}
+		for _, dir := range dirs {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				log.Error("Error creating directory", "dir", dir, "error", err)
+				return err
+			}
 		}
 
 		wd, err := os.Getwd()
 		if err != nil {
-			return errnie.Error(err)
+			log.Error("Error getting working directory", "error", err)
+			return err
 		}
-		
-		c.builder.BuildImage(
-			context.Background(),
-			filepath.Join(wd, "tools", "container", "Dockerfile"),
-			container.DefaultImageName,
-		)
 
-		conn, err := c.runner.RunContainer(context.Background(), container.DefaultImageName)
-		if err != nil {
-			return errnie.Error(err)
+		// Build the image first and handle any errors
+		dockerfilePath := filepath.Join(wd, "tools", "container", "Dockerfile")
+		if err := c.builder.BuildImage(
+			context.Background(),
+			dockerfilePath,
+			container.DefaultImageName,
+		); err != nil {
+			log.Error("Error building container image", "error", err)
+			return err
 		}
-		c.Conn = conn
 	}
 
 	return nil
@@ -82,6 +80,7 @@ featured, isolated Debian environment.
 func (c *Container) Use(ctx context.Context, params map[string]any) string {
 	if c.Conn == nil {
 		if err := c.Initialize(); err != nil {
+			log.Error("Error initializing container", "error", err)
 			return err.Error()
 		}
 	}
@@ -97,24 +96,31 @@ func (c *Container) Use(ctx context.Context, params map[string]any) string {
 	return string(output)
 }
 
+func (c *Container) Start() error {
+	return c.runner.StartContainer(context.Background(), c.runner.GetContainerID())
+}
+
 func (c *Container) Connect(ctx context.Context, bridge io.ReadWriteCloser) (err error) {
 	// Initialize container if needed
 	if err := c.Initialize(); err != nil {
+		log.Error("Error initializing container", "error", err)
 		return err
 	}
 
 	// Get container connection
 	c.Conn, err = c.runner.RunContainer(ctx, container.DefaultImageName)
 	if err != nil {
+		log.Error("Error running container", "error", err)
 		return err
 	}
 
 	return nil
 }
 
-func (c *Container) executeCommand(command string, out chan<- *data.Artifact) error {
+func (c *Container) ExecuteCommand(command string, out chan<- *data.Artifact) error {
 	// Write command
 	if _, err := c.Conn.Write([]byte(command + "\n")); err != nil {
+		log.Error("Error writing command", "error", err)
 		return fmt.Errorf("failed to write command: %w", err)
 	}
 
@@ -132,6 +138,8 @@ func (c *Container) executeCommand(command string, out chan<- *data.Artifact) er
 				}
 				return nil
 			}
+
+			log.Error("Error reading response", "error", err)
 			return fmt.Errorf("failed to read response: %w", err)
 		}
 

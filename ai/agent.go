@@ -2,16 +2,17 @@ package ai
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"io"
+	"regexp"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/ai/tasks"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/utils"
-	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -136,6 +137,12 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		shouldBreak := false
 		cycle := 0
 
+		// Channel to signal command completion
+		cmdDone := make(chan string)
+
+		// Regex to match the bash prompt pattern
+		promptRegex := regexp.MustCompile(`user@[^:]+:[^$]+\$`)
+
 		// Add the user prompt, and wrap it in some tags, to keep clarity along an ever
 		// growing complexity in the current context.
 		msg.Content = utils.QuickWrap(
@@ -188,31 +195,64 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 				interpreter, agent.state = interpreter.Interpret()
 				agent.bridge = interpreter.Execute()
 
-				// Start reading from the bridge if it was just initialized
-				if agent.bridge != nil {
+				if agent.bridge != nil && agent.state == AgentStateTerminal {
+					var outputBuffer strings.Builder
+					buf := make([]byte, 4096)
+					readDone := make(chan bool)
+
+					// Start the continuous reader
 					go func() {
-						buf := make([]byte, 4096)
 						for {
 							n, err := agent.bridge.Read(buf)
 							if err != nil {
+								if err != io.EOF {
+									fmt.Printf("Error reading from container bridge: %v\n", err)
+								}
 								break
 							}
 							if n > 0 {
-								// Add the bridge output to context
-								agent.Context.AddMessage(
-									provider.NewMessage(
-										provider.RoleAssistant,
-										string(buf[:n]),
-									),
-								)
+								output := string(buf[:n])
+								outputBuffer.WriteString(output)
+								fmt.Print(output)
+
+								if promptRegex.MatchString(output) {
+									result := outputBuffer.String()
+									if strings.TrimSpace(result) != "" {
+										cmdDone <- strings.TrimSpace(result)
+									}
+									outputBuffer.Reset()
+								}
 							}
 						}
+						close(readDone)
 					}()
-				}
-			}
 
-			if agent.bridge != nil {
-				agent.bridge.Write([]byte(response))
+					// Wait for initial prompt
+					select {
+					case output := <-cmdDone:
+						agent.Context.AddMessage(provider.NewMessage(
+							provider.RoleAssistant,
+							output,
+						))
+						// Return immediately after getting initial prompt to let agent respond
+						return
+					case <-ctx.Done():
+						log.Warn("Context cancelled while waiting for initial prompt")
+						return
+					}
+				}
+			} else if agent.state == AgentStateTerminal {
+				agent.bridge.Write([]byte(response + "\n"))
+
+				select {
+				case output := <-cmdDone:
+					agent.Context.AddMessage(provider.NewMessage(
+						provider.RoleAssistant,
+						output,
+					))
+				case <-ctx.Done():
+					log.Warn("Context cancelled while waiting for command output")
+				}
 			}
 
 			if strings.Contains(
@@ -221,13 +261,6 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 			) {
 				shouldBreak = true
 			}
-
-			agent.Context.AddMessage(
-				provider.NewMessage(
-					provider.RoleAssistant,
-					fmt.Sprintf("<<< END iteration %d of %d", cycle, agent.MaxIterations),
-				),
-			)
 		}
 	}()
 
@@ -236,22 +269,22 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 
 func (agent *Agent) Validate() bool {
 	if agent.Context == nil {
-		errnie.Error(errors.New("context is nil"))
+		log.Error("Context is nil")
 		return false
 	}
 
 	if agent.Context.Identity == nil {
-		errnie.Error(errors.New("identity is nil"))
+		log.Error("Identity is nil")
 		return false
 	}
 
 	if err := agent.Context.Identity.Validate(); err != nil {
-		errnie.Error(err)
+		log.Error("Identity is invalid", "error", err)
 		return false
 	}
 
 	if agent.provider == nil {
-		errnie.Error(errors.New("provider is nil"))
+		log.Error("Provider is nil")
 		return false
 	}
 

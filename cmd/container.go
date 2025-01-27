@@ -40,7 +40,7 @@ var containerCmd = &cobra.Command{
 		container := tools.NewContainer()
 
 		// Now connect to container
-		if err := container.Connect(cmd.Context(), container.Conn); err != nil {
+		if err := container.Connect(cmd.Context(), nil); err != nil {
 			fmt.Printf("Error connecting to container: %v\n", err)
 			return
 		}
@@ -62,8 +62,14 @@ var containerCmd = &cobra.Command{
 			}
 		}()
 
+		err := container.Start()
+		if err != nil {
+			fmt.Printf("Error starting container: %v\n", err)
+			return
+		}
+
 		// Wait a bit for the container to initialize and show prompt
-		time.Sleep(time.Second)
+		time.Sleep(5 * time.Second)
 
 		// Helper function to write commands and echo them
 		writeCommand := func(cmd string) {
@@ -73,9 +79,9 @@ var containerCmd = &cobra.Command{
 
 		// Write test commands
 		writeCommand("echo hello\n")
-		time.Sleep(time.Second)
+		time.Sleep(5 * time.Second)
 		writeCommand("ls -la\n")
-		time.Sleep(time.Second)
+		time.Sleep(5 * time.Second)
 		writeCommand("exit\n")
 	},
 }

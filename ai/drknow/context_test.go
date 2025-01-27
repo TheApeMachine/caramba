@@ -1,6 +1,7 @@
 package drknow
 
 import (
+	"context"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -9,7 +10,7 @@ import (
 
 func TestNewContext(t *testing.T) {
 	Convey("Given a call to NewContext", t, func() {
-		identity := NewIdentity(nil, "test", "test system")
+		identity := NewIdentity(context.TODO(), "test", "test system")
 		ctx := NewContext(identity)
 
 		Convey("Then it should be properly initialized", func() {
@@ -35,7 +36,7 @@ func TestQuickContext(t *testing.T) {
 
 func TestCompile(t *testing.T) {
 	Convey("Given a Context instance", t, func() {
-		identity := NewIdentity(nil, "test", "test system")
+		identity := NewIdentity(context.TODO(), "test", "test system")
 		ctx := NewContext(identity)
 
 		Convey("When compiling with cycle information", func() {
@@ -52,7 +53,7 @@ func TestCompile(t *testing.T) {
 
 func TestString(t *testing.T) {
 	Convey("Given a Context instance", t, func() {
-		identity := NewIdentity(nil, "test", "test system")
+		identity := NewIdentity(context.TODO(), "test", "test system")
 		ctx := NewContext(identity)
 
 		Convey("When getting string with system messages", func() {
@@ -77,7 +78,7 @@ func TestString(t *testing.T) {
 
 func TestReset(t *testing.T) {
 	Convey("Given a Context instance", t, func() {
-		identity := NewIdentity(nil, "test", "test system")
+		identity := NewIdentity(context.TODO(), "test", "test system")
 		ctx := NewContext(identity)
 
 		Convey("When resetting the context", func() {
@@ -106,7 +107,7 @@ func TestReset(t *testing.T) {
 
 func TestAddMessage(t *testing.T) {
 	Convey("Given a Context instance", t, func() {
-		identity := NewIdentity(nil, "test", "test system")
+		identity := NewIdentity(context.TODO(), "test", "test system")
 		ctx := NewContext(identity)
 
 		Convey("When adding a message", func() {

@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/charmbracelet/log"
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
 )
@@ -43,30 +43,15 @@ This method abstracts the image building process, handling the creation of a tar
 and the configuration of build options.
 */
 func (b *Builder) BuildImage(ctx context.Context, dockerfilePath, imageName string) error {
-	// Check if container already exists
-	containers, err := b.client.ContainerList(ctx, container.ListOptions{All: true})
-	if err != nil {
-		return err
-	}
-
-	var existingContainer string
-	for _, c := range containers {
-		for _, name := range c.Names {
-			if name == "/"+ContainerName {
-				existingContainer = c.ID
-				break
-			}
-		}
-	}
-
-	if existingContainer != "" {
-		return nil
-	}
-
 	log.Info("Building image", "dockerfilePath", dockerfilePath, "imageName", imageName)
 
-	tar, err := archive.TarWithOptions(dockerfilePath, &archive.TarOptions{})
+	// Get the directory containing the Dockerfile
+	dockerfileDir := filepath.Dir(dockerfilePath)
+
+	// Create tar of the directory containing Dockerfile
+	tar, err := archive.TarWithOptions(dockerfileDir, &archive.TarOptions{})
 	if err != nil {
+		log.Error("Error creating tar archive", "error", err)
 		return err
 	}
 
@@ -76,9 +61,7 @@ func (b *Builder) BuildImage(ctx context.Context, dockerfilePath, imageName stri
 		Dockerfile: "Dockerfile",
 		Context:    tar,
 		Tags:       []string{DefaultImageName},
-		Target:     DefaultImageName,
 		Remove:     true,
-		// Add these options for better compatibility:
 		BuildArgs: map[string]*string{
 			"TARGETARCH": &targetArch,
 		},
@@ -86,6 +69,7 @@ func (b *Builder) BuildImage(ctx context.Context, dockerfilePath, imageName stri
 
 	resp, err := b.client.ImageBuild(ctx, tar, opts)
 	if err != nil {
+		log.Error("Error building image", "error", err)
 		return err
 	}
 	defer resp.Body.Close()
@@ -105,10 +89,13 @@ func (b *Builder) processAndPrintBuildOutput(reader io.Reader) error {
 			if err == io.EOF {
 				return nil
 			}
+
+			log.Error("Error decoding build output", "error", err)
 			return err
 		}
 
 		if message.Error != "" {
+			log.Error("Build error", "error", message.Error)
 			return fmt.Errorf("build error: %s", message.Error)
 		}
 
