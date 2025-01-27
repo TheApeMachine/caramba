@@ -5,9 +5,10 @@ import (
 	"errors"
 	"io"
 
+	"github.com/charmbracelet/log"
 	sdk "github.com/cohere-ai/cohere-go/v2"
 	client "github.com/cohere-ai/cohere-go/v2/client"
-	"github.com/theapemachine/errnie"
+	"github.com/davecgh/go-spew/spew"
 )
 
 type Cohere struct {
@@ -152,7 +153,8 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 
 		stream, err := cohere.client.ChatStream(ctx, request)
 		if err != nil {
-			errnie.Error(err)
+			log.Error("Error streaming Cohere response", "error", err)
+			spew.Dump(params)
 			errEvent := NewEventData()
 			errEvent.EventType = EventError
 			errEvent.Error = err
@@ -173,7 +175,8 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 			}
 
 			if err != nil {
-				errnie.Error(err)
+				log.Error("Error streaming Cohere response", "error", err)
+				spew.Dump(params)
 				errEvent := NewEventData()
 				errEvent.EventType = EventError
 				errEvent.Error = err
@@ -187,6 +190,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				startEvent.EventType = EventStart
 				startEvent.Name = "cohere_stream_start"
 				out <- startEvent
+				continue
 			}
 
 			if event := resp.TextGeneration; event != nil {
@@ -195,6 +199,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				chunkEvent.Name = "cohere_chunk"
 				chunkEvent.Text = event.Text
 				out <- chunkEvent
+				continue
 			}
 
 			if event := resp.ToolCallsChunk; event != nil {
@@ -203,6 +208,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				toolEvent.Name = "cohere_tool_call"
 				toolEvent.Text = "Tool called"
 				out <- toolEvent
+				continue
 			}
 
 			if event := resp.ToolCallsGeneration; event != nil {
@@ -211,6 +217,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 				toolEvent.Name = "cohere_tool_call"
 				toolEvent.Text = "Tool called"
 				out <- toolEvent
+				continue
 			}
 
 			if event := resp.StreamEnd; event != nil {
@@ -221,6 +228,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 					doneEvent.Text = event.Response.Text
 				}
 				out <- doneEvent
+				continue
 			}
 		}
 	}()

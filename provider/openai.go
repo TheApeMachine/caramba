@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/charmbracelet/log"
+	"github.com/davecgh/go-spew/spew"
 	sdk "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/theapemachine/errnie"
@@ -107,6 +109,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 					chunkEvent.Name = "openai_chunk"
 					chunkEvent.Text = content
 					out <- chunkEvent
+					continue
 				}
 				// Handle tool calls
 				if tool, ok := acc.JustFinishedToolCall(); ok {
@@ -115,6 +118,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 					toolEvent.Name = "openai_tool_call"
 					toolEvent.PartialJSON = tool.Arguments
 					out <- toolEvent
+					continue
 				}
 				// Stream regular content chunks
 				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
@@ -124,12 +128,14 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 					chunkEvent.Text = chunk.Choices[0].Delta.Content
 					chunkEvent.PartialJSON = chunk.Choices[0].Delta.JSON.RawJSON()
 					out <- chunkEvent
+					continue
 				}
 			}
 		}
 
 		if err := stream.Err(); err != nil {
-			errnie.Error(err)
+			log.Error("Error streaming OpenAI response", "error", err)
+			spew.Dump(params)
 			errEvent := NewEventData()
 			errEvent.EventType = EventError
 			errEvent.Error = err
@@ -142,6 +148,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 		doneEvent.EventType = EventDone
 		doneEvent.Name = "openai_generation_complete"
 		out <- doneEvent
+		return
 	}()
 
 	return out

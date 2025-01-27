@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -137,12 +136,6 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		shouldBreak := false
 		cycle := 0
 
-		// Channel to signal command completion
-		cmdDone := make(chan string)
-
-		// Regex to match the bash prompt pattern
-		promptRegex := regexp.MustCompile(`user@[^:]+:[^$]+\$`)
-
 		// Add the user prompt, and wrap it in some tags, to keep clarity along an ever
 		// growing complexity in the current context.
 		msg.Content = utils.QuickWrap(
@@ -154,34 +147,20 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 		agent.Context.AddMessage(msg)
 
 		for !shouldBreak {
-			agent.state = AgentStateGenerating
-
 			cycle++
-			if cycle >= agent.MaxIterations {
-				shouldBreak = true
-			}
-
-			// Compile the context, which will add the current iteration message
-			// to the thread.
-			compiled := agent.Context.Compile(cycle, agent.MaxIterations)
-
-			// Let's make sure to reset the accumulator.
-			agent.accumulator.Clear()
 
 			for event := range agent.accumulator.Generate(
 				ctx,
 				agent.provider.Generate(
 					ctx,
-					compiled,
+					agent.Context.Compile(cycle, agent.MaxIterations),
 				),
 			) {
 				out <- event
 			}
 
-			// Get only this iteration's response
 			response := agent.accumulator.String()
 
-			// Add the response to context
 			agent.Context.AddMessage(
 				provider.NewMessage(
 					provider.RoleAssistant,
@@ -189,70 +168,12 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 				),
 			)
 
-			// Process commands in the response using the interpreter
-			if agent.bridge == nil {
-				interpreter := NewInterpreter(agent.Context)
-				interpreter, agent.state = interpreter.Interpret()
-				agent.bridge = interpreter.Execute()
+			interpreter := NewInterpreter(agent.Context)
+			interpreter, agent.state = interpreter.Interpret()
+			agent.bridge = interpreter.Execute()
 
-				if agent.bridge != nil && agent.state == AgentStateTerminal {
-					var outputBuffer strings.Builder
-					buf := make([]byte, 4096)
-					readDone := make(chan bool)
-
-					// Start the continuous reader
-					go func() {
-						for {
-							n, err := agent.bridge.Read(buf)
-							if err != nil {
-								if err != io.EOF {
-									fmt.Printf("Error reading from container bridge: %v\n", err)
-								}
-								break
-							}
-							if n > 0 {
-								output := string(buf[:n])
-								outputBuffer.WriteString(output)
-								fmt.Print(output)
-
-								if promptRegex.MatchString(output) {
-									result := outputBuffer.String()
-									if strings.TrimSpace(result) != "" {
-										cmdDone <- strings.TrimSpace(result)
-									}
-									outputBuffer.Reset()
-								}
-							}
-						}
-						close(readDone)
-					}()
-
-					// Wait for initial prompt
-					select {
-					case output := <-cmdDone:
-						agent.Context.AddMessage(provider.NewMessage(
-							provider.RoleAssistant,
-							output,
-						))
-						// Return immediately after getting initial prompt to let agent respond
-						return
-					case <-ctx.Done():
-						log.Warn("Context cancelled while waiting for initial prompt")
-						return
-					}
-				}
-			} else if agent.state == AgentStateTerminal {
-				agent.bridge.Write([]byte(response + "\n"))
-
-				select {
-				case output := <-cmdDone:
-					agent.Context.AddMessage(provider.NewMessage(
-						provider.RoleAssistant,
-						output,
-					))
-				case <-ctx.Done():
-					log.Warn("Context cancelled while waiting for command output")
-				}
+			if agent.state == AgentStateTerminal {
+				agent.handleContainer(out)
 			}
 
 			if strings.Contains(
@@ -265,6 +186,72 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 	}()
 
 	return out
+}
+
+func (agent *Agent) handleContainer(out chan provider.Event) {
+	// Start the bridge first
+	agent.bridge.Start()
+
+	// Regex to match the bash prompt pattern
+	promptRegex := regexp.MustCompile(`user@[^:]+:[^$]+\$`)
+
+	// We'll collect output in a buffer
+	var lineBuf strings.Builder
+
+	for {
+		buf := make([]byte, 4096)
+		for {
+			n, err := agent.bridge.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					log.Error("Error reading from container bridge", "error", err)
+				}
+				return
+			}
+
+			if n > 0 {
+				output := string(buf[:n])
+				lineBuf.WriteString(output)
+
+				// Send the chunk as an event immediately
+				eventData := provider.NewEventData()
+				eventData.EventType = provider.EventChunk
+				eventData.Name = "container_output"
+				eventData.Text = output
+				out <- eventData
+
+				// If we see a prompt, send it to the agent
+				if promptRegex.MatchString(strings.TrimSpace(output)) {
+					agent.Context.AddMessage(
+						provider.NewMessage(
+							provider.RoleAssistant,
+							output,
+						),
+					)
+					lineBuf.Reset()
+					break
+				}
+			}
+		}
+
+		agent.accumulator.Clear()
+
+		// Generate new response from the agent
+		for event := range agent.accumulator.Generate(
+			context.Background(),
+			agent.provider.Generate(
+				context.Background(),
+				agent.Context.Compile(0, 0),
+			),
+		) {
+			out <- event
+		}
+
+		if _, err := agent.bridge.Write([]byte(agent.accumulator.String())); err != nil {
+			log.Error("Error writing to container bridge", "error", err)
+			return
+		}
+	}
 }
 
 func (agent *Agent) Validate() bool {

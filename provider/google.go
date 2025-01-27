@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/charmbracelet/log"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
@@ -24,7 +26,7 @@ func NewGemini(apiKey string) *Gemini {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
-		errnie.Error(fmt.Errorf("failed to create genai client: %w", err))
+		log.Error("Failed to create Gemini client", "error", err)
 		return nil
 	}
 	model := client.GenerativeModel("gemini-pro")
@@ -141,7 +143,8 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 		// Only proceed if we have messages
 		if len(geminiMessages) == 0 {
 			err := errors.New("no valid messages to process")
-			errnie.Error(err)
+			log.Error("No valid messages to process", "error", err)
+			spew.Dump(params)
 			errEvent := NewEventData()
 			errEvent.EventType = EventError
 			errEvent.Error = err
@@ -169,7 +172,8 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 					return
 				}
 				if err != nil {
-					errnie.Error(err)
+					log.Error("Error streaming Gemini response", "error", err)
+					spew.Dump(params)
 					errEvent := NewEventData()
 					errEvent.EventType = EventError
 					errEvent.Error = err

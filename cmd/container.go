@@ -6,7 +6,8 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"time"
+	"regexp"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/tools"
@@ -38,6 +39,8 @@ var containerCmd = &cobra.Command{
 	Long:  `Test container`,
 	Run: func(cmd *cobra.Command, args []string) {
 		container := tools.NewContainer()
+		promptRegex := regexp.MustCompile(`user@[^:]+:[^$]+\$`)
+		ready := make(chan bool)
 
 		// Now connect to container
 		if err := container.Connect(cmd.Context(), nil); err != nil {
@@ -58,6 +61,9 @@ var containerCmd = &cobra.Command{
 				}
 				if n > 0 {
 					fmt.Print(string(buf[:n])) // Print the output
+					if promptRegex.MatchString(strings.TrimSpace(string(buf[:n]))) {
+						ready <- true
+					}
 				}
 			}
 		}()
@@ -68,21 +74,17 @@ var containerCmd = &cobra.Command{
 			return
 		}
 
-		// Wait a bit for the container to initialize and show prompt
-		time.Sleep(5 * time.Second)
+		go func() {
+			for {
+				select {
+				case <-ready:
+					container.Conn.Write([]byte("echo hello\n"))
+					return
+				}
+			}
+		}()
 
-		// Helper function to write commands and echo them
-		writeCommand := func(cmd string) {
-			fmt.Print(cmd) // Echo the command
-			container.Conn.Write([]byte(cmd))
-		}
-
-		// Write test commands
-		writeCommand("echo hello\n")
-		time.Sleep(5 * time.Second)
-		writeCommand("ls -la\n")
-		time.Sleep(5 * time.Second)
-		writeCommand("exit\n")
+		select {}
 	},
 }
 

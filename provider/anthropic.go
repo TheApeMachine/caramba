@@ -5,7 +5,8 @@ import (
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/theapemachine/errnie"
+	"github.com/charmbracelet/log"
+	"github.com/davecgh/go-spew/spew"
 )
 
 type Anthropic struct {
@@ -131,7 +132,8 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationP
 		}
 
 		if err := stream.Err(); err != nil {
-			errnie.Error(err)
+			log.Error("Error streaming Anthropic response", "error", err)
+			spew.Dump(params)
 			errEvent := NewEventData()
 			errEvent.EventType = EventError
 			errEvent.Name = "anthropic_error"

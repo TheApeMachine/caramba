@@ -129,3 +129,13 @@ AddMessage adds a new message to the context.
 func (ctx *Context) AddMessage(msg *provider.Message) {
 	ctx.Identity.Params.Thread.AddMessage(msg)
 }
+
+/*
+LastMessage ...
+*/
+func (ctx *Context) LastMessage() *provider.Message {
+	if len(ctx.Identity.Params.Thread.Messages) == 0 {
+		return nil
+	}
+	return ctx.Identity.Params.Thread.Messages[len(ctx.Identity.Params.Thread.Messages)-1]
+}
