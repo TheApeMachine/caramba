@@ -150,8 +150,15 @@ func (browser *Browser) Navigate(url string) error {
 		return err
 	}
 
+	// Wait for network to be idle and page to be fully loaded
 	if err := browser.page.WaitLoad(); err != nil {
 		log.Error("Failed to wait for page load", "error", err)
+		return err
+	}
+
+	// Additional wait for dynamic content
+	if err := browser.page.WaitIdle(5); err != nil {
+		log.Error("Failed to wait for page idle", "error", err)
 		return err
 	}
 
@@ -167,14 +174,17 @@ func (browser *Browser) ExecuteScript(script string) string {
 
 	log.Info("Executing script", "script", script)
 
-	result, err := browser.page.Eval(script)
-
-	if err != nil {
-		log.Error("Failed to execute script", "error", err)
-		return err.Error()
+	// Try multiple times with increasing waits
+	for i := 0; i < 3; i++ {
+		result, err := browser.page.Eval(script)
+		if err == nil && result != nil && result.Value.Str() != "" {
+			return result.Value.Str()
+		}
+		browser.page.WaitIdle(2) // Wait 2 seconds before retrying
 	}
 
-	return result.Value.Str()
+	log.Error("Failed to extract content after retries")
+	return ""
 }
 
 // Run implements the enhanced interface with all new capabilities

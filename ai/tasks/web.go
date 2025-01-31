@@ -10,19 +10,26 @@ import (
 )
 
 type Web struct {
+	qdrant *tools.Qdrant
+	neo4j  *tools.Neo4j
 }
 
 func NewWeb() *Web {
-	return &Web{}
+	return &Web{
+		qdrant: tools.NewQdrant("web_content", 1536),
+		neo4j:  tools.NewNeo4j(),
+	}
 }
 
 func (task *Web) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 	log.Info("Starting Web task", "args", args)
 
-	browser := tools.NewBrowser()
-	defer browser.Close()
+	// Initialize memory stores
+	if err := task.qdrant.Initialize(); err != nil {
+		log.Error("Failed to initialize Qdrant", "error", err)
+	}
 
-	// Validate required URL parameter
+	// First check if we have this URL in memory
 	url, ok := args["url"].(string)
 	if !ok || url == "" {
 		errMsg := "URL is required"
@@ -30,6 +37,19 @@ func (task *Web) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 		ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, errMsg))
 		return nil
 	}
+
+	// Try to recall from memory first
+	memoryArgs := map[string]any{
+		"query": url,
+	}
+	if result := task.qdrant.Use(ctx.Identity.Ctx, memoryArgs); result != "No results found" {
+		log.Info("Found content in memory", "url", url)
+		ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, result))
+		return nil
+	}
+
+	browser := tools.NewBrowser()
+	defer browser.Close()
 
 	// First handle scroll if requested
 	if action, ok := args["action"].(string); ok && action == "scroll" {
@@ -64,6 +84,35 @@ func (task *Web) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, "No content could be extracted from the page"))
 			return nil
 		}
+
+		// Store the result in memory
+		memoryArgs := map[string]any{
+			"documents": []string{result},
+			"metadata": map[string]any{
+				"url":      url,
+				"type":     "web_content",
+				"js_query": js,
+			},
+		}
+		task.qdrant.Use(ctx.Identity.Ctx, memoryArgs)
+
+		// Store in graph database for relationships
+		cypherQuery := `
+			MERGE (p:Page {url: $url})
+			CREATE (c:Content {
+				text: $content,
+				timestamp: datetime()
+			})
+			CREATE (p)-[:HAS_CONTENT]->(c)
+		`
+		neo4jArgs := map[string]any{
+			"cypher": cypherQuery,
+			"params": map[string]any{
+				"url":     url,
+				"content": result,
+			},
+		}
+		task.neo4j.Use(ctx.Identity.Ctx, neo4jArgs)
 
 		// Format the result nicely
 		formattedResult := fmt.Sprintf("Content from %s:\n%s", url, result)

@@ -85,7 +85,6 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 		}
 
 		// Stream the response
-		// Stream the response
 		stream := openai.client.Chat.Completions.NewStreaming(ctx, request)
 		acc := sdk.ChatCompletionAccumulator{}
 
@@ -118,9 +117,15 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 					continue
 				}
 
-				// Only send raw JSON data from chunks, not content
-				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.JSON.RawJSON() != "" {
-					chunkEvent := NewEvent("openai:gpt-4o-mini", EventChunk, chunk.Choices[0].Delta.JSON.RawJSON(), "", nil)
+				// Extract content from delta if available
+				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+					chunkEvent := NewEvent(
+						"openai:gpt-4o-mini",
+						EventChunk,
+						chunk.Choices[0].Delta.Content,
+						chunk.Choices[0].Delta.JSON.RawJSON(),
+						nil,
+					)
 					out <- chunkEvent
 				}
 			}

@@ -139,6 +139,12 @@ prompts:
         - <BREAK>
           - parameters:
             reason=string (optional, but recommended)
+    tools:
+      web: |
+        web: A fully featured web browser.
+          parameters:
+            url: string (the url to navigate to)
+            javascript: string (javascript to run on the page, must be a function returning a string)
     tasks:
       optimize: |
         [CONTEXT]
