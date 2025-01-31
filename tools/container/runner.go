@@ -126,18 +126,6 @@ func (r *Runner) StopContainer(ctx context.Context) error {
 }
 
 /*
-sanitizeCommand ensures that the command is not empty and contains valid parts.
-*/
-func sanitizeCommand(cmd []string) ([]string, error) {
-	for _, part := range cmd {
-		if strings.TrimSpace(part) == "" {
-			return nil, errors.New("command contains empty parts")
-		}
-	}
-	return cmd, nil
-}
-
-/*
 ExecuteCommand executes a command in the container and returns the output.
 */
 func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) ([]byte, error) {
