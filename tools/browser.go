@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/launcher"
@@ -105,6 +106,8 @@ func (browser *Browser) SetProxy(proxyURL string) {
 
 // StartSession initializes a new browsing session with stealth mode
 func (browser *Browser) StartSession() error {
+	log.Info("Starting browser session")
+
 	l := launcher.New().
 		Headless(false).
 		Set("disable-web-security", "").
@@ -139,12 +142,16 @@ func (browser *Browser) StartSession() error {
 
 // Navigate goes to a URL and waits for the page to load
 func (browser *Browser) Navigate(url string) error {
+	log.Info("Navigating", "url", url)
+
 	// Instead of creating a new page, use the existing stealth page
 	if err := browser.page.Navigate(url); err != nil {
+		log.Error("Failed to navigate", "error", err)
 		return err
 	}
 
 	if err := browser.page.WaitLoad(); err != nil {
+		log.Error("Failed to wait for page load", "error", err)
 		return err
 	}
 
@@ -154,12 +161,16 @@ func (browser *Browser) Navigate(url string) error {
 // ExecuteScript runs custom JavaScript and returns the result
 func (browser *Browser) ExecuteScript(script string) string {
 	if script == "" {
+		log.Warn("No script provided")
 		return ""
 	}
+
+	log.Info("Executing script", "script", script)
 
 	result, err := browser.page.Eval(script)
 
 	if err != nil {
+		log.Error("Failed to execute script", "error", err)
 		return err.Error()
 	}
 
@@ -175,6 +186,7 @@ func (browser *Browser) Run(args map[string]any) (string, error) {
 	// Only start a new session if one doesn't exist
 	if browser.instance == nil {
 		if err := browser.StartSession(); err != nil {
+			log.Error("Failed to start browser session", "error", err)
 			return "", err
 		}
 	}
@@ -182,24 +194,42 @@ func (browser *Browser) Run(args map[string]any) (string, error) {
 	// Handle navigation only if URL is provided
 	if url, ok := args["url"].(string); ok {
 		if err := browser.Navigate(url); err != nil {
+			log.Error("Failed to navigate", "error", err)
 			return "", err
 		}
 	}
 
 	// Continue with existing functionality...
 	if script, ok := args["javascript"].(string); ok && script != "" {
+		log.Info("Executing script", "script", script)
 		return browser.ExecuteScript(script), nil
 	}
 
 	if selector, ok := args["selector"].(string); ok && selector != "" {
+		log.Info("Selecting element", "selector", selector)
 		browser.currentElement = browser.page.MustElement(selector)
 	}
 
+	if hotkeys, ok := args["hotkeys"].(string); ok && hotkeys != "" {
+		log.Info("Typing hotkeys", "hotkeys", hotkeys)
+		keys := make([]input.Key, len(hotkeys))
+		for i, r := range hotkeys {
+			keys[i] = input.Key(r)
+		}
+		browser.currentElement.MustType(keys...)
+	}
+
 	if action, ok := args["action"].(string); ok && action != "" {
+		log.Info("Performing action", "action", action)
+
 		switch action {
 		case "click":
 			browser.currentElement.MustClick()
-		default:
+		case "scroll":
+			browser.page.Mouse.Scroll(0, 400, 1)
+		case "hover":
+			browser.currentElement.MustHover()
+		case "keypress":
 			keys := make([]input.Key, len(action))
 			for i, r := range action {
 				keys[i] = input.Key(r)

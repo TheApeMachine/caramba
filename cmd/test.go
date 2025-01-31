@@ -60,7 +60,7 @@ var testCmd = &cobra.Command{
 				cmd.Context(),
 				provider.NewMessage(
 					provider.RoleUser,
-					"Please connect to the terminal and try out some commands as part of a system test.",
+					"Find out about the latest scandals in the tech industry.",
 				),
 			),
 			false,

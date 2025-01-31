@@ -159,52 +159,25 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 			response := agent.accumulator.String()
 			agent.accumulator.Clear()
 
-			if cycle == 1 {
-				response = "<<TERMINAL>>"
-			}
-
 			// Add a newline if the response doesn't end with one
 			if !strings.HasSuffix(response, "\n") {
 				response += "\n"
 			}
 
-			if agent.state != AgentStateTerminal {
-				agent.Context.AddMessage(
-					provider.NewMessage(
-						provider.RoleAssistant,
-						response,
-					),
-				)
+			agent.Context.AddMessage(
+				provider.NewMessage(
+					provider.RoleAssistant,
+					response,
+				),
+			)
 
-				interpreter := NewInterpreter(agent.Context)
-				interpreter, agent.state = interpreter.Interpret()
-				agent.bridge = interpreter.Execute()
+			// Process commands using the interpreter
+			interpreter := NewInterpreter(agent.Context)
+			interpreter, agent.state = interpreter.Interpret()
+			agent.bridge = interpreter.Execute()
 
-				// Only send terminal instruction and initial prompt on first transition to terminal state
-				if agent.state == AgentStateTerminal {
-					agent.Context.AddMessage(
-						provider.NewMessage(
-							provider.RoleAssistant,
-							"You are now in the terminal. Please enter valid bash commands.\n$ ",
-						),
-					)
-					continue
-				}
-
-				continue
-			}
-
-			if agent.state == AgentStateTerminal {
-				terminalOutput := agent.bridge.Execute(response)
-				if terminalOutput != "" {
-					agent.Context.AddMessage(
-						provider.NewMessage(provider.RoleAssistant, terminalOutput),
-					)
-				}
-			}
-
-			// Only process break commands outside terminal mode
-			if agent.state != AgentStateTerminal && strings.Contains(strings.ToLower(response), "<break") {
+			// Check for break command
+			if strings.Contains(strings.ToLower(response), "<break") {
 				shouldBreak = true
 			}
 		}

@@ -43,5 +43,3 @@ RUN echo "Host github.com\n\tStrictHostKeyChecking no\n" >> /home/user/.ssh/conf
 
 WORKDIR /home/user
 USER user
-
-ENTRYPOINT ["/bin/bash"]

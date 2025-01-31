@@ -1,13 +1,12 @@
 package ai
 
 import (
-	"regexp"
-	"strings"
+	"encoding/json"
 
-	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/ai/tasks"
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/caramba/utils"
 )
 
 var taskMap = map[string]tasks.Task{
@@ -51,7 +50,23 @@ func NewInterpreter(
 func (interpreter *Interpreter) Execute() tasks.Bridge {
 	var bridge tasks.Bridge
 
+	// Guard against empty commands
+	if len(interpreter.commands) == 0 {
+		return nil
+	}
+
+	// Execute each command safely
 	for _, command := range interpreter.commands {
+		// Guard against nil task
+		if command.Task == nil {
+			continue
+		}
+
+		// Execute with nil-safe argument handling
+		if command.Args == nil {
+			command.Args = make(map[string]any)
+		}
+
 		bridge = command.Task.Execute(interpreter.ctx, command.Args)
 	}
 
@@ -59,61 +74,30 @@ func (interpreter *Interpreter) Execute() tasks.Bridge {
 }
 
 func (interpreter *Interpreter) Interpret() (*Interpreter, AgentState) {
-	// Clear previous commands
 	interpreter.commands = make([]Command, 0)
-
 	agentState := AgentStateGenerating
 
-	// Get the last message from context
 	messages := interpreter.ctx.Identity.Params.Thread.Messages
-	if len(messages) == 0 {
+	if len(messages) == 0 || messages[len(messages)-1].Role != provider.RoleAssistant {
 		return interpreter, agentState
 	}
-	lastMsg := messages[len(messages)-1]
 
-	// Only process assistant messages
-	if lastMsg.Role != provider.RoleAssistant {
-		return interpreter, AgentStateGenerating
+	// Extract code blocks.
+	blocks := utils.ExtractJSONBlocks(messages[len(messages)-1].Content)
+	for _, block := range blocks {
+		if tool, ok := block["tool"].(string); ok {
+			interpreter.commands = append(interpreter.commands, Command{
+				Task: taskMap[tool],
+				Args: block,
+			})
+		}
 	}
 
-	// This regex matches both:
-	// <<command>> and <<command param1="value1" param2=[value2]>>
-	regexpattern := regexp.MustCompile(`<<(\w+)(?:\s+(\w+)\s*=\s*(?:"([^"]*)"|(\[[^\]]*\])))?>>`)
-	matches := regexpattern.FindAllStringSubmatch(lastMsg.Content, -1)
-
-	for _, match := range matches {
-		command := strings.ToLower(match[1])
-		args := make(map[string]any)
-
-		// The full match is at index 0, command name at index 1
-		// After that, every group of 3 elements represents: key, quoted value, array value
-		for i := 2; i < len(match); i += 3 {
-			if match[i] != "" { // If we have a parameter name
-				key := match[i]
-				// Value could be either quoted string or array
-				value := match[i+1]
-				if value == "" {
-					value = match[i+2] // Use array value if quoted string is empty
-				}
-				if value != "" {
-					args[key] = value
-				}
-			}
-		}
-
-		if _, ok := taskMap[command]; !ok {
-			log.Warn("Unknown command", "command", command)
-			continue
-		}
-
-		if command == "terminal" {
-			agentState = AgentStateTerminal
-		}
-
-		interpreter.commands = append(interpreter.commands, Command{
-			Task: taskMap[command],
-			Args: args,
-		})
+	// Unmarshal the message content.
+	var content map[string]any
+	err := json.Unmarshal([]byte(messages[len(messages)-1].Content), &content)
+	if err != nil {
+		return interpreter, agentState
 	}
 
 	return interpreter, agentState

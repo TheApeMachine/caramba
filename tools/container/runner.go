@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
@@ -141,14 +142,15 @@ ExecuteCommand executes a command in the container and returns the output.
 */
 func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) ([]byte, error) {
 	// Join command parts into a single string for shell execution
-	fullCmd := cmd
+	fullCmd := []string{"/bin/sh", "-c"}
+	fullCmd = append(fullCmd, cmd...)
+	spew.Dump(fullCmd)
 
 	// Set up the exec configuration
 	execConfig := container.ExecOptions{
 		User:         "user",
 		Cmd:          fullCmd,
 		Tty:          true,
-		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
 	}
@@ -160,10 +162,7 @@ func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) ([]byte, erro
 	}
 
 	// Attach to the exec instance
-	execAttachResp, err := r.client.ContainerExecAttach(ctx, execIDResp.ID, container.ExecStartOptions{
-		Detach: false,
-		Tty:    true,
-	})
+	execAttachResp, err := r.client.ContainerExecAttach(ctx, execIDResp.ID, container.ExecStartOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to attach to exec instance: %w", err)
 	}
@@ -181,12 +180,5 @@ func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) ([]byte, erro
 	output := stdout.String()
 	errorOutput := stderr.String()
 
-	fmt.Printf("Command stdout: %s\n", output)
-
-	// You can choose to treat non-empty `stderr` differently based on your needs
-	if errorOutput != "" {
-		fmt.Printf("Command stderr: %s\n", errorOutput)
-	}
-
-	return []byte(output), errors.New(errorOutput)
+	return []byte(output + errorOutput), nil
 }

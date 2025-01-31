@@ -1,18 +1,11 @@
 package provider
 
-import "time"
+import (
+	"time"
 
-/*
-Event represents a generic event in the system that all providers must implement.
-It provides a common interface for handling different types of events uniformly.
-*/
-type Event interface {
-	ID() string
-	Type() EventType
-	Timestamp() time.Time
-	Data() *EventData
-	Metadata() map[string]interface{}
-}
+	"github.com/goccy/go-json"
+	"github.com/google/uuid"
+)
 
 /*
 EventType is an enum of the different types of events that can occur.
@@ -22,57 +15,48 @@ type EventType uint
 const (
 	EventStart EventType = iota
 	EventChunk
-	EventToolCall
+	EventFunction
 	EventError
-	EventDone
+	EventStop
 )
 
 /*
-EventData represents the concrete implementation of event information
+Event represents the concrete implementation of event information
 that providers can use as a base implementation.
 */
-type EventData struct {
-	Sequence    int64
-	TeamID      string
-	AgentID     string
-	EventType   EventType
-	Name        string
-	Text        string
-	PartialJSON string
-	Error       error
-	timestamp   time.Time
-	metadata    map[string]interface{}
+type Event struct {
+	ID          uuid.UUID      `json:"id"`
+	Sequence    int64          `json:"sequence"`
+	Origin      string         `json:"origin"`
+	Type        EventType      `json:"type"`
+	Text        string         `json:"text"`
+	PartialJSON string         `json:"partial_json"`
+	Metadata    map[string]any `json:"metadata"`
 }
 
-// NewEventData creates a new EventData instance with initialized fields
-func NewEventData() *EventData {
-	return &EventData{
-		timestamp: time.Now(),
-		metadata:  make(map[string]interface{}),
+// NewEvent creates a new Event instance with initialized fields
+func NewEvent(
+	origin string,
+	eventType EventType,
+	text string,
+	partialJSON string,
+	metadata map[string]any,
+) *Event {
+	return &Event{
+		ID:          uuid.New(),
+		Sequence:    time.Now().UTC().UnixNano(),
+		Origin:      origin,
+		Type:        eventType,
+		Text:        text,
+		PartialJSON: partialJSON,
+		Metadata:    metadata,
 	}
 }
 
-// ID returns a unique identifier for the event
-func (e *EventData) ID() string {
-	return e.Name
-}
-
-// Type returns the string representation of the event type
-func (e *EventData) Type() EventType {
-	return e.EventType
-}
-
-// Timestamp returns when the event occurred
-func (e *EventData) Timestamp() time.Time {
-	return e.timestamp
-}
-
-// Data returns the event payload
-func (e *EventData) Data() *EventData {
-	return e
-}
-
-// Metadata returns additional event context
-func (e *EventData) Metadata() map[string]interface{} {
-	return e.metadata
+func (event *Event) Marshal() []byte {
+	json, err := json.Marshal(event)
+	if err != nil {
+		return nil
+	}
+	return json
 }
