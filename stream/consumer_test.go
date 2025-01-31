@@ -26,7 +26,7 @@ func TestPrint(t *testing.T) {
 		consumer := NewConsumer()
 
 		convey.Convey("When printing unstructured content", func() {
-			stream := make(chan provider.Event)
+			stream := make(chan *provider.Event)
 			done := make(chan bool)
 
 			go func() {
@@ -34,8 +34,7 @@ func TestPrint(t *testing.T) {
 				done <- true
 			}()
 
-			event := provider.NewEventData()
-			event.Text = "plain text"
+			event := provider.NewEvent("generate:contentblock:delta", provider.EventChunk, "plain text", "", nil)
 			stream <- event
 			close(stream)
 			<-done
@@ -44,7 +43,7 @@ func TestPrint(t *testing.T) {
 		})
 
 		convey.Convey("When printing structured content", func() {
-			stream := make(chan provider.Event)
+			stream := make(chan *provider.Event)
 			done := make(chan bool)
 
 			go func() {
@@ -52,8 +51,7 @@ func TestPrint(t *testing.T) {
 				done <- true
 			}()
 
-			event := provider.NewEventData()
-			event.Text = `{"key": "value"}`
+			event := provider.NewEvent("generate:contentblock:delta", provider.EventChunk, `{"key": "value"}`, "", nil)
 			stream <- event
 			close(stream)
 			<-done

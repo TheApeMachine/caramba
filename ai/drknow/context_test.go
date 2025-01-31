@@ -86,11 +86,8 @@ func TestReset(t *testing.T) {
 			ctx.AddMessage(provider.NewMessage(provider.RoleUser, "test message"))
 
 			// Create an event that implements the Event interface
-			eventData := provider.NewEventData()
-			eventData.EventType = provider.EventToolCall
-			eventData.Name = "test_tool_call"
-			var event provider.Event = eventData
-			ctx.Toolcalls = append(ctx.Toolcalls, &event)
+			event := provider.NewEvent("generate:toolcall", provider.EventFunction, "Tool called", "", nil)
+			ctx.Toolcalls = append(ctx.Toolcalls, event)
 			ctx.Reset()
 
 			Convey("Then it should clear messages except system", func() {

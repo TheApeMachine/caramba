@@ -51,19 +51,19 @@ prompts:
         Dr. Know has access to a wide range of tools, described below.
 
         TOOLS:
-        - BROWSER: a fully featured web browser.
+        - web: a fully featured web browser.
           parameters:
             url: string (the url to navigate to)
             javascript: string (javascript to run on the page, must be a function returning a string)
           example:
             ```json
             {
-              "tool": "browser",
+              "tool": "web",
               "url": "https://www.google.com",
-              "javascript": "() => [...new Set([...document.querySelectorAll('h1, h2, h3, h4, h5, h6, p')].map(x => x.textContent.replace(/(\t|\n)/g, ``)).filter(x => !!x && x.split(` `).length > 5))].join(`\n``)",
+              "javascript": "() => [...new Set([...document.querySelectorAll('h1, h2, h3, h4, h5, h6, p')].map(x => x.textContent.replace(/(\t|\n)/g, ``)).filter(x => !!x && x.split(` `).length > 5))].join(`\n``)"
             }
             ```
-        - BASH: a fully featured Debian Linux terminal.
+        - bash: a fully featured Debian Linux terminal.
           parameters:
             command: string (the command to run)
           example:

@@ -26,48 +26,44 @@ func TestGenerate(t *testing.T) {
 	Convey("Given an Accumulator instance", t, func() {
 		accumulator := NewAccumulator()
 		ctx := context.Background()
-		in := make(chan provider.Event)
+		in := make(chan *provider.Event)
 		out := accumulator.Generate(ctx, in)
 
 		Convey("When sending normal text events", func() {
 			go func() {
-				event := provider.NewEventData()
-				event.EventType = provider.EventChunk
-				event.Text = "test text"
+				event := provider.NewEvent("generate:contentblock:delta", provider.EventChunk, "test text", "", nil)
 				in <- event
 				close(in)
 			}()
 
-			var result provider.Event
+			var result *provider.Event
 			for event := range out {
 				result = event
 			}
 
 			Convey("Then it should process events correctly", func() {
 				So(result, ShouldNotBeNil)
-				So(result.Type(), ShouldEqual, provider.EventChunk)
-				So(result.Data().Text, ShouldEqual, "test text")
+				So(result.Type, ShouldEqual, provider.EventChunk)
+				So(result.Text, ShouldEqual, "test text")
 			})
 		})
 
 		Convey("When sending error events", func() {
 			go func() {
-				event := provider.NewEventData()
-				event.EventType = provider.EventError
-				event.Error = errors.New("test error")
+				event := provider.NewEvent("generate:error", provider.EventError, "test error", "", nil)
 				in <- event
 				close(in)
 			}()
 
-			var result provider.Event
+			var result *provider.Event
 			for event := range out {
 				result = event
 			}
 
 			Convey("Then it should handle errors correctly", func() {
 				So(result, ShouldNotBeNil)
-				So(result.Type(), ShouldEqual, provider.EventError)
-				So(result.Data().Error.Error(), ShouldEqual, "test error")
+				So(result.Type, ShouldEqual, provider.EventError)
+				So(result.Text, ShouldEqual, "test error")
 			})
 		})
 	})
@@ -77,14 +73,12 @@ func TestWait(t *testing.T) {
 	Convey("Given an Accumulator instance", t, func() {
 		accumulator := NewAccumulator()
 		ctx := context.Background()
-		in := make(chan provider.Event)
+		in := make(chan *provider.Event)
 		out := accumulator.Generate(ctx, in)
 
 		Convey("When waiting for completion", func() {
 			go func() {
-				event := provider.NewEventData()
-				event.EventType = provider.EventChunk
-				event.Text = "test text"
+				event := provider.NewEvent("generate:contentblock:delta", provider.EventChunk, "test text", "", nil)
 				in <- event
 				close(in)
 			}()
@@ -127,22 +121,20 @@ func TestCompile(t *testing.T) {
 
 			Convey("Then it should combine chunks correctly", func() {
 				So(result, ShouldNotBeNil)
-				So(result.Type(), ShouldEqual, provider.EventDone)
-				So(result.Data().Text, ShouldEqual, "chunk1 chunk2")
+				So(result.Type, ShouldEqual, "generate:contentblock:done")
+				So(result.Text, ShouldEqual, "chunk1 chunk2")
 			})
 		})
 
 		Convey("When compiling partial JSON chunks", func() {
-			event := provider.NewEventData()
-			event.EventType = provider.EventChunk
-			event.PartialJSON = `{"key":"value"}`
+			event := provider.NewEvent("generate:contentblock:delta", provider.EventChunk, `{"key":"value"}`, "", nil)
 			accumulator.chunks = append(accumulator.chunks, event)
 			result := accumulator.Compile()
 
 			Convey("Then it should handle partial JSON", func() {
 				So(result, ShouldNotBeNil)
-				So(result.Type(), ShouldEqual, provider.EventDone)
-				So(result.Data().PartialJSON, ShouldEqual, `{"key":"value"}`)
+				So(result.Type, ShouldEqual, "generate:contentblock:done")
+				So(result.Text, ShouldEqual, `{"key":"value"}`)
 			})
 		})
 
@@ -152,8 +144,8 @@ func TestCompile(t *testing.T) {
 
 			Convey("Then it should return error event", func() {
 				So(result, ShouldNotBeNil)
-				So(result.Type(), ShouldEqual, provider.EventError)
-				So(result.Data().Error.Error(), ShouldEqual, "test error")
+				So(result.Type, ShouldEqual, provider.EventError)
+				So(result.Text, ShouldEqual, "test error")
 			})
 		})
 	})
@@ -185,7 +177,7 @@ func TestWrite(t *testing.T) {
 			Convey("Then it should append to chunks", func() {
 				So(result, ShouldEqual, accumulator)
 				So(len(accumulator.chunks), ShouldEqual, 1)
-				So(accumulator.chunks[0].Data().Text, ShouldEqual, "test text")
+				So(accumulator.chunks[0].Text, ShouldEqual, "test text")
 			})
 		})
 	})

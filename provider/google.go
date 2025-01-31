@@ -41,8 +41,8 @@ func (gemini *Gemini) Name() string {
 	return "google (gemini)"
 }
 
-func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
-	out := make(chan Event)
+func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(ctx)
 	gemini.cancel = cancel
 
@@ -51,9 +51,7 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEventData()
-		startEvent.EventType = EventStart
-		startEvent.Name = "gemini_generation_start"
+		startEvent := NewEvent("generate:start", EventStart, "gemini:command-r", "", nil)
 		out <- startEvent
 
 		// Convert our tools to Gemini tool format only if tools exist
@@ -145,10 +143,7 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 			err := errors.New("no valid messages to process")
 			log.Error("No valid messages to process", "error", err)
 			spew.Dump(params)
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = err
-			errEvent.Name = "gemini_error"
+			errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 			out <- errEvent
 			return
 		}
@@ -164,20 +159,14 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 			default:
 				resp, err := stream.Next()
 				if err == iterator.Done {
-					doneEvent := NewEventData()
-					doneEvent.EventType = EventDone
-					doneEvent.Name = "gemini_generation_complete"
-					doneEvent.Text = "\n"
+					doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
 					out <- doneEvent
 					return
 				}
 				if err != nil {
 					log.Error("Error streaming Gemini response", "error", err)
 					spew.Dump(params)
-					errEvent := NewEventData()
-					errEvent.EventType = EventError
-					errEvent.Error = err
-					errEvent.Name = "gemini_error"
+					errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 					out <- errEvent
 					return
 				}
@@ -186,25 +175,17 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 					for _, part := range resp.Candidates[0].Content.Parts {
 						switch v := part.(type) {
 						case genai.Text:
-							chunkEvent := NewEventData()
-							chunkEvent.EventType = EventChunk
-							chunkEvent.Name = "gemini_chunk"
-							chunkEvent.Text = string(v)
+							chunkEvent := NewEvent("generate:contentblock:delta", EventChunk, string(v), "", nil)
 							out <- chunkEvent
 						case genai.FunctionCall:
 							jsonArgs, err := json.Marshal(v.Args)
 							if err != nil {
 								errnie.Error(fmt.Errorf("failed to marshal function args: %w", err))
-								errEvent := NewEventData()
-								errEvent.EventType = EventError
-								errEvent.Error = fmt.Errorf("failed to marshal function args: %w", err)
-								errEvent.Name = "gemini_error"
+								errEvent := NewEvent("generate:error", EventError, fmt.Errorf("failed to marshal function args: %w", err).Error(), "", nil)
 								out <- errEvent
 								return
 							}
-							toolEvent := NewEventData()
-							toolEvent.EventType = EventToolCall
-							toolEvent.Name = "gemini_tool_call"
+							toolEvent := NewEvent("generate:toolcall", EventFunction, "Tool called", "", nil)
 							toolEvent.PartialJSON = string(jsonArgs)
 							out <- toolEvent
 						}
@@ -212,10 +193,7 @@ func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams)
 				}
 
 				if resp.PromptFeedback != nil && resp.PromptFeedback.BlockReason != genai.BlockReasonUnspecified {
-					errEvent := NewEventData()
-					errEvent.EventType = EventError
-					errEvent.Error = fmt.Errorf("blocked: %v", resp.PromptFeedback.BlockReason)
-					errEvent.Name = "gemini_error"
+					errEvent := NewEvent("generate:error", EventError, fmt.Errorf("blocked: %v", resp.PromptFeedback.BlockReason).Error(), "", nil)
 					out <- errEvent
 					return
 				}

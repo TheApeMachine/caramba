@@ -49,19 +49,19 @@ all structural characters, and just printing the keys and value inside. It respe
 the original nesting levels, which makes for a very well structured output, with
 significant noise-reduction.
 */
-func (consumer *Consumer) Print(stream <-chan provider.Event, structured bool) {
+func (consumer *Consumer) Print(stream <-chan *provider.Event, structured bool) {
 	if !structured {
 		for chunk := range stream {
-			if chunk.Data().Text != "" {
-				fmt.Print(chunk.Data().Text)
+			if chunk.Type == provider.EventChunk && chunk.Text != "" {
+				fmt.Print(chunk.Text)
 			}
 		}
 		return
 	}
 
 	for chunk := range stream {
-		if chunk.Data().Text != "" {
-			for _, char := range chunk.Data().Text {
+		if chunk.Text != "" {
+			for _, char := range chunk.Text {
 				switch consumer.state {
 				case StateUndetermined:
 					consumer.undetermined(char)

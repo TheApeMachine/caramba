@@ -29,8 +29,8 @@ func (d *DeepSeek) Name() string {
 	return fmt.Sprintf("deepseek (%s)", d.model)
 }
 
-func (d *DeepSeek) Generate(ctx context.Context, params *LLMGenerationParams) (<-chan Event, error) {
-	out := make(chan Event)
+func (d *DeepSeek) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(ctx)
 	d.cancel = cancel
 
@@ -39,9 +39,7 @@ func (d *DeepSeek) Generate(ctx context.Context, params *LLMGenerationParams) (<
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEventData()
-		startEvent.EventType = EventStart
-		startEvent.Name = "deepseek_generation_start"
+		startEvent := NewEvent("generate:start", EventStart, "deepseek:command-r", "", nil)
 		out <- startEvent
 
 		messages := d.convertMessages(params)
@@ -50,10 +48,7 @@ func (d *DeepSeek) Generate(ctx context.Context, params *LLMGenerationParams) (<
 		if len(messages) == 0 {
 			err := errors.New("no valid messages to process")
 			errnie.Error(err)
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = err
-			errEvent.Name = "deepseek_error"
+			errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 			out <- errEvent
 			return
 		}
@@ -75,10 +70,7 @@ func (d *DeepSeek) Generate(ctx context.Context, params *LLMGenerationParams) (<
 		stream, err := d.client.CreateChatCompletionStream(ctx, request)
 		if err != nil {
 			errnie.Error(err)
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = err
-			errEvent.Name = "deepseek_error"
+			errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 			out <- errEvent
 			return
 		}
@@ -93,28 +85,19 @@ func (d *DeepSeek) Generate(ctx context.Context, params *LLMGenerationParams) (<
 				if err != nil {
 					if errors.Is(err, io.EOF) {
 						// Send done event
-						doneEvent := NewEventData()
-						doneEvent.EventType = EventDone
-						doneEvent.Name = "deepseek_generation_complete"
-						doneEvent.Text = "\n"
+						doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
 						out <- doneEvent
 						return
 					}
 					errnie.Error(err)
-					errEvent := NewEventData()
-					errEvent.EventType = EventError
-					errEvent.Error = err
-					errEvent.Name = "deepseek_error"
+					errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 					out <- errEvent
 					return
 				}
 
 				for _, choice := range response.Choices {
 					if choice.Delta.Content != "" {
-						chunkEvent := NewEventData()
-						chunkEvent.EventType = EventChunk
-						chunkEvent.Name = "deepseek_chunk"
-						chunkEvent.Text = choice.Delta.Content
+						chunkEvent := NewEvent("generate:contentblock:delta", EventChunk, choice.Delta.Content, "", nil)
 						out <- chunkEvent
 					}
 				}
@@ -122,7 +105,7 @@ func (d *DeepSeek) Generate(ctx context.Context, params *LLMGenerationParams) (<
 		}
 	}()
 
-	return out, nil
+	return out
 }
 
 func (d *DeepSeek) CancelGeneration(ctx context.Context) error {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/log"
-	"github.com/davecgh/go-spew/spew"
 	sdk "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/theapemachine/errnie"
@@ -38,8 +37,8 @@ func (openai *OpenAI) Name() string {
 	return fmt.Sprintf("openai (%s)", openai.model)
 }
 
-func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
-	out := make(chan Event)
+func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(ctx)
 	openai.cancel = cancel
 
@@ -48,9 +47,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEventData()
-		startEvent.EventType = EventStart
-		startEvent.Name = "openai_generation_start"
+		startEvent := NewEvent("openai:gpt-4o-mini", EventStart, "", "", nil)
 		out <- startEvent
 
 		tools := openai.convertTools(params)
@@ -61,9 +58,7 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 		if len(messages) == 0 {
 			err := errors.New("no valid messages to process")
 			errnie.Error(err)
-			event := NewEventData()
-			event.EventType = EventError
-			event.Error = err
+			event := NewEvent("openai:gpt-4o-mini", EventError, "", err.Error(), nil)
 			out <- event
 			return
 		}
@@ -104,40 +99,28 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 
 				// Handle finished content from accumulator
 				if content, ok := acc.JustFinishedContent(); ok {
-					chunkEvent := NewEventData()
-					chunkEvent.EventType = EventChunk
-					chunkEvent.Name = "openai_chunk"
-					chunkEvent.Text = content
+					chunkEvent := NewEvent("openai:gpt-4o-mini", EventChunk, content, "", nil)
 					out <- chunkEvent
 					continue
 				}
 
 				// Handle tool calls from accumulator
 				if tool, ok := acc.JustFinishedToolCall(); ok {
-					toolEvent := NewEventData()
-					toolEvent.EventType = EventToolCall
-					toolEvent.Name = "openai_tool_call"
-					toolEvent.PartialJSON = tool.Arguments
+					toolEvent := NewEvent("openai:gpt-4o-mini", EventFunction, "", tool.Arguments, nil)
 					out <- toolEvent
 					continue
 				}
 
 				// Handle refusals from accumulator
 				if refusal, ok := acc.JustFinishedRefusal(); ok {
-					refusalEvent := NewEventData()
-					refusalEvent.EventType = EventError
-					refusalEvent.Name = "openai_refusal"
-					refusalEvent.Error = errors.New(refusal)
+					refusalEvent := NewEvent("openai:gpt-4o-mini", EventError, "", refusal, nil)
 					out <- refusalEvent
 					continue
 				}
 
 				// Only send raw JSON data from chunks, not content
 				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.JSON.RawJSON() != "" {
-					chunkEvent := NewEventData()
-					chunkEvent.EventType = EventChunk
-					chunkEvent.Name = "openai_chunk_json"
-					chunkEvent.PartialJSON = chunk.Choices[0].Delta.JSON.RawJSON()
+					chunkEvent := NewEvent("openai:gpt-4o-mini", EventChunk, chunk.Choices[0].Delta.JSON.RawJSON(), "", nil)
 					out <- chunkEvent
 				}
 			}
@@ -145,18 +128,13 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 
 		if err := stream.Err(); err != nil {
 			log.Error("Error streaming OpenAI response", "error", err)
-			spew.Dump(params)
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = err
+			errEvent := NewEvent("openai:gpt-4o-mini", EventError, "", err.Error(), nil)
 			out <- errEvent
 			return
 		}
 
 		// Send done event
-		doneEvent := NewEventData()
-		doneEvent.EventType = EventDone
-		doneEvent.Name = "openai_generation_complete"
+		doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
 		out <- doneEvent
 	}()
 
@@ -189,7 +167,7 @@ func (*OpenAI) convertProcesses(params *LLMGenerationParams) *sdk.ResponseFormat
 			Name:        sdk.F(params.Process.Name()),
 			Description: sdk.F(params.Process.Description()),
 			Schema:      sdk.F(params.Process.GenerateSchema()),
-			Strict:      sdk.Bool(true),
+			Strict:      sdk.Bool(false),
 		}),
 	}
 }

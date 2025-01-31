@@ -86,8 +86,8 @@ func (cohere *Cohere) Name() string {
 	return "cohere (command-r)"
 }
 
-func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
-	out := make(chan Event)
+func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(ctx)
 	cohere.cancel = cancel
 
@@ -96,9 +96,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEventData()
-		startEvent.EventType = EventStart
-		startEvent.Name = "cohere_generation_start"
+		startEvent := NewEvent("generate:start", EventStart, "cohere:command-r", "", nil)
 		out <- startEvent
 
 		// Only add tools if they exist
@@ -155,10 +153,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 		if err != nil {
 			log.Error("Error streaming Cohere response", "error", err)
 			spew.Dump(params)
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = err
-			errEvent.Name = "cohere_error"
+			errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 			out <- errEvent
 			return
 		}
@@ -166,10 +161,7 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 		for {
 			resp, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
-				doneEvent := NewEventData()
-				doneEvent.EventType = EventDone
-				doneEvent.Name = "cohere_generation_complete"
-				doneEvent.Text = "\n"
+				doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
 				out <- doneEvent
 				return
 			}
@@ -177,53 +169,37 @@ func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams)
 			if err != nil {
 				log.Error("Error streaming Cohere response", "error", err)
 				spew.Dump(params)
-				errEvent := NewEventData()
-				errEvent.EventType = EventError
-				errEvent.Error = err
-				errEvent.Name = "cohere_error"
+				errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 				out <- errEvent
 				return
 			}
 
 			if event := resp.StreamStart; event != nil {
-				startEvent := NewEventData()
-				startEvent.EventType = EventStart
-				startEvent.Name = "cohere_stream_start"
+				startEvent := NewEvent("generate:start", EventStart, "cohere:command-r", "", nil)
 				out <- startEvent
 				continue
 			}
 
 			if event := resp.TextGeneration; event != nil {
-				chunkEvent := NewEventData()
-				chunkEvent.EventType = EventChunk
-				chunkEvent.Name = "cohere_chunk"
-				chunkEvent.Text = event.Text
+				chunkEvent := NewEvent("generate:contentblock:delta", EventChunk, event.Text, "", nil)
 				out <- chunkEvent
 				continue
 			}
 
 			if event := resp.ToolCallsChunk; event != nil {
-				toolEvent := NewEventData()
-				toolEvent.EventType = EventToolCall
-				toolEvent.Name = "cohere_tool_call"
-				toolEvent.Text = "Tool called"
+				toolEvent := NewEvent("generate:toolcall", EventFunction, "Tool called", "", nil)
 				out <- toolEvent
 				continue
 			}
 
 			if event := resp.ToolCallsGeneration; event != nil {
-				toolEvent := NewEventData()
-				toolEvent.EventType = EventToolCall
-				toolEvent.Name = "cohere_tool_call"
-				toolEvent.Text = "Tool called"
+				toolEvent := NewEvent("generate:toolcall", EventFunction, "Tool called", "", nil)
 				out <- toolEvent
 				continue
 			}
 
 			if event := resp.StreamEnd; event != nil {
-				doneEvent := NewEventData()
-				doneEvent.EventType = EventDone
-				doneEvent.Name = "cohere_stream_end"
+				doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
 				if event.Response != nil {
 					doneEvent.Text = event.Response.Text
 				}

@@ -31,8 +31,8 @@ func (anthropic *Anthropic) Name() string {
 	return "anthropic (claude 3.5 sonnet)"
 }
 
-func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
-	out := make(chan Event)
+func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(ctx)
 	anthropic.cancel = cancel
 
@@ -41,9 +41,7 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationP
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEventData()
-		startEvent.EventType = EventStart
-		startEvent.Name = "anthropic_generation_start"
+		startEvent := NewEvent("generate:start", EventStart, "anthropic:claude-3.5-sonnet", "", nil)
 		out <- startEvent
 
 		// Initialize base params
@@ -102,30 +100,17 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationP
 				switch event := event.AsUnion().(type) {
 				case sdk.ContentBlockStartEvent:
 					if event.ContentBlock.Name != "" {
-						startEvent := NewEventData()
-						startEvent.EventType = EventStart
-						startEvent.Name = "anthropic_block_start"
-						startEvent.Text = event.ContentBlock.Name
+						startEvent := NewEvent("generate:contentblock:start", EventStart, event.ContentBlock.Name, "", nil)
 						out <- startEvent
 					}
 				case sdk.ContentBlockDeltaEvent:
-					chunkEvent := NewEventData()
-					chunkEvent.EventType = EventChunk
-					chunkEvent.Name = "anthropic_chunk"
-					chunkEvent.Text = event.Delta.Text
-					chunkEvent.PartialJSON = event.Delta.PartialJSON
+					chunkEvent := NewEvent("generate:contentblock:delta", EventChunk, event.Delta.Text, event.Delta.PartialJSON, nil)
 					out <- chunkEvent
 				case sdk.ContentBlockStopEvent:
-					doneEvent := NewEventData()
-					doneEvent.EventType = EventDone
-					doneEvent.Name = "anthropic_block_complete"
-					doneEvent.Text = "\n"
+					doneEvent := NewEvent("generate:contentblock:stop", EventStop, "\n", "", nil)
 					out <- doneEvent
 				case sdk.MessageStopEvent:
-					doneEvent := NewEventData()
-					doneEvent.EventType = EventDone
-					doneEvent.Name = "anthropic_generation_complete"
-					doneEvent.Text = "\n"
+					doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
 					out <- doneEvent
 				}
 			}
@@ -134,10 +119,7 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationP
 		if err := stream.Err(); err != nil {
 			log.Error("Error streaming Anthropic response", "error", err)
 			spew.Dump(params)
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Name = "anthropic_error"
-			errEvent.Error = err
+			errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 			out <- errEvent
 			return
 		}

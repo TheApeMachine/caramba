@@ -62,7 +62,7 @@ func (lb *BalancedProvider) Name() string {
 Generate a response from an LLM provider, passing in the parameters, which
 include the messages, and model settings to use.
 */
-func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationParams) <-chan Event {
+func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
 	hasSystem := false
 	hasUser := false
 
@@ -83,7 +83,7 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		log.Warn("No user message found")
 	}
 
-	out := make(chan Event)
+	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(ctx)
 	lb.cancel = cancel
 
@@ -92,17 +92,12 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEventData()
-		startEvent.EventType = EventStart
-		startEvent.Name = "balanced_generation_start"
+		startEvent := NewEvent("generate:start", EventStart, "balanced_generation_start", "", nil)
 		out <- startEvent
 
 		provider := lb.getAvailableProvider()
 		if provider == nil || provider.provider == nil {
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = errors.New("no available provider found")
-			errEvent.Name = "balanced_error"
+			errEvent := NewEvent("generate:error", EventError, "no available provider found", "", nil)
 			out <- errEvent
 			return
 		}
@@ -133,9 +128,7 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		provider.mu.Unlock()
 
 		// Send done event
-		doneEvent := NewEventData()
-		doneEvent.EventType = EventDone
-		doneEvent.Name = "balanced_generation_complete"
+		doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
 		out <- doneEvent
 	}()
 

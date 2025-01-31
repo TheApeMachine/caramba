@@ -80,7 +80,7 @@ type ProviderMetrics struct {
 // Provider defines the enhanced interface for AI providers
 type Provider interface {
 	// Core functionality
-	Generate(context.Context, *LLMGenerationParams) <-chan Event
+	Generate(context.Context, *LLMGenerationParams) <-chan *Event
 	Name() string
 	Version() string
 

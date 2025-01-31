@@ -76,44 +76,6 @@ func (agent *Agent) GenerateSchema() interface{} {
 }
 
 /*
-AddTools appends the provided tools to the agent's available toolset,
-expanding its capabilities for task execution.
-
-Parameters:
-  - tools: Variable number of tools to add to the agent
-*/
-func (agent *Agent) AddTools(tools ...provider.Tool) {
-	agent.Identity.Params.Tools = append(agent.Identity.Params.Tools, tools...)
-}
-
-/*
-AddProcess activates structured outputs for the agent by setting a process
-that defines a specific JSON schema for response formatting.
-
-Parameters:
-  - process: The process definition containing the output schema
-*/
-func (agent *Agent) AddProcess(process provider.Process) {
-	agent.Identity.Params.Process = process
-}
-
-/*
-RemoveProcess deactivates structured outputs for the agent,
-reverting it back to generating freeform text responses.
-*/
-func (agent *Agent) RemoveProcess() {
-	agent.Identity.Params.Process = nil
-}
-
-/*
-GetRole returns the role designation assigned to this agent,
-as defined in its identity.
-*/
-func (agent *Agent) GetRole() string {
-	return agent.Identity.Role
-}
-
-/*
 Generate calls the underlying provider to have a Large Language Model
 generate text for the agent. It compiles the context and streams the
 response through an accumulator.
@@ -125,8 +87,8 @@ Parameters:
 Returns:
   - A channel of provider.Event containing the generated response
 */
-func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan provider.Event {
-	out := make(chan provider.Event)
+func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan *provider.Event {
+	out := make(chan *provider.Event)
 
 	go func() {
 		defer close(out)

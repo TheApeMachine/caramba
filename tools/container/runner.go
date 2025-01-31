@@ -2,7 +2,6 @@ package container
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strings"

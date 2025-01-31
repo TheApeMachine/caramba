@@ -31,8 +31,8 @@ func (ollama *Ollama) Name() string {
 	return "ollama (llama3.2:3b)"
 }
 
-func (ollama *Ollama) Generate(ctx context.Context, params *LLMGenerationParams) (<-chan Event, error) {
-	out := make(chan Event)
+func (ollama *Ollama) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(ctx)
 	ollama.cancel = cancel
 
@@ -41,9 +41,7 @@ func (ollama *Ollama) Generate(ctx context.Context, params *LLMGenerationParams)
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEventData()
-		startEvent.EventType = EventStart
-		startEvent.Name = "ollama_generation_start"
+		startEvent := NewEvent("generate:start", EventStart, "ollama:llama3.2:3b", "", nil)
 		out <- startEvent
 
 		// Convert our tools to Ollama format only if tools exist
@@ -80,10 +78,7 @@ func (ollama *Ollama) Generate(ctx context.Context, params *LLMGenerationParams)
 		if len(messages) == 0 {
 			err := errors.New("no valid messages to process")
 			errnie.Error(err)
-			errEvent := NewEventData()
-			errEvent.EventType = EventError
-			errEvent.Error = err
-			errEvent.Name = "ollama_error"
+			errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 			out <- errEvent
 			return
 		}
@@ -111,10 +106,7 @@ func (ollama *Ollama) Generate(ctx context.Context, params *LLMGenerationParams)
 					return ctx.Err()
 				default:
 					if resp.Message.Content != "" {
-						chunkEvent := NewEventData()
-						chunkEvent.EventType = EventChunk
-						chunkEvent.Name = "ollama_chunk"
-						chunkEvent.Text = resp.Message.Content
+						chunkEvent := NewEvent("generate:contentblock:delta", EventChunk, resp.Message.Content, "", nil)
 						out <- chunkEvent
 					}
 					return nil
@@ -128,24 +120,18 @@ func (ollama *Ollama) Generate(ctx context.Context, params *LLMGenerationParams)
 		case <-done:
 			if streamErr != nil {
 				errnie.Error(streamErr)
-				errEvent := NewEventData()
-				errEvent.EventType = EventError
-				errEvent.Error = streamErr
-				errEvent.Name = "ollama_error"
+				errEvent := NewEvent("generate:error", EventError, streamErr.Error(), "", nil)
 				out <- errEvent
 				return
 			}
 		}
 
 		// Send done event
-		doneEvent := NewEventData()
-		doneEvent.EventType = EventDone
-		doneEvent.Name = "ollama_generation_complete"
-		doneEvent.Text = "\n"
+		doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
 		out <- doneEvent
 	}()
 
-	return out, nil
+	return out
 }
 
 func (ollama *Ollama) CancelGeneration(ctx context.Context) error {
