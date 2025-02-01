@@ -2,8 +2,6 @@ package provider
 
 import (
 	"strings"
-
-	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -38,7 +36,6 @@ func (thread *Thread) String() string {
 AddMessage adds a message to the thread.
 */
 func (thread *Thread) AddMessage(message *Message) *Thread {
-	errnie.Log("===AddMessage===\n%s: %s\n", message.Role, message.Content)
 	thread.Messages = append(thread.Messages, message)
 	return thread
 }

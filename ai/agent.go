@@ -2,14 +2,14 @@ package ai
 
 import (
 	"context"
-	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/ai/drknow"
-	"github.com/theapemachine/caramba/ai/tasks"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/tools"
 	"github.com/theapemachine/caramba/utils"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -37,13 +37,14 @@ The Agent maintains its own identity, context, and state while coordinating
 with providers to generate responses and execute tools.
 */
 type Agent struct {
+	Role          string           `json:"role" jsonschema:"title=Role,description=The role of the agent,required"`
 	Identity      *drknow.Identity `json:"identity" jsonschema:"title=Identity,description=The identity of the agent,required"`
 	Context       *drknow.Context  `json:"context" jsonschema:"title=Context,description=The context of the agent,required"`
 	MaxIterations int              `json:"max_iterations" jsonschema:"title=Max Iterations,description=The maximum number of iterations to perform,required"`
 	provider      provider.Provider
 	accumulator   *stream.Accumulator
 	state         AgentState
-	bridge        tasks.Bridge
+	container     *tools.Container
 }
 
 /*
@@ -58,9 +59,11 @@ Parameters:
 */
 func NewAgent(ctx *drknow.Context, prvdr provider.Provider, role string, maxIterations int) *Agent {
 	return &Agent{
+		Role:          role,
+		Identity:      ctx.Identity,
 		Context:       ctx,
-		provider:      prvdr,
 		MaxIterations: maxIterations,
+		provider:      prvdr,
 		accumulator:   stream.NewAccumulator(),
 		state:         AgentStateIdle,
 	}
@@ -88,32 +91,24 @@ Returns:
   - A channel of provider.Event containing the generated response
 */
 func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan *provider.Event {
+	log.Debug("generating response", "role", msg.Role, "content", msg.Content)
 	out := make(chan *provider.Event)
 
 	go func() {
 		defer close(out)
 
-		shouldBreak := false
 		cycle := 0
-
-		// Add the user prompt, and wrap it in some tags
-		msg.Content = utils.QuickWrap(
-			"USER PROMPT",
-			msg.Content,
-			1,
-		)
 
 		agent.Context.AddMessage(msg)
 
-		for !shouldBreak {
+		for agent.state != AgentStateDone {
+			log.Debug("next cycle", "cycle", cycle)
+
 			cycle++
+			params := agent.Context.Compile()
 
 			for event := range agent.accumulator.Generate(
-				ctx,
-				agent.provider.Generate(
-					ctx,
-					agent.Context.Compile(cycle, agent.MaxIterations),
-				),
+				ctx, agent.provider.Generate(ctx, params),
 			) {
 				out <- event
 			}
@@ -121,26 +116,42 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 			response := agent.accumulator.String()
 			agent.accumulator.Clear()
 
-			// Add a newline if the response doesn't end with one
-			if !strings.HasSuffix(response, "\n") {
-				response += "\n"
+			agent.Context.AddIteration(response)
+
+			if agent.state != AgentStateTerminal {
+				interpreter := NewInterpreter(agent.Context)
+				_, agent.state = interpreter.Interpret()
+
+				if agent.state == AgentStateTerminal {
+					if agent.container == nil {
+						agent.container = tools.NewContainer()
+						err := agent.container.Connect(ctx)
+						if err != nil {
+							errnie.Error(err)
+						}
+					}
+				}
+
+				out <- &provider.Event{
+					Type: provider.EventChunk,
+					Text: interpreter.Execute(),
+				}
+
+				continue
 			}
 
-			agent.Context.AddMessage(
-				provider.NewMessage(
-					provider.RoleAssistant,
-					response,
-				),
-			)
+			if agent.state == AgentStateTerminal {
+				terminalResponse, err := agent.container.RunCommandInteractive(ctx, response)
+				if err != nil {
+					terminalResponse = `error executing command: ` + err.Error()
+				}
 
-			// Process commands using the interpreter
-			interpreter := NewInterpreter(agent.Context)
-			interpreter, agent.state = interpreter.Interpret()
-			agent.bridge = interpreter.Execute()
+				agent.Context.AddIteration(terminalResponse)
 
-			// Check for break command
-			if strings.Contains(strings.ToLower(response), "<break") {
-				shouldBreak = true
+				out <- &provider.Event{
+					Type: provider.EventChunk,
+					Text: terminalResponse,
+				}
 			}
 		}
 	}()
@@ -149,23 +160,25 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 }
 
 func (agent *Agent) Validate() bool {
+	errnie.Debug("validating agent", "role", agent.Role)
+
 	if agent.Context == nil {
-		log.Error("Context is nil")
+		log.Error("context is nil")
 		return false
 	}
 
 	if agent.Context.Identity == nil {
-		log.Error("Identity is nil")
+		log.Error("identity is nil")
 		return false
 	}
 
 	if err := agent.Context.Identity.Validate(); err != nil {
-		log.Error("Identity is invalid", "error", err)
+		log.Error("identity is invalid", "error", err)
 		return false
 	}
 
 	if agent.provider == nil {
-		log.Error("Provider is nil")
+		log.Error("provider is nil")
 		return false
 	}
 

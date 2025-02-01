@@ -87,8 +87,8 @@ Returns a map where keys are language identifiers and values are slices
 of code blocks for that language.
 */
 func ExtractCodeBlocks(s string) map[string][]string {
-	// Match code blocks with language identifiers
-	re := regexp.MustCompile("```([a-zA-Z0-9]+)\n([\\s\\S]*?)```")
+	// Updated regex: allow for Windows (\r\n) or Unix (\n) line breaks
+	re := regexp.MustCompile("```([a-zA-Z0-9]+)[\\r\\n]+([\\s\\S]*?)```")
 	matches := re.FindAllStringSubmatch(s, -1)
 
 	codeBlocks := make(map[string][]string)

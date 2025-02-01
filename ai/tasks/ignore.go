@@ -13,8 +13,7 @@ func NewIgnore() *Ignore {
 func (i *Ignore) Execute(
 	ctx *drknow.Context,
 	args map[string]any,
-) Bridge {
+) string {
 	// no-op.
-	return nil
+	return ""
 }
-

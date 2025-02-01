@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/invopop/jsonschema"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -37,11 +38,15 @@ NewNeo4j creates a new Neo4j client.
 func NewNeo4j() *Neo4j {
 	ctx := context.Background()
 
-	client := errnie.SafeMust(func() (neo4j.DriverWithContext, error) {
-		return neo4j.NewDriverWithContext("neo4j://localhost:7687", neo4j.BasicAuth("neo4j", "securepassword", ""))
-	})
+	client, err := neo4j.NewDriverWithContext("neo4j://localhost:7687", neo4j.BasicAuth("neo4j", "securepassword", ""))
+	if err != nil {
+		return &Neo4j{}
+	}
 
-	errnie.MustVoid(client.VerifyConnectivity(ctx))
+	if err := client.VerifyConnectivity(ctx); err != nil {
+		return &Neo4j{}
+	}
+
 	return &Neo4j{client: client}
 }
 
@@ -49,6 +54,9 @@ func NewNeo4j() *Neo4j {
 Initialize initializes the Neo4j client.
 */
 func (n *Neo4j) Initialize() error {
+	if n.client == nil {
+		return nil
+	}
 	ctx := context.Background()
 	return n.client.VerifyConnectivity(ctx)
 }
@@ -61,6 +69,10 @@ func (n *Neo4j) Connect() error {
 Query executes a Cypher query on the Neo4j database and returns the results.
 */
 func (n *Neo4j) Query(query string) (out []map[string]interface{}, err error) {
+	if n.client == nil {
+		return nil, fmt.Errorf("Neo4j is not available")
+	}
+
 	ctx := context.Background()
 	session := n.client.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close(ctx)
@@ -83,6 +95,10 @@ func (n *Neo4j) Query(query string) (out []map[string]interface{}, err error) {
 Write executes a Cypher query on the Neo4j database and returns the results.
 */
 func (n *Neo4j) Write(query string) neo4j.ResultWithContext {
+	if n.client == nil {
+		return nil
+	}
+
 	ctx := context.Background()
 	session := n.client.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
@@ -104,6 +120,10 @@ func (n *Neo4j) Close() error {
 Use implements the Tool interface and is used to execute the tool.
 */
 func (neo4j *Neo4j) Use(ctx context.Context, args map[string]any) string {
+	if neo4j.client == nil {
+		return "Neo4j is not available"
+	}
+
 	switch neo4j.Operation {
 	case "query":
 		records := errnie.SafeMust(func() ([]map[string]interface{}, error) {

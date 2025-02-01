@@ -1,8 +1,9 @@
 package tasks
 
 import (
+	"context"
+
 	"github.com/theapemachine/caramba/ai/drknow"
-	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/tools"
 )
 
@@ -16,9 +17,13 @@ func NewBash() *Bash {
 	}
 }
 
-func (task *Bash) Execute(ctx *drknow.Context, args map[string]any) Bridge {
-	task.container.Initialize()
-	response := task.container.ExecuteCommand(args["command"].(string))
-	ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, response))
-	return nil
+func (task *Bash) Execute(ctx *drknow.Context, args map[string]any) string {
+	task.container.Initialize(context.Background())
+	response, err := task.container.RunCommandInteractive(context.Background(), args["command"].(string))
+	if err != nil {
+		return err.Error()
+	}
+	ctx.AddIteration(response)
+
+	return response
 }

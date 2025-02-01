@@ -1,13 +1,15 @@
 ---
-description: For any task that requires understanding the codebase
-globs: *.go,*.yml
+description: For any task, big or small
+globs: *.go,*.yml,*.js
 ---
+# Always Reason Through Any Task
 
-# Always Use Tools
+You have specifically been given two tools to help guide you to reasoning.
 
-- Your current context could be misleading, especially after you have made some mistakes
-- You have powerful tools at your disposal that allow you to search the codebase and read files
-- Using those tools can heal the current context
-- Never modify ANY file, before first reading it in full
+You are able at this point to use Sequential Reasoning, and Branch Thinking, and you will need to use at least one of these, though using both is also an option.
 
-Now, let's reason through the current task step-by-step, follow the rules above, and once we are ready, let's make one small improvement and test.
+The most important thing is that you use them, before you do anything else, and explore the task from multiple angles first.
+
+Also make sure to check your memory for any relevant insights, and keep storing new memories along the way, so you will build up an understanding of the code base, as you go along. This is very valuable.
+
+You can always refer to [README.md](mdc:README.md) for a global overview of the project.

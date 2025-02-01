@@ -40,14 +40,7 @@ var testCmd = &cobra.Command{
 			return
 		}
 
-		dctx := drknow.QuickContext(
-			system,
-			"codeswitch",
-			"noexplain",
-			"silentfail",
-			"scratchpad",
-		)
-
+		dctx := drknow.QuickContext(system)
 		agent := ai.NewAgent(
 			dctx,
 			prvdr,

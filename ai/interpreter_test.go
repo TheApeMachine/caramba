@@ -5,7 +5,6 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/ai/drknow"
-	"github.com/theapemachine/caramba/provider"
 )
 
 func TestNewInterpreter(t *testing.T) {
@@ -37,7 +36,7 @@ func TestInterpret(t *testing.T) {
 		})
 
 		Convey("When interpreting a non-assistant message", func() {
-			ctx.AddMessage(provider.NewMessage(provider.RoleUser, "<help>"))
+			ctx.AddIteration("<help>")
 			state, _ := interpreter.Interpret()
 
 			Convey("Then it should return a state without changes", func() {
@@ -47,7 +46,7 @@ func TestInterpret(t *testing.T) {
 		})
 
 		Convey("When interpreting a valid command", func() {
-			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, "<help>"))
+			ctx.AddIteration("<help>")
 			state, _ := interpreter.Interpret()
 
 			Convey("Then it should parse the command", func() {
@@ -59,7 +58,7 @@ func TestInterpret(t *testing.T) {
 		})
 
 		Convey("When interpreting a command with parameters", func() {
-			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, `<web url="https://example.com">`))
+			ctx.AddIteration(`<web url="https://example.com">`)
 			state, _ := interpreter.Interpret()
 
 			Convey("Then it should parse the command and parameters", func() {
@@ -71,7 +70,7 @@ func TestInterpret(t *testing.T) {
 		})
 
 		Convey("When interpreting an unknown command", func() {
-			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, "<unknowncommand>"))
+			ctx.AddIteration("<unknowncommand>")
 			state, _ := interpreter.Interpret()
 
 			Convey("Then it should ignore the unknown command", func() {
@@ -81,7 +80,7 @@ func TestInterpret(t *testing.T) {
 		})
 
 		Convey("When interpreting multiple commands", func() {
-			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, "<help><web url=\"https://example.com\">"))
+			ctx.AddIteration("<help><web url=\"https://example.com\">")
 			state, _ := interpreter.Interpret()
 
 			Convey("Then it should parse all commands", func() {
@@ -110,7 +109,7 @@ func TestExecute(t *testing.T) {
 
 		Convey("When executing commands", func() {
 			// Add a test command (using ignore as it's a no-op)
-			ctx.AddMessage(provider.NewMessage(provider.RoleAssistant, "<ignore>"))
+			ctx.AddIteration("<ignore>")
 			interpreter.Interpret()
 			interpreter.Execute()
 

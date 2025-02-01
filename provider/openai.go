@@ -97,22 +97,22 @@ func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams)
 				acc.AddChunk(chunk)
 
 				// Handle finished content from accumulator
-				if content, ok := acc.JustFinishedContent(); ok {
-					chunkEvent := NewEvent("openai:gpt-4o-mini", EventChunk, content, "", nil)
+				if _, ok := acc.JustFinishedContent(); ok {
+					chunkEvent := NewEvent("openai:gpt-4o-mini", EventChunk, "\n", "", nil)
 					out <- chunkEvent
 					continue
 				}
 
 				// Handle tool calls from accumulator
 				if tool, ok := acc.JustFinishedToolCall(); ok {
-					toolEvent := NewEvent("openai:gpt-4o-mini", EventFunction, "", tool.Arguments, nil)
+					toolEvent := NewEvent("openai:gpt-4o-mini", EventFunction, "\n", tool.Arguments, nil)
 					out <- toolEvent
 					continue
 				}
 
 				// Handle refusals from accumulator
 				if refusal, ok := acc.JustFinishedRefusal(); ok {
-					refusalEvent := NewEvent("openai:gpt-4o-mini", EventError, "", refusal, nil)
+					refusalEvent := NewEvent("openai:gpt-4o-mini", EventError, "\n", refusal, nil)
 					out <- refusalEvent
 					continue
 				}

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/theapemachine/caramba/ai/drknow"
-	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/tools"
 )
 
@@ -22,58 +21,33 @@ func NewRecall() *Recall {
 	}
 }
 
-func (r *Recall) Execute(ctx *drknow.Context, args map[string]any) Bridge {
+func (r *Recall) Execute(ctx *drknow.Context, args map[string]any) string {
 	// Initialize databases
 	if err := r.initializeDatabases(); err != nil {
-		ctx.AddMessage(
-			provider.NewMessage(
-				provider.RoleAssistant,
-				fmt.Sprintf("Database initialization failed: %v", err),
-			),
-		)
+		ctx.AddIteration(fmt.Sprintf("Database initialization failed: %v", err))
 	}
 
 	// Process input and prepare queries
 	queries, err := r.prepareQueries(args)
 	if err != nil {
-		ctx.AddMessage(
-			provider.NewMessage(
-				provider.RoleAssistant,
-				fmt.Sprintf("Query preparation failed: %v", err),
-			),
-		)
+		ctx.AddIteration(fmt.Sprintf("Query preparation failed: %v", err))
 	}
 
 	// Execute searches and collect results
 	memories, err := r.executeSearches(ctx, queries)
 	if err != nil {
-		ctx.AddMessage(
-			provider.NewMessage(
-				provider.RoleAssistant,
-				fmt.Sprintf("Search execution failed: %v", err),
-			),
-		)
+		ctx.AddIteration(fmt.Sprintf("Search execution failed: %v", err))
 	}
 
 	// Marshal results
 	result, err := json.MarshalIndent(memories, "", "  ")
 	if err != nil {
-		ctx.AddMessage(
-			provider.NewMessage(
-				provider.RoleAssistant,
-				fmt.Sprintf("Failed to marshal results: %v", err),
-			),
-		)
+		ctx.AddIteration(fmt.Sprintf("Failed to marshal results: %v", err))
 	}
 
-	ctx.AddMessage(
-		provider.NewMessage(
-			provider.RoleAssistant,
-			string(result),
-		),
-	)
+	ctx.AddIteration(string(result))
 
-	return nil
+	return ""
 }
 
 type queryParams struct {

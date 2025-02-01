@@ -11,6 +11,7 @@ func NewHelp() *Help {
 	return &Help{}
 }
 
-func (task *Help) Execute(ctx *drknow.Context, args map[string]any) Bridge {
-	return nil
+func (task *Help) Execute(ctx *drknow.Context, args map[string]any) string {
+	// no-op.
+	return ""
 }

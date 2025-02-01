@@ -2,11 +2,14 @@ package drknow
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/theapemachine/caramba/markymark"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -19,9 +22,10 @@ a scratchpad for accumulating responses, and a record of tool calls made during
 the conversation.
 */
 type Context struct {
-	Identity  *Identity
-	Toolcalls []*provider.Event
-	indent    int
+	Identity   *Identity
+	system     *provider.Message
+	user       *provider.Message
+	iterations [][]*provider.Message
 }
 
 /*
@@ -37,8 +41,9 @@ Returns:
 */
 func NewContext(identity *Identity) *Context {
 	return &Context{
-		Identity: identity,
-		indent:   0,
+		Identity:   identity,
+		system:     provider.NewMessage(provider.RoleSystem, identity.System),
+		iterations: make([][]*provider.Message, 0),
 	}
 }
 
@@ -46,28 +51,26 @@ func QuickContext(
 	system string,
 	additions ...string,
 ) *Context {
-	v := viper.GetViper()
-	steerings := "prompts.templates.steering."
-
-	steering := make([]string, 0)
-	for _, addition := range additions {
-		steering = append(
-			steering,
-			strings.TrimSpace(v.GetString(steerings+addition)),
-		)
-	}
-
 	return NewContext(
 		NewIdentity(
 			context.Background(),
 			"reasoner",
-			utils.JoinWith(
-				"\n\n",
-				system,
-				strings.Join(steering, "\n"),
-			),
+			system,
 		),
 	)
+}
+
+/*
+writeLog performs specialized formatting to make sure the logs are easily readable.
+*/
+func (ctx *Context) writeLog(params *provider.LLMGenerationParams) {
+	errnie.Log("%s\n\n", "BEGIN CONTEXT")
+	for _, message := range params.Thread.Messages {
+		for _, line := range strings.Split(message.Content, "\n") {
+			errnie.Log("%s\n", line)
+		}
+	}
+	errnie.Log("%s\n\n", "END CONTEXT")
 }
 
 /*
@@ -75,17 +78,42 @@ Compile prepares the context for a new generation by resetting and rebuilding
 the conversation thread. This is called at the start of each generation to ensure
 that any self-optimizing changes to the system prompt are included.
 
-The method combines the system prompt, the input message, and the current scratchpad
-into a properly formatted conversation thread.
-
-Parameters:
-  - msg: The input message to be added to the conversation thread
-
 Returns:
   - Generation parameters containing the compiled conversation thread
 */
-func (ctx *Context) Compile(cycle int, maxIterations int) *provider.LLMGenerationParams {
-	return ctx.Identity.Params
+func (ctx *Context) Compile() *provider.LLMGenerationParams {
+	params := provider.NewGenerationParams()
+	params.Thread.AddMessage(provider.NewMessage(provider.RoleSystem, ctx.Identity.System))
+	params.Thread.AddMessage(ctx.user)
+
+	if len(ctx.iterations) == 0 {
+		ctx.writeLog(params)
+		return params
+	}
+
+	var out strings.Builder
+
+	for idx, iteration := range ctx.iterations {
+		var iterout strings.Builder
+		for _, message := range iteration {
+			iterout.WriteString(message.Content)
+		}
+
+		tmpl := viper.GetViper().GetString("prompts.templates.tasks.iteration")
+		tmpl = strings.ReplaceAll(tmpl, "<{iteration}>", strconv.Itoa(idx+1))
+		tmpl = strings.ReplaceAll(tmpl, "<{response}>", iterout.String())
+
+		out.WriteString(tmpl)
+	}
+
+	tmpl := viper.GetViper().GetString("prompts.templates.tasks.context")
+	tmpl = strings.ReplaceAll(tmpl, "<{context}>", out.String())
+
+	params.Thread.AddMessage(provider.NewMessage(provider.RoleAssistant, tmpl))
+
+	ctx.writeLog(params)
+	ctx.Reset()
+	return params
 }
 
 /*
@@ -112,30 +140,57 @@ func (ctx *Context) String(includeSystem bool) string {
 Reset the context to start fresh
 */
 func (ctx *Context) Reset() {
-	ctx.Identity.Params.Thread.Messages = make([]*provider.Message, 0)
-	ctx.Identity.Params.Thread.Messages = append(
-		ctx.Identity.Params.Thread.Messages,
-		provider.NewMessage(
-			provider.RoleSystem,
-			strings.TrimSpace(ctx.Identity.System),
-		),
-	)
-	ctx.Toolcalls = make([]*provider.Event, 0)
+	ctx.iterations = append(ctx.iterations, make([]*provider.Message, 0))
 }
 
 /*
 AddMessage adds a new message to the context.
 */
-func (ctx *Context) AddMessage(msg *provider.Message) {
-	ctx.Identity.Params.Thread.AddMessage(msg)
+func (ctx *Context) AddMessage(message *provider.Message) {
+	markdown := markymark.NewDown()
+
+	if message.Role == provider.RoleUser {
+		tmpl := viper.GetViper().GetString("prompts.templates.tasks.user")
+		message.Content = strings.ReplaceAll(tmpl, "<{user}>", markdown.Quote(message.Content))
+
+		ctx.user = message
+		return
+	}
+
+	ctx.AddIteration(message.Content)
+}
+
+/*
+AddIteration adds a new iteration to the context.
+*/
+func (ctx *Context) AddIteration(response string) {
+	if !strings.HasSuffix(response, "\n") {
+		response += "\n"
+	}
+
+	if ctx.iterations == nil {
+		ctx.iterations = make([][]*provider.Message, 0)
+	}
+
+	currentIteration := len(ctx.iterations) - 1
+	if currentIteration < 0 {
+		ctx.iterations = append(ctx.iterations, make([]*provider.Message, 0))
+		currentIteration = len(ctx.iterations) - 1
+	}
+
+	ctx.iterations[currentIteration] = append(
+		ctx.iterations[currentIteration],
+		provider.NewMessage(provider.RoleAssistant, response),
+	)
 }
 
 /*
 LastMessage ...
 */
 func (ctx *Context) LastMessage() *provider.Message {
-	if len(ctx.Identity.Params.Thread.Messages) == 0 {
+	if len(ctx.iterations) == 0 {
 		return nil
 	}
-	return ctx.Identity.Params.Thread.Messages[len(ctx.Identity.Params.Thread.Messages)-1]
+
+	return ctx.iterations[len(ctx.iterations)-1][len(ctx.iterations[len(ctx.iterations)-1])-1]
 }

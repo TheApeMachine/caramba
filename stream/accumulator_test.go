@@ -117,35 +117,32 @@ func TestCompile(t *testing.T) {
 		Convey("When compiling normal chunks", func() {
 			accumulator.Write([]byte("chunk1 "))
 			accumulator.Write([]byte("chunk2"))
-			result := accumulator.Compile()
+			result := accumulator.String()
 
 			Convey("Then it should combine chunks correctly", func() {
 				So(result, ShouldNotBeNil)
-				So(result.Type, ShouldEqual, "generate:contentblock:done")
-				So(result.Text, ShouldEqual, "chunk1 chunk2")
+				So(result, ShouldEqual, "chunk1 chunk2")
 			})
 		})
 
 		Convey("When compiling partial JSON chunks", func() {
 			event := provider.NewEvent("generate:contentblock:delta", provider.EventChunk, `{"key":"value"}`, "", nil)
 			accumulator.chunks = append(accumulator.chunks, event)
-			result := accumulator.Compile()
+			result := accumulator.String()
 
 			Convey("Then it should handle partial JSON", func() {
 				So(result, ShouldNotBeNil)
-				So(result.Type, ShouldEqual, "generate:contentblock:done")
-				So(result.Text, ShouldEqual, `{"key":"value"}`)
+				So(result, ShouldEqual, `{"key":"value"}`)
 			})
 		})
 
 		Convey("When compiling with error state", func() {
 			accumulator.err = errors.New("test error")
-			result := accumulator.Compile()
+			result := accumulator.String()
 
 			Convey("Then it should return error event", func() {
 				So(result, ShouldNotBeNil)
-				So(result.Type, ShouldEqual, provider.EventError)
-				So(result.Text, ShouldEqual, "test error")
+				So(result, ShouldEqual, "test error")
 			})
 		})
 	})

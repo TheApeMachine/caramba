@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/theapemachine/caramba/ai/drknow"
-	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/tools"
 )
 
@@ -27,51 +26,31 @@ func NewMemory() *Memory {
 	}
 }
 
-func (m *Memory) Execute(ctx *drknow.Context, args map[string]any) Bridge {
+func (m *Memory) Execute(ctx *drknow.Context, args map[string]any) string {
 	// Initialize databases
 	if err := m.initializeDatabases(); err != nil {
-		ctx.AddMessage(
-			provider.NewMessage(
-				provider.RoleAssistant,
-				fmt.Sprintf("Failed to initialize databases: %v", err),
-			),
-		)
-		return nil
+		ctx.AddIteration(fmt.Sprintf("Failed to initialize databases: %v", err))
+		return ""
 	}
 
 	// Parse documents from the args
 	documentsRaw, ok := args["documents"]
 	if !ok {
-		ctx.AddMessage(
-			provider.NewMessage(
-				provider.RoleAssistant,
-				"No documents provided to store in memory",
-			),
-		)
-		return nil
+		ctx.AddIteration("No documents provided to store in memory")
+		return ""
 	}
 
 	// Convert raw documents to proper format
 	var documents []MemoryDocument
 	documentsJSON, err := json.Marshal(documentsRaw)
 	if err != nil {
-		ctx.AddMessage(
-			provider.NewMessage(
-				provider.RoleAssistant,
-				fmt.Sprintf("Failed to parse documents: %v", err),
-			),
-		)
-		return nil
+		ctx.AddIteration(fmt.Sprintf("Failed to parse documents: %v", err))
+		return ""
 	}
 
 	if err := json.Unmarshal(documentsJSON, &documents); err != nil {
-		ctx.AddMessage(
-			provider.NewMessage(
-				provider.RoleAssistant,
-				fmt.Sprintf("Failed to parse documents: %v", err),
-			),
-		)
-		return nil
+		ctx.AddIteration(fmt.Sprintf("Failed to parse documents: %v", err))
+		return ""
 	}
 
 	var results []string
@@ -120,16 +99,9 @@ func (m *Memory) Execute(ctx *drknow.Context, args map[string]any) Bridge {
 	}
 
 	// Report results back to the context
-	ctx.AddMessage(
-		provider.NewMessage(
-			provider.RoleAssistant,
-			fmt.Sprintf("Memory storage results:\n%s",
-				strings.Join(results, "\n"),
-			),
-		),
-	)
+	ctx.AddIteration(fmt.Sprintf("Memory storage results:\n%s", strings.Join(results, "\n")))
 
-	return nil
+	return ""
 }
 
 func (m *Memory) initializeDatabases() error {

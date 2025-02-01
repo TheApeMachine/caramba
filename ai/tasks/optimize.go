@@ -32,7 +32,7 @@ func NewOptimize() *Optimize {
 func (o *Optimize) Execute(
 	ctx *drknow.Context,
 	args map[string]any,
-) Bridge {
+) string {
 	// Create artifacts directory if it doesn't exist
 	artifactsDir := "artifacts"
 	if err := os.MkdirAll(artifactsDir, 0755); err != nil {
@@ -71,5 +71,5 @@ func (o *Optimize) Execute(
 		fmt.Println("No artifacts provided in the STORE command")
 	}
 
-	return nil
+	return ""
 }

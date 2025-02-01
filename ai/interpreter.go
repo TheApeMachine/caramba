@@ -1,12 +1,13 @@
 package ai
 
 import (
-	"encoding/json"
+	"strings"
 
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/ai/tasks"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/utils"
+	"github.com/theapemachine/errnie"
 )
 
 var taskMap = map[string]tasks.Task{
@@ -38,66 +39,65 @@ type Interpreter struct {
 /*
 NewInterpreter creates a new Interpreter.
 */
-func NewInterpreter(
-	ctx *drknow.Context,
-) *Interpreter {
+func NewInterpreter(ctx *drknow.Context) *Interpreter {
 	return &Interpreter{
 		ctx:      ctx,
 		commands: make([]Command, 0),
 	}
 }
 
-func (interpreter *Interpreter) Execute() tasks.Bridge {
-	var bridge tasks.Bridge
-
-	// Guard against empty commands
+func (interpreter *Interpreter) Execute() string {
 	if len(interpreter.commands) == 0 {
-		return nil
+		return ""
 	}
 
-	// Execute each command safely
+	out := strings.Builder{}
+
 	for _, command := range interpreter.commands {
-		// Guard against nil task
 		if command.Task == nil {
 			continue
 		}
 
-		// Execute with nil-safe argument handling
 		if command.Args == nil {
 			command.Args = make(map[string]any)
 		}
 
-		bridge = command.Task.Execute(interpreter.ctx, command.Args)
+		answer := command.Task.Execute(interpreter.ctx, command.Args)
+		out.WriteString(answer)
 	}
 
-	return bridge
+	return out.String()
 }
 
 func (interpreter *Interpreter) Interpret() (*Interpreter, AgentState) {
 	interpreter.commands = make([]Command, 0)
 	agentState := AgentStateGenerating
 
-	messages := interpreter.ctx.Identity.Params.Thread.Messages
-	if len(messages) == 0 || messages[len(messages)-1].Role != provider.RoleAssistant {
+	lastMessage := interpreter.ctx.LastMessage()
+
+	if lastMessage == nil || lastMessage.Role != provider.RoleAssistant {
+		errnie.Warn("last message is not an assistant message")
 		return interpreter, agentState
 	}
 
-	// Extract code blocks.
-	blocks := utils.ExtractJSONBlocks(messages[len(messages)-1].Content)
+	blocks := utils.ExtractJSONBlocks(lastMessage.Content)
+
 	for _, block := range blocks {
 		if tool, ok := block["tool"].(string); ok {
-			interpreter.commands = append(interpreter.commands, Command{
+			cmd := append(interpreter.commands, Command{
 				Task: taskMap[tool],
 				Args: block,
 			})
-		}
-	}
 
-	// Unmarshal the message content.
-	var content map[string]any
-	err := json.Unmarshal([]byte(messages[len(messages)-1].Content), &content)
-	if err != nil {
-		return interpreter, agentState
+			switch tool {
+			case "break":
+				agentState = AgentStateDone
+			case "terminal":
+				agentState = AgentStateTerminal
+			}
+
+			interpreter.commands = cmd
+		}
 	}
 
 	return interpreter, agentState

@@ -52,7 +52,7 @@ significant noise-reduction.
 func (consumer *Consumer) Print(stream <-chan *provider.Event, structured bool) {
 	if !structured {
 		for chunk := range stream {
-			if chunk.Type == provider.EventChunk && chunk.Text != "" {
+			if (chunk.Type == provider.EventChunk || chunk.Type == provider.EventStop) && chunk.Text != "" {
 				fmt.Print(chunk.Text)
 			}
 		}

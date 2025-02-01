@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/utils"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -75,12 +75,12 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 	}
 
 	if !hasSystem {
-		log.Error("No system message found")
+		errnie.Error(errors.New("no system message found"))
 		return nil
 	}
 
 	if !hasUser {
-		log.Warn("No user message found")
+		errnie.Warn("no user message found")
 	}
 
 	out := make(chan *Event)
@@ -90,10 +90,6 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 	go func() {
 		defer close(out)
 		defer cancel()
-
-		// Send start event
-		startEvent := NewEvent("generate:start", EventStart, "balanced_generation_start", "", nil)
-		out <- startEvent
 
 		provider := lb.getAvailableProvider()
 		if provider == nil || provider.provider == nil {
@@ -107,11 +103,11 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		provider.lastUsed = time.Now()
 		provider.mu.Unlock()
 
-		log.Info("Generating response", "provider", provider.provider.Name())
+		errnie.Info("generating response", "provider", provider.provider.Name())
 		events := provider.provider.Generate(ctx, params)
 
 		if events == nil {
-			log.Error("Events channel is nil")
+			errnie.Error(errors.New("events channel is nil"))
 			return
 		}
 
@@ -215,11 +211,11 @@ func (lb *BalancedProvider) getAvailableProvider() *ProviderStatus {
 			return selected
 		}
 
-		log.Warn("All providers occupied or in cooldown, attempt %d, waiting...", attempt+1)
+		errnie.Warn("all providers occupied or in cooldown", "attempt", attempt+1)
 		time.Sleep(time.Second)
 	}
 
-	log.Error("No providers available after maximum attempts")
+	errnie.Error(errors.New("no providers available after maximum attempts"))
 	return nil
 }
 
@@ -235,7 +231,7 @@ func (lb *BalancedProvider) handleFirstRequest() *ProviderStatus {
 	// Initialize providers if not done yet
 	if len(lb.providers) == 0 {
 		if err := lb.InitializeProviders(); err != nil {
-			log.Error("Error initializing providers", "error", err)
+			errnie.Error(err)
 			return nil
 		}
 	}

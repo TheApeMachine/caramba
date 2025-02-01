@@ -13,7 +13,10 @@ func NewBreak() *Break {
 func (b *Break) Execute(
 	ctx *drknow.Context,
 	args map[string]any,
-) Bridge {
-	// no-op.
-	return nil
+) string {
+	if answer, ok := args["answer"].(string); ok {
+		return answer
+	}
+
+	return "break"
 }
