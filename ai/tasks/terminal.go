@@ -1,6 +1,8 @@
 package tasks
 
 import (
+	"strings"
+
 	"github.com/theapemachine/caramba/ai/drknow"
 )
 
@@ -22,5 +24,11 @@ Execute locates the Container tool, ensures it is initialized, and
 returns a Bridge that streams user input/output to the container shell.
 */
 func (t *Terminal) Execute(ctx *drknow.Context, args map[string]any) string {
-	return "starting terminal"
+	return strings.Join([]string{
+		"Welcome to Debian Linux.",
+		"To install a package, use the apt command, e.g. `apt install curl`.",
+		"To update the package list, use the apt update command, e.g. `apt update`.",
+		"",
+		"$ ",
+	}, "\n")
 }

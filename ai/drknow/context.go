@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/markymark"
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
 
@@ -22,6 +21,8 @@ a scratchpad for accumulating responses, and a record of tool calls made during
 the conversation.
 */
 type Context struct {
+	Context    context.Context
+	Cancel     context.CancelFunc
 	Identity   *Identity
 	system     *provider.Message
 	user       *provider.Message
@@ -39,8 +40,10 @@ Parameters:
 Returns:
   - A new Context instance ready for message management
 */
-func NewContext(identity *Identity) *Context {
+func NewContext(identity *Identity, ctx context.Context, cancel context.CancelFunc) *Context {
 	return &Context{
+		Context:    ctx,
+		Cancel:     cancel,
 		Identity:   identity,
 		system:     provider.NewMessage(provider.RoleSystem, identity.System),
 		iterations: make([][]*provider.Message, 0),
@@ -51,12 +54,16 @@ func QuickContext(
 	system string,
 	additions ...string,
 ) *Context {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return NewContext(
 		NewIdentity(
 			context.Background(),
 			"reasoner",
 			system,
 		),
+		ctx,
+		cancel,
 	)
 }
 
@@ -64,13 +71,15 @@ func QuickContext(
 writeLog performs specialized formatting to make sure the logs are easily readable.
 */
 func (ctx *Context) writeLog(params *provider.LLMGenerationParams) {
-	errnie.Log("%s\n\n", "BEGIN CONTEXT")
+	if params == nil {
+		return
+	}
+
 	for _, message := range params.Thread.Messages {
 		for _, line := range strings.Split(message.Content, "\n") {
 			errnie.Log("%s\n", line)
 		}
 	}
-	errnie.Log("%s\n\n", "END CONTEXT")
 }
 
 /*
@@ -82,6 +91,8 @@ Returns:
   - Generation parameters containing the compiled conversation thread
 */
 func (ctx *Context) Compile() *provider.LLMGenerationParams {
+	errnie.Debug("compiling context", "role", ctx.Identity.Role)
+
 	params := provider.NewGenerationParams()
 	params.Thread.AddMessage(provider.NewMessage(provider.RoleSystem, ctx.Identity.System))
 	params.Thread.AddMessage(ctx.user)
@@ -120,20 +131,19 @@ func (ctx *Context) Compile() *provider.LLMGenerationParams {
 String compiles the current context and returns it as a string.
 */
 func (ctx *Context) String(includeSystem bool) string {
+	params := ctx.Compile()
+
 	builder := strings.Builder{}
 
-	for _, message := range ctx.Identity.Params.Thread.Messages {
+	for _, message := range params.Thread.Messages {
 		if !includeSystem && message.Role == provider.RoleSystem {
 			continue
 		}
 
-		builder.WriteString(utils.JoinWith("\n",
-			string(message.Role),
-			strings.TrimSpace(message.Content)+"\n\n",
-		))
+		builder.WriteString(message.Content)
 	}
 
-	return strings.TrimSpace(builder.String())
+	return builder.String()
 }
 
 /*

@@ -2,8 +2,11 @@ package ai
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/log"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/ai/drknow"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
@@ -22,7 +25,7 @@ const (
 	AgentStateIdle AgentState = iota
 	AgentStateGenerating
 	AgentStateTerminal
-	AgentStateToolCalling
+	AgentStateDelegating
 	AgentStateIterating
 	AgentStateDone
 )
@@ -37,6 +40,7 @@ The Agent maintains its own identity, context, and state while coordinating
 with providers to generate responses and execute tools.
 */
 type Agent struct {
+	Name          string           `json:"name" jsonschema:"title=Name,description=The name of the agent,required"`
 	Role          string           `json:"role" jsonschema:"title=Role,description=The role of the agent,required"`
 	Identity      *drknow.Identity `json:"identity" jsonschema:"title=Identity,description=The identity of the agent,required"`
 	Context       *drknow.Context  `json:"context" jsonschema:"title=Context,description=The context of the agent,required"`
@@ -57,8 +61,14 @@ Parameters:
   - role: The role designation for the AI agent
   - maxIterations: The maximum number of response generation iterations
 */
-func NewAgent(ctx *drknow.Context, prvdr provider.Provider, role string, maxIterations int) *Agent {
+func NewAgent(
+	ctx *drknow.Context,
+	prvdr provider.Provider,
+	role string,
+	maxIterations int,
+) *Agent {
 	return &Agent{
+		Name:          ctx.Identity.Name,
 		Role:          role,
 		Identity:      ctx.Identity,
 		Context:       ctx,
@@ -116,9 +126,8 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 			response := agent.accumulator.String()
 			agent.accumulator.Clear()
 
-			agent.Context.AddIteration(response)
-
 			if agent.state != AgentStateTerminal {
+				agent.Context.AddIteration(response)
 				interpreter := NewInterpreter(agent.Context)
 				_, agent.state = interpreter.Interpret()
 
@@ -132,31 +141,92 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 					}
 				}
 
-				out <- &provider.Event{
-					Type: provider.EventChunk,
-					Text: interpreter.Execute(),
+				toolResponse := interpreter.Execute()
+				agent.Context.AddIteration(toolResponse)
+
+				if toolResponse != "" {
+					out <- &provider.Event{
+						Type: provider.EventChunk,
+						Text: toolResponse,
+					}
 				}
 
 				continue
 			}
 
 			if agent.state == AgentStateTerminal {
-				terminalResponse, err := agent.container.RunCommandInteractive(ctx, response)
-				if err != nil {
-					terminalResponse = `error executing command: ` + err.Error()
+				// Add the command to the context first
+				agent.Context.AddIteration(fmt.Sprintf("$ %s", response))
+
+				if strings.Contains(response, "```bash") {
+					err := "ERROR: you should not include any Markdown formatting in your response, only respond with valid bash commands, nothing else!"
+					agent.Context.AddIteration(err)
+					out <- &provider.Event{
+						Type: provider.EventChunk,
+						Text: err,
+					}
+					continue
 				}
 
-				agent.Context.AddIteration(terminalResponse)
+				// Check if we should break out of terminal mode
+				if strings.Contains(response, "exit") || strings.Contains(response, `"tool": "break"`) {
+					msg := "terminal disconnected"
+					agent.Context.AddIteration(msg)
+					out <- &provider.Event{
+						Type: provider.EventChunk,
+						Text: msg,
+					}
+					agent.state = AgentStateIterating
+					continue
+				}
 
-				out <- &provider.Event{
-					Type: provider.EventChunk,
-					Text: terminalResponse,
+				terminalResponse, err := agent.container.RunCommandInteractive(ctx, response)
+				if err != nil {
+					terminalResponse = fmt.Sprintf("error executing command: %s", err.Error())
+				}
+
+				if terminalResponse != "" {
+					// The output is already cleaned by RunCommandInteractive
+					agent.Context.AddIteration(terminalResponse + "$ ")
+
+					out <- &provider.Event{
+						Type: provider.EventChunk,
+						Text: terminalResponse,
+					}
 				}
 			}
 		}
+
+		agent.Analyze(out)
 	}()
 
 	return out
+}
+
+func (agent *Agent) Analyze(out chan<- *provider.Event) {
+	errnie.Info("analyzing agent", "role", agent.Role)
+	// Store the context temporarily.
+	mainContext := agent.Context
+
+	// Create a new context for the analyzer.
+	v := viper.GetViper()
+	analyzerContext := drknow.QuickContext(v.GetString("prompts.templates.systems.analyzer"))
+	agent.Context = analyzerContext
+
+	accumulator := stream.NewAccumulator()
+
+	for event := range accumulator.Generate(
+		context.Background(),
+		agent.provider.Generate(context.Background(), agent.Context.Compile()),
+	) {
+		out <- event
+	}
+
+	analysis := accumulator.String()
+	accumulator.Clear()
+
+	agent.Identity.AddAnalysis(analysis)
+	agent.Context = mainContext
 }
 
 func (agent *Agent) Validate() bool {

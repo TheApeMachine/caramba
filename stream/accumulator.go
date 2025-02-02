@@ -92,12 +92,6 @@ func (accumulator *Accumulator) String() string {
 /*
 Error returns any error that occurred during accumulation
 */
-func (accumulator *Accumulator) Error() error {
-	return accumulator.err
-}
-
-func (accumulator *Accumulator) Write(text []byte) *Accumulator {
-	event := provider.NewEvent("generate:contentblock:delta", provider.EventChunk, string(text), "", nil)
-	accumulator.chunks = append(accumulator.chunks, event)
-	return accumulator
+func (accumulator *Accumulator) Error() string {
+	return errors.Unwrap(accumulator.err).Error()
 }

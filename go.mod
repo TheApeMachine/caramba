@@ -1,8 +1,6 @@
 module github.com/theapemachine/caramba
 
-go 1.23.4
-
-toolchain go1.23.5
+go 1.23.5
 
 //replace github.com/theapemachine/qpool => ../qpool
 
@@ -73,7 +71,7 @@ require (
 	capnproto.org/go/capnp/v3 v3.0.1-alpha.2 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/TylerBrock/colorjson v0.0.0-20200706003622-8a50f05110d2 // indirect
-	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
+	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect

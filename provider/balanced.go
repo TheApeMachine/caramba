@@ -103,7 +103,6 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		provider.lastUsed = time.Now()
 		provider.mu.Unlock()
 
-		errnie.Info("generating response", "provider", provider.provider.Name())
 		events := provider.provider.Generate(ctx, params)
 
 		if events == nil {
@@ -122,10 +121,6 @@ func (lb *BalancedProvider) Generate(ctx context.Context, params *LLMGenerationP
 		provider.mu.Lock()
 		provider.occupied = false
 		provider.mu.Unlock()
-
-		// Send done event
-		doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
-		out <- doneEvent
 	}()
 
 	return out

@@ -1,13 +1,11 @@
 package tools
 
 import (
-	"bufio"
 	"context"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/theapemachine/caramba/tools/container"
@@ -90,70 +88,22 @@ func (c *Container) Connect(ctx context.Context) error {
 	return c.Initialize(ctx)
 }
 
-// RunCommandInteractive writes a command (appending a unique marker) to the container's stdin,
-// then reads from stdout until the marker is encountered.
+// RunCommandInteractive executes a command in the container and returns the complete output.
 func (c *Container) RunCommandInteractive(ctx context.Context, cmd string) (string, error) {
-	if c.reader == nil {
+	if c.runner == nil {
 		if err := c.Connect(ctx); err != nil {
 			return "", err
 		}
 	}
 
-	// Define a unique marker
-	marker := "__COMMAND_FINISHED__"
-	// Append the marker to the command (the trailing newline helps flush the command)
-	fullCmd := cmd + "; echo " + marker + "\n"
-
-	// Write the command to the container's terminal
-	_, err := c.writer.Write([]byte(fullCmd))
-	if err != nil {
-		return "", err
+	// Always ensure the command ends with a newline
+	if !strings.HasSuffix(cmd, "\n") {
+		cmd += "\n"
 	}
 
-	// Read output until we detect the marker.
-	output, err := readUntilMarker(ctx, c.reader, marker)
-	if err != nil {
-		return "", err
-	}
+	// Execute the command using Docker's exec API
+	output, err := c.runner.ExecuteCommand(ctx, []string{cmd})
 
-	// Remove the marker from the output
-	cleanedOutput := strings.Replace(output, marker, "", 1)
-	return cleanedOutput, nil
-}
-
-// readUntilMarker reads from the reader until the marker is found or the context is canceled.
-func readUntilMarker(ctx context.Context, r io.Reader, marker string) (string, error) {
-	reader := bufio.NewReader(r)
-	var output strings.Builder
-
-	// Use a channel to signal when the marker is found.
-	done := make(chan struct{})
-	errCh := make(chan error, 1)
-
-	go func() {
-		for {
-			// Read a line (or you can choose to read byte by byte)
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				errCh <- err
-				return
-			}
-			output.WriteString(line)
-			if strings.Contains(output.String(), marker) {
-				close(done)
-				return
-			}
-		}
-	}()
-
-	select {
-	case <-done:
-		return output.String(), nil
-	case err := <-errCh:
-		return output.String(), err
-	case <-ctx.Done():
-		return output.String(), ctx.Err()
-	case <-time.After(30 * time.Second): // timeout safeguard
-		return output.String(), ctx.Err()
-	}
+	// Return the raw output and error as is
+	return string(output), err
 }

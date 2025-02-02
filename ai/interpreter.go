@@ -92,6 +92,35 @@ func (interpreter *Interpreter) Interpret() (*Interpreter, AgentState) {
 			switch tool {
 			case "break":
 				agentState = AgentStateDone
+			case "agent":
+				prvdr := provider.NewBalancedProvider()
+
+				if system, ok := block["system prompt"].(string); ok {
+					dctx := drknow.QuickContext(system)
+
+					if role, ok := block["role"].(string); ok {
+						agent := NewAgent(
+							dctx,
+							prvdr,
+							role,
+							10,
+						)
+
+						pool := NewAgentPool()
+						pool.AddAgent(agent)
+					}
+				}
+			case "message":
+				if message, ok := block["message"].(string); ok {
+					if name, ok := block["name"].(string); ok {
+						NewAgentPool().GetAgent(name).Generate(
+							interpreter.ctx.Context,
+							provider.NewMessage(provider.RoleUser, message),
+						)
+					}
+				}
+
+				return interpreter, AgentStateDelegating
 			case "terminal":
 				agentState = AgentStateTerminal
 			}

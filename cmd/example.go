@@ -9,10 +9,6 @@ import (
 	"github.com/theapemachine/errnie"
 )
 
-type ExampleAgent interface {
-	Run()
-}
-
 /*
 exampleType is a string that represents the type of example to run.
 */
@@ -35,15 +31,8 @@ var (
 			}
 
 			switch args[0] {
-			case "browser-agent":
-				examples.RunBrowserAgentExample()
-			case "research-agent":
-				examples.RunResearchAgentExample()
-			case "interactive-agent":
-				examples.RunInteractiveAgentExample()
 			case "coding-agent":
-				agent := examples.NewCodingAgent()
-				agent.Run()
+				examples.NewExampleAgent(examples.NewCodingAgent()).Run()
 			default:
 				fmt.Printf("Unknown example: %s\n", args[0])
 			}
@@ -67,4 +56,5 @@ Available examples:
   - browser-agent: Demonstrates basic web browsing and information extraction
   - research-agent: Shows in-depth research capabilities across multiple sources
   - interactive-agent: Demonstrates complex web interactions and analysis
+  - coding-agent: Demonstrates coding capabilities with a simple Go program
 `

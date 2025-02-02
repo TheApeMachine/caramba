@@ -21,6 +21,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install Python packages in virtual environment
 RUN pip3 install --no-cache-dir \
+    sudo \
     requests \
     pytest \
     black \
@@ -28,10 +29,12 @@ RUN pip3 install --no-cache-dir \
     mypy \
     poetry
 
-# Create non-root user
+# Create non-root user and setup passwordless sudo.
 RUN useradd -m -s /bin/bash user && \
+    usermod -aG sudo user && \
     mkdir -p /home/user/.ssh && \
-    chown -R user:user /home/user
+    chown -R user:user /home/user && \
+    echo "user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 # Set up SSH for the new user
 WORKDIR /home/user/.ssh
@@ -43,3 +46,6 @@ RUN echo "Host github.com\n\tStrictHostKeyChecking no\n" >> /home/user/.ssh/conf
 
 WORKDIR /home/user
 USER user
+
+# Set a simpler bash prompt without timestamps
+ENV PS1="$ "

@@ -22,14 +22,15 @@ Each Identity contains configuration for system prompts, naming, role definition
 and generation parameters that control the agent's behavior.
 */
 type Identity struct {
-	System string `json:"system" jsonschema:"title=System,description=The system prompt for the agent,required"`
-	Name   string `json:"name" jsonschema:"title=Name,description=A unique name for the agent,required"`
-	Role   string `json:"role" jsonschema:"title=Role,description=The role of the agent,required"`
-	Params *provider.LLMGenerationParams
-	conn   *datalake.Conn
-	Ctx    context.Context
-	err    error
-	loaded *minio.Object
+	System   string   `json:"system" jsonschema:"title=System,description=The system prompt for the agent,required"`
+	Name     string   `json:"name" jsonschema:"title=Name,description=A unique name for the agent,required"`
+	Role     string   `json:"role" jsonschema:"title=Role,description=The role of the agent,required"`
+	Analysis []string `json:"analysis"`
+	Params   *provider.LLMGenerationParams
+	conn     *datalake.Conn
+	Ctx      context.Context
+	err      error
+	loaded   *minio.Object
 }
 
 /*
@@ -71,6 +72,13 @@ func (identity *Identity) String() string {
 		fmt.Sprintf("Name: %s", identity.Name),
 		fmt.Sprintf("Role: %s", identity.Role),
 	)
+}
+
+/*
+AddAnalysis adds an analysis to the identity.
+*/
+func (identity *Identity) AddAnalysis(analysis string) {
+	identity.Analysis = append(identity.Analysis, analysis)
 }
 
 /*

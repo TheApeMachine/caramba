@@ -1,12 +1,13 @@
 package container
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
@@ -67,6 +68,7 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string, cmd []strin
 				Target: "/root/.ssh",
 			},
 		},
+		AutoRemove: true,
 	}
 
 	// Create the container with specific configuration
@@ -78,7 +80,6 @@ func (r *Runner) RunContainer(ctx context.Context, imageName string, cmd []strin
 		StdinOnce: false,
 		Env: []string{
 			fmt.Sprintf("USERNAME=%s", username),
-			fmt.Sprintf("CUSTOM_MESSAGE=%s", customMessage),
 		},
 		WorkingDir: "/tmp/workspace", // Set the working directory to the mounted volume
 	}, hostConfig, nil, nil, "")
@@ -126,20 +127,19 @@ func (r *Runner) StopContainer(ctx context.Context) error {
 
 /*
 ExecuteCommand executes a command in the container and returns the output.
+It uses Docker's exec API to ensure reliable command execution and output capture.
 */
 func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) ([]byte, error) {
 	// Join command parts into a single string for shell execution
-	fullCmd := []string{"/bin/sh", "-c"}
-	fullCmd = append(fullCmd, cmd...)
-	spew.Dump(fullCmd)
+	shellCmd := strings.Join(cmd, " ")
 
 	// Set up the exec configuration
 	execConfig := container.ExecOptions{
 		User:         "user",
-		Cmd:          fullCmd,
-		Tty:          true,
+		Cmd:          []string{"/bin/bash", "-c", shellCmd},
 		AttachStdout: true,
 		AttachStderr: true,
+		Tty:          false,
 	}
 
 	// Create the exec instance
@@ -149,23 +149,28 @@ func (r *Runner) ExecuteCommand(ctx context.Context, cmd []string) ([]byte, erro
 	}
 
 	// Attach to the exec instance
-	execAttachResp, err := r.client.ContainerExecAttach(ctx, execIDResp.ID, container.ExecStartOptions{})
+	execAttachResp, err := r.client.ContainerExecAttach(ctx, execIDResp.ID, types.ExecStartCheck{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to attach to exec instance: %w", err)
 	}
 	defer execAttachResp.Close()
 
-	// Read the output
-	var stdout, stderr strings.Builder
-
+	// Read both stdout and stderr into separate buffers
+	var stdout, stderr bytes.Buffer
 	_, err = stdcopy.StdCopy(&stdout, &stderr, execAttachResp.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read exec output: %w", err)
 	}
 
-	// Log and return both stdout and stderr if needed
-	output := stdout.String()
-	errorOutput := stderr.String()
+	// Combine stdout and stderr in the correct order
+	var output bytes.Buffer
+	if stdout.Len() > 0 {
+		output.Write(stdout.Bytes())
+	}
+	if stderr.Len() > 0 {
+		output.Write(stderr.Bytes())
+	}
 
-	return []byte(output + errorOutput), nil
+	// Return the raw output regardless of exit code
+	return output.Bytes(), nil
 }

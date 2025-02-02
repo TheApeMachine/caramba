@@ -14,16 +14,20 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_caramba&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_caramba)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_caramba&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_caramba)
 
-A sophisticated multi-agent AI orchestration system built in Go, designed to coordinate multiple AI providers and facilitate complex reasoning tasks through a pipeline-based architecture.
+A specialized agent framework in Go.
 
 ## ✨ Features
 
 ### 🧠 Multi-Provider Intelligence
 
+To avoid rate-limits as much as possible, and circumvent provider-based bias in the responses,
+you can use the `BalancedProvider` which wraps the underlying model providers, and spreads out
+individual generations among them.
+
 - OpenAI (GPT-4)
 - Anthropic (Claude)
 - Google (Gemini)
-- Cohere (Command)
+- Cohere (Command-R)
 - Smart load balancing and failover
 - Automatic cooldown and recovery
 - Provider health monitoring
@@ -49,31 +53,12 @@ A sophisticated multi-agent AI orchestration system built in Go, designed to coo
 - Runtime tool execution
 - Schema-based tool registration
 
-#### Available Tools
-
-- **Browser Tool**: Headless browser automation with stealth mode, proxy support, and JavaScript execution
-- **Container Tool**: Isolated Debian environment for command execution
-- **Database Tools**:
-- Neo4j: Graph database querying and storage
-- Qdrant: Vector database for similarity search and document storage
-- **Integration Tools**:
-- Azure: Cloud service operations and ticket management
-- GitHub: Repository operations (clone, pull, push)
-- Slack: Message sending and channel management
-- Trengo: Customer communication platform integration
-- **Tool Features**:
-- Automatic schema generation
-- Context-aware execution
-- Error handling and recovery
-- Streaming response support
-- Concurrent operation capability
-
 ### 📝 Context Management
 
 - Token-aware message history (128k context window)
 - Intelligent message truncation
 - System and user message preservation
-- Optimized token counting using tiktoken-go
+- Optimized token counting using `tiktoken-go`
 - Thread-safe buffer operations
 - Message history management
 - Context window optimization

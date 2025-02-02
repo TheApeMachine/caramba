@@ -11,11 +11,12 @@ import (
 func TestNewContext(t *testing.T) {
 	Convey("Given a call to NewContext", t, func() {
 		identity := NewIdentity(context.TODO(), "test", "test system")
-		ctx := NewContext(identity)
+		ctx, cancel := context.WithCancel(context.Background())
+		dctx := NewContext(identity, ctx, cancel)
 
 		Convey("Then it should be properly initialized", func() {
-			So(ctx, ShouldNotBeNil)
-			So(ctx.Identity, ShouldEqual, identity)
+			So(dctx, ShouldNotBeNil)
+			So(dctx.Identity, ShouldEqual, identity)
 		})
 	})
 }
@@ -35,10 +36,11 @@ func TestQuickContext(t *testing.T) {
 func TestCompile(t *testing.T) {
 	Convey("Given a Context instance", t, func() {
 		identity := NewIdentity(context.TODO(), "test", "test system")
-		ctx := NewContext(identity)
+		ctx, cancel := context.WithCancel(context.Background())
+		dctx := NewContext(identity, ctx, cancel)
 
 		Convey("When compiling with cycle information", func() {
-			params := ctx.Compile()
+			params := dctx.Compile()
 
 			Convey("Then it should return valid generation params", func() {
 				So(params, ShouldNotBeNil)
@@ -52,10 +54,11 @@ func TestCompile(t *testing.T) {
 func TestString(t *testing.T) {
 	Convey("Given a Context instance", t, func() {
 		identity := NewIdentity(context.TODO(), "test", "test system")
-		ctx := NewContext(identity)
+		ctx, cancel := context.WithCancel(context.Background())
+		dctx := NewContext(identity, ctx, cancel)
 
 		Convey("When getting string with system messages", func() {
-			result := ctx.String(true)
+			result := dctx.String(true)
 
 			Convey("Then it should include system messages", func() {
 				So(result, ShouldContainSubstring, "system")
@@ -64,7 +67,7 @@ func TestString(t *testing.T) {
 		})
 
 		Convey("When getting string without system messages", func() {
-			result := ctx.String(false)
+			result := dctx.String(false)
 
 			Convey("Then it should not include system messages", func() {
 				So(result, ShouldNotContainSubstring, "system")
@@ -77,18 +80,19 @@ func TestString(t *testing.T) {
 func TestReset(t *testing.T) {
 	Convey("Given a Context instance", t, func() {
 		identity := NewIdentity(context.TODO(), "test", "test system")
-		ctx := NewContext(identity)
+		ctx, cancel := context.WithCancel(context.Background())
+		dctx := NewContext(identity, ctx, cancel)
 
 		Convey("When resetting the context", func() {
 			// Add some messages and tool calls
-			ctx.AddIteration("test message")
+			dctx.AddIteration("test message")
 
 			// Create an event that implements the Event interface
-			ctx.Reset()
+			dctx.Reset()
 
 			Convey("Then it should clear messages except system", func() {
-				So(len(ctx.Identity.Params.Thread.Messages), ShouldEqual, 1)
-				So(ctx.Identity.Params.Thread.Messages[0].Role, ShouldEqual, provider.RoleSystem)
+				So(len(dctx.Identity.Params.Thread.Messages), ShouldEqual, 1)
+				So(dctx.Identity.Params.Thread.Messages[0].Role, ShouldEqual, provider.RoleSystem)
 			})
 		})
 	})
@@ -97,14 +101,15 @@ func TestReset(t *testing.T) {
 func TestAddMessage(t *testing.T) {
 	Convey("Given a Context instance", t, func() {
 		identity := NewIdentity(context.TODO(), "test", "test system")
-		ctx := NewContext(identity)
+		ctx, cancel := context.WithCancel(context.Background())
+		dctx := NewContext(identity, ctx, cancel)
 
 		Convey("When adding a message", func() {
-			ctx.AddIteration("test message")
+			dctx.AddIteration("test message")
 
 			Convey("Then it should be added to the thread", func() {
-				So(len(ctx.Identity.Params.Thread.Messages), ShouldBeGreaterThan, 1)
-				So(ctx.Identity.Params.Thread.Messages[len(ctx.Identity.Params.Thread.Messages)-1], ShouldEqual, "test message")
+				So(len(dctx.Identity.Params.Thread.Messages), ShouldBeGreaterThan, 1)
+				So(dctx.Identity.Params.Thread.Messages[len(dctx.Identity.Params.Thread.Messages)-1], ShouldEqual, "test message")
 			})
 		})
 	})
