@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"strings"
@@ -19,12 +20,15 @@ full output once the provider model is finished generating a response.
 type Accumulator struct {
 	wg     *sync.WaitGroup
 	chunks []*provider.Event
+	buffer *bufio.ReadWriter
+	after  []func(str string)
 	err    error
 }
 
 func NewAccumulator() *Accumulator {
 	return &Accumulator{
-		wg: &sync.WaitGroup{},
+		wg:     &sync.WaitGroup{},
+		buffer: bufio.NewReadWriter(bufio.NewReader(nil), bufio.NewWriter(nil)),
 	}
 }
 
@@ -33,7 +37,12 @@ func (accumulator *Accumulator) Clear() {
 	accumulator.err = nil
 }
 
-func (accumulator *Accumulator) Generate(ctx context.Context, in <-chan *provider.Event) <-chan *provider.Event {
+func (accumulator *Accumulator) After(fns ...func(str string)) {
+	accumulator.after = append(accumulator.after, fns...)
+}
+
+func (accumulator *Accumulator) Generate(in <-chan *provider.Event) <-chan *provider.Event {
+	_, cancel := context.WithCancel(context.TODO())
 	out := make(chan *provider.Event)
 
 	accumulator.wg.Add(1)
@@ -41,28 +50,32 @@ func (accumulator *Accumulator) Generate(ctx context.Context, in <-chan *provide
 	go func() {
 		defer close(out)
 		defer accumulator.wg.Done()
+		defer cancel()
+
+		accumulator.Clear()
 
 		for event := range in {
-			// Check for error events
 			if event.Type == provider.EventError {
 				accumulator.err = errors.New(event.Text)
-				out <- event
-				return
-			}
-
-			if event.Type == provider.EventChunk {
-				accumulator.chunks = append(accumulator.chunks, event)
-			}
-
-			if event.Type == provider.EventStop {
-				accumulator.chunks = append(accumulator.chunks, event)
 			}
 
 			out <- event
+			accumulator.chunks = append(accumulator.chunks, event)
+		}
+
+		for _, fn := range accumulator.after {
+			fn(accumulator.String())
 		}
 	}()
 
 	return out
+}
+
+func (accumulator *Accumulator) Append(str string) {
+	accumulator.chunks = append(accumulator.chunks, &provider.Event{
+		Type: provider.EventChunk,
+		Text: str,
+	})
 }
 
 /*
@@ -86,6 +99,11 @@ func (accumulator *Accumulator) String() string {
 		}
 	}
 
+	buf := strings.TrimSpace(out.String())
+	if !strings.HasSuffix(buf, "\n") {
+		buf += "\n"
+	}
+
 	return strings.TrimSpace(out.String())
 }
 
@@ -94,4 +112,25 @@ Error returns any error that occurred during accumulation
 */
 func (accumulator *Accumulator) Error() string {
 	return errors.Unwrap(accumulator.err).Error()
+}
+
+/*
+Read ...
+*/
+func (accumulator *Accumulator) Read(p []byte) (n int, err error) {
+	return accumulator.buffer.Read(p)
+}
+
+/*
+Write ...
+*/
+func (accumulator *Accumulator) Write(p []byte) (n int, err error) {
+	return accumulator.buffer.Write(p)
+}
+
+/*
+Close ...
+*/
+func (accumulator *Accumulator) Close() error {
+	return accumulator.buffer.Flush()
 }

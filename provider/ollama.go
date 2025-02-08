@@ -7,6 +7,7 @@ import (
 	"net/url"
 
 	sdk "github.com/ollama/ollama/api"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
@@ -23,7 +24,7 @@ func NewOllama(host string) *Ollama {
 	return &Ollama{
 		BaseProvider: NewBaseProvider(),
 		client:       sdk.NewClient(hostURL, http.DefaultClient),
-		model:        "llama3.2:3b",
+		model:        viper.GetViper().GetString("models.ollama"),
 	}
 }
 

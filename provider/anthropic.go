@@ -7,20 +7,20 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/charmbracelet/log"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/spf13/viper"
 )
 
 type Anthropic struct {
 	*BaseProvider
 	client *sdk.Client
 	model  string
-	cancel context.CancelFunc
 }
 
 func NewAnthropic(apiKey string) *Anthropic {
 	return &Anthropic{
 		BaseProvider: NewBaseProvider(),
 		client:       sdk.NewClient(option.WithAPIKey(apiKey)),
-		model:        sdk.ModelClaude3_5SonnetLatest,
+		model:        viper.GetViper().GetString("models.anthropic"),
 	}
 }
 
@@ -31,10 +31,9 @@ func (anthropic *Anthropic) Name() string {
 	return "anthropic (claude 3.5 sonnet)"
 }
 
-func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+func (anthropic *Anthropic) Generate(params *LLMGenerationParams) <-chan *Event {
+	ctx, cancel := context.WithCancel(context.Background())
 	out := make(chan *Event)
-	ctx, cancel := context.WithCancel(ctx)
-	anthropic.cancel = cancel
 
 	go func() {
 		defer close(out)
@@ -129,9 +128,6 @@ func (anthropic *Anthropic) Generate(ctx context.Context, params *LLMGenerationP
 }
 
 func (anthropic *Anthropic) CancelGeneration(ctx context.Context) error {
-	if anthropic.cancel != nil {
-		anthropic.cancel()
-	}
 	return nil
 }
 

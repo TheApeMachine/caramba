@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -25,9 +24,8 @@ func TestNewAccumulator(t *testing.T) {
 func TestGenerate(t *testing.T) {
 	Convey("Given an Accumulator instance", t, func() {
 		accumulator := NewAccumulator()
-		ctx := context.Background()
 		in := make(chan *provider.Event)
-		out := accumulator.Generate(ctx, in)
+		out := accumulator.Generate(in)
 
 		Convey("When sending normal text events", func() {
 			go func() {
@@ -72,9 +70,8 @@ func TestGenerate(t *testing.T) {
 func TestWait(t *testing.T) {
 	Convey("Given an Accumulator instance", t, func() {
 		accumulator := NewAccumulator()
-		ctx := context.Background()
 		in := make(chan *provider.Event)
-		out := accumulator.Generate(ctx, in)
+		out := accumulator.Generate(in)
 
 		Convey("When waiting for completion", func() {
 			go func() {
@@ -100,7 +97,7 @@ func TestString(t *testing.T) {
 		accumulator := NewAccumulator()
 
 		Convey("When getting string output", func() {
-			accumulator.Write([]byte(" test string "))
+			_, _ = accumulator.Write([]byte(" test string "))
 			result := accumulator.String()
 
 			Convey("Then it should return trimmed string", func() {
@@ -115,8 +112,8 @@ func TestCompile(t *testing.T) {
 		accumulator := NewAccumulator()
 
 		Convey("When compiling normal chunks", func() {
-			accumulator.Write([]byte("chunk1 "))
-			accumulator.Write([]byte("chunk2"))
+			_, _ = accumulator.Write([]byte("chunk1 "))
+			_, _ = accumulator.Write([]byte("chunk2"))
 			result := accumulator.String()
 
 			Convey("Then it should combine chunks correctly", func() {
@@ -169,11 +166,11 @@ func TestWrite(t *testing.T) {
 
 		Convey("When writing text", func() {
 			text := []byte("test text")
-			result := accumulator.Write(text)
+			n, err := accumulator.Write(text)
 
 			Convey("Then it should append to chunks", func() {
-				So(result, ShouldEqual, accumulator)
-				So(len(accumulator.chunks), ShouldEqual, 1)
+				So(n, ShouldEqual, len(text))
+				So(err, ShouldBeNil)
 				So(accumulator.chunks[0].Text, ShouldEqual, "test text")
 			})
 		})

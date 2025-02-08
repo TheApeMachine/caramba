@@ -1,15 +1,14 @@
 package cmd
 
 import (
-	"errors"
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/theapemachine/caramba/ai"
-	"github.com/theapemachine/caramba/ai/drknow"
+	"github.com/theapemachine/caramba/agent"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/tools"
+	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
 
@@ -25,39 +24,27 @@ var testCmd = &cobra.Command{
 		os.Setenv("LOGFILE", "true")
 		errnie.InitLogger()
 
-		v := viper.GetViper()
-		system := v.GetString("prompts.templates.systems.default")
-
-		if system == "" {
-			errnie.Error(errors.New("system is empty"))
-			return
-		}
-
-		prvdr := provider.NewBalancedProvider()
-		err := prvdr.Initialize(cmd.Context())
-		if err != nil {
-			errnie.Error(err)
-			return
-		}
-
-		dctx := drknow.QuickContext(system)
-		agent := ai.NewAgent(
-			dctx,
-			prvdr,
-			"reasoner",
-			10,
+		config := agent.NewConfig(
+			"default",
+			"coordinator",
+			utils.NewName(),
+			tools.NewToolset(),
 		)
 
-		stream.NewConsumer().Print(
-			agent.Generate(
-				cmd.Context(),
-				provider.NewMessage(
-					provider.RoleUser,
-					"Find out about the latest scandals in the tech industry.",
-				),
-			),
-			false,
+		generator := agent.NewGenerator(
+			config,
+			provider.NewBalancedProvider(),
 		)
+
+		executor := agent.NewExecutor(
+			config,
+			generator,
+		)
+
+		stream.NewConsumer().Print(executor.Generate(provider.NewMessage(
+			provider.RoleUser,
+			"How many times do we find the letter r in the word strawberry?",
+		)), false)
 	},
 }
 

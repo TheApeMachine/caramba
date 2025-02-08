@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/log"
 	sdk "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/errnie"
 )
 
@@ -22,7 +23,7 @@ func NewOpenAI(apiKey string) *OpenAI {
 	return &OpenAI{
 		BaseProvider: NewBaseProvider(),
 		client:       sdk.NewClient(),
-		model:        sdk.ChatModelGPT4oMini,
+		model:        viper.GetViper().GetString("models.openai"),
 	}
 }
 
@@ -37,10 +38,9 @@ func (openai *OpenAI) Name() string {
 	return fmt.Sprintf("openai (%s)", openai.model)
 }
 
-func (openai *OpenAI) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+func (openai *OpenAI) Generate(params *LLMGenerationParams) <-chan *Event {
 	out := make(chan *Event)
-	ctx, cancel := context.WithCancel(ctx)
-	openai.cancel = cancel
+	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
 		defer close(out)

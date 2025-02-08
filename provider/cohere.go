@@ -9,6 +9,7 @@ import (
 	sdk "github.com/cohere-ai/cohere-go/v2"
 	client "github.com/cohere-ai/cohere-go/v2/client"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/spf13/viper"
 )
 
 type Cohere struct {
@@ -22,7 +23,7 @@ func NewCohere(apiKey string) *Cohere {
 	return &Cohere{
 		BaseProvider: NewBaseProvider(),
 		client:       client.NewClient(client.WithToken(apiKey)),
-		model:        "command-r",
+		model:        viper.GetViper().GetString("models.cohere"),
 	}
 }
 
@@ -86,9 +87,9 @@ func (cohere *Cohere) Name() string {
 	return "cohere (command-r)"
 }
 
-func (cohere *Cohere) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+func (cohere *Cohere) Generate(params *LLMGenerationParams) <-chan *Event {
 	out := make(chan *Event)
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	cohere.cancel = cancel
 
 	go func() {

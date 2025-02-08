@@ -93,15 +93,13 @@ func (interpreter *Interpreter) Interpret() (*Interpreter, AgentState) {
 			case "break":
 				agentState = AgentStateDone
 			case "agent":
-				prvdr := provider.NewBalancedProvider()
-
 				if system, ok := block["system prompt"].(string); ok {
 					dctx := drknow.QuickContext(system)
 
 					if role, ok := block["role"].(string); ok {
 						agent := NewAgent(
 							dctx,
-							prvdr,
+							provider.NewBalancedProvider(),
 							role,
 							10,
 						)

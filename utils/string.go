@@ -62,6 +62,35 @@ func NewName() string {
 }
 
 /*
+ExtractCommands looks for any commands wrapped in <> and extracts both the main
+commands, and any parameter key/value pairs.
+*/
+func ExtractCommands(s string) (string, map[string]string) {
+	pattern := regexp.MustCompile(`<([^>]+)>`)
+	matches := pattern.FindStringSubmatch(s)
+
+	if len(matches) < 2 {
+		return "", nil
+	}
+
+	command := matches[1]
+
+	pattern = regexp.MustCompile(`(\w+)=([^>]+)`)
+	matches = pattern.FindStringSubmatch(command)
+
+	if len(matches) < 3 {
+		return "", nil
+	}
+
+	parameters := make(map[string]string)
+	for i := 2; i < len(matches); i += 2 {
+		parameters[matches[i]] = matches[i+1]
+	}
+
+	return command, parameters
+}
+
+/*
 ExtractJSONBlocks finds and parses JSON objects from a string.
 It specifically looks for JSON content within markdown-style code blocks
 that are marked with the 'json' language identifier. This is particularly
@@ -69,12 +98,15 @@ useful when processing structured outputs from AI tools.
 */
 func ExtractJSONBlocks(s string) []map[string]interface{} {
 	// Extract blocks marked with json language identifier
-	codeBlocks := ExtractCodeBlocks(s)
+	re := regexp.MustCompile("```json\\s*\\n([\\s\\S]*?)```")
+	matches := re.FindAllStringSubmatch(s, -1)
 
 	var results []map[string]interface{}
-	for _, blocks := range codeBlocks["json"] {
-		if block := ParseJSON(blocks); block != nil {
-			results = append(results, block)
+	for _, match := range matches {
+		if len(match) >= 2 {
+			if block := ParseJSON(strings.TrimSpace(match[1])); block != nil {
+				results = append(results, block)
+			}
 		}
 	}
 
@@ -121,14 +153,22 @@ GenerateSchema creates a JSON schema for any type that implements jsonschema str
 It uses the jsonschema reflector to generate a complete schema, with additional properties
 disabled and direct type definitions (no references).
 */
-func GenerateSchema[T any]() interface{} {
+func GenerateSchema[T any]() string {
 	reflector := jsonschema.Reflector{
 		AllowAdditionalProperties: false,
 		DoNotReference:            true,
 	}
 
 	var v T
-	return reflector.Reflect(v)
+	schema := reflector.Reflect(v)
+
+	buf, err := schema.MarshalJSON()
+
+	if err != nil {
+		return ""
+	}
+
+	return string(buf)
 }
 
 /*
@@ -167,7 +207,11 @@ This is useful for formatting output, especially when dealing with
 structured data that needs to be visually separated.
 */
 func Indent(content string, indent int) string {
-	return strings.Repeat("\t", indent) + content
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		lines[i] = strings.Repeat("  ", indent) + line
+	}
+	return strings.Join(lines, "\n")
 }
 
 /*

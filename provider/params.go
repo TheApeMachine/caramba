@@ -12,9 +12,9 @@ type LLMGenerationParams struct {
 	PresencePenalty  float64
 }
 
-func NewGenerationParams() *LLMGenerationParams {
+func NewGenerationParams(thread *Thread) *LLMGenerationParams {
 	return &LLMGenerationParams{
-		Thread:           NewThread(),
+		Thread:           thread,
 		Tools:            make([]Tool, 0),
 		Process:          nil,
 		Temperature:      0.5,

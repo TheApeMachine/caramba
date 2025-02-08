@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/generative-ai-go/genai"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 	"google.golang.org/api/iterator"
@@ -29,7 +30,7 @@ func NewGemini(apiKey string) *Gemini {
 		log.Error("Failed to create Gemini client", "error", err)
 		return nil
 	}
-	model := client.GenerativeModel("gemini-pro")
+	model := client.GenerativeModel(viper.GetViper().GetString("models.gemini"))
 	return &Gemini{
 		BaseProvider: NewBaseProvider(),
 		client:       client,
@@ -41,9 +42,9 @@ func (gemini *Gemini) Name() string {
 	return "google (gemini)"
 }
 
-func (gemini *Gemini) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+func (gemini *Gemini) Generate(params *LLMGenerationParams) <-chan *Event {
 	out := make(chan *Event)
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	gemini.cancel = cancel
 
 	go func() {

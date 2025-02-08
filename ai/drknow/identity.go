@@ -44,7 +44,7 @@ Parameters:
   - system: The system prompt for the AI agent
 */
 func NewIdentity(ctx context.Context, role string, system string) *Identity {
-	params := provider.NewGenerationParams()
+	params := provider.NewGenerationParams(provider.NewThread())
 	params.Thread = provider.NewThread(
 		provider.NewMessage(
 			provider.RoleSystem,
@@ -105,7 +105,7 @@ It validates and saves the new identity to storage.
 */
 func (identity *Identity) create() {
 	identity.Name = utils.NewName()
-	identity.Params = provider.NewGenerationParams()
+	identity.Params = provider.NewGenerationParams(provider.NewThread())
 
 	if identity.err = identity.Validate(); identity.err != nil {
 		log.Error("Identity is invalid", "error", identity.err)

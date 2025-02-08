@@ -7,6 +7,7 @@ import (
 	"io"
 
 	deepseek "github.com/cohesion-org/deepseek-go"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/errnie"
 )
 
@@ -21,7 +22,7 @@ func NewDeepSeek(apiKey string) *DeepSeek {
 	return &DeepSeek{
 		BaseProvider: NewBaseProvider(),
 		client:       deepseek.NewClient(apiKey),
-		model:        deepseek.DeepSeekChat,
+		model:        viper.GetViper().GetString("models.deepseek"),
 	}
 }
 

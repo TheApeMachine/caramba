@@ -93,7 +93,7 @@ Returns:
 func (ctx *Context) Compile() *provider.LLMGenerationParams {
 	errnie.Debug("compiling context", "role", ctx.Identity.Role)
 
-	params := provider.NewGenerationParams()
+	params := provider.NewGenerationParams(provider.NewThread())
 	params.Thread.AddMessage(provider.NewMessage(provider.RoleSystem, ctx.Identity.System))
 	params.Thread.AddMessage(ctx.user)
 

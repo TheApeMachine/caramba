@@ -8,7 +8,10 @@ import (
 	"github.com/theapemachine/caramba/utils"
 )
 
-// BasicGenerationParams contains basic parameters for generation requests
+/*
+BasicGenerationParams contains basic parameters for
+generation requests.
+*/
 type BasicGenerationParams struct {
 	Prompt      string
 	MaxTokens   int
@@ -18,21 +21,33 @@ type BasicGenerationParams struct {
 	Metadata    map[string]interface{}
 }
 
-// RateLimitConfig defines rate limiting parameters
+/*
+RateLimitConfig defines rate limiting parameters for provider requests.
+It controls the rate at which requests can be made to prevent overloading
+and ensure fair resource usage.
+*/
 type RateLimitConfig struct {
 	RequestsPerSecond float64
 	BurstSize         int
 	Enabled           bool
 }
 
-// TimeoutConfig defines timeout parameters
+/*
+TimeoutConfig defines timeout parameters for various operations.
+It specifies duration limits for different types of timeouts to ensure
+proper request handling and resource cleanup.
+*/
 type TimeoutConfig struct {
 	RequestTimeout time.Duration
 	ConnectTimeout time.Duration
 	IdleTimeout    time.Duration
 }
 
-// RetryConfig defines retry behavior
+/*
+RetryConfig defines retry behavior for failed operations.
+It specifies how many times to retry, how long to wait between retries,
+and what types of errors are retryable.
+*/
 type RetryConfig struct {
 	MaxAttempts     int
 	InitialDelay    time.Duration
@@ -41,14 +56,22 @@ type RetryConfig struct {
 	RetryableErrors []string
 }
 
-// AuthConfig contains authentication configuration
+/*
+AuthConfig contains authentication configuration for provider access.
+It stores various authentication methods and credentials needed to
+interact with the provider's API.
+*/
 type AuthConfig struct {
 	APIKey      string
 	Credentials map[string]string
 	AuthType    string
 }
 
-// FeatureFlags contains provider-specific feature toggles
+/*
+FeatureFlags contains provider-specific feature toggles.
+It controls various optional features and behaviors of the provider,
+allowing for flexible configuration of provider capabilities.
+*/
 type FeatureFlags struct {
 	EnableStreaming bool
 	EnableCache     bool
@@ -56,7 +79,11 @@ type FeatureFlags struct {
 	CustomFeatures  map[string]interface{}
 }
 
-// ProviderConfig contains all provider configuration
+/*
+ProviderConfig contains all provider configuration options.
+It aggregates various configuration components including rate limiting,
+timeouts, retry policies, authentication, and feature flags.
+*/
 type ProviderConfig struct {
 	RateLimit    RateLimitConfig
 	Timeout      TimeoutConfig
@@ -66,7 +93,11 @@ type ProviderConfig struct {
 	CustomConfig map[string]interface{}
 }
 
-// ProviderMetrics contains provider performance metrics
+/*
+ProviderMetrics contains provider performance metrics and statistics.
+It tracks various operational metrics including request counts,
+success rates, latency, and provider-specific custom metrics.
+*/
 type ProviderMetrics struct {
 	RequestCount     int64
 	SuccessCount     int64
@@ -77,10 +108,44 @@ type ProviderMetrics struct {
 	CustomMetrics    map[string]interface{}
 }
 
-// Provider defines the enhanced interface for AI providers
+/*
+Provider defines the enhanced interface for AI providers.
+It specifies the complete set of operations that must be implemented
+by any provider, including core functionality, configuration management,
+monitoring, resource management, and capability introspection.
+
+Interface Methods:
+
+	Core Functionality:
+	    - Generate: Produces AI-generated content
+	    - Name: Returns provider identifier
+	    - Version: Returns provider version
+
+	Configuration:
+	    - Configure: Applies provider configuration
+	    - GetConfig: Retrieves current configuration
+	    - ValidateConfig: Validates configuration
+
+	Monitoring:
+	    - GetMetrics: Retrieves performance metrics
+	    - HealthCheck: Checks provider health status
+
+	Resource Management:
+	    - Initialize: Sets up provider resources
+	    - Cleanup: Cleans up provider resources
+
+	Stream Management:
+	    - PauseGeneration: Pauses content generation
+	    - ResumeGeneration: Resumes content generation
+	    - CancelGeneration: Cancels ongoing generation
+
+	Capabilities:
+	    - GetCapabilities: Lists provider capabilities
+	    - SupportsFeature: Checks feature support
+*/
 type Provider interface {
 	// Core functionality
-	Generate(context.Context, *LLMGenerationParams) <-chan *Event
+	Generate(*LLMGenerationParams) <-chan *Event
 	Name() string
 	Version() string
 
@@ -107,7 +172,11 @@ type Provider interface {
 	SupportsFeature(feature string) bool
 }
 
-// BaseProvider provides a default implementation of common provider functionality
+/*
+BaseProvider provides a default implementation of common provider functionality.
+It implements basic versions of the Provider interface methods and can be
+embedded in specific provider implementations to reduce boilerplate code.
+*/
 type BaseProvider struct {
 	config   ProviderConfig
 	metrics  ProviderMetrics
@@ -145,7 +214,18 @@ func NewBaseProvider() *BaseProvider {
 	}
 }
 
-// Configure implements basic configuration management
+/*
+Configure implements basic configuration management for the provider.
+It validates and applies the provided configuration to the base provider.
+
+Parameters:
+
+	config: The provider configuration to apply
+
+Returns:
+
+	error: An error if the configuration is invalid or nil if successful
+*/
 func (bp *BaseProvider) Configure(config *ProviderConfig) error {
 	if config == nil {
 		return utils.NewErrorWithContext(
@@ -157,17 +237,41 @@ func (bp *BaseProvider) Configure(config *ProviderConfig) error {
 	return nil
 }
 
-// GetConfig returns the current configuration
+/*
+GetConfig returns the current provider configuration.
+
+Returns:
+
+	*ProviderConfig: A pointer to the current configuration
+*/
 func (bp *BaseProvider) GetConfig() *ProviderConfig {
 	return &bp.config
 }
 
-// GetMetrics returns current metrics
+/*
+GetMetrics returns current provider metrics.
+
+Returns:
+
+	*ProviderMetrics: A pointer to the current metrics
+	error: Any error that occurred while gathering metrics
+*/
 func (bp *BaseProvider) GetMetrics() (*ProviderMetrics, error) {
 	return &bp.metrics, nil
 }
 
-// HealthCheck performs a basic health check
+/*
+HealthCheck performs a basic health check on the provider.
+It evaluates the provider's health based on the error rate.
+
+Parameters:
+
+	ctx: Context for the health check operation
+
+Returns:
+
+	*utils.HealthStatus: A pointer to either StatusHealthy or StatusDegraded
+*/
 func (bp *BaseProvider) HealthCheck(ctx context.Context) *utils.HealthStatus {
 	status := utils.StatusHealthy
 	if bp.metrics.ErrorCount > bp.metrics.SuccessCount {

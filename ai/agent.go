@@ -118,7 +118,7 @@ func (agent *Agent) Generate(ctx context.Context, msg *provider.Message) <-chan 
 			params := agent.Context.Compile()
 
 			for event := range agent.accumulator.Generate(
-				ctx, agent.provider.Generate(ctx, params),
+				agent.provider.Generate(params),
 			) {
 				out <- event
 			}
@@ -216,8 +216,7 @@ func (agent *Agent) Analyze(out chan<- *provider.Event) {
 	accumulator := stream.NewAccumulator()
 
 	for event := range accumulator.Generate(
-		context.Background(),
-		agent.provider.Generate(context.Background(), agent.Context.Compile()),
+		agent.provider.Generate(agent.Context.Compile()),
 	) {
 		out <- event
 	}
