@@ -5,12 +5,31 @@ import (
 	"github.com/theapemachine/caramba/tweaker"
 )
 
+/*
+Context manages the conversation state and generation parameters for an agent.
+It maintains the configuration, generation parameters, and keeps track of
+the current iteration in the conversation flow. The Context is responsible
+for managing the conversation history and ensuring proper message formatting.
+*/
 type Context struct {
-	config    *Config
-	params    *provider.LLMGenerationParams
-	iteration int
+	config    *Config                       // Agent configuration
+	params    *provider.LLMGenerationParams // Parameters for language model generation
+	iteration int                           // Current conversation iteration count
 }
 
+/*
+NewContext creates and returns a new Context instance with the provided
+configuration. It initializes the generation parameters and sets the
+iteration counter to zero.
+
+Parameters:
+
+	config: The agent configuration to use for this context
+
+Returns:
+
+	*Context: A new Context instance initialized with the provided configuration
+*/
 func NewContext(config *Config) *Context {
 	return &Context{
 		config:    config,
@@ -19,6 +38,16 @@ func NewContext(config *Config) *Context {
 	}
 }
 
+/*
+AddUserPrompt adds a user message to the conversation thread and prepares
+the context for the next generation step. It formats the user message
+according to the configured tweaks and adds both the user message and
+an assistant context message to the thread.
+
+Parameters:
+
+	message: The user message to add to the conversation thread
+*/
 func (ctx *Context) AddUserPrompt(
 	message *provider.Message,
 ) {
