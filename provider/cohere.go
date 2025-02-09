@@ -10,6 +10,7 @@ import (
 	client "github.com/cohere-ai/cohere-go/v2/client"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
+	"github.com/theapemachine/errnie"
 )
 
 type Cohere struct {
@@ -88,6 +89,8 @@ func (cohere *Cohere) Name() string {
 }
 
 func (cohere *Cohere) Generate(params *LLMGenerationParams) <-chan *Event {
+	errnie.Info("selected provider", "provider", "cohere", "model", cohere.model)
+
 	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(context.Background())
 	cohere.cancel = cancel
@@ -120,6 +123,10 @@ func (cohere *Cohere) Generate(params *LLMGenerationParams) <-chan *Event {
 		if len(params.Thread.Messages) > 0 {
 			history = make([]*sdk.Message, len(params.Thread.Messages))
 			for i, msg := range params.Thread.Messages {
+				if msg.Content == "" {
+					continue
+				}
+
 				history[i] = cohere.convertMessages(msg)
 			}
 		}
@@ -157,7 +164,7 @@ func (cohere *Cohere) Generate(params *LLMGenerationParams) <-chan *Event {
 		for {
 			resp, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
-				doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
+				doneEvent := NewEvent("generate:stop", EventStop, "", "", nil)
 				out <- doneEvent
 				return
 			}
@@ -194,7 +201,7 @@ func (cohere *Cohere) Generate(params *LLMGenerationParams) <-chan *Event {
 			}
 
 			if event := resp.StreamEnd; event != nil {
-				doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
+				doneEvent := NewEvent("generate:stop", EventStop, "", "", nil)
 				if event.Response != nil {
 					doneEvent.Text = event.Response.Text
 				}

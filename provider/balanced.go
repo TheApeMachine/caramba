@@ -71,7 +71,7 @@ func (lb *BalancedProvider) Generate(params *LLMGenerationParams) <-chan *Event 
 		defer cancel()
 
 		// Try up to 3 times with different providers
-		for attempt := 0; attempt < 3; attempt++ {
+		for range 3 {
 			provider := lb.getHealthyProvider()
 			if provider == nil {
 				out <- NewEvent("generate:error", EventError, "no healthy providers available", "", nil)

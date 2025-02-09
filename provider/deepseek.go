@@ -31,6 +31,8 @@ func (d *DeepSeek) Name() string {
 }
 
 func (d *DeepSeek) Generate(params *LLMGenerationParams) <-chan *Event {
+	errnie.Info("selected provider", "provider", "deepseek", "model", d.model)
+
 	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(context.Background())
 	d.cancel = cancel
@@ -86,7 +88,7 @@ func (d *DeepSeek) Generate(params *LLMGenerationParams) <-chan *Event {
 				if err != nil {
 					if errors.Is(err, io.EOF) {
 						// Send done event
-						doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
+						doneEvent := NewEvent("generate:stop", EventStop, "", "", nil)
 						out <- doneEvent
 						return
 					}

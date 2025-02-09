@@ -61,46 +61,17 @@ func NewName() string {
 }
 
 /*
-ExtractCommands looks for any commands wrapped in <> and extracts both the main
-commands, and any parameter key/value pairs.
-*/
-func ExtractCommands(s string) (string, map[string]string) {
-	pattern := regexp.MustCompile(`<([^>]+)>`)
-	matches := pattern.FindStringSubmatch(s)
-
-	if len(matches) < 2 {
-		return "", nil
-	}
-
-	command := matches[1]
-
-	pattern = regexp.MustCompile(`(\w+)=([^>]+)`)
-	matches = pattern.FindStringSubmatch(command)
-
-	if len(matches) < 3 {
-		return "", nil
-	}
-
-	parameters := make(map[string]string)
-	for i := 2; i < len(matches); i += 2 {
-		parameters[matches[i]] = matches[i+1]
-	}
-
-	return command, parameters
-}
-
-/*
 ExtractJSONBlocks finds and parses JSON objects from a string.
 It specifically looks for JSON content within markdown-style code blocks
 that are marked with the 'json' language identifier. This is particularly
 useful when processing structured outputs from AI tools.
 */
-func ExtractJSONBlocks(s string) []map[string]interface{} {
+func ExtractJSONBlocks(s string) []map[string]any {
 	// Extract blocks marked with json language identifier
-	re := regexp.MustCompile("```json\\s*\\n([\\s\\S]*?)```")
+	re := regexp.MustCompile("```json([\\s\\S]*?)```")
 	matches := re.FindAllStringSubmatch(s, -1)
 
-	var results []map[string]interface{}
+	var results []map[string]any
 	for _, match := range matches {
 		if len(match) >= 2 {
 			if block := ParseJSON(strings.TrimSpace(match[1])); block != nil {
@@ -113,34 +84,12 @@ func ExtractJSONBlocks(s string) []map[string]interface{} {
 }
 
 /*
-ExtractCodeBlocks parses markdown-style code blocks from a string.
-Returns a map where keys are language identifiers and values are slices
-of code blocks for that language.
-*/
-func ExtractCodeBlocks(s string) map[string][]string {
-	// Updated regex: allow for Windows (\r\n) or Unix (\n) line breaks
-	re := regexp.MustCompile("```([a-zA-Z0-9]+)[\\r\\n]+([\\s\\S]*?)```")
-	matches := re.FindAllStringSubmatch(s, -1)
-
-	codeBlocks := make(map[string][]string)
-	for _, match := range matches {
-		if len(match) >= 3 {
-			language := match[1]
-			code := strings.TrimSpace(match[2])
-			codeBlocks[language] = append(codeBlocks[language], code)
-		}
-	}
-
-	return codeBlocks
-}
-
-/*
 ParseJSON safely converts a JSON string into a map.
 Returns nil if the input is not valid JSON, making it safe for parsing
 potentially invalid input.
 */
-func ParseJSON(s string) map[string]interface{} {
-	var result map[string]interface{}
+func ParseJSON(s string) map[string]any {
+	var result map[string]any
 	if err := json.Unmarshal([]byte(s), &result); err == nil {
 		return result
 	}

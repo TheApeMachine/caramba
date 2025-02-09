@@ -3,10 +3,10 @@ providers:
   anthropic: true
   gemini: true
   cohere: true
-  deepseek: true
+  deepseek: false
   huggingface: false
   nvidia: false
-  ollama: true
+  ollama: false
   lmstudio: false
 
 endpoints:
@@ -53,6 +53,12 @@ prompts:
 
       Below is the current context, which represents the history of your responses for the current user prompt.
       Each time you iterate, new context will be appended here.
+
+      [!IMPORTANT]
+      > Each iteration will be rendered as a new detail tag, which is done to clearly separate each iteration from
+      > each other. This is done automatically, and you should NEVER start adding your own details tags.
+      > The only exception to this rule is when you are using the scratchpad, in which case you should add a details
+      > tag around the scratchpad content, as previously described.
     iteration: |
       <details>
         <summary><{agent}> (<{role}>) - iteration: <{iteration}></summary>

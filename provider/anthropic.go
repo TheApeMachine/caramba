@@ -2,11 +2,13 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/charmbracelet/log"
 	"github.com/spf13/viper"
+	"github.com/theapemachine/errnie"
 )
 
 type Anthropic struct {
@@ -27,10 +29,12 @@ func NewAnthropic(apiKey string) *Anthropic {
 Name returns the name of the provider.
 */
 func (anthropic *Anthropic) Name() string {
-	return "anthropic (claude 3.5 sonnet)"
+	return "anthropic (" + anthropic.model + ")"
 }
 
 func (anthropic *Anthropic) Generate(params *LLMGenerationParams) <-chan *Event {
+	errnie.Info("selected provider", "provider", "anthropic", "model", anthropic.model)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	out := make(chan *Event)
 
@@ -66,13 +70,18 @@ func (anthropic *Anthropic) Generate(params *LLMGenerationParams) <-chan *Event 
 		systemMessage := []sdk.TextBlockParam{}
 
 		for _, message := range params.Thread.Messages {
+			if message.Content == "" {
+				continue
+			}
+
 			switch message.Role {
 			case RoleSystem:
-				systemMessage = append(systemMessage, sdk.NewTextBlock(message.Content))
+				systemMessage = append(systemMessage, sdk.NewTextBlock(strings.TrimSpace(message.Content)))
+
 			case RoleUser:
-				thread = append(thread, sdk.NewUserMessage(sdk.NewTextBlock(message.Content)))
+				thread = append(thread, sdk.NewUserMessage(sdk.NewTextBlock(strings.TrimSpace(message.Content))))
 			case RoleAssistant:
-				thread = append(thread, sdk.NewAssistantMessage(sdk.NewTextBlock(message.Content)))
+				thread = append(thread, sdk.NewAssistantMessage(sdk.NewTextBlock(strings.TrimSpace(message.Content))))
 			}
 		}
 
@@ -98,25 +107,26 @@ func (anthropic *Anthropic) Generate(params *LLMGenerationParams) <-chan *Event 
 				switch event := event.AsUnion().(type) {
 				case sdk.ContentBlockStartEvent:
 					if event.ContentBlock.Name != "" {
-						startEvent := NewEvent("generate:contentblock:start", EventStart, event.ContentBlock.Name, "", nil)
+						startEvent := NewEvent("anthropic:"+anthropic.model, EventStart, event.ContentBlock.Name, "", nil)
 						out <- startEvent
 					}
 				case sdk.ContentBlockDeltaEvent:
-					chunkEvent := NewEvent("generate:contentblock:delta", EventChunk, event.Delta.Text, event.Delta.PartialJSON, nil)
+					chunkEvent := NewEvent("anthropic:"+anthropic.model, EventChunk, event.Delta.Text, event.Delta.PartialJSON, nil)
 					out <- chunkEvent
 				case sdk.ContentBlockStopEvent:
-					doneEvent := NewEvent("generate:contentblock:stop", EventStop, "\n", "", nil)
+					doneEvent := NewEvent("anthropic:"+anthropic.model, EventStop, "", "", nil)
 					out <- doneEvent
 				case sdk.MessageStopEvent:
-					doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
+					doneEvent := NewEvent("anthropic:"+anthropic.model, EventStop, "", "", nil)
 					out <- doneEvent
+
 				}
 			}
 		}
 
 		if err := stream.Err(); err != nil {
 			log.Error("Error streaming Anthropic response", "error", err)
-			errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
+			errEvent := NewEvent("anthropic:"+anthropic.model, EventError, err.Error(), "", nil)
 			out <- errEvent
 			return
 		}

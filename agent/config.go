@@ -3,6 +3,7 @@ package agent
 import (
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/tweaker"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -36,6 +37,8 @@ Returns:
 	*Config: A new configuration instance initialized with the provided parameters
 */
 func NewConfig(system, role, name, toolschemas string) *Config {
+	errnie.Debug("new config", "name", name, "role", role)
+
 	return &Config{
 		Name:         name,
 		Role:         role,

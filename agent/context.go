@@ -51,6 +51,10 @@ Parameters:
 func (ctx *Context) AddMessage(
 	message *provider.Message,
 ) {
+	if message.Content == "" {
+		return
+	}
+
 	if message.Role == provider.RoleUser {
 		ctx.Config.Thread.AddMessage(
 			provider.NewMessage(

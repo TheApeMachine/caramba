@@ -1,6 +1,7 @@
 package system
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/theapemachine/caramba/agent"
@@ -116,11 +117,15 @@ func (pool *Pool) after(response string) {
 		),
 	)
 
-	errnie.Log("<<START AGENT: " + pool.selected.Config.Name + ">>\n")
-	for _, message := range pool.selected.Config.Thread.Messages {
-		errnie.Log(message.Content)
+	out := []string{
+		"<<START AGENT: " + pool.selected.Config.Name + ">>",
 	}
-	errnie.Log("<<END AGENT: " + pool.selected.Config.Name + ">>\n")
+	for _, message := range pool.selected.Config.Thread.Messages {
+		out = append(out, message.Content)
+	}
+	out = append(out, "<<END AGENT: "+pool.selected.Config.Name+">>\n")
+
+	errnie.Log(strings.Join(out, "\n"))
 }
 
 /*
@@ -162,6 +167,10 @@ func (pool *Pool) toolcall(
 	errnie.Info("processing toolcall: " + toolname)
 
 	switch toolname {
+	case "break":
+		out := pool.selected.Toolset.Use(accumulator, toolname, args, pool.selected.Generator)
+		pool.selected = nil
+		return out
 	case "show":
 		agents := make([]*agent.Generator, 0)
 
@@ -170,10 +179,6 @@ func (pool *Pool) toolcall(
 		}
 
 		return pool.selected.Toolset.Use(accumulator, toolname, args, agents...)
-	case "break":
-		out := pool.selected.Toolset.Use(accumulator, toolname, args, pool.selected.Generator)
-		pool.selected = nil
-		return out
 	default:
 		return pool.selected.Toolset.Use(accumulator, toolname, args, pool.selected.Generator)
 	}

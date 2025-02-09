@@ -26,7 +26,7 @@ func (thread *Thread) String() string {
 	builder := strings.Builder{}
 
 	for _, message := range thread.Messages {
-		builder.WriteString(message.Content + "\n")
+		builder.WriteString(message.Content)
 	}
 
 	return builder.String()

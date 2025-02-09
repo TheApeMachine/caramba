@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -46,6 +47,7 @@ Clear resets the accumulator's state by clearing the event chunks and error stat
 This method should be called before starting a new accumulation session.
 */
 func (accumulator *Accumulator) Clear() {
+	errnie.Debug("clearing accumulator", "chunks", len(accumulator.chunks))
 	accumulator.chunks = []*provider.Event{}
 	accumulator.err = nil
 }
@@ -59,6 +61,8 @@ Parameters:
 	fns: Variable number of functions to execute after accumulation
 */
 func (accumulator *Accumulator) After(fns ...func(str string)) {
+	errnie.Debug("registering after function", "fns", len(fns))
+
 	accumulator.after = append(accumulator.after, fns...)
 }
 
@@ -113,6 +117,10 @@ Parameters:
 	str: The text to append as a new event chunk
 */
 func (accumulator *Accumulator) Append(str string) {
+	if str == "" {
+		return
+	}
+
 	accumulator.chunks = append(accumulator.chunks, &provider.Event{
 		Type: provider.EventChunk,
 		Text: str,
@@ -141,16 +149,11 @@ func (accumulator *Accumulator) String() string {
 
 	for _, chunk := range accumulator.chunks {
 		if chunk.Type == provider.EventChunk && chunk.Text != "" {
-			out.WriteString(strings.TrimSpace(chunk.Text))
+			out.WriteString(chunk.Text)
 		}
 	}
 
-	buf := strings.TrimSpace(out.String())
-	if !strings.HasSuffix(buf, "\n") {
-		buf += "\n"
-	}
-
-	return strings.TrimSpace(out.String())
+	return out.String()
 }
 
 /*

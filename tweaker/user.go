@@ -14,7 +14,7 @@ func GetUserPrompt(user string) string {
 	userPrompt := v.GetString("prompts.templates.user")
 	userPrompt = strings.ReplaceAll(userPrompt, "<{user}>", "> "+user)
 
-	return "\n" + userPrompt + "\n"
+	return userPrompt
 }
 
 func GetContext() string {
@@ -31,5 +31,5 @@ func GetIteration(name, role string, iteration int, response string) string {
 	iterationPrompt = strings.ReplaceAll(iterationPrompt, "<{iteration}>", strconv.Itoa(iteration))
 	iterationPrompt = strings.ReplaceAll(iterationPrompt, "<{response}>", utils.Indent(response, 1))
 
-	return strings.TrimSpace(iterationPrompt)
+	return iterationPrompt
 }

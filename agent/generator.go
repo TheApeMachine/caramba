@@ -3,6 +3,7 @@ package agent
 import (
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -36,6 +37,8 @@ Returns:
 func NewGenerator(
 	config *Config, prvdr provider.Provider,
 ) *Generator {
+	errnie.Debug("new generator", "config", config.Name, "role", config.Role)
+
 	return &Generator{
 		config:      config,
 		provider:    prvdr,

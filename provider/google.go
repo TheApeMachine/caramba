@@ -43,6 +43,8 @@ func (gemini *Gemini) Name() string {
 }
 
 func (gemini *Gemini) Generate(params *LLMGenerationParams) <-chan *Event {
+	errnie.Info("selected provider", "provider", "google", "model", gemini.model)
+
 	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(context.Background())
 	gemini.cancel = cancel
@@ -160,7 +162,7 @@ func (gemini *Gemini) Generate(params *LLMGenerationParams) <-chan *Event {
 			default:
 				resp, err := stream.Next()
 				if err == iterator.Done {
-					doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
+					doneEvent := NewEvent("generate:stop", EventStop, "", "", nil)
 					out <- doneEvent
 					return
 				}

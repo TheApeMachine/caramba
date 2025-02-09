@@ -43,6 +43,8 @@ func (openai *OpenAI) Name() string {
 }
 
 func (openai *OpenAI) Generate(params *LLMGenerationParams) <-chan *Event {
+	errnie.Info("selected provider", "provider", "openai", "model", openai.model)
+
 	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -102,21 +104,21 @@ func (openai *OpenAI) Generate(params *LLMGenerationParams) <-chan *Event {
 
 				// Handle finished content from accumulator
 				if _, ok := acc.JustFinishedContent(); ok {
-					chunkEvent := NewEvent("openai:"+openai.model, EventChunk, "\n", "", nil)
+					chunkEvent := NewEvent("openai:"+openai.model, EventChunk, "", "", nil)
 					out <- chunkEvent
 					continue
 				}
 
 				// Handle tool calls from accumulator
 				if tool, ok := acc.JustFinishedToolCall(); ok {
-					toolEvent := NewEvent("openai:"+openai.model, EventFunction, "\n", tool.Arguments, nil)
+					toolEvent := NewEvent("openai:"+openai.model, EventFunction, "", tool.Arguments, nil)
 					out <- toolEvent
 					continue
 				}
 
 				// Handle refusals from accumulator
 				if refusal, ok := acc.JustFinishedRefusal(); ok {
-					refusalEvent := NewEvent("openai:"+openai.model, EventError, "\n", refusal, nil)
+					refusalEvent := NewEvent("openai:"+openai.model, EventError, "", refusal, nil)
 					out <- refusalEvent
 					continue
 				}
@@ -143,7 +145,7 @@ func (openai *OpenAI) Generate(params *LLMGenerationParams) <-chan *Event {
 		}
 
 		// Send done event
-		doneEvent := NewEvent("openai:"+openai.model, EventStop, "\n", "", nil)
+		doneEvent := NewEvent("openai:"+openai.model, EventStop, "", "", nil)
 		out <- doneEvent
 	}()
 

@@ -17,7 +17,7 @@ func NewGenerationParams(thread *Thread) *LLMGenerationParams {
 		Thread:           thread,
 		Tools:            make([]Tool, 0),
 		Process:          nil,
-		Temperature:      0.5,
+		Temperature:      0.1,
 		MaxTokens:        4096,
 		TopP:             0.9,
 		TopK:             50,

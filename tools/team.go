@@ -8,6 +8,7 @@ import (
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/utils"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -97,10 +98,10 @@ Returns:
 	string: The result of the team's processing
 */
 func (team *Team) Use(
-	accumulator *stream.Accumulator,
-	input map[string]any,
-	generators ...*agent.Generator,
+	accumulator *stream.Accumulator, input map[string]any, generators ...*agent.Generator,
 ) *stream.Accumulator {
+	errnie.Debug("using team", "team", input["team_name"])
+
 	newAgent := agent.NewGenerator(
 		agent.NewConfig(
 			input["system_prompt"].(string),

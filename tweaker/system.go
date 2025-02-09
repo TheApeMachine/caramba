@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/theapemachine/caramba/utils"
 )
 
 func GetSystemPrompt(system, name, role, schemas string) string {
@@ -20,15 +21,7 @@ func GetSystemPrompt(system, name, role, schemas string) string {
 
 	systemPrompt = strings.ReplaceAll(systemPrompt, "<{role}>", v.GetString(fmt.Sprintf("prompts.templates.roles.%s", role)))
 	systemPrompt = strings.ReplaceAll(systemPrompt, "<{identity}>", "NAME: "+name)
-	systemPrompt = strings.ReplaceAll(systemPrompt, "<{tools}>", indent(schemas, 1))
+	systemPrompt = strings.ReplaceAll(systemPrompt, "<{tools}>", strings.TrimSpace(utils.Indent(schemas, 1)))
 
 	return systemPrompt
-}
-
-func indent(text string, index int) string {
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		lines[i] = strings.Repeat("  ", index) + line
-	}
-	return strings.Join(lines, "\n")
 }

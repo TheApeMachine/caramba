@@ -33,6 +33,8 @@ func (ollama *Ollama) Name() string {
 }
 
 func (ollama *Ollama) Generate(params *LLMGenerationParams) <-chan *Event {
+	errnie.Info("selected provider", "provider", "ollama", "model", ollama.model)
+
 	out := make(chan *Event)
 	ctx, cancel := context.WithCancel(context.Background())
 	ollama.cancel = cancel
@@ -128,7 +130,7 @@ func (ollama *Ollama) Generate(params *LLMGenerationParams) <-chan *Event {
 		}
 
 		// Send done event
-		doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
+		doneEvent := NewEvent("generate:stop", EventStop, "", "", nil)
 		out <- doneEvent
 	}()
 
