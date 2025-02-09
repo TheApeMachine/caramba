@@ -52,7 +52,7 @@ func (gemini *Gemini) Generate(params *LLMGenerationParams) <-chan *Event {
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEvent("generate:start", EventStart, "gemini:command-r", "", nil)
+		startEvent := NewEvent("generate:start", EventStart, "gemini:gemini-1.5-flash", "", nil)
 		out <- startEvent
 
 		// Convert our tools to Gemini tool format only if tools exist

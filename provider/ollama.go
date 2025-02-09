@@ -32,9 +32,9 @@ func (ollama *Ollama) Name() string {
 	return "ollama (llama3.2:3b)"
 }
 
-func (ollama *Ollama) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+func (ollama *Ollama) Generate(params *LLMGenerationParams) <-chan *Event {
 	out := make(chan *Event)
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	ollama.cancel = cancel
 
 	go func() {
@@ -42,7 +42,7 @@ func (ollama *Ollama) Generate(ctx context.Context, params *LLMGenerationParams)
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEvent("generate:start", EventStart, "ollama:llama3.2:3b", "", nil)
+		startEvent := NewEvent("generate:start", EventStart, "ollama: "+ollama.model, "", nil)
 		out <- startEvent
 
 		// Convert our tools to Ollama format only if tools exist

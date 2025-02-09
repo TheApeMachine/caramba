@@ -140,8 +140,8 @@ func (accumulator *Accumulator) String() string {
 	var out strings.Builder
 
 	for _, chunk := range accumulator.chunks {
-		if chunk.Type == provider.EventChunk {
-			out.WriteString(chunk.Text)
+		if chunk.Type == provider.EventChunk && chunk.Text != "" {
+			out.WriteString(strings.TrimSpace(chunk.Text))
 		}
 	}
 

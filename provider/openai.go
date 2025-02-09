@@ -14,6 +14,7 @@ import (
 
 type OpenAI struct {
 	*BaseProvider
+	origin string
 	client *sdk.Client
 	model  string
 	cancel context.CancelFunc
@@ -21,16 +22,19 @@ type OpenAI struct {
 
 func NewOpenAI(apiKey string) *OpenAI {
 	return &OpenAI{
+		origin:       "openai",
 		BaseProvider: NewBaseProvider(),
 		client:       sdk.NewClient(),
 		model:        viper.GetViper().GetString("models.openai"),
 	}
 }
 
-func NewOpenAICompatible(apiKey, endpoint, model string) *OpenAI {
+func NewOpenAICompatible(apiKey, endpoint, model, origin string) *OpenAI {
 	return &OpenAI{
-		client: sdk.NewClient(option.WithAPIKey(apiKey), option.WithBaseURL(endpoint)),
-		model:  model,
+		origin:       origin,
+		BaseProvider: NewBaseProvider(),
+		client:       sdk.NewClient(option.WithAPIKey(apiKey), option.WithBaseURL(endpoint)),
+		model:        model,
 	}
 }
 
@@ -47,7 +51,7 @@ func (openai *OpenAI) Generate(params *LLMGenerationParams) <-chan *Event {
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEvent("openai:gpt-4o-mini", EventStart, "", "", nil)
+		startEvent := NewEvent("openai:"+openai.model, EventStart, "", "", nil)
 		out <- startEvent
 
 		tools := openai.convertTools(params)
@@ -58,7 +62,7 @@ func (openai *OpenAI) Generate(params *LLMGenerationParams) <-chan *Event {
 		if len(messages) == 0 {
 			err := errors.New("no valid messages to process")
 			errnie.Error(err)
-			event := NewEvent("openai:gpt-4o-mini", EventError, "", err.Error(), nil)
+			event := NewEvent("openai:"+openai.model, EventError, "", err.Error(), nil)
 			out <- event
 			return
 		}
@@ -98,21 +102,21 @@ func (openai *OpenAI) Generate(params *LLMGenerationParams) <-chan *Event {
 
 				// Handle finished content from accumulator
 				if _, ok := acc.JustFinishedContent(); ok {
-					chunkEvent := NewEvent("openai:gpt-4o-mini", EventChunk, "\n", "", nil)
+					chunkEvent := NewEvent("openai:"+openai.model, EventChunk, "\n", "", nil)
 					out <- chunkEvent
 					continue
 				}
 
 				// Handle tool calls from accumulator
 				if tool, ok := acc.JustFinishedToolCall(); ok {
-					toolEvent := NewEvent("openai:gpt-4o-mini", EventFunction, "\n", tool.Arguments, nil)
+					toolEvent := NewEvent("openai:"+openai.model, EventFunction, "\n", tool.Arguments, nil)
 					out <- toolEvent
 					continue
 				}
 
 				// Handle refusals from accumulator
 				if refusal, ok := acc.JustFinishedRefusal(); ok {
-					refusalEvent := NewEvent("openai:gpt-4o-mini", EventError, "\n", refusal, nil)
+					refusalEvent := NewEvent("openai:"+openai.model, EventError, "\n", refusal, nil)
 					out <- refusalEvent
 					continue
 				}
@@ -120,7 +124,7 @@ func (openai *OpenAI) Generate(params *LLMGenerationParams) <-chan *Event {
 				// Extract content from delta if available
 				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 					chunkEvent := NewEvent(
-						"openai:gpt-4o-mini",
+						"openai:"+openai.model,
 						EventChunk,
 						chunk.Choices[0].Delta.Content,
 						chunk.Choices[0].Delta.JSON.RawJSON(),
@@ -133,13 +137,13 @@ func (openai *OpenAI) Generate(params *LLMGenerationParams) <-chan *Event {
 
 		if err := stream.Err(); err != nil {
 			log.Error("Error streaming OpenAI response", "error", err)
-			errEvent := NewEvent("openai:gpt-4o-mini", EventError, "", err.Error(), nil)
+			errEvent := NewEvent("openai:"+openai.model, EventError, "", err.Error(), nil)
 			out <- errEvent
 			return
 		}
 
 		// Send done event
-		doneEvent := NewEvent("generate:stop", EventStop, "\n", "", nil)
+		doneEvent := NewEvent("openai:"+openai.model, EventStop, "\n", "", nil)
 		out <- doneEvent
 	}()
 

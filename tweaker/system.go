@@ -19,8 +19,8 @@ func GetSystemPrompt(system, name, role, schemas string) string {
 	}
 
 	systemPrompt = strings.ReplaceAll(systemPrompt, "<{role}>", v.GetString(fmt.Sprintf("prompts.templates.roles.%s", role)))
-	systemPrompt = strings.ReplaceAll(systemPrompt, "<{identity}>", indent("NAME: "+name, 1))
-	systemPrompt = strings.ReplaceAll(systemPrompt, "<{tools}>", indent(schemas, 2))
+	systemPrompt = strings.ReplaceAll(systemPrompt, "<{identity}>", "NAME: "+name)
+	systemPrompt = strings.ReplaceAll(systemPrompt, "<{tools}>", indent(schemas, 1))
 
 	return systemPrompt
 }

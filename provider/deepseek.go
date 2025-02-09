@@ -30,9 +30,9 @@ func (d *DeepSeek) Name() string {
 	return fmt.Sprintf("deepseek (%s)", d.model)
 }
 
-func (d *DeepSeek) Generate(ctx context.Context, params *LLMGenerationParams) <-chan *Event {
+func (d *DeepSeek) Generate(params *LLMGenerationParams) <-chan *Event {
 	out := make(chan *Event)
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	d.cancel = cancel
 
 	go func() {
@@ -40,7 +40,7 @@ func (d *DeepSeek) Generate(ctx context.Context, params *LLMGenerationParams) <-
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEvent("generate:start", EventStart, "deepseek:command-r", "", nil)
+		startEvent := NewEvent("generate:start", EventStart, "deepseek:"+d.model, "", nil)
 		out <- startEvent
 
 		messages := d.convertMessages(params)

@@ -4,12 +4,16 @@ import (
 	"context"
 	"io"
 
+	"github.com/theapemachine/caramba/agent"
+	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/utils"
 )
 
 type Break struct {
-	Tool        string `json:"tool" jsonschema:"title=Tool,description=The tool to break out of your iteration loop,enum=break,required"`
-	FinalAnswer string `json:"final_answer" jsonschema:"title=Final Answer,description=Optionally add a finaly answer, synthesized from your iterations"`
+	Tool string `json:"tool" jsonschema:"title=Tool,description=The tool to break out of your iteration loop,enum=break,required"`
+	Args struct {
+		FinalAnswer string `json:"final_answer" jsonschema:"title=Final Answer,description=Your final answer, synthesized from your iterations,required"`
+	} `json:"args" jsonschema:"title=Arguments,description=The arguments to pass to the tool,required"`
 }
 
 func NewBreak() *Break {
@@ -23,15 +27,30 @@ func (brk *Break) Name() string {
 }
 
 func (brk *Break) Description() string {
-	return "Show information about the system state"
+	return "Break out of your iteration loop"
 }
 
-func (brk *Break) GenerateSchema() interface{} {
-	return utils.GenerateSchema[Show]()
+func (brk *Break) GenerateSchema() any {
+	return utils.GenerateSchema[Break]()
 }
 
-func (brk *Break) Use(input map[string]any) string {
-	return "break"
+func (brk *Break) Use(
+	accumulator *stream.Accumulator,
+	input map[string]any,
+	generators ...*agent.Generator,
+) *stream.Accumulator {
+	for _, generator := range generators {
+		generator.Status = agent.AgentStatusIdle
+
+		accumulator.Append(
+			utils.QuickWrap("BREAK", utils.JoinWith("\n",
+				"NAME  : "+generator.Ctx.Config.Name,
+				"STATUS: IDLE",
+			), 1),
+		)
+	}
+
+	return accumulator
 }
 
 func (brk *Break) Connect(ctx context.Context, rwc io.ReadWriteCloser) error {

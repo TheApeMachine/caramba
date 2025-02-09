@@ -4,9 +4,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/theapemachine/caramba/agent"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/system"
 	"github.com/theapemachine/caramba/tools"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
@@ -24,24 +24,13 @@ var testCmd = &cobra.Command{
 		os.Setenv("LOGFILE", "true")
 		errnie.InitLogger()
 
-		config := agent.NewConfig(
-			"default",
-			"coordinator",
-			utils.NewName(),
-			tools.NewToolset(),
-		)
+		pool := system.NewPool()
+		name := utils.NewName()
+		pool.Add("default", "coordinator", name, tools.NewToolset(
+			&tools.Team{},
+		))
 
-		generator := agent.NewGenerator(
-			config,
-			provider.NewBalancedProvider(),
-		)
-
-		executor := agent.NewExecutor(
-			config,
-			generator,
-		)
-
-		stream.NewConsumer().Print(executor.Generate(provider.NewMessage(
+		stream.NewConsumer().Print(pool.Select(name).Generate(provider.NewMessage(
 			provider.RoleUser,
 			"How many times do we find the letter r in the word strawberry?",
 		)), false)

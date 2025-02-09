@@ -6,7 +6,6 @@ import (
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/charmbracelet/log"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/spf13/viper"
 )
 
@@ -40,7 +39,7 @@ func (anthropic *Anthropic) Generate(params *LLMGenerationParams) <-chan *Event 
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEvent("generate:start", EventStart, "anthropic:claude-3.5-sonnet", "", nil)
+		startEvent := NewEvent("generate:start", EventStart, "anthropic:"+anthropic.model, "", nil)
 		out <- startEvent
 
 		// Initialize base params
@@ -117,7 +116,6 @@ func (anthropic *Anthropic) Generate(params *LLMGenerationParams) <-chan *Event 
 
 		if err := stream.Err(); err != nil {
 			log.Error("Error streaming Anthropic response", "error", err)
-			spew.Dump(params)
 			errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 			out <- errEvent
 			return

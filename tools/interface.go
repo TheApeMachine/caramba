@@ -4,13 +4,16 @@ import (
 	"context"
 	"io"
 	"strings"
+
+	"github.com/theapemachine/caramba/agent"
+	"github.com/theapemachine/caramba/stream"
 )
 
 type Tool interface {
 	Name() string
 	Description() string
-	GenerateSchema() interface{}
-	Use(map[string]any) string
+	GenerateSchema() any
+	Use(*stream.Accumulator, map[string]any, ...*agent.Generator) *stream.Accumulator
 	Connect(context.Context, io.ReadWriteCloser) error
 }
 
@@ -37,13 +40,15 @@ func NewToolset(tools ...Tool) *Toolset {
 }
 
 func (toolset *Toolset) Use(
+	accumulator *stream.Accumulator,
 	toolName string,
 	input map[string]any,
-) string {
+	generators ...*agent.Generator,
+) *stream.Accumulator {
 	if tool, ok := toolset.tools[toolName]; ok {
-		return tool.Use(input)
+		return tool.Use(accumulator, input, generators...)
 	}
-	return ""
+	return nil
 }
 
 func (toolset *Toolset) String() string {

@@ -3,9 +3,10 @@ providers:
   anthropic: true
   gemini: true
   cohere: true
+  deepseek: true
   huggingface: false
   nvidia: false
-  ollama: false
+  ollama: true
   lmstudio: false
 
 endpoints:
@@ -13,6 +14,7 @@ endpoints:
   anthropic: https://api.anthropic.com/v1
   gemini: https://generativelanguage.googleapis.com/v1beta/openai
   cohere: https://api.cohere.ai/v1
+  deepseek: https://api.deepseek.com/v1
   huggingface: https://api-inference.huggingface.co/models
   nvidia: https://integrate.api.nvidia.com/v1
   ollama: http://localhost:11434
@@ -23,11 +25,11 @@ models:
   anthropic: claude-3-5-sonnet-latest
   gemini: gemini-1.5-flash
   cohere: command-r
+  deepseek: deepseek-chat
   huggingface: gpt2
   nvidia: nvidia/llama-3.1-nemotron-70b-instruct
   ollama: deepseek-r1:8b
   lmstudio: bartowski/Llama-3.1-8B-Lexi-Uncensored-V2-GGUF
-  deepseek: deepseek-chat
 
 tools:
   qdrant:
@@ -46,20 +48,17 @@ prompts:
       <{user}>
 
       ---
-
     context: |
       ## Context
 
       Below is the current context, which represents the history of your responses for the current user prompt.
       Each time you iterate, new context will be appended here.
-
     iteration: |
       <details>
         <summary><{agent}> (<{role}>) - iteration: <{iteration}></summary>
 
         <{response}>
       </details>
-
     roles:
       coordinator: |
         ### Your Role
@@ -67,9 +66,8 @@ prompts:
         As a coordinator, you are responsible for the following:
 
         - BREAKDOWN: Start by reasoning through a task, step-by-step, and identify the key components, and the dependencies between them.
-        - TEAMS: Decide what type of teams are needed to handle the workload.
-        - CREATE: Create teamleads, and provide them with systems prompts. Do not include specific tasks in the system prompt, but rather
-          provide a general overview of the role of their team on a more generic level, so the team can handle any task in their domain.
+        - DOMAINS: Categorize the key components into high-level domains.
+        - TEAMS: Create teams for each domain.
         - INSTRUCT: Once the teamlead reports for duty, provide them with a list of tasks, and the dependencies between them.
         - EVALUATE: Evaluate the results of the teamleads, and provide follow-up instructions, if necessary.
         - ENSURE: Ensure that the workload is completed to a high standard.
@@ -80,7 +78,6 @@ prompts:
         > If you feel like attempting to complete the workload yourself, you must stop, and think about
         > what you are doing. Then, create one or more new teams, and delegate the workload to them.
         > DO NOT answer the user prompt yourself, use the tools available to you to create one or more teams.
-
       teamlead: |
         ### Your team
 
@@ -105,7 +102,6 @@ prompts:
         > If you feel like attempting to complete the workload yourself, you must stop, and think about
         > what you are doing. Then, create one or more new experts, and delegate the workload to them.
         > DO NOT answer the user prompt yourself, use the tools available to you to create one or more experts.
-
       verifier: |
         ### Your Role
 
@@ -132,7 +128,6 @@ prompts:
           did well, what the agent could have done better, and what the agent should do to improve their performance.
         - REPORT: Compile a detailed report on the agent's performance, and provide a list of recommendations for the agent to
           improve their performance.
-
     systems:
       default: |
         # M.A.R.V.I.N.

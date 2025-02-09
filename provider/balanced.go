@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
@@ -438,24 +439,62 @@ Returns:
 	error: Any error that occurred during provider initialization
 */
 func (bp *BalancedProvider) InitializeProviders() error {
-	// OpenAI
-	if openaiKey := os.Getenv("OPENAI_API_KEY"); openaiKey != "" {
-		bp.AddProvider(NewOpenAI(openaiKey))
+	v := viper.GetViper()
+
+	if v.GetBool("providers.openai") {
+		if openaiKey := os.Getenv("OPENAI_API_KEY"); openaiKey != "" {
+			bp.AddProvider(NewOpenAI(openaiKey))
+		}
 	}
 
-	// Anthropic
-	if anthropicKey := os.Getenv("ANTHROPIC_API_KEY"); anthropicKey != "" {
-		bp.AddProvider(NewAnthropic(anthropicKey))
+	if v.GetBool("providers.anthropic") {
+		if anthropicKey := os.Getenv("ANTHROPIC_API_KEY"); anthropicKey != "" {
+			bp.AddProvider(NewAnthropic(anthropicKey))
+		}
 	}
 
-	// Gemini
-	if geminiKey := os.Getenv("GEMINI_API_KEY"); geminiKey != "" {
-		bp.AddProvider(NewGemini(geminiKey))
+	if v.GetBool("providers.gemini") {
+		if geminiKey := os.Getenv("GEMINI_API_KEY"); geminiKey != "" {
+			bp.AddProvider(NewGemini(geminiKey))
+		}
 	}
 
-	// Cohere
-	if cohereKey := os.Getenv("COHERE_API_KEY"); cohereKey != "" {
-		bp.AddProvider(NewCohere(cohereKey))
+	if v.GetBool("providers.cohere") {
+		if cohereKey := os.Getenv("COHERE_API_KEY"); cohereKey != "" {
+			bp.AddProvider(NewCohere(cohereKey))
+		}
+	}
+
+	if v.GetBool("providers.deepseek") {
+		if deepseekKey := os.Getenv("DEEPSEEK_API_KEY"); deepseekKey != "" {
+			bp.AddProvider(NewDeepSeek(deepseekKey))
+		}
+	}
+
+	if v.GetBool("providers.ollama") {
+		bp.AddProvider(NewOllama("http://localhost:11434"))
+	}
+
+	if v.GetBool("providers.nvidia") {
+		if nvidiaKey := os.Getenv("NVIDIA_API_KEY"); nvidiaKey != "" {
+			bp.AddProvider(NewOpenAICompatible(
+				nvidiaKey,
+				v.GetString("endpoints.nvidia"),
+				v.GetString("models.nvidia"),
+				"nvidia",
+			))
+		}
+	}
+
+	if v.GetBool("providers.lmstudio") {
+		if lmstudioKey := os.Getenv("LMSTUDIO_API_KEY"); lmstudioKey != "" {
+			bp.AddProvider(NewOpenAICompatible(
+				lmstudioKey,
+				v.GetString("endpoints.lmstudio"),
+				v.GetString("models.lmstudio"),
+				"lmstudio",
+			))
+		}
 	}
 
 	// Check if any providers were added

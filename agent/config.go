@@ -2,7 +2,6 @@ package agent
 
 import (
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/caramba/tools"
 	"github.com/theapemachine/caramba/tweaker"
 )
 
@@ -17,7 +16,6 @@ type Config struct {
 	Role         string           // The role or purpose of the agent
 	SystemPrompt string           // Base system prompt for the agent
 	Thread       *provider.Thread // Conversation history and context
-	Toolset      *tools.Toolset   // Set of tools available to the agent
 	Temperature  float32          // Randomness in response generation
 }
 
@@ -37,7 +35,7 @@ Returns:
 
 	*Config: A new configuration instance initialized with the provided parameters
 */
-func NewConfig(system, role, name string, toolset *tools.Toolset) *Config {
+func NewConfig(system, role, name, toolschemas string) *Config {
 	return &Config{
 		Name:         name,
 		Role:         role,
@@ -45,11 +43,10 @@ func NewConfig(system, role, name string, toolset *tools.Toolset) *Config {
 		Thread: provider.NewThread(
 			provider.NewMessage(provider.RoleSystem,
 				tweaker.GetSystemPrompt(
-					system, name, role, toolset.String(),
+					system, name, role, toolschemas,
 				),
 			),
 		),
-		Toolset:     toolset,
 		Temperature: 0.1,
 	}
 }

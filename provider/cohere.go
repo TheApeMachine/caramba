@@ -28,27 +28,27 @@ func NewCohere(apiKey string) *Cohere {
 }
 
 // Version returns the provider version
-func (c *Cohere) Version() string {
+func (cohere *Cohere) Version() string {
 	return "1.0.0"
 }
 
 // Initialize sets up the provider
-func (c *Cohere) Initialize(ctx context.Context) error {
+func (cohere *Cohere) Initialize(ctx context.Context) error {
 	return nil
 }
 
 // PauseGeneration pauses the current generation
-func (c *Cohere) PauseGeneration() error {
+func (cohere *Cohere) PauseGeneration() error {
 	return nil
 }
 
 // ResumeGeneration resumes the current generation
-func (c *Cohere) ResumeGeneration() error {
+func (cohere *Cohere) ResumeGeneration() error {
 	return nil
 }
 
 // GetCapabilities returns the provider capabilities
-func (c *Cohere) GetCapabilities() map[string]interface{} {
+func (cohere *Cohere) GetCapabilities() map[string]interface{} {
 	return map[string]interface{}{
 		"streaming": true,
 		"tools":     true,
@@ -56,29 +56,29 @@ func (c *Cohere) GetCapabilities() map[string]interface{} {
 }
 
 // SupportsFeature checks if a feature is supported
-func (c *Cohere) SupportsFeature(feature string) bool {
-	caps := c.GetCapabilities()
+func (cohere *Cohere) SupportsFeature(feature string) bool {
+	caps := cohere.GetCapabilities()
 	supported, ok := caps[feature].(bool)
 	return ok && supported
 }
 
 // ValidateConfig validates the provider configuration
-func (c *Cohere) ValidateConfig() error {
+func (cohere *Cohere) ValidateConfig() error {
 	return nil
 }
 
 // Cleanup performs any necessary cleanup
-func (c *Cohere) Cleanup(ctx context.Context) error {
-	if c.client != nil {
-		c.client = nil
+func (cohere *Cohere) Cleanup(ctx context.Context) error {
+	if cohere.client != nil {
+		cohere.client = nil
 	}
 	return nil
 }
 
 // CancelGeneration cancels any ongoing generation
-func (c *Cohere) CancelGeneration(ctx context.Context) error {
-	if c.cancel != nil {
-		c.cancel()
+func (cohere *Cohere) CancelGeneration(ctx context.Context) error {
+	if cohere.cancel != nil {
+		cohere.cancel()
 	}
 	return nil
 }
@@ -97,7 +97,7 @@ func (cohere *Cohere) Generate(params *LLMGenerationParams) <-chan *Event {
 		defer cancel()
 
 		// Send start event
-		startEvent := NewEvent("generate:start", EventStart, "cohere:command-r", "", nil)
+		startEvent := NewEvent("generate:start", EventStart, "cohere:"+cohere.model, "", nil)
 		out <- startEvent
 
 		// Only add tools if they exist
@@ -120,12 +120,7 @@ func (cohere *Cohere) Generate(params *LLMGenerationParams) <-chan *Event {
 		if len(params.Thread.Messages) > 0 {
 			history = make([]*sdk.Message, len(params.Thread.Messages))
 			for i, msg := range params.Thread.Messages {
-				history[i] = &sdk.Message{
-					Role: string(msg.Role),
-					User: &sdk.ChatMessage{
-						Message: msg.Content,
-					},
-				}
+				history[i] = cohere.convertMessages(msg)
 			}
 		}
 
@@ -169,14 +164,13 @@ func (cohere *Cohere) Generate(params *LLMGenerationParams) <-chan *Event {
 
 			if err != nil {
 				log.Error("Error streaming Cohere response", "error", err)
-				spew.Dump(params)
 				errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 				out <- errEvent
 				return
 			}
 
 			if event := resp.StreamStart; event != nil {
-				startEvent := NewEvent("generate:start", EventStart, "cohere:command-r", "", nil)
+				startEvent := NewEvent("generate:start", EventStart, "cohere:"+cohere.model, "", nil)
 				out <- startEvent
 				continue
 			}
@@ -211,4 +205,32 @@ func (cohere *Cohere) Generate(params *LLMGenerationParams) <-chan *Event {
 	}()
 
 	return out
+}
+
+func (cohere *Cohere) convertMessages(msg *Message) *sdk.Message {
+	switch msg.Role {
+	case RoleSystem:
+		return &sdk.Message{
+			Role: string(msg.Role),
+			System: &sdk.ChatMessage{
+				Message: msg.Content,
+			},
+		}
+	case RoleUser:
+		return &sdk.Message{
+			Role: string(msg.Role),
+			User: &sdk.ChatMessage{
+				Message: msg.Content,
+			},
+		}
+	case RoleAssistant:
+		return &sdk.Message{
+			Role: string(msg.Role),
+			Chatbot: &sdk.ChatMessage{
+				Message: msg.Content,
+			},
+		}
+	}
+
+	return nil
 }
