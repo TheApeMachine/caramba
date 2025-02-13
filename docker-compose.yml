@@ -64,6 +64,7 @@ services:
       - n8n_storage:/home/node/.n8n
       - ./n8n/backup:/backup
       - ./shared:/data/shared
+      - /Users/theapemachine/go/src/github.com/fanfactory/sharepoint/extracted_documents/:/tmp/extracted
     depends_on:
       postgres:
         condition: service_healthy
@@ -194,6 +195,11 @@ services:
     <<: *init-ollama
     depends_on:
       - ollama-gpu
+
+  browserless:
+    image: ghcr.io/browserless/chromium
+    ports:
+      - "3100:3000"
 
 volumes:
   n8n_storage:

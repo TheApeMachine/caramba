@@ -97,7 +97,7 @@ func TestString(t *testing.T) {
 		accumulator := NewAccumulator()
 
 		Convey("When getting string output", func() {
-			_, _ = accumulator.Write([]byte(" test string "))
+			accumulator.Append("test string")
 			result := accumulator.String()
 
 			Convey("Then it should return trimmed string", func() {
@@ -112,8 +112,8 @@ func TestCompile(t *testing.T) {
 		accumulator := NewAccumulator()
 
 		Convey("When compiling normal chunks", func() {
-			_, _ = accumulator.Write([]byte("chunk1 "))
-			_, _ = accumulator.Write([]byte("chunk2"))
+			accumulator.Append("chunk1 ")
+			accumulator.Append("chunk2")
 			result := accumulator.String()
 
 			Convey("Then it should combine chunks correctly", func() {
@@ -134,8 +134,9 @@ func TestCompile(t *testing.T) {
 		})
 
 		Convey("When compiling with error state", func() {
-			accumulator.err = errors.New("test error")
-			result := accumulator.String()
+			testErr := errors.New("test error")
+			accumulator.err = testErr
+			result := accumulator.Error()
 
 			Convey("Then it should return error event", func() {
 				So(result, ShouldNotBeNil)
@@ -154,7 +155,7 @@ func TestError(t *testing.T) {
 			accumulator.err = testErr
 
 			Convey("Then it should return the error", func() {
-				So(accumulator.Error(), ShouldEqual, testErr)
+				So(accumulator.Error(), ShouldEqual, "test error")
 			})
 		})
 	})
@@ -171,7 +172,8 @@ func TestWrite(t *testing.T) {
 			Convey("Then it should append to chunks", func() {
 				So(n, ShouldEqual, len(text))
 				So(err, ShouldBeNil)
-				So(accumulator.chunks[0].Text, ShouldEqual, "test text")
+				So(len(accumulator.chunks), ShouldEqual, 1)
+				So(accumulator.chunks[0].Text, ShouldEqual, string(text))
 			})
 		})
 	})

@@ -11,14 +11,6 @@ type Teamlead struct {
 	Interactions []Interaction `json:"interactions,omitempty" jsonschema:"title=Interactions,description=How agents should interact during execution"`
 }
 
-type Agent struct {
-	Name         string   `json:"name" jsonschema:"title=Name,description=The name of the agent,required"`
-	Role         string   `json:"role" jsonschema:"title=Role,description=The role of the agent,enum=researcher,enum=developer,enum=analyst,enum=coordinator,required"`
-	Workloads    []string `json:"workloads" jsonschema:"title=Workloads,description=The workloads to assign to the agent,required"`
-	SystemPrompt string   `json:"system_prompt" jsonschema:"title=System Prompt,description=A detailed system prompt to use for the agent,required"`
-	Dependencies []string `json:"dependencies,omitempty" jsonschema:"title=Dependencies,description=Other agents this agent depends on"`
-}
-
 type Interaction struct {
 	Type              string   `json:"type" jsonschema:"title=Type,description=A short descriptive name for the interaction,required"`
 	Agents            []string `json:"agents" jsonschema:"title=Agents,description=Agents involved in this interaction,required"`

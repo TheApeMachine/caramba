@@ -35,19 +35,19 @@ func (neo4j *Neo4j) GenerateSchema() string {
 /*
 NewNeo4j creates a new Neo4j client.
 */
-func NewNeo4j() *Neo4j {
+func NewNeo4j() (*Neo4j, error) {
 	ctx := context.Background()
 
 	client, err := neo4j.NewDriverWithContext("neo4j://localhost:7687", neo4j.BasicAuth("neo4j", "securepassword", ""))
 	if err != nil {
-		return &Neo4j{}
+		return nil, fmt.Errorf("failed to create Neo4j client: %w", err)
 	}
 
 	if err := client.VerifyConnectivity(ctx); err != nil {
-		return &Neo4j{}
+		return nil, fmt.Errorf("failed to verify Neo4j connectivity: %w", err)
 	}
 
-	return &Neo4j{client: client}
+	return &Neo4j{client: client}, nil
 }
 
 /*
@@ -55,63 +55,82 @@ Initialize initializes the Neo4j client.
 */
 func (n *Neo4j) Initialize() error {
 	if n.client == nil {
-		return nil
+		return fmt.Errorf("Neo4j client is not initialized")
 	}
 	ctx := context.Background()
 	return n.client.VerifyConnectivity(ctx)
 }
 
 func (n *Neo4j) Connect() error {
+	if n.client == nil {
+		return fmt.Errorf("Neo4j client is not initialized")
+	}
 	return nil
 }
 
 /*
 Query executes a Cypher query on the Neo4j database and returns the results.
 */
-func (n *Neo4j) Query(query string) (out []map[string]interface{}, err error) {
+func (n *Neo4j) Query(query string) ([]map[string]interface{}, error) {
 	if n.client == nil {
-		return nil, fmt.Errorf("Neo4j is not available")
+		return nil, fmt.Errorf("Neo4j client is not initialized")
 	}
 
 	ctx := context.Background()
 	session := n.client.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close(ctx)
 
-	result := errnie.SafeMust(func() (neo4j.ResultWithContext, error) {
-		return session.Run(ctx, query, nil)
-	})
+	result, err := session.Run(ctx, query, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
 
 	var records []map[string]interface{}
 	for result.Next(ctx) {
 		record := result.Record()
-		records = append(records, record.Values[0].(neo4j.Node).Props)
+		if node, ok := record.Values[0].(neo4j.Node); ok {
+			records = append(records, node.Props)
+		}
 	}
 
-	errnie.MustVoid(result.Err())
+	if err := result.Err(); err != nil {
+		return nil, fmt.Errorf("error processing results: %w", err)
+	}
+
 	return records, nil
 }
 
 /*
-Write executes a Cypher query on the Neo4j database and returns the results.
+Write executes a Cypher write query on the Neo4j database.
 */
-func (n *Neo4j) Write(query string) neo4j.ResultWithContext {
+func (n *Neo4j) Write(query string) error {
 	if n.client == nil {
-		return nil
+		return fmt.Errorf("Neo4j client is not initialized")
 	}
 
 	ctx := context.Background()
 	session := n.client.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
 
-	return errnie.SafeMust(func() (neo4j.ResultWithContext, error) {
-		return session.Run(ctx, query, nil)
-	})
+	result, err := session.Run(ctx, query, nil)
+	if err != nil {
+		return fmt.Errorf("failed to execute write query: %w", err)
+	}
+
+	if err := result.Err(); err != nil {
+		return fmt.Errorf("error processing write results: %w", err)
+	}
+
+	return nil
 }
 
 /*
 Close closes the Neo4j client connection.
 */
 func (n *Neo4j) Close() error {
+	if n.client == nil {
+		return fmt.Errorf("Neo4j client is not initialized")
+	}
 	ctx := context.Background()
 	return n.client.Close(ctx)
 }
@@ -121,21 +140,34 @@ Use implements the Tool interface and is used to execute the tool.
 */
 func (neo4j *Neo4j) Use(ctx context.Context, args map[string]any) string {
 	if neo4j.client == nil {
-		return "Neo4j is not available"
+		return "Neo4j client is not initialized"
 	}
 
 	switch neo4j.Operation {
 	case "query":
-		records := errnie.SafeMust(func() ([]map[string]interface{}, error) {
-			return neo4j.Query(args["cypher"].(string))
-		})
-		result := errnie.SafeMust(func() ([]byte, error) {
-			return json.Marshal(records)
-		})
+		cypher, ok := args["cypher"].(string)
+		if !ok {
+			return "Missing or invalid cypher query"
+		}
+		records, err := neo4j.Query(cypher)
+		if err != nil {
+			return fmt.Sprintf("Query failed: %v", err)
+		}
+		result, err := json.Marshal(records)
+		if err != nil {
+			return fmt.Sprintf("Failed to marshal results: %v", err)
+		}
 		return string(result)
 
 	case "write":
-		return neo4j.Write(args["query"].(string)).Err().Error()
+		query, ok := args["query"].(string)
+		if !ok {
+			return "Missing or invalid write query"
+		}
+		if err := neo4j.Write(query); err != nil {
+			return fmt.Sprintf("Write failed: %v", err)
+		}
+		return "Write operation successful"
 
 	default:
 		return "Unsupported operation"

@@ -38,7 +38,10 @@ func (n *Neo4jQuery) GenerateSchema() interface{} {
 }
 
 func (n *Neo4jQuery) Initialize() error {
-	neo4jTool := NewNeo4j()
+	neo4jTool, err := NewNeo4j()
+	if err != nil {
+		return err
+	}
 	n.client = neo4jTool.client
 	return nil
 }

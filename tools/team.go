@@ -7,6 +7,7 @@ import (
 	"github.com/theapemachine/caramba/agent"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/types"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
@@ -71,7 +72,7 @@ Returns:
 	string: The string "team" which identifies this implementation
 */
 func (team *Team) Name() string {
-	return team.Args.TeamName
+	return "team"
 }
 
 /*
@@ -98,28 +99,67 @@ Returns:
 	string: The result of the team's processing
 */
 func (team *Team) Use(
-	accumulator *stream.Accumulator, input map[string]any, generators ...*agent.Generator,
+	accumulator *stream.Accumulator, input map[string]any, generators ...types.Generator,
 ) *stream.Accumulator {
 	errnie.Debug("using team", "team", input["team_name"])
 
+	if len(generators) == 0 {
+		errnie.Warn("no generators provided to team")
+		return accumulator
+	}
+
+	teamName, ok := input["team_name"].(string)
+	if !ok || teamName == "" {
+		errnie.Warn("invalid team name")
+		return accumulator
+	}
+
+	systemPrompt, ok := input["system_prompt"].(string)
+	if !ok || systemPrompt == "" {
+		errnie.Warn("invalid system prompt")
+		return accumulator
+	}
+
 	newAgent := agent.NewGenerator(
 		agent.NewConfig(
-			input["system_prompt"].(string),
+			systemPrompt,
 			"teamlead",
-			input["team_name"].(string),
+			teamName,
 			NewToolset(&Agent{}).String(),
 		),
 		provider.NewBalancedProvider(),
 	)
 
 	for _, generator := range generators {
-		generator.Agents[input["team_name"].(string)] = newAgent
+		if generator != nil {
+			generator.Agents()[teamName] = newAgent
+		}
 	}
 
+	// Process the teamlead's initial response
+	teamResponse := ""
+	for event := range newAgent.Generate(provider.NewMessage(
+		provider.RoleUser,
+		"You are now the teamlead for "+teamName+". Please acknowledge your role and await further instructions.",
+	)) {
+		if event.Type == provider.EventChunk {
+			teamResponse += event.Text
+		}
+	}
+
+	// Add the teamlead's response to their thread
+	newAgent.Ctx().AddMessage(provider.NewMessage(
+		provider.RoleAssistant,
+		teamResponse,
+	))
+
+	// Add ready message to accumulator
 	accumulator.Append(
 		utils.QuickWrap("TEAM", utils.JoinWith("\n",
-			"NAME  : "+input["team_name"].(string),
-			"STATUS: READY",
+			"NAME  : "+teamName,
+			"ROLE  : teamlead",
+			"STATUS: ready for instructions",
+			"RESPONSE: "+teamResponse,
 		), 1),
 	)
 

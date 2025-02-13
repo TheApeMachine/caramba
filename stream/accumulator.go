@@ -80,7 +80,7 @@ Returns:
 	<-chan *provider.Event: Output channel of processed events
 */
 func (accumulator *Accumulator) Generate(in <-chan *provider.Event) <-chan *provider.Event {
-	_, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.TODO())
 	out := make(chan *provider.Event)
 
 	accumulator.wg.Add(1)
@@ -93,14 +93,35 @@ func (accumulator *Accumulator) Generate(in <-chan *provider.Event) <-chan *prov
 		accumulator.Clear()
 
 		for event := range in {
-			if event.Type == provider.EventError {
-				accumulator.err = errors.New(event.Text)
-			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if event == nil {
+					continue
+				}
 
-			out <- event
-			accumulator.chunks = append(accumulator.chunks, event)
+				if event.Type == provider.EventError {
+					accumulator.err = errors.New(event.Text)
+					out <- event
+					return
+				}
+
+				if event.Type == provider.EventStop {
+					out <- event
+					// Run after functions before returning
+					for _, fn := range accumulator.after {
+						fn(accumulator.String())
+					}
+					return
+				}
+
+				out <- event
+				accumulator.chunks = append(accumulator.chunks, event)
+			}
 		}
 
+		// If we get here without seeing a stop event, run after functions
 		for _, fn := range accumulator.after {
 			fn(accumulator.String())
 		}
@@ -153,7 +174,7 @@ func (accumulator *Accumulator) String() string {
 		}
 	}
 
-	return out.String()
+	return strings.TrimSpace(out.String())
 }
 
 /*
@@ -164,7 +185,10 @@ Returns:
 	string: The error message, or empty string if no error occurred
 */
 func (accumulator *Accumulator) Error() string {
-	return errors.Unwrap(accumulator.err).Error()
+	if accumulator.err == nil {
+		return ""
+	}
+	return accumulator.err.Error()
 }
 
 /*
@@ -198,7 +222,11 @@ Returns:
 	err: Any error that occurred during writing
 */
 func (accumulator *Accumulator) Write(p []byte) (n int, err error) {
-	return accumulator.buffer.Write(p)
+	n, err = accumulator.buffer.Write(p)
+	if err == nil && n > 0 {
+		accumulator.Append(string(p))
+	}
+	return n, err
 }
 
 /*

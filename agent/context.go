@@ -3,6 +3,7 @@ package agent
 import (
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/tweaker"
+	"github.com/theapemachine/caramba/types"
 )
 
 /*
@@ -12,9 +13,9 @@ the current iteration in the conversation flow. The Context is responsible
 for managing the conversation history and ensuring proper message formatting.
 */
 type Context struct {
-	Config    *Config                       // Agent configuration
-	Params    *provider.LLMGenerationParams // Parameters for language model generation
-	Iteration int                           // Current conversation iteration count
+	config    types.Config                  // Agent configuration
+	params    *provider.LLMGenerationParams // Parameters for language model generation
+	iteration int                           // Current conversation iteration count
 }
 
 /*
@@ -30,11 +31,11 @@ Returns:
 
 	*Context: A new Context instance initialized with the provided configuration
 */
-func NewContext(config *Config) *Context {
+func NewContext(config types.Config) types.Context {
 	return &Context{
-		Config:    config,
-		Params:    provider.NewGenerationParams(config.Thread),
-		Iteration: 0,
+		config:    config,
+		params:    provider.NewGenerationParams(config.Thread()),
+		iteration: 0,
 	}
 }
 
@@ -56,24 +57,37 @@ func (ctx *Context) AddMessage(
 	}
 
 	if message.Role == provider.RoleUser {
-		ctx.Config.Thread.AddMessage(
+		ctx.config.Thread().AddMessage(
 			provider.NewMessage(
 				provider.RoleUser,
 				tweaker.GetUserPrompt(message.Content),
 			),
 		)
 
-		ctx.Config.Thread.AddMessage(
-			provider.NewMessage(
-				provider.RoleAssistant,
-				tweaker.GetContext(),
-			),
-		)
-
 		return
 	}
 
-	ctx.Config.Thread.AddMessage(
+	ctx.config.Thread().AddMessage(
 		provider.NewMessage(message.Role, message.Content),
 	)
+}
+
+func (ctx *Context) Params() *provider.LLMGenerationParams {
+	return ctx.params
+}
+
+func (ctx *Context) Iteration() int {
+	return ctx.iteration
+}
+
+func (ctx *Context) SetIteration(iteration int) {
+	ctx.iteration = iteration
+}
+
+func (ctx *Context) Config() types.Config {
+	return ctx.config
+}
+
+func (ctx *Context) Thread() *provider.Thread {
+	return ctx.config.Thread()
 }

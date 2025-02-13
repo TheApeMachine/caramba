@@ -4,14 +4,14 @@ import (
 	"context"
 	"io"
 
-	"github.com/theapemachine/caramba/agent"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/types"
 	"github.com/theapemachine/caramba/utils"
 )
 
 type Show struct {
-	Tool   string `json:"tool" jsonschema:"title=Tool,description=The tool to show information about the system,enum=show,required"`
-	Args   struct {
+	Tool string `json:"tool" jsonschema:"title=Tool,description=The tool to show information about the system,enum=show,required"`
+	Args struct {
 		Scope string `json:"scope" jsonschema:"title=Scope,description=The scope of the information to show,enum=agents,required"`
 	} `json:"args" jsonschema:"title=Arguments,description=The arguments to pass to the tool,required"`
 }
@@ -35,14 +35,14 @@ func (show *Show) GenerateSchema() interface{} {
 func (show *Show) Use(
 	accumulator *stream.Accumulator,
 	input map[string]any,
-	generators ...*agent.Generator,
+	generators ...types.Generator,
 ) *stream.Accumulator {
 	var names []string
 
 	for _, generator := range generators {
 		names = append(names, utils.JoinWith("\n",
-			"NAME: "+generator.Ctx.Config.Name,
-			"ROLE: "+generator.Ctx.Config.Role,
+			"NAME: "+generator.Ctx().Config().Name(),
+			"ROLE: "+generator.Ctx().Config().Role(),
 		))
 	}
 

@@ -3,6 +3,7 @@ package agent
 import (
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/types"
 	"github.com/theapemachine/errnie"
 )
 
@@ -14,12 +15,12 @@ the streaming of responses and maintains the agent's status throughout the
 generation process.
 */
 type Generator struct {
-	config      *Config
+	config      types.Config
 	provider    provider.Provider
-	Ctx         *Context
-	Accumulator *stream.Accumulator
-	Status      AgentStatus
-	Agents      map[string]*Generator
+	ctx         types.Context
+	accumulator *stream.Accumulator
+	status      types.AgentStatus
+	agents      map[string]types.Generator
 }
 
 /*
@@ -42,10 +43,10 @@ func NewGenerator(
 	return &Generator{
 		config:      config,
 		provider:    prvdr,
-		Ctx:         NewContext(config),
-		Accumulator: stream.NewAccumulator(),
-		Status:      AgentStatusIdle,
-		Agents:      make(map[string]*Generator),
+		ctx:         NewContext(config),
+		accumulator: stream.NewAccumulator(),
+		status:      types.AgentStatusIdle,
+		agents:      make(map[string]types.Generator),
 	}
 }
 
@@ -65,16 +66,37 @@ Returns:
 func (generator *Generator) Generate(
 	message *provider.Message,
 ) <-chan *provider.Event {
-	generator.Status = AgentStatusBusy
+	generator.status = types.AgentStatusBusy
+	generator.accumulator.Clear()
 
 	if message.Role == provider.RoleUser {
-		generator.Ctx = NewContext(generator.config)
+		generator.ctx = NewContext(generator.config)
 	}
 
-	generator.Ctx.AddMessage(message)
-	generator.Ctx.Iteration++
+	generator.ctx.AddMessage(message)
+	generator.ctx.SetIteration(generator.ctx.Iteration() + 1)
 
-	return generator.Accumulator.Generate(
-		generator.provider.Generate(generator.Ctx.Params),
+	return generator.accumulator.Generate(
+		generator.provider.Generate(generator.ctx.Params()),
 	)
+}
+
+func (generator *Generator) Status() types.AgentStatus {
+	return generator.status
+}
+
+func (generator *Generator) SetStatus(status types.AgentStatus) {
+	generator.status = status
+}
+
+func (generator *Generator) Accumulator() *stream.Accumulator {
+	return generator.accumulator
+}
+
+func (generator *Generator) Ctx() types.Context {
+	return generator.ctx
+}
+
+func (generator *Generator) Agents() map[string]types.Generator {
+	return generator.agents
 }

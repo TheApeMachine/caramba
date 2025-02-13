@@ -3,11 +3,13 @@ package cmd
 import (
 	"os"
 
+	"github.com/google/uuid"
+	sdk "github.com/openai/openai-go"
 	"github.com/spf13/cobra"
+	"github.com/theapemachine/caramba/ai"
+	"github.com/theapemachine/caramba/process/persona"
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/caramba/stream"
 	"github.com/theapemachine/caramba/system"
-	"github.com/theapemachine/caramba/tools"
 	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
@@ -24,16 +26,33 @@ var testCmd = &cobra.Command{
 		os.Setenv("LOGFILE", "true")
 		errnie.InitLogger()
 
-		pool := system.NewPool()
-		name := utils.NewName()
-		pool.Add("default", "coordinator", name, tools.NewToolset(
-			&tools.Team{},
-		))
+		agentProcess := &persona.Agent{}
+		schema := agentProcess.GenerateSchema()
 
-		stream.NewConsumer().Print(pool.Select(name).Generate(provider.NewMessage(
-			provider.RoleUser,
-			"How many times do we find the letter r in the word strawberry?",
-		)), false)
+		agent := ai.NewAgent(uuid.New().String(), utils.NewName())
+		agent.Stream()
+
+		q := system.NewQueue()
+		q.Start()
+
+		q.Ingress(&system.Envelope{
+			To: "",
+			Payload: &provider.StructuredParams{
+				Messages: []sdk.ChatCompletionMessageParamUnion{
+					sdk.SystemMessage("Act like you are a highly efficient, advanced AI agent, part of a complex, sophisticated multi-agent system."),
+					sdk.UserMessage(""),
+				},
+				Schema: sdk.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:        sdk.F(agentProcess.Name()),
+					Description: sdk.F(agentProcess.Description()),
+					Schema:      sdk.F(any(schema)),
+					Strict:      sdk.Bool(true),
+				},
+				Tools: []sdk.ChatCompletionToolParam{},
+			},
+		})
+
+		select {}
 	},
 }
 

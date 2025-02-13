@@ -64,7 +64,8 @@ func NewName() string {
 ExtractJSONBlocks finds and parses JSON objects from a string.
 It specifically looks for JSON content within markdown-style code blocks
 that are marked with the 'json' language identifier. This is particularly
-useful when processing structured outputs from AI tools.
+useful when processing structured outputs from AI tools. If a JSON array
+is found, each object within it will be added to the results individually.
 */
 func ExtractJSONBlocks(s string) []map[string]any {
 	// Extract blocks marked with json language identifier
@@ -74,7 +75,16 @@ func ExtractJSONBlocks(s string) []map[string]any {
 	var results []map[string]any
 	for _, match := range matches {
 		if len(match) >= 2 {
-			if block := ParseJSON(strings.TrimSpace(match[1])); block != nil {
+			content := strings.TrimSpace(match[1])
+			// Try parsing as array first
+			var arrayResult []map[string]any
+			if err := json.Unmarshal([]byte(content), &arrayResult); err == nil {
+				results = append(results, arrayResult...)
+				continue
+			}
+
+			// If not an array, try parsing as single object
+			if block := ParseJSON(content); block != nil {
 				results = append(results, block)
 			}
 		}
@@ -117,6 +127,18 @@ func GenerateSchema[T any]() string {
 	}
 
 	return string(buf)
+}
+
+func GenerateGenericSchema[T any]() interface{} {
+	// Structured Outputs uses a subset of JSON schema
+	// These flags are necessary to comply with the subset
+	reflector := jsonschema.Reflector{
+		AllowAdditionalProperties: false,
+		DoNotReference:            true,
+	}
+	var v T
+	schema := reflector.Reflect(v)
+	return schema
 }
 
 /*

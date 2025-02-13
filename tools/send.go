@@ -4,9 +4,9 @@ import (
 	"context"
 	"io"
 
-	"github.com/theapemachine/caramba/agent"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/types"
 	"github.com/theapemachine/caramba/utils"
 )
 
@@ -39,12 +39,18 @@ func (send *Send) GenerateSchema() any {
 	return utils.GenerateSchema[Send]()
 }
 
+/*
+Use sends a message from the first generator (agent) any other
+generators passed in after that.
+It then takes the responses from the receiving generators, and
+appends them to the accumulator, owned by the first generator.
+*/
 func (send *Send) Use(
 	accumulator *stream.Accumulator,
 	input map[string]any,
-	generators ...*agent.Generator,
+	generators ...types.Generator,
 ) *stream.Accumulator {
-	for _, generator := range generators {
+	for _, generator := range generators[1:] {
 		accumulator.Generate(generator.Generate(provider.NewMessage(
 			provider.RoleUser,
 			send.renderMessage(input),

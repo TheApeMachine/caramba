@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/errnie"
 )
 
@@ -25,17 +23,7 @@ var (
 
 			errnie.InitLogger()
 
-			if len(args) == 0 {
-				fmt.Println("Please specify an example name")
-				return
-			}
-
-			switch args[0] {
-			case "coding-agent":
-				examples.NewExampleAgent(examples.NewCodingAgent()).Run()
-			default:
-				fmt.Printf("Unknown example: %s\n", args[0])
-			}
+			return
 		},
 	}
 )

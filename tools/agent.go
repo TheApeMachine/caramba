@@ -7,6 +7,7 @@ import (
 	"github.com/theapemachine/caramba/agent"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/types"
 	"github.com/theapemachine/caramba/utils"
 )
 
@@ -48,7 +49,7 @@ Returns:
 func (agentTool *Agent) Use(
 	accumulator *stream.Accumulator,
 	input map[string]any,
-	generators ...*agent.Generator,
+	generators ...types.Generator,
 ) *stream.Accumulator {
 	out := make(chan *provider.Event)
 
@@ -66,7 +67,7 @@ func (agentTool *Agent) Use(
 		)
 
 		for _, generator := range generators {
-			generator.Agents[input["agent_name"].(string)] = newAgent
+			generator.Agents()[input["agent_name"].(string)] = newAgent
 		}
 
 		accumulator.Append(
@@ -89,7 +90,7 @@ Returns:
 	string: The agent's name
 */
 func (agentTool *Agent) Name() string {
-	return agentTool.Args.AgentName
+	return "agent"
 }
 
 /*
@@ -101,7 +102,7 @@ Returns:
 	string: A description of what the agent does and how it operates
 */
 func (agentTool *Agent) Description() string {
-	return agentTool.Args.SystemPrompt
+	return "agent"
 }
 
 /*

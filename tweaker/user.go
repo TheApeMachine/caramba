@@ -14,7 +14,7 @@ func GetUserPrompt(user string) string {
 	userPrompt := v.GetString("prompts.templates.user")
 	userPrompt = strings.ReplaceAll(userPrompt, "<{user}>", "> "+user)
 
-	return userPrompt
+	return userPrompt + "\n\n" + GetContext()
 }
 
 func GetContext() string {

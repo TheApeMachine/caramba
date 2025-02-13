@@ -49,11 +49,12 @@ func (gemini *Gemini) Generate(params *LLMGenerationParams) <-chan *Event {
 	ctx, cancel := context.WithCancel(context.Background())
 	gemini.cancel = cancel
 
+	chat := gemini.model.StartChat()
+
 	go func() {
 		defer close(out)
 		defer cancel()
 
-		// Send start event
 		startEvent := NewEvent("generate:start", EventStart, "gemini:gemini-1.5-flash", "", nil)
 		out <- startEvent
 
@@ -109,9 +110,8 @@ func (gemini *Gemini) Generate(params *LLMGenerationParams) <-chan *Event {
 		}
 
 		// Convert our messages to Gemini content format
-		var geminiMessages []*genai.Content
 		if len(params.Thread.Messages) > 0 {
-			geminiMessages = make([]*genai.Content, 0, len(params.Thread.Messages))
+			chat.History = make([]*genai.Content, 0, len(params.Thread.Messages))
 			for _, msg := range params.Thread.Messages {
 				var role string
 				switch msg.Role {
@@ -126,7 +126,7 @@ func (gemini *Gemini) Generate(params *LLMGenerationParams) <-chan *Event {
 				}
 
 				if msg.Content != "" {
-					geminiMessages = append(geminiMessages, &genai.Content{
+					chat.History = append(chat.History, &genai.Content{
 						Parts: []genai.Part{
 							genai.Text(msg.Content),
 						},
@@ -142,10 +142,9 @@ func (gemini *Gemini) Generate(params *LLMGenerationParams) <-chan *Event {
 		}
 
 		// Only proceed if we have messages
-		if len(geminiMessages) == 0 {
+		if len(chat.History) == 0 {
 			err := errors.New("no valid messages to process")
 			log.Error("No valid messages to process", "error", err)
-			spew.Dump(params)
 			errEvent := NewEvent("generate:error", EventError, err.Error(), "", nil)
 			out <- errEvent
 			return
@@ -153,7 +152,7 @@ func (gemini *Gemini) Generate(params *LLMGenerationParams) <-chan *Event {
 
 		// Get the last message for generation
 		lastMessage := params.Thread.Messages[len(params.Thread.Messages)-1].Content
-		stream := gemini.model.GenerateContentStream(ctx, genai.Text(lastMessage))
+		stream := chat.SendMessageStream(ctx, genai.Text(lastMessage))
 
 		for {
 			select {

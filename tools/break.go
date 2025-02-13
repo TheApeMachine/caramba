@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/theapemachine/caramba/agent"
 	"github.com/theapemachine/caramba/stream"
+	"github.com/theapemachine/caramba/types"
 	"github.com/theapemachine/caramba/utils"
 )
 
@@ -37,14 +37,14 @@ func (brk *Break) GenerateSchema() any {
 func (brk *Break) Use(
 	accumulator *stream.Accumulator,
 	input map[string]any,
-	generators ...*agent.Generator,
+	generators ...types.Generator,
 ) *stream.Accumulator {
 	for _, generator := range generators {
-		generator.Status = agent.AgentStatusIdle
+		generator.SetStatus(types.AgentStatusIdle)
 
 		accumulator.Append(
 			utils.QuickWrap("BREAK", utils.JoinWith("\n",
-				"NAME  : "+generator.Ctx.Config.Name,
+				"NAME  : "+generator.Ctx().Config().Name(),
 				"STATUS: IDLE",
 			), 1),
 		)

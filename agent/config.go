@@ -13,11 +13,11 @@ system prompt, conversation thread, available tools, and generation
 parameters.
 */
 type Config struct {
-	Name         string           // Unique identifier for the agent
-	Role         string           // The role or purpose of the agent
-	SystemPrompt string           // Base system prompt for the agent
-	Thread       *provider.Thread // Conversation history and context
-	Temperature  float32          // Randomness in response generation
+	name         string           // Unique identifier for the agent
+	role         string           // The role or purpose of the agent
+	systemPrompt string           // Base system prompt for the agent
+	thread       *provider.Thread // Conversation history and context
+	temperature  float32          // Randomness in response generation
 }
 
 /*
@@ -40,16 +40,36 @@ func NewConfig(system, role, name, toolschemas string) *Config {
 	errnie.Debug("new config", "name", name, "role", role)
 
 	return &Config{
-		Name:         name,
-		Role:         role,
-		SystemPrompt: system,
-		Thread: provider.NewThread(
+		name:         name,
+		role:         role,
+		systemPrompt: system,
+		thread: provider.NewThread(
 			provider.NewMessage(provider.RoleSystem,
 				tweaker.GetSystemPrompt(
 					system, name, role, toolschemas,
 				),
 			),
 		),
-		Temperature: 0.1,
+		temperature: 0.1,
 	}
+}
+
+func (config *Config) Name() string {
+	return config.name
+}
+
+func (config *Config) Role() string {
+	return config.role
+}
+
+func (config *Config) SystemPrompt() string {
+	return config.systemPrompt
+}
+
+func (config *Config) Thread() *provider.Thread {
+	return config.thread
+}
+
+func (config *Config) Temperature() float32 {
+	return config.temperature
 }

@@ -1,8 +1,8 @@
 providers:
   openai: true
-  anthropic: true
-  gemini: true
-  cohere: true
+  anthropic: false
+  gemini: false
+  cohere: false
   deepseek: false
   huggingface: false
   nvidia: false
@@ -38,12 +38,23 @@ tools:
 
 prompts:
   templates:
+    teambuilding: |
+      As the teamlead, you should build a team of experts, who will be responsible for executing on tasks,
+      within the domain of your team.
+
+      You should start by reasoning step-by-step what types of experts could be useful to your team, not just
+      for the current task, but also for future tasks.
+
+      Once you have identified the experts, you should create a system prompt for each expert, which will be used to
+      guide their behavior. Make sure to build deep, and sophisticated personalities, besides their expertise.
+
+      Use the agent tool to create the experts, and provide them with the system prompts.
     message: |
       [MESSAGE agent="<{agent}>" role="<{role}>" id="<{messageid}>"]
         <{message}>
       [/MESSAGE]
     user: |
-      ## User Prompt
+      ## Current User Prompt
 
       <{user}>
 
@@ -194,3 +205,8 @@ prompts:
 
           <{scratchpad}>
         </details>
+
+        > [!IMPORTANT]
+        > This is the ONLY valid usage of the <details> tag, in NO other case should you EVER use the <details> tag.
+        > Using the <details> tag in any other case will break the system, as it is used internally to segment
+        > information.

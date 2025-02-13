@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/charmbracelet/log"
 	sdk "github.com/openai/openai-go"
@@ -12,30 +13,106 @@ import (
 	"github.com/theapemachine/errnie"
 )
 
+type StructuredParams struct {
+	Messages []sdk.ChatCompletionMessageParamUnion
+	Schema   sdk.ResponseFormatJSONSchemaJSONSchemaParam
+	Tools    []sdk.ChatCompletionToolParam
+}
+
+type SchemaParams[T any] struct {
+	Name        T
+	Description T
+	Schema      T
+	Strict      T
+}
+
 type OpenAI struct {
 	*BaseProvider
 	origin string
 	client *sdk.Client
 	model  string
+	ctx    context.Context
 	cancel context.CancelFunc
+	pr     *io.PipeReader
+	pw     *io.PipeWriter
 }
 
 func NewOpenAI(apiKey string) *OpenAI {
+	model := viper.GetViper().GetString("models.openai")
+	errnie.Info("new provider", "provider", "openai", "model", model)
+
+	pr, pw := io.Pipe()
+
 	return &OpenAI{
 		origin:       "openai",
 		BaseProvider: NewBaseProvider(),
-		client:       sdk.NewClient(),
-		model:        viper.GetViper().GetString("models.openai"),
+		client:       sdk.NewClient(option.WithAPIKey(apiKey)),
+		model:        model,
+		pr:           pr,
+		pw:           pw,
 	}
 }
 
 func NewOpenAICompatible(apiKey, endpoint, model, origin string) *OpenAI {
+	pr, pw := io.Pipe()
+
 	return &OpenAI{
 		origin:       origin,
 		BaseProvider: NewBaseProvider(),
 		client:       sdk.NewClient(option.WithAPIKey(apiKey), option.WithBaseURL(endpoint)),
 		model:        model,
+		pr:           pr,
+		pw:           pw,
 	}
+}
+
+func (openai *OpenAI) construct(params *StructuredParams) sdk.ChatCompletionNewParams {
+	errnie.Info("construct", "provider", "openai", "model", openai.model)
+
+	out := sdk.ChatCompletionNewParams{
+		Messages: sdk.F(params.Messages),
+		ResponseFormat: sdk.F[sdk.ChatCompletionNewParamsResponseFormatUnion](
+			sdk.ResponseFormatJSONSchemaParam{
+				Type:       sdk.F(sdk.ResponseFormatJSONSchemaTypeJSONSchema),
+				JSONSchema: sdk.F(params.Schema),
+			},
+		),
+		Model: sdk.F(openai.model),
+	}
+
+	if len(params.Tools) > 0 {
+		out.Tools = sdk.F(params.Tools)
+	}
+
+	return out
+}
+
+func (openai *OpenAI) Stream(params *StructuredParams) (*sdk.ChatCompletion, error) {
+	errnie.Info("streaming", "provider", "openai", "model", openai.model)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	completion, err := openai.client.Chat.Completions.New(ctx, openai.construct(params))
+
+	if err != nil {
+		errnie.Error(err)
+	}
+
+	return completion, err
+}
+
+func (openai *OpenAI) Read(p []byte) (n int, err error) {
+	return openai.pr.Read(p)
+}
+
+func (openai *OpenAI) Write(p []byte) (n int, err error) {
+	if openai.cancel != nil {
+		openai.cancel()
+	}
+
+	openai.ctx, openai.cancel = context.WithCancel(context.Background())
+
+	return openai.pw.Write(p)
 }
 
 func (openai *OpenAI) Name() string {
