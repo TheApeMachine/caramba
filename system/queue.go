@@ -1,139 +1,112 @@
 package system
 
 import (
+	"encoding/json"
 	"sync"
 
-	sdk "github.com/openai/openai-go"
-	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/caramba/ai"
+	"github.com/theapemachine/caramba/datura"
+	"github.com/theapemachine/caramba/utils"
 	"github.com/theapemachine/errnie"
 )
 
-type Envelope struct {
-	From    string
-	To      string
-	Payload *provider.StructuredParams
-}
-
-type Channel struct {
-	identifier string
-	route      chan *Envelope
-	i          chan *Envelope
-	o          chan *provider.StructuredParams
-}
-
-func (channel *Channel) Start() {
-	errnie.Info("channel", "identifier", channel.identifier, "operation", "start")
-
-	go func() {
-		for {
-			select {
-			case message := <-channel.i:
-				errnie.Info("send", "sender", channel.identifier)
-				channel.route <- message
-			}
-		}
-	}()
-}
+var once sync.Once
+var instance *Queue
 
 type Queue struct {
-	channels map[string]*Channel
-	topics   map[string][]string
-	route    chan *Envelope
+	agents map[string]*ai.Agent
+	topics map[string][]*ai.Agent
 }
 
-var queueOnce sync.Once
-var queueInstance *Queue
-
 func NewQueue() *Queue {
-	queueOnce.Do(func() {
-		queueInstance = &Queue{
-			channels: make(map[string]*Channel),
-			route:    make(chan *Envelope),
+	once.Do(func() {
+		instance = &Queue{
+			agents: make(map[string]*ai.Agent),
+			topics: make(map[string][]*ai.Agent),
 		}
 	})
 
-	return queueInstance
+	return instance
 }
 
-func (queue *Queue) Subscribe(topic, identifier string) {
-	if queue.topics == nil {
-		queue.topics = make(map[string][]string)
-	}
+func (q *Queue) AddAgent(agent *ai.Agent) {
+	q.agents[agent.Identity.ID] = agent
+}
 
-	if _, ok := queue.topics[topic]; !ok {
-		queue.topics[topic] = []string{identifier}
+func (q *Queue) GetAgent(id string) *ai.Agent {
+	return q.agents[id]
+}
+
+func (q *Queue) RemoveAgent(id string) {
+	delete(q.agents, id)
+}
+
+func (q *Queue) SendMessage(artifact *datura.Artifact) {
+	decrypted, err := utils.DecryptPayload(artifact)
+
+	if errnie.Error(err) != nil {
 		return
 	}
 
-	queue.topics[topic] = append(queue.topics[topic], identifier)
-}
+	var payload map[string]any
+	err = json.Unmarshal(decrypted, &payload)
 
-func (queue *Queue) Claim(
-	identifier string,
-) (chan *Envelope, chan *provider.StructuredParams) {
-	errnie.Info("claim", "identifier", identifier)
-
-	i := make(chan *Envelope)
-	o := make(chan *provider.StructuredParams)
-
-	queue.channels[identifier] = &Channel{
-		identifier: identifier,
-		route:      queue.route,
-		i:          i,
-		o:          o,
+	if errnie.Error(err) != nil {
+		return
 	}
 
-	queue.channels[identifier].Start()
-
-	return i, o
-}
-
-func (queue *Queue) Ingress(message *Envelope) {
-	errnie.Info("ingress")
-
-	if message.To == "" {
-		for _, channel := range queue.channels {
-			channel.o <- message.Payload
+	switch datura.ArtifactRole(artifact.Role()) {
+	case datura.ArtifactRoleMessage:
+		if agent, ok := q.agents[payload["from"].(string)]; ok {
+			agent.SendMessage(artifact)
 		}
-		return
-	}
 
-	if channel, ok := queue.channels[message.To]; ok {
-		channel.o <- message.Payload
-	}
-}
-
-func (queue *Queue) Start() {
-	errnie.Info("queue", "operation", "start")
-
-	go func() {
-		for {
-			select {
-			case message := <-queue.route:
-				if _, ok := queue.channels[message.To]; !ok {
-					if message.To == "" {
-						// Broadcasting to all.
-						for identifier, channel := range queue.channels {
-							// Do not broadcast to sender.
-							if identifier == message.From {
-								continue
-							}
-
-							channel.o <- message.Payload
-						}
-					}
-
-					message.Payload.Messages = append(
-						message.Payload.Messages,
-						sdk.AssistantMessage("return to sender, address unknown"),
-					)
-
-					queue.channels[message.From].o <- message.Payload
-					continue
-				}
-
-				queue.channels[message.To].o <- message.Payload
+	case datura.ArtifactRoleTopic:
+		if agents, ok := q.topics[payload["topic"].(string)]; ok {
+			for _, agent := range agents {
+				agent.SendMessage(artifact)
 			}
 		}
-	}()
+
+	case datura.ArtifactRoleBroadcast:
+		for _, agent := range q.agents {
+			agent.SendMessage(artifact)
+		}
+	}
+}
+
+func (q *Queue) Subscribe(topic string, agent *ai.Agent) {
+	if _, ok := q.topics[topic]; !ok {
+		q.topics[topic] = make([]*ai.Agent, 0)
+	}
+
+	for _, a := range q.topics[topic] {
+		if a.Identity.ID == agent.Identity.ID {
+			return
+		}
+	}
+
+	q.topics[topic] = append(q.topics[topic], agent)
+}
+
+func (q *Queue) Unsubscribe(topic string, agent *ai.Agent) {
+	if agents, ok := q.topics[topic]; ok {
+		for i, a := range agents {
+			if a.Identity.ID == agent.Identity.ID {
+				q.topics[topic] = append(agents[:i], agents[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+func (q *Queue) GetTopicSubscribers(topic string) []*ai.Agent {
+	if agents, ok := q.topics[topic]; ok {
+		return agents
+	}
+	return []*ai.Agent{}
+}
+
+func (q *Queue) GetAllAgents() map[string]*ai.Agent {
+	return q.agents
 }
