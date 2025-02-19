@@ -65,6 +65,7 @@ services:
       - ./n8n/backup:/backup
       - ./shared:/data/shared
       - /Users/theapemachine/go/src/github.com/fanfactory/sharepoint/extracted_documents/:/tmp/extracted
+      - ./n8n/backup/n8n-nodes-mcp-server:/home/node/.n8n/custom/n8n-nodes-mcp-server
     depends_on:
       postgres:
         condition: service_healthy
@@ -199,7 +200,9 @@ services:
   browserless:
     image: ghcr.io/browserless/chromium
     ports:
-      - "3100:3000"
+      - "3000:3000"
+    environment:
+      - TOKEN=6R0W53R135510
 
 volumes:
   n8n_storage:

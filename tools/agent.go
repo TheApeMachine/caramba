@@ -1,128 +1,120 @@
 package tools
 
 import (
-	"context"
-	"io"
+	"encoding/json"
 
-	"github.com/theapemachine/caramba/agent"
+	"github.com/theapemachine/caramba/datura"
 	"github.com/theapemachine/caramba/provider"
-	"github.com/theapemachine/caramba/stream"
-	"github.com/theapemachine/caramba/types"
 	"github.com/theapemachine/caramba/utils"
 )
 
-/*
-Agent represents an agent with specific roles and capabilities.
-*/
-type Agent struct {
-	Tool string `json:"tool" jsonschema:"title=Tool,description=The tool to use for the agent,enum=agent,required"`
-	Args struct {
-		AgentName    string `json:"agent_name" jsonschema:"title=Agent Name,description=The name of the agent,required"`
-		Role         string `json:"role" jsonschema:"title=Role,description=The role of this agent,required"`
-		SystemPrompt string `json:"system_prompt" jsonschema:"title=System Prompt,description=The system prompt to use for the agent,required"`
-	} `json:"args" jsonschema:"title=Arguments,description=The arguments to pass to the agent,required"`
+type AgentTool struct {
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Parameters  provider.Parameter `json:"parameters"`
 }
 
-/*
-NewAgent creates and returns a new Agent instance with the specified parameters.
-
-Returns:
-
-	*Agent: A new Agent instance
-*/
-func NewAgent() *Agent {
-	return &Agent{}
+func NewAgentTool() *AgentTool {
+	return &AgentTool{
+		Name:        "agent",
+		Description: "This tool is used to create a new agent.",
+		Parameters: provider.Parameter{
+			Properties: map[string]interface{}{
+				"id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier for the identity",
+				},
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "The name of the identity",
+				},
+				"description": map[string]interface{}{
+					"type":        "string",
+					"description": "A description of the identity",
+				},
+				"role": map[string]interface{}{
+					"type":        "string",
+					"description": "The role of the identity",
+				},
+				"personality": map[string]interface{}{
+					"type":        "string",
+					"description": "The personality of the identity",
+				},
+				"motivation": map[string]interface{}{
+					"type":        "string",
+					"description": "The motivation of the identity",
+				},
+				"beliefs": map[string]interface{}{
+					"type":        "string",
+					"description": "The beliefs of the identity",
+				},
+				"goals": map[string]interface{}{
+					"type":        "array",
+					"items":       map[string]interface{}{"type": "string"},
+					"description": "The goals of the identity",
+				},
+				"instructions": map[string]interface{}{
+					"type":        "string",
+					"description": "The instructions of the identity",
+				},
+			},
+			Required: []string{"id", "name", "description", "role", "personality", "motivation", "beliefs", "goals", "instructions"},
+		},
+	}
 }
 
-/*
-Use creates a new agent, which belongs to the agent being passed in.
+func (tool *AgentTool) Convert() provider.Tool {
+	return provider.Tool{
+		Name:        tool.Name,
+		Description: tool.Description,
+		Parameters:  tool.Parameters,
+	}
+}
 
-Parameters:
+type AgentCreator interface {
+	AddAgent(role string, identity interface{}, tools []provider.Tool)
+}
 
-	input: A map of input parameters for the agent to process
-	generators: A list of agents.
+func (tool *AgentTool) Use(agent interface{}, artifact *datura.Artifact) {
+	decrypted, err := utils.DecryptPayload(artifact)
+	if err != nil {
+		panic(err)
+	}
 
-Returns:
+	var params map[string]interface{}
+	err = json.Unmarshal(decrypted, &params)
+	if err != nil {
+		panic(err)
+	}
 
-	string: The result of the agent's processing
-*/
-func (agentTool *Agent) Use(
-	accumulator *stream.Accumulator,
-	input map[string]any,
-	generators ...types.Generator,
-) *stream.Accumulator {
-	out := make(chan *provider.Event)
+	// Extract goals as []string
+	goalsInterface := params["goals"].([]interface{})
+	goals := make([]string, len(goalsInterface))
+	for i, g := range goalsInterface {
+		goals[i] = g.(string)
+	}
 
-	go func() {
-		defer close(out)
+	// Create identity map
+	identity := map[string]interface{}{
+		"id":           params["id"].(string),
+		"name":         params["name"].(string),
+		"description":  params["description"].(string),
+		"role":         params["role"].(string),
+		"personality":  params["personality"].(string),
+		"motivation":   params["motivation"].(string),
+		"beliefs":      params["beliefs"].(string),
+		"goals":        goals,
+		"instructions": params["instructions"].(string),
+	}
 
-		newAgent := agent.NewGenerator(
-			agent.NewConfig(
-				input["agent_name"].(string),
-				input["role"].(string),
-				input["system_prompt"].(string),
-				NewToolset().String(),
-			),
-			provider.NewBalancedProvider(),
+	if creator, ok := agent.(AgentCreator); ok {
+		creator.AddAgent(
+			params["role"].(string),
+			identity,
+			[]provider.Tool{
+				NewCommandTool().Convert(),
+				NewMessageTool().Convert(),
+			},
 		)
-
-		for _, generator := range generators {
-			generator.Agents()[input["agent_name"].(string)] = newAgent
-		}
-
-		accumulator.Append(
-			utils.QuickWrap("AGENT", utils.JoinWith("\n",
-				"NAME  : "+input["agent_name"].(string),
-				"ROLE  : "+input["role"].(string),
-				"STATUS: READY",
-			), 1),
-		)
-	}()
-
-	return accumulator
-}
-
-/*
-Name returns the identifier for this agent implementation.
-
-Returns:
-
-	string: The agent's name
-*/
-func (agentTool *Agent) Name() string {
-	return "agent"
-}
-
-/*
-Description returns a human-readable description of the agent's purpose
-and functionality.
-
-Returns:
-
-	string: A description of what the agent does and how it operates
-*/
-func (agentTool *Agent) Description() string {
-	return "agent"
-}
-
-/*
-Connect establishes a connection for the agent using the provided
-ReadWriteCloser. This allows the agent to communicate with external
-systems or interfaces.
-
-Parameters:
-
-	ctx: The context for the connection operation
-	rwc: The ReadWriteCloser to use for communication
-
-Returns:
-
-	error: Any error that occurred during connection setup
-*/
-func (agentTool *Agent) Connect(ctx context.Context, rwc io.ReadWriteCloser) error {
-	return nil
-}
-
-func (agentTool *Agent) GenerateSchema() any {
-	return utils.GenerateSchema[Agent]()
+	}
 }
