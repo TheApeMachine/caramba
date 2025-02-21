@@ -47,11 +47,16 @@ x-init-ollama: &init-ollama
     image: ollama/ollama:latest
     container_name: ollama-pull-llama
     volumes:
-        - ollama_storage:/root/.ollama
-    entrypoint: /bin/sh
-    command:
-        - "-c"
-        - "sleep 3; OLLAMA_HOST=ollama:11434 ollama pull llama3.2"
+        - n8n_storage:/home/node/.n8n
+        - ./n8n/backup:/backup
+        - ./shared:/data/shared
+        - /Users/theapemachine/go/src/github.com/fanfactory/sharepoint/extracted_documents/:/tmp/extracted
+        - ./n8n/backup/n8n-nodes-mcp-server:/home/node/.n8n/custom/n8n-nodes-mcp-server
+    depends_on:
+        postgres:
+            condition: service_healthy
+        n8n-import:
+            condition: service_completed_successfully
 
 services:
     n8n:
@@ -64,7 +69,6 @@ services:
             - n8n_storage:/home/node/.n8n
             - ./n8n/backup:/backup
             - ./shared:/data/shared
-            - /Users/theapemachine/go/src/github.com/fanfactory/sharepoint/extracted_documents/:/tmp/extracted
         depends_on:
             postgres:
                 condition: service_healthy
@@ -73,13 +77,12 @@ services:
 
     n8n-import:
         <<: *service-n8n
+        hostname: n8n-import
         container_name: n8n-import
         entrypoint: /bin/sh
         command:
             - "-c"
             - "n8n import:credentials --separate --input=/backup/credentials && n8n import:workflow --separate --input=/backup/workflows"
-        links:
-            - postgres
         volumes:
             - ./n8n/backup:/backup
         depends_on:
@@ -184,22 +187,12 @@ services:
                           count: 3
                           capabilities: [gpu]
 
-    ollama-pull-llama-cpu:
-        profiles: ["cpu"]
-        <<: *init-ollama
-        depends_on:
-            - ollama-cpu
-
-    ollama-pull-llama-gpu:
-        profiles: ["gpu-nvidia"]
-        <<: *init-ollama
-        depends_on:
-            - ollama-gpu
-
     browserless:
         image: ghcr.io/browserless/chromium
         ports:
-            - "3100:3000"
+            - "3000:3000"
+        environment:
+            - TOKEN=6R0W53R135510
 
 volumes:
     n8n_storage:
