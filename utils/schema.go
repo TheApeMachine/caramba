@@ -24,11 +24,45 @@ func GenerateSchema[T any]() interface{} {
 }
 
 /*
-ExtractJSONBlocks finds and parses JSON objects from a string.
-It specifically looks for JSON content within markdown-style code blocks
-that are marked with the 'json' language identifier. This is particularly
-useful when processing unstructured outputs from AI tools. If a JSON array
-is found, each object within it will be added to the results individually.
+ExtractJSON finds and parses JSON objects from a string.
+First tries to extract markdown-style JSON blocks, then falls back to finding raw JSON objects.
+Returns a slice of successfully parsed JSON objects.
+*/
+func ExtractJSON(s string) []map[string]any {
+	// First try markdown blocks
+	if blocks := ExtractJSONBlocks(s); len(blocks) > 0 {
+		return blocks
+	}
+
+	// Fallback to finding raw JSON objects
+	var results []map[string]any
+	var start int
+	var depth int
+
+	// Track nested objects by counting brace depth
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				// Only try to parse when we've found a complete top-level object
+				if obj := ParseJSON(s[start : i+1]); obj != nil {
+					results = append(results, obj)
+				}
+			}
+		}
+	}
+
+	return results
+}
+
+/*
+ExtractJSONBlocks extracts and parses JSON from markdown code blocks.
 */
 func ExtractJSONBlocks(s string) []map[string]any {
 	// Extract blocks marked with json language identifier
@@ -58,8 +92,7 @@ func ExtractJSONBlocks(s string) []map[string]any {
 
 /*
 ParseJSON safely converts a JSON string into a map.
-Returns nil if the input is not valid JSON, making it safe for parsing
-potentially invalid input.
+Returns nil if the input is not valid JSON.
 */
 func ParseJSON(s string) map[string]any {
 	var result map[string]any

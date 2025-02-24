@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -32,19 +34,28 @@ func NewOpenAI(apiKey string) *OpenAI {
 Stream streams a chat completion.
 */
 func (prvdr *OpenAI) Stream(input *datura.Artifact) chan *datura.Artifact {
+	errnie.Info("⚡ *OpenAI.Stream")
+
 	out := make(chan *datura.Artifact)
 
-	params, err := utils.DecryptPayload(input)
+	if prvdr.client == nil {
+		errnie.Error(fmt.Errorf("OpenAI client not initialized"))
+		close(out)
+		return out
+	}
 
+	params, err := utils.DecryptPayload(input)
 	if err != nil {
-		panic(err)
+		errnie.Error(fmt.Errorf("failed to decrypt payload: %w", err))
+		close(out)
+		return out
 	}
 
 	providerParams := ProviderParams{}
-	err = json.Unmarshal(params, &providerParams)
-
-	if err != nil {
-		panic(err)
+	if err := json.Unmarshal(params, &providerParams); err != nil {
+		errnie.Error(fmt.Errorf("failed to unmarshal provider params: %w", err))
+		close(out)
+		return out
 	}
 
 	chatParams := openai.ChatCompletionNewParams{}
@@ -105,57 +116,87 @@ func (prvdr *OpenAI) Stream(input *datura.Artifact) chan *datura.Artifact {
 
 	go func() {
 		defer close(out)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 
-		stream := prvdr.client.Chat.Completions.NewStreaming(context.Background(), chatParams)
+		stream := prvdr.client.Chat.Completions.NewStreaming(ctx, chatParams)
 		acc := openai.ChatCompletionAccumulator{}
 
+		errnie.Log("\n\n===REQUEST===\n%v\n\n===END===", chatParams)
+
 		for stream.Next() {
-			chunk := stream.Current()
-			acc.AddChunk(chunk)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				chunk := stream.Current()
+				acc.AddChunk(chunk)
 
-			// When this fires, the current chunk value will not contain content data
-			if content, ok := acc.JustFinishedContent(); ok {
-				errnie.Log("%v\n\n%v", chatParams, content)
-				continue
-			}
-
-			if tool, ok := acc.JustFinishedToolCall(); ok {
-				toolJSON, err := json.Marshal(tool)
-				if err != nil {
-					panic(err)
+				if content, ok := acc.JustFinishedContent(); ok {
+					errnie.Log("\n\n===RESPONSE===\n%v\n\n===END===", content)
+					artifact, err := prvdr.buildArtifact(datura.ArtifactScopeFunctionCall, "\n")
+					if err != nil {
+						panic(err)
+					}
+					out <- artifact
+					cancel()
 				}
-				artifact, err := prvdr.buildArtifact(datura.ArtifactScopeFunctionCall, string(toolJSON))
-				if err != nil {
-					panic(err)
-				}
-				out <- artifact
-				continue
-			}
 
-			if refusal, ok := acc.JustFinishedRefusal(); ok {
-				artifact, err := prvdr.buildArtifact(datura.ArtifactScopeChatCompletion, refusal)
-				if err != nil {
-					panic(err)
+				if tool, ok := acc.JustFinishedToolCall(); ok {
+					toolJSON, err := json.Marshal(tool)
+					if err != nil {
+						panic(err)
+					}
+					artifact, err := prvdr.buildArtifact(datura.ArtifactScopeFunctionCall, string(toolJSON))
+					if err != nil {
+						panic(err)
+					}
+					out <- artifact
+					cancel()
 				}
-				out <- artifact
-				continue
-			}
 
-			// Only send actual content deltas
-			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-				artifact, err := prvdr.buildArtifact(
-					datura.ArtifactScopeChatCompletion,
-					chunk.Choices[0].Delta.Content,
-				)
-				if err != nil {
-					panic(err)
+				if refusal, ok := acc.JustFinishedRefusal(); ok {
+					artifact, err := prvdr.buildArtifact(datura.ArtifactScopeChatCompletion, refusal)
+					if err != nil {
+						panic(err)
+					}
+					out <- artifact
+					cancel()
 				}
-				out <- artifact
-			}
-		}
 
-		if err := stream.Err(); err != nil {
-			panic(err)
+				// Only send actual content deltas
+				if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+					artifact, err := prvdr.buildArtifact(
+						datura.ArtifactScopeChatCompletion,
+						chunk.Choices[0].Delta.Content,
+					)
+
+					if errnie.Error(err) != nil {
+						errArtifact := datura.NewArtifactBuilder(
+							datura.MediaTypeTextPlain,
+							datura.ArtifactRoleAssistant,
+							datura.ArtifactScopeChatCompletion,
+						)
+						errArtifact.SetPayload([]byte(err.Error()))
+						artifact, _ = errArtifact.Build()
+					}
+
+					out <- artifact
+				}
+
+				if err := stream.Err(); err != nil {
+					errArtifact := datura.NewArtifactBuilder(
+						datura.MediaTypeTextPlain,
+						datura.ArtifactRoleAssistant,
+						datura.ArtifactScopeChatCompletion,
+					)
+					errArtifact.SetPayload([]byte(err.Error()))
+					artifact, _ := errArtifact.Build()
+
+					out <- artifact
+					cancel()
+				}
+			}
 		}
 	}()
 
@@ -170,6 +211,5 @@ func (prvdr *OpenAI) buildArtifact(scope datura.ArtifactScope, data string) (*da
 	)
 
 	artifact.SetPayload([]byte(data))
-
 	return artifact.Build()
 }

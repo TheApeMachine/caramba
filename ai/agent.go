@@ -8,6 +8,7 @@ import (
 	"github.com/theapemachine/caramba/datura"
 	"github.com/theapemachine/caramba/process"
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/errnie"
 )
 
 type AgentState uint
@@ -35,19 +36,24 @@ type AgentInterface interface {
 Agent defines the Agent.
 */
 type Agent struct {
-	Identity  *Identity               `json:"identity"`
-	Params    provider.ProviderParams `json:"params"`
-	Provider  provider.Interface      `json:"provider"`
-	Processor process.Interface       `json:"processor"`
-	Agents    map[string][]*Agent     `json:"agents"`
+	Identity  *Identity                `json:"identity"`
+	Params    *provider.ProviderParams `json:"params"`
+	Provider  provider.Interface       `json:"provider"`
+	Processor process.Interface        `json:"processor"`
+	Agents    map[string][]*Agent      `json:"agents"`
+	Parent    *Agent                   `json:"parent"`
+	Level     int                      `json:"level"`
+	Teams     map[string][]*Agent      `json:"teams"`
 	State     AgentState
 	Messages  chan *datura.Artifact
 }
 
 func NewAgent(identity *Identity, agentTools []provider.Tool) *Agent {
+	errnie.Info("🤖 "+identity.Name, "agent", "new")
+
 	return &Agent{
 		Identity: identity,
-		Params: provider.ProviderParams{
+		Params: &provider.ProviderParams{
 			Messages: []provider.Message{
 				{
 					Role: "system",
@@ -64,6 +70,8 @@ func NewAgent(identity *Identity, agentTools []provider.Tool) *Agent {
 		},
 		Provider: provider.NewOpenAI(os.Getenv("OPENAI_API_KEY")),
 		Agents:   make(map[string][]*Agent),
+		Teams:    make(map[string][]*Agent),
+		Level:    0,
 		State:    AgentStateIdle,
 		Messages: make(chan *datura.Artifact, 100),
 	}
@@ -86,6 +94,8 @@ func (agent *Agent) SetProcess(processor process.Interface) *Agent {
 }
 
 func (agent *Agent) AddAgent(role string, identity map[string]interface{}, tools []provider.Tool) *Agent {
+	errnie.Info("👾 "+agent.Identity.Name, "agent", "addAgent")
+
 	newIdentity := NewIdentityFromMap(identity)
 	newAgent := NewAgent(newIdentity, tools)
 

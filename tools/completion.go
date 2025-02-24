@@ -1,9 +1,12 @@
 package tools
 
 import (
+	"fmt"
+
 	"github.com/theapemachine/caramba/ai"
 	"github.com/theapemachine/caramba/datura"
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -57,5 +60,8 @@ In this case we only have to set the state of the agent to
 break the iteration loop.
 */
 func (tool *CompletionTool) Use(agent *ai.Agent, artifact *datura.Artifact) {
+	errnie.Info("🔨 *CompletionTool.Use")
+
+	fmt.Println("task complete")
 	agent.State = ai.AgentStateCompleted
 }

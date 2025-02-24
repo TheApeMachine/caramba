@@ -27,24 +27,36 @@ var testCmd = &cobra.Command{
 		os.Setenv("LOGFILE", "true")
 		errnie.InitLogger()
 
+		errnie.Info("🌈 "+"creating", "agent", "ui")
+
 		agent := ai.NewAgent(
 			ai.NewIdentity("ui"),
 			[]provider.Tool{
+				tools.NewCommandTool().Convert(),
+				tools.NewCompletionTool().Convert(),
 				tools.NewMessageTool().Convert(),
 				tools.NewAgentTool().Convert(),
-				tools.NewCompletionTool().Convert(),
 			},
 		)
+
+		errnie.Info("✨ "+agent.Identity.Name, "queue", "add")
 
 		queue := system.NewQueue()
 		queue.AddAgent(agent)
 
+		pool := environment.NewPool()
+
+		errnie.Info("💫 "+agent.Identity.Name, "executor", "add")
+
 		executor := environment.NewExecutor(agent)
+		pool.AddExecutor(executor)
+
 		executor.Run(context.Background())
+		errnie.Info("🚀 "+agent.Identity.Name, "executor", "running")
 
 		artifact := datura.NewArtifactBuilder(
 			datura.MediaTypeTextPlain,
-			datura.ArtifactRoleUser,
+			datura.ArtifactRoleBroadcast,
 			datura.ArtifactScopePrompt,
 		)
 
@@ -69,7 +81,11 @@ var testCmd = &cobra.Command{
 			return
 		}
 
+		errnie.Info("📭 "+agent.Identity.Name, "queue", "send")
+
 		queue.SendMessage(message)
+
+		errnie.Info("📬 "+agent.Identity.Name, "queue", "sent")
 
 		select {}
 	},

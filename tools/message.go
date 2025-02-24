@@ -1,10 +1,15 @@
 package tools
 
 import (
+	"encoding/json"
+	"strings"
+
 	"github.com/theapemachine/caramba/ai"
 	"github.com/theapemachine/caramba/datura"
 	"github.com/theapemachine/caramba/provider"
 	"github.com/theapemachine/caramba/system"
+	"github.com/theapemachine/caramba/utils"
+	"github.com/theapemachine/errnie"
 )
 
 // MessageType defines different types of team messages
@@ -28,14 +33,14 @@ type MessageTool struct {
 
 // MessageParams defines the structure for message parameters
 type MessageParams struct {
-	From       string      `json:"from"`
-	To         string      `json:"to"`
-	Topic      string      `json:"topic"`
-	Content    string      `json:"content"`
-	Context    string      `json:"context,omitempty"`
-	References []string    `json:"references,omitempty"`
-	Priority   int         `json:"priority,omitempty"`
-	Expiration string      `json:"expiration,omitempty"`
+	From       string   `json:"from"`
+	To         string   `json:"to"`
+	Topic      string   `json:"topic"`
+	Content    string   `json:"content"`
+	Context    string   `json:"context,omitempty"`
+	References []string `json:"references,omitempty"`
+	Priority   int      `json:"priority,omitempty"`
+	Expiration string   `json:"expiration,omitempty"`
 }
 
 func NewMessageTool() *MessageTool {
@@ -94,7 +99,46 @@ func (tool *MessageTool) Convert() provider.Tool {
 }
 
 func (tool *MessageTool) Use(agent *ai.Agent, artifact *datura.Artifact) {
+	errnie.Info("🔨 *MessageTool.Use")
+
 	q := system.NewQueue()
+
+	// Decrypt and parse the message parameters
+	decrypted, err := utils.DecryptPayload(artifact)
+	if err != nil {
+		agent.AddContext("<error>Failed to decrypt message payload</error>")
+		return
+	}
+
+	var params MessageParams
+	if err := json.Unmarshal(decrypted, &params); err != nil {
+		agent.AddContext("<error>Failed to parse message parameters</error>")
+		return
+	}
+
+	out := strings.Join(
+		[]string{
+			"<error>Target agent not found: " + params.To + "</error>",
+			"<available_agents>",
+			"\t<agent>",
+			"\t\t<id>" + agent.Identity.ID + "</id>",
+			"\t\t<name>" + agent.Identity.Name + "</name>",
+			"\t\t<role>" + agent.Identity.Role + "</role>",
+			"\t</agent>",
+			"</available_agents>",
+		},
+		"\n",
+	)
+
+	// Check if target agent exists
+	if params.To != "broadcast" && params.To != "" {
+		targetAgent := q.GetAgent(params.To)
+		if targetAgent == nil {
+			agent.AddContext(out)
+			return
+		}
+	}
+
 	q.SendMessage(artifact)
 	agent.AddContext("<message>SENT</message>")
 }

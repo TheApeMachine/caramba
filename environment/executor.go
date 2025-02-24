@@ -3,6 +3,7 @@ package environment
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -23,61 +24,97 @@ type Executor struct {
 func NewExecutor(agent *ai.Agent) *Executor {
 	return &Executor{
 		Agent:       agent,
-		chunks:      make(chan *datura.Artifact),
+		chunks:      make(chan *datura.Artifact, 100),
 		accumulator: &strings.Builder{},
 	}
 }
 
 func (executor *Executor) Run(ctx context.Context) {
+	errnie.Info("⚡ "+executor.Agent.Identity.Name, "executor", "run")
+
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case chunk := <-executor.chunks:
-				executor.Agent.State = ai.AgentStateProcessing
+				if chunk == nil {
+					continue
+				}
+				executor.Agent.State = ai.AgentStateIterating
 				decrypted, err := utils.DecryptPayload(chunk)
 
 				if errnie.Error(err) != nil {
+					executor.Agent.State = ai.AgentStateIdle
 					continue
 				}
 
+				fmt.Print(string(decrypted))
 				executor.accumulator.Write(decrypted)
+
 			case msg := <-executor.Agent.Messages:
-				executor.Agent.State = ai.AgentStateProcessing
+				errnie.Info("✉️ "+executor.Agent.Identity.Name, "executor", "message")
+
+				if msg == nil {
+					continue
+				}
+				executor.Agent.State = ai.AgentStateIterating
 
 				go func() {
-					for executor.Agent.State == ai.AgentStateProcessing {
-						executor.chunks <- <-executor.Agent.Provider.Stream(
-							executor.handleMessage(msg),
-						)
+					defer func() {
+						if executor.Agent.State != ai.AgentStateIterating {
+							executor.Agent.State = ai.AgentStateIdle
+						}
+					}()
 
-						if executor.accumulator.Len() > 0 {
-							executor.handleCompletion()
+					executor.handleMessage(msg)
+
+					for executor.Agent.State == ai.AgentStateIterating {
+						streamChan := executor.Agent.Provider.Stream(executor.toArtifact())
+						for chunk := range streamChan {
+							executor.chunks <- chunk
 						}
 
-						executor.accumulator.Reset()
+						if executor.accumulator.Len() > 0 {
+							fmt.Println()
+							executor.handleCompletion()
+							executor.accumulator.Reset()
+						}
 					}
 				}()
+
 			default:
 				time.Sleep(100 * time.Millisecond)
-				executor.Agent.State = ai.AgentStateIdle
 			}
 		}
 	}()
 }
 
-func (executor *Executor) handleMessage(msg *datura.Artifact) *datura.Artifact {
+func (executor *Executor) handleMessage(msg *datura.Artifact) {
+	errnie.Info("⚡ "+executor.Agent.Identity.Name, "executor", "handleMessage")
+
+	if msg == nil {
+		errnie.Error(fmt.Errorf("received nil message"))
+		return
+	}
+
 	decrypted, err := utils.DecryptPayload(msg)
 
 	if errnie.Error(err) != nil {
-		return nil
+		return
 	}
 
+	// Add the message to agent's context
 	executor.Agent.AddContext(string(decrypted))
 
-	buf, err := json.Marshal(executor.Agent.Params)
+	// Set state to iterating so the agent can process the message
+	executor.Agent.State = ai.AgentStateIterating
+}
 
+func (executor *Executor) toArtifact() *datura.Artifact {
+	errnie.Info("⚡ "+executor.Agent.Identity.Name, "context", "toArtifact")
+
+	buf, err := json.Marshal(executor.Agent.Params)
 	if errnie.Error(err) != nil {
 		return nil
 	}
@@ -85,13 +122,12 @@ func (executor *Executor) handleMessage(msg *datura.Artifact) *datura.Artifact {
 	artifact := datura.NewArtifactBuilder(
 		datura.MediaTypeApplicationJson,
 		datura.ArtifactRoleAssistant,
-		datura.ArtifactScope(datura.ArtifactRoleUnknown),
+		datura.ArtifactScopePrompt,
 	)
 
 	artifact.SetPayload(buf)
 
 	out, err := artifact.Build()
-
 	if errnie.Error(err) != nil {
 		return nil
 	}
@@ -100,41 +136,57 @@ func (executor *Executor) handleMessage(msg *datura.Artifact) *datura.Artifact {
 }
 
 func (executor *Executor) handleCompletion() {
+	errnie.Info("⚡ "+executor.Agent.Identity.Name, "executor", "handleCompletion")
+
 	executor.Agent.Params.Messages = append(executor.Agent.Params.Messages, provider.Message{
 		Role:    "assistant",
 		Content: executor.accumulator.String(),
 	})
 
-	toolcalls := make(map[string]any)
+	// Extract JSON objects from the accumulated content
+	toolCalls := utils.ExtractJSON(executor.accumulator.String())
 
-	err := json.Unmarshal([]byte(executor.accumulator.String()), &toolcalls)
+	for _, toolCall := range toolCalls {
+		artifact := datura.NewArtifactBuilder(
+			datura.MediaTypeApplicationJson,
+			datura.ArtifactRoleAssistant,
+			datura.ArtifactScope(datura.ArtifactRoleUnknown),
+		)
 
-	if errnie.Error(err) != nil {
-		return
-	}
+		payload, err := json.Marshal(toolCall)
+		if errnie.Error(err) != nil {
+			continue
+		}
 
-	artifact := datura.NewArtifactBuilder(
-		datura.MediaTypeApplicationJson,
-		datura.ArtifactRoleAssistant,
-		datura.ArtifactScope(datura.ArtifactRoleUnknown),
-	)
+		artifact.SetPayload(payload)
 
-	artifact.SetPayload([]byte(executor.accumulator.String()))
+		out, err := artifact.Build()
+		if errnie.Error(err) != nil {
+			continue
+		}
 
-	out, err := artifact.Build()
+		if toolName, ok := toolCall["name"].(string); ok {
+			switch toolName {
+			case "completion":
+				tool := tools.NewCompletionTool()
+				tool.Use(executor.Agent, out)
+			case "message":
+				tool := tools.NewMessageTool()
+				tool.Use(executor.Agent, out)
+				// Keep iterating after sending a message
+				executor.Agent.State = ai.AgentStateIterating
+			case "agent":
+				tool := tools.NewAgentTool()
+				tool.Use(executor.Agent, out)
 
-	if errnie.Error(err) != nil {
-		return
-	}
-
-	if toolName, ok := toolcalls["name"].(string); ok {
-		switch toolName {
-		case "completion":
-			tool := tools.NewCompletionTool()
-			tool.Use(executor.Agent, out)
-		case "message":
-			tool := tools.NewMessageTool()
-			tool.Use(executor.Agent, out)
+				for _, agent := range executor.Agent.Agents {
+					for _, delegate := range agent {
+						if NewPool().GetExecutor(delegate.Identity.ID) == nil {
+							NewPool().AddExecutor(NewExecutor(delegate))
+						}
+					}
+				}
+			}
 		}
 	}
 }

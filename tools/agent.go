@@ -2,10 +2,15 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 
+	"github.com/theapemachine/caramba/ai"
 	"github.com/theapemachine/caramba/datura"
 	"github.com/theapemachine/caramba/provider"
+	"github.com/theapemachine/caramba/system"
 	"github.com/theapemachine/caramba/utils"
+	"github.com/theapemachine/errnie"
 )
 
 type AgentTool struct {
@@ -71,50 +76,97 @@ func (tool *AgentTool) Convert() provider.Tool {
 	}
 }
 
-type AgentCreator interface {
-	AddAgent(role string, identity interface{}, tools []provider.Tool)
-}
+func (tool *AgentTool) Use(agent *ai.Agent, artifact *datura.Artifact) {
+	errnie.Info("🔨 *AgentTool.Use")
 
-func (tool *AgentTool) Use(agent interface{}, artifact *datura.Artifact) {
 	decrypted, err := utils.DecryptPayload(artifact)
+
+	if err != nil {
+		panic(err)
+	}
+
+	var wrapper struct {
+		Arguments string `json:"arguments"`
+		Name      string `json:"name"`
+		Index     int    `json:"Index"`
+	}
+
+	err = json.Unmarshal(decrypted, &wrapper)
+
 	if err != nil {
 		panic(err)
 	}
 
 	var params map[string]interface{}
-	err = json.Unmarshal(decrypted, &params)
+	err = json.Unmarshal([]byte(wrapper.Arguments), &params)
+
 	if err != nil {
 		panic(err)
 	}
 
-	// Extract goals as []string
-	goalsInterface := params["goals"].([]interface{})
+	// Convert goals from []interface{} to []string
+	goalsInterface, ok := params["goals"].([]interface{})
+
+	if !ok {
+		panic("goals is not an array")
+	}
+
 	goals := make([]string, len(goalsInterface))
-	for i, g := range goalsInterface {
-		goals[i] = g.(string)
+	for i, v := range goalsInterface {
+		goals[i], ok = v.(string)
+		if !ok {
+			panic("goal item is not a string")
+		}
 	}
 
 	// Create identity map
-	identity := map[string]interface{}{
-		"id":           params["id"].(string),
-		"name":         params["name"].(string),
-		"description":  params["description"].(string),
-		"role":         params["role"].(string),
-		"personality":  params["personality"].(string),
-		"motivation":   params["motivation"].(string),
-		"beliefs":      params["beliefs"].(string),
-		"goals":        goals,
-		"instructions": params["instructions"].(string),
+	identity := ai.Identity{
+		ID:           params["id"].(string),
+		Name:         params["name"].(string),
+		Description:  params["description"].(string),
+		Role:         params["role"].(string),
+		Personality:  params["personality"].(string),
+		Motivation:   params["motivation"].(string),
+		Beliefs:      params["beliefs"].(string),
+		Goals:        goals,
+		Instructions: params["instructions"].(string),
 	}
 
-	if creator, ok := agent.(AgentCreator); ok {
-		creator.AddAgent(
-			params["role"].(string),
-			identity,
-			[]provider.Tool{
-				NewCommandTool().Convert(),
-				NewMessageTool().Convert(),
-			},
-		)
+	role := params["role"].(string)
+
+	if agent.Agents[role] == nil {
+		agent.Agents[role] = make([]*ai.Agent, 0)
 	}
+
+	delegate := ai.NewAgent(
+		&identity,
+		[]provider.Tool{
+			NewCommandTool().Convert(),
+			NewCompletionTool().Convert(),
+			NewMessageTool().Convert(),
+			NewAgentTool().Convert(),
+		},
+	)
+
+	agent.Agents[role] = append(agent.Agents[role], delegate)
+	system.NewQueue().AddAgent(delegate)
+
+	out := strings.Join(
+		[]string{
+			"<agent>",
+			"\t<id>" + identity.ID + "</id>",
+			"\t<name>" + identity.Name + "</name>",
+			"\t<role>" + identity.Role + "</role>",
+			"\t<status>CREATED</status>",
+			"</agent>",
+		},
+		"\n",
+	)
+
+	fmt.Println(out)
+
+	agent.Params.Messages = append(agent.Params.Messages, provider.Message{
+		Role:    "assistant",
+		Content: out,
+	})
 }
