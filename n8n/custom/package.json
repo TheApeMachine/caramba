@@ -1,0 +1,10 @@
+{
+	"pnpm": {
+		"overrides": {
+			"n8n-nodes-mcp-server": "link:../../../../../../../Library/pnpm/global/5/node_modules/n8n-nodes-mcp-server"
+		}
+	},
+	"dependencies": {
+		"n8n-nodes-mcp-server": "link:../../../../../../../Library/pnpm/global/5/node_modules/n8n-nodes-mcp-server"
+	}
+}

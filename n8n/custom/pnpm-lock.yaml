@@ -1,0 +1,16 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+overrides:
+  n8n-nodes-mcp-server: link:../../../../../../../Library/pnpm/global/5/node_modules/n8n-nodes-mcp-server
+
+importers:
+
+  .:
+    dependencies:
+      n8n-nodes-mcp-server:
+        specifier: link:../../../../../../../Library/pnpm/global/5/node_modules/n8n-nodes-mcp-server
+        version: link:../../../../../../../Library/pnpm/global/5/node_modules/n8n-nodes-mcp-server
