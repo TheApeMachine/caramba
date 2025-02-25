@@ -8,15 +8,14 @@ package memory
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"text/template"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/theapemachine/caramba/pkg/agent/core"
 	"github.com/theapemachine/errnie"
 )
@@ -140,179 +139,6 @@ func (e *EnhancedMemoryEntry) ToCoreEnhancedEntry() core.EnhancedMemoryEntry {
 }
 
 /*
-Relationship represents a relationship between two memory entries in a graph.
-It defines connections between memory entries, allowing for knowledge graph construction.
-*/
-type Relationship struct {
-	/* FromID is the ID of the source memory */
-	FromID string
-	/* ToID is the ID of the target memory */
-	ToID string
-	/* Type identifies the kind of relationship */
-	Type string
-	/* Metadata contains additional information about the relationship */
-	Metadata map[string]interface{}
-}
-
-/*
-ToCoreRelationship converts to core.Relationship from local Relationship.
-This method bridges between the memory package's types and the core package's relationship types.
-
-Returns:
-  - The converted core.Relationship
-*/
-func (r *Relationship) ToCoreRelationship() core.Relationship {
-	return core.Relationship{
-		FromID:   r.FromID,
-		ToID:     r.ToID,
-		Type:     r.Type,
-		Metadata: r.Metadata,
-	}
-}
-
-/*
-FromCoreRelationship converts from core.Relationship to local Relationship.
-This function bridges between the core package's relationship types and the memory package's types.
-
-Parameters:
-  - rel: The core package's relationship to convert
-
-Returns:
-  - The converted local Relationship
-*/
-func FromCoreRelationship(rel core.Relationship) Relationship {
-	return Relationship{
-		FromID:   rel.FromID,
-		ToID:     rel.ToID,
-		Type:     rel.Type,
-		Metadata: rel.Metadata,
-	}
-}
-
-/*
-VectorStoreProvider interface defines operations for vector-based memory storage.
-This interface abstracts the vector database operations for storing and retrieving
-embeddings with their associated metadata.
-*/
-type VectorStoreProvider interface {
-	/*
-		StoreVector stores a vector with the given ID and payload.
-
-		Parameters:
-		  - ctx: The context for the operation, which can be used for cancellation
-		  - id: The unique identifier for the vector
-		  - vector: The embedding vector to store
-		  - payload: Associated metadata to store with the vector
-
-		Returns:
-		  - An error if the operation fails, or nil on success
-	*/
-	StoreVector(ctx context.Context, id string, vector []float32, payload map[string]interface{}) error
-
-	/*
-		Search searches for similar vectors.
-
-		Parameters:
-		  - ctx: The context for the operation, which can be used for cancellation
-		  - vector: The query vector to find similar vectors for
-		  - limit: The maximum number of results to return
-		  - filters: Optional filters to apply to the search
-
-		Returns:
-		  - A slice of SearchResult objects containing the matches
-		  - An error if the operation fails, or nil on success
-	*/
-	Search(ctx context.Context, vector []float32, limit int, filters map[string]interface{}) ([]SearchResult, error)
-
-	/*
-		Get retrieves a specific vector by ID.
-
-		Parameters:
-		  - ctx: The context for the operation, which can be used for cancellation
-		  - id: The unique identifier of the vector to retrieve
-
-		Returns:
-		  - The SearchResult containing the vector and its metadata
-		  - An error if the operation fails, or nil on success
-	*/
-	Get(ctx context.Context, id string) (*SearchResult, error)
-
-	/*
-		Delete removes a vector from the store.
-
-		Parameters:
-		  - ctx: The context for the operation, which can be used for cancellation
-		  - id: The unique identifier of the vector to delete
-
-		Returns:
-		  - An error if the operation fails, or nil on success
-	*/
-	Delete(ctx context.Context, id string) error
-}
-
-/*
-GraphStore interface defines operations for graph-based memory storage.
-This interface abstracts the graph database operations for storing and
-retrieving nodes, relationships, and executing graph queries.
-*/
-type GraphStore interface {
-	/*
-		CreateNode creates a new node in the graph.
-
-		Parameters:
-		  - ctx: The context for the operation, which can be used for cancellation
-		  - id: The unique identifier for the node
-		  - labels: Classification labels for the node
-		  - properties: Key-value properties to store with the node
-
-		Returns:
-		  - An error if the operation fails, or nil on success
-	*/
-	CreateNode(ctx context.Context, id string, labels []string, properties map[string]interface{}) error
-
-	/*
-		CreateRelationship creates a relationship between two nodes.
-
-		Parameters:
-		  - ctx: The context for the operation, which can be used for cancellation
-		  - fromID: The source node ID
-		  - toID: The target node ID
-		  - relType: The type of relationship to create
-		  - properties: Key-value properties to store with the relationship
-
-		Returns:
-		  - An error if the operation fails, or nil on success
-	*/
-	CreateRelationship(ctx context.Context, fromID, toID, relType string, properties map[string]interface{}) error
-
-	/*
-		Query executes a cypher query against the graph.
-
-		Parameters:
-		  - ctx: The context for the operation, which can be used for cancellation
-		  - query: The Cypher query string to execute
-		  - params: Parameters for the query
-
-		Returns:
-		  - Results from the query as a slice of maps
-		  - An error if the operation fails, or nil on success
-	*/
-	Query(ctx context.Context, query string, params map[string]interface{}) ([]map[string]interface{}, error)
-
-	/*
-		DeleteNode removes a node from the graph.
-
-		Parameters:
-		  - ctx: The context for the operation, which can be used for cancellation
-		  - id: The unique identifier of the node to delete
-
-		Returns:
-		  - An error if the operation fails, or nil on success
-	*/
-	DeleteNode(ctx context.Context, id string) error
-}
-
-/*
 EmbeddingProvider interface for text-to-vector embedding services.
 This interface abstracts the embedding generation service that converts
 text content into vector representations for semantic operations.
@@ -402,7 +228,76 @@ func DefaultUnifiedMemoryOptions() *UnifiedMemoryOptions {
 		VectorDBDimensions:  1536, // Default for OpenAI embeddings
 		VectorDBMetricType:  "cosine",
 		ContextTemplate:     "Previous relevant memories:\n{{.Memories}}\n\nCurrent query: {{.Query}}",
+		// Default connection values will be added by ConnectionAwareMemoryOptions
 	}
+}
+
+/*
+ConnectionAwareMemoryOptions extends DefaultUnifiedMemoryOptions with environment-aware connection settings.
+It attempts to automatically discover and configure the correct connection parameters for memory stores.
+
+Parameters:
+  - baseOptions: Optional existing options to extend. If nil, DefaultUnifiedMemoryOptions() will be used.
+
+Returns:
+  - A pointer to an UnifiedMemoryOptions struct with connection-aware values
+*/
+func ConnectionAwareMemoryOptions(baseOptions *UnifiedMemoryOptions) *UnifiedMemoryOptions {
+	if baseOptions == nil {
+		baseOptions = DefaultUnifiedMemoryOptions()
+	}
+
+	// Set sensible defaults for vector store (Qdrant)
+	if baseOptions.EnableVectorStore {
+		// Check environment variables first
+		if url := os.Getenv("QDRANT_URL"); url != "" {
+			baseOptions.VectorStoreURL = url
+		} else {
+			baseOptions.VectorStoreURL = "http://localhost:6333" // Default Qdrant URL
+		}
+
+		if apiKey := os.Getenv("QDRANT_API_KEY"); apiKey != "" {
+			baseOptions.VectorStoreAPIKey = apiKey
+		} else {
+			baseOptions.VectorStoreAPIKey = "gKzti5QyA5KeLQYQFLA1T6pT3GYE9pza" // Default dev API key
+		}
+
+		if collection := os.Getenv("QDRANT_COLLECTION"); collection != "" {
+			baseOptions.VectorDBCollection = collection
+		} else if baseOptions.VectorDBCollection == "" {
+			baseOptions.VectorDBCollection = "agent_memories" // Default collection name
+		}
+	}
+
+	// Set sensible defaults for graph store (Neo4j)
+	if baseOptions.EnableGraphStore {
+		// Check environment variables first
+		if url := os.Getenv("NEO4J_URL"); url != "" {
+			baseOptions.GraphStoreURL = url
+		} else {
+			baseOptions.GraphStoreURL = "bolt://localhost:7687" // Default Neo4j URL
+		}
+
+		if username := os.Getenv("NEO4J_USERNAME"); username != "" {
+			baseOptions.GraphStoreUsername = username
+		} else {
+			baseOptions.GraphStoreUsername = "neo4j" // Default Neo4j username
+		}
+
+		if password := os.Getenv("NEO4J_PASSWORD"); password != "" {
+			baseOptions.GraphStorePassword = password
+		} else {
+			baseOptions.GraphStorePassword = "securepassword" // Default Neo4j password
+		}
+
+		if database := os.Getenv("NEO4J_DATABASE"); database != "" {
+			baseOptions.GraphStoreDatabase = database
+		} else if baseOptions.GraphStoreDatabase == "" {
+			baseOptions.GraphStoreDatabase = "neo4j" // Default database name
+		}
+	}
+
+	return baseOptions
 }
 
 /*
@@ -445,18 +340,25 @@ Returns:
 */
 func NewUnifiedMemory(baseStore core.Memory, embeddingProvider EmbeddingProvider, options *UnifiedMemoryOptions) (*UnifiedMemory, error) {
 	if options == nil {
-		options = DefaultUnifiedMemoryOptions()
+		options = ConnectionAwareMemoryOptions(nil)
+	} else {
+		// Apply connection-aware defaults to any unset connection parameters
+		options = ConnectionAwareMemoryOptions(options)
 	}
 
 	var vectorStore VectorStoreProvider
 	var graphStore GraphStore
 	var err error
+	var warnings []string
 
 	// Initialize vector store if enabled
 	if options.EnableVectorStore {
 		vectorStore, err = NewQDrantStore(options.VectorStoreURL, options.VectorStoreAPIKey, options.VectorDBCollection, options.VectorDBDimensions)
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize vector store: %w", err)
+			warnings = append(warnings, fmt.Sprintf("Vector store initialization failed: %v", err))
+			fmt.Printf("Warning: Vector store initialization failed: %v\n", err)
+			fmt.Println("Memory will continue with reduced functionality (without vector search).")
+			options.EnableVectorStore = false
 		}
 	}
 
@@ -464,7 +366,40 @@ func NewUnifiedMemory(baseStore core.Memory, embeddingProvider EmbeddingProvider
 	if options.EnableGraphStore {
 		graphStore, err = NewNeo4jStore(options.GraphStoreURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize graph store: %w", err)
+			warnings = append(warnings, fmt.Sprintf("Graph store initialization failed: %v", err))
+			fmt.Printf("Warning: Graph store initialization failed: %v\n", err)
+			fmt.Println("Memory will continue with reduced functionality (without graph relationships).")
+			options.EnableGraphStore = false
+
+			// Try alternative Neo4j connection formats if this was likely a connection issue
+			if strings.Contains(err.Error(), "connect") || strings.Contains(err.Error(), "dial") {
+				fmt.Println("Attempting alternative Neo4j connection formats...")
+
+				// Try with neo4j:// protocol
+				altURL := strings.Replace(options.GraphStoreURL, "bolt://", "neo4j://", 1)
+				if altURL != options.GraphStoreURL {
+					fmt.Printf("Trying neo4j:// protocol: %s\n", altURL)
+					graphStore, err = NewNeo4jStore(altURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
+					if err == nil {
+						fmt.Println("Success! Connected with neo4j:// protocol.")
+						options.EnableGraphStore = true
+						options.GraphStoreURL = altURL
+					}
+				}
+
+				// If still not connected, try with http:// protocol for browser connection
+				if err != nil && strings.HasPrefix(options.GraphStoreURL, "bolt://") {
+					httpURL := strings.Replace(options.GraphStoreURL, "bolt://", "http://", 1)
+					httpURL = strings.Replace(httpURL, "7687", "7474", 1)
+					fmt.Printf("Trying http:// protocol: %s\n", httpURL)
+					graphStore, err = NewNeo4jStore(httpURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
+					if err == nil {
+						fmt.Println("Success! Connected with http:// protocol.")
+						options.EnableGraphStore = true
+						options.GraphStoreURL = httpURL
+					}
+				}
+			}
 		}
 	}
 
@@ -472,6 +407,17 @@ func NewUnifiedMemory(baseStore core.Memory, embeddingProvider EmbeddingProvider
 	tmpl, err := template.New("context").Parse(options.ContextTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse context template: %w", err)
+	}
+
+	// Print status of memory features
+	if options.EnableVectorStore {
+		fmt.Println("Vector store (Qdrant) successfully connected.")
+	}
+	if options.EnableGraphStore {
+		fmt.Println("Graph store (Neo4j) successfully connected.")
+	}
+	if !options.EnableVectorStore && !options.EnableGraphStore {
+		fmt.Println("Warning: Running with basic memory only (no vector or graph features).")
 	}
 
 	return &UnifiedMemory{
@@ -619,750 +565,4 @@ func (um *UnifiedMemory) Clear(ctx context.Context) error {
 	// as they might contain shared data across multiple agents
 
 	return nil
-}
-
-/*
-StoreMemory stores a memory with embedding.
-It creates a new memory entry with the provided content and metadata,
-stores it in the appropriate memory stores, and returns the unique ID.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - agentID: The ID of the agent who owns this memory
-  - content: The textual content of the memory
-  - memType: The type of memory (personal or global)
-  - source: The source of the memory (conversation, document, etc.)
-  - metadata: Additional information about the memory
-
-Returns:
-  - The unique ID of the stored memory
-  - An error if the operation fails, or nil on success
-*/
-func (um *UnifiedMemory) StoreMemory(ctx context.Context, agentID string, content string, memType MemoryType, source string, metadata map[string]interface{}) (string, error) {
-	// Generate a unique ID for the memory
-	memoryID := uuid.New().String()
-
-	// Set defaults for metadata
-	if metadata == nil {
-		metadata = make(map[string]interface{})
-	}
-
-	// Get embedding from the provider
-	var embedding []float32
-	var err error
-
-	if um.embeddingProvider != nil {
-		embedding, err = um.embeddingProvider.GetEmbedding(ctx, content)
-		if err != nil {
-			errnie.Info(fmt.Sprintf("Failed to get embedding for memory: %v", err))
-		}
-	}
-
-	// Create the memory entry
-	entry := &EnhancedMemoryEntry{
-		ID:          memoryID,
-		AgentID:     agentID,
-		Content:     content,
-		Embedding:   embedding,
-		Type:        memType,
-		Source:      source,
-		CreatedAt:   time.Now(),
-		AccessCount: 0,
-		LastAccess:  time.Now(),
-		Metadata:    metadata,
-	}
-
-	// Store in the in-memory map
-	um.mutex.Lock()
-	um.memoryData[memoryID] = entry
-	um.mutex.Unlock()
-
-	// Store in vector store if available
-	if um.options.EnableVectorStore && um.vectorStore != nil && len(embedding) > 0 {
-		// Prepare payload for vector store
-		payload := map[string]interface{}{
-			"agent_id":   agentID,
-			"content":    content,
-			"type":       string(memType),
-			"source":     source,
-			"created_at": entry.CreatedAt,
-			"metadata":   metadata,
-		}
-
-		err := um.vectorStore.StoreVector(ctx, memoryID, embedding, payload)
-		if err != nil {
-			errnie.Info(fmt.Sprintf("Failed to store memory in vector store: %v", err))
-		}
-	}
-
-	// Store in graph store if available
-	if um.options.EnableGraphStore && um.graphStore != nil {
-		// Create node properties
-		properties := map[string]interface{}{
-			"agent_id":   agentID,
-			"content":    content,
-			"type":       string(memType),
-			"source":     source,
-			"created_at": entry.CreatedAt.Format(time.RFC3339),
-		}
-
-		// Add metadata to properties
-		for k, v := range metadata {
-			properties[k] = v
-		}
-
-		// Create labels based on memory type
-		labels := []string{"Memory"}
-		if memType == MemoryTypePersonal {
-			labels = append(labels, "Personal")
-		} else {
-			labels = append(labels, "Global")
-		}
-
-		err := um.graphStore.CreateNode(ctx, memoryID, labels, properties)
-		if err != nil {
-			errnie.Info(fmt.Sprintf("Failed to store memory in graph store: %v", err))
-		}
-	}
-
-	// For simplicity, also store in the base memory store
-	err = um.baseStore.Store(ctx, "memory:"+memoryID, content)
-	if err != nil {
-		errnie.Info(fmt.Sprintf("Failed to store memory in base store: %v", err))
-	}
-
-	return memoryID, nil
-}
-
-/*
-RetrieveMemoriesByVector searches for memories using vector similarity.
-It searches the vector store for memories similar to the provided query.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - query: The search query text
-  - agentID: The agent ID to filter by (empty string for no filter)
-  - limit: The maximum number of results to return
-  - threshold: The minimum similarity score to include in results
-
-Returns:
-  - A slice of EnhancedMemoryEntry objects matching the query
-  - An error if the operation fails, or nil on success
-*/
-func (um *UnifiedMemory) RetrieveMemoriesByVector(ctx context.Context, query string, agentID string, limit int, threshold float32) ([]EnhancedMemoryEntry, error) {
-	if !um.options.EnableVectorStore || um.vectorStore == nil {
-		return nil, errors.New("vector store not enabled or not available")
-	}
-
-	// Get embedding for query
-	embedding, err := um.embeddingProvider.GetEmbedding(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get embedding for query: %w", err)
-	}
-
-	// Prepare filters
-	filters := make(map[string]interface{})
-	if agentID != "" {
-		filters["agent_id"] = agentID
-	}
-
-	// Search the vector store
-	results, err := um.vectorStore.Search(ctx, embedding, limit, filters)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search vector store: %w", err)
-	}
-
-	// Convert results to EnhancedMemoryEntry and apply threshold
-	memories := make([]EnhancedMemoryEntry, 0, len(results))
-	for _, result := range results {
-		if result.Score < threshold {
-			continue
-		}
-
-		// Extract fields from metadata
-		content, _ := result.Metadata["content"].(string)
-		agentID, _ := result.Metadata["agent_id"].(string)
-		source, _ := result.Metadata["source"].(string)
-		memType, _ := result.Metadata["type"].(string)
-		createdAt, _ := result.Metadata["created_at"].(time.Time)
-
-		// Create memory entry
-		entry := EnhancedMemoryEntry{
-			ID:          result.ID,
-			AgentID:     agentID,
-			Content:     content,
-			Embedding:   result.Vector,
-			Type:        MemoryType(memType),
-			Source:      source,
-			CreatedAt:   createdAt,
-			AccessCount: 1,
-			LastAccess:  time.Now(),
-			Metadata:    result.Metadata,
-		}
-
-		memories = append(memories, entry)
-	}
-
-	return memories, nil
-}
-
-/*
-RetrieveMemoriesByGraph searches for memories using graph relationships.
-It executes a Cypher query against the graph store to find related memories.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - cypherQuery: The Cypher query to execute against the graph database
-  - params: Parameters for the Cypher query
-
-Returns:
-  - A slice of EnhancedMemoryEntry objects matching the query
-  - An error if the operation fails, or nil on success
-*/
-func (um *UnifiedMemory) RetrieveMemoriesByGraph(ctx context.Context, cypherQuery string, params map[string]interface{}) ([]EnhancedMemoryEntry, error) {
-	if !um.options.EnableGraphStore || um.graphStore == nil {
-		return nil, errors.New("graph store not enabled or not available")
-	}
-
-	// Execute query
-	results, err := um.graphStore.Query(ctx, cypherQuery, params)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute graph query: %w", err)
-	}
-
-	// Convert results to EnhancedMemoryEntry
-	memories := make([]EnhancedMemoryEntry, 0, len(results))
-	for _, result := range results {
-		// Extract memory node properties
-		node, ok := result["memory"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		id, _ := node["id"].(string)
-		content, _ := node["content"].(string)
-		agentID, _ := node["agent_id"].(string)
-		source, _ := node["source"].(string)
-		memType, _ := node["type"].(string)
-		createdAtStr, _ := node["created_at"].(string)
-
-		// Parse created at
-		var createdAt time.Time
-		if createdAtStr != "" {
-			createdAt, _ = time.Parse(time.RFC3339, createdAtStr)
-		}
-
-		// Create memory entry
-		entry := EnhancedMemoryEntry{
-			ID:          id,
-			AgentID:     agentID,
-			Content:     content,
-			Type:        MemoryType(memType),
-			Source:      source,
-			CreatedAt:   createdAt,
-			AccessCount: 1,
-			LastAccess:  time.Now(),
-			Metadata:    node,
-		}
-
-		memories = append(memories, entry)
-	}
-
-	return memories, nil
-}
-
-/*
-CreateRelationship creates a relationship between two memories.
-It establishes a typed connection between memory nodes in the graph store.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - relationship: The relationship to create
-
-Returns:
-  - An error if the operation fails, or nil on success
-*/
-func (um *UnifiedMemory) CreateRelationship(ctx context.Context, relationship Relationship) error {
-	if !um.options.EnableGraphStore || um.graphStore == nil {
-		return errors.New("graph store not enabled or not available")
-	}
-
-	// Create relationship in the graph store
-	return um.graphStore.CreateRelationship(
-		ctx,
-		relationship.FromID,
-		relationship.ToID,
-		relationship.Type,
-		relationship.Metadata,
-	)
-}
-
-/*
-GetRelatedMemories retrieves memories related to a specific memory.
-It finds connected memories in the graph store based on relationship types.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - memoryID: The ID of the memory to find relations for
-  - relationshipType: The type of relationship to follow (empty for any)
-  - maxDepth: The maximum traversal depth in the graph
-
-Returns:
-  - A slice of EnhancedMemoryEntry objects related to the specified memory
-  - An error if the operation fails, or nil on success
-*/
-func (um *UnifiedMemory) GetRelatedMemories(ctx context.Context, memoryID string, relationshipType string, maxDepth int) ([]EnhancedMemoryEntry, error) {
-	if !um.options.EnableGraphStore || um.graphStore == nil {
-		return nil, errors.New("graph store not enabled or not available")
-	}
-
-	// Default max depth
-	if maxDepth <= 0 {
-		maxDepth = 1
-	}
-
-	// Build Cypher query to find related memories
-	var query string
-	params := map[string]interface{}{
-		"memoryID": memoryID,
-	}
-
-	if relationshipType != "" {
-		query = fmt.Sprintf(
-			`MATCH (m:Memory {id: $memoryID})-[r:%s*1..%d]-(related:Memory)
-			 RETURN related as memory`,
-			relationshipType, maxDepth,
-		)
-	} else {
-		query = fmt.Sprintf(
-			`MATCH (m:Memory {id: $memoryID})-[r*1..%d]-(related:Memory)
-			 RETURN related as memory`,
-			maxDepth,
-		)
-	}
-
-	// Execute query and convert results
-	return um.RetrieveMemoriesByGraph(ctx, query, params)
-}
-
-/*
-ExtractMemories extracts important information from text that should be remembered.
-It analyzes text to identify significant information worth storing as memories.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - agentID: The ID of the agent who will own these memories
-  - text: The text to extract memories from
-  - source: The source of the text
-
-Returns:
-  - A slice of strings containing the extracted memories
-  - An error if the operation fails, or nil on success
-*/
-func (um *UnifiedMemory) ExtractMemories(ctx context.Context, agentID string, text string, source string) ([]string, error) {
-	// This is a simplified implementation
-	// In a real implementation, we'd use the LLM to identify important information
-
-	// Split text into paragraphs
-	paragraphs := strings.Split(text, "\n\n")
-	memories := make([]string, 0)
-
-	for _, paragraph := range paragraphs {
-		paragraph = strings.TrimSpace(paragraph)
-		if len(paragraph) < 20 {
-			continue // Skip short paragraphs
-		}
-
-		// Here we would normally check if the paragraph is important/interesting enough
-		// For now, just store paragraphs longer than a certain length
-		if len(paragraph) > 100 {
-			memories = append(memories, paragraph)
-		}
-	}
-
-	// Store the extracted memories
-	for _, memory := range memories {
-		_, err := um.StoreMemory(ctx, agentID, memory, MemoryTypePersonal, source, nil)
-		if err != nil {
-			errnie.Info(fmt.Sprintf("Failed to store extracted memory: %v", err))
-		}
-	}
-
-	return memories, nil
-}
-
-/*
-PrepareContext enriches a prompt with relevant memories.
-It retrieves memories relevant to the query and combines them with the
-original query using the configured template.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - agentID: The ID of the agent to retrieve memories for
-  - query: The original query text
-
-Returns:
-  - The enriched context with relevant memories
-  - An error if the operation fails, or nil on success
-*/
-func (um *UnifiedMemory) PrepareContext(ctx context.Context, agentID string, query string) (string, error) {
-	// Default to just returning the query if no vector store
-	if !um.options.EnableVectorStore || um.vectorStore == nil {
-		return query, nil
-	}
-
-	// Retrieve relevant memories
-	memories, err := um.RetrieveMemoriesByVector(
-		ctx,
-		query,
-		agentID,
-		um.options.MaxMemoriesPerQuery,
-		um.options.ExtractionThreshold,
-	)
-	if err != nil {
-		errnie.Info(fmt.Sprintf("Failed to retrieve relevant memories: %v", err))
-		return query, nil
-	}
-
-	// If no memories, just return the query
-	if len(memories) == 0 {
-		return query, nil
-	}
-
-	// Format memories as text
-	var memoriesText strings.Builder
-	for i, memory := range memories {
-		memoriesText.WriteString(fmt.Sprintf("%d. %s\n", i+1, memory.Content))
-	}
-
-	// Use the template to format the context
-	data := struct {
-		Memories string
-		Query    string
-	}{
-		Memories: memoriesText.String(),
-		Query:    query,
-	}
-
-	var result strings.Builder
-	err = um.contextTemplate.Execute(&result, data)
-	if err != nil {
-		errnie.Info(fmt.Sprintf("Failed to format context with memories: %v", err))
-		return query, nil
-	}
-
-	return result.String(), nil
-}
-
-/*
-SummarizeMemories generates a summary of a collection of memories.
-It creates a textual summary of the provided memory entries.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - entries: The memory entries to summarize
-
-Returns:
-  - A textual summary of the memories
-  - An error if the operation fails, or nil on success
-*/
-func (um *UnifiedMemory) SummarizeMemories(ctx context.Context, entries []EnhancedMemoryEntry) (string, error) {
-	// This would normally use an LLM to summarize the memories
-	// For now, just concatenate them
-	var summary strings.Builder
-	summary.WriteString("Memory Summary:\n")
-
-	for i, entry := range entries {
-		summary.WriteString(fmt.Sprintf("%d. %s\n", i+1, entry.Content))
-	}
-
-	return summary.String(), nil
-}
-
-/*
-QDrantStore implements vector storage using QDrant.
-It provides a vector database implementation for storing and
-retrieving vector embeddings with the QDrant vector database.
-*/
-type QDrantStore struct {
-	/* url is the connection URL for the QDrant server */
-	url string
-	/* apiKey is the authentication key for the QDrant API */
-	apiKey string
-	/* collection is the name of the collection in QDrant */
-	collection string
-	/* dimensions is the size of vectors stored in this collection */
-	dimensions int
-}
-
-/*
-NewQDrantStore creates a new QDrant store.
-It initializes a connection to a QDrant vector database.
-
-Parameters:
-  - url: The URL of the QDrant server
-  - apiKey: The authentication key for the QDrant API
-  - collection: The name of the collection to use
-  - dimensions: The dimensionality of vectors to store
-
-Returns:
-  - A pointer to the initialized QDrantStore
-  - An error if initialization fails, or nil on success
-*/
-func NewQDrantStore(url, apiKey, collection string, dimensions int) (*QDrantStore, error) {
-	// Placeholder implementation
-	// In a real implementation, we would validate the connection to QDrant
-
-	return &QDrantStore{
-		url:        url,
-		apiKey:     apiKey,
-		collection: collection,
-		dimensions: dimensions,
-	}, nil
-}
-
-/*
-StoreVector stores a vector with the given ID and payload.
-It adds a vector embedding and its metadata to the QDrant collection.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - id: The unique identifier for the vector
-  - vector: The embedding vector to store
-  - payload: Associated metadata to store with the vector
-
-Returns:
-  - An error if the operation fails, or nil on success
-*/
-func (q *QDrantStore) StoreVector(ctx context.Context, id string, vector []float32, payload map[string]interface{}) error {
-	// Placeholder implementation
-	errnie.Info(fmt.Sprintf("QDrantStore: Storing vector for ID %s with %d dimensions", id, len(vector)))
-	return nil
-}
-
-/*
-Search searches for similar vectors.
-It finds vectors in the QDrant collection similar to the query vector.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - vector: The query vector to find similar vectors for
-  - limit: The maximum number of results to return
-  - filters: Optional filters to apply to the search
-
-Returns:
-  - A slice of SearchResult objects containing the matches
-  - An error if the operation fails, or nil on success
-*/
-func (q *QDrantStore) Search(ctx context.Context, vector []float32, limit int, filters map[string]interface{}) ([]SearchResult, error) {
-	// Placeholder implementation
-	errnie.Info(fmt.Sprintf("QDrantStore: Searching for similar vectors to %d dimensions", len(vector)))
-	return []SearchResult{}, nil
-}
-
-/*
-Get retrieves a specific vector by ID.
-It looks up a vector in the QDrant collection by its unique identifier.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - id: The unique identifier of the vector to retrieve
-
-Returns:
-  - The SearchResult containing the vector and its metadata
-  - An error if the operation fails, or nil on success
-*/
-func (q *QDrantStore) Get(ctx context.Context, id string) (*SearchResult, error) {
-	// Placeholder implementation
-	errnie.Info(fmt.Sprintf("QDrantStore: Getting vector for ID %s", id))
-	return nil, nil
-}
-
-/*
-Delete removes a vector from the store.
-It removes a vector from the QDrant collection by its unique identifier.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - id: The unique identifier of the vector to delete
-
-Returns:
-  - An error if the operation fails, or nil on success
-*/
-func (q *QDrantStore) Delete(ctx context.Context, id string) error {
-	// Placeholder implementation
-	errnie.Info(fmt.Sprintf("QDrantStore: Deleting vector for ID %s", id))
-	return nil
-}
-
-/*
-Neo4jStore implements graph storage using Neo4j.
-It provides a graph database implementation for storing and
-querying nodes and relationships with the Neo4j graph database.
-*/
-type Neo4jStore struct {
-	/* url is the connection URL for the Neo4j server */
-	url string
-	/* username is the authentication username for Neo4j */
-	username string
-	/* password is the authentication password for Neo4j */
-	password string
-	/* database is the name of the database in Neo4j */
-	database string
-}
-
-/*
-NewNeo4jStore creates a new Neo4j store.
-It initializes a connection to a Neo4j graph database.
-
-Parameters:
-  - url: The URL of the Neo4j server
-  - username: The authentication username for Neo4j
-  - password: The authentication password for Neo4j
-  - database: The name of the database to use
-
-Returns:
-  - A pointer to the initialized Neo4jStore
-  - An error if initialization fails, or nil on success
-*/
-func NewNeo4jStore(url, username, password, database string) (*Neo4jStore, error) {
-	// Placeholder implementation
-	// In a real implementation, we would validate the connection to Neo4j
-
-	return &Neo4jStore{
-		url:      url,
-		username: username,
-		password: password,
-		database: database,
-	}, nil
-}
-
-/*
-CreateNode creates a new node in the graph.
-It adds a node with the specified labels and properties to the Neo4j graph.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - id: The unique identifier for the node
-  - labels: Classification labels for the node
-  - properties: Key-value properties to store with the node
-
-Returns:
-  - An error if the operation fails, or nil on success
-*/
-func (n *Neo4jStore) CreateNode(ctx context.Context, id string, labels []string, properties map[string]interface{}) error {
-	// Placeholder implementation
-	errnie.Info(fmt.Sprintf("Neo4jStore: Creating node with ID %s and labels %v", id, labels))
-	return nil
-}
-
-/*
-CreateRelationship creates a relationship between two nodes.
-It establishes a typed connection between nodes in the Neo4j graph.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - fromID: The source node ID
-  - toID: The target node ID
-  - relType: The type of relationship to create
-  - properties: Key-value properties to store with the relationship
-
-Returns:
-  - An error if the operation fails, or nil on success
-*/
-func (n *Neo4jStore) CreateRelationship(ctx context.Context, fromID, toID, relType string, properties map[string]interface{}) error {
-	// Placeholder implementation
-	errnie.Info(fmt.Sprintf("Neo4jStore: Creating relationship %s from %s to %s", relType, fromID, toID))
-	return nil
-}
-
-/*
-Query executes a cypher query against the graph.
-It runs a Cypher language query against the Neo4j database.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - query: The Cypher query string to execute
-  - params: Parameters for the query
-
-Returns:
-  - Results from the query as a slice of maps
-  - An error if the operation fails, or nil on success
-*/
-func (n *Neo4jStore) Query(ctx context.Context, query string, params map[string]interface{}) ([]map[string]interface{}, error) {
-	// Placeholder implementation
-	errnie.Info(fmt.Sprintf("Neo4jStore: Executing query: %s", query))
-	return []map[string]interface{}{}, nil
-}
-
-/*
-DeleteNode removes a node from the graph.
-It deletes a node from the Neo4j graph by its unique identifier.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - id: The unique identifier of the node to delete
-
-Returns:
-  - An error if the operation fails, or nil on success
-*/
-func (n *Neo4jStore) DeleteNode(ctx context.Context, id string) error {
-	// Placeholder implementation
-	errnie.Info(fmt.Sprintf("Neo4jStore: Deleting node with ID %s", id))
-	return nil
-}
-
-/*
-OpenAIEmbeddingProvider provides embeddings using OpenAI.
-It implements the EmbeddingProvider interface using OpenAI's
-embedding models to convert text to vector representations.
-*/
-type OpenAIEmbeddingProvider struct {
-	/* apiKey is the authentication key for the OpenAI API */
-	apiKey string
-	/* model is the specific embedding model to use */
-	model string
-}
-
-/*
-NewOpenAIEmbeddingProvider creates a new OpenAI embedding provider.
-It initializes a provider that uses OpenAI's API to generate embeddings.
-
-Parameters:
-  - apiKey: The authentication key for the OpenAI API
-  - model: The name of the embedding model to use
-
-Returns:
-  - A pointer to the initialized OpenAIEmbeddingProvider
-*/
-func NewOpenAIEmbeddingProvider(apiKey, model string) *OpenAIEmbeddingProvider {
-	if model == "" {
-		model = "text-embedding-ada-002"
-	}
-
-	return &OpenAIEmbeddingProvider{
-		apiKey: apiKey,
-		model:  model,
-	}
-}
-
-/*
-GetEmbedding converts text to vector embeddings.
-It transforms text into a numerical vector representation using OpenAI's models.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - text: The text to create an embedding for
-
-Returns:
-  - The vector embedding representation
-  - An error if the operation fails, or nil on success
-*/
-func (o *OpenAIEmbeddingProvider) GetEmbedding(ctx context.Context, text string) ([]float32, error) {
-	// Placeholder implementation
-	// In a real implementation, this would call the OpenAI API
-	errnie.Info(fmt.Sprintf("OpenAIEmbeddingProvider: Getting embedding for text of length %d", len(text)))
-
-	// Return a dummy embedding of the right size
-	return make([]float32, 1536), nil
 }

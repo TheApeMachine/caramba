@@ -12,6 +12,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/agent/core"
 	"github.com/theapemachine/caramba/pkg/agent/llm"
+	"github.com/theapemachine/caramba/pkg/agent/memory"
 	"github.com/theapemachine/caramba/pkg/agent/tools"
 	"github.com/theapemachine/errnie"
 )
@@ -21,6 +22,29 @@ func BrowserExample(apiKey, url string) error {
 	// Set default URL if none provided
 	if url == "" || url == "artificial intelligence" {
 		url = "https://news.ycombinator.com"
+	}
+
+	// Create an embedding provider
+	embeddingProvider := memory.NewOpenAIEmbeddingProvider(apiKey, "text-embedding-3-large")
+
+	// Create base memory store
+	baseMemory := memory.NewInMemoryStore()
+
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	// Create unified memory with connection-aware options
+	memoryOpts := memory.ConnectionAwareMemoryOptions(nil)
+	// Enable both stores for the full example
+	memoryOpts.EnableVectorStore = true
+	memoryOpts.EnableGraphStore = true
+
+	// Create unified memory - the implementation handles connection errors gracefully
+	unifiedMemory, err := memory.NewUnifiedMemory(baseMemory, embeddingProvider, memoryOpts)
+	if err != nil {
+		fmt.Printf("Warning: Failed to initialize unified memory: %v\n", err)
+		fmt.Println("Continuing with basic in-memory store only...")
 	}
 
 	// Create tools
@@ -33,12 +57,14 @@ func BrowserExample(apiKey, url string) error {
 	agent := core.NewAgentBuilder("BrowserAgent").
 		WithLLM(llmProvider).
 		WithTool(browserTool).
+		WithMemory(unifiedMemory).
 		Build()
 
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
+	return runBrowserExample(ctx, agent, url)
+}
 
+// runBrowserExample runs the browser example with the provided agent
+func runBrowserExample(ctx context.Context, agent core.Agent, url string) error {
 	fmt.Printf("Starting browser example with URL: %s\n", url)
 	fmt.Println("1. Navigating to the URL and getting content...")
 
@@ -62,6 +88,7 @@ func BrowserExample(apiKey, url string) error {
 	fmt.Println(response)
 
 	// Process and execute tool calls
+	browserTool := getBrowserToolFromAgent(agent)
 	toolCalls := parseToolCalls(response)
 	if len(toolCalls) > 0 {
 		fmt.Println("\nExecuting navigation tool calls...")
@@ -205,6 +232,13 @@ func BrowserExample(apiKey, url string) error {
 	return nil
 }
 
+// getBrowserToolFromAgent retrieves the browser tool from an agent
+func getBrowserToolFromAgent(agent core.Agent) core.Tool {
+	// This is a simplified approach - in a real implementation, you'd want to properly extract the tool
+	// For now, we'll create a new instance which should be functionally identical
+	return tools.NewBrowserTool("http://localhost:3000", "6R0W53R135510")
+}
+
 // parseToolCalls parses tool calls from a JSON string
 func parseToolCalls(response string) []core.ToolCall {
 	// Try to parse the response as a JSON array of tool calls
@@ -343,6 +377,10 @@ func TestMultiProviderBrowser(openAIKey, anthropicKey, url string) error {
 		url = "https://news.ycombinator.com"
 	}
 
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
 	// Create the browser tool
 	browserTool := tools.NewBrowserTool("http://localhost:3000", "6R0W53R135510")
 
@@ -357,19 +395,22 @@ func TestMultiProviderBrowser(openAIKey, anthropicKey, url string) error {
 		Present your findings in a clear, concise format.
 	`, url)
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
 	// Test with OpenAI
 	if openAIKey != "" {
 		fmt.Println("\n=== Testing with OpenAI Provider ===\n")
 
-		openaiProvider := llm.NewOpenAIProvider(openAIKey, "gpt-4o-mini", browserTool)
-		openaiAgent := core.NewAgentBuilder("OpenAIBrowserAgent").
-			WithLLM(openaiProvider).
-			WithTool(browserTool).
-			Build()
+		// Try to set up memory for OpenAI agent
+		openaiAgentBuilder := core.NewAgentBuilder("OpenAIBrowserAgent").
+			WithLLM(llm.NewOpenAIProvider(openAIKey, "gpt-4o-mini", browserTool)).
+			WithTool(browserTool)
+
+		// Attempt to add memory if possible
+		if memoryEnabled := tryAddMemory(openaiAgentBuilder, openAIKey); memoryEnabled {
+			fmt.Println("Memory features are enabled for OpenAI agent.")
+		}
+
+		// Build the agent
+		openaiAgent := openaiAgentBuilder.Build()
 
 		result, err := openaiAgent.Execute(ctx, testTask)
 		if err != nil {
@@ -401,11 +442,20 @@ func TestMultiProviderBrowser(openAIKey, anthropicKey, url string) error {
 	if anthropicKey != "" {
 		fmt.Println("\n=== Testing with Anthropic Provider ===\n")
 
-		anthropicProvider := llm.NewAnthropicProvider(anthropicKey, "claude-3-haiku-20240307", browserTool)
-		anthropicAgent := core.NewAgentBuilder("AnthropicBrowserAgent").
-			WithLLM(anthropicProvider).
-			WithTool(browserTool).
-			Build()
+		// Set up Anthropic agent
+		anthropicAgentBuilder := core.NewAgentBuilder("AnthropicBrowserAgent").
+			WithLLM(llm.NewAnthropicProvider(anthropicKey, "claude-3-haiku-20240307", browserTool)).
+			WithTool(browserTool)
+
+		// Attempt to add memory if possible - we need OpenAI key for embeddings
+		if openAIKey != "" {
+			if memoryEnabled := tryAddMemory(anthropicAgentBuilder, openAIKey); memoryEnabled {
+				fmt.Println("Memory features are enabled for Anthropic agent.")
+			}
+		}
+
+		// Build the agent
+		anthropicAgent := anthropicAgentBuilder.Build()
 
 		result, err := anthropicAgent.Execute(ctx, testTask)
 		if err != nil {
@@ -434,4 +484,30 @@ func TestMultiProviderBrowser(openAIKey, anthropicKey, url string) error {
 	}
 
 	return nil
+}
+
+// tryAddMemory attempts to initialize and add memory to an agent builder
+// returns true if memory was successfully added
+func tryAddMemory(builder *core.AgentBuilder, apiKey string) bool {
+	// Create base memory and embedding provider
+	baseMemory := memory.NewInMemoryStore()
+	embeddingProvider := memory.NewOpenAIEmbeddingProvider(apiKey, "text-embedding-3-large")
+
+	// Create unified memory with connection-aware options
+	memoryOpts := memory.ConnectionAwareMemoryOptions(nil)
+	// Enable both stores for the full example
+	memoryOpts.EnableVectorStore = true
+	memoryOpts.EnableGraphStore = true
+
+	// Create unified memory - the implementation handles connection errors gracefully
+	unifiedMemory, err := memory.NewUnifiedMemory(baseMemory, embeddingProvider, memoryOpts)
+	if err != nil {
+		fmt.Printf("Warning: Failed to initialize unified memory: %v\n", err)
+		fmt.Println("Agent will proceed without memory augmentation.")
+		return false
+	}
+
+	// Add memory to the agent builder
+	builder.WithMemory(unifiedMemory)
+	return true
 }

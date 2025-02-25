@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/theapemachine/errnie"
 )
@@ -52,9 +53,22 @@ func (a *BaseAgent) ExecuteWithOptions(ctx context.Context, input string, opts .
 		opt(options)
 	}
 
+	// If we have a memory system, use it to enhance the input with relevant memories
+	enhancedInput := input
+	if a.Memory != nil {
+		// Check if the memory system supports memory preparation
+		if memoryEnhancer, ok := a.Memory.(MemoryEnhancer); ok {
+			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, a.Name, input)
+			if err == nil && enhancedContext != "" {
+				enhancedInput = enhancedContext
+				errnie.Info(fmt.Sprintf("Enhanced input with %d characters of memories", len(enhancedContext)-len(input)))
+			}
+		}
+	}
+
 	// If we have a planner, use it to create and execute a plan
 	if a.Planner != nil {
-		plan, err := a.Planner.CreatePlan(ctx, input)
+		plan, err := a.Planner.CreatePlan(ctx, enhancedInput)
 		if err != nil {
 			return "", fmt.Errorf("failed to create plan: %w", err)
 		}
@@ -69,12 +83,38 @@ func (a *BaseAgent) ExecuteWithOptions(ctx context.Context, input string, opts .
 		SystemPrompt: fmt.Sprintf("You are %s, an AI assistant. Answer the question to the best of your abilities.", a.Name),
 	}
 
+	var response string
+	var err error
+
 	if options.StreamHandler != nil {
-		err := a.LLM.StreamResponse(ctx, input, llmOptions, options.StreamHandler)
-		return "", err // We don't return the response when streaming
+		err = a.LLM.StreamResponse(ctx, enhancedInput, llmOptions, options.StreamHandler)
+	} else {
+		response, err = a.LLM.GenerateResponse(ctx, enhancedInput, llmOptions)
 	}
 
-	return a.LLM.GenerateResponse(ctx, input, llmOptions)
+	if err != nil {
+		return "", err
+	}
+
+	// Store the interaction in memory if available
+	if a.Memory != nil {
+		// Store the user input
+		inputKey := fmt.Sprintf("user_input_%d", time.Now().UnixNano())
+		_ = a.Memory.Store(ctx, inputKey, input)
+
+		// Store the agent's response
+		responseKey := fmt.Sprintf("agent_response_%d", time.Now().UnixNano())
+		_ = a.Memory.Store(ctx, responseKey, response)
+
+		// Extract memories if the memory system supports it
+		if memoryExtractor, ok := a.Memory.(MemoryExtractor); ok {
+			// Extract memories from both the input and response
+			interaction := fmt.Sprintf("User: %s\n\nAgent: %s", input, response)
+			_, _ = memoryExtractor.ExtractMemories(ctx, a.Name, interaction, "conversation")
+		}
+	}
+
+	return response, nil
 }
 
 // ExecuteWithIteration runs the agent using the iteration loop for self-improvement
@@ -86,8 +126,44 @@ func (a *BaseAgent) ExecuteWithIteration(ctx context.Context, input string, iter
 	// Create an iterator with the provided options
 	iterator := NewIterator(iterOptions)
 
-	// Run the iteration process
-	return iterator.Run(ctx, a, input)
+	// If we have a memory system, use it to enhance the input with relevant memories
+	enhancedInput := input
+	if a.Memory != nil {
+		// Check if the memory system supports memory preparation
+		if memoryEnhancer, ok := a.Memory.(MemoryEnhancer); ok {
+			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, a.Name, input)
+			if err == nil && enhancedContext != "" {
+				enhancedInput = enhancedContext
+				errnie.Info(fmt.Sprintf("Enhanced input with memories for iteration"))
+			}
+		}
+	}
+
+	// Run the iteration process with enhanced input
+	response, err := iterator.Run(ctx, a, enhancedInput)
+	if err != nil {
+		return "", err
+	}
+
+	// After iteration completes, store the final result in memory
+	if a.Memory != nil {
+		// Store the user input
+		inputKey := fmt.Sprintf("user_input_%d", time.Now().UnixNano())
+		_ = a.Memory.Store(ctx, inputKey, input)
+
+		// Store the agent's final response
+		responseKey := fmt.Sprintf("agent_response_%d", time.Now().UnixNano())
+		_ = a.Memory.Store(ctx, responseKey, response)
+
+		// Extract memories if the memory system supports it
+		if memoryExtractor, ok := a.Memory.(MemoryExtractor); ok {
+			// Create a combined interaction text with the final response
+			interaction := fmt.Sprintf("User: %s\n\nAgent (after iteration): %s", input, response)
+			_, _ = memoryExtractor.ExtractMemories(ctx, a.Name, interaction, "conversation_iterated")
+		}
+	}
+
+	return response, nil
 }
 
 // GetToolResults processes the results of tool calls for the iterator

@@ -66,6 +66,24 @@ type Memory interface {
 }
 
 /*
+MemoryEnhancer defines the interface for memory systems that can enhance prompts.
+It provides methods to prepare context with relevant memories for a given query.
+*/
+type MemoryEnhancer interface {
+	// PrepareContext enriches a prompt with relevant memories
+	PrepareContext(ctx context.Context, agentID string, query string) (string, error)
+}
+
+/*
+MemoryExtractor defines the interface for memory systems that can extract memories.
+It provides methods to extract important information from text to be stored as memories.
+*/
+type MemoryExtractor interface {
+	// ExtractMemories extracts important information from text that should be remembered
+	ExtractMemories(ctx context.Context, agentID string, text string, source string) ([]string, error)
+}
+
+/*
 MemoryEntry represents an entry in the memory system.
 It includes the key, value, and a relevance score for search results.
 */
