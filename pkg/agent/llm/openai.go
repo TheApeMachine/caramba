@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/invopop/jsonschema"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/agent/core"
 )
@@ -21,6 +22,13 @@ type OpenAIProvider struct {
 	BaseURL string
 	Client  *http.Client
 	Tools   []core.Tool
+}
+
+// ResponseFormat represents the format for OpenAI responses
+type ResponseFormat struct {
+	Type   string             `json:"type"`             // Can be "text" or "json_object"
+	Schema *jsonschema.Schema `json:"schema,omitempty"` // Optional JSON schema for structured outputs
+	Strict bool               `json:"strict,omitempty"` // Forces adherence to the schema
 }
 
 // OpenAIToolCall represents a tool call from OpenAI
@@ -86,6 +94,31 @@ func (p *OpenAIProvider) GenerateResponse(ctx context.Context, prompt string, op
 		"frequency_penalty": options.FrequencyPenalty,
 		"stop":              options.StopSequences,
 		"stream":            false,
+	}
+
+	// Add structured output format if specified
+	if options.ResponseFormat != "" {
+		// Simple format by default
+		responseFormat := map[string]interface{}{
+			"type": options.ResponseFormat,
+		}
+
+		// If a schema is provided, include it in the response format
+		if options.Schema != nil {
+			// Convert the schema to map for JSON serialization
+			schemaMap, err := convertSchemaToMap(options.Schema)
+			if err != nil {
+				return "", fmt.Errorf("failed to convert schema to map: %w", err)
+			}
+			responseFormat["schema"] = schemaMap
+
+			// Set strict mode to true for schema validation
+			if options.ResponseFormat == "json_object" {
+				responseFormat["strict"] = true
+			}
+		}
+
+		requestBody["response_format"] = responseFormat
 	}
 
 	// Add tools if available
@@ -186,6 +219,31 @@ func (p *OpenAIProvider) StreamResponse(ctx context.Context, prompt string, opti
 		"stream":            true,
 	}
 
+	// Add structured output format if specified
+	if options.ResponseFormat != "" {
+		// Simple format by default
+		responseFormat := map[string]interface{}{
+			"type": options.ResponseFormat,
+		}
+
+		// If a schema is provided, include it in the response format
+		if options.Schema != nil {
+			// Convert the schema to map for JSON serialization
+			schemaMap, err := convertSchemaToMap(options.Schema)
+			if err != nil {
+				return fmt.Errorf("failed to convert schema to map: %w", err)
+			}
+			responseFormat["schema"] = schemaMap
+
+			// Set strict mode to true for schema validation
+			if options.ResponseFormat == "json_object" {
+				responseFormat["strict"] = true
+			}
+		}
+
+		requestBody["response_format"] = responseFormat
+	}
+
 	// Add tools if available
 	if len(p.Tools) > 0 {
 		toolDefs, err := convertToolsToOpenAIFormat(p.Tools)
@@ -283,58 +341,68 @@ func (p *OpenAIProvider) StreamResponse(ctx context.Context, prompt string, opti
 					}
 					toolCallsInProgress[tc.ID].Function.Name = tc.Function.Name
 					toolCallsInProgress[tc.ID].Function.Arguments = tc.Function.Arguments
-
-					// Signal the start of a tool call to the user
-					handler(fmt.Sprintf("\n[Tool Call: %s", tc.Function.Name))
 				} else if toolCallsInProgress[tc.ID] != nil {
-					// Accumulate arguments
-					if tc.Function.Arguments != "" {
-						toolCallsInProgress[tc.ID].Function.Arguments += tc.Function.Arguments
-					}
+					// Append arguments as they come in
+					toolCallsInProgress[tc.ID].Function.Arguments += tc.Function.Arguments
 				}
 
-				// Check if finished
+				// Mark as complete if finished
 				if streamResponse.Choices[0].FinishReason == "tool_calls" {
 					toolCallsComplete[tc.ID] = true
-					handler("]\n")
 				}
 			}
 		}
 	}
 
-	// Process any completed tool calls after the stream ends
-	if len(toolCallsComplete) > 0 {
-		var completedToolCalls []core.ToolCall
-
-		for id, complete := range toolCallsComplete {
-			if !complete {
+	// Process any completed tool calls
+	if len(toolCallsInProgress) > 0 {
+		var toolCalls []core.ToolCall
+		for id, tc := range toolCallsInProgress {
+			// Skip incomplete tool calls
+			if !toolCallsComplete[id] {
 				continue
 			}
 
-			tc := toolCallsInProgress[id]
-			if tc == nil {
-				continue
-			}
-
-			// Parse arguments
+			// Parse the arguments JSON string
 			var args map[string]interface{}
 			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-				// Just log error and continue
-				handler(fmt.Sprintf("\n[Error parsing tool arguments: %v]\n", err))
+				handler(fmt.Sprintf("\nError parsing tool arguments: %v", err))
 				continue
 			}
 
-			completedToolCalls = append(completedToolCalls, core.ToolCall{
+			toolCalls = append(toolCalls, core.ToolCall{
 				Name: tc.Function.Name,
 				Args: args,
 			})
 		}
 
-		// Log the tool calls
-		handler(fmt.Sprintf("\n[%d tool calls completed]\n", len(completedToolCalls)))
+		if len(toolCalls) > 0 {
+			// Return formatted tool calls JSON after the content
+			toolCallsJSON, err := json.Marshal(toolCalls)
+			if err != nil {
+				handler(fmt.Sprintf("\nError formatting tool calls: %v", err))
+			} else {
+				handler("\n\nTool calls: " + string(toolCallsJSON))
+			}
+		}
 	}
 
 	return nil
+}
+
+// convertSchemaToMap converts a jsonschema.Schema object to a map for JSON serialization
+func convertSchemaToMap(schema interface{}) (map[string]interface{}, error) {
+	jsonData, err := json.Marshal(schema)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal schema: %w", err)
+	}
+
+	var schemaMap map[string]interface{}
+	if err := json.Unmarshal(jsonData, &schemaMap); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal schema: %w", err)
+	}
+
+	return schemaMap, nil
 }
 
 func convertToolsToOpenAIFormat(tools []core.Tool) ([]map[string]interface{}, error) {

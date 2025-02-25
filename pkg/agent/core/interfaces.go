@@ -44,6 +44,10 @@ type LLMOptions struct {
 	StopSequences []string
 	/* SystemPrompt provides initial instructions to the model */
 	SystemPrompt string
+	/* ResponseFormat specifies the format of the response (text, json_object) */
+	ResponseFormat string
+	/* Schema contains the JSON schema for structured output (when using json_object format) */
+	Schema interface{}
 }
 
 /*

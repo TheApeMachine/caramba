@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/google/go-github/v66 v66.0.0
 	github.com/google/uuid v1.6.0
+	github.com/invopop/jsonschema v0.13.0
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
 	github.com/openai/openai-go v0.1.0-alpha.59
 	github.com/qdrant/go-client v1.13.0
@@ -19,7 +20,6 @@ require (
 	github.com/theapemachine/amsh v0.0.0-20241219021147-90290810fcb8
 	github.com/theapemachine/errnie v0.0.7
 	golang.org/x/oauth2 v0.27.0
-	google.golang.org/grpc v1.69.4
 )
 
 require (
@@ -38,7 +38,6 @@ require (
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/invopop/jsonschema v0.12.0 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -64,6 +63,7 @@ require (
 	golang.org/x/net v0.34.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250115164207-1a7da9e5054f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
+	google.golang.org/grpc v1.69.4 // indirect
 	google.golang.org/protobuf v1.36.3 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
