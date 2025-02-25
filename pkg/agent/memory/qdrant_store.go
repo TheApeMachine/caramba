@@ -2,15 +2,31 @@ package memory
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
+	"os"
 	"time"
 
 	"slices"
 
 	"github.com/qdrant/go-client/qdrant"
-	"google.golang.org/grpc"
 )
+
+//------------------------------------------------------------------------------
+// QDrant Base Configuration
+//------------------------------------------------------------------------------
+
+// QDrantConfig holds configuration for the QDrant client
+type QDrantConfig struct {
+	Host           string
+	Port           int
+	APIKey         string
+	UseTLS         bool
+	CollectionName string
+}
+
+//------------------------------------------------------------------------------
+// QDrant Vector Store Provider
+//------------------------------------------------------------------------------
 
 // QDrantStore implements the VectorStoreProvider interface using QDrant.
 type QDrantStore struct {
@@ -20,14 +36,12 @@ type QDrantStore struct {
 	collection string
 	// dimensions is the size of vectors stored in this collection
 	dimensions int
-	// vectorName is the name of the vector field in QDrant
-	vectorName string
 }
 
 // NewQDrantStore creates a new QDrant vector store.
 //
 // Parameters:
-//   - url: The QDrant server URL (format: host:port)
+//   - urlStr: The QDrant server URL (format: host:port)
 //   - apiKey: The QDrant API key
 //   - collection: The collection name in QDrant
 //   - dimensions: The dimensionality of the vectors
@@ -36,23 +50,18 @@ type QDrantStore struct {
 //   - A pointer to an initialized QDrantStore
 //   - An error if initialization fails, or nil on success
 func NewQDrantStore(urlStr, apiKey, collection string, dimensions int) (*QDrantStore, error) {
-	// If collection is empty, use a default name
-	if collection == "" {
-		collection = "long-term-memory" // Default collection name
-	}
-
-	// Ensure dimensions match the model being used (OpenAI text-embedding-3-large uses 3072 dimensions)
+	// Ensure dimensions match the model being used
 	if dimensions <= 0 {
 		dimensions = 3072 // Default for OpenAI text-embedding-3-large embeddings
 	}
 
+	// Create the client with simple configuration
 	client, err := qdrant.NewClient(&qdrant.Config{
-		Host:        "localhost",
-		Port:        6334,
-		APIKey:      apiKey,
-		UseTLS:      false,
-		TLSConfig:   &tls.Config{},
-		GrpcOptions: []grpc.DialOption{},
+		Host:                   "localhost",
+		Port:                   6334,
+		APIKey:                 os.Getenv("QDRANT_API_KEY"),
+		UseTLS:                 false,
+		SkipCompatibilityCheck: true,
 	})
 
 	if err != nil {
@@ -61,9 +70,8 @@ func NewQDrantStore(urlStr, apiKey, collection string, dimensions int) (*QDrantS
 
 	store := &QDrantStore{
 		client:     client,
-		collection: collection,
+		collection: "long-term-memory",
 		dimensions: dimensions,
-		vectorName: "default",
 	}
 
 	// Ensure the collection exists
@@ -134,8 +142,19 @@ func (q *QDrantStore) createCollection() error {
 // Returns:
 //   - An error if the operation fails, or nil on success
 func (q *QDrantStore) StoreVector(ctx context.Context, id string, vector []float32, payload map[string]interface{}) error {
+	// Preprocess payload to handle time.Time values
+	processedPayload := make(map[string]interface{})
+	for k, v := range payload {
+		// Convert time.Time to RFC3339 string format
+		if timeVal, ok := v.(time.Time); ok {
+			processedPayload[k] = timeVal.Format(time.RFC3339)
+		} else {
+			processedPayload[k] = v
+		}
+	}
+
 	// Convert payload to the Qdrant Value map
-	qdrantPayload := qdrant.NewValueMap(payload)
+	qdrantPayload := qdrant.NewValueMap(processedPayload)
 
 	// Create point with vectors
 	points := []*qdrant.PointStruct{
@@ -176,13 +195,11 @@ func (q *QDrantStore) Search(
 	}
 
 	limitUint := uint64(limit)
-	vectorName := "default" // The named vector to use
 
 	// Create query parameters
 	queryParams := &qdrant.QueryPoints{
 		CollectionName: q.collection,
 		Query:          qdrant.NewQuery(vector...),
-		Using:          &vectorName, // Specify which named vector to use
 		Limit:          &limitUint,
 		WithPayload:    qdrant.NewWithPayload(true),
 	}

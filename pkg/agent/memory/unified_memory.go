@@ -27,10 +27,10 @@ It distinguishes between agent-specific memories and shared global memories.
 type MemoryType string
 
 const (
-	/* MemoryTypePersonal represents an agent's personal memory */
+	// MemoryTypePersonal represents an agent's personal memory
 	MemoryTypePersonal MemoryType = "personal"
 
-	/* MemoryTypeGlobal represents shared global memory */
+	// MemoryTypeGlobal represents shared global memory
 	MemoryTypeGlobal MemoryType = "global"
 )
 
@@ -41,10 +41,10 @@ It identifies the storage implementation used for memories.
 type MemoryStoreType string
 
 const (
-	/* MemoryStoreVector represents vector-based memory storage (e.g., QDrant) */
+	// MemoryStoreVector represents vector-based memory storage (e.g., QDrant)
 	MemoryStoreVector MemoryStoreType = "vector"
 
-	/* MemoryStoreGraph represents graph-based memory storage (e.g., Neo4j) */
+	// MemoryStoreGraph represents graph-based memory storage (e.g., Neo4j)
 	MemoryStoreGraph MemoryStoreType = "graph"
 )
 
@@ -228,76 +228,9 @@ func DefaultUnifiedMemoryOptions() *UnifiedMemoryOptions {
 		VectorDBDimensions:  3072, // Default for OpenAI embeddings
 		VectorDBMetricType:  "cosine",
 		ContextTemplate:     "Previous relevant memories:\n{{.Memories}}\n\nCurrent query: {{.Query}}",
+		VectorDBCollection:  "long-term-memory", // Default collection name
 		// Default connection values will be added by ConnectionAwareMemoryOptions
 	}
-}
-
-/*
-ConnectionAwareMemoryOptions extends DefaultUnifiedMemoryOptions with environment-aware connection settings.
-It attempts to automatically discover and configure the correct connection parameters for memory stores.
-
-Parameters:
-  - baseOptions: Optional existing options to extend. If nil, DefaultUnifiedMemoryOptions() will be used.
-
-Returns:
-  - A pointer to an UnifiedMemoryOptions struct with connection-aware values
-*/
-func ConnectionAwareMemoryOptions(baseOptions *UnifiedMemoryOptions) *UnifiedMemoryOptions {
-	if baseOptions == nil {
-		baseOptions = DefaultUnifiedMemoryOptions()
-	}
-
-	// Set sensible defaults for vector store (Qdrant)
-	if baseOptions.EnableVectorStore {
-		// Check environment variables first
-		if url := os.Getenv("QDRANT_URL"); url != "" {
-			baseOptions.VectorStoreURL = url
-		} else {
-			baseOptions.VectorStoreURL = "http://localhost:6333" // Explicitly use the REST API port
-		}
-
-		if apiKey := os.Getenv("QDRANT_API_KEY"); apiKey != "" {
-			baseOptions.VectorStoreAPIKey = apiKey
-		} else {
-			baseOptions.VectorStoreAPIKey = "gKzti5QyA5KeLQYQFLA1T6pT3GYE9pza" // Default dev API key
-		}
-
-		if collection := os.Getenv("QDRANT_COLLECTION"); collection != "" {
-			baseOptions.VectorDBCollection = collection
-		} else if baseOptions.VectorDBCollection == "" {
-			baseOptions.VectorDBCollection = "long-term-memory" // Default collection name
-		}
-	}
-
-	// Set sensible defaults for graph store (Neo4j)
-	if baseOptions.EnableGraphStore {
-		// Check environment variables first
-		if url := os.Getenv("NEO4J_URL"); url != "" {
-			baseOptions.GraphStoreURL = url
-		} else {
-			baseOptions.GraphStoreURL = "bolt://localhost:7687" // Default Neo4j URL
-		}
-
-		if username := os.Getenv("NEO4J_USERNAME"); username != "" {
-			baseOptions.GraphStoreUsername = username
-		} else {
-			baseOptions.GraphStoreUsername = "neo4j" // Default Neo4j username
-		}
-
-		if password := os.Getenv("NEO4J_PASSWORD"); password != "" {
-			baseOptions.GraphStorePassword = password
-		} else {
-			baseOptions.GraphStorePassword = "securepassword" // Default Neo4j password
-		}
-
-		if database := os.Getenv("NEO4J_DATABASE"); database != "" {
-			baseOptions.GraphStoreDatabase = database
-		} else if baseOptions.GraphStoreDatabase == "" {
-			baseOptions.GraphStoreDatabase = "neo4j" // Default database name
-		}
-	}
-
-	return baseOptions
 }
 
 /*
@@ -339,23 +272,31 @@ Returns:
   - An error if initialization fails, or nil on success
 */
 func NewUnifiedMemory(baseStore core.Memory, embeddingProvider EmbeddingProvider, options *UnifiedMemoryOptions) (*UnifiedMemory, error) {
-	if options == nil {
-		options = ConnectionAwareMemoryOptions(nil)
-	} else {
-		// Apply connection-aware defaults to any unset connection parameters
-		options = ConnectionAwareMemoryOptions(options)
-	}
-
 	var vectorStore VectorStoreProvider
 	var graphStore GraphStore
 	var err error
-	var warnings []string
+
+	// If options is nil, use default options
+	if options == nil {
+		options = DefaultUnifiedMemoryOptions()
+	}
+
+	if options.VectorStoreAPIKey == "" {
+		options.VectorStoreAPIKey = os.Getenv("QDRANT_API_KEY")
+	}
+
+	// Create a background context for initialization
+	ctx := context.Background()
 
 	// Initialize vector store if enabled
 	if options.EnableVectorStore {
-		vectorStore, err = NewQDrantStore(options.VectorStoreURL, options.VectorStoreAPIKey, options.VectorDBCollection, options.VectorDBDimensions)
+		vectorStore, err = NewQDrantStore(
+			options.VectorStoreURL,
+			options.VectorStoreAPIKey,
+			options.VectorDBCollection,
+			options.VectorDBDimensions,
+		)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("Vector store initialization failed: %v", err))
 			fmt.Printf("Warning: Vector store initialization failed: %v\n", err)
 			fmt.Println("Memory will continue with reduced functionality (without vector search).")
 			options.EnableVectorStore = false
@@ -364,39 +305,45 @@ func NewUnifiedMemory(baseStore core.Memory, embeddingProvider EmbeddingProvider
 
 	// Initialize graph store if enabled
 	if options.EnableGraphStore {
-		graphStore, err = NewNeo4jStore(options.GraphStoreURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
+		graphStore, err = NewNeo4jStore(ctx, options.GraphStoreURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("Graph store initialization failed: %v", err))
 			fmt.Printf("Warning: Graph store initialization failed: %v\n", err)
 			fmt.Println("Memory will continue with reduced functionality (without graph relationships).")
 			options.EnableGraphStore = false
 
 			// Try alternative Neo4j connection formats if this was likely a connection issue
 			if strings.Contains(err.Error(), "connect") || strings.Contains(err.Error(), "dial") {
-				fmt.Println("Attempting alternative Neo4j connection formats...")
+				// Try with neo4j:// protocol if not already using it
+				altURL := options.GraphStoreURL
+				if !strings.HasPrefix(altURL, "neo4j://") {
+					altURL = strings.Replace(altURL, "bolt://", "neo4j://", 1)
+				}
 
-				// Try with neo4j:// protocol
-				altURL := strings.Replace(options.GraphStoreURL, "bolt://", "neo4j://", 1)
 				if altURL != options.GraphStoreURL {
 					fmt.Printf("Trying neo4j:// protocol: %s\n", altURL)
-					graphStore, err = NewNeo4jStore(altURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
+					graphStore, err = NewNeo4jStore(ctx, altURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
 					if err == nil {
 						fmt.Println("Success! Connected with neo4j:// protocol.")
 						options.EnableGraphStore = true
-						options.GraphStoreURL = altURL
 					}
 				}
 
-				// If still not connected, try with http:// protocol for browser connection
-				if err != nil && strings.HasPrefix(options.GraphStoreURL, "bolt://") {
-					httpURL := strings.Replace(options.GraphStoreURL, "bolt://", "http://", 1)
+				// If still failed, try HTTP
+				if err != nil {
+					httpURL := options.GraphStoreURL
+					if strings.HasPrefix(httpURL, "bolt://") {
+						httpURL = strings.Replace(httpURL, "bolt://", "http://", 1)
+					} else if strings.HasPrefix(httpURL, "neo4j://") {
+						httpURL = strings.Replace(httpURL, "neo4j://", "http://", 1)
+					}
+
+					// Change port from 7687 (bolt) to 7474 (http)
 					httpURL = strings.Replace(httpURL, "7687", "7474", 1)
 					fmt.Printf("Trying http:// protocol: %s\n", httpURL)
-					graphStore, err = NewNeo4jStore(httpURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
+					graphStore, err = NewNeo4jStore(ctx, httpURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
 					if err == nil {
 						fmt.Println("Success! Connected with http:// protocol.")
 						options.EnableGraphStore = true
-						options.GraphStoreURL = httpURL
 					}
 				}
 			}

@@ -38,14 +38,8 @@ func BrowserExample(apiKey, url string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	// Create unified memory with connection-aware options
-	memoryOpts := memory.ConnectionAwareMemoryOptions(nil)
-	// Enable both stores for the full example
-	memoryOpts.EnableVectorStore = true
-	memoryOpts.EnableGraphStore = true
-
-	// Create unified memory - the implementation handles connection errors gracefully
-	unifiedMemory, err := memory.NewUnifiedMemory(baseMemory, embeddingProvider, memoryOpts)
+	// Create unified memory with default options
+	unifiedMemory, err := memory.NewUnifiedMemory(baseMemory, embeddingProvider, memory.DefaultUnifiedMemoryOptions())
 	if err != nil {
 		fmt.Printf("Warning: Failed to initialize unified memory: %v\n", err)
 		fmt.Println("Continuing with basic in-memory store only...")
@@ -108,7 +102,7 @@ func runBrowserExample(ctx context.Context, agent core.Agent, url string) error 
 		}
 	}
 
-	fmt.Println("\n--------------------------------------\n")
+	fmt.Println("\n--------------------------------------")
 
 	// Step 2: Take a screenshot
 	fmt.Println("2. Taking a screenshot...")
@@ -148,7 +142,7 @@ func runBrowserExample(ctx context.Context, agent core.Agent, url string) error 
 		}
 	}
 
-	fmt.Println("\n--------------------------------------\n")
+	fmt.Println("\n--------------------------------------")
 
 	// Step 3: Extract specific information
 	fmt.Println("3. Extracting specific information...")
@@ -190,7 +184,7 @@ func runBrowserExample(ctx context.Context, agent core.Agent, url string) error 
 		}
 	}
 
-	fmt.Println("\n--------------------------------------\n")
+	fmt.Println("\n--------------------------------------")
 
 	// Step 4: Execute some custom JavaScript
 	fmt.Println("4. Running custom JavaScript...")
@@ -230,7 +224,7 @@ func runBrowserExample(ctx context.Context, agent core.Agent, url string) error 
 		}
 	}
 
-	fmt.Println("\n--------------------------------------\n")
+	fmt.Println("\n--------------------------------------")
 
 	fmt.Println("Browser example completed successfully!")
 	return nil
@@ -497,14 +491,9 @@ func tryAddMemory(builder *core.AgentBuilder, apiKey string) bool {
 	baseMemory := memory.NewInMemoryStore()
 	embeddingProvider := memory.NewOpenAIEmbeddingProvider(apiKey, "text-embedding-3-large")
 
-	// Create unified memory with connection-aware options
-	memoryOpts := memory.ConnectionAwareMemoryOptions(nil)
-	// Enable both stores for the full example
-	memoryOpts.EnableVectorStore = true
-	memoryOpts.EnableGraphStore = true
-
 	// Create unified memory - the implementation handles connection errors gracefully
-	unifiedMemory, err := memory.NewUnifiedMemory(baseMemory, embeddingProvider, memoryOpts)
+	unifiedMemory, err := memory.NewUnifiedMemory(baseMemory, embeddingProvider, memory.DefaultUnifiedMemoryOptions())
+
 	if err != nil {
 		fmt.Printf("Warning: Failed to initialize unified memory: %v\n", err)
 		fmt.Println("Agent will proceed without memory augmentation.")

@@ -74,7 +74,7 @@ type GraphStore interface {
 // Neo4jStore implements the GraphStore interface using Neo4j.
 type Neo4jStore struct {
 	// driver is the Neo4j driver instance
-	driver neo4j.Driver
+	driver neo4j.DriverWithContext
 	// database is the name of the database in Neo4j
 	database string
 }
@@ -82,6 +82,7 @@ type Neo4jStore struct {
 // NewNeo4jStore creates a new Neo4j graph store.
 //
 // Parameters:
+//   - ctx: The context for the operation, which can be used for cancellation
 //   - url: The Neo4j server URL
 //   - username: The Neo4j username
 //   - password: The Neo4j password
@@ -90,7 +91,13 @@ type Neo4jStore struct {
 // Returns:
 //   - A pointer to an initialized Neo4jStore
 //   - An error if initialization fails, or nil on success
-func NewNeo4jStore(url, username, password, database string) (*Neo4jStore, error) {
+func NewNeo4jStore(
+	ctx context.Context,
+	url,
+	username,
+	password,
+	database string,
+) (*Neo4jStore, error) {
 	if database == "" {
 		database = "neo4j" // Default database name
 	}
@@ -99,12 +106,12 @@ func NewNeo4jStore(url, username, password, database string) (*Neo4jStore, error
 	authToken := neo4j.BasicAuth(username, password, "")
 
 	// Create Neo4j driver
-	driver, err := neo4j.NewDriver(url, authToken)
+	driver, err := neo4j.NewDriverWithContext(url, authToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Neo4j driver: %w", err)
 	}
 
-	err = driver.VerifyConnectivity()
+	err = driver.VerifyConnectivity(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Neo4j: %w", err)
 	}
@@ -116,8 +123,8 @@ func NewNeo4jStore(url, username, password, database string) (*Neo4jStore, error
 }
 
 // Close closes the Neo4j driver connection
-func (n *Neo4jStore) Close() error {
-	return n.driver.Close()
+func (n *Neo4jStore) Close(ctx context.Context) error {
+	return n.driver.Close(ctx)
 }
 
 // CreateNode creates a new node in the Neo4j graph.
@@ -132,11 +139,11 @@ func (n *Neo4jStore) Close() error {
 //   - An error if the operation fails, or nil on success
 func (n *Neo4jStore) CreateNode(ctx context.Context, id string, labels []string, properties map[string]interface{}) error {
 	// Start a new session
-	session := n.driver.NewSession(neo4j.SessionConfig{
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{
 		DatabaseName: n.database,
 		AccessMode:   neo4j.AccessModeWrite,
 	})
-	defer session.Close()
+	defer session.Close(ctx)
 
 	// Add the ID to properties
 	props := make(map[string]interface{})
@@ -158,22 +165,22 @@ func (n *Neo4jStore) CreateNode(ctx context.Context, id string, labels []string,
 	}
 
 	// Execute the query within a transaction
-	tx, err := session.BeginTransaction()
+	tx, err := session.BeginTransaction(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	result, err := tx.Run(query, params)
+	result, err := tx.Run(ctx, query, params)
 	if err != nil {
 		return fmt.Errorf("failed to run query: %w", err)
 	}
 
-	_, err = result.Consume()
+	_, err = result.Consume(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to consume result: %w", err)
 	}
 
-	err = tx.Commit()
+	err = tx.Commit(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -194,11 +201,11 @@ func (n *Neo4jStore) CreateNode(ctx context.Context, id string, labels []string,
 //   - An error if the operation fails, or nil on success
 func (n *Neo4jStore) CreateRelationship(ctx context.Context, fromID, toID, relType string, properties map[string]interface{}) error {
 	// Start a new session
-	session := n.driver.NewSession(neo4j.SessionConfig{
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{
 		DatabaseName: n.database,
 		AccessMode:   neo4j.AccessModeWrite,
 	})
-	defer session.Close()
+	defer session.Close(ctx)
 
 	// Build the Cypher query
 	query := `
@@ -215,22 +222,22 @@ func (n *Neo4jStore) CreateRelationship(ctx context.Context, fromID, toID, relTy
 	}
 
 	// Execute the query within a transaction
-	tx, err := session.BeginTransaction()
+	tx, err := session.BeginTransaction(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	result, err := tx.Run(query, params)
+	result, err := tx.Run(ctx, query, params)
 	if err != nil {
 		return fmt.Errorf("failed to run query: %w", err)
 	}
 
-	_, err = result.Consume()
+	_, err = result.Consume(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to consume result: %w", err)
 	}
 
-	err = tx.Commit()
+	err = tx.Commit(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -250,21 +257,21 @@ func (n *Neo4jStore) CreateRelationship(ctx context.Context, fromID, toID, relTy
 //   - An error if the operation fails, or nil on success
 func (n *Neo4jStore) Query(ctx context.Context, query string, params map[string]interface{}) ([]map[string]interface{}, error) {
 	// Start a new session
-	session := n.driver.NewSession(neo4j.SessionConfig{
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{
 		DatabaseName: n.database,
 		AccessMode:   neo4j.AccessModeRead,
 	})
-	defer session.Close()
+	defer session.Close(ctx)
 
 	// Execute the query within a transaction
-	result, err := session.ReadTransaction(func(tx neo4j.Transaction) (interface{}, error) {
-		result, err := tx.Run(query, params)
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, params)
 		if err != nil {
 			return nil, err
 		}
 
 		var records []map[string]interface{}
-		for result.Next() {
+		for result.Next(ctx) {
 			record := result.Record()
 			recordMap := make(map[string]interface{})
 
@@ -305,11 +312,11 @@ func (n *Neo4jStore) Query(ctx context.Context, query string, params map[string]
 //   - An error if the operation fails, or nil on success
 func (n *Neo4jStore) DeleteNode(ctx context.Context, id string) error {
 	// Start a new session
-	session := n.driver.NewSession(neo4j.SessionConfig{
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{
 		DatabaseName: n.database,
 		AccessMode:   neo4j.AccessModeWrite,
 	})
-	defer session.Close()
+	defer session.Close(ctx)
 
 	// Build the Cypher query to delete the node and all its relationships
 	query := `
@@ -320,16 +327,15 @@ func (n *Neo4jStore) DeleteNode(ctx context.Context, id string) error {
 	params := map[string]interface{}{
 		"id": id,
 	}
-
 	// Execute the query within a transaction
-	_, err := session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
-		result, err := tx.Run(query, params)
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		result, err := tx.Run(ctx, query, params)
 		if err != nil {
 			return nil, err
 		}
 
 		// Consume the result to complete the transaction
-		summary, err := result.Consume()
+		summary, err := result.Consume(ctx)
 		if err != nil {
 			return nil, err
 		}

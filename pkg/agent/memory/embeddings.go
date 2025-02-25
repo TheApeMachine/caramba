@@ -7,10 +7,78 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
+	"github.com/theapemachine/errnie"
 )
 
+//------------------------------------------------------------------------------
+// OpenAI SDK Implementation
+//------------------------------------------------------------------------------
+
+// OpenAISDKEmbeddings implements EmbeddingProvider using the official OpenAI SDK
+type OpenAISDKEmbeddings struct {
+	client           *openai.Client
+	embeddingService *openai.EmbeddingService
+	model            openai.EmbeddingModel
+}
+
+// NewOpenAISDKEmbeddings creates a new embedding provider using the official OpenAI SDK
+func NewOpenAISDKEmbeddings(apiKey string, model string) *OpenAISDKEmbeddings {
+	if model == "" {
+		model = openai.EmbeddingModelTextEmbedding3Small // Default to modern embedding model
+	}
+
+	client := openai.NewClient(option.WithAPIKey(apiKey))
+	return &OpenAISDKEmbeddings{
+		client:           client,
+		embeddingService: openai.NewEmbeddingService(),
+		model:            model,
+	}
+}
+
+// GetEmbedding implements the EmbeddingProvider interface using the OpenAI SDK
+func (o *OpenAISDKEmbeddings) GetEmbedding(ctx context.Context, text string) ([]float32, error) {
+	if text == "" {
+		return nil, fmt.Errorf("cannot get embeddings for empty text")
+	}
+
+	// Create input array of strings as required by the API
+	inputStrings := []string{text}
+
+	// Call the embedding API with the correct parameters
+	response, err := o.embeddingService.New(
+		ctx,
+		openai.EmbeddingNewParams{
+			Input: openai.F[openai.EmbeddingNewParamsInputUnion](openai.EmbeddingNewParamsInputArrayOfStrings(inputStrings)),
+			Model: openai.F(o.model),
+		},
+	)
+	if err != nil {
+		errnie.Error(fmt.Errorf("failed to get OpenAI embeddings: %w", err))
+		return nil, err
+	}
+
+	if len(response.Data) == 0 {
+		return nil, fmt.Errorf("no embeddings returned from OpenAI")
+	}
+
+	// Convert from float64 to float32
+	embedding := make([]float32, len(response.Data[0].Embedding))
+	for i, v := range response.Data[0].Embedding {
+		embedding[i] = float32(v)
+	}
+
+	return embedding, nil
+}
+
+//------------------------------------------------------------------------------
+// Direct API Implementation
+//------------------------------------------------------------------------------
+
 // OpenAIEmbeddingProvider implements the EmbeddingProvider interface
-// using OpenAI's embedding API.
+// using direct calls to the OpenAI API (no SDK dependency)
 type OpenAIEmbeddingProvider struct {
 	// apiKey is the authentication key for the OpenAI API
 	apiKey string
@@ -18,7 +86,8 @@ type OpenAIEmbeddingProvider struct {
 	model string
 }
 
-// NewOpenAIEmbeddingProvider creates a new OpenAI embedding provider.
+// NewOpenAIEmbeddingProvider creates a new OpenAI embedding provider
+// using direct API calls
 //
 // Parameters:
 //   - apiKey: The OpenAI API key
