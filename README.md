@@ -1,5 +1,7 @@
 # 🤖 Caramba
 
+A specialized agent framework in Go.
+
 [![Go CI/CD](https://github.com/theapemachine/caramba/actions/workflows/main.yml/badge.svg)](https://github.com/theapemachine/caramba/actions/workflows/main.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/theapemachine/caramba)](https://goreportcard.com/report/github.com/theapemachine/caramba)
 [![GoDoc](https://godoc.org/github.com/theapemachine/caramba?status.svg)](https://godoc.org/github.com/theapemachine/caramba)
@@ -14,239 +16,89 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_caramba&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_caramba)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_caramba&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_caramba)
 
-A specialized agent framework in Go.
-
 ## ✨ Features
+
+Caramba comes with a wide array of features that mostly focus on solving real-world problems.
 
 ### 🧠 Multi-Provider Intelligence
 
-To avoid rate-limits as much as possible, and circumvent provider-based bias in the responses,
-you can use the `BalancedProvider` which wraps the underlying model providers, and spreads out
-individual generations among them.
+With all the major providers implemented, and the ability to define a custom API endpoint for the OpenAI provider, the framework should be compatible with most providers.
 
-- OpenAI (GPT-4)
-- Anthropic (Claude)
-- Google (Gemini)
-- Cohere (Command-R)
-- Smart load balancing and failover
-- Automatic cooldown and recovery
-- Provider health monitoring
-- Thread-safe operations
+The is also a "synthetic" provider called the `BalancedProvider` which automatically load-balances generation calls across all currently active providers, taking care of error handling, cooldown periods, etc.
 
-### 🔄 Pipeline Architecture
+### Iteration
 
-- Sequential and parallel execution modes
-- Stage-based processing
-- Event-driven communication
-- Thread-safe concurrent execution
-- Custom output aggregation
-- Graph-based agent orchestration
-- Node and edge-based workflow management
+Agents are enabled to iterate, meaning that their responses, and any side-effects to their responses, such as tool call results, are collected and added to their current context, which the loops around and the agent is re-prompted with the updated context. This allows an agent to iterate over their output, enabling things like self-reflection, etc.
 
-### 🛠 Tool System
+An agent is instructed to indicate once they are happy with the results, and they will break out of this iteration loop.
 
-- JSON schema-based tool definition
-- Dynamic tool registration
-- Streaming tool execution
-- Generic parameter handling
-- IO connectivity for streaming tools
-- Runtime tool execution
-- Schema-based tool registration
+### Communication
 
-### 📝 Context Management
+Agents are able to send messages to each other, to a topic, or as a broadcast. Other agents can subscribe to topics, or create new ones.
 
-- Token-aware message history (128k context window)
-- Intelligent message truncation
-- System and user message preservation
-- Optimized token counting using `tiktoken-go`
-- Thread-safe buffer operations
-- Message history management
-- Context window optimization
+This allows for collaboration.
 
-## 🚀 Quick Start
+### Memory
 
-```bash
-# Install Caramba
-go get github.com/theapemachine/caramba
+Agents in the Caramba framework can have two distinct types of memory, vector-based, and graph-based.
 
-# Set up your environment variables
-export OPENAI_API_KEY="your-key"
-export ANTHROPIC_API_KEY="your-key"
-export GOOGLE_API_KEY="your-key"
-export COHERE_API_KEY="your-key"
-```
+- **QDrant**: vector-based memory store
+  - Agents can have their own personal long-term memory
+  - Agents can be connected to a global long-term memory
+- **Neo4j**: grah-based memory store
+  - Agents can have their own personal long-term memory
+  - Agents can be connected to a global long-term memory
 
-### Basic Usage
+These memory stores are abstracted away behind a unified memory layer, which automatically extracts memories from an agent's current context, if the content is interesting enough to be stored in long-term memory.
 
-```go
-package main
+Before an agent starts its first response, the unified memory layer is automatically queried for relevant long-term memories, and anything that was found is injected into the current context, before the agent is first prompted, so they will have those memories available to them.
 
-import (
-    "context"
-    "fmt"
+### Tools
 
-    "github.com/theapemachine/caramba/ai"
-    "github.com/theapemachine/caramba/provider"
-)
+A good selection of tools is integrated out of the box, but of course the Tool interface allows anyone to easily add their own custom toolsets.
 
-func main() {
-    // Create a new agent
-    agent := ai.NewAgent()
+- **Agent**: potentially one of the most powerful tools
+  - Allows an agent to create other agents on-the-fly
+- **Docker**: a fully featured Debian (or customized) execution environment
+  - Using the Docker API, agents are able to make use of a full linux shell, running in a Docker container
+- **Browser**: a fully featured (headless) browser instance
+  - Allows an agent not only to browse the web, but also perform complex tasks, using the developer tools
+  - Features include:
+    - Navigate to websites and retrieve HTML content
+    - Take screenshots of web pages
+    - Generate PDF files from web pages
+    - Extract specific content using CSS selectors
+    - Execute custom JavaScript on web pages
+- **Github**: integration with the Github API + WebHooks
+  - Allows an agent to act as a fully integrated developer
+  - Allows an agent to perform code-reviews
+  - Enables an agent to search code
+  - Features include:
+    - Search for code across repositories with language and path filters
+    - Get repository information and metrics
+    - List and create issues with full metadata support
+    - View, create, and comment on pull requests
+    - Submit code reviews (approve, comment, or request changes)
+    - Retrieve file content from repositories
+    - Create and manage comments on issues and pull requests
+- **Azure DevOps**: integration with the Azure DevOps API + WebHooks
+  - Mostly focused on the Boards, for project management
+  - Features include:
+    - Create, read, update, and query work items (Epics, Features, User Stories, Bugs, Tasks)
+    - Manage work item comments and attachments
+    - Get project details and list available projects
+    - List and manage teams within projects
+    - Access sprint information and track progress
+    - Execute custom WIQL queries for advanced work item filtering
+- **Slack**: integration with the Slack API + WebHooks
+  - Allows an agent to have a two-way communication channel with a team
+  - Allows an agent to respond to conversations and perform background tasks
+  - Enables an agent to search Slack history
 
-    // Send a message
-    message := provider.NewMessage(provider.RoleUser, "Analyze this text...")
-    response := agent.Generate(context.Background(), message)
+### Self-Optimiation
 
-    // Process the response
-    for event := range response {
-        fmt.Print(event.Text)
-    }
-}
-```
+A Caramba-based Agent "system" should be able to self-optimize.
 
-### Infrastructure Setup
-
-#### Docker Compose
-
-The project includes a comprehensive Docker Compose setup that provides all necessary infrastructure:
-
-```bash
-# Start the infrastructure
-docker compose up -d
-
-# Available Services:
-# - Ollama (GPU-enabled LLM server) - Port 11434
-# - MinIO (Object Storage) - Ports 9000, 9001
-# - Qdrant (Vector Database) - Port 6333
-# - Redis (Cache) - Port 6379
-# - Neo4j (Graph Database) - Ports 7474, 7687
-```
-
-#### Environment Setup
-
-Create a `.env` file in your project root with the following variables:
-
-```bash
-# AI Provider Keys
-OPENAI_API_KEY="your-key"
-ANTHROPIC_API_KEY="your-key"
-GEMINI_API_KEY="your-key"
-COHERE_API_KEY="your-key"
-HF_API_KEY="your-key"
-
-# Integration Keys
-GITHUB_PAT="your-github-pat"
-AZDO_ORG_URL="your-azure-devops-url"
-AZDO_PAT="your-azure-devops-pat"
-TRENGO_API_KEY="your-trengo-key"
-MARVIN_APP_KEY="your-marvin-app-key"
-MARVIN_BOT_KEY="your-marvin-bot-key"
-MARVIN_USER_KEY="your-marvin-user-key"
-NVIDIA_API_KEY="your-nvidia-key"
-
-# Infrastructure Credentials
-MINIO_USER="your-minio-user"
-MINIO_PASSWORD="your-minio-password"
-QDRANT_API_KEY="your-qdrant-key"
-NEO4J_USERNAME="neo4j"
-NEO4J_PASSWORD="your-neo4j-password"
-```
-
-## 🏗 Architecture
-
-The system follows a sophisticated multi-layered architecture:
-
-### Message Flow
-
-1. Input → Agent
-2. Agent → Provider
-3. Provider → Buffer
-4. Buffer → Tool (if applicable)
-5. Tool → Agent
-6. Agent → Output
-
-#### Thread Safety
-
-- Mutex-based provider synchronization
-- Thread-safe buffer operations
-- Channel-based communication
-- Concurrent pipeline execution
-
-### Error Handling
-
-- Provider failure tracking
-- Cooldown periods for failed providers
-- Error event propagation
-- Graceful pipeline termination
-
-### Performance
-
-- Token counting optimization
-- Message history truncation
-- Parallel execution capabilities
-- Buffer size management
-
-## 🔧 Configuration
-
-Caramba uses Viper for configuration management, supporting:
-
-- Environment-based provider configuration
-- System prompts
-- Role definitions
-- JSON schema validation
-
-## 🧪 Testing
-
-```bash
-go test -v ./...
-```
-
-The project includes comprehensive tests using GoConvey for better test organization and readability.
-
-## 🛣 Roadmap
-
-### Monitoring
-
-- [ ] Metrics collection
-- [ ] Logging strategy
-- [ ] Performance monitoring
-- [ ] Provider health tracking
-- [ ] System telemetry
-
-### Scalability
-
-- [ ] Distributed execution
-- [ ] Rate limiting
-- [ ] Caching layer
-- [ ] Load balancing improvements
-- [ ] Horizontal scaling support
-
-### Reliability
-
-- [ ] Circuit breakers
-- [ ] Retry strategies
-- [ ] Error recovery
-- [ ] Failover mechanisms
-- [ ] System resilience
-
-## 📚 Documentation
-
-For detailed documentation on specific components:
-
-- [Agent System](docs/agent.md)
-- [Provider Management](docs/providers.md)
-- [Pipeline System](docs/pipeline.md)
-- [Tool System](docs/tools.md)
-- [Context Management](docs/context.md)
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-Special thanks to all the AI providers and open-source projects that make Caramba possible.
+- **Verification**: special LLM-based verifier units
+  - Verify and assess the performance of an agent, and are capable of adjusting model parameters, such a temperature, and other values, as well as tweak the agent's system prompt
+  - Extract any high quality prompt/response examples, and store them in a format ready for periodic fine-tuning of models

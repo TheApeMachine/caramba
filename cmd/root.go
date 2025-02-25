@@ -1,5 +1,6 @@
 /*
-Copyright © 2024 NAME HERE <EMAIL ADDRESS>
+Package cmd implements the command-line interface for the Caramba framework.
+It provides various commands for managing agents, running examples, and testing functionality.
 */
 package cmd
 
@@ -125,6 +126,9 @@ func writeConfig() (err error) {
 	return
 }
 
+/*
+longRoot contains the detailed help text for the root command.
+*/
 var longRoot = `
 Caramba is a powerful multi-agent AI orchestration system built in Go, designed to 
 coordinate multiple AI providers and facilitate complex reasoning tasks through a 
