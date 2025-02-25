@@ -34,7 +34,7 @@ models:
 tools:
   qdrant:
     collection: "test"
-    dimension: 1536
+    dimension: 3072
 
 templates:
   message: |

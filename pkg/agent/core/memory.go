@@ -77,7 +77,7 @@ type MemoryOptions struct {
 // DefaultMemoryOptions returns the default memory options
 func DefaultMemoryOptions() *MemoryOptions {
 	return &MemoryOptions{
-		VectorDBDimensions:  1536, // For OpenAI embeddings
+		VectorDBDimensions:  3072, // For OpenAI embeddings
 		VectorDBMetricType:  "cosine",
 		ExtractionThreshold: 0.7,
 		MaxMemoriesPerQuery: 5,
