@@ -1,0 +1,369 @@
+/*
+Package llm provides integrations with various Language Model providers.
+This package implements the core.LLMProvider interface for different providers
+like Anthropic, OpenAI, and others, as well as utility providers like BalancedProvider.
+*/
+package llm
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"time"
+
+	"github.com/theapemachine/caramba/pkg/agent/core"
+	"github.com/theapemachine/errnie"
+)
+
+/*
+ProviderStatus tracks the operational status of a provider.
+It maintains information about availability, errors, and cooldown periods
+for individual LLM providers within the BalancedProvider.
+*/
+type ProviderStatus struct {
+	/* Provider is the underlying LLM provider implementation */
+	Provider core.LLMProvider
+	/* Available indicates whether the provider is currently operational */
+	Available bool
+	/* LastError stores the most recent error encountered with this provider */
+	LastError error
+	/* ErrorCount tracks how many consecutive errors have occurred */
+	ErrorCount int
+	/* LastUsed records when the provider was last used */
+	LastUsed time.Time
+	/* CooldownTime is the duration to wait after errors before trying again */
+	CooldownTime time.Duration
+}
+
+/*
+BalancedProvider implements the LLMProvider interface by load balancing across multiple providers.
+It automatically routes requests to available providers, handles error cases,
+implements cooldown periods for failing providers, and offers fault tolerance.
+*/
+type BalancedProvider struct {
+	/* providers holds the status of all underlying LLM providers */
+	providers []*ProviderStatus
+	/* mu is a mutex for thread-safe access to provider statuses */
+	mu sync.RWMutex
+	/* roundRobinIdx tracks the next provider to use in round-robin allocation */
+	roundRobinIdx int
+	/* maxRetries is the number of attempts to make before giving up */
+	maxRetries int
+	/* errorThreshold is the number of errors before a provider is temporarily disabled */
+	errorThreshold int
+}
+
+/*
+NewBalancedProvider creates a new load-balancing provider.
+It initializes the BalancedProvider with a collection of LLM providers
+and sets default values for retries and error thresholds.
+
+Parameters:
+  - providers: A slice of LLM providers to balance between
+
+Returns:
+  - A pointer to the initialized BalancedProvider
+*/
+func NewBalancedProvider(providers []core.LLMProvider) *BalancedProvider {
+	bp := &BalancedProvider{
+		providers:      make([]*ProviderStatus, 0, len(providers)),
+		maxRetries:     3,
+		errorThreshold: 5,
+	}
+
+	for _, p := range providers {
+		bp.providers = append(bp.providers, &ProviderStatus{
+			Provider:     p,
+			Available:    true,
+			CooldownTime: 10 * time.Second,
+		})
+	}
+
+	return bp
+}
+
+/*
+Name returns the name of the provider.
+This is used for identification and logging purposes.
+
+Returns:
+  - The string "balanced"
+*/
+func (p *BalancedProvider) Name() string {
+	return "balanced"
+}
+
+/*
+GenerateResponse generates a response by selecting from available providers.
+It automatically tries different providers if some fail, implementing
+a fault-tolerant approach to generation.
+
+Parameters:
+  - ctx: The context for the request, which can be used for cancellation
+  - prompt: The user input to send to the model
+  - options: Configuration options for the generation process
+
+Returns:
+  - The generated text response from one of the successful providers
+  - An error if all providers fail after the maximum retry attempts
+*/
+func (p *BalancedProvider) GenerateResponse(ctx context.Context, prompt string, options core.LLMOptions) (string, error) {
+	if len(p.providers) == 0 {
+		return "", errors.New("no providers configured")
+	}
+
+	// Try to get a response for up to maxRetries attempts
+	var lastError error
+	for attempt := 0; attempt < p.maxRetries; attempt++ {
+		provider, err := p.getNextAvailableProvider()
+		if err != nil {
+			return "", err
+		}
+
+		errnie.Debug("Using provider: " + provider.Provider.Name())
+
+		resp, err := provider.Provider.GenerateResponse(ctx, prompt, options)
+		p.updateProviderStatus(provider, err)
+
+		if err == nil {
+			return resp, nil
+		}
+
+		lastError = err
+		errnie.Info("Provider failed: " + provider.Provider.Name() + " - " + err.Error())
+	}
+
+	return "", errors.New("all LLM providers failed: " + lastError.Error())
+}
+
+/*
+StreamResponse streams a response from a selected provider.
+It attempts to stream from available providers, retrying with different
+providers if some fail, implementing a fault-tolerant approach.
+
+Parameters:
+  - ctx: The context for the request, which can be used for cancellation
+  - prompt: The user input to send to the model
+  - options: Configuration options for the generation process
+  - handler: A callback function that receives each text chunk as it's generated
+
+Returns:
+  - An error if all providers fail after the maximum retry attempts
+*/
+func (p *BalancedProvider) StreamResponse(ctx context.Context, prompt string, options core.LLMOptions, handler func(string)) error {
+	if len(p.providers) == 0 {
+		return errors.New("no providers configured")
+	}
+
+	// Try to stream from a provider for up to maxRetries attempts
+	var lastError error
+	for attempt := 0; attempt < p.maxRetries; attempt++ {
+		provider, err := p.getNextAvailableProvider()
+		if err != nil {
+			return err
+		}
+
+		errnie.Debug("Streaming from provider: " + provider.Provider.Name())
+
+		err = provider.Provider.StreamResponse(ctx, prompt, options, handler)
+		p.updateProviderStatus(provider, err)
+
+		if err == nil {
+			return nil
+		}
+
+		lastError = err
+		errnie.Info("Provider stream failed: " + provider.Provider.Name() + " - " + err.Error())
+	}
+
+	return errors.New("all LLM providers failed for streaming: " + lastError.Error())
+}
+
+/*
+getNextAvailableProvider selects the next available provider.
+It implements a round-robin selection strategy for load balancing,
+skipping providers that are in a cooldown period due to errors.
+
+Returns:
+  - A pointer to the selected provider's status
+  - An error if no providers are available
+*/
+func (p *BalancedProvider) getNextAvailableProvider() (*ProviderStatus, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Check if we have any available providers
+	startIdx := p.roundRobinIdx
+	for i := 0; i < len(p.providers); i++ {
+		idx := (startIdx + i) % len(p.providers)
+		provider := p.providers[idx]
+
+		// Reset provider status if cooldown period has passed
+		if !provider.Available && time.Since(provider.LastUsed) > provider.CooldownTime {
+			provider.Available = true
+			provider.ErrorCount = 0
+		}
+
+		if provider.Available {
+			p.roundRobinIdx = (idx + 1) % len(p.providers)
+			return provider, nil
+		}
+	}
+
+	return nil, errors.New("no available LLM providers")
+}
+
+/*
+updateProviderStatus updates the status of a provider after use.
+It tracks errors, updates availability status, and manages
+cooldown periods for providers experiencing errors.
+
+Parameters:
+  - provider: The provider status to update
+  - err: The error encountered, or nil if the operation was successful
+*/
+func (p *BalancedProvider) updateProviderStatus(provider *ProviderStatus, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	provider.LastUsed = time.Now()
+
+	if err != nil {
+		provider.LastError = err
+		provider.ErrorCount++
+
+		// If error count exceeds threshold, mark as unavailable
+		if provider.ErrorCount >= p.errorThreshold {
+			provider.Available = false
+			// Increase cooldown time exponentially after repeated errors
+			provider.CooldownTime = provider.CooldownTime * 2
+			if provider.CooldownTime > 5*time.Minute {
+				provider.CooldownTime = 5 * time.Minute
+			}
+		}
+	} else {
+		// Gradually reduce error count on successful calls
+		if provider.ErrorCount > 0 {
+			provider.ErrorCount--
+		}
+		// Reset cooldown time on successful calls
+		provider.CooldownTime = 10 * time.Second
+	}
+}
+
+/*
+AddProvider adds a new provider to the balancer.
+This allows for dynamically adding new providers at runtime.
+
+Parameters:
+  - provider: The LLM provider to add to the balancer
+*/
+func (p *BalancedProvider) AddProvider(provider core.LLMProvider) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.providers = append(p.providers, &ProviderStatus{
+		Provider:     provider,
+		Available:    true,
+		CooldownTime: 10 * time.Second,
+	})
+}
+
+/*
+RemoveProvider removes a provider by name.
+This allows for dynamically removing providers at runtime.
+
+Parameters:
+  - name: The name of the provider to remove
+
+Returns:
+  - true if the provider was found and removed, false otherwise
+*/
+func (p *BalancedProvider) RemoveProvider(name string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for i, provider := range p.providers {
+		if provider.Provider.Name() == name {
+			p.providers = append(p.providers[:i], p.providers[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+/*
+GetProviderStatuses returns the current status of all providers.
+This is useful for monitoring and debugging the balanced provider.
+
+Returns:
+  - A slice of maps containing status information for each provider
+*/
+func (p *BalancedProvider) GetProviderStatuses() []map[string]interface{} {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	statuses := make([]map[string]interface{}, len(p.providers))
+	for i, provider := range p.providers {
+		var errStr string
+		if provider.LastError != nil {
+			errStr = provider.LastError.Error()
+		}
+
+		statuses[i] = map[string]interface{}{
+			"name":          provider.Provider.Name(),
+			"available":     provider.Available,
+			"error_count":   provider.ErrorCount,
+			"last_error":    errStr,
+			"last_used":     provider.LastUsed,
+			"cooldown_time": provider.CooldownTime.Seconds(),
+		}
+	}
+
+	return statuses
+}
+
+/*
+CheckProvidersHealth pings all providers with a simple request to verify they're working.
+This is useful for proactive health checking and monitoring.
+
+Parameters:
+  - ctx: The context for the health check requests
+
+Returns:
+  - A map of provider names to their health status (true = healthy, false = unhealthy)
+*/
+func (p *BalancedProvider) CheckProvidersHealth(ctx context.Context) map[string]bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	// Create a test prompt and minimal options
+	testPrompt := "Hello"
+	options := core.LLMOptions{
+		MaxTokens:   5,
+		Temperature: 0,
+	}
+
+	results := make(map[string]bool, len(p.providers))
+
+	for _, provider := range p.providers {
+		// Create a timeout context for the health check
+		timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+
+		// Try to generate a response
+		_, err := provider.Provider.GenerateResponse(timeoutCtx, testPrompt, options)
+		cancel() // Always cancel the timeout context
+
+		// Update the provider status and the results map
+		results[provider.Provider.Name()] = (err == nil)
+
+		// Also update the provider status
+		p.mu.RUnlock() // Temporarily unlock the read lock to acquire a write lock
+		p.mu.Lock()
+		p.updateProviderStatus(provider, err)
+		p.mu.Unlock()
+		p.mu.RLock() // Re-acquire the read lock
+	}
+
+	return results
+}
