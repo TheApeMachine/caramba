@@ -110,7 +110,12 @@ func (a *BaseAgent) ExecuteWithOptions(ctx context.Context, input string, opts .
 		if memoryExtractor, ok := a.Memory.(MemoryExtractor); ok {
 			// Extract memories from both the input and response
 			interaction := fmt.Sprintf("User: %s\n\nAgent: %s", input, response)
-			_, _ = memoryExtractor.ExtractMemories(ctx, a.Name, interaction, "conversation")
+			memoryIDs, err := memoryExtractor.ExtractMemories(ctx, a.Name, interaction, "conversation")
+			if err != nil {
+				errnie.Error(err)
+			} else if len(memoryIDs) > 0 {
+				errnie.Info(fmt.Sprintf("Extracted %d memories from conversation", len(memoryIDs)))
+			}
 		}
 	}
 
@@ -134,7 +139,7 @@ func (a *BaseAgent) ExecuteWithIteration(ctx context.Context, input string, iter
 			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, a.Name, input)
 			if err == nil && enhancedContext != "" {
 				enhancedInput = enhancedContext
-				errnie.Info(fmt.Sprintf("Enhanced input with memories for iteration"))
+				errnie.Info("Enhanced input with memories for iteration")
 			}
 		}
 	}
@@ -159,7 +164,12 @@ func (a *BaseAgent) ExecuteWithIteration(ctx context.Context, input string, iter
 		if memoryExtractor, ok := a.Memory.(MemoryExtractor); ok {
 			// Create a combined interaction text with the final response
 			interaction := fmt.Sprintf("User: %s\n\nAgent (after iteration): %s", input, response)
-			_, _ = memoryExtractor.ExtractMemories(ctx, a.Name, interaction, "conversation_iterated")
+			memoryIDs, err := memoryExtractor.ExtractMemories(ctx, a.Name, interaction, "conversation_iterated")
+			if err != nil {
+				errnie.Info(fmt.Sprintf("Memory extraction after iteration encountered an error: %v", err))
+			} else if len(memoryIDs) > 0 {
+				errnie.Info(fmt.Sprintf("Extracted %d memories from iterated conversation", len(memoryIDs)))
+			}
 		}
 	}
 

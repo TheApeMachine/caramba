@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -130,13 +131,13 @@ func (um *UnifiedMemory) StoreMemory(ctx context.Context, agentID string, conten
 
 /*
 ExtractMemories extracts important information from text that should be remembered.
-It analyzes text to identify significant information worth storing as memories.
+It identifies key facts, concepts, and insights from the text and stores them as memories.
 
 Parameters:
   - ctx: The context for the operation, which can be used for cancellation
-  - agentID: The ID of the agent who will own these memories
+  - agentID: The ID of the agent extracting the memories
   - text: The text to extract memories from
-  - source: The source of the text
+  - source: The source of the text (e.g., "conversation", "document", etc.)
 
 Returns:
   - A slice of strings containing the extracted memories
@@ -168,12 +169,25 @@ func (um *UnifiedMemory) ExtractMemories(ctx context.Context, agentID string, te
 		} `json:"choices"`
 	}
 
-	// Create a system prompt for memory extraction
-	systemPrompt := `You are a memory extraction system for an AI agent. Your job is to identify important information in the provided text that should be stored as memories.
-Extract 2-5 concise, important facts or insights that would be valuable to remember later. Focus on factual information, key insights, and important details.
-Format each memory as a complete, standalone statement on a new line.
-Do not include numbering, bullets, or any other formatting.
-Do not include any explanations or commentary.`
+	// Create a system prompt for memory extraction that encourages document-like extraction
+	// and identifies relationships between memories
+	systemPrompt := `You are an advanced memory extraction system for an AI agent. Extract important information from the provided text that should be stored as memories.
+
+TASK 1: Extract 2-5 substantial, document-like memories that would be valuable to remember later.
+- Each memory should be 2-4 sentences long (50-200 words), forming a coherent paragraph
+- Focus on factual information, key insights, and important details
+- Include context and supporting details to make each memory self-contained and useful
+- Format each memory as a complete, standalone paragraph
+- Separate memories with exactly two newlines
+
+TASK 2: After extracting the memories, identify relationships between them in this format:
+RELATIONSHIPS:
+memory1 -> RELATES_TO -> memory2: brief description of how they relate
+memory2 -> PART_OF -> memory3: brief description of the part-whole relationship
+memory1 -> CAUSES -> memory3: brief description of the causal relationship
+
+Use relationship types like: RELATES_TO, PART_OF, CAUSES, FOLLOWS, CONTRADICTS, SUPPORTS, EXAMPLE_OF
+Don't create relationships if they don't naturally exist.`
 
 	userPrompt := fmt.Sprintf("Text to extract memories from: %s", text)
 
@@ -184,7 +198,7 @@ Do not include any explanations or commentary.`
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},
 		},
-		MaxTokens: 500,
+		MaxTokens: 800, // Increased from 500 to allow for more detailed memories and relationships
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -233,98 +247,325 @@ Do not include any explanations or commentary.`
 
 	// Extract the memories from the response
 	extractedContent := openaiResp.Choices[0].Message.Content
-	memories := strings.Split(strings.TrimSpace(extractedContent), "\n")
 
-	// Filter out empty memories and store them
-	var validMemories []string
-	for _, memory := range memories {
-		memory = strings.TrimSpace(memory)
-		if memory == "" {
-			continue
-		}
+	// Split the content into memories and relationships sections
+	sections := strings.Split(extractedContent, "RELATIONSHIPS:")
 
-		// Store the memory
-		memoryID, err := um.StoreMemory(ctx, agentID, memory, MemoryTypePersonal, source, nil)
-		if err != nil {
-			errnie.Info(fmt.Sprintf("Failed to store extracted memory: %v", err))
-			continue
+	// Process the memories section
+	var documentMemories []string
+	if len(sections) > 0 && len(sections[0]) > 0 {
+		// Split memories by double newlines as requested in the prompt
+		memories := strings.Split(strings.TrimSpace(sections[0]), "\n\n")
+		for _, memory := range memories {
+			memory = strings.TrimSpace(memory)
+			if memory == "" || len(memory) < 30 { // Skip very short entries
+				continue
+			}
+			documentMemories = append(documentMemories, memory)
 		}
-		validMemories = append(validMemories, memoryID)
 	}
 
-	return validMemories, nil
-}
-
-/*
-basicExtractMemories provides a fallback extraction method when LLM is unavailable.
-It uses simple heuristics to extract potential memories from text.
-
-Parameters:
-  - ctx: The context for the operation, which can be used for cancellation
-  - agentID: The ID of the agent who will own these memories
-  - text: The text to extract memories from
-  - source: The source of the text
-
-Returns:
-  - A slice of strings containing the extracted memories
-  - An error if the operation fails, or nil on success
-*/
-func (um *UnifiedMemory) basicExtractMemories(ctx context.Context, agentID string, text string, source string) ([]string, error) {
-	// Split text into paragraphs
-	paragraphs := strings.Split(text, "\n\n")
-	var memories []string
+	// Process and store the document-like memories
 	var memoryIDs []string
+	memoryContentToID := make(map[string]string) // Map memory content to its ID for relationship creation
 
-	for _, paragraph := range paragraphs {
-		paragraph = strings.TrimSpace(paragraph)
-		if len(paragraph) < 20 {
-			continue // Skip short paragraphs
-		}
-
-		// Store paragraphs that might contain valuable information
-		// Look for sentences that might be interesting facts or insights
-		sentences := strings.Split(paragraph, ".")
-		for _, sentence := range sentences {
-			sentence = strings.TrimSpace(sentence)
-			if len(sentence) < 20 || len(sentence) > 300 {
-				continue // Skip very short or very long sentences
-			}
-
-			// Look for indicators of important information
-			lowerSentence := strings.ToLower(sentence)
-			if strings.Contains(lowerSentence, "important") ||
-				strings.Contains(lowerSentence, "key") ||
-				strings.Contains(lowerSentence, "significant") ||
-				strings.Contains(lowerSentence, "critical") ||
-				strings.Contains(lowerSentence, "essential") ||
-				strings.Contains(lowerSentence, "note that") {
-				memories = append(memories, sentence)
-			}
-		}
-
-		// If the paragraph is of reasonable length, consider it a potential memory
-		if len(memories) == 0 && len(paragraph) > 50 && len(paragraph) < 300 {
-			memories = append(memories, paragraph)
-		}
-	}
-
-	// Limit the number of memories to extract
-	maxMemories := 5
-	if len(memories) > maxMemories {
-		memories = memories[:maxMemories]
-	}
-
-	// Store the extracted memories
-	for _, memory := range memories {
+	for _, memory := range documentMemories {
+		// Store the memory as a document-like chunk
 		memoryID, err := um.StoreMemory(ctx, agentID, memory, MemoryTypePersonal, source, nil)
 		if err != nil {
 			errnie.Info(fmt.Sprintf("Failed to store extracted memory: %v", err))
 			continue
 		}
 		memoryIDs = append(memoryIDs, memoryID)
+		memoryContentToID[memory] = memoryID
+	}
+
+	// Process relationships if they exist and graph store is enabled
+	if len(sections) > 1 && um.options.EnableGraphStore && um.graphStore != nil {
+		relationshipsText := strings.TrimSpace(sections[1])
+		if relationshipsText != "" {
+			// Parse and create relationships
+			relationships := strings.Split(relationshipsText, "\n")
+			for _, rel := range relationships {
+				rel = strings.TrimSpace(rel)
+				if rel == "" {
+					continue
+				}
+
+				// Try to parse the relationship
+				if err := um.processRelationship(ctx, rel, memoryContentToID); err != nil {
+					errnie.Info(fmt.Sprintf("Failed to process relationship: %v", err))
+				}
+			}
+		}
 	}
 
 	return memoryIDs, nil
+}
+
+// processRelationship parses a relationship string and creates the relationship in the graph store
+// Format expected: memory1 -> RELATES_TO -> memory2: description
+func (um *UnifiedMemory) processRelationship(ctx context.Context, relationshipText string, memoryContentToID map[string]string) error {
+	// Skip if graph store is not enabled
+	if !um.options.EnableGraphStore || um.graphStore == nil {
+		return errors.New("graph store not enabled")
+	}
+
+	// Parse the relationship format
+	parts := strings.Split(relationshipText, "->")
+	if len(parts) < 3 {
+		return fmt.Errorf("invalid relationship format: %s", relationshipText)
+	}
+
+	// Extract source, relationship type, and target
+	sourceMemoryHint := strings.TrimSpace(parts[0])
+	relType := strings.TrimSpace(parts[1])
+
+	// The last part contains both the target and description, split by colon
+	targetAndDesc := parts[2]
+	targetDescParts := strings.SplitN(targetAndDesc, ":", 2)
+
+	var targetMemoryHint, description string
+	if len(targetDescParts) > 1 {
+		// We have both target and description
+		targetMemoryHint = strings.TrimSpace(targetDescParts[0])
+		description = strings.TrimSpace(targetDescParts[1])
+	} else {
+		// Only target, no description
+		targetMemoryHint = strings.TrimSpace(targetDescParts[0])
+		description = "Related memory"
+	}
+
+	// Find the memory IDs based on the hints (partial content match)
+	var sourceID, targetID string
+
+	// Find source memory ID
+	for content, id := range memoryContentToID {
+		if strings.Contains(content, sourceMemoryHint) || strings.Contains(sourceMemoryHint, content) {
+			sourceID = id
+			break
+		}
+	}
+
+	// Find target memory ID
+	for content, id := range memoryContentToID {
+		if strings.Contains(content, targetMemoryHint) || strings.Contains(targetMemoryHint, content) {
+			targetID = id
+			break
+		}
+	}
+
+	if sourceID == "" || targetID == "" {
+		return fmt.Errorf("could not identify memory IDs for relationship: %s", relationshipText)
+	}
+
+	// Create the relationship in the graph store
+	properties := map[string]interface{}{
+		"description": description,
+		"created":     time.Now().Format(time.RFC3339),
+		"source":      "memory_extraction",
+	}
+
+	return um.graphStore.CreateRelationship(ctx, sourceID, targetID, relType, properties)
+}
+
+/*
+basicExtractMemories provides a fallback extraction method when LLM is unavailable.
+It extracts memories using simple heuristics rather than LLM-based extraction.
+
+Parameters:
+  - ctx: The context for the operation, which can be used for cancellation
+  - agentID: The ID of the agent extracting the memories
+  - text: The text to extract memories from
+  - source: The source of the text (e.g., "conversation", "document", etc.)
+
+Returns:
+  - A slice of memory IDs that were created
+  - An error if the operation fails, or nil on success
+*/
+func (um *UnifiedMemory) basicExtractMemories(ctx context.Context, agentID string, text string, source string) ([]string, error) {
+	// Split text into paragraphs
+	paragraphs := strings.Split(text, "\n\n")
+	var documentMemories []string
+	var memoryIDs []string
+
+	// First pass: collect substantial paragraphs as document-like memories
+	for _, paragraph := range paragraphs {
+		paragraph = strings.TrimSpace(paragraph)
+		// Skip very short paragraphs, but keep moderate to long ones as document chunks
+		if len(paragraph) < 50 {
+			continue
+		}
+
+		// If paragraph is too long, break it down
+		if len(paragraph) > 500 {
+			// Break into roughly equal parts
+			sentences := strings.Split(paragraph, ".")
+			var currentChunk string
+			for _, sentence := range sentences {
+				sentence = strings.TrimSpace(sentence)
+				if sentence == "" {
+					continue
+				}
+
+				// Add period back to sentence
+				sentence += "."
+
+				// If adding this sentence would make chunk too long, save current chunk and start new one
+				if len(currentChunk)+len(sentence) > 300 && len(currentChunk) > 100 {
+					documentMemories = append(documentMemories, strings.TrimSpace(currentChunk))
+					currentChunk = sentence
+				} else {
+					currentChunk += " " + sentence
+				}
+			}
+
+			// Don't forget the last chunk
+			if len(currentChunk) > 50 {
+				documentMemories = append(documentMemories, strings.TrimSpace(currentChunk))
+			}
+		} else {
+			// Paragraph is a good size for a document memory
+			documentMemories = append(documentMemories, paragraph)
+		}
+	}
+
+	// Second pass: if we don't have enough document memories, look for significant sentences
+	if len(documentMemories) < 2 {
+		// Process all text to find significant sentences
+		sentences := extractSignificantSentences(text)
+
+		// Combine sentences into coherent chunks of 2-4 sentences
+		var currentChunk string
+		sentenceCount := 0
+
+		for _, sentence := range sentences {
+			sentenceCount++
+			if currentChunk == "" {
+				currentChunk = sentence
+			} else {
+				currentChunk += " " + sentence
+			}
+
+			// After 2-4 sentences, create a document memory
+			if sentenceCount >= 2 && (sentenceCount >= 4 || len(currentChunk) > 150) {
+				documentMemories = append(documentMemories, currentChunk)
+				currentChunk = ""
+				sentenceCount = 0
+			}
+		}
+
+		// Add any remaining sentences
+		if currentChunk != "" {
+			documentMemories = append(documentMemories, currentChunk)
+		}
+	}
+
+	// Limit the number of memories to extract
+	maxMemories := 5
+	if len(documentMemories) > maxMemories {
+		documentMemories = documentMemories[:maxMemories]
+	}
+
+	// Store the memories
+	memoryContentToID := make(map[string]string)
+	for _, memory := range documentMemories {
+		memoryID, err := um.StoreMemory(ctx, agentID, memory, MemoryTypePersonal, source, nil)
+		if err != nil {
+			errnie.Info(fmt.Sprintf("Failed to store extracted memory: %v", err))
+			continue
+		}
+		memoryIDs = append(memoryIDs, memoryID)
+		memoryContentToID[memory] = memoryID
+	}
+
+	// If we have graph store enabled and multiple memories, create basic relationships
+	if um.options.EnableGraphStore && um.graphStore != nil && len(memoryIDs) > 1 {
+		// Create sequential relationships between memories (as a fallback approach)
+		for i := 0; i < len(memoryIDs)-1; i++ {
+			properties := map[string]interface{}{
+				"description": "Sequential memory",
+				"created":     time.Now().Format(time.RFC3339),
+				"source":      "basic_extraction",
+			}
+
+			// Create a FOLLOWS relationship between consecutive memories
+			err := um.graphStore.CreateRelationship(ctx, memoryIDs[i], memoryIDs[i+1], "FOLLOWS", properties)
+			if err != nil {
+				errnie.Info(fmt.Sprintf("Failed to create sequential relationship: %v", err))
+			}
+		}
+
+		// Create a PART_OF relationship to a common group for all memories from this extraction
+		groupID := fmt.Sprintf("group_%d", time.Now().UnixNano())
+		labels := []string{"MemoryGroup", source}
+		properties := map[string]interface{}{
+			"created": time.Now().Format(time.RFC3339),
+			"source":  source,
+		}
+
+		// Create the group node
+		if err := um.graphStore.CreateNode(ctx, groupID, labels, properties); err == nil {
+			// Connect each memory to the group
+			for _, memoryID := range memoryIDs {
+				relationProperties := map[string]interface{}{
+					"description": "Memory belongs to this extraction group",
+					"created":     time.Now().Format(time.RFC3339),
+				}
+
+				_ = um.graphStore.CreateRelationship(ctx, memoryID, groupID, "PART_OF", relationProperties)
+			}
+		}
+	}
+
+	return memoryIDs, nil
+}
+
+// extractSignificantSentences finds sentences that are likely to be important
+func extractSignificantSentences(text string) []string {
+	var significantSentences []string
+
+	// Split into sentences
+	sentences := strings.FieldsFunc(text, func(r rune) bool {
+		return r == '.' || r == '!' || r == '?'
+	})
+
+	for _, sentence := range sentences {
+		sentence = strings.TrimSpace(sentence)
+		if len(sentence) < 20 || len(sentence) > 300 {
+			continue // Skip very short or very long sentences
+		}
+
+		// Look for indicators of important information
+		lowerSentence := strings.ToLower(sentence)
+		if strings.Contains(lowerSentence, "important") ||
+			strings.Contains(lowerSentence, "key") ||
+			strings.Contains(lowerSentence, "significant") ||
+			strings.Contains(lowerSentence, "critical") ||
+			strings.Contains(lowerSentence, "essential") ||
+			strings.Contains(lowerSentence, "note that") ||
+			strings.Contains(lowerSentence, "remember") ||
+			strings.Contains(lowerSentence, "crucial") ||
+			strings.Contains(lowerSentence, "main") ||
+			strings.Contains(lowerSentence, "fundamental") {
+			significantSentences = append(significantSentences, sentence)
+		}
+	}
+
+	// If we don't have enough significant sentences, take a sampling of regular sentences
+	if len(significantSentences) < 3 {
+		for _, sentence := range sentences {
+			sentence = strings.TrimSpace(sentence)
+			if len(sentence) >= 40 && len(sentence) <= 200 {
+				significantSentences = append(significantSentences, sentence)
+				if len(significantSentences) >= 5 {
+					break
+				}
+			}
+		}
+	}
+
+	return significantSentences
 }
 
 /*
