@@ -49,7 +49,12 @@ Agents in the Caramba framework can have two distinct types of memory, vector-ba
   - Agents can have their own personal long-term memory
   - Agents can be connected to a global long-term memory
 
-These memory stores are abstracted away behind a unified memory layer, which automatically extracts memories from an agent's current context, if the content is interesting enough to be stored in long-term memory.
+These memory stores are abstracted away behind a unified memory layer, which automatically extracts memories from an agent's current context, if the content is interesting enough to be stored in long-term memory. The idea would be to use the help of an LLM to determine which parts of the current context to store as
+memories, and similarly, to have an LLM sit at the front of an initial Agent call, and use the incoming prompt to generate queries to call the memory layer with.
+
+```txt
+-[user prompt]-> -[memory recall/queries]-> -[inject found memories into context]-> -[prompt agent]-> -[handle tool calls]-> -[extract memories]->
+```
 
 Before an agent starts its first response, the unified memory layer is automatically queried for relevant long-term memories, and anything that was found is injected into the current context, before the agent is first prompted, so they will have those memories available to them.
 

@@ -14,9 +14,143 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/theapemachine/caramba/pkg/agent/core"
 )
+
+/*
+RetrieveMemoriesByVector searches for memories using vector similarity.
+It searches the vector store for memories similar to the provided query.
+
+Parameters:
+  - ctx: The context for the operation, which can be used for cancellation
+  - query: The search query text
+  - agentID: The agent ID to filter by (empty string for no filter)
+  - limit: The maximum number of results to return
+  - threshold: The minimum similarity score to include in results
+
+Returns:
+  - A slice of EnhancedMemoryEntry objects matching the query
+  - An error if the operation fails, or nil on success
+*/
+func (um *UnifiedMemory) RetrieveMemoriesByVector(ctx context.Context, query string, agentID string, limit int, threshold float32) ([]EnhancedMemoryEntry, error) {
+	if !um.options.EnableVectorStore || um.vectorStore == nil {
+		return nil, errors.New("vector store not enabled or not available")
+	}
+
+	// Get embedding for query
+	embedding, err := um.embeddingProvider.GetEmbedding(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get embedding for query: %w", err)
+	}
+
+	// Prepare filters
+	filters := make(map[string]interface{})
+	if agentID != "" {
+		filters["agent_id"] = agentID
+	}
+
+	// Search the vector store
+	results, err := um.vectorStore.Search(ctx, embedding, limit, filters)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search vector store: %w", err)
+	}
+
+	// Convert results to EnhancedMemoryEntry and apply threshold
+	memories := make([]EnhancedMemoryEntry, 0, len(results))
+	for _, result := range results {
+		if result.Score < threshold {
+			continue
+		}
+
+		// Extract fields from metadata
+		content, _ := result.Metadata["content"].(string)
+		agentID, _ := result.Metadata["agent_id"].(string)
+		source, _ := result.Metadata["source"].(string)
+		memType, _ := result.Metadata["type"].(string)
+		createdAt, _ := result.Metadata["created_at"].(time.Time)
+
+		// Create memory entry
+		entry := EnhancedMemoryEntry{
+			ID:          result.ID,
+			AgentID:     agentID,
+			Content:     content,
+			Embedding:   result.Vector,
+			Type:        MemoryType(memType),
+			Source:      source,
+			CreatedAt:   createdAt,
+			AccessCount: 1,
+			LastAccess:  time.Now(),
+			Metadata:    result.Metadata,
+		}
+
+		memories = append(memories, entry)
+	}
+
+	return memories, nil
+}
+
+/*
+VectorStoreProvider interface defines operations for vector-based memory storage.
+This interface abstracts the vector database operations for storing and retrieving
+embeddings with their associated metadata.
+*/
+type VectorStoreProvider interface {
+	/*
+		StoreVector stores a vector with the given ID and payload.
+
+		Parameters:
+		  - ctx: The context for the operation, which can be used for cancellation
+		  - id: The unique identifier for the vector
+		  - vector: The embedding vector to store
+		  - payload: Associated metadata to store with the vector
+
+		Returns:
+		  - An error if the operation fails, or nil on success
+	*/
+	StoreVector(ctx context.Context, id string, vector []float32, payload map[string]interface{}) error
+
+	/*
+		Search searches for similar vectors.
+
+		Parameters:
+		  - ctx: The context for the operation, which can be used for cancellation
+		  - vector: The query vector to find similar vectors for
+		  - limit: The maximum number of results to return
+		  - filters: Optional filters to apply to the search
+
+		Returns:
+		  - A slice of SearchResult objects containing the matches
+		  - An error if the operation fails, or nil on success
+	*/
+	Search(ctx context.Context, vector []float32, limit int, filters map[string]interface{}) ([]SearchResult, error)
+
+	/*
+		Get retrieves a specific vector by ID.
+
+		Parameters:
+		  - ctx: The context for the operation, which can be used for cancellation
+		  - id: The unique identifier of the vector to retrieve
+
+		Returns:
+		  - The SearchResult containing the vector and its metadata
+		  - An error if the operation fails, or nil on success
+	*/
+	Get(ctx context.Context, id string) (*SearchResult, error)
+
+	/*
+		Delete removes a vector from the store.
+
+		Parameters:
+		  - ctx: The context for the operation, which can be used for cancellation
+		  - id: The unique identifier of the vector to delete
+
+		Returns:
+		  - An error if the operation fails, or nil on success
+	*/
+	Delete(ctx context.Context, id string) error
+}
 
 /*
 VectorEntry represents an entry in the vector store.
