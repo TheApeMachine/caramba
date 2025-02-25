@@ -18,7 +18,7 @@ type BrowserTool struct {
 	browserlessURL string
 	// token is the authentication token for Browserless
 	token string
-	// timeout for browser operations in seconds
+	// timeout for browser operations in seconds (applied client-side)
 	timeout int
 	// defaultUserAgent is the default User-Agent to use
 	defaultUserAgent string
@@ -102,14 +102,6 @@ func (b *BrowserTool) Schema() map[string]interface{} {
 				"type":        "string",
 				"description": "CSS selector to wait for before taking action",
 			},
-			"timeout": map[string]interface{}{
-				"type":        "number",
-				"description": "Timeout in seconds (default: 30)",
-			},
-			"user_agent": map[string]interface{}{
-				"type":        "string",
-				"description": "User-Agent string to use",
-			},
 			"fullPage": map[string]interface{}{
 				"type":        "boolean",
 				"description": "Whether to capture the full page (for screenshot/pdf)",
@@ -129,21 +121,14 @@ func (b *BrowserTool) navigate(ctx context.Context, args map[string]interface{})
 	// Setup the request to Browserless content API
 	reqURL := fmt.Sprintf("%s/content?token=%s", b.browserlessURL, b.token)
 
-	// Prepare the request payload
+	// Prepare the request payload - keeping it minimal to avoid validation errors
 	payload := map[string]interface{}{
-		"url":     url,
-		"timeout": b.getTimeout(args),
+		"url": url,
 	}
 
-	// Add optional parameters
+	// Add optional parameters (only those that are supported)
 	if waitFor, ok := args["wait_for"].(string); ok && waitFor != "" {
 		payload["waitFor"] = waitFor
-	}
-
-	if userAgent, ok := args["user_agent"].(string); ok && userAgent != "" {
-		payload["userAgent"] = userAgent
-	} else {
-		payload["userAgent"] = b.defaultUserAgent
 	}
 
 	// Convert payload to JSON
@@ -158,6 +143,11 @@ func (b *BrowserTool) navigate(ctx context.Context, args map[string]interface{})
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Apply client-side timeout
+	clientCtx, cancel := context.WithTimeout(ctx, time.Duration(b.getTimeout(args))*time.Second)
+	defer cancel()
+	req = req.WithContext(clientCtx)
 
 	// Send the request
 	resp, err := b.httpClient.Do(req)
@@ -195,21 +185,14 @@ func (b *BrowserTool) screenshot(ctx context.Context, args map[string]interface{
 	// Setup the request to Browserless screenshot API
 	reqURL := fmt.Sprintf("%s/screenshot?token=%s", b.browserlessURL, b.token)
 
-	// Prepare the request payload
+	// Prepare the request payload - keeping it minimal to avoid validation errors
 	payload := map[string]interface{}{
-		"url":     url,
-		"timeout": b.getTimeout(args),
+		"url": url,
 	}
 
-	// Add optional parameters
+	// Add optional parameters (only those that are supported)
 	if waitFor, ok := args["wait_for"].(string); ok && waitFor != "" {
 		payload["waitFor"] = waitFor
-	}
-
-	if userAgent, ok := args["user_agent"].(string); ok && userAgent != "" {
-		payload["userAgent"] = userAgent
-	} else {
-		payload["userAgent"] = b.defaultUserAgent
 	}
 
 	if fullPage, ok := args["fullPage"].(bool); ok {
@@ -230,6 +213,11 @@ func (b *BrowserTool) screenshot(ctx context.Context, args map[string]interface{
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Apply client-side timeout
+	clientCtx, cancel := context.WithTimeout(ctx, time.Duration(b.getTimeout(args))*time.Second)
+	defer cancel()
+	req = req.WithContext(clientCtx)
 
 	// Send the request
 	resp, err := b.httpClient.Do(req)
@@ -254,9 +242,9 @@ func (b *BrowserTool) screenshot(ctx context.Context, args map[string]interface{
 	base64Screenshot := base64.StdEncoding.EncodeToString(body)
 
 	return map[string]interface{}{
-		"status":     "success",
-		"url":        url,
-		"screenshot": base64Screenshot,
+		"status": "success",
+		"url":    url,
+		"data":   "data:image/png;base64," + base64Screenshot,
 	}, nil
 }
 
@@ -270,21 +258,14 @@ func (b *BrowserTool) generatePDF(ctx context.Context, args map[string]interface
 	// Setup the request to Browserless PDF API
 	reqURL := fmt.Sprintf("%s/pdf?token=%s", b.browserlessURL, b.token)
 
-	// Prepare the request payload
+	// Prepare the request payload - keeping it minimal to avoid validation errors
 	payload := map[string]interface{}{
-		"url":     url,
-		"timeout": b.getTimeout(args),
+		"url": url,
 	}
 
-	// Add optional parameters
+	// Add optional parameters (only those that are supported)
 	if waitFor, ok := args["wait_for"].(string); ok && waitFor != "" {
 		payload["waitFor"] = waitFor
-	}
-
-	if userAgent, ok := args["user_agent"].(string); ok && userAgent != "" {
-		payload["userAgent"] = userAgent
-	} else {
-		payload["userAgent"] = b.defaultUserAgent
 	}
 
 	pdfOptions := map[string]interface{}{
@@ -309,6 +290,11 @@ func (b *BrowserTool) generatePDF(ctx context.Context, args map[string]interface
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Apply client-side timeout
+	clientCtx, cancel := context.WithTimeout(ctx, time.Duration(b.getTimeout(args))*time.Second)
+	defer cancel()
+	req = req.WithContext(clientCtx)
 
 	// Send the request
 	resp, err := b.httpClient.Do(req)
@@ -335,7 +321,7 @@ func (b *BrowserTool) generatePDF(ctx context.Context, args map[string]interface
 	return map[string]interface{}{
 		"status": "success",
 		"url":    url,
-		"pdf":    base64PDF,
+		"data":   "data:application/pdf;base64," + base64PDF,
 	}, nil
 }
 
@@ -354,9 +340,9 @@ func (b *BrowserTool) extractContent(ctx context.Context, args map[string]interf
 	// Setup the request to Browserless function API
 	reqURL := fmt.Sprintf("%s/function?token=%s", b.browserlessURL, b.token)
 
-	// JavaScript to extract content using the selector
+	// JavaScript to extract content - using ES Module format with export default
 	extractScript := fmt.Sprintf(`
-		async ({ page, context }) => {
+		export default async function ({ page }) {
 			// Navigate to the page
 			await page.goto("%s", { waitUntil: 'networkidle2' });
 			
@@ -364,7 +350,7 @@ func (b *BrowserTool) extractContent(ctx context.Context, args map[string]interf
 			const waitForSelector = "%s";
 			if (waitForSelector) {
 				try {
-					await page.waitForSelector(waitForSelector, { timeout: %d });
+					await page.waitForSelector(waitForSelector, { timeout: 30000 });
 				} catch (e) {
 					// Continue even if timeout occurs
 				}
@@ -386,27 +372,20 @@ func (b *BrowserTool) extractContent(ctx context.Context, args map[string]interf
 				});
 			}, selector);
 			
+			// Return data in the format expected by Browserless
 			return {
-				url: page.url(),
-				results: results
+				data: {
+					url: await page.url(),
+					results: results
+				},
+				type: "application/json"
 			};
 		}
-	`, url,
-		getStringOr(args, "wait_for", ""),
-		b.getTimeout(args)*1000, // Convert to milliseconds
-		selector)
+	`, url, getStringOr(args, "wait_for", ""), selector)
 
-	// Prepare the request payload
+	// Prepare the request payload - keeping it minimal to avoid validation errors
 	payload := map[string]interface{}{
-		"code":    extractScript,
-		"timeout": b.getTimeout(args) * 1000, // Convert to milliseconds
-		"context": map[string]interface{}{},
-	}
-
-	if userAgent, ok := args["user_agent"].(string); ok && userAgent != "" {
-		payload["userAgent"] = userAgent
-	} else {
-		payload["userAgent"] = b.defaultUserAgent
+		"code": extractScript,
 	}
 
 	// Convert payload to JSON
@@ -421,6 +400,11 @@ func (b *BrowserTool) extractContent(ctx context.Context, args map[string]interf
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Apply client-side timeout
+	clientCtx, cancel := context.WithTimeout(ctx, time.Duration(b.getTimeout(args))*time.Second)
+	defer cancel()
+	req = req.WithContext(clientCtx)
 
 	// Send the request
 	resp, err := b.httpClient.Do(req)
@@ -461,9 +445,9 @@ func (b *BrowserTool) executeScript(ctx context.Context, args map[string]interfa
 	// Setup the request to Browserless function API
 	reqURL := fmt.Sprintf("%s/function?token=%s", b.browserlessURL, b.token)
 
-	// Wrap the user's script in a function that handles navigation
+	// Wrap the user's script in ES Module format with export default
 	wrappedScript := fmt.Sprintf(`
-		async ({ page, context }) => {
+		export default async function ({ page }) {
 			// Navigate to the page if URL is provided
 			await page.goto("%s", { waitUntil: 'networkidle2' });
 			
@@ -471,33 +455,28 @@ func (b *BrowserTool) executeScript(ctx context.Context, args map[string]interfa
 			const waitForSelector = "%s";
 			if (waitForSelector) {
 				try {
-					await page.waitForSelector(waitForSelector, { timeout: %d });
+					await page.waitForSelector(waitForSelector, { timeout: 30000 });
 				} catch (e) {
 					// Continue even if timeout occurs
 				}
 			}
 			
 			// Execute the user's script
-			return await page.evaluate(() => {
+			const result = await page.evaluate(() => {
 				%s
 			});
+			
+			// Return data in the format expected by Browserless
+			return {
+				data: result,
+				type: "application/json"
+			};
 		}
-	`, targetURL,
-		getStringOr(args, "wait_for", ""),
-		b.getTimeout(args)*1000, // Convert to milliseconds
-		script)
+	`, targetURL, getStringOr(args, "wait_for", ""), script)
 
-	// Prepare the request payload
+	// Prepare the request payload - keeping it minimal to avoid validation errors
 	payload := map[string]interface{}{
-		"code":    wrappedScript,
-		"timeout": b.getTimeout(args) * 1000, // Convert to milliseconds
-		"context": map[string]interface{}{},
-	}
-
-	if userAgent, ok := args["user_agent"].(string); ok && userAgent != "" {
-		payload["userAgent"] = userAgent
-	} else {
-		payload["userAgent"] = b.defaultUserAgent
+		"code": wrappedScript,
 	}
 
 	// Convert payload to JSON
@@ -512,6 +491,11 @@ func (b *BrowserTool) executeScript(ctx context.Context, args map[string]interfa
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Apply client-side timeout
+	clientCtx, cancel := context.WithTimeout(ctx, time.Duration(b.getTimeout(args))*time.Second)
+	defer cancel()
+	req = req.WithContext(clientCtx)
 
 	// Send the request
 	resp, err := b.httpClient.Do(req)

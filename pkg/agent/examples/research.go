@@ -28,11 +28,13 @@ func ResearchExample(apiKey, topic string) error {
 	// Create tools
 	calculator := tools.NewCalculator()
 	webSearch := tools.NewWebSearch("", "") // Using mock search for demo
+	formatter := tools.NewFormatter()       // Add formatter tool for text processing
 
 	// Create a planner
 	tools := map[string]core.Tool{
 		calculator.Name(): calculator,
 		webSearch.Name():  webSearch,
+		formatter.Name():  formatter,
 	}
 	planner := core.NewSimplePlanner(llmProvider, tools)
 
@@ -42,6 +44,7 @@ func ResearchExample(apiKey, topic string) error {
 		WithMemory(memoryStore).
 		WithTool(calculator).
 		WithTool(webSearch).
+		WithTool(formatter). // Add formatter tool to agent
 		WithPlanner(planner).
 		Build()
 
@@ -54,11 +57,11 @@ func ResearchExample(apiKey, topic string) error {
 			"query":       topic,
 			"max_results": 3,
 		}).
-		AddStep("analyze", nil, map[string]interface{}{
-			"input": "{{.search}}",
+		AddStep("analyze", formatter, map[string]interface{}{
+			"template": "Analysis of search results on {{.topic}}:\n\n{{.search}}",
 		}).
-		AddStep("summarize", nil, map[string]interface{}{
-			"input": "{{.analyze}}",
+		AddStep("summarize", formatter, map[string]interface{}{
+			"template": "Summary of research on {{.topic}}:\n\n{{.analyze}}",
 		})
 
 	fmt.Printf("Starting research on: %s\n", topic)

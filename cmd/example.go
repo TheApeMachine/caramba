@@ -16,7 +16,7 @@ var exampleCmd = &cobra.Command{
 	Use:   "example [type]",
 	Short: "Run example workflows",
 	Long:  `Runs example workflows to demonstrate the agent framework capabilities`,
-	Args:  cobra.MinimumNArgs(1),
+	Args:  cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		os.Setenv("LOG_LEVEL", "debug")
 		os.Setenv("LOGFILE", "true")
@@ -33,15 +33,35 @@ var exampleCmd = &cobra.Command{
 			return
 		}
 
-		// Get the example type
-		exampleType := args[0]
-
 		// Common parameters
 		topic, _ := cmd.Flags().GetString("topic")
 		message, _ := cmd.Flags().GetString("message")
 		task, _ := cmd.Flags().GetString("task")
 		maxIterations, _ := cmd.Flags().GetInt("iterations")
 		timeout, _ := cmd.Flags().GetInt("timeout")
+
+		// If no args provided, display interactive TUI
+		if len(args) == 0 {
+			err := runExampleTUI(apiKey, topic, message, task, maxIterations, timeout)
+			if err != nil {
+				errnie.Error(err)
+
+				// Fall back to text list if TUI fails
+				fmt.Println("Available example types:")
+				fmt.Println("  research       - Research assistant example that can search and synthesize information")
+				fmt.Println("  chat           - Simple chat example with an AI assistant")
+				fmt.Println("  iteration      - Example demonstrating iterative improvement of a task")
+				fmt.Println("  communication  - Example showing communication between multiple agents")
+				fmt.Println("  memory         - Example demonstrating memory capabilities")
+				fmt.Println("\nUsage:")
+				fmt.Println("  caramba example [type] [flags]")
+				fmt.Println("\nRun 'caramba example --help' for flags information")
+			}
+			return
+		}
+
+		// Get the example type
+		exampleType := args[0]
 
 		// Run the selected example
 		var err error
@@ -56,9 +76,11 @@ var exampleCmd = &cobra.Command{
 			err = examples.CommunicationExample(apiKey)
 		case "memory":
 			err = examples.MemoryExample(apiKey)
+		case "browser":
+			err = examples.BrowserExample(apiKey, topic)
 		default:
 			errnie.Error(fmt.Errorf("unknown example type: %s", exampleType))
-			fmt.Println("Available examples: research, chat, iteration, communication, memory")
+			fmt.Println("Available examples: research, chat, iteration, communication, memory, browser")
 			return
 		}
 
