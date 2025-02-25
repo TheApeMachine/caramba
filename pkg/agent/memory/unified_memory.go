@@ -225,7 +225,7 @@ func DefaultUnifiedMemoryOptions() *UnifiedMemoryOptions {
 		EnableGraphStore:    false,
 		ExtractionThreshold: 0.7,
 		MaxMemoriesPerQuery: 5,
-		VectorDBDimensions:  1536, // Default for OpenAI embeddings
+		VectorDBDimensions:  3072, // Default for OpenAI embeddings
 		VectorDBMetricType:  "cosine",
 		ContextTemplate:     "Previous relevant memories:\n{{.Memories}}\n\nCurrent query: {{.Query}}",
 		// Default connection values will be added by ConnectionAwareMemoryOptions
@@ -253,7 +253,7 @@ func ConnectionAwareMemoryOptions(baseOptions *UnifiedMemoryOptions) *UnifiedMem
 		if url := os.Getenv("QDRANT_URL"); url != "" {
 			baseOptions.VectorStoreURL = url
 		} else {
-			baseOptions.VectorStoreURL = "http://localhost:6333" // Default Qdrant URL
+			baseOptions.VectorStoreURL = "http://localhost:6333" // Explicitly use the REST API port
 		}
 
 		if apiKey := os.Getenv("QDRANT_API_KEY"); apiKey != "" {
@@ -265,7 +265,7 @@ func ConnectionAwareMemoryOptions(baseOptions *UnifiedMemoryOptions) *UnifiedMem
 		if collection := os.Getenv("QDRANT_COLLECTION"); collection != "" {
 			baseOptions.VectorDBCollection = collection
 		} else if baseOptions.VectorDBCollection == "" {
-			baseOptions.VectorDBCollection = "agent_memories" // Default collection name
+			baseOptions.VectorDBCollection = "long-term-memory" // Default collection name
 		}
 	}
 

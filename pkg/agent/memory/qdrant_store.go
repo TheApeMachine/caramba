@@ -1,34 +1,33 @@
 package memory
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"crypto/tls"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
 	"time"
+
+	"slices"
+
+	"github.com/qdrant/go-client/qdrant"
+	"google.golang.org/grpc"
 )
 
 // QDrantStore implements the VectorStoreProvider interface using QDrant.
 type QDrantStore struct {
-	// url is the connection URL for the QDrant server
-	url string
-	// apiKey is the authentication key for the QDrant API
-	apiKey string
+	// client is the QDrant client
+	client *qdrant.Client
 	// collection is the name of the collection in QDrant
 	collection string
 	// dimensions is the size of vectors stored in this collection
 	dimensions int
-	// collectionChecked tracks if we've verified the collection exists
-	collectionChecked bool
+	// vectorName is the name of the vector field in QDrant
+	vectorName string
 }
 
 // NewQDrantStore creates a new QDrant vector store.
 //
 // Parameters:
-//   - url: The QDrant server URL
+//   - url: The QDrant server URL (format: host:port)
 //   - apiKey: The QDrant API key
 //   - collection: The collection name in QDrant
 //   - dimensions: The dimensionality of the vectors
@@ -36,17 +35,35 @@ type QDrantStore struct {
 // Returns:
 //   - A pointer to an initialized QDrantStore
 //   - An error if initialization fails, or nil on success
-func NewQDrantStore(url, apiKey, collection string, dimensions int) (*QDrantStore, error) {
+func NewQDrantStore(urlStr, apiKey, collection string, dimensions int) (*QDrantStore, error) {
 	// If collection is empty, use a default name
 	if collection == "" {
-		collection = "points" // Default collection name
+		collection = "long-term-memory" // Default collection name
+	}
+
+	// Ensure dimensions match the model being used (OpenAI text-embedding-3-large uses 3072 dimensions)
+	if dimensions <= 0 {
+		dimensions = 3072 // Default for OpenAI text-embedding-3-large embeddings
+	}
+
+	client, err := qdrant.NewClient(&qdrant.Config{
+		Host:        "localhost",
+		Port:        6334,
+		APIKey:      apiKey,
+		UseTLS:      false,
+		TLSConfig:   &tls.Config{},
+		GrpcOptions: []grpc.DialOption{},
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to QDrant: %w", err)
 	}
 
 	store := &QDrantStore{
-		url:        url,
-		apiKey:     apiKey,
+		client:     client,
 		collection: collection,
 		dimensions: dimensions,
+		vectorName: "default",
 	}
 
 	// Ensure the collection exists
@@ -59,34 +76,21 @@ func NewQDrantStore(url, apiKey, collection string, dimensions int) (*QDrantStor
 
 // ensureCollection checks if the collection exists and creates it if it doesn't
 func (q *QDrantStore) ensureCollection() error {
-	// Check if the collection already exists
-	client := &http.Client{Timeout: 10 * time.Second}
-	endpoint := fmt.Sprintf("%s/collections/%s", q.url, q.collection)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	req, err := http.NewRequest("GET", endpoint, nil)
+	// List all collections
+	collections, err := q.client.ListCollections(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create HTTP request: %w", err)
+		return fmt.Errorf("failed to list collections: %w", err)
 	}
 
-	if q.apiKey != "" {
-		req.Header.Set("api-key", q.apiKey)
-	}
+	// Check if our collection exists
+	collectionExists := slices.Contains(collections, q.collection)
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to check if collection exists: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// If the collection doesn't exist (404), create it
-	if resp.StatusCode == http.StatusNotFound {
+	// Create collection if it doesn't exist
+	if !collectionExists {
 		return q.createCollection()
-	}
-
-	// Other error statuses
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("QDrant API error checking collection: %s, status code: %d", string(body), resp.StatusCode)
 	}
 
 	// Collection exists
@@ -95,59 +99,25 @@ func (q *QDrantStore) ensureCollection() error {
 
 // createCollection creates a new collection in QDrant
 func (q *QDrantStore) createCollection() error {
-	// Build the request to create a collection in QDrant
-	type VectorParams struct {
-		Size     int    `json:"size"`
-		Distance string `json:"distance"`
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
 
-	type CreateCollectionRequest struct {
-		Vectors map[string]VectorParams `json:"vectors"`
-	}
+	defaultSegmentNumber := uint64(2)
 
-	reqBody := CreateCollectionRequest{
-		Vectors: map[string]VectorParams{
-			"default": {
-				Size:     q.dimensions,
-				Distance: "Cosine", // Using cosine similarity
-			},
+	// Create a new collection with the specified parameters
+	err := q.client.CreateCollection(ctx, &qdrant.CreateCollection{
+		CollectionName: q.collection,
+		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+			Size:     uint64(q.dimensions),
+			Distance: qdrant.Distance_Cosine,
+		}),
+		OptimizersConfig: &qdrant.OptimizersConfigDiff{
+			DefaultSegmentNumber: &defaultSegmentNumber,
 		},
-	}
+	})
 
-	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return fmt.Errorf("failed to marshal collection create request: %w", err)
-	}
-
-	// Create the HTTP request
-	endpoint := fmt.Sprintf("%s/collections/%s", q.url, q.collection)
-	req, err := http.NewRequest("PUT", endpoint, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	if q.apiKey != "" {
-		req.Header.Set("api-key", q.apiKey)
-	}
-
-	// Execute the request
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute HTTP request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check for successful response
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		if strings.Contains(string(body), "already exists") {
-			// Collection already exists (race condition) - this is fine
-			return nil
-		}
-		return fmt.Errorf("QDrant API error creating collection: %s, status code: %d", string(body), resp.StatusCode)
+		return fmt.Errorf("failed to create collection: %w", err)
 	}
 
 	return nil
@@ -164,104 +134,156 @@ func (q *QDrantStore) createCollection() error {
 // Returns:
 //   - An error if the operation fails, or nil on success
 func (q *QDrantStore) StoreVector(ctx context.Context, id string, vector []float32, payload map[string]interface{}) error {
-	type PointStruct struct {
-		ID      string                 `json:"id"`
-		Vector  []float32              `json:"vector"`
-		Payload map[string]interface{} `json:"payload"`
-	}
+	// Convert payload to the Qdrant Value map
+	qdrantPayload := qdrant.NewValueMap(payload)
 
-	type UpsertRequest struct {
-		Points []PointStruct `json:"points"`
-	}
-
-	// Build the request
-	reqBody := UpsertRequest{
-		Points: []PointStruct{
-			{
-				ID:      id,
-				Vector:  vector,
-				Payload: payload,
-			},
+	// Create point with vectors
+	points := []*qdrant.PointStruct{
+		{
+			Id:      qdrant.NewIDUUID(id),
+			Vectors: qdrant.NewVectors(vector...),
+			Payload: qdrantPayload,
 		},
 	}
 
-	jsonData, err := json.Marshal(reqBody)
+	// Upsert the point
+	_, err := q.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: q.collection,
+		Points:         points,
+	})
+
 	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	// Create the HTTP request
-	endpoint := fmt.Sprintf("%s/collections/%s/points", q.url, q.collection)
-	req, err := http.NewRequestWithContext(ctx, "PUT", endpoint, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	if q.apiKey != "" {
-		req.Header.Set("api-key", q.apiKey)
-	}
-
-	// Execute the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute HTTP request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check for successful response
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("QDrant API error: %s, status code: %d", string(body), resp.StatusCode)
+		return fmt.Errorf("failed to store vector in QDrant: %w", err)
 	}
 
 	return nil
 }
 
-// Search searches for similar vectors in QDrant.
-//
-// Parameters:
-//   - ctx: The context for the operation, which can be used for cancellation
-//   - vector: The query vector to find similar vectors for
-//   - limit: The maximum number of results to return
-//   - filters: Optional filters to apply to the search
-//
-// Returns:
-//   - A slice of SearchResult objects containing the matches
-//   - An error if the operation fails, or nil on success
-func (q *QDrantStore) Search(ctx context.Context, vector []float32, limit int, filters map[string]interface{}) ([]SearchResult, error) {
-	// Placeholder implementation
-	// In a real implementation, this would construct the proper QDrant search request
-	return []SearchResult{}, fmt.Errorf("QDrant search not implemented yet")
-}
+// Search searches for vectors similar to the given query in the QDrant store.
+func (q *QDrantStore) Search(
+	ctx context.Context,
+	vector []float32,
+	limit int,
+	filters map[string]interface{},
+) ([]SearchResult, error) {
+	if limit <= 0 {
+		limit = 10
+	}
 
-// Get retrieves a specific vector by ID from QDrant.
-//
-// Parameters:
-//   - ctx: The context for the operation, which can be used for cancellation
-//   - id: The unique identifier of the vector to retrieve
-//
-// Returns:
-//   - The SearchResult containing the vector and its metadata
-//   - An error if the operation fails, or nil on success
-func (q *QDrantStore) Get(ctx context.Context, id string) (*SearchResult, error) {
-	// Placeholder implementation
-	// In a real implementation, this would retrieve the vector from QDrant by ID
-	return nil, fmt.Errorf("QDrant get by ID not implemented yet")
+	// Validate vector dimensions
+	if len(vector) != q.dimensions {
+		return nil, fmt.Errorf("vector dimension mismatch: expected %d, got %d", q.dimensions, len(vector))
+	}
+
+	limitUint := uint64(limit)
+	vectorName := "default" // The named vector to use
+
+	// Create query parameters
+	queryParams := &qdrant.QueryPoints{
+		CollectionName: q.collection,
+		Query:          qdrant.NewQuery(vector...),
+		Using:          &vectorName, // Specify which named vector to use
+		Limit:          &limitUint,
+		WithPayload:    qdrant.NewWithPayload(true),
+	}
+
+	// Execute the search
+	searchedPoints, err := q.client.Query(ctx, queryParams)
+	if err != nil {
+		return nil, fmt.Errorf("search failed: %w", err)
+	}
+
+	// Convert results
+	results := make([]SearchResult, 0, len(searchedPoints))
+	for _, point := range searchedPoints {
+		// Get ID
+		var id string
+		if pointID := point.Id; pointID != nil {
+			if uuidID := pointID.GetUuid(); uuidID != "" {
+				id = uuidID
+			} else if numID := pointID.GetNum(); numID != 0 {
+				id = fmt.Sprintf("%d", numID)
+			}
+		}
+
+		// Extract metadata
+		metadata := make(map[string]interface{})
+		for k, v := range point.Payload {
+			switch vt := v.GetKind().(type) {
+			case *qdrant.Value_StringValue:
+				metadata[k] = vt.StringValue
+			case *qdrant.Value_IntegerValue:
+				metadata[k] = vt.IntegerValue
+			case *qdrant.Value_DoubleValue:
+				metadata[k] = vt.DoubleValue
+			case *qdrant.Value_BoolValue:
+				metadata[k] = vt.BoolValue
+			}
+		}
+
+		// Add to results
+		results = append(results, SearchResult{
+			ID:       id,
+			Score:    float32(point.Score),
+			Metadata: metadata,
+		})
+	}
+
+	return results, nil
 }
 
 // Delete removes a vector from QDrant.
-//
-// Parameters:
-//   - ctx: The context for the operation, which can be used for cancellation
-//   - id: The unique identifier of the vector to delete
-//
-// Returns:
-//   - An error if the operation fails, or nil on success
 func (q *QDrantStore) Delete(ctx context.Context, id string) error {
-	// Placeholder implementation
-	// In a real implementation, this would delete the vector from QDrant
-	return fmt.Errorf("QDrant delete not implemented yet")
+	// Delete the point
+	_, err := q.client.Delete(ctx, &qdrant.DeletePoints{
+		CollectionName: q.collection,
+		Points:         qdrant.NewPointsSelector(qdrant.NewIDUUID(id)),
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to delete vector: %w", err)
+	}
+
+	return nil
+}
+
+// Get retrieves a specific vector by ID from QDrant.
+func (q *QDrantStore) Get(ctx context.Context, id string) (*SearchResult, error) {
+	// Retrieve the point by ID
+	points, err := q.client.Get(ctx, &qdrant.GetPoints{
+		CollectionName: q.collection,
+		Ids:            []*qdrant.PointId{qdrant.NewIDUUID(id)},
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vector: %w", err)
+	}
+
+	if len(points) == 0 {
+		return nil, fmt.Errorf("vector with ID %s not found", id)
+	}
+
+	point := points[0]
+
+	// Extract metadata
+	metadata := make(map[string]interface{})
+	for k, v := range point.Payload {
+		switch vt := v.GetKind().(type) {
+		case *qdrant.Value_StringValue:
+			metadata[k] = vt.StringValue
+		case *qdrant.Value_IntegerValue:
+			metadata[k] = vt.IntegerValue
+		case *qdrant.Value_DoubleValue:
+			metadata[k] = vt.DoubleValue
+		case *qdrant.Value_BoolValue:
+			metadata[k] = vt.BoolValue
+		}
+	}
+
+	return &SearchResult{
+		ID:       id,
+		Score:    1.0, // Default score for direct retrieval
+		Metadata: metadata,
+	}, nil
 }

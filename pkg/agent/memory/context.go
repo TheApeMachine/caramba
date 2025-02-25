@@ -376,7 +376,7 @@ Format each query on a separate line with no numbering, bullets, or other format
 
 	// Create the request
 	reqBody := OpenAIRequest{
-		Model: "gpt-3.5-turbo",
+		Model: "gpt-4o-mini",
 		Messages: []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},

@@ -386,7 +386,7 @@ func (m *VectorStore) generateEmbedding(ctx context.Context, text string) ([]flo
 
 	// For development purposes, we'll just create a very simple hash-based embedding
 	// In a real implementation, you would call an embedding API
-	return m.simpleHashEmbedding(text, 1536), nil
+	return m.simpleHashEmbedding(text, 3072), nil
 }
 
 /*

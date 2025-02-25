@@ -24,6 +24,10 @@ func BrowserExample(apiKey, url string) error {
 		url = "https://news.ycombinator.com"
 	}
 
+	// Set environment variables to force QDrant to use REST API
+	os.Setenv("QDRANT_URL", "http://localhost:6333")
+	os.Setenv("QDRANT_USE_REST", "true")
+
 	// Create an embedding provider
 	embeddingProvider := memory.NewOpenAIEmbeddingProvider(apiKey, "text-embedding-3-large")
 

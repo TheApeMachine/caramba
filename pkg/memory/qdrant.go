@@ -31,7 +31,7 @@ type QDrantConfig struct {
 // NewQDrantMemory creates a new QDrantMemory instance
 func NewQDrantMemory(embeddings EmbeddingsProvider, config QDrantConfig) (*QDrantMemory, error) {
 	if config.CollectionName == "" {
-		config.CollectionName = "agent_memories"
+		config.CollectionName = "long-term-memory"
 	}
 
 	// Create a new QDrant client
