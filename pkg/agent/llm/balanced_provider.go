@@ -107,7 +107,10 @@ Returns:
   - The generated text response from one of the successful providers
   - An error if all providers fail after the maximum retry attempts
 */
-func (p *BalancedProvider) GenerateResponse(ctx context.Context, prompt string, options core.LLMOptions) (string, error) {
+func (p *BalancedProvider) GenerateResponse(
+	ctx context.Context,
+	params core.LLMParams,
+) (string, error) {
 	if len(p.providers) == 0 {
 		return "", errors.New("no providers configured")
 	}
@@ -122,7 +125,7 @@ func (p *BalancedProvider) GenerateResponse(ctx context.Context, prompt string, 
 
 		errnie.Debug("Using provider: " + provider.Provider.Name())
 
-		resp, err := provider.Provider.GenerateResponse(ctx, prompt, options)
+		resp, err := provider.Provider.GenerateResponse(ctx, params)
 		p.updateProviderStatus(provider, err)
 
 		if err == nil {
@@ -150,33 +153,41 @@ Parameters:
 Returns:
   - An error if all providers fail after the maximum retry attempts
 */
-func (p *BalancedProvider) StreamResponse(ctx context.Context, prompt string, options core.LLMOptions, handler func(string)) error {
+func (p *BalancedProvider) StreamResponse(
+	ctx context.Context,
+	params core.LLMParams,
+) <-chan core.LLMResponse {
 	if len(p.providers) == 0 {
-		return errors.New("no providers configured")
+		return nil
 	}
 
-	// Try to stream from a provider for up to maxRetries attempts
-	var lastError error
-	for attempt := 0; attempt < p.maxRetries; attempt++ {
-		provider, err := p.getNextAvailableProvider()
-		if err != nil {
-			return err
+	out := make(chan core.LLMResponse)
+
+	go func() {
+		defer close(out)
+
+		for attempt := 0; attempt < p.maxRetries; attempt++ {
+			provider, err := p.getNextAvailableProvider()
+			if err != nil {
+				return
+			}
+
+			errnie.Debug("Streaming from provider: " + provider.Provider.Name())
+
+			stream := provider.Provider.StreamResponse(ctx, params)
+			p.updateProviderStatus(provider, err)
+
+			if err == nil {
+				for chunk := range stream {
+					out <- chunk
+				}
+			}
+
+			errnie.Info("Provider stream failed: " + provider.Provider.Name() + " - " + err.Error())
 		}
+	}()
 
-		errnie.Debug("Streaming from provider: " + provider.Provider.Name())
-
-		err = provider.Provider.StreamResponse(ctx, prompt, options, handler)
-		p.updateProviderStatus(provider, err)
-
-		if err == nil {
-			return nil
-		}
-
-		lastError = err
-		errnie.Info("Provider stream failed: " + provider.Provider.Name() + " - " + err.Error())
-	}
-
-	return errors.New("all LLM providers failed for streaming: " + lastError.Error())
+	return out
 }
 
 /*
@@ -321,49 +332,4 @@ func (p *BalancedProvider) GetProviderStatuses() []map[string]interface{} {
 	}
 
 	return statuses
-}
-
-/*
-CheckProvidersHealth pings all providers with a simple request to verify they're working.
-This is useful for proactive health checking and monitoring.
-
-Parameters:
-  - ctx: The context for the health check requests
-
-Returns:
-  - A map of provider names to their health status (true = healthy, false = unhealthy)
-*/
-func (p *BalancedProvider) CheckProvidersHealth(ctx context.Context) map[string]bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	// Create a test prompt and minimal options
-	testPrompt := "Hello"
-	options := core.LLMOptions{
-		MaxTokens:   5,
-		Temperature: 0,
-	}
-
-	results := make(map[string]bool, len(p.providers))
-
-	for _, provider := range p.providers {
-		// Create a timeout context for the health check
-		timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-
-		// Try to generate a response
-		_, err := provider.Provider.GenerateResponse(timeoutCtx, testPrompt, options)
-		cancel() // Always cancel the timeout context
-
-		// Update the provider status and the results map
-		results[provider.Provider.Name()] = (err == nil)
-
-		// Also update the provider status
-		p.mu.RUnlock() // Temporarily unlock the read lock to acquire a write lock
-		p.mu.Lock()
-		p.updateProviderStatus(provider, err)
-		p.mu.Unlock()
-		p.mu.RLock() // Re-acquire the read lock
-	}
-
-	return results
 }

@@ -6,15 +6,11 @@ like Anthropic, OpenAI, and others, as well as utility providers like BalancedPr
 package llm
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"strings"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/agent/core"
 )
@@ -32,27 +28,7 @@ type AnthropicProvider struct {
 	/* BaseURL is the endpoint for the Anthropic API */
 	BaseURL string
 	/* Client is the HTTP client used for API requests */
-	Client *http.Client
-	/* Tools is a list of tools available to the model */
-	Tools []core.Tool
-}
-
-// AnthropicToolCall represents a tool call from Anthropic Claude
-type AnthropicToolCall struct {
-	Name  string                 `json:"name"`
-	Input map[string]interface{} `json:"input"`
-}
-
-// AnthropicContent represents a content block in Anthropic response
-type AnthropicContent struct {
-	Type     string             `json:"type"`
-	Text     string             `json:"text,omitempty"`
-	ToolCall *AnthropicToolCall `json:"tool_call,omitempty"`
-}
-
-// AnthropicResponse represents the response structure from Anthropic API
-type AnthropicResponse struct {
-	Content []AnthropicContent `json:"content"`
+	Client *anthropic.Client
 }
 
 /*
@@ -62,23 +38,24 @@ It retrieves the base URL from configuration or uses the default Anthropic API e
 Parameters:
   - apiKey: The authentication key for accessing the Anthropic API
   - model: The specific Claude model to use (e.g., "claude-2")
-  - tools: Optional list of tools to make available to the model
 
 Returns:
   - A pointer to the initialized AnthropicProvider
 */
-func NewAnthropicProvider(apiKey string, model string, tools ...core.Tool) *AnthropicProvider {
+func NewAnthropicProvider(apiKey string, model string) *AnthropicProvider {
 	baseURL := viper.GetString("endpoints.anthropic")
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com/v1"
 	}
 
+	// Initialize client with API key
+	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+
 	return &AnthropicProvider{
 		APIKey:  apiKey,
 		Model:   model,
 		BaseURL: baseURL,
-		Client:  &http.Client{},
-		Tools:   tools,
+		Client:  client,
 	}
 }
 
@@ -93,28 +70,6 @@ func (p *AnthropicProvider) Name() string {
 	return "anthropic"
 }
 
-// convertToolsToAnthropicFormat converts core.Tool to Anthropic's tool format
-func convertToolsToAnthropicFormat(tools []core.Tool) ([]map[string]interface{}, error) {
-	result := make([]map[string]interface{}, 0, len(tools))
-
-	for _, tool := range tools {
-		schema := tool.Schema()
-		if schema == nil {
-			continue
-		}
-
-		toolDef := map[string]interface{}{
-			"name":         tool.Name(),
-			"description":  tool.Description(),
-			"input_schema": schema,
-		}
-
-		result = append(result, toolDef)
-	}
-
-	return result, nil
-}
-
 /*
 GenerateResponse generates a response from the Anthropic Claude model.
 It formats the request according to Anthropic's API requirements, sends the request,
@@ -122,76 +77,61 @@ and parses the response.
 
 Parameters:
   - ctx: The context for the request, which can be used for cancellation
-  - prompt: The user input to send to the model
-  - options: Configuration options for the generation process
+  - params: The parameters for the generation process
 
 Returns:
   - The generated text response
   - An error if the request fails or the response cannot be parsed
 */
-func (p *AnthropicProvider) GenerateResponse(ctx context.Context, prompt string, options core.LLMOptions) (string, error) {
-	requestMap := map[string]interface{}{
-		"model":       p.Model,
-		"max_tokens":  options.MaxTokens,
-		"temperature": options.Temperature,
-		"system":      options.SystemPrompt,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
-		"stream": false,
+func (p *AnthropicProvider) GenerateResponse(
+	ctx context.Context,
+	params core.LLMParams,
+) (string, error) {
+	// Build the message parameters
+	messageParams := anthropic.MessageNewParams{
+		Model:     anthropic.F(p.Model),
+		MaxTokens: anthropic.Int(1024),
+		Messages:  anthropic.F(p.buildMessages(params)),
+	}
+
+	// Set system prompt if available
+	systemPrompt := p.extractSystemPrompt(params)
+	if systemPrompt != "" {
+		// System should be TextBlockParam array
+		messageParams.System = anthropic.F([]anthropic.TextBlockParam{
+			{Text: anthropic.F(systemPrompt)},
+		})
 	}
 
 	// Add tools if available
-	if len(p.Tools) > 0 {
-		toolDefs, err := convertToolsToAnthropicFormat(p.Tools)
-		if err != nil {
-			return "", fmt.Errorf("failed to convert tools: %w", err)
+	tools := p.buildTools(params)
+	if len(tools) > 0 {
+		toolUnionParams := make([]anthropic.ToolUnionUnionParam, 0, len(tools))
+		for _, tool := range tools {
+			toolUnionParams = append(toolUnionParams, anthropic.ToolUnionUnionParam(tool))
 		}
-		requestMap["tools"] = toolDefs
+		messageParams.Tools = anthropic.F(toolUnionParams)
 	}
 
-	requestBody, err := json.Marshal(requestMap)
+	// Make the API call
+	response, err := p.Client.Messages.New(ctx, messageParams)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request body: %w", err)
+		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.BaseURL+"/messages", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", p.APIKey)
-	req.Header.Set("Anthropic-Version", "2023-06-01")
-
-	resp, err := p.Client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("Anthropic API error: %s, status: %d", string(body), resp.StatusCode)
-	}
-
-	var response AnthropicResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	// Process content - can include text and tool calls
-	var result strings.Builder
+	// Process content and handle tool calls
+	var result string
 	toolCalls := make([]core.ToolCall, 0)
 
-	for _, content := range response.Content {
-		if content.Type == "text" {
-			result.WriteString(content.Text)
-		} else if content.Type == "tool_call" && content.ToolCall != nil {
-			toolCalls = append(toolCalls, core.ToolCall{
-				Name: content.ToolCall.Name,
-				Args: content.ToolCall.Input,
-			})
+	for _, block := range response.Content {
+		if block.Type == anthropic.ContentBlockTypeText {
+			result += block.Text
+		} else if block.Type == anthropic.ContentBlockTypeToolUse {
+			toolCall := core.ToolCall{
+				Name: block.Name,
+				Args: p.parseToolInput(block.Input),
+			}
+			toolCalls = append(toolCalls, toolCall)
 		}
 	}
 
@@ -199,12 +139,12 @@ func (p *AnthropicProvider) GenerateResponse(ctx context.Context, prompt string,
 	if len(toolCalls) > 0 {
 		toolCallsJSON, err := json.Marshal(toolCalls)
 		if err != nil {
-			return "", fmt.Errorf("failed to marshal tool calls: %w", err)
+			return "", err
 		}
 		return string(toolCallsJSON), nil
 	}
 
-	return result.String(), nil
+	return result, nil
 }
 
 /*
@@ -214,178 +154,175 @@ function with each chunk of generated text as it becomes available.
 
 Parameters:
   - ctx: The context for the request, which can be used for cancellation
-  - prompt: The user input to send to the model
-  - options: Configuration options for the generation process
-  - handler: A callback function that receives each text chunk as it's generated
+  - params: The parameters for the generation process
 
 Returns:
-  - An error if the request fails or the streaming process encounters an issue
+  - A channel that emits LLMResponse objects
 */
-func (p *AnthropicProvider) StreamResponse(ctx context.Context, prompt string, options core.LLMOptions, handler func(string)) error {
-	requestMap := map[string]interface{}{
-		"model":       p.Model,
-		"max_tokens":  options.MaxTokens,
-		"temperature": options.Temperature,
-		"system":      options.SystemPrompt,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
-		"stream": true,
-	}
+func (p *AnthropicProvider) StreamResponse(
+	ctx context.Context,
+	params core.LLMParams,
+) <-chan core.LLMResponse {
+	out := make(chan core.LLMResponse)
 
-	// Add tools if available
-	if len(p.Tools) > 0 {
-		toolDefs, err := convertToolsToAnthropicFormat(p.Tools)
-		if err != nil {
-			return fmt.Errorf("failed to convert tools: %w", err)
+	go func() {
+		defer close(out)
+
+		// Build the message parameters
+		messageParams := anthropic.MessageNewParams{
+			Model:     anthropic.F(p.Model),
+			MaxTokens: anthropic.Int(1024),
+			Messages:  anthropic.F(p.buildMessages(params)),
 		}
-		requestMap["tools"] = toolDefs
-	}
 
-	requestBody, err := json.Marshal(requestMap)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request body: %w", err)
-	}
+		// Set system prompt if available
+		systemPrompt := p.extractSystemPrompt(params)
+		if systemPrompt != "" {
+			messageParams.System = anthropic.F([]anthropic.TextBlockParam{
+				{Text: anthropic.F(systemPrompt)},
+			})
+		}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.BaseURL+"/messages", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", p.APIKey)
-	req.Header.Set("Anthropic-Version", "2023-06-01")
-
-	resp, err := p.Client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("Anthropic API error: %s, status: %d", string(body), resp.StatusCode)
-	}
-
-	// Track tool calls in progress
-	var toolCallInProgress bool
-	var toolCallBuffer strings.Builder
-	var currentToolName string
-
-	reader := bufio.NewReader(resp.Body)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
+		// Add tools if available
+		tools := p.buildTools(params)
+		if len(tools) > 0 {
+			toolUnionParams := make([]anthropic.ToolUnionUnionParam, 0, len(tools))
+			for _, tool := range tools {
+				toolUnionParams = append(toolUnionParams, anthropic.ToolUnionUnionParam(tool))
 			}
-			return fmt.Errorf("error reading stream: %w", err)
+			messageParams.Tools = anthropic.F(toolUnionParams)
 		}
 
-		line = strings.TrimSpace(line)
-		if line == "" || !strings.HasPrefix(line, "data: ") {
+		// Start streaming
+		stream := p.Client.Messages.NewStreaming(ctx, messageParams)
+
+		// Track the full message being built
+		var fullMessage anthropic.Message
+
+		// Process streaming events
+		for stream.Next() {
+			// Get the current event
+			event := stream.Current()
+
+			// Accumulate the message data as it comes in
+			if err := fullMessage.Accumulate(event); err != nil {
+				out <- core.LLMResponse{Error: err}
+				return
+			}
+
+			// Process different event types
+			switch evt := event.AsUnion().(type) {
+			case anthropic.ContentBlockStartEvent:
+				cb := evt.ContentBlock
+				if cb.Type == anthropic.ContentBlockStartEventContentBlockTypeToolUse && cb.Name != "" {
+					out <- core.LLMResponse{
+						Content: "[Tool Call: " + cb.Name + "]",
+					}
+				}
+
+			case anthropic.ContentBlockDeltaEvent:
+				delta := evt.Delta
+				if delta.Type == anthropic.ContentBlockDeltaEventDeltaTypeTextDelta && delta.Text != "" {
+					out <- core.LLMResponse{
+						Content: delta.Text,
+					}
+				}
+
+			case anthropic.ContentBlockStopEvent:
+				// Find the completed tool call in the full message
+				for _, block := range fullMessage.Content {
+					if block.Type == anthropic.ContentBlockTypeToolUse {
+						toolCall := core.ToolCall{
+							Name: block.Name,
+							Args: p.parseToolInput(block.Input),
+						}
+						out <- core.LLMResponse{
+							ToolCalls: []core.ToolCall{toolCall},
+						}
+						break
+					}
+				}
+
+			case anthropic.MessageStopEvent:
+				// Message is complete, nothing to do
+			}
+		}
+
+		// Check for errors
+		if err := stream.Err(); err != nil {
+			out <- core.LLMResponse{Error: err}
+		}
+	}()
+
+	return out
+}
+
+func (p *AnthropicProvider) buildMessages(
+	params core.LLMParams,
+) []anthropic.MessageParam {
+	messages := make([]anthropic.MessageParam, 0, len(params.Messages))
+
+	for _, message := range params.Messages {
+		// Skip system messages as they're handled separately
+		if message.Role == "system" {
 			continue
 		}
 
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			break
-		}
-
-		var streamResponse struct {
-			Type  string `json:"type"`
-			Delta struct {
-				Type     string `json:"type"`
-				Text     string `json:"text,omitempty"`
-				ToolCall struct {
-					Name  string          `json:"name,omitempty"`
-					Input json.RawMessage `json:"input,omitempty"`
-				} `json:"tool_call,omitempty"`
-			} `json:"delta"`
-		}
-
-		if err := json.Unmarshal([]byte(data), &streamResponse); err != nil {
-			return fmt.Errorf("failed to unmarshal stream response: %w", err)
-		}
-
-		// Handle text chunks
-		if streamResponse.Type == "content_block_delta" && streamResponse.Delta.Type == "text" {
-			handler(streamResponse.Delta.Text)
-		}
-
-		// Handle tool call chunks
-		if streamResponse.Type == "content_block_delta" && streamResponse.Delta.Type == "tool_call" {
-			if !toolCallInProgress && streamResponse.Delta.ToolCall.Name != "" {
-				// Beginning of a new tool call
-				toolCallInProgress = true
-				currentToolName = streamResponse.Delta.ToolCall.Name
-				toolCallBuffer.Reset() // Clear buffer for new tool call
-				handler(fmt.Sprintf("\n[Tool Call: %s", currentToolName))
-			}
-
-			// Accumulate the tool call data
-			if len(streamResponse.Delta.ToolCall.Input) > 0 {
-				toolCallBuffer.Write(streamResponse.Delta.ToolCall.Input)
-			}
-		}
-
-		// Handle content block start/stop for tool calls
-		if streamResponse.Type == "content_block_start" && streamResponse.Delta.Type == "tool_call" {
-			toolCallInProgress = true
-			if streamResponse.Delta.ToolCall.Name != "" {
-				currentToolName = streamResponse.Delta.ToolCall.Name
-				handler(fmt.Sprintf("\n[Tool Call: %s", currentToolName))
-			}
-		}
-
-		if streamResponse.Type == "content_block_stop" && toolCallInProgress {
-			// End of tool call - process the accumulated data
-			toolCallInProgress = false
-
-			// Parse the accumulated JSON input
-			if toolCallBuffer.Len() > 0 {
-				var toolArgs map[string]interface{}
-				if err := json.Unmarshal([]byte(toolCallBuffer.String()), &toolArgs); err != nil {
-					// If we can't parse it, at least show the raw data
-					handler(fmt.Sprintf(" with args: %s]\n", toolCallBuffer.String()))
-				} else {
-					// Format nicely if we can parse it
-					handler("]\n")
-
-					// Convert to a structured tool call
-					toolCall := core.ToolCall{
-						Name: currentToolName,
-						Args: toolArgs,
-					}
-
-					// You could return this tool call for immediate processing, but for now
-					// we'll just indicate that a tool call is ready
-					toolCallJSON, _ := json.Marshal(toolCall)
-					handler(fmt.Sprintf("[Tool call ready: %s]\n", string(toolCallJSON)))
-				}
-			} else {
-				handler("]\n") // Close the tool call bracket
-			}
+		if message.Role == "user" {
+			messages = append(messages, anthropic.NewUserMessage(
+				anthropic.NewTextBlock(message.Content),
+			))
+		} else if message.Role == "assistant" {
+			messages = append(messages, anthropic.NewAssistantMessage(
+				anthropic.NewTextBlock(message.Content),
+			))
 		}
 	}
 
-	// Process any remaining tool call data
-	if toolCallInProgress && toolCallBuffer.Len() > 0 {
-		var toolArgs map[string]interface{}
-		if err := json.Unmarshal([]byte(toolCallBuffer.String()), &toolArgs); err != nil {
-			handler(fmt.Sprintf(" with args: %s]\n", toolCallBuffer.String()))
-		} else {
-			handler("]\n")
+	return messages
+}
 
-			toolCall := core.ToolCall{
-				Name: currentToolName,
-				Args: toolArgs,
-			}
+func (p *AnthropicProvider) buildTools(
+	params core.LLMParams,
+) []anthropic.ToolParam {
+	tools := make([]anthropic.ToolParam, 0, len(params.Tools))
 
-			toolCallJSON, _ := json.Marshal(toolCall)
-			handler(fmt.Sprintf("[Tool call ready: %s]\n", string(toolCallJSON)))
+	for _, tool := range params.Tools {
+		toolParam := anthropic.ToolParam{
+			Name:        anthropic.F(tool.Name()),
+			Description: anthropic.F(tool.Description()),
 		}
+
+		// Get the JSON schema for the tool
+		if schema := tool.Schema(); schema != nil {
+			// Convert schema to interface{} before wrapping with F
+			schemaInterface := interface{}(schema)
+			toolParam.InputSchema = anthropic.F(schemaInterface)
+		}
+
+		tools = append(tools, toolParam)
 	}
 
-	return nil
+	return tools
+}
+
+// parseToolInput converts the raw JSON input from a tool call into a map
+func (p *AnthropicProvider) parseToolInput(input json.RawMessage) map[string]interface{} {
+	var result map[string]interface{}
+	err := json.Unmarshal(input, &result)
+	if err != nil {
+		// If we can't parse it, return an empty map
+		return map[string]interface{}{}
+	}
+	return result
+}
+
+// extractSystemPrompt gets the system prompt from the messages array if it exists
+func (p *AnthropicProvider) extractSystemPrompt(params core.LLMParams) string {
+	for _, message := range params.Messages {
+		if message.Role == "system" {
+			return message.Content
+		}
+	}
+	return ""
 }

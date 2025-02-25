@@ -154,40 +154,30 @@ Returns:
   - An error if the operation fails, or nil on success
 */
 func (um *UnifiedMemory) ExtractMemories(ctx context.Context, agentID string, text string, source string) ([]string, error) {
-	// If the text is too short, don't extract any memories
-	if len(text) < 50 {
-		return []string{}, nil
-	}
-
-	// Create a system prompt for memory extraction that encourages document-like extraction
-	// and identifies relationships between memories
-	systemPrompt := viper.GetViper().GetString("templates.memory")
-
-	// Simple user prompt with the text to analyze
-	userPrompt := fmt.Sprintf("Text to extract memories from: %s", text)
-
-	// Create an OpenAI provider for memory extraction
 	provider, err := getOpenAIProvider("gpt-4o-mini")
+
 	if err != nil {
 		errnie.Error(err)
 		return []string{}, err
 	}
 
-	// Generate the schema for the memory extraction
-	memorySchema := util.GenerateSchema[MemoryExtraction]()
-
-	// Setup options for the API call
-	options := core.LLMOptions{
-		MaxTokens:      800,
-		Temperature:    0.2,
-		TopP:           1.0,
-		SystemPrompt:   systemPrompt,
-		ResponseFormat: "json_object",
-		Schema:         memorySchema,
-	}
-
 	// Call the OpenAI API using the provider
-	extractedContent, err := provider.GenerateResponse(ctx, userPrompt, options)
+	extractedContent, err := provider.GenerateResponse(ctx, core.LLMParams{
+		Messages: []core.LLMMessage{
+			{
+				Role:    "system",
+				Content: viper.GetViper().GetString("templates.memory"),
+			},
+			{
+				Role:    "user",
+				Content: fmt.Sprintf("Text to extract memories from: %s", text),
+			},
+		},
+		ResponseFormatName:        "json_schema",
+		ResponseFormatDescription: "A JSON object with a 'documents' array of strings",
+		Schema:                    util.GenerateSchema[MemoryExtraction](),
+	})
+
 	if err != nil {
 		errnie.Error(err)
 		return []string{}, err
@@ -340,7 +330,11 @@ func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string
 
 	// Get the system prompt from config
 	systemPrompt := viper.GetViper().GetString("templates.memory_query")
-	userPrompt := fmt.Sprintf("User query: %s", query)
+	if systemPrompt == "" {
+		errnie.Info("Memory query template not found in config, using default")
+		systemPrompt = "You are a memory query generator for an AI assistant. Your job is to analyze the user's query and generate 3-5 search queries that will help retrieve relevant information from the assistant's memory. The queries should be diverse to cover different aspects of what might be relevant. Each query should be a short phrase or question that captures an important aspect of the information needed."
+	}
+	userPrompt := fmt.Sprintf("Generate search queries for: %s", query)
 
 	// Create an OpenAI provider
 	provider, err := getOpenAIProvider("gpt-4o-mini")
@@ -349,25 +343,30 @@ func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string
 		return []string{query}, nil
 	}
 
-	// Generate the schema for the memory queries
-	queriesSchema := util.GenerateSchema[MemoryQueries]()
-
-	// Setup options for the API call
-	options := core.LLMOptions{
-		MaxTokens:      300,
-		Temperature:    0.7,
-		TopP:           1.0,
-		SystemPrompt:   systemPrompt,
-		ResponseFormat: "json_object",
-		Schema:         queriesSchema,
-	}
-
 	// Call the OpenAI API using the provider
-	extractedContent, err := provider.GenerateResponse(ctx, userPrompt, options)
+	extractedContent, err := provider.GenerateResponse(ctx, core.LLMParams{
+		Messages: []core.LLMMessage{
+			{
+				Role:    "system",
+				Content: systemPrompt,
+			},
+			{
+				Role:    "user",
+				Content: userPrompt,
+			},
+		},
+		ResponseFormatName:        "json_schema",
+		ResponseFormatDescription: "A JSON object with a 'queries' array of strings",
+		Schema:                    util.GenerateSchema[MemoryQueries](),
+	})
+
 	if err != nil {
 		errnie.Error(fmt.Errorf("failed to generate memory queries: %w", err))
 		return []string{query}, nil
 	}
+
+	// Log the raw response for debugging
+	errnie.Debug("Raw LLM Memory Query Response:", extractedContent)
 
 	// Parse the response directly as JSON
 	var queriesResponse MemoryQueries
@@ -422,7 +421,7 @@ func (um *UnifiedMemory) PrepareContext(ctx context.Context, agentID string, que
 	// Retrieve memories for each query
 	var allMemories []EnhancedMemoryEntry
 	seenMemoryIDs := make(map[string]bool)
-	maxMemoriesPerQuery := max(um.options.MaxMemoriesPerQuery / len(queries), 1)
+	maxMemoriesPerQuery := max(um.options.MaxMemoriesPerQuery/len(queries), 1)
 
 	for _, q := range queries {
 		memories, err := um.RetrieveMemoriesByVector(

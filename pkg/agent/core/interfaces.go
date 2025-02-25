@@ -16,13 +16,34 @@ for a consistent API regardless of the underlying provider.
 */
 type LLMProvider interface {
 	// GenerateResponse generates a response from the LLM
-	GenerateResponse(ctx context.Context, prompt string, options LLMOptions) (string, error)
+	GenerateResponse(context.Context, LLMParams) (string, error)
 
 	// StreamResponse generates a response from the LLM and streams it
-	StreamResponse(ctx context.Context, prompt string, options LLMOptions, handler func(string)) error
+	StreamResponse(context.Context, LLMParams) <-chan LLMResponse
 
 	// Name returns the name of the LLM provider
 	Name() string
+}
+
+type LLMMessage struct {
+	Role    string
+	Content string
+}
+
+type LLMParams struct {
+	Messages                  []LLMMessage
+	Model                     string
+	Tools                     []Tool
+	ResponseFormatName        string
+	ResponseFormatDescription string
+	Schema                    interface{}
+}
+
+type LLMResponse struct {
+	Content   string
+	ToolCalls []ToolCall
+	Refusal   string
+	Error     error
 }
 
 /*
@@ -44,9 +65,9 @@ type LLMOptions struct {
 	StopSequences []string
 	/* SystemPrompt provides initial instructions to the model */
 	SystemPrompt string
-	/* ResponseFormat specifies the format of the response (text, json_object) */
+	/* ResponseFormat specifies the format of the response (text, json_object, json_schema) */
 	ResponseFormat string
-	/* Schema contains the JSON schema for structured output (when using json_object format) */
+	/* Schema contains the JSON schema for structured output (when using json_schema format) */
 	Schema interface{}
 }
 

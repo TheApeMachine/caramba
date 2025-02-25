@@ -75,3 +75,6 @@ templates:
 
     The queries should be diverse to cover different aspects of what might be relevant.
     Each query should be a short phrase or question that captures an important aspect of the information needed.
+
+  planner: |
+    You are an AI assistant that creates plans to solve tasks.

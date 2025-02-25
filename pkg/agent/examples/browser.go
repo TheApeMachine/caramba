@@ -49,7 +49,7 @@ func BrowserExample(apiKey, url string) error {
 	browserTool := tools.NewBrowserTool("http://localhost:3000", "6R0W53R135510") // Using the token from docker-compose
 
 	// Create an LLM provider with tools
-	llmProvider := llm.NewOpenAIProvider(apiKey, "gpt-4o-mini", browserTool)
+	llmProvider := llm.NewOpenAIProvider(apiKey, "gpt-4o-mini")
 
 	// Create an agent
 	agent := core.NewAgentBuilder("BrowserAgent").
@@ -399,7 +399,7 @@ func TestMultiProviderBrowser(openAIKey, anthropicKey, url string) error {
 
 		// Try to set up memory for OpenAI agent
 		openaiAgentBuilder := core.NewAgentBuilder("OpenAIBrowserAgent").
-			WithLLM(llm.NewOpenAIProvider(openAIKey, "gpt-4o-mini", browserTool)).
+			WithLLM(llm.NewOpenAIProvider(openAIKey, "gpt-4o-mini")).
 			WithTool(browserTool)
 
 		// Attempt to add memory if possible
@@ -442,7 +442,7 @@ func TestMultiProviderBrowser(openAIKey, anthropicKey, url string) error {
 
 		// Set up Anthropic agent
 		anthropicAgentBuilder := core.NewAgentBuilder("AnthropicBrowserAgent").
-			WithLLM(llm.NewAnthropicProvider(anthropicKey, "claude-3-haiku-20240307", browserTool)).
+			WithLLM(llm.NewAnthropicProvider(anthropicKey, "claude-3-haiku-20240307")).
 			WithTool(browserTool)
 
 		// Attempt to add memory if possible - we need OpenAI key for embeddings

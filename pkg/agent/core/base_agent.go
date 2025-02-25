@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/spf13/viper"
+	"github.com/theapemachine/caramba/pkg/agent/util"
 	"github.com/theapemachine/errnie"
 )
 
@@ -16,7 +19,7 @@ type BaseAgent struct {
 	Name      string
 	LLM       LLMProvider
 	Memory    Memory
-	Tools     map[string]Tool
+	Tools     []Tool
 	Planner   Planner
 	Messenger Messenger
 	toolsMu   sync.RWMutex
@@ -26,7 +29,7 @@ type BaseAgent struct {
 func NewBaseAgent(name string) *BaseAgent {
 	agent := &BaseAgent{
 		Name:  name,
-		Tools: make(map[string]Tool),
+		Tools: make([]Tool, 0),
 	}
 	// Create a default messenger for the agent
 	agent.Messenger = NewInMemoryMessenger(name)
@@ -76,24 +79,44 @@ func (a *BaseAgent) ExecuteWithOptions(ctx context.Context, input string, opts .
 		return a.Planner.ExecutePlan(ctx, plan)
 	}
 
-	// Otherwise, just send the input to the LLM
-	llmOptions := LLMOptions{
-		MaxTokens:    options.MaxTokens,
-		Temperature:  options.Temperature,
-		SystemPrompt: fmt.Sprintf("You are %s, an AI assistant. Answer the question to the best of your abilities.", a.Name),
-	}
+	var response strings.Builder
 
-	var response string
-	var err error
+	// Otherwise, just send the input to the LLM
+	params := LLMParams{
+		Messages: []LLMMessage{
+			{
+				Role:    "system",
+				Content: viper.GetViper().GetString("templates.planner"),
+			},
+		},
+		Model:  "gpt-4o-mini",
+		Tools:  a.Tools,
+		Schema: util.GenerateSchema[Plan](),
+	}
 
 	if options.StreamHandler != nil {
-		err = a.LLM.StreamResponse(ctx, enhancedInput, llmOptions, options.StreamHandler)
+		for chunk := range a.LLM.StreamResponse(ctx, LLMParams{
+			Messages: []LLMMessage{
+				{
+					Role:    "system",
+					Content: viper.GetViper().GetString("templates.planner"),
+				},
+				{
+					Role:    "user",
+					Content: enhancedInput,
+				},
+			},
+		}) {
+			response.WriteString(chunk.Content)
+			options.StreamHandler(chunk.Content)
+		}
 	} else {
-		response, err = a.LLM.GenerateResponse(ctx, enhancedInput, llmOptions)
-	}
+		res, err := a.LLM.GenerateResponse(ctx, params)
+		if err != nil {
+			return "", err
+		}
 
-	if err != nil {
-		return "", err
+		response.WriteString(res)
 	}
 
 	// Store the interaction in memory if available
@@ -119,7 +142,7 @@ func (a *BaseAgent) ExecuteWithOptions(ctx context.Context, input string, opts .
 		}
 	}
 
-	return response, nil
+	return response.String(), nil
 }
 
 // ExecuteWithIteration runs the agent using the iteration loop for self-improvement
@@ -192,24 +215,18 @@ func (a *BaseAgent) GetToolResults(ctx context.Context, response string) (map[st
 		toolName := toolCall.Name
 		args := toolCall.Args
 
-		// Find the tool
-		a.toolsMu.RLock()
-		tool, exists := a.Tools[toolName]
-		a.toolsMu.RUnlock()
-
-		if !exists {
-			continue // Skip tools that don't exist
-		}
-
 		// Execute the tool
-		result, err := tool.Execute(ctx, args)
-		if err != nil {
-			// Log the error but continue with other tools
-			continue
-		}
+		for _, tool := range a.Tools {
+			if tool.Name() == toolName {
+				result, err := tool.Execute(ctx, args)
 
-		// Store the result
-		toolResults[toolName] = result
+				if err != nil {
+					return nil, err
+				}
+
+				toolResults[toolName] = result
+			}
+		}
 	}
 
 	return toolResults, nil
@@ -252,11 +269,13 @@ func (a *BaseAgent) AddTool(tool Tool) error {
 	a.toolsMu.Lock()
 	defer a.toolsMu.Unlock()
 
-	if _, exists := a.Tools[tool.Name()]; exists {
-		return fmt.Errorf("tool %s already exists", tool.Name())
+	for _, existingTool := range a.Tools {
+		if existingTool.Name() == tool.Name() {
+			return fmt.Errorf("tool %s already exists", tool.Name())
+		}
 	}
 
-	a.Tools[tool.Name()] = tool
+	a.Tools = append(a.Tools, tool)
 	return nil
 }
 
@@ -298,13 +317,14 @@ func (a *BaseAgent) HandleMessage(ctx context.Context, message Message) (string,
 		prompt := fmt.Sprintf(promptTemplate, message.Sender, message.Content)
 
 		// Use the agent's LLM to generate a response
-		llmOptions := LLMOptions{
-			MaxTokens:    1024,
-			Temperature:  0.7,
-			SystemPrompt: fmt.Sprintf("You are %s, an AI assistant. You are receiving a message from another agent.", a.Name),
-		}
-
-		response, err := a.LLM.GenerateResponse(ctx, prompt, llmOptions)
+		response, err := a.LLM.GenerateResponse(ctx, LLMParams{
+			Messages: []LLMMessage{
+				{
+					Role:    "system",
+					Content: prompt,
+				},
+			},
+		})
 		if err != nil {
 			return "", err
 		}
