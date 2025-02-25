@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -137,8 +138,26 @@ type ToolCall struct {
 // extractToolCalls parses tool calls from the agent's response
 // This is a placeholder implementation - real implementation would depend on the format
 func extractToolCalls(response string) []ToolCall {
-	// This is a simplified implementation
-	// A real implementation would parse the response for tool calls
+	// Try to parse as JSON first (our providers return JSON for tool calls)
+	var toolCalls []ToolCall
+	err := json.Unmarshal([]byte(response), &toolCalls)
+	if err == nil && len(toolCalls) > 0 {
+		return toolCalls
+	}
+
+	// If not JSON array, check if it might be a single tool call
+	var singleToolCall ToolCall
+	err = json.Unmarshal([]byte(response), &singleToolCall)
+	if err == nil && singleToolCall.Name != "" {
+		return []ToolCall{singleToolCall}
+	}
+
+	// Fallback: parse text for tool calls using regex (simplified version)
+	// In a production system, you would implement more robust parsing here
+	// This is a basic implementation that looks for patterns like:
+	// tool_name({"param1": "value1"})
+
+	// Empty implementation - future enhancement
 	return []ToolCall{}
 }
 
