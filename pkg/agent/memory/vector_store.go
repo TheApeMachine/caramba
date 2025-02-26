@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/theapemachine/caramba/pkg/agent/core"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -65,11 +66,21 @@ func (um *UnifiedMemory) RetrieveMemoriesByVector(ctx context.Context, query str
 		}
 
 		// Extract fields from metadata
-		content, _ := result.Metadata["content"].(string)
-		agentID, _ := result.Metadata["agent_id"].(string)
-		source, _ := result.Metadata["source"].(string)
-		memType, _ := result.Metadata["type"].(string)
-		createdAt, _ := result.Metadata["created_at"].(time.Time)
+		content := result.Metadata["content"]
+		agentID := result.Metadata["agent_id"]
+		source := result.Metadata["source"]
+		memType := result.Metadata["type"]
+		createdAt := result.Metadata["created_at"]
+
+		var createdAtTime time.Time
+
+		if createdAt != "" {
+			createdAtTime, err = time.Parse(time.RFC3339, createdAt)
+
+			if err != nil {
+				errnie.Error(err)
+			}
+		}
 
 		// Create memory entry
 		entry := EnhancedMemoryEntry{
@@ -79,7 +90,7 @@ func (um *UnifiedMemory) RetrieveMemoriesByVector(ctx context.Context, query str
 			Embedding:   result.Vector,
 			Type:        MemoryType(memType),
 			Source:      source,
-			CreatedAt:   createdAt,
+			CreatedAt:   createdAtTime,
 			AccessCount: 1,
 			LastAccess:  time.Now(),
 			Metadata:    result.Metadata,

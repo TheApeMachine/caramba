@@ -45,11 +45,8 @@ var (
 Execute is the main entry point for the Caramba CLI. It initializes the root command
 and executes it.
 */
-func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
-		os.Exit(1)
-	}
+func Execute() error {
+	return rootCmd.Execute()
 }
 
 /*

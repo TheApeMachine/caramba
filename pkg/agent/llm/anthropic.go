@@ -86,7 +86,7 @@ Returns:
 func (p *AnthropicProvider) GenerateResponse(
 	ctx context.Context,
 	params core.LLMParams,
-) (string, error) {
+) core.LLMResponse {
 	// Build the message parameters
 	messageParams := anthropic.MessageNewParams{
 		Model:     anthropic.F(p.Model),
@@ -116,7 +116,9 @@ func (p *AnthropicProvider) GenerateResponse(
 	// Make the API call
 	response, err := p.Client.Messages.New(ctx, messageParams)
 	if err != nil {
-		return "", err
+		return core.LLMResponse{
+			Error: err,
+		}
 	}
 
 	// Process content and handle tool calls
@@ -139,12 +141,18 @@ func (p *AnthropicProvider) GenerateResponse(
 	if len(toolCalls) > 0 {
 		toolCallsJSON, err := json.Marshal(toolCalls)
 		if err != nil {
-			return "", err
+			return core.LLMResponse{
+				Error: err,
+			}
 		}
-		return string(toolCallsJSON), nil
+		return core.LLMResponse{
+			Content: string(toolCallsJSON),
+		}
 	}
 
-	return result, nil
+	return core.LLMResponse{
+		Content: result,
+	}
 }
 
 /*

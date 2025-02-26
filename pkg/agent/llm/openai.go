@@ -41,7 +41,7 @@ func (p *OpenAIProvider) Name() string {
 func (p *OpenAIProvider) GenerateResponse(
 	ctx context.Context,
 	params core.LLMParams,
-) (string, error) {
+) core.LLMResponse {
 	openaiParams := openai.ChatCompletionNewParams{
 		Model:    openai.F(openai.ChatModelGPT4o),
 		Messages: openai.F(p.buildMessages(params)),
@@ -55,10 +55,29 @@ func (p *OpenAIProvider) GenerateResponse(
 
 	completion, err := p.Client.Chat.Completions.New(ctx, openaiParams)
 	if err != nil {
-		return "", err
+		return core.LLMResponse{
+			Error: err,
+		}
 	}
 
-	return completion.Choices[0].Message.Content, nil
+	out := core.LLMResponse{}
+
+	if len(completion.Choices) > 0 {
+		out.Content = completion.Choices[0].Message.Content
+
+		if len(completion.Choices[0].Message.ToolCalls) > 0 {
+			for _, toolCall := range completion.Choices[0].Message.ToolCalls {
+				out.ToolCalls = append(out.ToolCalls, core.ToolCall{
+					Name: toolCall.Function.Name,
+					Args: map[string]interface{}{
+						"args": toolCall.Function.Arguments,
+					},
+				})
+			}
+		}
+	}
+
+	return out
 }
 
 // StreamResponse generates a response from the LLM and streams it

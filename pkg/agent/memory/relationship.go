@@ -20,7 +20,7 @@ type Relationship struct {
 	/* Type identifies the kind of relationship */
 	Type string
 	/* Metadata contains additional information about the relationship */
-	Metadata map[string]interface{}
+	Metadata map[string]string
 }
 
 /*

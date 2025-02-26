@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/agent"
+	"github.com/theapemachine/caramba/pkg/agent/core"
 	"github.com/theapemachine/errnie"
 )
 
@@ -22,7 +23,10 @@ func ChatExample(apiKey, message string) error {
 
 	// Execute the agent
 	fmt.Printf("User: %s\n", message)
-	response, err := agent.Execute(context.Background(), message)
+	response, err := agent.Execute(context.Background(), core.LLMMessage{
+		Role:    "user",
+		Content: message,
+	})
 	if err != nil {
 		errnie.Error(err)
 		return err

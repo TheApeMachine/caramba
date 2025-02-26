@@ -57,6 +57,9 @@ templates:
        This second breakdown will be stored in a graph database (Neo4j), so it is important to correctly define the
        relationships between entities.
 
+       NOTE: Entities should never be grouped together in a single node, they should always be stored as separate nodes,
+             and connected by relationships.
+
        Examples of relationship types:
        - RELATES_TO
        - PART_OF
@@ -68,7 +71,7 @@ templates:
        - IS_PARTNERED_WITH
        - EXAMPLE_OF
 
-       Don't create relationships if they don't naturally exist.
+    4. Don't create relationships if they don't naturally exist.
 
   memory_query: |
     You are a memory query generator for an AI assistant. Your job is to analyze the user's query and generate 3-5 search queries that will help retrieve relevant information from the assistant's memory.

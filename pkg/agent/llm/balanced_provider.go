@@ -110,9 +110,11 @@ Returns:
 func (p *BalancedProvider) GenerateResponse(
 	ctx context.Context,
 	params core.LLMParams,
-) (string, error) {
+) core.LLMResponse {
 	if len(p.providers) == 0 {
-		return "", errors.New("no providers configured")
+		return core.LLMResponse{
+			Error: errors.New("no providers configured"),
+		}
 	}
 
 	// Try to get a response for up to maxRetries attempts
@@ -120,23 +122,27 @@ func (p *BalancedProvider) GenerateResponse(
 	for attempt := 0; attempt < p.maxRetries; attempt++ {
 		provider, err := p.getNextAvailableProvider()
 		if err != nil {
-			return "", err
+			return core.LLMResponse{
+				Error: err,
+			}
 		}
 
 		errnie.Debug("Using provider: " + provider.Provider.Name())
 
-		resp, err := provider.Provider.GenerateResponse(ctx, params)
-		p.updateProviderStatus(provider, err)
+		resp := provider.Provider.GenerateResponse(ctx, params)
+		p.updateProviderStatus(provider, resp.Error)
 
-		if err == nil {
-			return resp, nil
+		if resp.Error == nil {
+			return resp
 		}
 
-		lastError = err
-		errnie.Info("Provider failed: " + provider.Provider.Name() + " - " + err.Error())
+		lastError = resp.Error
+		errnie.Info("Provider failed: " + provider.Provider.Name() + " - " + resp.Error.Error())
 	}
 
-	return "", errors.New("all LLM providers failed: " + lastError.Error())
+	return core.LLMResponse{
+		Error: errors.New("all LLM providers failed: " + lastError.Error()),
+	}
 }
 
 /*

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -15,6 +16,18 @@ This interface abstracts the graph database operations for storing and
 retrieving nodes, relationships, and executing graph queries.
 */
 type GraphStore interface {
+	/*
+		Cypher executes a Cypher query against the graph.
+
+		Parameters:
+		  - ctx: The context for the operation, which can be used for cancellation
+		  - query: The Cypher query string to execute
+
+		Returns:
+		  - An error if the operation fails, or nil on success
+	*/
+	Cypher(ctx context.Context, query string, params map[string]interface{}) error
+
 	/*
 		CreateNode creates a new node in the graph.
 
@@ -42,7 +55,7 @@ type GraphStore interface {
 		Returns:
 		  - An error if the operation fails, or nil on success
 	*/
-	CreateRelationship(ctx context.Context, fromID, toID, relType string, properties map[string]interface{}) error
+	CreateRelationship(ctx context.Context, fromID, toID, relType string, properties map[string]string) error
 
 	/*
 		Query executes a cypher query against the graph.
@@ -127,6 +140,43 @@ func (n *Neo4jStore) Close(ctx context.Context) error {
 	return n.driver.Close(ctx)
 }
 
+func (n *Neo4jStore) Cypher(ctx context.Context, query string, params map[string]interface{}) error {
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{
+		DatabaseName: n.database,
+		AccessMode:   neo4j.AccessModeWrite,
+	})
+
+	defer session.Close(ctx)
+
+	// Execute the query within a transaction
+	tx, err := session.BeginTransaction(ctx)
+
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	errnie.Debug(query)
+	result, err := tx.Run(ctx, query, params)
+
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	_, err = result.Consume(ctx)
+
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	err = tx.Commit(ctx)
+
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	return err
+}
+
 // CreateNode creates a new node in the Neo4j graph.
 //
 // Parameters:
@@ -137,7 +187,12 @@ func (n *Neo4jStore) Close(ctx context.Context) error {
 //
 // Returns:
 //   - An error if the operation fails, or nil on success
-func (n *Neo4jStore) CreateNode(ctx context.Context, id string, labels []string, properties map[string]interface{}) error {
+func (n *Neo4jStore) CreateNode(
+	ctx context.Context,
+	id string,
+	labels []string,
+	properties map[string]interface{},
+) error {
 	// Start a new session
 	session := n.driver.NewSession(ctx, neo4j.SessionConfig{
 		DatabaseName: n.database,
@@ -152,10 +207,13 @@ func (n *Neo4jStore) CreateNode(ctx context.Context, id string, labels []string,
 	}
 	props["id"] = id
 
-	// Build label string
-	labelStr := ""
-	for _, label := range labels {
-		labelStr += ":" + label
+	// Use the content field as the label if it exists, otherwise fallback to "Entity"
+	labelStr := ":Entity" // Default fallback
+	if content, exists := properties["content"]; exists && content != nil {
+		if contentStr, ok := content.(string); ok && contentStr != "" {
+			labelStr = ":" + contentStr
+			errnie.Debug(fmt.Sprintf("Using content as label: %s", labelStr))
+		}
 	}
 
 	// Create the Cypher query
@@ -164,26 +222,31 @@ func (n *Neo4jStore) CreateNode(ctx context.Context, id string, labels []string,
 		"props": props,
 	}
 
+	// Debug: Log the Cypher query
+	errnie.Debug(fmt.Sprintf("Creating node with label %s, ID: %s", labelStr[1:], id))
+
 	// Execute the query within a transaction
 	tx, err := session.BeginTransaction(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return errnie.Error(err)
 	}
 
 	result, err := tx.Run(ctx, query, params)
 	if err != nil {
-		return fmt.Errorf("failed to run query: %w", err)
+		return errnie.Error(err)
 	}
 
 	_, err = result.Consume(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to consume result: %w", err)
+		return errnie.Error(err)
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return errnie.Error(err)
 	}
+
+	errnie.Debug(fmt.Sprintf("Node created: %s", id))
 
 	return nil
 }
@@ -199,7 +262,7 @@ func (n *Neo4jStore) CreateNode(ctx context.Context, id string, labels []string,
 //
 // Returns:
 //   - An error if the operation fails, or nil on success
-func (n *Neo4jStore) CreateRelationship(ctx context.Context, fromID, toID, relType string, properties map[string]interface{}) error {
+func (n *Neo4jStore) CreateRelationship(ctx context.Context, fromID, toID, relType string, properties map[string]string) error {
 	// Start a new session
 	session := n.driver.NewSession(ctx, neo4j.SessionConfig{
 		DatabaseName: n.database,
@@ -379,17 +442,17 @@ func (um *UnifiedMemory) RetrieveMemoriesByGraph(ctx context.Context, cypherQuer
 	memories := make([]EnhancedMemoryEntry, 0, len(results))
 	for _, result := range results {
 		// Extract memory node properties
-		node, ok := result["memory"].(map[string]interface{})
+		node, ok := result["memory"].(map[string]string)
 		if !ok {
 			continue
 		}
 
-		id, _ := node["id"].(string)
-		content, _ := node["content"].(string)
-		agentID, _ := node["agent_id"].(string)
-		source, _ := node["source"].(string)
-		memType, _ := node["type"].(string)
-		createdAtStr, _ := node["created_at"].(string)
+		id := node["id"]
+		content := node["content"]
+		agentID := node["agent_id"]
+		source := node["source"]
+		memType := node["type"]
+		createdAtStr := node["created_at"]
 
 		// Parse created at
 		var createdAt time.Time

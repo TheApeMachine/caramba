@@ -18,6 +18,18 @@ func (b *AgentBuilder) WithLLM(llm LLMProvider) *AgentBuilder {
 	return b
 }
 
+// WithSystemPrompt sets the system prompt for the agent
+func (b *AgentBuilder) WithSystemPrompt(prompt string) *AgentBuilder {
+	b.agent.SetSystemPrompt(prompt)
+	return b
+}
+
+// WithIterationLimit sets the iteration limit for the agent
+func (b *AgentBuilder) WithIterationLimit(limit int) *AgentBuilder {
+	b.agent.SetIterationLimit(limit)
+	return b
+}
+
 // WithMemory sets the memory system for the agent
 func (b *AgentBuilder) WithMemory(memory Memory) *AgentBuilder {
 	b.agent.SetMemory(memory)

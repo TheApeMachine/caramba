@@ -165,7 +165,10 @@ func (t *AgentTool) executeAgent(ctx context.Context, args map[string]interface{
 	}
 
 	// Execute the agent
-	result, err = agent.Execute(ctx, input)
+	result, err = agent.Execute(ctx, core.LLMMessage{
+		Role:    "user",
+		Content: input,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute agent: %w", err)
 	}

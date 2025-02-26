@@ -142,12 +142,19 @@ func (q *QDrantStore) createCollection() error {
 // Returns:
 //   - An error if the operation fails, or nil on success
 func (q *QDrantStore) StoreVector(ctx context.Context, id string, vector []float32, payload map[string]interface{}) error {
-	// Preprocess payload to handle time.Time values
+	// Preprocess payload to handle time.Time values and map[string]string values
 	processedPayload := make(map[string]interface{})
 	for k, v := range payload {
 		// Convert time.Time to RFC3339 string format
 		if timeVal, ok := v.(time.Time); ok {
 			processedPayload[k] = timeVal.Format(time.RFC3339)
+		} else if strMap, ok := v.(map[string]string); ok {
+			// Convert map[string]string to map[string]interface{}
+			interfaceMap := make(map[string]interface{})
+			for sk, sv := range strMap {
+				interfaceMap[sk] = sv
+			}
+			processedPayload[k] = interfaceMap
 		} else {
 			processedPayload[k] = v
 		}
@@ -224,18 +231,9 @@ func (q *QDrantStore) Search(
 		}
 
 		// Extract metadata
-		metadata := make(map[string]interface{})
+		metadata := make(map[string]string)
 		for k, v := range point.Payload {
-			switch vt := v.GetKind().(type) {
-			case *qdrant.Value_StringValue:
-				metadata[k] = vt.StringValue
-			case *qdrant.Value_IntegerValue:
-				metadata[k] = vt.IntegerValue
-			case *qdrant.Value_DoubleValue:
-				metadata[k] = vt.DoubleValue
-			case *qdrant.Value_BoolValue:
-				metadata[k] = vt.BoolValue
-			}
+			metadata[k] = v.GetStringValue()
 		}
 
 		// Add to results
@@ -284,18 +282,9 @@ func (q *QDrantStore) Get(ctx context.Context, id string) (*SearchResult, error)
 	point := points[0]
 
 	// Extract metadata
-	metadata := make(map[string]interface{})
+	metadata := make(map[string]string)
 	for k, v := range point.Payload {
-		switch vt := v.GetKind().(type) {
-		case *qdrant.Value_StringValue:
-			metadata[k] = vt.StringValue
-		case *qdrant.Value_IntegerValue:
-			metadata[k] = vt.IntegerValue
-		case *qdrant.Value_DoubleValue:
-			metadata[k] = vt.DoubleValue
-		case *qdrant.Value_BoolValue:
-			metadata[k] = vt.BoolValue
-		}
+		metadata[k] = v.GetStringValue()
 	}
 
 	return &SearchResult{

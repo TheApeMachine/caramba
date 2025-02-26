@@ -16,7 +16,7 @@ for a consistent API regardless of the underlying provider.
 */
 type LLMProvider interface {
 	// GenerateResponse generates a response from the LLM
-	GenerateResponse(context.Context, LLMParams) (string, error)
+	GenerateResponse(context.Context, LLMParams) LLMResponse
 
 	// StreamResponse generates a response from the LLM and streams it
 	StreamResponse(context.Context, LLMParams) <-chan LLMResponse
@@ -30,9 +30,23 @@ type LLMMessage struct {
 	Content string
 }
 
+func SystemMessage(content string) LLMMessage {
+	return LLMMessage{
+		Role:    "system",
+		Content: content,
+	}
+}
+
 type LLMParams struct {
 	Messages                  []LLMMessage
 	Model                     string
+	MaxTokens                 int
+	TopP                      float64
+	Temperature               float64
+	FrequencyPenalty          float64
+	PresencePenalty           float64
+	StopSequences             []string
+	SystemPrompt              string
 	Tools                     []Tool
 	ResponseFormatName        string
 	ResponseFormatDescription string
@@ -44,31 +58,6 @@ type LLMResponse struct {
 	ToolCalls []ToolCall
 	Refusal   string
 	Error     error
-}
-
-/*
-LLMOptions contains options for the LLM request.
-These options control the generation behavior of the language model.
-*/
-type LLMOptions struct {
-	/* MaxTokens limits the number of tokens in the generated response */
-	MaxTokens int
-	/* Temperature controls randomness in generation (higher = more random) */
-	Temperature float64
-	/* TopP controls diversity via nucleus sampling */
-	TopP float64
-	/* PresencePenalty reduces repetition of tokens that have appeared */
-	PresencePenalty float64
-	/* FrequencyPenalty reduces repetition of frequent tokens */
-	FrequencyPenalty float64
-	/* StopSequences defines sequences that will stop generation when encountered */
-	StopSequences []string
-	/* SystemPrompt provides initial instructions to the model */
-	SystemPrompt string
-	/* ResponseFormat specifies the format of the response (text, json_object, json_schema) */
-	ResponseFormat string
-	/* Schema contains the JSON schema for structured output (when using json_schema format) */
-	Schema interface{}
 }
 
 /*

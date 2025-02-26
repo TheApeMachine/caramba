@@ -37,7 +37,7 @@ type EnhancedMemoryEntry struct {
 	CreatedAt   time.Time              // When the memory was created
 	AccessCount int                    // How many times this memory has been accessed
 	LastAccess  time.Time              // When this memory was last accessed
-	Metadata    map[string]interface{} // Additional metadata
+	Metadata    map[string]string      // Additional metadata
 }
 
 // Relationship represents a relationship between two memory entries in a graph
@@ -45,7 +45,7 @@ type Relationship struct {
 	FromID   string                 // ID of the source memory
 	ToID     string                 // ID of the target memory
 	Type     string                 // Type of relationship
-	Metadata map[string]interface{} // Additional metadata about the relationship
+	Metadata map[string]string      // Additional metadata about the relationship
 }
 
 // MemoryOptions defines configuration options for memory systems

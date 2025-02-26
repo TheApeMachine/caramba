@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -73,7 +72,7 @@ type EnhancedMemoryEntry struct {
 	/* LastAccess records when this memory was last accessed */
 	LastAccess time.Time
 	/* Metadata stores additional information about the memory */
-	Metadata map[string]interface{}
+	Metadata map[string]string
 }
 
 /*
@@ -170,7 +169,7 @@ type SearchResult struct {
 	/* Vector is the embedding vector of the matched item */
 	Vector []float32
 	/* Metadata contains additional information about the matched item */
-	Metadata map[string]interface{}
+	Metadata map[string]string
 }
 
 /*
@@ -222,7 +221,7 @@ Returns:
 func DefaultUnifiedMemoryOptions() *UnifiedMemoryOptions {
 	return &UnifiedMemoryOptions{
 		EnableVectorStore:   true,
-		EnableGraphStore:    false,
+		EnableGraphStore:    true,
 		ExtractionThreshold: 0.7,
 		MaxMemoriesPerQuery: 5,
 		VectorDBDimensions:  3072, // Default for OpenAI embeddings
@@ -271,7 +270,7 @@ Returns:
   - A pointer to the initialized UnifiedMemory
   - An error if initialization fails, or nil on success
 */
-func NewUnifiedMemory(baseStore core.Memory, embeddingProvider EmbeddingProvider, options *UnifiedMemoryOptions) (*UnifiedMemory, error) {
+func NewUnifiedMemory(baseStore core.Memory, options *UnifiedMemoryOptions) *UnifiedMemory {
 	var vectorStore VectorStoreProvider
 	var graphStore GraphStore
 	var err error
@@ -305,55 +304,17 @@ func NewUnifiedMemory(baseStore core.Memory, embeddingProvider EmbeddingProvider
 
 	// Initialize graph store if enabled
 	if options.EnableGraphStore {
-		graphStore, err = NewNeo4jStore(ctx, options.GraphStoreURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
+		graphStore, err = NewNeo4jStore(ctx, "bolt://localhost:7687", "neo4j", "securepassword", "neo4j")
+
 		if err != nil {
-			fmt.Printf("Warning: Graph store initialization failed: %v\n", err)
-			fmt.Println("Memory will continue with reduced functionality (without graph relationships).")
-			options.EnableGraphStore = false
-
-			// Try alternative Neo4j connection formats if this was likely a connection issue
-			if strings.Contains(err.Error(), "connect") || strings.Contains(err.Error(), "dial") {
-				// Try with neo4j:// protocol if not already using it
-				altURL := options.GraphStoreURL
-				if !strings.HasPrefix(altURL, "neo4j://") {
-					altURL = strings.Replace(altURL, "bolt://", "neo4j://", 1)
-				}
-
-				if altURL != options.GraphStoreURL {
-					fmt.Printf("Trying neo4j:// protocol: %s\n", altURL)
-					graphStore, err = NewNeo4jStore(ctx, altURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
-					if err == nil {
-						fmt.Println("Success! Connected with neo4j:// protocol.")
-						options.EnableGraphStore = true
-					}
-				}
-
-				// If still failed, try HTTP
-				if err != nil {
-					httpURL := options.GraphStoreURL
-					if strings.HasPrefix(httpURL, "bolt://") {
-						httpURL = strings.Replace(httpURL, "bolt://", "http://", 1)
-					} else if strings.HasPrefix(httpURL, "neo4j://") {
-						httpURL = strings.Replace(httpURL, "neo4j://", "http://", 1)
-					}
-
-					// Change port from 7687 (bolt) to 7474 (http)
-					httpURL = strings.Replace(httpURL, "7687", "7474", 1)
-					fmt.Printf("Trying http:// protocol: %s\n", httpURL)
-					graphStore, err = NewNeo4jStore(ctx, httpURL, options.GraphStoreUsername, options.GraphStorePassword, options.GraphStoreDatabase)
-					if err == nil {
-						fmt.Println("Success! Connected with http:// protocol.")
-						options.EnableGraphStore = true
-					}
-				}
-			}
+			errnie.Error(err)
 		}
 	}
 
 	// Parse context template
 	tmpl, err := template.New("context").Parse(options.ContextTemplate)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse context template: %w", err)
+		errnie.Error(err)
 	}
 
 	// Print status of memory features
@@ -367,15 +328,17 @@ func NewUnifiedMemory(baseStore core.Memory, embeddingProvider EmbeddingProvider
 		fmt.Println("Warning: Running with basic memory only (no vector or graph features).")
 	}
 
-	return &UnifiedMemory{
+	memory := &UnifiedMemory{
 		baseStore:         baseStore,
 		vectorStore:       vectorStore,
 		graphStore:        graphStore,
-		embeddingProvider: embeddingProvider,
+		embeddingProvider: NewOpenAIEmbeddingProvider(os.Getenv("OPENAI_API_KEY"), "text-embedding-3-large"),
 		options:           options,
 		memoryData:        make(map[string]*EnhancedMemoryEntry),
 		contextTemplate:   tmpl,
-	}, nil
+	}
+
+	return memory
 }
 
 /*
@@ -447,8 +410,8 @@ func (um *UnifiedMemory) Search(ctx context.Context, query string, limit int) ([
 			} else {
 				// Convert vector results to core.MemoryEntry
 				for _, result := range vectorResults {
-					content, ok := result.Metadata["content"].(string)
-					if !ok {
+					content := result.Metadata["content"]
+					if content == "" {
 						continue
 					}
 					baseResults = append(baseResults, core.MemoryEntry{

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/theapemachine/caramba/pkg/agent"
+	"github.com/theapemachine/caramba/pkg/agent/core"
 	"github.com/theapemachine/caramba/pkg/agent/tools"
 )
 
@@ -121,7 +122,10 @@ func RunSlackExample() {
 	fmt.Println("The agent has the Slack tool available")
 
 	// Use the agent
-	_, err = slackAgent.Execute(ctx, "Send a message to the Slack channel saying 'Hello from the Caramba agent!'")
+	_, err = slackAgent.Execute(ctx, core.LLMMessage{
+		Role:    "user",
+		Content: "Send a message to the Slack channel saying 'Hello from the Caramba agent!'",
+	})
 	if err != nil {
 		fmt.Printf("Error executing agent: %v\n", err)
 	}

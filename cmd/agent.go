@@ -51,7 +51,10 @@ var agentCmd = &cobra.Command{
 		}
 
 		// Execute the agent
-		result, err := a.(core.Agent).Execute(context.Background(), input)
+		result, err := a.(core.Agent).Execute(context.Background(), core.LLMMessage{
+			Role:    "user",
+			Content: input,
+		})
 		if err != nil {
 			errnie.Error(err)
 			return

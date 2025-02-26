@@ -10,12 +10,15 @@ which provides access to all Caramba functionality.
 */
 package main
 
-import "github.com/theapemachine/caramba/cmd"
+import (
+	"github.com/theapemachine/caramba/cmd"
+	"github.com/theapemachine/errnie"
+)
 
 /*
 main is the entry point function for the Caramba application.
 It calls the Execute function from the cmd package to start the CLI.
 */
 func main() {
-	cmd.Execute()
+	errnie.Error(cmd.Execute())
 }

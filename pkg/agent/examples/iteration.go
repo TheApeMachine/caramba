@@ -35,13 +35,6 @@ func IterationExample(apiKey, task string, maxIterations int, timeoutSeconds int
 		WithLLM(provider).
 		Build()
 
-	// Set up iteration options
-	iterOptions := &core.IterationOptions{
-		MaxIterations:    maxIterations,
-		Timeout:          time.Duration(timeoutSeconds) * time.Second,
-		CompletionPhrase: "ITERATION_COMPLETE",
-	}
-
 	fmt.Printf("Starting iterative task: %s\n", task)
 	fmt.Printf("Maximum iterations: %d\n", maxIterations)
 	fmt.Printf("Timeout: %d seconds\n", timeoutSeconds)
@@ -51,7 +44,10 @@ func IterationExample(apiKey, task string, maxIterations int, timeoutSeconds int
 	startTime := time.Now()
 
 	// Execute the agent with iteration
-	result, err := agent.ExecuteWithIteration(context.Background(), task, iterOptions)
+	result, err := agent.Execute(context.Background(), core.LLMMessage{
+		Role:    "user",
+		Content: task,
+	})
 	if err != nil {
 		errnie.Error(err)
 		return err

@@ -11,13 +11,7 @@ memory, planning, and communication with other agents.
 */
 type Agent interface {
 	// Execute runs the agent with the provided input and returns a response
-	Execute(ctx context.Context, input string) (string, error)
-
-	// ExecuteWithOptions runs the agent with additional options
-	ExecuteWithOptions(ctx context.Context, input string, opts ...ExecuteOption) (string, error)
-
-	// ExecuteWithIteration runs the agent using the iteration loop for self-improvement
-	ExecuteWithIteration(ctx context.Context, input string, iterOptions *IterationOptions) (string, error)
+	Execute(context.Context, LLMMessage) (string, error)
 
 	// AddTool adds a new tool to the agent
 	AddTool(tool Tool) error
@@ -27,6 +21,12 @@ type Agent interface {
 
 	// SetLLM sets the LLM provider for the agent
 	SetLLM(llm LLMProvider)
+
+	// SetSystemPrompt sets the system prompt for the agent
+	SetSystemPrompt(prompt string)
+
+	// SetIterationLimit sets the iteration limit for the agent
+	SetIterationLimit(limit int)
 
 	// SetPlanner sets the planner for the agent
 	SetPlanner(planner Planner)

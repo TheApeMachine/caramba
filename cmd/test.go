@@ -48,7 +48,10 @@ var testCmd = &cobra.Command{
 
 		// Test a simple query
 		errnie.Info("💬 Testing simple query")
-		resp, err := agent.Execute(context.Background(), "What is 2+2?")
+		resp, err := agent.Execute(context.Background(), core.LLMMessage{
+			Role:    "user",
+			Content: "What is 2+2?",
+		})
 		if err != nil {
 			errnie.Error(err)
 			return

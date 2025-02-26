@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -33,13 +34,20 @@ Returns:
   - The unique ID of the stored memory
   - An error if the operation fails, or nil on success
 */
-func (um *UnifiedMemory) StoreMemory(ctx context.Context, agentID string, content string, memType MemoryType, source string, metadata map[string]interface{}) (string, error) {
+func (um *UnifiedMemory) StoreMemory(
+	ctx context.Context,
+	agentID string,
+	content string,
+	memType MemoryType,
+	source string,
+	metadata map[string]string,
+) (string, error) {
 	// Generate a unique ID for the memory
 	memoryID := uuid.New().String()
 
 	// Set defaults for metadata
 	if metadata == nil {
-		metadata = make(map[string]interface{})
+		metadata = make(map[string]string)
 	}
 
 	// Get embedding from the provider
@@ -129,16 +137,6 @@ func (um *UnifiedMemory) StoreMemory(ctx context.Context, agentID string, conten
 	return memoryID, nil
 }
 
-// getOpenAIProvider creates and returns an OpenAI provider with the specified model
-// This helper function can be reused across memory functions
-func getOpenAIProvider(model string) (*llm.OpenAIProvider, error) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set")
-	}
-	return llm.NewOpenAIProvider(apiKey, model), nil
-}
-
 /*
 ExtractMemories extracts important information from text that should be remembered.
 It identifies key facts, concepts, and insights from the text and stores them as memories.
@@ -153,16 +151,20 @@ Returns:
   - A slice of strings containing the extracted memories
   - An error if the operation fails, or nil on success
 */
-func (um *UnifiedMemory) ExtractMemories(ctx context.Context, agentID string, text string, source string) ([]string, error) {
-	provider, err := getOpenAIProvider("gpt-4o-mini")
+func (um *UnifiedMemory) ExtractMemories(
+	ctx context.Context,
+	agentID string,
+	content string,
+	source string,
+) ([]string, error) {
+	provider := llm.NewOpenAIProvider(
+		os.Getenv("OPENAI_API_KEY"),
+		"gpt-4o-mini",
+	)
 
-	if err != nil {
-		errnie.Error(err)
-		return []string{}, err
-	}
+	schema := util.GenerateSchema[MemoryExtraction]()
 
-	// Call the OpenAI API using the provider
-	extractedContent, err := provider.GenerateResponse(ctx, core.LLMParams{
+	res := provider.GenerateResponse(ctx, core.LLMParams{
 		Messages: []core.LLMMessage{
 			{
 				Role:    "system",
@@ -170,143 +172,162 @@ func (um *UnifiedMemory) ExtractMemories(ctx context.Context, agentID string, te
 			},
 			{
 				Role:    "user",
-				Content: fmt.Sprintf("Text to extract memories from: %s", text),
+				Content: fmt.Sprintf("Text to extract memories from: %s", content),
 			},
 		},
-		ResponseFormatName:        "json_schema",
+		ResponseFormatName:        "memory_extraction",
 		ResponseFormatDescription: "A JSON object with a 'documents' array of strings",
-		Schema:                    util.GenerateSchema[MemoryExtraction](),
+		Schema:                    schema,
 	})
-
-	if err != nil {
-		errnie.Error(err)
-		return []string{}, err
-	}
-
-	// Log the raw response for debugging
-	errnie.Debug(fmt.Sprintf("Raw LLM response: %s", extractedContent))
 
 	// Parse the response directly - should be valid JSON with the schema
 	var extraction MemoryExtraction
-	err = json.Unmarshal([]byte(extractedContent), &extraction)
+	err := json.Unmarshal([]byte(res.Content), &extraction)
+
 	if err != nil {
 		errnie.Error(fmt.Errorf("failed to parse memory extraction JSON: %w", err))
 		return []string{}, err
 	}
 
-	// Validate extraction results
-	if len(extraction.Documents) == 0 {
-		errnie.Info("No document memories found in extraction results")
-		if len(extraction.Entities) == 0 {
-			errnie.Info("No entities found either")
-		}
-	} else {
-		errnie.Debug(fmt.Sprintf("Found %d documents and %d entities in extraction results",
-			len(extraction.Documents), len(extraction.Entities)))
-	}
-
-	// Store document memories in vector store
-	var memoryIDs []string
-	documentToID := make(map[string]string) // Map document content to its ID for relationship creation
-
-	// Process documents
 	for _, doc := range extraction.Documents {
-		if doc.Document == "" || len(doc.Document) < 30 {
-			continue // Skip empty or very short documents
+		um.StoreDocumentMemory(ctx, agentID, doc.Document, MemoryTypeGlobal, source, doc.Metadata)
+	}
+
+	for _, entity := range extraction.Entities {
+		props := map[string]interface{}{
+			"source":     source,
+			"created_at": time.Now().Format(time.RFC3339),
 		}
 
-		// Apply metadata if it exists or initialize empty
-		metadata := doc.Metadata
-		if metadata == nil {
-			metadata = make(map[string]interface{})
+		for k, v := range entity.Metadata {
+			props[k] = v
 		}
 
-		// Ensure source is set
-		if _, exists := metadata["source"]; !exists {
-			metadata["source"] = source
-		}
+		err := um.graphStore.Cypher(ctx, `
+		CALL apoc.merge.node([$entityLabel], {name: $entityName}) YIELD node AS n
+		CALL apoc.merge.node([$targetLabel], {name: $targetName}) YIELD node AS m
+		CALL apoc.create.relationship(n, $relationshipType, $props, m) YIELD rel
+		RETURN n, rel, m`, map[string]interface{}{
+			"entityLabel":      entity.Entity,
+			"entityName":       entity.Entity, // Assuming unique name, adjust as needed
+			"targetLabel":      entity.Target,
+			"targetName":       entity.Target, // Assuming unique name, adjust as needed
+			"relationshipType": entity.Relationship,
+			"props": map[string]interface{}{
+				"source":     source,
+				"created_at": time.Now().Format(time.RFC3339),
+			},
+		})
 
-		// Store the document memory
-		memoryID, err := um.StoreMemory(ctx, agentID, doc.Document, MemoryTypePersonal, source, metadata)
 		if err != nil {
-			errnie.Info(fmt.Sprintf("Failed to store document memory: %v", err))
-			continue
-		}
-		memoryIDs = append(memoryIDs, memoryID)
-		documentToID[doc.Document] = memoryID
-	}
-
-	// Process entity relationships if graph store is available
-	if um.options.EnableGraphStore && um.graphStore != nil && len(extraction.Entities) > 0 {
-		// Process each entity relationship
-		for _, entity := range extraction.Entities {
-			if entity.Entity == "" || entity.Relationship == "" {
-				continue // Skip incomplete entities
-			}
-
-			// Apply metadata if it exists or initialize empty
-			metadata := entity.Metadata
-			if metadata == nil {
-				metadata = make(map[string]interface{})
-			}
-
-			// Ensure source is set
-			if _, exists := metadata["source"]; !exists {
-				metadata["source"] = source
-			}
-
-			// Get target entity directly now that we have proper schema
-			targetText := entity.Target
-			if targetText == "" {
-				errnie.Info(fmt.Sprintf("Entity '%s' has no relationship target", entity.Entity))
-				continue
-			}
-
-			// Create entity node if it doesn't already have an ID
-			entityID, exists := documentToID[entity.Entity]
-			if !exists {
-				// Store entity as a new memory
-				entityID, err = um.StoreMemory(ctx, agentID, entity.Entity, MemoryTypePersonal, source, metadata)
-				if err != nil {
-					errnie.Info(fmt.Sprintf("Failed to store entity: %v", err))
-					continue
-				}
-				memoryIDs = append(memoryIDs, entityID)
-				documentToID[entity.Entity] = entityID
-			}
-
-			// Get or create target entity
-			targetID, exists := documentToID[targetText]
-			if !exists {
-				// Store target as a new memory
-				targetID, err = um.StoreMemory(ctx, agentID, targetText, MemoryTypePersonal, source, metadata)
-				if err != nil {
-					errnie.Info(fmt.Sprintf("Failed to store target entity: %v", err))
-					continue
-				}
-				memoryIDs = append(memoryIDs, targetID)
-				documentToID[targetText] = targetID
-			}
-
-			// Create relationship properties
-			relationProps := map[string]interface{}{
-				"created": time.Now().Format(time.RFC3339),
-				"source":  source,
-			}
-
-			// Add any metadata from the entity to the relationship
-			for k, v := range metadata {
-				relationProps[k] = v
-			}
-
-			// Create the relationship in the graph store
-			if err := um.graphStore.CreateRelationship(ctx, entityID, targetID, entity.Relationship, relationProps); err != nil {
-				errnie.Info(fmt.Sprintf("Failed to create relationship: %v", err))
-			}
+			log.Printf("Error executing Cypher query: %v", err)
 		}
 	}
 
-	return memoryIDs, nil
+	return nil, nil
+}
+
+// StoreDocumentMemory stores a document memory in vector store only
+func (um *UnifiedMemory) StoreDocumentMemory(
+	ctx context.Context,
+	agentID string,
+	content string,
+	memType MemoryType,
+	source string,
+	metadata map[string]string,
+) (string, error) {
+	// Generate a unique ID for the memory
+	memoryID := uuid.New().String()
+
+	// Set defaults for metadata
+	if metadata == nil {
+		metadata = make(map[string]string)
+	}
+
+	// Get embedding from the provider
+	var embedding []float32
+	var err error
+
+	if um.embeddingProvider != nil {
+		embedding, err = um.embeddingProvider.GetEmbedding(ctx, content)
+		if err != nil {
+			errnie.Info(fmt.Sprintf("Failed to get embedding for memory: %v", err))
+		}
+	}
+
+	// Create the memory entry
+	entry := &EnhancedMemoryEntry{
+		ID:          memoryID,
+		AgentID:     agentID,
+		Content:     content,
+		Embedding:   embedding,
+		Type:        memType,
+		Source:      source,
+		CreatedAt:   time.Now(),
+		AccessCount: 0,
+		LastAccess:  time.Now(),
+		Metadata:    metadata,
+	}
+
+	// Store in the in-memory map
+	um.mutex.Lock()
+	um.memoryData[memoryID] = entry
+	um.mutex.Unlock()
+
+	// Store in vector store if available
+	if um.options.EnableVectorStore && um.vectorStore != nil && len(embedding) > 0 {
+		// Prepare payload for vector store
+		payload := map[string]interface{}{
+			"agent_id":   agentID,
+			"content":    content,
+			"type":       string(memType),
+			"source":     source,
+			"created_at": entry.CreatedAt,
+			"metadata":   metadata,
+		}
+
+		err := um.vectorStore.StoreVector(ctx, memoryID, embedding, payload)
+		if err != nil {
+			errnie.Info(fmt.Sprintf("Failed to store memory in vector store: %v", err))
+		}
+	}
+
+	return memoryID, nil
+}
+
+// findEntityNodeByContent looks for an existing node with the given content
+func (um *UnifiedMemory) findEntityNodeByContent(ctx context.Context, content string) (string, error) {
+	if um.graphStore == nil {
+		return "", fmt.Errorf("graph store not available")
+	}
+
+	// Debug the query we're about to run
+	errnie.Debug(fmt.Sprintf("Searching for entity with content: %s", content))
+
+	query := `
+		MATCH (n:Entity)
+		WHERE n.content = $content
+		RETURN n.id as id
+	`
+	params := map[string]interface{}{
+		"content": content,
+	}
+
+	results, err := um.graphStore.Query(ctx, query, params)
+	if err != nil {
+		return "", err
+	}
+
+	if len(results) == 0 {
+		return "", fmt.Errorf("node not found")
+	}
+
+	id, ok := results[0]["id"].(string)
+	if !ok {
+		return "", fmt.Errorf("invalid ID format")
+	}
+
+	return id, nil
 }
 
 /*
@@ -337,14 +358,15 @@ func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string
 	userPrompt := fmt.Sprintf("Generate search queries for: %s", query)
 
 	// Create an OpenAI provider
-	provider, err := getOpenAIProvider("gpt-4o-mini")
-	if err != nil {
-		errnie.Error(err)
-		return []string{query}, nil
-	}
+	provider := llm.NewOpenAIProvider(
+		os.Getenv("OPENAI_API_KEY"),
+		"gpt-4o-mini",
+	)
+
+	schema := util.GenerateSchema[MemoryQueries]()
 
 	// Call the OpenAI API using the provider
-	extractedContent, err := provider.GenerateResponse(ctx, core.LLMParams{
+	res := provider.GenerateResponse(ctx, core.LLMParams{
 		Messages: []core.LLMMessage{
 			{
 				Role:    "system",
@@ -355,22 +377,18 @@ func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string
 				Content: userPrompt,
 			},
 		},
-		ResponseFormatName:        "json_schema",
+		ResponseFormatName:        "memory_queries",
 		ResponseFormatDescription: "A JSON object with a 'queries' array of strings",
-		Schema:                    util.GenerateSchema[MemoryQueries](),
+		Schema:                    schema,
 	})
 
-	if err != nil {
-		errnie.Error(fmt.Errorf("failed to generate memory queries: %w", err))
-		return []string{query}, nil
-	}
-
 	// Log the raw response for debugging
-	errnie.Debug("Raw LLM Memory Query Response:", extractedContent)
+	errnie.Debug("Raw LLM Memory Query Response:", res.Content)
 
 	// Parse the response directly as JSON
 	var queriesResponse MemoryQueries
-	err = json.Unmarshal([]byte(extractedContent), &queriesResponse)
+	err := json.Unmarshal([]byte(res.Content), &queriesResponse)
+
 	if err != nil {
 		errnie.Error(fmt.Errorf("failed to parse memory queries JSON: %w", err))
 		return []string{query}, nil
@@ -378,6 +396,7 @@ func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string
 
 	// Validate and process the queries
 	var validQueries []string
+
 	for _, q := range queriesResponse.Queries {
 		q = strings.TrimSpace(q)
 		if q != "" {

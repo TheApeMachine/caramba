@@ -31,7 +31,7 @@ func (p *SimplePlanner) CreatePlan(ctx context.Context, input string) (Plan, err
 		return Plan{}, fmt.Errorf("no LLM provider set")
 	}
 
-	response, err := p.llm.GenerateResponse(ctx, LLMParams{
+	res := p.llm.GenerateResponse(ctx, LLMParams{
 		Messages: []LLMMessage{
 			{
 				Role:    "system",
@@ -43,12 +43,12 @@ func (p *SimplePlanner) CreatePlan(ctx context.Context, input string) (Plan, err
 			},
 		},
 	})
-	if err != nil {
-		return Plan{}, fmt.Errorf("failed to generate plan: %w", err)
+	if res.Error != nil {
+		return Plan{}, fmt.Errorf("failed to generate plan: %w", res.Error)
 	}
 
 	// Extract the JSON part of the response
-	jsonPlan := extractJSON(response)
+	jsonPlan := extractJSON(res.Content)
 	if jsonPlan == "" {
 		return Plan{}, fmt.Errorf("failed to extract JSON plan from response")
 	}

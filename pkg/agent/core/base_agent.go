@@ -7,22 +7,21 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/spf13/viper"
-	"github.com/theapemachine/caramba/pkg/agent/util"
 	"github.com/theapemachine/errnie"
 )
 
 // BaseAgent provides a base implementation of the Agent interface
 type BaseAgent struct {
-	Name      string
-	LLM       LLMProvider
-	Memory    Memory
-	Tools     []Tool
-	Planner   Planner
-	Messenger Messenger
-	toolsMu   sync.RWMutex
+	Name           string
+	LLM            LLMProvider
+	Memory         Memory
+	Params         LLMParams
+	Tools          []Tool
+	Planner        Planner
+	Messenger      Messenger
+	toolsMu        sync.RWMutex
+	IterationLimit int
 }
 
 // NewBaseAgent creates a new BaseAgent
@@ -30,6 +29,17 @@ func NewBaseAgent(name string) *BaseAgent {
 	agent := &BaseAgent{
 		Name:  name,
 		Tools: make([]Tool, 0),
+		Params: LLMParams{
+			Messages:                  make([]LLMMessage, 0),
+			Model:                     "gpt-4o-mini",
+			Temperature:               0.7,
+			MaxTokens:                 1024,
+			Tools:                     make([]Tool, 0),
+			ResponseFormatName:        "",
+			ResponseFormatDescription: "",
+			Schema:                    nil,
+		},
+		IterationLimit: 1,
 	}
 	// Create a default messenger for the agent
 	agent.Messenger = NewInMemoryMessenger(name)
@@ -37,166 +47,94 @@ func NewBaseAgent(name string) *BaseAgent {
 }
 
 // Execute runs the agent with the provided input and returns a response
-func (a *BaseAgent) Execute(ctx context.Context, input string) (string, error) {
-	return a.ExecuteWithOptions(ctx, input)
-}
-
-// ExecuteWithOptions runs the agent with additional options
-func (a *BaseAgent) ExecuteWithOptions(ctx context.Context, input string, opts ...ExecuteOption) (string, error) {
+func (a *BaseAgent) Execute(ctx context.Context, message LLMMessage) (string, error) {
 	if a.LLM == nil {
 		return "", errors.New("no LLM provider set")
 	}
 
-	options := &ExecuteOptions{
-		MaxTokens:   1024,
-		Temperature: 0.7,
-	}
+	a.injectMemories(ctx, message)
 
-	for _, opt := range opts {
-		opt(options)
-	}
-
-	// If we have a memory system, use it to enhance the input with relevant memories
-	enhancedInput := input
-	if a.Memory != nil {
-		// Check if the memory system supports memory preparation
-		if memoryEnhancer, ok := a.Memory.(MemoryEnhancer); ok {
-			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, a.Name, input)
-			if err == nil && enhancedContext != "" {
-				enhancedInput = enhancedContext
-				errnie.Info(fmt.Sprintf("Enhanced input with %d characters of memories", len(enhancedContext)-len(input)))
-			}
-		}
-	}
-
-	// If we have a planner, use it to create and execute a plan
-	if a.Planner != nil {
-		plan, err := a.Planner.CreatePlan(ctx, enhancedInput)
-		if err != nil {
-			return "", fmt.Errorf("failed to create plan: %w", err)
-		}
-
-		return a.Planner.ExecutePlan(ctx, plan)
-	}
+	// plan, err := a.createPlan(ctx, message)
 
 	var response strings.Builder
 
-	// Otherwise, just send the input to the LLM
-	params := LLMParams{
-		Messages: []LLMMessage{
-			{
-				Role:    "system",
-				Content: viper.GetViper().GetString("templates.planner"),
-			},
-		},
-		Model:  "gpt-4o-mini",
-		Tools:  a.Tools,
-		Schema: util.GenerateSchema[Plan](),
+	iteration := 0
+	iterMsg := LLMMessage{
+		Role:    message.Role,
+		Content: fmt.Sprintf("Iteration %d\n\n%s", iteration, message.Content),
 	}
 
-	if options.StreamHandler != nil {
-		for chunk := range a.LLM.StreamResponse(ctx, LLMParams{
-			Messages: []LLMMessage{
-				{
-					Role:    "system",
-					Content: viper.GetViper().GetString("templates.planner"),
-				},
-				{
-					Role:    "user",
-					Content: enhancedInput,
-				},
-			},
-		}) {
-			response.WriteString(chunk.Content)
-			options.StreamHandler(chunk.Content)
-		}
-	} else {
-		res, err := a.LLM.GenerateResponse(ctx, params)
-		if err != nil {
-			return "", err
+	for iteration < a.IterationLimit {
+		a.Params.Messages = append(a.Params.Messages, iterMsg)
+
+		res := a.LLM.GenerateResponse(ctx, a.Params)
+
+		if res.Error != nil {
+			return "", res.Error
 		}
 
-		response.WriteString(res)
-	}
+		response.WriteString(res.Content)
 
-	// Store the interaction in memory if available
-	if a.Memory != nil {
-		// Store the user input
-		inputKey := fmt.Sprintf("user_input_%d", time.Now().UnixNano())
-		_ = a.Memory.Store(ctx, inputKey, input)
+		iteration++
 
-		// Store the agent's response
-		responseKey := fmt.Sprintf("agent_response_%d", time.Now().UnixNano())
-		_ = a.Memory.Store(ctx, responseKey, response)
-
-		// Extract memories if the memory system supports it
-		if memoryExtractor, ok := a.Memory.(MemoryExtractor); ok {
-			// Extract memories from both the input and response
-			interaction := fmt.Sprintf("User: %s\n\nAgent: %s", input, response)
-			memoryIDs, err := memoryExtractor.ExtractMemories(ctx, a.Name, interaction, "conversation")
-			if err != nil {
-				errnie.Error(err)
-			} else if len(memoryIDs) > 0 {
-				errnie.Info(fmt.Sprintf("Extracted %d memories from conversation", len(memoryIDs)))
-			}
+		iterMsg = LLMMessage{
+			Role:    "assistant",
+			Content: fmt.Sprintf("Iteration %d\n\n%s", iteration, response.String()),
 		}
 	}
+
+	var contextWindow strings.Builder
+
+	for _, message := range a.Params.Messages {
+		switch message.Role {
+		case "user":
+			contextWindow.WriteString(fmt.Sprintf("User: %s\n", message.Content))
+		case "assistant":
+			contextWindow.WriteString(fmt.Sprintf("Assistant: %s\n", message.Content))
+		}
+	}
+
+	a.extractMemories(ctx, contextWindow.String())
 
 	return response.String(), nil
 }
 
-// ExecuteWithIteration runs the agent using the iteration loop for self-improvement
-func (a *BaseAgent) ExecuteWithIteration(ctx context.Context, input string, iterOptions *IterationOptions) (string, error) {
-	if a.LLM == nil {
-		return "", errors.New("no LLM provider set")
+func (a *BaseAgent) createPlan(ctx context.Context, message LLMMessage) (Plan, error) {
+	if a.Planner != nil {
+		plan, err := a.Planner.CreatePlan(ctx, message.Content)
+		if err != nil {
+			return Plan{}, fmt.Errorf("failed to create plan: %w", err)
+		}
+
+		return plan, nil
 	}
 
-	// Create an iterator with the provided options
-	iterator := NewIterator(iterOptions)
+	return Plan{}, nil
+}
 
-	// If we have a memory system, use it to enhance the input with relevant memories
-	enhancedInput := input
+func (a *BaseAgent) injectMemories(ctx context.Context, message LLMMessage) {
 	if a.Memory != nil {
 		// Check if the memory system supports memory preparation
 		if memoryEnhancer, ok := a.Memory.(MemoryEnhancer); ok {
-			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, a.Name, input)
+			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, a.Name, message.Content)
 			if err == nil && enhancedContext != "" {
-				enhancedInput = enhancedContext
-				errnie.Info("Enhanced input with memories for iteration")
+				message.Content = enhancedContext
+				errnie.Info(fmt.Sprintf("Enhanced input with %d characters of memories", len(enhancedContext)-len(message.Content)))
 			}
 		}
 	}
+}
 
-	// Run the iteration process with enhanced input
-	response, err := iterator.Run(ctx, a, enhancedInput)
-	if err != nil {
-		return "", err
-	}
-
-	// After iteration completes, store the final result in memory
+func (a *BaseAgent) extractMemories(ctx context.Context, contextWindow string) {
 	if a.Memory != nil {
-		// Store the user input
-		inputKey := fmt.Sprintf("user_input_%d", time.Now().UnixNano())
-		_ = a.Memory.Store(ctx, inputKey, input)
-
-		// Store the agent's final response
-		responseKey := fmt.Sprintf("agent_response_%d", time.Now().UnixNano())
-		_ = a.Memory.Store(ctx, responseKey, response)
-
-		// Extract memories if the memory system supports it
 		if memoryExtractor, ok := a.Memory.(MemoryExtractor); ok {
-			// Create a combined interaction text with the final response
-			interaction := fmt.Sprintf("User: %s\n\nAgent (after iteration): %s", input, response)
-			memoryIDs, err := memoryExtractor.ExtractMemories(ctx, a.Name, interaction, "conversation_iterated")
+			_, err := memoryExtractor.ExtractMemories(ctx, a.Name, contextWindow, "conversation")
+
 			if err != nil {
-				errnie.Info(fmt.Sprintf("Memory extraction after iteration encountered an error: %v", err))
-			} else if len(memoryIDs) > 0 {
-				errnie.Info(fmt.Sprintf("Extracted %d memories from iterated conversation", len(memoryIDs)))
+				errnie.Error(err)
 			}
 		}
 	}
-
-	return response, nil
 }
 
 // GetToolResults processes the results of tool calls for the iterator
@@ -289,6 +227,26 @@ func (a *BaseAgent) SetLLM(llm LLMProvider) {
 	a.LLM = llm
 }
 
+// SetSystemPrompt sets the system prompt for the agent
+func (a *BaseAgent) SetSystemPrompt(prompt string) {
+	a.Params.Messages = append(a.Params.Messages, SystemMessage(prompt))
+}
+
+// SetModel sets the model for the agent
+func (a *BaseAgent) SetModel(model string) {
+	a.Params.Model = model
+}
+
+// SetTemperature sets the temperature for the agent
+func (a *BaseAgent) SetTemperature(temperature float64) {
+	a.Params.Temperature = temperature
+}
+
+// SetIterationLimit sets the iteration limit for the agent
+func (a *BaseAgent) SetIterationLimit(limit int) {
+	a.IterationLimit = limit
+}
+
 // SetPlanner sets the planner for the agent
 func (a *BaseAgent) SetPlanner(planner Planner) {
 	a.Planner = planner
@@ -317,7 +275,7 @@ func (a *BaseAgent) HandleMessage(ctx context.Context, message Message) (string,
 		prompt := fmt.Sprintf(promptTemplate, message.Sender, message.Content)
 
 		// Use the agent's LLM to generate a response
-		response, err := a.LLM.GenerateResponse(ctx, LLMParams{
+		res := a.LLM.GenerateResponse(ctx, LLMParams{
 			Messages: []LLMMessage{
 				{
 					Role:    "system",
@@ -325,16 +283,16 @@ func (a *BaseAgent) HandleMessage(ctx context.Context, message Message) (string,
 				},
 			},
 		})
-		if err != nil {
-			return "", err
+		if res.Error != nil {
+			return "", res.Error
 		}
 
 		// Optionally, send a response back to the sender
 		if a.Messenger != nil {
-			_, _ = a.Messenger.SendDirect(ctx, message.Sender, response, MessageTypeText, nil)
+			_, _ = a.Messenger.SendDirect(ctx, message.Sender, res.Content, MessageTypeText, nil)
 		}
 
-		return response, nil
+		return res.Content, nil
 	}
 
 	// For topic messages or broadcasts, we might just log them
