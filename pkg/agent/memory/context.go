@@ -208,7 +208,6 @@ func (um *UnifiedMemory) ExtractMemories(
 	})
 
 	output.Debug("Raw memory extraction response: " + output.Summarize(res.Content, 80))
-	errnie.Debug(fmt.Sprintf("Raw LLM Memory Query Response: %s", res.Content))
 
 	// Parse the response directly - should be valid JSON with the schema
 	var extraction MemoryExtraction
@@ -362,7 +361,6 @@ func (um *UnifiedMemory) findEntityNodeByContent(ctx context.Context, content st
 
 	// Debug the query we're about to run
 	output.Debug(fmt.Sprintf("Searching for entity with content: %s", output.Summarize(content, 30)))
-	errnie.Debug(fmt.Sprintf("Searching for entity with content: %s", content))
 
 	query := `
 		MATCH (n:Entity)
@@ -447,7 +445,6 @@ func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string
 
 	// Log the raw response for debugging
 	output.Debug("Raw Memory Query Response: " + output.Summarize(res.Content, 80))
-	errnie.Debug("Raw LLM Memory Query Response:", res.Content)
 
 	// Parse the response directly as JSON
 	var queriesResponse MemoryQueries

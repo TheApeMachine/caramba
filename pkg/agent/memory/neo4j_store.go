@@ -155,7 +155,6 @@ func (n *Neo4jStore) Cypher(ctx context.Context, query string, params map[string
 		return errnie.Error(err)
 	}
 
-	errnie.Debug(query)
 	result, err := tx.Run(ctx, query, params)
 
 	if err != nil {
@@ -212,7 +211,6 @@ func (n *Neo4jStore) CreateNode(
 	if content, exists := properties["content"]; exists && content != nil {
 		if contentStr, ok := content.(string); ok && contentStr != "" {
 			labelStr = ":" + contentStr
-			errnie.Debug(fmt.Sprintf("Using content as label: %s", labelStr))
 		}
 	}
 
@@ -221,9 +219,6 @@ func (n *Neo4jStore) CreateNode(
 	params := map[string]interface{}{
 		"props": props,
 	}
-
-	// Debug: Log the Cypher query
-	errnie.Debug(fmt.Sprintf("Creating node with label %s, ID: %s", labelStr[1:], id))
 
 	// Execute the query within a transaction
 	tx, err := session.BeginTransaction(ctx)
@@ -245,8 +240,6 @@ func (n *Neo4jStore) CreateNode(
 	if err != nil {
 		return errnie.Error(err)
 	}
-
-	errnie.Debug(fmt.Sprintf("Node created: %s", id))
 
 	return nil
 }

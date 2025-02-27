@@ -119,15 +119,14 @@ func (p *BalancedProvider) GenerateResponse(
 
 	// Try to get a response for up to maxRetries attempts
 	var lastError error
-	for attempt := 0; attempt < p.maxRetries; attempt++ {
+
+	for range p.maxRetries {
 		provider, err := p.getNextAvailableProvider()
-		if err != nil {
+		if errnie.Error(err) != nil {
 			return core.LLMResponse{
 				Error: err,
 			}
 		}
-
-		errnie.Debug("Using provider: " + provider.Provider.Name())
 
 		resp := provider.Provider.GenerateResponse(ctx, params)
 		p.updateProviderStatus(provider, resp.Error)
@@ -137,7 +136,7 @@ func (p *BalancedProvider) GenerateResponse(
 		}
 
 		lastError = resp.Error
-		errnie.Info("Provider failed: " + provider.Provider.Name() + " - " + resp.Error.Error())
+		errnie.Error(resp.Error)
 	}
 
 	return core.LLMResponse{
@@ -172,24 +171,19 @@ func (p *BalancedProvider) StreamResponse(
 	go func() {
 		defer close(out)
 
-		for attempt := 0; attempt < p.maxRetries; attempt++ {
+		for range p.maxRetries {
 			provider, err := p.getNextAvailableProvider()
-			if err != nil {
+
+			if errnie.Error(err) != nil {
 				return
 			}
-
-			errnie.Debug("Streaming from provider: " + provider.Provider.Name())
 
 			stream := provider.Provider.StreamResponse(ctx, params)
 			p.updateProviderStatus(provider, err)
 
-			if err == nil {
-				for chunk := range stream {
-					out <- chunk
-				}
+			for chunk := range stream {
+				out <- chunk
 			}
-
-			errnie.Info("Provider stream failed: " + provider.Provider.Name() + " - " + err.Error())
 		}
 	}()
 
