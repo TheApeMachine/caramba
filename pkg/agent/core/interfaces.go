@@ -140,6 +140,9 @@ type Planner interface {
 
 	// ExecutePlan executes a plan and returns the result
 	ExecutePlan(ctx context.Context, plan Plan) (string, error)
+
+	// GuideAgent executes a plan with an agent, guiding it through each step
+	GuideAgent(ctx context.Context, agent Agent, plan Plan, query string) (string, error)
 }
 
 /*

@@ -14,6 +14,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/agent/core"
 	"github.com/theapemachine/caramba/pkg/agent/llm"
 	"github.com/theapemachine/caramba/pkg/agent/util"
+	"github.com/theapemachine/caramba/pkg/output"
 	"github.com/theapemachine/errnie"
 )
 
@@ -42,6 +43,8 @@ func (um *UnifiedMemory) StoreMemory(
 	source string,
 	metadata map[string]string,
 ) (string, error) {
+	output.Verbose(fmt.Sprintf("Storing memory for agent %s (%d chars)", agentID, len(content)))
+
 	// Generate a unique ID for the memory
 	memoryID := uuid.New().String()
 
@@ -55,9 +58,14 @@ func (um *UnifiedMemory) StoreMemory(
 	var err error
 
 	if um.embeddingProvider != nil {
+		embeddingSpinner := output.StartSpinner("Generating memory embedding")
 		embedding, err = um.embeddingProvider.GetEmbedding(ctx, content)
 		if err != nil {
+			output.StopSpinner(embeddingSpinner, "")
+			output.Error("Failed to get embedding for memory", err)
 			errnie.Info(fmt.Sprintf("Failed to get embedding for memory: %v", err))
+		} else {
+			output.StopSpinner(embeddingSpinner, fmt.Sprintf("Generated embedding vector (%d dimensions)", len(embedding)))
 		}
 	}
 
@@ -82,6 +90,8 @@ func (um *UnifiedMemory) StoreMemory(
 
 	// Store in vector store if available
 	if um.options.EnableVectorStore && um.vectorStore != nil && len(embedding) > 0 {
+		vectorStoreSpinner := output.StartSpinner("Storing in vector database")
+
 		// Prepare payload for vector store
 		payload := map[string]interface{}{
 			"agent_id":   agentID,
@@ -94,12 +104,18 @@ func (um *UnifiedMemory) StoreMemory(
 
 		err := um.vectorStore.StoreVector(ctx, memoryID, embedding, payload)
 		if err != nil {
+			output.StopSpinner(vectorStoreSpinner, "")
+			output.Error("Failed to store memory in vector store", err)
 			errnie.Info(fmt.Sprintf("Failed to store memory in vector store: %v", err))
+		} else {
+			output.StopSpinner(vectorStoreSpinner, "Memory stored in vector database")
 		}
 	}
 
 	// Store in graph store if available
 	if um.options.EnableGraphStore && um.graphStore != nil {
+		graphStoreSpinner := output.StartSpinner("Storing in graph database")
+
 		// Create node properties
 		properties := map[string]interface{}{
 			"agent_id":   agentID,
@@ -124,16 +140,22 @@ func (um *UnifiedMemory) StoreMemory(
 
 		err := um.graphStore.CreateNode(ctx, memoryID, labels, properties)
 		if err != nil {
+			output.StopSpinner(graphStoreSpinner, "")
+			output.Error("Failed to store memory in graph store", err)
 			errnie.Info(fmt.Sprintf("Failed to store memory in graph store: %v", err))
+		} else {
+			output.StopSpinner(graphStoreSpinner, "Memory stored in graph database")
 		}
 	}
 
 	// For simplicity, also store in the base memory store
 	err = um.baseStore.Store(ctx, "memory:"+memoryID, content)
 	if err != nil {
+		output.Error("Failed to store memory in base store", err)
 		errnie.Info(fmt.Sprintf("Failed to store memory in base store: %v", err))
 	}
 
+	output.Result(fmt.Sprintf("Memory stored with ID: %s", memoryID))
 	return memoryID, nil
 }
 
@@ -157,6 +179,11 @@ func (um *UnifiedMemory) ExtractMemories(
 	content string,
 	source string,
 ) ([]string, error) {
+	output.Action("memory", "extract", fmt.Sprintf("Extracting memories from %s", source))
+
+	// Create spinner for extraction process
+	extractSpinner := output.StartSpinner("Analyzing content for important information")
+
 	provider := llm.NewOpenAIProvider(
 		os.Getenv("OPENAI_API_KEY"),
 		"gpt-4o-mini",
@@ -180,18 +207,39 @@ func (um *UnifiedMemory) ExtractMemories(
 		Schema:                    schema,
 	})
 
+	output.Debug("Raw memory extraction response: " + output.Summarize(res.Content, 80))
+	errnie.Debug(fmt.Sprintf("Raw LLM Memory Query Response: %s", res.Content))
+
 	// Parse the response directly - should be valid JSON with the schema
 	var extraction MemoryExtraction
 	err := json.Unmarshal([]byte(res.Content), &extraction)
 
 	if err != nil {
+		output.StopSpinner(extractSpinner, "")
+		output.Error("Memory extraction failed", err)
 		errnie.Error(fmt.Errorf("failed to parse memory extraction JSON: %w", err))
 		return []string{}, err
 	}
 
+	// Stop spinner and show extraction results
+	output.StopSpinner(extractSpinner, fmt.Sprintf("Extracted %d documents and %d entity relationships",
+		len(extraction.Documents), len(extraction.Entities)))
+
+	// Store document memories
+	docResults := make([]string, 0, len(extraction.Documents))
 	for _, doc := range extraction.Documents {
-		um.StoreDocumentMemory(ctx, agentID, doc.Document, MemoryTypeGlobal, source, doc.Metadata)
+		memID, err := um.StoreDocumentMemory(ctx, agentID, doc.Document, MemoryTypeGlobal, source, doc.Metadata)
+		if err != nil {
+			output.Error("Failed to store document memory", err)
+		} else {
+			docResults = append(docResults, memID)
+			output.Verbose(fmt.Sprintf("Stored document memory: %s", output.Summarize(doc.Document, 40)))
+		}
 	}
+
+	// Store entity relationships
+	relationshipSpinner := output.StartSpinner("Processing entity relationships")
+	relationshipCount := 0
 
 	for _, entity := range extraction.Entities {
 		props := map[string]interface{}{
@@ -202,6 +250,10 @@ func (um *UnifiedMemory) ExtractMemories(
 		for k, v := range entity.Metadata {
 			props[k] = v
 		}
+
+		// Less verbose Cypher query logging for relationship creation
+		output.Debug(fmt.Sprintf("Creating relationship: %s -> %s -> %s",
+			entity.Entity, entity.Relationship, entity.Target))
 
 		err := um.graphStore.Cypher(ctx, `
 		CALL apoc.merge.node([$entityLabel], {name: $entityName}) YIELD node AS n
@@ -220,11 +272,16 @@ func (um *UnifiedMemory) ExtractMemories(
 		})
 
 		if err != nil {
+			output.Debug(fmt.Sprintf("Error creating relationship: %v", err))
 			log.Printf("Error executing Cypher query: %v", err)
+		} else {
+			relationshipCount++
 		}
 	}
 
-	return nil, nil
+	output.StopSpinner(relationshipSpinner, fmt.Sprintf("Created %d entity relationships", relationshipCount))
+
+	return docResults, nil
 }
 
 // StoreDocumentMemory stores a document memory in vector store only
@@ -251,6 +308,7 @@ func (um *UnifiedMemory) StoreDocumentMemory(
 	if um.embeddingProvider != nil {
 		embedding, err = um.embeddingProvider.GetEmbedding(ctx, content)
 		if err != nil {
+			output.Debug(fmt.Sprintf("Failed to get embedding for document memory: %v", err))
 			errnie.Info(fmt.Sprintf("Failed to get embedding for memory: %v", err))
 		}
 	}
@@ -288,6 +346,7 @@ func (um *UnifiedMemory) StoreDocumentMemory(
 
 		err := um.vectorStore.StoreVector(ctx, memoryID, embedding, payload)
 		if err != nil {
+			output.Debug(fmt.Sprintf("Failed to store document memory in vector store: %v", err))
 			errnie.Info(fmt.Sprintf("Failed to store memory in vector store: %v", err))
 		}
 	}
@@ -302,6 +361,7 @@ func (um *UnifiedMemory) findEntityNodeByContent(ctx context.Context, content st
 	}
 
 	// Debug the query we're about to run
+	output.Debug(fmt.Sprintf("Searching for entity with content: %s", output.Summarize(content, 30)))
 	errnie.Debug(fmt.Sprintf("Searching for entity with content: %s", content))
 
 	query := `
@@ -344,8 +404,11 @@ Returns:
   - An error if the operation fails, or nil on success
 */
 func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string) ([]string, error) {
+	output.Verbose(fmt.Sprintf("Generating memory queries for: %s", output.Summarize(query, 40)))
+
 	// Avoid API calls for very short queries
 	if len(query) < 10 {
+		output.Debug("Query too short, using as-is")
 		return []string{query}, nil
 	}
 
@@ -383,6 +446,7 @@ func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string
 	})
 
 	// Log the raw response for debugging
+	output.Debug("Raw Memory Query Response: " + output.Summarize(res.Content, 80))
 	errnie.Debug("Raw LLM Memory Query Response:", res.Content)
 
 	// Parse the response directly as JSON
@@ -390,6 +454,7 @@ func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string
 	err := json.Unmarshal([]byte(res.Content), &queriesResponse)
 
 	if err != nil {
+		output.Error("Failed to parse memory queries", err)
 		errnie.Error(fmt.Errorf("failed to parse memory queries JSON: %w", err))
 		return []string{query}, nil
 	}
@@ -401,8 +466,11 @@ func (um *UnifiedMemory) GenerateMemoryQueries(ctx context.Context, query string
 		q = strings.TrimSpace(q)
 		if q != "" {
 			validQueries = append(validQueries, q)
+			output.Debug("Generated query: " + q)
 		}
 	}
+
+	output.Result(fmt.Sprintf("Generated %d memory search queries", len(validQueries)))
 
 	// Always include the original query
 	validQueries = append(validQueries, query)
@@ -425,14 +493,30 @@ Returns:
   - An error if the operation fails, or nil on success
 */
 func (um *UnifiedMemory) PrepareContext(ctx context.Context, agentID string, query string) (string, error) {
+	output.Action("memory", "prepare_context", fmt.Sprintf("Enhancing context for agent %s", agentID))
+
 	// Default to just returning the query if no vector store
 	if !um.options.EnableVectorStore || um.vectorStore == nil {
+		output.Info("Vector store is disabled or not available")
 		return query, nil
 	}
 
 	// Generate memory queries using LLM
+	memQuerySpinner := output.StartSpinner("Generating memory search queries")
 	queries, err := um.GenerateMemoryQueries(ctx, query)
+
+	// Detailed logging of the generated queries
+	if err == nil && len(queries) > 0 {
+		output.Verbose("Generated the following memory search queries:")
+		for i, q := range queries {
+			output.Verbose(fmt.Sprintf("  Query %d: %s", i+1, q))
+		}
+	}
+
+	output.StopSpinner(memQuerySpinner, fmt.Sprintf("Generated %d memory search queries", len(queries)))
+
 	if err != nil {
+		output.Error("Failed to generate memory queries", err)
 		errnie.Info(fmt.Sprintf("Failed to generate memory queries: %v", err))
 		queries = []string{query} // Fall back to the original query
 	}
@@ -442,7 +526,12 @@ func (um *UnifiedMemory) PrepareContext(ctx context.Context, agentID string, que
 	seenMemoryIDs := make(map[string]bool)
 	maxMemoriesPerQuery := max(um.options.MaxMemoriesPerQuery/len(queries), 1)
 
-	for _, q := range queries {
+	memRetrieveSpinner := output.StartSpinner("Retrieving relevant memories")
+
+	totalRetrieved := 0
+	for i, q := range queries {
+		output.Verbose(fmt.Sprintf("Searching memory with query %d: %s", i+1, q))
+
 		memories, err := um.RetrieveMemoriesByVector(
 			ctx,
 			q,
@@ -451,21 +540,31 @@ func (um *UnifiedMemory) PrepareContext(ctx context.Context, agentID string, que
 			um.options.ExtractionThreshold,
 		)
 		if err != nil {
+			output.Debug(fmt.Sprintf("Failed to retrieve memories for query '%s': %v", q, err))
 			errnie.Info(fmt.Sprintf("Failed to retrieve memories for query '%s': %v", q, err))
 			continue
 		}
+
+		totalRetrieved += len(memories)
+		output.Verbose(fmt.Sprintf("Query %d returned %d memories", i+1, len(memories)))
 
 		// Add new memories to the result list, avoiding duplicates
 		for _, memory := range memories {
 			if !seenMemoryIDs[memory.ID] {
 				allMemories = append(allMemories, memory)
 				seenMemoryIDs[memory.ID] = true
+				output.Debug(fmt.Sprintf("Adding memory: %s", output.Summarize(memory.Content, 40)))
+			} else {
+				output.Debug(fmt.Sprintf("Skipping duplicate memory: %s", output.Summarize(memory.Content, 40)))
 			}
 		}
 	}
 
+	output.StopSpinner(memRetrieveSpinner, fmt.Sprintf("Retrieved %d unique memories", len(allMemories)))
+
 	// If no memories, just return the query
 	if len(allMemories) == 0 {
+		output.Info("No relevant memories found for this query")
 		return query, nil
 	}
 
@@ -474,8 +573,11 @@ func (um *UnifiedMemory) PrepareContext(ctx context.Context, agentID string, que
 
 	// Format memories as text
 	var memoriesText strings.Builder
+	output.Info("Including the following memories in context:")
 	for i, memory := range allMemories {
-		memoriesText.WriteString(fmt.Sprintf("%d. %s\n", i+1, memory.Content))
+		memoryLine := fmt.Sprintf("%d. %s\n", i+1, memory.Content)
+		memoriesText.WriteString(memoryLine)
+		output.Verbose(fmt.Sprintf("Memory %d: %s", i+1, output.Summarize(memory.Content, 60)))
 	}
 
 	// Use the template to format the context
@@ -490,11 +592,26 @@ func (um *UnifiedMemory) PrepareContext(ctx context.Context, agentID string, que
 	var result strings.Builder
 	err = um.contextTemplate.Execute(&result, data)
 	if err != nil {
+		output.Error("Failed to format context with memories", err)
 		errnie.Info(fmt.Sprintf("Failed to format context with memories: %v", err))
 		return query, nil
 	}
 
-	return result.String(), nil
+	enhancedContext := result.String()
+	originalLength := len(query)
+	enhancedLength := len(enhancedContext)
+	addedChars := enhancedLength - originalLength
+
+	output.Result(fmt.Sprintf("Enhanced context with %d memories (added %d characters)", len(allMemories), addedChars))
+	output.Debug(fmt.Sprintf("Original query length: %d chars, Enhanced context: %d chars", originalLength, enhancedLength))
+
+	// If we didn't actually add any memories (template issue?)
+	if addedChars <= 0 {
+		output.Warn("Memory enhancement didn't add any content - check context template")
+		return query, nil
+	}
+
+	return enhancedContext, nil
 }
 
 /*
@@ -510,6 +627,8 @@ Returns:
   - An error if the operation fails, or nil on success
 */
 func (um *UnifiedMemory) SummarizeMemories(ctx context.Context, entries []EnhancedMemoryEntry) (string, error) {
+	output.Action("memory", "summarize", fmt.Sprintf("Summarizing %d memories", len(entries)))
+
 	// This would normally use an LLM to summarize the memories
 	// For now, just concatenate them
 	var summary strings.Builder
@@ -519,5 +638,6 @@ func (um *UnifiedMemory) SummarizeMemories(ctx context.Context, entries []Enhanc
 		summary.WriteString(fmt.Sprintf("%d. %s\n", i+1, entry.Content))
 	}
 
+	output.Result("Memory summary generated")
 	return summary.String(), nil
 }

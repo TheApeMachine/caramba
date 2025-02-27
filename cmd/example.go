@@ -36,7 +36,7 @@ var exampleCmd = &cobra.Command{
 		switch exampleType {
 		case "researcher":
 			example := examples.NewResearcher()
-			example.Run(cmd.Context(), "How much money did Elvis pay to own the moon?")
+			example.Run(cmd.Context(), "Let's research some alternative approaches to machine learning.")
 		default:
 			return &ErrorUnknownExample{ExampleType: exampleType}
 		}

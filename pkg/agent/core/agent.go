@@ -13,6 +13,12 @@ type Agent interface {
 	// Execute runs the agent with the provided input and returns a response
 	Execute(context.Context, LLMMessage) (string, error)
 
+	// StreamExecute runs the agent with the provided input and streams the response in real-time
+	StreamExecute(context.Context, LLMMessage) (string, error)
+
+	// ExecuteWithPlanner runs the agent using a planner to guide execution
+	ExecuteWithPlanner(context.Context, LLMMessage) (string, error)
+
 	// AddTool adds a new tool to the agent
 	AddTool(tool Tool) error
 

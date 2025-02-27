@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -108,36 +109,40 @@ func (p *OpenAIProvider) StreamResponse(
 			chunk := stream.Current()
 			acc.AddChunk(chunk)
 
-			// When this fires, the current chunk value will not contain content data
-			if content, ok := acc.JustFinishedContent(); ok {
+			// Check for completed content
+			if content, ok := acc.JustFinishedContent(); ok && content != "" {
 				out <- core.LLMResponse{
 					Content: content,
 				}
 			}
 
+			// Check for completed tool calls
 			if tool, ok := acc.JustFinishedToolCall(); ok {
+				// Parse the arguments string as JSON
+				var argsMap map[string]interface{}
+				if err := json.Unmarshal([]byte(tool.Arguments), &argsMap); err != nil {
+					// If parsing fails, use the raw string
+					argsMap = map[string]interface{}{
+						"raw_args": tool.Arguments,
+					}
+				}
+
 				out <- core.LLMResponse{
 					ToolCalls: []core.ToolCall{
 						{
 							Name: tool.Name,
-							Args: map[string]interface{}{
-								"args": tool.Arguments,
-							},
+							Args: argsMap,
 						},
 					},
 				}
 			}
 
-			if refusal, ok := acc.JustFinishedRefusal(); ok {
-				out <- core.LLMResponse{
-					Refusal: refusal,
-				}
-			}
-
-			// It's best to use chunks after handling JustFinished events
-			if len(chunk.Choices) > 0 {
-				out <- core.LLMResponse{
-					Content: chunk.Choices[0].Delta.JSON.RawJSON(),
+			// Send delta content (if any)
+			for _, choice := range chunk.Choices {
+				if choice.Delta.Content != "" {
+					out <- core.LLMResponse{
+						Content: choice.Delta.Content,
+					}
 				}
 			}
 		}
@@ -179,22 +184,22 @@ func (p *OpenAIProvider) buildTools(
 
 	if len(params.Tools) > 0 {
 		for _, tool := range params.Tools {
-			tools = append(tools, openai.ChatCompletionToolParam{
+			// Get the tool's schema directly from the tool
+			schema := tool.Schema()
+
+			// Schema is already of type map[string]interface{}, which is compatible with FunctionParameters
+
+			// Create function parameter from tool's schema
+			toolParam := openai.ChatCompletionToolParam{
 				Type: openai.F(openai.ChatCompletionToolTypeFunction),
 				Function: openai.F(openai.FunctionDefinitionParam{
 					Name:        openai.String(tool.Name()),
 					Description: openai.String(tool.Description()),
-					Parameters: openai.F(openai.FunctionParameters{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"location": map[string]string{
-								"type": "string",
-							},
-						},
-						"required": []string{"location"},
-					}),
+					Parameters:  openai.F(openai.FunctionParameters(schema)), // Cast to FunctionParameters
 				}),
-			})
+			}
+
+			tools = append(tools, toolParam)
 		}
 		openaiParams.Tools = openai.F(tools)
 	}
