@@ -73,6 +73,14 @@ type EnhancedMemoryEntry struct {
 	LastAccess time.Time
 	/* Metadata stores additional information about the memory */
 	Metadata map[string]string
+	/* Score is the relevance/importance score for this memory */
+	Score float32
+	/* ImportanceScore is the algorithmically determined importance */
+	ImportanceScore float32
+	/* RelevanceCache caches relevance scores to common queries */
+	RelevanceCache *RelevanceCache
+	/* UsageStats tracks detailed usage statistics for the memory */
+	UsageStats *MemoryUsageStats
 }
 
 /*
@@ -473,6 +481,39 @@ func (um *UnifiedMemory) Clear(ctx context.Context) error {
 
 	// We don't clear the vector or graph stores by default
 	// as they might contain shared data across multiple agents
+
+	return nil
+}
+
+/*
+ForgetMemory removes a specific memory from all storage systems
+*/
+func (um *UnifiedMemory) ForgetMemory(ctx context.Context, memoryID string) error {
+	um.mutex.Lock()
+	defer um.mutex.Unlock()
+
+	// Remove from in-memory cache
+	delete(um.memoryData, memoryID)
+
+	// Remove from vector store if enabled
+	if um.options.EnableVectorStore && um.vectorStore != nil {
+		if err := um.vectorStore.Delete(ctx, memoryID); err != nil {
+			return fmt.Errorf("failed to remove from vector store: %w", err)
+		}
+	}
+
+	// Remove from graph store if enabled
+	if um.options.EnableGraphStore && um.graphStore != nil {
+		if err := um.graphStore.DeleteNode(ctx, memoryID); err != nil {
+			return fmt.Errorf("failed to remove from graph store: %w", err)
+		}
+	}
+
+	// The core.Memory interface doesn't have a Delete method directly
+	// Memory clearing is typically done at a higher level, so we'll
+	// simply remove our in-memory tracking of this entry
+	// For a complete solution, we would need to implement a Delete method
+	// in the specific baseStore implementation being used
 
 	return nil
 }

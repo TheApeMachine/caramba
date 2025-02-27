@@ -28,3 +28,14 @@ type MemoryExtraction struct {
 type MemoryQueries struct {
 	Queries []string `json:"queries" jsonschema:"A list of search queries to retrieve relevant memories,required"`
 }
+
+// EnhancedMemoryEntryExtensions adds additional fields to the EnhancedMemoryEntry struct
+// These additional fields are used for memory prioritization and optimization
+type EnhancedMemoryEntryExtensions struct {
+	// ImportanceScore is the algorithmically determined importance of this memory
+	ImportanceScore float32
+	// RelevanceCache caches relevance scores to common queries
+	RelevanceCache *RelevanceCache
+	// UsageStats tracks detailed usage statistics for the memory
+	UsageStats *MemoryUsageStats
+}

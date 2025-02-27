@@ -1,7 +1,12 @@
 package core
 
 import (
+	"context"
+	"fmt"
 	"time"
+
+	"github.com/theapemachine/caramba/pkg/output"
+	"github.com/theapemachine/errnie"
 )
 
 // MemoryType represents the type of memory
@@ -28,24 +33,24 @@ const (
 
 // EnhancedMemoryEntry represents a single memory entry with extended metadata
 type EnhancedMemoryEntry struct {
-	ID          string                 // Unique identifier for the memory
-	AgentID     string                 // ID of the agent who owns the memory (empty for global)
-	Content     string                 // The actual memory content
-	Embedding   []float32              // Vector embedding of the content
-	Type        MemoryType             // Type of memory (personal/global)
-	Source      string                 // Source of the memory (conversation, document, etc.)
-	CreatedAt   time.Time              // When the memory was created
-	AccessCount int                    // How many times this memory has been accessed
-	LastAccess  time.Time              // When this memory was last accessed
-	Metadata    map[string]string      // Additional metadata
+	ID          string            // Unique identifier for the memory
+	AgentID     string            // ID of the agent who owns the memory (empty for global)
+	Content     string            // The actual memory content
+	Embedding   []float32         // Vector embedding of the content
+	Type        MemoryType        // Type of memory (personal/global)
+	Source      string            // Source of the memory (conversation, document, etc.)
+	CreatedAt   time.Time         // When the memory was created
+	AccessCount int               // How many times this memory has been accessed
+	LastAccess  time.Time         // When this memory was last accessed
+	Metadata    map[string]string // Additional metadata
 }
 
 // Relationship represents a relationship between two memory entries in a graph
 type Relationship struct {
-	FromID   string                 // ID of the source memory
-	ToID     string                 // ID of the target memory
-	Type     string                 // Type of relationship
-	Metadata map[string]string      // Additional metadata about the relationship
+	FromID   string            // ID of the source memory
+	ToID     string            // ID of the target memory
+	Type     string            // Type of relationship
+	Metadata map[string]string // Additional metadata about the relationship
 }
 
 // MemoryOptions defines configuration options for memory systems
@@ -107,4 +112,49 @@ func (m MemoryScoreList) Less(i, j int) bool {
 // Swap swaps elements (for sort interface)
 func (m MemoryScoreList) Swap(i, j int) {
 	m[i], m[j] = m[j], m[i]
+}
+
+// injectMemories uses the Memory (if any) to fetch relevant context for the given message.
+func (a *BaseAgent) injectMemories(ctx context.Context, message LLMMessage) LLMMessage {
+	enhancedMessage := message
+	if a.Memory != nil {
+		if memoryEnhancer, ok := a.Memory.(MemoryEnhancer); ok {
+			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, a.Name, message.Content)
+			if err == nil && enhancedContext != "" {
+				output.Verbose(fmt.Sprintf("Enhanced input with memories (%d → %d chars)",
+					len(message.Content), len(enhancedContext)))
+				enhancedMessage.Content = enhancedContext
+				errnie.Info(fmt.Sprintf("Enhanced input with %d characters of memories",
+					len(enhancedContext)-len(message.Content)))
+			} else if err != nil {
+				output.Debug(fmt.Sprintf("Memory enhancement failed: %v", err))
+			} else {
+				output.Debug("No relevant memories found")
+			}
+		} else {
+			output.Debug("Memory system does not support context enhancement")
+		}
+	} else {
+		output.Debug("No memory system available")
+	}
+	return enhancedMessage
+}
+
+// extractMemories uses the Memory (if any) to extract new memories from the conversation text.
+func (a *BaseAgent) extractMemories(ctx context.Context, contextWindow string) {
+	if a.Memory != nil {
+		if memoryExtractor, ok := a.Memory.(MemoryExtractor); ok {
+			output.Verbose("Extracting memories from conversation")
+
+			memories, err := memoryExtractor.ExtractMemories(ctx, a.Name, contextWindow, "conversation")
+			if err != nil {
+				output.Error("Memory extraction failed", err)
+				errnie.Error(err)
+			} else if memories != nil {
+				output.Result(fmt.Sprintf("Extracted %d memories", len(memories)))
+			}
+		} else {
+			output.Debug("Memory system does not support memory extraction")
+		}
+	}
 }
