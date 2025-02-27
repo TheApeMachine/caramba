@@ -7,6 +7,7 @@ go 1.23.5
 require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.11
 	github.com/briandowns/spinner v1.23.2
+	github.com/go-rod/rod v0.116.2
 	github.com/google/go-github/v66 v66.0.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
@@ -18,6 +19,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/theapemachine/amsh v0.0.0-20241219021147-90290810fcb8
 	github.com/theapemachine/errnie v0.0.7
+	github.com/ysmood/gson v0.7.3
 	golang.org/x/oauth2 v0.27.0
 )
 
@@ -45,6 +47,10 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/ysmood/fetchup v0.2.3 // indirect
+	github.com/ysmood/goob v0.4.0 // indirect
+	github.com/ysmood/got v0.40.0 // indirect
+	github.com/ysmood/leakless v0.9.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.55.0 // indirect
 	go.opentelemetry.io/otel v1.34.0 // indirect

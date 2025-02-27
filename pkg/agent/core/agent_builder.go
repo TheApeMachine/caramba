@@ -36,21 +36,33 @@ func (b *AgentBuilder) WithMemory(memory Memory) *AgentBuilder {
 	return b
 }
 
+// WithPlanner sets the planner for the agent
+func (b *AgentBuilder) WithPlanner(planner Agent) *AgentBuilder {
+	b.agent.SetPlanner(planner)
+	return b
+}
+
+// WithOptimizer sets the optimizer for the agent
+func (b *AgentBuilder) WithOptimizer(optimizer Agent) *AgentBuilder {
+	b.agent.SetOptimizer(optimizer)
+	return b
+}
+
 // WithTool adds a tool to the agent
 func (b *AgentBuilder) WithTool(tool Tool) *AgentBuilder {
 	_ = b.agent.AddTool(tool)
 	return b
 }
 
-// WithPlanner sets the planner for the agent
-func (b *AgentBuilder) WithPlanner(planner Planner) *AgentBuilder {
-	b.agent.SetPlanner(planner)
-	return b
-}
-
 // WithMessenger sets the messenger for the agent
 func (b *AgentBuilder) WithMessenger(messenger Messenger) *AgentBuilder {
 	b.agent.Messenger = messenger
+	return b
+}
+
+// WithStreaming sets the streaming mode for the agent
+func (b *AgentBuilder) WithStreaming(streaming bool) *AgentBuilder {
+	b.agent.SetStreaming(streaming)
 	return b
 }
 

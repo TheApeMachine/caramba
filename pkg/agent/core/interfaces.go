@@ -10,6 +10,58 @@ import (
 )
 
 /*
+Agent represents the interface for an LLM-powered agent.
+It defines the core functionality for executing tasks, managing tools,
+memory, planning, and communication with other agents.
+*/
+type Agent interface {
+	// Execute runs the agent with the provided input and returns a response
+	Execute(context.Context, LLMMessage) (string, error)
+
+	// Name returns the name of the agent
+	Name() string
+
+	// Memory returns the memory system for the agent
+	Memory() Memory
+
+	// IterationLimit returns the iteration limit for the agent
+	IterationLimit() int
+
+	// LLM returns the LLM provider for the agent
+	LLM() LLMProvider
+
+	// AddTool adds a new tool to the agent
+	AddTool(tool Tool) error
+
+	// SetMemory sets the memory system for the agent
+	SetMemory(memory Memory)
+
+	// SetPlanner sets the planner for the agent
+	SetPlanner(planner Agent)
+
+	// SetOptimizer sets the optimizer for the agent
+	SetOptimizer(optimizer Agent)
+
+	// SetLLM sets the LLM provider for the agent
+	SetLLM(llm LLMProvider)
+
+	// SetSystemPrompt sets the system prompt for the agent
+	SetSystemPrompt(prompt string)
+
+	// SetIterationLimit sets the iteration limit for the agent
+	SetIterationLimit(limit int)
+
+	// GetMessenger returns the agent's messenger
+	GetMessenger() Messenger
+
+	// SetMessenger sets the agent's messenger
+	SetMessenger(messenger Messenger)
+
+	// SetStreaming sets the streaming mode for the agent
+	SetStreaming(streaming bool)
+}
+
+/*
 LLMProvider defines the interface for language model providers.
 It abstracts the interaction with various LLM services and allows
 for a consistent API regardless of the underlying provider.
@@ -58,6 +110,11 @@ type LLMResponse struct {
 	ToolCalls []ToolCall
 	Refusal   string
 	Error     error
+}
+
+type ToolCall struct {
+	Name string
+	Args map[string]interface{}
 }
 
 /*

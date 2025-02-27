@@ -115,11 +115,11 @@ func (m MemoryScoreList) Swap(i, j int) {
 }
 
 // injectMemories uses the Memory (if any) to fetch relevant context for the given message.
-func (a *BaseAgent) injectMemories(ctx context.Context, message LLMMessage) LLMMessage {
+func (manager *IterationManager) injectMemories(ctx context.Context, message LLMMessage) LLMMessage {
 	enhancedMessage := message
-	if a.Memory != nil {
-		if memoryEnhancer, ok := a.Memory.(MemoryEnhancer); ok {
-			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, a.Name, message.Content)
+	if manager.agent.Memory() != nil {
+		if memoryEnhancer, ok := manager.agent.Memory().(MemoryEnhancer); ok {
+			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, manager.agent.Name(), message.Content)
 			if err == nil && enhancedContext != "" {
 				output.Verbose(fmt.Sprintf("Enhanced input with memories (%d → %d chars)",
 					len(message.Content), len(enhancedContext)))
@@ -141,12 +141,12 @@ func (a *BaseAgent) injectMemories(ctx context.Context, message LLMMessage) LLMM
 }
 
 // extractMemories uses the Memory (if any) to extract new memories from the conversation text.
-func (a *BaseAgent) extractMemories(ctx context.Context, contextWindow string) {
-	if a.Memory != nil {
-		if memoryExtractor, ok := a.Memory.(MemoryExtractor); ok {
+func (manager *IterationManager) extractMemories(ctx context.Context, contextWindow string) {
+	if manager.agent.Memory() != nil {
+		if memoryExtractor, ok := manager.agent.Memory().(MemoryExtractor); ok {
 			output.Verbose("Extracting memories from conversation")
 
-			memories, err := memoryExtractor.ExtractMemories(ctx, a.Name, contextWindow, "conversation")
+			memories, err := memoryExtractor.ExtractMemories(ctx, manager.agent.Name(), contextWindow, "conversation")
 			if err != nil {
 				output.Error("Memory extraction failed", err)
 				errnie.Error(err)
