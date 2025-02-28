@@ -2,11 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/pkg/agent/examples"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/pkg/tui"
 )
 
 type ErrorUnknownExample struct {
@@ -17,42 +16,32 @@ func (e *ErrorUnknownExample) Error() string {
 	return fmt.Sprintf("unknown example type: %s", e.ExampleType)
 }
 
-/*
-exampleCmd is a command that runs example workflows.
-*/
-var exampleCmd = &cobra.Command{
-	Use:   "example [type]",
-	Short: "Run example workflows",
-	Long:  `Runs example workflows to demonstrate the agent framework capabilities`,
-	Args:  cobra.ArbitraryArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		os.Setenv("LOG_LEVEL", "debug")
-		os.Setenv("LOGFILE", "true")
-		errnie.InitLogger()
+// Example command variables
+var (
+	exampleCmd = &cobra.Command{
+		Use:   "example",
+		Short: "Run example scenarios",
+		Long:  longExample,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "researcher":
+				example := examples.NewResearcher()
+				example.Run(cmd.Context())
+			default:
+				return fmt.Errorf("unknown example type: %s", args[1])
+			}
 
-		// Get the example type
-		exampleType := args[0]
-
-		switch exampleType {
-		case "researcher":
-			example := examples.NewResearcher()
-			example.Run(cmd.Context(), "Let's research some alternative approaches to machine learning.")
-		default:
-			return &ErrorUnknownExample{ExampleType: exampleType}
-		}
-
-		return nil
-	},
-}
+			app := tui.NewApp()
+			return app.Start()
+		},
+	}
+)
 
 func init() {
 	rootCmd.AddCommand(exampleCmd)
-
-	// Add common flags
-	exampleCmd.Flags().String("api-key", "", "API key for the LLM provider (or set OPENAI_API_KEY env var)")
-	exampleCmd.Flags().String("topic", "artificial intelligence", "Research topic for the research example")
-	exampleCmd.Flags().String("message", "Hello, how are you today?", "Message to send for the chat example")
-	exampleCmd.Flags().String("task", "Write a short story about a robot learning to understand human emotions.", "Task for the iteration example")
-	exampleCmd.Flags().Int("iterations", 3, "Maximum number of iterations for the iteration example")
-	exampleCmd.Flags().Int("timeout", 120, "Timeout in seconds for the iteration example")
 }
+
+var longExample = `
+Example demonstrates various capabilities of the Caramba framework.
+This command is primarily for testing and demonstration purposes.
+`

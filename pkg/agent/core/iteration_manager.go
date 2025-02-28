@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/briandowns/spinner"
+	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/caramba/pkg/output"
 )
 
 // IterationManager handles agent iteration logic.
 type IterationManager struct {
+	logger            *output.Logger
+	hub               *hub.Queue
 	agent             Agent
 	toolManager       *ToolManager
 	responseProcessor *ResponseProcessor
@@ -22,6 +24,8 @@ func NewIterationManager(
 	agent Agent,
 ) *IterationManager {
 	return &IterationManager{
+		logger:            output.NewLogger(),
+		hub:               hub.NewQueue(),
 		agent:             agent,
 		toolManager:       NewToolManager(),
 		responseProcessor: NewResponseProcessor(),
@@ -40,7 +44,7 @@ func (im *IterationManager) Run(
 	params *LLMParams,
 	streaming bool,
 ) error {
-	var response strings.Builder
+	im.logger.Log(fmt.Sprintf("Running iteration manager for agent %s", im.agent.Name()))
 
 	iteration := 0
 	iterMsg := LLMMessage{
@@ -52,23 +56,28 @@ func (im *IterationManager) Run(
 		// Add the current message to the conversation.
 		params.Messages = append(params.Messages, iterMsg)
 
-		// Sync tools with LLM params.
-		params.Tools = im.toolManager.GetTools()
-
-		// Show the spinner if needed.
+		// Create a status message about the iteration
 		iterationStr := fmt.Sprintf("Iteration %d/%d", iteration+1, im.agent.IterationLimit())
-		thinkingSpinner := output.StartSpinner(fmt.Sprintf("%s: Agent thinking", iterationStr))
+
+		im.hub.Add(hub.NewEvent(
+			im.agent.Name(),
+			"metrics",
+			"assistant",
+			hub.EventTypeStatus,
+			iterationStr,
+			map[string]string{},
+		))
 
 		var iterationResponse string
 		var err error
 
 		if streaming {
 			iterationResponse, err = im.handleStreamingIteration(
-				ctx, thinkingSpinner, *params, im.agent.LLM(),
+				ctx, *params, im.agent.LLM(),
 			)
 		} else {
 			iterationResponse, err = im.handleNonStreamingIteration(
-				ctx, thinkingSpinner, *params, im.agent.LLM(),
+				ctx, *params, im.agent.LLM(),
 			)
 		}
 
@@ -76,14 +85,11 @@ func (im *IterationManager) Run(
 			return err
 		}
 
-		// Append response
-		response.WriteString(iterationResponse)
-
 		// Next iteration
 		iteration++
 		iterMsg = LLMMessage{
 			Role:    "assistant",
-			Content: fmt.Sprintf("Iteration %d\n\n%s", iteration, response.String()),
+			Content: fmt.Sprintf("Iteration %d\n\n%s", iteration, iterationResponse),
 		}
 	}
 
@@ -93,32 +99,81 @@ func (im *IterationManager) Run(
 // handleNonStreamingIteration processes a single non-streaming iteration.
 func (im *IterationManager) handleNonStreamingIteration(
 	ctx context.Context,
-	thinkingSpinner *spinner.Spinner,
 	params LLMParams,
 	llm LLMProvider,
 ) (string, error) {
+	// Send thinking status
+	im.hub.Add(hub.NewEvent(
+		im.agent.Name(),
+		"ui",
+		"assistant",
+		hub.EventTypeStatus,
+		"thinking",
+		map[string]string{},
+	))
+
 	res := llm.GenerateResponse(ctx, params)
+
 	if res.Error != nil {
-		output.StopSpinner(thinkingSpinner, "")
-		output.Error("LLM response generation failed", res.Error)
+		im.hub.Add(hub.NewEvent(
+			im.agent.Name(),
+			"ui",
+			"assistant",
+			hub.EventTypeError,
+			res.Error.Error(),
+			map[string]string{},
+		))
+		im.logError("Failed to send error status", res.Error)
 		return "", res.Error
 	}
 
 	var responseWithToolResults strings.Builder
 	responseWithToolResults.WriteString(res.Content)
 
+	// Send the complete response to the UI
+	im.hub.Add(hub.NewEvent(
+		im.agent.Name(),
+		"ui",
+		"assistant",
+		hub.EventTypeMessage,
+		res.Content,
+		map[string]string{},
+	))
+
 	// Handle tool calls if any
 	if len(res.ToolCalls) > 0 {
-		output.StopSpinner(thinkingSpinner, fmt.Sprintf("Agent is using %d tools", len(res.ToolCalls)))
+		im.hub.Add(hub.NewEvent(
+			im.agent.Name(),
+			"metrics",
+			"assistant",
+			hub.EventTypeToolCall,
+			fmt.Sprintf("%d tool calls", len(res.ToolCalls)),
+			map[string]string{},
+		))
+
 		for _, toolCall := range res.ToolCalls {
-			output.Action("agent", "tool_call", toolCall.Name)
+			im.hub.Add(hub.NewEvent(
+				im.agent.Name(),
+				"actions",
+				"assistant",
+				hub.EventTypeToolCall,
+				toolCall.Name,
+				map[string]string{},
+			))
 		}
 
 		// Execute tools and add results to the response
 		toolResults := im.toolManager.ExecuteToolCalls(ctx, res.ToolCalls)
 		responseWithToolResults.WriteString(toolResults)
 	} else {
-		output.StopSpinner(thinkingSpinner, "Agent completed thinking")
+		im.hub.Add(hub.NewEvent(
+			im.agent.Name(),
+			"ui",
+			"assistant",
+			hub.EventTypeStatus,
+			"complete",
+			map[string]string{},
+		))
 	}
 
 	return responseWithToolResults.String(), nil
@@ -127,13 +182,18 @@ func (im *IterationManager) handleNonStreamingIteration(
 // handleStreamingIteration processes a single streaming iteration.
 func (im *IterationManager) handleStreamingIteration(
 	ctx context.Context,
-	thinkingSpinner *spinner.Spinner,
 	params LLMParams,
 	llm LLMProvider,
 ) (string, error) {
-	output.StopSpinner(thinkingSpinner, "Agent is responding in real-time:")
-	output.Info("Streaming response begins:")
-	fmt.Println(strings.Repeat("-", 40))
+	// Instead of direct output, send status via hub
+	im.hub.Add(hub.NewEvent(
+		im.agent.Name(),
+		"ui",
+		"assistant",
+		hub.EventTypeStatus,
+		"streaming",
+		map[string]string{},
+	))
 
 	// Accumulate the chunks
 	var streamedResponse strings.Builder
@@ -144,7 +204,17 @@ func (im *IterationManager) handleStreamingIteration(
 	streamChan := llm.StreamResponse(ctx, params)
 	for chunk := range streamChan {
 		if chunk.Error != nil {
-			output.Error("Streaming failed", chunk.Error)
+			im.hub.Add(hub.NewEvent(
+				im.agent.Name(),
+				"ui",
+				"assistant",
+				hub.EventTypeError,
+				chunk.Error.Error(),
+				map[string]string{
+					"model": params.Model,
+				},
+			))
+			im.logError("Failed to send stream error", chunk.Error)
 			return "", chunk.Error
 		}
 
@@ -152,21 +222,34 @@ func (im *IterationManager) handleStreamingIteration(
 		if len(chunk.ToolCalls) > 0 {
 			toolCallsFound = true
 			toolCalls = chunk.ToolCalls
-			im.toolManager.LogToolCalls(toolCalls)
+			im.toolManager.LogToolCalls(toolCalls, ctx)
 		} else if chunk.Content != "" {
 			// Process and display content
 			content := im.responseProcessor.ProcessChunkContent(chunk.Content)
 			if content != "" {
-				formatted := im.responseProcessor.FormatStreamedContent(content)
-				fmt.Print(formatted)
+				// Send content chunk directly to UI via hub instead of console
+				im.hub.Add(hub.NewEvent(
+					im.agent.Name(),
+					"ui",
+					"assistant",
+					hub.EventTypeChunk,
+					content,
+					map[string]string{},
+				))
 				streamedResponse.WriteString(content)
 			}
 		}
 	}
 
-	fmt.Println()
-	fmt.Println(strings.Repeat("-", 40))
-	output.Info("Streaming response complete")
+	// Signal that streaming is complete
+	im.hub.Add(hub.NewEvent(
+		im.agent.Name(),
+		"ui",
+		"assistant",
+		hub.EventTypeStatus,
+		"complete",
+		map[string]string{},
+	))
 
 	// Execute tool calls if found
 	if toolCallsFound {
@@ -175,4 +258,9 @@ func (im *IterationManager) handleStreamingIteration(
 	}
 
 	return streamedResponse.String(), nil
+}
+
+// logError logs an error to the log file
+func (im *IterationManager) logError(context string, err error) {
+	im.logger.Log(fmt.Sprintf("[ERROR] %s: %v", context, err))
 }

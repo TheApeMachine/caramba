@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/theapemachine/caramba/pkg/agent/core"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/pkg/hub"
 )
 
 /*
@@ -41,6 +41,7 @@ It automatically routes requests to available providers, handles error cases,
 implements cooldown periods for failing providers, and offers fault tolerance.
 */
 type BalancedProvider struct {
+	hub *hub.Queue
 	/* providers holds the status of all underlying LLM providers */
 	providers []*ProviderStatus
 	/* mu is a mutex for thread-safe access to provider statuses */
@@ -66,6 +67,7 @@ Returns:
 */
 func NewBalancedProvider(providers []core.LLMProvider) *BalancedProvider {
 	bp := &BalancedProvider{
+		hub:            hub.NewQueue(),
 		providers:      make([]*ProviderStatus, 0, len(providers)),
 		maxRetries:     3,
 		errorThreshold: 5,
@@ -122,10 +124,16 @@ func (p *BalancedProvider) GenerateResponse(
 
 	for range p.maxRetries {
 		provider, err := p.getNextAvailableProvider()
-		if errnie.Error(err) != nil {
-			return core.LLMResponse{
-				Error: err,
-			}
+
+		if err != nil {
+			p.hub.Add(hub.NewEvent(
+				p.Name(),
+				"llm",
+				"error",
+				hub.EventTypeError,
+				err.Error(),
+				map[string]string{},
+			))
 		}
 
 		resp := provider.Provider.GenerateResponse(ctx, params)
@@ -136,7 +144,14 @@ func (p *BalancedProvider) GenerateResponse(
 		}
 
 		lastError = resp.Error
-		errnie.Error(resp.Error)
+		p.hub.Add(hub.NewEvent(
+			p.Name(),
+			"llm",
+			"error",
+			hub.EventTypeError,
+			resp.Error.Error(),
+			map[string]string{},
+		))
 	}
 
 	return core.LLMResponse{
@@ -174,8 +189,15 @@ func (p *BalancedProvider) StreamResponse(
 		for range p.maxRetries {
 			provider, err := p.getNextAvailableProvider()
 
-			if errnie.Error(err) != nil {
-				return
+			if err != nil {
+				p.hub.Add(hub.NewEvent(
+					p.Name(),
+					"llm",
+					"error",
+					hub.EventTypeError,
+					err.Error(),
+					map[string]string{},
+				))
 			}
 
 			stream := provider.Provider.StreamResponse(ctx, params)

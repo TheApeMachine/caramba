@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/pkg/hub"
 )
 
 /*
@@ -86,6 +86,7 @@ type GraphStore interface {
 
 // Neo4jStore implements the GraphStore interface using Neo4j.
 type Neo4jStore struct {
+	hub *hub.Queue
 	// driver is the Neo4j driver instance
 	driver neo4j.DriverWithContext
 	// database is the name of the database in Neo4j
@@ -130,6 +131,7 @@ func NewNeo4jStore(
 	}
 
 	return &Neo4jStore{
+		hub:      hub.NewQueue(),
 		driver:   driver,
 		database: database,
 	}, nil
@@ -152,25 +154,53 @@ func (n *Neo4jStore) Cypher(ctx context.Context, query string, params map[string
 	tx, err := session.BeginTransaction(ctx)
 
 	if err != nil {
-		return errnie.Error(err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"cypher",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	result, err := tx.Run(ctx, query, params)
 
 	if err != nil {
-		return errnie.Error(err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"cypher",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	_, err = result.Consume(ctx)
 
 	if err != nil {
-		return errnie.Error(err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"cypher",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	err = tx.Commit(ctx)
 
 	if err != nil {
-		return errnie.Error(err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"cypher",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	return err
@@ -223,22 +253,50 @@ func (n *Neo4jStore) CreateNode(
 	// Execute the query within a transaction
 	tx, err := session.BeginTransaction(ctx)
 	if err != nil {
-		return errnie.Error(err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"node",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	result, err := tx.Run(ctx, query, params)
 	if err != nil {
-		return errnie.Error(err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"node",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	_, err = result.Consume(ctx)
 	if err != nil {
-		return errnie.Error(err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"node",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return errnie.Error(err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"node",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	return nil
@@ -280,22 +338,50 @@ func (n *Neo4jStore) CreateRelationship(ctx context.Context, fromID, toID, relTy
 	// Execute the query within a transaction
 	tx, err := session.BeginTransaction(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"relationship",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	result, err := tx.Run(ctx, query, params)
 	if err != nil {
-		return fmt.Errorf("failed to run query: %w", err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"relationship",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	_, err = result.Consume(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to consume result: %w", err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"relationship",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"relationship",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	return err
@@ -347,7 +433,14 @@ func (n *Neo4jStore) Query(ctx context.Context, query string, params map[string]
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"query",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	// Convert and return the results
@@ -401,7 +494,14 @@ func (n *Neo4jStore) DeleteNode(ctx context.Context, id string) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to delete node: %w", err)
+		n.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"delete",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	return nil
@@ -428,7 +528,14 @@ func (um *UnifiedMemory) RetrieveMemoriesByGraph(ctx context.Context, cypherQuer
 	// Execute query
 	results, err := um.graphStore.Query(ctx, cypherQuery, params)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute graph query: %w", err)
+		um.hub.Add(hub.NewEvent(
+			"neo4j",
+			"error",
+			"retrieve",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	// Convert results to EnhancedMemoryEntry

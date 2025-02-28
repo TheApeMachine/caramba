@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/agent/core"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/pkg/output"
 )
 
 // AgentTool allows an agent to create and manage other agents
@@ -100,13 +100,6 @@ func (t *AgentTool) createAgent(ctx context.Context, args map[string]interface{}
 		return nil, errors.New("system_prompt must be a non-empty string")
 	}
 
-	// Check if model was specified, otherwise use default
-	// Note: We don't use the model directly as we're using the existing LLM provider
-	if _, ok := args["model"].(string); ok {
-		// We acknowledge the model parameter but currently use the provider's model
-		errnie.Info("Model parameter provided but using the existing LLM provider")
-	}
-
 	// Check if agent already exists
 	if _, exists := t.existingAgents[name]; exists {
 		return nil, fmt.Errorf("agent with name '%s' already exists", name)
@@ -122,7 +115,7 @@ func (t *AgentTool) createAgent(ctx context.Context, args map[string]interface{}
 	// Store the agent
 	t.existingAgents[name] = baseAgent
 
-	errnie.Info(fmt.Sprintf("Created new agent: %s", name))
+	output.Info(fmt.Sprintf("Created new agent: %s", name))
 
 	return map[string]interface{}{
 		"status":     "success",
@@ -161,14 +154,11 @@ func (t *AgentTool) executeAgent(ctx context.Context, args map[string]interface{
 	// Note: In a more complete implementation, we would need to modify
 	// the BaseAgent implementation to allow setting the system prompt.
 	if promptExists {
-		errnie.Info(fmt.Sprintf("Agent '%s' has a custom system prompt, but it can't be applied with the current implementation", name))
+		output.Warn(fmt.Sprintf("Agent '%s' has a custom system prompt, but it can't be applied with the current implementation", name))
 	}
 
 	// Execute the agent
-	result, err = agent.Execute(ctx, core.LLMMessage{
-		Role:    "user",
-		Content: input,
-	})
+	result, err = agent.Execute(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute agent: %w", err)
 	}

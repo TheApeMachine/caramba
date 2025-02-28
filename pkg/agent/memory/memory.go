@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/theapemachine/caramba/pkg/agent/core"
-	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -262,6 +261,5 @@ func (m *BaseMemory) ExtractMemories(ctx context.Context, agentName, text, sourc
 		Score: 1.0,
 	}
 
-	errnie.Info(fmt.Sprintf("Stored memory: %s", key))
 	return []core.MemoryEntry{entry}, nil
 }

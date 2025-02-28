@@ -1,12 +1,7 @@
 package core
 
 import (
-	"context"
-	"fmt"
 	"time"
-
-	"github.com/theapemachine/caramba/pkg/output"
-	"github.com/theapemachine/errnie"
 )
 
 // MemoryType represents the type of memory
@@ -112,49 +107,4 @@ func (m MemoryScoreList) Less(i, j int) bool {
 // Swap swaps elements (for sort interface)
 func (m MemoryScoreList) Swap(i, j int) {
 	m[i], m[j] = m[j], m[i]
-}
-
-// injectMemories uses the Memory (if any) to fetch relevant context for the given message.
-func (manager *IterationManager) injectMemories(ctx context.Context, message LLMMessage) LLMMessage {
-	enhancedMessage := message
-	if manager.agent.Memory() != nil {
-		if memoryEnhancer, ok := manager.agent.Memory().(MemoryEnhancer); ok {
-			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, manager.agent.Name(), message.Content)
-			if err == nil && enhancedContext != "" {
-				output.Verbose(fmt.Sprintf("Enhanced input with memories (%d → %d chars)",
-					len(message.Content), len(enhancedContext)))
-				enhancedMessage.Content = enhancedContext
-				errnie.Info(fmt.Sprintf("Enhanced input with %d characters of memories",
-					len(enhancedContext)-len(message.Content)))
-			} else if err != nil {
-				output.Debug(fmt.Sprintf("Memory enhancement failed: %v", err))
-			} else {
-				output.Debug("No relevant memories found")
-			}
-		} else {
-			output.Debug("Memory system does not support context enhancement")
-		}
-	} else {
-		output.Debug("No memory system available")
-	}
-	return enhancedMessage
-}
-
-// extractMemories uses the Memory (if any) to extract new memories from the conversation text.
-func (manager *IterationManager) extractMemories(ctx context.Context, contextWindow string) {
-	if manager.agent.Memory() != nil {
-		if memoryExtractor, ok := manager.agent.Memory().(MemoryExtractor); ok {
-			output.Verbose("Extracting memories from conversation")
-
-			memories, err := memoryExtractor.ExtractMemories(ctx, manager.agent.Name(), contextWindow, "conversation")
-			if err != nil {
-				output.Error("Memory extraction failed", err)
-				errnie.Error(err)
-			} else if memories != nil {
-				output.Result(fmt.Sprintf("Extracted %d memories", len(memories)))
-			}
-		} else {
-			output.Debug("Memory system does not support memory extraction")
-		}
-	}
 }

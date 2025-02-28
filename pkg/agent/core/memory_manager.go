@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/caramba/pkg/output"
-	"github.com/theapemachine/errnie"
 )
 
 // MemoryManager handles memory operations for agents.
 type MemoryManager struct {
+	hub     *hub.Queue
+	logger  *output.Logger
 	memory  Memory
 	agentID string
 }
@@ -18,6 +20,8 @@ type MemoryManager struct {
 // NewMemoryManager creates a new MemoryManager.
 func NewMemoryManager(agentID string, memory Memory) *MemoryManager {
 	return &MemoryManager{
+		hub:     hub.NewQueue(),
+		logger:  output.NewLogger(),
 		memory:  memory,
 		agentID: agentID,
 	}
@@ -26,7 +30,7 @@ func NewMemoryManager(agentID string, memory Memory) *MemoryManager {
 // SetMemory sets the memory system for the manager.
 func (mm *MemoryManager) SetMemory(memory Memory) {
 	mm.memory = memory
-	output.Verbose(fmt.Sprintf("Set memory system for agent %s", mm.agentID))
+	mm.logger.Log(fmt.Sprintf("Set memory system for agent %s", mm.agentID))
 }
 
 // InjectMemories enhances a message with relevant memories.
@@ -35,22 +39,33 @@ func (mm *MemoryManager) InjectMemories(ctx context.Context, message LLMMessage)
 	if mm.memory != nil {
 		if memoryEnhancer, ok := mm.memory.(MemoryEnhancer); ok {
 			enhancedContext, err := memoryEnhancer.PrepareContext(ctx, mm.agentID, message.Content)
-			if err == nil && enhancedContext != "" {
-				output.Verbose(fmt.Sprintf("Enhanced input with memories (%d → %d chars)",
-					len(message.Content), len(enhancedContext)))
+
+			if err != nil {
+				mm.hub.Add(hub.NewEvent(
+					mm.agentID,
+					"ui",
+					"memory",
+					hub.EventTypeError,
+					err.Error(),
+					map[string]string{},
+				))
+			}
+			if enhancedContext != "" {
+				mm.hub.Add(hub.NewEvent(
+					mm.agentID,
+					"ui",
+					"memory",
+					hub.EventTypeMetric,
+					fmt.Sprintf("%d", len(enhancedContext)-len(message.Content)),
+					map[string]string{},
+				))
 				enhancedMessage.Content = enhancedContext
-				errnie.Info(fmt.Sprintf("Enhanced input with %d characters of memories",
-					len(enhancedContext)-len(message.Content)))
-			} else if err != nil {
-				output.Debug(fmt.Sprintf("Memory enhancement failed: %v", err))
-			} else {
-				output.Debug("No relevant memories found")
 			}
 		} else {
-			output.Debug("Memory system does not support context enhancement")
+			mm.logger.Log("Memory system does not support context enhancement")
 		}
 	} else {
-		output.Debug("No memory system available")
+		mm.logger.Log("No memory system available")
 	}
 	return enhancedMessage
 }
@@ -59,17 +74,16 @@ func (mm *MemoryManager) InjectMemories(ctx context.Context, message LLMMessage)
 func (mm *MemoryManager) ExtractMemories(ctx context.Context, contextWindow string) {
 	if mm.memory != nil {
 		if memoryExtractor, ok := mm.memory.(MemoryExtractor); ok {
-			output.Verbose("Extracting memories from conversation")
+			mm.logger.Log("Extracting memories from conversation")
 
 			memories, err := memoryExtractor.ExtractMemories(ctx, mm.agentID, contextWindow, "conversation")
 			if err != nil {
-				output.Error("Memory extraction failed", err)
-				errnie.Error(err)
+				mm.logger.Log(fmt.Sprintf("Memory extraction failed: %v", err))
 			} else if memories != nil {
-				output.Result(fmt.Sprintf("Extracted %d memories", len(memories)))
+				mm.logger.Log(fmt.Sprintf("Extracted %d memories", len(memories)))
 			}
 		} else {
-			output.Debug("Memory system does not support memory extraction")
+			mm.logger.Log("Memory system does not support memory extraction")
 		}
 	}
 }

@@ -7,11 +7,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/caramba/pkg/output"
 )
 
 // ToolManager handles management and execution of agent tools.
 type ToolManager struct {
+	logger            *output.Logger
+	hub               *hub.Queue
 	tools             []Tool
 	toolsMu           sync.RWMutex
 	responseProcessor *ResponseProcessor
@@ -20,6 +23,8 @@ type ToolManager struct {
 // NewToolManager creates a new ToolManager.
 func NewToolManager() *ToolManager {
 	return &ToolManager{
+		logger:            output.NewLogger(),
+		hub:               hub.NewQueue(),
 		tools:             make([]Tool, 0),
 		responseProcessor: NewResponseProcessor(),
 	}
@@ -27,6 +32,8 @@ func NewToolManager() *ToolManager {
 
 // AddTool adds a new tool to the manager.
 func (tm *ToolManager) AddTool(tool Tool) error {
+	tm.logger.Log(fmt.Sprintf("Adding tool %s", tool.Name()))
+
 	tm.toolsMu.Lock()
 	defer tm.toolsMu.Unlock()
 
@@ -51,11 +58,27 @@ func (tm *ToolManager) GetTools() []Tool {
 	return toolsCopy
 }
 
-// LogToolCalls logs information about tool calls.
-func (tm *ToolManager) LogToolCalls(toolCalls []ToolCall) {
+// logError logs an error to the log file instead of trying to send it through the hub
+func (tm *ToolManager) logError(context string, err error) {
+	tm.logger.Log(fmt.Sprintf("[ERROR] %s: %v", context, err))
+}
+
+// LogToolCalls logs tool calls to the hub and console
+func (tm *ToolManager) LogToolCalls(toolCalls []ToolCall, ctx ...context.Context) {
+	q := hub.NewQueue()
+
 	for _, toolCall := range toolCalls {
 		argsSummary := tm.responseProcessor.SummarizeToolCallArgs(toolCall)
-		output.Action("agent", "tool_call", fmt.Sprintf("%s: %s", toolCall.Name, argsSummary))
+
+		// Send via hub if available
+		q.Add(hub.NewEvent(
+			"tool_manager",
+			"actions",
+			"assistant",
+			hub.EventTypeToolCall,
+			fmt.Sprintf("%s: %s", toolCall.Name, argsSummary),
+			map[string]string{},
+		))
 	}
 }
 
@@ -63,20 +86,40 @@ func (tm *ToolManager) LogToolCalls(toolCalls []ToolCall) {
 func (tm *ToolManager) ExecuteToolCalls(ctx context.Context, toolCalls []ToolCall) string {
 	var toolResults strings.Builder
 
-	output.Info(fmt.Sprintf("Processing %d tool calls", len(toolCalls)))
+	q := hub.NewQueue()
+	q.Add(hub.NewEvent(
+		"tool_manager",
+		"ui",
+		"assistant",
+		hub.EventTypeStatus,
+		fmt.Sprintf("Executing %d tool call(s)", len(toolCalls)),
+		map[string]string{},
+	))
 
 	for _, tc := range toolCalls {
-		fmt.Println()
-		fmt.Println(strings.Repeat("=", 40))
-		output.Title(fmt.Sprintf("TOOL CALL: %s", strings.ToUpper(tc.Name)))
-
-		prettyArgs, _ := json.MarshalIndent(tc.Args, "", "  ")
-		fmt.Println("Arguments:")
-		fmt.Println(string(prettyArgs))
+		// Send tool call event to hub if available
+		q.Add(hub.NewEvent(
+			"tool_manager",
+			"actions",
+			"assistant",
+			hub.EventTypeToolCall,
+			tc.Name,
+			map[string]string{},
+		))
 
 		result := tm.ExecuteSingleToolCall(ctx, tc)
 		if result != "" {
 			toolResults.WriteString(fmt.Sprintf("\n\nTool Result (%s):\n%v\n\n", tc.Name, result))
+
+			// Also send the result to the hub if available
+			q.Add(hub.NewEvent(
+				"tool_manager",
+				"ui",
+				"assistant",
+				hub.EventTypeMessage,
+				fmt.Sprintf("Tool Result (%s):\n%v", tc.Name, result),
+				map[string]string{},
+			))
 		}
 	}
 
@@ -87,11 +130,29 @@ func (tm *ToolManager) ExecuteToolCalls(ctx context.Context, toolCalls []ToolCal
 func (tm *ToolManager) ExecuteToolCallsToMap(ctx context.Context, toolCalls []ToolCall) (map[string]interface{}, error) {
 	toolResults := make(map[string]interface{})
 
-	output.Info(fmt.Sprintf("Processing %d tool calls", len(toolCalls)))
+	// Get hub from context if available
+	q := hub.NewQueue()
+
+	// Send info about processing tool calls
+	q.Add(hub.NewEvent(
+		"tool_manager",
+		"ui",
+		"assistant",
+		hub.EventTypeStatus,
+		fmt.Sprintf("Processing %d tool calls", len(toolCalls)),
+		map[string]string{},
+	))
 
 	for _, tc := range toolCalls {
-		output.Action("agent", "execute_tool", tc.Name)
-		toolSpinner := output.StartSpinner(fmt.Sprintf("Executing tool: %s", tc.Name))
+		// Notify about tool execution
+		q.Add(hub.NewEvent(
+			"tool_manager",
+			"actions",
+			"assistant",
+			hub.EventTypeToolCall,
+			tc.Name,
+			map[string]string{},
+		))
 
 		// Process arguments - handle potential nested JSON in "args" field
 		processedArgs := tc.Args
@@ -113,11 +174,27 @@ func (tm *ToolManager) ExecuteToolCallsToMap(ctx context.Context, toolCalls []To
 
 				result, err := tool.Execute(ctx, processedArgs)
 				if err != nil {
-					output.StopSpinner(toolSpinner, "")
-					output.Error(fmt.Sprintf("Tool %s execution failed", tc.Name), err)
-					return nil, err
+					q.Add(hub.NewEvent(
+						"tool_manager",
+						"ui",
+						"assistant",
+						hub.EventTypeError,
+						fmt.Sprintf("Tool %s execution failed: %v", tc.Name, err),
+						map[string]string{},
+					))
+					tm.logError("Failed to log tool execution error", err)
 				}
-				output.StopSpinner(toolSpinner, fmt.Sprintf("Tool %s executed successfully", tc.Name))
+
+				q.Add(hub.NewEvent(
+					"tool_manager",
+					"ui",
+					"assistant",
+					hub.EventTypeStatus,
+					fmt.Sprintf("Tool %s executed successfully", tc.Name),
+					map[string]string{},
+				))
+				tm.logError("Failed to log tool execution status", err)
+
 				toolResults[tc.Name] = result
 				goto nextTool // Break out of the loop
 			}
@@ -125,8 +202,14 @@ func (tm *ToolManager) ExecuteToolCallsToMap(ctx context.Context, toolCalls []To
 		tm.toolsMu.RUnlock()
 
 		if !toolFound {
-			output.StopSpinner(toolSpinner, "")
-			output.Error(fmt.Sprintf("Tool %s not found", tc.Name), nil)
+			q.Add(hub.NewEvent(
+				"tool_manager",
+				"ui",
+				"assistant",
+				hub.EventTypeError,
+				fmt.Sprintf("Tool %s not found", tc.Name),
+				map[string]string{},
+			))
 		}
 	nextTool:
 	}
@@ -136,12 +219,17 @@ func (tm *ToolManager) ExecuteToolCallsToMap(ctx context.Context, toolCalls []To
 
 // ExecuteSingleToolCall executes a single tool call and returns the result.
 func (tm *ToolManager) ExecuteSingleToolCall(ctx context.Context, tc ToolCall) string {
-	output.Action("agent", "execute_tool", tc.Name)
-	toolSpinner := output.StartSpinner(fmt.Sprintf("Executing tool: %s", tc.Name))
+	// Get hub from context if available
+	q := hub.NewQueue()
 
-	// Look for the tool
-	toolFound := false
-	var toolResultStr string
+	q.Add(hub.NewEvent(
+		"tool_manager",
+		"actions",
+		"assistant",
+		hub.EventTypeToolCall,
+		tc.Name,
+		map[string]string{},
+	))
 
 	// Process arguments - handle potential nested JSON in "args" field
 	processedArgs := tc.Args
@@ -154,6 +242,10 @@ func (tm *ToolManager) ExecuteSingleToolCall(ctx context.Context, tc ToolCall) s
 		}
 	}
 
+	// Look for the tool
+	toolFound := false
+	var toolResultStr string
+
 	tm.toolsMu.RLock()
 	for _, tool := range tm.tools {
 		if tool.Name() == tc.Name {
@@ -162,26 +254,49 @@ func (tm *ToolManager) ExecuteSingleToolCall(ctx context.Context, tc ToolCall) s
 
 			result, err := tool.Execute(ctx, processedArgs)
 			if err != nil {
-				output.StopSpinner(toolSpinner, "")
-				output.Error(fmt.Sprintf("Tool %s execution failed", tc.Name), err)
+				q.Add(hub.NewEvent(
+					"tool_manager",
+					"ui",
+					"assistant",
+					hub.EventTypeError,
+					fmt.Sprintf("Tool %s execution failed: %v", tc.Name, err),
+					map[string]string{},
+				))
+				tm.logError("Failed to log tool execution error", err)
+
 				return ""
 			}
-			output.StopSpinner(toolSpinner, fmt.Sprintf("Tool %s executed successfully", tc.Name))
 
-			// Pretty print the result
-			toolResultStr = tm.responseProcessor.FormatToolResult(tc.Name, result)
-			fmt.Println(toolResultStr)
-			fmt.Println(strings.Repeat("=", 40))
-			fmt.Println()
-			return toolResultStr
+			q.Add(hub.NewEvent(
+				"tool_manager",
+				"ui",
+				"assistant",
+				hub.EventTypeStatus,
+				fmt.Sprintf("Tool %s executed successfully", tc.Name),
+				map[string]string{},
+			))
+			tm.logError("Failed to log tool execution status", err)
+
+			return tm.responseProcessor.FormatToolResult(tc.Name, result)
 		}
 	}
+
 	tm.toolsMu.RUnlock()
 
 	if !toolFound {
-		output.StopSpinner(toolSpinner, "")
-		output.Error(fmt.Sprintf("Tool %s not found", tc.Name), nil)
+		errorMsg := fmt.Sprintf("Tool %s not found", tc.Name)
+
+		q.Add(hub.NewEvent(
+			"tool_manager",
+			"ui",
+			"assistant",
+			hub.EventTypeError,
+			errorMsg,
+			map[string]string{},
+		))
+
+		return ""
 	}
 
-	return ""
+	return toolResultStr
 }

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/theapemachine/caramba/pkg/agent/core"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/pkg/hub"
 )
 
 /*
@@ -246,6 +246,7 @@ It provides a comprehensive memory solution that combines traditional key-value 
 with vector-based semantic search and graph-based relationship tracking.
 */
 type UnifiedMemory struct {
+	hub *hub.Queue
 	/* baseStore is the underlying simple key-value memory store */
 	baseStore core.Memory
 	/* vectorStore provides vector-based semantic search capabilities */
@@ -283,6 +284,8 @@ func NewUnifiedMemory(baseStore core.Memory, options *UnifiedMemoryOptions) *Uni
 	var graphStore GraphStore
 	var err error
 
+	q := hub.NewQueue()
+
 	// If options is nil, use default options
 	if options == nil {
 		options = DefaultUnifiedMemoryOptions()
@@ -315,28 +318,64 @@ func NewUnifiedMemory(baseStore core.Memory, options *UnifiedMemoryOptions) *Uni
 		graphStore, err = NewNeo4jStore(ctx, "bolt://localhost:7687", "neo4j", "securepassword", "neo4j")
 
 		if err != nil {
-			errnie.Error(err)
+			q.Add(hub.NewEvent(
+				"neo4j",
+				"error",
+				"connection",
+				hub.EventTypeError,
+				err.Error(),
+				map[string]string{},
+			))
 		}
 	}
 
 	// Parse context template
 	tmpl, err := template.New("context").Parse(options.ContextTemplate)
 	if err != nil {
-		errnie.Error(err)
+		q.Add(hub.NewEvent(
+			"template",
+			"ui",
+			"error",
+			hub.EventTypeError,
+			err.Error(),
+			map[string]string{},
+		))
 	}
 
 	// Print status of memory features
 	if options.EnableVectorStore {
-		fmt.Println("Vector store (Qdrant) successfully connected.")
+		q.Add(hub.NewEvent(
+			"vector",
+			"ui",
+			"success",
+			hub.EventTypeStatus,
+			"Vector store (Qdrant) successfully connected.",
+			map[string]string{},
+		))
 	}
 	if options.EnableGraphStore {
-		fmt.Println("Graph store (Neo4j) successfully connected.")
+		q.Add(hub.NewEvent(
+			"graph",
+			"ui",
+			"success",
+			hub.EventTypeStatus,
+			"Graph store (Neo4j) successfully connected.",
+			map[string]string{},
+		))
 	}
 	if !options.EnableVectorStore && !options.EnableGraphStore {
-		fmt.Println("Warning: Running with basic memory only (no vector or graph features).")
+		q.Add(hub.NewEvent(
+			"memory",
+			"ui",
+			"warning",
+			hub.EventTypeWarning,
+			"Running with basic memory only (no vector or graph features).",
+			map[string]string{},
+		))
 	}
 
 	memory := &UnifiedMemory{
+		hub:               q,
 		baseStore:         baseStore,
 		vectorStore:       vectorStore,
 		graphStore:        graphStore,
@@ -409,12 +448,26 @@ func (um *UnifiedMemory) Search(ctx context.Context, query string, limit int) ([
 		// Get embedding for query
 		embedding, err := um.embeddingProvider.GetEmbedding(ctx, query)
 		if err != nil {
-			errnie.Info(fmt.Sprintf("Failed to get embedding for query: %v", err))
+			um.hub.Add(hub.NewEvent(
+				"vector",
+				"ui",
+				"error",
+				hub.EventTypeError,
+				err.Error(),
+				map[string]string{},
+			))
 		} else {
 			// Search the vector store
 			vectorResults, err := um.vectorStore.Search(ctx, embedding, limit, nil)
 			if err != nil {
-				errnie.Info(fmt.Sprintf("Failed to search vector store: %v", err))
+				um.hub.Add(hub.NewEvent(
+					"vector",
+					"ui",
+					"error",
+					hub.EventTypeError,
+					err.Error(),
+					map[string]string{},
+				))
 			} else {
 				// Convert vector results to core.MemoryEntry
 				for _, result := range vectorResults {
@@ -498,14 +551,28 @@ func (um *UnifiedMemory) ForgetMemory(ctx context.Context, memoryID string) erro
 	// Remove from vector store if enabled
 	if um.options.EnableVectorStore && um.vectorStore != nil {
 		if err := um.vectorStore.Delete(ctx, memoryID); err != nil {
-			return fmt.Errorf("failed to remove from vector store: %w", err)
+			um.hub.Add(hub.NewEvent(
+				"vector",
+				"ui",
+				"error",
+				hub.EventTypeError,
+				err.Error(),
+				map[string]string{},
+			))
 		}
 	}
 
 	// Remove from graph store if enabled
 	if um.options.EnableGraphStore && um.graphStore != nil {
 		if err := um.graphStore.DeleteNode(ctx, memoryID); err != nil {
-			return fmt.Errorf("failed to remove from graph store: %w", err)
+			um.hub.Add(hub.NewEvent(
+				"neo4j",
+				"ui",
+				"error",
+				hub.EventTypeError,
+				err.Error(),
+				map[string]string{},
+			))
 		}
 	}
 

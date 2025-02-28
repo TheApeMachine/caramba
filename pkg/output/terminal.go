@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"slices"
+
 	"github.com/briandowns/spinner"
 	"github.com/fatih/color"
 )
@@ -154,7 +156,7 @@ func Action(tool, action string, detail string) {
 	case "memory":
 		emoji = "📝"
 	case "agent":
-		emoji = "🧠"
+		emoji = "🤖"
 	case "calculator":
 		emoji = "🧮"
 	default:
@@ -176,7 +178,7 @@ func Result(message string) {
 		return
 	}
 
-	text := term.formatWithEmoji("✅", message)
+	text := term.formatWithEmoji("👍", message)
 
 	if term.Colorized {
 		color.New(color.FgGreen).Println(text)
@@ -191,7 +193,7 @@ func Error(message string, err error) {
 		return
 	}
 
-	text := term.formatWithEmoji("❌", fmt.Sprintf("%s: %v", message, err))
+	text := term.formatWithEmoji("🔥", fmt.Sprintf("%s: %v", message, err))
 
 	if term.Colorized {
 		color.New(color.FgRed, color.Bold).Println(text)
@@ -206,7 +208,7 @@ func Info(message string) {
 		return
 	}
 
-	text := term.formatWithEmoji("ℹ️", message)
+	text := term.formatWithEmoji("💫", message)
 
 	if term.Colorized {
 		color.New(color.FgCyan).Println(text)
@@ -254,7 +256,7 @@ func StartSpinner(message string) *spinner.Spinner {
 	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
 
 	if term.Emojis {
-		s.Prefix = "🔄 "
+		s.Prefix = "💭"
 	}
 
 	s.Suffix = " " + message
@@ -282,7 +284,7 @@ func StopSpinner(s *spinner.Spinner, message string) {
 	// Remove from active spinners
 	for i, spin := range term.spinners {
 		if spin == s {
-			term.spinners = append(term.spinners[:i], term.spinners[i+1:]...)
+			term.spinners = slices.Delete(term.spinners, i, i+1)
 			break
 		}
 	}
@@ -351,7 +353,7 @@ func Verbose(message string) {
 		return
 	}
 
-	text := term.formatWithEmoji("🔊", message)
+	text := term.formatWithEmoji("👉", message)
 
 	if term.Colorized {
 		color.New(color.FgHiBlack).Println(text)

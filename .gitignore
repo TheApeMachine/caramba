@@ -1,9 +1,9 @@
 tools/container/id_marvin
 tools/container/id_marvin.pub
-log*
 logs/
 utils/english.json
 .env
 .env.local
 id_marvin
 id_marvin.pub
+*.log

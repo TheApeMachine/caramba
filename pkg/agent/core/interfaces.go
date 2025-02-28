@@ -16,7 +16,7 @@ memory, planning, and communication with other agents.
 */
 type Agent interface {
 	// Execute runs the agent with the provided input and returns a response
-	Execute(context.Context, LLMMessage) (string, error)
+	Execute(context.Context) (string, error)
 
 	// Name returns the name of the agent
 	Name() string
@@ -29,6 +29,12 @@ type Agent interface {
 
 	// LLM returns the LLM provider for the agent
 	LLM() LLMProvider
+
+	// Status returns the status of the agent
+	Status() AgentStatus
+
+	// SetStatus sets the status of the agent
+	SetStatus(status AgentStatus)
 
 	// AddTool adds a new tool to the agent
 	AddTool(tool Tool) error
@@ -102,10 +108,11 @@ type LLMParams struct {
 	Tools                     []Tool
 	ResponseFormatName        string
 	ResponseFormatDescription string
-	Schema                    interface{}
+	Schema                    any
 }
 
 type LLMResponse struct {
+	Model     string
 	Content   string
 	ToolCalls []ToolCall
 	Refusal   string
@@ -114,7 +121,7 @@ type LLMResponse struct {
 
 type ToolCall struct {
 	Name string
-	Args map[string]interface{}
+	Args map[string]any
 }
 
 /*
@@ -124,10 +131,10 @@ that the agent needs to persist across interactions.
 */
 type Memory interface {
 	// Store stores a key-value pair in memory
-	Store(ctx context.Context, key string, value interface{}) error
+	Store(ctx context.Context, key string, value any) error
 
 	// Retrieve retrieves a value from memory by key
-	Retrieve(ctx context.Context, key string) (interface{}, error)
+	Retrieve(ctx context.Context, key string) (any, error)
 
 	// Search searches the memory using a query
 	Search(ctx context.Context, query string, limit int) ([]MemoryEntry, error)
@@ -162,7 +169,7 @@ type MemoryEntry struct {
 	/* Key is the identifier for the memory entry */
 	Key string
 	/* Value is the stored data */
-	Value interface{}
+	Value any
 	/* Score indicates the relevance of this entry to a search query */
 	Score float64
 }
@@ -180,10 +187,10 @@ type Tool interface {
 	Description() string
 
 	// Execute executes the tool with the given arguments
-	Execute(ctx context.Context, args map[string]interface{}) (interface{}, error)
+	Execute(ctx context.Context, args map[string]any) (any, error)
 
 	// Schema returns the JSON schema for the tool's arguments
-	Schema() map[string]interface{}
+	Schema() map[string]any
 }
 
 /*
@@ -221,7 +228,7 @@ type PlanStep struct {
 	/* ToolName identifies which tool should be used for this step */
 	ToolName string
 	/* Arguments contains the parameters to pass to the tool */
-	Arguments map[string]interface{}
+	Arguments map[string]any
 }
 
 /*
@@ -231,13 +238,13 @@ conditional logic and error handling.
 */
 type Workflow interface {
 	// AddStep adds a step to the workflow
-	AddStep(name string, tool Tool, args map[string]interface{}) Workflow
+	AddStep(name string, tool Tool, args map[string]any) Workflow
 
 	// AddConditionalStep adds a conditional step to the workflow
-	AddConditionalStep(name string, condition string, tool Tool, args map[string]interface{}) Workflow
+	AddConditionalStep(name string, condition string, tool Tool, args map[string]any) Workflow
 
 	// Execute executes the workflow with the given input
-	Execute(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error)
+	Execute(ctx context.Context, input map[string]any) (map[string]any, error)
 
 	// SetErrorHandler sets a handler for errors
 	SetErrorHandler(handler func(error) error) Workflow

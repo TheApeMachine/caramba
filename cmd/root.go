@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/amsh/utils"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/pkg/output"
 )
 
 /*
@@ -46,6 +46,9 @@ Execute is the main entry point for the Caramba CLI. It initializes the root com
 and executes it.
 */
 func Execute() error {
+	logger := output.NewLogger()
+	defer logger.Close()
+
 	return rootCmd.Execute()
 }
 
@@ -70,7 +73,6 @@ func initConfig() {
 	var err error
 
 	if err = writeConfig(); err != nil {
-		errnie.Error(err)
 		log.Fatal(err)
 	}
 
@@ -79,8 +81,7 @@ func initConfig() {
 	viper.AddConfigPath("$HOME/." + projectName)
 
 	if err = viper.ReadInConfig(); err != nil {
-		errnie.Error(err)
-		log.Println("failed to read config file", err)
+		log.Fatal(err)
 		return
 	}
 }
@@ -116,7 +117,6 @@ func writeConfig() (err error) {
 	}
 
 	if err = os.WriteFile(fullPath, buf.Bytes(), 0644); err != nil {
-		errnie.Error(err)
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
@@ -140,7 +140,4 @@ Key Features:
 
 Examples:
   caramba example research - Run the research pipeline example
-  caramba example dev      - Run the development pipeline example
-  caramba example chat     - Run the simple chat example
-  caramba test             - Run the test setup
 `

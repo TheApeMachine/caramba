@@ -3,12 +3,9 @@ package core
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
-
-	"github.com/theapemachine/errnie"
 )
 
 // MessageType constants
@@ -176,7 +173,6 @@ func (r *MessageRegistry) RegisterMessenger(agentID string, messenger Messenger)
 	defer r.mutex.Unlock()
 
 	r.messengers[agentID] = messenger
-	errnie.Info(fmt.Sprintf("Registered messenger for agent %s", agentID))
 }
 
 // UnregisterMessenger removes a messenger from the registry
@@ -190,8 +186,6 @@ func (r *MessageRegistry) UnregisterMessenger(agentID string) {
 	for _, topic := range r.topics {
 		topic.RemoveSubscriber(agentID)
 	}
-
-	errnie.Info(fmt.Sprintf("Unregistered messenger for agent %s", agentID))
 }
 
 // AddTopic adds a new topic to the registry
@@ -204,7 +198,6 @@ func (r *MessageRegistry) AddTopic(topic *Topic) error {
 	}
 
 	r.topics[topic.Name] = topic
-	errnie.Info(fmt.Sprintf("Added topic %s created by %s", topic.Name, topic.Creator))
 	return nil
 }
 
@@ -240,7 +233,6 @@ func (r *MessageRegistry) AddMessage(msg Message) {
 	defer r.mutex.Unlock()
 
 	r.messages = append(r.messages, msg)
-	errnie.Debug(fmt.Sprintf("Added message from %s: %s", msg.Sender, msg.Content))
 
 	// Notify recipient if it's a direct message
 	if msg.IsDirect() {
@@ -388,7 +380,6 @@ func (m *InMemoryMessenger) Subscribe(ctx context.Context, topicName string) err
 		return errors.New("already subscribed to this topic")
 	}
 
-	errnie.Info(fmt.Sprintf("Agent %s subscribed to topic %s", m.agentID, topicName))
 	return nil
 }
 
@@ -403,7 +394,6 @@ func (m *InMemoryMessenger) Unsubscribe(ctx context.Context, topicName string) e
 		return errors.New("not subscribed to this topic")
 	}
 
-	errnie.Info(fmt.Sprintf("Agent %s unsubscribed from topic %s", m.agentID, topicName))
 	return nil
 }
 
