@@ -38,7 +38,7 @@ func (im *IterationManager) SetWorkflow(workflow *Workflow) {
 // Run handles the iteration loop, either in streaming or non-streaming mode.
 // Returns the final response message that can be passed to the next agent.
 func (im *IterationManager) Run(ctx context.Context, msg LLMMessage) (LLMMessage, error) {
-	im.logger.Log(fmt.Sprintf("Running iteration manager for agent %s", im.agent.Name()))
+	im.logger.Log(fmt.Sprintf("Running iteration manager for agent %s with message:\n%v", im.agent.Name(), msg))
 
 	iteration := 0
 
@@ -53,6 +53,11 @@ func (im *IterationManager) Run(ctx context.Context, msg LLMMessage) (LLMMessage
 		var iterationResponse []LLMMessage
 		var err error
 
+		im.logger.Log(fmt.Sprintf("======%s======\n", "[Messages]"))
+		for _, message := range im.agent.Params().Messages {
+			im.logger.Log(fmt.Sprintf("Message: %s", message))
+		}
+		im.logger.Log(fmt.Sprintf("======%s======\n", "[/Messages]"))
 		if im.agent.Streaming() {
 			iterationResponse, err = im.handleStreamingIteration(ctx)
 		} else {

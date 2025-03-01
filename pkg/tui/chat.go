@@ -94,7 +94,7 @@ func (c *ChatComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.hub.Add(hub.NewEvent(
 				"user",
 				"researcher",
-				"prompt",
+				"user",
 				hub.EventTypeMessage,
 				c.textarea.Value(),
 				map[string]string{},

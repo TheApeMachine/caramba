@@ -26,6 +26,28 @@ type Researcher struct {
 NewResearcher demonstrates how to build up an agent with tools, memory, planner, and optimizer.
 */
 func NewResearcher() *Researcher {
+	planner := core.NewAgentBuilder(
+		"planner",
+	).WithLLM(
+		llm.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "gpt-4o-mini"),
+	).WithSystemPrompt(
+		viper.GetViper().GetString("templates.planner"),
+	).WithProcess(
+		&process.Plan{},
+	).WithStreaming(
+		true,
+	).Build()
+
+	optimizer := core.NewAgentBuilder(
+		"optimizer",
+	).WithLLM(
+		llm.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "gpt-4o-mini"),
+	).WithSystemPrompt(
+		viper.GetViper().GetString("templates.optimizer"),
+	).WithStreaming(
+		true,
+	).Build()
+
 	return &Researcher{
 		logger: output.NewLogger(),
 		Agent: core.NewAgentBuilder(
@@ -35,27 +57,9 @@ func NewResearcher() *Researcher {
 		).WithSystemPrompt(
 			viper.GetViper().GetString("templates.researcher"),
 		).WithPlanner(
-			core.NewAgentBuilder(
-				"planner",
-			).WithLLM(
-				llm.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "gpt-4o-mini"),
-			).WithSystemPrompt(
-				viper.GetViper().GetString("templates.planner"),
-			).WithProcess(
-				&process.Plan{},
-			).WithStreaming(
-				true,
-			).Build(),
+			planner,
 		).WithOptimizer(
-			core.NewAgentBuilder(
-				"optimizer",
-			).WithLLM(
-				llm.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "gpt-4o-mini"),
-			).WithSystemPrompt(
-				viper.GetViper().GetString("templates.optimizer"),
-			).WithStreaming(
-				true,
-			).Build(),
+			optimizer,
 		).WithTool(
 			tools.NewBrowserTool("http://localhost:3000", "6R0W53R135510"),
 		).WithMemory(
