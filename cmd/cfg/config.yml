@@ -80,41 +80,13 @@ templates:
     Each query should be a short phrase or question that captures an important aspect of the information needed.
 
   planner: |
-    You are an AI planning system that creates detailed step-by-step plans to achieve goals.
+    You are an advanced AI planning agent that can create detailed step-by-step plans to achieve goals.
 
-    For any task, carefully analyze what needs to be done and create a logical sequence of steps.
-    Each step should specify:
-    1. A clear description of what needs to be accomplished
-    2. Which tool to use (if applicable)
-    3. The necessary arguments for that tool
+    For any task you receive, carefully analyze what needs to be done and create a logical, structured plan.
 
-    Your plans should be comprehensive, addressing all aspects of the task.
-    Consider potential challenges and include steps to handle them.
+    This about the overall goal, and the steps needed to achieve it, including the order in which to perform them.
 
-    Output your plan as a JSON array of steps, where each step has:
-    - "description": Clear explanation of what this step accomplishes
-    - "tool": Name of the tool to use (leave empty if no tool needed)
-    - "arguments": Object containing the arguments for the tool
-
-    Example plan structure:
-    [
-      {
-        "description": "Search the web for recent information about climate policies",
-        "tool": "browser",
-        "arguments": {
-          "action": "search",
-          "query": "latest climate policy developments 2023"
-        }
-      },
-      {
-        "description": "Extract key points from the search results",
-        "tool": "browser",
-        "arguments": {
-          "action": "extract",
-          "selector": "main article p"
-        }
-      }
-    ]
+    Finally, consider the acceptance criteria for each step.
 
   optimizer: |
     You are an AI optimizer that improves the performance of an AI agent.

@@ -7,6 +7,8 @@ package core
 
 import (
 	"context"
+
+	"github.com/theapemachine/caramba/pkg/process"
 )
 
 /*
@@ -30,6 +32,12 @@ type Agent interface {
 	// LLM returns the LLM provider for the agent
 	LLM() LLMProvider
 
+	// Streaming returns whether the agent is streaming
+	Streaming() bool
+
+	// Params returns the parameters for the agent
+	Params() *LLMParams
+
 	// Status returns the status of the agent
 	Status() AgentStatus
 
@@ -37,7 +45,13 @@ type Agent interface {
 	SetStatus(status AgentStatus)
 
 	// AddTool adds a new tool to the agent
-	AddTool(tool Tool) error
+	AddTool(tool Tool)
+
+	// AddUserMessage adds a user message to the agent
+	AddUserMessage(message string)
+
+	// AddAssistantMessage adds an assistant message to the agent
+	AddAssistantMessage(message string)
 
 	// SetMemory sets the memory system for the agent
 	SetMemory(memory Memory)
@@ -54,8 +68,14 @@ type Agent interface {
 	// SetSystemPrompt sets the system prompt for the agent
 	SetSystemPrompt(prompt string)
 
+	// SetProcess sets the process for the agent
+	SetProcess(process process.StructuredOutput)
+
 	// SetIterationLimit sets the iteration limit for the agent
 	SetIterationLimit(limit int)
+
+	// GetTool returns a tool by name.
+	GetTool(name string) Tool
 
 	// GetMessenger returns the agent's messenger
 	GetMessenger() Messenger
@@ -111,7 +131,16 @@ type LLMParams struct {
 	Schema                    any
 }
 
+type ResponseType string
+
+const (
+	ResponseTypeContent  ResponseType = "content"
+	ResponseTypeToolCall ResponseType = "tool_call"
+	ResponseTypeError    ResponseType = "error"
+)
+
 type LLMResponse struct {
+	Type      ResponseType
 	Model     string
 	Content   string
 	ToolCalls []ToolCall

@@ -52,7 +52,6 @@ func (q *Queue) AddOrDrop(event *Event) {
 
 	select {
 	case channel.i <- event:
-		q.logger.Log(fmt.Sprintf("Sent event: %s (%s)", event.String(), event.Topic))
 	default:
 		q.logger.Log(fmt.Sprintf("Dropping event: %s (%s - channel full)", event.String(), event.Topic))
 	}
@@ -77,7 +76,6 @@ func (q *Queue) Subscribe(topic string) <-chan *Event {
 			for msg := range channel.i {
 				select {
 				case channel.o <- msg:
-					q.logger.Log(fmt.Sprintf("Sent event: %s", msg.String()))
 				default:
 					time.Sleep(100 * time.Millisecond)
 				}

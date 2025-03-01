@@ -117,6 +117,8 @@ func (p *AnthropicProvider) GenerateResponse(
 	response, err := p.Client.Messages.New(ctx, messageParams)
 	if err != nil {
 		return core.LLMResponse{
+			Type:  core.ResponseTypeError,
+			Model: p.Model,
 			Error: err,
 		}
 	}
@@ -140,18 +142,28 @@ func (p *AnthropicProvider) GenerateResponse(
 	// If we have tool calls, return them as JSON
 	if len(toolCalls) > 0 {
 		toolCallsJSON, err := json.Marshal(toolCalls)
+
 		if err != nil {
 			return core.LLMResponse{
+				Type:  core.ResponseTypeError,
+				Model: p.Model,
 				Error: err,
 			}
 		}
+
 		return core.LLMResponse{
-			Content: string(toolCallsJSON),
+			Type:      core.ResponseTypeToolCall,
+			Model:     p.Model,
+			ToolCalls: toolCalls,
+			Content:   string(toolCallsJSON),
 		}
 	}
 
 	return core.LLMResponse{
-		Content: result,
+		Type:      core.ResponseTypeContent,
+		Model:     p.Model,
+		Content:   result,
+		ToolCalls: []core.ToolCall{},
 	}
 }
 

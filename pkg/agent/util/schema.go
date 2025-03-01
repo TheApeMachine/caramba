@@ -10,7 +10,7 @@ import (
 
 // GenerateSchema is a helper function that creates a JSON schema from a type
 // This version is compatible with OpenAI's structured outputs feature
-func GenerateSchema[T any]() interface{} {
+func GenerateSchema[T any]() any {
 	// Structured Outputs uses a subset of JSON schema
 	// These flags are necessary to comply with the subset
 	reflector := jsonschema.Reflector{

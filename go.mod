@@ -18,6 +18,7 @@ require (
 	github.com/openai/openai-go v0.1.0-alpha.59
 	github.com/qdrant/go-client v1.13.0
 	github.com/slack-go/slack v0.16.0
+	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/theapemachine/amsh v0.0.0-20241219021147-90290810fcb8
@@ -41,7 +42,9 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e // indirect
+	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -51,6 +54,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/smarty/assertions v1.15.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect

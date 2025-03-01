@@ -57,6 +57,8 @@ func (p *OpenAIProvider) GenerateResponse(
 	completion, err := p.Client.Chat.Completions.New(ctx, openaiParams)
 	if err != nil {
 		return core.LLMResponse{
+			Type:  core.ResponseTypeError,
+			Model: p.Model,
 			Error: err,
 		}
 	}
@@ -112,7 +114,10 @@ func (p *OpenAIProvider) StreamResponse(
 			// Check for completed content
 			if content, ok := acc.JustFinishedContent(); ok && content != "" {
 				out <- core.LLMResponse{
-					Content: content,
+					Type:      core.ResponseTypeContent,
+					Content:   content,
+					Model:     p.Model,
+					ToolCalls: []core.ToolCall{},
 				}
 			}
 
@@ -128,6 +133,8 @@ func (p *OpenAIProvider) StreamResponse(
 				}
 
 				out <- core.LLMResponse{
+					Type:  core.ResponseTypeToolCall,
+					Model: p.Model,
 					ToolCalls: []core.ToolCall{
 						{
 							Name: tool.Name,
@@ -141,7 +148,10 @@ func (p *OpenAIProvider) StreamResponse(
 			for _, choice := range chunk.Choices {
 				if choice.Delta.Content != "" {
 					out <- core.LLMResponse{
-						Content: choice.Delta.Content,
+						Type:      core.ResponseTypeContent,
+						Content:   choice.Delta.Content,
+						Model:     p.Model,
+						ToolCalls: []core.ToolCall{},
 					}
 				}
 			}
@@ -149,6 +159,8 @@ func (p *OpenAIProvider) StreamResponse(
 
 		if err := stream.Err(); err != nil {
 			out <- core.LLMResponse{
+				Type:  core.ResponseTypeError,
+				Model: p.Model,
 				Error: err,
 			}
 		}
