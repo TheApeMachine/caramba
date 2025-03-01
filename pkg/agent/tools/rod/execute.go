@@ -17,32 +17,23 @@ func (t *Tool) executeScript(ctx context.Context, args map[string]interface{}) (
 		return nil, fmt.Errorf("script must be a string")
 	}
 
-	output.Verbose(fmt.Sprintf("Executing script (%d characters)", len(script)))
-
-	// Get the URL if provided
 	targetURL := getStringOr(args, "url", "about:blank")
-
-	// Get timeout from args or use default
 	timeout := getTimeoutDuration(args, t.timeout)
 
-	// Create new page
 	page := t.browser.MustPage()
 	defer page.Close()
 
-	// Set timeout context
 	pageCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Navigate to the URL if it's not about:blank
 	if targetURL != "about:blank" {
 		if err := page.Context(pageCtx).Navigate(targetURL); err != nil {
 			return nil, fmt.Errorf("failed to navigate to %s: %w", targetURL, err)
 		}
 
-		// Wait for network to be idle
-		if err := page.WaitNavigation(proto.PageLifecycleEventNameNetworkAlmostIdle); err != nil {
-			output.Verbose(fmt.Sprintf("Warning: timeout waiting for network idle: %v", err))
-		}
+		page.WaitNavigation(
+			proto.PageLifecycleEventNameNetworkAlmostIdle,
+		)()
 	}
 
 	// Wait for selector if specified

@@ -158,3 +158,11 @@ func NewClear(
 		origin, topic, role, EventTypeClear, message, map[string]string{},
 	)
 }
+
+func SendTo(
+	origin string, topic string, role string, message string,
+) *Event {
+	return NewEvent(
+		origin, topic, role, EventTypeMessage, message, map[string]string{},
+	)
+}

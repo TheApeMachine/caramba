@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
-	"github.com/theapemachine/caramba/pkg/output"
+	"github.com/theapemachine/caramba/pkg/hub"
 )
 
 // Tool represents the Browser Tool for web interactions using Go Rod
 type Tool struct {
+	hub     *hub.Queue
 	browser *rod.Browser
 	timeout time.Duration // Default timeout
 }
@@ -24,6 +25,7 @@ func New() *Tool {
 	timeout := 30 * time.Second
 
 	return &Tool{
+		hub:     hub.NewQueue(),
 		browser: browser,
 		timeout: timeout,
 	}
@@ -89,12 +91,6 @@ func (t *Tool) Execute(ctx context.Context, args map[string]interface{}) (interf
 		return nil, fmt.Errorf("action parameter is required")
 	}
 
-	output.Verbose(fmt.Sprintf("Executing Rod browser tool action: %s", action))
-
-	// Create a spinner for long-running operations
-	spinner := output.StartSpinner(fmt.Sprintf("Browser %s in progress...", action))
-	defer output.StopSpinner(spinner, fmt.Sprintf("Browser %s completed", action))
-
 	var result interface{}
 	var err error
 
@@ -116,7 +112,6 @@ func (t *Tool) Execute(ctx context.Context, args map[string]interface{}) (interf
 	}
 
 	if err != nil {
-		output.Error(fmt.Sprintf("Rod browser %s failed: %v", action, err), err)
 		return nil, err
 	}
 

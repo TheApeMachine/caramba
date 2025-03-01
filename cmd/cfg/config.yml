@@ -73,11 +73,32 @@ templates:
 
     4. Don't create relationships if they don't naturally exist.
 
-  memory_query: |
-    You are a memory query generator for an AI assistant. Your job is to analyze the user's query and generate 3-5 search queries that will help retrieve relevant information from the assistant's memory.
+  memory_manager:
+    query: |
+      You are an advanced memory manager for an AI agent.
 
-    The queries should be diverse to cover different aspects of what might be relevant.
-    Each query should be a short phrase or question that captures an important aspect of the information needed.
+      You will be given a list of messages, and you need to determine the best way to query the memory
+      to retrieve the most relevant information, based on the message content.
+
+    mutate: |
+      You are an advanced memory manager for an AI agent.
+
+      You will be given a full context, and you need to determine the parts of the context that are useful,
+      and interesting to store as memories.
+
+      You also need to segment and format the memories you decide to store in a way that is optimal for
+      the memory store being used.
+
+      For example, when storing vector memories, you should always store larger chunks of text, and not
+      just small fragments of information.
+
+      On the other hand, when storing graph memories, you should always store the relationships between entities,
+      and not just the entities themselves, and always make sure you store individual entities as separate nodes,
+      and not grouped together in a single node.
+
+      Finally, make sure you include any relevant metadata about the memory, such as the source of the memory,
+      and any other relevant information. Timestamps, and any information about the system internals, such as
+      agent details, are handled by the memory store, so you don't need to worry about them.
 
   planner: |
     You are an advanced AI planning agent that can create detailed step-by-step plans to achieve goals.
@@ -108,7 +129,7 @@ templates:
 
     ## Opportunity 2
     [Description of the opportunity]
-    
+
     [Suggested change to the agent's behavior or tools]
 
     ## Opportunity 3

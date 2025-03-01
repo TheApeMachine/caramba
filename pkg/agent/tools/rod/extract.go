@@ -12,37 +12,32 @@ import (
 // extractContent extracts content from a webpage using a CSS selector
 func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	url, ok := args["url"].(string)
+
 	if !ok || url == "" {
 		return nil, fmt.Errorf("url must be a non-empty string")
 	}
 
 	selector, ok := args["selector"].(string)
+
 	if !ok || selector == "" {
 		return nil, fmt.Errorf("selector must be a non-empty string")
 	}
 
-	output.Verbose(fmt.Sprintf("Extracting content from %s using selector: %s", url, selector))
-
-	// Get timeout from args or use default
 	timeout := getTimeoutDuration(args, t.timeout)
 
-	// Create new page
 	page := t.browser.MustPage()
 	defer page.Close()
 
-	// Set timeout context
 	pageCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Navigate to the URL
 	if err := page.Context(pageCtx).Navigate(url); err != nil {
 		return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
 	}
 
-	// Wait for network to be idle
-	if err := page.WaitNavigation(proto.PageLifecycleEventNameNetworkAlmostIdle); err != nil {
-		output.Verbose(fmt.Sprintf("Warning: timeout waiting for network idle: %v", err))
-	}
+	page.WaitNavigation(
+		proto.PageLifecycleEventNameNetworkAlmostIdle,
+	)()
 
 	// Wait for selector if specified
 	waitFor := getStringOr(args, "wait_for", "")
@@ -55,19 +50,18 @@ func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) 
 		}
 	}
 
-	// Check what data to retrieve
 	returnHTML := getBoolOr(args, "html", true)
 	returnText := getBoolOr(args, "text", true)
 	attribute := getStringOr(args, "attribute", "")
 
-	// Find all elements matching the selector
 	elements, err := page.Elements(selector)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to find elements with selector '%s': %w", selector, err)
 	}
 
-	// Extract data from each element
 	var results []map[string]interface{}
+
 	for i, element := range elements {
 		result := map[string]interface{}{
 			"index":  i,
