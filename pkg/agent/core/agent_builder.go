@@ -1,5 +1,7 @@
 package core
 
+import "github.com/theapemachine/caramba/pkg/process"
+
 // AgentBuilder provides a fluent interface for building agents
 type AgentBuilder struct {
 	agent *BaseAgent
@@ -50,7 +52,13 @@ func (b *AgentBuilder) WithOptimizer(optimizer Agent) *AgentBuilder {
 
 // WithTool adds a tool to the agent
 func (b *AgentBuilder) WithTool(tool Tool) *AgentBuilder {
-	_ = b.agent.AddTool(tool)
+	b.agent.AddTool(tool)
+	return b
+}
+
+// WithProcess sets the process for the agent
+func (b *AgentBuilder) WithProcess(process process.StructuredOutput) *AgentBuilder {
+	b.agent.SetProcess(process)
 	return b
 }
 

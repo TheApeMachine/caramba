@@ -10,6 +10,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/agent/memory"
 	"github.com/theapemachine/caramba/pkg/agent/tools"
 	"github.com/theapemachine/caramba/pkg/output"
+	"github.com/theapemachine/caramba/pkg/process"
 )
 
 /*
@@ -40,6 +41,8 @@ func NewResearcher() *Researcher {
 				llm.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "gpt-4o-mini"),
 			).WithSystemPrompt(
 				viper.GetViper().GetString("templates.planner"),
+			).WithProcess(
+				&process.Plan{},
 			).WithStreaming(
 				true,
 			).Build(),
