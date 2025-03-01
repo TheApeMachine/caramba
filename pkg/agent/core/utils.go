@@ -5,14 +5,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/theapemachine/caramba/pkg/output"
 )
-
-// estimateTokens is a rough approximation for counting tokens from text.
-func estimateTokens(text string) int {
-	words := strings.Fields(text)
-	return len(words) * 4 / 3 // ~4/3 tokens per word as a naive guess
-}
 
 // isLikelyJSON checks if a string might be JSON based on a naive prefix check.
 func isLikelyJSON(content string) bool {
@@ -31,24 +24,6 @@ func maybeExtractContentField(content string) string {
 		}
 	}
 	return content
-}
-
-// summarizeToolCallArgs returns a short textual summary for tool call args.
-func summarizeToolCallArgs(toolCall ToolCall) string {
-	argsJSON, _ := json.Marshal(toolCall.Args)
-	return output.Summarize(string(argsJSON), 50)
-}
-
-// formatToolResult prints a nice heading and JSON for a tool result.
-func formatToolResult(toolName string, result interface{}) string {
-	var resultOutput string
-	if resultStr, ok := result.(string); ok {
-		resultOutput = resultStr
-	} else {
-		prettyResult, _ := json.MarshalIndent(result, "", "  ")
-		resultOutput = string(prettyResult)
-	}
-	return resultOutput
 }
 
 // formatStreamedContent applies basic formatting to streamed content for demonstration.

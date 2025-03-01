@@ -32,7 +32,7 @@ func NewIterationManager(
 }
 
 func (im *IterationManager) SetWorkflow(workflow *Workflow) {
-	im.workflowManager.SetWorkflow(workflow)
+	im.workflowManager.SetWorkflow(*workflow)
 }
 
 // Run handles the iteration loop, either in streaming or non-streaming mode.
