@@ -6,10 +6,20 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/process"
 )
 
 // MockLLM implements LLMProvider for testing
 type MockLLM struct{}
+
+// MockTool mocks a tool
+type MockTool struct{}
+
+// MockMemory mocks a memory
+type MockMemory struct{}
+
+// MockProcess mocks a structured output process
+type MockProcess struct{}
 
 func (m *MockLLM) GenerateResponse(ctx context.Context, params LLMParams) LLMResponse {
 	return LLMResponse{Content: "mock response"}
@@ -26,27 +36,25 @@ func (m *MockLLM) Name() string {
 	return "MockLLM"
 }
 
-// MockMemory implements Memory for testing
-type MockMemory struct{}
-
-func (m *MockMemory) Store(ctx context.Context, key string, value any) error {
+func (m *MockMemory) QueryAgent() Agent {
 	return nil
 }
 
-func (m *MockMemory) Retrieve(ctx context.Context, key string) (any, error) {
+func (m *MockMemory) MutateAgent() Agent {
+	return nil
+}
+
+func (m *MockMemory) Query(ctx context.Context, proc *process.MemoryLookup) (string, error) {
 	return "mock value", nil
 }
 
-func (m *MockMemory) Search(ctx context.Context, query string, limit int) ([]MemoryEntry, error) {
-	return []MemoryEntry{}, nil
+func (m *MockMemory) Mutate(ctx context.Context, proc *process.MemoryMutate) error {
+	return nil
 }
 
 func (m *MockMemory) Clear(ctx context.Context) error {
 	return nil
 }
-
-// MockTool implements Tool for testing
-type MockTool struct{}
 
 func (m *MockTool) Name() string {
 	return "MockTool"
@@ -63,9 +71,6 @@ func (m *MockTool) Execute(ctx context.Context, args map[string]any) (any, error
 func (m *MockTool) Schema() map[string]any {
 	return map[string]any{}
 }
-
-// MockProcess implements process.StructuredOutput for testing
-type MockProcess struct{}
 
 func (m *MockProcess) Name() string {
 	return "MockProcess"

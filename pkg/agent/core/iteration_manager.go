@@ -2,11 +2,13 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/caramba/pkg/output"
+	"github.com/theapemachine/caramba/pkg/process"
 )
 
 // IterationManager handles agent iteration logic.
@@ -40,51 +42,44 @@ func (im *IterationManager) SetWorkflow(workflow *Workflow) {
 func (im *IterationManager) Run(ctx context.Context, msg LLMMessage) (LLMMessage, error) {
 	im.logger.Log(fmt.Sprintf("Running iteration manager for agent %s with message:\n%v", im.agent.Name(), msg))
 
-	iteration := 0
-
-	for iteration < im.agent.IterationLimit() {
-		switch msg.Role {
-		case "user":
-			im.agent.AddUserMessage(msg.Content)
-		case "assistant":
-			im.agent.AddAssistantMessage(msg.Content)
-		}
-
-		var iterationResponse []LLMMessage
-		var err error
-
-		im.logger.Log(fmt.Sprintf("======%s======\n", "[Messages]"))
-		for _, message := range im.agent.Params().Messages {
-			im.logger.Log(fmt.Sprintf("Message: %s", message))
-		}
-		im.logger.Log(fmt.Sprintf("======%s======\n", "[/Messages]"))
-		if im.agent.Streaming() {
-			iterationResponse, err = im.handleStreamingIteration(ctx)
-		} else {
-			iterationResponse, err = im.handleNonStreamingIteration(ctx)
-		}
-
-		if err != nil {
-			return LLMMessage{}, err
-		}
-
-		composed := make([]string, 0)
-
-		for _, response := range iterationResponse {
-			im.logger.Log(fmt.Sprintf("======\n%s\n======\n", response.Content))
-			composed = append(composed, response.Content)
-			im.logger.Log(fmt.Sprintf("======\n%s\n======\n", response.Content))
-		}
-
-		msg = LLMMessage{
-			Role:    "assistant",
-			Content: strings.Join(composed, "\n\n"),
-		}
-
-		iteration++
+	switch msg.Role {
+	case "user":
+		im.agent.AddUserMessage(msg.Content)
+	case "assistant":
+		im.agent.AddAssistantMessage(msg.Content)
 	}
 
-	return msg, nil
+	var iterationResponse []LLMMessage
+	var err error
+
+	im.logger.Log(fmt.Sprintf("======%s======\n", "[Messages]"))
+	for _, message := range im.agent.Params().Messages {
+		im.logger.Log(fmt.Sprintf("Message: %s", message))
+	}
+	im.logger.Log(fmt.Sprintf("======%s======\n", "[/Messages]"))
+
+	if im.agent.Streaming() {
+		iterationResponse, err = im.handleStreamingIteration(ctx)
+	} else {
+		iterationResponse, err = im.handleNonStreamingIteration(ctx)
+	}
+
+	if err != nil {
+		return LLMMessage{}, err
+	}
+
+	composed := make([]string, 0)
+
+	for _, response := range iterationResponse {
+		im.logger.Log(fmt.Sprintf("======\n%s\n======\n", response.Content))
+		composed = append(composed, response.Content)
+		im.logger.Log(fmt.Sprintf("======\n%s\n======\n", response.Content))
+	}
+
+	return LLMMessage{
+		Role:    "assistant",
+		Content: strings.Join(composed, "\n\n"),
+	}, nil
 }
 
 func (im *IterationManager) handleNonStreamingIteration(ctx context.Context) ([]LLMMessage, error) {
@@ -105,6 +100,7 @@ func (im *IterationManager) handleNonStreamingIteration(ctx context.Context) ([]
 		Content: res.Content,
 	})
 
+	out = append(out, im.handleProcess(ctx, res.Content)...)
 	out = append(out, im.handleToolCalls(ctx, res.ToolCalls)...)
 
 	return out, nil
@@ -170,4 +166,57 @@ func (im *IterationManager) handleToolCalls(ctx context.Context, toolCalls []Too
 	}
 
 	return out
+}
+
+func (im *IterationManager) handleProcess(ctx context.Context, response string) []LLMMessage {
+	var buf map[string]any
+
+	err := json.Unmarshal([]byte(response), &buf)
+	if err != nil {
+		return nil
+	}
+
+	switch buf["name"].(string) {
+	case "memory_lookup":
+		proc := &process.MemoryLookup{}
+		err = json.Unmarshal([]byte(response), proc)
+
+		if err != nil {
+			return nil
+		}
+
+		results, err := im.agent.Memory().Query(ctx, proc)
+
+		if err != nil {
+			return nil
+		}
+
+		return []LLMMessage{
+			{
+				Role:    "assistant",
+				Content: results,
+			},
+		}
+	case "memory_mutate":
+		proc := &process.MemoryMutate{}
+		err = json.Unmarshal([]byte(response), proc)
+		if err != nil {
+			return nil
+		}
+
+		err = im.agent.Memory().Mutate(ctx, proc)
+
+		if err != nil {
+			return nil
+		}
+
+		return []LLMMessage{
+			{
+				Role:    "assistant",
+				Content: "Memory mutated successfully",
+			},
+		}
+	}
+
+	return nil
 }

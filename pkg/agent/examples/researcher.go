@@ -26,27 +26,22 @@ type Researcher struct {
 NewResearcher demonstrates how to build up an agent with tools, memory, planner, and optimizer.
 */
 func NewResearcher() *Researcher {
-	planner := core.NewAgentBuilder(
-		"planner",
-	).WithLLM(
-		llm.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "gpt-4o-mini"),
-	).WithSystemPrompt(
-		viper.GetViper().GetString("templates.planner"),
-	).WithProcess(
-		&process.Plan{},
-	).WithStreaming(
-		true,
-	).Build()
+	builder := func(name string) core.Agent {
+		return core.NewAgentBuilder(
+			name,
+		).WithLLM(
+			llm.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "gpt-4o-mini"),
+		).WithSystemPrompt(
+			viper.GetViper().GetString("templates." + name),
+		).WithProcess(
+			&process.Plan{},
+		).WithStreaming(
+			true,
+		).Build()
+	}
 
-	optimizer := core.NewAgentBuilder(
-		"optimizer",
-	).WithLLM(
-		llm.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "gpt-4o-mini"),
-	).WithSystemPrompt(
-		viper.GetViper().GetString("templates.optimizer"),
-	).WithStreaming(
-		true,
-	).Build()
+	planner := builder("planner")
+	optimizer := builder("optimizer")
 
 	return &Researcher{
 		logger: output.NewLogger(),
@@ -63,7 +58,7 @@ func NewResearcher() *Researcher {
 		).WithTool(
 			tools.NewBrowserTool("http://localhost:3000", "6R0W53R135510"),
 		).WithMemory(
-			memory.NewUnifiedMemory(memory.NewInMemoryStore(), memory.DefaultUnifiedMemoryOptions()),
+			memory.NewUnifiedMemory(),
 		).WithIterationLimit(
 			10,
 		).WithStreaming(

@@ -86,22 +86,39 @@ func (agent *BaseAgent) handleEvent(ctx context.Context, event *hub.Event) (err 
 		Content: event.Message,
 	}
 
-	for _, active := range []Agent{agent.Planner, agent, agent.Optimizer} {
-		if active == nil {
-			continue
+	iteration := 0
+
+	var (
+		queryAgent  Agent
+		mutateAgent Agent
+	)
+
+	if agent.memory != nil {
+		queryAgent = agent.memory.QueryAgent()
+		mutateAgent = agent.memory.MutateAgent()
+	}
+
+	for iteration < agent.IterationLimit() {
+		for _, active := range []Agent{queryAgent, agent.Planner, agent, agent.Optimizer, mutateAgent} {
+			if active == nil {
+				continue
+			}
+
+			if message, err = NewIterationManager(active).Run(ctx, message); err != nil {
+				agent.logger.Log(fmt.Sprintf("Error running agent %s: %s", active.Name(), err))
+				agent.hub.Add(hub.NewEvent(
+					agent.name,
+					"error",
+					"agent",
+					hub.EventTypeError,
+					err.Error(),
+					map[string]string{},
+				))
+				return err
+			}
 		}
 
-		if message, err = NewIterationManager(active).Run(ctx, message); err != nil {
-			agent.hub.Add(hub.NewEvent(
-				agent.name,
-				"error",
-				"agent",
-				hub.EventTypeError,
-				err.Error(),
-				map[string]string{},
-			))
-			return err
-		}
+		iteration++
 	}
 
 	return nil

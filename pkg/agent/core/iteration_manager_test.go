@@ -222,48 +222,6 @@ func TestRunWithToolCalls(t *testing.T) {
 	})
 }
 
-// MockMultiResponseLLM mocks an LLM provider that tracks number of calls
-type MockMultiResponseLLM struct {
-	MockLLM
-	callCount int
-}
-
-func (m *MockMultiResponseLLM) GenerateResponse(ctx context.Context, params LLMParams) LLMResponse {
-	m.callCount++
-	return LLMResponse{Content: "Iteration " + string(rune('0'+m.callCount))}
-}
-
-// TestRunMultipleIterations tests running multiple iterations
-func TestRunMultipleIterations(t *testing.T) {
-	Convey("Given an iteration manager with an agent that has a higher iteration limit", t, func() {
-		agent := NewBaseAgent("TestAgent")
-		agent.SetIterationLimit(3)
-
-		// Create a mock LLM that counts calls
-		mockLLM := &MockMultiResponseLLM{}
-		agent.SetLLM(mockLLM)
-
-		manager := NewIterationManager(agent)
-
-		Convey("When running iterations", func() {
-			msg := LLMMessage{
-				Role:    "user",
-				Content: "Run multiple iterations",
-			}
-
-			_, err := manager.Run(context.Background(), msg)
-
-			Convey("Then it should not error", func() {
-				So(err, ShouldBeNil)
-			})
-
-			Convey("Then it should run the specified number of iterations", func() {
-				So(mockLLM.callCount, ShouldEqual, 3)
-			})
-		})
-	})
-}
-
 // MockErrorLLM mocks an LLM provider that returns errors
 type MockErrorLLM struct {
 	MockLLM

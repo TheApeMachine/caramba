@@ -1,10 +1,23 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/hub"
 )
+
+// MockMultiResponseLLM mocks an LLM provider that tracks number of calls
+type MockMultiResponseLLM struct {
+	MockLLM
+	callCount int
+}
+
+func (m *MockMultiResponseLLM) GenerateResponse(ctx context.Context, params LLMParams) LLMResponse {
+	m.callCount++
+	return LLMResponse{Content: "Iteration " + string(rune('0'+m.callCount))}
+}
 
 func TestNewBaseAgent(t *testing.T) {
 	Convey("Given a need for a base agent", t, func() {
@@ -295,4 +308,37 @@ type MockToolWithName struct {
 
 func (m *MockToolWithName) Name() string {
 	return m.name
+}
+
+// TestBaseAgentIterations tests that the BaseAgent correctly handles multiple iterations
+func TestBaseAgentIterations(t *testing.T) {
+	Convey("Given a base agent with a higher iteration limit", t, func() {
+		agent := NewBaseAgent("TestAgent")
+		agent.SetIterationLimit(3)
+
+		// Create a mock LLM that counts calls
+		mockLLM := &MockMultiResponseLLM{}
+		agent.SetLLM(mockLLM)
+
+		Convey("When handling an event that triggers iterations", func() {
+			event := hub.NewEvent(
+				"user",
+				"user",
+				"message",
+				hub.EventTypeMessage,
+				"Run multiple iterations",
+				map[string]string{},
+			)
+
+			err := agent.handleEvent(context.Background(), event)
+
+			Convey("Then it should not error", func() {
+				So(err, ShouldBeNil)
+			})
+
+			Convey("Then it should run the specified number of iterations", func() {
+				So(mockLLM.callCount, ShouldEqual, 3)
+			})
+		})
+	})
 }

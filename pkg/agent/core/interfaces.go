@@ -159,17 +159,17 @@ It provides methods for storing, retrieving, and searching information
 that the agent needs to persist across interactions.
 */
 type Memory interface {
-	// Store stores a key-value pair in memory
-	Store(ctx context.Context, key string, value any) error
+	// QueryAgent returns the query agent for the memory
+	QueryAgent() Agent
 
-	// Retrieve retrieves a value from memory by key
-	Retrieve(ctx context.Context, key string) (any, error)
+	// MutateAgent returns the mutate agent for the memory
+	MutateAgent() Agent
 
-	// Search searches the memory using a query
-	Search(ctx context.Context, query string, limit int) ([]MemoryEntry, error)
+	// Query the memory
+	Query(context.Context, *process.MemoryLookup) (string, error)
 
-	// Clear clears the memory
-	Clear(ctx context.Context) error
+	// Mutate the memory
+	Mutate(context.Context, *process.MemoryMutate) error
 }
 
 /*
