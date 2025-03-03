@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/caramba/pkg/output"
 )
 
@@ -17,8 +18,6 @@ func (t *Tool) search(ctx context.Context, args map[string]interface{}) (interfa
 		return nil, errors.New("query must be a non-empty string")
 	}
 
-	output.Verbose(fmt.Sprintf("Searching for: %s", query))
-
 	// Create an enhanced DuckDuckGo search URL with additional parameters:
 	// - kp=-2: No safe search filtering
 	// - kl=us-en: US English region
@@ -28,7 +27,7 @@ func (t *Tool) search(ctx context.Context, args map[string]interface{}) (interfa
 	searchURL := fmt.Sprintf("https://duckduckgo.com/?q=%s&kp=-2&kl=us-en&kz=-1&kaf=1&k1=-1",
 		strings.Replace(query, " ", "+", -1))
 
-	output.Debug(fmt.Sprintf("DuckDuckGo search URL: %s", searchURL))
+	t.hub.Add(hub.NewToolCall(t.Name(), "search", fmt.Sprintf("Searching for: %s", query)))
 
 	// Create navigate args - only include parameters supported by Browserless API
 	navigateArgs := map[string]interface{}{
@@ -38,13 +37,13 @@ func (t *Tool) search(ctx context.Context, args map[string]interface{}) (interfa
 	// Use the navigate function to perform the search
 	result, err := t.navigate(ctx, navigateArgs)
 	if err != nil {
-		return nil, err
+		return nil, t.logger.Error(t.Name(), err)
 	}
 
 	// Clean up the HTML to extract only the relevant parts
 	cleanedResult, err := t.cleanupSearchResults(result)
 	if err != nil {
-		return nil, fmt.Errorf("failed to clean up search results: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to clean up search results: %w", err))
 	}
 
 	return cleanedResult, nil
@@ -61,7 +60,7 @@ func (t *Tool) cleanupSearchResults(result interface{}) (interface{}, error) {
 
 	html, ok := resultMap["html"].(string)
 	if !ok {
-		return nil, errors.New("html not found in result")
+		return nil, t.logger.Error(t.Name(), errors.New("html not found in result"))
 	}
 
 	// Initialize cleaned output
@@ -92,16 +91,14 @@ func (t *Tool) cleanupSearchResults(result interface{}) (interface{}, error) {
 	// Include a shortened version of the HTML for debugging if needed
 	cleanedOutput["html_sample"] = output.Summarize(html, 500)
 
-	output.Debug(fmt.Sprintf("Extracted %d search results", len(searchResults)))
+	t.hub.Add(hub.NewToolCall(t.Name(), "search", fmt.Sprintf("Extracted %d search results", len(searchResults))))
 	return cleanedOutput, nil
 }
 
 // extractSearchResults attempts to extract search results from various search engines
 func extractSearchResults(html string) []map[string]string {
-	var results []map[string]string
-
 	// Try to extract DuckDuckGo results
-	results = extractDuckDuckGoResults(html)
+	results := extractDuckDuckGoResults(html)
 	if len(results) > 0 {
 		return results
 	}

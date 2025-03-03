@@ -31,7 +31,7 @@ func NewLayout() *Layout {
 }
 
 func (layout *Layout) Init() tea.Cmd {
-	layout.logger.Log("Initializing layout")
+	layout.logger.Log("tui", "Initializing layout")
 	layout.components["chat"].Init()
 	layout.components["infoPanel"].Init()
 	layout.components["statusBar"].Init()

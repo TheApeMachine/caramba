@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/agent/core"
-	"github.com/theapemachine/caramba/pkg/output"
 )
 
 // AgentTool allows an agent to create and manage other agents
@@ -115,8 +114,6 @@ func (t *AgentTool) createAgent(ctx context.Context, args map[string]interface{}
 	// Store the agent
 	t.existingAgents[name] = baseAgent
 
-	output.Info(fmt.Sprintf("Created new agent: %s", name))
-
 	return map[string]interface{}{
 		"status":     "success",
 		"agent_name": name,
@@ -141,21 +138,9 @@ func (t *AgentTool) executeAgent(ctx context.Context, args map[string]interface{
 	if !exists {
 		return nil, fmt.Errorf("agent with name '%s' does not exist", name)
 	}
-
-	// Get the custom system prompt if available
-	_, promptExists := t.agentPrompts[name]
-
 	// Execute the agent
 	var result string
 	var err error
-
-	// Since we can't directly set system prompt in ExecuteOptions,
-	// we will just use the regular Execute method.
-	// Note: In a more complete implementation, we would need to modify
-	// the BaseAgent implementation to allow setting the system prompt.
-	if promptExists {
-		output.Warn(fmt.Sprintf("Agent '%s' has a custom system prompt, but it can't be applied with the current implementation", name))
-	}
 
 	// Execute the agent
 	result, err = agent.Execute(ctx)

@@ -10,7 +10,7 @@ import (
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
-	"github.com/theapemachine/errnie"
+	"github.com/theapemachine/caramba/pkg/output"
 )
 
 //------------------------------------------------------------------------------
@@ -19,6 +19,7 @@ import (
 
 // OpenAISDKEmbeddings implements EmbeddingProvider using the official OpenAI SDK
 type OpenAISDKEmbeddings struct {
+	logger           *output.Logger
 	client           *openai.Client
 	embeddingService *openai.EmbeddingService
 	model            openai.EmbeddingModel
@@ -27,11 +28,12 @@ type OpenAISDKEmbeddings struct {
 // NewOpenAISDKEmbeddings creates a new embedding provider using the official OpenAI SDK
 func NewOpenAISDKEmbeddings(apiKey string, model string) *OpenAISDKEmbeddings {
 	if model == "" {
-		model = openai.EmbeddingModelTextEmbedding3Small // Default to modern embedding model
+		model = openai.EmbeddingModelTextEmbedding3Large
 	}
 
 	client := openai.NewClient(option.WithAPIKey(apiKey))
 	return &OpenAISDKEmbeddings{
+		logger:           output.NewLogger(),
 		client:           client,
 		embeddingService: openai.NewEmbeddingService(),
 		model:            model,
@@ -56,12 +58,17 @@ func (o *OpenAISDKEmbeddings) GetEmbedding(ctx context.Context, text string) ([]
 		},
 	)
 	if err != nil {
-		errnie.Error(fmt.Errorf("failed to get OpenAI embeddings: %w", err))
-		return nil, err
+		return nil, o.logger.Error(
+			"openai",
+			fmt.Errorf("failed to get OpenAI embeddings: %w", err),
+		)
 	}
 
 	if len(response.Data) == 0 {
-		return nil, fmt.Errorf("no embeddings returned from OpenAI")
+		return nil, o.logger.Error(
+			"openai",
+			fmt.Errorf("no embeddings returned from OpenAI"),
+		)
 	}
 
 	// Convert from float64 to float32
@@ -80,6 +87,7 @@ func (o *OpenAISDKEmbeddings) GetEmbedding(ctx context.Context, text string) ([]
 // OpenAIEmbeddingProvider implements the EmbeddingProvider interface
 // using direct calls to the OpenAI API (no SDK dependency)
 type OpenAIEmbeddingProvider struct {
+	logger *output.Logger
 	// apiKey is the authentication key for the OpenAI API
 	apiKey string
 	// model is the specific embedding model to use
@@ -101,6 +109,7 @@ func NewOpenAIEmbeddingProvider(apiKey, model string) *OpenAIEmbeddingProvider {
 	}
 
 	return &OpenAIEmbeddingProvider{
+		logger: output.NewLogger(),
 		apiKey: apiKey,
 		model:  model,
 	}
@@ -141,13 +150,19 @@ func (o *OpenAIEmbeddingProvider) GetEmbedding(ctx context.Context, text string)
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, o.logger.Error(
+			"openai",
+			fmt.Errorf("failed to marshal request: %w", err),
+		)
 	}
 
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/embeddings", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+		return nil, o.logger.Error(
+			"openai",
+			fmt.Errorf("failed to create HTTP request: %w", err),
+		)
 	}
 
 	// Set headers
@@ -158,27 +173,42 @@ func (o *OpenAIEmbeddingProvider) GetEmbedding(ctx context.Context, text string)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute HTTP request: %w", err)
+		return nil, o.logger.Error(
+			"openai",
+			fmt.Errorf("failed to execute HTTP request: %w", err),
+		)
 	}
 	defer resp.Body.Close()
 
 	// Parse the response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, o.logger.Error(
+			"openai",
+			fmt.Errorf("failed to read response body: %w", err),
+		)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error: %s, status code: %d", string(body), resp.StatusCode)
+		return nil, o.logger.Error(
+			"openai",
+			fmt.Errorf("API error: %s, status code: %d", string(body), resp.StatusCode),
+		)
 	}
 
 	var response EmbeddingResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+		return nil, o.logger.Error(
+			"openai",
+			fmt.Errorf("failed to unmarshal response: %w", err),
+		)
 	}
 
 	if len(response.Data) == 0 {
-		return nil, fmt.Errorf("no embedding data returned")
+		return nil, o.logger.Error(
+			"openai",
+			fmt.Errorf("no embedding data returned"),
+		)
 	}
 
 	return response.Data[0].Embedding, nil

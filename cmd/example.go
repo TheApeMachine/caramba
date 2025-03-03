@@ -23,6 +23,8 @@ var (
 		Short: "Run example scenarios",
 		Long:  longExample,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			app := tui.NewApp()
+
 			switch args[0] {
 			case "researcher":
 				example := examples.NewResearcher()
@@ -31,7 +33,6 @@ var (
 				return fmt.Errorf("unknown example type: %s", args[1])
 			}
 
-			app := tui.NewApp()
 			return app.Start()
 		},
 	}

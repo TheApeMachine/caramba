@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/theapemachine/caramba/pkg/hub"
@@ -29,7 +29,6 @@ type BaseAgent struct {
 	params         *LLMParams
 	Planner        Agent
 	Optimizer      Agent
-	Messenger      Messenger
 	iterationLimit int
 	streaming      bool
 	status         AgentStatus
@@ -52,13 +51,12 @@ func NewBaseAgent(name string) *BaseAgent {
 		},
 		iterationLimit: 1,
 		streaming:      false,
-		Messenger:      NewInMemoryMessenger(name),
 		status:         AgentStatusIdle,
 	}
 }
 
 func (agent *BaseAgent) Execute(ctx context.Context) (out string, err error) {
-	agent.logger.Log(fmt.Sprintf("Executing agent %s", agent.name))
+	agent.logger.Log(agent.name, "Executing agent")
 	events := agent.hub.Subscribe(agent.name)
 
 	go func() {
@@ -68,7 +66,7 @@ func (agent *BaseAgent) Execute(ctx context.Context) (out string, err error) {
 				return
 			case event := <-events:
 				if err = agent.handleEvent(ctx, event); err != nil {
-					agent.logger.Log(fmt.Sprintf("Error handling event: %s", err))
+					agent.logger.Error(agent.name, err)
 					return
 				}
 			default:
@@ -81,9 +79,11 @@ func (agent *BaseAgent) Execute(ctx context.Context) (out string, err error) {
 }
 
 func (agent *BaseAgent) handleEvent(ctx context.Context, event *hub.Event) (err error) {
-	message := LLMMessage{
-		Role:    event.Role,
-		Content: event.Message,
+	msgs := []LLMMessage{
+		{
+			Role:    event.Role,
+			Content: event.Message,
+		},
 	}
 
 	iteration := 0
@@ -99,27 +99,23 @@ func (agent *BaseAgent) handleEvent(ctx context.Context, event *hub.Event) (err 
 	}
 
 	for iteration < agent.IterationLimit() {
+		agent.hub.Add(hub.NewStatus(agent.name, "iteration", strconv.Itoa(iteration)))
+
 		for _, active := range []Agent{queryAgent, agent.Planner, agent, agent.Optimizer, mutateAgent} {
 			if active == nil {
 				continue
 			}
 
-			if message, err = NewIterationManager(active).Run(ctx, message); err != nil {
-				agent.logger.Log(fmt.Sprintf("Error running agent %s: %s", active.Name(), err))
-				agent.hub.Add(hub.NewEvent(
-					agent.name,
-					"error",
-					"agent",
-					hub.EventTypeError,
-					err.Error(),
-					map[string]string{},
-				))
+			if msgs, err = NewIterationManager(active).Run(ctx, msgs); err != nil {
+				agent.logger.Error(agent.name, err)
 				return err
 			}
 		}
 
 		iteration++
 	}
+
+	agent.hub.Add(hub.NewStatus(agent.name, "done", ""))
 
 	return nil
 }
@@ -146,6 +142,10 @@ func (agent *BaseAgent) Streaming() bool {
 
 func (agent *BaseAgent) Params() *LLMParams {
 	return agent.params
+}
+
+func (agent *BaseAgent) SystemPrompt() string {
+	return agent.params.SystemPrompt
 }
 
 func (agent *BaseAgent) Status() AgentStatus {
@@ -191,7 +191,7 @@ func (agent *BaseAgent) SetLLM(llm LLMProvider) {
 }
 
 func (agent *BaseAgent) SetSystemPrompt(prompt string) {
-	agent.params.Messages = append(agent.params.Messages, SystemMessage(prompt))
+	agent.params.SystemPrompt = prompt
 }
 
 func (agent *BaseAgent) SetProcess(process process.StructuredOutput) {
@@ -210,14 +210,6 @@ func (agent *BaseAgent) SetTemperature(temperature float64) {
 
 func (agent *BaseAgent) SetIterationLimit(limit int) {
 	agent.iterationLimit = limit
-}
-
-func (agent *BaseAgent) GetMessenger() Messenger {
-	return agent.Messenger
-}
-
-func (agent *BaseAgent) SetMessenger(messenger Messenger) {
-	agent.Messenger = messenger
 }
 
 func (agent *BaseAgent) SetStreaming(streaming bool) {

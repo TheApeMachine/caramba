@@ -31,7 +31,7 @@ func NewApp() *App {
 	keymap := DefaultKeyMap()
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
-	return &App{
+	app := &App{
 		logger:     output.NewLogger(),
 		hub:        hub.NewQueue(),
 		keymap:     keymap,
@@ -41,6 +41,9 @@ func NewApp() *App {
 		ctx:        ctx,
 		cancelFunc: cancelFunc,
 	}
+
+	go app.listenToHubEvents()
+	return app
 }
 
 // Start starts the BubbleTea application
@@ -48,9 +51,6 @@ func (app *App) Start() error {
 	// Create the program and store the reference
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	app.program = p
-
-	// Subscribe to hub topics
-	go app.listenToHubEvents()
 
 	// Run the program
 	_, err := p.Run()
@@ -60,7 +60,7 @@ func (app *App) Start() error {
 
 // listenToHubEvents subscribes to hub events and forwards them to the UI
 func (app *App) listenToHubEvents() {
-	app.logger.Log("Listening to hub events")
+	app.logger.Log("tui", "Listening to hub events")
 
 	// Subscribe to UI events
 	uiEvents := app.hub.Subscribe("ui")
@@ -94,11 +94,11 @@ func (app *App) listenToHubEvents() {
 
 // Init initializes the BubbleTea application
 func (app *App) Init() tea.Cmd {
-	app.logger.Log("Initializing BubbleTea application")
+	app.logger.Log("tui", "Initializing BubbleTea application")
 
 	return tea.Batch(
-		tea.EnterAltScreen,
 		app.layout.Init(),
+		tea.EnterAltScreen,
 	)
 }
 

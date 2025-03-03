@@ -8,11 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/caramba/pkg/output"
 )
 
 // Tool represents the Browser Tool for web interactions
 type Tool struct {
+	logger     *output.Logger
+	hub        *hub.Queue
 	apiKey     string
 	apiBaseURL string
 	client     *http.Client
@@ -35,6 +38,8 @@ func New(browserlessURL string, browserlessAPIKey string) *Tool {
 	}
 
 	return &Tool{
+		logger:     output.NewLogger(),
+		hub:        hub.NewQueue(),
 		apiKey:     apiKey,
 		apiBaseURL: apiBaseURL,
 		client:     client,
@@ -53,40 +58,40 @@ func (t *Tool) Description() string {
 }
 
 // Schema returns the schema for the tool in JSON format
-func (t *Tool) Schema() map[string]interface{} {
-	return map[string]interface{}{
+func (t *Tool) Schema() map[string]any {
+	return map[string]any{
 		"type": "object",
-		"properties": map[string]interface{}{
-			"action": map[string]interface{}{
+		"properties": map[string]any{
+			"action": map[string]any{
 				"type":        "string",
 				"enum":        []string{"navigate", "screenshot", "pdf", "extract", "execute", "search"},
 				"description": "Action to perform with the browser tool",
 			},
-			"url": map[string]interface{}{
+			"url": map[string]any{
 				"type":        "string",
 				"description": "URL to navigate to (required for navigate, screenshot, pdf, extract, optional for execute)",
 			},
-			"query": map[string]interface{}{
+			"query": map[string]any{
 				"type":        "string",
 				"description": "Search query (required for search action)",
 			},
-			"selector": map[string]interface{}{
+			"selector": map[string]any{
 				"type":        "string",
 				"description": "CSS selector for content extraction (required for extract)",
 			},
-			"script": map[string]interface{}{
+			"script": map[string]any{
 				"type":        "string",
 				"description": "JavaScript code to execute (required for execute)",
 			},
-			"wait_for": map[string]interface{}{
+			"wait_for": map[string]any{
 				"type":        "string",
 				"description": "CSS selector to wait for before performing the action",
 			},
-			"full_page": map[string]interface{}{
+			"full_page": map[string]any{
 				"type":        "boolean",
 				"description": "Capture full page for screenshot/PDF (default: false)",
 			},
-			"timeout": map[string]interface{}{
+			"timeout": map[string]any{
 				"type":        "integer",
 				"description": "Operation timeout in seconds (default: 30)",
 			},
@@ -96,19 +101,13 @@ func (t *Tool) Schema() map[string]interface{} {
 }
 
 // Execute executes the browser tool with the given action and arguments
-func (t *Tool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *Tool) Execute(ctx context.Context, args map[string]any) (any, error) {
 	action, ok := args["action"].(string)
 	if !ok {
-		return nil, fmt.Errorf("action parameter is required")
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("action parameter is required"))
 	}
 
-	output.Verbose(fmt.Sprintf("Executing browser tool action: %s", action))
-
-	// Create a spinner for long-running operations
-	spinner := output.StartSpinner(fmt.Sprintf("Browser %s in progress...", action))
-	defer output.StopSpinner(spinner, fmt.Sprintf("Browser %s completed", action))
-
-	var result interface{}
+	var result any
 	var err error
 
 	switch action {
@@ -125,12 +124,11 @@ func (t *Tool) Execute(ctx context.Context, args map[string]interface{}) (interf
 	case "execute":
 		result, err = t.executeScript(ctx, args)
 	default:
-		return nil, fmt.Errorf("unknown action: %s", action)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("unknown action: %s", action))
 	}
 
 	if err != nil {
-		output.Error(fmt.Sprintf("Browser %s failed: %v", action, err), err)
-		return nil, err
+		return nil, t.logger.Error(t.Name(), err)
 	}
 
 	return result, nil
@@ -140,7 +138,7 @@ func (t *Tool) Execute(ctx context.Context, args map[string]interface{}) (interf
 func (t *Tool) createRequestWithAuth(method, url string, body []byte) (*http.Request, error) {
 	req, err := http.NewRequest(method, url, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, err
+		return nil, t.logger.Error(t.Name(), err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -155,42 +153,42 @@ func (t *Tool) createRequestWithAuth(method, url string, body []byte) (*http.Req
 }
 
 // sendRequest sends a request and processes the response
-func (t *Tool) sendRequest(ctx context.Context, req *http.Request) (map[string]interface{}, error) {
+func (t *Tool) sendRequest(ctx context.Context, req *http.Request) (map[string]any, error) {
 	// Use the context from the request
 	reqWithContext := req.WithContext(ctx)
 
 	// Send the request
 	resp, err := t.client.Do(reqWithContext)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to send request: %w", err))
 	}
 	defer resp.Body.Close()
 
 	// Check for error status codes
 	if resp.StatusCode >= 400 {
-		var errorBody map[string]interface{}
+		var errorBody map[string]any
 		if err := json.NewDecoder(resp.Body).Decode(&errorBody); err == nil {
 			if message, ok := errorBody["message"].(string); ok {
-				return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, message)
+				return nil, t.logger.Error(t.Name(), fmt.Errorf("API error (status %d): %s", resp.StatusCode, message))
 			}
 		}
-		return nil, fmt.Errorf("API error (status %d)", resp.StatusCode)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("API error (status %d)", resp.StatusCode))
 	}
 
 	// Parse the response
-	var result map[string]interface{}
+	var result map[string]any
 
 	// For some endpoints (like PDF), the response might be binary data
 	if strings.Contains(resp.Header.Get("Content-Type"), "application/pdf") {
 		// For binary data, just set a placeholder in the result
-		result = map[string]interface{}{
+		result = map[string]any{
 			"status": "success",
 			"data":   resp.Body,
 		}
 	} else {
 		// For JSON data, decode it
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, fmt.Errorf("failed to decode response: %w", err)
+			return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to decode response: %w", err))
 		}
 	}
 

@@ -15,7 +15,6 @@ func TestNewQueue(t *testing.T) {
 			Convey("Then a singleton Queue instance should be created", func() {
 				So(queue, ShouldNotBeNil)
 				So(queue.channels, ShouldNotBeNil)
-				So(queue.logger, ShouldNotBeNil)
 
 				// Test singleton pattern
 				anotherQueue := NewQueue()

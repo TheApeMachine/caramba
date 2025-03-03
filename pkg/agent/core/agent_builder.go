@@ -62,12 +62,6 @@ func (b *AgentBuilder) WithProcess(process process.StructuredOutput) *AgentBuild
 	return b
 }
 
-// WithMessenger sets the messenger for the agent
-func (b *AgentBuilder) WithMessenger(messenger Messenger) *AgentBuilder {
-	b.agent.Messenger = messenger
-	return b
-}
-
 // WithStreaming sets the streaming mode for the agent
 func (b *AgentBuilder) WithStreaming(streaming bool) *AgentBuilder {
 	b.agent.SetStreaming(streaming)

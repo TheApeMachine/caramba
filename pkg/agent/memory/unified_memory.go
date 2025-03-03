@@ -16,10 +16,12 @@ import (
 	"github.com/theapemachine/caramba/pkg/agent/core"
 	"github.com/theapemachine/caramba/pkg/agent/llm"
 	"github.com/theapemachine/caramba/pkg/hub"
+	"github.com/theapemachine/caramba/pkg/output"
 	"github.com/theapemachine/caramba/pkg/process"
 )
 
 type UnifiedMemory struct {
+	logger      *output.Logger
 	hub         *hub.Queue
 	stores      map[string]Store
 	embedder    EmbeddingProvider
@@ -46,12 +48,12 @@ func NewUnifiedMemory() *UnifiedMemory {
 
 	// Create the embedding provider
 	embedder := NewOpenAIEmbeddingProvider(
-		os.Getenv("OPENAI_API_KEY"),
-		"text-embedding-3-small", // Use the latest OpenAI embedding model
+		os.Getenv("OPENAI_API_KEY"), "text-embedding-3-large",
 	)
 
 	return &UnifiedMemory{
-		hub: hub.NewQueue(),
+		logger: output.NewLogger(),
+		hub:    hub.NewQueue(),
 		stores: map[string]Store{
 			"vector": NewQDrantStore("long-term-memory", embedder),
 			"graph":  NewNeo4jStore("neo4j"),
@@ -85,6 +87,7 @@ func (memory *UnifiedMemory) Query(ctx context.Context, proc *process.MemoryLook
 		})
 
 		if err != nil {
+			memory.logger.Error("unified_memory", err)
 			return "", err
 		}
 

@@ -173,7 +173,7 @@ func TestSpecializedEventConstructors(t *testing.T) {
 		})
 
 		Convey("When NewMetric is called", func() {
-			event := NewMetric(origin, topic, role, message)
+			event := NewMetric(origin, role, message)
 
 			Convey("Then a Metric event should be created", func() {
 				So(event.Type, ShouldEqual, EventTypeMetric)

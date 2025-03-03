@@ -56,10 +56,6 @@ func TestNewIterationManager(t *testing.T) {
 				So(manager.agent, ShouldEqual, agent)
 			})
 
-			Convey("Then it should have initialized response processor", func() {
-				So(manager.responseProcessor, ShouldNotBeNil)
-			})
-
 			Convey("Then it should have initialized workflow manager", func() {
 				So(manager.workflowManager, ShouldNotBeNil)
 			})
@@ -106,14 +102,14 @@ func TestRunWithUserMessage(t *testing.T) {
 				Content: "Hello",
 			}
 
-			result, err := manager.Run(context.Background(), msg)
+			result, err := manager.Run(context.Background(), []LLMMessage{msg})
 
 			Convey("Then it should not error", func() {
 				So(err, ShouldBeNil)
 			})
 
 			Convey("Then it should return an assistant message", func() {
-				So(result.Role, ShouldEqual, "assistant")
+				So(result[0].Role, ShouldEqual, "assistant")
 			})
 
 			Convey("Then the message should have been added to the agent's parameters", func() {
@@ -153,16 +149,16 @@ func TestRunWithStreamingMode(t *testing.T) {
 				Content: "Hi",
 			}
 
-			result, err := manager.Run(context.Background(), msg)
+			result, err := manager.Run(context.Background(), []LLMMessage{msg})
 
 			Convey("Then it should not error", func() {
 				So(err, ShouldBeNil)
 			})
 
 			Convey("Then it should return the combined streamed content", func() {
-				So(result.Role, ShouldEqual, "assistant")
-				So(result.Content, ShouldContainSubstring, "Hello")
-				So(result.Content, ShouldContainSubstring, "world")
+				So(result[0].Role, ShouldEqual, "assistant")
+				So(result[0].Content, ShouldContainSubstring, "Hello")
+				So(result[0].Content, ShouldContainSubstring, "world")
 			})
 		})
 	})
@@ -209,14 +205,14 @@ func TestRunWithToolCalls(t *testing.T) {
 				Content: "Use the tool",
 			}
 
-			result, err := manager.Run(context.Background(), msg)
+			result, err := manager.Run(context.Background(), []LLMMessage{msg})
 
 			Convey("Then it should not error", func() {
 				So(err, ShouldBeNil)
 			})
 
 			Convey("Then it should return a message with the tool results", func() {
-				So(result.Role, ShouldEqual, "assistant")
+				So(result[0].Role, ShouldEqual, "assistant")
 			})
 		})
 	})
@@ -250,7 +246,7 @@ func TestHandleErrorInIteration(t *testing.T) {
 				Content: "This will cause an error",
 			}
 
-			_, err := manager.Run(context.Background(), msg)
+			_, err := manager.Run(context.Background(), []LLMMessage{msg})
 
 			Convey("Then it should return the error", func() {
 				So(err, ShouldNotBeNil)

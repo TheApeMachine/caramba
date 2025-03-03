@@ -3,7 +3,17 @@ package hub
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 )
+
+// ANSI escape sequence regex patterns
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+var comprehensiveAnsiRegex = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]`)
+
+// StripANSI removes ANSI escape sequences from the provided string
+func StripANSI(s string) string {
+	return comprehensiveAnsiRegex.ReplaceAllString(s, "")
+}
 
 type EventType string
 
@@ -41,12 +51,15 @@ func NewEvent(
 	message string,
 	meta map[string]string,
 ) *Event {
+	// Strip any ANSI escape codes from the message
+	cleanMessage := StripANSI(message)
+
 	return &Event{
 		Origin:  origin,
 		Topic:   topic,
 		Type:    eventType,
 		Role:    role,
-		Message: message,
+		Message: cleanMessage,
 		Meta:    meta,
 	}
 }
@@ -139,15 +152,15 @@ func NewToolCall(
 	origin string, role string, message string,
 ) *Event {
 	return NewEvent(
-		origin, "metrics", role, EventTypeToolCall, message, map[string]string{},
+		origin, "metric", role, EventTypeToolCall, message, map[string]string{},
 	)
 }
 
 func NewMetric(
-	origin string, topic string, role string, message string,
+	origin string, role string, message string,
 ) *Event {
 	return NewEvent(
-		origin, topic, role, EventTypeMetric, message, map[string]string{},
+		origin, "metric", role, EventTypeMetric, message, map[string]string{},
 	)
 }
 

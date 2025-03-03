@@ -7,19 +7,19 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/theapemachine/caramba/pkg/output"
+	"github.com/theapemachine/caramba/pkg/hub"
 )
 
 // extractContent extracts content from a webpage using a CSS selector
-func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *Tool) extractContent(ctx context.Context, args map[string]any) (any, error) {
 	url, ok := args["url"].(string)
 	if !ok || url == "" {
-		return nil, errors.New("url must be a non-empty string")
+		return nil, t.logger.Error(t.Name(), errors.New("url must be a non-empty string"))
 	}
 
 	selector, ok := args["selector"].(string)
 	if !ok || selector == "" {
-		return nil, errors.New("selector must be a non-empty string")
+		return nil, t.logger.Error(t.Name(), errors.New("selector must be a non-empty string"))
 	}
 
 	// Extract options
@@ -28,8 +28,6 @@ func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) 
 	attribute := getStringOr(args, "attribute", "")
 	returnHTML := getBoolOr(args, "html", true)
 	returnText := getBoolOr(args, "text", true)
-
-	output.Verbose(fmt.Sprintf("Extracting content from %s using selector: %s", url, selector))
 
 	// Construct a function to extract content
 	extractScript := fmt.Sprintf(`
@@ -83,24 +81,24 @@ func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) 
 	// Marshal the request body
 	bodyBytes, err := json.Marshal(requestBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to marshal request body: %w", err))
 	}
 
 	// Create the request
 	functionEndpoint := fmt.Sprintf("%s/function", t.apiBaseURL)
 	req, err := t.createRequestWithAuth("POST", functionEndpoint, bodyBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create extract request: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to create extract request: %w", err))
 	}
 
 	// Send the request
 	resp, err := t.sendRequest(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract content: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to extract content: %w", err))
 	}
 
 	// Format and return the result
-	result := map[string]interface{}{
+	result := map[string]any{
 		"status":   "success",
 		"url":      url,
 		"selector": selector,
@@ -109,12 +107,13 @@ func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) 
 
 	// Log extraction results
 	count := 0
-	if data, ok := resp["data"].(map[string]interface{}); ok {
+	if data, ok := resp["data"].(map[string]any); ok {
 		if c, ok := data["count"].(float64); ok {
 			count = int(c)
 		}
 	}
-	output.Debug(fmt.Sprintf("Extracted %d elements from %s using selector: %s", count, url, selector))
+
+	t.hub.Add(hub.NewToolCall(t.Name(), "extract", fmt.Sprintf("%d", count)))
 
 	return result, nil
 }

@@ -3,22 +3,14 @@ package core
 import (
 	"context"
 	"testing"
-	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/process"
 )
 
-// MockLLM implements LLMProvider for testing
 type MockLLM struct{}
-
-// MockTool mocks a tool
 type MockTool struct{}
-
-// MockMemory mocks a memory
 type MockMemory struct{}
-
-// MockProcess mocks a structured output process
 type MockProcess struct{}
 
 func (m *MockLLM) GenerateResponse(ctx context.Context, params LLMParams) LLMResponse {
@@ -114,19 +106,6 @@ func (m *MockMessenger) Unsubscribe(ctx context.Context, topic string) error {
 
 func (m *MockMessenger) CreateTopic(ctx context.Context, name string, description string) error {
 	return nil
-}
-
-// Fix the GetMessages method to use time.Time instead of interface{}
-func (m *MockMessenger) GetMessages(ctx context.Context, since time.Time) ([]Message, error) {
-	return []Message{}, nil
-}
-
-func (m *MockMessenger) GetTopics(ctx context.Context) ([]Topic, error) {
-	return []Topic{}, nil
-}
-
-func (m *MockMessenger) GetAgentID() string {
-	return "mock-agent"
 }
 
 func TestNewAgentBuilder(t *testing.T) {
@@ -314,25 +293,6 @@ func TestWithProcess(t *testing.T) {
 
 			Convey("Then the agent should have the process schema set", func() {
 				So(builder.agent.params.Schema, ShouldEqual, proc.Schema())
-			})
-		})
-	})
-}
-
-func TestWithMessenger(t *testing.T) {
-	Convey("Given an agent builder", t, func() {
-		builder := NewAgentBuilder("TestAgent")
-
-		Convey("When setting the messenger", func() {
-			messenger := &MockMessenger{}
-			result := builder.WithMessenger(messenger)
-
-			Convey("Then it should return the builder for chaining", func() {
-				So(result, ShouldEqual, builder)
-			})
-
-			Convey("Then the agent should have the messenger set", func() {
-				So(builder.agent.Messenger, ShouldEqual, messenger)
 			})
 		})
 	})

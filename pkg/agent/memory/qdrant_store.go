@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"slices"
 
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/theapemachine/caramba/pkg/hub"
+	"github.com/theapemachine/caramba/pkg/output"
 )
 
 // EmbeddingProvider defines the interface for embedding text
@@ -25,14 +28,12 @@ type SearchResult struct {
 
 // QDrantStore implements the VectorStoreProvider interface using QDrant.
 type QDrantStore struct {
-	// client is the QDrant client
-	client *qdrant.Client
-	// collection is the name of the collection in QDrant
+	hub        *hub.Queue
+	logger     *output.Logger
+	client     *qdrant.Client
 	collection string
-	// dimensions is the size of vectors stored in this collection
 	dimensions int
-	// embedder is the provider used to create embeddings
-	embedder EmbeddingProvider
+	embedder   EmbeddingProvider
 }
 
 // NewQDrantStore creates a new QDrant vector store.
@@ -60,6 +61,8 @@ func NewQDrantStore(collection string, embedder EmbeddingProvider) *QDrantStore 
 	}
 
 	store := &QDrantStore{
+		hub:        hub.NewQueue(),
+		logger:     output.NewLogger(),
 		client:     client,
 		collection: collection,
 		dimensions: 3072,
@@ -68,8 +71,11 @@ func NewQDrantStore(collection string, embedder EmbeddingProvider) *QDrantStore 
 
 	// Ensure the collection exists
 	if err := store.ensureCollection(); err != nil {
+		store.logger.Error("qdrant", err)
 		return nil
 	}
+
+	store.logger.Success("qdrant", "online")
 
 	return store
 }
@@ -79,13 +85,19 @@ func (q *QDrantStore) Query(ctx context.Context, queryParams map[string]any) (st
 	// Extract the query string from the parameters
 	queryStr, ok := queryParams["query"].(string)
 	if !ok || queryStr == "" {
-		return "", fmt.Errorf("query parameter must contain a non-empty 'query' string field")
+		return "", q.logger.Error(
+			"qdrant",
+			fmt.Errorf("query parameter must contain a non-empty 'query' string field"),
+		)
 	}
 
 	// Use the embedder to convert the query to a vector
 	vector, err := q.embedder.GetEmbedding(ctx, queryStr)
 	if err != nil {
-		return "", fmt.Errorf("failed to embed query: %w", err)
+		return "", q.logger.Error(
+			"qdrant",
+			fmt.Errorf("failed to embed query: %w", err),
+		)
 	}
 
 	// Extract limit if provided, or use default
@@ -96,14 +108,27 @@ func (q *QDrantStore) Query(ctx context.Context, queryParams map[string]any) (st
 
 	results, err := q.Search(ctx, vector, limit)
 	if err != nil {
-		return "", err
+		return "", q.logger.Error(
+			"qdrant",
+			fmt.Errorf("failed to search: %v", err),
+		)
 	}
 
 	if len(results) == 0 {
-		return "", fmt.Errorf("no results found for query: %s", queryStr)
+		return "", q.logger.Error(
+			"qdrant",
+			fmt.Errorf("no results found for query: %s", queryStr),
+		)
 	}
 
-	return results[0], nil
+	var out strings.Builder
+
+	for _, result := range results {
+		out.WriteString(result)
+		q.hub.Add(hub.NewMetric("qdrant", "query", result))
+	}
+
+	return out.String(), nil
 }
 
 // Mutate stores data in the vector store
@@ -130,13 +155,19 @@ func (q *QDrantStore) Mutate(ctx context.Context, payload map[string]any) error 
 	}
 
 	if content == "" {
-		return fmt.Errorf("payload must contain a non-empty 'content' field")
+		return q.logger.Error(
+			"qdrant",
+			fmt.Errorf("payload must contain a non-empty 'content' field"),
+		)
 	}
 
 	// Use the embedder to generate the vector
 	vector, err := q.embedder.GetEmbedding(ctx, content)
 	if err != nil {
-		return fmt.Errorf("failed to embed content: %w", err)
+		return q.logger.Error(
+			"qdrant",
+			fmt.Errorf("failed to embed content: %w", err),
+		)
 	}
 
 	// Store the vector and payload
@@ -151,7 +182,10 @@ func (q *QDrantStore) ensureCollection() error {
 	// List all collections
 	collections, err := q.client.ListCollections(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to list collections: %w", err)
+		return q.logger.Error(
+			"qdrant",
+			fmt.Errorf("failed to list collections: %w", err),
+		)
 	}
 
 	// Check if our collection exists
@@ -186,7 +220,10 @@ func (q *QDrantStore) createCollection() error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to create collection: %w", err)
+		return q.logger.Error(
+			"qdrant",
+			fmt.Errorf("failed to create collection: %w", err),
+		)
 	}
 
 	return nil
@@ -196,11 +233,17 @@ func (q *QDrantStore) createCollection() error {
 func (q *QDrantStore) StoreVector(ctx context.Context, id string, vector []float32, payload map[string]interface{}) error {
 	// Validate inputs
 	if id == "" {
-		return fmt.Errorf("vector ID cannot be empty")
+		return q.logger.Error(
+			"qdrant",
+			fmt.Errorf("vector ID cannot be empty"),
+		)
 	}
 
 	if len(vector) != q.dimensions {
-		return fmt.Errorf("vector dimension mismatch: expected %d, got %d", q.dimensions, len(vector))
+		return q.logger.Error(
+			"qdrant",
+			fmt.Errorf("vector dimension mismatch: expected %d, got %d", q.dimensions, len(vector)),
+		)
 	}
 
 	// Create point with vectors
@@ -223,7 +266,10 @@ func (q *QDrantStore) StoreVector(ctx context.Context, id string, vector []float
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to store vector in QDrant: %w", err)
+		return q.logger.Error(
+			"qdrant",
+			fmt.Errorf("failed to store vector in QDrant: %w", err),
+		)
 	}
 
 	return nil
@@ -241,7 +287,10 @@ func (q *QDrantStore) Search(
 
 	// Validate vector dimensions
 	if len(vector) != q.dimensions {
-		return nil, fmt.Errorf("vector dimension mismatch: expected %d, got %d", q.dimensions, len(vector))
+		return nil, q.logger.Error(
+			"qdrant",
+			fmt.Errorf("vector dimension mismatch: expected %d, got %d", q.dimensions, len(vector)),
+		)
 	}
 
 	limitUint := uint64(limit)
@@ -257,7 +306,10 @@ func (q *QDrantStore) Search(
 	// Execute the search
 	searchedPoints, err := q.client.Query(ctx, queryParams)
 	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+		return nil, q.logger.Error(
+			"qdrant",
+			fmt.Errorf("search failed: %w", err),
+		)
 	}
 
 	// Extract content strings from search results

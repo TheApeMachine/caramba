@@ -10,11 +10,11 @@ import (
 )
 
 // screenshot takes a screenshot of a URL
-func (t *Tool) screenshot(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *Tool) screenshot(ctx context.Context, args map[string]any) (any, error) {
 	url, ok := args["url"].(string)
 
 	if !ok {
-		return nil, fmt.Errorf("url must be a string")
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("url must be a string"))
 	}
 
 	timeout := getTimeoutDuration(args, t.timeout)
@@ -26,7 +26,7 @@ func (t *Tool) screenshot(ctx context.Context, args map[string]interface{}) (int
 	defer cancel()
 
 	if err := page.Context(pageCtx).Navigate(url); err != nil {
-		return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to navigate to %s: %w", url, err))
 	}
 
 	page.WaitNavigation(
@@ -38,7 +38,7 @@ func (t *Tool) screenshot(ctx context.Context, args map[string]interface{}) (int
 		defer waitCancel()
 
 		if err := page.Context(waitCtx).MustElement(waitFor).WaitVisible(); err != nil {
-			return nil, fmt.Errorf("failed to wait for selector %s: %w", waitFor, err)
+			return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to wait for selector %s: %w", waitFor, err))
 		}
 	}
 
@@ -58,12 +58,12 @@ func (t *Tool) screenshot(ctx context.Context, args map[string]interface{}) (int
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to take screenshot: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to take screenshot: %w", err))
 	}
 
 	base64Screenshot := base64.StdEncoding.EncodeToString(img)
 
-	return map[string]interface{}{
+	return map[string]any{
 		"status": "success",
 		"url":    url,
 		"data":   "data:image/png;base64," + base64Screenshot,

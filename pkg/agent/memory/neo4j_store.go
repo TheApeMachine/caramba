@@ -3,16 +3,17 @@ package memory
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/theapemachine/caramba/pkg/hub"
+	"github.com/theapemachine/caramba/pkg/output"
 )
 
 type Neo4jStore struct {
 	hub      *hub.Queue
+	logger   *output.Logger
 	driver   neo4j.DriverWithContext
 	database string
 }
@@ -31,6 +32,8 @@ func NewNeo4jStore(
 		database = "neo4j"
 	}
 
+	logger := output.NewLogger()
+
 	driver, err := neo4j.NewDriverWithContext(
 		os.Getenv("NEO4J_URL"),
 		neo4j.BasicAuth(
@@ -41,11 +44,15 @@ func NewNeo4jStore(
 	)
 
 	if err != nil {
+		logger.Error("neo4j", err)
 		return nil
 	}
 
+	logger.Success("neo4j", "connected")
+
 	return &Neo4jStore{
 		hub:      hub.NewQueue(),
+		logger:   logger,
 		driver:   driver,
 		database: database,
 	}
@@ -76,13 +83,19 @@ func (n *Neo4jStore) Query(ctx context.Context, query map[string]any) (string, e
 		)
 
 		if err != nil {
-			return "", err
+			return "", n.logger.Error(
+				"neo4j",
+				fmt.Errorf("failed to query: %w", err),
+			)
 		}
 
 		results.WriteString(n.handleResults(result))
 
 		if len(result) == 0 {
-			return fmt.Sprintf("No relationships found for: %s\n", term), nil
+			return "", n.logger.Error(
+				"neo4j",
+				fmt.Errorf("no relationships found for: %s", term),
+			)
 		}
 	}
 
@@ -90,7 +103,10 @@ func (n *Neo4jStore) Query(ctx context.Context, query map[string]any) (string, e
 		result, err := n.Cypher(ctx, qry, nil)
 
 		if err != nil {
-			return "", err
+			return "", n.logger.Error(
+				"neo4j",
+				fmt.Errorf("failed to query: %w", err),
+			)
 		}
 
 		results.WriteString(n.handleResults(result))
@@ -103,15 +119,16 @@ func (n *Neo4jStore) handleResults(results []map[string]any) string {
 	var out strings.Builder
 
 	for _, r := range results {
-		out.WriteString(
-			fmt.Sprintf("%v:%v -[%v]-> %v:%v\n",
-				r["sourceLabel"],
-				r["source"],
-				r["relationship"],
-				r["targetLabel"],
-				r["target"],
-			),
+		rel := fmt.Sprintf("%v:%v -[%v]-> %v:%v\n",
+			r["sourceLabel"],
+			r["source"],
+			r["relationship"],
+			r["targetLabel"],
+			r["target"],
 		)
+
+		out.WriteString(rel)
+		n.hub.Add(hub.NewMetric("neo4j", "relationship", rel))
 	}
 
 	return out.String()
@@ -140,7 +157,10 @@ func (n *Neo4jStore) Mutate(ctx context.Context, query map[string]any) (err erro
 			},
 		)
 		if err != nil {
-			log.Printf("Error executing Cypher query: %v", err)
+			n.logger.Error(
+				"neo4j",
+				fmt.Errorf("failed to mutate: %w", err),
+			)
 		}
 	}
 
@@ -163,13 +183,19 @@ func (n *Neo4jStore) Cypher(
 	tx, err := session.BeginTransaction(ctx)
 
 	if err != nil {
-		n.hub.Add(hub.NewError("neo4j", "cypher", "error", err.Error()))
+		return nil, n.logger.Error(
+			"neo4j",
+			fmt.Errorf("failed to begin transaction: %w", err),
+		)
 	}
 
 	result, err := tx.Run(ctx, query, params)
 
 	if err != nil {
-		n.hub.Add(hub.NewError("neo4j", "cypher", "error", err.Error()))
+		return nil, n.logger.Error(
+			"neo4j",
+			fmt.Errorf("failed to run query: %w", err),
+		)
 	}
 
 	out := make([]map[string]any, 0)
@@ -183,13 +209,19 @@ func (n *Neo4jStore) Cypher(
 	_, err = result.Consume(ctx)
 
 	if err != nil {
-		n.hub.Add(hub.NewError("neo4j", "cypher", "error", err.Error()))
+		return nil, n.logger.Error(
+			"neo4j",
+			fmt.Errorf("failed to consume: %w", err),
+		)
 	}
 
 	err = tx.Commit(ctx)
 
 	if err != nil {
-		n.hub.Add(hub.NewError("neo4j", "cypher", "error", err.Error()))
+		return nil, n.logger.Error(
+			"neo4j",
+			fmt.Errorf("failed to commit: %w", err),
+		)
 	}
 
 	return out, nil

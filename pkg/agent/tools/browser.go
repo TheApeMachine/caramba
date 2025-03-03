@@ -24,10 +24,10 @@ func (b *BrowserTool) Description() string {
 	return b.browserTool.Description()
 }
 
-func (b *BrowserTool) Schema() map[string]interface{} {
+func (b *BrowserTool) Schema() map[string]any {
 	return b.browserTool.Schema()
 }
 
-func (b *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (b *BrowserTool) Execute(ctx context.Context, args map[string]any) (any, error) {
 	return b.browserTool.Execute(ctx, args)
 }
