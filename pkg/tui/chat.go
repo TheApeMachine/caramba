@@ -1,48 +1,52 @@
 package tui
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/caramba/pkg/output"
+	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 type ChatComponent struct {
-	logger   *output.Logger
-	hub      *hub.Queue
-	viewport viewport.Model
-	textarea textarea.Model
-	messages []hub.Event
-	focused  bool
-	ready    bool
-	width    int
-	height   int
-	stream   bool
-	style    *Style
+	consumer   *stream.Consumer
+	logger     *output.Logger
+	hub        *hub.Queue
+	viewport   textarea.Model
+	textarea   textarea.Model
+	messages   []hub.Event
+	focused    bool
+	ready      bool
+	width      int
+	height     int
+	stream     bool
+	generating bool
+	style      *Style
 }
 
 func NewChatComponent() *ChatComponent {
+	vp := textarea.New()
+	vp.CharLimit = 1000000
+
 	ta := textarea.New()
 	ta.Placeholder = "Type your message here..."
 	ta.SetHeight(3)
 	ta.SetWidth(60)
 	ta.ShowLineNumbers = false
-	vp := viewport.New(0, 0)
 
 	return &ChatComponent{
-		logger:   output.NewLogger(),
-		hub:      hub.NewQueue(),
-		viewport: vp,
-		textarea: ta,
-		messages: make([]hub.Event, 0),
-		focused:  true,
-		ready:    false,
-		stream:   false,
-		style:    NewStyle(),
+		consumer:   stream.NewConsumer(),
+		logger:     output.NewLogger(),
+		hub:        hub.NewQueue(),
+		viewport:   vp,
+		textarea:   ta,
+		messages:   make([]hub.Event, 0),
+		focused:    true,
+		ready:      false,
+		stream:     false,
+		generating: false,
+		style:      NewStyle(),
 	}
 }
 
@@ -55,31 +59,45 @@ func (c *ChatComponent) Init() tea.Cmd {
 func (c *ChatComponent) SetSize(width, height int) {
 	c.width = width
 	c.height = height
-
 	contentWidth := width
-
 	inputHeight := 4
-
 	viewportHeight := height - inputHeight - 3
 
-	c.viewport.Width = contentWidth
-	c.viewport.Height = viewportHeight
+	c.viewport.SetWidth(contentWidth)
+	c.viewport.SetHeight(viewportHeight)
 	c.textarea.SetWidth(contentWidth - 1)
 
 	c.ready = true
 }
 
-func (c *ChatComponent) Focus(focus bool) tea.Cmd {
-	c.focused = focus
-	if focus {
-		return c.textarea.Focus()
+// getLabelType returns the appropriate label type for the event type
+func (c *ChatComponent) getLabelType(eventType hub.EventType) Label {
+	switch eventType {
+	case hub.EventTypeStatus:
+		return LabelStatus
+	case hub.EventTypeToolCall:
+		return LabelTool
+	case hub.EventTypeError:
+		return LabelError
+	default:
+		return LabelInfo
 	}
-	c.textarea.Blur()
-	return nil
 }
 
-func (c *ChatComponent) IsFocused() bool {
-	return c.focused
+// insertMessage adds a message to the viewport with appropriate styling
+func (c *ChatComponent) insertMessage(origin, message string, addNewline bool) {
+	suffix := ""
+	if addNewline {
+		suffix = "\n"
+	}
+
+	// Process the message and strip any ANSI codes
+	processedMessage := c.consumer.Feed(message)
+	cleanMessage := StripANSIComprehensive(processedMessage)
+
+	c.viewport.InsertString(
+		"[" + origin + "] " + cleanMessage + suffix,
+	)
 }
 
 func (c *ChatComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -100,6 +118,7 @@ func (c *ChatComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				map[string]string{},
 			))
 
+			c.insertMessage("user", c.textarea.Value(), true)
 			c.textarea.Reset()
 		}
 
@@ -108,67 +127,36 @@ func (c *ChatComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	case *hub.Event:
-		c.messages = append(c.messages, *msg)
+		switch msg.Type {
+		case hub.EventTypeChunk:
+			cmds = append(cmds, c.viewport.Focus())
+			c.textarea.Blur()
+			c.focused = true
 
-		var str strings.Builder
-		for _, message := range c.messages {
-			switch message.Type {
-			case hub.EventTypeMessage:
-				str.WriteString(
-					strings.Join([]string{
-						c.style.Label(LabelInfo, message.Origin),
-						message.Message + "\n",
-					}, " "),
-				)
-			case hub.EventTypeChunk:
-				if !c.stream {
-					c.stream = true
-					str.WriteString(
-						strings.Join([]string{
-							c.style.Label(LabelInfo, message.Origin),
-							message.Message,
-						}, " "),
-					)
-				} else {
-					str.WriteString(message.Message)
-				}
-			case hub.EventTypeStatus:
-				str.WriteString(
-					strings.Join([]string{
-						c.style.Label(LabelStatus, message.Origin),
-						message.Message + "\n",
-					}, " "),
-				)
-			case hub.EventTypeToolCall:
-				str.WriteString(
-					strings.Join([]string{
-						c.style.Label(LabelTool, message.Origin),
-						message.Message + "\n",
-					}, " "),
-				)
-			case hub.EventTypeError:
-				str.WriteString(
-					strings.Join([]string{
-						c.style.Label(LabelError, message.Origin),
-						message.Message + "\n",
-					}, " "),
-				)
-			default:
-				str.WriteString(
-					strings.Join([]string{
-						c.style.Label(LabelInfo, message.Origin),
-						message.Message + "\n",
-					}, " "),
-				)
+			c.viewport.CursorEnd()
+
+			c.generating = true
+			if !c.stream {
+				c.stream = true
+				c.insertMessage(msg.Origin, msg.Message, false)
+			} else {
+				// Use more aggressive ANSI stripping for chunks
+				cleanMessage := StripANSIComprehensive(msg.Message)
+				c.viewport.InsertString(cleanMessage)
 			}
-		}
-
-		c.viewport.SetContent(str.String())
-		c.viewport.GotoBottom()
-
-		if msg.Type == hub.EventTypeClear {
-			c.messages = make([]hub.Event, 0)
-			c.viewport.SetContent("")
+		case hub.EventTypeError:
+			c.insertMessage(msg.Origin, msg.Message, true)
+		default:
+			if msg.Message == "done" {
+				c.generating = false
+				c.viewport.Blur()
+				c.focused = false
+				cmds = append(cmds, c.textarea.Focus())
+			} else {
+				// Handle standard messages
+				c.generating = true
+				c.insertMessage(msg.Origin, msg.Message, true)
+			}
 		}
 	}
 
@@ -198,18 +186,4 @@ func (c *ChatComponent) ViewInput() string {
 		Render(c.textarea.View())
 
 	return textareaView
-}
-
-func (c *ChatComponent) ScrollUp() {
-	c.viewport.LineUp(3)
-}
-
-func (c *ChatComponent) ScrollDown() {
-	c.viewport.LineDown(3)
-}
-
-func (c *ChatComponent) ClearMessages() tea.Cmd {
-	return func() tea.Msg {
-		return hub.NewEvent("system", "ui", "user", hub.EventTypeClear, "clear", map[string]string{})
-	}
 }

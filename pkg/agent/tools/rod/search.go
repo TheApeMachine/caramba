@@ -6,97 +6,71 @@ import (
 	"strings"
 )
 
-func (t *Tool) search(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *Tool) search(ctx context.Context, args map[string]any) (any, error) {
 	query, ok := args["query"].(string)
 
 	if !ok || query == "" {
-		return nil, fmt.Errorf("query must be a non-empty string")
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("query must be a non-empty string"))
 	}
 
 	searchURL := fmt.Sprintf("https://duckduckgo.com/?q=%s&kp=-2&kl=us-en&kz=-1&kaf=1&k1=-1",
 		strings.Replace(query, " ", "+", -1))
 
-	pageResult, err := t.navigate(ctx, map[string]interface{}{
+	_, err := t.navigate(ctx, map[string]interface{}{
 		"url": searchURL,
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("search navigation failed: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("search navigation failed: %w", err))
 	}
 
-	resultMap, ok := pageResult.(map[string]interface{})
-
-	if !ok {
-		return nil, fmt.Errorf("unexpected result format")
+	if t.page == nil {
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("page not found"))
 	}
 
-	html, ok := resultMap["html"].(string)
-
-	if !ok {
-		return nil, fmt.Errorf("html not found in result")
-	}
-
-	searchResults := t.extractSearchResults(html)
+	searchResults := t.page.MustEval(`() => {
+		const currentDomain = window.location.hostname;
+		return [...document.querySelectorAll('a')].map(a => {
+			let score = 0;
+			// Positional score
+			if (!a.closest('header, footer, nav')) score += 3;
+			if (a.closest('main, [role="main"], #content')) score += 2;
+			
+			// Content score
+			if (a.textContent.trim().length > 20) score += 2;
+			if (a.querySelector('img')) score += 1;
+			
+			// Link properties score
+			if (!a.href.includes('#')) score += 1;
+			if (!a.classList.contains('nav') && !a.id.includes('menu')) score += 1;
+			
+			return {
+				href: a.href,
+				text: a.textContent.trim(),
+				score: score
+			};
+		}).filter(item => item.score >= 5).join("\n");
+	}`).Arr()
 
 	if len(searchResults) == 0 {
-		searchResults = []map[string]string{
-			{
-				"summary": "Couldn't extract structured results, providing original HTML",
-				"content": html[:1000] + "...",
-			},
-		}
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("no search results found"))
 	}
 
-	return map[string]interface{}{
+	// Get HTML content for fallback
+	html := t.page.MustEval(`() => document.documentElement.outerHTML`).String()
+
+	// Process results into required format
+	formattedResults := []map[string]string{
+		{
+			"summary": "Couldn't extract structured results, providing original HTML",
+			"content": html[:1000] + "...",
+		},
+	}
+
+	return map[string]any{
 		"status":  "success",
 		"url":     searchURL,
-		"results": searchResults,
-		"count":   len(searchResults),
+		"results": formattedResults,
+		"count":   len(formattedResults),
 	}, nil
-}
-
-func (t *Tool) extractSearchResults(html string) []map[string]string {
-	var results []map[string]string
-
-	resultBlocks := extractBetweenAll(html, `<div class="result`, `</div><!--result--`)
-
-	if len(resultBlocks) == 0 {
-		resultBlocks = extractBetweenAll(html, `<div class="links_main`, `</div>`)
-	}
-
-	for _, block := range resultBlocks {
-		result := make(map[string]string)
-
-		title := extractBetween(block, `<a class="result__a" href="`, `</a>`)
-
-		if title != "" {
-			title = stripTags(title)
-			title = strings.TrimSpace(title)
-			result["title"] = title
-		}
-
-		url := extractBetween(block, `<a class="result__a" href="`, `"`)
-
-		if url != "" {
-			result["url"] = url
-		}
-
-		snippet := extractBetween(block, `<a class="result__snippet"`, `</a>`)
-
-		if snippet == "" {
-			snippet = extractBetween(block, `<div class="result__snippet">`, `</div>`)
-		}
-
-		if snippet != "" {
-			snippet = stripTags(snippet)
-			snippet = strings.TrimSpace(snippet)
-			result["snippet"] = snippet
-		}
-
-		if result["title"] != "" || result["snippet"] != "" {
-			results = append(results, result)
-		}
-	}
-
-	return results
 }

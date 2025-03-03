@@ -38,6 +38,9 @@ type Agent interface {
 	// Params returns the parameters for the agent
 	Params() *LLMParams
 
+	// SystemPrompt returns the system prompt for the agent
+	SystemPrompt() string
+
 	// Status returns the status of the agent
 	Status() AgentStatus
 
@@ -76,12 +79,6 @@ type Agent interface {
 
 	// GetTool returns a tool by name.
 	GetTool(name string) Tool
-
-	// GetMessenger returns the agent's messenger
-	GetMessenger() Messenger
-
-	// SetMessenger sets the agent's messenger
-	SetMessenger(messenger Messenger)
 
 	// SetStreaming sets the streaming mode for the agent
 	SetStreaming(streaming bool)

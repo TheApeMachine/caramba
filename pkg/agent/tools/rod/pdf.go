@@ -12,10 +12,10 @@ import (
 )
 
 // generatePDF generates a PDF from a webpage
-func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *Tool) generatePDF(ctx context.Context, args map[string]any) (any, error) {
 	url, ok := args["url"].(string)
 	if !ok || url == "" {
-		return nil, fmt.Errorf("url must be a non-empty string")
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("url must be a non-empty string"))
 	}
 
 	timeout := getTimeoutDuration(args, t.timeout)
@@ -27,7 +27,7 @@ func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (in
 	defer cancel()
 
 	if err := page.Context(pageCtx).Navigate(url); err != nil {
-		return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to navigate to %s: %w", url, err))
 	}
 
 	page.WaitNavigation(
@@ -39,7 +39,7 @@ func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (in
 		defer waitCancel()
 
 		if err := page.Context(waitCtx).MustElement(waitFor).WaitVisible(); err != nil {
-			return nil, fmt.Errorf("failed to wait for selector %s: %w", waitFor, err)
+			return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to wait for selector %s: %w", waitFor, err))
 		}
 	}
 
@@ -64,17 +64,17 @@ func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (in
 
 	pdfReader, err := page.PDF(pdfOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate PDF: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to generate PDF: %w", err))
 	}
 
 	pdfData, err := io.ReadAll(pdfReader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read PDF data: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to read PDF data: %w", err))
 	}
 
 	pdfBase64 := base64.StdEncoding.EncodeToString(pdfData)
 
-	return map[string]interface{}{
+	return map[string]any{
 		"status": "success",
 		"url":    url,
 		"data":   pdfBase64,

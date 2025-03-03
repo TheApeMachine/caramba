@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/theapemachine/caramba/pkg/output"
+	"github.com/theapemachine/caramba/pkg/hub"
 )
 
 // navigate navigates to a URL and returns the page HTML
@@ -30,19 +30,19 @@ func (t *Tool) navigate(ctx context.Context, args map[string]interface{}) (inter
 	// Add optional parameters (only those that are supported)
 	if waitFor, ok := args["wait_for"].(string); ok && waitFor != "" {
 		payload["waitFor"] = waitFor
-		output.Verbose(fmt.Sprintf("Waiting for selector: %s", waitFor))
+		t.hub.Add(hub.NewToolCall(t.Name(), "navigate", fmt.Sprintf("Waiting for selector: %s", waitFor)))
 	}
 
 	// Convert payload to JSON
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request payload: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to marshal request payload: %w", err))
 	}
 
 	// Create the request
 	req, err := t.createRequestWithAuth("POST", reqURL, payloadBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to create request: %w", err))
 	}
 
 	// Apply client-side timeout
@@ -54,23 +54,23 @@ func (t *Tool) navigate(ctx context.Context, args map[string]interface{}) (inter
 	// Send the request
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to send request: %w", err))
 	}
 	defer resp.Body.Close()
 
 	// Check for errors
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("browserless error: %s, status: %d", string(body), resp.StatusCode)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("browserless error: %s, status: %d", string(body), resp.StatusCode))
 	}
 
 	// Read the response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to read response: %w", err))
 	}
 
-	output.Debug(fmt.Sprintf("Retrieved %d bytes from %s", len(body), url))
+	t.hub.Add(hub.NewToolCall(t.Name(), "navigate", fmt.Sprintf("Retrieved %d bytes from %s", len(body), url)))
 
 	return map[string]interface{}{
 		"status": "success",

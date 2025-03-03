@@ -52,10 +52,6 @@ func TestNewBaseAgent(t *testing.T) {
 			Convey("Then it should have streaming disabled by default", func() {
 				So(agent.streaming, ShouldBeFalse)
 			})
-
-			Convey("Then it should have a messenger", func() {
-				So(agent.Messenger, ShouldNotBeNil)
-			})
 		})
 	})
 }
@@ -118,15 +114,6 @@ func TestBaseAgentGetters(t *testing.T) {
 
 			Convey("Then it should return the default status", func() {
 				So(status, ShouldEqual, AgentStatusIdle)
-			})
-		})
-
-		Convey("When getting the messenger", func() {
-			messenger := agent.GetMessenger()
-
-			Convey("Then it should return the messenger", func() {
-				So(messenger, ShouldNotBeNil)
-				So(messenger, ShouldEqual, agent.Messenger)
 			})
 		})
 	})
@@ -252,15 +239,6 @@ func TestBaseAgentSetters(t *testing.T) {
 
 			Convey("Then the iteration limit should be updated", func() {
 				So(agent.iterationLimit, ShouldEqual, 3)
-			})
-		})
-
-		Convey("When setting the messenger", func() {
-			messenger := NewInMemoryMessenger("TestAgent2")
-			agent.SetMessenger(messenger)
-
-			Convey("Then the messenger should be updated", func() {
-				So(agent.Messenger, ShouldEqual, messenger)
 			})
 		})
 

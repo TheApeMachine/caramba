@@ -6,15 +6,14 @@ import (
 	"time"
 
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/theapemachine/caramba/pkg/output"
 	"github.com/ysmood/gson"
 )
 
 // executeScript executes a custom JavaScript in the browser
-func (t *Tool) executeScript(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *Tool) executeScript(ctx context.Context, args map[string]any) (any, error) {
 	script, ok := args["script"].(string)
 	if !ok {
-		return nil, fmt.Errorf("script must be a string")
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("script must be a string"))
 	}
 
 	targetURL := getStringOr(args, "url", "about:blank")
@@ -28,7 +27,7 @@ func (t *Tool) executeScript(ctx context.Context, args map[string]interface{}) (
 
 	if targetURL != "about:blank" {
 		if err := page.Context(pageCtx).Navigate(targetURL); err != nil {
-			return nil, fmt.Errorf("failed to navigate to %s: %w", targetURL, err)
+			return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to navigate to %s: %w", targetURL, err))
 		}
 
 		page.WaitNavigation(
@@ -42,25 +41,23 @@ func (t *Tool) executeScript(ctx context.Context, args map[string]interface{}) (
 		defer waitCancel()
 
 		if err := page.Context(waitCtx).MustElement(waitFor).WaitVisible(); err != nil {
-			output.Verbose(fmt.Sprintf("Warning: timeout waiting for selector %s: %v", waitFor, err))
+			t.logger.Error(t.Name(), fmt.Errorf("timeout waiting for selector %s: %w", waitFor, err))
 		}
 	}
 
 	// Execute the script
 	result, err := page.Eval(script)
 	if err != nil {
-		return nil, fmt.Errorf("script execution failed: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("script execution failed: %w", err))
 	}
 
 	// Convert the result to a Go value
-	var goResult interface{}
+	var goResult any
 	if result != nil {
 		goResult = gson.New(result.Value).String()
 	}
 
-	output.Debug("Script execution completed successfully")
-
-	return map[string]interface{}{
+	return map[string]any{
 		"status": "success",
 		"result": goResult,
 	}, nil

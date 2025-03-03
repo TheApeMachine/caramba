@@ -6,21 +6,20 @@ import (
 	"time"
 
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/theapemachine/caramba/pkg/output"
 )
 
 // extractContent extracts content from a webpage using a CSS selector
-func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *Tool) extractContent(ctx context.Context, args map[string]any) (any, error) {
 	url, ok := args["url"].(string)
 
 	if !ok || url == "" {
-		return nil, fmt.Errorf("url must be a non-empty string")
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("url must be a non-empty string"))
 	}
 
 	selector, ok := args["selector"].(string)
 
 	if !ok || selector == "" {
-		return nil, fmt.Errorf("selector must be a non-empty string")
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("selector must be a non-empty string"))
 	}
 
 	timeout := getTimeoutDuration(args, t.timeout)
@@ -32,7 +31,7 @@ func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) 
 	defer cancel()
 
 	if err := page.Context(pageCtx).Navigate(url); err != nil {
-		return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to navigate to %s: %w", url, err))
 	}
 
 	page.WaitNavigation(
@@ -46,7 +45,7 @@ func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) 
 		defer waitCancel()
 
 		if err := page.Context(waitCtx).MustElement(waitFor).WaitVisible(); err != nil {
-			output.Verbose(fmt.Sprintf("Warning: timeout waiting for selector %s: %v", waitFor, err))
+			t.logger.Error(t.Name(), fmt.Errorf("timeout waiting for selector %s: %w", waitFor, err))
 		}
 	}
 
@@ -57,13 +56,13 @@ func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) 
 	elements, err := page.Elements(selector)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to find elements with selector '%s': %w", selector, err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to find elements with selector '%s': %w", selector, err))
 	}
 
-	var results []map[string]interface{}
+	var results []map[string]any
 
 	for i, element := range elements {
-		result := map[string]interface{}{
+		result := map[string]any{
 			"index":  i,
 			"exists": true,
 		}
@@ -101,13 +100,11 @@ func (t *Tool) extractContent(ctx context.Context, args map[string]interface{}) 
 		results = append(results, result)
 	}
 
-	output.Debug(fmt.Sprintf("Extracted %d elements from %s using selector: %s", len(results), url, selector))
-
-	return map[string]interface{}{
+	return map[string]any{
 		"status":   "success",
 		"url":      url,
 		"selector": selector,
-		"content": map[string]interface{}{
+		"content": map[string]any{
 			"count":   len(results),
 			"results": results,
 		},

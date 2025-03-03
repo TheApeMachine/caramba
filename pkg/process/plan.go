@@ -53,3 +53,39 @@ func (plan *Plan) String() string {
 
 	return builder.String()
 }
+
+type Verification struct {
+	StepID     string `json:"step_id" jsonschema:"description=The unique identifier for the step,required"`
+	Result     Result `json:"result" jsonschema:"description=The result of the step,required"`
+	NextAction string `json:"next_action" jsonschema:"description=The next action to take,required"`
+}
+
+type Result struct {
+	Success bool   `json:"success" jsonschema:"description=Whether the step was successful,required"`
+	Reason  string `json:"reason" jsonschema:"description=The reason for the result,required"`
+	Repeat  bool   `json:"repeat" jsonschema:"description=Whether the step should be repeated,required"`
+}
+
+func (v *Verification) Name() string {
+	return "Verification"
+}
+
+func (v *Verification) Description() string {
+	return "Verify the result of a step"
+}
+
+func (v *Verification) Schema() any {
+	return util.GenerateSchema[Verification]()
+}
+
+func (v *Verification) String() string {
+	builder := strings.Builder{}
+
+	builder.WriteString(fmt.Sprintf("## Verification\n\nStep ID: %s\n", v.StepID))
+	builder.WriteString(fmt.Sprintf("Result: %t\n", v.Result.Success))
+	builder.WriteString(fmt.Sprintf("Reason: %s\n", v.Result.Reason))
+	builder.WriteString(fmt.Sprintf("Repeat: %t\n", v.Result.Repeat))
+	builder.WriteString(fmt.Sprintf("Next Action: %s\n", v.NextAction))
+
+	return builder.String()
+}

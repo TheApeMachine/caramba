@@ -12,7 +12,6 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/theapemachine/caramba/pkg/output"
 )
 
 // DockerTool provides functionality for running Docker containers and executing commands within them.
@@ -27,8 +26,6 @@ type DockerTool struct {
 
 // NewDockerTool creates a new DockerTool with an initialized Docker client.
 func NewDockerTool() (*DockerTool, error) {
-	output.Info("Creating Docker tool")
-
 	// Initialize Docker client with default options
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -121,7 +118,6 @@ func (t *DockerTool) createContainer(ctx context.Context, args map[string]interf
 	// Check if image exists locally, if not pull it
 	_, _, err := t.client.ImageInspectWithRaw(ctx, img)
 	if err != nil {
-		output.Info(fmt.Sprintf("Pulling image %s", img))
 		reader, err := t.client.ImagePull(ctx, img, image.PullOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to pull image %s: %w", img, err)
@@ -170,8 +166,6 @@ func (t *DockerTool) createContainer(ctx context.Context, args map[string]interf
 
 	// Store the container ID
 	t.activeContainers[name] = resp.ID
-
-	output.Info(fmt.Sprintf("Created container: %s (ID: %s)", name, resp.ID))
 
 	return map[string]interface{}{
 		"status":         "success",
@@ -235,8 +229,6 @@ func (t *DockerTool) executeCommand(ctx context.Context, args map[string]interfa
 	if err != nil {
 		return nil, fmt.Errorf("failed to inspect exec instance: %w", err)
 	}
-
-	output.Info(fmt.Sprintf("Executed command in container %s: %s (exit code: %d)", name, command, inspectResp.ExitCode))
 
 	return map[string]interface{}{
 		"status":         "success",
@@ -304,8 +296,6 @@ func (t *DockerTool) removeContainer(ctx context.Context, args map[string]interf
 
 	// Remove from our map
 	delete(t.activeContainers, name)
-
-	output.Info(fmt.Sprintf("Removed container: %s", name))
 
 	return map[string]interface{}{
 		"status":         "success",

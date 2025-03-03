@@ -26,7 +26,7 @@ type Researcher struct {
 NewResearcher demonstrates how to build up an agent with tools, memory, planner, and optimizer.
 */
 func NewResearcher() *Researcher {
-	builder := func(name string) core.Agent {
+	builder := func(name string, process process.StructuredOutput) core.Agent {
 		return core.NewAgentBuilder(
 			name,
 		).WithLLM(
@@ -34,14 +34,20 @@ func NewResearcher() *Researcher {
 		).WithSystemPrompt(
 			viper.GetViper().GetString("templates." + name),
 		).WithProcess(
-			&process.Plan{},
+			process,
 		).WithStreaming(
 			true,
 		).Build()
 	}
 
-	planner := builder("planner")
-	optimizer := builder("optimizer")
+	planner := builder("planner", process.NewWorkflow(
+		[]process.StructuredOutput{
+			&process.Plan{},
+			&process.Verification{},
+		},
+	))
+
+	optimizer := builder("optimizer", &process.Optimize{})
 
 	return &Researcher{
 		logger: output.NewLogger(),
@@ -68,6 +74,6 @@ func NewResearcher() *Researcher {
 }
 
 func (researcher *Researcher) Run(ctx context.Context) (string, error) {
-	researcher.logger.Log("Running researcher")
+	researcher.logger.Log("researcher", "Running researcher")
 	return researcher.Agent.Execute(ctx)
 }

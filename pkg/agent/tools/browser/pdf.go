@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/theapemachine/caramba/pkg/output"
+	"github.com/theapemachine/caramba/pkg/hub"
 )
 
 // generatePDF generates a PDF from a webpage and returns the PDF data in base64 format
@@ -25,7 +25,7 @@ func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (in
 	waitFor := getStringOr(args, "wait_for", "")
 	timeout := getIntOr(args, "timeout", 30000)
 
-	output.Verbose(fmt.Sprintf("Generating PDF for: %s", url))
+	t.hub.Add(hub.NewToolCall(t.Name(), "pdf", fmt.Sprintf("Generating PDF for: %s", url)))
 
 	// Create the request payload
 	requestBody := map[string]interface{}{
@@ -52,20 +52,20 @@ func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (in
 	// Marshal the request body
 	bodyBytes, err := json.Marshal(requestBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to marshal request body: %w", err))
 	}
 
 	// Create the request
 	pdfEndpoint := fmt.Sprintf("%s/pdf", t.apiBaseURL)
 	req, err := t.createRequestWithAuth("POST", pdfEndpoint, bodyBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create PDF request: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to create PDF request: %w", err))
 	}
 
 	// Send the request
 	resp, err := t.client.Do(req.WithContext(ctx))
 	if err != nil {
-		return nil, fmt.Errorf("failed to send PDF request: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to send PDF request: %w", err))
 	}
 	defer resp.Body.Close()
 
@@ -74,16 +74,16 @@ func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (in
 		var errorBody map[string]interface{}
 		if err := json.NewDecoder(resp.Body).Decode(&errorBody); err == nil {
 			if message, ok := errorBody["message"].(string); ok {
-				return nil, fmt.Errorf("PDF generation error (status %d): %s", resp.StatusCode, message)
+				return nil, t.logger.Error(t.Name(), fmt.Errorf("PDF generation error (status %d): %s", resp.StatusCode, message))
 			}
 		}
-		return nil, fmt.Errorf("PDF generation error (status %d)", resp.StatusCode)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("PDF generation error (status %d)", resp.StatusCode))
 	}
 
 	// Read the PDF data
 	pdfData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read PDF data: %w", err)
+		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to read PDF data: %w", err))
 	}
 
 	// Encode PDF data to base64
@@ -97,6 +97,6 @@ func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (in
 		"format": format,
 	}
 
-	output.Debug(fmt.Sprintf("Generated PDF for %s (%d bytes)", url, len(pdfData)))
+	t.hub.Add(hub.NewToolCall(t.Name(), "pdf", fmt.Sprintf("Generated PDF for %s (%d bytes)", url, len(pdfData))))
 	return result, nil
 }
