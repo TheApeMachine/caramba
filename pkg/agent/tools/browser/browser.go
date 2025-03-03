@@ -71,10 +71,6 @@ func (t *Tool) Schema() map[string]any {
 				"type":        "string",
 				"description": "URL to navigate to (required for navigate, screenshot, pdf, extract, optional for execute)",
 			},
-			"query": map[string]any{
-				"type":        "string",
-				"description": "Search query (required for search action)",
-			},
 			"selector": map[string]any{
 				"type":        "string",
 				"description": "CSS selector for content extraction (required for extract)",
@@ -117,8 +113,6 @@ func (t *Tool) Execute(ctx context.Context, args map[string]any) (any, error) {
 		result, err = t.screenshot(ctx, args)
 	case "extract":
 		result, err = t.extractContent(ctx, args)
-	case "search":
-		result, err = t.search(ctx, args)
 	case "pdf":
 		result, err = t.generatePDF(ctx, args)
 	case "execute":
@@ -193,40 +187,4 @@ func (t *Tool) sendRequest(ctx context.Context, req *http.Request) (map[string]a
 	}
 
 	return result, nil
-}
-
-// AvailableActions returns a list of available actions for the browser tool
-func (t *Tool) AvailableActions() []map[string]string {
-	return []map[string]string{
-		{
-			"name":        "navigate",
-			"description": "Navigate to a URL and get the page HTML",
-			"example":     `{"url": "https://example.com"}`,
-		},
-		{
-			"name":        "screenshot",
-			"description": "Take a screenshot of a webpage",
-			"example":     `{"url": "https://example.com", "full_page": true}`,
-		},
-		{
-			"name":        "extract",
-			"description": "Extract content from a webpage using a CSS selector",
-			"example":     `{"url": "https://example.com", "selector": ".main-content"}`,
-		},
-		{
-			"name":        "search",
-			"description": "Perform a web search with the given query",
-			"example":     `{"query": "latest AI research papers"}`,
-		},
-		{
-			"name":        "pdf",
-			"description": "Generate a PDF of a webpage",
-			"example":     `{"url": "https://example.com", "full_page": true}`,
-		},
-		{
-			"name":        "execute",
-			"description": "Execute JavaScript on a webpage",
-			"example":     `{"url": "https://example.com", "script": "return document.title;"}`,
-		},
-	}
 }

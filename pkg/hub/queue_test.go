@@ -46,7 +46,13 @@ func TestAddOrDrop(t *testing.T) {
 		queue := NewQueue()
 
 		Convey("When AddOrDrop is called with an event for a non-existent topic", func() {
-			event := NewEvent("test", "nonexistent", "test", EventTypeInfo, "test message", nil)
+			event := &Event{
+				Topic:   "nonexistent",
+				Type:    EventTypeInfo,
+				Origin:  "test",
+				Message: "test message",
+				Meta:    nil,
+			}
 			queue.AddOrDrop(event)
 
 			Convey("Then the event should be dropped", func() {
@@ -59,7 +65,13 @@ func TestAddOrDrop(t *testing.T) {
 		Convey("When Subscribe is called and then AddOrDrop is used", func() {
 			topic := "test-topic"
 			eventChan := queue.Subscribe(topic)
-			event := NewEvent("test", topic, "test", EventTypeInfo, "test message", nil)
+			event := &Event{
+				Topic:   TopicTypeLog,
+				Type:    EventTypeInfo,
+				Origin:  "test",
+				Message: "test message",
+				Meta:    nil,
+			}
 
 			queue.AddOrDrop(event)
 
@@ -84,7 +96,13 @@ func TestAdd(t *testing.T) {
 		Convey("When Add is called with an event", func() {
 			topic := "test-topic-add"
 			eventChan := queue.Subscribe(topic)
-			event := NewEvent("test", topic, "test", EventTypeInfo, "add test", nil)
+			event := &Event{
+				Topic:   TopicTypeLog,
+				Type:    EventTypeInfo,
+				Origin:  "test",
+				Message: "add test",
+				Meta:    nil,
+			}
 
 			queue.Add(event)
 
@@ -159,7 +177,13 @@ func TestSubscribe(t *testing.T) {
 
 			// Add multiple events
 			for i := 0; i < 3; i++ {
-				event := NewEvent("test", topic, "test", EventTypeInfo, "test message", nil)
+				event := &Event{
+					Topic:   TopicTypeLog,
+					Type:    EventTypeInfo,
+					Origin:  "test",
+					Message: "test message",
+					Meta:    nil,
+				}
 				queue.Add(event)
 			}
 

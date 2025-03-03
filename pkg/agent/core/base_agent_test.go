@@ -133,7 +133,7 @@ func TestBaseAgentSetters(t *testing.T) {
 
 		Convey("When adding a tool", func() {
 			tool := &MockTool{}
-			agent.AddTool(tool)
+			agent.AddTools(tool)
 
 			Convey("Then the tool should be added to the parameters", func() {
 				So(len(agent.params.Tools), ShouldEqual, 1)
@@ -257,8 +257,7 @@ func TestGetTool(t *testing.T) {
 		agent := NewBaseAgent("TestAgent")
 		tool1 := &MockTool{}
 		tool2 := &MockToolWithName{name: "special-tool"}
-		agent.AddTool(tool1)
-		agent.AddTool(tool2)
+		agent.AddTools(tool1, tool2)
 
 		Convey("When getting a tool by name that exists", func() {
 			foundTool := agent.GetTool("special-tool")
@@ -299,14 +298,12 @@ func TestBaseAgentIterations(t *testing.T) {
 		agent.SetLLM(mockLLM)
 
 		Convey("When handling an event that triggers iterations", func() {
-			event := hub.NewEvent(
-				"user",
-				"user",
-				"message",
-				hub.EventTypeMessage,
-				"Run multiple iterations",
-				map[string]string{},
-			)
+			event := &hub.Event{
+				Origin:  "user",
+				Topic:   hub.TopicTypeMessage,
+				Type:    hub.EventTypePrompt,
+				Message: "Run multiple iterations",
+			}
 
 			err := agent.handleEvent(context.Background(), event)
 

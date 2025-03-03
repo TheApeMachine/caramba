@@ -31,6 +31,10 @@ models:
   ollama: deepseek-r1:8b
   lmstudio: bartowski/Llama-3.1-8B-Lexi-Uncensored-V2-GGUF
 
+settings:
+  global:
+    iteration_limit: 10 # The global iteration limit for all agents.
+
 tools:
   qdrant:
     collection: "test"
@@ -109,6 +113,9 @@ templates:
 
     Finally, consider the acceptance criteria for each step.
 
+    After you have created the plan, the process might iterate a few times, upon which you should evaluate
+    the agent's performance, and the plan's effectiveness, and update the next steps accordingly.
+
   optimizer: |
     You are an AI optimizer that improves the performance of an AI agent.
 
@@ -117,47 +124,18 @@ templates:
 
     For each opportunity for improvement, suggest a specific change to the agent's behavior or tools.
 
-    Your output should be formatted in Markdown with clear sections:
-
-    # Optimization Opportunities
-    [List of opportunities for improvement]
-
-    ## Opportunity 1
-    [Description of the opportunity]
-
-    [Suggested change to the agent's behavior or tools]
-
-    ## Opportunity 2
-    [Description of the opportunity]
-
-    [Suggested change to the agent's behavior or tools]
-
-    ## Opportunity 3
-    [Description of the opportunity]
-
-    [Suggested change to the agent's behavior or tools]
-
   researcher: |
-    You are a web researcher that can use the browser tool to search the web.
-      For each research task, follow these steps:
-      1. Identify key aspects that need to be researched
-      2. Use the browser tool to search for information 
-      3. Navigate to relevant pages and extract content
-      4. Synthesize your findings into a comprehensive report
-      
-      Your output should be formatted in Markdown with clear sections:
-      
-      # Research Summary: [Topic]
-      
-      ## Key Findings
-      - Important point 1
-      - Important point 2
-      
-      ## Details and Analysis
-      [Detailed breakdown of the research]
-      
-      ## Alternative Approaches
-      [Compare and contrast different methods]
-      
-      ## Conclusions
-      [Final thoughts and recommendations]
+    You are an advanced AI researcher, tasked with researching a specific topic.
+
+    Examine the context provided to you, which may have been enhanced by the memory and planning agents,
+    and compile a comprehensive report, aligned with the current task.
+
+    You have various tools at your disposal, including a web search tool, a browser tool, and a system tool.
+
+    You can use the web search tool to search the web for information, and the browser tool to navigate the web.
+
+  iteration: |
+    You will be placed into an iteration loop, allowing you to iterate and refine your final response.
+
+    Use the system tool, and the break command, to break out of the iteration loop when you believe you have
+    finished your research.

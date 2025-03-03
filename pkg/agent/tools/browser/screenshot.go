@@ -14,7 +14,7 @@ import (
 )
 
 // screenshot takes a screenshot of a URL
-func (t *Tool) screenshot(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (t *Tool) screenshot(ctx context.Context, args map[string]any) (any, error) {
 	url, ok := args["url"].(string)
 	if !ok {
 		return nil, errors.New("url must be a string")
@@ -24,7 +24,7 @@ func (t *Tool) screenshot(ctx context.Context, args map[string]interface{}) (int
 	reqURL := fmt.Sprintf("%s/screenshot", t.apiBaseURL)
 
 	// Prepare the request payload - keeping it minimal to avoid validation errors
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"url": url,
 	}
 
@@ -34,11 +34,16 @@ func (t *Tool) screenshot(ctx context.Context, args map[string]interface{}) (int
 	}
 
 	if fullPage, ok := args["fullPage"].(bool); ok {
-		payload["options"] = map[string]interface{}{
+		payload["options"] = map[string]any{
 			"fullPage": fullPage,
 		}
 		if fullPage {
-			t.hub.Add(hub.NewToolCall(t.Name(), "screenshot", "Capturing full page screenshot"))
+			t.hub.Add(&hub.Event{
+				Origin:  t.Name(),
+				Topic:   hub.TopicTypeAgent,
+				Type:    hub.EventTypeToolCall,
+				Message: "Capturing full page screenshot",
+			})
 		}
 	}
 
@@ -79,12 +84,17 @@ func (t *Tool) screenshot(ctx context.Context, args map[string]interface{}) (int
 		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to read response: %w", err))
 	}
 
-	t.hub.Add(hub.NewToolCall(t.Name(), "screenshot", fmt.Sprintf("Captured screenshot (%d bytes)", len(body))))
+	t.hub.Add(&hub.Event{
+		Origin:  t.Name(),
+		Topic:   hub.TopicTypeAgent,
+		Type:    hub.EventTypeToolCall,
+		Message: fmt.Sprintf("Captured screenshot (%d bytes)", len(body)),
+	})
 
 	// Convert to base64 for easier handling
 	base64Screenshot := base64.StdEncoding.EncodeToString(body)
 
-	return map[string]interface{}{
+	return map[string]any{
 		"status": "success",
 		"url":    url,
 		"data":   "data:image/png;base64," + base64Screenshot,

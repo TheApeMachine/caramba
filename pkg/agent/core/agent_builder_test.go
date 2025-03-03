@@ -28,6 +28,9 @@ func (m *MockLLM) Name() string {
 	return "MockLLM"
 }
 
+func (m *MockMemory) SetParent(parent Agent) {
+}
+
 func (m *MockMemory) QueryAgent() Agent {
 	return nil
 }
@@ -251,7 +254,7 @@ func TestWithTool(t *testing.T) {
 
 		Convey("When adding a tool", func() {
 			tool := &MockTool{}
-			result := builder.WithTool(tool)
+			result := builder.WithTools(tool)
 
 			Convey("Then it should return the builder for chaining", func() {
 				So(result, ShouldEqual, builder)

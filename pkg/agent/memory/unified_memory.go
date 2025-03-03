@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/agent/core"
 	"github.com/theapemachine/caramba/pkg/agent/llm"
+	"github.com/theapemachine/caramba/pkg/agent/tools"
 	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/caramba/pkg/output"
 	"github.com/theapemachine/caramba/pkg/process"
@@ -41,6 +42,8 @@ func NewUnifiedMemory() *UnifiedMemory {
 			proc,
 		).WithIterationLimit(
 			3,
+		).WithTools(
+			tools.NewSystem(),
 		).WithStreaming(
 			true,
 		).Build()
@@ -62,6 +65,11 @@ func NewUnifiedMemory() *UnifiedMemory {
 		queryAgent:  buildAgent("query", &process.MemoryLookup{}),
 		mutateAgent: buildAgent("mutate", &process.MemoryMutate{}),
 	}
+}
+
+func (memory *UnifiedMemory) SetParent(parent core.Agent) {
+	memory.queryAgent.SetParent(parent)
+	memory.mutateAgent.SetParent(parent)
 }
 
 func (memory *UnifiedMemory) QueryAgent() core.Agent {
@@ -92,6 +100,32 @@ func (memory *UnifiedMemory) Query(ctx context.Context, proc *process.MemoryLook
 		}
 
 		results.WriteString(fmt.Sprintf("%s: %s\n", question, result))
+	}
+
+	for _, keyword := range proc.Keywords {
+		result, err := memory.stores["graph"].Query(ctx, map[string]any{
+			"keywords": keyword,
+		})
+
+		if err != nil {
+			memory.logger.Error("unified_memory", err)
+			return "", err
+		}
+
+		results.WriteString(fmt.Sprintf("%s: %s\n", keyword, result))
+	}
+
+	if proc.Cypher != "" {
+		result, err := memory.stores["graph"].Query(ctx, map[string]any{
+			"query": proc.Cypher,
+		})
+
+		if err != nil {
+			memory.logger.Error("unified_memory", err)
+			return "", err
+		}
+
+		results.WriteString(fmt.Sprintf("%s: %s\n", proc.Cypher, result))
 	}
 
 	return results.String(), nil

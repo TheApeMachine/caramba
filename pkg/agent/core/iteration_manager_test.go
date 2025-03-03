@@ -55,10 +55,6 @@ func TestNewIterationManager(t *testing.T) {
 			Convey("Then it should have the agent set", func() {
 				So(manager.agent, ShouldEqual, agent)
 			})
-
-			Convey("Then it should have initialized workflow manager", func() {
-				So(manager.workflowManager, ShouldNotBeNil)
-			})
 		})
 	})
 }
@@ -184,7 +180,7 @@ func TestRunWithToolCalls(t *testing.T) {
 
 		// Add a mock tool
 		mockTool := &MockTool{}
-		agent.AddTool(mockTool)
+		agent.AddTools(mockTool)
 
 		// Create a mock LLM that returns a tool call
 		mockLLM := &MockToolCallLLM{

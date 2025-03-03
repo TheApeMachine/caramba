@@ -76,6 +76,12 @@ func NewQDrantStore(collection string, embedder EmbeddingProvider) *QDrantStore 
 	}
 
 	store.logger.Success("qdrant", "online")
+	store.hub.Add(&hub.Event{
+		Origin:  "qdrant",
+		Topic:   hub.TopicTypeStore,
+		Type:    hub.EventTypeStatus,
+		Message: "online",
+	})
 
 	return store
 }
@@ -125,7 +131,12 @@ func (q *QDrantStore) Query(ctx context.Context, queryParams map[string]any) (st
 
 	for _, result := range results {
 		out.WriteString(result)
-		q.hub.Add(hub.NewMetric("qdrant", "query", result))
+		q.hub.Add(&hub.Event{
+			Origin:  "qdrant",
+			Topic:   hub.TopicTypeStore,
+			Type:    hub.EventTypeQuery,
+			Message: result,
+		})
 	}
 
 	return out.String(), nil

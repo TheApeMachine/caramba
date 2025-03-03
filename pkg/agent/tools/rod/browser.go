@@ -47,16 +47,12 @@ func (t *Tool) Schema() map[string]any {
 		"properties": map[string]any{
 			"action": map[string]any{
 				"type":        "string",
-				"enum":        []string{"navigate", "screenshot", "pdf", "extract", "execute", "search"},
+				"enum":        []string{"navigate", "screenshot", "pdf", "extract", "execute"},
 				"description": "Action to perform with the browser tool",
 			},
 			"url": map[string]any{
 				"type":        "string",
 				"description": "URL to navigate to (required for navigate, screenshot, pdf, extract, optional for execute)",
-			},
-			"query": map[string]any{
-				"type":        "string",
-				"description": "Search query (required for search action)",
 			},
 			"selector": map[string]any{
 				"type":        "string",
@@ -100,8 +96,6 @@ func (t *Tool) Execute(ctx context.Context, args map[string]any) (any, error) {
 		result, err = t.screenshot(ctx, args)
 	case "extract":
 		result, err = t.extractContent(ctx, args)
-	case "search":
-		result, err = t.search(ctx, args)
 	case "pdf":
 		result, err = t.generatePDF(ctx, args)
 	case "execute":

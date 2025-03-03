@@ -20,6 +20,12 @@ func (b *AgentBuilder) WithLLM(llm LLMProvider) *AgentBuilder {
 	return b
 }
 
+// WithSubscriptions sets the subscriptions for the agent
+func (b *AgentBuilder) WithSubscriptions(subscriptions ...string) *AgentBuilder {
+	b.agent.SetSubscriptions(subscriptions...)
+	return b
+}
+
 // WithSystemPrompt sets the system prompt for the agent
 func (b *AgentBuilder) WithSystemPrompt(prompt string) *AgentBuilder {
 	b.agent.SetSystemPrompt(prompt)
@@ -51,8 +57,8 @@ func (b *AgentBuilder) WithOptimizer(optimizer Agent) *AgentBuilder {
 }
 
 // WithTool adds a tool to the agent
-func (b *AgentBuilder) WithTool(tool Tool) *AgentBuilder {
-	b.agent.AddTool(tool)
+func (b *AgentBuilder) WithTools(tools ...Tool) *AgentBuilder {
+	b.agent.AddTools(tools...)
 	return b
 }
 

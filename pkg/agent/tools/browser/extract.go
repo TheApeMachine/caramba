@@ -113,7 +113,12 @@ func (t *Tool) extractContent(ctx context.Context, args map[string]any) (any, er
 		}
 	}
 
-	t.hub.Add(hub.NewToolCall(t.Name(), "extract", fmt.Sprintf("%d", count)))
+	t.hub.Add(&hub.Event{
+		Origin:  t.Name(),
+		Topic:   hub.TopicTypeAgent,
+		Type:    hub.EventTypeToolCall,
+		Message: fmt.Sprintf("%d", count),
+	})
 
 	return result, nil
 }

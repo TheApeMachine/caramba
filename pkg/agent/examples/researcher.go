@@ -35,6 +35,8 @@ func NewResearcher() *Researcher {
 			viper.GetViper().GetString("templates." + name),
 		).WithProcess(
 			process,
+		).WithTools(
+			tools.NewSystem(),
 		).WithStreaming(
 			true,
 		).Build()
@@ -59,9 +61,13 @@ func NewResearcher() *Researcher {
 			viper.GetViper().GetString("templates.researcher"),
 		).WithPlanner(
 			planner,
+		).WithSubscriptions(
+			"tasks",
 		).WithOptimizer(
 			optimizer,
-		).WithTool(
+		).WithTools(
+			tools.NewSystem(),
+			tools.NewWebSearch(os.Getenv("GOOGLE_API_KEY"), os.Getenv("GOOGLE_SEARCH_ID")),
 			tools.NewBrowserTool("http://localhost:3000", "6R0W53R135510"),
 		).WithMemory(
 			memory.NewUnifiedMemory(),

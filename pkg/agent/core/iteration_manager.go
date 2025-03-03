@@ -10,286 +10,331 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/pkoukk/tiktoken-go"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/caramba/pkg/output"
 	"github.com/theapemachine/caramba/pkg/process"
 )
 
-// IterationManager handles agent iteration logic.
+/*
+IterationManager handles agent iteration logic, managing the conversation flow
+between agents and LLMs. It handles message preparation, tool calls, streaming,
+and message truncation to stay within token limits.
+*/
 type IterationManager struct {
-	logger          *output.Logger
-	hub             *hub.Queue
-	agent           Agent
-	workflowManager *WorkflowManager
+	logger    *output.Logger
+	hub       *hub.Queue
+	agent     Agent
+	breaking  bool
+	iteration int
+	limit     int
+	out       []LLMMessage
 }
 
-// NewIterationManager creates a new IterationManager.
-func NewIterationManager(
-	agent Agent,
-) *IterationManager {
+/*
+NewIterationManager creates a new IterationManager instance for handling
+agent iterations. It initializes the manager with the provided agent and
+default configuration settings.
+*/
+func NewIterationManager(agent Agent) *IterationManager {
 	return &IterationManager{
-		logger:          output.NewLogger(),
-		hub:             hub.NewQueue(),
-		agent:           agent,
-		workflowManager: NewWorkflowManager(),
+		logger:    output.NewLogger(),
+		hub:       hub.NewQueue(),
+		agent:     agent,
+		breaking:  false,
+		iteration: 0,
+		limit:     viper.GetViper().GetInt("settings.global.iteration_limit"),
 	}
 }
 
-func (im *IterationManager) SetWorkflow(workflow *Workflow) {
-	im.workflowManager.SetWorkflow(*workflow)
-}
-
-// Run handles the iteration loop, either in streaming or non-streaming mode.
-// Returns the final response message that can be passed to the next agent.
+/*
+Run handles the main iteration loop, either in streaming or non-streaming mode.
+It manages the conversation flow, processes messages, and handles any errors that occur.
+Returns the final set of messages and any error encountered.
+*/
 func (im *IterationManager) Run(ctx context.Context, msgs []LLMMessage) ([]LLMMessage, error) {
 	if len(msgs) == 0 {
-		return msgs, im.logger.Error(im.agent.Name(), errors.New("message is empty"))
+		return msgs, im.logError(errors.New("message is empty"))
 	}
 
-	// Overwrite the agent's messages, leaving only the first message,
-	// which is the system prompt.
-	im.agent.Params().Messages = append([]LLMMessage{
-		{
-			Role:    "system",
-			Content: im.agent.SystemPrompt(),
-		},
-	}, msgs...)
+	// Reset the output messages.
+	im.out = make([]LLMMessage, 0)
 
-	var err error
+	iteration := 0
 
-	if im.agent.Streaming() {
-		msgs, err = im.handleStreamingIteration(ctx, msgs)
-	} else {
-		msgs, err = im.handleNonStreamingIteration(ctx, msgs)
+	for !im.breaking || iteration < min(im.agent.IterationLimit(), im.limit) {
+		im.prepareMessages(msgs)
+		im.agent.SetStatus(AgentStatusThinking)
+
+		var err error
+
+		if im.agent.Streaming() {
+			msgs, err = im.streamingIteration(ctx, msgs)
+		} else {
+			msgs, err = im.nonStreamingIteration(ctx, msgs)
+		}
+
+		if err != nil {
+			return msgs, err
+		}
+
+		iteration++
 	}
 
-	if err != nil {
-		im.logger.Error(im.agent.Name(), err)
-		return msgs, err
-	}
-
-	return msgs, nil
+	return im.out, nil
 }
 
-func (im *IterationManager) handleNonStreamingIteration(
-	ctx context.Context,
-	msgs []LLMMessage,
-) ([]LLMMessage, error) {
-	im.hub.Add(hub.NewStatus(im.agent.Name(), "agent", "thinking"))
+/*
+prepareMessages prepares the message array for the LLM by adding the system prompt
+and truncating messages to stay within token limits. It also logs the prepared messages
+for debugging purposes.
+*/
+func (im *IterationManager) prepareMessages(msgs []LLMMessage) {
+	im.agent.Params().Messages = append([]LLMMessage{
+		{Role: "system", Content: im.agent.SystemPrompt()},
+	}, msgs...)
 
 	im.agent.Params().Messages = im.truncateMessages(im.agent.Params().Messages)
 	im.logger.Log(im.agent.Name(), spew.Sdump(im.agent.Params().Messages))
+}
 
+/*
+nonStreamingIteration performs a single non-streaming iteration where the entire
+response is generated at once. It processes the response, handles any tool calls,
+and returns the updated message array and any errors.
+*/
+func (im *IterationManager) nonStreamingIteration(ctx context.Context, msgs []LLMMessage) ([]LLMMessage, error) {
 	res := im.agent.LLM().GenerateResponse(ctx, *im.agent.Params())
 
 	if res.Error != nil {
-		im.logger.Error(im.agent.Name(), res.Error)
-		return msgs, res.Error
+		return msgs, im.logError(res.Error)
 	}
 
-	im.hub.Add(hub.NewMessage(im.agent.Name(), res.Content))
+	if im.agent.Params().Schema != nil {
+		im.out = append(im.out, im.createAgentMessage(res.Content))
+	}
 
-	msgs = append(msgs, LLMMessage{
-		Role:    "assistant",
-		Content: "ADDED BY: " + im.agent.Name() + "\n\n" + res.Content,
+	im.hub.Add(&hub.Event{
+		Origin:  im.agent.Name(),
+		Topic:   hub.TopicTypeMessage,
+		Type:    hub.EventTypeResponse,
+		Message: res.Content,
 	})
 
-	msgs = append(msgs, im.handleProcess(ctx, res.Content)...)
-	msgs = append(msgs, im.handleToolCalls(ctx, res.ToolCalls)...)
+	msgs = append(msgs, im.createAgentMessage(res.Content))
 
-	return msgs, nil
+	processResults := im.handleProcess(ctx, res.Content)
+	toolResults := im.handleToolCalls(ctx, res.ToolCalls)
+
+	return append(append(msgs, processResults...), toolResults...), nil
 }
 
-func (im *IterationManager) handleStreamingIteration(
-	ctx context.Context,
-	msgs []LLMMessage,
-) ([]LLMMessage, error) {
-	im.hub.Add(hub.NewStatus(im.agent.Name(), "agent", "thinking"))
-
-	var (
-		streamedResponse strings.Builder
-		toolCalls        []ToolCall
-	)
-
-	im.agent.Params().Messages = im.truncateMessages(im.agent.Params().Messages)
-	im.logger.Log(im.agent.Name(), spew.Sdump(im.agent.Params().Messages))
+/*
+streamingIteration performs a single streaming iteration where the response
+is received in chunks. It handles the streamed content and tool calls, assembling
+the complete response and returning the updated message array.
+*/
+func (im *IterationManager) streamingIteration(ctx context.Context, msgs []LLMMessage) ([]LLMMessage, error) {
+	var response strings.Builder
+	var toolCalls []ToolCall
 
 	for chunk := range im.agent.LLM().StreamResponse(ctx, *im.agent.Params()) {
 		if chunk.Error != nil {
-			im.logger.Error(im.agent.Name(), chunk.Error)
+			im.logError(chunk.Error)
+			continue
 		}
 
 		switch chunk.Type {
 		case ResponseTypeToolCall:
 			toolCalls = chunk.ToolCalls
-			msgs = append(msgs, im.handleToolCalls(ctx, toolCalls)...)
 		case ResponseTypeContent:
 			if chunk.Content != "" {
-				im.hub.Add(hub.NewChunk(
-					im.agent.Name(),
-					chunk.Content,
-				))
-				streamedResponse.WriteString(chunk.Content)
+				im.hub.Add(&hub.Event{
+					Origin:  im.agent.Name(),
+					Topic:   hub.TopicTypeMessage,
+					Type:    hub.EventTypeChunk,
+					Message: chunk.Content,
+				})
+				response.WriteString(chunk.Content)
 			}
 		}
 	}
 
-	msgs = append(msgs, LLMMessage{
+	if im.agent.Params().Schema == nil {
+		im.out = append(im.out, im.createAgentMessage(response.String()))
+	}
+
+	msgs = append(msgs, im.createAgentMessage(response.String()))
+	return append(msgs, im.handleToolCalls(ctx, toolCalls)...), nil
+}
+
+/*
+createAgentMessage creates a new LLMMessage with the assistant role and prefixes
+the content with the agent's name for identification purposes.
+*/
+func (im *IterationManager) createAgentMessage(content string) LLMMessage {
+	return LLMMessage{
 		Role:    "assistant",
-		Content: "ADDED BY: " + im.agent.Name() + "\n\n" + streamedResponse.String(),
-	})
-
-	msgs = append(msgs, im.handleToolCalls(ctx, toolCalls)...)
-
-	return msgs, nil
+		Content: "ADDED BY: " + im.agent.Name() + "\n\n" + content,
+	}
 }
 
+/*
+handleToolCalls processes an array of tool calls, executing each tool and
+collecting the results. It adds the results to the message array and handles
+any system commands or errors that occur during execution.
+*/
 func (im *IterationManager) handleToolCalls(ctx context.Context, toolCalls []ToolCall) []LLMMessage {
-	out := make([]LLMMessage, 0)
+	var results []LLMMessage
 
-	if len(toolCalls) > 0 {
-		for _, toolCall := range toolCalls {
-			im.hub.Add(hub.NewToolCall(im.agent.Name(), toolCall.Name, fmt.Sprintf("%v", toolCall.Args)))
-			toolResults, err := im.agent.GetTool(toolCall.Name).Execute(ctx, toolCall.Args)
+	for _, call := range toolCalls {
+		im.hub.Add(&hub.Event{
+			Origin:  im.agent.Name(),
+			Topic:   hub.TopicTypeMessage,
+			Type:    hub.EventTypeToolCall,
+			Message: fmt.Sprintf("%v", call.Args),
+		})
+		result, err := im.agent.GetTool(call.Name).Execute(ctx, call.Args)
 
-			if err != nil {
-				im.logger.Error(im.agent.Name(), err)
-				return nil
-			}
-
-			// Handle different return types from tool.Execute
-			var content string
-			switch v := toolResults.(type) {
-			case string:
-				content = v
-			default:
-				// For any other type, try JSON marshal
-				jsonBytes, err := json.Marshal(v)
-				if err != nil {
-					im.logger.Error(im.agent.Name(), err)
-					content = "Error: Unable to process tool results"
-					break
-				}
-
-				content = string(jsonBytes)
-			}
-
-			out = append(out, LLMMessage{
-				Role:    "assistant",
-				Content: content,
-			})
+		if err != nil {
+			im.logError(err)
+			continue
 		}
+
+		if call.Name == "system" {
+			im.breaking = true
+			continue
+		}
+
+		results = append(results, LLMMessage{
+			Role:    "assistant",
+			Content: im.formatResult(result),
+		})
+
+		im.out = append(im.out, results...)
 	}
 
-	return out
+	return results
 }
 
+/*
+formatResult formats the result of a tool execution into a string representation.
+It handles different result types, converting non-string results to JSON.
+*/
+func (im *IterationManager) formatResult(result interface{}) string {
+	switch v := result.(type) {
+	case string:
+		return v
+	default:
+		jsonBytes, err := json.Marshal(v)
+		if err != nil {
+			im.logError(err)
+			return "Error: Unable to process tool results"
+		}
+		return string(jsonBytes)
+	}
+}
+
+/*
+handleProcess processes responses that contain JSON-formatted process instructions.
+It handles memory lookup and mutation operations, and returns the results as messages.
+*/
 func (im *IterationManager) handleProcess(ctx context.Context, response string) []LLMMessage {
-	var buf map[string]any
-
-	err := json.Unmarshal([]byte(response), &buf)
-
-	if err != nil {
-		im.logger.Error(im.agent.Name(), err)
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(response), &data); err != nil {
+		im.logError(err)
 		return nil
 	}
 
-	switch buf["name"].(string) {
+	name, ok := data["name"].(string)
+	if !ok {
+		return nil
+	}
+
+	var result string
+	var err error
+
+	switch name {
 	case "memory_lookup":
-		proc := &process.MemoryLookup{}
-		err = json.Unmarshal([]byte(response), proc)
-
-		if err != nil {
-			im.logger.Error(im.agent.Name(), err)
-			return nil
-		}
-
-		results, err := im.agent.Memory().Query(ctx, proc)
-
-		if err != nil {
-			im.logger.Error(im.agent.Name(), err)
-			return nil
-		}
-
-		return []LLMMessage{
-			{
-				Role:    "assistant",
-				Content: results,
-			},
+		var proc process.MemoryLookup
+		if err = json.Unmarshal([]byte(response), &proc); err == nil {
+			result, err = im.agent.Memory().Query(ctx, &proc)
 		}
 	case "memory_mutate":
-		proc := &process.MemoryMutate{}
-		err = json.Unmarshal([]byte(response), proc)
-
-		if err != nil {
-			im.logger.Error(im.agent.Name(), err)
-			return nil
-		}
-
-		err = im.agent.Memory().Mutate(ctx, proc)
-
-		if err != nil {
-			im.logger.Error(im.agent.Name(), err)
-			return nil
-		}
-
-		return []LLMMessage{
-			{
-				Role:    "assistant",
-				Content: "Memory mutated successfully",
-			},
+		var proc process.MemoryMutate
+		if err = json.Unmarshal([]byte(response), &proc); err == nil {
+			err = im.agent.Memory().Mutate(ctx, &proc)
+			result = "Memory mutated successfully"
 		}
 	}
 
-	return nil
+	if err != nil {
+		im.logError(err)
+		return nil
+	}
+
+	im.out = append(im.out, im.createAgentMessage(result))
+	return []LLMMessage{{Role: "assistant", Content: result}}
 }
 
+/*
+truncateMessages truncates the message array to stay within the maximum token limit
+for LLM context. It keeps the system message, user message, and as many recent messages
+as possible while staying under the token limit.
+*/
 func (im *IterationManager) truncateMessages(msgs []LLMMessage) []LLMMessage {
-	// Always include first two messages (system prompt and user message)
+	const maxTokens = 7500 // 8000 - 500 buffer
+
 	if len(msgs) < 2 {
 		return msgs
 	}
 
-	maxTokens := 8000 - 500 // Reserve tokens for response
-	totalTokens := 0
-
-	out := make([]LLMMessage, 0)
-
-	// Always include the system prompt and user message
-	for _, msg := range msgs[:2] {
-		out = append(out, msg)
-		totalTokens += EstimateTokens(map[string]string{"role": msg.Role, "content": msg.Content})
+	result := msgs[:2]
+	tokens := 0
+	for _, msg := range result {
+		tokens += im.estimateTokens(msg)
 	}
 
-	// Truncate the rest of the messages, keeping the most recent ones, by running through the messages
-	// in reverse order.
+	var recent []LLMMessage
 	for i := len(msgs) - 1; i >= 2; i-- {
-		msg := msgs[i]
-		totalTokens += EstimateTokens(map[string]string{"role": msg.Role, "content": msg.Content})
-
-		if totalTokens > maxTokens {
+		msgTokens := im.estimateTokens(msgs[i])
+		if tokens+msgTokens > maxTokens {
 			break
 		}
-
-		out = append(out, msg)
+		recent = append(recent, msgs[i])
+		tokens += msgTokens
 	}
 
-	return out
+	for i := len(recent) - 1; i >= 0; i-- {
+		result = append(result, recent[i])
+	}
+
+	return result
 }
 
-func EstimateTokens(msg map[string]string) int {
+/*
+estimateTokens estimates the number of tokens in a message using the tiktoken
+library with the specified model encoding. It counts tokens for both the role
+and content fields of the message.
+*/
+func (im *IterationManager) estimateTokens(msg LLMMessage) int {
 	encoding, err := tiktoken.EncodingForModel("gpt-4o-mini")
-
 	if err != nil {
 		log.Error("Error getting encoding", "error", err)
 		return 0
 	}
 
-	tokensPerMessage := 4 // As per OpenAI's token estimation guidelines
+	tokensPerMessage := 4
+	return tokensPerMessage +
+		len(encoding.Encode(msg.Role, nil, nil)) +
+		len(encoding.Encode(msg.Content, nil, nil))
+}
 
-	numTokens := tokensPerMessage
-	numTokens += len(encoding.Encode(msg["role"], nil, nil))
-	numTokens += len(encoding.Encode(msg["content"], nil, nil))
-
-	return numTokens
+/*
+logError logs an error using the logger and returns the same error.
+This is a utility function for logging and propagating errors.
+*/
+func (im *IterationManager) logError(err error) error {
+	im.logger.Error(im.agent.Name(), err)
+	return err
 }

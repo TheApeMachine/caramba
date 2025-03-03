@@ -32,6 +32,7 @@ func NewNeo4jStore(
 		database = "neo4j"
 	}
 
+	queue := hub.NewQueue()
 	logger := output.NewLogger()
 
 	driver, err := neo4j.NewDriverWithContext(
@@ -48,10 +49,16 @@ func NewNeo4jStore(
 		return nil
 	}
 
-	logger.Success("neo4j", "connected")
+	logger.Success("neo4j", "online")
+	queue.Add(&hub.Event{
+		Origin:  "neo4j",
+		Topic:   hub.TopicTypeStore,
+		Type:    hub.EventTypeStatus,
+		Message: "online",
+	})
 
 	return &Neo4jStore{
-		hub:      hub.NewQueue(),
+		hub:      queue,
 		logger:   logger,
 		driver:   driver,
 		database: database,
@@ -128,7 +135,12 @@ func (n *Neo4jStore) handleResults(results []map[string]any) string {
 		)
 
 		out.WriteString(rel)
-		n.hub.Add(hub.NewMetric("neo4j", "relationship", rel))
+		n.hub.Add(&hub.Event{
+			Origin:  "neo4j",
+			Topic:   hub.TopicTypeStore,
+			Type:    hub.EventTypeQuery,
+			Message: rel,
+		})
 	}
 
 	return out.String()

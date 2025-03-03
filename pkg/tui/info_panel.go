@@ -1,33 +1,33 @@
 package tui
 
 import (
-	"container/ring"
-	"fmt"
-	"strconv"
+	"sort"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/theapemachine/caramba/pkg/hub"
 )
 
+type AgentInfo struct {
+	Name     string
+	Status   string
+	Model    string
+	Process  string
+	Metadata map[string]string
+	Children map[string]*AgentInfo
+}
+
 // InfoPanelComponent handles the agent info display
 type InfoPanelComponent struct {
-	agentName      string
-	modelName      string
-	memories       []string
-	relationships  []string
-	toolcalls      *ring.Ring
-	lastExecuted   time.Time
-	executionCount int
-	qdrantStore    string
-	neo4jStore     string
-	width          int
-	height         int
-	ready          bool
-	focused        bool
-	style          *Style
+	agents    map[string]*AgentInfo
+	stores    map[string]*hub.Event
+	toolcalls map[string]*hub.Event
+	width     int
+	height    int
+	ready     bool
+	focused   bool
+	style     *Style
 }
 
 type Toolcall struct {
@@ -41,18 +41,12 @@ func NewInfoPanelComponent() *InfoPanelComponent {
 	style := NewStyle()
 
 	return &InfoPanelComponent{
-		agentName:      "No agent connected",
-		modelName:      "N/A",
-		memories:       []string{},
-		relationships:  []string{},
-		toolcalls:      ring.New(5),
-		lastExecuted:   time.Time{},
-		executionCount: 0,
-		qdrantStore:    style.Label(LabelWarning, "Pending..."),
-		neo4jStore:     style.Label(LabelWarning, "Pending..."),
-		ready:          false,
-		focused:        false,
-		style:          style,
+		agents:    make(map[string]*AgentInfo),
+		stores:    make(map[string]*hub.Event),
+		toolcalls: make(map[string]*hub.Event),
+		ready:     false,
+		focused:   false,
+		style:     style,
 	}
 }
 
@@ -93,50 +87,36 @@ func (i *InfoPanelComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Calculate appropriate dimensions for this component
-		// Use 30% of the window width
-		infoPanelWidth := int(float64(msg.Width) * 0.3)
-		// Use full height minus 2 for status bar
-		infoPanelHeight := msg.Height - 2
-
-		i.width = infoPanelWidth
-		i.height = infoPanelHeight
+		i.width = msg.Width - 3
+		i.height = msg.Height
 		i.ready = true
 	case *hub.Event:
 		switch msg.Type {
-		case hub.EventTypeToolCall:
-			// Put the tool name at the beginning of the list
-			i.toolcalls.Value = Toolcall{
-				Origin: msg.Origin,
-				Name:   msg.Role,
-				Args:   msg.Message,
-			}
-			i.toolcalls = i.toolcalls.Next()
 		case hub.EventTypeStatus:
-			i.agentName = msg.Origin
-
-			if model, ok := msg.Meta["model"]; ok {
-				i.modelName = model
-			}
-
-			if msg.Origin == "qdrant" {
-				i.qdrantStore = msg.Message
-			}
-
-			if msg.Origin == "neo4j" {
-				i.neo4jStore = msg.Message
-			}
-
-			if msg.Role == "iteration" {
-				i.executionCount, _ = strconv.Atoi(msg.Message)
-			}
-		case hub.EventTypeMetric:
-			if msg.Origin == "qdrant" {
-				i.memories = append(i.memories, msg.Message)
-			}
-
-			if msg.Origin == "neo4j" {
-				i.relationships = append(i.relationships, msg.Message)
+			switch msg.Topic {
+			case "agent":
+				if parent, ok := msg.Meta["parent"]; ok && parent != "" {
+					i.agents[parent].Children[msg.Origin] = &AgentInfo{
+						Name:     msg.Origin,
+						Status:   msg.Message,
+						Model:    msg.Meta["model"],
+						Process:  msg.Meta["process"],
+						Metadata: msg.Meta,
+					}
+				} else {
+					i.agents[msg.Origin] = &AgentInfo{
+						Name:     msg.Origin,
+						Status:   msg.Message,
+						Model:    msg.Meta["model"],
+						Process:  msg.Meta["process"],
+						Metadata: msg.Meta,
+						Children: make(map[string]*AgentInfo),
+					}
+				}
+			case "store":
+				i.stores[msg.Origin] = msg
+			case "toolcall":
+				i.toolcalls[msg.Origin] = msg
 			}
 		}
 	}
@@ -145,81 +125,111 @@ func (i *InfoPanelComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (i *InfoPanelComponent) View() string {
-	if !i.ready {
-		return "Initializing info panel..."
+	var agents strings.Builder
+	var stores strings.Builder
+	var toolcalls strings.Builder
+
+	for _, agent := range i.agents {
+		agents.WriteString(i.renderAgent(agent))
 	}
 
-	sections := []string{}
+	for _, event := range i.stores {
+		stores.WriteString(i.renderEvent(event))
+	}
 
-	storesHeader := i.style.Header("STORES", i.width-4)
-	storesContent := lipgloss.JoinVertical(
+	for _, event := range i.toolcalls {
+		toolcalls.WriteString(i.renderEvent(event))
+	}
+
+	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		i.style.Label(LabelInfo, "QDRANT")+" "+i.qdrantStore,
-		i.style.Label(LabelInfo, "Memories")+"\n"+strings.Join(i.memories, "\n"),
-		i.style.Label(LabelInfo, "NEO4J")+" "+i.neo4jStore,
-		i.style.Label(LabelInfo, "Relationships")+"\n"+strings.Join(i.relationships, "\n"),
+		i.style.Section("AGENTS", i.width),
+		agents.String(),
+		i.style.Section("STORES", i.width),
+		stores.String(),
+		i.style.Section("TOOLCALLS", i.width),
+		toolcalls.String(),
+	)
+}
+
+func (i *InfoPanelComponent) renderAgent(agent *AgentInfo) string {
+	var out strings.Builder
+
+	out.WriteString(
+		lipgloss.JoinVertical(
+			lipgloss.Left,
+			lipgloss.JoinHorizontal(
+				lipgloss.Center,
+				i.style.Header(agent.Name),
+				i.getStatusLabel(agent.Status),
+			),
+			i.renderMetadata(agent.Metadata),
+		),
 	)
 
-	sections = append(sections, storesHeader, storesContent)
+	for _, child := range agent.Children {
+		out.WriteString(i.renderAgent(child))
+	}
 
-	agentInfoHeader := i.style.Header("AGENT INFO", i.width-4)
-	agentInfoContent := lipgloss.JoinVertical(
-		lipgloss.Left,
-		AgentStyle.Render("Name")+"   "+i.agentName,
-		AgentStyle.Render("Model")+"  "+i.modelName,
+	return out.String()
+}
+
+func (i *InfoPanelComponent) renderEvent(event *hub.Event) string {
+	var out strings.Builder
+
+	out.WriteString(
+		lipgloss.JoinVertical(
+			lipgloss.Left,
+			lipgloss.JoinHorizontal(
+				lipgloss.Center,
+				i.style.Header(event.Origin),
+				i.getStatusLabel(event.Message),
+			),
+			i.renderMetadata(event.Meta),
+		),
 	)
 
-	sections = append(sections, agentInfoHeader, agentInfoContent)
+	return out.String()
+}
 
-	statsHeader := i.style.Header("STATS", i.width-4)
+func (i *InfoPanelComponent) renderMetadata(metadata map[string]string) string {
+	var out strings.Builder
 
-	statsContent := lipgloss.JoinVertical(
-		lipgloss.Left,
-		AgentStyle.Render("ITERATION")+" "+fmt.Sprintf("%d", i.executionCount),
-	)
+	// Get all keys from the map
+	keys := make([]string, 0, len(metadata))
+	for key := range metadata {
+		keys = append(keys, key)
+	}
 
-	sections = append(sections, statsHeader, statsContent)
+	// Sort keys alphabetically
+	sort.Strings(keys)
 
-	toolsHeader := i.style.Header("TOOLS", i.width-4)
-
-	// Only proceed if the ring has elements and current value is not nil
-	if i.toolcalls.Len() > 0 {
-		toolsContent := ""
-		toolnames := []string{}
-
-		// Check if current value is not nil before type assertion
-		if i.toolcalls.Value != nil {
-			currentTool, ok := i.toolcalls.Value.(Toolcall)
-			if ok {
-				// Safely iterate through the ring buffer
-				i.toolcalls.Do(func(item any) {
-					if item != nil {
-						if tool, ok := item.(Toolcall); ok {
-							toolnames = append(toolnames, tool.Name)
-						}
-					}
-				})
-
-				toolsContent = lipgloss.JoinVertical(
-					lipgloss.Left,
-					currentTool.Origin+" "+currentTool.Name+"\n"+currentTool.Args,
-					strings.Join(toolnames, "\n"),
-				)
-
-				sections = append(sections, toolsHeader, toolsContent)
-			}
-		} else {
-			// Just show the header with empty content if we have no valid tool calls
-			sections = append(sections, toolsHeader, "No tool calls recorded")
+	// Find the longest key for alignment
+	longestKeyLength := 0
+	for _, key := range keys {
+		if len(key) > longestKeyLength {
+			longestKeyLength = len(key)
 		}
-	} else {
-		sections = append(sections, toolsHeader, "No tool calls recorded")
 	}
 
-	allContent := lipgloss.JoinVertical(
-		lipgloss.Left,
-		sections...,
-	)
+	// Iterate through sorted keys with aligned values
+	for _, key := range keys {
+		padding := strings.Repeat(" ", longestKeyLength-len(key))
+		out.WriteString(key + padding + ": " + metadata[key] + "\n")
+	}
 
-	return allContent
+	return out.String()
+}
+
+func (i *InfoPanelComponent) getStatusLabel(message string) string {
+	switch message {
+	case "success", "running", "ready", "online":
+		return i.style.SuccessLabel("Running")
+	case "warning", "pending":
+		return i.style.WarningLabel("Warning")
+	case "error", "offline":
+		return i.style.ErrorLabel("Error")
+	default:
+		return i.style.SystemLabel(message)
+	}
 }

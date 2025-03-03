@@ -30,7 +30,12 @@ func (t *Tool) navigate(ctx context.Context, args map[string]interface{}) (inter
 	// Add optional parameters (only those that are supported)
 	if waitFor, ok := args["wait_for"].(string); ok && waitFor != "" {
 		payload["waitFor"] = waitFor
-		t.hub.Add(hub.NewToolCall(t.Name(), "navigate", fmt.Sprintf("Waiting for selector: %s", waitFor)))
+		t.hub.Add(&hub.Event{
+			Origin:  t.Name(),
+			Topic:   hub.TopicTypeAgent,
+			Type:    hub.EventTypeToolCall,
+			Message: fmt.Sprintf("Waiting for selector: %s", waitFor),
+		})
 	}
 
 	// Convert payload to JSON
@@ -70,7 +75,12 @@ func (t *Tool) navigate(ctx context.Context, args map[string]interface{}) (inter
 		return nil, t.logger.Error(t.Name(), fmt.Errorf("failed to read response: %w", err))
 	}
 
-	t.hub.Add(hub.NewToolCall(t.Name(), "navigate", fmt.Sprintf("Retrieved %d bytes from %s", len(body), url)))
+	t.hub.Add(&hub.Event{
+		Origin:  t.Name(),
+		Topic:   hub.TopicTypeAgent,
+		Type:    hub.EventTypeToolCall,
+		Message: fmt.Sprintf("Retrieved %d bytes from %s", len(body), url),
+	})
 
 	return map[string]interface{}{
 		"status": "success",

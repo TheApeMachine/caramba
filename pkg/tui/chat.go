@@ -15,7 +15,6 @@ type ChatComponent struct {
 	hub        *hub.Queue
 	viewport   textarea.Model
 	textarea   textarea.Model
-	messages   []hub.Event
 	focused    bool
 	ready      bool
 	width      int
@@ -41,7 +40,6 @@ func NewChatComponent() *ChatComponent {
 		hub:        hub.NewQueue(),
 		viewport:   vp,
 		textarea:   ta,
-		messages:   make([]hub.Event, 0),
 		focused:    true,
 		ready:      false,
 		stream:     false,
@@ -61,43 +59,13 @@ func (c *ChatComponent) SetSize(width, height int) {
 	c.height = height
 	contentWidth := width
 	inputHeight := 4
-	viewportHeight := height - inputHeight - 3
+	viewportHeight := height - inputHeight - 1
 
 	c.viewport.SetWidth(contentWidth)
 	c.viewport.SetHeight(viewportHeight)
 	c.textarea.SetWidth(contentWidth - 1)
 
 	c.ready = true
-}
-
-// getLabelType returns the appropriate label type for the event type
-func (c *ChatComponent) getLabelType(eventType hub.EventType) Label {
-	switch eventType {
-	case hub.EventTypeStatus:
-		return LabelStatus
-	case hub.EventTypeToolCall:
-		return LabelTool
-	case hub.EventTypeError:
-		return LabelError
-	default:
-		return LabelInfo
-	}
-}
-
-// insertMessage adds a message to the viewport with appropriate styling
-func (c *ChatComponent) insertMessage(origin, message string, addNewline bool) {
-	suffix := ""
-	if addNewline {
-		suffix = "\n"
-	}
-
-	// Process the message and strip any ANSI codes
-	processedMessage := c.consumer.Feed(message)
-	cleanMessage := StripANSIComprehensive(processedMessage)
-
-	c.viewport.InsertString(
-		"[" + origin + "] " + cleanMessage + suffix,
-	)
 }
 
 func (c *ChatComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -109,16 +77,13 @@ func (c *ChatComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.SetSize(msg.Width, msg.Height)
 	case tea.KeyMsg:
 		if msg.String() == "tab" {
-			c.hub.Add(hub.NewEvent(
-				"user",
-				"researcher",
-				"user",
-				hub.EventTypeMessage,
-				c.textarea.Value(),
-				map[string]string{},
-			))
+			c.hub.Add(&hub.Event{
+				Topic:   hub.TopicTypeTask,
+				Type:    hub.EventTypeUser,
+				Origin:  "user",
+				Message: c.textarea.Value(),
+			})
 
-			c.insertMessage("user", c.textarea.Value(), true)
 			c.textarea.Reset()
 		}
 
@@ -127,35 +92,15 @@ func (c *ChatComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	case *hub.Event:
-		switch msg.Type {
-		case hub.EventTypeChunk:
-			cmds = append(cmds, c.viewport.Focus())
-			c.textarea.Blur()
-			c.focused = true
-
-			c.viewport.CursorEnd()
-
-			c.generating = true
-			if !c.stream {
-				c.stream = true
-				c.insertMessage(msg.Origin, msg.Message, false)
-			} else {
-				// Use more aggressive ANSI stripping for chunks
-				cleanMessage := StripANSIComprehensive(msg.Message)
-				c.viewport.InsertString(cleanMessage)
-			}
-		case hub.EventTypeError:
-			c.insertMessage(msg.Origin, msg.Message, true)
-		default:
-			if msg.Message == "done" {
-				c.generating = false
-				c.viewport.Blur()
-				c.focused = false
-				cmds = append(cmds, c.textarea.Focus())
-			} else {
-				// Handle standard messages
-				c.generating = true
-				c.insertMessage(msg.Origin, msg.Message, true)
+		switch msg.Topic {
+		case hub.TopicTypeMessage:
+			switch msg.Type {
+			case hub.EventTypePrompt:
+				c.viewport.InsertString(msg.Message)
+			case hub.EventTypeChunk:
+				c.viewport.InsertString(msg.Message)
+			case hub.EventTypeResponse:
+				c.viewport.InsertString(msg.Message)
 			}
 		}
 	}
@@ -167,23 +112,13 @@ func (c *ChatComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (c *ChatComponent) View() string {
-	if !c.ready {
-		return "Initializing chat..."
-	}
-
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		c.viewport.View(),
-		c.ViewInput(),
+		lipgloss.NewStyle().
+			BorderTop(true).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(gray).
+			Render(c.textarea.View()),
 	)
-}
-
-func (c *ChatComponent) ViewInput() string {
-	textareaView := lipgloss.NewStyle().
-		BorderTop(true).
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(subtleColor).
-		Render(c.textarea.View())
-
-	return textareaView
 }

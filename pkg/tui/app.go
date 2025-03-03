@@ -11,13 +11,11 @@ import (
 
 // App is the main TUI application
 type App struct {
-	logger  *output.Logger
-	hub     *hub.Queue
-	keymap  KeyMap
-	layout  tea.Model
-	program *tea.Program
-
-	// State
+	logger     *output.Logger
+	hub        *hub.Queue
+	keymap     KeyMap
+	layout     tea.Model
+	program    *tea.Program
 	ready      bool
 	loading    bool
 	width      int
@@ -60,34 +58,21 @@ func (app *App) Start() error {
 
 // listenToHubEvents subscribes to hub events and forwards them to the UI
 func (app *App) listenToHubEvents() {
-	app.logger.Log("tui", "Listening to hub events")
+	agentSubscription := app.hub.Subscribe(string(hub.TopicTypeAgent))
+	messageSubscription := app.hub.Subscribe(string(hub.TopicTypeMessage))
 
-	// Subscribe to UI events
-	uiEvents := app.hub.Subscribe("ui")
-
-	// Subscribe to metrics events
-	metricsEvents := app.hub.Subscribe("metric")
-
-	// Subscribe to action events (tool calls, etc)
-	actionEvents := app.hub.Subscribe("actions")
-
-	// Process events from all channels
 	for {
 		select {
-		case event := <-uiEvents:
-			if app.program != nil {
-				app.program.Send(event)
-			}
-		case event := <-metricsEvents:
-			if app.program != nil {
-				app.program.Send(event)
-			}
-		case event := <-actionEvents:
-			if app.program != nil {
-				app.program.Send(event)
-			}
 		case <-app.ctx.Done():
 			return
+		case event := <-agentSubscription:
+			if app.ready {
+				app.program.Send(event)
+			}
+		case event := <-messageSubscription:
+			if app.ready {
+				app.program.Send(event)
+			}
 		}
 	}
 }

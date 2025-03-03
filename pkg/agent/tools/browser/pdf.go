@@ -25,7 +25,12 @@ func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (in
 	waitFor := getStringOr(args, "wait_for", "")
 	timeout := getIntOr(args, "timeout", 30000)
 
-	t.hub.Add(hub.NewToolCall(t.Name(), "pdf", fmt.Sprintf("Generating PDF for: %s", url)))
+	t.hub.Add(&hub.Event{
+		Origin:  t.Name(),
+		Topic:   hub.TopicTypeAgent,
+		Type:    hub.EventTypeToolCall,
+		Message: fmt.Sprintf("Generating PDF for: %s", url),
+	})
 
 	// Create the request payload
 	requestBody := map[string]interface{}{
@@ -97,6 +102,11 @@ func (t *Tool) generatePDF(ctx context.Context, args map[string]interface{}) (in
 		"format": format,
 	}
 
-	t.hub.Add(hub.NewToolCall(t.Name(), "pdf", fmt.Sprintf("Generated PDF for %s (%d bytes)", url, len(pdfData))))
+	t.hub.Add(&hub.Event{
+		Origin:  t.Name(),
+		Topic:   hub.TopicTypeAgent,
+		Type:    hub.EventTypeToolCall,
+		Message: fmt.Sprintf("Generated PDF for %s (%d bytes)", url, len(pdfData)),
+	})
 	return result, nil
 }

@@ -126,14 +126,13 @@ func (p *BalancedProvider) GenerateResponse(
 		provider, err := p.getNextAvailableProvider()
 
 		if err != nil {
-			p.hub.Add(hub.NewEvent(
-				p.Name(),
-				"llm",
-				"error",
-				hub.EventTypeError,
-				err.Error(),
-				map[string]string{},
-			))
+			p.hub.Add(&hub.Event{
+				Origin:  p.Name(),
+				Topic:   hub.TopicTypeLog,
+				Type:    hub.EventTypeError,
+				Message: err.Error(),
+				Meta:    map[string]string{},
+			})
 		}
 
 		resp := provider.Provider.GenerateResponse(ctx, params)
@@ -144,14 +143,13 @@ func (p *BalancedProvider) GenerateResponse(
 		}
 
 		lastError = resp.Error
-		p.hub.Add(hub.NewEvent(
-			p.Name(),
-			"llm",
-			"error",
-			hub.EventTypeError,
-			resp.Error.Error(),
-			map[string]string{},
-		))
+		p.hub.Add(&hub.Event{
+			Origin:  p.Name(),
+			Topic:   hub.TopicTypeLog,
+			Type:    hub.EventTypeError,
+			Message: resp.Error.Error(),
+			Meta:    map[string]string{},
+		})
 	}
 
 	return core.LLMResponse{
@@ -190,14 +188,13 @@ func (p *BalancedProvider) StreamResponse(
 			provider, err := p.getNextAvailableProvider()
 
 			if err != nil {
-				p.hub.Add(hub.NewEvent(
-					p.Name(),
-					"llm",
-					"error",
-					hub.EventTypeError,
-					err.Error(),
-					map[string]string{},
-				))
+				p.hub.Add(&hub.Event{
+					Origin:  p.Name(),
+					Topic:   hub.TopicTypeLog,
+					Type:    hub.EventTypeError,
+					Message: err.Error(),
+					Meta:    map[string]string{},
+				})
 			}
 
 			stream := provider.Provider.StreamResponse(ctx, params)

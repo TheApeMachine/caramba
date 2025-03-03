@@ -72,7 +72,7 @@ func (p *OpenAIProvider) GenerateResponse(
 			for _, toolCall := range completion.Choices[0].Message.ToolCalls {
 				out.ToolCalls = append(out.ToolCalls, core.ToolCall{
 					Name: toolCall.Function.Name,
-					Args: map[string]interface{}{
+					Args: map[string]any{
 						"args": toolCall.Function.Arguments,
 					},
 				})
@@ -111,7 +111,6 @@ func (p *OpenAIProvider) StreamResponse(
 			chunk := stream.Current()
 			acc.AddChunk(chunk)
 
-			// Check for completed content
 			if content, ok := acc.JustFinishedContent(); ok && content != "" {
 				out <- core.LLMResponse{
 					Type:      core.ResponseTypeContent,
@@ -121,13 +120,10 @@ func (p *OpenAIProvider) StreamResponse(
 				}
 			}
 
-			// Check for completed tool calls
 			if tool, ok := acc.JustFinishedToolCall(); ok {
-				// Parse the arguments string as JSON
-				var argsMap map[string]interface{}
+				var argsMap map[string]any
 				if err := json.Unmarshal([]byte(tool.Arguments), &argsMap); err != nil {
-					// If parsing fails, use the raw string
-					argsMap = map[string]interface{}{
+					argsMap = map[string]any{
 						"raw_args": tool.Arguments,
 					}
 				}
@@ -144,7 +140,6 @@ func (p *OpenAIProvider) StreamResponse(
 				}
 			}
 
-			// Send delta content (if any)
 			for _, choice := range chunk.Choices {
 				if choice.Delta.Content != "" {
 					out <- core.LLMResponse{
@@ -196,18 +191,14 @@ func (p *OpenAIProvider) buildTools(
 
 	if len(params.Tools) > 0 {
 		for _, tool := range params.Tools {
-			// Get the tool's schema directly from the tool
 			schema := tool.Schema()
 
-			// Schema is already of type map[string]interface{}, which is compatible with FunctionParameters
-
-			// Create function parameter from tool's schema
 			toolParam := openai.ChatCompletionToolParam{
 				Type: openai.F(openai.ChatCompletionToolTypeFunction),
 				Function: openai.F(openai.FunctionDefinitionParam{
 					Name:        openai.String(tool.Name()),
 					Description: openai.String(tool.Description()),
-					Parameters:  openai.F(openai.FunctionParameters(schema)), // Cast to FunctionParameters
+					Parameters:  openai.F(openai.FunctionParameters(schema)),
 				}),
 			}
 
@@ -227,7 +218,7 @@ func (p *OpenAIProvider) buildResponseFormat(
 		schemaParam := openai.ResponseFormatJSONSchemaJSONSchemaParam{
 			Name:        openai.F(params.ResponseFormatName),
 			Description: openai.F(params.ResponseFormatDescription),
-			Schema:      openai.F(params.Schema),
+			Schema:      openai.F(params.Schema.Schema()),
 			Strict:      openai.Bool(true),
 		}
 

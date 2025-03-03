@@ -1,8 +1,11 @@
 package hub
 
 import (
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/theapemachine/caramba/pkg/output"
 )
 
 var once sync.Once
@@ -21,12 +24,15 @@ func NewChannel() *Channel {
 }
 
 type Queue struct {
+	logger   *output.Logger
 	channels map[string]*Channel
+	mutex    sync.Mutex
 }
 
 func NewQueue() *Queue {
 	once.Do(func() {
 		instance = &Queue{
+			logger:   output.NewLogger(),
 			channels: make(map[string]*Channel),
 		}
 	})
@@ -34,11 +40,14 @@ func NewQueue() *Queue {
 }
 
 func (q *Queue) Add(event *Event) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+
 	q.AddOrDrop(event)
 }
 
 func (q *Queue) AddOrDrop(event *Event) {
-	channel, ok := q.channels[event.Topic]
+	channel, ok := q.channels[string(event.Topic)]
 
 	if !ok {
 		return
@@ -47,6 +56,15 @@ func (q *Queue) AddOrDrop(event *Event) {
 	select {
 	case channel.i <- event:
 	default:
+		q.logger.Log(
+			"hub",
+			fmt.Sprintf(
+				"Dropping event %s - %s - %s",
+				event.Origin,
+				event.Topic,
+				event.Type,
+			),
+		)
 	}
 }
 
@@ -58,6 +76,14 @@ func (q *Queue) Close() {
 }
 
 func (q *Queue) Subscribe(topic string) <-chan *Event {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+
+	q.logger.Log(
+		"hub",
+		fmt.Sprintf("Subscribing to topic %s", topic),
+	)
+
 	channel, ok := q.channels[topic]
 
 	if !ok {
