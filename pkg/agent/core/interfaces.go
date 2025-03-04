@@ -52,6 +52,7 @@ type LLMProvider interface {
 
 type LLMMessage struct {
 	Role    string
+	Name    string
 	Content string
 }
 

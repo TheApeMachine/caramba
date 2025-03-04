@@ -96,6 +96,13 @@ func (n *Neo4jStore) Query(ctx context.Context, query map[string]any) (string, e
 			)
 		}
 
+		n.hub.Add(&hub.Event{
+			Origin:  "neo4j",
+			Topic:   hub.TopicTypeStore,
+			Type:    hub.EventTypeKeyword,
+			Message: term,
+		})
+
 		results.WriteString(n.handleResults(result))
 
 		if len(result) == 0 {
@@ -116,6 +123,13 @@ func (n *Neo4jStore) Query(ctx context.Context, query map[string]any) (string, e
 			)
 		}
 
+		n.hub.Add(&hub.Event{
+			Origin:  "neo4j",
+			Topic:   hub.TopicTypeStore,
+			Type:    hub.EventTypeCypher,
+			Message: qry,
+		})
+
 		results.WriteString(n.handleResults(result))
 	}
 
@@ -135,10 +149,11 @@ func (n *Neo4jStore) handleResults(results []map[string]any) string {
 		)
 
 		out.WriteString(rel)
+
 		n.hub.Add(&hub.Event{
 			Origin:  "neo4j",
 			Topic:   hub.TopicTypeStore,
-			Type:    hub.EventTypeQuery,
+			Type:    hub.EventTypeRelation,
 			Message: rel,
 		})
 	}

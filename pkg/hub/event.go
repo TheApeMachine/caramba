@@ -11,6 +11,10 @@ const (
 	TopicTypeTask    TopicType = "tasks"
 
 	EventTypeQuery     EventType = "query"
+	EventTypeQuestion  EventType = "question"
+	EventTypeKeyword   EventType = "keyword"
+	EventTypeCypher    EventType = "cypher"
+	EventTypeRelation  EventType = "relation"
 	EventTypeMutation  EventType = "mutation"
 	EventTypeStatus    EventType = "status"
 	EventTypeResponse  EventType = "response"

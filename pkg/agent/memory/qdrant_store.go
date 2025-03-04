@@ -134,7 +134,7 @@ func (q *QDrantStore) Query(ctx context.Context, queryParams map[string]any) (st
 		q.hub.Add(&hub.Event{
 			Origin:  "qdrant",
 			Topic:   hub.TopicTypeStore,
-			Type:    hub.EventTypeQuery,
+			Type:    hub.EventTypeQuestion,
 			Message: result,
 		})
 	}

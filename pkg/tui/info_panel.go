@@ -18,10 +18,19 @@ type AgentInfo struct {
 	Children map[string]*AgentInfo
 }
 
+type StoreInfo struct {
+	Name      string
+	Status    string
+	Questions []string
+	Keywords  []string
+	Cyphers   []string
+	Relations []string
+}
+
 // InfoPanelComponent handles the agent info display
 type InfoPanelComponent struct {
 	agents    map[string]*AgentInfo
-	stores    map[string]*hub.Event
+	stores    map[string]*StoreInfo
 	toolcalls map[string]*hub.Event
 	width     int
 	height    int
@@ -42,7 +51,7 @@ func NewInfoPanelComponent() *InfoPanelComponent {
 
 	return &InfoPanelComponent{
 		agents:    make(map[string]*AgentInfo),
-		stores:    make(map[string]*hub.Event),
+		stores:    make(map[string]*StoreInfo),
 		toolcalls: make(map[string]*hub.Event),
 		ready:     false,
 		focused:   false,
@@ -91,10 +100,10 @@ func (i *InfoPanelComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		i.height = msg.Height
 		i.ready = true
 	case *hub.Event:
-		switch msg.Type {
-		case hub.EventTypeStatus:
-			switch msg.Topic {
-			case "agent":
+		switch msg.Topic {
+		case hub.TopicTypeAgent:
+			switch string(msg.Type) {
+			case "status":
 				if parent, ok := msg.Meta["parent"]; ok && parent != "" {
 					i.agents[parent].Children[msg.Origin] = &AgentInfo{
 						Name:     msg.Origin,
@@ -113,10 +122,28 @@ func (i *InfoPanelComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						Children: make(map[string]*AgentInfo),
 					}
 				}
-			case "store":
-				i.stores[msg.Origin] = msg
 			case "toolcall":
 				i.toolcalls[msg.Origin] = msg
+			}
+		case hub.TopicTypeStore:
+			switch string(msg.Type) {
+			case "status":
+				i.stores[msg.Origin] = &StoreInfo{
+					Name:      msg.Origin,
+					Status:    msg.Message,
+					Questions: []string{},
+					Keywords:  []string{},
+					Cyphers:   []string{},
+					Relations: []string{},
+				}
+			case "cypher":
+				i.stores[msg.Origin].Cyphers = append(i.stores[msg.Origin].Cyphers, msg.Message)
+			case "relation":
+				i.stores[msg.Origin].Relations = append(i.stores[msg.Origin].Relations, msg.Message)
+			case "question":
+				i.stores[msg.Origin].Questions = append(i.stores[msg.Origin].Questions, msg.Message)
+			case "keyword":
+				i.stores[msg.Origin].Keywords = append(i.stores[msg.Origin].Keywords, msg.Message)
 			}
 		}
 	}
@@ -134,7 +161,7 @@ func (i *InfoPanelComponent) View() string {
 	}
 
 	for _, event := range i.stores {
-		stores.WriteString(i.renderEvent(event))
+		i.renderStore(event)
 	}
 
 	for _, event := range i.toolcalls {
@@ -169,6 +196,35 @@ func (i *InfoPanelComponent) renderAgent(agent *AgentInfo) string {
 
 	for _, child := range agent.Children {
 		out.WriteString(i.renderAgent(child))
+	}
+
+	return out.String()
+}
+
+func (i *InfoPanelComponent) renderStore(store *StoreInfo) string {
+	var out strings.Builder
+
+	out.WriteString(
+		lipgloss.JoinVertical(
+			lipgloss.Left,
+			i.style.Header(store.Name),
+		),
+	)
+
+	for _, question := range store.Questions {
+		out.WriteString(question + "\n")
+	}
+
+	for _, keyword := range store.Keywords {
+		out.WriteString(keyword + "\n")
+	}
+
+	for _, cypher := range store.Cyphers {
+		out.WriteString(cypher + "\n")
+	}
+
+	for _, relation := range store.Relations {
+		out.WriteString(relation + "\n")
 	}
 
 	return out.String()

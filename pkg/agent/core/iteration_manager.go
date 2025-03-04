@@ -58,7 +58,7 @@ func (im *IterationManager) Run(ctx context.Context, msgs []LLMMessage) ([]LLMMe
 	}
 
 	// Reset the output messages.
-	im.out = make([]LLMMessage, 0)
+	im.out = msgs
 
 	iteration := 0
 
@@ -91,7 +91,7 @@ for debugging purposes.
 */
 func (im *IterationManager) prepareMessages(msgs []LLMMessage) {
 	im.agent.Params().Messages = append([]LLMMessage{
-		{Role: "system", Content: im.agent.SystemPrompt()},
+		{Role: "system", Name: im.agent.Name(), Content: im.agent.SystemPrompt()},
 	}, msgs...)
 
 	im.agent.Params().Messages = im.truncateMessages(im.agent.Params().Messages)
@@ -190,7 +190,7 @@ func (im *IterationManager) handleToolCalls(ctx context.Context, toolCalls []Too
 	for _, call := range toolCalls {
 		im.hub.Add(&hub.Event{
 			Origin:  im.agent.Name(),
-			Topic:   hub.TopicTypeMessage,
+			Topic:   hub.TopicTypeAgent,
 			Type:    hub.EventTypeToolCall,
 			Message: fmt.Sprintf("%v", call.Args),
 		})

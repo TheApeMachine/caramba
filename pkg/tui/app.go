@@ -60,6 +60,7 @@ func (app *App) Start() error {
 func (app *App) listenToHubEvents() {
 	agentSubscription := app.hub.Subscribe(string(hub.TopicTypeAgent))
 	messageSubscription := app.hub.Subscribe(string(hub.TopicTypeMessage))
+	storeSubscription := app.hub.Subscribe(string(hub.TopicTypeStore))
 
 	for {
 		select {
@@ -70,6 +71,10 @@ func (app *App) listenToHubEvents() {
 				app.program.Send(event)
 			}
 		case event := <-messageSubscription:
+			if app.ready {
+				app.program.Send(event)
+			}
+		case event := <-storeSubscription:
 			if app.ready {
 				app.program.Send(event)
 			}

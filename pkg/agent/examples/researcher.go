@@ -35,8 +35,6 @@ func NewResearcher() *Researcher {
 			viper.GetViper().GetString("templates." + name),
 		).WithProcess(
 			process,
-		).WithTools(
-			tools.NewSystem(),
 		).WithStreaming(
 			true,
 		).Build()

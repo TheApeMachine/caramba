@@ -207,6 +207,7 @@ func (agent *BaseAgent) AddUserMessage(message string) {
 func (agent *BaseAgent) AddAssistantMessage(message string) {
 	agent.params.Messages = append(agent.params.Messages, LLMMessage{
 		Role:    "assistant",
+		Name:    agent.name,
 		Content: message,
 	})
 }
