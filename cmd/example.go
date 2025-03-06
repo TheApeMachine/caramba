@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"fmt"
 	"io"
 	"os"
-	"sync"
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
@@ -15,68 +13,30 @@ import (
 	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
-type ErrorUnknownExample struct {
-	ExampleType string
-}
-
-func (e *ErrorUnknownExample) Error() string {
-	return fmt.Sprintf("unknown example type: %s", e.ExampleType)
-}
-
 // Example command variables
 var (
 	exampleCmd = &cobra.Command{
 		Use:   "example",
 		Short: "Run example scenarios",
 		Long:  longExample,
-		RunE: func(cmd *cobra.Command, args []string) (err error) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			errnie.SetLevel(log.DebugLevel)
 			log.Info("Starting example")
 
-			// Initial message
-			msg := &core.Message{Role: "user", Name: "Danny", Content: "Hi there!"}
-
-			// Create shared streams between components
-			msgToAgentStream := workflow.NewPipeStream()
-			agentToProviderStream := workflow.NewPipeStream()
-			providerToOutputStream := workflow.NewPipeStream()
-
-			// Setup codecs explicitly with shared streams
-			msgCodec := workflow.NewJSONCodec(msgToAgentStream)
-			agentComponent := workflow.NewAgentComponent(
-				ai.NewAgent(), msgToAgentStream, agentToProviderStream,
-			)
-			providerComponent := workflow.NewProviderComponent(
-				provider.NewOpenAIProvider("", ""),
-				agentToProviderStream,
-				providerToOutputStream,
-			)
-
-			// Setup pipeline explicitly
+			// Create a pipeline with a message, agent, and provider
 			pipeline := workflow.NewPipeline(
-				workflow.NewCodecStream(msgCodec),
-				agentComponent,
-				providerComponent,
+				core.NewMessage("user", "User", "Tell me a short joke about programming."),
+				ai.NewAgent(),
+				provider.NewOpenAIProvider("", ""),
 			)
 
-			var wg sync.WaitGroup
-			wg.Add(1)
+			defer pipeline.Close()
 
-			// Handle final output
-			go func() {
-				defer wg.Done()
-				defer pipeline.Close()
-
-				io.Copy(os.Stdout, pipeline)
-			}()
-
-			go func() {
-				if err := msgCodec.Write(msg); err != nil {
-					log.Fatal("failed writing message:", err)
-				}
-			}()
-
-			wg.Wait()
+			// Copy the pipeline output to stdout
+			_, err := io.Copy(os.Stdout, pipeline)
+			if err != nil {
+				return err
+			}
 
 			return nil
 		},
@@ -89,5 +49,4 @@ func init() {
 
 var longExample = `
 Example demonstrates various capabilities of the Caramba framework.
-This command is primarily for testing and demonstration purposes.
 `

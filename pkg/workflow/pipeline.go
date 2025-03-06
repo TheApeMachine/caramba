@@ -6,27 +6,44 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-// NewPipeline creates a pipeline of ReadWriteCloser components that process data sequentially.
-// Data written to the pipeline is processed by each component in order, and the result can
-// be read from the returned ReadWriteCloser.
+/*
+NewPipeline creates a pipeline connecting io.ReadWriteCloser components.
+
+It's a convenient wrapper around io.Copy to chain components together.
+
+Example:
+
+	// Simple pipeline
+	p := workflow.NewPipeline(message, agent, provider)
+	io.Copy(os.Stdout, p)
+
+	// Nested pipelines
+	p1 := workflow.NewPipeline(message, agent, provider)
+	p2 := workflow.NewPipeline(message, agent, provider, p1)
+	io.Copy(os.Stdout, p2)
+*/
 func NewPipeline(components ...io.ReadWriteCloser) io.ReadWriteCloser {
 	errnie.Debug("Creating new pipeline", "components", len(components))
 
 	if len(components) < 2 {
-		panic("need at least two components")
+		errnie.NewError(errnie.NewErrValidation("need at least two components"))
 	}
 
 	// Connect the components in a chain
-	for i := 0; i < len(components)-1; i++ {
+	for i := range len(components)-1 {
 		source := components[i]
 		dest := components[i+1]
 
 		// Copy from each component to the next in sequence
 		go func(src, dst io.ReadWriteCloser) {
-			io.Copy(dst, src)
+			_, err := io.Copy(dst, src)
+			if err != nil {
+				errnie.NewError(errnie.NewErrIO(err))
+			}
 		}(source, dest)
 	}
 
+	// Return a composite ReadWriteCloser
 	return struct {
 		io.Reader
 		io.Writer

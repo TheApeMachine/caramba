@@ -1,18 +1,25 @@
 package process
 
 import (
+	"bytes"
 	"encoding/json"
-	"io"
 
-	"github.com/theapemachine/caramba/pkg/core"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
+
+type PlanData struct {
+	Steps []Step `json:"steps" jsonschema:"description=The steps to execute,required"`
+}
 
 /*
 Plan represents a series of steps to be executed as part of a process.
 */
 type Plan struct {
-	*core.BaseComponent
-	Steps []Step `json:"steps" jsonschema:"description=The steps to execute,required"`
+	*PlanData
+	enc *json.Encoder
+	dec *json.Decoder
+	in  *bytes.Buffer
+	out *bytes.Buffer
 }
 
 /*
@@ -26,46 +33,75 @@ type Step struct {
 NewPlan creates a new plan with initialized components.
 */
 func NewPlan() *Plan {
-	return &Plan{
-		BaseComponent: core.NewBaseComponent("plan", core.TypeProcess),
-		Steps:         []Step{},
+	in := bytes.NewBuffer([]byte{})
+	out := bytes.NewBuffer([]byte{})
+
+	plan := &Plan{
+		PlanData: &PlanData{
+			Steps: []Step{},
+		},
+		enc: json.NewEncoder(out),
+		dec: json.NewDecoder(in),
+		in:  in,
+		out: out,
 	}
+
+	// Pre-encode the plan data to JSON for reading
+	plan.enc.Encode(plan.PlanData)
+
+	return plan
 }
 
 /*
-AddStep adds a new step to the plan.
+WithSteps adds a new step to the plan.
 */
-func (p *Plan) AddStep(step string) *Plan {
-	p.Steps = append(p.Steps, Step{Step: step})
-	return p
+func (plan *Plan) WithSteps(steps []Step) *Plan {
+	plan.PlanData.Steps = steps
+	return plan
 }
 
 /*
 Read serializes the plan to JSON and writes it to the provided buffer.
 */
-func (p *Plan) Read(buf []byte) (n int, err error) {
-	data, err := json.Marshal(p)
-	if err != nil {
-		return 0, err
+func (plan *Plan) Read(buf []byte) (n int, err error) {
+	if plan.out.Len() == 0 {
+		if err = errnie.NewErrIO(plan.enc.Encode(plan.PlanData)); err != nil {
+			return 0, err
+		}
 	}
 
-	n = copy(buf, data)
-	if n < len(data) {
-		return n, io.ErrShortBuffer
-	}
-
-	return n, io.EOF
+	return plan.out.Read(buf)
 }
 
 /*
 Write updates the plan from JSON data.
 */
-func (p *Plan) Write(data []byte) (n int, err error) {
-	if err = json.Unmarshal(data, p); err != nil {
-		return 0, err
+func (plan *Plan) Write(data []byte) (n int, err error) {
+	// Reset the output buffer whenever we write new data
+	if plan.out.Len() > 0 {
+		plan.out.Reset()
 	}
 
-	return len(data), nil
+	// Write the incoming bytes to the input buffer
+	n, err = plan.in.Write(data)
+	if err != nil {
+		return n, err
+	}
+
+	// Try to decode the data from the input buffer
+	// If it fails, we still return the bytes written but keep the error
+	var buf PlanData
+	if decErr := plan.dec.Decode(&buf); decErr == nil {
+		// Only update if decoding was successful
+		plan.PlanData.Steps = buf.Steps
+
+		// Re-encode to the output buffer for subsequent reads
+		if encErr := plan.enc.Encode(plan.PlanData); encErr != nil {
+			return n, errnie.NewErrIO(encErr)
+		}
+	}
+
+	return n, nil
 }
 
 /*

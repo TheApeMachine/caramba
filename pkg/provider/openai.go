@@ -3,9 +3,8 @@ package provider
 import (
 	"bytes"
 	"context"
-	"encoding/gob"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 	"time"
 
@@ -18,44 +17,15 @@ import (
 	"github.com/theapemachine/caramba/pkg/utils"
 )
 
-type ErrorEmptyResponse struct {
-	Message string
+type ProviderEvent struct {
+	Message  *core.Message  `json:"message"`
+	ToolCall *core.ToolCall `json:"tool_call"`
+	Error    error          `json:"error"`
 }
 
-type ErrorNoInputContext struct {
-	Message string
-}
-
-func (e *ErrorNoInputContext) Error() string {
-	return fmt.Sprintf("no input context provided, call Write first: %s", e.Message)
-}
-
-func (e *ErrorEmptyResponse) Error() string {
-	return fmt.Sprintf("received empty response from OpenAI API: %s", e.Message)
-}
-
-type ErrorOpenAIAPI struct {
-	Message string
-}
-
-func (e *ErrorOpenAIAPI) Error() string {
-	return fmt.Sprintf("OpenAI API error: %s", e.Message)
-}
-
-type ErrorNoChoices struct {
-	Message string
-}
-
-func (e *ErrorNoChoices) Error() string {
-	return fmt.Sprintf("no choices returned from OpenAI: %s", e.Message)
-}
-
-type ErrorUnmarshalingContext struct {
-	Message string
-}
-
-func (e *ErrorUnmarshalingContext) Error() string {
-	return fmt.Sprintf("error unmarshaling context: %s", e.Message)
+type ProviderData struct {
+	Params *ai.Context    `json:"params"`
+	Result *ProviderEvent `json:"result"`
 }
 
 /*
@@ -63,16 +33,14 @@ OpenAIProvider implements an LLM provider that connects to OpenAI's API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type OpenAIProvider struct {
-	*core.BaseComponent
+	*ProviderData
 	apiKey   string
 	endpoint string
 	client   *openai.Client
-	params   *ai.Context
-	result   *core.Message
-
-	stream *bytes.Buffer
-	enc    *gob.Encoder
-	dec    *gob.Decoder
+	enc      *json.Encoder
+	dec      *json.Decoder
+	in       *bytes.Buffer
+	out      *bytes.Buffer
 }
 
 /*
@@ -92,19 +60,69 @@ func NewOpenAIProvider(
 		endpoint = viper.GetViper().GetString("endpoints.openai")
 	}
 
-	buf := new(bytes.Buffer)
+	in := new(bytes.Buffer)
+	out := new(bytes.Buffer)
 
-	return &OpenAIProvider{
-		BaseComponent: core.NewBaseComponent("openai", core.TypeProvider),
-		apiKey:        apiKey,
-		endpoint:      endpoint,
+	p := &OpenAIProvider{
+		apiKey:   apiKey,
+		endpoint: endpoint,
 		client: openai.NewClient(
 			option.WithAPIKey(apiKey),
 		),
-		stream: buf,
-		enc:    gob.NewEncoder(buf),
-		dec:    gob.NewDecoder(buf),
+		enc: json.NewEncoder(out),
+		dec: json.NewDecoder(in),
+		in:  in,
+		out: out,
 	}
+
+	// Pre-encode the provider data to JSON for reading
+	p.enc.Encode(p.ProviderData)
+
+	return p
+}
+
+/*
+Read implements the io.Reader interface.
+*/
+func (provider *OpenAIProvider) Read(p []byte) (n int, err error) {
+	if provider.out.Len() == 0 {
+		if err = errnie.NewErrIO(provider.enc.Encode(provider.ProviderData)); err != nil {
+			return 0, err
+		}
+	}
+
+	return provider.out.Read(p)
+}
+
+/*
+Write implements the io.Writer interface.
+*/
+func (provider *OpenAIProvider) Write(p []byte) (n int, err error) {
+	// Reset the output buffer whenever we write new data
+	if provider.out.Len() > 0 {
+		provider.out.Reset()
+	}
+
+	// Write the incoming bytes to the input buffer
+	n, err = provider.in.Write(p)
+	if err != nil {
+		return n, err
+	}
+
+	// Try to decode the data from the input buffer
+	// If it fails, we still return the bytes written but keep the error
+	var buf ProviderData
+	if decErr := provider.dec.Decode(&buf); decErr == nil {
+		// Only update if decoding was successful
+		provider.ProviderData.Params = buf.Params
+
+		// Re-encode to the output buffer for subsequent reads
+		if encErr := provider.enc.Encode(provider.ProviderData); encErr != nil {
+			return n, errnie.NewErrIO(encErr)
+		}
+	}
+
+	return n, nil
 }
 
 /*
@@ -112,8 +130,8 @@ Close cleans up any resources.
 */
 func (provider *OpenAIProvider) Close() error {
 	// Reset state
-	provider.params = nil
-	provider.result = nil
+	provider.ProviderData.Params = nil
+	provider.ProviderData.Result = nil
 	return nil
 }
 
@@ -155,8 +173,8 @@ func (p *OpenAIProvider) buildTools(
 		toolParam := openai.ChatCompletionToolParam{
 			Type: openai.F(openai.ChatCompletionToolTypeFunction),
 			Function: openai.F(openai.FunctionDefinitionParam{
-				Name:        openai.String(tool.Name),
-				Description: openai.String(tool.Description),
+				Name:        openai.String(tool.Name()),
+				Description: openai.String(tool.Description()),
 				Parameters:  openai.F(schema.(openai.FunctionParameters)), // Type assertion to FunctionParameters
 			}),
 		}
@@ -174,7 +192,7 @@ func (p *OpenAIProvider) buildResponseFormat(
 ) {
 	errnie.Debug("buildResponseFormat", "package", "provider")
 
-	if params.Process.Name != "" {
+	if params.Process.ProcessData.Schema != nil {
 		// Convert the schema to a string representation for OpenAI
 		schemaJSON, err := json.Marshal(map[string]any{
 			"type": "object",
@@ -197,8 +215,8 @@ func (p *OpenAIProvider) buildResponseFormat(
 		}
 
 		schemaParam := openai.ResponseFormatJSONSchemaJSONSchemaParam{
-			Name:        openai.F(params.Process.Name),
-			Description: openai.F(params.Process.Description),
+			Name:        openai.F(params.Process.ProcessData.Name),
+			Description: openai.F(params.Process.ProcessData.Description),
 			Schema:      openai.F(schemaObj),
 			Strict:      openai.Bool(true),
 		}
@@ -220,6 +238,9 @@ func (p *OpenAIProvider) GenerateResponse(ctx *ai.Context) (*core.Message, error
 		Messages: openai.F(p.buildMessages(ctx)),
 	}
 
+	openaiParams.Tools = openai.F(p.buildTools(ctx, &openaiParams))
+	p.buildResponseFormat(ctx, &openaiParams)
+
 	var response string
 	var err error
 
@@ -235,8 +256,7 @@ func (p *OpenAIProvider) GenerateResponse(ctx *ai.Context) (*core.Message, error
 	}
 
 	if response == "" {
-		errnie.Error("empty response from OpenAI")
-		return nil, &ErrorEmptyResponse{Message: "empty response from OpenAI"}
+		return nil, errnie.NewErrHTTP(errors.New("empty response from OpenAI"), 400)
 	}
 
 	return core.NewMessage("assistant", "openai", response), nil
@@ -267,8 +287,7 @@ func (provider *OpenAIProvider) handleStreamingRequest(params *openai.ChatComple
 		}
 
 		if stream.Err() != nil {
-			errnie.Error("error streaming chat completion", "error", stream.Err())
-			return "", &ErrorOpenAIAPI{Message: fmt.Sprintf("error streaming chat completion: %v", stream.Err())}
+			return "", errnie.NewErrHTTP(stream.Err(), 500)
 		}
 
 		// Check for completed tool calls
@@ -276,8 +295,8 @@ func (provider *OpenAIProvider) handleStreamingRequest(params *openai.ChatComple
 			// Parse the arguments string as JSON
 			var argsMap map[string]any
 			if err := json.Unmarshal([]byte(tool.Arguments), &argsMap); err != nil {
-				errnie.Error("failed to parse tool arguments", "error", err)
-				// If parsing fails, use the raw string
+				errnie.NewErrParse(err)
+
 				argsMap = map[string]any{
 					"raw_args": tool.Arguments,
 				}
@@ -312,20 +331,16 @@ func (provider *OpenAIProvider) handleStandardRequest(params *openai.ChatComplet
 
 	// Check API key and show clear error
 	if provider.apiKey == "" {
-		err := &ErrorOpenAIAPI{Message: "OpenAI API key is not set"}
-		errnie.Error(err.Error())
-		return "", err
+		return "", errnie.NewErrValidation("OpenAI API key is not set")
 	}
 
 	response, err := provider.client.Chat.Completions.New(ctx, *params)
 	if err != nil {
-		errnie.Error("error creating chat completion", "error", err)
-		return "", &ErrorOpenAIAPI{Message: fmt.Sprintf("error creating chat completion: %v", err)}
+		return "", errnie.NewErrHTTP(err, 500)
 	}
 
 	if len(response.Choices) == 0 {
-		errnie.Error("no choices returned from OpenAI")
-		return "", &ErrorNoChoices{Message: "no choices returned from OpenAI"}
+		return "", errnie.NewErrValidation("no choices returned from OpenAI")
 	}
 
 	choice := response.Choices[0]
@@ -339,11 +354,10 @@ func (provider *OpenAIProvider) handleStandardRequest(params *openai.ChatComplet
 	if len(choice.Message.ToolCalls) > 0 {
 		toolCallsJSON, err := json.Marshal(choice.Message.ToolCalls)
 		if err != nil {
-			errnie.Error("error marshaling tool calls", "error", err)
-			return "", &ErrorOpenAIAPI{Message: fmt.Sprintf("error marshaling tool calls: %v", err)}
+			return "", errnie.NewErrParse(err)
 		}
 		return string(toolCallsJSON), nil
 	}
 
-	return "", &ErrorEmptyResponse{Message: "empty response from OpenAI"}
+	return "", errnie.NewErrHTTP(errors.New("empty response from OpenAI"), 400)
 }
