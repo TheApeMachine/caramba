@@ -29,6 +29,8 @@ type Process struct {
 NewProcess creates a new Process with the given name, description, and schema.
 */
 func NewProcess(name, description string, schema any) *Process {
+	errnie.Debug("NewProcess")
+
 	in := bytes.NewBuffer([]byte{})
 	out := bytes.NewBuffer([]byte{})
 
@@ -54,6 +56,8 @@ func NewProcess(name, description string, schema any) *Process {
 Read serializes the process definition to JSON and writes it to the provided buffer.
 */
 func (process *Process) Read(p []byte) (n int, err error) {
+	errnie.Debug("Process.Read")
+
 	if process.out.Len() == 0 {
 		if err = errnie.NewErrIO(process.enc.Encode(process.ProcessData)); err != nil {
 			return 0, err
@@ -68,6 +72,8 @@ Write updates the process definition from JSON data.
 It implements the io.Writer interface for compatibility with io.Copy.
 */
 func (process *Process) Write(p []byte) (n int, err error) {
+	errnie.Debug("Process.Write")
+
 	// Reset the output buffer whenever we write new data
 	if process.out.Len() > 0 {
 		process.out.Reset()
@@ -101,5 +107,11 @@ func (process *Process) Write(p []byte) (n int, err error) {
 Close performs any necessary cleanup.
 */
 func (process *Process) Close() error {
+	errnie.Debug("Process.Close")
+
+	process.ProcessData.Name = ""
+	process.ProcessData.Description = ""
+	process.ProcessData.Schema = nil
+
 	return nil
 }

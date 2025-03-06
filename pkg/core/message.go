@@ -31,6 +31,8 @@ type Message struct {
 NewMessage creates a new message with the given role, name, and content.
 */
 func NewMessage(role string, name string, content string) *Message {
+	errnie.Debug("NewMessage")
+
 	in := bytes.NewBuffer([]byte{})
 	out := bytes.NewBuffer([]byte{})
 
@@ -58,6 +60,8 @@ Read implements io.Reader for Message.
 It reads from the internal buffer containing the JSON representation
 */
 func (msg *Message) Read(p []byte) (n int, err error) {
+	errnie.Debug("Message.Read")
+
 	if msg.out.Len() == 0 {
 		if err = errnie.NewErrIO(msg.enc.Encode(msg.MessageData)); err != nil {
 			return 0, err
@@ -73,6 +77,8 @@ Write implements io.Writer for Message.
 It updates the message content based on incoming data
 */
 func (msg *Message) Write(p []byte) (n int, err error) {
+	errnie.Debug("Message.Write")
+
 	// Reset the output buffer whenever we write new data
 	if msg.out.Len() > 0 {
 		msg.out.Reset()
@@ -106,6 +112,14 @@ func (msg *Message) Write(p []byte) (n int, err error) {
 Close implements io.Closer for Message
 */
 func (msg *Message) Close() error {
-	// Nothing to close
+	errnie.Debug("Message.Close")
+
+	msg.MessageData.Role = ""
+	msg.MessageData.Name = ""
+	msg.MessageData.Content = ""
+
+	msg.in.Reset()
+	msg.out.Reset()
+
 	return nil
 }

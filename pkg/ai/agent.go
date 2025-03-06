@@ -28,7 +28,7 @@ type Agent struct {
 NewAgent creates a new agent with initialized components.
 */
 func NewAgent() *Agent {
-	errnie.Debug("Creating new agent", "package", "agent")
+	errnie.Debug("NewAgent")
 
 	in := bytes.NewBuffer([]byte{})
 	out := bytes.NewBuffer([]byte{})
@@ -55,6 +55,8 @@ Read implements io.Reader for Agent.
 It reads from the internal context.
 */
 func (agent *Agent) Read(p []byte) (n int, err error) {
+	errnie.Debug("Agent.Read")
+
 	if agent.out.Len() == 0 {
 		if err = errnie.NewErrIO(agent.enc.Encode(agent.AgentData)); err != nil {
 			return 0, err
@@ -70,6 +72,8 @@ Write implements io.Writer for Agent.
 It writes to the internal context.
 */
 func (agent *Agent) Write(p []byte) (n int, err error) {
+	errnie.Debug("Agent.Write")
+
 	// Reset the output buffer whenever we write new data
 	if agent.out.Len() > 0 {
 		agent.out.Reset()
@@ -103,5 +107,6 @@ Close implements io.Closer for Agent.
 It closes the internal context.
 */
 func (agent *Agent) Close() error {
+	errnie.Debug("Agent.Close")
 	return agent.Context.Close()
 }

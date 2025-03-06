@@ -24,12 +24,23 @@ func (err *ErrnieError) Error() string { return err.msg }
 
 type ErrIO struct{ Err error }
 
-func NewErrIO(err error) error  { return &ErrIO{Err: err} }
+func NewErrIO(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return &ErrIO{Err: err}
+}
+
 func (err ErrIO) Error() string { return err.Err.Error() }
 
 type ErrValidation struct{ Err error }
 
 func NewErrValidation(args ...string) error {
+	if len(args) == 0 {
+		return nil
+	}
+
 	return &ErrValidation{Err: errors.New(strings.Join(args, " "))}
 }
 
@@ -37,12 +48,25 @@ func (err ErrValidation) Error() string { return err.Err.Error() }
 
 type ErrParse struct{ Err error }
 
-func NewErrParse(err error) error  { return &ErrParse{Err: err} }
+func NewErrParse(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return &ErrParse{Err: err}
+}
+
 func (err ErrParse) Error() string { return err.Err.Error() }
 
 type ErrOperation struct{ Err error }
 
-func NewErrOperation(err error) error  { return &ErrOperation{Err: err} }
+func NewErrOperation(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return &ErrOperation{Err: err}
+}
 func (err ErrOperation) Error() string { return err.Err.Error() }
 
 type ErrHTTP struct {
@@ -50,7 +74,14 @@ type ErrHTTP struct {
 	Code int
 }
 
-func NewErrHTTP(err error, code int) error { return &ErrHTTP{Err: err, Code: code} }
+func NewErrHTTP(err error, code int) error {
+	if err == nil {
+		return nil
+	}
+
+	return &ErrHTTP{Err: err, Code: code}
+}
+
 func (err ErrHTTP) Error() string {
 	switch err.Code {
 	case 400:

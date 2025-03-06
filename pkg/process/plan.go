@@ -33,6 +33,8 @@ type Step struct {
 NewPlan creates a new plan with initialized components.
 */
 func NewPlan() *Plan {
+	errnie.Debug("NewPlan")
+
 	in := bytes.NewBuffer([]byte{})
 	out := bytes.NewBuffer([]byte{})
 
@@ -55,8 +57,10 @@ func NewPlan() *Plan {
 /*
 WithSteps adds a new step to the plan.
 */
-func (plan *Plan) WithSteps(steps []Step) *Plan {
-	plan.PlanData.Steps = steps
+func (plan *Plan) WithSteps(steps ...Step) *Plan {
+	errnie.Debug("Plan.WithSteps")
+
+	plan.PlanData.Steps = append(plan.PlanData.Steps, steps...)
 	return plan
 }
 
@@ -64,6 +68,8 @@ func (plan *Plan) WithSteps(steps []Step) *Plan {
 Read serializes the plan to JSON and writes it to the provided buffer.
 */
 func (plan *Plan) Read(buf []byte) (n int, err error) {
+	errnie.Debug("Plan.Read")
+
 	if plan.out.Len() == 0 {
 		if err = errnie.NewErrIO(plan.enc.Encode(plan.PlanData)); err != nil {
 			return 0, err
@@ -77,6 +83,8 @@ func (plan *Plan) Read(buf []byte) (n int, err error) {
 Write updates the plan from JSON data.
 */
 func (plan *Plan) Write(data []byte) (n int, err error) {
+	errnie.Debug("Plan.Write")
+
 	// Reset the output buffer whenever we write new data
 	if plan.out.Len() > 0 {
 		plan.out.Reset()
@@ -108,5 +116,11 @@ func (plan *Plan) Write(data []byte) (n int, err error) {
 Close performs any necessary cleanup.
 */
 func (p *Plan) Close() error {
+	errnie.Debug("Plan.Close")
+
+	p.PlanData.Steps = nil
+	p.in.Reset()
+	p.out.Reset()
+
 	return nil
 }

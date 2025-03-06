@@ -33,6 +33,8 @@ type CalculatorTool struct {
 NewCalculatorTool creates a new calculator tool with its base component initialized
 */
 func NewCalculatorTool() *CalculatorTool {
+	errnie.Debug("NewCalculatorTool")
+
 	in := bytes.NewBuffer([]byte{})
 	out := bytes.NewBuffer([]byte{})
 
@@ -55,6 +57,8 @@ Read performs the calculation defined by the tool's parameters
 and returns the result as JSON
 */
 func (tool *CalculatorTool) Read(p []byte) (n int, err error) {
+	errnie.Debug("CalculatorTool.Read")
+
 	var (
 		result        float64
 		responseBytes []byte
@@ -98,6 +102,8 @@ func (tool *CalculatorTool) Read(p []byte) (n int, err error) {
 Write accepts operation parameters as JSON and configures the tool
 */
 func (tool *CalculatorTool) Write(p []byte) (n int, err error) {
+	errnie.Debug("CalculatorTool.Write")
+
 	// Reset the output buffer whenever we write new data
 	if tool.out.Len() > 0 {
 		tool.out.Reset()
@@ -131,6 +137,8 @@ func (tool *CalculatorTool) Write(p []byte) (n int, err error) {
 Close resets the tool to its initial state
 */
 func (tool *CalculatorTool) Close() error {
+	errnie.Debug("CalculatorTool.Close")
+
 	tool.CalculatorToolData.Operation = ""
 	tool.CalculatorToolData.A = 0
 	tool.CalculatorToolData.B = 0
@@ -138,6 +146,8 @@ func (tool *CalculatorTool) Close() error {
 }
 
 func (tool *CalculatorTool) WithFunction(fn io.ReadWriteCloser) *CalculatorTool {
+	errnie.Debug("CalculatorTool.WithFunction")
+
 	tool.fn = fn
 	return tool
 }

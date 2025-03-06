@@ -23,7 +23,7 @@ Example:
 	io.Copy(os.Stdout, p2)
 */
 func NewPipeline(components ...io.ReadWriteCloser) io.ReadWriteCloser {
-	errnie.Debug("Creating new pipeline", "components", len(components))
+	errnie.Debug("NewPipeline")
 
 	if len(components) < 2 {
 		errnie.NewError(errnie.NewErrValidation("need at least two components"))

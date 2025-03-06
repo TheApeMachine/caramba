@@ -35,6 +35,11 @@ settings:
   global:
     iteration_limit: 10 # The global iteration limit for all agents.
 
+tests:
+  joke: |
+    Tell me an original joke about programming, no chicken-crossed-the-road, 
+    no knock-knock jokes, you have to be creative.
+
 tools:
   qdrant:
     collection: "test"

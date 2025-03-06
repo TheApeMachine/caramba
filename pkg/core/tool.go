@@ -23,6 +23,8 @@ type ToolCall struct {
 }
 
 func NewToolCall(id string, toolName string, arguments map[string]any) *ToolCall {
+	errnie.Debug("NewToolCall")
+
 	in := bytes.NewBuffer([]byte{})
 	out := bytes.NewBuffer([]byte{})
 
@@ -45,6 +47,8 @@ func NewToolCall(id string, toolName string, arguments map[string]any) *ToolCall
 }
 
 func (toolcall *ToolCall) Read(p []byte) (n int, err error) {
+	errnie.Debug("ToolCall.Read")
+
 	if toolcall.out.Len() == 0 {
 		if err = errnie.NewErrIO(toolcall.enc.Encode(toolcall.ToolCallData)); err != nil {
 			return 0, err
@@ -55,6 +59,8 @@ func (toolcall *ToolCall) Read(p []byte) (n int, err error) {
 }
 
 func (toolcall *ToolCall) Write(p []byte) (n int, err error) {
+	errnie.Debug("ToolCall.Write")
+
 	// Reset the output buffer whenever we write new data
 	if toolcall.out.Len() > 0 {
 		toolcall.out.Reset()
@@ -85,19 +91,13 @@ func (toolcall *ToolCall) Write(p []byte) (n int, err error) {
 }
 
 func (toolcall *ToolCall) Close() error {
+	errnie.Debug("ToolCall.Close")
+
+	toolcall.ToolCallData.ID = ""
+	toolcall.ToolCallData.ToolName = ""
+	toolcall.ToolCallData.Arguments = nil
+
 	return nil
-}
-
-func (toolcall *ToolCall) Name() string {
-	return toolcall.ToolCallData.ToolName
-}
-
-func (toolcall *ToolCall) Arguments() map[string]any {
-	return toolcall.ToolCallData.Arguments
-}
-
-func (toolcall *ToolCall) ID() string {
-	return toolcall.ToolCallData.ID
 }
 
 type ToolData struct {
@@ -150,6 +150,8 @@ func NewTool(
 	description string,
 	parameters []Parameter,
 ) *Tool {
+	errnie.Debug("NewTool")
+
 	in := bytes.NewBuffer([]byte{})
 	out := bytes.NewBuffer([]byte{})
 
@@ -172,6 +174,8 @@ Read serializes the tool schema to JSON and writes it to the provided buffer.
 This allows tools to describe themselves when read from.
 */
 func (tool *Tool) Read(p []byte) (n int, err error) {
+	errnie.Debug("Tool.Read")
+
 	if tool.out.Len() == 0 {
 		if err = errnie.NewErrIO(tool.enc.Encode(tool.ToolData)); err != nil {
 			return 0, err
@@ -185,6 +189,8 @@ func (tool *Tool) Read(p []byte) (n int, err error) {
 Write accepts a JSON representation of tool parameters and updates the tool's state.
 */
 func (tool *Tool) Write(p []byte) (n int, err error) {
+	errnie.Debug("Tool.Write")
+
 	// Reset the output buffer whenever we write new data
 	if tool.out.Len() > 0 {
 		tool.out.Reset()
@@ -219,6 +225,8 @@ func (tool *Tool) Write(p []byte) (n int, err error) {
 Close cleans up any resources associated with the tool's implementation.
 */
 func (tool *Tool) Close() error {
+	errnie.Debug("Tool.Close")
+
 	if tool.fn != nil {
 		return tool.fn.Close()
 	}
@@ -231,26 +239,14 @@ WithFunction connects a concrete implementation to this tool schema.
 This allows a tool schema to be created separately from its implementation.
 */
 func (tool *Tool) WithFunction(fn io.ReadWriteCloser) *Tool {
+	errnie.Debug("Tool.WithFunction")
+
 	tool.fn = fn
 	return tool
 }
 
 func (tool *Tool) Function() io.ReadWriteCloser {
+	errnie.Debug("Tool.Function")
+
 	return tool.fn
-}
-
-func (tool *Tool) Name() string {
-	return tool.ToolData.Name
-}
-
-func (tool *Tool) Description() string {
-	return tool.ToolData.Description
-}
-
-func (tool *Tool) Parameters() []Parameter {
-	return tool.ToolData.Parameters
-}
-
-func (tool *Tool) Strict() bool {
-	return tool.ToolData.Strict
 }

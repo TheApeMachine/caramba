@@ -1,40 +1,37 @@
 package cmd
 
 import (
+	"fmt"
 	"io"
 	"os"
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
-	"github.com/theapemachine/caramba/pkg/ai"
-	"github.com/theapemachine/caramba/pkg/core"
+	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
-// Example command variables
 var (
 	exampleCmd = &cobra.Command{
 		Use:   "example",
 		Short: "Run example scenarios",
 		Long:  longExample,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			errnie.SetLevel(log.DebugLevel)
 			log.Info("Starting example")
 
-			// Create a pipeline with a message, agent, and provider
-			pipeline := workflow.NewPipeline(
-				core.NewMessage("user", "User", "Tell me a short joke about programming."),
-				ai.NewAgent(),
-				provider.NewOpenAIProvider("", ""),
-			)
+			var wf io.ReadWriteCloser
 
-			defer pipeline.Close()
+			switch args[0] {
+			case "pipeline":
+				wf = examples.NewPipeline()
+			default:
+				return fmt.Errorf("unknown example: %s", args[0])
+			}
 
-			// Copy the pipeline output to stdout
-			_, err := io.Copy(os.Stdout, pipeline)
-			if err != nil {
+			defer wf.Close()
+
+			if _, err = io.Copy(os.Stdout, wf); err != nil {
 				return err
 			}
 

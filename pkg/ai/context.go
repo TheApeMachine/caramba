@@ -41,6 +41,8 @@ type Context struct {
 NewContext creates a new context with default settings.
 */
 func NewContext() *Context {
+	errnie.Debug("NewContext")
+
 	in := bytes.NewBuffer([]byte{})
 	out := bytes.NewBuffer([]byte{})
 
@@ -71,6 +73,8 @@ Read implements io.Reader for Context.
 It reads from the internal buffer containing the JSON representation.
 */
 func (ctx *Context) Read(p []byte) (n int, err error) {
+	errnie.Debug("Context.Read")
+
 	if ctx.out.Len() == 0 {
 		if err = errnie.NewErrIO(ctx.enc.Encode(ctx.ContextData)); err != nil {
 			return 0, err
@@ -86,6 +90,8 @@ Write implements io.Writer for Context.
 It updates the context based on incoming data.
 */
 func (ctx *Context) Write(p []byte) (n int, err error) {
+	errnie.Debug("Context.Write")
+
 	// Reset the output buffer whenever we write new data
 	if ctx.out.Len() > 0 {
 		ctx.out.Reset()
@@ -125,6 +131,8 @@ func (ctx *Context) Write(p []byte) (n int, err error) {
 Close implements io.Closer for Context.
 */
 func (ctx *Context) Close() error {
-	// Nothing to close
+	errnie.Debug("Context.Close")
+	ctx.in.Reset()
+	ctx.out.Reset()
 	return nil
 }
