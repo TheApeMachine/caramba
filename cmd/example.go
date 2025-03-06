@@ -1,20 +1,17 @@
 package cmd
 
 import (
-	"fmt"
+	"io"
+	"os"
 
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
-	"github.com/theapemachine/caramba/pkg/agent/examples"
-	"github.com/theapemachine/caramba/pkg/tui"
+	"github.com/theapemachine/caramba/pkg/ai"
+	"github.com/theapemachine/caramba/pkg/core"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/workflow"
 )
-
-type ErrorUnknownExample struct {
-	ExampleType string
-}
-
-func (e *ErrorUnknownExample) Error() string {
-	return fmt.Sprintf("unknown example type: %s", e.ExampleType)
-}
 
 // Example command variables
 var (
@@ -23,17 +20,25 @@ var (
 		Short: "Run example scenarios",
 		Long:  longExample,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app := tui.NewApp()
+			errnie.SetLevel(log.DebugLevel)
+			log.Info("Starting example")
 
-			switch args[0] {
-			case "researcher":
-				example := examples.NewResearcher()
-				example.Run(cmd.Context())
-			default:
-				return fmt.Errorf("unknown example type: %s", args[1])
+			// Create a pipeline with a message, agent, and provider
+			pipeline := workflow.NewPipeline(
+				core.NewMessage("user", "User", "Tell me a short joke about programming."),
+				ai.NewAgent(),
+				provider.NewOpenAIProvider("", ""),
+			)
+
+			defer pipeline.Close()
+
+			// Copy the pipeline output to stdout
+			_, err := io.Copy(os.Stdout, pipeline)
+			if err != nil {
+				return err
 			}
 
-			return app.Start()
+			return nil
 		},
 	}
 )
@@ -44,5 +49,4 @@ func init() {
 
 var longExample = `
 Example demonstrates various capabilities of the Caramba framework.
-This command is primarily for testing and demonstration purposes.
 `

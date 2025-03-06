@@ -1,91 +1,112 @@
 package process
 
 import (
-	"fmt"
-	"strings"
+	"bytes"
+	"encoding/json"
 
-	"github.com/theapemachine/caramba/pkg/agent/util"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-type Plan struct {
-	Goal  string     `json:"goal" jsonschema:"description=The goal of the plan,required"`
-	Steps []PlanStep `json:"steps" jsonschema:"description=The steps to complete the plan,required"`
-}
-
-type PlanStep struct {
-	StepID             string               `json:"step_id" jsonschema:"description=The unique identifier for the step,required"`
-	Order              int                  `json:"order" jsonschema:"description=The order of the step in the plan,required"`
-	Description        string               `json:"description" jsonschema:"description=The description of the step,required"`
-	AcceptanceCriteria []AcceptanceCriteria `json:"acceptance_criteria" jsonschema:"description=The acceptance criteria for the step,required"`
-}
-
-type AcceptanceCriteria struct {
-	Criteria string `json:"criteria" jsonschema:"description=The criteria for the step,required"`
-}
-
-func (plan *Plan) Name() string {
-	return "Plan"
-}
-
-func (plan *Plan) Description() string {
-	return "A plan to complete a task"
-}
-
-func (plan *Plan) Schema() any {
-	return util.GenerateSchema[Plan]()
+type PlanData struct {
+	Steps []Step `json:"steps" jsonschema:"description=The steps to execute,required"`
 }
 
 /*
-String converts the structured output to a simple Markdown structured string.
+Plan represents a series of steps to be executed as part of a process.
 */
-func (plan *Plan) String() string {
-	builder := strings.Builder{}
+type Plan struct {
+	*PlanData
+	enc *json.Encoder
+	dec *json.Decoder
+	in  *bytes.Buffer
+	out *bytes.Buffer
+}
 
-	for _, step := range plan.Steps {
-		builder.WriteString(fmt.Sprintf("## Step %d\n", step.Order))
-		builder.WriteString(fmt.Sprintf("### Description\n%s\n", step.Description))
-		builder.WriteString("### Acceptance Criteria\n")
+/*
+Step represents a single action to be taken in a plan.
+*/
+type Step struct {
+	Step string `json:"step" jsonschema:"description=The step to execute,required"`
+}
 
-		for _, criteria := range step.AcceptanceCriteria {
-			builder.WriteString(fmt.Sprintf("- %s\n", criteria.Criteria))
+/*
+NewPlan creates a new plan with initialized components.
+*/
+func NewPlan() *Plan {
+	in := bytes.NewBuffer([]byte{})
+	out := bytes.NewBuffer([]byte{})
+
+	plan := &Plan{
+		PlanData: &PlanData{
+			Steps: []Step{},
+		},
+		enc: json.NewEncoder(out),
+		dec: json.NewDecoder(in),
+		in:  in,
+		out: out,
+	}
+
+	// Pre-encode the plan data to JSON for reading
+	plan.enc.Encode(plan.PlanData)
+
+	return plan
+}
+
+/*
+WithSteps adds a new step to the plan.
+*/
+func (plan *Plan) WithSteps(steps []Step) *Plan {
+	plan.PlanData.Steps = steps
+	return plan
+}
+
+/*
+Read serializes the plan to JSON and writes it to the provided buffer.
+*/
+func (plan *Plan) Read(buf []byte) (n int, err error) {
+	if plan.out.Len() == 0 {
+		if err = errnie.NewErrIO(plan.enc.Encode(plan.PlanData)); err != nil {
+			return 0, err
 		}
 	}
 
-	return builder.String()
+	return plan.out.Read(buf)
 }
 
-type Verification struct {
-	StepID     string `json:"step_id" jsonschema:"description=The unique identifier for the step,required"`
-	Result     Result `json:"result" jsonschema:"description=The result of the step,required"`
-	NextAction string `json:"next_action" jsonschema:"description=The next action to take,required"`
+/*
+Write updates the plan from JSON data.
+*/
+func (plan *Plan) Write(data []byte) (n int, err error) {
+	// Reset the output buffer whenever we write new data
+	if plan.out.Len() > 0 {
+		plan.out.Reset()
+	}
+
+	// Write the incoming bytes to the input buffer
+	n, err = plan.in.Write(data)
+	if err != nil {
+		return n, err
+	}
+
+	// Try to decode the data from the input buffer
+	// If it fails, we still return the bytes written but keep the error
+	var buf PlanData
+	if decErr := plan.dec.Decode(&buf); decErr == nil {
+		// Only update if decoding was successful
+		plan.PlanData.Steps = buf.Steps
+
+		// Re-encode to the output buffer for subsequent reads
+		if encErr := plan.enc.Encode(plan.PlanData); encErr != nil {
+			return n, errnie.NewErrIO(encErr)
+		}
+	}
+
+	return n, nil
 }
 
-type Result struct {
-	Success bool   `json:"success" jsonschema:"description=Whether the step was successful,required"`
-	Reason  string `json:"reason" jsonschema:"description=The reason for the result,required"`
-	Repeat  bool   `json:"repeat" jsonschema:"description=Whether the step should be repeated,required"`
-}
-
-func (v *Verification) Name() string {
-	return "Verification"
-}
-
-func (v *Verification) Description() string {
-	return "Verify the result of a step"
-}
-
-func (v *Verification) Schema() any {
-	return util.GenerateSchema[Verification]()
-}
-
-func (v *Verification) String() string {
-	builder := strings.Builder{}
-
-	builder.WriteString(fmt.Sprintf("## Verification\n\nStep ID: %s\n", v.StepID))
-	builder.WriteString(fmt.Sprintf("Result: %t\n", v.Result.Success))
-	builder.WriteString(fmt.Sprintf("Reason: %s\n", v.Result.Reason))
-	builder.WriteString(fmt.Sprintf("Repeat: %t\n", v.Result.Repeat))
-	builder.WriteString(fmt.Sprintf("Next Action: %s\n", v.NextAction))
-
-	return builder.String()
+/*
+Close performs any necessary cleanup.
+*/
+func (p *Plan) Close() error {
+	return nil
 }

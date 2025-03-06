@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/amsh/utils"
-	"github.com/theapemachine/caramba/pkg/output"
 )
 
 /*
@@ -46,9 +45,6 @@ Execute is the main entry point for the Caramba CLI. It initializes the root com
 and executes it.
 */
 func Execute() error {
-	logger := output.NewLogger()
-	defer logger.Close()
-
 	return rootCmd.Execute()
 }
 
