@@ -1,91 +1,76 @@
 package process
 
 import (
-	"fmt"
-	"strings"
+	"encoding/json"
+	"io"
 
-	"github.com/theapemachine/caramba/pkg/agent/util"
+	"github.com/theapemachine/caramba/pkg/core"
 )
 
+/*
+Plan represents a series of steps to be executed as part of a process.
+*/
 type Plan struct {
-	Goal  string     `json:"goal" jsonschema:"description=The goal of the plan,required"`
-	Steps []PlanStep `json:"steps" jsonschema:"description=The steps to complete the plan,required"`
-}
-
-type PlanStep struct {
-	StepID             string               `json:"step_id" jsonschema:"description=The unique identifier for the step,required"`
-	Order              int                  `json:"order" jsonschema:"description=The order of the step in the plan,required"`
-	Description        string               `json:"description" jsonschema:"description=The description of the step,required"`
-	AcceptanceCriteria []AcceptanceCriteria `json:"acceptance_criteria" jsonschema:"description=The acceptance criteria for the step,required"`
-}
-
-type AcceptanceCriteria struct {
-	Criteria string `json:"criteria" jsonschema:"description=The criteria for the step,required"`
-}
-
-func (plan *Plan) Name() string {
-	return "Plan"
-}
-
-func (plan *Plan) Description() string {
-	return "A plan to complete a task"
-}
-
-func (plan *Plan) Schema() any {
-	return util.GenerateSchema[Plan]()
+	*core.BaseComponent
+	Steps []Step `json:"steps" jsonschema:"description=The steps to execute,required"`
 }
 
 /*
-String converts the structured output to a simple Markdown structured string.
+Step represents a single action to be taken in a plan.
 */
-func (plan *Plan) String() string {
-	builder := strings.Builder{}
+type Step struct {
+	Step string `json:"step" jsonschema:"description=The step to execute,required"`
+}
 
-	for _, step := range plan.Steps {
-		builder.WriteString(fmt.Sprintf("## Step %d\n", step.Order))
-		builder.WriteString(fmt.Sprintf("### Description\n%s\n", step.Description))
-		builder.WriteString("### Acceptance Criteria\n")
+/*
+NewPlan creates a new plan with initialized components.
+*/
+func NewPlan() *Plan {
+	return &Plan{
+		BaseComponent: core.NewBaseComponent("plan", core.TypeProcess),
+		Steps:         []Step{},
+	}
+}
 
-		for _, criteria := range step.AcceptanceCriteria {
-			builder.WriteString(fmt.Sprintf("- %s\n", criteria.Criteria))
-		}
+/*
+AddStep adds a new step to the plan.
+*/
+func (p *Plan) AddStep(step string) *Plan {
+	p.Steps = append(p.Steps, Step{Step: step})
+	return p
+}
+
+/*
+Read serializes the plan to JSON and writes it to the provided buffer.
+*/
+func (p *Plan) Read(buf []byte) (n int, err error) {
+	data, err := json.Marshal(p)
+	if err != nil {
+		return 0, err
 	}
 
-	return builder.String()
+	n = copy(buf, data)
+	if n < len(data) {
+		return n, io.ErrShortBuffer
+	}
+
+	return n, io.EOF
 }
 
-type Verification struct {
-	StepID     string `json:"step_id" jsonschema:"description=The unique identifier for the step,required"`
-	Result     Result `json:"result" jsonschema:"description=The result of the step,required"`
-	NextAction string `json:"next_action" jsonschema:"description=The next action to take,required"`
+/*
+Write updates the plan from JSON data.
+*/
+func (p *Plan) Write(data []byte) (n int, err error) {
+	if err = json.Unmarshal(data, p); err != nil {
+		return 0, err
+	}
+
+	return len(data), nil
 }
 
-type Result struct {
-	Success bool   `json:"success" jsonschema:"description=Whether the step was successful,required"`
-	Reason  string `json:"reason" jsonschema:"description=The reason for the result,required"`
-	Repeat  bool   `json:"repeat" jsonschema:"description=Whether the step should be repeated,required"`
-}
-
-func (v *Verification) Name() string {
-	return "Verification"
-}
-
-func (v *Verification) Description() string {
-	return "Verify the result of a step"
-}
-
-func (v *Verification) Schema() any {
-	return util.GenerateSchema[Verification]()
-}
-
-func (v *Verification) String() string {
-	builder := strings.Builder{}
-
-	builder.WriteString(fmt.Sprintf("## Verification\n\nStep ID: %s\n", v.StepID))
-	builder.WriteString(fmt.Sprintf("Result: %t\n", v.Result.Success))
-	builder.WriteString(fmt.Sprintf("Reason: %s\n", v.Result.Reason))
-	builder.WriteString(fmt.Sprintf("Repeat: %t\n", v.Result.Repeat))
-	builder.WriteString(fmt.Sprintf("Next Action: %s\n", v.NextAction))
-
-	return builder.String()
+/*
+Close performs any necessary cleanup.
+*/
+func (p *Plan) Close() error {
+	return nil
 }
