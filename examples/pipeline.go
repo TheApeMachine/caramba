@@ -20,7 +20,10 @@ func NewPipeline() *Pipeline {
 
 	return &Pipeline{
 		workflow: workflow.NewPipeline(
-			core.NewMessage("user", "Danny", viper.GetViper().GetString("tests.joke")),
+			core.NewEvent(
+				core.NewMessage("user", "Danny", viper.GetViper().GetString("tests.joke")),
+				nil,
+			),
 			ai.NewAgent(),
 			provider.NewOpenAIProvider("", ""),
 		),
@@ -33,7 +36,7 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 }
 
 func (pipeline *Pipeline) Write(p []byte) (n int, err error) {
-	errnie.Debug("Pipeline.Write")
+	errnie.Debug("Pipeline.Write", "p", string(p))
 	return pipeline.workflow.Write(p)
 }
 

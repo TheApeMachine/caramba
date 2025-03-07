@@ -114,7 +114,7 @@ func (qdrant *Qdrant) Read(p []byte) (n int, err error) {
 }
 
 func (qdrant *Qdrant) Write(p []byte) (n int, err error) {
-	errnie.Debug("Qdrant.Write")
+	errnie.Debug("Qdrant.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if qdrant.out.Len() > 0 {

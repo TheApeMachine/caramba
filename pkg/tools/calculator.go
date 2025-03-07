@@ -102,7 +102,7 @@ func (tool *CalculatorTool) Read(p []byte) (n int, err error) {
 Write accepts operation parameters as JSON and configures the tool
 */
 func (tool *CalculatorTool) Write(p []byte) (n int, err error) {
-	errnie.Debug("CalculatorTool.Write")
+	errnie.Debug("CalculatorTool.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if tool.out.Len() > 0 {

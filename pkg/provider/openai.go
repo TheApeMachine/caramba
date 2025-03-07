@@ -85,6 +85,8 @@ func NewOpenAIProvider(
 Read implements the io.Reader interface.
 */
 func (provider *OpenAIProvider) Read(p []byte) (n int, err error) {
+	errnie.Debug("OpenAIProvider.Read")
+
 	if provider.out.Len() == 0 {
 		openaiParams := openai.ChatCompletionNewParams{
 			Model:    openai.F(openai.ChatModelGPT4o),
@@ -126,6 +128,8 @@ func (provider *OpenAIProvider) Read(p []byte) (n int, err error) {
 Write implements the io.Writer interface.
 */
 func (provider *OpenAIProvider) Write(p []byte) (n int, err error) {
+	errnie.Debug("OpenAIProvider.Write", "p", string(p))
+
 	// Reset the output buffer whenever we write new data
 	if provider.out.Len() > 0 {
 		provider.out.Reset()
@@ -157,6 +161,8 @@ func (provider *OpenAIProvider) Write(p []byte) (n int, err error) {
 Close cleans up any resources.
 */
 func (provider *OpenAIProvider) Close() error {
+	errnie.Debug("OpenAIProvider.Close")
+
 	// Reset state
 	provider.ProviderData.Params = nil
 	provider.ProviderData.Result = nil

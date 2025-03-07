@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 
+	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -72,7 +73,7 @@ Write implements io.Writer for Agent.
 It writes to the internal context.
 */
 func (agent *Agent) Write(p []byte) (n int, err error) {
-	errnie.Debug("Agent.Write")
+	errnie.Debug("Agent.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if agent.out.Len() > 0 {
@@ -87,10 +88,17 @@ func (agent *Agent) Write(p []byte) (n int, err error) {
 
 	// Try to decode the data from the input buffer
 	// If it fails, we still return the bytes written but keep the error
-	var buf AgentData
-	if decErr := agent.dec.Decode(&buf); decErr == nil {
+	ctx := &Context{}
+	event := &core.Event{}
+
+	if decErr := agent.dec.Decode(&event); decErr == nil {
+		if event.Message == nil {
+			return n, errnie.NewErrValidation("message is required")
+		}
+		
 		// Only update if decoding was successful
-		agent.Context = buf.Context
+		ctx.Messages = append(ctx.Messages, event.Message)
+		agent.Context = ctx
 
 		// Re-encode to the output buffer for subsequent reads
 		if encErr := agent.enc.Encode(agent.AgentData); encErr != nil {

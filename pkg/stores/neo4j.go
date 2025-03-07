@@ -153,7 +153,7 @@ func (neo4j *Neo4j) Read(p []byte) (n int, err error) {
 }
 
 func (neo4j *Neo4j) Write(p []byte) (n int, err error) {
-	errnie.Debug("Neo4j.Write")
+	errnie.Debug("Neo4j.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if neo4j.out.Len() > 0 {

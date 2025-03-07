@@ -61,7 +61,7 @@ func (event *Event) Read(p []byte) (n int, err error) {
 }
 
 func (event *Event) Write(p []byte) (n int, err error) {
-	errnie.Debug("Event.Write")
+	errnie.Debug("Event.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if event.out.Len() > 0 {

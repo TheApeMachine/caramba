@@ -90,7 +90,7 @@ Write implements io.Writer for Context.
 It updates the context based on incoming data.
 */
 func (ctx *Context) Write(p []byte) (n int, err error) {
-	errnie.Debug("Context.Write")
+	errnie.Debug("Context.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if ctx.out.Len() > 0 {

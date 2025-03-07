@@ -82,8 +82,8 @@ func (plan *Plan) Read(buf []byte) (n int, err error) {
 /*
 Write updates the plan from JSON data.
 */
-func (plan *Plan) Write(data []byte) (n int, err error) {
-	errnie.Debug("Plan.Write")
+func (plan *Plan) Write(p []byte) (n int, err error) {
+	errnie.Debug("Plan.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if plan.out.Len() > 0 {
@@ -91,7 +91,7 @@ func (plan *Plan) Write(data []byte) (n int, err error) {
 	}
 
 	// Write the incoming bytes to the input buffer
-	n, err = plan.in.Write(data)
+	n, err = plan.in.Write(p)
 	if err != nil {
 		return n, err
 	}

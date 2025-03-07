@@ -77,7 +77,7 @@ Write implements io.Writer for Message.
 It updates the message content based on incoming data
 */
 func (msg *Message) Write(p []byte) (n int, err error) {
-	errnie.Debug("Message.Write")
+	errnie.Debug("Message.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if msg.out.Len() > 0 {

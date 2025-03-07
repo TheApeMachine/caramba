@@ -72,7 +72,7 @@ Write updates the process definition from JSON data.
 It implements the io.Writer interface for compatibility with io.Copy.
 */
 func (process *Process) Write(p []byte) (n int, err error) {
-	errnie.Debug("Process.Write")
+	errnie.Debug("Process.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if process.out.Len() > 0 {

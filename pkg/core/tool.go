@@ -189,7 +189,7 @@ func (tool *Tool) Read(p []byte) (n int, err error) {
 Write accepts a JSON representation of tool parameters and updates the tool's state.
 */
 func (tool *Tool) Write(p []byte) (n int, err error) {
-	errnie.Debug("Tool.Write")
+	errnie.Debug("Tool.Write", "p", string(p))
 
 	// Reset the output buffer whenever we write new data
 	if tool.out.Len() > 0 {
