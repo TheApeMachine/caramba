@@ -26,6 +26,7 @@ func NewPipeline() *Pipeline {
 			),
 			ai.NewAgent(),
 			provider.NewOpenAIProvider("", ""),
+			core.NewConverter(),
 		),
 	}
 }

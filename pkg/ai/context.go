@@ -3,6 +3,7 @@ package ai
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -81,7 +82,11 @@ func (ctx *Context) Read(p []byte) (n int, err error) {
 		}
 	}
 
-	return ctx.out.Read(p)
+	if n, err = ctx.out.Read(p); n == 0 {
+		return n, io.EOF
+	}
+
+	return n, errnie.NewErrIO(err)
 }
 
 /*

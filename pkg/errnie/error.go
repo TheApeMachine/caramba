@@ -3,6 +3,7 @@ package errnie
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -15,8 +16,10 @@ func NewError(err error) error {
 		return nil
 	}
 
+	Error(err)
+
 	return &ErrnieError{
-		msg: Error(err).Error(),
+		msg: err.Error(),
 	}
 }
 
@@ -25,11 +28,11 @@ func (err *ErrnieError) Error() string { return err.msg }
 type ErrIO struct{ Err error }
 
 func NewErrIO(err error) error {
-	if err == nil {
+	if err == nil || errors.Is(err, io.EOF) {
 		return nil
 	}
 
-	return &ErrIO{Err: err}
+	return &ErrIO{Err: NewError(err)}
 }
 
 func (err ErrIO) Error() string { return err.Err.Error() }
@@ -41,7 +44,7 @@ func NewErrValidation(args ...string) error {
 		return nil
 	}
 
-	return &ErrValidation{Err: errors.New(strings.Join(args, " "))}
+	return &ErrValidation{Err: NewError(errors.New(strings.Join(args, " ")))}
 }
 
 func (err ErrValidation) Error() string { return err.Err.Error() }
@@ -49,11 +52,11 @@ func (err ErrValidation) Error() string { return err.Err.Error() }
 type ErrParse struct{ Err error }
 
 func NewErrParse(err error) error {
-	if err == nil {
+	if err == nil || errors.Is(err, io.EOF) {
 		return nil
 	}
 
-	return &ErrParse{Err: err}
+	return &ErrParse{Err: NewError(err)}
 }
 
 func (err ErrParse) Error() string { return err.Err.Error() }
@@ -61,12 +64,13 @@ func (err ErrParse) Error() string { return err.Err.Error() }
 type ErrOperation struct{ Err error }
 
 func NewErrOperation(err error) error {
-	if err == nil {
+	if err == nil || errors.Is(err, io.EOF) {
 		return nil
 	}
 
-	return &ErrOperation{Err: err}
+	return &ErrOperation{Err: NewError(err)}
 }
+
 func (err ErrOperation) Error() string { return err.Err.Error() }
 
 type ErrHTTP struct {
@@ -75,11 +79,11 @@ type ErrHTTP struct {
 }
 
 func NewErrHTTP(err error, code int) error {
-	if err == nil {
+	if err == nil || errors.Is(err, io.EOF) {
 		return nil
 	}
 
-	return &ErrHTTP{Err: err, Code: code}
+	return &ErrHTTP{Err: NewError(err), Code: code}
 }
 
 func (err ErrHTTP) Error() string {

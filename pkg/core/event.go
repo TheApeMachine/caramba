@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -52,9 +53,7 @@ func (event *Event) Read(p []byte) (n int, err error) {
 	errnie.Debug("Event.Read")
 
 	if event.out.Len() == 0 {
-		if err = errnie.NewErrIO(event.enc.Encode(event.EventData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return event.out.Read(p)

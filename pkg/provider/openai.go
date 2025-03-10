@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"time"
 
@@ -17,13 +18,9 @@ import (
 	"github.com/theapemachine/caramba/pkg/utils"
 )
 
-type ProviderEvent struct {
-	Event *core.Event `json:"event"`
-}
-
 type ProviderData struct {
-	Params *ai.Context    `json:"params"`
-	Result *ProviderEvent `json:"result"`
+	Params *ai.ContextData `json:"params"`
+	Result *core.Event     `json:"result"`
 }
 
 /*
@@ -88,37 +85,7 @@ func (provider *OpenAIProvider) Read(p []byte) (n int, err error) {
 	errnie.Debug("OpenAIProvider.Read")
 
 	if provider.out.Len() == 0 {
-		openaiParams := openai.ChatCompletionNewParams{
-			Model:    openai.F(openai.ChatModelGPT4o),
-			Messages: openai.F(provider.buildMessages(provider.ProviderData.Params)),
-		}
-
-		openaiParams.Tools = openai.F(provider.buildTools(provider.ProviderData.Params, &openaiParams))
-		provider.buildResponseFormat(provider.ProviderData.Params, &openaiParams)
-
-		var (
-			response *core.Event
-			err      error
-		)
-
-		if provider.ProviderData.Params.Stream {
-			response, err = provider.handleStreamingRequest(&openaiParams)
-		} else {
-			response, err = provider.handleStandardRequest(&openaiParams)
-		}
-
-		if err != nil {
-			errnie.Error("failed to generate response", "error", err)
-			return 0, err
-		}
-
-		if response == nil {
-			return 0, errnie.NewErrHTTP(errors.New("empty response from OpenAI"), 400)
-		}
-
-		if err = errnie.NewErrIO(provider.enc.Encode(provider.ProviderData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return provider.out.Read(p)
@@ -143,14 +110,47 @@ func (provider *OpenAIProvider) Write(p []byte) (n int, err error) {
 
 	// Try to decode the data from the input buffer
 	// If it fails, we still return the bytes written but keep the error
-	var buf ProviderData
-	if decErr := provider.dec.Decode(&buf); decErr == nil {
-		// Only update if decoding was successful
-		provider.ProviderData.Params = buf.Params
+	buf := &ai.ContextData{}
 
-		// Re-encode to the output buffer for subsequent reads
-		if encErr := provider.enc.Encode(provider.ProviderData); encErr != nil {
-			return n, errnie.NewErrIO(encErr)
+	if decErr := provider.dec.Decode(buf); decErr == nil {
+		errnie.Debug("OpenAIProvider.Write", "buf", buf)
+
+		// Only update if decoding was successful
+		provider.ProviderData.Params = buf
+
+		openaiParams := openai.ChatCompletionNewParams{
+			Model:    openai.F(openai.ChatModelGPT4o),
+			Messages: openai.F(provider.buildMessages(provider.Params)),
+		}
+
+		openaiParams.Tools = openai.F(provider.buildTools(provider.Params, &openaiParams))
+		provider.buildResponseFormat(provider.Params, &openaiParams)
+
+		var (
+			response *core.Event
+			err      error
+		)
+
+		if provider.ProviderData.Params.Stream {
+			response, err = provider.handleStreamingRequest(&openaiParams)
+		} else {
+			response, err = provider.handleStandardRequest(&openaiParams)
+		}
+
+		if err != nil {
+			return 0, errnie.NewErrIO(err)
+		}
+
+		if response == nil {
+			return 0, errnie.NewErrHTTP(errors.New("empty response from OpenAI"), 400)
+		}
+
+		errnie.Debug("OpenAIProvider.Write", "response", response)
+
+		provider.ProviderData.Result = response
+
+		if err = errnie.NewErrIO(provider.enc.Encode(provider.ProviderData)); err != nil {
+			return 0, err
 		}
 	}
 
@@ -170,9 +170,14 @@ func (provider *OpenAIProvider) Close() error {
 }
 
 func (p *OpenAIProvider) buildMessages(
-	params *ai.Context,
+	params *ai.ContextData,
 ) []openai.ChatCompletionMessageParamUnion {
 	errnie.Debug("buildMessages")
+
+	if params == nil {
+		errnie.NewErrValidation("params are nil", "provider", "openai")
+		return nil
+	}
 
 	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(params.Messages))
 
@@ -193,10 +198,15 @@ func (p *OpenAIProvider) buildMessages(
 }
 
 func (p *OpenAIProvider) buildTools(
-	params *ai.Context,
+	params *ai.ContextData,
 	openaiParams *openai.ChatCompletionNewParams,
 ) []openai.ChatCompletionToolParam {
 	errnie.Debug("buildTools")
+
+	if params == nil {
+		errnie.NewErrValidation("params are nil", "provider", "openai")
+		return nil
+	}
 
 	toolsOut := make([]openai.ChatCompletionToolParam, 0, len(params.Tools))
 
@@ -221,47 +231,54 @@ func (p *OpenAIProvider) buildTools(
 }
 
 func (p *OpenAIProvider) buildResponseFormat(
-	params *ai.Context,
+	params *ai.ContextData,
 	openaiParams *openai.ChatCompletionNewParams,
 ) {
 	errnie.Debug("buildResponseFormat")
 
-	if params.Process.ProcessData.Schema != nil {
-		// Convert the schema to a string representation for OpenAI
-		schemaJSON, err := json.Marshal(map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"message": map[string]any{
-					"type": "string",
-				},
-			},
-		})
-		if err != nil {
-			errnie.Error("failed to convert schema to JSON", "error", err)
-			return
-		}
-
-		// Parse the schema JSON back into a generic any for OpenAI
-		var schemaObj any
-		if err := json.Unmarshal(schemaJSON, &schemaObj); err != nil {
-			errnie.Error("failed to parse schema JSON", "error", err)
-			return
-		}
-
-		schemaParam := openai.ResponseFormatJSONSchemaJSONSchemaParam{
-			Name:        openai.F(params.Process.ProcessData.Name),
-			Description: openai.F(params.Process.ProcessData.Description),
-			Schema:      openai.F(schemaObj),
-			Strict:      openai.Bool(true),
-		}
-
-		openaiParams.ResponseFormat = openai.F[openai.ChatCompletionNewParamsResponseFormatUnion](
-			openai.ResponseFormatJSONSchemaParam{
-				Type:       openai.F(openai.ResponseFormatJSONSchemaTypeJSONSchema),
-				JSONSchema: openai.F(schemaParam),
-			},
-		)
+	if params == nil {
+		errnie.NewErrValidation("params are nil", "provider", "openai")
+		return
 	}
+
+	if params.Process == nil || params.Process.ProcessData == nil || params.Process.ProcessData.Schema == nil {
+		return
+	}
+
+	// Convert the schema to a string representation for OpenAI
+	schemaJSON, err := json.Marshal(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"message": map[string]any{
+				"type": "string",
+			},
+		},
+	})
+	if err != nil {
+		errnie.Error("failed to convert schema to JSON", "error", err)
+		return
+	}
+
+	// Parse the schema JSON back into a generic any for OpenAI
+	var schemaObj any
+	if err := json.Unmarshal(schemaJSON, &schemaObj); err != nil {
+		errnie.Error("failed to parse schema JSON", "error", err)
+		return
+	}
+
+	schemaParam := openai.ResponseFormatJSONSchemaJSONSchemaParam{
+		Name:        openai.F(params.Process.ProcessData.Name),
+		Description: openai.F(params.Process.ProcessData.Description),
+		Schema:      openai.F(schemaObj),
+		Strict:      openai.Bool(true),
+	}
+
+	openaiParams.ResponseFormat = openai.F[openai.ChatCompletionNewParamsResponseFormatUnion](
+		openai.ResponseFormatJSONSchemaParam{
+			Type:       openai.F(openai.ResponseFormatJSONSchemaTypeJSONSchema),
+			JSONSchema: openai.F(schemaParam),
+		},
+	)
 }
 
 /*
@@ -383,8 +400,8 @@ func (provider *OpenAIProvider) handleStandardRequest(
 }
 
 type OpenAIEmbedderData struct {
-	Params *ai.Context `json:"params"`
-	Result *[]float64  `json:"result"`
+	Params *ai.ContextData `json:"params"`
+	Result *[]float64      `json:"result"`
 }
 
 type OpenAIEmbedder struct {
@@ -424,9 +441,7 @@ func (embedder *OpenAIEmbedder) Read(p []byte) (n int, err error) {
 	errnie.Debug("OpenAIEmbedder.Read")
 
 	if embedder.out.Len() == 0 {
-		if err = errnie.NewErrIO(embedder.enc.Encode(embedder.OpenAIEmbedderData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return embedder.out.Read(p)

@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
@@ -29,11 +29,14 @@ var (
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
 
-			defer wf.Close()
-
-			if _, err = io.Copy(os.Stdout, wf); err != nil {
+			buf := new(bytes.Buffer)
+			if _, err = io.Copy(buf, wf); err != nil {
 				return err
 			}
+
+			wf.Close()
+
+			fmt.Println(buf.String())
 
 			return nil
 		},

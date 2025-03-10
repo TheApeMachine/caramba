@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -63,9 +64,7 @@ func (msg *Message) Read(p []byte) (n int, err error) {
 	errnie.Debug("Message.Read")
 
 	if msg.out.Len() == 0 {
-		if err = errnie.NewErrIO(msg.enc.Encode(msg.MessageData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return msg.out.Read(p)

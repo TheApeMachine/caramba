@@ -3,6 +3,7 @@ package ai
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -59,9 +60,7 @@ func (agent *Agent) Read(p []byte) (n int, err error) {
 	errnie.Debug("Agent.Read")
 
 	if agent.out.Len() == 0 {
-		if err = errnie.NewErrIO(agent.enc.Encode(agent.AgentData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return agent.out.Read(p)
@@ -88,20 +87,20 @@ func (agent *Agent) Write(p []byte) (n int, err error) {
 
 	// Try to decode the data from the input buffer
 	// If it fails, we still return the bytes written but keep the error
-	ctx := &Context{}
-	event := &core.Event{}
+	event := core.NewEvent(nil, nil)
 
 	if decErr := agent.dec.Decode(&event); decErr == nil {
 		if event.Message == nil {
 			return n, errnie.NewErrValidation("message is required")
 		}
-		
+
 		// Only update if decoding was successful
-		ctx.Messages = append(ctx.Messages, event.Message)
-		agent.Context = ctx
+		agent.Context.ContextData.Messages = append(
+			agent.Context.ContextData.Messages, event.Message,
+		)
 
 		// Re-encode to the output buffer for subsequent reads
-		if encErr := agent.enc.Encode(agent.AgentData); encErr != nil {
+		if encErr := agent.enc.Encode(agent.AgentData.Context.ContextData); encErr != nil {
 			return n, errnie.NewErrIO(encErr)
 		}
 	}

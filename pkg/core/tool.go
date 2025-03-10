@@ -182,7 +182,11 @@ func (tool *Tool) Read(p []byte) (n int, err error) {
 		}
 	}
 
-	return tool.out.Read(p)
+	if n, err = tool.out.Read(p); n == 0 {
+		return n, io.EOF
+	}
+
+	return n, errnie.NewErrIO(err)
 }
 
 /*

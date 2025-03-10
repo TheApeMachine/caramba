@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -64,7 +65,11 @@ func (process *Process) Read(p []byte) (n int, err error) {
 		}
 	}
 
-	return process.out.Read(p)
+	if n, err = process.out.Read(p); n == 0 {
+		return n, io.EOF
+	}
+
+	return n, errnie.NewErrIO(err)
 }
 
 /*
