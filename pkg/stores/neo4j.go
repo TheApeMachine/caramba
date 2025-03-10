@@ -173,10 +173,16 @@ func (neo4j *Neo4j) Write(p []byte) (n int, err error) {
 		// Only update if decoding was successful
 		neo4j.Neo4jData.Event = buf.Event
 
+		// Debugging information
+		errnie.Debug("Decoded Event", "Event", neo4j.Neo4jData.Event)
+
 		// Re-encode to the output buffer for subsequent reads
 		if encErr := neo4j.enc.Encode(neo4j.Neo4jData); encErr != nil {
 			return n, errnie.NewErrIO(encErr)
 		}
+	} else {
+		// Debugging information for decoding error
+		errnie.Debug("Decoding Error", "Error", decErr)
 	}
 
 	return n, nil

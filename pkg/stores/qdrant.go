@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qdrant/go-client/qdrant"
 	sdk "github.com/qdrant/go-client/qdrant"
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -24,7 +23,7 @@ type QdrantData struct {
 
 type Qdrant struct {
 	*QdrantData
-	client     *qdrant.Client
+	client     *sdk.Client
 	collection string
 	dimensions int
 	embedder   io.ReadWriteCloser
@@ -41,7 +40,7 @@ func NewQdrant(collection string) *Qdrant {
 	in := bytes.NewBuffer([]byte{})
 	out := bytes.NewBuffer([]byte{})
 
-	client, err := qdrant.NewClient(&qdrant.Config{
+	client, err := sdk.NewClient(&sdk.Config{
 		Host:                   "localhost",
 		Port:                   6334,
 		APIKey:                 os.Getenv("QDRANT_API_KEY"),
