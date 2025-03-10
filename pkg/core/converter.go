@@ -32,8 +32,6 @@ func NewConverter() *Converter {
 }
 
 func (converter *Converter) Read(p []byte) (n int, err error) {
-	errnie.Debug("Converter.Read", "p", string(p))
-
 	if converter.out.Len() == 0 {
 		return 0, io.EOF
 	}
