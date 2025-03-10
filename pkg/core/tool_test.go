@@ -94,15 +94,37 @@ func TestNewTool(t *testing.T) {
 
 // TestToolRead tests the Read method of Tool
 func TestToolRead(t *testing.T) {
-	Convey("Given a Tool", t, func() {
-		tool := NewTool("test_tool", "Test description", []Parameter{})
-		buffer := make([]byte, 1024)
+	Convey("Given a Tool with data", t, func() {
+		parameters := []Parameter{
+			{
+				Type: "object",
+				Properties: map[string]Property{
+					"message": {
+						Type:        "string",
+						Description: "The message to echo",
+					},
+				},
+				Required: []string{"message"},
+			},
+		}
+		tool := NewTool("test_tool", "Test description", parameters)
 
-		Convey("When reading from the tool", func() {
+		// First write some data to ensure the buffer has content
+		toolData := ToolData{
+			Name:        "test_tool",
+			Description: "Test description",
+			Parameters:  parameters,
+		}
+		jsonData, _ := json.Marshal(toolData)
+		_, writeErr := tool.Write(jsonData)
+		So(writeErr, ShouldBeNil)
+
+		Convey("When reading from the tool after writing data", func() {
+			buffer := make([]byte, 1024)
 			n, err := tool.Read(buffer)
 
 			Convey("Then it should return tool data as JSON", func() {
-				So(err, ShouldBeNil)
+				So(err, ShouldBeNil) // Should not return EOF when buffer has content
 				So(n, ShouldBeGreaterThan, 0)
 
 				var parsed ToolData
@@ -113,17 +135,17 @@ func TestToolRead(t *testing.T) {
 			})
 		})
 
-		Convey("When reading until empty", func() {
-			// First read to consume the buffer
-			firstBuffer := make([]byte, 1024)
-			tool.Read(firstBuffer)
+		Convey("When the buffer is empty", func() {
+			// Reset the buffer to simulate an empty buffer
+			tool.out.Reset()
 
-			// The tool's Read method should re-encode if buffer is empty
+			// Try to read from an empty buffer
+			buffer := make([]byte, 1024)
 			n, err := tool.Read(buffer)
 
-			Convey("Then it should still return data", func() {
-				So(err, ShouldBeNil)
-				So(n, ShouldBeGreaterThan, 0)
+			Convey("Then it should return EOF", func() {
+				So(err, ShouldEqual, io.EOF)
+				So(n, ShouldEqual, 0)
 			})
 		})
 	})

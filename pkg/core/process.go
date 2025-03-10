@@ -57,19 +57,13 @@ func NewProcess(name, description string, schema any) *Process {
 Read serializes the process definition to JSON and writes it to the provided buffer.
 */
 func (process *Process) Read(p []byte) (n int, err error) {
-	errnie.Debug("Process.Read")
+	errnie.Debug("Process.Read", "p", string(p))
 
 	if process.out.Len() == 0 {
-		if err = errnie.NewErrIO(process.enc.Encode(process.ProcessData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
-	if n, err = process.out.Read(p); n == 0 {
-		return n, io.EOF
-	}
-
-	return n, errnie.NewErrIO(err)
+	return process.out.Read(p)
 }
 
 /*

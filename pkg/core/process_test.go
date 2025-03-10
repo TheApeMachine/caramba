@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"io"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -49,45 +50,45 @@ func TestNewProcess(t *testing.T) {
 
 // TestProcessRead tests the Read method of Process
 func TestProcessRead(t *testing.T) {
-	Convey("Given a Process with a schema", t, func() {
-		process := NewProcess(
-			"test_process",
-			"Test description",
-			map[string]interface{}{"type": "object"},
-		)
-		buffer := make([]byte, 1024)
+	Convey("Given a Process with data", t, func() {
+		schema := map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{
+					"type": "string",
+				},
+			},
+		}
+		process := NewProcess("test_process", "Test description", schema)
 
 		Convey("When reading from the process", func() {
+			buffer := make([]byte, 1024)
 			n, err := process.Read(buffer)
 
-			Convey("Then it should return process data as JSON", func() {
+			Convey("Then it should return the JSON data", func() {
 				So(err, ShouldBeNil)
 				So(n, ShouldBeGreaterThan, 0)
 
-				var parsed ProcessData
-				err := json.Unmarshal(buffer[:n], &parsed)
+				var data map[string]interface{}
+				err := json.Unmarshal(buffer[:n], &data)
 				So(err, ShouldBeNil)
-				So(parsed.Name, ShouldEqual, "test_process")
-				So(parsed.Description, ShouldEqual, "Test description")
-
-				// Check schema was included
-				schemaMap, ok := parsed.Schema.(map[string]interface{})
-				So(ok, ShouldBeTrue)
-				So(schemaMap["type"], ShouldEqual, "object")
+				So(data["name"], ShouldEqual, "test_process")
+				So(data["description"], ShouldEqual, "Test description")
+				So(data["schema"], ShouldNotBeNil)
 			})
 		})
 
-		Convey("When reading until empty", func() {
-			// First read to consume buffer
-			firstBuffer := make([]byte, 1024)
-			process.Read(firstBuffer)
-
-			// The process's Read method should re-encode if buffer is empty
+		Convey("When the buffer is empty", func() {
+			// Reset the buffer to simulate an empty buffer
+			process.out.Reset()
+			
+			// Try to read from an empty buffer
+			buffer := make([]byte, 1024)
 			n, err := process.Read(buffer)
 
-			Convey("Then it should still return data", func() {
-				So(err, ShouldBeNil)
-				So(n, ShouldBeGreaterThan, 0)
+			Convey("Then it should return EOF", func() {
+				So(err, ShouldEqual, io.EOF)
+				So(n, ShouldEqual, 0)
 			})
 		})
 	})

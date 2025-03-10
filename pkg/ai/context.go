@@ -76,12 +76,6 @@ It reads from the internal buffer containing the JSON representation.
 func (ctx *Context) Read(p []byte) (n int, err error) {
 	errnie.Debug("Context.Read")
 
-	if ctx.out.Len() == 0 {
-		if err = errnie.NewErrIO(ctx.enc.Encode(ctx.ContextData)); err != nil {
-			return 0, err
-		}
-	}
-
 	if n, err = ctx.out.Read(p); n == 0 {
 		return n, io.EOF
 	}

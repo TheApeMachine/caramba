@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -61,95 +62,99 @@ func (neo4j *Neo4j) Read(p []byte) (n int, err error) {
 	errnie.Debug("Neo4j.Read")
 
 	if neo4j.out.Len() == 0 {
-		var results strings.Builder
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		for _, toolCall := range neo4j.Event.ToolCalls {
-			if toolCall.ToolName == "neo4j" {
-				session := neo4j.client.NewSession(ctx, sdk.SessionConfig{
-					DatabaseName: "neo4j",
-					AccessMode:   sdk.AccessModeWrite,
-				})
-
-				defer session.Close(ctx)
-
-				// Simple query to find relationships
-				result, err := session.Run(
-					ctx,
-					`
-				MATCH p=(a)-[r]->(b)
-				WHERE a.name CONTAINS $term OR b.name CONTAINS $term
-				RETURN a.name as source, labels(a)[0] as sourceLabel, 
-					type(r) as relationship, 
-					b.name as target, labels(b)[0] as targetLabel
-				LIMIT 20
-				`,
-					map[string]interface{}{
-						"term": toolCall.Arguments["term"].(string),
-					},
-				)
-
-				if err != nil {
-					return 0, err
-				}
-
-				for result.Next(ctx) {
-					record := result.Record()
-					asmap := record.AsMap()
-
-					results.WriteString(
-						fmt.Sprintf("%v:%v -[%v]-> %v:%v\n",
-							asmap["sourceLabel"],
-							asmap["source"],
-							asmap["relationship"],
-							asmap["targetLabel"],
-							asmap["target"],
-						),
-					)
-				}
-
-				if err := result.Err(); err != nil {
-					return 0, err
-				}
-
-				if results.Len() == 0 {
-					results.WriteString(fmt.Sprintf("No relationships found for: %s\n", toolCall.Arguments["term"].(string)))
-					return 0, nil
-				}
-
-				// Check if there's a query in the arguments
-				if qry, ok := toolCall.Arguments["query"].(string); ok {
-					result, err := session.Run(ctx, qry, nil)
-
-					if err != nil {
-						return 0, err
-					}
-
-					// Format the results
-					for result.Next(ctx) {
-						record := result.Record()
-						results.WriteString(fmt.Sprintf("%v\n", record.AsMap()))
-					}
-
-					if err := result.Err(); err != nil {
-						return 0, err
-					}
-				}
-			}
-		}
-
-		neo4j.Neo4jData.Event = core.NewEvent(
-			core.NewMessage("assistant", "neo4j", ""),
-			nil,
-		)
-
-		if err = errnie.NewErrIO(neo4j.enc.Encode(neo4j.Neo4jData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return neo4j.out.Read(p)
+}
+
+// executeQuery performs Neo4j queries based on tool calls and updates the output buffer
+// This should be called from Write or other methods that modify data, not from Read
+func (neo4j *Neo4j) executeQuery() error {
+	var results strings.Builder
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	for _, toolCall := range neo4j.Event.ToolCalls {
+		if toolCall.ToolName == "neo4j" {
+			session := neo4j.client.NewSession(ctx, sdk.SessionConfig{
+				DatabaseName: "neo4j",
+				AccessMode:   sdk.AccessModeWrite,
+			})
+
+			defer session.Close(ctx)
+
+			// Simple query to find relationships
+			result, err := session.Run(
+				ctx,
+				`
+			MATCH p=(a)-[r]->(b)
+			WHERE a.name CONTAINS $term OR b.name CONTAINS $term
+			RETURN a.name as source, labels(a)[0] as sourceLabel, 
+				type(r) as relationship, 
+				b.name as target, labels(b)[0] as targetLabel
+			LIMIT 20
+			`,
+				map[string]interface{}{
+					"term": toolCall.Arguments["term"].(string),
+				},
+			)
+
+			if err != nil {
+				return err
+			}
+
+			for result.Next(ctx) {
+				record := result.Record()
+				asmap := record.AsMap()
+
+				results.WriteString(
+					fmt.Sprintf("%v:%v -[%v]-> %v:%v\n",
+						asmap["sourceLabel"],
+						asmap["source"],
+						asmap["relationship"],
+						asmap["targetLabel"],
+						asmap["target"],
+					),
+				)
+			}
+
+			if err := result.Err(); err != nil {
+				return err
+			}
+
+			if results.Len() == 0 {
+				results.WriteString(fmt.Sprintf("No relationships found for: %s\n", toolCall.Arguments["term"].(string)))
+				return nil
+			}
+
+			// Check if there's a query in the arguments
+			if qry, ok := toolCall.Arguments["query"].(string); ok {
+				result, err := session.Run(ctx, qry, nil)
+
+				if err != nil {
+					return err
+				}
+
+				// Format the results
+				for result.Next(ctx) {
+					record := result.Record()
+					results.WriteString(fmt.Sprintf("%v\n", record.AsMap()))
+				}
+
+				if err := result.Err(); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	neo4j.Neo4jData.Event = core.NewEvent(
+		core.NewMessage("assistant", "neo4j", ""),
+		nil,
+	)
+
+	return errnie.NewErrIO(neo4j.enc.Encode(neo4j.Neo4jData))
 }
 
 func (neo4j *Neo4j) Write(p []byte) (n int, err error) {
@@ -168,21 +173,22 @@ func (neo4j *Neo4j) Write(p []byte) (n int, err error) {
 
 	// Try to decode the data from the input buffer
 	// If it fails, we still return the bytes written but keep the error
-	var buf Neo4jData
+	var buf core.Event
 	if decErr := neo4j.dec.Decode(&buf); decErr == nil {
 		// Only update if decoding was successful
-		neo4j.Neo4jData.Event = buf.Event
+		neo4j.Event = &buf
 
-		// Debugging information
-		errnie.Debug("Decoded Event", "Event", neo4j.Neo4jData.Event)
-
-		// Re-encode to the output buffer for subsequent reads
-		if encErr := neo4j.enc.Encode(neo4j.Neo4jData); encErr != nil {
-			return n, errnie.NewErrIO(encErr)
+		// Execute any queries based on tool calls
+		if neo4j.Event != nil && len(neo4j.Event.ToolCalls) > 0 {
+			if err := neo4j.executeQuery(); err != nil {
+				return n, err
+			}
+		} else {
+			// No tool calls, just re-encode
+			if err = errnie.NewErrIO(neo4j.enc.Encode(neo4j.Neo4jData)); err != nil {
+				return n, err
+			}
 		}
-	} else {
-		// Debugging information for decoding error
-		errnie.Debug("Decoding Error", "Error", decErr)
 	}
 
 	return n, nil

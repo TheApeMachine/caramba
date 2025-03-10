@@ -47,12 +47,10 @@ func NewToolCall(id string, toolName string, arguments map[string]any) *ToolCall
 }
 
 func (toolcall *ToolCall) Read(p []byte) (n int, err error) {
-	errnie.Debug("ToolCall.Read")
+	errnie.Debug("ToolCall.Read", "p", string(p))
 
 	if toolcall.out.Len() == 0 {
-		if err = errnie.NewErrIO(toolcall.enc.Encode(toolcall.ToolCallData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return toolcall.out.Read(p)
@@ -174,19 +172,13 @@ Read serializes the tool schema to JSON and writes it to the provided buffer.
 This allows tools to describe themselves when read from.
 */
 func (tool *Tool) Read(p []byte) (n int, err error) {
-	errnie.Debug("Tool.Read")
+	errnie.Debug("Tool.Read", "p", string(p))
 
 	if tool.out.Len() == 0 {
-		if err = errnie.NewErrIO(tool.enc.Encode(tool.ToolData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
-	if n, err = tool.out.Read(p); n == 0 {
-		return n, io.EOF
-	}
-
-	return n, errnie.NewErrIO(err)
+	return tool.out.Read(p)
 }
 
 /*

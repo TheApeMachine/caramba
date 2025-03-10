@@ -61,7 +61,7 @@ Read implements io.Reader for Message.
 It reads from the internal buffer containing the JSON representation
 */
 func (msg *Message) Read(p []byte) (n int, err error) {
-	errnie.Debug("Message.Read")
+	errnie.Debug("Message.Read", "p", string(p))
 
 	if msg.out.Len() == 0 {
 		return 0, io.EOF

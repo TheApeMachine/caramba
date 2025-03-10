@@ -32,18 +32,39 @@ func TestNewCalculatorTool(t *testing.T) {
 
 // TestCalculatorToolRead tests the Read method of CalculatorTool
 func TestCalculatorToolRead(t *testing.T) {
-	Convey("Given a CalculatorTool with operation parameters", t, func() {
+	Convey("Given a CalculatorTool", t, func() {
 		tool := NewCalculatorTool()
-		tool.Operation = "add"
-		tool.A = 5
-		tool.B = 3
 
-		Convey("When reading from the tool with a sufficient buffer", func() {
+		Convey("When the output buffer is empty", func() {
+			// Ensure the buffer is empty
+			tool.out.Reset()
+			
+			buffer := make([]byte, 1024)
+			n, err := tool.Read(buffer)
+
+			Convey("Then it should return EOF", func() {
+				So(err, ShouldEqual, io.EOF)
+				So(n, ShouldEqual, 0)
+			})
+		})
+
+		Convey("When writing operation parameters then reading results", func() {
+			// First write the parameters
+			addData := CalculatorToolData{
+				Operation: "add",
+				A:         5,
+				B:         3,
+			}
+			jsonData, _ := json.Marshal(addData)
+			_, err := tool.Write(jsonData)
+			So(err, ShouldBeNil)
+			
+			// Then read the result
 			buffer := make([]byte, 1024)
 			n, err := tool.Read(buffer)
 
 			Convey("Then it should return a JSON result", func() {
-				So(err, ShouldEqual, io.EOF) // Should return EOF when complete
+				So(err, ShouldBeNil)
 				So(n, ShouldBeGreaterThan, 0)
 
 				var result map[string]interface{}
@@ -53,13 +74,19 @@ func TestCalculatorToolRead(t *testing.T) {
 			})
 		})
 
-		Convey("When reading with different operations", func() {
+		Convey("When testing different operations", func() {
 			Convey("For add operation", func() {
-				tool.Operation = "add"
-				tool.A = 10
-				tool.B = 5
+				addData := CalculatorToolData{
+					Operation: "add",
+					A:         10,
+					B:         5,
+				}
+				jsonData, _ := json.Marshal(addData)
+				tool.Write(jsonData)
+				
 				buffer := make([]byte, 1024)
-				n, _ := tool.Read(buffer)
+				n, err := tool.Read(buffer)
+				So(err, ShouldBeNil)
 
 				var result map[string]interface{}
 				json.Unmarshal(buffer[:n], &result)
@@ -67,11 +94,17 @@ func TestCalculatorToolRead(t *testing.T) {
 			})
 
 			Convey("For subtract operation", func() {
-				tool.Operation = "subtract"
-				tool.A = 10
-				tool.B = 5
+				subtractData := CalculatorToolData{
+					Operation: "subtract",
+					A:         10,
+					B:         5,
+				}
+				jsonData, _ := json.Marshal(subtractData)
+				tool.Write(jsonData)
+				
 				buffer := make([]byte, 1024)
-				n, _ := tool.Read(buffer)
+				n, err := tool.Read(buffer)
+				So(err, ShouldBeNil)
 
 				var result map[string]interface{}
 				json.Unmarshal(buffer[:n], &result)
@@ -79,11 +112,17 @@ func TestCalculatorToolRead(t *testing.T) {
 			})
 
 			Convey("For multiply operation", func() {
-				tool.Operation = "multiply"
-				tool.A = 10
-				tool.B = 5
+				multiplyData := CalculatorToolData{
+					Operation: "multiply",
+					A:         10,
+					B:         5,
+				}
+				jsonData, _ := json.Marshal(multiplyData)
+				tool.Write(jsonData)
+				
 				buffer := make([]byte, 1024)
-				n, _ := tool.Read(buffer)
+				n, err := tool.Read(buffer)
+				So(err, ShouldBeNil)
 
 				var result map[string]interface{}
 				json.Unmarshal(buffer[:n], &result)
@@ -91,11 +130,17 @@ func TestCalculatorToolRead(t *testing.T) {
 			})
 
 			Convey("For divide operation", func() {
-				tool.Operation = "divide"
-				tool.A = 10
-				tool.B = 5
+				divideData := CalculatorToolData{
+					Operation: "divide",
+					A:         10,
+					B:         5,
+				}
+				jsonData, _ := json.Marshal(divideData)
+				tool.Write(jsonData)
+				
 				buffer := make([]byte, 1024)
-				n, _ := tool.Read(buffer)
+				n, err := tool.Read(buffer)
+				So(err, ShouldBeNil)
 
 				var result map[string]interface{}
 				json.Unmarshal(buffer[:n], &result)
@@ -103,25 +148,19 @@ func TestCalculatorToolRead(t *testing.T) {
 			})
 		})
 
-		Convey("When reading with an invalid operation", func() {
-			tool.Operation = "invalid"
-			buffer := make([]byte, 1024)
-			_, err := tool.Read(buffer)
+		Convey("When writing invalid operation parameters", func() {
+			invalidOpData := CalculatorToolData{
+				Operation: "invalid",
+				A:         5,
+				B:         3,
+			}
+			jsonData, _ := json.Marshal(invalidOpData)
+			n, err := tool.Write(jsonData)
 
-			Convey("Then it should return an operation error", func() {
+			Convey("Then write should succeed but return an error", func() {
+				So(n, ShouldEqual, len(jsonData))
 				So(err, ShouldNotBeNil)
-				So(err.Error(), ShouldContainSubstring, "unsupported operation: invalid")
-			})
-		})
-
-		Convey("When reading with a short buffer", func() {
-			// Create a very short buffer to trigger ErrShortBuffer
-			shortBuffer := make([]byte, 1)
-			n, err := tool.Read(shortBuffer)
-
-			Convey("Then it should return ErrShortBuffer", func() {
-				So(err, ShouldEqual, io.ErrShortBuffer)
-				So(n, ShouldEqual, 1)
+				So(err.Error(), ShouldContainSubstring, "invalid operation")
 			})
 		})
 	})

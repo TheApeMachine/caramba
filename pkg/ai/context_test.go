@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"testing"
@@ -52,36 +51,14 @@ func TestContextRead(t *testing.T) {
 			})
 		})
 
-		Convey("When reading after the context has been reset", func() {
-			// First read to consume buffer
-			firstBuffer := make([]byte, 1024)
-			ctx.Read(firstBuffer)
+		Convey("When reading from an empty buffer", func() {
+			// Create a new context but with an empty output buffer
+			emptyCtx := NewContext()
+			emptyCtx.out.Reset()
 
-			// Reset the output buffer to test re-encoding
-			ctx.out.Reset()
-
-			// Second read should trigger re-encoding
-			n, err := ctx.Read(buffer)
-
-			Convey("Then it should re-encode and return data", func() {
-				So(err, ShouldBeNil)
-				So(n, ShouldBeGreaterThan, 0)
-			})
-		})
-
-		Convey("When reading with an empty buffer that would return zero bytes", func() {
-			// Create a mock context with a cleared output buffer
-			mockCtx := &Context{
-				ContextData: &ContextData{},
-				in:          bytes.NewBuffer([]byte{}), // Empty input buffer
-				out:         bytes.NewBuffer([]byte{}), // Empty output buffer
-				enc:         json.NewEncoder(bytes.NewBuffer([]byte{})),
-				dec:         json.NewDecoder(bytes.NewBuffer([]byte{})),
-			}
-
-			// This should trigger the EOF case in the Read method
-			mockBuffer := make([]byte, 0) // Zero-length buffer to force zero byte read
-			n, err := mockCtx.Read(mockBuffer)
+			// Try to read from the empty buffer
+			emptyBuffer := make([]byte, 1024)
+			n, err := emptyCtx.Read(emptyBuffer)
 
 			Convey("Then it should return EOF", func() {
 				So(err, ShouldEqual, io.EOF)

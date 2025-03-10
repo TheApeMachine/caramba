@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -46,10 +45,19 @@ func TestNewMemoryTool(t *testing.T) {
 	})
 }
 
-// TestMemoryToolRead tests the Read method of MemoryTool
+// TestMemoryToolRead tests the Read method
 func TestMemoryToolRead(t *testing.T) {
-	Convey("Given a MemoryTool", t, func() {
+	Convey("Given a MemoryTool with data", t, func() {
 		mt := NewMemoryTool()
+
+		// First write some data to ensure something is in the buffer
+		toolData := MemoryToolData{
+			Questions: []string{"What is the meaning of life?"},
+			Keywords:  []string{"meaning", "life"},
+			Cypher:    "MATCH (n) RETURN n",
+		}
+		jsonData, _ := json.Marshal(toolData)
+		mt.Write(jsonData)
 
 		Convey("When reading from the tool", func() {
 			buffer := make([]byte, 1024)
@@ -59,66 +67,24 @@ func TestMemoryToolRead(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(n, ShouldBeGreaterThan, 0)
 
-				// Check that the JSON structure exists, not specific contents
-				var data map[string]interface{}
-				err = json.Unmarshal(buffer[:n], &data)
+				// Verify it contains the original data
+				var decodedData MemoryToolData
+				err := json.Unmarshal(buffer[:n], &decodedData)
 				So(err, ShouldBeNil)
-				// These fields will exist but could be empty arrays
-				So(data, ShouldContainKey, "questions")
-				So(data, ShouldContainKey, "keywords")
-				So(data, ShouldContainKey, "cypher")
+				So(len(decodedData.Questions), ShouldEqual, 1)
+				So(decodedData.Questions[0], ShouldEqual, "What is the meaning of life?")
+				So(len(decodedData.Keywords), ShouldEqual, 2)
+				So(decodedData.Cypher, ShouldEqual, "MATCH (n) RETURN n")
 			})
 		})
 
-		Convey("When reading after resetting the buffer", func() {
-			// First read to consume buffer
-			firstBuffer := make([]byte, 1024)
-			mt.Read(firstBuffer)
-
-			// Reset the output buffer
+		Convey("When the buffer is empty", func() {
+			// Reset the buffer to simulate an empty buffer
 			mt.out.Reset()
 
-			// Second read
+			// Try to read from an empty buffer
 			buffer := make([]byte, 1024)
 			n, err := mt.Read(buffer)
-
-			Convey("Then it should re-encode and return data", func() {
-				So(err, ShouldBeNil)
-				So(n, ShouldBeGreaterThan, 0)
-			})
-		})
-
-		Convey("When buffer is empty and re-encoding fails", func() {
-			// Mock a tool with an encoder that will fail
-			failingEncoder := json.NewEncoder(&FailingWriter{})
-
-			mockTool := &MemoryTool{
-				MemoryToolData: &MemoryToolData{
-					Questions: []string{},
-					Keywords:  []string{},
-					Cypher:    "",
-				},
-				enc:    failingEncoder,
-				out:    bytes.NewBuffer([]byte{}),
-				in:     bytes.NewBuffer([]byte{}),
-				stores: []io.ReadWriteCloser{},
-			}
-
-			buffer := make([]byte, 1024)
-			_, err := mockTool.Read(buffer)
-
-			Convey("Then it should return an error", func() {
-				So(err, ShouldNotBeNil)
-			})
-		})
-
-		Convey("When reading returns no bytes", func() {
-			// Create a tool with an empty buffer that will read 0 bytes
-			emptyTool := NewMemoryTool()
-			emptyTool.out.Reset()
-
-			buffer := make([]byte, 0) // Zero-length buffer
-			n, err := emptyTool.Read(buffer)
 
 			Convey("Then it should return EOF", func() {
 				So(err, ShouldEqual, io.EOF)

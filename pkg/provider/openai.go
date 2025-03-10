@@ -438,7 +438,7 @@ func NewOpenAIEmbedder(apiKey string, endpoint string) *OpenAIEmbedder {
 }
 
 func (embedder *OpenAIEmbedder) Read(p []byte) (n int, err error) {
-	errnie.Debug("OpenAIEmbedder.Read")
+	errnie.Debug("OpenAIEmbedder.Read", "p", string(p))
 
 	if embedder.out.Len() == 0 {
 		return 0, io.EOF

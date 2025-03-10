@@ -66,10 +66,8 @@ func TestPlanReadBasics(t *testing.T) {
 		)
 
 		Convey("When reading from the plan", func() {
-			// Force re-encoding of the plan with steps before reading
-			plan.out.Reset()
-			err := plan.enc.Encode(plan.PlanData)
-			So(err, ShouldBeNil)
+			// The NewPlan constructor and WithSteps already encoded the data to the output buffer
+			// so we don't need to manually re-encode here
 
 			buf := make([]byte, 1024)
 			n, err := plan.Read(buf)
@@ -77,8 +75,11 @@ func TestPlanReadBasics(t *testing.T) {
 			Convey("Then reading should succeed", func() {
 				So(err, ShouldBeNil)
 				So(n, ShouldBeGreaterThan, 0)
-				So(string(buf[:n]), ShouldContainSubstring, "Step 1")
-				So(string(buf[:n]), ShouldContainSubstring, "Step 2")
+
+				// Now we can check for specific step content since WithSteps re-encodes the data
+				jsonStr := string(buf[:n])
+				So(jsonStr, ShouldContainSubstring, "Step 1")
+				So(jsonStr, ShouldContainSubstring, "Step 2")
 			})
 		})
 	})
