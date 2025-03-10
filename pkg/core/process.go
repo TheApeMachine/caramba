@@ -9,9 +9,9 @@ import (
 )
 
 type ProcessData struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Schema      interface{} `json:"schema"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Schema      any    `json:"schema"`
 }
 
 /*

@@ -55,10 +55,27 @@ func (converter *Converter) Write(p []byte) (n int, err error) {
 		return n, err
 	}
 
-	// Try to decode the data from the input buffer
-	// If it fails, we still return the bytes written but keep the error
-	event := NewEvent(nil, nil)
+	// First try to decode as a Provider response format
+	var providerData struct {
+		Params any    `json:"params"`
+		Result *Event `json:"result"`
+	}
 
+	// Make a copy of the input buffer to avoid consuming it
+	inputCopy := bytes.NewBuffer(converter.in.Bytes())
+	tempDecoder := json.NewDecoder(inputCopy)
+
+	if err := tempDecoder.Decode(&providerData); err == nil && providerData.Result != nil && providerData.Result.Message != nil {
+		// Successfully decoded as Provider format
+		errnie.Debug("Converter: decoded provider format successfully")
+		if _, err = converter.out.WriteString(providerData.Result.Message.Content); err != nil {
+			return n, errnie.NewErrIO(err)
+		}
+		return n, nil
+	}
+
+	// Reset decoder and try to decode as a direct Event
+	event := NewEvent(nil, nil)
 	if decErr := converter.dec.Decode(&event); decErr == nil {
 		if event.Message == nil {
 			return n, errnie.NewErrValidation("message is required")

@@ -13,9 +13,9 @@ func TestNewProcess(t *testing.T) {
 	Convey("Given parameters for a new Process", t, func() {
 		name := "test_process"
 		description := "A test process"
-		schema := map[string]interface{}{
+		schema := map[string]any{
 			"type": "object",
-			"properties": map[string]interface{}{
+			"properties": map[string]any{
 				"id": map[string]string{
 					"type": "string",
 				},
@@ -51,10 +51,10 @@ func TestNewProcess(t *testing.T) {
 // TestProcessRead tests the Read method of Process
 func TestProcessRead(t *testing.T) {
 	Convey("Given a Process with data", t, func() {
-		schema := map[string]interface{}{
+		schema := map[string]any{
 			"type": "object",
-			"properties": map[string]interface{}{
-				"name": map[string]interface{}{
+			"properties": map[string]any{
+				"name": map[string]any{
 					"type": "string",
 				},
 			},
@@ -69,7 +69,7 @@ func TestProcessRead(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(n, ShouldBeGreaterThan, 0)
 
-				var data map[string]interface{}
+				var data map[string]any
 				err := json.Unmarshal(buffer[:n], &data)
 				So(err, ShouldBeNil)
 				So(data["name"], ShouldEqual, "test_process")
@@ -81,7 +81,7 @@ func TestProcessRead(t *testing.T) {
 		Convey("When the buffer is empty", func() {
 			// Reset the buffer to simulate an empty buffer
 			process.out.Reset()
-			
+
 			// Try to read from an empty buffer
 			buffer := make([]byte, 1024)
 			n, err := process.Read(buffer)
@@ -100,14 +100,14 @@ func TestProcessWrite(t *testing.T) {
 		process := NewProcess(
 			"original_name",
 			"Original description",
-			map[string]interface{}{"type": "string"},
+			map[string]any{"type": "string"},
 		)
 
 		Convey("When writing valid JSON data", func() {
 			updatedData := &ProcessData{
 				Name:        "updated_name",
 				Description: "Updated description",
-				Schema:      map[string]interface{}{"type": "number"},
+				Schema:      map[string]any{"type": "number"},
 			}
 
 			jsonData, err := json.Marshal(updatedData)
@@ -121,7 +121,7 @@ func TestProcessWrite(t *testing.T) {
 				So(process.Name, ShouldEqual, "updated_name")
 				So(process.Description, ShouldEqual, "Updated description")
 
-				schemaMap, ok := process.Schema.(map[string]interface{})
+				schemaMap, ok := process.Schema.(map[string]any)
 				So(ok, ShouldBeTrue)
 				So(schemaMap["type"], ShouldEqual, "number")
 			})
@@ -161,7 +161,7 @@ func TestProcessClose(t *testing.T) {
 		process := NewProcess(
 			"test_process",
 			"Test description",
-			map[string]interface{}{"type": "object"},
+			map[string]any{"type": "object"},
 		)
 
 		Convey("When closing the process", func() {

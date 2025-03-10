@@ -92,7 +92,7 @@ func (tool *CalculatorTool) performCalculation() error {
 	}
 
 	// Format the result for output
-	responseBytes, err := json.Marshal(map[string]interface{}{
+	responseBytes, err := json.Marshal(map[string]any{
 		"result": result,
 	})
 

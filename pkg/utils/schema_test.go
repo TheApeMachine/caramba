@@ -29,10 +29,10 @@ func TestGenerateSchema(t *testing.T) {
 				So(schema, ShouldNotBeNil)
 
 				// The schema should be a map
-				schemaMap, ok := schema.(*map[string]interface{})
+				schemaMap, ok := schema.(*map[string]any)
 				if !ok {
 					// If not a pointer to a map, try direct cast
-					schemaMapValue, ok := schema.(map[string]interface{})
+					schemaMapValue, ok := schema.(map[string]any)
 					if ok {
 						So(schemaMapValue, ShouldNotBeNil)
 					} else {

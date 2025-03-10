@@ -95,7 +95,7 @@ func (neo4j *Neo4j) executeQuery() error {
 				b.name as target, labels(b)[0] as targetLabel
 			LIMIT 20
 			`,
-				map[string]interface{}{
+				map[string]any{
 					"term": toolCall.Arguments["term"].(string),
 				},
 			)

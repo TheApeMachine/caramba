@@ -38,7 +38,7 @@ func TestCalculatorToolRead(t *testing.T) {
 		Convey("When the output buffer is empty", func() {
 			// Ensure the buffer is empty
 			tool.out.Reset()
-			
+
 			buffer := make([]byte, 1024)
 			n, err := tool.Read(buffer)
 
@@ -58,7 +58,7 @@ func TestCalculatorToolRead(t *testing.T) {
 			jsonData, _ := json.Marshal(addData)
 			_, err := tool.Write(jsonData)
 			So(err, ShouldBeNil)
-			
+
 			// Then read the result
 			buffer := make([]byte, 1024)
 			n, err := tool.Read(buffer)
@@ -67,7 +67,7 @@ func TestCalculatorToolRead(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(n, ShouldBeGreaterThan, 0)
 
-				var result map[string]interface{}
+				var result map[string]any
 				err := json.Unmarshal(buffer[:n], &result)
 				So(err, ShouldBeNil)
 				So(result["result"], ShouldEqual, 8.0) // 5 + 3 = 8
@@ -83,12 +83,12 @@ func TestCalculatorToolRead(t *testing.T) {
 				}
 				jsonData, _ := json.Marshal(addData)
 				tool.Write(jsonData)
-				
+
 				buffer := make([]byte, 1024)
 				n, err := tool.Read(buffer)
 				So(err, ShouldBeNil)
 
-				var result map[string]interface{}
+				var result map[string]any
 				json.Unmarshal(buffer[:n], &result)
 				So(result["result"], ShouldEqual, 15.0) // 10 + 5 = 15
 			})
@@ -101,12 +101,12 @@ func TestCalculatorToolRead(t *testing.T) {
 				}
 				jsonData, _ := json.Marshal(subtractData)
 				tool.Write(jsonData)
-				
+
 				buffer := make([]byte, 1024)
 				n, err := tool.Read(buffer)
 				So(err, ShouldBeNil)
 
-				var result map[string]interface{}
+				var result map[string]any
 				json.Unmarshal(buffer[:n], &result)
 				So(result["result"], ShouldEqual, 5.0) // 10 - 5 = 5
 			})
@@ -119,12 +119,12 @@ func TestCalculatorToolRead(t *testing.T) {
 				}
 				jsonData, _ := json.Marshal(multiplyData)
 				tool.Write(jsonData)
-				
+
 				buffer := make([]byte, 1024)
 				n, err := tool.Read(buffer)
 				So(err, ShouldBeNil)
 
-				var result map[string]interface{}
+				var result map[string]any
 				json.Unmarshal(buffer[:n], &result)
 				So(result["result"], ShouldEqual, 50.0) // 10 * 5 = 50
 			})
@@ -137,12 +137,12 @@ func TestCalculatorToolRead(t *testing.T) {
 				}
 				jsonData, _ := json.Marshal(divideData)
 				tool.Write(jsonData)
-				
+
 				buffer := make([]byte, 1024)
 				n, err := tool.Read(buffer)
 				So(err, ShouldBeNil)
 
-				var result map[string]interface{}
+				var result map[string]any
 				json.Unmarshal(buffer[:n], &result)
 				So(result["result"], ShouldEqual, 2.0) // 10 / 5 = 2
 			})
