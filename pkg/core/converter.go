@@ -1,11 +1,10 @@
 package core
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 type ConverterData struct {
@@ -14,74 +13,55 @@ type ConverterData struct {
 
 type Converter struct {
 	*ConverterData
-	dec    *json.Decoder
-	enc    *json.Encoder
-	buffer *bufio.ReadWriter
+	*stream.Buffer
+	pr *io.PipeReader
+	pw *io.PipeWriter
 }
 
 func NewConverter() *Converter {
-	buf := bytes.NewBuffer([]byte{})
-	buffer := bufio.NewReadWriter(
-		bufio.NewReader(buf),
-		bufio.NewWriter(buf),
-	)
-
 	converter := &Converter{
 		ConverterData: &ConverterData{},
-		buffer:        buffer,
-		dec:           json.NewDecoder(buffer),
-		enc:           json.NewEncoder(buffer),
 	}
+
+	converter.pr, converter.pw = io.Pipe()
+
+	converter.Buffer = stream.NewBuffer(
+		converter.ConverterData.Event,
+		converter.pr,
+		func(event any) (err error) {
+			converter.Event = event.(*Event)
+
+			go func() {
+				defer converter.pw.Close()
+
+				if _, err = converter.pw.Write([]byte(converter.Event.Message.Content)); err != nil {
+					err = converter.pw.CloseWithError(err)
+				}
+			}()
+
+			return err
+		},
+	).WithCodec(
+		stream.NewCodec(&stream.ConversionCodec{
+			In:  stream.NewCodec(&stream.GobCodec{}),
+			Out: stream.NewCodec(&stream.StringCodec{}),
+		}),
+	)
 
 	return converter
 }
 
 func (converter *Converter) Read(p []byte) (n int, err error) {
 	errnie.Debug("core.Converter.Read")
-
-	if err = converter.buffer.Flush(); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	if n, err = converter.buffer.Read(p); err != nil {
-		errnie.NewErrIO(err)
-	}
-
-	errnie.Debug("core.Converter.Read", "n", n, "err", err)
-
-	return n, err
+	return converter.Buffer.Read(p)
 }
 
 func (converter *Converter) Write(p []byte) (n int, err error) {
-	event := &Event{}
-
-	if err = json.Unmarshal(p, event); err != nil {
-		errnie.NewErrIO(err)
-		return 0, err
-	}
-
-	converter.Event = event
-	converter.buffer.Discard(converter.buffer.Available())
-
-	if err = converter.enc.Encode(converter.ConverterData); err != nil {
-		errnie.NewErrIO(err)
-		return 0, err
-	}
-
-	errnie.Debug("core.Converter.Write", "n", n, "err", err)
-
-	return len(p), nil
+	errnie.Debug("core.Converter.Write")
+	return converter.Buffer.Write(p)
 }
 
 func (converter *Converter) Close() error {
 	errnie.Debug("core.Converter.Close")
-
-	converter.buffer.Flush()
-	converter.ConverterData = nil
-	converter.buffer = nil
-	converter.dec = nil
-	converter.enc = nil
-
-	return nil
+	return converter.Buffer.Close()
 }

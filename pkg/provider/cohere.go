@@ -63,8 +63,10 @@ func NewCohereProvider(
 
 	p := &CohereProvider{
 		ProviderData: &ProviderData{
-			Params: &ai.ContextData{
-				Messages: []*core.Message{},
+			Params: &ai.Context{
+				ContextData: &ai.ContextData{
+					Messages: []*core.Message{},
+				},
 			},
 			Result: &core.Event{},
 		},
@@ -118,10 +120,10 @@ func (provider *CohereProvider) Write(p []byte) (n int, err error) {
 	errnie.Debug("provider.CohereProvider.Write", "n", n, "err", err)
 
 	// Create chat message history from params
-	messages := provider.buildMessages(provider.ProviderData.Params)
+	messages := provider.buildMessages(provider.ProviderData.Params.ContextData)
 
 	// Configure the chat request
-	toolsConfig := provider.buildTools(provider.ProviderData.Params)
+	toolsConfig := provider.buildTools(provider.ProviderData.Params.ContextData)
 
 	// Create the chat request parameters
 	chatParams := &cohere.ChatStreamRequest{
@@ -133,7 +135,7 @@ func (provider *CohereProvider) Write(p []byte) (n int, err error) {
 	}
 
 	// Add system prompt if present
-	systemPrompt := provider.findSystemPrompt(provider.ProviderData.Params)
+	systemPrompt := provider.findSystemPrompt(provider.ProviderData.Params.ContextData)
 	if systemPrompt != "" {
 		chatParams.Preamble = cohere.String(systemPrompt)
 	}

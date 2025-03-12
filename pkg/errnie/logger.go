@@ -45,6 +45,10 @@ func Error(msg any, keyvals ...any) (err error) {
 	return
 }
 
+func Info(msg any, keyvals ...any) {
+	logger.Info(msg, keyvals...)
+}
+
 func Debug(msg any, keyvals ...any) {
 	logger.Debug(msg, keyvals...)
 }

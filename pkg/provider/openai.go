@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -13,12 +14,13 @@ import (
 	"github.com/theapemachine/caramba/pkg/ai"
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 type ProviderData struct {
-	Params *ai.ContextData `json:"params"`
-	Result *core.Event     `json:"result"`
+	Params *ai.Context `json:"params"`
+	Result *core.Event `json:"result"`
 }
 
 /*
@@ -28,9 +30,10 @@ It supports regular chat completions, tool calling, and structured outputs.
 type OpenAIProvider struct {
 	*ProviderData
 	client *openai.Client
-	buffer *bufio.ReadWriter
-	enc    *json.Encoder
-	dec    *json.Decoder
+	*stream.Buffer
+	ch     chan any
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 /*
@@ -52,29 +55,97 @@ func NewOpenAIProvider(
 		endpoint = viper.GetViper().GetString("endpoints.openai")
 	}
 
-	buf := bytes.NewBuffer([]byte{})
-	buffer := bufio.NewReadWriter(
-		bufio.NewReader(buf),
-		bufio.NewWriter(buf),
-	)
-
-	p := &OpenAIProvider{
-		ProviderData: &ProviderData{
-			Params: &ai.ContextData{
-				Messages: []*core.Message{},
-			},
-			Result: &core.Event{},
-		},
-		client: openai.NewClient(
-			option.WithAPIKey(apiKey),
-			option.WithBaseURL(endpoint),
-		),
-		buffer: buffer,
-		enc:    json.NewEncoder(buffer),
-		dec:    json.NewDecoder(buffer),
+	// Create provider with empty data structures
+	providerData := &ProviderData{
+		Params: &ai.Context{},
+		Result: core.NewEvent(nil, nil),
 	}
 
-	return p
+	ctx, cancel := context.WithCancel(context.Background())
+
+	provider := &OpenAIProvider{
+		ProviderData: providerData,
+		client: openai.NewClient(
+			option.WithAPIKey(apiKey),
+		),
+		ch:     make(chan any, 128),
+		ctx:    ctx,
+		cancel: cancel,
+	}
+
+	// Create buffer with handler that processes OpenAI API requests
+	provider.Buffer = stream.NewBuffer(
+		provider.Params,        // Receiver: we'll get ContextData
+		provider.Result,        // Sender: we'll send Event
+		provider.processParams, // Handler: convert and call OpenAI
+	)
+
+	return provider
+}
+
+// processParams is the handler function that processes incoming parameters
+func (provider *OpenAIProvider) processParams(params any) error {
+	provider.Params = params.(*ai.Context)
+
+	// Debug the parameters
+	errnie.Debug(
+		"provider.processParams",
+		"model", provider.Params.Model,
+		"messages", len(provider.Params.Messages),
+	)
+
+	// Create OpenAI API parameters
+	openaiParams := openai.ChatCompletionNewParams{
+		Model:    openai.F(provider.Params.Model),
+		Messages: openai.F(provider.buildMessages(provider.Params.ContextData)),
+	}
+
+	// Set optional parameters
+	if provider.Params.Temperature > 0 {
+		openaiParams.Temperature = openai.F(provider.Params.Temperature)
+	}
+	if provider.Params.TopP > 0 {
+		openaiParams.TopP = openai.F(provider.Params.TopP)
+	}
+	if provider.Params.MaxTokens > 0 {
+		openaiParams.MaxTokens = openai.F(int64(provider.Params.MaxTokens))
+	}
+	if provider.Params.PresencePenalty != 0 {
+		openaiParams.PresencePenalty = openai.F(provider.Params.PresencePenalty)
+	}
+	if provider.Params.FrequencyPenalty != 0 {
+		openaiParams.FrequencyPenalty = openai.F(provider.Params.FrequencyPenalty)
+	}
+
+	// Add tools if any
+	if len(provider.Params.Tools) > 0 {
+		provider.buildTools(provider.Params.ContextData, &openaiParams)
+	}
+
+	// Add response format if needed
+	if provider.Params.Process != nil {
+		provider.buildResponseFormat(provider.Params.ContextData, &openaiParams)
+	}
+
+	// Handle streaming vs non-streaming
+	var err error
+	if provider.Params.ContextData.Stream {
+		err = provider.handleStreamingRequest(&openaiParams)
+	} else {
+		err = provider.handleSingleRequest(&openaiParams)
+	}
+
+	if err != nil {
+		errnie.Error("OpenAI request failed", "error", err)
+		// Update the Result with the error
+		provider.Result = core.NewEvent(
+			core.NewMessage("assistant", "system", "Error processing request"),
+			err,
+		)
+		return err
+	}
+
+	return nil
 }
 
 /*
@@ -82,19 +153,7 @@ Read implements the io.Reader interface.
 */
 func (provider *OpenAIProvider) Read(p []byte) (n int, err error) {
 	errnie.Debug("provider.OpenAIProvider.Read")
-
-	if err = provider.buffer.Flush(); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	if n, err = provider.buffer.Read(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	errnie.Debug("provider.OpenAIProvider.Read", "n", n, "err", err)
-	return n, err
+	return provider.Buffer.Read(p)
 }
 
 /*
@@ -102,33 +161,7 @@ Write implements the io.Writer interface.
 */
 func (provider *OpenAIProvider) Write(p []byte) (n int, err error) {
 	errnie.Debug("provider.OpenAIProvider.Write", "p", string(p))
-
-	if n, err = provider.buffer.Write(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	if err = json.Unmarshal(p, provider.ProviderData.Params); err != nil {
-		errnie.NewErrIO(err)
-		return 0, err
-	}
-
-	errnie.Debug("provider.OpenAIProvider.Write", "n", n, "err", err)
-
-	// Create the OpenAI request
-	openaiParams := openai.ChatCompletionNewParams{
-		Model:    openai.F(openai.ChatModelGPT4o),
-		Messages: openai.F(provider.buildMessages(provider.ProviderData.Params)),
-	}
-
-	errnie.Debug("provider.OpenAIProvider.Write", "openaiParams", openaiParams)
-
-	provider.buildTools(provider.ProviderData.Params, &openaiParams)
-	provider.buildResponseFormat(provider.ProviderData.Params, &openaiParams)
-
-	err = errnie.NewErrIO(provider.handleStreamingRequest(&openaiParams))
-
-	return n, err
+	return provider.Buffer.Write(p)
 }
 
 /*
@@ -136,19 +169,11 @@ Close cleans up any resources.
 */
 func (provider *OpenAIProvider) Close() error {
 	errnie.Debug("provider.OpenAIProvider.Close")
-
-	// Reset state
-	provider.ProviderData.Params = nil
-	provider.ProviderData.Result = nil
-
-	provider.buffer = nil
-	provider.enc = nil
-	provider.dec = nil
-
-	return nil
+	return provider.Buffer.Close()
 }
 
-func (p *OpenAIProvider) buildMessages(
+// buildMessages converts ContextData messages to OpenAI API format
+func (provider *OpenAIProvider) buildMessages(
 	params *ai.ContextData,
 ) []openai.ChatCompletionMessageParamUnion {
 	errnie.Debug("provider.buildMessages")
@@ -174,6 +199,32 @@ func (p *OpenAIProvider) buildMessages(
 	}
 
 	return messages
+}
+
+// handleSingleRequest processes a single (non-streaming) completion request
+func (provider *OpenAIProvider) handleSingleRequest(
+	params *openai.ChatCompletionNewParams,
+) error {
+	errnie.Debug("provider.handleSingleRequest")
+
+	ctx := context.Background()
+
+	// Make the API call
+	completion, err := provider.client.Chat.Completions.New(ctx, *params)
+	if err != nil {
+		return err
+	}
+
+	// Update the Result with the response
+	if len(completion.Choices) > 0 {
+		content := completion.Choices[0].Message.Content
+		provider.Result = core.NewEvent(
+			core.NewMessage("assistant", "openai", content),
+			nil,
+		)
+	}
+
+	return nil
 }
 
 func (p *OpenAIProvider) buildTools(
@@ -264,63 +315,75 @@ func (p *OpenAIProvider) buildResponseFormat(
 handleStreamingRequest processes a streaming completion request
 and emits chunks as they're received.
 */
-func (provider *OpenAIProvider) handleStreamingRequest(
+func (prvdr *OpenAIProvider) handleStreamingRequest(
 	params *openai.ChatCompletionNewParams,
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
+	defer close(prvdr.ch)
+	defer prvdr.cancel()
 
-	ctx := context.Background()
+	prvdr.Buffer.Stream(prvdr.ctx, prvdr.ch)
 
-	stream := provider.client.Chat.Completions.NewStreaming(ctx, *params)
+	stream := prvdr.client.Chat.Completions.NewStreaming(prvdr.ctx, *params)
 	acc := openai.ChatCompletionAccumulator{}
 	defer stream.Close()
 
 	errnie.Debug("streaming request initialized")
 
-	count := 0
-
 	for stream.Next() {
-		currentChunk := stream.Current()
-		errnie.Debug("received stream chunk",
-			"chunk_id", currentChunk.ID,
-			"content", currentChunk.Choices[0].Delta.Content,
-		)
-		acc.AddChunk(currentChunk)
-
-		errnie.Debug("building event", "content", currentChunk.Choices[0].Delta.Content)
-
-		provider.Result = core.NewEvent(
+		chunk := stream.Current()
+		event := core.NewEvent(
 			core.NewMessage(
 				"assistant",
-				"openai",
-				currentChunk.Choices[0].Delta.Content,
+				prvdr.Params.Model,
+				"",
 			),
 			nil,
 		)
 
-		errnie.Debug("provider.handleStreamingRequest", "result", provider.Result)
-
-		if err = provider.enc.Encode(provider.Result); err != nil {
-			errnie.NewErrIO(err)
-			return
+		if ok := acc.AddChunk(chunk); !ok {
+			errnie.Error("chunk dropped", "id", acc.ID)
 		}
 
-		if stream.Err() != nil {
-			errnie.Error("stream error",
-				"error", stream.Err(),
-			)
-			err = errnie.NewErrHTTP(stream.Err(), 500)
-			return
+		// When this fires, the current chunk value will not contain content data
+		if content, ok := acc.JustFinishedContent(); ok {
+			event.Message.Content = content
 		}
 
-		count++
+		if tool, ok := acc.JustFinishedToolCall(); ok {
+			event.ToolCalls = append(event.ToolCalls, core.NewToolCall(
+				acc.Choices[tool.Index].Message.ToolCalls[tool.Index].ID,
+				acc.Choices[tool.Index].Message.ToolCalls[tool.Index].Function.Name,
+				map[string]any{
+					"arguments": acc.Choices[tool.Index].Message.ToolCalls[tool.Index].Function.Arguments,
+				},
+			))
+		}
+
+		if refusal, ok := acc.JustFinishedRefusal(); ok {
+			event.Error = errnie.NewErrValidation(refusal, "provider", "openai")
+		}
+
+		select {
+		case prvdr.ch <- core.NewEvent(
+			core.NewMessage(
+				"assistant",
+				"openai",
+				acc.Choices[0].Message.Content,
+			),
+			nil,
+		):
+			errnie.Debug("sent event to channel", "event", prvdr.Result)
+		case <-prvdr.ctx.Done():
+			return
+		default:
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 
-	if err != nil {
-		errnie.Error("streaming failed",
-			"error", err,
-			"chunks", count,
-		)
+	if err = stream.Err(); err != nil {
+		errnie.NewErrIO(err)
+		return
 	}
 
 	return err

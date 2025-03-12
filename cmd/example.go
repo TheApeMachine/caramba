@@ -18,21 +18,26 @@ var (
 		Long:  longExample,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			errnie.SetLevel(log.DebugLevel)
-			log.Info("Starting example")
 
-			var wf io.ReadWriteCloser
+			var (
+				wf  io.ReadWriteCloser
+				msg *core.Message
+			)
 
 			switch args[0] {
 			case "pipeline":
+				errnie.Info("Starting pipeline example")
 				wf = examples.NewPipeline()
+				msg = core.NewMessage("user", "Danny", "Hello, how are you?")
+			case "discussion":
+				errnie.Info("Starting discussion example")
+				wf = examples.NewDiscussion()
+				msg = core.NewMessage("user", "Danny", "Discuss AI Agents")
 			default:
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
 
-			if _, err = io.Copy(wf, core.NewEvent(
-				core.NewMessage("user", "Danny", "Hello, how are you?"),
-				nil,
-			)); err != nil && err != io.EOF {
+			if _, err = io.Copy(wf, core.NewEvent(msg, nil)); err != nil && err != io.EOF {
 				return err
 			}
 

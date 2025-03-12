@@ -7,6 +7,17 @@ import (
 	"strings"
 )
 
+type ErrnieErrorType string
+
+const (
+	ErrTypeUnknown    ErrnieErrorType = "unknown"
+	ErrTypeIO         ErrnieErrorType = "io"
+	ErrTypeValidation ErrnieErrorType = "validation"
+	ErrTypeParse      ErrnieErrorType = "parse"
+	ErrTypeOperation  ErrnieErrorType = "operation"
+	ErrTypeHTTP       ErrnieErrorType = "http"
+)
+
 func Unwrap(err error) *ErrnieError {
 	if err == nil {
 		return nil
@@ -20,13 +31,18 @@ func Unwrap(err error) *ErrnieError {
 	return err.(*ErrnieError)
 }
 
+func (err *ErrnieError) Unwrap() error {
+	return err.errors[0]
+}
+
 /*
 ErrnieError implement the error interface, while also providing a way to
 accumulate multiple errors transparently.
 */
 type ErrnieError struct {
-	errors []error
-	msg    string
+	errors          []error
+	msg             string
+	errnieErrorType ErrnieErrorType
 }
 
 func NewError(err error) error {
@@ -42,7 +58,16 @@ func NewError(err error) error {
 	}
 }
 
+func (err *ErrnieError) WithType(t ErrnieErrorType) *ErrnieError {
+	err.errnieErrorType = t
+	return err
+}
+
 func (err *ErrnieError) Error() string { return err.msg }
+
+func (err *ErrnieError) Is(t ErrnieErrorType) bool {
+	return err.errnieErrorType == t
+}
 
 func (err *ErrnieError) Add(errs ...error) error {
 	// If there are no errors, return nil.

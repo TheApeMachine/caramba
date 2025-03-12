@@ -62,8 +62,10 @@ func NewOllamaProvider(
 
 	p := &OllamaProvider{
 		ProviderData: &ProviderData{
-			Params: &ai.ContextData{
-				Messages: []*core.Message{},
+			Params: &ai.Context{
+				ContextData: &ai.ContextData{
+					Messages: []*core.Message{},
+				},
 			},
 			Result: &core.Event{},
 		},
@@ -208,7 +210,7 @@ func (p *OllamaProvider) handleStreamingRequest() (err error) {
 	defer cancel()
 
 	// Build the request messages from our context data
-	messages := p.buildMessages(p.ProviderData.Params)
+	messages := p.buildMessages(p.ProviderData.Params.ContextData)
 	if len(messages) == 0 {
 		err = errnie.NewErrValidation("no valid messages to process", "provider", "ollama")
 		return
@@ -224,7 +226,7 @@ func (p *OllamaProvider) handleStreamingRequest() (err error) {
 	}
 
 	// Add tools if we have any
-	tools := p.buildTools(p.ProviderData.Params)
+	tools := p.buildTools(p.ProviderData.Params.ContextData)
 	if len(tools) > 0 {
 		request.Tools = sdk.Tools(tools)
 	}

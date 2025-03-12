@@ -59,8 +59,10 @@ func NewAnthropicProvider(
 
 	p := &AnthropicProvider{
 		ProviderData: &ProviderData{
-			Params: &ai.ContextData{
-				Messages: []*core.Message{},
+			Params: &ai.Context{
+				ContextData: &ai.ContextData{
+					Messages: []*core.Message{},
+				},
 			},
 			Result: &core.Event{},
 		},
@@ -117,13 +119,13 @@ func (provider *AnthropicProvider) Write(p []byte) (n int, err error) {
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.F(anthropic.ModelClaude3_5SonnetLatest),
 		MaxTokens: anthropic.F(int64(4000)),
-		Messages:  anthropic.F(provider.buildMessages(provider.ProviderData.Params)),
+		Messages:  anthropic.F(provider.buildMessages(provider.ProviderData.Params.ContextData)),
 	}
 
 	errnie.Debug("provider.AnthropicProvider.Write", "params", params)
 
-	provider.buildTools(provider.ProviderData.Params, &params)
-	provider.buildSystemPrompt(provider.ProviderData.Params, &params)
+	provider.buildTools(provider.ProviderData.Params.ContextData, &params)
+	provider.buildSystemPrompt(provider.ProviderData.Params.ContextData, &params)
 
 	err = errnie.NewErrIO(provider.handleStreamingRequest(&params))
 

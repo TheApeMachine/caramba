@@ -1,11 +1,8 @@
 package ai
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
-
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 type AgentData struct {
@@ -19,9 +16,7 @@ pipelines for complex workflows.
 */
 type Agent struct {
 	*AgentData
-	buffer *bufio.ReadWriter
-	dec    *json.Decoder
-	enc    *json.Encoder
+	*stream.Buffer
 }
 
 /*
@@ -30,22 +25,20 @@ NewAgent creates a new agent with initialized components.
 func NewAgent() *Agent {
 	errnie.Debug("NewAgent")
 
-	buf := bytes.NewBuffer([]byte{})
-	buffer := bufio.NewReadWriter(
-		bufio.NewReader(buf),
-		bufio.NewWriter(buf),
-	)
-
-	context := NewContext()
-
 	agent := &Agent{
 		AgentData: &AgentData{
-			Context: context,
+			Context: NewContext(),
 		},
-		buffer: buffer,
-		dec:    json.NewDecoder(buffer),
-		enc:    json.NewEncoder(buffer),
 	}
+
+	agent.Buffer = stream.NewBuffer(
+		agent,
+		agent,
+		func(a any) error {
+			agent.AgentData = a.(*AgentData)
+			return nil
+		},
+	)
 
 	return agent
 }
@@ -77,12 +70,5 @@ It closes the internal context.
 */
 func (agent *Agent) Close() error {
 	errnie.Debug("Agent.Close")
-
-	// Close context
-	if agent.Context != nil {
-		agent.Context.Close()
-	}
-
-	agent.AgentData = nil
-	return nil
+	return agent.Context.Close()
 }

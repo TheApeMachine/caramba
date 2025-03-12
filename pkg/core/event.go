@@ -1,37 +1,43 @@
+/*
+Package core provides the central types and functionality for the application.
+*/
 package core
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/stream"
 )
 
+/*
+EventData holds the content data for an Event.
+It contains a message, tool calls, and any error information.
+*/
 type EventData struct {
 	Message   *Message    `json:"message"`
 	ToolCalls []*ToolCall `json:"tool_calls"`
 	Error     error       `json:"error"`
 }
 
+/*
+Event represents a communication unit in the system.
+It wraps EventData with a Buffer for streaming capabilities.
+*/
 type Event struct {
 	*EventData
-	dec    *json.Decoder
-	enc    *json.Encoder
-	buffer *bufio.ReadWriter
+	*stream.Buffer
 }
 
+/*
+NewEvent creates and initializes a new Event with the given message and error.
+It sets up the internal buffer and pre-buffers the EventData if a message is provided.
+*/
 func NewEvent(
 	message *Message,
 	err error,
 ) *Event {
 	errnie.Debug("core.NewEvent")
-
-	buf := bytes.NewBuffer([]byte{})
-	buffer := bufio.NewReadWriter(
-		bufio.NewReader(buf),
-		bufio.NewWriter(buf),
-	)
 
 	event := &Event{
 		EventData: &EventData{
@@ -39,72 +45,68 @@ func NewEvent(
 			ToolCalls: []*ToolCall{},
 			Error:     err,
 		},
-		dec:    json.NewDecoder(buffer),
-		enc:    json.NewEncoder(buffer),
-		buffer: buffer,
 	}
 
-	event.enc.Encode(event.EventData)
+	event.Buffer = stream.NewBuffer(
+		event,
+		event,
+		func(evt any) error {
+			event.EventData = evt.(*Event).EventData
+			return nil
+		},
+	)
+
+	if message != nil {
+		// Pre-buffer the EventData, since we have the values.
+		if _, err := io.Copy(event, message); err != nil {
+			errnie.NewErrIO(err)
+		}
+
+		errnie.Debug("core.NewEvent", "prebuffered", event.String())
+	}
+
 	return event
 }
 
-// Removed the startStreaming() method entirely
+/*
+String returns the content of the Event's message as a string.
+*/
+func (event *Event) String() string {
+	errnie.Debug("core.Event.String")
+	return event.Message.Content
+}
 
+/*
+Read implements the io.Reader interface for Event.
+It delegates to the underlying Buffer's Read method.
+*/
 func (event *Event) Read(p []byte) (n int, err error) {
 	errnie.Debug("core.Event.Read")
-
-	if err = event.buffer.Flush(); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	if n, err = event.buffer.Read(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	errnie.Debug("core.Event.Read", "n", n, "err", err)
-
-	return n, err
+	return event.Buffer.Read(p)
 }
 
-// Synchronous Write, no channels or goroutines
+/*
+Write implements the io.Writer interface for Event.
+It performs synchronous writes with no channels or goroutines.
+*/
 func (event *Event) Write(p []byte) (n int, err error) {
 	errnie.Debug("core.Event.Write", "p", string(p))
-
-	if n, err = event.buffer.Write(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	msg := &Message{}
-
-	if err = event.dec.Decode(msg); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	event.Message = msg
-
-	if err = event.enc.Encode(event.EventData); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	return len(p), err
+	return event.Buffer.Write(p)
 }
 
+/*
+Close implements the io.Closer interface for Event.
+It delegates to the underlying Buffer's Close method.
+*/
 func (event *Event) Close() error {
 	errnie.Debug("core.Event.Close")
-
-	event.buffer.Flush()
-	event.EventData = nil
-	event.dec = nil
-	event.enc = nil
-
-	return nil
+	return event.Buffer.Close()
 }
 
+/*
+WithToolCalls adds the provided tool calls to the Event.
+It initializes EventData if needed and returns the updated Event.
+*/
 func (event *Event) WithToolCalls(toolCalls ...*ToolCall) *Event {
 	errnie.Debug("core.Event.WithToolCalls")
 

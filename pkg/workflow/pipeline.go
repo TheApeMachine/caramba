@@ -1,18 +1,19 @@
 package workflow
 
 import (
-	"bufio"
-	"bytes"
 	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-// Pipeline is a component that chains multiple ReadWriteCloser components together
-// into a processing pipeline where data flows from the first component to the last.
+/*
+Pipeline manages a chain of io.ReadWriteCloser components.
+
+It connects components together so data written to the pipeline flows through
+all components in sequence.
+*/
 type Pipeline struct {
 	components []io.ReadWriteCloser
-	buffer     *bufio.ReadWriter
 }
 
 /*
@@ -35,57 +36,54 @@ Example:
 func NewPipeline(components ...io.ReadWriteCloser) io.ReadWriteCloser {
 	errnie.Debug("workflow.NewPipeline")
 
-	buf := bytes.NewBuffer([]byte{})
-
 	pipeline := &Pipeline{
 		components: components,
-		buffer: bufio.NewReadWriter(
-			bufio.NewReader(buf),
-			bufio.NewWriter(buf),
-		),
 	}
 
 	return pipeline
 }
 
+/*
+Read implements the io.Reader interface.
+
+It forwards data through the pipeline by copying from each component to the next.
+Returns the number of bytes read and any error encountered.
+*/
 func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	errnie.Debug("workflow.Pipeline.Read")
 	var nn int64
 
 	for i := range len(pipeline.components) - 1 {
-		if err = pipeline.buffer.Flush(); err != nil {
-			errnie.NewErrIO(err)
-			return
-		}
-
-		nn, err = io.Copy(pipeline.components[i+1], pipeline.components[i])
-
-		if err != nil && err != io.EOF {
-			errnie.Unwrap(err).Add(err)
-			return
+		if nn, err = io.Copy(
+			pipeline.components[i+1],
+			pipeline.components[i],
+		); err != nil && err != io.EOF {
+			return n, errnie.NewErrIO(err)
 		}
 
 		n += int(nn)
-
-		errnie.Debug("workflow.Pipeline.Read", "nn", nn, "err", err)
 	}
 
 	return n, err
 }
 
+/*
+Write implements the io.Writer interface.
+
+It writes data to the first component in the pipeline.
+Returns the number of bytes written and any error encountered.
+*/
 func (pipeline *Pipeline) Write(p []byte) (n int, err error) {
 	errnie.Debug("workflow.Pipeline.Write", "p", string(p))
-
-	if n, err = pipeline.buffer.Write(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	errnie.Debug("workflow.Pipeline.Write", "n", n, "err", err)
-
 	return pipeline.components[0].Write(p)
 }
 
+/*
+Close implements the io.Closer interface.
+
+It closes all components in the pipeline and collects any errors encountered.
+Returns an error if any component failed to close properly.
+*/
 func (pipeline *Pipeline) Close() error {
 	errnie.Debug("workflow.Pipeline.Close")
 	err := errnie.NewError(nil)

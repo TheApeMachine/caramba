@@ -54,8 +54,10 @@ func NewDeepseekProvider(
 
 	p := &DeepseekProvider{
 		ProviderData: &ProviderData{
-			Params: &ai.ContextData{
-				Messages: []*core.Message{},
+			Params: &ai.Context{
+				ContextData: &ai.ContextData{
+					Messages: []*core.Message{},
+				},
 			},
 			Result: &core.Event{},
 		},
@@ -109,14 +111,14 @@ func (provider *DeepseekProvider) Write(p []byte) (n int, err error) {
 	// Create the Deepseek request
 	deepseekParams := &deepseek.ChatCompletionRequest{
 		Model:    deepseek.DeepSeekChat,
-		Messages: provider.buildMessages(provider.ProviderData.Params),
+		Messages: provider.buildMessages(provider.ProviderData.Params.ContextData),
 	}
 
 	errnie.Debug("provider.DeepseekProvider.Write", "deepseekParams", deepseekParams)
 
-	provider.buildSettings(provider.ProviderData.Params, deepseekParams)
+	provider.buildSettings(provider.ProviderData.Params.ContextData, deepseekParams)
 
-	if provider.ProviderData.Params.Stream {
+	if provider.ProviderData.Params.ContextData.Stream {
 		err = errnie.NewErrIO(provider.handleStreamingRequest(deepseekParams))
 	} else {
 		err = errnie.NewErrIO(provider.handleNonStreamingRequest(deepseekParams))

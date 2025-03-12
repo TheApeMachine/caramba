@@ -1,12 +1,10 @@
 package ai
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
-
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
 /*
@@ -32,9 +30,7 @@ Context represents an AI context and implements io.ReadWriteCloser.
 */
 type Context struct {
 	*ContextData
-	buffer *bufio.ReadWriter
-	dec    *json.Decoder
-	enc    *json.Encoder
+	*stream.Buffer
 }
 
 /*
@@ -43,88 +39,65 @@ NewContext creates a new context with default values.
 func NewContext() *Context {
 	errnie.Debug("ai.NewContext")
 
-	buf := bytes.NewBuffer([]byte{})
-	buffer := bufio.NewReadWriter(
-		bufio.NewReader(buf),
-		bufio.NewWriter(buf),
-	)
-
 	ctx := &Context{
 		ContextData: &ContextData{
-			Model:            "gpt-4o",
+			Model:            tweaker.GetModel(tweaker.GetProvider()),
 			Messages:         []*core.Message{},
 			Tools:            []*core.Tool{},
 			Process:          nil,
-			Temperature:      0.7,
-			TopP:             1.0,
-			TopK:             40,
-			PresencePenalty:  0.0,
-			FrequencyPenalty: 0.0,
-			MaxTokens:        1024,
-			StopSequences:    []string{},
-			Stream:           true,
+			Temperature:      tweaker.GetTemperature(),
+			TopP:             tweaker.GetTopP(),
+			TopK:             tweaker.GetTopK(),
+			PresencePenalty:  tweaker.GetPresencePenalty(),
+			FrequencyPenalty: tweaker.GetFrequencyPenalty(),
+			MaxTokens:        tweaker.GetMaxTokens(),
+			StopSequences:    tweaker.GetStopSequences(),
+			Stream:           tweaker.GetStream(),
 		},
-		buffer: buffer,
-		dec:    json.NewDecoder(buffer),
-		enc:    json.NewEncoder(buffer),
 	}
+
+	ctx.Buffer = stream.NewBuffer(
+		&core.Event{},
+		ctx,
+		func(event any) error {
+			ctx.Messages = append(ctx.Messages, event.(*core.Event).Message)
+			return nil
+		},
+	)
 
 	return ctx
 }
 
 /*
-Read implements io.Reader for Context.
+Read implements the io.Reader interface for Context.
+
+It flushes the buffer and reads data into the provided byte slice.
+Returns the number of bytes read and any error encountered.
 */
 func (ctx *Context) Read(p []byte) (n int, err error) {
 	errnie.Debug("ai.Context.Read")
-
-	if err = ctx.buffer.Flush(); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	if n, err = ctx.buffer.Read(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	errnie.Debug("ai.Context.Read", "n", n, "err", err)
-
-	return n, err
+	return ctx.Buffer.Read(p)
 }
 
-// Remove any concurrency logic in Write
+/*
+Write implements the io.Writer interface for Context.
+
+It unmarshals incoming data into an Event, adds the Event's message to the
+Context's Messages, and encodes the updated Context data into the buffer.
+Returns the number of bytes written and any error encountered.
+*/
 func (ctx *Context) Write(p []byte) (n int, err error) {
 	errnie.Debug("ai.Context.Write", "p", string(p))
-
-	event := &core.Event{}
-
-	if err = json.Unmarshal(p, event); err != nil {
-		errnie.NewErrIO(err)
-		return 0, err
-	}
-
-	ctx.Messages = append(ctx.Messages, event.Message)
-	ctx.buffer.Discard(ctx.buffer.Available())
-
-	if err = ctx.enc.Encode(ctx.ContextData); err != nil {
-		errnie.NewErrIO(err)
-		return 0, err
-	}
-
-	errnie.Debug("ai.Context.Write", "n", n, "err", err)
-
-	return len(p), nil
+	return ctx.Buffer.Write(p)
 }
 
-// Remove startStreaming (if it existed) or done channel logic
+/*
+Close implements the io.Closer interface for Context.
+
+It flushes the buffer and cleans up resources by setting references to nil.
+Returns nil as it doesn't produce errors.
+*/
 func (ctx *Context) Close() error {
 	errnie.Debug("ai.Context.Close")
-
-	ctx.buffer.Flush()
-	ctx.ContextData = nil
-	ctx.dec = nil
-	ctx.enc = nil
-
-	return nil
+	return ctx.Buffer.Close()
 }
