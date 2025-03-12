@@ -28,9 +28,12 @@ func TestNewAgent(t *testing.T) {
 func TestAgentRead(t *testing.T) {
 	Convey("Given an Agent with encoded data", t, func() {
 		agent := NewAgent()
+		event := core.NewEvent(core.NewMessage("user", "testuser", "test content"), nil)
+
 		buffer := make([]byte, 1024)
 
 		Convey("When reading from the agent", func() {
+			_, _ = io.Copy(agent, event)
 			n, err := agent.Read(buffer)
 
 			Convey("Then it should return valid JSON data", func() {
@@ -69,15 +72,15 @@ func TestAgentWrite(t *testing.T) {
 			message := core.NewMessage("user", "testuser", "test content")
 			event := core.NewEvent(message, nil)
 
+			buf := make([]byte, 1024)
 			// Serialize the event to JSON
-			jsonData, err := json.Marshal(event)
-			So(err, ShouldBeNil)
+			_, _ = event.Read(buf)
 
-			n, err := agent.Write(jsonData)
+			n, err := agent.Write(buf)
 
 			Convey("Then it should update the agent's context with the message", func() {
 				So(err, ShouldBeNil)
-				So(n, ShouldEqual, len(jsonData))
+				So(n, ShouldEqual, len(buf))
 				So(len(agent.Context.Messages), ShouldEqual, 1)
 				So(agent.Context.Messages[0].Role, ShouldEqual, "user")
 				So(agent.Context.Messages[0].Name, ShouldEqual, "testuser")

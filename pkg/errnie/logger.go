@@ -31,6 +31,17 @@ func Error(msg any, keyvals ...any) (err error) {
 
 	logger.Error(msg, keyvals...)
 	fmt.Println(getStackTrace())
+
+	if err, ok := msg.(error); ok {
+		return err
+	}
+
+	for _, keyval := range keyvals {
+		if err, ok := keyval.(error); ok {
+			return err
+		}
+	}
+
 	return
 }
 

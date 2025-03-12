@@ -54,26 +54,24 @@ func (converter *Converter) Read(p []byte) (n int, err error) {
 }
 
 func (converter *Converter) Write(p []byte) (n int, err error) {
-	errnie.Debug("core.Converter.Write", "p", string(p))
+	event := &Event{}
 
-	if n, err = converter.buffer.Write(p); err != nil {
+	if err = json.Unmarshal(p, event); err != nil {
 		errnie.NewErrIO(err)
-		return
+		return 0, err
 	}
 
-	if err = converter.dec.Decode(converter.ConverterData); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
+	converter.Event = event
+	converter.buffer.Discard(converter.buffer.Available())
 
 	if err = converter.enc.Encode(converter.ConverterData); err != nil {
 		errnie.NewErrIO(err)
-		return
+		return 0, err
 	}
 
 	errnie.Debug("core.Converter.Write", "n", n, "err", err)
 
-	return n, err
+	return len(p), nil
 }
 
 func (converter *Converter) Close() error {

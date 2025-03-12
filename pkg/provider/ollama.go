@@ -200,15 +200,15 @@ func (p *OllamaProvider) buildTools(
 handleStreamingRequest processes a streaming completion request
 and emits chunks as they're received.
 */
-func (provider *OllamaProvider) handleStreamingRequest() (err error) {
+func (p *OllamaProvider) handleStreamingRequest() (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	provider.cancel = cancel
+	p.cancel = cancel
 	defer cancel()
 
 	// Build the request messages from our context data
-	messages := provider.buildMessages(provider.ProviderData.Params)
+	messages := p.buildMessages(p.ProviderData.Params)
 	if len(messages) == 0 {
 		err = errnie.NewErrValidation("no valid messages to process", "provider", "ollama")
 		return
@@ -218,21 +218,21 @@ func (provider *OllamaProvider) handleStreamingRequest() (err error) {
 
 	// Build the request with non-empty fields
 	request := &sdk.ChatRequest{
-		Model:    provider.model,
+		Model:    p.model,
 		Messages: messages,
 		Stream:   &stream,
 	}
 
 	// Add tools if we have any
-	tools := provider.buildTools(provider.ProviderData.Params)
+	tools := p.buildTools(p.ProviderData.Params)
 	if len(tools) > 0 {
 		request.Tools = sdk.Tools(tools)
 	}
 
-	errnie.Debug("streaming request initialized", "model", provider.model)
+	errnie.Debug("streaming request initialized", "model", p.model)
 
 	// Use Ollama's streaming API to process the response
-	if err = provider.client.Chat(ctx, request, func(resp sdk.ChatResponse) error {
+	if err = p.client.Chat(ctx, request, func(resp sdk.ChatResponse) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -242,7 +242,7 @@ func (provider *OllamaProvider) handleStreamingRequest() (err error) {
 					"content", resp.Message.Content,
 				)
 
-				provider.Result = core.NewEvent(
+				p.Result = core.NewEvent(
 					core.NewMessage(
 						"assistant",
 						"ollama",
@@ -251,9 +251,9 @@ func (provider *OllamaProvider) handleStreamingRequest() (err error) {
 					nil,
 				)
 
-				errnie.Debug("provider.handleStreamingRequest", "result", provider.Result)
+				errnie.Debug("provider.handleStreamingRequest", "result", p.Result)
 
-				if err = provider.enc.Encode(provider.Result); err != nil {
+				if err = p.enc.Encode(p.Result); err != nil {
 					errnie.NewErrIO(err)
 					return err
 				}

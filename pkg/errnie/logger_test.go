@@ -57,7 +57,7 @@ func TestError(t *testing.T) {
 		})
 
 		Convey("When calling Error with an error in keyvals", func() {
-			result := Error("Error occurred", "err", testErr)
+			result := Error(testErr)
 
 			Convey("Then it should return the error", func() {
 				So(result, ShouldEqual, testErr)

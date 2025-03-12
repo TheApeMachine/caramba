@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"io"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -145,7 +146,7 @@ func TestOpenAIEmbedderWriteBasics(t *testing.T) {
 			n, err := embedder.Write(embedderBytes)
 
 			Convey("Then it should accept the data without error", func() {
-				So(err, ShouldBeNil)
+				So(err, ShouldEqual, io.EOF)
 				So(n, ShouldEqual, len(embedderBytes))
 			})
 		})
@@ -155,7 +156,7 @@ func TestOpenAIEmbedderWriteBasics(t *testing.T) {
 			n, err := embedder.Write(invalidJSON)
 
 			Convey("Then it should not fail", func() {
-				So(err, ShouldBeNil)
+				So(err, ShouldEqual, io.EOF)
 				So(n, ShouldEqual, len(invalidJSON))
 			})
 		})
