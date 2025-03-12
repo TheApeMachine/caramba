@@ -7,8 +7,10 @@ require (
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/charmbracelet/log v0.4.0
 	github.com/cohere-ai/cohere-go/v2 v2.12.0
+	github.com/cohesion-org/deepseek-go v1.2.5
 	github.com/google/generative-ai-go v0.18.0
 	github.com/invopop/jsonschema v0.13.0
+	github.com/ollama/ollama v0.3.14
 	github.com/openai/openai-go v0.1.0-alpha.59
 	github.com/qdrant/go-client v1.13.0
 	github.com/smartystreets/goconvey v1.8.1
@@ -27,7 +29,6 @@ require (
 	cloud.google.com/go/longrunning v0.6.1 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.32.2 // indirect
 	github.com/aws/smithy-go v1.22.0 // indirect
-	github.com/cohesion-org/deepseek-go v1.2.5 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
