@@ -36,6 +36,7 @@ type OpenAIProvider struct {
 /*
 NewOpenAIProvider creates a new OpenAI provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the OPENAI_API_KEY environment variable.
+This can also be used for local AI, since most will follow the OpenAI API format.
 */
 func NewOpenAIProvider(
 	apiKey string,
@@ -66,6 +67,7 @@ func NewOpenAIProvider(
 		},
 		client: openai.NewClient(
 			option.WithAPIKey(apiKey),
+			option.WithBaseURL(endpoint),
 		),
 		buffer: buffer,
 		enc:    json.NewEncoder(buffer),
