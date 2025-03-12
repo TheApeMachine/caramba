@@ -39,6 +39,8 @@ tests:
   joke: |
     Tell me an original joke about programming, no chicken-crossed-the-road, 
     no knock-knock jokes, you have to be creative.
+  paragraph: |
+    Write a paragraph about the following topic: The importance of AI in the future.
 
 tools:
   qdrant:

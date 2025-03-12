@@ -1,11 +1,10 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
-	"io"
 
-	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -20,10 +19,9 @@ pipelines for complex workflows.
 */
 type Agent struct {
 	*AgentData
-	enc *json.Encoder
-	dec *json.Decoder
-	in  *bytes.Buffer
-	out *bytes.Buffer
+	buffer *bufio.ReadWriter
+	dec    *json.Decoder
+	enc    *json.Encoder
 }
 
 /*
@@ -32,21 +30,22 @@ NewAgent creates a new agent with initialized components.
 func NewAgent() *Agent {
 	errnie.Debug("NewAgent")
 
-	in := bytes.NewBuffer([]byte{})
-	out := bytes.NewBuffer([]byte{})
+	buf := bytes.NewBuffer([]byte{})
+	buffer := bufio.NewReadWriter(
+		bufio.NewReader(buf),
+		bufio.NewWriter(buf),
+	)
+
+	context := NewContext()
 
 	agent := &Agent{
 		AgentData: &AgentData{
-			Context: NewContext(),
+			Context: context,
 		},
-		enc: json.NewEncoder(out),
-		dec: json.NewDecoder(in),
-		in:  in,
-		out: out,
+		buffer: buffer,
+		dec:    json.NewDecoder(buffer),
+		enc:    json.NewEncoder(buffer),
 	}
-
-	// Pre-encode the agent data to JSON for reading
-	agent.enc.Encode(agent.AgentData)
 
 	return agent
 }
@@ -58,12 +57,7 @@ It reads from the internal context.
 */
 func (agent *Agent) Read(p []byte) (n int, err error) {
 	errnie.Debug("Agent.Read")
-
-	if agent.out.Len() == 0 {
-		return 0, io.EOF
-	}
-
-	return agent.out.Read(p)
+	return agent.Context.Read(p)
 }
 
 /*
@@ -73,39 +67,7 @@ It writes to the internal context.
 */
 func (agent *Agent) Write(p []byte) (n int, err error) {
 	errnie.Debug("Agent.Write", "p", string(p))
-
-	// Reset the output buffer whenever we write new data
-	if agent.out.Len() > 0 {
-		agent.out.Reset()
-	}
-
-	// Write the incoming bytes to the input buffer
-	n, err = agent.in.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	// Try to decode the data from the input buffer
-	// If it fails, we still return the bytes written but keep the error
-	event := core.NewEvent(nil, nil)
-
-	if decErr := agent.dec.Decode(&event); decErr == nil {
-		if event.Message == nil {
-			return n, errnie.NewErrValidation("message is required")
-		}
-
-		// Only update if decoding was successful
-		agent.Context.ContextData.Messages = append(
-			agent.Context.ContextData.Messages, event.Message,
-		)
-
-		// Re-encode to the output buffer for subsequent reads
-		if encErr := agent.enc.Encode(agent.AgentData.Context.ContextData); encErr != nil {
-			return n, errnie.NewErrIO(encErr)
-		}
-	}
-
-	return n, nil
+	return agent.Context.Write(p)
 }
 
 /*
@@ -115,5 +77,12 @@ It closes the internal context.
 */
 func (agent *Agent) Close() error {
 	errnie.Debug("Agent.Close")
-	return agent.Context.Close()
+
+	// Close context
+	if agent.Context != nil {
+		agent.Context.Close()
+	}
+
+	agent.AgentData = nil
+	return nil
 }

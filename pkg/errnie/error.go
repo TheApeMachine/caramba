@@ -7,8 +7,26 @@ import (
 	"strings"
 )
 
+func Unwrap(err error) *ErrnieError {
+	if err == nil {
+		return nil
+	}
+
+	if _, ok := err.(*ErrnieError); !ok {
+		// If the error is not an ErrnieError, wrap it in an ErrnieError.
+		return Unwrap(NewError(err))
+	}
+
+	return err.(*ErrnieError)
+}
+
+/*
+ErrnieError implement the error interface, while also providing a way to
+accumulate multiple errors transparently.
+*/
 type ErrnieError struct {
-	msg string
+	errors []error
+	msg    string
 }
 
 func NewError(err error) error {
@@ -16,6 +34,7 @@ func NewError(err error) error {
 		return nil
 	}
 
+	// Log the error.
 	Error(err)
 
 	return &ErrnieError{
@@ -24,6 +43,23 @@ func NewError(err error) error {
 }
 
 func (err *ErrnieError) Error() string { return err.msg }
+
+func (err *ErrnieError) Add(errs ...error) error {
+	// If there are no errors, return nil.
+	if len(errs) == 0 {
+		return nil
+	}
+
+	// Add the errors to the list.
+	err.errors = append(err.errors, errs...)
+
+	for _, e := range errs {
+		// Log the error.
+		Error(e)
+	}
+
+	return err
+}
 
 type ErrIO struct{ Err error }
 

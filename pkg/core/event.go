@@ -1,9 +1,9 @@
 package core
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
-	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -16,92 +16,103 @@ type EventData struct {
 
 type Event struct {
 	*EventData
-	enc *json.Encoder
-	dec *json.Decoder
-	in  *bytes.Buffer
-	out *bytes.Buffer
+	dec    *json.Decoder
+	enc    *json.Encoder
+	buffer *bufio.ReadWriter
 }
 
 func NewEvent(
 	message *Message,
-	error error,
+	err error,
 ) *Event {
-	errnie.Debug("NewEvent")
+	errnie.Debug("core.NewEvent")
 
-	in := bytes.NewBuffer([]byte{})
-	out := bytes.NewBuffer([]byte{})
+	buf := bytes.NewBuffer([]byte{})
+	buffer := bufio.NewReadWriter(
+		bufio.NewReader(buf),
+		bufio.NewWriter(buf),
+	)
 
 	event := &Event{
 		EventData: &EventData{
 			Message:   message,
-			ToolCalls: make([]*ToolCall, 0),
-			Error:     error,
+			ToolCalls: []*ToolCall{},
+			Error:     err,
 		},
-		enc: json.NewEncoder(out),
-		dec: json.NewDecoder(in),
-		in:  in,
-		out: out,
+		dec:    json.NewDecoder(buffer),
+		enc:    json.NewEncoder(buffer),
+		buffer: buffer,
 	}
 
-	// Pre-encode the event data to JSON for reading
 	event.enc.Encode(event.EventData)
-
 	return event
 }
 
-func (event *Event) Read(p []byte) (n int, err error) {
-	errnie.Debug("Event.Read")
+// Removed the startStreaming() method entirely
 
-	if event.out.Len() == 0 {
-		return 0, io.EOF
+func (event *Event) Read(p []byte) (n int, err error) {
+	errnie.Debug("core.Event.Read")
+
+	if err = event.buffer.Flush(); err != nil {
+		errnie.NewErrIO(err)
+		return
 	}
 
-	return event.out.Read(p)
+	if n, err = event.buffer.Read(p); err != nil {
+		errnie.NewErrIO(err)
+		return
+	}
+
+	errnie.Debug("core.Event.Read", "n", n, "err", err)
+
+	return n, err
 }
 
+// Synchronous Write, no channels or goroutines
 func (event *Event) Write(p []byte) (n int, err error) {
-	errnie.Debug("Event.Write", "p", string(p))
+	errnie.Debug("core.Event.Write", "p", string(p))
 
-	// Reset the output buffer whenever we write new data
-	if event.out.Len() > 0 {
-		event.out.Reset()
+	if n, err = event.buffer.Write(p); err != nil {
+		errnie.NewErrIO(err)
+		return
 	}
 
-	// Write the incoming bytes to the input buffer
-	n, err = event.in.Write(p)
-	if err != nil {
-		return n, err
+	msg := &Message{}
+
+	if err = event.dec.Decode(msg); err != nil {
+		errnie.NewErrIO(err)
+		return
 	}
 
-	// Try to decode the data from the input buffer
-	// If it fails, we still return the bytes written but keep the error
-	var buf EventData
-	if decErr := event.dec.Decode(&buf); decErr == nil {
-		// Only update if decoding was successful
-		event.EventData.Message = buf.Message
-		event.EventData.ToolCalls = buf.ToolCalls
-		event.EventData.Error = buf.Error
+	event.Message = msg
 
-		// Re-encode to the output buffer for subsequent reads
-		if encErr := event.enc.Encode(event.EventData); encErr != nil {
-			return n, errnie.NewErrIO(encErr)
-		}
+	if err = event.enc.Encode(event.EventData); err != nil {
+		errnie.NewErrIO(err)
+		return
 	}
 
-	return n, nil
+	return len(p), err
 }
 
 func (event *Event) Close() error {
-	errnie.Debug("Event.Close")
+	errnie.Debug("core.Event.Close")
 
-	event.EventData.Message = nil
-	event.EventData.ToolCalls = nil
-	event.EventData.Error = nil
+	event.buffer.Flush()
+	event.EventData = nil
+	event.dec = nil
+	event.enc = nil
+
 	return nil
 }
 
 func (event *Event) WithToolCalls(toolCalls ...*ToolCall) *Event {
-	errnie.Debug("Event.WithToolCalls")
+	errnie.Debug("core.Event.WithToolCalls")
+
+	if event.EventData == nil {
+		event.EventData = &EventData{
+			ToolCalls: []*ToolCall{},
+		}
+	}
 
 	event.EventData.ToolCalls = append(event.EventData.ToolCalls, toolCalls...)
 	return event

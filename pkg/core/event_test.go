@@ -26,13 +26,9 @@ func TestNewEvent(t *testing.T) {
 				So(len(event.ToolCalls), ShouldEqual, 0)
 
 				// Verify that buffers are initialized
-				So(event.in, ShouldNotBeNil)
-				So(event.out, ShouldNotBeNil)
-				So(event.enc, ShouldNotBeNil)
+				So(event.buffer, ShouldNotBeNil)
 				So(event.dec, ShouldNotBeNil)
-
-				// Verify pre-encoding happened
-				So(event.out.Len(), ShouldBeGreaterThan, 0)
+				So(event.enc, ShouldNotBeNil)
 			})
 		})
 

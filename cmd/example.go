@@ -1,13 +1,13 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
+	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -29,14 +29,16 @@ var (
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
 
-			buf := new(bytes.Buffer)
-			if _, err = io.Copy(buf, wf); err != nil {
+			if _, err = io.Copy(wf, core.NewEvent(
+				core.NewMessage("user", "Danny", "Hello, how are you?"),
+				nil,
+			)); err != nil && err != io.EOF {
 				return err
 			}
 
-			wf.Close()
-
-			fmt.Println(buf.String())
+			if _, err = io.Copy(cmd.OutOrStdout(), wf); err != nil && err != io.EOF {
+				return err
+			}
 
 			return nil
 		},

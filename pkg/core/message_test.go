@@ -25,13 +25,8 @@ func TestNewMessage(t *testing.T) {
 				So(msg.Content, ShouldEqual, content)
 
 				// Verify that buffers are initialized
-				So(msg.in, ShouldNotBeNil)
-				So(msg.out, ShouldNotBeNil)
-				So(msg.enc, ShouldNotBeNil)
+				So(msg.buffer, ShouldNotBeNil)
 				So(msg.dec, ShouldNotBeNil)
-
-				// Verify pre-encoding happened
-				So(msg.out.Len(), ShouldBeGreaterThan, 0)
 			})
 		})
 	})
@@ -149,8 +144,9 @@ func TestMessageClose(t *testing.T) {
 			})
 
 			Convey("And the buffers should be empty", func() {
-				So(msg.in.Len(), ShouldEqual, 0)
-				So(msg.out.Len(), ShouldEqual, 0)
+				So(msg.buffer, ShouldBeNil)
+				So(msg.dec, ShouldBeNil)
+				So(msg.enc, ShouldBeNil)
 
 				// Reading should return EOF
 				buffer := make([]byte, 1024)

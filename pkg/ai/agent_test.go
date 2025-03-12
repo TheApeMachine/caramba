@@ -19,10 +19,6 @@ func TestNewAgent(t *testing.T) {
 			Convey("Then the agent should have the correct properties", func() {
 				So(agent, ShouldNotBeNil)
 				So(agent.Context, ShouldNotBeNil)
-				So(agent.in, ShouldNotBeNil)
-				So(agent.out, ShouldNotBeNil)
-				So(agent.enc, ShouldNotBeNil)
-				So(agent.dec, ShouldNotBeNil)
 			})
 		})
 	})

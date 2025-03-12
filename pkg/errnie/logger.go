@@ -29,18 +29,6 @@ func Error(msg any, keyvals ...any) (err error) {
 		return nil
 	}
 
-	var ok bool
-
-	for _, keyval := range keyvals {
-		if err, ok = keyval.(error); ok {
-			return
-		}
-	}
-
-	if err == nil {
-		return
-	}
-
 	logger.Error(msg, keyvals...)
 	fmt.Println(getStackTrace())
 	return

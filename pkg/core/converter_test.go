@@ -17,8 +17,7 @@ func TestNewConverter(t *testing.T) {
 			So(converter.ConverterData, ShouldNotBeNil)
 			So(converter.Event, ShouldBeNil)
 			So(converter.dec, ShouldNotBeNil)
-			So(converter.in, ShouldNotBeNil)
-			So(converter.out, ShouldNotBeNil)
+			So(converter.buffer, ShouldNotBeNil)
 		})
 	})
 }
@@ -30,7 +29,7 @@ func TestConverterRead(t *testing.T) {
 		testContent := "Test content in output buffer"
 
 		// Manually add content to the output buffer
-		converter.out.WriteString(testContent)
+		converter.buffer.WriteString(testContent)
 
 		Convey("When reading from the converter", func() {
 			buffer := make([]byte, 1024)

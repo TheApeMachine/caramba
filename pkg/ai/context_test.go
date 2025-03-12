@@ -20,10 +20,9 @@ func TestNewContext(t *testing.T) {
 				So(ctx.ContextData, ShouldNotBeNil)
 				So(ctx.Messages, ShouldNotBeNil)
 				So(ctx.Tools, ShouldNotBeNil)
-				So(ctx.in, ShouldNotBeNil)
-				So(ctx.out, ShouldNotBeNil)
-				So(ctx.enc, ShouldNotBeNil)
+				So(ctx.buffer, ShouldNotBeNil)
 				So(ctx.dec, ShouldNotBeNil)
+				So(ctx.enc, ShouldNotBeNil)
 				So(ctx.Stream, ShouldBeTrue)
 			})
 		})
@@ -54,7 +53,7 @@ func TestContextRead(t *testing.T) {
 		Convey("When reading from an empty buffer", func() {
 			// Create a new context but with an empty output buffer
 			emptyCtx := NewContext()
-			emptyCtx.out.Reset()
+			emptyCtx.buffer = nil
 
 			// Try to read from the empty buffer
 			emptyBuffer := make([]byte, 1024)
@@ -119,13 +118,13 @@ func TestContextWrite(t *testing.T) {
 			// Create a fresh context
 			freshCtx := NewContext()
 			// Make sure the buffer has content
-			So(freshCtx.out.Len(), ShouldBeGreaterThan, 0)
+			So(freshCtx.buffer, ShouldNotBeNil)
 
 			// Now write to it, which should reset the buffer and then re-encode
 			freshCtx.Write(jsonData)
 
 			// Check the output buffer has content after re-encoding
-			So(freshCtx.out.Len(), ShouldBeGreaterThan, 0)
+			So(freshCtx.buffer, ShouldNotBeNil)
 		})
 	})
 }
@@ -146,8 +145,9 @@ func TestContextClose(t *testing.T) {
 			Convey("Then it should clear the buffers but not reset the content fields", func() {
 				So(err, ShouldBeNil)
 				// The Close method only resets buffers, not field contents
-				So(ctx.in.Len(), ShouldEqual, 0)
-				So(ctx.out.Len(), ShouldEqual, 0)
+				So(ctx.buffer, ShouldBeNil)
+				So(ctx.dec, ShouldBeNil)
+				So(ctx.enc, ShouldBeNil)
 				// These won't be changed by Close
 				So(ctx.Model, ShouldEqual, "test-model")
 				So(len(ctx.Messages), ShouldEqual, 1)

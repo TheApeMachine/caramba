@@ -1,9 +1,9 @@
 package core
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
-	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -14,80 +14,76 @@ type ConverterData struct {
 
 type Converter struct {
 	*ConverterData
-	dec *json.Decoder
-	in  *bytes.Buffer
-	out *bytes.Buffer
+	dec    *json.Decoder
+	enc    *json.Encoder
+	buffer *bufio.ReadWriter
 }
 
 func NewConverter() *Converter {
-	in := bytes.NewBuffer([]byte{})
-	out := bytes.NewBuffer([]byte{})
+	buf := bytes.NewBuffer([]byte{})
+	buffer := bufio.NewReadWriter(
+		bufio.NewReader(buf),
+		bufio.NewWriter(buf),
+	)
 
-	return &Converter{
+	converter := &Converter{
 		ConverterData: &ConverterData{},
-		dec:           json.NewDecoder(in),
-		in:            in,
-		out:           out,
+		buffer:        buffer,
+		dec:           json.NewDecoder(buffer),
+		enc:           json.NewEncoder(buffer),
 	}
+
+	return converter
 }
 
 func (converter *Converter) Read(p []byte) (n int, err error) {
-	if converter.out.Len() == 0 {
-		return 0, io.EOF
+	errnie.Debug("core.Converter.Read")
+
+	if err = converter.buffer.Flush(); err != nil {
+		errnie.NewErrIO(err)
+		return
 	}
 
-	return converter.out.Read(p)
+	if n, err = converter.buffer.Read(p); err != nil {
+		errnie.NewErrIO(err)
+	}
+
+	errnie.Debug("core.Converter.Read", "n", n, "err", err)
+
+	return n, err
 }
 
 func (converter *Converter) Write(p []byte) (n int, err error) {
-	errnie.Debug("Agent.Write", "p", string(p))
+	errnie.Debug("core.Converter.Write", "p", string(p))
 
-	// Reset the output buffer whenever we write new data
-	if converter.out.Len() > 0 {
-		converter.out.Reset()
+	if n, err = converter.buffer.Write(p); err != nil {
+		errnie.NewErrIO(err)
+		return
 	}
 
-	// Write the incoming bytes to the input buffer
-	n, err = converter.in.Write(p)
-	if err != nil {
-		return n, err
+	if err = converter.dec.Decode(converter.ConverterData); err != nil {
+		errnie.NewErrIO(err)
+		return
 	}
 
-	// First try to decode as a Provider response format
-	var providerData struct {
-		Params any    `json:"params"`
-		Result *Event `json:"result"`
+	if err = converter.enc.Encode(converter.ConverterData); err != nil {
+		errnie.NewErrIO(err)
+		return
 	}
 
-	// Make a copy of the input buffer to avoid consuming it
-	inputCopy := bytes.NewBuffer(converter.in.Bytes())
-	tempDecoder := json.NewDecoder(inputCopy)
+	errnie.Debug("core.Converter.Write", "n", n, "err", err)
 
-	if err := tempDecoder.Decode(&providerData); err == nil && providerData.Result != nil && providerData.Result.Message != nil {
-		// Successfully decoded as Provider format
-		errnie.Debug("Converter: decoded provider format successfully")
-		if _, err = converter.out.WriteString(providerData.Result.Message.Content); err != nil {
-			return n, errnie.NewErrIO(err)
-		}
-		return n, nil
-	}
-
-	// Reset decoder and try to decode as a direct Event
-	event := NewEvent(nil, nil)
-	if decErr := converter.dec.Decode(&event); decErr == nil {
-		if event.Message == nil {
-			return n, errnie.NewErrValidation("message is required")
-		}
-
-		// Only update if decoding was successful
-		if _, err = converter.out.WriteString(event.Message.Content); err != nil {
-			return n, errnie.NewErrIO(err)
-		}
-	}
-
-	return n, nil
+	return n, err
 }
 
 func (converter *Converter) Close() error {
+	errnie.Debug("core.Converter.Close")
+
+	converter.buffer.Flush()
+	converter.ConverterData = nil
+	converter.buffer = nil
+	converter.dec = nil
+	converter.enc = nil
+
 	return nil
 }

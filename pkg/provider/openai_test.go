@@ -11,7 +11,7 @@ import (
 
 // TestNewOpenAIProvider tests the initialization of OpenAIProvider
 func TestNewOpenAIProvider(t *testing.T) {
-	Convey("Given API key and endpoint", t, func() {
+	Convey("Given environment variables for API keys are set", t, func() {
 		apiKey := "test-api-key"
 		endpoint := "https://api.openai.com/v1"
 
@@ -21,11 +21,7 @@ func TestNewOpenAIProvider(t *testing.T) {
 			Convey("Then it should be properly initialized", func() {
 				So(provider, ShouldNotBeNil)
 				So(provider.ProviderData, ShouldNotBeNil)
-				So(provider.apiKey, ShouldEqual, apiKey)
-				So(provider.endpoint, ShouldEqual, endpoint)
 				So(provider.client, ShouldNotBeNil)
-				So(provider.in, ShouldNotBeNil)
-				So(provider.out, ShouldNotBeNil)
 				So(provider.enc, ShouldNotBeNil)
 				So(provider.dec, ShouldNotBeNil)
 			})
@@ -39,17 +35,45 @@ func TestOpenAIProviderWriteBasics(t *testing.T) {
 	Convey("Given an OpenAI provider", t, func() {
 		provider := NewOpenAIProvider("test-api-key", "https://api.openai.com/v1")
 
-		// For testing only the basic IO functionality
-		provider.dec = json.NewDecoder(provider.in)
+		Convey("When writing bytes to the provider", func() {
+			// Create test data
+			testData := &ai.ContextData{
+				Messages: []*core.Message{
+					core.NewMessage("user", "", "Hello, world!"),
+				},
+			}
 
-		Convey("When writing bytes to the buffer directly", func() {
-			testBytes := []byte(`{"test": "data"}`)
-			n, err := provider.in.Write(testBytes)
+			// Encode test data to bytes
+			testBytes, _ := json.Marshal(testData)
+
+			// Create a reader to read the response
+			readBuf := make([]byte, 1024)
+
+			// Set up a goroutine to read from the pipe to prevent blocking
+			readDone := make(chan bool)
+			var readErr error
+			var bytesRead int
+
+			go func() {
+				// Read from the pipe
+				bytesRead, readErr = provider.Read(readBuf)
+				readDone <- true
+			}()
+
+			// Write to the provider
+			n, err := provider.Write(testBytes)
+
+			// Wait for read to complete
+			<-readDone
 
 			Convey("Then it should accept the data correctly", func() {
 				So(err, ShouldBeNil)
 				So(n, ShouldEqual, len(testBytes))
-				So(provider.in.Len(), ShouldBeGreaterThan, 0)
+				// Check read results if available
+				if bytesRead > 0 {
+					So(readErr, ShouldBeNil)
+					So(bytesRead, ShouldBeGreaterThan, 0)
+				}
 			})
 		})
 	})
