@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"fmt"
+
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
@@ -11,18 +13,18 @@ import (
 ContextData holds the structured data for an AI context.
 */
 type ContextData struct {
-	Model            string          `json:"model"`
-	Messages         []*core.Message `json:"messages"`
-	Tools            []*core.Tool    `json:"tools"`
-	Process          *core.Process   `json:"process"`
-	Temperature      float64         `json:"temperature"`
-	TopP             float64         `json:"top_p"`
-	TopK             int             `json:"top_k"`
-	PresencePenalty  float64         `json:"presence_penalty"`
-	FrequencyPenalty float64         `json:"frequency_penalty"`
-	MaxTokens        int             `json:"max_tokens"`
-	StopSequences    []string        `json:"stop_sequences"`
-	Stream           bool            `json:"stream"`
+	Model            string              `json:"model"`
+	Messages         []*core.MessageData `json:"messages"`
+	Tools            []*core.Tool        `json:"tools"`
+	Process          *core.Process       `json:"process"`
+	Temperature      float64             `json:"temperature"`
+	TopP             float64             `json:"top_p"`
+	TopK             int                 `json:"top_k"`
+	PresencePenalty  float64             `json:"presence_penalty"`
+	FrequencyPenalty float64             `json:"frequency_penalty"`
+	MaxTokens        int                 `json:"max_tokens"`
+	StopSequences    []string            `json:"stop_sequences"`
+	Stream           bool                `json:"stream"`
 }
 
 /*
@@ -30,7 +32,7 @@ Context represents an AI context and implements io.ReadWriteCloser.
 */
 type Context struct {
 	*ContextData
-	*stream.Buffer
+	*stream.Buffer `json:"-" gob:"-"` // Exclude from serialization
 }
 
 /*
@@ -42,8 +44,8 @@ func NewContext() *Context {
 	ctx := &Context{
 		ContextData: &ContextData{
 			Model:            tweaker.GetModel(tweaker.GetProvider()),
-			Messages:         []*core.Message{},
-			Tools:            []*core.Tool{},
+			Messages:         make([]*core.MessageData, 0),
+			Tools:            make([]*core.Tool, 0),
 			Process:          nil,
 			Temperature:      tweaker.GetTemperature(),
 			TopP:             tweaker.GetTopP(),
@@ -57,10 +59,18 @@ func NewContext() *Context {
 	}
 
 	ctx.Buffer = stream.NewBuffer(
-		&core.Event{},
-		ctx,
+		&core.EventData{},
+		ctx.ContextData,
 		func(event any) error {
-			ctx.Messages = append(ctx.Messages, event.(*core.Event).Message)
+			eventData, ok := event.(*core.EventData)
+			if !ok {
+				errnie.Debug("ai.Context handler received unexpected type", "type", fmt.Sprintf("%T", event))
+				return nil
+			}
+
+			if eventData.Message != nil {
+				ctx.Messages = append(ctx.Messages, eventData.Message)
+			}
 			return nil
 		},
 	)

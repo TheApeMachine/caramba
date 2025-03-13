@@ -64,12 +64,8 @@ func NewGoogleProvider(
 
 	p := &GoogleProvider{
 		ProviderData: &ProviderData{
-			Params: &ai.Context{
-				ContextData: &ai.ContextData{
-					Messages: []*core.Message{},
-				},
-			},
-			Result: &core.Event{},
+			Params: &ai.ContextData{},
+			Result: &core.EventData{},
 		},
 		client: client,
 		model:  model,
@@ -123,7 +119,7 @@ func (provider *GoogleProvider) Write(p []byte) (n int, err error) {
 	chat := provider.model.StartChat()
 
 	// Add system prompt if present
-	systemPrompt := provider.findSystemPrompt(provider.ProviderData.Params.ContextData)
+	systemPrompt := provider.findSystemPrompt(provider.ProviderData.Params)
 	if systemPrompt != "" {
 		chat.History = append(chat.History, &genai.Content{
 			Role:  "system",
@@ -132,10 +128,10 @@ func (provider *GoogleProvider) Write(p []byte) (n int, err error) {
 	}
 
 	// Add messages to history
-	provider.buildMessages(provider.ProviderData.Params.ContextData, chat)
+	provider.buildMessages(provider.ProviderData.Params, chat)
 
 	// Configure function declarations
-	provider.buildTools(provider.ProviderData.Params.ContextData)
+	provider.buildTools(provider.ProviderData.Params)
 
 	// Generate response streaming
 	err = errnie.NewErrIO(provider.handleStreamingRequest(chat))
@@ -309,7 +305,7 @@ func (provider *GoogleProvider) handleStreamingRequest(
 						content,
 					),
 					nil,
-				)
+				).EventData
 
 				errnie.Debug("provider.handleStreamingRequest", "result", provider.Result)
 

@@ -32,8 +32,15 @@ func NewPipeline() *Pipeline {
 func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	errnie.Debug("examples.Pipeline.Read")
 
-	if n, err = pipeline.workflow.Read(p); err != nil {
+	if n, err = pipeline.workflow.Read(p); err != nil && err != io.EOF {
 		errnie.NewErrIO(err)
+	}
+
+	// If we got zero bytes, always return EOF to prevent infinite loops
+	if n == 0 {
+		if err == nil {
+			err = io.EOF
+		}
 	}
 
 	errnie.Debug("examples.Pipeline.Read", "n", n, "err", err)

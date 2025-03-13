@@ -4,7 +4,8 @@ Package core provides the central types and functionality for the application.
 package core
 
 import (
-	"io"
+	"bytes"
+	"encoding/gob"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
@@ -15,9 +16,9 @@ EventData holds the content data for an Event.
 It contains a message, tool calls, and any error information.
 */
 type EventData struct {
-	Message   *Message    `json:"message"`
-	ToolCalls []*ToolCall `json:"tool_calls"`
-	Error     error       `json:"error"`
+	Message   *MessageData `json:"message"`
+	ToolCalls []*ToolCall  `json:"tool_calls"`
+	Error     string       `json:"error"`
 }
 
 /*
@@ -26,7 +27,7 @@ It wraps EventData with a Buffer for streaming capabilities.
 */
 type Event struct {
 	*EventData
-	*stream.Buffer
+	*stream.Buffer `json:"-" gob:"-"` // Exclude from serialization
 }
 
 /*
@@ -39,29 +40,49 @@ func NewEvent(
 ) *Event {
 	errnie.Debug("core.NewEvent")
 
+	errMsg := ""
+
+	if err != nil {
+		errMsg = err.Error()
+	}
+
+	msg := &MessageData{}
+
+	if message != nil {
+		msg.Role = message.Role
+		msg.Name = message.Name
+		msg.Content = message.Content
+	}
+
 	event := &Event{
 		EventData: &EventData{
-			Message:   message,
+			Message:   msg,
 			ToolCalls: []*ToolCall{},
-			Error:     err,
+			Error:     errMsg,
 		},
 	}
 
 	event.Buffer = stream.NewBuffer(
-		event,
-		event,
-		func(evt any) error {
-			event.EventData = evt.(*Event).EventData
+		&EventData{},
+		event.EventData,
+		func(msg any) error {
+			if decoded, ok := msg.(*EventData); ok {
+				event.EventData = decoded
+			}
 			return nil
 		},
 	)
 
 	if message != nil {
-		// Pre-buffer the EventData, since we have the values.
-		if _, err := io.Copy(event, message); err != nil {
-			errnie.NewErrIO(err)
+		buf := bytes.NewBuffer([]byte{})
+		// Only encode the EventData, not the full Event with Buffer
+		ed := &EventData{
+			Message:   message.MessageData,
+			ToolCalls: event.EventData.ToolCalls,
+			Error:     event.EventData.Error,
 		}
-
+		gob.NewEncoder(buf).Encode(ed)
+		event.Write(buf.Bytes())
 		errnie.Debug("core.NewEvent", "prebuffered", event.String())
 	}
 

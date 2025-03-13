@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"bytes"
 	"encoding/gob"
 	"io"
 
@@ -34,6 +35,24 @@ func (codec *GobCodec) WithPipes(pr *io.PipeReader, pw *io.PipeWriter) Codec {
 	codec.dec = gob.NewDecoder(pr)
 
 	return codec
+}
+
+/*
+WithBuffer initializes the GobCodec with a bytes.Buffer.
+It sets up the gob encoder and decoder using the provided buffer for streaming data.
+
+Parameters:
+  - buf: Buffer used for encoding and decoding data
+
+Returns the configured codec instance for method chaining.
+*/
+func (c *GobCodec) WithBuffer(buf *bytes.Buffer) Codec {
+	errnie.Debug("stream.GobCodec.WithBuffer")
+
+	c.enc = gob.NewEncoder(buf)
+	c.dec = gob.NewDecoder(buf)
+
+	return c
 }
 
 /*

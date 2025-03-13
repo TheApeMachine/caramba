@@ -13,6 +13,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/ai"
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
 
@@ -23,9 +24,10 @@ It supports regular chat completions, tool calling, and structured outputs.
 type AnthropicProvider struct {
 	*ProviderData
 	client *anthropic.Client
-	buffer *bufio.ReadWriter
-	enc    *json.Encoder
-	dec    *json.Decoder
+	buffer *stream.Buffer
+	ch     chan any
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 /*
@@ -46,33 +48,45 @@ func NewAnthropicProvider(
 		endpoint = viper.GetViper().GetString("endpoints.anthropic")
 	}
 
-	buf := bytes.NewBuffer([]byte{})
-	buffer := bufio.NewReadWriter(
-		bufio.NewReader(buf),
-		bufio.NewWriter(buf),
-	)
-
 	clientOptions := []option.RequestOption{}
+
 	if endpoint != "" {
 		clientOptions = append(clientOptions, option.WithBaseURL(endpoint))
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	p := &AnthropicProvider{
 		ProviderData: &ProviderData{
-			Params: &ai.Context{
-				ContextData: &ai.ContextData{
-					Messages: []*core.Message{},
-				},
-			},
-			Result: &core.Event{},
+			Params: &ai.ContextData{},
+			Result: &core.EventData{},
 		},
 		client: anthropic.NewClient(
 			option.WithAPIKey(apiKey),
 		),
-		buffer: buffer,
-		enc:    json.NewEncoder(buffer),
-		dec:    json.NewDecoder(buffer),
+		ch:     make(chan any),
+		ctx:    ctx,
+		cancel: cancel,
 	}
+
+	p.buffer = stream.NewBuffer(
+		&ai.ContextData{},
+		p.ProviderData.Result,
+		func(msg any) error {
+			var (
+				decoded *ai.ContextData
+				ok      bool
+			)
+
+			if decoded, ok = msg.(*ai.ContextData); !ok {
+				errnie.Error("provider.AnthropicProvider.buffer", "msg", msg)
+				return errnie.NewErrIO(errnie.NewErrValidation("msg is not an ai.ContextData", "provider", "anthropic"))
+			}
+
+			p.ProviderData.Params = decoded
+			return nil
+		},
+	)
 
 	return p
 }
@@ -82,19 +96,7 @@ Read implements the io.Reader interface.
 */
 func (provider *AnthropicProvider) Read(p []byte) (n int, err error) {
 	errnie.Debug("provider.AnthropicProvider.Read")
-
-	if err = provider.buffer.Flush(); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	if n, err = provider.buffer.Read(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	errnie.Debug("provider.AnthropicProvider.Read", "n", n, "err", err)
-	return n, err
+	return provider.buffer.Read(p)
 }
 
 /*
@@ -119,13 +121,13 @@ func (provider *AnthropicProvider) Write(p []byte) (n int, err error) {
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.F(anthropic.ModelClaude3_5SonnetLatest),
 		MaxTokens: anthropic.F(int64(4000)),
-		Messages:  anthropic.F(provider.buildMessages(provider.ProviderData.Params.ContextData)),
+		Messages:  anthropic.F(provider.buildMessages(provider.ProviderData.Params)),
 	}
 
 	errnie.Debug("provider.AnthropicProvider.Write", "params", params)
 
-	provider.buildTools(provider.ProviderData.Params.ContextData, &params)
-	provider.buildSystemPrompt(provider.ProviderData.Params.ContextData, &params)
+	provider.buildTools(provider.ProviderData.Params, &params)
+	provider.buildSystemPrompt(provider.ProviderData.Params, &params)
 
 	err = errnie.NewErrIO(provider.handleStreamingRequest(&params))
 
@@ -138,13 +140,9 @@ Close cleans up any resources.
 func (provider *AnthropicProvider) Close() error {
 	errnie.Debug("provider.AnthropicProvider.Close")
 
-	// Reset state
 	provider.ProviderData.Params = nil
 	provider.ProviderData.Result = nil
-
 	provider.buffer = nil
-	provider.enc = nil
-	provider.dec = nil
 
 	return nil
 }
@@ -261,14 +259,16 @@ func (p *AnthropicProvider) buildSystemPrompt(
 handleStreamingRequest processes a streaming completion request
 and emits chunks as they're received.
 */
-func (provider *AnthropicProvider) handleStreamingRequest(
+func (prvdr *AnthropicProvider) handleStreamingRequest(
 	params *anthropic.MessageNewParams,
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
 	ctx := context.Background()
 
-	stream := provider.client.Messages.NewStreaming(ctx, *params)
+	prvdr.buffer.Stream(ctx, prvdr.ch)
+
+	stream := prvdr.client.Messages.NewStreaming(ctx, *params)
 	defer stream.Close()
 
 	errnie.Debug("streaming request initialized")
@@ -293,23 +293,25 @@ func (provider *AnthropicProvider) handleStreamingRequest(
 
 		errnie.Debug("received stream chunk", "content", content)
 
-		provider.Result = core.NewEvent(
+		prvdr.Result = core.NewEvent(
 			core.NewMessage(
 				"assistant",
 				"anthropic",
 				content,
 			),
 			nil,
-		)
+		).EventData
 
-		errnie.Debug("provider.handleStreamingRequest", "result", provider.Result)
+		errnie.Debug("provider.handleStreamingRequest", "result", prvdr.Result)
 
-		if err = provider.enc.Encode(provider.Result); err != nil {
-			errnie.NewErrIO(err)
-			return err
+		select {
+		case prvdr.ch <- event:
+			errnie.Debug("sent event to channel", "event", event)
+		case <-prvdr.ctx.Done():
+			return
+		default:
+			// Don't block if channel is full
 		}
-
-		count++
 	}
 
 	if stream.Err() != nil {

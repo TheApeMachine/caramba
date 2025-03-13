@@ -2,8 +2,7 @@ package core
 
 import (
 	"bytes"
-	"encoding/json"
-	"io"
+	"encoding/gob"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
@@ -23,7 +22,7 @@ Message represents a message in the system and implements io.ReadWriteCloser.
 */
 type Message struct {
 	*MessageData
-	*stream.Buffer
+	*stream.Buffer `json:"-" gob:"-"` // Exclude from serialization
 }
 
 /*
@@ -41,23 +40,25 @@ func NewMessage(role string, name string, content string) *Message {
 	}
 
 	msg.Buffer = stream.NewBuffer(
-		msg,
-		msg,
+		msg.MessageData,
+		msg.MessageData,
 		func(message any) error {
-			msg.MessageData = message.(*Message).MessageData
+			msg.MessageData = message.(*MessageData)
 			return nil
 		},
 	)
 
 	// Pre-buffer the MessageData, since we have the values.
 	buf := bytes.NewBuffer([]byte{})
-	json.NewEncoder(buf).Encode(msg.MessageData)
+	gob.NewEncoder(buf).Encode(msg.MessageData)
 
-	if _, err := io.Copy(msg, buf); err != nil {
+	n, err := msg.Write(buf.Bytes())
+
+	if err != nil {
 		errnie.NewErrIO(err)
-		return nil
 	}
 
+	errnie.Debug("NewMessage", "n", n, "err", err)
 	return msg
 }
 

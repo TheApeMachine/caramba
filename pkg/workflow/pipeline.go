@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"bytes"
 	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -14,6 +15,7 @@ all components in sequence.
 */
 type Pipeline struct {
 	components []io.ReadWriteCloser
+	buffer     *bytes.Buffer
 }
 
 /*
@@ -36,11 +38,10 @@ Example:
 func NewPipeline(components ...io.ReadWriteCloser) io.ReadWriteCloser {
 	errnie.Debug("workflow.NewPipeline")
 
-	pipeline := &Pipeline{
+	return &Pipeline{
 		components: components,
+		buffer:     bytes.NewBuffer([]byte{}),
 	}
-
-	return pipeline
 }
 
 /*
@@ -51,17 +52,15 @@ Returns the number of bytes read and any error encountered.
 */
 func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	errnie.Debug("workflow.Pipeline.Read")
-	var nn int64
 
-	for i := range len(pipeline.components) - 1 {
-		if nn, err = io.Copy(
-			pipeline.components[i+1],
-			pipeline.components[i],
-		); err != nil && err != io.EOF {
-			return n, errnie.NewErrIO(err)
+	for _, component := range pipeline.components {
+		n, err = component.Read(p)
+
+		if err != nil {
+			return n, err
 		}
 
-		n += int(nn)
+		pipeline.buffer.Write(p)
 	}
 
 	return n, err

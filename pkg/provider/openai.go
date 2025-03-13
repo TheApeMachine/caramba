@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
 	"os"
-	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -19,8 +19,8 @@ import (
 )
 
 type ProviderData struct {
-	Params *ai.Context `json:"params"`
-	Result *core.Event `json:"result"`
+	Params *ai.ContextData `json:"params"`
+	Result *core.EventData `json:"result"`
 }
 
 /*
@@ -55,16 +55,13 @@ func NewOpenAIProvider(
 		endpoint = viper.GetViper().GetString("endpoints.openai")
 	}
 
-	// Create provider with empty data structures
-	providerData := &ProviderData{
-		Params: &ai.Context{},
-		Result: core.NewEvent(nil, nil),
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 
 	provider := &OpenAIProvider{
-		ProviderData: providerData,
+		ProviderData: &ProviderData{
+			Params: &ai.ContextData{},
+			Result: &core.EventData{},
+		},
 		client: openai.NewClient(
 			option.WithAPIKey(apiKey),
 		),
@@ -85,7 +82,7 @@ func NewOpenAIProvider(
 
 // processParams is the handler function that processes incoming parameters
 func (provider *OpenAIProvider) processParams(params any) error {
-	provider.Params = params.(*ai.Context)
+	provider.Params = params.(*ai.ContextData)
 
 	// Debug the parameters
 	errnie.Debug(
@@ -97,7 +94,7 @@ func (provider *OpenAIProvider) processParams(params any) error {
 	// Create OpenAI API parameters
 	openaiParams := openai.ChatCompletionNewParams{
 		Model:    openai.F(provider.Params.Model),
-		Messages: openai.F(provider.buildMessages(provider.Params.ContextData)),
+		Messages: openai.F(provider.buildMessages(provider.Params)),
 	}
 
 	// Set optional parameters
@@ -119,17 +116,17 @@ func (provider *OpenAIProvider) processParams(params any) error {
 
 	// Add tools if any
 	if len(provider.Params.Tools) > 0 {
-		provider.buildTools(provider.Params.ContextData, &openaiParams)
+		provider.buildTools(provider.Params, &openaiParams)
 	}
 
 	// Add response format if needed
 	if provider.Params.Process != nil {
-		provider.buildResponseFormat(provider.Params.ContextData, &openaiParams)
+		provider.buildResponseFormat(provider.Params, &openaiParams)
 	}
 
 	// Handle streaming vs non-streaming
 	var err error
-	if provider.Params.ContextData.Stream {
+	if provider.Params.Stream {
 		err = provider.handleStreamingRequest(&openaiParams)
 	} else {
 		err = provider.handleSingleRequest(&openaiParams)
@@ -141,7 +138,7 @@ func (provider *OpenAIProvider) processParams(params any) error {
 		provider.Result = core.NewEvent(
 			core.NewMessage("assistant", "system", "Error processing request"),
 			err,
-		)
+		).EventData
 		return err
 	}
 
@@ -221,7 +218,16 @@ func (provider *OpenAIProvider) handleSingleRequest(
 		provider.Result = core.NewEvent(
 			core.NewMessage("assistant", "openai", content),
 			nil,
-		)
+		).EventData
+
+		// Encode and write the result to the buffer for reading
+		buf := bytes.NewBuffer([]byte{})
+		if err := gob.NewEncoder(buf).Encode(provider.ProviderData.Result); err != nil {
+			errnie.Error("failed to encode result", "error", err)
+			return err
+		}
+		provider.Buffer.Write(buf.Bytes())
+		errnie.Debug("provider.handleSingleRequest", "response", content)
 	}
 
 	return nil
@@ -348,6 +354,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		// When this fires, the current chunk value will not contain content data
 		if content, ok := acc.JustFinishedContent(); ok {
 			event.Message.Content = content
+			errnie.Debug("received content chunk", "content", content)
 		}
 
 		if tool, ok := acc.JustFinishedToolCall(); ok {
@@ -361,27 +368,28 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		}
 
 		if refusal, ok := acc.JustFinishedRefusal(); ok {
-			event.Error = errnie.NewErrValidation(refusal, "provider", "openai")
+			event.Error = errnie.NewErrValidation(refusal, "provider", "openai").Error()
 		}
 
+		// Update the message content in the existing Result object
+		prvdr.Result.Message.Content = acc.Choices[0].Message.Content
+
+		// We'll update our main Result object
+		prvdr.ProviderData.Result = event.EventData
+
+		// Still send to channel for compatibility
 		select {
-		case prvdr.ch <- core.NewEvent(
-			core.NewMessage(
-				"assistant",
-				"openai",
-				acc.Choices[0].Message.Content,
-			),
-			nil,
-		):
-			errnie.Debug("sent event to channel", "event", prvdr.Result)
+		case prvdr.ch <- event:
+			errnie.Debug("sent event to channel", "event", event)
 		case <-prvdr.ctx.Done():
 			return
 		default:
-			time.Sleep(100 * time.Millisecond)
+			// Don't block if channel is full
 		}
 	}
 
 	if err = stream.Err(); err != nil {
+		errnie.Error("Streaming error", "error", err)
 		errnie.NewErrIO(err)
 		return
 	}

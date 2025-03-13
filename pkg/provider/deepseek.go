@@ -54,12 +54,8 @@ func NewDeepseekProvider(
 
 	p := &DeepseekProvider{
 		ProviderData: &ProviderData{
-			Params: &ai.Context{
-				ContextData: &ai.ContextData{
-					Messages: []*core.Message{},
-				},
-			},
-			Result: &core.Event{},
+			Params: &ai.ContextData{},
+			Result: &core.EventData{},
 		},
 		client: client,
 		buffer: buffer,
@@ -111,14 +107,14 @@ func (provider *DeepseekProvider) Write(p []byte) (n int, err error) {
 	// Create the Deepseek request
 	deepseekParams := &deepseek.ChatCompletionRequest{
 		Model:    deepseek.DeepSeekChat,
-		Messages: provider.buildMessages(provider.ProviderData.Params.ContextData),
+		Messages: provider.buildMessages(provider.ProviderData.Params),
 	}
 
 	errnie.Debug("provider.DeepseekProvider.Write", "deepseekParams", deepseekParams)
 
-	provider.buildSettings(provider.ProviderData.Params.ContextData, deepseekParams)
+	provider.buildSettings(provider.ProviderData.Params, deepseekParams)
 
-	if provider.ProviderData.Params.ContextData.Stream {
+	if provider.ProviderData.Params.Stream {
 		err = errnie.NewErrIO(provider.handleStreamingRequest(deepseekParams))
 	} else {
 		err = errnie.NewErrIO(provider.handleNonStreamingRequest(deepseekParams))
@@ -158,7 +154,7 @@ func (p *DeepseekProvider) buildMessages(
 
 	for _, message := range params.Messages {
 		var role string
-		switch message.MessageData.Role {
+		switch message.Role {
 		case "system":
 			role = deepseek.ChatMessageRoleSystem
 		case "user":
@@ -166,13 +162,13 @@ func (p *DeepseekProvider) buildMessages(
 		case "assistant":
 			role = deepseek.ChatMessageRoleAssistant
 		default:
-			errnie.Error("unknown message role", "role", message.MessageData.Role)
+			errnie.Error("unknown message role", "role", message.Role)
 			continue
 		}
 
 		messages = append(messages, deepseek.ChatCompletionMessage{
 			Role:    role,
-			Content: message.MessageData.Content,
+			Content: message.Content,
 		})
 	}
 
@@ -232,7 +228,7 @@ func (p *DeepseekProvider) handleNonStreamingRequest(
 	if len(response.Choices) > 0 {
 		assistantMessage := response.Choices[0].Message.Content
 		message := core.NewMessage("assistant", "", assistantMessage)
-		p.ProviderData.Result.EventData.Message = message
+		p.ProviderData.Result.Message = message.MessageData
 	}
 
 	// Handle token usage if needed (seems core.Event doesn't have a Tokens field)
@@ -290,7 +286,7 @@ func (p *DeepseekProvider) handleStreamingRequest(
 			partialEvent := core.NewEvent(
 				core.NewMessage("assistant", "", content),
 				nil,
-			)
+			).EventData
 
 			// Encode the partial result back to the buffer
 			if err := p.enc.Encode(partialEvent); err != nil {
@@ -310,7 +306,7 @@ func (p *DeepseekProvider) handleStreamingRequest(
 	finalEvent := core.NewEvent(
 		core.NewMessage("assistant", "", fullMessage),
 		nil,
-	)
+	).EventData
 
 	// Encode the final result back to the buffer
 	if err := p.enc.Encode(finalEvent); err != nil {

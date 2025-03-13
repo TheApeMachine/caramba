@@ -16,10 +16,10 @@ type ToolCallData struct {
 
 type ToolCall struct {
 	*ToolCallData
-	dec *json.Decoder
-	enc *json.Encoder
-	in  *bytes.Buffer
-	out *bytes.Buffer
+	dec *json.Decoder `json:"-" gob:"-"`
+	enc *json.Encoder `json:"-" gob:"-"`
+	in  *bytes.Buffer `json:"-" gob:"-"`
+	out *bytes.Buffer `json:"-" gob:"-"`
 }
 
 func NewToolCall(id string, toolName string, arguments map[string]any) *ToolCall {
@@ -112,11 +112,11 @@ implementation with the WithFunction method.
 */
 type Tool struct {
 	*ToolData
-	dec *json.Decoder
-	enc *json.Encoder
-	in  *bytes.Buffer
-	out *bytes.Buffer
-	fn  io.ReadWriteCloser
+	dec *json.Decoder      `json:"-" gob:"-"`
+	enc *json.Encoder      `json:"-" gob:"-"`
+	in  *bytes.Buffer      `json:"-" gob:"-"`
+	out *bytes.Buffer      `json:"-" gob:"-"`
+	fn  io.ReadWriteCloser `json:"-" gob:"-"`
 }
 
 /*

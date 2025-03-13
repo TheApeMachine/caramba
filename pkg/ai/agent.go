@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
 )
@@ -32,8 +33,8 @@ func NewAgent() *Agent {
 	}
 
 	agent.Buffer = stream.NewBuffer(
-		agent,
-		agent,
+		&core.EventData{},
+		agent.Context.ContextData,
 		func(a any) error {
 			agent.AgentData = a.(*AgentData)
 			return nil

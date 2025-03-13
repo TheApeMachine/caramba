@@ -1,8 +1,6 @@
 package core
 
 import (
-	"io"
-
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
 )
@@ -14,8 +12,6 @@ type ConverterData struct {
 type Converter struct {
 	*ConverterData
 	*stream.Buffer
-	pr *io.PipeReader
-	pw *io.PipeWriter
 }
 
 func NewConverter() *Converter {
@@ -23,22 +19,11 @@ func NewConverter() *Converter {
 		ConverterData: &ConverterData{},
 	}
 
-	converter.pr, converter.pw = io.Pipe()
-
 	converter.Buffer = stream.NewBuffer(
-		converter.ConverterData.Event,
-		converter.pr,
+		&EventData{},
+		converter.ConverterData,
 		func(event any) (err error) {
-			converter.Event = event.(*Event)
-
-			go func() {
-				defer converter.pw.Close()
-
-				if _, err = converter.pw.Write([]byte(converter.Event.Message.Content)); err != nil {
-					err = converter.pw.CloseWithError(err)
-				}
-			}()
-
+			converter.Event.EventData = event.(*EventData)
 			return err
 		},
 	).WithCodec(

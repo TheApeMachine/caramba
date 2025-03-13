@@ -59,5 +59,6 @@ func GetStopSequences() []string {
 }
 
 func GetStream() bool {
-	return cfg.v().GetBool("settings.defaults.stream")
+	// Always return true to enable streaming
+	return true
 }

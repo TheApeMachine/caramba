@@ -1,6 +1,9 @@
 package stream
 
-import "io"
+import (
+	"bytes"
+	"io"
+)
 
 /*
 Encoder defines an interface for encoding data into a serialized format.
@@ -35,6 +38,7 @@ type Codec interface {
 	// WithPipes configures the codec with input and output pipes for streaming operations.
 	// Returns the configured Codec for method chaining.
 	WithPipes(*io.PipeReader, *io.PipeWriter) Codec
+	WithBuffer(*bytes.Buffer) Codec
 }
 
 /*

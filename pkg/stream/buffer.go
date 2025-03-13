@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"time"
@@ -14,12 +15,13 @@ It connects a sender and receiver through pipes, handling data transformations u
 Buffer implements io.Reader, io.Writer, and io.Closer interfaces to support standard streaming operations.
 */
 type Buffer struct {
-	receiver io.Writer
-	sender   io.Reader
+	receiver any
+	sender   any
 	handler  func(any) error
 	codec    Codec
 	pr       *io.PipeReader
 	pw       *io.PipeWriter
+	buf      *bytes.Buffer
 }
 
 /*
@@ -34,8 +36,8 @@ Parameters:
 Returns a configured Buffer instance that's ready to use.
 */
 func NewBuffer(
-	receiver io.Writer,
-	sender io.Reader,
+	receiver any,
+	sender any,
 	handler func(any) error,
 ) *Buffer {
 	errnie.Debug("stream.NewBuffer")
@@ -48,6 +50,7 @@ func NewBuffer(
 		handler:  handler,
 		pr:       pr,
 		pw:       pw,
+		buf:      bytes.NewBuffer([]byte{}),
 	}
 
 	// Default to Gob encoding, can be overridden by calling
@@ -68,7 +71,8 @@ func (buffer *Buffer) WithCodec(codec Codec) *Buffer {
 	errnie.Debug("stream.Buffer.WithCodec")
 
 	buffer.codec = codec
-	buffer.codec.WithPipes(buffer.pr, buffer.pw)
+	// buffer.codec.WithPipes(buffer.pr, buffer.pw)
+	buffer.codec.WithBuffer(buffer.buf)
 	return buffer
 }
 
@@ -110,7 +114,30 @@ Returns:
 */
 func (buffer *Buffer) Read(p []byte) (n int, err error) {
 	errnie.Debug("stream.Buffer.Read")
-	return buffer.pr.Read(p)
+
+	// Read from the buffer
+	n, err = buffer.buf.Read(p)
+
+	// Log details for debugging
+	errnie.Debug("stream.Buffer.Read", "n", n, "err", err)
+
+	// Always propagate EOF errors
+	if err == io.EOF {
+		return n, io.EOF
+	}
+
+	// Handle other errors
+	if err != nil {
+		errnie.Error(err)
+		return n, err
+	}
+
+	// If we read zero bytes but got no error, return EOF to prevent infinite loops
+	if n == 0 {
+		return 0, io.EOF
+	}
+
+	return n, nil
 }
 
 /*
@@ -128,27 +155,29 @@ Returns:
 func (buffer *Buffer) Write(p []byte) (n int, err error) {
 	errnie.Debug("stream.Buffer.Write", "p", string(p))
 
+	// Reset buffer before we write new data
+	buffer.buf.Reset()
+
+	// Write incoming data to buffer
+	if n, err = buffer.buf.Write(p); err != nil {
+		errnie.Error(err)
+		return n, err
+	}
+
+	// Decode data into receiver - treat "unexpected EOF" as a non-fatal error
+	// This can happen when the buffer contains valid but incomplete data
 	if err = buffer.codec.Decode(buffer.receiver); err != nil {
-		errnie.NewErrIO(err)
-		return 0, err
+		errnie.Error(err)
+		return n, err
 	}
 
-	if err = buffer.handler(buffer.receiver); err != nil {
-		errnie.NewErrIO(err)
-		return 0, err
+	// Encode response data
+	if err = buffer.codec.Encode(buffer.sender); err != nil {
+		errnie.Error(err)
+		return n, err
 	}
 
-	go func() {
-		defer buffer.pw.Close()
-
-		if err = buffer.codec.Encode(buffer.sender); err != nil {
-			errnie.NewErrIO(err)
-			buffer.pr.CloseWithError(err)
-			buffer.pw.CloseWithError(err)
-		}
-	}()
-
-	return len(p), nil
+	return n, nil
 }
 
 /*
@@ -159,8 +188,6 @@ Returns any error encountered during the closing process.
 */
 func (buffer *Buffer) Close() error {
 	errnie.Debug("stream.Buffer.Close")
-
-	buffer.pr.Close()
-	buffer.pw.Close()
+	buffer.buf.Reset()
 	return nil
 }

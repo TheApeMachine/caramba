@@ -89,8 +89,12 @@ func (err *ErrnieError) Add(errs ...error) error {
 type ErrIO struct{ Err error }
 
 func NewErrIO(err error) error {
-	if err == nil || errors.Is(err, io.EOF) {
+	if err == nil {
 		return nil
+	}
+
+	if errors.Is(err, io.EOF) {
+		return err
 	}
 
 	return &ErrIO{Err: NewError(err)}
