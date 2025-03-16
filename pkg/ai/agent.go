@@ -1,16 +1,13 @@
 package ai
 
 import (
-	"bytes"
-	"encoding/json"
-
-	"github.com/theapemachine/caramba/pkg/core"
+	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/event"
+	"github.com/theapemachine/caramba/pkg/message"
+	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 )
-
-type AgentData struct {
-	Context *Context `json:"context"`
-}
 
 /*
 Agent represents an entity that can process messages, interact with tools,
@@ -18,11 +15,8 @@ and produce responses. It implements io.ReadWriteCloser to enable composable
 pipelines for complex workflows.
 */
 type Agent struct {
-	*AgentData
-	enc *json.Encoder
-	dec *json.Decoder
-	in  *bytes.Buffer
-	out *bytes.Buffer
+	params *aiCtx.Artifact
+	buffer *stream.Buffer
 }
 
 /*
@@ -31,21 +25,58 @@ NewAgent creates a new agent with initialized components.
 func NewAgent() *Agent {
 	errnie.Debug("NewAgent")
 
-	in := bytes.NewBuffer([]byte{})
-	out := bytes.NewBuffer([]byte{})
-
 	agent := &Agent{
-		AgentData: &AgentData{
-			Context: NewContext(),
-		},
-		enc: json.NewEncoder(out),
-		dec: json.NewDecoder(in),
-		in:  in,
-		out: out,
+		params: aiCtx.New(
+			tweaker.GetModel(tweaker.GetProvider()),
+			[]*aiCtx.Message{},
+			[]*aiCtx.Tool{},
+			[]byte{},
+			tweaker.GetTemperature(),
+			tweaker.GetTopP(),
+			tweaker.GetTopK(),
+			tweaker.GetPresencePenalty(),
+			tweaker.GetFrequencyPenalty(),
+			tweaker.GetMaxTokens(),
+			tweaker.GetStream(),
+		),
 	}
 
-	// Pre-encode the agent data to JSON for reading
-	agent.enc.Encode(agent.AgentData)
+	agent.buffer = stream.NewBuffer(
+		func(evt *event.Artifact) (err error) {
+			errnie.Debug("agent.buffer.fn", "event", evt)
+
+			payload, err := evt.Payload()
+
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			msg := &message.Artifact{}
+			_, err = msg.Write(payload)
+
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			err = agent.params.AddMessage(msg)
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			// Create a new event with the agent's params.
+			newEvent := event.New(
+				"agent",
+				event.ContextEvent,
+				event.UserRole,
+				agent.params.Marshal(),
+			)
+
+			// Override the event with the new event.
+			*evt = *newEvent
+
+			return nil
+		},
+	)
 
 	return agent
 }
@@ -57,14 +88,7 @@ It reads from the internal context.
 */
 func (agent *Agent) Read(p []byte) (n int, err error) {
 	errnie.Debug("Agent.Read")
-
-	if agent.out.Len() == 0 {
-		if err = errnie.NewErrIO(agent.enc.Encode(agent.AgentData)); err != nil {
-			return 0, err
-		}
-	}
-
-	return agent.out.Read(p)
+	return agent.buffer.Read(p)
 }
 
 /*
@@ -73,40 +97,8 @@ Write implements io.Writer for Agent.
 It writes to the internal context.
 */
 func (agent *Agent) Write(p []byte) (n int, err error) {
-	errnie.Debug("Agent.Write", "p", string(p))
-
-	// Reset the output buffer whenever we write new data
-	if agent.out.Len() > 0 {
-		agent.out.Reset()
-	}
-
-	// Write the incoming bytes to the input buffer
-	n, err = agent.in.Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	// Try to decode the data from the input buffer
-	// If it fails, we still return the bytes written but keep the error
-	ctx := &Context{}
-	event := &core.Event{}
-
-	if decErr := agent.dec.Decode(&event); decErr == nil {
-		if event.Message == nil {
-			return n, errnie.NewErrValidation("message is required")
-		}
-		
-		// Only update if decoding was successful
-		ctx.Messages = append(ctx.Messages, event.Message)
-		agent.Context = ctx
-
-		// Re-encode to the output buffer for subsequent reads
-		if encErr := agent.enc.Encode(agent.AgentData); encErr != nil {
-			return n, errnie.NewErrIO(encErr)
-		}
-	}
-
-	return n, nil
+	errnie.Debug("Agent.Write")
+	return agent.buffer.Write(p)
 }
 
 /*
@@ -116,5 +108,5 @@ It closes the internal context.
 */
 func (agent *Agent) Close() error {
 	errnie.Debug("Agent.Close")
-	return agent.Context.Close()
+	return agent.params.Close()
 }

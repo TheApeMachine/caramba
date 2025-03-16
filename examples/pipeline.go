@@ -2,45 +2,41 @@ package examples
 
 import (
 	"io"
+	"os"
 
-	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/ai"
-	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 type Pipeline struct {
-	workflow io.ReadWriteCloser
+	workflow io.ReadWriter
 }
 
 func NewPipeline() *Pipeline {
-	errnie.Debug("NewPipeline")
+	errnie.Debug("examples.NewPipeline")
 
-	return &Pipeline{
+	pipeline := &Pipeline{
 		workflow: workflow.NewPipeline(
-			core.NewEvent(
-				core.NewMessage("user", "Danny", viper.GetViper().GetString("tests.joke")),
-				nil,
-			),
 			ai.NewAgent(),
-			provider.NewOpenAIProvider("", ""),
+			provider.NewOpenAIProvider(
+				os.Getenv("OPENAI_API_KEY"),
+				tweaker.GetEndpoint("openai"),
+			),
 		),
 	}
+
+	return pipeline
 }
 
 func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
-	errnie.Debug("Pipeline.Read")
+	errnie.Debug("examples.Pipeline.Read")
 	return pipeline.workflow.Read(p)
 }
 
 func (pipeline *Pipeline) Write(p []byte) (n int, err error) {
-	errnie.Debug("Pipeline.Write", "p", string(p))
+	errnie.Debug("examples.Pipeline.Write")
 	return pipeline.workflow.Write(p)
-}
-
-func (pipeline *Pipeline) Close() error {
-	errnie.Debug("Pipeline.Close")
-	return pipeline.workflow.Close()
 }

@@ -3,14 +3,15 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 type ProcessData struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Schema      interface{} `json:"schema"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Schema      any    `json:"schema"`
 }
 
 /*
@@ -56,12 +57,10 @@ func NewProcess(name, description string, schema any) *Process {
 Read serializes the process definition to JSON and writes it to the provided buffer.
 */
 func (process *Process) Read(p []byte) (n int, err error) {
-	errnie.Debug("Process.Read")
+	errnie.Debug("Process.Read", "p", string(p))
 
 	if process.out.Len() == 0 {
-		if err = errnie.NewErrIO(process.enc.Encode(process.ProcessData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return process.out.Read(p)

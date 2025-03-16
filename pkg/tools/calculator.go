@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -53,12 +52,23 @@ func NewCalculatorTool() *CalculatorTool {
 }
 
 /*
-Read performs the calculation defined by the tool's parameters
-and returns the result as JSON
+Read reads the calculation result from the output buffer
 */
 func (tool *CalculatorTool) Read(p []byte) (n int, err error) {
-	errnie.Debug("CalculatorTool.Read")
+	errnie.Debug("CalculatorTool.Read", "p", string(p))
 
+	if tool.out.Len() == 0 {
+		return 0, io.EOF
+	}
+
+	return tool.out.Read(p)
+}
+
+/*
+performCalculation performs the calculation defined by the tool's parameters
+and encodes the result to the output buffer
+*/
+func (tool *CalculatorTool) performCalculation() error {
 	var (
 		result        float64
 		responseBytes []byte
@@ -73,33 +83,33 @@ func (tool *CalculatorTool) Read(p []byte) (n int, err error) {
 		result = tool.CalculatorToolData.A * tool.CalculatorToolData.B
 	case "divide":
 		if tool.CalculatorToolData.B == 0 {
-			return 0, errnie.NewErrOperation(errors.New("division by zero"))
+			return errnie.NewErrOperation(errors.New("division by zero"))
 		}
 
 		result = tool.CalculatorToolData.A / tool.CalculatorToolData.B
 	default:
-		return 0, errnie.NewErrOperation(fmt.Errorf("unsupported operation: %s", tool.CalculatorToolData.Operation))
+		return errnie.NewErrValidation("invalid operation")
 	}
 
-	response := map[string]interface{}{
+	// Format the result for output
+	responseBytes, err := json.Marshal(map[string]any{
 		"result": result,
+	})
+
+	if err != nil {
+		return errnie.NewErrParse(err)
 	}
 
-	if responseBytes, err = json.Marshal(response); err != nil {
-		return 0, errnie.NewErrIO(err)
-	}
+	// Reset the output buffer
+	tool.out.Reset()
 
-	n = copy(p, responseBytes)
-
-	if n < len(responseBytes) {
-		return n, io.ErrShortBuffer
-	}
-
-	return n, io.EOF
+	// Write the result to the output buffer
+	_, err = tool.out.Write(responseBytes)
+	return errnie.NewErrIO(err)
 }
 
 /*
-Write accepts operation parameters as JSON and configures the tool
+Write updates the calculator's parameters from JSON data.
 */
 func (tool *CalculatorTool) Write(p []byte) (n int, err error) {
 	errnie.Debug("CalculatorTool.Write", "p", string(p))
@@ -124,9 +134,9 @@ func (tool *CalculatorTool) Write(p []byte) (n int, err error) {
 		tool.CalculatorToolData.A = buf.A
 		tool.CalculatorToolData.B = buf.B
 
-		// Re-encode to the output buffer for subsequent reads
-		if encErr := tool.enc.Encode(tool.CalculatorToolData); encErr != nil {
-			return n, errnie.NewErrIO(encErr)
+		// Perform the calculation and update the output buffer
+		if err := tool.performCalculation(); err != nil {
+			return n, err
 		}
 	}
 

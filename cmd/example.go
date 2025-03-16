@@ -3,12 +3,13 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/event"
+	"github.com/theapemachine/caramba/pkg/message"
 )
 
 var (
@@ -18,20 +19,35 @@ var (
 		Long:  longExample,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			errnie.SetLevel(log.DebugLevel)
-			log.Info("Starting example")
 
-			var wf io.ReadWriteCloser
+			var (
+				wf io.ReadWriter
+			)
 
 			switch args[0] {
 			case "pipeline":
+				errnie.Info("Starting pipeline example")
 				wf = examples.NewPipeline()
 			default:
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
 
-			defer wf.Close()
+			evt := event.New(
+				"example.pipeline",
+				event.MessageEvent,
+				event.UserRole,
+				message.New(
+					message.UserRole,
+					"Danny",
+					"Hello, how are you?",
+				).Marshal(),
+			)
 
-			if _, err = io.Copy(os.Stdout, wf); err != nil {
+			if _, err = io.Copy(wf, evt); err != nil && err != io.EOF {
+				return err
+			}
+
+			if _, err = io.Copy(cmd.OutOrStdout(), wf); err != nil && err != io.EOF {
 				return err
 			}
 

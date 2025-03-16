@@ -3,6 +3,7 @@ package process
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -61,6 +62,11 @@ func (plan *Plan) WithSteps(steps ...Step) *Plan {
 	errnie.Debug("Plan.WithSteps")
 
 	plan.PlanData.Steps = append(plan.PlanData.Steps, steps...)
+
+	// Re-encode to the output buffer for subsequent reads
+	plan.out.Reset()
+	plan.enc.Encode(plan.PlanData)
+
 	return plan
 }
 
@@ -68,12 +74,10 @@ func (plan *Plan) WithSteps(steps ...Step) *Plan {
 Read serializes the plan to JSON and writes it to the provided buffer.
 */
 func (plan *Plan) Read(buf []byte) (n int, err error) {
-	errnie.Debug("Plan.Read")
+	errnie.Debug("Plan.Read", "buf", string(buf))
 
 	if plan.out.Len() == 0 {
-		if err = errnie.NewErrIO(plan.enc.Encode(plan.PlanData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return plan.out.Read(buf)

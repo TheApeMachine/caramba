@@ -33,12 +33,16 @@ func NewMemoryTool(stores ...io.ReadWriteCloser) *MemoryTool {
 	out := bytes.NewBuffer([]byte{})
 
 	mt := &MemoryTool{
-		MemoryToolData: &MemoryToolData{},
-		enc:            json.NewEncoder(out),
-		dec:            json.NewDecoder(in),
-		in:             in,
-		out:            out,
-		stores:         stores,
+		MemoryToolData: &MemoryToolData{
+			Questions: []string{},
+			Keywords:  []string{},
+			Cypher:    "",
+		},
+		enc:    json.NewEncoder(out),
+		dec:    json.NewDecoder(in),
+		in:     in,
+		out:    out,
+		stores: stores,
 	}
 
 	// Pre-encode the tool data to JSON for reading
@@ -48,12 +52,10 @@ func NewMemoryTool(stores ...io.ReadWriteCloser) *MemoryTool {
 }
 
 func (mt *MemoryTool) Read(p []byte) (n int, err error) {
-	errnie.Debug("MemoryTool.Read")
+	errnie.Debug("MemoryTool.Read", "p", string(p))
 
 	if mt.out.Len() == 0 {
-		if err = errnie.NewErrIO(mt.enc.Encode(mt.MemoryToolData)); err != nil {
-			return 0, err
-		}
+		return 0, io.EOF
 	}
 
 	return mt.out.Read(p)

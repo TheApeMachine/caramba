@@ -1,193 +1,203 @@
 package stores
 
-import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"os"
-	"strings"
-	"time"
+// import (
+// 	"bytes"
+// 	"context"
+// 	"encoding/json"
+// 	"io"
+// 	"os"
+// 	"time"
 
-	sdk "github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"github.com/theapemachine/caramba/pkg/core"
-	"github.com/theapemachine/caramba/pkg/errnie"
-)
+// 	sdk "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+// 	"github.com/theapemachine/caramba/pkg/core"
+// 	"github.com/theapemachine/caramba/pkg/errnie"
+// )
 
-type Neo4jData struct {
-	Event *core.Event `json:"events"`
-}
+// type Neo4jData struct {
+// 	Event *core.Event `json:"events"`
+// }
 
-type Neo4j struct {
-	*Neo4jData
-	client sdk.DriverWithContext
-	enc    *json.Encoder
-	dec    *json.Decoder
-	in     *bytes.Buffer
-	out    *bytes.Buffer
-}
+// type Neo4j struct {
+// 	*Neo4jData
+// 	client sdk.DriverWithContext
+// 	enc    *json.Encoder
+// 	dec    *json.Decoder
+// 	in     *bytes.Buffer
+// 	out    *bytes.Buffer
+// }
 
-func NewNeo4j(collection string) *Neo4j {
-	errnie.Debug("NewNeo4j")
+// func NewNeo4j(collection string) *Neo4j {
+// 	errnie.Debug("NewNeo4j")
 
-	in := bytes.NewBuffer([]byte{})
-	out := bytes.NewBuffer([]byte{})
+// 	in := bytes.NewBuffer([]byte{})
+// 	out := bytes.NewBuffer([]byte{})
 
-	driver, err := sdk.NewDriverWithContext(
-		os.Getenv("NEO4J_URL"),
-		sdk.BasicAuth(
-			os.Getenv("NEO4J_USERNAME"),
-			os.Getenv("NEO4J_PASSWORD"),
-			"",
-		),
-	)
-	if err != nil {
-		return nil
-	}
+// 	driver, err := sdk.NewDriverWithContext(
+// 		os.Getenv("NEO4J_URL"),
+// 		sdk.BasicAuth(
+// 			os.Getenv("NEO4J_USERNAME"),
+// 			os.Getenv("NEO4J_PASSWORD"),
+// 			"",
+// 		),
+// 	)
+// 	if err != nil {
+// 		return nil
+// 	}
 
-	neo4j := &Neo4j{
-		Neo4jData: &Neo4jData{},
-		client:    driver,
-		enc:       json.NewEncoder(out),
-		dec:       json.NewDecoder(in),
-		in:        in,
-		out:       out,
-	}
+// 	neo4j := &Neo4j{
+// 		Neo4jData: &Neo4jData{},
+// 		client:    driver,
+// 		enc:       json.NewEncoder(out),
+// 		dec:       json.NewDecoder(in),
+// 		in:        in,
+// 		out:       out,
+// 	}
 
-	return neo4j
-}
+// 	return neo4j
+// }
 
-func (neo4j *Neo4j) Read(p []byte) (n int, err error) {
-	errnie.Debug("Neo4j.Read")
+// func (neo4j *Neo4j) Read(p []byte) (n int, err error) {
+// 	errnie.Debug("Neo4j.Read")
 
-	if neo4j.out.Len() == 0 {
-		var results strings.Builder
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+// 	if neo4j.out.Len() == 0 {
+// 		return 0, io.EOF
+// 	}
 
-		for _, toolCall := range neo4j.Event.ToolCalls {
-			if toolCall.ToolName == "neo4j" {
-				session := neo4j.client.NewSession(ctx, sdk.SessionConfig{
-					DatabaseName: "neo4j",
-					AccessMode:   sdk.AccessModeWrite,
-				})
+// 	return neo4j.out.Read(p)
+// }
 
-				defer session.Close(ctx)
+// // executeQuery performs Neo4j queries based on tool calls and updates the output buffer
+// // This should be called from Write or other methods that modify data, not from Read
+// func (neo4j *Neo4j) executeQuery() error {
+// 	// var results strings.Builder
+// 	// ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// 	// defer cancel()
 
-				// Simple query to find relationships
-				result, err := session.Run(
-					ctx,
-					`
-				MATCH p=(a)-[r]->(b)
-				WHERE a.name CONTAINS $term OR b.name CONTAINS $term
-				RETURN a.name as source, labels(a)[0] as sourceLabel, 
-					type(r) as relationship, 
-					b.name as target, labels(b)[0] as targetLabel
-				LIMIT 20
-				`,
-					map[string]interface{}{
-						"term": toolCall.Arguments["term"].(string),
-					},
-				)
+// 	// for _, toolCall := range neo4j.Event.ToolCalls {
+// 	// 	if toolCall.ToolName == "neo4j" {
+// 	// 		session := neo4j.client.NewSession(ctx, sdk.SessionConfig{
+// 	// 			DatabaseName: "neo4j",
+// 	// 			AccessMode:   sdk.AccessModeWrite,
+// 	// 		})
 
-				if err != nil {
-					return 0, err
-				}
+// 	// 		defer session.Close(ctx)
 
-				for result.Next(ctx) {
-					record := result.Record()
-					asmap := record.AsMap()
+// 	// 		// Simple query to find relationships
+// 	// 		result, err := session.Run(
+// 	// 			ctx,
+// 	// 			`
+// 	// 		MATCH p=(a)-[r]->(b)
+// 	// 		WHERE a.name CONTAINS $term OR b.name CONTAINS $term
+// 	// 		RETURN a.name as source, labels(a)[0] as sourceLabel,
+// 	// 			type(r) as relationship,
+// 	// 			b.name as target, labels(b)[0] as targetLabel
+// 	// 		LIMIT 20
+// 	// 		`,
+// 	// 			map[string]any{
+// 	// 				"term": toolCall.Arguments["term"].(string),
+// 	// 			},
+// 	// 		)
 
-					results.WriteString(
-						fmt.Sprintf("%v:%v -[%v]-> %v:%v\n",
-							asmap["sourceLabel"],
-							asmap["source"],
-							asmap["relationship"],
-							asmap["targetLabel"],
-							asmap["target"],
-						),
-					)
-				}
+// 	// 		if err != nil {
+// 	// 			return err
+// 	// 		}
 
-				if err := result.Err(); err != nil {
-					return 0, err
-				}
+// 	// 		for result.Next(ctx) {
+// 	// 			record := result.Record()
+// 	// 			asmap := record.AsMap()
 
-				if results.Len() == 0 {
-					results.WriteString(fmt.Sprintf("No relationships found for: %s\n", toolCall.Arguments["term"].(string)))
-					return 0, nil
-				}
+// 	// 			results.WriteString(
+// 	// 				fmt.Sprintf("%v:%v -[%v]-> %v:%v\n",
+// 	// 					asmap["sourceLabel"],
+// 	// 					asmap["source"],
+// 	// 					asmap["relationship"],
+// 	// 					asmap["targetLabel"],
+// 	// 					asmap["target"],
+// 	// 				),
+// 	// 			)
+// 	// 		}
 
-				// Check if there's a query in the arguments
-				if qry, ok := toolCall.Arguments["query"].(string); ok {
-					result, err := session.Run(ctx, qry, nil)
+// 	// 		if err := result.Err(); err != nil {
+// 	// 			return err
+// 	// 		}
 
-					if err != nil {
-						return 0, err
-					}
+// 	// 		if results.Len() == 0 {
+// 	// 			results.WriteString(fmt.Sprintf("No relationships found for: %s\n", toolCall.Arguments["term"].(string)))
+// 	// 			return nil
+// 	// 		}
 
-					// Format the results
-					for result.Next(ctx) {
-						record := result.Record()
-						results.WriteString(fmt.Sprintf("%v\n", record.AsMap()))
-					}
+// 	// 		// Check if there's a query in the arguments
+// 	// 		if qry, ok := toolCall.Arguments["query"].(string); ok {
+// 	// 			result, err := session.Run(ctx, qry, nil)
 
-					if err := result.Err(); err != nil {
-						return 0, err
-					}
-				}
-			}
-		}
+// 	// 			if err != nil {
+// 	// 				return err
+// 	// 			}
 
-		neo4j.Neo4jData.Event = core.NewEvent(
-			core.NewMessage("assistant", "neo4j", ""),
-			nil,
-		)
+// 	// 			// Format the results
+// 	// 			for result.Next(ctx) {
+// 	// 				record := result.Record()
+// 	// 				results.WriteString(fmt.Sprintf("%v\n", record.AsMap()))
+// 	// 			}
 
-		if err = errnie.NewErrIO(neo4j.enc.Encode(neo4j.Neo4jData)); err != nil {
-			return 0, err
-		}
-	}
+// 	// 			if err := result.Err(); err != nil {
+// 	// 				return err
+// 	// 			}
+// 	// 		}
+// 	// 	}
+// 	// }
 
-	return neo4j.out.Read(p)
-}
+// 	// neo4j.Neo4jData.Event = core.NewEvent(
+// 	// 	core.NewMessage("assistant", "neo4j", ""),
+// 	// 	nil,
+// 	// )
 
-func (neo4j *Neo4j) Write(p []byte) (n int, err error) {
-	errnie.Debug("Neo4j.Write", "p", string(p))
+// 	return errnie.NewErrIO(neo4j.enc.Encode(neo4j.Neo4jData))
+// }
 
-	// Reset the output buffer whenever we write new data
-	if neo4j.out.Len() > 0 {
-		neo4j.out.Reset()
-	}
+// func (neo4j *Neo4j) Write(p []byte) (n int, err error) {
+// 	errnie.Debug("Neo4j.Write", "p", string(p))
 
-	// Write the incoming bytes to the input buffer
-	n, err = neo4j.in.Write(p)
-	if err != nil {
-		return n, err
-	}
+// 	// Reset the output buffer whenever we write new data
+// 	if neo4j.out.Len() > 0 {
+// 		neo4j.out.Reset()
+// 	}
 
-	// Try to decode the data from the input buffer
-	// If it fails, we still return the bytes written but keep the error
-	var buf Neo4jData
-	if decErr := neo4j.dec.Decode(&buf); decErr == nil {
-		// Only update if decoding was successful
-		neo4j.Neo4jData.Event = buf.Event
+// 	// Write the incoming bytes to the input buffer
+// 	n, err = neo4j.in.Write(p)
+// 	if err != nil {
+// 		return n, err
+// 	}
 
-		// Re-encode to the output buffer for subsequent reads
-		if encErr := neo4j.enc.Encode(neo4j.Neo4jData); encErr != nil {
-			return n, errnie.NewErrIO(encErr)
-		}
-	}
+// 	// Try to decode the data from the input buffer
+// 	// If it fails, we still return the bytes written but keep the error
+// 	var buf core.Event
+// 	if decErr := neo4j.dec.Decode(&buf); decErr == nil {
+// 		// Only update if decoding was successful
+// 		neo4j.Event = &buf
 
-	return n, nil
-}
+// 		// Execute any queries based on tool calls
+// 		// if neo4j.Event != nil && len(neo4j.Event.ToolCalls) > 0 {
+// 		// 	if err := neo4j.executeQuery(); err != nil {
+// 		// 		return n, err
+// 		// 	}
+// 		// } else {
+// 		// 	// No tool calls, just re-encode
+// 		// 	if err = errnie.NewErrIO(neo4j.enc.Encode(neo4j.Neo4jData)); err != nil {
+// 		// 		return n, err
+// 		// 	}
+// 		// }
+// 	}
 
-func (neo4j *Neo4j) Close() (err error) {
-	errnie.Debug("Neo4j.Close")
+// 	return n, nil
+// }
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+// func (neo4j *Neo4j) Close() (err error) {
+// 	errnie.Debug("Neo4j.Close")
 
-	neo4j.client.Close(ctx)
-	return nil
-}
+// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// 	defer cancel()
+
+// 	neo4j.client.Close(ctx)
+// 	return nil
+// }
