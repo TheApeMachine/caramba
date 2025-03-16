@@ -7,8 +7,9 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
-	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/event"
+	"github.com/theapemachine/caramba/pkg/message"
 )
 
 var (
@@ -20,24 +21,29 @@ var (
 			errnie.SetLevel(log.DebugLevel)
 
 			var (
-				wf  io.ReadWriteCloser
-				msg *core.Message
+				wf io.ReadWriter
 			)
 
 			switch args[0] {
 			case "pipeline":
 				errnie.Info("Starting pipeline example")
 				wf = examples.NewPipeline()
-				msg = core.NewMessage("user", "Danny", "Hello, how are you?")
-			case "discussion":
-				errnie.Info("Starting discussion example")
-				wf = examples.NewDiscussion()
-				msg = core.NewMessage("user", "Danny", "Discuss AI Agents")
 			default:
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
 
-			if _, err = io.Copy(wf, core.NewEvent(msg, nil)); err != nil && err != io.EOF {
+			evt := event.New(
+				"example.pipeline",
+				event.MessageEvent,
+				event.UserRole,
+				message.New(
+					message.UserRole,
+					"Danny",
+					"Hello, how are you?",
+				).Marshal(),
+			)
+
+			if _, err = io.Copy(wf, evt); err != nil && err != io.EOF {
 				return err
 			}
 

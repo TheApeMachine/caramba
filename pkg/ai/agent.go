@@ -1,14 +1,13 @@
 package ai
 
 import (
-	"github.com/theapemachine/caramba/pkg/core"
+	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/event"
+	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 )
-
-type AgentData struct {
-	Context *Context `json:"context"`
-}
 
 /*
 Agent represents an entity that can process messages, interact with tools,
@@ -16,8 +15,8 @@ and produce responses. It implements io.ReadWriteCloser to enable composable
 pipelines for complex workflows.
 */
 type Agent struct {
-	*AgentData
-	*stream.Buffer
+	params *aiCtx.Artifact
+	buffer *stream.Buffer
 }
 
 /*
@@ -27,16 +26,54 @@ func NewAgent() *Agent {
 	errnie.Debug("NewAgent")
 
 	agent := &Agent{
-		AgentData: &AgentData{
-			Context: NewContext(),
-		},
+		params: aiCtx.New(
+			tweaker.GetModel(tweaker.GetProvider()),
+			[]*aiCtx.Message{},
+			[]*aiCtx.Tool{},
+			[]byte{},
+			tweaker.GetTemperature(),
+			tweaker.GetTopP(),
+			tweaker.GetTopK(),
+			tweaker.GetPresencePenalty(),
+			tweaker.GetFrequencyPenalty(),
+			tweaker.GetMaxTokens(),
+			tweaker.GetStream(),
+		),
 	}
 
-	agent.Buffer = stream.NewBuffer(
-		&core.EventData{},
-		agent.Context.ContextData,
-		func(a any) error {
-			agent.AgentData = a.(*AgentData)
+	agent.buffer = stream.NewBuffer(
+		func(evt *event.Artifact) (err error) {
+			errnie.Debug("agent.buffer.fn", "event", evt)
+
+			payload, err := evt.Payload()
+
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			msg := &message.Artifact{}
+			_, err = msg.Write(payload)
+
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			err = agent.params.AddMessage(msg)
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			// Create a new event with the agent's params.
+			newEvent := event.New(
+				"agent",
+				event.ContextEvent,
+				event.UserRole,
+				agent.params.Marshal(),
+			)
+
+			// Override the event with the new event.
+			*evt = *newEvent
+
 			return nil
 		},
 	)
@@ -51,7 +88,7 @@ It reads from the internal context.
 */
 func (agent *Agent) Read(p []byte) (n int, err error) {
 	errnie.Debug("Agent.Read")
-	return agent.Context.Read(p)
+	return agent.buffer.Read(p)
 }
 
 /*
@@ -60,8 +97,8 @@ Write implements io.Writer for Agent.
 It writes to the internal context.
 */
 func (agent *Agent) Write(p []byte) (n int, err error) {
-	errnie.Debug("Agent.Write", "p", string(p))
-	return agent.Context.Write(p)
+	errnie.Debug("Agent.Write")
+	return agent.buffer.Write(p)
 }
 
 /*
@@ -71,5 +108,5 @@ It closes the internal context.
 */
 func (agent *Agent) Close() error {
 	errnie.Debug("Agent.Close")
-	return agent.Context.Close()
+	return agent.params.Close()
 }

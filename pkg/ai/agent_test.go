@@ -1,133 +1,171 @@
 package ai
 
 import (
-	"encoding/json"
 	"io"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/core"
-	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/event"
+	"github.com/theapemachine/caramba/pkg/message"
 )
 
-// TestNewAgent tests the NewAgent constructor
+// testEvent creates a test event artifact with predefined data
+func testEvent() *event.Artifact {
+	return event.New(
+		"test",
+		event.MessageEvent,
+		event.UserRole,
+		[]byte("test-data"),
+	)
+}
+
+// testMessage creates a message artifact for testing
+func testMessage() *message.Artifact {
+	return message.New(
+		message.UserRole,
+		"test-name",
+		"test-content",
+	)
+}
+
+// writeEventToAgent is a helper to write an event to an agent and verify the write
+func writeEventToAgent(agent *Agent, evt *event.Artifact) {
+	nn, err := io.Copy(agent, evt)
+	So(err, ShouldBeNil)
+	So(nn, ShouldBeGreaterThan, 0)
+}
+
+type messageVerification struct {
+	content string
+	role    string
+	name    string
+}
+
+// verifyMessages checks that the agent's context contains the expected messages
+func verifyMessages(agent *Agent, expected []messageVerification) {
+	messages, err := agent.params.Messages()
+	So(err, ShouldBeNil)
+	So(messages.Len(), ShouldEqual, len(expected))
+
+	for i, exp := range expected {
+		msg := messages.At(i)
+
+		content, err := msg.Content()
+		So(err, ShouldBeNil)
+		So(content, ShouldEqual, exp.content)
+
+		role, err := msg.Role()
+		So(err, ShouldBeNil)
+		So(role, ShouldEqual, exp.role)
+
+		name, err := msg.Name()
+		So(err, ShouldBeNil)
+		So(name, ShouldEqual, exp.name)
+	}
+}
+
 func TestNewAgent(t *testing.T) {
-	Convey("Given parameters for a new Agent", t, func() {
-		Convey("When creating a new Agent", func() {
-			agent := NewAgent()
-
-			Convey("Then the agent should have the correct properties", func() {
-				So(agent, ShouldNotBeNil)
-				So(agent.Context, ShouldNotBeNil)
-			})
-		})
-	})
-}
-
-// TestAgentRead tests the Read method of Agent
-func TestAgentRead(t *testing.T) {
-	Convey("Given an Agent with encoded data", t, func() {
-		agent := NewAgent()
-		event := core.NewEvent(core.NewMessage("user", "testuser", "test content"), nil)
-
-		buffer := make([]byte, 1024)
-
-		Convey("When reading from the agent", func() {
-			_, _ = io.Copy(agent, event)
-			n, err := agent.Read(buffer)
-
-			Convey("Then it should return valid JSON data", func() {
-				So(err, ShouldBeNil)
-				So(n, ShouldBeGreaterThan, 0)
-
-				// Verify it contains ContextData structure
-				jsonStr := string(buffer[:n])
-				So(jsonStr, ShouldContainSubstring, "messages")
-				So(jsonStr, ShouldContainSubstring, "model")
-			})
-		})
-
-		Convey("When reading after buffer is depleted", func() {
-			// First read to consume buffer
-			firstBuffer := make([]byte, 1024)
-			agent.Read(firstBuffer)
-
-			// Second read should indicate buffer is empty
-			n, err := agent.Read(buffer)
-
-			Convey("Then it should return EOF", func() {
-				So(err, ShouldEqual, io.EOF)
-				So(n, ShouldEqual, 0)
-			})
-		})
-	})
-}
-
-// TestAgentWrite tests the Write method of Agent
-func TestAgentWrite(t *testing.T) {
-	Convey("Given an Agent", t, func() {
+	Convey("Given a new agent", t, func() {
 		agent := NewAgent()
 
-		Convey("When writing a valid event with a message", func() {
-			message := core.NewMessage("user", "testuser", "test content")
-			event := core.NewEvent(message, nil)
+		So(agent, ShouldNotBeNil)
+		So(agent.params, ShouldNotBeNil)
+		So(agent.buffer, ShouldNotBeNil)
+	})
+}
 
-			buf := make([]byte, 1024)
-			// Serialize the event to JSON
-			_, _ = event.Read(buf)
+func TestRead(t *testing.T) {
+	Convey("Given a new agent", t, func() {
+		agent := NewAgent()
 
-			n, err := agent.Write(buf)
+		Convey("When reading from the agent with data", func() {
+			// Write test event first
+			writeEventToAgent(agent, testEvent())
 
-			Convey("Then it should update the agent's context with the message", func() {
-				So(err, ShouldBeNil)
-				So(n, ShouldEqual, len(buf))
-				So(len(agent.Context.Messages), ShouldEqual, 1)
-				So(agent.Context.Messages[0].Role, ShouldEqual, "user")
-				So(agent.Context.Messages[0].Name, ShouldEqual, "testuser")
-				So(agent.Context.Messages[0].Content, ShouldEqual, "test content")
+			// Read from the agent
+			p := make([]byte, 1024)
+			n, err := agent.Read(p)
+			So(err, ShouldEqual, io.EOF)
+			So(n, ShouldBeGreaterThan, 0)
+		})
+
+		Convey("When reading without data", func() {
+			p := make([]byte, 1024)
+			n, err := agent.Read(p)
+			So(err, ShouldEqual, io.EOF)
+			So(n, ShouldBeGreaterThan, 0) // Context always has some data due to parameters
+		})
+	})
+}
+
+func TestWrite(t *testing.T) {
+	Convey("Given a new agent", t, func() {
+		agent := NewAgent()
+
+		Convey("When writing valid event data", func() {
+			writeEventToAgent(agent, testEvent())
+		})
+
+		Convey("When writing empty data", func() {
+			n, err := agent.Write([]byte{})
+			So(err, ShouldBeError)
+			So(err.Error(), ShouldEqual, "empty input")
+			So(n, ShouldEqual, 0)
+		})
+
+		Convey("When writing a message event", func() {
+			evt := event.New(
+				"test",
+				event.MessageEvent,
+				event.UserRole,
+				testMessage().Marshal(),
+			)
+			writeEventToAgent(agent, evt)
+
+			verifyMessages(agent, []messageVerification{
+				{content: "test-content", role: "user", name: "test-name"},
 			})
 		})
 
-		Convey("When writing an event without a message", func() {
-			event := core.NewEvent(nil, nil)
+		Convey("When writing multiple message events", func() {
+			// First message
+			evt1 := event.New(
+				"test",
+				event.MessageEvent,
+				event.UserRole,
+				testMessage().Marshal(),
+			)
+			writeEventToAgent(agent, evt1)
 
-			// Serialize the event to JSON
-			jsonData, err := json.Marshal(event)
-			So(err, ShouldBeNil)
+			// Second message
+			msg2 := message.New(
+				message.AssistantRole,
+				"test-name-2",
+				"test-content-2",
+			)
+			evt2 := event.New(
+				"test",
+				event.MessageEvent,
+				event.AssistantRole,
+				msg2.Marshal(),
+			)
+			writeEventToAgent(agent, evt2)
 
-			n, err := agent.Write(jsonData)
-
-			Convey("Then it should return a validation error", func() {
-				So(err, ShouldNotBeNil)
-				So(err, ShouldHaveSameTypeAs, errnie.NewErrValidation(""))
-				So(n, ShouldEqual, len(jsonData))
-			})
-		})
-
-		Convey("When writing invalid JSON", func() {
-			invalidJSON := []byte(`{"broken": "json"`)
-			n, err := agent.Write(invalidJSON)
-
-			Convey("Then it should not return an error but not update the context", func() {
-				So(err, ShouldBeNil)
-				So(n, ShouldEqual, len(invalidJSON))
-				So(len(agent.Context.Messages), ShouldEqual, 0)
+			verifyMessages(agent, []messageVerification{
+				{content: "test-content", role: "user", name: "test-name"},
+				{content: "test-content-2", role: "assistant", name: "test-name-2"},
 			})
 		})
 	})
 }
 
-// TestAgentClose tests the Close method of Agent
-func TestAgentClose(t *testing.T) {
-	Convey("Given an Agent", t, func() {
+func TestClose(t *testing.T) {
+	Convey("Given a new agent", t, func() {
 		agent := NewAgent()
 
 		Convey("When closing the agent", func() {
 			err := agent.Close()
-
-			Convey("Then it should close the context", func() {
-				So(err, ShouldBeNil)
-			})
+			So(err, ShouldBeNil)
 		})
 	})
 }

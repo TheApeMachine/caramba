@@ -17,7 +17,7 @@ var logger = log.NewWithOptions(os.Stderr, log.Options{
 	ReportCaller:    true,
 	CallerOffset:    1,
 	ReportTimestamp: true,
-	TimeFormat:      time.Kitchen,
+	TimeFormat:      time.RFC3339,
 })
 
 func SetLevel(level log.Level) {
@@ -30,7 +30,7 @@ func Error(msg any, keyvals ...any) (err error) {
 	}
 
 	logger.Error(msg, keyvals...)
-	fmt.Println(getStackTrace())
+	//fmt.Println(getStackTrace())
 
 	if err, ok := msg.(error); ok {
 		return err
@@ -43,6 +43,10 @@ func Error(msg any, keyvals ...any) (err error) {
 	}
 
 	return
+}
+
+func Warn(msg any, keyvals ...any) {
+	logger.Warn(msg, keyvals...)
 }
 
 func Info(msg any, keyvals ...any) {

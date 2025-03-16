@@ -1,219 +1,178 @@
 package workflow
 
 import (
-	"errors"
+	"bytes"
 	"io"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-// MockReadWriteCloser is a test helper implementing io.ReadWriteCloser
-type MockReadWriteCloser struct {
-	readFunc  func(p []byte) (n int, err error)
-	writeFunc func(p []byte) (n int, err error)
-	closeFunc func() error
+func TestPipeline(t *testing.T) {
+	Convey("Given a pipeline with components that produce data", t, func() {
+		c1 := bytes.NewBuffer([]byte("data from first"))
+		c2 := bytes.NewBuffer([]byte{})
+		c3 := bytes.NewBuffer([]byte{})
+
+		pipeline := NewPipeline(c1, c2)
+		n, err := io.Copy(c3, pipeline)
+
+		Convey("When reading without writing first", func() {
+			So(n, ShouldNotEqual, 0)
+			So(err, ShouldBeNil)
+			So(c3.String(), ShouldEqual, "data from first")
+		})
+	})
+
+	Convey("Given two pipelines with components that produce data", t, func() {
+		in1 := bytes.NewBuffer([]byte("data from first"))
+		p1 := NewPipeline(bytes.NewBuffer([]byte{}))
+		p2 := NewPipeline(bytes.NewBuffer([]byte{}))
+		buf := bytes.NewBuffer([]byte{})
+
+		pipeline := NewPipeline(p1, p2)
+
+		n, err := io.Copy(pipeline, in1)
+		So(err, ShouldBeNil)
+		So(n, ShouldEqual, len("data from first"))
+
+		n, err = io.Copy(buf, pipeline)
+
+		So(err, ShouldBeNil)
+		So(n, ShouldEqual, len("data from first"))
+		So(buf.String(), ShouldEqual, "data from first")
+	})
 }
 
-func (m *MockReadWriteCloser) Read(p []byte) (n int, err error) {
-	if m.readFunc != nil {
-		return m.readFunc(p)
-	}
-	// Default behavior: return EOF immediately
-	return 0, io.EOF
+func TestRead(t *testing.T) {
+	Convey("Given a pipeline with components that produce data", t, func() {
+		c1 := bytes.NewBuffer([]byte("data from first"))
+		c2 := bytes.NewBuffer([]byte{})
+		c3 := make([]byte, c1.Len())
+
+		pipeline := NewPipeline(c1, c2)
+		n, err := pipeline.Read(c3)
+		So(err, ShouldBeNil)
+		So(n, ShouldEqual, len("data from first"))
+		So(string(c3), ShouldEqual, "data from first")
+	})
 }
 
-func (m *MockReadWriteCloser) Write(p []byte) (n int, err error) {
-	if m.writeFunc != nil {
-		return m.writeFunc(p)
-	}
-	return len(p), nil
+func TestWrite(t *testing.T) {
+	Convey("Given a pipeline with components that produce data", t, func() {
+		c1 := bytes.NewBuffer([]byte{})
+		c2 := bytes.NewBuffer([]byte{})
+
+		pipeline := NewPipeline(c1, c2)
+		n, err := pipeline.Write([]byte("data from first"))
+		So(err, ShouldBeNil)
+		So(n, ShouldEqual, len("data from first"))
+		So(c2.String(), ShouldEqual, "data from first")
+	})
 }
 
-func (m *MockReadWriteCloser) Close() error {
-	if m.closeFunc != nil {
-		return m.closeFunc()
-	}
-	return nil
-}
+func TestEmptyPipeline(t *testing.T) {
+	Convey("Given an empty pipeline with no components", t, func() {
+		pipeline := NewPipeline()
+		buf := make([]byte, 10)
 
-// TestNewPipeline tests the NewPipeline constructor
-func TestNewPipeline(t *testing.T) {
-	Convey("Given a set of components", t, func() {
-		comp1 := &MockReadWriteCloser{}
-		comp2 := &MockReadWriteCloser{}
-		comp3 := &MockReadWriteCloser{}
-
-		Convey("When creating a new Pipeline with multiple components", func() {
-			pipeline := NewPipeline(comp1, comp2, comp3)
-
-			Convey("Then the pipeline should be created successfully", func() {
-				So(pipeline, ShouldNotBeNil)
-				So(pipeline, ShouldHaveSameTypeAs, &Pipeline{})
-
-				// Cast to access internal components
-				p := pipeline.(*Pipeline)
-				So(p.components, ShouldHaveLength, 3)
-				So(p.components[0], ShouldEqual, comp1)
-				So(p.components[1], ShouldEqual, comp2)
-				So(p.components[2], ShouldEqual, comp3)
-			})
+		Convey("When reading", func() {
+			n, err := pipeline.Read(buf)
+			So(err, ShouldEqual, io.EOF)
+			So(n, ShouldEqual, 0)
 		})
 
-		Convey("When creating a pipeline with just one component", func() {
-			pipeline := NewPipeline(comp1)
-
-			Convey("Then it should still create the pipeline", func() {
-				So(pipeline, ShouldNotBeNil)
-
-				p := pipeline.(*Pipeline)
-				So(p.components, ShouldHaveLength, 1)
-			})
+		Convey("When writing", func() {
+			n, err := pipeline.Write([]byte("test"))
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, 4)
 		})
 	})
 }
 
-// TestPipelineComponents tests that pipeline properly connects its components
-func TestPipelineComponents(t *testing.T) {
-	Convey("Given a pipeline with components", t, func() {
-		// Simple mocks that verify a write to first component returns data from last component
-		firstComponentWritten := false
-		finalComponentRead := false
-
-		// First component: record that it was written to, and always return EOF on read
-		comp1 := &MockReadWriteCloser{
-			readFunc: func(p []byte) (int, error) {
-				// Always return EOF to end the copy operation immediately
-				return 0, io.EOF
-			},
-			writeFunc: func(p []byte) (int, error) {
-				firstComponentWritten = true
-				return len(p), nil
-			},
+func TestLargeDataPipeline(t *testing.T) {
+	Convey("Given a pipeline with large data transfer", t, func() {
+		// Create 1MB of test data
+		largeData := make([]byte, 1024*1024)
+		for i := range largeData {
+			largeData[i] = byte(i % 256)
 		}
 
-		// Second component: record that it was read from
-		comp2 := &MockReadWriteCloser{
-			readFunc: func(p []byte) (int, error) {
-				finalComponentRead = true
-				// Always return EOF
-				return 0, io.EOF
-			},
-		}
+		src := bytes.NewBuffer(largeData)
+		intermediate := bytes.NewBuffer([]byte{})
+		dest := bytes.NewBuffer([]byte{})
 
-		pipeline := NewPipeline(comp1, comp2)
+		pipeline := NewPipeline(intermediate)
 
-		Convey("When using the pipeline", func() {
-			// Just test that writing data flows through
-			pipeline.Write([]byte("test"))
+		Convey("When copying large data through pipeline", func() {
+			n, err := io.Copy(pipeline, src)
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, len(largeData))
 
-			// And reading should hit the last component
-			buf := make([]byte, 10)
-			pipeline.Read(buf)
-
-			Convey("Then it should use all components", func() {
-				So(firstComponentWritten, ShouldBeTrue)
-				So(finalComponentRead, ShouldBeTrue)
-			})
+			n, err = io.Copy(dest, pipeline)
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, len(largeData))
+			So(bytes.Equal(dest.Bytes(), largeData), ShouldBeTrue)
 		})
 	})
 }
 
-// TestPipelineWrite tests the Write method of Pipeline
-func TestPipelineWrite(t *testing.T) {
-	Convey("Given a pipeline with components", t, func() {
-		firstWriteCalled := false
-		comp1 := &MockReadWriteCloser{
-			writeFunc: func(p []byte) (int, error) {
-				firstWriteCalled = true
-				return len(p), nil
-			},
-		}
+func TestMultipleWriteReadCycles(t *testing.T) {
+	Convey("Given a pipeline with multiple write-read cycles", t, func() {
+		buf1 := bytes.NewBuffer([]byte{})
+		buf2 := bytes.NewBuffer([]byte{})
+		pipeline := NewPipeline(buf1, buf2)
 
-		comp2 := &MockReadWriteCloser{}
-		comp3 := &MockReadWriteCloser{}
+		Convey("When performing multiple write-read cycles", func() {
+			testData := []string{
+				"first message",
+				"second message",
+				"third message",
+			}
 
-		pipeline := NewPipeline(comp1, comp2, comp3)
-
-		Convey("When writing to the pipeline", func() {
-			data := []byte("test data")
-			n, err := pipeline.Write(data)
-
-			Convey("Then it should write to the first component only", func() {
+			for _, data := range testData {
+				n, err := pipeline.Write([]byte(data))
 				So(err, ShouldBeNil)
 				So(n, ShouldEqual, len(data))
-				So(firstWriteCalled, ShouldBeTrue)
-			})
-		})
 
-		Convey("When first component write fails", func() {
-			expectedErr := errors.New("write error")
-			failingComp := &MockReadWriteCloser{
-				writeFunc: func(p []byte) (int, error) {
-					return 3, expectedErr // Partial write with error
-				},
+				result := make([]byte, len(data))
+				n, err = pipeline.Read(result)
+				So(err, ShouldBeNil)
+				So(n, ShouldEqual, len(data))
+				So(string(result), ShouldEqual, data)
 			}
-
-			failingPipeline := NewPipeline(failingComp, comp2)
-			data := []byte("test data")
-			n, err := failingPipeline.Write(data)
-
-			Convey("Then it should return the error and bytes written", func() {
-				So(err, ShouldEqual, expectedErr)
-				So(n, ShouldEqual, 3)
-			})
 		})
 	})
 }
 
-// TestPipelineClose tests the Close method of Pipeline
-func TestPipelineClose(t *testing.T) {
-	Convey("Given a pipeline with components", t, func() {
-		closeCount := 0
+func TestEdgeCases(t *testing.T) {
+	Convey("Given a pipeline testing edge cases", t, func() {
+		buf1 := bytes.NewBuffer([]byte{})
+		buf2 := bytes.NewBuffer([]byte{})
+		pipeline := NewPipeline(buf1, buf2)
 
-		createMockWithClose := func() *MockReadWriteCloser {
-			return &MockReadWriteCloser{
-				closeFunc: func() error {
-					closeCount++
-					return nil
-				},
-			}
-		}
-
-		comp1 := createMockWithClose()
-		comp2 := createMockWithClose()
-		comp3 := createMockWithClose()
-
-		pipeline := NewPipeline(comp1, comp2, comp3)
-
-		Convey("When closing the pipeline", func() {
-			err := pipeline.Close()
-
-			Convey("Then it should close all components", func() {
-				So(err, ShouldBeNil)
-				So(closeCount, ShouldEqual, 3)
-			})
+		Convey("When writing empty data", func() {
+			n, err := pipeline.Write([]byte{})
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, 0)
 		})
 
-		Convey("When a component fails to close", func() {
-			expectedErr := errors.New("close error")
-			failingComp := &MockReadWriteCloser{
-				closeFunc: func() error {
-					return expectedErr
-				},
-			}
+		Convey("When writing nil data", func() {
+			n, err := pipeline.Write(nil)
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, 0)
+		})
 
-			// Reset counter
-			closeCount = 0
+		Convey("When reading with zero-length buffer", func() {
+			n, err := pipeline.Read([]byte{})
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, 0)
+		})
 
-			// One component will fail, but all should be closed
-			mixedPipeline := NewPipeline(comp1, failingComp, comp3)
-			err := mixedPipeline.Close()
-
-			Convey("Then it should still close all components and return first error", func() {
-				So(err, ShouldEqual, expectedErr)
-				So(closeCount, ShouldEqual, 2) // The non-failing components
-			})
+		Convey("When reading with nil buffer", func() {
+			n, err := pipeline.Read(nil)
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, 0)
 		})
 	})
 }

@@ -32,7 +32,7 @@ func Unwrap(err error) *ErrnieError {
 }
 
 func (err *ErrnieError) Unwrap() error {
-	return err.errors[0]
+	return err.Errors[0]
 }
 
 /*
@@ -40,9 +40,9 @@ ErrnieError implement the error interface, while also providing a way to
 accumulate multiple errors transparently.
 */
 type ErrnieError struct {
-	errors          []error
-	msg             string
-	errnieErrorType ErrnieErrorType
+	Errors          []error         `json:"errors"`
+	Msg             string          `json:"msg"`
+	ErrnieErrorType ErrnieErrorType `json:"errnieErrorType"`
 }
 
 func NewError(err error) error {
@@ -54,19 +54,19 @@ func NewError(err error) error {
 	Error(err)
 
 	return &ErrnieError{
-		msg: err.Error(),
+		Errors: []error{err},
 	}
 }
 
 func (err *ErrnieError) WithType(t ErrnieErrorType) *ErrnieError {
-	err.errnieErrorType = t
+	err.ErrnieErrorType = t
 	return err
 }
 
-func (err *ErrnieError) Error() string { return err.msg }
+func (err *ErrnieError) Error() string { return err.Msg }
 
 func (err *ErrnieError) Is(t ErrnieErrorType) bool {
-	return err.errnieErrorType == t
+	return err.ErrnieErrorType == t
 }
 
 func (err *ErrnieError) Add(errs ...error) error {
@@ -76,7 +76,7 @@ func (err *ErrnieError) Add(errs ...error) error {
 	}
 
 	// Add the errors to the list.
-	err.errors = append(err.errors, errs...)
+	err.Errors = append(err.Errors, errs...)
 
 	for _, e := range errs {
 		// Log the error.

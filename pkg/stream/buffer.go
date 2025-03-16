@@ -1,12 +1,11 @@
 package stream
 
 import (
-	"bytes"
-	"context"
+	"errors"
 	"io"
-	"time"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/event"
 )
 
 /*
@@ -15,13 +14,9 @@ It connects a sender and receiver through pipes, handling data transformations u
 Buffer implements io.Reader, io.Writer, and io.Closer interfaces to support standard streaming operations.
 */
 type Buffer struct {
-	receiver any
-	sender   any
-	handler  func(any) error
-	codec    Codec
-	pr       *io.PipeReader
-	pw       *io.PipeWriter
-	buf      *bytes.Buffer
+	event  *event.Artifact
+	fn     func(*event.Artifact) error
+	Stream chan *event.Artifact
 }
 
 /*
@@ -29,76 +24,17 @@ NewBuffer creates a new Buffer with the specified receiver, sender, and handler 
 It sets up the necessary pipe connections and defaults to Gob encoding.
 
 Parameters:
-  - receiver: The destination where decoded data will be written
-  - sender: The source from which data will be read and encoded
-  - handler: A function that processes the receiver after data is decoded
+  - fn: A function that processes the event
 
 Returns a configured Buffer instance that's ready to use.
 */
-func NewBuffer(
-	receiver any,
-	sender any,
-	handler func(any) error,
-) *Buffer {
+func NewBuffer(fn func(*event.Artifact) error) *Buffer {
 	errnie.Debug("stream.NewBuffer")
-
-	pr, pw := io.Pipe()
-
-	buf := &Buffer{
-		receiver: receiver,
-		sender:   sender,
-		handler:  handler,
-		pr:       pr,
-		pw:       pw,
-		buf:      bytes.NewBuffer([]byte{}),
+	return &Buffer{
+		event:  &event.Artifact{},
+		fn:     fn,
+		Stream: make(chan *event.Artifact, 64),
 	}
-
-	// Default to Gob encoding, can be overridden by calling
-	// WithCodec with a different codec.
-	return buf.WithCodec(NewCodec(&GobCodec{}))
-}
-
-/*
-WithCodec attaches a specific codec implementation to the Buffer.
-This allows customizing how data is encoded and decoded during streaming operations.
-
-Parameters:
-  - codec: The Codec implementation to use for data transformation
-
-Returns the Buffer instance with the new codec configured.
-*/
-func (buffer *Buffer) WithCodec(codec Codec) *Buffer {
-	errnie.Debug("stream.Buffer.WithCodec")
-
-	buffer.codec = codec
-	// buffer.codec.WithPipes(buffer.pr, buffer.pw)
-	buffer.codec.WithBuffer(buffer.buf)
-	return buffer
-}
-
-/*
-Stream continuously sends data from the sender to the given channel in a non-blocking manner.
-It runs in a separate goroutine and respects context cancellation.
-
-Parameters:
-  - ctx: Context for cancellation control
-  - receiver: Channel where encoded data will be sent
-*/
-func (buffer *Buffer) Stream(ctx context.Context, receiver chan any) {
-	errnie.Debug("stream.Buffer.Stream")
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case receiver <- buffer.receiver:
-				buffer.codec.Encode(buffer.sender)
-			default:
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
-	}()
 }
 
 /*
@@ -115,29 +51,27 @@ Returns:
 func (buffer *Buffer) Read(p []byte) (n int, err error) {
 	errnie.Debug("stream.Buffer.Read")
 
-	// Read from the buffer
-	n, err = buffer.buf.Read(p)
-
-	// Log details for debugging
-	errnie.Debug("stream.Buffer.Read", "n", n, "err", err)
-
-	// Always propagate EOF errors
-	if err == io.EOF {
-		return n, io.EOF
-	}
-
-	// Handle other errors
-	if err != nil {
-		errnie.Error(err)
+	// In streaming mode, we read from the stream
+	if buffer.Stream != nil {
+		artifact, ok := <-buffer.Stream
+		if !ok {
+			return 0, io.EOF
+		}
+		n, err = artifact.Read(p)
+		if err != nil && err != io.EOF {
+			errnie.Error(err)
+			return 0, err
+		}
 		return n, err
 	}
 
-	// If we read zero bytes but got no error, return EOF to prevent infinite loops
-	if n == 0 {
-		return 0, io.EOF
+	// In non-streaming mode, we read from the event
+	n, err = buffer.event.Read(p)
+	if err != nil && err != io.EOF {
+		errnie.Error(err)
+		return 0, err
 	}
-
-	return n, nil
+	return n, err
 }
 
 /*
@@ -155,26 +89,57 @@ Returns:
 func (buffer *Buffer) Write(p []byte) (n int, err error) {
 	errnie.Debug("stream.Buffer.Write", "p", string(p))
 
-	// Reset buffer before we write new data
-	buffer.buf.Reset()
-
-	// Write incoming data to buffer
-	if n, err = buffer.buf.Write(p); err != nil {
-		errnie.Error(err)
-		return n, err
+	if len(p) == 0 {
+		return 0, errnie.Error(errors.New("empty input"))
 	}
 
-	// Decode data into receiver - treat "unexpected EOF" as a non-fatal error
-	// This can happen when the buffer contains valid but incomplete data
-	if err = buffer.codec.Decode(buffer.receiver); err != nil {
-		errnie.Error(err)
-		return n, err
+	if buffer.event == nil {
+		return 0, errnie.Error(errors.New("buffer event is nil"))
 	}
 
-	// Encode response data
-	if err = buffer.codec.Encode(buffer.sender); err != nil {
-		errnie.Error(err)
-		return n, err
+	// Create a new event for this write operation
+	newEvent := &event.Artifact{}
+
+	// Log before Write
+	id, _ := newEvent.Id()
+	typ, _ := newEvent.Type()
+	payload, _ := newEvent.Payload()
+	errnie.Debug("Before event.Write", "event_id", id, "event_type", typ, "payload_length", len(payload))
+
+	// Write to the new event
+	if n, err = newEvent.Write(p); errnie.Error(err) != nil {
+		return
+	}
+
+	// Log after Write
+	id, _ = newEvent.Id()
+	typ, _ = newEvent.Type()
+	payload, _ = newEvent.Payload()
+	errnie.Debug("After event.Write", "event_id", id, "event_type", typ, "payload_length", len(payload))
+
+	// Process through handler function
+	if err = buffer.fn(newEvent); errnie.Error(err) != nil {
+		return
+	}
+
+	// Log after handler
+	id, _ = newEvent.Id()
+	typ, _ = newEvent.Type()
+	payload, _ = newEvent.Payload()
+	errnie.Debug("After handler", "event_id", id, "event_type", typ, "payload_length", len(payload))
+
+	// Update the buffer's event
+	buffer.event = newEvent
+
+	// If we're in streaming mode, send the event to the stream
+	if buffer.Stream != nil {
+		select {
+		case buffer.Stream <- newEvent:
+			// Successfully sent to stream
+		default:
+			// Channel is full, log warning but don't block
+			errnie.Debug("Warning: Stream channel is full, dropping event")
+		}
 	}
 
 	return n, nil
@@ -188,6 +153,8 @@ Returns any error encountered during the closing process.
 */
 func (buffer *Buffer) Close() error {
 	errnie.Debug("stream.Buffer.Close")
-	buffer.buf.Reset()
-	return nil
+	if buffer.Stream != nil {
+		close(buffer.Stream)
+	}
+	return buffer.event.Close()
 }

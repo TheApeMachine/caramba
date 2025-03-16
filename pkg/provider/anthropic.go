@@ -1,18 +1,16 @@
 package provider
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/spf13/viper"
-	"github.com/theapemachine/caramba/pkg/ai"
-	"github.com/theapemachine/caramba/pkg/core"
+	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/event"
+	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
@@ -22,10 +20,9 @@ AnthropicProvider implements an LLM provider that connects to Anthropic's API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type AnthropicProvider struct {
-	*ProviderData
 	client *anthropic.Client
 	buffer *stream.Buffer
-	ch     chan any
+	params *aiCtx.Artifact
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -56,39 +53,19 @@ func NewAnthropicProvider(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	p := &AnthropicProvider{
-		ProviderData: &ProviderData{
-			Params: &ai.ContextData{},
-			Result: &core.EventData{},
-		},
+	return &AnthropicProvider{
 		client: anthropic.NewClient(
 			option.WithAPIKey(apiKey),
 		),
-		ch:     make(chan any),
+		buffer: stream.NewBuffer(
+			func(event *event.Artifact) error {
+				return nil
+			},
+		),
+		params: &aiCtx.Artifact{},
 		ctx:    ctx,
 		cancel: cancel,
 	}
-
-	p.buffer = stream.NewBuffer(
-		&ai.ContextData{},
-		p.ProviderData.Result,
-		func(msg any) error {
-			var (
-				decoded *ai.ContextData
-				ok      bool
-			)
-
-			if decoded, ok = msg.(*ai.ContextData); !ok {
-				errnie.Error("provider.AnthropicProvider.buffer", "msg", msg)
-				return errnie.NewErrIO(errnie.NewErrValidation("msg is not an ai.ContextData", "provider", "anthropic"))
-			}
-
-			p.ProviderData.Params = decoded
-			return nil
-		},
-	)
-
-	return p
 }
 
 /*
@@ -102,36 +79,33 @@ func (provider *AnthropicProvider) Read(p []byte) (n int, err error) {
 /*
 Write implements the io.Writer interface.
 */
-func (provider *AnthropicProvider) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.AnthropicProvider.Write", "p", string(p))
+func (prvdr *AnthropicProvider) Write(p []byte) (n int, err error) {
+	errnie.Debug("provider.AnthropicProvider.Write")
 
-	if n, err = provider.buffer.Write(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
+	var (
+		payload []byte
+	)
 
-	if err = json.Unmarshal(p, provider.ProviderData.Params); err != nil {
-		errnie.NewErrIO(err)
+	evt := &event.Artifact{}
+	if _, err := evt.Write(p); err != nil {
+		errnie.Error("failed to write event", "error", err)
 		return 0, err
 	}
 
-	errnie.Debug("provider.AnthropicProvider.Write", "n", n, "err", err)
-
-	// Create the Anthropic request
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.F(anthropic.ModelClaude3_5SonnetLatest),
-		MaxTokens: anthropic.F(int64(4000)),
-		Messages:  anthropic.F(provider.buildMessages(provider.ProviderData.Params)),
+	if payload, err = evt.Payload(); err != nil {
+		errnie.Error("failed to get payload", "error", err)
+		return 0, err
 	}
 
-	errnie.Debug("provider.AnthropicProvider.Write", "params", params)
+	prvdr.params.Write(payload)
 
-	provider.buildTools(provider.ProviderData.Params, &params)
-	provider.buildSystemPrompt(provider.ProviderData.Params, &params)
+	composed := anthropic.MessageNewParams{}
 
-	err = errnie.NewErrIO(provider.handleStreamingRequest(&params))
+	prvdr.buildMessages(prvdr.params, &composed)
+	prvdr.buildTools(prvdr.params, &composed)
+	prvdr.handleStreamingRequest(&composed)
 
-	return n, err
+	return len(p), nil
 }
 
 /*
@@ -139,17 +113,13 @@ Close cleans up any resources.
 */
 func (provider *AnthropicProvider) Close() error {
 	errnie.Debug("provider.AnthropicProvider.Close")
-
-	provider.ProviderData.Params = nil
-	provider.ProviderData.Result = nil
-	provider.buffer = nil
-
 	return nil
 }
 
 func (p *AnthropicProvider) buildMessages(
-	params *ai.ContextData,
-) []anthropic.MessageParam {
+	params *aiCtx.Artifact,
+	messageParams *anthropic.MessageNewParams,
+) *anthropic.MessageNewParams {
 	errnie.Debug("provider.buildMessages")
 
 	if params == nil {
@@ -157,31 +127,54 @@ func (p *AnthropicProvider) buildMessages(
 		return nil
 	}
 
-	messages := make([]anthropic.MessageParam, 0, len(params.Messages))
-
-	for _, message := range params.Messages {
-		switch message.Role {
-		case "system":
-			// System messages are handled separately in Anthropic SDK
-			continue
-		case "user":
-			messages = append(messages, anthropic.NewUserMessage(
-				anthropic.NewTextBlock(message.Content),
-			))
-		case "assistant":
-			messages = append(messages, anthropic.NewAssistantMessage(
-				anthropic.NewTextBlock(message.Content),
-			))
-		default:
-			errnie.Error("unknown message role", "role", message.Role)
-		}
+	messages, err := params.Messages()
+	if err != nil {
+		errnie.Error("failed to get messages", "error", err)
+		return nil
 	}
 
-	return messages
+	msgParams := make([]anthropic.MessageParam, 0)
+
+	for idx := range messages.Len() {
+		message := messages.At(idx)
+
+		role, err := message.Role()
+		if err != nil {
+			errnie.Error("failed to get message role", "error", err)
+			continue
+		}
+
+		content, err := message.Content()
+		if err != nil {
+			errnie.Error("failed to get message content", "error", err)
+			continue
+		}
+
+		switch role {
+		case "system":
+			messageParams.System = anthropic.F([]anthropic.TextBlockParam{
+				anthropic.NewTextBlock(content),
+			})
+		case "user":
+			msgParams = append(msgParams, anthropic.NewUserMessage(
+				anthropic.NewTextBlock(content),
+			))
+		case "assistant":
+			msgParams = append(msgParams, anthropic.NewAssistantMessage(
+				anthropic.NewTextBlock(content),
+			))
+		default:
+			errnie.Error("unknown message role", "role", role)
+		}
+
+		messageParams.Messages = anthropic.F(msgParams)
+	}
+
+	return messageParams
 }
 
 func (p *AnthropicProvider) buildTools(
-	params *ai.ContextData,
+	params *aiCtx.Artifact,
 	messageParams *anthropic.MessageNewParams,
 ) {
 	errnie.Debug("provider.buildTools")
@@ -191,67 +184,43 @@ func (p *AnthropicProvider) buildTools(
 		return
 	}
 
-	if len(params.Tools) == 0 {
+	tools, err := params.Tools()
+	if err != nil {
+		errnie.Error("failed to get tools", "error", err)
 		return
 	}
 
-	tools := make([]anthropic.ToolParam, 0, len(params.Tools))
+	toolList := make([]anthropic.ToolParam, 0, tools.Len())
 
-	for _, tool := range params.Tools {
-		schema := utils.GenerateSchema[core.Tool]()
+	for idx := range tools.Len() {
+		tool := tools.At(idx)
+
+		schema := utils.GenerateSchema[struct{}]()
+
+		name, err := tool.Name()
+		if err != nil {
+			errnie.Error("failed to get tool name", "error", err)
+			continue
+		}
+
+		description, err := tool.Description()
+		if err != nil {
+			errnie.Error("failed to get tool description", "error", err)
+			continue
+		}
 
 		// Create function parameter from tool's schema
 		toolParam := anthropic.ToolParam{
-			Name:        anthropic.F(tool.ToolData.Name),
-			Description: anthropic.F(tool.ToolData.Description),
+			Name:        anthropic.String(name),
+			Description: anthropic.String(description),
 			InputSchema: anthropic.F(schema), // Assuming this now returns a map or JSON object
 		}
 
-		tools = append(tools, toolParam)
+		toolList = append(toolList, toolParam)
 	}
 
-	if len(tools) > 0 {
-		messageParams.Tools = anthropic.F(tools)
-	}
-}
-
-func (p *AnthropicProvider) buildSystemPrompt(
-	params *ai.ContextData,
-	messageParams *anthropic.MessageNewParams,
-) {
-	errnie.Debug("provider.buildSystemPrompt")
-
-	if params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "anthropic")
-		return
-	}
-
-	// Find system prompt from messages
-	var systemPrompt string
-	for _, message := range params.Messages {
-		if message.Role == "system" {
-			systemPrompt = message.Content
-			break
-		}
-	}
-
-	// Add structured output instructions if needed
-	if params.Process != nil && params.Process.ProcessData != nil && params.Process.ProcessData.Schema != nil {
-		formatInstructions := "Please format your response according to the specified schema: " +
-			params.Process.ProcessData.Name + ". " + params.Process.ProcessData.Description
-
-		if systemPrompt != "" {
-			systemPrompt = systemPrompt + "\n\n" + formatInstructions
-		} else {
-			systemPrompt = formatInstructions
-		}
-	}
-
-	// Set system prompt if we have one
-	if systemPrompt != "" {
-		messageParams.System = anthropic.F([]anthropic.TextBlockParam{
-			anthropic.NewTextBlock(systemPrompt),
-		})
+	if len(toolList) > 0 {
+		messageParams.Tools = anthropic.F(toolList)
 	}
 }
 
@@ -264,156 +233,86 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
-	ctx := context.Background()
+	var (
+		model string
+	)
 
-	prvdr.buffer.Stream(ctx, prvdr.ch)
+	go func() {
+		stream := prvdr.client.Messages.NewStreaming(prvdr.ctx, *params)
+		defer stream.Close()
 
-	stream := prvdr.client.Messages.NewStreaming(ctx, *params)
-	defer stream.Close()
-
-	errnie.Debug("streaming request initialized")
-
-	count := 0
-	accumulatedMessage := anthropic.Message{}
-
-	for stream.Next() {
-		event := stream.Current()
-		accumulatedMessage.Accumulate(event)
-
-		// Extract text content from deltas
-		var content string
-		switch delta := event.Delta.(type) {
-		case anthropic.ContentBlockDeltaEventDelta:
-			content = delta.Text
-		}
-
-		if content == "" {
-			continue
-		}
-
-		errnie.Debug("received stream chunk", "content", content)
-
-		prvdr.Result = core.NewEvent(
-			core.NewMessage(
-				"assistant",
-				"anthropic",
-				content,
-			),
-			nil,
-		).EventData
-
-		errnie.Debug("provider.handleStreamingRequest", "result", prvdr.Result)
-
-		select {
-		case prvdr.ch <- event:
-			errnie.Debug("sent event to channel", "event", event)
-		case <-prvdr.ctx.Done():
+		if model, err = prvdr.params.Model(); errnie.Error(err) != nil {
 			return
-		default:
-			// Don't block if channel is full
 		}
-	}
 
-	if stream.Err() != nil {
-		errnie.Error("streaming error", "error", stream.Err())
-		return errnie.NewErrHTTP(stream.Err(), 500)
-	}
+		accumulatedMessage := anthropic.Message{}
 
-	errnie.Debug("streaming completed", "chunks", count)
+		for stream.Next() {
+			evt := stream.Current()
+			accumulatedMessage.Accumulate(evt)
+
+			// Extract text content from deltas
+			var content string
+			switch delta := evt.Delta.(type) {
+			case anthropic.ContentBlockDeltaEventDelta:
+				content = delta.Text
+			}
+
+			if content == "" {
+				continue
+			}
+
+			errnie.Debug("received stream chunk", "content", content)
+
+			prvdr.buffer.Stream <- event.New(
+				"provider.anthropic",
+				event.MessageEvent,
+				event.AssistantRole,
+				message.New(
+					message.AssistantRole,
+					model,
+					content,
+				).Marshal(),
+			)
+		}
+
+		errnie.Error(stream.Err())
+	}()
+
 	return nil
 }
 
-type AnthropicEmbedderData struct {
-	Params *ai.ContextData `json:"params"`
-	Result *[]float64      `json:"result"`
-}
-
 type AnthropicEmbedder struct {
-	*AnthropicEmbedderData
+	params   *aiCtx.Artifact
 	apiKey   string
 	endpoint string
 	client   *anthropic.Client
-	enc      *json.Encoder
-	dec      *json.Decoder
-	in       *bufio.ReadWriter
-	out      *bufio.ReadWriter
 }
 
 func NewAnthropicEmbedder(apiKey string, endpoint string) *AnthropicEmbedder {
 	errnie.Debug("provider.NewAnthropicEmbedder")
 
-	in := bufio.NewReadWriter(
-		bufio.NewReader(bytes.NewBuffer([]byte{})),
-		bufio.NewWriter(bytes.NewBuffer([]byte{})),
-	)
-	out := bufio.NewReadWriter(
-		bufio.NewReader(bytes.NewBuffer([]byte{})),
-		bufio.NewWriter(bytes.NewBuffer([]byte{})),
-	)
-
-	embedder := &AnthropicEmbedder{
-		AnthropicEmbedderData: &AnthropicEmbedderData{},
-		apiKey:                apiKey,
-		endpoint:              endpoint,
-		client:                anthropic.NewClient(option.WithAPIKey(apiKey)),
-		enc:                   json.NewEncoder(out),
-		dec:                   json.NewDecoder(in),
-		in:                    in,
-		out:                   out,
+	return &AnthropicEmbedder{
+		params:   &aiCtx.Artifact{},
+		apiKey:   apiKey,
+		endpoint: endpoint,
+		client:   anthropic.NewClient(option.WithAPIKey(apiKey)),
 	}
-
-	embedder.enc.Encode(embedder.AnthropicEmbedderData)
-
-	return embedder
 }
 
 func (embedder *AnthropicEmbedder) Read(p []byte) (n int, err error) {
 	errnie.Debug("provider.AnthropicEmbedder.Read", "p", string(p))
-
-	if err = embedder.out.Flush(); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	n, err = embedder.out.Read(p)
-
-	if err != nil {
-		errnie.NewErrIO(err)
-	}
-
-	return n, err
+	return 0, nil
 }
 
 func (embedder *AnthropicEmbedder) Write(p []byte) (n int, err error) {
 	errnie.Debug("provider.AnthropicEmbedder.Write")
-
-	if n, err = embedder.in.Write(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	if err = embedder.in.Flush(); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	if err = embedder.dec.Decode(embedder.AnthropicEmbedderData); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	if err = embedder.enc.Encode(embedder.AnthropicEmbedderData); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
 	return len(p), nil
 }
 
 func (embedder *AnthropicEmbedder) Close() error {
 	errnie.Debug("provider.AnthropicEmbedder.Close")
 
-	embedder.AnthropicEmbedderData.Params = nil
-	embedder.AnthropicEmbedderData.Result = nil
+	embedder.params = nil
 	return nil
 }

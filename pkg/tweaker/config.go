@@ -26,6 +26,10 @@ func GetModel(provider string) string {
 	return cfg.v().GetString("models." + provider)
 }
 
+func GetEndpoint(provider string) string {
+	return cfg.v().GetString("endpoints." + provider)
+}
+
 func GetProvider() string {
 	return cfg.v().GetString("settings.defaults.provider")
 }

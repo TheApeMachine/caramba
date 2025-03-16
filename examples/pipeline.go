@@ -2,27 +2,29 @@ package examples
 
 import (
 	"io"
+	"os"
 
 	"github.com/theapemachine/caramba/pkg/ai"
-	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 type Pipeline struct {
-	workflow io.ReadWriteCloser
+	workflow io.ReadWriter
 }
 
 func NewPipeline() *Pipeline {
 	errnie.Debug("examples.NewPipeline")
 
-	// Create a pipeline with four components
 	pipeline := &Pipeline{
 		workflow: workflow.NewPipeline(
 			ai.NewAgent(),
-			provider.NewOpenAIProvider("", ""),
-			core.NewConverter(),
+			provider.NewOpenAIProvider(
+				os.Getenv("OPENAI_API_KEY"),
+				tweaker.GetEndpoint("openai"),
+			),
 		),
 	}
 
@@ -31,37 +33,10 @@ func NewPipeline() *Pipeline {
 
 func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	errnie.Debug("examples.Pipeline.Read")
-
-	if n, err = pipeline.workflow.Read(p); err != nil && err != io.EOF {
-		errnie.NewErrIO(err)
-	}
-
-	// If we got zero bytes, always return EOF to prevent infinite loops
-	if n == 0 {
-		if err == nil {
-			err = io.EOF
-		}
-	}
-
-	errnie.Debug("examples.Pipeline.Read", "n", n, "err", err)
-
-	return n, err
+	return pipeline.workflow.Read(p)
 }
 
 func (pipeline *Pipeline) Write(p []byte) (n int, err error) {
-	errnie.Debug("examples.Pipeline.Write", "p", string(p))
-
-	if n, err = pipeline.workflow.Write(p); err != nil {
-		errnie.NewErrIO(err)
-		return
-	}
-
-	errnie.Debug("examples.Pipeline.Write", "n", n, "err", err)
-
-	return n, err
-}
-
-func (pipeline *Pipeline) Close() error {
-	errnie.Debug("examples.Pipeline.Close")
-	return pipeline.workflow.Close()
+	errnie.Debug("examples.Pipeline.Write")
+	return pipeline.workflow.Write(p)
 }
