@@ -14,6 +14,7 @@ Each component can produce data independently.
 */
 type Pipeline struct {
 	components []io.ReadWriter
+	processed  bool
 }
 
 /*
@@ -47,20 +48,37 @@ Returns EOF when no more data is available.
 func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	errnie.Debug("workflow.Pipeline.Read")
 
+	var nn int64
+
 	if len(pipeline.components) == 0 {
 		return 0, io.EOF
 	}
 
-	// Copy data through the chain before reading
-	for i := 0; i < len(pipeline.components)-1; i++ {
-		_, err = io.Copy(pipeline.components[i+1], pipeline.components[i])
-		if err != nil && err != io.EOF {
-			return 0, err
+	if !pipeline.processed {
+		for i := range len(pipeline.components) - 1 {
+			nn, err = io.Copy(pipeline.components[i+1], pipeline.components[i])
+
+			n += int(nn)
+
+			if err != nil && err != io.EOF {
+				return n, err
+			}
 		}
+
+		pipeline.processed = true
 	}
 
-	// Read from last component
-	return pipeline.components[len(pipeline.components)-1].Read(p)
+	n, err = pipeline.components[len(pipeline.components)-1].Read(p)
+
+	if err != nil && err != io.EOF {
+		return n, err
+	}
+
+	if n == 0 {
+		return n, io.EOF
+	}
+
+	return n, nil
 }
 
 /*
@@ -70,7 +88,7 @@ It writes data to the first component in the pipeline.
 Note that writing is optional - components can produce data independently.
 */
 func (pipeline *Pipeline) Write(p []byte) (n int, err error) {
-	errnie.Debug("workflow.Pipeline.Write", "p", string(p))
+	errnie.Debug("workflow.Pipeline.Write")
 
 	if len(pipeline.components) == 0 {
 		return len(p), nil

@@ -33,7 +33,7 @@ func NewBuffer(fn func(*event.Artifact) error) *Buffer {
 	return &Buffer{
 		event:  &event.Artifact{},
 		fn:     fn,
-		Stream: make(chan *event.Artifact, 64),
+		Stream: nil,
 	}
 }
 
@@ -53,24 +53,41 @@ func (buffer *Buffer) Read(p []byte) (n int, err error) {
 
 	// In streaming mode, we read from the stream
 	if buffer.Stream != nil {
-		artifact, ok := <-buffer.Stream
-		if !ok {
-			return 0, io.EOF
+		var totalBytes int
+		for totalBytes < len(p) {
+			artifact, ok := <-buffer.Stream
+			if !ok {
+				if totalBytes > 0 {
+					return totalBytes, nil // Return any remaining data
+				}
+				return 0, io.EOF // Only EOF when no data left
+			}
+
+			n, err = artifact.Read(p[totalBytes:])
+			if err != nil && err != io.EOF {
+				errnie.Error(err)
+				return totalBytes, err
+			}
+
+			totalBytes += n
+			if n == 0 {
+				return 0, io.EOF
+			}
 		}
-		n, err = artifact.Read(p)
-		if err != nil && err != io.EOF {
-			errnie.Error(err)
-			return 0, err
-		}
-		return n, err
+		return totalBytes, nil
 	}
 
-	// In non-streaming mode, we read from the event
 	n, err = buffer.event.Read(p)
+
 	if err != nil && err != io.EOF {
 		errnie.Error(err)
 		return 0, err
 	}
+
+	if n == 0 {
+		return 0, io.EOF
+	}
+
 	return n, err
 }
 
@@ -87,7 +104,7 @@ Returns:
   - err: Any error encountered during writing
 */
 func (buffer *Buffer) Write(p []byte) (n int, err error) {
-	errnie.Debug("stream.Buffer.Write", "p", string(p))
+	errnie.Debug("stream.Buffer.Write")
 
 	if len(p) == 0 {
 		return 0, errnie.Error(errors.New("empty input"))
@@ -97,51 +114,17 @@ func (buffer *Buffer) Write(p []byte) (n int, err error) {
 		return 0, errnie.Error(errors.New("buffer event is nil"))
 	}
 
-	// Create a new event for this write operation
 	newEvent := &event.Artifact{}
 
-	// Log before Write
-	id, _ := newEvent.Id()
-	typ, _ := newEvent.Type()
-	payload, _ := newEvent.Payload()
-	errnie.Debug("Before event.Write", "event_id", id, "event_type", typ, "payload_length", len(payload))
-
-	// Write to the new event
 	if n, err = newEvent.Write(p); errnie.Error(err) != nil {
 		return
 	}
 
-	// Log after Write
-	id, _ = newEvent.Id()
-	typ, _ = newEvent.Type()
-	payload, _ = newEvent.Payload()
-	errnie.Debug("After event.Write", "event_id", id, "event_type", typ, "payload_length", len(payload))
-
-	// Process through handler function
 	if err = buffer.fn(newEvent); errnie.Error(err) != nil {
 		return
 	}
 
-	// Log after handler
-	id, _ = newEvent.Id()
-	typ, _ = newEvent.Type()
-	payload, _ = newEvent.Payload()
-	errnie.Debug("After handler", "event_id", id, "event_type", typ, "payload_length", len(payload))
-
-	// Update the buffer's event
 	buffer.event = newEvent
-
-	// If we're in streaming mode, send the event to the stream
-	if buffer.Stream != nil {
-		select {
-		case buffer.Stream <- newEvent:
-			// Successfully sent to stream
-		default:
-			// Channel is full, log warning but don't block
-			errnie.Debug("Warning: Stream channel is full, dropping event")
-		}
-	}
-
 	return n, nil
 }
 

@@ -51,17 +51,17 @@ func NewOpenAIProvider(
 
 	// Create a new context artifact with default values
 	params := aiCtx.New(
-		"gpt-4", // default model
-		nil,     // no initial messages
-		nil,     // no initial tools
-		nil,     // no initial process
-		0.7,     // default temperature
-		1.0,     // default topP
-		0,       // default topK
-		0.0,     // default presence penalty
-		0.0,     // default frequency penalty
-		2048,    // default max tokens
-		false,   // default stream setting
+		openai.ChatModelGPT4oMini,
+		nil,
+		nil,
+		nil,
+		0.7,
+		1.0,
+		0,
+		0.0,
+		0.0,
+		2048,
+		false,
 	)
 
 	prvdr := &OpenAIProvider{
@@ -76,7 +76,20 @@ func NewOpenAIProvider(
 	prvdr.buffer = stream.NewBuffer(
 		func(event *event.Artifact) error {
 			errnie.Debug("provider.OpenAIProvider.buffer.fn", "event", event)
-			return errnie.Error(event.ToContext(prvdr.params))
+
+			payload, err := event.Payload()
+
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			_, err = prvdr.params.Write(payload)
+
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			return nil
 		},
 	)
 
@@ -95,7 +108,7 @@ func (provider *OpenAIProvider) Read(p []byte) (n int, err error) {
 Write implements the io.Writer interface.
 */
 func (prvdr *OpenAIProvider) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.OpenAIProvider.Write", "p", string(p))
+	errnie.Debug("provider.OpenAIProvider.Write")
 
 	n, err = prvdr.buffer.Write(p)
 	if errnie.Error(err) != nil {
@@ -116,6 +129,8 @@ func (prvdr *OpenAIProvider) Write(p []byte) (n int, err error) {
 	prvdr.buildMessages(prvdr.params, &composed)
 	prvdr.buildTools(prvdr.params, &composed)
 	prvdr.buildResponseFormat(prvdr.params, &composed)
+
+	prvdr.buffer.Stream = make(chan *event.Artifact, 64)
 
 	if prvdr.params.Stream() {
 		prvdr.handleStreamingRequest(&composed)
@@ -231,12 +246,10 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 	errnie.Debug("provider.handleStreamingRequest")
 
 	go func() {
+		defer close(prvdr.buffer.Stream)
+
 		stream := prvdr.client.Chat.Completions.NewStreaming(prvdr.ctx, *params)
 		acc := openai.ChatCompletionAccumulator{}
-		defer func() {
-			stream.Close()
-			close(prvdr.buffer.Stream)
-		}()
 
 		for stream.Next() {
 			chunk := stream.Current()
