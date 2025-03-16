@@ -1,8 +1,6 @@
 package ai
 
 import (
-	"io"
-
 	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/event"
@@ -46,10 +44,6 @@ func NewAgent() *Agent {
 	agent.buffer = stream.NewBuffer(
 		func(evt *event.Artifact) (err error) {
 			errnie.Debug("agent.buffer.fn", "event", evt)
-
-			if evt == nil {
-				return io.EOF
-			}
 
 			payload, err := evt.Payload()
 

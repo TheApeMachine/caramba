@@ -96,9 +96,9 @@ func NewOpenAIProvider(
 /*
 Read implements the io.Reader interface.
 */
-func (provider *OpenAIProvider) Read(p []byte) (n int, err error) {
+func (prvdr *OpenAIProvider) Read(p []byte) (n int, err error) {
 	errnie.Debug("provider.OpenAIProvider.Read")
-	return provider.buffer.Read(p)
+	return prvdr.buffer.Read(p)
 }
 
 /*
@@ -127,8 +127,6 @@ func (prvdr *OpenAIProvider) Write(p []byte) (n int, err error) {
 	prvdr.buildTools(prvdr.params, &composed)
 	prvdr.buildResponseFormat(prvdr.params, &composed)
 
-	prvdr.buffer.Stream = make(chan *event.Artifact, 64)
-
 	if prvdr.params.Stream() {
 		prvdr.handleStreamingRequest(&composed)
 	} else {
@@ -141,13 +139,13 @@ func (prvdr *OpenAIProvider) Write(p []byte) (n int, err error) {
 /*
 Close cleans up any resources.
 */
-func (provider *OpenAIProvider) Close() error {
+func (prvdr *OpenAIProvider) Close() error {
 	errnie.Debug("provider.OpenAIProvider.Close")
-	return provider.params.Close()
+	return prvdr.params.Close()
 }
 
 // buildMessages converts ContextData messages to OpenAI API format
-func (provider *OpenAIProvider) buildMessages(
+func (prvdr *OpenAIProvider) buildMessages(
 	params *aiCtx.Artifact,
 	composed *openai.ChatCompletionNewParams,
 ) {
@@ -196,47 +194,53 @@ func (provider *OpenAIProvider) buildMessages(
 	composed.Messages = openai.F(messageList)
 }
 
+func (prvdr *OpenAIProvider) sendEvent(content string) error {
+	msg, err := message.New(
+		message.AssistantRole,
+		"",
+		content,
+	).Message().Marshal()
+
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	evt, err := event.New(
+		"provider.openai",
+		event.MessageEvent,
+		event.AssistantRole,
+		msg,
+	).Message().Marshal()
+
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	_, err = prvdr.buffer.Write(evt)
+
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	return nil
+}
+
 // handleSingleRequest processes a single (non-streaming) completion request
-func (provider *OpenAIProvider) handleSingleRequest(
+func (prvdr *OpenAIProvider) handleSingleRequest(
 	params *openai.ChatCompletionNewParams,
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
 
 	var completion *openai.ChatCompletion
 
-	// Create a new stream channel for this request
-	provider.buffer.Stream = make(chan *event.Artifact, 64)
+	if completion, err = prvdr.client.Chat.Completions.New(
+		prvdr.ctx, *params,
+	); errnie.Error(err) != nil {
+		return err
+	}
 
-	// Run the request in a goroutine
-	go func() {
-		defer close(provider.buffer.Stream)
-
-		if completion, err = provider.client.Chat.Completions.New(
-			provider.ctx, *params,
-		); errnie.Error(err) != nil {
-			return
-		}
-
-		msg, err := message.New(
-			message.AssistantRole, // Always use AssistantRole for responses
-			"",                    // No need for name here
-			completion.Choices[0].Message.Content,
-		).Message().Marshal()
-
-		if errnie.Error(err) != nil {
-			return
-		}
-
-		// Send the response through the stream
-		provider.buffer.Stream <- event.New(
-			"provider.openai",
-			event.MessageEvent,
-			event.AssistantRole,
-			msg,
-		)
-	}()
-
-	return nil
+	prvdr.sendEvent(completion.Choices[0].Message.Content)
+	return errnie.Error(prvdr.buffer.Close())
 }
 
 /*
@@ -249,8 +253,6 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 	errnie.Debug("provider.handleStreamingRequest")
 
 	go func() {
-		defer close(prvdr.buffer.Stream)
-
 		stream := prvdr.client.Chat.Completions.NewStreaming(prvdr.ctx, *params)
 		acc := openai.ChatCompletionAccumulator{}
 
@@ -264,45 +266,20 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 			// When this fires, the current chunk value will not contain content data
 			if content, ok := acc.JustFinishedContent(); ok {
-				msg, err := message.New(
-					message.AssistantRole, // Always use AssistantRole for responses
-					"",                    // No need for name here
-					content,
-				).Message().Marshal()
-
-				if errnie.Error(err) != nil {
+				if err = prvdr.sendEvent(content); errnie.Error(err) != nil {
 					continue
 				}
-
-				prvdr.buffer.Stream <- event.New(
-					"provider.openai",
-					event.MessageEvent,
-					event.AssistantRole,
-					msg,
-				)
-				continue
 			}
 
 			// Handle delta content
 			if chunk.Choices[0].Delta.Content != "" {
-				msg, err := message.New(
-					message.AssistantRole, // Always use AssistantRole for responses
-					"",                    // No need for name here
-					chunk.Choices[0].Delta.Content,
-				).Message().Marshal()
-
-				if errnie.Error(err) != nil {
+				if err = prvdr.sendEvent(chunk.Choices[0].Delta.Content); errnie.Error(err) != nil {
 					continue
 				}
-
-				prvdr.buffer.Stream <- event.New(
-					"provider.openai",
-					event.MessageEvent,
-					event.AssistantRole,
-					msg,
-				)
 			}
 		}
+
+		errnie.Error(prvdr.buffer.Close())
 
 		if err = stream.Err(); err != nil {
 			errnie.Error("Streaming error", "error", err)
@@ -313,7 +290,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 	return nil
 }
 
-func (p *OpenAIProvider) buildTools(
+func (prvdr *OpenAIProvider) buildTools(
 	params *aiCtx.Artifact,
 	openaiParams *openai.ChatCompletionNewParams,
 ) []openai.ChatCompletionToolParam {
@@ -367,7 +344,7 @@ func (p *OpenAIProvider) buildTools(
 	return toolsOut
 }
 
-func (p *OpenAIProvider) buildResponseFormat(
+func (prvdr *OpenAIProvider) buildResponseFormat(
 	params *aiCtx.Artifact,
 	openaiParams *openai.ChatCompletionNewParams,
 ) {

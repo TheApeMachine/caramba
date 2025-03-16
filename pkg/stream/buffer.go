@@ -14,9 +14,8 @@ It connects a sender and receiver through pipes, handling data transformations u
 Buffer implements io.Reader, io.Writer, and io.Closer interfaces to support standard streaming operations.
 */
 type Buffer struct {
-	event  *event.Artifact
-	fn     func(*event.Artifact) error
-	Stream chan *event.Artifact
+	event *event.Artifact
+	fn    func(*event.Artifact) error
 }
 
 /*
@@ -31,9 +30,8 @@ Returns a configured Buffer instance that's ready to use.
 func NewBuffer(fn func(*event.Artifact) error) *Buffer {
 	errnie.Debug("stream.NewBuffer")
 	return &Buffer{
-		event:  &event.Artifact{},
-		fn:     fn,
-		Stream: nil,
+		event: &event.Artifact{},
+		fn:    fn,
 	}
 }
 
@@ -51,48 +49,25 @@ Returns:
 func (buffer *Buffer) Read(p []byte) (n int, err error) {
 	errnie.Debug("stream.Buffer.Read")
 
-	// In streaming mode, we read from the stream
-	if buffer.Stream != nil {
-		var totalBytes int
-		for totalBytes < len(p) {
-			artifact, ok := <-buffer.Stream
-			if !ok {
-				if totalBytes > 0 {
-					return totalBytes, nil // Return any remaining data
-				}
-				return 0, io.EOF // Only EOF when no data left
-			}
-
-			n, err = artifact.Read(p[totalBytes:])
-			if err != nil && err != io.EOF {
-				errnie.Error(err)
-				return totalBytes, err
-			}
-
-			totalBytes += n
-			if n == 0 {
-				return 0, io.EOF
-			}
-		}
-		return totalBytes, nil
-	}
-
 	if buffer.event == nil {
 		return 0, io.EOF
 	}
 
 	n, err = buffer.event.Read(p)
 
-	if err != nil && err != io.EOF {
-		errnie.Error(err)
-		return 0, err
+	if err != nil {
+		if err == io.EOF {
+			return n, err
+		}
+
+		return n, errnie.Error(err)
 	}
 
 	if n == 0 {
 		return 0, io.EOF
 	}
 
-	return n, err
+	return n, errnie.Error(err)
 }
 
 /*
@@ -140,8 +115,5 @@ Returns any error encountered during the closing process.
 */
 func (buffer *Buffer) Close() error {
 	errnie.Debug("stream.Buffer.Close")
-	if buffer.Stream != nil {
-		close(buffer.Stream)
-	}
 	return buffer.event.Close()
 }

@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"errors"
 	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -91,24 +92,10 @@ func (pipeline *Pipeline) Write(p []byte) (n int, err error) {
 	errnie.Debug("workflow.Pipeline.Write")
 
 	if len(pipeline.components) == 0 {
-		return len(p), nil
+		return len(p), errnie.Error(errors.New("pipeline has no components"))
 	}
 
-	// Write to first component
-	n, err = pipeline.components[0].Write(p)
-	if err != nil {
-		return n, err
-	}
-
-	// Flow data through remaining components
-	for i := 0; i < len(pipeline.components)-1; i++ {
-		_, err = io.Copy(pipeline.components[i+1], pipeline.components[i])
-		if err != nil && err != io.EOF {
-			return n, err
-		}
-	}
-
-	return n, nil
+	return pipeline.components[0].Write(p)
 }
 
 /*

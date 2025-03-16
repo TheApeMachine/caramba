@@ -254,39 +254,45 @@ func (p *AnthropicProvider) handleSingleRequest(
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
 
-	go func() {
-		defer close(p.buffer.Stream)
+	response, err := p.client.Messages.New(p.ctx, *params)
+	if errnie.Error(err) != nil {
+		return
+	}
 
-		response, err := p.client.Messages.New(p.ctx, *params)
-		if errnie.Error(err) != nil {
-			return
-		}
+	msg := response.Content
+	if msg == nil {
+		errnie.Error("failed to get message", "error", err)
+		return
+	}
 
-		msg := response.Content
-		if msg == nil {
-			errnie.Error("failed to get message", "error", err)
-			return
-		}
+	content := msg[0].Text
 
-		content := msg[0].Text
+	m, err := message.New(
+		message.AssistantRole,
+		"",
+		content,
+	).Message().Marshal()
 
-		m, err := message.New(
-			message.AssistantRole,
-			"",
-			content,
-		).Message().Marshal()
+	if errnie.Error(err) != nil {
+		return
+	}
 
-		if errnie.Error(err) != nil {
-			return
-		}
+	evt, err := event.New(
+		"provider.anthropic",
+		event.MessageEvent,
+		event.AssistantRole,
+		m,
+	).Message().Marshal()
 
-		p.buffer.Stream <- event.New(
-			"provider.anthropic",
-			event.MessageEvent,
-			event.AssistantRole,
-			m,
-		)
-	}()
+	if errnie.Error(err) != nil {
+		return
+	}
+
+	_, err = p.buffer.Write(evt)
+
+	if errnie.Error(err) != nil {
+		return err
+	}
 
 	return nil
 }
@@ -301,20 +307,18 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 	errnie.Debug("provider.handleStreamingRequest")
 
 	go func() {
-		defer close(prvdr.buffer.Stream)
-
 		stream := prvdr.client.Messages.NewStreaming(prvdr.ctx, *params)
 		defer stream.Close()
 
 		accumulatedMessage := anthropic.Message{}
 
 		for stream.Next() {
-			evt := stream.Current()
-			accumulatedMessage.Accumulate(evt)
+			chunk := stream.Current()
+			accumulatedMessage.Accumulate(chunk)
 
 			// Extract text content from deltas
 			var content string
-			switch delta := evt.Delta.(type) {
+			switch delta := chunk.Delta.(type) {
 			case anthropic.ContentBlockDeltaEventDelta:
 				content = delta.Text
 			}
@@ -333,12 +337,22 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 				continue
 			}
 
-			prvdr.buffer.Stream <- event.New(
+			evt, err := event.New(
 				"provider.anthropic",
 				event.MessageEvent,
 				event.AssistantRole,
 				msg,
-			)
+			).Message().Marshal()
+
+			if errnie.Error(err) != nil {
+				continue
+			}
+
+			_, err = prvdr.buffer.Write(evt)
+
+			if errnie.Error(err) != nil {
+				return
+			}
 		}
 
 		errnie.Error(stream.Err())

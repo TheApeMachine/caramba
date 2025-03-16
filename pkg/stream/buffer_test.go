@@ -63,7 +63,6 @@ func TestNewBuffer(t *testing.T) {
 		So(buffer, ShouldNotBeNil)
 		So(buffer.event, ShouldNotBeNil)
 		So(buffer.fn, ShouldNotBeNil)
-		So(buffer.Stream, ShouldBeNil)
 		So(handlerCalled, ShouldBeFalse) // Verify initial state
 	})
 }
@@ -75,7 +74,6 @@ func TestRead(t *testing.T) {
 		})
 
 		Convey("When reading from an empty buffer without stream", func() {
-			buffer.Stream = nil
 			testData := testEvent()
 			data, _, err := readEventData(testData)
 			So(err, ShouldBeNil)
@@ -85,21 +83,15 @@ func TestRead(t *testing.T) {
 		})
 
 		Convey("When reading from a buffer with data in the stream", func() {
-			buffer.Stream = make(chan *event.Artifact, 1)
 			testData := testEvent()
 			expectedData, _, err := readEventData(testData)
 			So(err, ShouldBeNil)
-
-			// Send data to the stream
-			buffer.Stream <- testData
 
 			// Read from the buffer
 			verifyBufferRead(buffer, expectedData, true)
 		})
 
 		Convey("When reading from a closed stream", func() {
-			buffer.Stream = make(chan *event.Artifact, 1)
-			close(buffer.Stream)
 			p := make([]byte, 1024)
 			n, err := buffer.Read(p)
 			So(err, ShouldEqual, io.EOF)
@@ -107,8 +99,6 @@ func TestRead(t *testing.T) {
 		})
 
 		Convey("When reading from an empty stream", func() {
-			buffer.Stream = make(chan *event.Artifact, 1)
-			close(buffer.Stream)
 			p := make([]byte, 1024)
 			n, err := buffer.Read(p)
 			So(err, ShouldEqual, io.EOF)

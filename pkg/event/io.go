@@ -17,15 +17,13 @@ func (artifact *Artifact) Read(p []byte) (n int, err error) {
 	buf, err := artifact.Message().Marshal()
 
 	if err != nil {
-		errnie.Error(err)
-		return 0, err
+		return n, errnie.Error(err)
 	}
 
 	n = copy(p, buf)
 
 	if n < len(buf) {
-		errnie.Error(io.ErrShortBuffer)
-		return n, io.ErrShortBuffer
+		return n, errnie.Error(io.ErrShortBuffer)
 	}
 
 	return n, io.EOF

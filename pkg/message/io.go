@@ -12,7 +12,7 @@ Read implements the io.Reader interface for the Artifact.
 It marshals the entire artifact into the provided byte slice.
 */
 func (artifact *Artifact) Read(p []byte) (n int, err error) {
-	errnie.Debug("message.Read")
+	errnie.Debug("event.Read")
 
 	buf, err := artifact.Message().Marshal()
 
@@ -36,7 +36,7 @@ Write implements the io.Writer interface for the Artifact.
 It unmarshals the provided bytes into the current artifact.
 */
 func (artifact *Artifact) Write(p []byte) (n int, err error) {
-	errnie.Debug("message.Write")
+	errnie.Debug("event.Write")
 
 	var (
 		msg *capnp.Message
