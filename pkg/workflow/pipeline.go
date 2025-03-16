@@ -49,20 +49,27 @@ Returns EOF when no more data is available.
 func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	errnie.Debug("workflow.Pipeline.Read")
 
-	var nn int64
-
 	if len(pipeline.components) == 0 {
 		return 0, io.EOF
 	}
 
+	var nn int64
+
 	if !pipeline.processed {
 		for i := range len(pipeline.components) - 1 {
 			nn, err = io.Copy(pipeline.components[i+1], pipeline.components[i])
-
 			n += int(nn)
 
-			if err != nil && err != io.EOF {
+			if err != nil {
+				if err == io.EOF {
+					continue
+				}
+
 				return n, err
+			}
+
+			if nn == 0 {
+				continue
 			}
 		}
 
@@ -71,15 +78,19 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 
 	n, err = pipeline.components[len(pipeline.components)-1].Read(p)
 
-	if err != nil && err != io.EOF {
-		return n, err
+	if err != nil {
+		if err == io.EOF {
+			return n, err
+		}
+
+		return n, errnie.Error(err)
 	}
 
 	if n == 0 {
 		return n, io.EOF
 	}
 
-	return n, nil
+	return n, errnie.Error(err)
 }
 
 /*

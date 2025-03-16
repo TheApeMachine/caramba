@@ -93,17 +93,14 @@ func (buffer *Buffer) Write(p []byte) (n int, err error) {
 		return 0, errnie.Error(errors.New("buffer event is nil"))
 	}
 
-	newEvent := &event.Artifact{}
-
-	if n, err = newEvent.Write(p); errnie.Error(err) != nil {
+	if n, err = buffer.event.Write(p); errnie.Error(err) != nil {
 		return
 	}
 
-	if err = buffer.fn(newEvent); errnie.Error(err) != nil {
+	if err = buffer.fn(buffer.event); errnie.Error(err) != nil {
 		return
 	}
 
-	buffer.event = newEvent
 	return n, nil
 }
 

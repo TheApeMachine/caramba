@@ -239,8 +239,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		return err
 	}
 
-	prvdr.sendEvent(completion.Choices[0].Message.Content)
-	return errnie.Error(prvdr.buffer.Close())
+	return prvdr.sendEvent(completion.Choices[0].Message.Content)
 }
 
 /*
@@ -254,6 +253,8 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 	go func() {
 		stream := prvdr.client.Chat.Completions.NewStreaming(prvdr.ctx, *params)
+		defer stream.Close()
+
 		acc := openai.ChatCompletionAccumulator{}
 
 		for stream.Next() {
@@ -278,8 +279,6 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 				}
 			}
 		}
-
-		errnie.Error(prvdr.buffer.Close())
 
 		if err = stream.Err(); err != nil {
 			errnie.Error("Streaming error", "error", err)
