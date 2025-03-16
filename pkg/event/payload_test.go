@@ -5,6 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/context"
+	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/message"
 )
 
@@ -25,15 +26,22 @@ func testContext() *context.Artifact {
 }
 
 func testMessageArtifact() *Artifact {
+	msg, err := message.New(
+		message.UserRole,
+		"test",
+		"test",
+	).Message().Marshal()
+
+	if errnie.Error(err) != nil {
+		errnie.Error("failed to create message artifact", "error", err)
+		return nil
+	}
+
 	return New(
 		"test",
 		MessageEvent,
 		UserRole,
-		message.New(
-			message.UserRole,
-			"test",
-			"test",
-		).Marshal(),
+		msg,
 	)
 }
 

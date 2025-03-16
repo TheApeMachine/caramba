@@ -77,6 +77,10 @@ func (buffer *Buffer) Read(p []byte) (n int, err error) {
 		return totalBytes, nil
 	}
 
+	if buffer.event == nil {
+		return 0, io.EOF
+	}
+
 	n, err = buffer.event.Read(p)
 
 	if err != nil && err != io.EOF {

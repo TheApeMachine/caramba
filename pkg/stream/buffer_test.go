@@ -30,10 +30,16 @@ func readEventData(evt *event.Artifact) ([]byte, int, error) {
 }
 
 // verifyBufferRead reads from the buffer and verifies the result
-func verifyBufferRead(buffer *Buffer, expectedData []byte) {
+func verifyBufferRead(buffer *Buffer, expectedData []byte, streaming bool) {
 	p := make([]byte, len(expectedData))
 	n, err := buffer.Read(p)
-	So(err, ShouldEqual, io.EOF)
+
+	if streaming {
+		So(err, ShouldBeNil)
+	} else {
+		So(err, ShouldEqual, io.EOF)
+	}
+
 	So(n, ShouldEqual, len(expectedData))
 	So(p, ShouldResemble, expectedData)
 }
@@ -57,8 +63,7 @@ func TestNewBuffer(t *testing.T) {
 		So(buffer, ShouldNotBeNil)
 		So(buffer.event, ShouldNotBeNil)
 		So(buffer.fn, ShouldNotBeNil)
-		So(buffer.Stream, ShouldNotBeNil)
-		So(cap(buffer.Stream), ShouldEqual, 64)
+		So(buffer.Stream, ShouldBeNil)
 		So(handlerCalled, ShouldBeFalse) // Verify initial state
 	})
 }
@@ -76,10 +81,11 @@ func TestRead(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			buffer.event = testData
-			verifyBufferRead(buffer, data)
+			verifyBufferRead(buffer, data, false)
 		})
 
 		Convey("When reading from a buffer with data in the stream", func() {
+			buffer.Stream = make(chan *event.Artifact, 1)
 			testData := testEvent()
 			expectedData, _, err := readEventData(testData)
 			So(err, ShouldBeNil)
@@ -88,10 +94,11 @@ func TestRead(t *testing.T) {
 			buffer.Stream <- testData
 
 			// Read from the buffer
-			verifyBufferRead(buffer, expectedData)
+			verifyBufferRead(buffer, expectedData, true)
 		})
 
 		Convey("When reading from a closed stream", func() {
+			buffer.Stream = make(chan *event.Artifact, 1)
 			close(buffer.Stream)
 			p := make([]byte, 1024)
 			n, err := buffer.Read(p)
@@ -100,9 +107,11 @@ func TestRead(t *testing.T) {
 		})
 
 		Convey("When reading from an empty stream", func() {
+			buffer.Stream = make(chan *event.Artifact, 1)
+			close(buffer.Stream)
 			p := make([]byte, 1024)
 			n, err := buffer.Read(p)
-			So(err, ShouldBeNil)
+			So(err, ShouldEqual, io.EOF)
 			So(n, ShouldEqual, 0)
 		})
 	})

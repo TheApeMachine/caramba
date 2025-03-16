@@ -165,13 +165,13 @@ func TestEdgeCases(t *testing.T) {
 
 		Convey("When reading with zero-length buffer", func() {
 			n, err := pipeline.Read([]byte{})
-			So(err, ShouldBeNil)
+			So(err, ShouldEqual, io.EOF)
 			So(n, ShouldEqual, 0)
 		})
 
 		Convey("When reading with nil buffer", func() {
 			n, err := pipeline.Read(nil)
-			So(err, ShouldBeNil)
+			So(err, ShouldEqual, io.EOF)
 			So(n, ShouldEqual, 0)
 		})
 	})

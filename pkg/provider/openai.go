@@ -49,26 +49,23 @@ func NewOpenAIProvider(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create a new context artifact with default values
-	params := aiCtx.New(
-		openai.ChatModelGPT4oMini,
-		nil,
-		nil,
-		nil,
-		0.7,
-		1.0,
-		0,
-		0.0,
-		0.0,
-		2048,
-		false,
-	)
-
 	prvdr := &OpenAIProvider{
 		client: openai.NewClient(
 			option.WithAPIKey(apiKey),
 		),
-		params: params,
+		params: aiCtx.New(
+			openai.ChatModelGPT4oMini,
+			nil,
+			nil,
+			nil,
+			0.7,
+			1.0,
+			0,
+			0.0,
+			0.0,
+			2048,
+			false,
+		),
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -123,7 +120,7 @@ func (prvdr *OpenAIProvider) Write(p []byte) (n int, err error) {
 		errnie.Error("failed to get model", "error", err, "params", prvdr.params)
 		return n, err
 	}
-	errnie.Debug("using model", "model", model)
+
 	composed.Model = openai.F(model)
 
 	prvdr.buildMessages(prvdr.params, &composed)
@@ -220,16 +217,22 @@ func (provider *OpenAIProvider) handleSingleRequest(
 			return
 		}
 
+		msg, err := message.New(
+			message.AssistantRole, // Always use AssistantRole for responses
+			"",                    // No need for name here
+			completion.Choices[0].Message.Content,
+		).Message().Marshal()
+
+		if errnie.Error(err) != nil {
+			return
+		}
+
 		// Send the response through the stream
 		provider.buffer.Stream <- event.New(
 			"provider.openai",
 			event.MessageEvent,
 			event.AssistantRole,
-			message.New(
-				message.AssistantRole, // Always use AssistantRole for responses
-				"",                    // No need for name here
-				completion.Choices[0].Message.Content,
-			).Marshal(),
+			msg,
 		)
 	}()
 
@@ -261,31 +264,42 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 			// When this fires, the current chunk value will not contain content data
 			if content, ok := acc.JustFinishedContent(); ok {
-				errnie.Debug("received content chunk", "content", content)
+				msg, err := message.New(
+					message.AssistantRole, // Always use AssistantRole for responses
+					"",                    // No need for name here
+					content,
+				).Message().Marshal()
+
+				if errnie.Error(err) != nil {
+					continue
+				}
+
 				prvdr.buffer.Stream <- event.New(
 					"provider.openai",
 					event.MessageEvent,
 					event.AssistantRole,
-					message.New(
-						message.AssistantRole, // Always use AssistantRole for responses
-						"",                    // No need for name here
-						content,
-					).Marshal(),
+					msg,
 				)
 				continue
 			}
 
 			// Handle delta content
 			if chunk.Choices[0].Delta.Content != "" {
+				msg, err := message.New(
+					message.AssistantRole, // Always use AssistantRole for responses
+					"",                    // No need for name here
+					chunk.Choices[0].Delta.Content,
+				).Message().Marshal()
+
+				if errnie.Error(err) != nil {
+					continue
+				}
+
 				prvdr.buffer.Stream <- event.New(
 					"provider.openai",
 					event.MessageEvent,
 					event.AssistantRole,
-					message.New(
-						message.AssistantRole, // Always use AssistantRole for responses
-						"",                    // No need for name here
-						chunk.Choices[0].Delta.Content,
-					).Marshal(),
+					msg,
 				)
 			}
 		}

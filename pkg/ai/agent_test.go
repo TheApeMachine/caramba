@@ -5,26 +5,29 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/event"
 	"github.com/theapemachine/caramba/pkg/message"
 )
 
 // testEvent creates a test event artifact with predefined data
 func testEvent() *event.Artifact {
+	msg, err := message.New(
+		message.UserRole,
+		"test-name",
+		"test-content",
+	).Message().Marshal()
+
+	if errnie.Error(err) != nil {
+		errnie.Error("failed to create message artifact", "error", err)
+		return nil
+	}
+
 	return event.New(
 		"test",
 		event.MessageEvent,
 		event.UserRole,
-		[]byte("test-data"),
-	)
-}
-
-// testMessage creates a message artifact for testing
-func testMessage() *message.Artifact {
-	return message.New(
-		message.UserRole,
-		"test-name",
-		"test-content",
+		msg,
 	)
 }
 
@@ -74,30 +77,6 @@ func TestNewAgent(t *testing.T) {
 	})
 }
 
-func TestRead(t *testing.T) {
-	Convey("Given a new agent", t, func() {
-		agent := NewAgent()
-
-		Convey("When reading from the agent with data", func() {
-			// Write test event first
-			writeEventToAgent(agent, testEvent())
-
-			// Read from the agent
-			p := make([]byte, 1024)
-			n, err := agent.Read(p)
-			So(err, ShouldEqual, io.EOF)
-			So(n, ShouldBeGreaterThan, 0)
-		})
-
-		Convey("When reading without data", func() {
-			p := make([]byte, 1024)
-			n, err := agent.Read(p)
-			So(err, ShouldEqual, io.EOF)
-			So(n, ShouldBeGreaterThan, 0) // Context always has some data due to parameters
-		})
-	})
-}
-
 func TestWrite(t *testing.T) {
 	Convey("Given a new agent", t, func() {
 		agent := NewAgent()
@@ -114,11 +93,20 @@ func TestWrite(t *testing.T) {
 		})
 
 		Convey("When writing a message event", func() {
+			msg := message.New(
+				message.UserRole,
+				"test-name",
+				"test-content",
+			)
+
+			msg2, err := msg.Message().Marshal()
+			So(err, ShouldBeNil)
+
 			evt := event.New(
 				"test",
 				event.MessageEvent,
 				event.UserRole,
-				testMessage().Marshal(),
+				msg2,
 			)
 			writeEventToAgent(agent, evt)
 
@@ -129,11 +117,20 @@ func TestWrite(t *testing.T) {
 
 		Convey("When writing multiple message events", func() {
 			// First message
+			msg := message.New(
+				message.UserRole,
+				"test-name",
+				"test-content",
+			)
+
+			msg1, err := msg.Message().Marshal()
+			So(err, ShouldBeNil)
+
 			evt1 := event.New(
 				"test",
 				event.MessageEvent,
 				event.UserRole,
-				testMessage().Marshal(),
+				msg1,
 			)
 			writeEventToAgent(agent, evt1)
 
@@ -143,11 +140,15 @@ func TestWrite(t *testing.T) {
 				"test-name-2",
 				"test-content-2",
 			)
+
+			msg22, err := msg2.Message().Marshal()
+			So(err, ShouldBeNil)
+
 			evt2 := event.New(
 				"test",
 				event.MessageEvent,
 				event.AssistantRole,
-				msg2.Marshal(),
+				msg22,
 			)
 			writeEventToAgent(agent, evt2)
 

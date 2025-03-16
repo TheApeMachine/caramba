@@ -32,15 +32,22 @@ var (
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
 
+			msg := message.New(
+				message.UserRole,
+				"Danny",
+				"Hello, how are you?",
+			)
+
+			msg2, err := msg.Message().Marshal()
+			if errnie.Error(err) != nil {
+				return err
+			}
+
 			evt := event.New(
 				"example.pipeline",
 				event.MessageEvent,
 				event.UserRole,
-				message.New(
-					message.UserRole,
-					"Danny",
-					"Hello, how are you?",
-				).Marshal(),
+				msg2,
 			)
 
 			if _, err = io.Copy(wf, evt); err != nil && err != io.EOF {

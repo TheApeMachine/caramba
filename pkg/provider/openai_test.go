@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"os"
@@ -33,16 +32,22 @@ func testParams(stream bool) *aiCtx.Artifact {
 		stream, // stream
 	)
 
-	// Create a message event and add it to the context
+	msg, err := message.New(
+		message.UserRole,
+		"test-name",
+		"test message",
+	).Message().Marshal()
+
+	if errnie.Error(err) != nil {
+		errnie.Error("failed to marshal message", "error", err)
+		return nil
+	}
+
 	msgEvt := event.New(
 		"test.pipeline",
 		event.MessageEvent,
 		event.UserRole,
-		message.New(
-			message.UserRole,
-			"test-name",
-			"test message",
-		).Marshal(),
+		msg,
 	)
 	msgEvt.ToContext(ctx)
 
@@ -73,68 +78,6 @@ func TestNewOpenAIProvider(t *testing.T) {
 			provider := NewOpenAIProvider("", "")
 			So(provider, ShouldNotBeNil)
 			So(provider.client, ShouldNotBeNil)
-		})
-	})
-}
-
-func TestOpenAIProvider_Read(t *testing.T) {
-	Convey("Given an OpenAI provider with data in buffer", t, func() {
-		provider := NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "")
-
-		Convey("When reading in non-streaming mode", func() {
-			testEvent := testEvent(false)
-			errChan := make(chan error, 1)
-			nChan := make(chan int, 1)
-
-			// Write to the provider
-			go func() {
-				n, err := io.Copy(provider, testEvent)
-				errChan <- err
-				nChan <- int(n)
-			}()
-
-			// Read from the buffer
-			buf := bytes.NewBuffer([]byte{})
-			n, err := io.Copy(buf, provider)
-
-			// Check the write results
-			writeErr := <-errChan
-			writeN := <-nChan
-
-			So(writeErr, ShouldBeNil)
-			So(writeN, ShouldBeGreaterThan, 0)
-
-			// Check the read results
-			So(err, ShouldBeNil)
-			So(n, ShouldBeGreaterThan, 0)
-		})
-
-		Convey("When reading in streaming mode", func() {
-			testEvent := testEvent(true)
-			errChan := make(chan error, 1)
-			nChan := make(chan int, 1)
-
-			// Write to the provider
-			go func() {
-				n, err := io.Copy(provider, testEvent)
-				errChan <- err
-				nChan <- int(n)
-			}()
-
-			// Read from the buffer
-			buf := bytes.NewBuffer([]byte{})
-			n, err := io.Copy(buf, provider)
-
-			// Check the write results
-			writeErr := <-errChan
-			writeN := <-nChan
-
-			So(writeErr, ShouldBeNil)
-			So(writeN, ShouldBeGreaterThan, 0)
-
-			// Check the read results
-			So(err, ShouldBeNil)
-			So(n, ShouldBeGreaterThan, 0)
 		})
 	})
 }

@@ -45,27 +45,50 @@ func NewAnthropicProvider(
 		endpoint = viper.GetViper().GetString("endpoints.anthropic")
 	}
 
-	clientOptions := []option.RequestOption{}
-
-	if endpoint != "" {
-		clientOptions = append(clientOptions, option.WithBaseURL(endpoint))
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &AnthropicProvider{
+	prvdr := &AnthropicProvider{
 		client: anthropic.NewClient(
 			option.WithAPIKey(apiKey),
 		),
-		buffer: stream.NewBuffer(
-			func(event *event.Artifact) error {
-				return nil
-			},
+		params: aiCtx.New(
+			anthropic.ModelClaude3_5SonnetLatest,
+			nil,
+			nil,
+			nil,
+			0.7,
+			1.0,
+			0,
+			0.0,
+			0.0,
+			2048,
+			false,
 		),
-		params: &aiCtx.Artifact{},
 		ctx:    ctx,
 		cancel: cancel,
 	}
+
+	prvdr.buffer = stream.NewBuffer(
+		func(event *event.Artifact) error {
+			errnie.Debug("provider.AnthropicProvider.buffer.fn", "event", event)
+
+			payload, err := event.Payload()
+
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			_, err = prvdr.params.Write(payload)
+
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			return nil
+		},
+	)
+
+	return prvdr
 }
 
 /*
@@ -82,28 +105,30 @@ Write implements the io.Writer interface.
 func (prvdr *AnthropicProvider) Write(p []byte) (n int, err error) {
 	errnie.Debug("provider.AnthropicProvider.Write")
 
-	var (
-		payload []byte
-	)
+	n, err = prvdr.buffer.Write(p)
 
-	evt := &event.Artifact{}
-	if _, err := evt.Write(p); err != nil {
-		errnie.Error("failed to write event", "error", err)
-		return 0, err
+	if errnie.Error(err) != nil {
+		return n, err
 	}
-
-	if payload, err = evt.Payload(); err != nil {
-		errnie.Error("failed to get payload", "error", err)
-		return 0, err
-	}
-
-	prvdr.params.Write(payload)
 
 	composed := anthropic.MessageNewParams{}
 
+	model, err := prvdr.params.Model()
+	if err != nil {
+		errnie.Error("failed to get model", "error", err)
+		return n, err
+	}
+
+	composed.Model = anthropic.F(model)
+
 	prvdr.buildMessages(prvdr.params, &composed)
 	prvdr.buildTools(prvdr.params, &composed)
-	prvdr.handleStreamingRequest(&composed)
+
+	if prvdr.params.Stream() {
+		prvdr.handleStreamingRequest(&composed)
+	} else {
+		prvdr.handleSingleRequest(&composed)
+	}
 
 	return len(p), nil
 }
@@ -224,6 +249,48 @@ func (p *AnthropicProvider) buildTools(
 	}
 }
 
+func (p *AnthropicProvider) handleSingleRequest(
+	params *anthropic.MessageNewParams,
+) (err error) {
+	errnie.Debug("provider.handleSingleRequest")
+
+	go func() {
+		defer close(p.buffer.Stream)
+
+		response, err := p.client.Messages.New(p.ctx, *params)
+		if errnie.Error(err) != nil {
+			return
+		}
+
+		msg := response.Content
+		if msg == nil {
+			errnie.Error("failed to get message", "error", err)
+			return
+		}
+
+		content := msg[0].Text
+
+		m, err := message.New(
+			message.AssistantRole,
+			"",
+			content,
+		).Message().Marshal()
+
+		if errnie.Error(err) != nil {
+			return
+		}
+
+		p.buffer.Stream <- event.New(
+			"provider.anthropic",
+			event.MessageEvent,
+			event.AssistantRole,
+			m,
+		)
+	}()
+
+	return nil
+}
+
 /*
 handleStreamingRequest processes a streaming completion request
 and emits chunks as they're received.
@@ -233,17 +300,11 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
-	var (
-		model string
-	)
-
 	go func() {
+		defer close(prvdr.buffer.Stream)
+
 		stream := prvdr.client.Messages.NewStreaming(prvdr.ctx, *params)
 		defer stream.Close()
-
-		if model, err = prvdr.params.Model(); errnie.Error(err) != nil {
-			return
-		}
 
 		accumulatedMessage := anthropic.Message{}
 
@@ -262,17 +323,21 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 				continue
 			}
 
-			errnie.Debug("received stream chunk", "content", content)
+			msg, err := message.New(
+				message.AssistantRole,
+				"",
+				content,
+			).Message().Marshal()
+
+			if errnie.Error(err) != nil {
+				continue
+			}
 
 			prvdr.buffer.Stream <- event.New(
 				"provider.anthropic",
 				event.MessageEvent,
 				event.AssistantRole,
-				message.New(
-					message.AssistantRole,
-					model,
-					content,
-				).Marshal(),
+				msg,
 			)
 		}
 

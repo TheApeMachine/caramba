@@ -13,7 +13,8 @@ func TestRead(t *testing.T) {
 
 		Convey("When reading from the artifact", func() {
 			// First get the expected marshaled data
-			expected := artifact.Marshal()
+			expected, err := artifact.Message().Marshal()
+			So(err, ShouldBeNil)
 
 			// Create a buffer of the right size
 			p := make([]byte, len(expected))
@@ -34,7 +35,8 @@ func TestWrite(t *testing.T) {
 			artifact := testArtifact()
 
 			// Get the marshaled data to write
-			p := artifact.Marshal()
+			p, err := artifact.Message().Marshal()
+			So(err, ShouldBeNil)
 
 			// Write the marshaled data to the empty artifact
 			n, err := empty.Write(p)
