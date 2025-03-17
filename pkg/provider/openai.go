@@ -194,37 +194,6 @@ func (prvdr *OpenAIProvider) buildMessages(
 	composed.Messages = openai.F(messageList)
 }
 
-func (prvdr *OpenAIProvider) sendEvent(content string) error {
-	msg, err := message.New(
-		message.AssistantRole,
-		"",
-		content,
-	).Message().Marshal()
-
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	evt, err := event.New(
-		"provider.openai",
-		event.MessageEvent,
-		event.AssistantRole,
-		msg,
-	).Message().Marshal()
-
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	_, err = prvdr.buffer.Write(evt)
-
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	return nil
-}
-
 // handleSingleRequest processes a single (non-streaming) completion request
 func (prvdr *OpenAIProvider) handleSingleRequest(
 	params *openai.ChatCompletionNewParams,
@@ -239,7 +208,12 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		return err
 	}
 
-	return prvdr.sendEvent(completion.Choices[0].Message.Content)
+	return utils.SendEvent(
+		prvdr.buffer,
+		"provider.openai",
+		message.AssistantRole,
+		completion.Choices[0].Message.Content,
+	)
 }
 
 /*
@@ -251,40 +225,48 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
-	go func() {
-		stream := prvdr.client.Chat.Completions.NewStreaming(prvdr.ctx, *params)
-		defer stream.Close()
+	stream := prvdr.client.Chat.Completions.NewStreaming(prvdr.ctx, *params)
+	defer stream.Close()
 
-		acc := openai.ChatCompletionAccumulator{}
+	acc := openai.ChatCompletionAccumulator{}
 
-		for stream.Next() {
-			chunk := stream.Current()
+	for stream.Next() {
+		chunk := stream.Current()
 
-			if ok := acc.AddChunk(chunk); !ok {
-				errnie.Error("chunk dropped", "id", acc.ID)
+		if ok := acc.AddChunk(chunk); !ok {
+			errnie.Error("chunk dropped", "id", acc.ID)
+			continue
+		}
+
+		// When this fires, the current chunk value will not contain content data
+		if content, ok := acc.JustFinishedContent(); ok {
+			if err = utils.SendEvent(
+				prvdr.buffer,
+				"provider.openai",
+				message.AssistantRole,
+				content,
+			); errnie.Error(err) != nil {
 				continue
 			}
-
-			// When this fires, the current chunk value will not contain content data
-			if content, ok := acc.JustFinishedContent(); ok {
-				if err = prvdr.sendEvent(content); errnie.Error(err) != nil {
-					continue
-				}
-			}
-
-			// Handle delta content
-			if chunk.Choices[0].Delta.Content != "" {
-				if err = prvdr.sendEvent(chunk.Choices[0].Delta.Content); errnie.Error(err) != nil {
-					continue
-				}
-			}
 		}
 
-		if err = stream.Err(); err != nil {
-			errnie.Error("Streaming error", "error", err)
-			return
+		// Handle delta content
+		if chunk.Choices[0].Delta.Content != "" {
+			if err = utils.SendEvent(
+				prvdr.buffer,
+				"provider.openai",
+				message.AssistantRole,
+				chunk.Choices[0].Delta.Content,
+			); errnie.Error(err) != nil {
+				continue
+			}
 		}
-	}()
+	}
+
+	if err = stream.Err(); err != nil {
+		errnie.Error("Streaming error", "error", err)
+		return
+	}
 
 	return nil
 }

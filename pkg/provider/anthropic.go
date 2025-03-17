@@ -123,6 +123,7 @@ func (prvdr *AnthropicProvider) Write(p []byte) (n int, err error) {
 
 	prvdr.buildMessages(prvdr.params, &composed)
 	prvdr.buildTools(prvdr.params, &composed)
+	prvdr.buildResponseFormat(prvdr.params, &composed)
 
 	if prvdr.params.Stream() {
 		prvdr.handleStreamingRequest(&composed)
@@ -130,7 +131,7 @@ func (prvdr *AnthropicProvider) Write(p []byte) (n int, err error) {
 		prvdr.handleSingleRequest(&composed)
 	}
 
-	return len(p), nil
+	return n, nil
 }
 
 /*
@@ -249,6 +250,13 @@ func (p *AnthropicProvider) buildTools(
 	}
 }
 
+func (p *AnthropicProvider) buildResponseFormat(
+	params *aiCtx.Artifact,
+	messageParams *anthropic.MessageNewParams,
+) {
+	errnie.Debug("provider.buildResponseFormat")
+}
+
 func (p *AnthropicProvider) handleSingleRequest(
 	params *anthropic.MessageNewParams,
 ) (err error) {
@@ -267,34 +275,12 @@ func (p *AnthropicProvider) handleSingleRequest(
 
 	content := msg[0].Text
 
-	m, err := message.New(
-		message.AssistantRole,
-		"",
-		content,
-	).Message().Marshal()
-
-	if errnie.Error(err) != nil {
-		return
-	}
-
-	evt, err := event.New(
+	return utils.SendEvent(
+		p.buffer,
 		"provider.anthropic",
-		event.MessageEvent,
-		event.AssistantRole,
-		m,
-	).Message().Marshal()
-
-	if errnie.Error(err) != nil {
-		return
-	}
-
-	_, err = p.buffer.Write(evt)
-
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	return nil
+		message.AssistantRole,
+		content,
+	)
 }
 
 /*
@@ -327,31 +313,13 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 				continue
 			}
 
-			msg, err := message.New(
-				message.AssistantRole,
-				"",
-				content,
-			).Message().Marshal()
-
-			if errnie.Error(err) != nil {
-				continue
-			}
-
-			evt, err := event.New(
+			if err = utils.SendEvent(
+				prvdr.buffer,
 				"provider.anthropic",
-				event.MessageEvent,
-				event.AssistantRole,
-				msg,
-			).Message().Marshal()
-
-			if errnie.Error(err) != nil {
+				message.AssistantRole,
+				content,
+			); errnie.Error(err) != nil {
 				continue
-			}
-
-			_, err = prvdr.buffer.Write(evt)
-
-			if errnie.Error(err) != nil {
-				return
 			}
 		}
 

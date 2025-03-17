@@ -64,5 +64,5 @@ func GetStopSequences() []string {
 
 func GetStream() bool {
 	// Always return true to enable streaming
-	return false
+	return true
 }

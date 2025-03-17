@@ -35,7 +35,7 @@ var (
 			msg := message.New(
 				message.UserRole,
 				"Danny",
-				"Hello, how are you?",
+				"Tell me a story in the style of Bill Hicks.",
 			)
 
 			msg2, err := msg.Message().Marshal()

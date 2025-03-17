@@ -1,266 +1,441 @@
 package provider
 
-// import (
-// 	"bufio"
-// 	"bytes"
-// 	"context"
-// 	"encoding/json"
-// 	"net/http"
-// 	"net/url"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
 
-// 	sdk "github.com/ollama/ollama/api"
-// 	"github.com/spf13/viper"
-// 	"github.com/theapemachine/caramba/pkg/ai"
-// 	"github.com/theapemachine/caramba/pkg/core"
-// 	"github.com/theapemachine/caramba/pkg/errnie"
-// 	"github.com/theapemachine/caramba/pkg/utils"
-// )
+	"github.com/ollama/ollama/api"
+	"github.com/spf13/viper"
+	aiCtx "github.com/theapemachine/caramba/pkg/context"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/event"
+	"github.com/theapemachine/caramba/pkg/message"
+	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/utils"
+)
 
-// /*
-// OllamaProvider implements an LLM provider that connects to Ollama's API.
-// It supports regular chat completions and streaming responses.
-// */
-// type OllamaProvider struct {
-// 	*ProviderData
-// 	client *sdk.Client
-// 	model  string
-// 	buffer *bufio.ReadWriter
-// 	enc    *json.Encoder
-// 	dec    *json.Decoder
-// 	cancel context.CancelFunc
-// }
+/*
+OllamaProvider implements an LLM provider that connects to Ollama's API.
+It supports regular chat completions and streaming responses.
+*/
+type OllamaProvider struct {
+	client *api.Client
+	model  string
+	buffer *stream.Buffer
+	params *aiCtx.Artifact
+	ctx    context.Context
+	cancel context.CancelFunc
+}
 
-// /*
-// NewOllamaProvider creates a new Ollama provider with the given host endpoint.
-// If host is empty, it will try to read from configuration.
-// */
-// func NewOllamaProvider(
-// 	host string,
-// 	model string,
-// ) *OllamaProvider {
-// 	errnie.Debug("provider.NewOllamaProvider")
+/*
+NewOllamaProvider creates a new Ollama provider with the given host endpoint.
+If host is empty, it will try to read from configuration.
+*/
+func NewOllamaProvider(
+	host string,
+	model string,
+) *OllamaProvider {
+	errnie.Debug("provider.NewOllamaProvider")
 
-// 	if host == "" {
-// 		host = viper.GetViper().GetString("endpoints.ollama")
-// 	}
+	if host == "" {
+		host = viper.GetViper().GetString("endpoints.ollama")
+	}
 
-// 	if model == "" {
-// 		model = "llama3.2:3b" // Default model
-// 	}
+	if model == "" {
+		model = "llama2" // Default model
+	}
 
-// 	hostURL, err := url.Parse(host)
-// 	if err != nil {
-// 		errnie.Error("failed to parse host URL", "error", err)
-// 		return nil
-// 	}
+	ctx, cancel := context.WithCancel(context.Background())
 
-// 	buf := bytes.NewBuffer([]byte{})
-// 	buffer := bufio.NewReadWriter(
-// 		bufio.NewReader(buf),
-// 		bufio.NewWriter(buf),
-// 	)
+	client, err := api.ClientFromEnvironment()
+	if errnie.Error(err) != nil {
+		return nil
+	}
 
-// 	p := &OllamaProvider{
-// 		ProviderData: &ProviderData{
-// 			Params: &ai.ContextData{},
-// 			Result: &core.EventData{},
-// 		},
-// 		client: sdk.NewClient(hostURL, http.DefaultClient),
-// 		model:  model,
-// 		buffer: buffer,
-// 		enc:    json.NewEncoder(buffer),
-// 		dec:    json.NewDecoder(buffer),
-// 	}
+	prvdr := &OllamaProvider{
+		client: client,
+		model:  model,
+		params: aiCtx.New(
+			model,
+			nil,
+			nil,
+			nil,
+			0.7,
+			1.0,
+			0,
+			0.0,
+			0.0,
+			2048,
+			false,
+		),
+		ctx:    ctx,
+		cancel: cancel,
+	}
 
-// 	return p
-// }
+	prvdr.buffer = stream.NewBuffer(
+		func(event *event.Artifact) error {
+			errnie.Debug("provider.OllamaProvider.buffer.fn", "event", event)
 
-// /*
-// Read implements the io.Reader interface.
-// */
-// func (provider *OllamaProvider) Read(p []byte) (n int, err error) {
-// 	errnie.Debug("provider.OllamaProvider.Read")
+			payload, err := event.Payload()
+			if errnie.Error(err) != nil {
+				return err
+			}
 
-// 	if err = provider.buffer.Flush(); err != nil {
-// 		errnie.NewErrIO(err)
-// 		return
-// 	}
+			_, err = prvdr.params.Write(payload)
+			if errnie.Error(err) != nil {
+				return err
+			}
 
-// 	if n, err = provider.buffer.Read(p); err != nil {
-// 		errnie.NewErrIO(err)
-// 		return
-// 	}
+			return nil
+		},
+	)
 
-// 	errnie.Debug("provider.OllamaProvider.Read", "n", n, "err", err)
-// 	return n, err
-// }
+	return prvdr
+}
 
-// /*
-// Write implements the io.Writer interface.
-// */
-// func (provider *OllamaProvider) Write(p []byte) (n int, err error) {
-// 	errnie.Debug("provider.OllamaProvider.Write", "p", string(p))
+/*
+Read implements the io.Reader interface.
+*/
+func (prvdr *OllamaProvider) Read(p []byte) (n int, err error) {
+	errnie.Debug("provider.OllamaProvider.Read")
+	return prvdr.buffer.Read(p)
+}
 
-// 	if n, err = provider.buffer.Write(p); err != nil {
-// 		errnie.NewErrIO(err)
-// 		return
-// 	}
+/*
+Write implements the io.Writer interface.
+*/
+func (prvdr *OllamaProvider) Write(p []byte) (n int, err error) {
+	errnie.Debug("provider.OllamaProvider.Write")
 
-// 	if err = json.Unmarshal(p, provider.ProviderData.Params); err != nil {
-// 		errnie.NewErrIO(err)
-// 		return 0, err
-// 	}
+	n, err = prvdr.buffer.Write(p)
+	if errnie.Error(err) != nil {
+		return n, err
+	}
 
-// 	errnie.Debug("provider.OllamaProvider.Write", "n", n, "err", err)
+	composed := &api.ChatRequest{
+		Model: prvdr.model,
+	}
 
-// 	// Create the Ollama request and handle streaming
-// 	err = errnie.NewErrIO(provider.handleStreamingRequest())
+	prvdr.buildMessages(prvdr.params, composed)
+	prvdr.buildTools(prvdr.params, composed)
+	prvdr.buildResponseFormat(prvdr.params, composed)
 
-// 	return n, err
-// }
+	if prvdr.params.Stream() {
+		prvdr.handleStreamingRequest(composed)
+	} else {
+		prvdr.handleSingleRequest(composed)
+	}
 
-// /*
-// Close cleans up any resources.
-// */
-// func (provider *OllamaProvider) Close() error {
-// 	errnie.Debug("provider.OllamaProvider.Close")
+	return n, nil
+}
 
-// 	// Cancel any ongoing streaming
-// 	if provider.cancel != nil {
-// 		provider.cancel()
-// 	}
+/*
+Close cleans up any resources.
+*/
+func (prvdr *OllamaProvider) Close() error {
+	errnie.Debug("provider.OllamaProvider.Close")
+	prvdr.cancel()
+	return prvdr.params.Close()
+}
 
-// 	// Reset state
-// 	provider.ProviderData.Params = nil
-// 	provider.ProviderData.Result = nil
+func (prvdr *OllamaProvider) buildMessages(
+	params *aiCtx.Artifact,
+	chatParams *api.ChatRequest,
+) {
+	errnie.Debug("provider.buildMessages")
 
-// 	provider.buffer = nil
-// 	provider.enc = nil
-// 	provider.dec = nil
+	if params == nil {
+		errnie.NewErrValidation("params are nil", "provider", "ollama")
+		return
+	}
 
-// 	return nil
-// }
+	messages, err := params.Messages()
+	if err != nil {
+		errnie.Error("failed to get messages", "error", err)
+		return
+	}
 
-// func (p *OllamaProvider) buildMessages(
-// 	params *ai.ContextData,
-// ) []sdk.Message {
-// 	errnie.Debug("provider.buildMessages")
+	messageList := make([]api.Message, 0, messages.Len())
 
-// 	if params == nil {
-// 		errnie.NewErrValidation("params are nil", "provider", "ollama")
-// 		return nil
-// 	}
+	for idx := range messages.Len() {
+		message := messages.At(idx)
 
-// 	messages := make([]sdk.Message, 0, len(params.Messages))
+		role, err := message.Role()
+		if err != nil {
+			errnie.Error("failed to get message role", "error", err)
+			continue
+		}
 
-// 	for _, message := range params.Messages {
-// 		if message.Content != "" {
-// 			messages = append(messages, sdk.Message{
-// 				Role:    message.Role,
-// 				Content: message.Content,
-// 			})
-// 		}
-// 	}
+		content, err := message.Content()
+		if err != nil {
+			errnie.Error("failed to get message content", "error", err)
+			continue
+		}
 
-// 	return messages
-// }
+		switch role {
+		case "system":
+			messageList = append(messageList, api.Message{
+				Role:    "system",
+				Content: content,
+			})
+		case "user":
+			messageList = append(messageList, api.Message{
+				Role:    "user",
+				Content: content,
+			})
+		case "assistant":
+			messageList = append(messageList, api.Message{
+				Role:    "assistant",
+				Content: content,
+			})
+		default:
+			errnie.Error("unknown message role", "role", role)
+		}
+	}
 
-// func (p *OllamaProvider) buildTools(
-// 	params *ai.ContextData,
-// ) []sdk.Tool {
-// 	errnie.Debug("provider.buildTools")
+	chatParams.Messages = messageList
+}
 
-// 	if params == nil {
-// 		errnie.NewErrValidation("params are nil", "provider", "ollama")
-// 		return nil
-// 	}
+func (prvdr *OllamaProvider) buildTools(
+	params *aiCtx.Artifact,
+	chatParams *api.ChatRequest,
+) {
+	errnie.Debug("provider.buildTools")
 
-// 	tools := make([]sdk.Tool, 0, len(params.Tools))
+	if params == nil {
+		errnie.NewErrValidation("params are nil", "provider", "ollama")
+		return
+	}
 
-// 	for _, tool := range params.Tools {
-// 		// Create tool from our schema
-// 		toolParam := sdk.Tool{
-// 			Type: "function",
-// 			Function: sdk.ToolFunction{
-// 				Name:        tool.ToolData.Name,
-// 				Description: tool.ToolData.Description,
-// 				Parameters:  utils.GenerateSchema[ai.Tool]().(sdk.ToolFunction).Parameters,
-// 			},
-// 		}
+	tools, err := params.Tools()
+	if err != nil {
+		errnie.Error("failed to get tools", "error", err)
+		return
+	}
 
-// 		tools = append(tools, toolParam)
-// 	}
+	if tools.Len() == 0 {
+		return
+	}
 
-// 	return tools
-// }
+	toolList := make([]api.Tool, 0, tools.Len())
 
-// /*
-// handleStreamingRequest processes a streaming completion request
-// and emits chunks as they're received.
-// */
-// func (p *OllamaProvider) handleStreamingRequest() (err error) {
-// 	errnie.Debug("provider.handleStreamingRequest")
+	for idx := range tools.Len() {
+		tool := tools.At(idx)
 
-// 	ctx, cancel := context.WithCancel(context.Background())
-// 	p.cancel = cancel
-// 	defer cancel()
+		name, err := tool.Name()
+		if err != nil {
+			errnie.Error("failed to get tool name", "error", err)
+			continue
+		}
 
-// 	// Build the request messages from our context data
-// 	messages := p.buildMessages(p.ProviderData.Params)
-// 	if len(messages) == 0 {
-// 		err = errnie.NewErrValidation("no valid messages to process", "provider", "ollama")
-// 		return
-// 	}
+		description, err := tool.Description()
+		if err != nil {
+			errnie.Error("failed to get tool description", "error", err)
+			continue
+		}
 
-// 	stream := true
+		toolList = append(toolList, api.Tool{
+			Type: "function",
+			Function: api.ToolFunction{
+				Name:        name,
+				Description: description,
+				Parameters: struct {
+					Type       string   `json:"type"`
+					Required   []string `json:"required"`
+					Properties map[string]struct {
+						Type        string   `json:"type"`
+						Description string   `json:"description"`
+						Enum        []string `json:"enum,omitempty"`
+					} `json:"properties"`
+				}{
+					Type:     "object",
+					Required: []string{"input"},
+					Properties: map[string]struct {
+						Type        string   `json:"type"`
+						Description string   `json:"description"`
+						Enum        []string `json:"enum,omitempty"`
+					}{
+						"input": {
+							Type:        "string",
+							Description: "The input to the function",
+						},
+					},
+				},
+			},
+		})
+	}
 
-// 	// Build the request with non-empty fields
-// 	request := &sdk.ChatRequest{
-// 		Model:    p.model,
-// 		Messages: messages,
-// 		Stream:   &stream,
-// 	}
+	if len(toolList) > 0 {
+		chatParams.Tools = toolList
+	}
+}
 
-// 	// Add tools if we have any
-// 	tools := p.buildTools(p.ProviderData.Params)
-// 	if len(tools) > 0 {
-// 		request.Tools = sdk.Tools(tools)
-// 	}
+func (prvdr *OllamaProvider) buildResponseFormat(
+	params *aiCtx.Artifact,
+	chatParams *api.ChatRequest,
+) {
+	errnie.Debug("provider.buildResponseFormat")
 
-// 	errnie.Debug("streaming request initialized", "model", p.model)
+	if params == nil {
+		errnie.NewErrValidation("params are nil", "provider", "ollama")
+		return
+	}
 
-// 	// Use Ollama's streaming API to process the response
-// 	if err = p.client.Chat(ctx, request, func(resp sdk.ChatResponse) error {
-// 		select {
-// 		case <-ctx.Done():
-// 			return ctx.Err()
-// 		default:
-// 			if resp.Message.Content != "" {
-// 				errnie.Debug("received stream chunk",
-// 					"content", resp.Message.Content,
-// 				)
+	data, err := params.Process()
+	if err != nil || data == nil {
+		return
+	}
 
-// 				p.Result = core.NewEvent(
-// 					core.NewMessage(
-// 						"assistant",
-// 						"ollama",
-// 						resp.Message.Content,
-// 					),
-// 					nil,
-// 				).EventData
+	var formatData map[string]interface{}
+	if err := json.Unmarshal(data, &formatData); err != nil {
+		errnie.Error("failed to unmarshal process data", "error", err)
+		return
+	}
 
-// 				errnie.Debug("provider.handleStreamingRequest", "result", p.Result)
+	// Add format instructions as a system message since Ollama doesn't support direct format control
+	if name, ok := formatData["name"].(string); ok {
+		if desc, ok := formatData["description"].(string); ok {
+			formatMsg := api.Message{
+				Role: "system",
+				Content: "Please format your response according to the specified schema: " +
+					name + ". " + desc,
+			}
+			chatParams.Messages = append(chatParams.Messages, formatMsg)
+		}
+	}
+}
 
-// 				if err = p.enc.Encode(p.Result); err != nil {
-// 					errnie.NewErrIO(err)
-// 					return err
-// 				}
-// 			}
-// 			return nil
-// 		}
-// 	}); err != nil {
-// 		return errnie.NewErrHTTP(err, 500)
-// 	}
+func (prvdr *OllamaProvider) handleSingleRequest(
+	params *api.ChatRequest,
+) (err error) {
+	errnie.Debug("provider.handleSingleRequest")
 
-// 	return err
-// }
+	err = prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
+		return utils.SendEvent(
+			prvdr.buffer,
+			"provider.ollama",
+			message.AssistantRole,
+			response.Message.Content,
+		)
+	})
+
+	return errnie.Error(err)
+}
+
+func (prvdr *OllamaProvider) handleStreamingRequest(
+	params *api.ChatRequest,
+) (err error) {
+	errnie.Debug("provider.handleStreamingRequest")
+
+	stream := true
+	params.Stream = &stream
+
+	return prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
+		if response.Message.Content != "" {
+			if err = utils.SendEvent(
+				prvdr.buffer,
+				"provider.ollama",
+				message.AssistantRole,
+				response.Message.Content,
+			); errnie.Error(err) != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+type OllamaEmbedder struct {
+	client *api.Client
+	model  string
+	ctx    context.Context
+	params *aiCtx.Artifact
+}
+
+func NewOllamaEmbedder(host string) (*OllamaEmbedder, error) {
+	errnie.Debug("provider.NewOllamaEmbedder")
+
+	if host == "" {
+		host = viper.GetViper().GetString("endpoints.ollama")
+	}
+
+	client, err := api.ClientFromEnvironment()
+	if err != nil {
+		errnie.Error("failed to create Ollama embedder client", "error", err)
+		return nil, err
+	}
+
+	return &OllamaEmbedder{
+		client: client,
+		model:  "llama2",
+		ctx:    context.Background(),
+		params: &aiCtx.Artifact{},
+	}, nil
+}
+
+func (embedder *OllamaEmbedder) Read(p []byte) (n int, err error) {
+	errnie.Debug("provider.OllamaEmbedder.Read", "p", string(p))
+	return 0, nil
+}
+
+func (embedder *OllamaEmbedder) Write(p []byte) (n int, err error) {
+	errnie.Debug("provider.OllamaEmbedder.Write")
+
+	messages, err := embedder.params.Messages()
+	if err != nil {
+		errnie.Error("failed to get messages", "error", err)
+		return 0, err
+	}
+
+	if messages.Len() == 0 {
+		return len(p), nil
+	}
+
+	message := messages.At(0)
+	content, err := message.Content()
+	if err != nil {
+		errnie.Error("failed to get message content", "error", err)
+		return 0, err
+	}
+
+	response, err := embedder.client.Embeddings(context.Background(), &api.EmbeddingRequest{
+		Model:  "llama2",
+		Prompt: content,
+	})
+	if err != nil {
+		errnie.Error("embedding request failed", "error", err)
+		return 0, err
+	}
+
+	if response != nil && len(response.Embedding) > 0 {
+		errnie.Debug("created embeddings",
+			"text_length", len(content),
+			"dimensions", len(response.Embedding),
+		)
+	}
+
+	return len(p), nil
+}
+
+func (embedder *OllamaEmbedder) Close() error {
+	errnie.Debug("provider.OllamaEmbedder.Close")
+	embedder.params = nil
+	return nil
+}
+
+func (embedder *OllamaEmbedder) Embed(text string) ([]float32, error) {
+	response, err := embedder.client.Embed(embedder.ctx, &api.EmbedRequest{
+		Model: embedder.model,
+		Input: text,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// The Embed endpoint returns [][]float32, but we only need the first embedding
+	if len(response.Embeddings) == 0 {
+		return nil, fmt.Errorf("no embeddings returned")
+	}
+	return response.Embeddings[0], nil
+}
