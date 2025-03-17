@@ -2,15 +2,16 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
-	"github.com/theapemachine/caramba/pkg/message"
 )
+
+type Example interface {
+	Run() (err error)
+}
 
 var (
 	exampleCmd = &cobra.Command{
@@ -21,44 +22,19 @@ var (
 			errnie.SetLevel(log.DebugLevel)
 
 			var (
-				wf io.ReadWriter
+				wf Example
 			)
 
 			switch args[0] {
 			case "pipeline":
-				errnie.Info("Starting pipeline example")
 				wf = examples.NewPipeline()
+			case "chat":
+				wf = examples.NewChat()
 			default:
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
 
-			msg := message.New(
-				message.UserRole,
-				"Danny",
-				"Tell me a story in the style of Bill Hicks.",
-			)
-
-			msg2, err := msg.Message().Marshal()
-			if errnie.Error(err) != nil {
-				return err
-			}
-
-			evt := event.New(
-				"example.pipeline",
-				event.MessageEvent,
-				event.UserRole,
-				msg2,
-			)
-
-			if _, err = io.Copy(wf, evt); err != nil && err != io.EOF {
-				return err
-			}
-
-			if _, err = io.Copy(cmd.OutOrStdout(), wf); err != nil && err != io.EOF {
-				return err
-			}
-
-			return nil
+			return wf.Run()
 		},
 	}
 )

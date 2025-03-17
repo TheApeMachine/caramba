@@ -144,7 +144,9 @@ func (prvdr *OpenAIProvider) Close() error {
 	return prvdr.params.Close()
 }
 
-// buildMessages converts ContextData messages to OpenAI API format
+/*
+buildMessages converts ContextData messages to OpenAI API format
+*/
 func (prvdr *OpenAIProvider) buildMessages(
 	params *aiCtx.Artifact,
 	composed *openai.ChatCompletionNewParams,
@@ -194,7 +196,9 @@ func (prvdr *OpenAIProvider) buildMessages(
 	composed.Messages = openai.F(messageList)
 }
 
-// handleSingleRequest processes a single (non-streaming) completion request
+/*
+handleSingleRequest processes a single (non-streaming) completion request
+*/
 func (prvdr *OpenAIProvider) handleSingleRequest(
 	params *openai.ChatCompletionNewParams,
 ) (err error) {
@@ -271,6 +275,9 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 	return nil
 }
 
+/*
+buildTools converts ContextData tools to OpenAI API format
+*/
 func (prvdr *OpenAIProvider) buildTools(
 	params *aiCtx.Artifact,
 	openaiParams *openai.ChatCompletionNewParams,
@@ -325,6 +332,9 @@ func (prvdr *OpenAIProvider) buildTools(
 	return toolsOut
 }
 
+/*
+buildResponseFormat converts ContextData response format to OpenAI API format
+*/
 func (prvdr *OpenAIProvider) buildResponseFormat(
 	params *aiCtx.Artifact,
 	openaiParams *openai.ChatCompletionNewParams,
@@ -406,6 +416,10 @@ func (prvdr *OpenAIProvider) buildResponseFormat(
 	)
 }
 
+/*
+OpenAIEmbedder implements an LLM provider that connects to OpenAI's API.
+It supports regular chat completions, tool calling, and structured outputs.
+*/
 type OpenAIEmbedder struct {
 	params   *aiCtx.Artifact
 	apiKey   string
@@ -413,6 +427,11 @@ type OpenAIEmbedder struct {
 	client   *openai.Client
 }
 
+/*
+NewOpenAIEmbedder creates a new OpenAI embedder with the given API key and endpoint.
+If apiKey is empty, it will try to read from the OPENAI_API_KEY environment variable.
+This can also be used for local AI, since most will follow the OpenAI API format.
+*/
 func NewOpenAIEmbedder(apiKey string, endpoint string) *OpenAIEmbedder {
 	errnie.Debug("provider.NewOpenAIEmbedder")
 
@@ -424,16 +443,25 @@ func NewOpenAIEmbedder(apiKey string, endpoint string) *OpenAIEmbedder {
 	}
 }
 
+/*
+Read implements the io.Reader interface.
+*/
 func (embedder *OpenAIEmbedder) Read(p []byte) (n int, err error) {
 	errnie.Debug("provider.OpenAIEmbedder.Read", "p", string(p))
 	return 0, nil
 }
 
+/*
+Write implements the io.Writer interface.
+*/
 func (embedder *OpenAIEmbedder) Write(p []byte) (n int, err error) {
 	errnie.Debug("provider.OpenAIEmbedder.Write", "p", string(p))
 	return len(p), nil
 }
 
+/*
+Close cleans up any resources.
+*/
 func (embedder *OpenAIEmbedder) Close() error {
 	errnie.Debug("provider.OpenAIEmbedder.Close")
 	embedder.params = nil

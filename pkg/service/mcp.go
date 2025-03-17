@@ -2,9 +2,14 @@ package service
 
 import (
 	"context"
+	"io"
 	"net/http"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/memory"
+	"github.com/theapemachine/caramba/pkg/tools"
 )
 
 type MCP struct {
@@ -15,7 +20,7 @@ type MCP struct {
 func NewMCP() *MCP {
 	return &MCP{
 		stdio: server.NewMCPServer(
-			"example-server",
+			"caramba-server",
 			"1.0.0",
 			server.WithResourceCapabilities(true, true),
 			server.WithPromptCapabilities(true),
@@ -23,7 +28,7 @@ func NewMCP() *MCP {
 		),
 		sse: server.NewSSEServer(
 			server.NewMCPServer(
-				"example-server",
+				"caramba-server",
 				"1.0.0",
 				server.WithResourceCapabilities(true, true),
 				server.WithPromptCapabilities(true),
@@ -36,6 +41,19 @@ func NewMCP() *MCP {
 }
 
 func (service *MCP) Start() error {
+	service.stdio.AddTool(
+		*tools.NewMemoryTool(
+			map[string]io.ReadWriteCloser{
+				"qdrant": memory.NewQdrant(),
+				"neo4j":  memory.NewNeo4j(),
+			},
+		).Artifact.ToMCP(),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			errnie.Debug("CallToolRequest", req)
+			return nil, nil
+		},
+	)
+
 	return nil
 }
 
