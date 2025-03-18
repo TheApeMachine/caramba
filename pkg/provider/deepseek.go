@@ -2,16 +2,14 @@ package provider
 
 import (
 	"context"
+	"io"
 	"os"
 
 	deepseek "github.com/cohesion-org/deepseek-go"
 	"github.com/spf13/viper"
-	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 /*
@@ -138,12 +136,13 @@ func (prvdr *DeepseekProvider) handleSingleRequest(
 		return
 	}
 
-	return utils.SendEvent(
-		prvdr.buffer,
-		"provider.deepseek",
-		message.AssistantRole,
-		response.Choices[0].Message.Content,
-	)
+	if _, err = io.Copy(prvdr, datura.New(
+		datura.WithPayload([]byte(response.Choices[0].Message.Content)),
+	)); errnie.Error(err) != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (prvdr *DeepseekProvider) handleStreamingRequest(
@@ -170,12 +169,9 @@ func (prvdr *DeepseekProvider) handleStreamingRequest(
 		if len(response.Choices) > 0 {
 			content := response.Choices[0].Delta.Content
 			if content != "" {
-				if err = utils.SendEvent(
-					prvdr.buffer,
-					"provider.deepseek",
-					message.AssistantRole,
-					content,
-				); errnie.Error(err) != nil {
+				if _, err = io.Copy(prvdr, datura.New(
+					datura.WithPayload([]byte(content)),
+				)); errnie.Error(err) != nil {
 					continue
 				}
 			}
@@ -294,7 +290,7 @@ func (prvdr *DeepseekProvider) buildResponseFormat(
 
 type DeepseekEmbedder struct {
 	client *deepseek.Client
-	params *aiCtx.Artifact
+	params *Params
 	ctx    context.Context
 }
 
@@ -309,7 +305,7 @@ func NewDeepseekEmbedder(apiKey string) (*DeepseekEmbedder, error) {
 
 	return &DeepseekEmbedder{
 		client: client,
-		params: &aiCtx.Artifact{},
+		params: &Params{},
 		ctx:    context.Background(),
 	}, nil
 }

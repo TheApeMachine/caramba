@@ -9,12 +9,9 @@ import (
 	cohere "github.com/cohere-ai/cohere-go/v2"
 	cohereclient "github.com/cohere-ai/cohere-go/v2/client"
 	"github.com/spf13/viper"
-	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 /*
@@ -142,12 +139,13 @@ func (prvdr *CohereProvider) handleSingleRequest(
 		return
 	}
 
-	return utils.SendEvent(
-		prvdr.buffer,
-		"provider.cohere",
-		message.AssistantRole,
-		response.Text,
-	)
+	if _, err = io.Copy(prvdr, datura.New(
+		datura.WithPayload([]byte(response.Text)),
+	)); errnie.Error(err) != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (prvdr *CohereProvider) handleStreamingRequest(
@@ -176,12 +174,9 @@ func (prvdr *CohereProvider) handleStreamingRequest(
 		}
 
 		if content := chunk.TextGeneration.String(); content != "" {
-			if err = utils.SendEvent(
-				prvdr.buffer,
-				"provider.cohere",
-				message.AssistantRole,
-				content,
-			); errnie.Error(err) != nil {
+			if _, err = io.Copy(prvdr, datura.New(
+				datura.WithPayload([]byte(content)),
+			)); errnie.Error(err) != nil {
 				continue
 			}
 		}
@@ -300,7 +295,7 @@ func (prvdr *CohereProvider) buildResponseFormat(
 }
 
 type CohereEmbedder struct {
-	params   *aiCtx.Artifact
+	params   *Params
 	apiKey   string
 	endpoint string
 	client   *cohereclient.Client
@@ -314,7 +309,7 @@ func NewCohereEmbedder(apiKey string, endpoint string) *CohereEmbedder {
 	}
 
 	return &CohereEmbedder{
-		params:   &aiCtx.Artifact{},
+		params:   &Params{},
 		apiKey:   apiKey,
 		endpoint: endpoint,
 		client:   cohereclient.NewClient(cohereclient.WithToken(apiKey)),
@@ -329,22 +324,12 @@ func (embedder *CohereEmbedder) Read(p []byte) (n int, err error) {
 func (embedder *CohereEmbedder) Write(p []byte) (n int, err error) {
 	errnie.Debug("provider.CohereEmbedder.Write")
 
-	messages, err := embedder.params.Messages()
-	if err != nil {
-		errnie.Error("failed to get messages", "error", err)
-		return 0, err
-	}
-
-	if messages.Len() == 0 {
+	if len(embedder.params.Messages) == 0 {
 		return len(p), nil
 	}
 
-	message := messages.At(0)
-	content, err := message.Content()
-	if err != nil {
-		errnie.Error("failed to get message content", "error", err)
-		return 0, err
-	}
+	message := embedder.params.Messages[0]
+	content := message.Content
 
 	in := cohere.EmbedInputType(cohere.EmbedInputTypeSearchDocument)
 

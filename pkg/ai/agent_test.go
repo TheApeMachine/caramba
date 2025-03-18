@@ -5,34 +5,19 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
-	"github.com/theapemachine/caramba/pkg/message"
+	"github.com/theapemachine/caramba/pkg/datura"
+	"github.com/theapemachine/caramba/pkg/provider"
 )
 
 // testEvent creates a test event artifact with predefined data
-func testEvent() *event.Artifact {
-	msg, err := message.New(
-		message.UserRole,
-		"test-name",
-		"test-content",
-	).Message().Marshal()
-
-	if errnie.Error(err) != nil {
-		errnie.Error("failed to create message artifact", "error", err)
-		return nil
-	}
-
-	return event.New(
-		"test",
-		event.MessageEvent,
-		event.UserRole,
-		msg,
+func testEvent() *datura.Artifact {
+	return datura.New(
+		datura.WithPayload(provider.NewParams().Marshal()),
 	)
 }
 
 // writeEventToAgent is a helper to write an event to an agent and verify the write
-func writeEventToAgent(agent *Agent, evt *event.Artifact) {
+func writeEventToAgent(agent *Agent, evt *datura.Artifact) {
 	nn, err := io.Copy(agent, evt)
 	So(err, ShouldBeNil)
 	So(nn, ShouldBeGreaterThan, 0)
@@ -90,20 +75,8 @@ func TestWrite(t *testing.T) {
 		})
 
 		Convey("When writing a message event", func() {
-			msg := message.New(
-				message.UserRole,
-				"test-name",
-				"test-content",
-			)
-
-			msg2, err := msg.Message().Marshal()
-			So(err, ShouldBeNil)
-
-			evt := event.New(
-				"test",
-				event.MessageEvent,
-				event.UserRole,
-				msg2,
+			evt := datura.New(
+				datura.WithPayload(provider.NewParams().Marshal()),
 			)
 			writeEventToAgent(agent, evt)
 
@@ -113,39 +86,13 @@ func TestWrite(t *testing.T) {
 		})
 
 		Convey("When writing multiple message events", func() {
-			// First message
-			msg := message.New(
-				message.UserRole,
-				"test-name",
-				"test-content",
-			)
-
-			msg1, err := msg.Message().Marshal()
-			So(err, ShouldBeNil)
-
-			evt1 := event.New(
-				"test",
-				event.MessageEvent,
-				event.UserRole,
-				msg1,
+			evt1 := datura.New(
+				datura.WithPayload(provider.NewParams().Marshal()),
 			)
 			writeEventToAgent(agent, evt1)
 
-			// Second message
-			msg2 := message.New(
-				message.AssistantRole,
-				"test-name-2",
-				"test-content-2",
-			)
-
-			msg22, err := msg2.Message().Marshal()
-			So(err, ShouldBeNil)
-
-			evt2 := event.New(
-				"test",
-				event.MessageEvent,
-				event.AssistantRole,
-				msg22,
+			evt2 := datura.New(
+				datura.WithPayload(provider.NewParams().Marshal()),
 			)
 			writeEventToAgent(agent, evt2)
 

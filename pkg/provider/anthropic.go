@@ -2,17 +2,15 @@ package provider
 
 import (
 	"context"
+	"io"
 	"os"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/spf13/viper"
-	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 /*
@@ -134,12 +132,13 @@ func (p *AnthropicProvider) handleSingleRequest(
 
 	content := msg[0].Text
 
-	return utils.SendEvent(
-		p.buffer,
-		"provider.anthropic",
-		message.AssistantRole,
-		content,
-	)
+	if _, err = io.Copy(p.buffer, datura.New(
+		datura.WithPayload([]byte(content)),
+	)); errnie.Error(err) != nil {
+		return err
+	}
+
+	return nil
 }
 
 /*
@@ -171,12 +170,9 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 			continue
 		}
 
-		if err = utils.SendEvent(
-			prvdr.buffer,
-			"provider.anthropic",
-			message.AssistantRole,
-			content,
-		); errnie.Error(err) != nil {
+		if _, err = io.Copy(prvdr, datura.New(
+			datura.WithPayload([]byte(content)),
+		)); errnie.Error(err) != nil {
 			continue
 		}
 	}
@@ -273,7 +269,7 @@ func (p *AnthropicProvider) buildResponseFormat(
 }
 
 type AnthropicEmbedder struct {
-	params   *aiCtx.Artifact
+	params   *Params
 	apiKey   string
 	endpoint string
 	client   *anthropic.Client
@@ -283,7 +279,7 @@ func NewAnthropicEmbedder(apiKey string, endpoint string) *AnthropicEmbedder {
 	errnie.Debug("provider.NewAnthropicEmbedder")
 
 	return &AnthropicEmbedder{
-		params:   &aiCtx.Artifact{},
+		params:   &Params{},
 		apiKey:   apiKey,
 		endpoint: endpoint,
 		client:   anthropic.NewClient(option.WithAPIKey(apiKey)),

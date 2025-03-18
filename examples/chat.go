@@ -7,9 +7,8 @@ import (
 	"os"
 
 	"github.com/theapemachine/caramba/pkg/ai"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
-	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
@@ -55,29 +54,25 @@ func (chat *Chat) Run() (err error) {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("> ")
 		input, err := reader.ReadString('\n')
+
 		if err != nil {
 			return err
 		}
 
-		msg := message.New(
-			message.UserRole,
-			"Danny",
-			input,
+		msg := datura.New(
+			datura.WithPayload(provider.NewParams(
+				provider.WithMessages(
+					provider.NewMessage(
+						provider.WithUserRole("Danny", input),
+					),
+				),
+				provider.WithModel(tweaker.GetModel(tweaker.GetProvider())),
+				provider.WithTemperature(tweaker.GetTemperature()),
+				provider.WithStream(tweaker.GetStream()),
+			).Marshal()),
 		)
 
-		msg2, err := msg.Message().Marshal()
-		if errnie.Error(err) != nil {
-			return err
-		}
-
-		evt := event.New(
-			"example.pipeline",
-			event.MessageEvent,
-			event.UserRole,
-			msg2,
-		)
-
-		if _, err = io.Copy(chat, evt); err != nil && err != io.EOF {
+		if _, err = io.Copy(chat, msg); err != nil && err != io.EOF {
 			return err
 		}
 	}

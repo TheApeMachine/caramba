@@ -2,13 +2,12 @@ package provider
 
 import (
 	"context"
+	"io"
 	"os"
 
 	"github.com/spf13/viper"
-	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/utils"
 	"google.golang.org/genai"
@@ -152,12 +151,13 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 		content += string(part.Text)
 	}
 
-	return utils.SendEvent(
-		prvdr.buffer,
-		"provider.google",
-		message.AssistantRole,
-		content,
-	)
+	if _, err = io.Copy(prvdr, datura.New(
+		datura.WithPayload([]byte(content)),
+	)); errnie.Error(err) != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (prvdr *GoogleProvider) handleStreamingRequest(
@@ -190,12 +190,9 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 			continue
 		}
 
-		if err = utils.SendEvent(
-			prvdr.buffer,
-			"provider.google",
-			message.AssistantRole,
-			text,
-		); errnie.Error(err) != nil {
+		if _, err = io.Copy(prvdr, datura.New(
+			datura.WithPayload([]byte(text)),
+		)); errnie.Error(err) != nil {
 			continue
 		}
 	}
@@ -291,7 +288,7 @@ func (prvdr *GoogleProvider) buildResponseFormat(
 }
 
 type GoogleEmbedder struct {
-	params   *aiCtx.Artifact
+	params   *Params
 	apiKey   string
 	endpoint string
 	client   *genai.Client
@@ -315,7 +312,7 @@ func NewGoogleEmbedder(apiKey string, endpoint string) *GoogleEmbedder {
 	}
 
 	return &GoogleEmbedder{
-		params:   &aiCtx.Artifact{},
+		params:   &Params{},
 		apiKey:   apiKey,
 		endpoint: endpoint,
 		client:   client,

@@ -4,12 +4,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/theapemachine/caramba/pkg/ai"
-	"github.com/theapemachine/caramba/pkg/context"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
-	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/workflow"
@@ -48,25 +45,17 @@ func NewPipeline() *Pipeline {
 func (pipeline *Pipeline) Run() (err error) {
 	errnie.Info("Starting pipeline example")
 
-	msg := message.New(
-		message.UserRole,
-		"Danny",
-		"Write a good programmer joke, but nothing cliche, or knock-knock/chicken-crossed-the-road/etc.",
+	msg := datura.New(
+		datura.WithPayload(provider.NewParams(
+			provider.WithMessages(
+				provider.NewMessage(
+					provider.WithUserRole("Danny", "Write a good programmer joke, but nothing cliche, or knock-knock/chicken-crossed-the-road/etc."),
+				),
+			),
+		).Marshal()),
 	)
 
-	msg2, err := msg.Message().Marshal()
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	evt := event.New(
-		"example.pipeline",
-		event.MessageEvent,
-		event.UserRole,
-		msg2,
-	)
-
-	if _, err = io.Copy(pipeline, evt); err != nil && err != io.EOF {
+	if _, err = io.Copy(pipeline, msg); err != nil && err != io.EOF {
 		return err
 	}
 
@@ -85,26 +74,4 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 func (pipeline *Pipeline) Write(p []byte) (n int, err error) {
 	errnie.Debug("examples.Pipeline.Write")
 	return pipeline.workflow.Write(p)
-}
-
-func (pipeline *Pipeline) AgentContext() {
-	ctx := &context.Artifact{}
-
-	io.Copy(ctx, pipeline.agent)
-
-	messages, err := ctx.Messages()
-
-	if errnie.Error(err) != nil {
-		errnie.Error(err)
-	}
-
-	for idx := range messages.Len() {
-		content, err := messages.At(idx).Content()
-
-		if errnie.Error(err) != nil {
-			errnie.Error(err)
-		}
-
-		spew.Dump(content)
-	}
 }

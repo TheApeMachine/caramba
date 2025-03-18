@@ -24,16 +24,25 @@ NewAgent creates a new agent with initialized components.
 func NewAgent() *Agent {
 	errnie.Debug("NewAgent")
 
+	params := provider.NewParams(
+		provider.WithModel(tweaker.GetModel(tweaker.GetProvider())),
+		provider.WithTemperature(tweaker.GetTemperature()),
+		provider.WithStream(tweaker.GetStream()),
+	)
+
 	return &Agent{
 		buffer: stream.NewBuffer(func(evt *datura.Artifact) (err error) {
-			errnie.Debug("agent.buffer.fn", "event", evt)
+			errnie.Debug("agent.buffer.fn")
+			var payload []byte
+
+			if payload, err = evt.EncryptedPayload(); err != nil {
+				return errnie.Error(err)
+			}
+
+			params.Unmarshal(payload)
 			return nil
 		}),
-		params: provider.NewParams(
-			provider.WithModel(tweaker.GetModel(tweaker.GetProvider())),
-			provider.WithTemperature(tweaker.GetTemperature()),
-			provider.WithStream(tweaker.GetStream()),
-		),
+		params: params,
 	}
 }
 

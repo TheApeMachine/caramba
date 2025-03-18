@@ -8,59 +8,34 @@ import (
 
 	"github.com/openai/openai-go"
 	. "github.com/smartystreets/goconvey/convey"
-	aiCtx "github.com/theapemachine/caramba/pkg/context"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
-	"github.com/theapemachine/caramba/pkg/message"
 )
 
-func testParams(stream bool) *aiCtx.Artifact {
+func testParams(stream bool) *Params {
 	model := openai.ChatModelGPT4oMini
 	errnie.Debug("creating test params", "model", model)
 
-	ctx := aiCtx.New(
-		model,
-		nil,    // messages
-		nil,    // tools
-		nil,    // process
-		0.7,    // temperature
-		1.0,    // topP
-		40,     // topK
-		0.0,    // presencePenalty
-		0.0,    // frequencyPenalty
-		2048,   // maxTokens
-		stream, // stream
-	)
-
-	msg, err := message.New(
-		message.UserRole,
-		"test-name",
-		"test message",
-	).Message().Marshal()
-
-	if errnie.Error(err) != nil {
-		errnie.Error("failed to marshal message", "error", err)
-		return nil
+	params := &Params{
+		Model:            model,
+		Messages:         nil,
+		Tools:            nil,
+		Temperature:      0.7,
+		TopP:             1.0,
+		TopK:             40,
+		PresencePenalty:  0.0,
+		FrequencyPenalty: 0.0,
+		MaxTokens:        2048,
+		Stream:           stream,
 	}
 
-	msgEvt := event.New(
-		"test.pipeline",
-		event.MessageEvent,
-		event.UserRole,
-		msg,
-	)
-	msgEvt.ToContext(ctx)
-
-	return ctx
+	return params
 }
 
-func testEvent(stream bool) *event.Artifact {
+func testEvent(stream bool) *datura.Artifact {
 	ctx := testParams(stream)
-	return event.New(
-		"test.pipeline",
-		event.ContextEvent,
-		event.UserRole,
-		ctx.Marshal(),
+	return datura.New(
+		datura.WithPayload(ctx.Marshal()),
 	)
 }
 

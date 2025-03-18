@@ -3,17 +3,15 @@ package provider
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/spf13/viper"
-	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 /*
@@ -144,12 +142,16 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		return err
 	}
 
-	return utils.SendEvent(
-		prvdr.buffer,
-		"provider.openai",
-		message.AssistantRole,
-		completion.Choices[0].Message.Content,
-	)
+	prvdr.params.Messages = append(prvdr.params.Messages, &Message{
+		Role:    MessageRoleAssistant,
+		Content: completion.Choices[0].Message.Content,
+	})
+
+	_, err = io.Copy(prvdr, datura.New(
+		datura.WithPayload(prvdr.params.Marshal()),
+	))
+
+	return err
 }
 
 /*
@@ -176,24 +178,18 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 		// When this fires, the current chunk value will not contain content data
 		if content, ok := acc.JustFinishedContent(); ok {
-			if err = utils.SendEvent(
-				prvdr.buffer,
-				"provider.openai",
-				message.AssistantRole,
-				content,
-			); errnie.Error(err) != nil {
+			if _, err = io.Copy(prvdr, datura.New(
+				datura.WithPayload([]byte(content)),
+			)); errnie.Error(err) != nil {
 				continue
 			}
 		}
 
 		// Handle delta content
 		if chunk.Choices[0].Delta.Content != "" {
-			if err = utils.SendEvent(
-				prvdr.buffer,
-				"provider.openai",
-				message.AssistantRole,
-				chunk.Choices[0].Delta.Content,
-			); errnie.Error(err) != nil {
+			if _, err = io.Copy(prvdr, datura.New(
+				datura.WithPayload([]byte(chunk.Choices[0].Delta.Content)),
+			)); errnie.Error(err) != nil {
 				continue
 			}
 		}
@@ -320,7 +316,7 @@ OpenAIEmbedder implements an LLM provider that connects to OpenAI's API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type OpenAIEmbedder struct {
-	params   *aiCtx.Artifact
+	params   *Params
 	apiKey   string
 	endpoint string
 	client   *openai.Client
@@ -335,7 +331,7 @@ func NewOpenAIEmbedder(apiKey string, endpoint string) *OpenAIEmbedder {
 	errnie.Debug("provider.NewOpenAIEmbedder")
 
 	return &OpenAIEmbedder{
-		params:   &aiCtx.Artifact{},
+		params:   &Params{},
 		apiKey:   apiKey,
 		endpoint: endpoint,
 		client:   openai.NewClient(option.WithAPIKey(apiKey)),

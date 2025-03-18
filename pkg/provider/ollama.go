@@ -3,15 +3,13 @@ package provider
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/ollama/ollama/api"
 	"github.com/spf13/viper"
-	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 /*
@@ -123,16 +121,16 @@ func (prvdr *OllamaProvider) handleSingleRequest(
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
 
-	err = prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
-		return utils.SendEvent(
-			prvdr.buffer,
-			"provider.ollama",
-			message.AssistantRole,
-			response.Message.Content,
-		)
-	})
-
-	return errnie.Error(err)
+	return errnie.Error(prvdr.client.Chat(
+		prvdr.ctx, params, func(response api.ChatResponse) error {
+			if _, err = io.Copy(prvdr, datura.New(
+				datura.WithPayload([]byte(response.Message.Content)),
+			)); errnie.Error(err) != nil {
+				return err
+			}
+			return nil
+		},
+	))
 }
 
 func (prvdr *OllamaProvider) handleStreamingRequest(
@@ -145,12 +143,9 @@ func (prvdr *OllamaProvider) handleStreamingRequest(
 
 	return prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
 		if response.Message.Content != "" {
-			if err = utils.SendEvent(
-				prvdr.buffer,
-				"provider.ollama",
-				message.AssistantRole,
-				response.Message.Content,
-			); errnie.Error(err) != nil {
+			if _, err = io.Copy(prvdr, datura.New(
+				datura.WithPayload([]byte(response.Message.Content)),
+			)); errnie.Error(err) != nil {
 				return err
 			}
 		}
@@ -273,7 +268,7 @@ type OllamaEmbedder struct {
 	client *api.Client
 	model  string
 	ctx    context.Context
-	params *aiCtx.Artifact
+	params *Params
 }
 
 func NewOllamaEmbedder(host string) (*OllamaEmbedder, error) {
@@ -293,7 +288,7 @@ func NewOllamaEmbedder(host string) (*OllamaEmbedder, error) {
 		client: client,
 		model:  "llama2",
 		ctx:    context.Background(),
-		params: &aiCtx.Artifact{},
+		params: &Params{},
 	}, nil
 }
 
@@ -305,22 +300,12 @@ func (embedder *OllamaEmbedder) Read(p []byte) (n int, err error) {
 func (embedder *OllamaEmbedder) Write(p []byte) (n int, err error) {
 	errnie.Debug("provider.OllamaEmbedder.Write")
 
-	messages, err := embedder.params.Messages()
-	if err != nil {
-		errnie.Error("failed to get messages", "error", err)
-		return 0, err
-	}
-
-	if messages.Len() == 0 {
+	if len(embedder.params.Messages) == 0 {
 		return len(p), nil
 	}
 
-	message := messages.At(0)
-	content, err := message.Content()
-	if err != nil {
-		errnie.Error("failed to get message content", "error", err)
-		return 0, err
-	}
+	message := embedder.params.Messages[0]
+	content := message.Content
 
 	response, err := embedder.client.Embeddings(context.Background(), &api.EmbeddingRequest{
 		Model:  "llama2",
