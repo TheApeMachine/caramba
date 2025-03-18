@@ -48,7 +48,7 @@ func New(options ...ArtifactOption) *Artifact {
 func WithPayload(payload []byte) ArtifactOption {
 	return func(artifact *Artifact) {
 		var (
-			crypto           *CryptoSuite
+			crypto           = NewCryptoSuite()
 			encryptedPayload []byte
 			encryptedKey     []byte
 			ephemeralPubKey  []byte

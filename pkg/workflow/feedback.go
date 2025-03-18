@@ -32,10 +32,34 @@ func (feedback *Feedback) Read(p []byte) (n int, err error) {
 
 func (feedback *Feedback) Write(p []byte) (n int, err error) {
 	errnie.Debug("feedback.Write")
-	return feedback.forward.Write(p)
+	// Reset the tee with the updated forward component after writing
+	if n, err = feedback.forward.Write(p); err != nil {
+		return n, errnie.Error(err)
+	}
+
+	// // Re-establish the tee reader after every write to ensure
+	// // it reads from the forward component's updated state
+	// feedback.tee = io.TeeReader(feedback.forward, feedback.backward)
+
+	return n, nil
 }
 
 func (feedback *Feedback) Close() error {
 	errnie.Debug("feedback.Close")
+
+	// Close the forward component if it implements io.Closer
+	if closer, ok := feedback.forward.(io.Closer); ok {
+		if err := closer.Close(); err != nil {
+			return errnie.Error(err)
+		}
+	}
+
+	// Close the backward component if it implements io.Closer
+	if closer, ok := feedback.backward.(io.Closer); ok {
+		if err := closer.Close(); err != nil {
+			return errnie.Error(err)
+		}
+	}
+
 	return nil
 }

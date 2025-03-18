@@ -56,7 +56,7 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	var nn int64
 
 	if !pipeline.processed {
-		for i := range len(pipeline.components) - 1 {
+		for i := range len(pipeline.components)-1 {
 			nn, err = io.Copy(pipeline.components[i+1], pipeline.components[i])
 			n += int(nn)
 
@@ -86,7 +86,7 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 		return n, io.EOF
 	}
 
-	return n, errnie.Error(err)
+	return n, nil
 }
 
 /*
@@ -99,18 +99,28 @@ func (pipeline *Pipeline) Write(p []byte) (n int, err error) {
 	errnie.Debug("workflow.Pipeline.Write")
 
 	if len(pipeline.components) == 0 {
-		return len(p), errnie.Error(errors.New("pipeline has no components"))
+		return len(p), nil
 	}
 
+	pipeline.processed = false
 	return pipeline.components[0].Write(p)
 }
 
 /*
 Close implements the io.Closer interface.
 
-It closes all components in the pipeline and collects any errors encountered.
+It closes all components in the pipeline that implement io.Closer.
 */
 func (pipeline *Pipeline) Close() error {
 	errnie.Debug("workflow.Pipeline.Close")
+
+	for _, component := range pipeline.components {
+		if closer, ok := component.(io.Closer); ok {
+			if err := closer.Close(); err != nil {
+				return errnie.Error(err)
+			}
+		}
+	}
+
 	return nil
 }

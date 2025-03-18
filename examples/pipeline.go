@@ -26,6 +26,7 @@ func NewPipeline() *Pipeline {
 		os.Getenv("OPENAI_API_KEY"),
 		tweaker.GetEndpoint("openai"),
 	)
+	converter := workflow.NewConverter()
 
 	pipeline := &Pipeline{
 		agent:    agent,
@@ -36,6 +37,7 @@ func NewPipeline() *Pipeline {
 				provider,
 				agent,
 			),
+			converter,
 		),
 	}
 
@@ -47,6 +49,8 @@ func (pipeline *Pipeline) Run() (err error) {
 
 	msg := datura.New(
 		datura.WithPayload(provider.NewParams(
+			provider.WithModel("gpt-4o-mini"),
+			provider.WithTopP(1),
 			provider.WithMessages(
 				provider.NewMessage(
 					provider.WithUserRole("Danny", "Write a good programmer joke, but nothing cliche, or knock-knock/chicken-crossed-the-road/etc."),

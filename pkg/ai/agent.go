@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"encoding/json"
+
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
@@ -40,11 +42,14 @@ func NewAgent() *Agent {
 			errnie.Debug("agent.buffer.fn")
 			var payload []byte
 
-			if payload, err = evt.EncryptedPayload(); err != nil {
+			if payload, err = evt.DecryptPayload(); err != nil {
 				return errnie.Error(err)
 			}
 
-			params.Unmarshal(payload)
+			if err = json.Unmarshal(payload, params); err != nil {
+				return errnie.Error(err)
+			}
+
 			return nil
 		}),
 		params: params,

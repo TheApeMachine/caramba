@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -55,11 +56,14 @@ func NewOpenAIProvider(
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
 			var payload []byte
 
-			if payload, err = artfct.EncryptedPayload(); err != nil {
+			if payload, err = artfct.DecryptPayload(); err != nil {
 				return errnie.Error(err)
 			}
 
-			params.Unmarshal(payload)
+			if err = json.Unmarshal(payload, params); err != nil {
+				return errnie.Error(err)
+			}
+
 			return nil
 		}),
 		params: params,
@@ -94,7 +98,10 @@ func (prvdr *OpenAIProvider) Write(p []byte) (n int, err error) {
 		TopP:             openai.F(prvdr.params.TopP),
 		FrequencyPenalty: openai.F(prvdr.params.FrequencyPenalty),
 		PresencePenalty:  openai.F(prvdr.params.PresencePenalty),
-		MaxTokens:        openai.F(int64(prvdr.params.MaxTokens)),
+	}
+
+	if prvdr.params.MaxTokens > 1 {
+		composed.MaxTokens = openai.F(int64(prvdr.params.MaxTokens))
 	}
 
 	if err = prvdr.buildMessages(composed); err != nil {
@@ -105,8 +112,10 @@ func (prvdr *OpenAIProvider) Write(p []byte) (n int, err error) {
 		return n, errnie.Error(err)
 	}
 
-	if err = prvdr.buildResponseFormat(composed); err != nil {
-		return n, errnie.Error(err)
+	if prvdr.params.ResponseFormat != nil {
+		if err = prvdr.buildResponseFormat(composed); err != nil {
+			return n, errnie.Error(err)
+		}
 	}
 
 	if prvdr.params.Stream {
@@ -147,7 +156,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		Content: completion.Choices[0].Message.Content,
 	})
 
-	_, err = io.Copy(prvdr, datura.New(
+	_, err = io.Copy(prvdr.buffer, datura.New(
 		datura.WithPayload(prvdr.params.Marshal()),
 	))
 
@@ -178,7 +187,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 		// When this fires, the current chunk value will not contain content data
 		if content, ok := acc.JustFinishedContent(); ok {
-			if _, err = io.Copy(prvdr, datura.New(
+			if _, err = io.Copy(prvdr.buffer, datura.New(
 				datura.WithPayload([]byte(content)),
 			)); errnie.Error(err) != nil {
 				continue
@@ -187,7 +196,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 		// Handle delta content
 		if chunk.Choices[0].Delta.Content != "" {
-			if _, err = io.Copy(prvdr, datura.New(
+			if _, err = io.Copy(prvdr.buffer, datura.New(
 				datura.WithPayload([]byte(chunk.Choices[0].Delta.Content)),
 			)); errnie.Error(err) != nil {
 				continue
