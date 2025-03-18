@@ -10,7 +10,6 @@ import (
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/workflow"
 )
@@ -39,7 +38,7 @@ func NewChat() *Chat {
 				provider,
 				agent,
 			),
-			stream.NewConverter(),
+			workflow.NewConverter(),
 			os.Stdout,
 		),
 	}
