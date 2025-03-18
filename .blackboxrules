@@ -1,4 +1,0 @@
-1. Carefully check for any potential issues regarding the use of io.ReadWriteCloser implementations.
-2. Make sure to always use the data objects for each component when it comes to decoding and encoding.
-3. Do not start to go off in a totally different direction, the basics are almost working, just be helpful and try to fix the remaining issues.
-4. No hacky solutions, and do not create messy code.

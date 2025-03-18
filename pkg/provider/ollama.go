@@ -41,24 +41,15 @@ func NewOllamaProvider(
 		host = viper.GetViper().GetString("endpoints.ollama")
 	}
 
-	if model == "" {
-		model = "llama2" // Default model
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
-	params := &Params{
-		Model:       model,
-		Temperature: 0.7,
-		TopP:        1.0,
-		MaxTokens:   2048,
-	}
+	params := &Params{}
 
 	client, err := api.ClientFromEnvironment()
 	if errnie.Error(err) != nil {
 		return nil
 	}
 
-	prvdr := &OllamaProvider{
+	return &OllamaProvider{
 		client: client,
 		model:  model,
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
@@ -75,8 +66,6 @@ func NewOllamaProvider(
 		ctx:    ctx,
 		cancel: cancel,
 	}
-
-	return prvdr
 }
 
 /*
@@ -99,7 +88,12 @@ func (prvdr *OllamaProvider) Write(p []byte) (n int, err error) {
 	}
 
 	composed := &api.ChatRequest{
-		Model: prvdr.model,
+		Model: prvdr.params.Model,
+		Options: map[string]interface{}{
+			"temperature": prvdr.params.Temperature,
+			"top_p":       prvdr.params.TopP,
+			"max_tokens":  prvdr.params.MaxTokens,
+		},
 	}
 
 	prvdr.buildMessages(composed)
@@ -122,6 +116,46 @@ func (prvdr *OllamaProvider) Close() error {
 	errnie.Debug("provider.OllamaProvider.Close")
 	prvdr.cancel()
 	return nil
+}
+
+func (prvdr *OllamaProvider) handleSingleRequest(
+	params *api.ChatRequest,
+) (err error) {
+	errnie.Debug("provider.handleSingleRequest")
+
+	err = prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
+		return utils.SendEvent(
+			prvdr.buffer,
+			"provider.ollama",
+			message.AssistantRole,
+			response.Message.Content,
+		)
+	})
+
+	return errnie.Error(err)
+}
+
+func (prvdr *OllamaProvider) handleStreamingRequest(
+	params *api.ChatRequest,
+) (err error) {
+	errnie.Debug("provider.handleStreamingRequest")
+
+	stream := true
+	params.Stream = &stream
+
+	return prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
+		if response.Message.Content != "" {
+			if err = utils.SendEvent(
+				prvdr.buffer,
+				"provider.ollama",
+				message.AssistantRole,
+				response.Message.Content,
+			); errnie.Error(err) != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (prvdr *OllamaProvider) buildMessages(
@@ -233,46 +267,6 @@ func (prvdr *OllamaProvider) buildResponseFormat(
 		}
 		chatParams.Messages = append(chatParams.Messages, formatMsg)
 	}
-}
-
-func (prvdr *OllamaProvider) handleSingleRequest(
-	params *api.ChatRequest,
-) (err error) {
-	errnie.Debug("provider.handleSingleRequest")
-
-	err = prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
-		return utils.SendEvent(
-			prvdr.buffer,
-			"provider.ollama",
-			message.AssistantRole,
-			response.Message.Content,
-		)
-	})
-
-	return errnie.Error(err)
-}
-
-func (prvdr *OllamaProvider) handleStreamingRequest(
-	params *api.ChatRequest,
-) (err error) {
-	errnie.Debug("provider.handleStreamingRequest")
-
-	stream := true
-	params.Stream = &stream
-
-	return prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
-		if response.Message.Content != "" {
-			if err = utils.SendEvent(
-				prvdr.buffer,
-				"provider.ollama",
-				message.AssistantRole,
-				response.Message.Content,
-			); errnie.Error(err) != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }
 
 type OllamaEmbedder struct {

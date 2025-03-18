@@ -1,9 +1,9 @@
 package ai
 
 import (
-	aiCtx "github.com/theapemachine/caramba/pkg/context"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
@@ -15,7 +15,7 @@ pipelines for complex workflows.
 */
 type Agent struct {
 	buffer *stream.Buffer
-	params *aiCtx.Artifact
+	params *provider.Params
 }
 
 /*
@@ -29,18 +29,10 @@ func NewAgent() *Agent {
 			errnie.Debug("agent.buffer.fn", "event", evt)
 			return nil
 		}),
-		params: aiCtx.New(
-			tweaker.GetModel(tweaker.GetProvider()),
-			[]*aiCtx.Message{},
-			[]*aiCtx.Tool{},
-			[]byte{},
-			tweaker.GetTemperature(),
-			tweaker.GetTopP(),
-			tweaker.GetTopK(),
-			tweaker.GetPresencePenalty(),
-			tweaker.GetFrequencyPenalty(),
-			tweaker.GetMaxTokens(),
-			tweaker.GetStream(),
+		params: provider.NewParams(
+			provider.WithModel(tweaker.GetModel(tweaker.GetProvider())),
+			provider.WithTemperature(tweaker.GetTemperature()),
+			provider.WithStream(tweaker.GetStream()),
 		),
 	}
 }
@@ -72,5 +64,5 @@ It closes the internal context.
 */
 func (agent *Agent) Close() error {
 	errnie.Debug("Agent.Close")
-	return agent.params.Close()
+	return agent.buffer.Close()
 }

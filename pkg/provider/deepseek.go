@@ -45,14 +45,9 @@ func NewDeepseekProvider(
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	params := &Params{
-		Model:       deepseek.DeepSeekChat,
-		Temperature: 0.7,
-		TopP:        1.0,
-		MaxTokens:   2048,
-	}
+	params := &Params{}
 
-	prvdr := &DeepseekProvider{
+	return &DeepseekProvider{
 		client: deepseek.NewClient(apiKey),
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
 			var payload []byte
@@ -68,8 +63,6 @@ func NewDeepseekProvider(
 		ctx:    ctx,
 		cancel: cancel,
 	}
-
-	return prvdr
 }
 
 /*
@@ -91,8 +84,13 @@ func (prvdr *DeepseekProvider) Write(p []byte) (n int, err error) {
 		return n, err
 	}
 
-	composed := &deepseek.ChatCompletionRequest{
-		Model: deepseek.DeepSeekChat,
+	composed := &deepseek.StreamChatCompletionRequest{
+		Model:            deepseek.DeepSeekChat,
+		Temperature:      float32(prvdr.params.Temperature),
+		TopP:             float32(prvdr.params.TopP),
+		PresencePenalty:  float32(prvdr.params.PresencePenalty),
+		FrequencyPenalty: float32(prvdr.params.FrequencyPenalty),
+		MaxTokens:        int(prvdr.params.MaxTokens),
 	}
 
 	prvdr.buildMessages(composed)
@@ -117,8 +115,78 @@ func (prvdr *DeepseekProvider) Close() error {
 	return nil
 }
 
+func (prvdr *DeepseekProvider) handleSingleRequest(
+	params *deepseek.StreamChatCompletionRequest,
+) (err error) {
+	errnie.Debug("provider.handleSingleRequest")
+
+	prms := &deepseek.ChatCompletionRequest{
+		Model:       params.Model,
+		Messages:    params.Messages,
+		Temperature: params.Temperature,
+		TopP:        params.TopP,
+		MaxTokens:   params.MaxTokens,
+	}
+
+	response, err := prvdr.client.CreateChatCompletion(prvdr.ctx, prms)
+	if errnie.Error(err) != nil {
+		return
+	}
+
+	if len(response.Choices) == 0 {
+		errnie.Error("no response choices")
+		return
+	}
+
+	return utils.SendEvent(
+		prvdr.buffer,
+		"provider.deepseek",
+		message.AssistantRole,
+		response.Choices[0].Message.Content,
+	)
+}
+
+func (prvdr *DeepseekProvider) handleStreamingRequest(
+	params *deepseek.StreamChatCompletionRequest,
+) (err error) {
+	errnie.Debug("provider.handleStreamingRequest")
+
+	stream, err := prvdr.client.CreateChatCompletionStream(prvdr.ctx, params)
+	if errnie.Error(err) != nil {
+		return
+	}
+	defer stream.Close()
+
+	for {
+		response, err := stream.Recv()
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			errnie.Error("streaming error", "error", err)
+			return err
+		}
+
+		if len(response.Choices) > 0 {
+			content := response.Choices[0].Delta.Content
+			if content != "" {
+				if err = utils.SendEvent(
+					prvdr.buffer,
+					"provider.deepseek",
+					message.AssistantRole,
+					content,
+				); errnie.Error(err) != nil {
+					continue
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func (prvdr *DeepseekProvider) buildMessages(
-	chatParams *deepseek.ChatCompletionRequest,
+	chatParams *deepseek.StreamChatCompletionRequest,
 ) {
 	errnie.Debug("provider.buildMessages")
 
@@ -155,7 +223,7 @@ func (prvdr *DeepseekProvider) buildMessages(
 }
 
 func (prvdr *DeepseekProvider) buildTools(
-	chatParams *deepseek.ChatCompletionRequest,
+	chatParams *deepseek.StreamChatCompletionRequest,
 ) {
 	errnie.Debug("provider.buildTools")
 
@@ -204,7 +272,7 @@ func (prvdr *DeepseekProvider) buildTools(
 }
 
 func (prvdr *DeepseekProvider) buildResponseFormat(
-	chatParams *deepseek.ChatCompletionRequest,
+	chatParams *deepseek.StreamChatCompletionRequest,
 ) {
 	errnie.Debug("provider.buildResponseFormat")
 
@@ -222,79 +290,6 @@ func (prvdr *DeepseekProvider) buildResponseFormat(
 		}
 		chatParams.Messages = append(chatParams.Messages, formatMsg)
 	}
-}
-
-func (prvdr *DeepseekProvider) handleSingleRequest(
-	params *deepseek.ChatCompletionRequest,
-) (err error) {
-	errnie.Debug("provider.handleSingleRequest")
-
-	response, err := prvdr.client.CreateChatCompletion(prvdr.ctx, params)
-	if errnie.Error(err) != nil {
-		return
-	}
-
-	if len(response.Choices) == 0 {
-		errnie.Error("no response choices")
-		return
-	}
-
-	return utils.SendEvent(
-		prvdr.buffer,
-		"provider.deepseek",
-		message.AssistantRole,
-		response.Choices[0].Message.Content,
-	)
-}
-
-func (prvdr *DeepseekProvider) handleStreamingRequest(
-	params *deepseek.ChatCompletionRequest,
-) (err error) {
-	errnie.Debug("provider.handleStreamingRequest")
-
-	// Convert to stream request
-	streamRequest := &deepseek.StreamChatCompletionRequest{
-		Model:       params.Model,
-		Messages:    params.Messages,
-		Temperature: params.Temperature,
-		TopP:        params.TopP,
-		MaxTokens:   params.MaxTokens,
-		Stop:        params.Stop,
-		Stream:      true,
-	}
-
-	stream, err := prvdr.client.CreateChatCompletionStream(prvdr.ctx, streamRequest)
-	if errnie.Error(err) != nil {
-		return
-	}
-	defer stream.Close()
-
-	for {
-		response, err := stream.Recv()
-		if err != nil {
-			if err.Error() == "EOF" {
-				break
-			}
-			errnie.Error("streaming error", "error", err)
-			return err
-		}
-
-		if len(response.Choices) > 0 {
-			content := response.Choices[0].Delta.Content
-			if content != "" {
-				if err = utils.SendEvent(
-					prvdr.buffer,
-					"provider.deepseek",
-					message.AssistantRole,
-					content,
-				); errnie.Error(err) != nil {
-					continue
-				}
-			}
-		}
-	}
-
-	return nil
 }
 
 type DeepseekEmbedder struct {

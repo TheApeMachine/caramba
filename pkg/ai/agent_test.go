@@ -46,23 +46,20 @@ type messageVerification struct {
 
 // verifyMessages checks that the agent's context contains the expected messages
 func verifyMessages(agent *Agent, expected []messageVerification) {
-	messages, err := agent.params.Messages()
-	So(err, ShouldBeNil)
-	So(messages.Len(), ShouldEqual, len(expected))
+	messages := agent.params.Messages
+	So(messages, ShouldNotBeNil)
+	So(len(messages), ShouldEqual, len(expected))
 
 	for i, exp := range expected {
-		msg := messages.At(i)
+		msg := messages[i]
 
-		content, err := msg.Content()
-		So(err, ShouldBeNil)
+		content := msg.Content
 		So(content, ShouldEqual, exp.content)
 
-		role, err := msg.Role()
-		So(err, ShouldBeNil)
+		role := msg.Role
 		So(role, ShouldEqual, exp.role)
 
-		name, err := msg.Name()
-		So(err, ShouldBeNil)
+		name := msg.Name
 		So(name, ShouldEqual, exp.name)
 	}
 }

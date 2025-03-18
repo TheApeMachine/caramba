@@ -67,6 +67,18 @@ type Params struct {
 	Stream           bool           `json:"stream"`
 }
 
+type OptionParams func(*Params)
+
+func NewParams(opts ...OptionParams) *Params {
+	params := &Params{}
+
+	for _, opt := range opts {
+		opt(params)
+	}
+
+	return params
+}
+
 func (params *Params) Marshal() []byte {
 	json, err := json.Marshal(params)
 
@@ -80,4 +92,48 @@ func (params *Params) Marshal() []byte {
 func (params *Params) Unmarshal(data []byte) {
 	errnie.Debug("provider.Params.Unmarshal")
 	errnie.Error(json.Unmarshal(data, params))
+}
+
+func WithModel(model string) OptionParams {
+	return func(params *Params) { params.Model = model }
+}
+
+func WithMessages(messages []Message) OptionParams {
+	return func(params *Params) { params.Messages = messages }
+}
+
+func WithTools(tools []Tool) OptionParams {
+	return func(params *Params) { params.Tools = tools }
+}
+
+func WithResponseFormat(responseFormat ResponseFormat) OptionParams {
+	return func(params *Params) { params.ResponseFormat = responseFormat }
+}
+
+func WithTemperature(temperature float64) OptionParams {
+	return func(params *Params) { params.Temperature = temperature }
+}
+
+func WithTopP(topP float64) OptionParams {
+	return func(params *Params) { params.TopP = topP }
+}
+
+func WithTopK(topK float64) OptionParams {
+	return func(params *Params) { params.TopK = topK }
+}
+
+func WithFrequencyPenalty(frequencyPenalty float64) OptionParams {
+	return func(params *Params) { params.FrequencyPenalty = frequencyPenalty }
+}
+
+func WithPresencePenalty(presencePenalty float64) OptionParams {
+	return func(params *Params) { params.PresencePenalty = presencePenalty }
+}
+
+func WithMaxTokens(maxTokens int) OptionParams {
+	return func(params *Params) { params.MaxTokens = maxTokens }
+}
+
+func WithStream(stream bool) OptionParams {
+	return func(params *Params) { params.Stream = stream }
 }
