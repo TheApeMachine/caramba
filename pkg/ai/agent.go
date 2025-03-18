@@ -2,11 +2,13 @@ package ai
 
 import (
 	"encoding/json"
+	"io"
 
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
@@ -25,10 +27,21 @@ type Agent struct {
 	Schema *provider.Tool
 }
 
+type AgentOption func(*Agent)
+
+type AgentToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
 /*
 NewAgent creates a new agent with initialized components.
 */
-func NewAgent() *Agent {
+func NewAgent(options ...AgentOption) *Agent {
 	errnie.Debug("NewAgent")
 
 	params := provider.NewParams(
@@ -37,9 +50,9 @@ func NewAgent() *Agent {
 		provider.WithStream(tweaker.GetStream()),
 	)
 
-	return &Agent{
+	agent := &Agent{
 		buffer: stream.NewBuffer(func(evt *datura.Artifact) (err error) {
-			errnie.Debug("agent.buffer.fn")
+			errnie.Debug("agent.buffer.fn", "evt", evt)
 			var payload []byte
 
 			if payload, err = evt.DecryptPayload(); err != nil {
@@ -47,6 +60,36 @@ func NewAgent() *Agent {
 			}
 
 			if err = json.Unmarshal(payload, params); err != nil {
+				return errnie.Error(err)
+			}
+
+			if len(params.Messages) < 2 {
+				return
+			}
+
+			tc := &AgentToolCall{}
+
+			if err = json.Unmarshal([]byte(params.Messages[len(params.Messages)-1].Content), tc); err != nil {
+				return errnie.Error(err)
+			}
+
+			errnie.Info("tc", "tc", tc)
+
+			args := map[string]any{}
+
+			if err = json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+				return errnie.Error(err)
+			}
+
+			browser := tools.NewBrowser()
+
+			if err = evt.SetMetaValue("url", args["url"]); err != nil {
+				return errnie.Error(err)
+			}
+
+			datura.WithPayload([]byte(args["script"].(string)))(evt)
+
+			if _, err = io.Copy(browser, evt); err != nil {
 				return errnie.Error(err)
 			}
 
@@ -90,6 +133,12 @@ func NewAgent() *Agent {
 			),
 		),
 	}
+
+	for _, option := range options {
+		option(agent)
+	}
+
+	return agent
 }
 
 /*
@@ -120,4 +169,49 @@ It closes the internal context.
 func (agent *Agent) Close() error {
 	errnie.Debug("Agent.Close")
 	return agent.buffer.Close()
+}
+
+func WithModel(model string) AgentOption {
+	return func(agent *Agent) {
+		agent.params.Model = model
+	}
+}
+
+func WithTools(tools []*provider.Tool) AgentOption {
+	return func(agent *Agent) {
+		agent.params.Tools = tools
+	}
+}
+
+func WithProcess(proc provider.ResponseFormat) AgentOption {
+	return func(agent *Agent) {
+		agent.params.ResponseFormat = &provider.ResponseFormat{
+			Name:        proc.Name,
+			Description: proc.Description,
+			Schema:      proc.Schema,
+			Strict:      proc.Strict,
+		}
+	}
+}
+
+func WithSystem(system string) AgentOption {
+	return func(agent *Agent) {
+		if len(agent.params.Messages) == 0 {
+			agent.params.Messages = append(agent.params.Messages, provider.NewMessage(
+				provider.WithSystemRole(system),
+			))
+
+			return
+		}
+
+		agent.params.Messages[0].Content = system
+	}
+}
+
+func WithUser(name, prompt string) AgentOption {
+	return func(agent *Agent) {
+		agent.params.Messages = append(agent.params.Messages, provider.NewMessage(
+			provider.WithUserRole(name, prompt),
+		))
+	}
 }

@@ -156,6 +156,33 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		Content: completion.Choices[0].Message.Content,
 	})
 
+	toolCalls := completion.Choices[0].Message.ToolCalls
+
+	// Abort early if there are no tool calls
+	if len(toolCalls) == 0 {
+		return
+	}
+
+	prvdr.params.Messages = append(
+		prvdr.params.Messages,
+		&Message{
+			Role:    MessageRoleAssistant,
+			Content: completion.Choices[0].Message.Content,
+		},
+	)
+
+	for _, toolCall := range toolCalls {
+		errnie.Info("toolCall", "tool", toolCall.JSON.RawJSON())
+
+		prvdr.params.Messages = append(
+			prvdr.params.Messages,
+			&Message{
+				Role:    MessageRoleTool,
+				Content: toolCall.JSON.RawJSON(),
+			},
+		)
+	}
+
 	_, err = io.Copy(prvdr.buffer, datura.New(
 		datura.WithPayload(prvdr.params.Marshal()),
 	))
@@ -185,7 +212,6 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			continue
 		}
 
-		// When this fires, the current chunk value will not contain content data
 		if content, ok := acc.JustFinishedContent(); ok {
 			if _, err = io.Copy(prvdr.buffer, datura.New(
 				datura.WithPayload([]byte(content)),
@@ -194,8 +220,29 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			}
 		}
 
-		// Handle delta content
-		if chunk.Choices[0].Delta.Content != "" {
+		if tool, ok := acc.JustFinishedToolCall(); ok {
+			params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
+
+			switch tool.Name {
+			case "browser":
+				if _, err = io.Copy(prvdr.buffer, datura.New(
+					datura.WithPayload([]byte(tool.JSON.RawJSON())),
+				)); errnie.Error(err) != nil {
+					continue
+				}
+			}
+		}
+
+		if refusal, ok := acc.JustFinishedRefusal(); ok {
+			if _, err = io.Copy(prvdr.buffer, datura.New(
+				datura.WithPayload([]byte(refusal)),
+			)); errnie.Error(err) != nil {
+				continue
+			}
+		}
+
+		// It's best to use chunks after handling JustFinished events
+		if len(chunk.Choices) > 0 {
 			if _, err = io.Copy(prvdr.buffer, datura.New(
 				datura.WithPayload([]byte(chunk.Choices[0].Delta.Content)),
 			)); errnie.Error(err) != nil {

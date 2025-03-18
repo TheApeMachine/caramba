@@ -37,10 +37,6 @@ func (feedback *Feedback) Write(p []byte) (n int, err error) {
 		return n, errnie.Error(err)
 	}
 
-	// // Re-establish the tee reader after every write to ensure
-	// // it reads from the forward component's updated state
-	// feedback.tee = io.TeeReader(feedback.forward, feedback.backward)
-
 	return n, nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/workflow"
 )
@@ -21,7 +22,13 @@ type Pipeline struct {
 func NewPipeline() *Pipeline {
 	errnie.Debug("examples.NewPipeline")
 
-	agent := ai.NewAgent()
+	agent := ai.NewAgent(
+		ai.WithModel("gpt-4o-mini"),
+		ai.WithTools([]*provider.Tool{
+			tools.NewBrowser().Schema,
+		}),
+	)
+
 	provider := provider.NewOpenAIProvider(
 		os.Getenv("OPENAI_API_KEY"),
 		tweaker.GetEndpoint("openai"),
@@ -50,10 +57,14 @@ func (pipeline *Pipeline) Run() (err error) {
 	msg := datura.New(
 		datura.WithPayload(provider.NewParams(
 			provider.WithModel("gpt-4o-mini"),
+			provider.WithTools(tools.NewBrowser().Schema),
 			provider.WithTopP(1),
 			provider.WithMessages(
 				provider.NewMessage(
-					provider.WithUserRole("Danny", "Write a good programmer joke, but nothing cliche, or knock-knock/chicken-crossed-the-road/etc."),
+					provider.WithUserRole(
+						"Danny",
+						"Investigate fraud in the Voluntary Carbon Market",
+					),
 				),
 			),
 		).Marshal()),
