@@ -27,18 +27,20 @@ Caramba comes with a wide array of features that mostly focus on solving real-wo
 - Support for multiple providers
   - [x] OpenAI
   - [x] OpenAI-Compatible
-  - [ ] Anthropic
-  - [ ] Google
-  - [ ] Cohere
-  - [ ] Ollama
+  - [x] Anthropic
+  - [x] Google
+  - [x] Cohere
+  - [x] Ollama
 - Tool calling
-  - [ ] Model Context Provider (MCP)
+  - [x] Model Context Protocol (MCP)
+  - [x] Agent
   - [ ] QDrant
   - [ ] Neo4j
   - [ ] Docker
   - [ ] Browser
   - [ ] Github
   - [ ] Azure DevOps
+  - [ ] File Editor
 - Structured outputs
   - [x] OpenAI
   - [x] OpenAI-Compatible
@@ -65,6 +67,7 @@ Caramba comes with a wide array of features that mostly focus on solving real-wo
   - [x] Neo4j
 - Workflows
   - [x] Pipeline
+  - [x] Feedback
   - [ ] Graph
 
 ## Quick Start
