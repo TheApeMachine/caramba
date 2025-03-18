@@ -132,13 +132,12 @@ func TestOpenAIProvider_BuildTools(t *testing.T) {
 		params := &openai.ChatCompletionNewParams{}
 
 		Convey("When building tools with nil context", func() {
-			tools := provider.buildTools(nil, params)
+			tools := provider.buildTools(params)
 			So(tools, ShouldBeEmpty)
 		})
 
 		Convey("When building tools with valid context", func() {
-			testEvent := testParams(false)
-			tools := provider.buildTools(testEvent, params)
+			tools := provider.buildTools(params)
 			So(tools, ShouldNotBeNil)
 		})
 	})

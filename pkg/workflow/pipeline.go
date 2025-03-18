@@ -50,7 +50,7 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	errnie.Debug("workflow.Pipeline.Read")
 
 	if len(pipeline.components) == 0 {
-		return 0, io.EOF
+		return 0, errnie.Error(errors.New("pipeline has no components"))
 	}
 
 	var nn int64
@@ -65,11 +65,7 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 					continue
 				}
 
-				return n, err
-			}
-
-			if nn == 0 {
-				continue
+				return n, errnie.Error(err)
 			}
 		}
 

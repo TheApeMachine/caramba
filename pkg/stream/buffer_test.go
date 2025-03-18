@@ -6,23 +6,20 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/event"
+	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 // testEvent creates a test event artifact with predefined data
-func testEvent() *event.Artifact {
-	return event.New(
-		"test",
-		event.MessageEvent,
-		event.UserRole,
-		[]byte("test-data"),
+func testArtifact() *datura.Artifact {
+	return datura.New(
+		datura.WithPayload([]byte("test-data")),
 	)
 }
 
 // readEventData reads all data from an event artifact into a byte slice
-func readEventData(evt *event.Artifact) ([]byte, int, error) {
+func readArtifactData(artifact *datura.Artifact) ([]byte, int, error) {
 	data := make([]byte, 1024)
-	n, err := evt.Read(data)
+	n, err := artifact.Read(data)
 	if err == io.EOF {
 		return data[:n], n, nil
 	}
@@ -45,8 +42,8 @@ func verifyBufferRead(buffer *Buffer, expectedData []byte, streaming bool) {
 }
 
 // verifyEventData verifies that the event data matches the expected data
-func verifyEventData(evt *event.Artifact, expectedData []byte) {
-	data, n, err := readEventData(evt)
+func verifyArtifactData(artifact *datura.Artifact, expectedData []byte) {
+	data, n, err := readArtifactData(artifact)
 	So(err, ShouldBeNil)
 	So(n, ShouldEqual, len(expectedData))
 	So(data, ShouldResemble, expectedData)
@@ -55,13 +52,13 @@ func verifyEventData(evt *event.Artifact, expectedData []byte) {
 func TestNewBuffer(t *testing.T) {
 	Convey("Given a new buffer", t, func() {
 		var handlerCalled bool
-		buffer := NewBuffer(func(event *event.Artifact) error {
+		buffer := NewBuffer(func(artifact *datura.Artifact) error {
 			handlerCalled = true
 			return nil
 		})
 
 		So(buffer, ShouldNotBeNil)
-		So(buffer.event, ShouldNotBeNil)
+		So(buffer.artifact, ShouldNotBeNil)
 		So(buffer.fn, ShouldNotBeNil)
 		So(handlerCalled, ShouldBeFalse) // Verify initial state
 	})
@@ -69,22 +66,22 @@ func TestNewBuffer(t *testing.T) {
 
 func TestRead(t *testing.T) {
 	Convey("Given a new buffer", t, func() {
-		buffer := NewBuffer(func(event *event.Artifact) error {
+		buffer := NewBuffer(func(artifact *datura.Artifact) error {
 			return nil
 		})
 
 		Convey("When reading from an empty buffer without stream", func() {
-			testData := testEvent()
-			data, _, err := readEventData(testData)
+			testData := testArtifact()
+			data, _, err := readArtifactData(testData)
 			So(err, ShouldBeNil)
 
-			buffer.event = testData
+			buffer.artifact = testData
 			verifyBufferRead(buffer, data, false)
 		})
 
 		Convey("When reading from a buffer with data in the stream", func() {
-			testData := testEvent()
-			expectedData, _, err := readEventData(testData)
+			testData := testArtifact()
+			expectedData, _, err := readArtifactData(testData)
 			So(err, ShouldBeNil)
 
 			// Read from the buffer
@@ -110,14 +107,14 @@ func TestRead(t *testing.T) {
 func TestWrite(t *testing.T) {
 	Convey("Given a new buffer", t, func() {
 		var handlerCalled bool
-		buffer := NewBuffer(func(event *event.Artifact) error {
+		buffer := NewBuffer(func(artifact *datura.Artifact) error {
 			handlerCalled = true
 			return nil
 		})
 
 		Convey("When writing valid data", func() {
-			testData := testEvent()
-			data, dataLen, err := readEventData(testData)
+			testData := testArtifact()
+			data, dataLen, err := readArtifactData(testData)
 			So(err, ShouldBeNil)
 
 			n, err := buffer.Write(data)
@@ -134,12 +131,12 @@ func TestWrite(t *testing.T) {
 		})
 
 		Convey("When handler returns an error", func() {
-			buffer := NewBuffer(func(event *event.Artifact) error {
+			buffer := NewBuffer(func(artifact *datura.Artifact) error {
 				return io.ErrUnexpectedEOF
 			})
 
-			testData := testEvent()
-			data, dataLen, err := readEventData(testData)
+			testData := testArtifact()
+			data, dataLen, err := readArtifactData(testData)
 			So(err, ShouldBeNil)
 
 			n, err := buffer.Write(data)
@@ -148,7 +145,7 @@ func TestWrite(t *testing.T) {
 		})
 
 		Convey("When buffer event is nil", func() {
-			buffer.event = nil // Use the existing buffer to ensure consistent setup
+			buffer.artifact = nil // Use the existing buffer to ensure consistent setup
 			n, err := buffer.Write([]byte("test"))
 			So(err, ShouldBeError)
 			So(n, ShouldEqual, 0)
@@ -158,7 +155,7 @@ func TestWrite(t *testing.T) {
 
 func TestClose(t *testing.T) {
 	Convey("Given a new buffer", t, func() {
-		buffer := NewBuffer(func(event *event.Artifact) error {
+		buffer := NewBuffer(func(artifact *datura.Artifact) error {
 			return nil
 		})
 
@@ -171,16 +168,16 @@ func TestClose(t *testing.T) {
 
 func TestBufferIntegration(t *testing.T) {
 	Convey("Given a buffer with a processing function", t, func() {
-		processed := make(chan *event.Artifact, 1)
-		buffer := NewBuffer(func(evt *event.Artifact) error {
-			processed <- evt
+		processed := make(chan *datura.Artifact, 1)
+		buffer := NewBuffer(func(artifact *datura.Artifact) error {
+			processed <- artifact
 			return nil
 		})
 
 		Convey("When writing and reading through the buffer", func() {
 			// Write test data
-			testData := testEvent()
-			data, dataLen, err := readEventData(testData)
+			testData := testArtifact()
+			data, dataLen, err := readArtifactData(testData)
 			So(err, ShouldBeNil)
 
 			n, err := buffer.Write(data)
@@ -189,9 +186,9 @@ func TestBufferIntegration(t *testing.T) {
 
 			// Verify the processing function was called
 			select {
-			case processedEvent := <-processed:
-				So(processedEvent, ShouldNotBeNil)
-				verifyEventData(processedEvent, data)
+			case processedArtifact := <-processed:
+				So(processedArtifact, ShouldNotBeNil)
+				verifyArtifactData(processedArtifact, data)
 			case <-time.After(time.Second):
 				t.Fatal("Timeout waiting for event processing")
 			}

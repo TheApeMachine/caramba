@@ -3,14 +3,15 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 
 	cohere "github.com/cohere-ai/cohere-go/v2"
 	cohereclient "github.com/cohere-ai/cohere-go/v2/client"
 	"github.com/spf13/viper"
 	aiCtx "github.com/theapemachine/caramba/pkg/context"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
 	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/utils"
@@ -23,7 +24,7 @@ It supports regular chat completions, tool calling, and structured outputs.
 type CohereProvider struct {
 	client *cohereclient.Client
 	buffer *stream.Buffer
-	params *aiCtx.Artifact
+	params *Params
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -47,45 +48,26 @@ func NewCohereProvider(
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	params := &Params{}
 
 	prvdr := &CohereProvider{
 		client: cohereclient.NewClient(
 			cohereclient.WithToken(apiKey),
 		),
-		params: aiCtx.New(
-			"command", // Default model
-			nil,
-			nil,
-			nil,
-			0.7,
-			1.0,
-			0,
-			0.0,
-			0.0,
-			2048,
-			false,
-		),
+		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
+			var payload []byte
+
+			if payload, err = artfct.EncryptedPayload(); err != nil {
+				return errnie.Error(err)
+			}
+
+			params.Unmarshal(payload)
+			return nil
+		}),
+		params: params,
 		ctx:    ctx,
 		cancel: cancel,
 	}
-
-	prvdr.buffer = stream.NewBuffer(
-		func(event *event.Artifact) error {
-			errnie.Debug("provider.CohereProvider.buffer.fn", "event", event)
-
-			payload, err := event.Payload()
-			if errnie.Error(err) != nil {
-				return err
-			}
-
-			_, err = prvdr.params.Write(payload)
-			if errnie.Error(err) != nil {
-				return err
-			}
-
-			return nil
-		},
-	)
 
 	return prvdr
 }
@@ -104,26 +86,25 @@ Write implements the io.Writer interface.
 func (prvdr *CohereProvider) Write(p []byte) (n int, err error) {
 	errnie.Debug("provider.CohereProvider.Write")
 
-	n, err = prvdr.buffer.Write(p)
-	if errnie.Error(err) != nil {
-		return n, err
+	if n, err = prvdr.buffer.Write(p); err != nil {
+		return n, errnie.Error(err)
 	}
 
-	composed := &cohere.ChatStreamRequest{}
-
-	model, err := prvdr.params.Model()
-	if err != nil {
-		errnie.Error("failed to get model", "error", err)
-		return n, err
+	composed := &cohere.ChatStreamRequest{
+		Model:            cohere.String(prvdr.params.Model),
+		Temperature:      cohere.Float64(prvdr.params.Temperature),
+		P:                cohere.Float64(prvdr.params.TopP),
+		K:                cohere.Int(int(prvdr.params.TopK)),
+		PresencePenalty:  cohere.Float64(prvdr.params.PresencePenalty),
+		FrequencyPenalty: cohere.Float64(prvdr.params.FrequencyPenalty),
+		MaxTokens:        cohere.Int(int(prvdr.params.MaxTokens)),
 	}
 
-	composed.Model = cohere.String(model)
+	prvdr.buildMessages(composed)
+	prvdr.buildTools(composed)
+	prvdr.buildResponseFormat(composed)
 
-	prvdr.buildMessages(prvdr.params, composed)
-	prvdr.buildTools(prvdr.params, composed)
-	prvdr.buildResponseFormat(prvdr.params, composed)
-
-	if prvdr.params.Stream() {
+	if prvdr.params.Stream {
 		prvdr.handleStreamingRequest(composed)
 	} else {
 		prvdr.handleSingleRequest(composed)
@@ -138,155 +119,7 @@ Close cleans up any resources.
 func (prvdr *CohereProvider) Close() error {
 	errnie.Debug("provider.CohereProvider.Close")
 	prvdr.cancel()
-	return prvdr.params.Close()
-}
-
-func (prvdr *CohereProvider) buildMessages(
-	params *aiCtx.Artifact,
-	chatParams *cohere.ChatStreamRequest,
-) {
-	errnie.Debug("provider.buildMessages")
-
-	if params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "cohere")
-		return
-	}
-
-	messages, err := params.Messages()
-	if err != nil {
-		errnie.Error("failed to get messages", "error", err)
-		return
-	}
-
-	var systemPrompt string
-	messageList := make([]*cohere.Message, 0, messages.Len())
-
-	for idx := range messages.Len() {
-		message := messages.At(idx)
-
-		role, err := message.Role()
-		if err != nil {
-			errnie.Error("failed to get message role", "error", err)
-			continue
-		}
-
-		content, err := message.Content()
-		if err != nil {
-			errnie.Error("failed to get message content", "error", err)
-			continue
-		}
-
-		switch role {
-		case "system":
-			systemPrompt = content
-		case "user":
-			messageList = append(messageList, &cohere.Message{
-				Role: "user",
-				User: &cohere.ChatMessage{
-					Message: content,
-				},
-			})
-		case "assistant":
-			messageList = append(messageList, &cohere.Message{
-				Role: "chatbot",
-				Chatbot: &cohere.ChatMessage{
-					Message: content,
-				},
-			})
-		default:
-			errnie.Error("unknown message role", "role", role)
-		}
-	}
-
-	if systemPrompt != "" {
-		chatParams.Preamble = cohere.String(systemPrompt)
-	}
-	chatParams.ChatHistory = messageList
-}
-
-func (prvdr *CohereProvider) buildTools(
-	params *aiCtx.Artifact,
-	chatParams *cohere.ChatStreamRequest,
-) {
-	errnie.Debug("provider.buildTools")
-
-	if params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "cohere")
-		return
-	}
-
-	tools, err := params.Tools()
-	if err != nil {
-		errnie.Error("failed to get tools", "error", err)
-		return
-	}
-
-	toolList := make([]*cohere.Tool, 0, tools.Len())
-
-	for idx := range tools.Len() {
-		tool := tools.At(idx)
-
-		name, err := tool.Name()
-		if err != nil {
-			errnie.Error("failed to get tool name", "error", err)
-			continue
-		}
-
-		description, err := tool.Description()
-		if err != nil {
-			errnie.Error("failed to get tool description", "error", err)
-			continue
-		}
-
-		toolList = append(toolList, &cohere.Tool{
-			Name:        name,
-			Description: description,
-		})
-	}
-
-	if len(toolList) > 0 {
-		chatParams.Tools = toolList
-	}
-}
-
-func (prvdr *CohereProvider) buildResponseFormat(
-	params *aiCtx.Artifact,
-	chatParams *cohere.ChatStreamRequest,
-) {
-	errnie.Debug("provider.buildResponseFormat")
-
-	if params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "cohere")
-		return
-	}
-
-	data, err := params.Process()
-	if err != nil || data == nil {
-		return
-	}
-
-	var formatData map[string]interface{}
-	if err := json.Unmarshal(data, &formatData); err != nil {
-		errnie.Error("failed to unmarshal process data", "error", err)
-		return
-	}
-
-	// Note: Cohere doesn't support response format directly like OpenAI
-	// We'll add it to the system prompt if needed
-	if name, ok := formatData["name"].(string); ok {
-		if desc, ok := formatData["description"].(string); ok {
-			existingPreamble := ""
-			if chatParams.Preamble != nil {
-				existingPreamble = *chatParams.Preamble + "\n\n"
-			}
-
-			formatInstructions := existingPreamble +
-				"Please format your response according to the specified schema: " +
-				name + ". " + desc
-
-			chatParams.Preamble = cohere.String(formatInstructions)
-		}
-	}
+	return nil
 }
 
 func (prvdr *CohereProvider) handleSingleRequest(
@@ -323,22 +156,26 @@ func (prvdr *CohereProvider) handleStreamingRequest(
 	errnie.Debug("provider.handleStreamingRequest")
 
 	stream, err := prvdr.client.ChatStream(prvdr.ctx, params)
+
 	if errnie.Error(err) != nil {
 		return
+
 	}
+
 	defer stream.Close()
 
 	for {
-		event, err := stream.Recv()
+		chunk, err := stream.Recv()
+
 		if err != nil {
-			if err.Error() == "EOF" {
+			if err == io.EOF {
 				break
 			}
-			errnie.Error("streaming error", "error", err)
-			return err
+
+			return errnie.Error(err)
 		}
 
-		if content := event.TextGeneration.String(); content != "" {
+		if content := chunk.TextGeneration.String(); content != "" {
 			if err = utils.SendEvent(
 				prvdr.buffer,
 				"provider.cohere",
@@ -348,6 +185,115 @@ func (prvdr *CohereProvider) handleStreamingRequest(
 				continue
 			}
 		}
+	}
+
+	return nil
+}
+
+func (prvdr *CohereProvider) buildMessages(
+	chatParams *cohere.ChatStreamRequest,
+) (err error) {
+	errnie.Debug("provider.buildMessages")
+
+	if prvdr.params == nil {
+		return errnie.NewErrValidation("params are nil", "provider", "cohere")
+	}
+
+	messageList := make([]*cohere.Message, 0, len(prvdr.params.Messages))
+
+	for _, message := range prvdr.params.Messages {
+		switch message.Role {
+		case "system":
+			chatParams.Preamble = cohere.String(message.Content)
+		case "user":
+			messageList = append(messageList, &cohere.Message{
+				Role: "user",
+				User: &cohere.ChatMessage{
+					Message: message.Content,
+				},
+			})
+		case "assistant":
+			messageList = append(messageList, &cohere.Message{
+				Role: "chatbot",
+				Chatbot: &cohere.ChatMessage{
+					Message: message.Content,
+				},
+			})
+		default:
+			errnie.Error("unknown message role", "role", message.Role)
+		}
+	}
+
+	chatParams.ChatHistory = messageList
+	return nil
+}
+
+func (prvdr *CohereProvider) buildTools(
+	chatParams *cohere.ChatStreamRequest,
+) (err error) {
+	errnie.Debug("provider.buildTools")
+
+	if prvdr.params == nil {
+		return errnie.NewErrValidation("params are nil", "provider", "cohere")
+	}
+
+	toolList := make([]*cohere.Tool, 0, len(prvdr.params.Tools))
+
+	for _, tool := range prvdr.params.Tools {
+		parameterDefinitions := make(
+			map[string]*cohere.ToolParameterDefinitionsValue,
+			len(tool.Function.Parameters.Properties),
+		)
+
+		for _, property := range tool.Function.Parameters.Properties {
+			parameterDefinitions[property.Name] = &cohere.ToolParameterDefinitionsValue{
+				Type:        property.Type,
+				Description: cohere.String(property.Description),
+				Required:    cohere.Bool(true),
+			}
+		}
+
+		toolList = append(toolList, &cohere.Tool{
+			Name:                 tool.Function.Name,
+			Description:          tool.Function.Description,
+			ParameterDefinitions: parameterDefinitions,
+		})
+	}
+
+	if len(toolList) > 0 {
+		chatParams.Tools = toolList
+	}
+
+	return nil
+}
+
+func (prvdr *CohereProvider) buildResponseFormat(
+	chatParams *cohere.ChatStreamRequest,
+) (err error) {
+	errnie.Debug("provider.buildResponseFormat")
+
+	if prvdr.params == nil {
+		return errnie.NewErrValidation("params are nil", "provider", "cohere")
+	}
+
+	var (
+		schema map[string]interface{}
+		buf    []byte
+	)
+
+	if buf, err = json.Marshal(&prvdr.params.ResponseFormat.Schema); err != nil {
+		return errnie.Error(err)
+	}
+
+	if err = json.Unmarshal(buf, &schema); err != nil {
+		return errnie.Error(err)
+	}
+
+	chatParams.ResponseFormat = &cohere.ResponseFormat{
+		Type: "json_object",
+		JsonObject: &cohere.JsonResponseFormat{
+			Schema: schema,
+		},
 	}
 
 	return nil

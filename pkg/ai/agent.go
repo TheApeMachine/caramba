@@ -2,9 +2,8 @@ package ai
 
 import (
 	aiCtx "github.com/theapemachine/caramba/pkg/context"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
-	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
@@ -15,8 +14,8 @@ and produce responses. It implements io.ReadWriteCloser to enable composable
 pipelines for complex workflows.
 */
 type Agent struct {
-	params *aiCtx.Artifact
 	buffer *stream.Buffer
+	params *aiCtx.Artifact
 }
 
 /*
@@ -25,7 +24,11 @@ NewAgent creates a new agent with initialized components.
 func NewAgent() *Agent {
 	errnie.Debug("NewAgent")
 
-	agent := &Agent{
+	return &Agent{
+		buffer: stream.NewBuffer(func(evt *datura.Artifact) (err error) {
+			errnie.Debug("agent.buffer.fn", "event", evt)
+			return nil
+		}),
 		params: aiCtx.New(
 			tweaker.GetModel(tweaker.GetProvider()),
 			[]*aiCtx.Message{},
@@ -40,45 +43,6 @@ func NewAgent() *Agent {
 			tweaker.GetStream(),
 		),
 	}
-
-	agent.buffer = stream.NewBuffer(
-		func(evt *event.Artifact) (err error) {
-			errnie.Debug("agent.buffer.fn", "event", evt)
-
-			payload, err := evt.Payload()
-
-			if errnie.Error(err) != nil {
-				return err
-			}
-
-			msg := &message.Artifact{}
-			_, err = msg.Write(payload)
-
-			if errnie.Error(err) != nil {
-				return err
-			}
-
-			err = agent.params.AddMessage(msg)
-			if errnie.Error(err) != nil {
-				return err
-			}
-
-			// Create a new event with the agent's params.
-			newEvent := event.New(
-				"agent",
-				event.ContextEvent,
-				event.UserRole,
-				agent.params.Marshal(),
-			)
-
-			// Override the event with the new event.
-			*evt = *newEvent
-
-			return nil
-		},
-	)
-
-	return agent
 }
 
 /*

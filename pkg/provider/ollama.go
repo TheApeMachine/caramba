@@ -2,14 +2,13 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/ollama/ollama/api"
 	"github.com/spf13/viper"
 	aiCtx "github.com/theapemachine/caramba/pkg/context"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
 	"github.com/theapemachine/caramba/pkg/message"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/utils"
@@ -23,7 +22,7 @@ type OllamaProvider struct {
 	client *api.Client
 	model  string
 	buffer *stream.Buffer
-	params *aiCtx.Artifact
+	params *Params
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -47,6 +46,12 @@ func NewOllamaProvider(
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	params := &Params{
+		Model:       model,
+		Temperature: 0.7,
+		TopP:        1.0,
+		MaxTokens:   2048,
+	}
 
 	client, err := api.ClientFromEnvironment()
 	if errnie.Error(err) != nil {
@@ -56,40 +61,20 @@ func NewOllamaProvider(
 	prvdr := &OllamaProvider{
 		client: client,
 		model:  model,
-		params: aiCtx.New(
-			model,
-			nil,
-			nil,
-			nil,
-			0.7,
-			1.0,
-			0,
-			0.0,
-			0.0,
-			2048,
-			false,
-		),
+		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
+			var payload []byte
+
+			if payload, err = artfct.EncryptedPayload(); err != nil {
+				return errnie.Error(err)
+			}
+
+			params.Unmarshal(payload)
+			return nil
+		}),
+		params: params,
 		ctx:    ctx,
 		cancel: cancel,
 	}
-
-	prvdr.buffer = stream.NewBuffer(
-		func(event *event.Artifact) error {
-			errnie.Debug("provider.OllamaProvider.buffer.fn", "event", event)
-
-			payload, err := event.Payload()
-			if errnie.Error(err) != nil {
-				return err
-			}
-
-			_, err = prvdr.params.Write(payload)
-			if errnie.Error(err) != nil {
-				return err
-			}
-
-			return nil
-		},
-	)
 
 	return prvdr
 }
@@ -117,11 +102,11 @@ func (prvdr *OllamaProvider) Write(p []byte) (n int, err error) {
 		Model: prvdr.model,
 	}
 
-	prvdr.buildMessages(prvdr.params, composed)
-	prvdr.buildTools(prvdr.params, composed)
-	prvdr.buildResponseFormat(prvdr.params, composed)
+	prvdr.buildMessages(composed)
+	prvdr.buildTools(composed)
+	prvdr.buildResponseFormat(composed)
 
-	if prvdr.params.Stream() {
+	if prvdr.params.Stream {
 		prvdr.handleStreamingRequest(composed)
 	} else {
 		prvdr.handleSingleRequest(composed)
@@ -136,61 +121,40 @@ Close cleans up any resources.
 func (prvdr *OllamaProvider) Close() error {
 	errnie.Debug("provider.OllamaProvider.Close")
 	prvdr.cancel()
-	return prvdr.params.Close()
+	return nil
 }
 
 func (prvdr *OllamaProvider) buildMessages(
-	params *aiCtx.Artifact,
 	chatParams *api.ChatRequest,
 ) {
 	errnie.Debug("provider.buildMessages")
 
-	if params == nil {
+	if prvdr.params == nil {
 		errnie.NewErrValidation("params are nil", "provider", "ollama")
 		return
 	}
 
-	messages, err := params.Messages()
-	if err != nil {
-		errnie.Error("failed to get messages", "error", err)
-		return
-	}
+	messageList := make([]api.Message, 0, len(prvdr.params.Messages))
 
-	messageList := make([]api.Message, 0, messages.Len())
-
-	for idx := range messages.Len() {
-		message := messages.At(idx)
-
-		role, err := message.Role()
-		if err != nil {
-			errnie.Error("failed to get message role", "error", err)
-			continue
-		}
-
-		content, err := message.Content()
-		if err != nil {
-			errnie.Error("failed to get message content", "error", err)
-			continue
-		}
-
-		switch role {
+	for _, message := range prvdr.params.Messages {
+		switch message.Role {
 		case "system":
 			messageList = append(messageList, api.Message{
 				Role:    "system",
-				Content: content,
+				Content: message.Content,
 			})
 		case "user":
 			messageList = append(messageList, api.Message{
 				Role:    "user",
-				Content: content,
+				Content: message.Content,
 			})
 		case "assistant":
 			messageList = append(messageList, api.Message{
 				Role:    "assistant",
-				Content: content,
+				Content: message.Content,
 			})
 		default:
-			errnie.Error("unknown message role", "role", role)
+			errnie.Error("unknown message role", "role", message.Role)
 		}
 	}
 
@@ -198,48 +162,27 @@ func (prvdr *OllamaProvider) buildMessages(
 }
 
 func (prvdr *OllamaProvider) buildTools(
-	params *aiCtx.Artifact,
 	chatParams *api.ChatRequest,
 ) {
 	errnie.Debug("provider.buildTools")
 
-	if params == nil {
+	if prvdr.params == nil {
 		errnie.NewErrValidation("params are nil", "provider", "ollama")
 		return
 	}
 
-	tools, err := params.Tools()
-	if err != nil {
-		errnie.Error("failed to get tools", "error", err)
+	if len(prvdr.params.Tools) == 0 {
 		return
 	}
 
-	if tools.Len() == 0 {
-		return
-	}
+	toolList := make([]api.Tool, 0, len(prvdr.params.Tools))
 
-	toolList := make([]api.Tool, 0, tools.Len())
-
-	for idx := range tools.Len() {
-		tool := tools.At(idx)
-
-		name, err := tool.Name()
-		if err != nil {
-			errnie.Error("failed to get tool name", "error", err)
-			continue
-		}
-
-		description, err := tool.Description()
-		if err != nil {
-			errnie.Error("failed to get tool description", "error", err)
-			continue
-		}
-
+	for _, tool := range prvdr.params.Tools {
 		toolList = append(toolList, api.Tool{
 			Type: "function",
 			Function: api.ToolFunction{
-				Name:        name,
-				Description: description,
+				Name:        tool.Function.Name,
+				Description: tool.Function.Description,
 				Parameters: struct {
 					Type       string   `json:"type"`
 					Required   []string `json:"required"`
@@ -250,7 +193,7 @@ func (prvdr *OllamaProvider) buildTools(
 					} `json:"properties"`
 				}{
 					Type:     "object",
-					Required: []string{"input"},
+					Required: tool.Function.Parameters.Required,
 					Properties: map[string]struct {
 						Type        string   `json:"type"`
 						Description string   `json:"description"`
@@ -272,37 +215,23 @@ func (prvdr *OllamaProvider) buildTools(
 }
 
 func (prvdr *OllamaProvider) buildResponseFormat(
-	params *aiCtx.Artifact,
 	chatParams *api.ChatRequest,
 ) {
 	errnie.Debug("provider.buildResponseFormat")
 
-	if params == nil {
+	if prvdr.params == nil {
 		errnie.NewErrValidation("params are nil", "provider", "ollama")
 		return
 	}
 
-	data, err := params.Process()
-	if err != nil || data == nil {
-		return
-	}
-
-	var formatData map[string]interface{}
-	if err := json.Unmarshal(data, &formatData); err != nil {
-		errnie.Error("failed to unmarshal process data", "error", err)
-		return
-	}
-
 	// Add format instructions as a system message since Ollama doesn't support direct format control
-	if name, ok := formatData["name"].(string); ok {
-		if desc, ok := formatData["description"].(string); ok {
-			formatMsg := api.Message{
-				Role: "system",
-				Content: "Please format your response according to the specified schema: " +
-					name + ". " + desc,
-			}
-			chatParams.Messages = append(chatParams.Messages, formatMsg)
+	if prvdr.params.ResponseFormat.Name != "" {
+		formatMsg := api.Message{
+			Role: "system",
+			Content: "Please format your response according to the specified schema: " +
+				prvdr.params.ResponseFormat.Name + ". " + prvdr.params.ResponseFormat.Description,
 		}
+		chatParams.Messages = append(chatParams.Messages, formatMsg)
 	}
 }
 

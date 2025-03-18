@@ -4,8 +4,8 @@ import (
 	"errors"
 	"io"
 
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
 )
 
 /*
@@ -14,8 +14,8 @@ It connects a sender and receiver through pipes, handling data transformations u
 Buffer implements io.Reader, io.Writer, and io.Closer interfaces to support standard streaming operations.
 */
 type Buffer struct {
-	event *event.Artifact
-	fn    func(*event.Artifact) error
+	artifact *datura.Artifact
+	fn       func(*datura.Artifact) error
 }
 
 /*
@@ -27,11 +27,11 @@ Parameters:
 
 Returns a configured Buffer instance that's ready to use.
 */
-func NewBuffer(fn func(*event.Artifact) error) *Buffer {
+func NewBuffer(fn func(*datura.Artifact) error) *Buffer {
 	errnie.Debug("stream.NewBuffer")
 	return &Buffer{
-		event: &event.Artifact{},
-		fn:    fn,
+		artifact: datura.New(),
+		fn:       fn,
 	}
 }
 
@@ -49,11 +49,11 @@ Returns:
 func (buffer *Buffer) Read(p []byte) (n int, err error) {
 	errnie.Debug("stream.Buffer.Read")
 
-	if buffer.event == nil {
+	if buffer.artifact == nil {
 		return 0, io.EOF
 	}
 
-	n, err = buffer.event.Read(p)
+	n, err = buffer.artifact.Read(p)
 
 	if err != nil {
 		if err == io.EOF {
@@ -89,15 +89,15 @@ func (buffer *Buffer) Write(p []byte) (n int, err error) {
 		return 0, errnie.Error(errors.New("empty input"))
 	}
 
-	if buffer.event == nil {
-		return 0, errnie.Error(errors.New("buffer event is nil"))
+	if buffer.artifact == nil {
+		return 0, errnie.Error(errors.New("buffer artifact is nil"))
 	}
 
-	if n, err = buffer.event.Write(p); errnie.Error(err) != nil {
+	if n, err = buffer.artifact.Write(p); errnie.Error(err) != nil {
 		return
 	}
 
-	if err = buffer.fn(buffer.event); errnie.Error(err) != nil {
+	if err = buffer.fn(buffer.artifact); errnie.Error(err) != nil {
 		return
 	}
 
@@ -112,5 +112,5 @@ Returns any error encountered during the closing process.
 */
 func (buffer *Buffer) Close() error {
 	errnie.Debug("stream.Buffer.Close")
-	return buffer.event.Close()
+	return buffer.artifact.Close()
 }

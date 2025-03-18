@@ -3,8 +3,8 @@ package tools
 import (
 	"io"
 
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/event"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tool"
 )
@@ -43,7 +43,7 @@ func NewMemoryTool(stores map[string]io.ReadWriteCloser) *MemoryTool {
 		),
 	}
 
-	mt.buffer = stream.NewBuffer(func(evt *event.Artifact) (err error) {
+	mt.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 		errnie.Debug("MemoryTool.buffer")
 		return nil
 	})
