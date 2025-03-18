@@ -90,7 +90,9 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muesli/termenv v0.15.3-0.20240618155329-98d742f6907a // indirect
+	github.com/neo4j/neo4j-go-driver/v5 v5.28.0
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
+	github.com/qdrant/go-client v1.13.0
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect

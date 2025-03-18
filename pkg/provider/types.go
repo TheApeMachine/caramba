@@ -3,6 +3,7 @@ package provider
 import (
 	"encoding/json"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -54,9 +55,98 @@ func WithToolRole(name string, content string) OptionMessage {
 	return func(msg *Message) { msg.Role = MessageRoleTool; msg.Name = name; msg.Content = content }
 }
 
+var RegisteredTools = []any{}
+
+func RegisterTool(name string) {
+	RegisteredTools = append(RegisteredTools, name)
+}
+
 type Tool struct {
 	Type     string   `json:"type"`
 	Function Function `json:"function"`
+}
+
+type OptionTool func(*Tool)
+
+func NewTool(opts ...OptionTool) *Tool {
+	tool := &Tool{
+		Type: "function",
+	}
+
+	for _, opt := range opts {
+		opt(tool)
+	}
+
+	return tool
+}
+
+func (tool *Tool) ToMCP() *mcp.Tool {
+	options := []mcp.ToolOption{
+		mcp.WithDescription(tool.Function.Description),
+	}
+
+	for _, property := range tool.Function.Parameters.Properties {
+		switch property.Type {
+		case "string":
+			options = append(options, mcp.WithString(
+				property.Name,
+				mcp.Description(property.Description),
+			))
+		case "number":
+			options = append(options, mcp.WithNumber(
+				property.Name,
+				mcp.Description(property.Description),
+			))
+		case "boolean":
+			options = append(options, mcp.WithBoolean(
+				property.Name,
+				mcp.Description(property.Description),
+			))
+		}
+	}
+
+	mt := mcp.NewTool(
+		tool.Function.Name,
+		options...,
+	)
+
+	return &mt
+}
+
+func WithFunction(name string, description string) OptionTool {
+	return func(tool *Tool) {
+		tool.Function = Function{
+			Name:        name,
+			Description: description,
+			Parameters: Parameters{
+				Type:       "object",
+				Properties: []Property{},
+				Required:   []string{},
+			},
+		}
+	}
+}
+
+func WithProperty(
+	name string,
+	typ string,
+	description string,
+	enum []any,
+) OptionTool {
+	return func(tool *Tool) {
+		tool.Function.Parameters.Properties = append(tool.Function.Parameters.Properties, Property{
+			Name:        name,
+			Type:        typ,
+			Description: description,
+			Enum:        enum,
+		})
+	}
+}
+
+func WithRequired(required ...string) OptionTool {
+	return func(tool *Tool) {
+		tool.Function.Parameters.Required = required
+	}
 }
 
 type Function struct {

@@ -5,50 +5,57 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/tool"
 )
+
+func init() {
+	provider.RegisterTool("memory")
+}
 
 /*
 MemoryTool provides a unified interface for interacting with multiple memory stores.
 */
 type MemoryTool struct {
-	buffer   *stream.Buffer
-	stores   map[string]io.ReadWriteCloser
-	Artifact *tool.Artifact
+	buffer *stream.Buffer
+	stores map[string]io.ReadWriteCloser
+	Schema *provider.Tool
 }
 
 func NewMemoryTool(stores map[string]io.ReadWriteCloser) *MemoryTool {
 	errnie.Debug("NewMemoryTool")
 
-	mt := &MemoryTool{
+	return &MemoryTool{
+		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
+			errnie.Debug("MemoryTool.buffer")
+			return nil
+		}),
 		stores: stores,
-		Artifact: tool.New().WithFunction(
-			"memory",
-			"A tool which can interact with various memory stores through a unified interface.",
-			map[string]any{
-				"question": map[string]any{
-					"type":        "string",
-					"description": "A question which is used to retrieve information from a vector database.",
-				},
-				"keywords": map[string]any{
-					"type":        "string",
-					"description": "A comma separated list of keywords which are used to retrieve information from all memory stores.",
-				},
-				"cypher": map[string]any{
-					"type":        "string",
-					"description": "A Cypher query which is used to retrieve information from a graph database.",
-				},
-			},
+		Schema: provider.NewTool(
+			provider.WithFunction(
+				"memory",
+				"A tool which can interact with various memory stores through a unified interface.",
+			),
+			provider.WithProperty(
+				"question",
+				"string",
+				"A question which is used to retrieve information from a vector database.",
+				[]any{},
+			),
+			provider.WithProperty(
+				"keywords",
+				"string",
+				"A comma separated list of keywords which are used to retrieve information from all memory stores.",
+				[]any{},
+			),
+			provider.WithProperty(
+				"cypher",
+				"string",
+				"A Cypher query which is used to retrieve information from a graph database.",
+				[]any{},
+			),
 		),
 	}
-
-	mt.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-		errnie.Debug("MemoryTool.buffer")
-		return nil
-	})
-
-	return mt
 }
 
 func (mt *MemoryTool) Read(p []byte) (n int, err error) {

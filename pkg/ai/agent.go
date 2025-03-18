@@ -8,6 +8,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
+func init() {
+	provider.RegisterTool("agent")
+}
+
 /*
 Agent represents an entity that can process messages, interact with tools,
 and produce responses. It implements io.ReadWriteCloser to enable composable
@@ -16,6 +20,7 @@ pipelines for complex workflows.
 type Agent struct {
 	buffer *stream.Buffer
 	params *provider.Params
+	Schema *provider.Tool
 }
 
 /*
@@ -43,6 +48,42 @@ func NewAgent() *Agent {
 			return nil
 		}),
 		params: params,
+		Schema: provider.NewTool(
+			provider.WithFunction(
+				"agent",
+				"An agent that can process messages, interact with tools, and produce responses.",
+			),
+			provider.WithProperty(
+				"model",
+				"string",
+				"The model to use for the agent.",
+				[]any{"gpt-4o-mini", "gemini-2.0-flash-thinking"},
+			),
+			provider.WithProperty(
+				"tools",
+				"array",
+				"The tools the agent should have access to.",
+				provider.RegisteredTools,
+			),
+			provider.WithProperty(
+				"system",
+				"string",
+				"The system message to use for the agent.",
+				[]any{},
+			),
+			provider.WithProperty(
+				"user",
+				"string",
+				"The user message to use for the agent.",
+				[]any{},
+			),
+			provider.WithProperty(
+				"temperature",
+				"number",
+				"The temperature to use for the agent.",
+				[]any{},
+			),
+		),
 	}
 }
 

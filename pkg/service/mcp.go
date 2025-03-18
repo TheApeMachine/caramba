@@ -7,6 +7,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/theapemachine/caramba/pkg/ai"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/memory"
 	"github.com/theapemachine/caramba/pkg/tools"
@@ -47,9 +48,25 @@ func (service *MCP) Start() error {
 				"qdrant": memory.NewQdrant(),
 				"neo4j":  memory.NewNeo4j(),
 			},
-		).Artifact.ToMCP(),
+		).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			errnie.Debug("CallToolRequest", req)
+			errnie.Debug("mcp.memory.tool", req)
+			return nil, nil
+		},
+	)
+
+	service.stdio.AddTool(
+		*ai.NewAgent().Schema.ToMCP(),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			errnie.Debug("mcp.agent.tool", req)
+			return nil, nil
+		},
+	)
+
+	service.stdio.AddTool(
+		*tools.NewEditorTool().Schema.ToMCP(),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			errnie.Debug("mcp.editor.tool", req)
 			return nil, nil
 		},
 	)
