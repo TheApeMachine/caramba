@@ -49,6 +49,13 @@ const (
 	ArtifactRoleCreateLabel
 	ArtifactRoleUpdateLabel
 	ArtifactRoleDeleteLabel
+	ArtifactRoleMemoryTool
+	ArtifactRoleAgentTool
+	ArtifactRoleEditorTool
+	ArtifactRoleGithubTool
+	ArtifactRoleAzureTool
+	ArtifactRoleTrengoTool
+	ArtifactRoleBrowserTool
 )
 
 type ArtifactScope uint

@@ -24,21 +24,20 @@ type Runner struct {
 func NewRunner(container *Container) *Runner {
 	errnie.Debug("environment.NewRunner")
 
+	var task client.Task
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
 	runner := &Runner{
 		ctx:       ctx,
 		cancel:    cancel,
 		container: container,
-		buffer: stream.NewBuffer(func(artifact *datura.Artifact) error {
+		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("environment.Runner.buffer.fn")
 
-			task, err := container.container.NewTask(ctx, cio.NewCreator(
+			if task, err = container.container.NewTask(ctx, cio.NewCreator(
 				cio.WithStreams(artifact, artifact, artifact),
-			))
-
-			if errnie.Error(err) != nil {
-				return err
+			)); err != nil {
+				return errnie.Error(err)
 			}
 
 			if err = task.Start(ctx); err != nil {
@@ -47,8 +46,21 @@ func NewRunner(container *Container) *Runner {
 
 			errnie.Debug(fmt.Sprintf("Started container task with PID: %d", task.Pid()))
 
+			var status <-chan client.ExitStatus
+
+			if status, err = task.Wait(ctx); err != nil {
+				return errnie.Error(err)
+			}
+
+			stat := <-status
+
+			if stat.ExitCode() != 0 {
+				return errnie.Error(fmt.Errorf("container exited with code %d", stat.ExitCode()))
+			}
+
 			return nil
 		}),
+		task: task,
 	}
 
 	return runner

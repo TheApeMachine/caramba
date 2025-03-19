@@ -43,10 +43,8 @@ func NewMCP() *MCP {
 		),
 		tools: map[string]io.ReadWriteCloser{
 			"memory": tools.NewMemoryTool(
-				map[string]io.ReadWriteCloser{
-					"qdrant": memory.NewQdrant(),
-					"neo4j":  memory.NewNeo4j(),
-				},
+				memory.NewQdrant(),
+				memory.NewNeo4j(),
 			),
 			"ai":      ai.NewAgent(),
 			"editor":  tools.NewEditorTool(),
@@ -63,12 +61,7 @@ func (service *MCP) Start() error {
 		service.tools["memory"].(*tools.MemoryTool).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.memory.tool", req)
-
-			artifact := datura.New(
-				datura.WithMeta("tool", "memory"),
-			)
-
-			return service.runTool(service.tools["memory"], artifact)
+			return service.runTool(service.tools["memory"], &req, datura.ArtifactRoleMemoryTool)
 		},
 	)
 
@@ -76,12 +69,7 @@ func (service *MCP) Start() error {
 		service.tools["ai"].(*ai.Agent).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.agent.tool", req)
-
-			artifact := datura.New(
-				datura.WithMeta("tool", "ai"),
-			)
-
-			return service.runTool(service.tools["ai"], artifact)
+			return service.runTool(service.tools["ai"], &req, datura.ArtifactRoleAgentTool)
 		},
 	)
 
@@ -89,12 +77,7 @@ func (service *MCP) Start() error {
 		service.tools["editor"].(*tools.EditorTool).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.editor.tool", req)
-
-			artifact := datura.New(
-				datura.WithMeta("tool", "editor"),
-			)
-
-			return service.runTool(service.tools["editor"], artifact)
+			return service.runTool(service.tools["editor"], &req, datura.ArtifactRoleEditorTool)
 		},
 	)
 
@@ -102,12 +85,7 @@ func (service *MCP) Start() error {
 		service.tools["github"].(*tools.Github).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.github.tool", req)
-
-			artifact := datura.New(
-				datura.WithMeta("tool", "github"),
-			)
-
-			return service.runTool(service.tools["github"], artifact)
+			return service.runTool(service.tools["github"], &req, datura.ArtifactRoleGithubTool)
 		},
 	)
 
@@ -115,12 +93,7 @@ func (service *MCP) Start() error {
 		service.tools["azure"].(*tools.Azure).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.azure.tool", req)
-
-			artifact := datura.New(
-				datura.WithMeta("tool", "azure"),
-			)
-
-			return service.runTool(service.tools["azure"], artifact)
+			return service.runTool(service.tools["azure"], &req, datura.ArtifactRoleAzureTool)
 		},
 	)
 
@@ -128,12 +101,7 @@ func (service *MCP) Start() error {
 		service.tools["trengo"].(*tools.Trengo).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.trengo.tool", req)
-
-			artifact := datura.New(
-				datura.WithMeta("tool", "trengo"),
-			)
-
-			return service.runTool(service.tools["trengo"], artifact)
+			return service.runTool(service.tools["trengo"], &req, datura.ArtifactRoleTrengoTool)
 		},
 	)
 
@@ -141,19 +109,23 @@ func (service *MCP) Start() error {
 		service.tools["browser"].(*tools.Browser).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.browser.tool", req)
-
-			artifact := datura.New(
-				datura.WithMeta("tool", "browser"),
-			)
-
-			return service.runTool(service.tools["browser"], artifact)
+			return service.runTool(service.tools["browser"], &req, datura.ArtifactRoleBrowserTool)
 		},
 	)
 
 	return nil
 }
 
-func (service *MCP) runTool(tool io.ReadWriteCloser, artifact *datura.Artifact) (*mcp.CallToolResult, error) {
+func (service *MCP) runTool(tool io.ReadWriteCloser, req *mcp.CallToolRequest, role datura.ArtifactRole) (*mcp.CallToolResult, error) {
+	options := []datura.ArtifactOption{
+		datura.WithRole(role),
+	}
+
+	for key, val := range req.Params.Arguments {
+		options = append(options, datura.WithMeta(key, val))
+	}
+
+	artifact := datura.New(options...)
 	buf := bytes.NewBuffer([]byte{})
 
 	if _, err := io.Copy(tool, artifact); err != nil {

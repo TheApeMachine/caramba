@@ -34,26 +34,28 @@ func NewClient() *Client {
 	client.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 		errnie.Debug("trengo.Client.buffer")
 
-		switch artifact.Role() {
-		case uint32(datura.ArtifactRoleListTickets):
+		operation := datura.GetMetaValue[string](artifact, "operation")
+
+		switch operation {
+		case "list_tickets":
 			return client.tickets.ListTickets(artifact)
-		case uint32(datura.ArtifactRoleCreateTicket):
+		case "create_ticket":
 			return client.tickets.CreateTicket(artifact)
-		case uint32(datura.ArtifactRoleAssignTicket):
+		case "assign_ticket":
 			return client.tickets.AssignTicket(artifact)
-		case uint32(datura.ArtifactRoleCloseTicket):
+		case "close_ticket":
 			return client.tickets.CloseTicket(artifact)
-		case uint32(datura.ArtifactRoleReopenTicket):
+		case "reopen_ticket":
 			return client.tickets.ReopenTicket(artifact)
-		case uint32(datura.ArtifactRoleListLabels):
+		case "list_labels":
 			return client.labels.ListLabels(artifact)
-		case uint32(datura.ArtifactRoleGetLabel):
+		case "get_label":
 			return client.labels.GetLabel(artifact)
-		case uint32(datura.ArtifactRoleCreateLabel):
+		case "create_label":
 			return client.labels.CreateLabel(artifact)
-		case uint32(datura.ArtifactRoleUpdateLabel):
+		case "update_label":
 			return client.labels.UpdateLabel(artifact)
-		case uint32(datura.ArtifactRoleDeleteLabel):
+		case "delete_label":
 			return client.labels.DeleteLabel(artifact)
 		}
 

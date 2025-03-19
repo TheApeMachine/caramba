@@ -18,16 +18,27 @@ MemoryTool provides a unified interface for interacting with multiple memory sto
 */
 type MemoryTool struct {
 	buffer *stream.Buffer
-	stores map[string]io.ReadWriteCloser
+	stores []io.ReadWriteCloser
 	Schema *provider.Tool
 }
 
-func NewMemoryTool(stores map[string]io.ReadWriteCloser) *MemoryTool {
+func NewMemoryTool(stores ...io.ReadWriteCloser) *MemoryTool {
 	errnie.Debug("NewMemoryTool")
 
 	return &MemoryTool{
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("MemoryTool.buffer")
+
+			for _, store := range stores {
+				if _, err = io.Copy(store, artifact); err != nil {
+					return errnie.Error(err)
+				}
+
+				if _, err = io.Copy(artifact, store); err != nil {
+					return errnie.Error(err)
+				}
+			}
+
 			return nil
 		}),
 		stores: stores,
@@ -51,7 +62,13 @@ func NewMemoryTool(stores map[string]io.ReadWriteCloser) *MemoryTool {
 			provider.WithProperty(
 				"cypher",
 				"string",
-				"A Cypher query which is used to retrieve information from a graph database.",
+				"A Cypher query which is used to retrieve from or store to a graph database. Useful when you're dealing with relational data.",
+				[]any{},
+			),
+			provider.WithProperty(
+				"documents",
+				"string",
+				`A JSON array of documents to store in the vector database. Follow this format: [{"content": "...", "metadata": {"<key>": "<value>", ...}, ...}]`,
 				[]any{},
 			),
 		),

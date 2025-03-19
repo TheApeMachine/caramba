@@ -29,22 +29,24 @@ func NewClient() *Client {
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("azure.Client.buffer")
 
-			switch artifact.Role() {
-			case uint32(datura.ArtifactRoleCreateWorkItem):
+			operation := datura.GetMetaValue[string](artifact, "operation")
+
+			switch operation {
+			case "create_work_item":
 				return workitem.CreateWorkItem(artifact)
-			case uint32(datura.ArtifactRoleUpdateWorkItem):
+			case "update_work_item":
 				return workitem.UpdateWorkItem(artifact)
-			case uint32(datura.ArtifactRoleGetWorkItem):
+			case "get_work_item":
 				return workitem.GetWorkItem(artifact)
-			case uint32(datura.ArtifactRoleListWorkItems):
+			case "list_work_items":
 				return workitem.ListWorkItems(artifact)
-			case uint32(datura.ArtifactRoleCreateWikiPage):
+			case "create_wiki_page":
 				return wiki.CreatePage(artifact)
-			case uint32(datura.ArtifactRoleUpdateWikiPage):
+			case "update_wiki_page":
 				return wiki.UpdatePage(artifact)
-			case uint32(datura.ArtifactRoleGetWikiPage):
+			case "get_wiki_page":
 				return wiki.GetPage(artifact)
-			case uint32(datura.ArtifactRoleListWikiPages):
+			case "list_wiki_pages":
 				return wiki.ListPages(artifact)
 			}
 

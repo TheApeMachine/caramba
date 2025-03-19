@@ -27,46 +27,48 @@ func NewClient() *Client {
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("github.Client.buffer")
 
-			switch artifact.Role() {
-			case uint32(datura.ArtifactRoleListRepositories):
+			operation := datura.GetMetaValue[string](artifact, "operation")
+
+			switch operation {
+			case "list_repositories":
 				return repo.GetRepositories(artifact)
-			case uint32(datura.ArtifactRoleGetRepository):
+			case "get_repository":
 				return repo.GetRepository(artifact)
-			case uint32(datura.ArtifactRoleCreateRepository):
+			case "create_repository":
 				return repo.CreateRepository(artifact)
-			case uint32(datura.ArtifactRoleListBranches):
+			case "list_branches":
 				return repo.ListBranches(artifact)
-			case uint32(datura.ArtifactRoleGetContents):
+			case "get_contents":
 				return repo.GetContents(artifact)
-			case uint32(datura.ArtifactRoleListPullRequests):
+			case "list_pull_requests":
 				return pr.ListPRs(artifact)
-			case uint32(datura.ArtifactRoleGetPullRequest):
+			case "get_pull_request":
 				return pr.GetPR(artifact)
-			case uint32(datura.ArtifactRoleCreatePullRequest):
+			case "create_pull_request":
 				return pr.CreatePR(artifact)
-			case uint32(datura.ArtifactRoleUpdatePullRequest):
+			case "update_pull_request":
 				return pr.UpdatePR(artifact)
-			case uint32(datura.ArtifactRoleCreatePRComment):
+			case "create_pr_comment":
 				return pr.CreatePRComment(artifact)
-			case uint32(datura.ArtifactRoleListPRComments):
+			case "list_pr_comments":
 				return pr.ListPRComments(artifact)
-			case uint32(datura.ArtifactRoleCreatePRReview):
+			case "create_pr_review":
 				return pr.CreatePRReview(artifact)
-			case uint32(datura.ArtifactRoleListPRReviews):
+			case "list_pr_reviews":
 				return pr.ListPRReviews(artifact)
-			case uint32(datura.ArtifactRoleCreateReviewComment):
+			case "create_review_comment":
 				return pr.CreateReviewComment(artifact)
-			case uint32(datura.ArtifactRoleListReviewComments):
+			case "list_review_comments":
 				return pr.ListReviewComments(artifact)
-			case uint32(datura.ArtifactRoleSubmitReview):
+			case "submit_review":
 				return pr.SubmitReview(artifact)
-			case uint32(datura.ArtifactRoleListIssues):
+			case "list_issues":
 				return issues.ListIssues(artifact)
-			case uint32(datura.ArtifactRoleGetIssue):
+			case "get_issue":
 				return issues.GetIssue(artifact)
-			case uint32(datura.ArtifactRoleCreateIssue):
+			case "create_issue":
 				return issues.CreateIssue(artifact)
-			case uint32(datura.ArtifactRoleUpdateIssue):
+			case "update_issue":
 				return issues.UpdateIssue(artifact)
 			}
 

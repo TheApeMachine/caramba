@@ -12,7 +12,6 @@ import (
 )
 
 type Neo4j struct {
-	Store
 	client sdk.DriverWithContext
 	buffer *stream.Buffer
 }

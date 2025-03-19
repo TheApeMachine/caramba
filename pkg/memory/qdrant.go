@@ -11,7 +11,6 @@ import (
 )
 
 type Qdrant struct {
-	Store
 	client     *sdk.Client
 	collection string
 	buffer     *stream.Buffer
