@@ -10,18 +10,18 @@ import (
 	"github.com/theapemachine/caramba/pkg/tools/github"
 )
 
-type Github struct {
+type Azure struct {
 	buffer *stream.Buffer
 	client *github.Client
 	Schema *provider.Tool
 }
 
-func NewGithub() *Github {
+func NewAzure() *Azure {
 	client := github.NewClient()
 
-	return &Github{
+	return &Azure{
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-			errnie.Debug("github.Client.buffer")
+			errnie.Debug("azure.Client.buffer")
 
 			if _, err = io.Copy(client, artifact); err != nil {
 				return errnie.Error(err)
@@ -44,25 +44,14 @@ func NewGithub() *Github {
 				"string",
 				"The operation to perform.",
 				[]any{
-					"get_repositories",
-					"get_repository",
-					"create_repository",
-					"list_branches",
-					"get_contents",
-					"list_pull_requests",
-					"get_pull_request",
-					"create_pull_request",
-					"update_pull_request",
-					"list_issues",
-					"get_issue",
-					"create_issue",
-					"update_issue",
-					"create_pr_comment",
-					"list_pr_comments",
-					"create_pr_review",
-					"list_pr_reviews",
-					"create_review_comment",
-					"list_review_comments",
+					"create_work_item",
+					"update_work_item",
+					"get_work_item",
+					"list_work_items",
+					"create_wiki_page",
+					"update_wiki_page",
+					"get_wiki_page",
+					"list_wiki_pages",
 				},
 			),
 			provider.WithRequired("operation"),
@@ -70,17 +59,17 @@ func NewGithub() *Github {
 	}
 }
 
-func (github *Github) Read(p []byte) (n int, err error) {
-	errnie.Debug("github.Read")
-	return github.buffer.Read(p)
+func (azure *Azure) Read(p []byte) (n int, err error) {
+	errnie.Debug("azure.Read")
+	return azure.buffer.Read(p)
 }
 
-func (github *Github) Write(p []byte) (n int, err error) {
-	errnie.Debug("github.Write")
-	return github.buffer.Write(p)
+func (azure *Azure) Write(p []byte) (n int, err error) {
+	errnie.Debug("azure.Write")
+	return azure.buffer.Write(p)
 }
 
-func (github *Github) Close() error {
-	errnie.Debug("github.Close")
-	return github.buffer.Close()
+func (azure *Azure) Close() error {
+	errnie.Debug("azure.Close")
+	return azure.buffer.Close()
 }

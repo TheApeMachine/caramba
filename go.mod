@@ -14,11 +14,11 @@ require (
 	github.com/containerd/containerd/v2 v2.0.4
 	github.com/go-rod/rod v0.116.2
 	github.com/go-rod/stealth v0.4.9
-	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-github/v70 v70.0.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/mark3labs/mcp-go v0.13.0
+	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
 	github.com/ollama/ollama v0.6.1
 	github.com/openai/openai-go v0.1.0-alpha.59
 	github.com/smartystreets/goconvey v1.8.1

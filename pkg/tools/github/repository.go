@@ -59,10 +59,10 @@ func (repository *Repository) GetRepository(artifact *datura.Artifact) (err erro
 
 func (repository *Repository) CreateRepository(artifact *datura.Artifact) (err error) {
 	repo := &github.Repository{
-		Name:        github.String(datura.GetMetaValue[string](artifact, "name")),
-		Description: github.String(datura.GetMetaValue[string](artifact, "description")),
-		Private:     github.Bool(datura.GetMetaValue[bool](artifact, "private")),
-		AutoInit:    github.Bool(true),
+		Name:        github.Ptr(datura.GetMetaValue[string](artifact, "name")),
+		Description: github.Ptr(datura.GetMetaValue[string](artifact, "description")),
+		Private:     github.Ptr(datura.GetMetaValue[bool](artifact, "private")),
+		AutoInit:    github.Ptr(true),
 	}
 
 	created, _, err := repository.conn.Repositories.Create(

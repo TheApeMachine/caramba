@@ -55,8 +55,8 @@ func (issues *Issues) ListIssues(artifact *datura.Artifact) (err error) {
 
 func (issues *Issues) CreateIssue(artifact *datura.Artifact) (err error) {
 	issue := &github.IssueRequest{
-		Title:     github.String(datura.GetMetaValue[string](artifact, "title")),
-		Body:      github.String(datura.GetMetaValue[string](artifact, "body")),
+		Title:     github.Ptr(datura.GetMetaValue[string](artifact, "title")),
+		Body:      github.Ptr(datura.GetMetaValue[string](artifact, "body")),
 		Labels:    &[]string{},
 		Assignees: &[]string{},
 	}
@@ -75,9 +75,9 @@ func (issues *Issues) CreateIssue(artifact *datura.Artifact) (err error) {
 
 func (issues *Issues) UpdateIssue(artifact *datura.Artifact) (err error) {
 	update := &github.IssueRequest{
-		Title: github.String(datura.GetMetaValue[string](artifact, "title")),
-		Body:  github.String(datura.GetMetaValue[string](artifact, "body")),
-		State: github.String(datura.GetMetaValue[string](artifact, "state")),
+		Title: github.Ptr(datura.GetMetaValue[string](artifact, "title")),
+		Body:  github.Ptr(datura.GetMetaValue[string](artifact, "body")),
+		State: github.Ptr(datura.GetMetaValue[string](artifact, "state")),
 	}
 
 	updated, _, err := issues.conn.Issues.Edit(
