@@ -10,6 +10,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/tools/trengo"
 )
 
+func init() {
+	provider.RegisterTool("trengo")
+}
+
 type Trengo struct {
 	buffer *stream.Buffer
 	client *trengo.Client

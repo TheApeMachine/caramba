@@ -8,6 +8,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/tools/environment"
 )
 
+func init() {
+	provider.RegisterTool("environment")
+}
+
 /*
 Environment is a tool that allows the AI agent to interact with a full Linux terminal-based
 environment. It uses Docker containers to create a somewhat isolated environment for the agent

@@ -10,6 +10,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/tools/github"
 )
 
+func init() {
+	provider.RegisterTool("github")
+}
+
 type Github struct {
 	buffer *stream.Buffer
 	client *github.Client

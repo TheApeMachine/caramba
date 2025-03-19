@@ -10,6 +10,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/tools/github"
 )
 
+func init() {
+	provider.RegisterTool("azure")
+}
+
 type Azure struct {
 	buffer *stream.Buffer
 	client *github.Client
