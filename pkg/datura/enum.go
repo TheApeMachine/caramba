@@ -11,44 +11,6 @@ const (
 	ArtifactRoleSaveFile
 	ArtifactRoleDeleteFile
 	ArtifactRoleListFiles
-	ArtifactRoleListRepositories
-	ArtifactRoleGetRepository
-	ArtifactRoleCreateRepository
-	ArtifactRoleListBranches
-	ArtifactRoleGetContents
-	ArtifactRoleListPullRequests
-	ArtifactRoleGetPullRequest
-	ArtifactRoleCreatePullRequest
-	ArtifactRoleUpdatePullRequest
-	ArtifactRoleListIssues
-	ArtifactRoleGetIssue
-	ArtifactRoleCreateIssue
-	ArtifactRoleUpdateIssue
-	ArtifactRoleCreatePRComment
-	ArtifactRoleListPRComments
-	ArtifactRoleCreatePRReview
-	ArtifactRoleListPRReviews
-	ArtifactRoleCreateReviewComment
-	ArtifactRoleListReviewComments
-	ArtifactRoleSubmitReview
-	ArtifactRoleCreateWorkItem
-	ArtifactRoleUpdateWorkItem
-	ArtifactRoleGetWorkItem
-	ArtifactRoleListWorkItems
-	ArtifactRoleCreateWikiPage
-	ArtifactRoleUpdateWikiPage
-	ArtifactRoleGetWikiPage
-	ArtifactRoleListWikiPages
-	ArtifactRoleListTickets
-	ArtifactRoleCreateTicket
-	ArtifactRoleAssignTicket
-	ArtifactRoleCloseTicket
-	ArtifactRoleReopenTicket
-	ArtifactRoleListLabels
-	ArtifactRoleGetLabel
-	ArtifactRoleCreateLabel
-	ArtifactRoleUpdateLabel
-	ArtifactRoleDeleteLabel
 	ArtifactRoleMemoryTool
 	ArtifactRoleAgentTool
 	ArtifactRoleEditorTool
@@ -56,6 +18,7 @@ const (
 	ArtifactRoleAzureTool
 	ArtifactRoleTrengoTool
 	ArtifactRoleBrowserTool
+	ArtifactRoleEnvironmentTool
 )
 
 type ArtifactScope uint

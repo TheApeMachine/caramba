@@ -113,6 +113,14 @@ func (service *MCP) Start() error {
 		},
 	)
 
+	service.stdio.AddTool(
+		service.tools["environment"].(*tools.Environment).Schema.ToMCP(),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			errnie.Debug("mcp.environment.tool", req)
+			return service.runTool(service.tools["environment"], &req, datura.ArtifactRoleEnvironmentTool)
+		},
+	)
+
 	return nil
 }
 
