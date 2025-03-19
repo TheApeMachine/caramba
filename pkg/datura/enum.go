@@ -11,6 +11,19 @@ const (
 	ArtifactRoleSaveFile
 	ArtifactRoleDeleteFile
 	ArtifactRoleListFiles
+	ArtifactRoleListRepositories
+	ArtifactRoleGetRepository
+	ArtifactRoleCreateRepository
+	ArtifactRoleListBranches
+	ArtifactRoleGetContents
+	ArtifactRoleListPullRequests
+	ArtifactRoleGetPullRequest
+	ArtifactRoleCreatePullRequest
+	ArtifactRoleUpdatePullRequest
+	ArtifactRoleListIssues
+	ArtifactRoleGetIssue
+	ArtifactRoleCreateIssue
+	ArtifactRoleUpdateIssue
 )
 
 type ArtifactScope uint
