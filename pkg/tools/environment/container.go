@@ -13,6 +13,9 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
+/*
+Container represents a containerd container instance with its associated client, container, and image.
+*/
 type Container struct {
 	conn      *client.Client
 	container client.Container
@@ -20,12 +23,19 @@ type Container struct {
 	err       error
 }
 
+/*
+NewContainer creates a new Container instance with the given containerd client connection.
+*/
 func NewContainer(conn *client.Client) *Container {
 	return &Container{
 		conn: conn,
 	}
 }
 
+/*
+Load prepares and loads a new container image from a Dockerfile.
+It creates a build context, imports the image into containerd, and initializes a new container.
+*/
 func (container *Container) Load() (err error) {
 	// Read the Dockerfile
 	dockerfileContent, err := os.ReadFile("pkg/tools/environment/Dockerfile")

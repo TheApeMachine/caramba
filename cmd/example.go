@@ -25,9 +25,14 @@ var (
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			errnie.SetLevel(log.DebugLevel)
 
-			// Start the containerd daemon.
+			// Start the containerd daemon, so the environment tool can use it.
 			go func() {
-				if err := command.App().Run(os.Args); errnie.Error(err) != nil {
+				// We pass in the command context so that the containerd daemon is
+				// shutdown when the command finishes for any reason.
+				if err := command.App().RunContext(
+					cmd.Context(),
+					os.Args,
+				); errnie.Error(err) != nil {
 					os.Exit(1)
 				}
 			}()

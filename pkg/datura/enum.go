@@ -7,6 +7,10 @@ const (
 	ArtifactRoleSystem
 	ArtifactRoleUser
 	ArtifactRoleAssistant
+	ArtifactRoleOpenFile
+	ArtifactRoleSaveFile
+	ArtifactRoleDeleteFile
+	ArtifactRoleListFiles
 )
 
 type ArtifactScope uint
@@ -24,6 +28,8 @@ const (
 	MediaTypeUnknown                MediaType = "unknown"
 	MediaTypeTextPlain              MediaType = "text/plain"
 	MediaTypeApplicationJson        MediaType = "application/json"
+	MediaTypeApplicationYaml        MediaType = "application/yaml"
+	MediaTypeApplicationXml         MediaType = "application/xml"
 	MediaTypeApplicationPdf         MediaType = "application/pdf"
 	MediaTypeApplicationOctetStream MediaType = "application/octet-stream"
 	MediaTypeCapnp                  MediaType = "application/capnp"

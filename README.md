@@ -1,6 +1,6 @@
 # 🤖 Caramba
 
-A specialized agent framework in Go.
+A powerful, Go-based agent framework that follows the "everything is `io`" philosophy. Connect anything to anything with ease through a unified interface where all objects implement at least `io.ReadWriteCloser`.
 
 [![Go CI/CD](https://github.com/theapemachine/caramba/actions/workflows/main.yml/badge.svg)](https://github.com/theapemachine/caramba/actions/workflows/main.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/theapemachine/caramba)](https://goreportcard.com/report/github.com/theapemachine/caramba)
@@ -16,70 +16,127 @@ A specialized agent framework in Go.
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_caramba&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_caramba)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_caramba&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_caramba)
 
-Caramba follows a strict "everything is `io`" filosophy, meaning that all objects implement at least `io.ReadWriteCloser`.
-
-This allows you to easily connect anything to anything, and is a direct result of the difficulties of creating complex workflows.
-
 ## ✨ Features
 
-Caramba comes with a wide array of features that mostly focus on solving real-world problems.
+Caramba comes with a wide array of features that focus on solving real-world problems through a unified I/O interface.
 
-- Support for multiple providers
-  - [x] OpenAI
-  - [x] OpenAI-Compatible
-  - [x] Anthropic
-  - [x] Google
-  - [x] Cohere
-  - [x] Ollama
-- Tool calling
-  - [x] Model Context Protocol (MCP)
-  - [x] Agent
-  - [ ] QDrant
-  - [ ] Neo4j
-  - [ ] Docker
-  - [ ] Browser
-  - [ ] Github
-  - [ ] Azure DevOps
-  - [ ] File Editor
-- Structured outputs
-  - [x] OpenAI
-  - [x] OpenAI-Compatible
-  - [ ] Anthropic
-  - [ ] Google
-  - [ ] Cohere
-  - [ ] Ollama
-- Streaming
-  - [x] OpenAI
-  - [x] OpenAI-Compatible
-  - [ ] Anthropic
-  - [ ] Google
-  - [ ] Cohere
-  - [ ] Ollama
-- Embeddings
-  - [x] OpenAI
-  - [x] OpenAI-Compatible
-  - [ ] Anthropic
-  - [ ] Google
-  - [ ] Cohere
-  - [ ] Ollama
-- (long-term) Memory
-  - [x] QDrant
-  - [x] Neo4j
-- Workflows
-  - [x] Pipeline
-  - [x] Feedback
-  - [ ] Graph
+### AI Provider Integration
 
-## Quick Start
+- [x] OpenAI with full capabilities
+  - [x] Streaming responses
+  - [x] Tool calling
+  - [x] Structured outputs
+  - [x] Embeddings
+- [x] OpenAI-Compatible APIs
+- [x] Anthropic (Claude)
+  - [x] Streaming responses
+  - [x] Tool calling
+  - [ ] Structured outputs
+- [x] Google
+  - [ ] Streaming
+  - [ ] Tool calling
+  - [ ] Structured outputs
+- [x] Cohere
+  - [ ] Streaming
+  - [ ] Tool calling
+  - [ ] Structured outputs
+- [x] Ollama (Local Models)
+  - [ ] Streaming
+  - [ ] Tool calling
+  - [ ] Structured outputs
 
-Start the required services.
+### Tool System
+
+- [x] Model Context Protocol (MCP)
+- [x] Agent with dynamic tool loading
+- [x] Browser for web interaction
+- [x] Memory integration
+  - [x] QDrant vector store
+  - [x] Neo4j graph database
+- [ ] Docker integration
+- [ ] Github integration
+- [ ] Azure DevOps integration
+- [ ] File Editor
+- [x] Environment tool for terminal interaction
+
+### Workflow System
+
+- [x] Pipeline Architecture
+  - [x] Composable components
+  - [x] Bidirectional data flow
+- [x] Feedback Loops
+- [ ] Graph-based Workflows
+- [x] Stream Processing
+- [x] Data Conversion
+
+### Security & Data
+
+- [x] Encrypted Payloads
+- [x] Artifact System
+- [x] Metadata Management
+- [x] Cryptographic Signatures
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Go 1.21 or higher
+- Docker and Docker Compose
+- API keys for desired providers
+
+### Installation
+
+```bash
+go get github.com/theapemachine/caramba
+```
+
+### Basic Usage
+
+1. Start required services:
 
 ```bash
 docker compose up
 ```
 
-Run an example.
+2. Run an example:
 
 ```bash
 go run main.go examples pipeline
 ```
+
+## 📚 Documentation
+
+- [Getting Started Guide](docs/getting-started.md)
+- [Core Concepts](docs/core-concepts.md)
+- [API Reference](docs/api-reference.md)
+- [Examples](docs/examples.md)
+
+## 🛠️ Example: Creating a Simple Agent
+
+```go
+agent := ai.NewAgent(
+    ai.WithModel("gpt-4"),
+    ai.WithTools([]*provider.Tool{
+        tools.NewBrowser().Schema,
+    }),
+)
+
+provider := provider.NewOpenAIProvider(
+    os.Getenv("OPENAI_API_KEY"),
+    tweaker.GetEndpoint("openai"),
+)
+
+pipeline := workflow.NewPipeline(
+    agent,
+    workflow.NewFeedback(provider, agent),
+    workflow.NewConverter(),
+)
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [Contributing Guidelines](docs/contributing.md) for details on how to submit pull requests, report issues, and contribute to the project.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
