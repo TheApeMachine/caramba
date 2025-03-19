@@ -145,3 +145,9 @@ func WithMediatype(mediatype MediaType) ArtifactOption {
 		}
 	}
 }
+
+func WithMeta(key string, value any) ArtifactOption {
+	return func(artifact *Artifact) {
+		artifact.SetMetaValue(key, value)
+	}
+}

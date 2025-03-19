@@ -18,6 +18,10 @@ const (
 	ErrTypeHTTP       ErrnieErrorType = "http"
 )
 
+var (
+	ErrInvalidInput = errors.New("invalid input")
+)
+
 func Unwrap(err error) *ErrnieError {
 	if err == nil {
 		return nil

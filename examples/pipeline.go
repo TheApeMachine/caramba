@@ -61,9 +61,14 @@ func (pipeline *Pipeline) Run() (err error) {
 			provider.WithTopP(1),
 			provider.WithMessages(
 				provider.NewMessage(
+					provider.WithSystemRole(
+						tweaker.GetSystemPrompt(),
+					),
+				),
+				provider.NewMessage(
 					provider.WithUserRole(
 						"Danny",
-						"Investigate fraud in the Voluntary Carbon Market",
+						"Research the state of the art in AI agents, then formulate a plan for a new AI agent that can help me achieve my goals.",
 					),
 				),
 			),

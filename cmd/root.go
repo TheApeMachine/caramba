@@ -9,13 +9,15 @@ import (
 	"embed"
 	"fmt"
 	"io"
-	"io/fs"
+	stdfs "io/fs"
 	"log"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/amsh/utils"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/fs"
 )
 
 /*
@@ -26,12 +28,16 @@ which allows a developer to easily override the config file.
 //go:embed cfg/*
 var embedded embed.FS
 
+//go:embed manifests/*
+var manifests embed.FS
+
 /*
 rootCmd represents the base command when called without any subcommands
 */
 var (
 	projectName = "caramba"
 	cfgFile     string
+	store       *fs.Store
 
 	rootCmd = &cobra.Command{
 		Use:   "caramba",
@@ -58,6 +64,11 @@ func init() {
 		&cfgFile, "config", "config.yml", "config file (default is $HOME/."+projectName+"/config.yml)",
 	)
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+
+	// Initialize the filesystem store and load manifests
+	if err := fs.NewStore().Initialize(manifests, "manifests"); err != nil {
+		errnie.Error(err)
+	}
 }
 
 /*
@@ -88,7 +99,7 @@ writeConfig is a function that writes the default config file to the user's home
 func writeConfig() (err error) {
 	var (
 		home, _ = os.UserHomeDir()
-		fh      fs.File
+		fh      stdfs.File
 		buf     bytes.Buffer
 	)
 

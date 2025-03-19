@@ -10,6 +10,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
+	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 func init() {
@@ -25,6 +26,7 @@ type Agent struct {
 	buffer *stream.Buffer
 	params *provider.Params
 	Schema *provider.Tool
+	tools  map[string]io.ReadWriteCloser
 }
 
 type AgentOption func(*Agent)
@@ -43,6 +45,7 @@ NewAgent creates a new agent with initialized components.
 */
 func NewAgent(options ...AgentOption) *Agent {
 	errnie.Debug("NewAgent")
+	var browser *tools.Browser
 
 	params := provider.NewParams(
 		provider.WithModel(tweaker.GetModel(tweaker.GetProvider())),
@@ -52,7 +55,7 @@ func NewAgent(options ...AgentOption) *Agent {
 
 	agent := &Agent{
 		buffer: stream.NewBuffer(func(evt *datura.Artifact) (err error) {
-			errnie.Debug("agent.buffer.fn", "evt", evt)
+			errnie.Debug("agent.buffer.fn")
 			var payload []byte
 
 			if payload, err = evt.DecryptPayload(); err != nil {
@@ -63,17 +66,17 @@ func NewAgent(options ...AgentOption) *Agent {
 				return errnie.Error(err)
 			}
 
-			if len(params.Messages) < 2 {
+			if len(params.Messages) < 3 {
 				return
 			}
 
 			tc := &AgentToolCall{}
 
-			if err = json.Unmarshal([]byte(params.Messages[len(params.Messages)-1].Content), tc); err != nil {
+			if err = json.Unmarshal([]byte(
+				params.Messages[len(params.Messages)-1].Content,
+			), tc); err != nil {
 				return errnie.Error(err)
 			}
-
-			errnie.Info("tc", "tc", tc)
 
 			args := map[string]any{}
 
@@ -81,7 +84,9 @@ func NewAgent(options ...AgentOption) *Agent {
 				return errnie.Error(err)
 			}
 
-			browser := tools.NewBrowser()
+			if browser == nil {
+				browser = tools.NewBrowser()
+			}
 
 			if err = evt.SetMetaValue("url", args["url"]); err != nil {
 				return errnie.Error(err)
@@ -132,6 +137,10 @@ func NewAgent(options ...AgentOption) *Agent {
 				[]any{},
 			),
 		),
+	}
+
+	agent.tools = map[string]io.ReadWriteCloser{
+		"browser": workflow.NewFeedback(browser, agent),
 	}
 
 	for _, option := range options {
