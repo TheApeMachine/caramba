@@ -67,7 +67,10 @@ Caramba comes with a wide array of features that focus on solving real-world pro
 - [x] Feedback Loops
 - [ ] Graph-based Workflows
 - [x] Stream Processing
+      [Read More](stream/README.md)
 - [x] Data Conversion
+
+[Read More](workflow/README.md)
 
 ### Security & Data
 
@@ -92,13 +95,13 @@ go get github.com/theapemachine/caramba
 
 ### Basic Usage
 
-1. Start required services:
+Start required services:
 
 ```bash
 docker compose up
 ```
 
-2. Run an example:
+Run an example:
 
 ```bash
 go run main.go examples pipeline

@@ -13,7 +13,7 @@ go get github.com/theapemachine/caramba
 
 ## Environment Setup
 
-1. Create a `.env` file in your project root:
+Create a `.env` file in your project root:
 
 ```env
 OPENAI_API_KEY=your_key_here
@@ -21,7 +21,7 @@ ANTHROPIC_API_KEY=your_key_here
 # Add other provider keys as needed
 ```
 
-2. Start required services:
+Start required services:
 
 ```bash
 docker compose up
