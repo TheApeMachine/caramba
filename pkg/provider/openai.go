@@ -172,7 +172,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 	)
 
 	for _, toolCall := range toolCalls {
-		errnie.Info("toolCall", "tool", toolCall.JSON.RawJSON())
+		errnie.Info("toolCall", "tool", toolCall.Function.Name)
 
 		prvdr.params.Messages = append(
 			prvdr.params.Messages,

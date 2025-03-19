@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -211,9 +212,32 @@ func (params *Params) Marshal() []byte {
 	return json
 }
 
+func (params *Params) Encode() *datura.Artifact {
+	return datura.New(
+		datura.WithPayload(params.Marshal()),
+	)
+}
+
 func (params *Params) Unmarshal(data []byte) {
 	errnie.Debug("provider.Params.Unmarshal")
 	errnie.Error(json.Unmarshal(data, params))
+}
+
+func (params *Params) Decode(artifact *datura.Artifact) {
+	errnie.Debug("provider.Params.Decode")
+
+	var (
+		payload []byte
+		err     error
+	)
+
+	if payload, err = artifact.DecryptPayload(); err != nil {
+		errnie.Error(err)
+	}
+
+	if err = json.Unmarshal(payload, params); err != nil {
+		errnie.Error(err)
+	}
 }
 
 func WithModel(model string) OptionParams {

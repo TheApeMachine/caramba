@@ -2,8 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/log"
+	"github.com/containerd/containerd/v2/cmd/containerd/command"
+
+	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -20,6 +24,13 @@ var (
 		Long:  longExample,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			errnie.SetLevel(log.DebugLevel)
+
+			// Start the containerd daemon.
+			go func() {
+				if err := command.App().Run(os.Args); errnie.Error(err) != nil {
+					os.Exit(1)
+				}
+			}()
 
 			var (
 				wf Example
