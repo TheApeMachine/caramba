@@ -24,6 +24,31 @@ const (
 	ArtifactRoleGetIssue
 	ArtifactRoleCreateIssue
 	ArtifactRoleUpdateIssue
+	ArtifactRoleCreatePRComment
+	ArtifactRoleListPRComments
+	ArtifactRoleCreatePRReview
+	ArtifactRoleListPRReviews
+	ArtifactRoleCreateReviewComment
+	ArtifactRoleListReviewComments
+	ArtifactRoleSubmitReview
+	ArtifactRoleCreateWorkItem
+	ArtifactRoleUpdateWorkItem
+	ArtifactRoleGetWorkItem
+	ArtifactRoleListWorkItems
+	ArtifactRoleCreateWikiPage
+	ArtifactRoleUpdateWikiPage
+	ArtifactRoleGetWikiPage
+	ArtifactRoleListWikiPages
+	ArtifactRoleListTickets
+	ArtifactRoleCreateTicket
+	ArtifactRoleAssignTicket
+	ArtifactRoleCloseTicket
+	ArtifactRoleReopenTicket
+	ArtifactRoleListLabels
+	ArtifactRoleGetLabel
+	ArtifactRoleCreateLabel
+	ArtifactRoleUpdateLabel
+	ArtifactRoleDeleteLabel
 )
 
 type ArtifactScope uint

@@ -81,7 +81,7 @@ func NewTool(opts ...OptionTool) *Tool {
 	return tool
 }
 
-func (tool *Tool) ToMCP() *mcp.Tool {
+func (tool *Tool) ToMCP() mcp.Tool {
 	options := []mcp.ToolOption{
 		mcp.WithDescription(tool.Function.Description),
 	}
@@ -111,7 +111,7 @@ func (tool *Tool) ToMCP() *mcp.Tool {
 		options...,
 	)
 
-	return &mt
+	return mt
 }
 
 func WithFunction(name string, description string) OptionTool {

@@ -46,6 +46,20 @@ func NewClient() *Client {
 				return pr.CreatePR(artifact)
 			case uint32(datura.ArtifactRoleUpdatePullRequest):
 				return pr.UpdatePR(artifact)
+			case uint32(datura.ArtifactRoleCreatePRComment):
+				return pr.CreatePRComment(artifact)
+			case uint32(datura.ArtifactRoleListPRComments):
+				return pr.ListPRComments(artifact)
+			case uint32(datura.ArtifactRoleCreatePRReview):
+				return pr.CreatePRReview(artifact)
+			case uint32(datura.ArtifactRoleListPRReviews):
+				return pr.ListPRReviews(artifact)
+			case uint32(datura.ArtifactRoleCreateReviewComment):
+				return pr.CreateReviewComment(artifact)
+			case uint32(datura.ArtifactRoleListReviewComments):
+				return pr.ListReviewComments(artifact)
+			case uint32(datura.ArtifactRoleSubmitReview):
+				return pr.SubmitReview(artifact)
 			case uint32(datura.ArtifactRoleListIssues):
 				return issues.ListIssues(artifact)
 			case uint32(datura.ArtifactRoleGetIssue):
