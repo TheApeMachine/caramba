@@ -24,14 +24,11 @@ func NewPipeline() *Pipeline {
 
 	agent := ai.NewAgent(
 		ai.WithModel("gpt-4o-mini"),
-		ai.WithTools([]*provider.Tool{
-			tools.NewBrowser().Schema,
-		}),
+		ai.WithTools(tools.NewBrowser().Schema),
 	)
 
 	provider := provider.NewOpenAIProvider(
-		os.Getenv("OPENAI_API_KEY"),
-		tweaker.GetEndpoint("openai"),
+		provider.WithAPIKey(os.Getenv("OPENAI_API_KEY")),
 	)
 	converter := workflow.NewConverter()
 
@@ -62,7 +59,7 @@ func (pipeline *Pipeline) Run() (err error) {
 			provider.WithMessages(
 				provider.NewMessage(
 					provider.WithSystemRole(
-						tweaker.GetSystemPrompt(),
+						tweaker.GetSystemPrompt("default"),
 					),
 				),
 				provider.NewMessage(

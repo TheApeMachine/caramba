@@ -42,7 +42,7 @@ func testEvent(stream bool) *datura.Artifact {
 func TestNewOpenAIProvider(t *testing.T) {
 	Convey("Given a new OpenAI provider", t, func() {
 		Convey("When created with explicit API key", func() {
-			provider := NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "")
+			provider := NewOpenAIProvider(WithAPIKey(os.Getenv("OPENAI_API_KEY")))
 			So(provider, ShouldNotBeNil)
 			So(provider.client, ShouldNotBeNil)
 			So(provider.buffer, ShouldNotBeNil)
@@ -50,7 +50,7 @@ func TestNewOpenAIProvider(t *testing.T) {
 		})
 
 		Convey("When created with environment API key", func() {
-			provider := NewOpenAIProvider("", "")
+			provider := NewOpenAIProvider(WithAPIKey(os.Getenv("OPENAI_API_KEY")))
 			So(provider, ShouldNotBeNil)
 			So(provider.client, ShouldNotBeNil)
 		})
@@ -59,7 +59,7 @@ func TestNewOpenAIProvider(t *testing.T) {
 
 func TestOpenAIProvider_Write(t *testing.T) {
 	Convey("Given an OpenAI provider", t, func() {
-		provider := NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "")
+		provider := NewOpenAIProvider(WithAPIKey(os.Getenv("OPENAI_API_KEY")))
 
 		Convey("When writing a message", func() {
 			testEvent := testEvent(false)
@@ -84,7 +84,7 @@ func TestOpenAIProvider_Write(t *testing.T) {
 
 func TestOpenAIProvider_Close(t *testing.T) {
 	Convey("Given an OpenAI provider", t, func() {
-		provider := NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "")
+		provider := NewOpenAIProvider(WithAPIKey(os.Getenv("OPENAI_API_KEY")))
 
 		Convey("When closing the provider", func() {
 			err := provider.Close()
@@ -103,7 +103,7 @@ func TestOpenAIProvider_Close(t *testing.T) {
 
 func TestOpenAIProvider_BuildTools(t *testing.T) {
 	Convey("Given an OpenAI provider", t, func() {
-		provider := NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "")
+		provider := NewOpenAIProvider(WithAPIKey(os.Getenv("OPENAI_API_KEY")))
 		params := &openai.ChatCompletionNewParams{}
 
 		Convey("When building tools with nil context", func() {

@@ -35,9 +35,9 @@ var manifests embed.FS
 rootCmd represents the base command when called without any subcommands
 */
 var (
-	projectName = "caramba"
-	cfgFile     string
-	store       *fs.Store
+	projectName  = "caramba"
+	cfgFile      string
+	openaiAPIKey string
 
 	rootCmd = &cobra.Command{
 		Use:   "caramba",
@@ -63,7 +63,9 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(
 		&cfgFile, "config", "config.yml", "config file (default is $HOME/."+projectName+"/config.yml)",
 	)
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.PersistentFlags().StringVar(
+		&openaiAPIKey, "openai-api-key", "", "API key for the OpenAI provider",
+	)
 
 	// Initialize the filesystem store and load manifests
 	if err := fs.NewStore().Initialize(manifests, "manifests"); err != nil {

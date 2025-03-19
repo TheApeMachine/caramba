@@ -34,8 +34,8 @@ func GetProvider() string {
 	return cfg.v().GetString("settings.defaults.provider")
 }
 
-func GetSystemPrompt() string {
-	return cfg.v().GetString("settings.defaults.system_prompt")
+func GetSystemPrompt(key string) string {
+	return cfg.v().GetString("settings.defaults.system_prompt." + key)
 }
 
 func GetTemperature() float64 {

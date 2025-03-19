@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/theapemachine/caramba/pkg/ai"
+	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
@@ -25,8 +26,7 @@ func NewChat() *Chat {
 
 	agent := ai.NewAgent()
 	provider := provider.NewOpenAIProvider(
-		os.Getenv("OPENAI_API_KEY"),
-		tweaker.GetEndpoint("openai"),
+		provider.WithAPIKey(core.NewConfig().OpenAIAPIKey),
 	)
 
 	chat := &Chat{

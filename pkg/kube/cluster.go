@@ -31,7 +31,7 @@ func NewCluster() *Cluster {
 	}
 
 	// Configure kind cluster with custom kubeconfig
-	prvdr := cluster.NewProvider()
+	prvdr := cluster.NewProvider(cluster.ProviderWithLogger(NewKindLogger()))
 	store := fs.NewStore()
 	deployment := NewDeployment(store)
 

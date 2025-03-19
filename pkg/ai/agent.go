@@ -186,9 +186,11 @@ func WithModel(model string) AgentOption {
 	}
 }
 
-func WithTools(tools []*provider.Tool) AgentOption {
+func WithTools(tools ...*provider.Tool) AgentOption {
 	return func(agent *Agent) {
-		agent.params.Tools = tools
+		for _, tool := range tools {
+			agent.params.Tools = append(agent.params.Tools, tool)
+		}
 	}
 }
 

@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
-	"github.com/spf13/viper"
+	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
@@ -27,24 +26,18 @@ type OpenAIProvider struct {
 	cancel context.CancelFunc
 }
 
+type OpenAIProviderOption func(*OpenAIProvider)
+
 /*
 NewOpenAIProvider creates a new OpenAI provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the OPENAI_API_KEY environment variable.
 This can also be used for local AI, since most will follow the OpenAI API format.
 */
-func NewOpenAIProvider(
-	apiKey string,
-	endpoint string,
-) *OpenAIProvider {
+func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 	errnie.Debug("provider.NewOpenAIProvider")
 
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-
-	if endpoint == "" {
-		endpoint = viper.GetViper().GetString("endpoints.openai")
-	}
+	apiKey := core.NewConfig().OpenAIAPIKey
+	errnie.Debug("provider.NewOpenAIProvider", "apiKey", apiKey)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	params := &Params{}
@@ -71,7 +64,23 @@ func NewOpenAIProvider(
 		cancel: cancel,
 	}
 
+	for _, opt := range opts {
+		opt(prvdr)
+	}
+
 	return prvdr
+}
+
+func WithAPIKey(apiKey string) OpenAIProviderOption {
+	return func(prvdr *OpenAIProvider) {
+		prvdr.client.Options = append(prvdr.client.Options, option.WithAPIKey(apiKey))
+	}
+}
+
+func WithEndpoint(endpoint string) OpenAIProviderOption {
+	return func(prvdr *OpenAIProvider) {
+		prvdr.client.Options = append(prvdr.client.Options, option.WithBaseURL(endpoint))
+	}
 }
 
 /*
