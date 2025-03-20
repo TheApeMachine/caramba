@@ -66,36 +66,22 @@ func NewAgent(options ...AgentOption) *Agent {
 				return errnie.Error(err)
 			}
 
-			if len(params.Messages) < 3 {
-				return
-			}
+			msg := params.Messages[len(params.Messages)-1]
 
-			tc := &AgentToolCall{}
+			switch msg.Role {
+			case provider.MessageRoleTool:
+				caller := tools.NewCaller()
+				toolcall := datura.New(
+					datura.WithPayload([]byte(msg.Content)),
+				)
 
-			if err = json.Unmarshal([]byte(
-				params.Messages[len(params.Messages)-1].Content,
-			), tc); err != nil {
-				return errnie.Error(err)
-			}
+				if _, err = io.Copy(caller, toolcall); err != nil {
+					return errnie.Error(err)
+				}
 
-			args := map[string]any{}
-
-			if err = json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-				return errnie.Error(err)
-			}
-
-			if browser == nil {
-				browser = tools.NewBrowser()
-			}
-
-			if err = evt.SetMetaValue("url", args["url"]); err != nil {
-				return errnie.Error(err)
-			}
-
-			datura.WithPayload([]byte(args["script"].(string)))(evt)
-
-			if _, err = io.Copy(browser, evt); err != nil {
-				return errnie.Error(err)
+				if _, err = io.Copy(toolcall, caller); err != nil {
+					return errnie.Error(err)
+				}
 			}
 
 			return nil

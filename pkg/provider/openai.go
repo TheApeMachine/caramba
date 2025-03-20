@@ -169,7 +169,13 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 
 	// Abort early if there are no tool calls
 	if len(toolCalls) == 0 {
-		return
+		if _, err = io.Copy(prvdr.buffer, datura.New(
+			datura.WithPayload(prvdr.params.Marshal()),
+		)); err != nil {
+			return errnie.Error(err)
+		}
+
+		return nil
 	}
 
 	prvdr.params.Messages = append(

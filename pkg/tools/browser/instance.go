@@ -48,13 +48,9 @@ func NewInstance() *Instance {
 			page.MustNavigate(datura.GetMetaValue[string](artifact, "url"))
 			wait()
 
-			payload, err := artifact.DecryptPayload()
+			script := datura.GetMetaValue[string](artifact, "script")
 
-			if err != nil {
-				return errnie.Error(err)
-			}
-
-			val := page.MustEval(string(payload)).Get("val").Str()
+			val := page.MustEval(script).Get("val").Str()
 			datura.WithPayload([]byte(val[:1000]))(artifact)
 
 			errnie.Info("browser.Instance.buffer.fn", "val", val[:1000])
