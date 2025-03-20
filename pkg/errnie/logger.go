@@ -17,7 +17,7 @@ var logger = log.NewWithOptions(os.Stderr, log.Options{
 	ReportCaller:    true,
 	CallerOffset:    1,
 	ReportTimestamp: true,
-	TimeFormat:      time.RFC3339,
+	TimeFormat:      time.TimeOnly,
 })
 
 func SetLevel(level log.Level) {
@@ -29,9 +29,11 @@ func Error(msg any, keyvals ...any) (err error) {
 		return nil
 	}
 
+	// Log the error message and stack trace
 	logger.Error(msg, keyvals...)
-	//fmt.Println(getStackTrace())
+	fmt.Println(getStackTrace())
 
+	// Return the original error
 	if err, ok := msg.(error); ok {
 		return err
 	}
@@ -61,73 +63,89 @@ func Debug(msg any, keyvals ...any) {
 Retrieve and format a stack trace from the current execution point.
 */
 func getStackTrace() string {
-	const depth = 32
+	const depth = 10
 	var pcs [depth]uintptr
 	n := runtime.Callers(3, pcs[:])
 	frames := runtime.CallersFrames(pcs[:n])
 
 	var trace strings.Builder
+	trace.WriteString("\n📚 Stack trace:\n")
+
+	isFirst := true
 	for {
 		frame, more := frames.Next()
 		if !more {
 			break
 		}
 
-		funcName := frame.Function
-
-		if lastSlash := strings.LastIndexByte(funcName, '/'); lastSlash >= 0 {
-			funcName = funcName[lastSlash+1:]
+		// Skip standard library frames
+		if strings.Contains(frame.File, "runtime/") || strings.Contains(frame.File, "/src/") {
+			continue
 		}
 
-		funcName = strings.Replace(funcName, ".", ":", 1)
+		// Just show the last part of the path for clarity
+		file := filepath.Base(frame.File)
+		funcName := filepath.Base(frame.Function)
 
-		line := fmt.Sprintf("%s at %s(line %d)\n",
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#6E95F7")).Render(funcName),
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#06C26F")).Render(filepath.Base(frame.File)),
+		if frame.Line == 0 {
+			continue
+		}
+
+		prefix := "   "
+		if isFirst {
+			prefix = "➜ " // Arrow pointing to the error origin
+			isFirst = false
+		}
+
+		line := fmt.Sprintf("%s%s:%d %s\n",
+			prefix,
+			file,
 			frame.Line,
+			funcName,
 		)
-
 		trace.WriteString(line)
-		codeSnippet := getCodeSnippet(frame.File, frame.Line, 3)
-		trace.WriteString(codeSnippet)
+
+		// Show code snippet only for the first (error origin) frame
+		if prefix == "➜ " {
+			snippet := getCodeSnippet(frame.File, frame.Line, 2)
+			trace.WriteString(snippet)
+		}
 	}
 
-	return "\n===[STACK TRACE]===\n" + trace.String() + "===[/STACK TRACE]===\n"
+	return trace.String()
 }
 
 /*
 Retrieve and return a code snippet surrounding the given line in the provided file.
 */
-func getCodeSnippet(file string, line, radius int) string {
+func getCodeSnippet(file string, errorLine, radius int) string {
 	if file == "" {
 		return ""
 	}
 
 	fileHandle, err := os.Open(file)
 	if err != nil {
-		logger.Warn("Failed to open file for code snippet", "file", file, "error", err)
 		return ""
 	}
 	defer fileHandle.Close()
 
+	var snippet strings.Builder
+	snippet.WriteString("\n📝 Code:\n")
+
 	scanner := bufio.NewScanner(fileHandle)
 	currentLine := 1
-	var snippet strings.Builder
 
-	for scanner.Scan() {
-		if currentLine >= line-radius && currentLine <= line+radius {
-			prefix := "  "
-			if currentLine == line {
-				prefix = "> "
+	for scanner.Scan() && currentLine <= errorLine+radius {
+		if currentLine >= errorLine-radius {
+			lineText := scanner.Text()
+			prefix := "   "
+			if currentLine == errorLine {
+				prefix = "➜ " // Arrow pointing to the error line
+				lineText = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")).Render(lineText)
 			}
-			snippet.WriteString(fmt.Sprintf("%s%d: %s\n", prefix, currentLine, scanner.Text()))
+			snippet.WriteString(fmt.Sprintf("%s%s\n", prefix, lineText))
 		}
 		currentLine++
-	}
-
-	if err := scanner.Err(); err != nil {
-		logger.Warn("Failed to read from code snippet file", "file", file, "error", err)
-		return ""
 	}
 
 	return snippet.String()

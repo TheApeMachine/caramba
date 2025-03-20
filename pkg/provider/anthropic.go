@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 
@@ -182,12 +183,11 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 
 func (p *AnthropicProvider) buildMessages(
 	messageParams *anthropic.MessageNewParams,
-) *anthropic.MessageNewParams {
+) (err error) {
 	errnie.Debug("provider.buildMessages")
 
 	if p.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "anthropic")
-		return nil
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	msgParams := make([]anthropic.MessageParam, 0)
@@ -213,7 +213,7 @@ func (p *AnthropicProvider) buildMessages(
 		messageParams.Messages = anthropic.F(msgParams)
 	}
 
-	return messageParams
+	return nil
 }
 
 func (prvdr *AnthropicProvider) buildTools(
@@ -261,11 +261,12 @@ func (prvdr *AnthropicProvider) buildTools(
 
 func (p *AnthropicProvider) buildResponseFormat(
 	messageParams *anthropic.MessageNewParams,
-) {
+) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
 	// Add response format logic here if Claude supports it
 	// Currently, Claude doesn't have a direct ResponseFormat equivalent
+	return nil
 }
 
 type AnthropicEmbedder struct {

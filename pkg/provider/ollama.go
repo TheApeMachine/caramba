@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -155,12 +156,11 @@ func (prvdr *OllamaProvider) handleStreamingRequest(
 
 func (prvdr *OllamaProvider) buildMessages(
 	chatParams *api.ChatRequest,
-) {
+) (err error) {
 	errnie.Debug("provider.buildMessages")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "ollama")
-		return
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	messageList := make([]api.Message, 0, len(prvdr.params.Messages))
@@ -188,16 +188,17 @@ func (prvdr *OllamaProvider) buildMessages(
 	}
 
 	chatParams.Messages = messageList
+
+	return nil
 }
 
 func (prvdr *OllamaProvider) buildTools(
 	chatParams *api.ChatRequest,
-) {
+) (err error) {
 	errnie.Debug("provider.buildTools")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "ollama")
-		return
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	if len(prvdr.params.Tools) == 0 {
@@ -241,16 +242,17 @@ func (prvdr *OllamaProvider) buildTools(
 	if len(toolList) > 0 {
 		chatParams.Tools = toolList
 	}
+
+	return nil
 }
 
 func (prvdr *OllamaProvider) buildResponseFormat(
 	chatParams *api.ChatRequest,
-) {
+) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "ollama")
-		return
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	// Add format instructions as a system message since Ollama doesn't support direct format control
@@ -262,6 +264,8 @@ func (prvdr *OllamaProvider) buildResponseFormat(
 		}
 		chatParams.Messages = append(chatParams.Messages, formatMsg)
 	}
+
+	return nil
 }
 
 type OllamaEmbedder struct {

@@ -283,8 +283,7 @@ func (prvdr *OpenAIProvider) buildMessages(
 	errnie.Debug("provider.buildMessages")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "openai")
-		return
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(prvdr.params.Messages))
@@ -318,7 +317,7 @@ func (prvdr *OpenAIProvider) buildTools(
 	errnie.Debug("provider.buildTools")
 
 	if openaiParams == nil {
-		return errnie.NewErrValidation("params are nil", "provider", "openai")
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	if len(prvdr.params.Tools) == 0 {
@@ -374,7 +373,7 @@ func (prvdr *OpenAIProvider) buildResponseFormat(
 	errnie.Debug("provider.buildResponseFormat")
 
 	if openaiParams == nil {
-		return errnie.NewErrValidation("params are nil", "provider", "openai")
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	openaiParams.ResponseFormat = openai.F[openai.ChatCompletionNewParamsResponseFormatUnion](

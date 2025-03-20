@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 
@@ -102,14 +103,22 @@ func (prvdr *GoogleProvider) Write(p []byte) (n int, err error) {
 		MaxOutputTokens:  utils.Ptr[int32](int32(prvdr.params.MaxTokens)),
 	}
 
-	messages := prvdr.buildMessages(chatConfig)
-	prvdr.buildTools(chatConfig)
-	prvdr.buildResponseFormat(chatConfig)
+	if err = prvdr.buildMessages(chatConfig); err != nil {
+		return n, errnie.Error(err)
+	}
+
+	if err = prvdr.buildTools(chatConfig); err != nil {
+		return n, errnie.Error(err)
+	}
+
+	if err = prvdr.buildResponseFormat(chatConfig); err != nil {
+		return n, errnie.Error(err)
+	}
 
 	if prvdr.params.Stream {
-		prvdr.handleStreamingRequest(messages, chatConfig)
+		prvdr.handleStreamingRequest(chatConfig)
 	} else {
-		prvdr.handleSingleRequest(messages, chatConfig)
+		prvdr.handleSingleRequest(chatConfig)
 	}
 
 	return n, nil
@@ -125,10 +134,17 @@ func (prvdr *GoogleProvider) Close() error {
 }
 
 func (prvdr *GoogleProvider) handleSingleRequest(
-	messages []*genai.Content,
 	chatConfig *genai.GenerateContentConfig,
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
+
+	messages := make([]*genai.Content, 0, len(prvdr.params.Messages))
+	for _, msg := range prvdr.params.Messages {
+		messages = append(messages, &genai.Content{
+			Role:  string(msg.Role),
+			Parts: []*genai.Part{{Text: msg.Content}},
+		})
+	}
 
 	resp, err := prvdr.client.Models.GenerateContent(
 		prvdr.ctx,
@@ -161,10 +177,17 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 }
 
 func (prvdr *GoogleProvider) handleStreamingRequest(
-	messages []*genai.Content,
 	chatConfig *genai.GenerateContentConfig,
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
+
+	messages := make([]*genai.Content, 0, len(prvdr.params.Messages))
+	for _, msg := range prvdr.params.Messages {
+		messages = append(messages, &genai.Content{
+			Role:  string(msg.Role),
+			Parts: []*genai.Part{{Text: msg.Content}},
+		})
+	}
 
 	for response, err := range prvdr.client.Models.GenerateContentStream(
 		prvdr.ctx,
@@ -202,12 +225,11 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 
 func (prvdr *GoogleProvider) buildMessages(
 	chatParams *genai.GenerateContentConfig,
-) []*genai.Content {
+) (err error) {
 	errnie.Debug("provider.buildMessages")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "google")
-		return nil
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	messages := make([]*genai.Content, 0, len(prvdr.params.Messages))
@@ -234,22 +256,21 @@ func (prvdr *GoogleProvider) buildMessages(
 		}
 	}
 
-	return messages
+	return nil
 }
 
 func (prvdr *GoogleProvider) buildTools(
 	chatParams *genai.GenerateContentConfig,
-) {
+) (err error) {
 	errnie.Debug("provider.buildTools")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "google")
-		return
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	if len(prvdr.params.Tools) == 0 {
 		chatParams.Tools = nil
-		return
+		return nil
 	}
 
 	functionDeclarations := make([]*genai.FunctionDeclaration, 0, len(prvdr.params.Tools))
@@ -266,16 +287,17 @@ func (prvdr *GoogleProvider) buildTools(
 			FunctionDeclarations: functionDeclarations,
 		},
 	}
+
+	return nil
 }
 
 func (prvdr *GoogleProvider) buildResponseFormat(
 	chatParams *genai.GenerateContentConfig,
-) {
+) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "google")
-		return
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	// Add format instructions to system message
@@ -285,6 +307,8 @@ func (prvdr *GoogleProvider) buildResponseFormat(
 			Description: prvdr.params.ResponseFormat.Description,
 		}
 	}
+
+	return nil
 }
 
 type GoogleEmbedder struct {
@@ -306,8 +330,8 @@ func NewGoogleEmbedder(apiKey string, endpoint string) *GoogleEmbedder {
 		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
 	})
-	if err != nil {
-		errnie.Error("failed to create Google embedder client", "error", err)
+
+	if errnie.Error(err) != nil {
 		return nil
 	}
 

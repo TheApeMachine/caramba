@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 
@@ -183,12 +184,11 @@ func (prvdr *DeepseekProvider) handleStreamingRequest(
 
 func (prvdr *DeepseekProvider) buildMessages(
 	chatParams *deepseek.StreamChatCompletionRequest,
-) {
+) (err error) {
 	errnie.Debug("provider.buildMessages")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "deepseek")
-		return
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	messageList := make([]deepseek.ChatCompletionMessage, 0, len(prvdr.params.Messages))
@@ -216,20 +216,21 @@ func (prvdr *DeepseekProvider) buildMessages(
 	}
 
 	chatParams.Messages = messageList
+
+	return nil
 }
 
 func (prvdr *DeepseekProvider) buildTools(
 	chatParams *deepseek.StreamChatCompletionRequest,
-) {
+) (err error) {
 	errnie.Debug("provider.buildTools")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "deepseek")
-		return
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	if len(prvdr.params.Tools) == 0 {
-		return
+		return nil
 	}
 
 	toolList := make([]deepseek.Tool, 0, len(prvdr.params.Tools))
@@ -265,16 +266,17 @@ func (prvdr *DeepseekProvider) buildTools(
 	if len(toolList) > 0 {
 		chatParams.Tools = toolList
 	}
+
+	return nil
 }
 
 func (prvdr *DeepseekProvider) buildResponseFormat(
 	chatParams *deepseek.StreamChatCompletionRequest,
-) {
+) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
 	if prvdr.params == nil {
-		errnie.NewErrValidation("params are nil", "provider", "deepseek")
-		return
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	// Add format instructions as a system message since Deepseek doesn't support direct format control
@@ -286,6 +288,8 @@ func (prvdr *DeepseekProvider) buildResponseFormat(
 		}
 		chatParams.Messages = append(chatParams.Messages, formatMsg)
 	}
+
+	return nil
 }
 
 type DeepseekEmbedder struct {

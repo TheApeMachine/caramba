@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 
@@ -191,7 +192,7 @@ func (prvdr *CohereProvider) buildMessages(
 	errnie.Debug("provider.buildMessages")
 
 	if prvdr.params == nil {
-		return errnie.NewErrValidation("params are nil", "provider", "cohere")
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	messageList := make([]*cohere.Message, 0, len(prvdr.params.Messages))
@@ -229,7 +230,7 @@ func (prvdr *CohereProvider) buildTools(
 	errnie.Debug("provider.buildTools")
 
 	if prvdr.params == nil {
-		return errnie.NewErrValidation("params are nil", "provider", "cohere")
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	toolList := make([]*cohere.Tool, 0, len(prvdr.params.Tools))
@@ -268,7 +269,7 @@ func (prvdr *CohereProvider) buildResponseFormat(
 	errnie.Debug("provider.buildResponseFormat")
 
 	if prvdr.params == nil {
-		return errnie.NewErrValidation("params are nil", "provider", "cohere")
+		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
 	var (
