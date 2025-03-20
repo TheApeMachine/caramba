@@ -8,9 +8,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
-	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 func init() {
@@ -26,26 +24,16 @@ type Agent struct {
 	buffer *stream.Buffer
 	params *provider.Params
 	Schema *provider.Tool
-	tools  map[string]io.ReadWriteCloser
+	caller io.ReadWriteCloser
 }
 
 type AgentOption func(*Agent)
-
-type AgentToolCall struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Function struct {
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
-	} `json:"function"`
-}
 
 /*
 NewAgent creates a new agent with initialized components.
 */
 func NewAgent(options ...AgentOption) *Agent {
 	errnie.Debug("NewAgent")
-	var browser *tools.Browser
 
 	params := provider.NewParams(
 		provider.WithModel(tweaker.GetModel(tweaker.GetProvider())),
@@ -54,38 +42,6 @@ func NewAgent(options ...AgentOption) *Agent {
 	)
 
 	agent := &Agent{
-		buffer: stream.NewBuffer(func(evt *datura.Artifact) (err error) {
-			errnie.Debug("agent.buffer.fn")
-			var payload []byte
-
-			if payload, err = evt.DecryptPayload(); err != nil {
-				return errnie.Error(err)
-			}
-
-			if err = json.Unmarshal(payload, params); err != nil {
-				return errnie.Error(err)
-			}
-
-			msg := params.Messages[len(params.Messages)-1]
-
-			switch msg.Role {
-			case provider.MessageRoleTool:
-				caller := tools.NewCaller()
-				toolcall := datura.New(
-					datura.WithPayload([]byte(msg.Content)),
-				)
-
-				if _, err = io.Copy(caller, toolcall); err != nil {
-					return errnie.Error(err)
-				}
-
-				if _, err = io.Copy(toolcall, caller); err != nil {
-					return errnie.Error(err)
-				}
-			}
-
-			return nil
-		}),
 		params: params,
 		Schema: provider.NewTool(
 			provider.WithFunction(
@@ -125,9 +81,37 @@ func NewAgent(options ...AgentOption) *Agent {
 		),
 	}
 
-	agent.tools = map[string]io.ReadWriteCloser{
-		"browser": workflow.NewFeedback(browser, agent),
-	}
+	agent.buffer = stream.NewBuffer(func(evt *datura.Artifact) (err error) {
+		errnie.Debug("agent.buffer.fn")
+		var payload []byte
+
+		if payload, err = evt.DecryptPayload(); err != nil {
+			return errnie.Error(err)
+		}
+
+		if err = json.Unmarshal(payload, params); err != nil {
+			return errnie.Error(err)
+		}
+
+		msg := params.Messages[len(params.Messages)-1]
+
+		switch msg.Role {
+		case provider.MessageRoleTool:
+			toolcall := datura.New(
+				datura.WithPayload([]byte(msg.Content)),
+			)
+
+			if _, err = io.Copy(agent.caller, toolcall); err != nil {
+				return errnie.Error(err)
+			}
+
+			if _, err = io.Copy(toolcall, agent.caller); err != nil {
+				return errnie.Error(err)
+			}
+		}
+
+		return nil
+	})
 
 	for _, option := range options {
 		option(agent)
@@ -166,49 +150,8 @@ func (agent *Agent) Close() error {
 	return agent.buffer.Close()
 }
 
-func WithModel(model string) AgentOption {
+func WithCaller(caller io.ReadWriteCloser) AgentOption {
 	return func(agent *Agent) {
-		agent.params.Model = model
-	}
-}
-
-func WithTools(tools ...*provider.Tool) AgentOption {
-	return func(agent *Agent) {
-		for _, tool := range tools {
-			agent.params.Tools = append(agent.params.Tools, tool)
-		}
-	}
-}
-
-func WithProcess(proc provider.ResponseFormat) AgentOption {
-	return func(agent *Agent) {
-		agent.params.ResponseFormat = &provider.ResponseFormat{
-			Name:        proc.Name,
-			Description: proc.Description,
-			Schema:      proc.Schema,
-			Strict:      proc.Strict,
-		}
-	}
-}
-
-func WithSystem(system string) AgentOption {
-	return func(agent *Agent) {
-		if len(agent.params.Messages) == 0 {
-			agent.params.Messages = append(agent.params.Messages, provider.NewMessage(
-				provider.WithSystemRole(system),
-			))
-
-			return
-		}
-
-		agent.params.Messages[0].Content = system
-	}
-}
-
-func WithUser(name, prompt string) AgentOption {
-	return func(agent *Agent) {
-		agent.params.Messages = append(agent.params.Messages, provider.NewMessage(
-			provider.WithUserRole(name, prompt),
-		))
+		agent.caller = caller
 	}
 }

@@ -308,7 +308,9 @@ func (prvdr *OpenAIProvider) buildMessages(
 }
 
 /*
-buildTools converts ContextData tools to OpenAI API format
+buildTools takes the tools from the generic params and converts them to OpenAI API format.
+It is important to return nil early when there are no tools, because passing an empty array
+to the OpenAI API will cause strange behavior, like the model guessing random tools.
 */
 func (prvdr *OpenAIProvider) buildTools(
 	openaiParams *openai.ChatCompletionNewParams,
@@ -317,6 +319,11 @@ func (prvdr *OpenAIProvider) buildTools(
 
 	if openaiParams == nil {
 		return errnie.NewErrValidation("params are nil", "provider", "openai")
+	}
+
+	if len(prvdr.params.Tools) == 0 {
+		// No tools, no shoes, no dice.
+		return nil
 	}
 
 	toolsOut := make([]openai.ChatCompletionToolParam, 0)
@@ -356,7 +363,10 @@ func (prvdr *OpenAIProvider) buildTools(
 }
 
 /*
-buildResponseFormat converts ContextData response format to OpenAI API format
+buildResponseFormat converts the response format from the generic params to OpenAI API format.
+This will force the model to use structured output, and return a JSON object.
+Setting Strict to true will make sure the only thing returned is the JSON object.
+If you want this to be combined with the ability to call tools, you can set Strict to false.
 */
 func (prvdr *OpenAIProvider) buildResponseFormat(
 	openaiParams *openai.ChatCompletionNewParams,

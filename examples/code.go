@@ -23,13 +23,7 @@ type Code struct {
 func NewCode() *Code {
 	errnie.Debug("examples.NewCode")
 
-	agent := ai.NewAgent(
-		ai.WithModel("gpt-4o-mini"),
-		ai.WithTools(
-			tools.NewEditorTool().Schema,
-			tools.NewEnvironment().Schema,
-		),
-	)
+	agent := ai.NewAgent(ai.WithCaller(tools.NewCaller()))
 
 	provider := provider.NewOpenAIProvider(
 		provider.WithAPIKey(core.NewConfig().OpenAIAPIKey),

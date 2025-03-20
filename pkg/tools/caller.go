@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
+	"github.com/theapemachine/caramba/pkg/ai"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
@@ -45,35 +46,44 @@ func NewCaller() *Caller {
 
 			args := map[string]any{}
 
-			if err = json.Unmarshal([]byte(toolcall.Function.Arguments), &args); err != nil {
+			if err = json.Unmarshal(
+				[]byte(toolcall.Function.Arguments),
+				&args,
+			); err != nil {
 				return errnie.Error(err)
 			}
 
+			var tool io.ReadWriteCloser
+
 			switch toolcall.Function.Name {
+			case "agent":
+				tool = ai.NewAgent()
+			case "memory":
+				tool = NewMemoryTool()
 			case "browser":
-				browser := NewBrowser()
+				tool = NewBrowser()
+			case "editor":
+				tool = NewEditorTool()
+			case "environment":
+				tool = NewEnvironment()
+			case "github":
+				tool = NewGithub()
+			case "azure":
+				tool = NewAzure()
+			case "trengo":
+				tool = NewTrengo()
+			}
 
-				var (
-					ok     bool
-					url    string
-					script string
-				)
+			for key, value := range args {
+				artifact.SetMetaValue(key, value)
+			}
 
-				if url, ok = args["url"].(string); ok {
-					artifact.SetMetaValue("url", url)
-				}
+			if _, err = io.Copy(tool, artifact); err != nil {
+				return errnie.Error(err)
+			}
 
-				if script, ok = args["script"].(string); ok {
-					artifact.SetMetaValue("script", script)
-				}
-
-				if _, err = io.Copy(browser, artifact); err != nil {
-					return errnie.Error(err)
-				}
-
-				if _, err = io.Copy(artifact, browser); err != nil {
-					return errnie.Error(err)
-				}
+			if _, err = io.Copy(artifact, tool); err != nil {
+				return errnie.Error(err)
 			}
 
 			return nil
