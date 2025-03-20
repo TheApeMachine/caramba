@@ -35,11 +35,28 @@ func (conn *Conn) Load(embedded embed.FS, root string) (err error) {
 			return errnie.Error(err)
 		}
 
+		errnie.Debug("fs.Conn.Load", "path", path, "is_dir", d.IsDir())
+
 		if d.IsDir() {
 			return conn.memfs.MkdirAll(path, 0755)
 		}
 
-		conn.memfs.Create(path)
+		file, err := conn.memfs.Create(path)
+		
+		if err != nil {
+			return errnie.Error(err)
+		}
+
+		defer file.Close()
+
+		// Actually copy the file contents
+		content, err := embedded.ReadFile(path)
+		
+		if err != nil {
+			return errnie.Error(err)
+		}
+
+		_, err = file.Write(content)
 		return errnie.Error(err)
 	})
 }

@@ -35,36 +35,49 @@ func NewStore() *Store {
 		store = &Store{
 			buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 				errnie.Debug("fs.Store.buffer")
+
 				var (
 					fh    afero.File
 					files []string
+					path  = datura.GetMetaValue[string](artifact, "path")
+					n     int64
 				)
 
 				switch artifact.Role() {
 				case uint32(datura.ArtifactRoleOpenFile):
-					if fh, err = conn.Open(datura.GetMetaValue[string](artifact, "path")); err != nil {
+					errnie.Debug("fs.Store.buffer", "op", "open", "path", path)
+					if fh, err = conn.Open(path); err != nil {
 						return errnie.Error(err)
 					}
 				case uint32(datura.ArtifactRoleSaveFile):
-					if fh, err = conn.Open(datura.GetMetaValue[string](artifact, "path")); err != nil {
+					errnie.Debug("fs.Store.buffer", "op", "save", "path", path)
+					if fh, err = conn.Open(path); err != nil {
 						return errnie.Error(err)
 					}
 				case uint32(datura.ArtifactRoleDeleteFile):
-					if err = conn.Remove(datura.GetMetaValue[string](artifact, "path")); err != nil {
+					errnie.Debug("fs.Store.buffer", "op", "delete", "path", path)
+					if err = conn.Remove(path); err != nil {
 						return errnie.Error(err)
 					}
 				case uint32(datura.ArtifactRoleListFiles):
-					if files, err = conn.Ls(datura.GetMetaValue[string](artifact, "path")); err != nil {
+					errnie.Debug("fs.Store.buffer", "op", "list", "path", path)
+					if files, err = conn.Ls(path); err != nil {
 						return errnie.Error(err)
 					}
 				}
 
-				if fh == nil {
+				if fh != nil {
 					defer conn.Close(fh)
 
-					if _, err = io.Copy(artifact, fh); err != nil {
+					buf := bytes.NewBuffer([]byte{})
+					if n, err = io.Copy(buf, fh); err != nil {
 						return errnie.Error(err)
 					}
+
+					errnie.Debug("fs.Store.buffer", "n", n)
+
+					datura.WithPayload(buf.Bytes())(artifact)
+					return nil
 				}
 
 				if len(files) > 0 {

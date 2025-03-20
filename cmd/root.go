@@ -31,6 +31,9 @@ var embedded embed.FS
 //go:embed manifests/*
 var manifests embed.FS
 
+//go:embed scripts/*
+var browserScripts embed.FS
+
 /*
 rootCmd represents the base command when called without any subcommands
 */
@@ -69,6 +72,11 @@ func init() {
 
 	// Initialize the filesystem store and load manifests
 	if err := fs.NewStore().Initialize(manifests, "manifests"); err != nil {
+		errnie.Error(err)
+	}
+
+	// Initialize the browser scripts
+	if err := fs.NewStore().Initialize(browserScripts, "scripts"); err != nil {
 		errnie.Error(err)
 	}
 }

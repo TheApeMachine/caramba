@@ -27,14 +27,14 @@ func NewBrowser() *Browser {
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("tools.Browser.buffer")
 			url := datura.GetMetaValue[string](artifact, "url")
-			script := datura.GetMetaValue[string](artifact, "script")
+			op := datura.GetMetaValue[string](artifact, "operation")
 
 			if url == "" {
 				datura.WithPayload([]byte("url is required"))(artifact)
 			}
 
-			if script == "" {
-				datura.WithPayload([]byte("script is required"))(artifact)
+			if op == "" {
+				datura.WithPayload([]byte("operation is required"))(artifact)
 			}
 
 			if _, err = io.Copy(instance, artifact); err != nil {
@@ -54,12 +54,15 @@ func NewBrowser() *Browser {
 			),
 			provider.WithProperty("url", "string", "The URL to navigate to.", []any{}),
 			provider.WithProperty(
-				"script",
+				"operation",
 				"string",
-				"A JavaScript function to execute, must be an anonymous function that returns a string, e.g. `() => 'Hello, world!'`.",
-				[]any{},
+				"The operation to perform on the page you are navigating to.",
+				[]any{
+					"get_content",
+					"get_links",
+				},
 			),
-			provider.WithRequired("url", "script"),
+			provider.WithRequired("url", "operation"),
 		),
 		instance: instance,
 	}

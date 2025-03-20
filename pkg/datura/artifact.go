@@ -151,3 +151,9 @@ func WithMeta(key string, value any) ArtifactOption {
 		artifact.SetMetaValue(key, value)
 	}
 }
+
+func WithError(err error) ArtifactOption {
+	return func(artifact *Artifact) {
+		WithPayload([]byte(err.Error()))(artifact)
+	}
+}
