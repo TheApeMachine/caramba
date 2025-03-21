@@ -9,15 +9,15 @@ spec:
   restartPolicy: Never
   serviceAccountName: neo4j
   containers:
-    - name: neo4j-operations
-      image: neo4j:latest
-      imagePullPolicy: Always
-      env:
-        - name: RELEASE_NAME
-          value: neo4j
-        - name: SECRETNAME
-          value: neo4j-auth
-        - name: NAMESPACE
-          value: default
-        - name: PROTOCOL
-          value: neo4j
+  - name: neo4j-operations
+    image: neo4j:latest
+    imagePullPolicy: Always
+    env:
+      - name: RELEASE_NAME
+        value: neo4j
+      - name: SECRETNAME
+        value: neo4j-auth
+      - name: NAMESPACE
+        value: default
+      - name: PROTOCOL
+        value: neo4j

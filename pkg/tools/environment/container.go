@@ -1,16 +1,21 @@
 package environment
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
 	"github.com/containerd/containerd/v2/client"
-	"github.com/spf13/afero"
+	"github.com/google/go-containerregistry/pkg/crane"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/fs"
+	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 /*
@@ -27,6 +32,11 @@ type Container struct {
 NewContainer creates a new Container instance with the given containerd client connection.
 */
 func NewContainer(conn *client.Client) *Container {
+	if conn == nil {
+		errnie.Error(fmt.Errorf("client is nil"))
+		return nil
+	}
+
 	return &Container{
 		conn: conn,
 	}
@@ -37,93 +47,105 @@ Load prepares and loads a new container image from a Dockerfile.
 It creates a build context, imports the image into containerd, and initializes a new container.
 */
 func (container *Container) Load() (err error) {
-	// Read the Dockerfile
-	dockerfileContent, err := os.ReadFile("pkg/tools/environment/Dockerfile")
-	if errnie.Error(err) != nil {
+	var (
+		artifact = datura.New()
+		filesys  = fs.NewStore()
+		payload  []byte
+	)
+
+	// Read our Dockerfile
+	if _, err = io.Copy(artifact, workflow.NewPipeline(datura.New(
+		datura.WithRole(datura.ArtifactRoleOpenFile),
+		datura.WithMeta("path", "manifests/Dockerfile"),
+	), filesys)); err != nil {
+		return errnie.Error(err)
+	}
+
+	if payload, err = artifact.DecryptPayload(); errnie.Error(err) != nil {
 		return err
 	}
 
 	// Create a unique reference for the image
 	imageName := "caramba-env:" + time.Now().Format("20060102-150405")
 
-	// Use Afero's in-memory filesystem for all temporary operations
-	memFs := afero.NewMemMapFs()
-
-	// Create build context directory in memory
-	if err := memFs.MkdirAll("/build", 0755); errnie.Error(err) != nil {
-		return err
+	// Pull base image with platform specification
+	platform := &v1.Platform{
+		OS:           "linux",
+		Architecture: "arm64",
+		Variant:      "v8", // Common for M1/M2 Macs
 	}
 
-	// Write Dockerfile to memory filesystem
-	dockerfileInMem, err := memFs.Create("/build/Dockerfile")
-	if errnie.Error(err) != nil {
-		return err
+	baseImg, err := crane.Pull(
+		"ubuntu:latest", // Ubuntu has good ARM64 support
+		crane.WithPlatform(platform),
+	)
+	if err != nil {
+		return errnie.Error(err)
 	}
 
-	if _, err := dockerfileInMem.Write(dockerfileContent); errnie.Error(err) != nil {
-		dockerfileInMem.Close()
-		return err
-	}
-	dockerfileInMem.Close()
-
-	// Create tar buffer in memory
-	var tarBuffer bytes.Buffer
-	tarWriter := tar.NewWriter(&tarBuffer)
-
-	// Get file info from memory filesystem
-	fileInfo, err := memFs.Stat("/build/Dockerfile")
-	if errnie.Error(err) != nil {
-		return err
+	// Create layer with our Dockerfile contents
+	files := map[string][]byte{
+		"Dockerfile": payload,
 	}
 
-	// Create tar header
-	header, err := tar.FileInfoHeader(fileInfo, "")
-	if errnie.Error(err) != nil {
-		return err
-	}
-	header.Name = "Dockerfile"
-
-	if err := tarWriter.WriteHeader(header); errnie.Error(err) != nil {
-		return err
+	layer, err := crane.Layer(files)
+	if err != nil {
+		return errnie.Error(err)
 	}
 
-	// Read file from memory filesystem and write to tar
-	dockerfileData, err := afero.ReadFile(memFs, "/build/Dockerfile")
-	if errnie.Error(err) != nil {
-		return err
+	// Append our layer to base image
+	newImg, err := mutate.AppendLayers(baseImg, layer)
+	if err != nil {
+		return errnie.Error(err)
 	}
 
-	if _, err := tarWriter.Write(dockerfileData); errnie.Error(err) != nil {
-		return err
+	// Save image to a temporary tarball in OCI format
+	tempTar := fmt.Sprintf("/tmp/caramba-env-%s.tar", time.Now().Format("20060102-150405"))
+	if err := crane.Save(newImg, imageName, tempTar); err != nil {
+		return errnie.Error(err)
 	}
 
-	tarWriter.Close()
+	// Read the tarball
+	imgBytes, err := os.ReadFile(tempTar)
+	if err != nil {
+		return errnie.Error(err)
+	}
+	defer os.Remove(tempTar)
 
-	// Import the tar buffer directly into containerd
+	// Import the image into containerd using OCI format
 	images, err := container.conn.Import(
 		context.Background(),
-		bytes.NewReader(tarBuffer.Bytes()),
+		bytes.NewReader(imgBytes),
+		client.WithAllPlatforms(true),
 		client.WithIndexName(imageName),
 	)
-	if errnie.Error(err) != nil {
-		return err
+	if err != nil {
+		return errnie.Error(err)
 	}
 
 	if len(images) == 0 {
 		return errnie.Error(fmt.Errorf("no images imported"))
 	}
 
-	// Get the imported image
-	container.image, container.err = container.conn.GetImage(context.Background(), images[0].Name)
-	if errnie.Error(err) != nil {
-		return err
+	// Get the actual client.Image type
+	container.image, err = container.conn.GetImage(context.Background(), images[0].Name)
+	if err != nil {
+		return errnie.Error(err)
 	}
 
-	container.container, container.err = container.conn.NewContainer(
+	// Ensure image is unpacked before creating container
+	if err := container.image.Unpack(context.Background(), ""); err != nil {
+		return errnie.Error(err)
+	}
+
+	// Create the container with a unique snapshot ID
+	snapshotID := fmt.Sprintf("caramba-snap-%s", time.Now().Format("20060102-150405"))
+	container.container, err = container.conn.NewContainer(
 		context.Background(),
 		"caramba",
-		client.WithNewSnapshot("caramba", container.image),
+		client.WithNewSnapshot(snapshotID, container.image),
+		client.WithRuntime("io.containerd.runtime.v1.linux", nil),
 	)
 
-	return container.err
+	return errnie.Error(err)
 }

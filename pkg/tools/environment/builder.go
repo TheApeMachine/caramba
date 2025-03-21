@@ -1,6 +1,8 @@
 package environment
 
 import (
+	"fmt"
+
 	"github.com/containerd/containerd/v2/client"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -16,19 +18,22 @@ type Builder struct {
 func NewBuilder() *Builder {
 	errnie.Debug("environment.NewBuilder")
 
-	var container *Container
-
-	conn, err := client.New("/run/containerd/containerd.sock")
+	conn, err := client.New("/var/run/containerd/containerd.sock", client.WithDefaultNamespace("caramba"))
 
 	if errnie.Error(err) != nil {
+		return nil
+	}
+
+	var container *Container
+
+	if container = NewContainer(conn); container == nil {
+		errnie.Error(fmt.Errorf("container is nil"))
 		return nil
 	}
 
 	builder := &Builder{
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) error {
 			errnie.Debug("environment.Builder.buffer.fn")
-
-			container = NewContainer(conn)
 
 			if errnie.Error(container.Load()) != nil {
 				return err

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"io"
+	"os"
 	"sync"
 
 	"github.com/spf13/afero"
@@ -106,6 +107,14 @@ Initialize loads embedded files into the store's filesystem from the given root 
 */
 func (store *Store) Initialize(embedded embed.FS, root string) (err error) {
 	return store.conn.Load(embedded, root)
+}
+
+/*
+Stat implements the afero.Stat interface for the Store.
+It returns the file info for the given path.
+*/
+func (store *Store) Stat(path string) (fi os.FileInfo, err error) {
+	return store.conn.memfs.Stat(path)
 }
 
 /*

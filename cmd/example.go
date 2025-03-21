@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	clog "github.com/charmbracelet/log"
+	"github.com/containerd/containerd/v2/cmd/containerd/command"
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
+	"github.com/containerd/log"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/core"
@@ -25,22 +28,22 @@ var (
 
 			errnie.SetLevel(clog.DebugLevel)
 
-			// // Set up containerd to use our custom logger
-			// logger := NewContainerdLogger()
-			// log.G(cmd.Context())                             // Initialize the global logger
-			// log.L = logger.WithField("module", "containerd") // Set our logger as the default
+			// Set up containerd to use our custom logger
+			logger := NewContainerdLogger()
+			log.G(cmd.Context())                             // Initialize the global logger
+			log.L = logger.WithField("module", "containerd") // Set our logger as the default
 
-			// // Start the containerd daemon, so the environment tool can use it.
-			// go func() {
-			// 	// We pass in the command context so that the containerd daemon is
-			// 	// shutdown when the command finishes for any reason.
-			// 	if err := command.App().RunContext(
-			// 		cmd.Context(),
-			// 		os.Args,
-			// 	); errnie.Error(err) != nil {
-			// 		os.Exit(1)
-			// 	}
-			// }()
+			// Start the containerd daemon, so the environment tool can use it.
+			go func() {
+				// We pass in the command context so that the containerd daemon is
+				// shutdown when the command finishes for any reason.
+				if err := command.App().RunContext(
+					cmd.Context(),
+					os.Args,
+				); errnie.Error(err) != nil {
+					os.Exit(1)
+				}
+			}()
 
 			var (
 				wf Example
