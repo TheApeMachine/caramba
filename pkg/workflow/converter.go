@@ -2,9 +2,11 @@ package workflow
 
 import (
 	"bytes"
+	"encoding/json"
 
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
 )
 
@@ -24,7 +26,13 @@ func NewConverter() *Converter {
 				return errnie.Error(err)
 			}
 
-			out.WriteString(string(payload))
+			buf := &provider.Params{}
+
+			if err = json.Unmarshal(payload, buf); err != nil {
+				return errnie.Error(err)
+			}
+
+			out.WriteString(buf.Messages[len(buf.Messages)-1].Content)
 
 			return nil
 		}),

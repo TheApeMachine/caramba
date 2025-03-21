@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"encoding/json"
 	"io"
 
 	"github.com/theapemachine/caramba/pkg/datura"
@@ -9,6 +8,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
+	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 func init() {
@@ -83,13 +83,8 @@ func NewAgent(options ...AgentOption) *Agent {
 
 	agent.buffer = stream.NewBuffer(func(evt *datura.Artifact) (err error) {
 		errnie.Debug("agent.buffer.fn")
-		var payload []byte
 
-		if payload, err = evt.DecryptPayload(); err != nil {
-			return errnie.Error(err)
-		}
-
-		if err = json.Unmarshal(payload, params); err != nil {
+		if err = evt.To(params); err != nil {
 			return errnie.Error(err)
 		}
 
@@ -97,17 +92,12 @@ func NewAgent(options ...AgentOption) *Agent {
 
 		switch msg.Role {
 		case provider.MessageRoleTool:
-			toolcall := datura.New(
+			if err = workflow.NewFlipFlop(datura.New(
 				datura.WithPayload([]byte(msg.Content)),
-			)
-
-			if _, err = io.Copy(agent.caller, toolcall); err != nil {
+			), agent.caller); err != nil {
 				return errnie.Error(err)
 			}
-
-			if _, err = io.Copy(toolcall, agent.caller); err != nil {
-				return errnie.Error(err)
-			}
+		default:
 		}
 
 		return nil

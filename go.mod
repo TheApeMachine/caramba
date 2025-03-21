@@ -5,6 +5,8 @@ go 1.24.0
 toolchain go1.24.1
 
 require (
+	github.com/JesusIslam/tldr v0.6.0
+	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.1
 	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.3
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/charmbracelet/log v0.4.0
@@ -19,6 +21,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/mark3labs/mcp-go v0.13.0
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
+	github.com/neurosnap/sentences v1.1.2
 	github.com/ollama/ollama v0.6.1
 	github.com/openai/openai-go v0.1.0-alpha.59
 	github.com/sirupsen/logrus v1.9.3
@@ -40,7 +43,7 @@ require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 // indirect
 	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20231105174938-2b5cbb29f3e2 // indirect
 	github.com/BurntSushi/toml v1.4.0 // indirect
-	github.com/JesusIslam/tldr v0.6.0 // indirect
+	github.com/JohannesKaufmann/dom v0.2.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Microsoft/hcsshim v0.12.9 // indirect
 	github.com/alixaxel/pagerank v0.0.0-20200105181019-900657b89dcb // indirect
@@ -132,7 +135,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
-	github.com/neurosnap/sentences v1.1.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/opencontainers/runtime-spec v1.2.0 // indirect
@@ -228,7 +230,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/muesli/termenv v0.15.3-0.20240618155329-98d742f6907a // indirect
+	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/neo4j/neo4j-go-driver/v5 v5.28.0
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/qdrant/go-client v1.13.0

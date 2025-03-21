@@ -65,7 +65,7 @@ func (code *Code) Run() (err error) {
 				provider.NewMessage(
 					provider.WithUserRole(
 						"Danny",
-						"Please write a simple game using Python",
+						"Please write a simple game using Python. Make sure you run it to verify it works.",
 					),
 				),
 			),
