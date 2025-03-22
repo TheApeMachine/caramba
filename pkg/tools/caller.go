@@ -7,51 +7,30 @@ import (
 	"github.com/theapemachine/caramba/pkg/ai"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/workflow"
 )
-
-type Function struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-}
-
-type ToolCall struct {
-	ID       string   `json:"id"`
-	Type     string   `json:"type"`
-	Function Function `json:"function"`
-}
 
 type Caller struct {
 	buffer   *stream.Buffer
-	toolcall *ToolCall
+	toolcall *provider.ToolCall
 }
 
 func NewCaller() *Caller {
 	errnie.Debug("tools.NewCaller")
-	toolcall := &ToolCall{}
+	toolcall := &provider.ToolCall{}
 
 	return &Caller{
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("tools.Caller.buffer")
 
-			var payload []byte
-
-			if payload, err = artifact.DecryptPayload(); err != nil {
+			// Convert the payload of the artifact to a ToolCall
+			if err = artifact.To(toolcall); err != nil {
 				return errnie.Error(err)
 			}
 
-			if err = json.Unmarshal(payload, toolcall); err != nil {
-				return errnie.Error(err)
-			}
-
-			args := map[string]any{}
-
-			if err = json.Unmarshal(
-				[]byte(toolcall.Function.Arguments),
-				&args,
-			); err != nil {
-				return errnie.Error(err)
-			}
+			artifact.SetMetaValue("toolcall_id", toolcall.ID)
 
 			var tool io.ReadWriteCloser
 
@@ -74,15 +53,19 @@ func NewCaller() *Caller {
 				tool = NewTrengo()
 			}
 
+			args := map[string]any{}
+
+			if err = json.Unmarshal(
+				[]byte(toolcall.Function.Arguments), &args,
+			); err != nil {
+				return errnie.Error(err)
+			}
+
 			for key, value := range args {
 				artifact.SetMetaValue(key, value)
 			}
 
-			if _, err = io.Copy(tool, artifact); err != nil {
-				return errnie.Error(err)
-			}
-
-			if _, err = io.Copy(artifact, tool); err != nil {
+			if err = workflow.NewFlipFlop(artifact, tool); err != nil {
 				return errnie.Error(err)
 			}
 

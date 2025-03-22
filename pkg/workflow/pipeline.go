@@ -56,7 +56,7 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	var nn int64
 
 	if !pipeline.processed {
-		for i := range len(pipeline.components)-1 {
+		for i := range len(pipeline.components) - 1 {
 			nn, err = io.Copy(pipeline.components[i+1], pipeline.components[i])
 			n += int(nn)
 
@@ -76,6 +76,7 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 
 	if err != nil {
 		if err == io.EOF {
+			pipeline.processed = false
 			return n, err
 		}
 
@@ -83,6 +84,7 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	}
 
 	if n == 0 {
+		pipeline.processed = false
 		return n, io.EOF
 	}
 

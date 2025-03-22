@@ -3,11 +3,11 @@ package environment
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -15,22 +15,20 @@ import (
 	"github.com/containerd/containerd/v2/pkg/cio"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 type Runner struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
-	buffer       *stream.Buffer
-	container    *Container
-	task         client.Task
-	bufIn        *bytes.Buffer
-	bufOut       *bytes.Buffer
-	bufErr       *bytes.Buffer
-	builder      strings.Builder
-	promptMarker string
-	outputReady  chan struct{}
+	ctx       context.Context
+	cancel    context.CancelFunc
+	buffer    *stream.Buffer
+	container *Container
+	task      client.Task
+	bufIn     *bytes.Buffer
+	bufOut    *bytes.Buffer
+	bufErr    *bytes.Buffer
+	muOutErr  sync.Mutex
+	muIn      sync.Mutex
 }
 
 func NewRunner(container *Container) *Runner {
@@ -40,16 +38,13 @@ func NewRunner(container *Container) *Runner {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
 	runner := &Runner{
-		ctx:          ctx,
-		cancel:       cancel,
-		container:    container,
-		task:         task,
-		bufIn:        bytes.NewBuffer([]byte{}),
-		bufOut:       bytes.NewBuffer([]byte{}),
-		bufErr:       bytes.NewBuffer([]byte{}),
-		builder:      strings.Builder{},
-		promptMarker: "$",
-		outputReady:  make(chan struct{}),
+		ctx:       ctx,
+		cancel:    cancel,
+		container: container,
+		task:      task,
+		bufIn:     bytes.NewBuffer([]byte{}),
+		bufOut:    bytes.NewBuffer([]byte{}),
+		bufErr:    bytes.NewBuffer([]byte{}),
 	}
 
 	go func() {
@@ -61,7 +56,8 @@ func NewRunner(container *Container) *Runner {
 		}
 
 		// Create the task with empty IO first
-		if task, err = container.container.NewTask(ctx, cio.NewCreator()); errnie.Error(err) != nil {
+		if task, err = container.container.NewTask(ctx, cio.NewCreator()); err != nil {
+			errnie.Error(err)
 			return
 		}
 
@@ -96,69 +92,83 @@ func NewRunner(container *Container) *Runner {
 
 	}()
 
+	// Detect when the command has finished executing and the
+	// output has been written to the buffer.
+	waitforoutput := func() chan struct{} {
+		var (
+			n   int
+			err error
+			ch  = make(chan struct{})
+		)
+
+		go func() {
+			buf := make([]byte, 1024)
+			for {
+				select {
+				case <-runner.ctx.Done():
+					return
+				default:
+					runner.muOutErr.Lock()
+					n, err = runner.bufOut.Read(buf)
+					runner.muOutErr.Unlock()
+
+					if n == 0 || err != nil {
+						select {
+						case ch <- struct{}{}:
+							return
+						default:
+						}
+						continue
+					}
+					if n > 0 {
+						continue
+					}
+				}
+			}
+		}()
+
+		return ch
+	}
+
 	runner.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 		errnie.Debug("environment.Runner.buffer.fn")
 
+		runner.muIn.Lock()
 		runner.bufIn.Reset()
+		runner.muIn.Unlock()
+
+		runner.muOutErr.Lock()
 		runner.bufOut.Reset()
 		runner.bufErr.Reset()
+		runner.muOutErr.Unlock()
 
-		params := &provider.Params{}
+		// Get the command from the metadata, which contains all the arguments
+		// for the tool call.
+		command := datura.GetMetaValue[string](artifact, "command")
 
-		if err = artifact.To(params); err != nil {
-			return errnie.Error(err)
+		if command == "" {
+			return errnie.Error(errors.New("no command"))
 		}
 
-		runner.bufIn.Write([]byte(params.Messages[len(params.Messages)-1].Content))
+		// Write the command to the container.
+		runner.muIn.Lock()
+		runner.bufIn.Write([]byte(command))
+		runner.muIn.Unlock()
 
-		<-runner.outputReady
+		// Wait until the output of the command returns 0 bytes.
+		<-waitforoutput()
 
-		runner.builder.Reset()
-		runner.builder.WriteString(runner.bufOut.String())
-		runner.builder.WriteString(runner.bufErr.String())
+		runner.muOutErr.Lock()
+		datura.WithPayload(
+			append(
+				runner.bufOut.Bytes(),
+				runner.bufErr.Bytes()...,
+			),
+		)(artifact)
+		runner.muOutErr.Unlock()
 
-		params.Messages = append(params.Messages, &provider.Message{
-			Role:    "assistant",
-			Content: runner.builder.String(),
-		})
-
-		var out []byte
-		if out, err = json.Marshal(params); errnie.Error(err) != nil {
-			return errnie.Error(err)
-		}
-
-		datura.WithPayload(out)(artifact)
 		return nil
 	})
-
-	var (
-		n   int
-		err error
-	)
-
-	go func() {
-		buf := make([]byte, 1024)
-		for {
-			select {
-			case <-runner.ctx.Done():
-				return
-			default:
-				n, err = runner.bufOut.Read(buf)
-				if n == 0 || err != nil {
-					select {
-					case runner.outputReady <- struct{}{}:
-					default:
-					}
-					continue
-				}
-				// Process any output we did get
-				if n > 0 {
-					// Keep reading until we get a 0-byte read
-					continue
-				}
-			}
-		}
-	}()
 
 	return runner
 }

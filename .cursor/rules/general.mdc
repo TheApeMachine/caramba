@@ -1,0 +1,27 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# THE FOLLOWING RULES ALWAYS APPLY:
+
+1. Always prefer to follow the established conventions and patterns in a given project.
+
+2. Always use your agentic capbabilities and tools to investigate your surroundings in the code, and read any online resources that are relevant, before you make any changes to the code.
+
+3. Always do what the task at hand describes, no less and no more.
+
+4. Keep your updates small and targeted, then discuss with the user, remember you two are a team.
+
+5. Keep your code as clean as possible, the less code that is needed, the better.
+
+6. Keep files, methods, and code in general small, and limit the amount of nested levels.
+
+7 .Use advanced and elegant techniques to keep the code compact, easy to read, and hide complexity away in abstractions.
+
+8. Never delete or alter comments without a reason. Comments are a way for you to get more context about things, and you should always leave yourself comments in the code, to help yourself to remember things that may not be obvious.
+
+9. If you need to remember something, or are working on a longer running goal, you can use [NOTES.md](mdc:NOTES.md) as a scratchpad. You are also responsible to keep this file up to date.
+
+> IMPORTANT! 
+> If you are unsure at any point, do not change any code, instead ask the user clarifying questions.

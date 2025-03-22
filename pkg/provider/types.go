@@ -19,9 +19,12 @@ const (
 )
 
 type Message struct {
-	Role    MessageRole `json:"role"`
-	Name    string      `json:"name"`
-	Content string      `json:"content"`
+	ID        string      `json:"id"`
+	Reference string      `json:"reference"`
+	Role      MessageRole `json:"role"`
+	Name      string      `json:"name"`
+	Content   string      `json:"content"`
+	ToolCalls []ToolCall  `json:"tool_calls"`
 }
 
 type OptionMessage func(*Message)
@@ -60,6 +63,27 @@ var RegisteredTools = []any{}
 
 func RegisterTool(name string) {
 	RegisteredTools = append(RegisteredTools, name)
+}
+
+type ToolCallFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type ToolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"`
+	Function ToolCallFunction `json:"function"`
+}
+
+func (toolCall *ToolCall) Marshal() []byte {
+	buf, err := json.Marshal(toolCall)
+
+	if errnie.Error(err) != nil {
+		return nil
+	}
+
+	return buf
 }
 
 type Tool struct {

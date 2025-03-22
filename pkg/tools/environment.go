@@ -1,13 +1,12 @@
 package tools
 
 import (
-	"io"
-
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tools/environment"
+	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 func init() {
@@ -22,9 +21,10 @@ to run in.
 In the future, this should be enhanced with a GVisor layer to further sandbox the environment.
 */
 type Environment struct {
-	buffer *stream.Buffer
-	runner *environment.Runner
-	Schema *provider.Tool
+	buffer  *stream.Buffer
+	builder *environment.Builder
+	runner  *environment.Runner
+	Schema  *provider.Tool
 }
 
 /*
@@ -33,34 +33,38 @@ NewEnvironment creates a new Environment tool.
 func NewEnvironment() *Environment {
 	errnie.Debug("environment.NewEnvironment")
 
-	var runner *environment.Runner
+	// Setup the docker container for the agent's environment tool.
+	builder := environment.NewBuilder()
+
+	if errnie.Error(builder.Container.Load()) != nil {
+		return nil
+	}
+
+	runner := environment.NewRunner(builder.Container)
 
 	environment := &Environment{
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("environment.Instance.buffer.fn")
 
-			builder := environment.NewBuilder()
-			errnie.Error(builder.Container.Load())
-			runner = environment.NewRunner(builder.Container)
-
-			_, err = io.Copy(artifact, runner)
-			if errnie.Error(err) != nil {
-				return err
+			// After the FlipFlop the output of the command is in the payload of the artifact.
+			if err = workflow.NewFlipFlop(artifact, runner); err != nil {
+				return errnie.Error(err)
 			}
 
 			return nil
 		}),
-		runner: runner,
+		builder: builder,
+		runner:  runner,
 		Schema: provider.NewTool(
 			provider.WithFunction(
 				"environment",
 				"A tool which gives you a full Linux terminal-based environment to interact with.",
 			),
 			provider.WithProperty(
-				"operation",
+				"command",
 				"string",
-				"The operation to perform.",
-				[]any{"start", "stop"},
+				"A valid bash command to execute in the environment. Note: Be careful not to execute any infinitely blocking commands, you will only be able to continue once the last executed command has finished.",
+				[]any{},
 			),
 		),
 	}

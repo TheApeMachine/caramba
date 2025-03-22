@@ -81,23 +81,46 @@ func NewAgent(options ...AgentOption) *Agent {
 		),
 	}
 
-	agent.buffer = stream.NewBuffer(func(evt *datura.Artifact) (err error) {
+	agent.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 		errnie.Debug("agent.buffer.fn")
 
-		if err = evt.To(params); err != nil {
+		// Convert the artifact to a Params.
+		if err = artifact.To(params); err != nil {
 			return errnie.Error(err)
 		}
 
+		// Get the last message from the params.
 		msg := params.Messages[len(params.Messages)-1]
 
-		switch msg.Role {
-		case provider.MessageRoleTool:
-			if err = workflow.NewFlipFlop(datura.New(
-				datura.WithPayload([]byte(msg.Content)),
-			), agent.caller); err != nil {
+		if len(msg.ToolCalls) == 0 {
+			// No tool calls, so we can just stop here.
+			return nil
+		}
+
+		// Iterate over the tool calls and copy them to the caller.
+		for _, toolCall := range msg.ToolCalls {
+			// Create an intermediary artifact to pass the tool call to the caller,
+			// and receive the response.
+			tc := datura.New(datura.WithPayload(toolCall.Marshal()))
+
+			// Copy the tool call to the caller and receive the response.
+			if err = workflow.NewFlipFlop(tc, agent.caller); err != nil {
 				return errnie.Error(err)
 			}
-		default:
+
+			// Get the payload from the caller.
+			payload, err := tc.DecryptPayload()
+
+			if errnie.Error(err) != nil {
+				return errnie.Error(err)
+			}
+
+			// Add the response to the original artifact's Params payload.
+			params.Messages = append(params.Messages, &provider.Message{
+				Reference: toolCall.ID,
+				Role:      provider.MessageRoleTool,
+				Content:   string(payload),
+			})
 		}
 
 		return nil

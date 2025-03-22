@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/openai/openai-go"
@@ -160,15 +161,17 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		return err
 	}
 
-	prvdr.params.Messages = append(prvdr.params.Messages, &Message{
+	msg := &Message{
 		Role:    MessageRoleAssistant,
 		Content: completion.Choices[0].Message.Content,
-	})
+	}
 
 	toolCalls := completion.Choices[0].Message.ToolCalls
 
 	// Abort early if there are no tool calls
 	if len(toolCalls) == 0 {
+		prvdr.params.Messages = append(prvdr.params.Messages, msg)
+
 		if _, err = io.Copy(prvdr.buffer, datura.New(
 			datura.WithPayload(prvdr.params.Marshal()),
 		)); err != nil {
@@ -178,24 +181,19 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		return nil
 	}
 
-	prvdr.params.Messages = append(
-		prvdr.params.Messages,
-		&Message{
-			Role:    MessageRoleAssistant,
-			Content: completion.Choices[0].Message.Content,
-		},
-	)
+	msg.ToolCalls = make([]ToolCall, 0, len(toolCalls))
 
 	for _, toolCall := range toolCalls {
 		errnie.Info("toolCall", "tool", toolCall.Function.Name)
 
-		prvdr.params.Messages = append(
-			prvdr.params.Messages,
-			&Message{
-				Role:    MessageRoleTool,
-				Content: toolCall.JSON.RawJSON(),
+		msg.ToolCalls = append(msg.ToolCalls, ToolCall{
+			ID:   toolCall.ID,
+			Type: "function",
+			Function: ToolCallFunction{
+				Name:      toolCall.Function.Name,
+				Arguments: toolCall.Function.Arguments,
 			},
-		)
+		})
 	}
 
 	_, err = io.Copy(prvdr.buffer, datura.New(
@@ -296,7 +294,10 @@ func (prvdr *OpenAIProvider) buildMessages(
 			messages = append(messages, openai.UserMessage(message.Content))
 		case "assistant":
 			messages = append(messages, openai.AssistantMessage(message.Content))
+		case "tool":
+			messages = append(messages, openai.ToolMessage(message.Reference, message.Content))
 		default:
+			fmt.Println(message.Role, message.Content)
 			return errnie.Error(errors.New("unknown message role"))
 		}
 	}

@@ -56,11 +56,7 @@ func NewCode() *Code {
 				provider,
 				agent,
 			),
-			workflow.NewFeedback(
-				converter,
-				os.Stdout,
-			),
-			workflow.NewSink(),
+			converter,
 		),
 	}
 }
@@ -100,12 +96,20 @@ func (code *Code) Run() (err error) {
 		).Marshal()),
 	)
 
+	errnie.Info("copying msg to code")
 	if _, err = io.Copy(code, msg); err != nil && err != io.EOF {
 		return err
 	}
 
-	// Pump up the jam, pump it up, while your feet are stomping.
-	workflow.NewPump(code)
+	errnie.Info("copying code to stdout 1/2")
+	if _, err = io.Copy(os.Stdout, code); err != nil && err != io.EOF {
+		return err
+	}
+
+	errnie.Info("copying code to stdout 2/2")
+	if _, err = io.Copy(os.Stdout, code); err != nil && err != io.EOF {
+		return err
+	}
 
 	return nil
 }

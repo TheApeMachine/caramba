@@ -3,10 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	clog "github.com/charmbracelet/log"
-	"github.com/containerd/containerd/v2/cmd/containerd/command"
+	"github.com/containerd/containerd/v2/client"
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
+	"github.com/containerd/containerd/v2/cmd/containerd/command"
 	"github.com/containerd/log"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
@@ -44,6 +46,22 @@ var (
 					os.Exit(1)
 				}
 			}()
+
+			// Wait for the containerd daemon to start.
+			for {
+				conn, err := client.New(
+					"/var/run/containerd/containerd.sock",
+					client.WithDefaultNamespace("caramba"),
+				)
+
+				if errnie.Error(err) != nil {
+					time.Sleep(1 * time.Second)
+					continue
+				}
+
+				conn.Close()
+				break
+			}
 
 			var (
 				wf Example
