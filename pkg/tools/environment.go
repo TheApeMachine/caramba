@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"io"
+
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
@@ -34,12 +36,17 @@ func NewEnvironment() *Environment {
 	var runner *environment.Runner
 
 	environment := &Environment{
-		buffer: stream.NewBuffer(func(artifact *datura.Artifact) error {
+		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("environment.Instance.buffer.fn")
 
 			builder := environment.NewBuilder()
 			errnie.Error(builder.Container.Load())
 			runner = environment.NewRunner(builder.Container)
+
+			_, err = io.Copy(artifact, runner)
+			if errnie.Error(err) != nil {
+				return err
+			}
 
 			return nil
 		}),

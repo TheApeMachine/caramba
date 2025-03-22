@@ -14,12 +14,25 @@ import (
 	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
+/*
+Code demonstrates an example workflow that uses an AI agent to generate
+and execute code. It showcases the integration between AI providers,
+workflow pipelines, and feedback mechanisms.
+*/
 type Code struct {
 	agent    *ai.Agent
 	provider *provider.OpenAIProvider
 	workflow io.ReadWriter
 }
 
+/*
+NewCode creates a new Code example instance with a configured AI agent,
+OpenAI provider, and workflow pipeline. It sets up all necessary components
+for code generation and execution.
+
+Returns:
+  - *Code: A new Code instance ready to run the example
+*/
 func NewCode() *Code {
 	errnie.Debug("examples.NewCode")
 
@@ -31,6 +44,9 @@ func NewCode() *Code {
 
 	converter := workflow.NewConverter()
 
+	// Note that this time we have os.Stdout as the last argument.
+	// This is because we want to output the code to the console.
+	// And the Pump we will use later will never return.
 	return &Code{
 		agent:    agent,
 		provider: provider,
@@ -40,11 +56,23 @@ func NewCode() *Code {
 				provider,
 				agent,
 			),
-			converter,
+			workflow.NewFeedback(
+				converter,
+				os.Stdout,
+			),
+			workflow.NewSink(),
 		),
 	}
 }
 
+/*
+Run executes the code example workflow. It sends an initial message to the AI
+requesting a Python game implementation, processes the response through the
+workflow pipeline, and outputs the results.
+
+Returns:
+  - error: Any error that occurred during execution
+*/
 func (code *Code) Run() (err error) {
 	errnie.Info("Starting code example")
 
@@ -76,19 +104,52 @@ func (code *Code) Run() (err error) {
 		return err
 	}
 
-	if _, err = io.Copy(os.Stdout, code); err != nil && err != io.EOF {
-		return err
-	}
+	// Pump up the jam, pump it up, while your feet are stomping.
+	workflow.NewPump(code)
 
 	return nil
 }
 
+/*
+Read implements the io.Reader interface for the Code example.
+It delegates reading operations to the underlying workflow.
+
+Parameters:
+  - p: Byte slice to read data into
+
+Returns:
+  - n: Number of bytes read
+  - err: Any error that occurred during reading
+*/
 func (code *Code) Read(p []byte) (n int, err error) {
 	errnie.Debug("examples.Code.Read")
 	return code.workflow.Read(p)
 }
 
+/*
+Write implements the io.Writer interface for the Code example.
+It delegates writing operations to the underlying workflow.
+
+Parameters:
+  - p: Byte slice containing data to write
+
+Returns:
+  - n: Number of bytes written
+  - err: Any error that occurred during writing
+*/
 func (code *Code) Write(p []byte) (n int, err error) {
 	errnie.Debug("examples.Code.Write")
 	return code.workflow.Write(p)
+}
+
+/*
+Close implements the io.Closer interface for the Code example.
+It signals shutdown via the done channel and closes the underlying workflow.
+
+Returns:
+  - error: Any error that occurred during closure
+*/
+func (code *Code) Close() (err error) {
+	errnie.Debug("examples.Code.Close")
+	return nil
 }

@@ -119,6 +119,7 @@ func (container *Container) Load() (err error) {
 		client.WithAllPlatforms(true),
 		client.WithIndexName(imageName),
 	)
+
 	if err != nil {
 		return errnie.Error(err)
 	}
@@ -133,17 +134,18 @@ func (container *Container) Load() (err error) {
 		return errnie.Error(err)
 	}
 
-	// Ensure image is unpacked before creating container
-	if err := container.image.Unpack(context.Background(), ""); err != nil {
-		return errnie.Error(err)
+	// Try to load existing container first
+	container.container, err = container.conn.LoadContainer(context.Background(), "caramba")
+	if err == nil {
+		// Container exists, use it
+		return nil
 	}
 
-	// Create the container with a unique snapshot ID
-	snapshotID := fmt.Sprintf("caramba-snap-%s", time.Now().Format("20060102-150405"))
+	// If container doesn't exist, create it
 	container.container, err = container.conn.NewContainer(
 		context.Background(),
 		"caramba",
-		client.WithNewSnapshot(snapshotID, container.image),
+		client.WithNewSnapshot("caramba-snap", container.image),
 		client.WithRuntime("io.containerd.runtime.v1.linux", nil),
 	)
 
