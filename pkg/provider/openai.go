@@ -145,8 +145,6 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 
 	var completion *openai.ChatCompletion
 
-	errnie.Info("provider.handleSingleRequest", "params", params)
-
 	if completion, err = prvdr.client.Chat.Completions.New(
 		prvdr.ctx, *params,
 	); errnie.Error(err) != nil {
@@ -303,7 +301,7 @@ func (prvdr *OpenAIProvider) buildMessages(
 				})
 			}
 
-			messages = append(messages, openai.ChatCompletionAssistantMessageParam{
+			msg := openai.ChatCompletionAssistantMessageParam{
 				Role: openai.F(openai.ChatCompletionAssistantMessageParamRoleAssistant),
 				Name: openai.F(message.Name),
 				Content: openai.F([]openai.ChatCompletionAssistantMessageParamContentUnion{
@@ -312,8 +310,13 @@ func (prvdr *OpenAIProvider) buildMessages(
 						Text: openai.F(message.Content),
 					},
 				}),
-				ToolCalls: openai.F(toolCalls),
-			})
+			}
+
+			if len(toolCalls) > 0 {
+				msg.ToolCalls = openai.F(toolCalls)
+			}
+
+			messages = append(messages, msg)
 		case "tool":
 			messages = append(messages, openai.ToolMessage(message.Reference, message.Content))
 		default:
