@@ -58,7 +58,7 @@ func NewCaller() *Caller {
 			if err = json.Unmarshal(
 				[]byte(toolcall.Function.Arguments), &args,
 			); err != nil {
-				return errnie.Error(err)
+				return errnie.Error(err, "toolcall.Function.Arguments", toolcall.Function.Arguments)
 			}
 
 			for key, value := range args {

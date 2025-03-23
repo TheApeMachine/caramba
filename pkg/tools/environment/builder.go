@@ -1,48 +1,48 @@
 package environment
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/containerd/containerd/v2/client"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 type Builder struct {
-	buffer    *stream.Buffer
-	client    *client.Client
-	Container *Container
+	buffer  *stream.Buffer
+	Runtime Runtime
 }
 
 func NewBuilder() *Builder {
 	errnie.Debug("environment.NewBuilder")
 
-	conn, err := client.New("/var/run/containerd/containerd.sock", client.WithDefaultNamespace("caramba"))
-
-	if errnie.Error(err) != nil {
-		return nil
-	}
-
-	var container *Container
-
-	if container = NewContainer(conn); container == nil {
-		errnie.Error(fmt.Errorf("container is nil"))
+	runtime, err := NewRuntime(Config{
+		RuntimeType: "docker", // default to Docker for now
+	})
+	if err != nil {
+		errnie.Error(fmt.Errorf("failed to create runtime: %w", err))
 		return nil
 	}
 
 	builder := &Builder{
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) error {
 			errnie.Debug("environment.Builder.buffer.fn")
-
-			if errnie.Error(container.Load()) != nil {
-				return err
-			}
-
 			return nil
 		}),
-		client:    conn,
-		Container: container,
+		Runtime: runtime,
+	}
+
+	// Create and start the container
+	ctx := context.Background()
+	if err := runtime.CreateContainer(ctx); err != nil {
+		errnie.Error(fmt.Errorf("failed to create container: %w", err))
+		return nil
+	}
+
+	if err := runtime.StartContainer(ctx); err != nil {
+		errnie.Error(fmt.Errorf("failed to start container: %w", err))
+		return nil
 	}
 
 	return builder

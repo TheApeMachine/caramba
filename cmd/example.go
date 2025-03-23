@@ -2,15 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"time"
 
 	clog "github.com/charmbracelet/log"
-	"github.com/containerd/containerd/v2/client"
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
-	"github.com/containerd/containerd/v2/cmd/containerd/command"
 	"github.com/containerd/log"
 	"github.com/spf13/cobra"
+	"github.com/theapemachine/caramba/daemon"
 	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -35,37 +32,9 @@ var (
 			log.G(cmd.Context())                             // Initialize the global logger
 			log.L = logger.WithField("module", "containerd") // Set our logger as the default
 
-			// Start the containerd daemon, so the environment tool can use it.
-			go func() {
-				// We pass in the command context so that the containerd daemon is
-				// shutdown when the command finishes for any reason.
-				if err := command.App().RunContext(
-					cmd.Context(),
-					os.Args,
-				); errnie.Error(err) != nil {
-					os.Exit(1)
-				}
-			}()
+			daemon.Start(cmd.Context())
 
-			// Wait for the containerd daemon to start.
-			for {
-				conn, err := client.New(
-					"/var/run/containerd/containerd.sock",
-					client.WithDefaultNamespace("caramba"),
-				)
-
-				if errnie.Error(err) != nil {
-					time.Sleep(1 * time.Second)
-					continue
-				}
-
-				conn.Close()
-				break
-			}
-
-			var (
-				wf Example
-			)
+			var wf Example
 
 			switch args[0] {
 			case "pipeline":

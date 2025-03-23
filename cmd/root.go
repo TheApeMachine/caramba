@@ -12,6 +12,7 @@ import (
 	stdfs "io/fs"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -108,10 +109,14 @@ writeConfig is a function that writes the default config file to the user's home
 */
 func writeConfig() (err error) {
 	var (
-		home, _ = os.UserHomeDir()
-		fh      stdfs.File
-		buf     bytes.Buffer
+		fh  stdfs.File
+		buf bytes.Buffer
 	)
+
+	home, err := os.UserHomeDir()
+	if errnie.Error(err) != nil {
+		return err
+	}
 
 	fullPath := home + "/." + projectName + "/" + cfgFile
 
@@ -129,12 +134,24 @@ func writeConfig() (err error) {
 		return fmt.Errorf("failed to read embedded config file: %w", err)
 	}
 
-	if err = os.Mkdir(home+"/."+projectName, os.ModePerm); err != nil {
+	if err = os.MkdirAll(home+"/."+projectName, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
 	if err = os.WriteFile(fullPath, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	// Ensure the config file is owned by the real user
+	if os.Getenv("SUDO_USER") != "" {
+		uid, _ := strconv.Atoi(os.Getenv("SUDO_UID"))
+		gid, _ := strconv.Atoi(os.Getenv("SUDO_GID"))
+		if err = os.Chown(fullPath, uid, gid); err != nil {
+			return fmt.Errorf("failed to chown config file: %w", err)
+		}
+		if err = os.Chown(home+"/."+projectName, uid, gid); err != nil {
+			return fmt.Errorf("failed to chown config directory: %w", err)
+		}
 	}
 
 	return

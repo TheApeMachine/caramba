@@ -42,6 +42,10 @@ settings:
     max_tokens: 1024
     stop_sequences: []
     stream: true
+    platform:
+      os: linux
+      arch: arm64
+      variant: v8
     system_prompt:
       default: |
         You are an advanced AI agent with the ability to use tools to help you achieve your goals.

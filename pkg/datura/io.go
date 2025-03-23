@@ -42,7 +42,7 @@ func (artifact *Artifact) Write(p []byte) (n int, err error) {
 	)
 
 	if msg, err = capnp.Unmarshal(p); err != nil {
-		return 0, errnie.Error(err)
+		return 0, errnie.Error(err, "p", string(p))
 	}
 
 	if buf, err = ReadRootArtifact(msg); err != nil {

@@ -35,12 +35,14 @@ func NewEnvironment() *Environment {
 
 	// Setup the docker container for the agent's environment tool.
 	builder := environment.NewBuilder()
-
-	if errnie.Error(builder.Container.Load()) != nil {
+	if builder == nil {
 		return nil
 	}
 
-	runner := environment.NewRunner(builder.Container)
+	runner := environment.NewRunner(builder.Runtime)
+	if runner == nil {
+		return nil
+	}
 
 	environment := &Environment{
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {

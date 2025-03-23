@@ -55,7 +55,7 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 			}
 
 			if err = json.Unmarshal(payload, params); err != nil {
-				return errnie.Error(err)
+				return errnie.Error(err, "payload", string(payload))
 			}
 
 			return nil

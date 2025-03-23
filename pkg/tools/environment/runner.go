@@ -5,92 +5,45 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"sync"
-	"syscall"
 	"time"
 
-	"github.com/containerd/containerd/v2/client"
-	"github.com/containerd/containerd/v2/pkg/cio"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 type Runner struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	buffer    *stream.Buffer
-	container *Container
-	task      client.Task
-	bufIn     *bytes.Buffer
-	bufOut    *bytes.Buffer
-	bufErr    *bytes.Buffer
-	muOutErr  sync.Mutex
-	muIn      sync.Mutex
+	ctx      context.Context
+	cancel   context.CancelFunc
+	buffer   *stream.Buffer
+	runtime  Runtime
+	bufIn    *bytes.Buffer
+	bufOut   *bytes.Buffer
+	bufErr   *bytes.Buffer
+	muOutErr sync.Mutex
+	muIn     sync.Mutex
 }
 
-func NewRunner(container *Container) *Runner {
+func NewRunner(runtime Runtime) *Runner {
 	errnie.Debug("environment.NewRunner")
 
-	var task client.Task
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
 	runner := &Runner{
-		ctx:       ctx,
-		cancel:    cancel,
-		container: container,
-		task:      task,
-		bufIn:     bytes.NewBuffer([]byte{}),
-		bufOut:    bytes.NewBuffer([]byte{}),
-		bufErr:    bytes.NewBuffer([]byte{}),
+		ctx:     ctx,
+		cancel:  cancel,
+		runtime: runtime,
+		bufIn:   bytes.NewBuffer([]byte{}),
+		bufOut:  bytes.NewBuffer([]byte{}),
+		bufErr:  bytes.NewBuffer([]byte{}),
 	}
 
-	go func() {
-		// Create a new FIFO set for the container
-		fifos, err := cio.NewFIFOSetInDir("", container.container.ID(), false)
-
-		if errnie.Error(err) != nil {
-			return
-		}
-
-		// Create the task with empty IO first
-		if task, err = container.container.NewTask(ctx, cio.NewCreator()); err != nil {
-			errnie.Error(err)
-			return
-		}
-
-		// Attach the streams using our containerIO bridge
-		attachedFifos, err := cio.NewAttach(cio.WithStreams(
-			runner.bufIn,
-			io.MultiWriter(runner.bufOut, os.Stdout),
-			io.MultiWriter(runner.bufErr, os.Stderr),
-		))(fifos)
-
-		if errnie.Error(err) != nil {
-			return
-		}
-
-		defer attachedFifos.Close()
-
-		if err = task.Start(ctx); errnie.Error(err) != nil {
-			return
-		}
-
-		errnie.Debug(fmt.Sprintf("Started container task with PID: %d", task.Pid()))
-
-		var status <-chan client.ExitStatus
-		if status, err = task.Wait(ctx); errnie.Error(err) != nil {
-			return
-		}
-
-		stat := <-status
-		if stat.ExitCode() != 0 {
-			return
-		}
-
-	}()
+	// Attach IO
+	if err := runtime.AttachIO(runner.bufIn, runner.bufOut, runner.bufErr); err != nil {
+		errnie.Error(fmt.Errorf("failed to attach IO: %w", err))
+		return nil
+	}
 
 	// Detect when the command has finished executing and the
 	// output has been written to the buffer.
@@ -142,20 +95,22 @@ func NewRunner(container *Container) *Runner {
 		runner.bufErr.Reset()
 		runner.muOutErr.Unlock()
 
-		// Get the command from the metadata, which contains all the arguments
-		// for the tool call.
+		// Get the command from the metadata
 		command := datura.GetMetaValue[string](artifact, "command")
-
 		if command == "" {
 			return errnie.Error(errors.New("no command"))
 		}
 
-		// Write the command to the container.
+		// Write the command and execute it
 		runner.muIn.Lock()
 		runner.bufIn.Write([]byte(command))
 		runner.muIn.Unlock()
 
-		// Wait until the output of the command returns 0 bytes.
+		if err := runner.runtime.ExecuteCommand(runner.ctx, command); err != nil {
+			return errnie.Error(fmt.Errorf("failed to execute command: %w", err))
+		}
+
+		// Wait until the output of the command returns 0 bytes
 		<-waitforoutput()
 
 		runner.muOutErr.Lock()
@@ -187,6 +142,9 @@ func (runner *Runner) Close() error {
 	errnie.Debug("environment.Runner.Close")
 	runner.cancel()
 
-	errnie.Error(runner.task.Kill(runner.ctx, syscall.SIGTERM))
+	if err := runner.runtime.StopContainer(runner.ctx); err != nil {
+		errnie.Error(fmt.Errorf("failed to stop container: %w", err))
+	}
+
 	return runner.buffer.Close()
 }

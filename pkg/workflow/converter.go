@@ -29,7 +29,7 @@ func NewConverter() *Converter {
 			buf := &provider.Params{}
 
 			if err = json.Unmarshal(payload, buf); err != nil {
-				return errnie.Error(err)
+				return errnie.Error(err, "payload", string(payload))
 			}
 
 			out.WriteString(buf.Messages[len(buf.Messages)-1].Content)

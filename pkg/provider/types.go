@@ -244,7 +244,7 @@ func (params *Params) Encode() *datura.Artifact {
 
 func (params *Params) Unmarshal(data []byte) {
 	errnie.Debug("provider.Params.Unmarshal")
-	errnie.Error(json.Unmarshal(data, params))
+	errnie.Error(json.Unmarshal(data, params), "data", string(data))
 }
 
 func (params *Params) Decode(artifact *datura.Artifact) {

@@ -80,13 +80,13 @@ func (l *ContainerdLogger) Trace(msg string, fields ...interface{}) {
 }
 
 func (l *ContainerdLogger) WithField(key string, value interface{}) *logrus.Entry {
-	return l.WithField(key, value)
+	return l.Logger.WithField(key, value)
 }
 
 func (l *ContainerdLogger) WithFields(fields map[string]interface{}) *logrus.Entry {
-	return l.WithFields(fields)
+	return l.Logger.WithFields(fields)
 }
 
 func (l *ContainerdLogger) WithError(err error) *logrus.Entry {
-	return l.WithError(err)
+	return l.Logger.WithError(err)
 }
