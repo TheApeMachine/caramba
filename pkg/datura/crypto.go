@@ -6,6 +6,8 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"errors"
+
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 // CryptoSuite handles encryption and decryption operations for Artifacts
@@ -15,6 +17,8 @@ type CryptoSuite struct {
 
 // NewCryptoSuite creates a new CryptoSuite using P-256 curve
 func NewCryptoSuite() *CryptoSuite {
+	errnie.Debug("datura.NewCryptoSuite")
+
 	return &CryptoSuite{
 		curve: ecdh.P256(),
 	}
@@ -22,40 +26,43 @@ func NewCryptoSuite() *CryptoSuite {
 
 // GenerateEphemeralKeyPair generates a new ECDH key pair for one-time use
 func (cs *CryptoSuite) GenerateEphemeralKeyPair() (*ecdh.PrivateKey, error) {
+	errnie.Debug("datura.CryptoSuite.GenerateEphemeralKeyPair")
 	return cs.curve.GenerateKey(rand.Reader)
 }
 
 // EncryptPayload encrypts a payload using AES-GCM with an ephemeral key
 // Returns the encrypted payload, encrypted key, and ephemeral public key
 func (cs *CryptoSuite) EncryptPayload(payload []byte) ([]byte, []byte, []byte, error) {
+	errnie.Debug("datura.CryptoSuite.EncryptPayload")
+
 	// Generate ephemeral key pair
 	ephemeralKey, err := cs.GenerateEphemeralKeyPair()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, errnie.Error(err, "payload", payload)
 	}
 
 	// Generate AES key
 	aesKey := make([]byte, 32)
 	if _, err := rand.Read(aesKey); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, errnie.Error(err, "payload", payload)
 	}
 
 	// Create AES cipher
 	block, err := aes.NewCipher(aesKey)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, errnie.Error(err, "payload", payload)
 	}
 
 	// Create GCM mode
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, errnie.Error(err, "payload", payload)
 	}
 
 	// Generate nonce
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, errnie.Error(err, "payload", payload)
 	}
 
 	// Encrypt payload
@@ -74,6 +81,8 @@ func (cs *CryptoSuite) EncryptPayload(payload []byte) ([]byte, []byte, []byte, e
 
 // DecryptPayload decrypts a payload using the provided keys
 func (cs *CryptoSuite) DecryptPayload(encryptedPayload, encryptedKey, ephemeralPubKey []byte) ([]byte, error) {
+	errnie.Debug("datura.CryptoSuite.DecryptPayload")
+
 	// For testing purposes, we'll use the key directly
 	// In production, this should use proper ECIES
 	aesKey := make([]byte, len(encryptedKey))
@@ -82,18 +91,18 @@ func (cs *CryptoSuite) DecryptPayload(encryptedPayload, encryptedKey, ephemeralP
 	// Create AES cipher
 	block, err := aes.NewCipher(aesKey)
 	if err != nil {
-		return nil, err
+		return nil, errnie.Error(err, "payload", encryptedPayload)
 	}
 
 	// Create GCM mode
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, errnie.Error(err, "payload", encryptedPayload)
 	}
 
 	// Split nonce and ciphertext
 	if len(encryptedPayload) < gcm.NonceSize() {
-		return nil, errors.New("ciphertext too short")
+		return nil, errnie.Error(errors.New("ciphertext too short"), "payload", encryptedPayload)
 	}
 	nonce := encryptedPayload[:gcm.NonceSize()]
 	ciphertext := encryptedPayload[gcm.NonceSize():]

@@ -88,7 +88,7 @@ func (code *Code) Run() (err error) {
 				provider.NewMessage(
 					provider.WithUserRole(
 						"Danny",
-						"Please write a simple game using Python. You have to run it to verify it works, so use an environment.",
+						"Please write a simple game using Python. You have to run it, and play a round, to verify it works, so use an environment.",
 					),
 				),
 			),
@@ -100,14 +100,11 @@ func (code *Code) Run() (err error) {
 		return err
 	}
 
-	errnie.Info("copying code to stdout 1/2")
-	if _, err = io.Copy(os.Stdout, code); err != nil && err != io.EOF {
-		return err
-	}
-
-	errnie.Info("copying code to stdout 2/2")
-	if _, err = io.Copy(os.Stdout, code); err != nil && err != io.EOF {
-		return err
+	for range 5 {
+		errnie.Info("copying code to stdout")
+		if _, err = io.Copy(os.Stdout, code); err != nil && err != io.EOF {
+			return err
+		}
 	}
 
 	return nil

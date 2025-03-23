@@ -17,7 +17,7 @@ func (artifact *Artifact) Read(p []byte) (n int, err error) {
 	buf, err := artifact.Message().Marshal()
 
 	if err != nil {
-		return n, errnie.Error(err)
+		return n, errnie.Error(err, "p", string(p))
 	}
 
 	n = copy(p, buf)

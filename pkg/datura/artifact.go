@@ -1,6 +1,7 @@
 package datura
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 type ArtifactOption func(*Artifact)
 
 func New(options ...ArtifactOption) *Artifact {
+	errnie.Debug("datura.New")
+
 	var (
 		arena    = capnp.SingleSegment(nil)
 		seg      *capnp.Segment
@@ -46,6 +49,13 @@ func New(options ...ArtifactOption) *Artifact {
 }
 
 func WithPayload(payload []byte) ArtifactOption {
+	errnie.Debug("datura.WithPayload")
+
+	if len(payload) == 0 {
+		errnie.Error(errors.New("payload is empty"))
+		return nil
+	}
+
 	return func(artifact *Artifact) {
 		var (
 			crypto           = NewCryptoSuite()
@@ -55,7 +65,8 @@ func WithPayload(payload []byte) ArtifactOption {
 			err              error
 		)
 
-		if encryptedPayload, encryptedKey, ephemeralPubKey, err = crypto.EncryptPayload(payload); errnie.Error(err) != nil {
+		if encryptedPayload, encryptedKey, ephemeralPubKey, err = crypto.EncryptPayload(payload); err != nil {
+			errnie.Error(err)
 			return
 		}
 
@@ -66,6 +77,8 @@ func WithPayload(payload []byte) ArtifactOption {
 }
 
 func WithMetadata(metadata map[string]any) ArtifactOption {
+	errnie.Debug("datura.WithMetadata")
+
 	return func(artifact *Artifact) {
 		var (
 			mdList    Artifact_Metadata_List
@@ -119,6 +132,8 @@ func WithMetadata(metadata map[string]any) ArtifactOption {
 }
 
 func WithSignature(signature []byte) ArtifactOption {
+	errnie.Debug("datura.WithSignature")
+
 	return func(artifact *Artifact) {
 		if errnie.Error(artifact.SetSignature(signature)) != nil {
 			return
@@ -127,18 +142,24 @@ func WithSignature(signature []byte) ArtifactOption {
 }
 
 func WithRole(role ArtifactRole) ArtifactOption {
+	errnie.Debug("datura.WithRole")
+
 	return func(artifact *Artifact) {
 		artifact.SetRole(uint32(role))
 	}
 }
 
 func WithScope(scope ArtifactScope) ArtifactOption {
+	errnie.Debug("datura.WithScope")
+
 	return func(artifact *Artifact) {
 		artifact.SetScope(uint32(scope))
 	}
 }
 
 func WithMediatype(mediatype MediaType) ArtifactOption {
+	errnie.Debug("datura.WithMediatype")
+
 	return func(artifact *Artifact) {
 		if errnie.Error(artifact.SetMediatype(string(mediatype))) != nil {
 			return
@@ -147,12 +168,16 @@ func WithMediatype(mediatype MediaType) ArtifactOption {
 }
 
 func WithMeta(key string, value any) ArtifactOption {
+	errnie.Debug("datura.WithMeta")
+
 	return func(artifact *Artifact) {
 		artifact.SetMetaValue(key, value)
 	}
 }
 
 func WithError(err error) ArtifactOption {
+	errnie.Debug("datura.WithError")
+
 	return func(artifact *Artifact) {
 		WithPayload([]byte(err.Error()))(artifact)
 	}

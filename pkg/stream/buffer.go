@@ -53,14 +53,12 @@ func (buffer *Buffer) Read(p []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
-	n, err = buffer.artifact.Read(p)
-
-	if err != nil {
+	if n, err = buffer.artifact.Read(p); err != nil {
 		if err == io.EOF {
 			return n, err
 		}
 
-		return n, errnie.Error(err)
+		return n, errnie.Error(err, "p", string(p))
 	}
 
 	if n == 0 {
@@ -93,12 +91,12 @@ func (buffer *Buffer) Write(p []byte) (n int, err error) {
 		return 0, errnie.Error(errors.New("buffer artifact is nil"))
 	}
 
-	if n, err = buffer.artifact.Write(p); errnie.Error(err) != nil {
-		return
+	if n, err = buffer.artifact.Write(p); err != nil {
+		return n, errnie.Error(err, "p", string(p))
 	}
 
-	if err = buffer.fn(buffer.artifact); errnie.Error(err) != nil {
-		return
+	if err = buffer.fn(buffer.artifact); err != nil {
+		return n, errnie.Error(err)
 	}
 
 	return n, nil

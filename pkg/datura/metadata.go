@@ -9,6 +9,8 @@ import (
 
 // GetMetaValue retrieves a typed metadata value from an artifact
 func GetMetaValue[T any](artifact *Artifact, key string) T {
+	errnie.Debug("datura.GetMetaValue", "key", key)
+
 	var (
 		metadata Artifact_Metadata_List
 		err      error
@@ -84,7 +86,9 @@ func GetMetaValue[T any](artifact *Artifact, key string) T {
 }
 
 // SetMetaValue sets a metadata value with the appropriate type
-func (artifact *Artifact) SetMetaValue(key string, val interface{}) error {
+func (artifact *Artifact) SetMetaValue(key string, val any) error {
+	errnie.Debug("datura.SetMetaValue", "key", key)
+
 	// Create a new option function
 	setOption := func(artifact *Artifact) {
 		var (

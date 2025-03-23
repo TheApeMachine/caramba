@@ -111,25 +111,15 @@ func NewAgent(options ...AgentOption) *Agent {
 				return errnie.Error(err)
 			}
 
-			// Get the payload from the caller.
-			payload, err := tc.DecryptPayload()
-
-			if errnie.Error(err) != nil {
-				return errnie.Error(err)
-			}
-
 			// Add the response to the original artifact's Params payload.
 			params.Messages = append(params.Messages, &provider.Message{
 				Reference: toolCall.ID,
 				Role:      provider.MessageRoleTool,
-				Content:   string(payload),
+				Content:   datura.GetMetaValue[string](tc, "output"),
 			})
 		}
 
-		if err = artifact.From(params); err != nil {
-			return errnie.Error(err)
-		}
-
+		datura.WithPayload(params.Marshal())(artifact)
 		return nil
 	})
 

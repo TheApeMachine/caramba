@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,7 +30,7 @@ type Runner struct {
 func NewRunner(runtime Runtime) *Runner {
 	errnie.Debug("environment.NewRunner")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 
 	runner := &Runner{
 		ctx:     ctx,
@@ -47,11 +49,13 @@ func NewRunner(runtime Runtime) *Runner {
 
 	// Detect when the command has finished executing and the
 	// output has been written to the buffer.
-	waitforoutput := func() chan struct{} {
+	waitforoutput := func() chan []byte {
 		var (
-			n   int
-			err error
-			ch  = make(chan struct{})
+			n           int
+			err         error
+			outputCh    = make(chan []byte, 1)
+			noDataCount = 0
+			output      = bytes.NewBuffer([]byte{})
 		)
 
 		go func() {
@@ -59,33 +63,78 @@ func NewRunner(runtime Runtime) *Runner {
 			for {
 				select {
 				case <-runner.ctx.Done():
+					outputCh <- output.Bytes()
+					close(outputCh)
 					return
 				default:
 					runner.muOutErr.Lock()
 					n, err = runner.bufOut.Read(buf)
 					runner.muOutErr.Unlock()
 
-					if n == 0 || err != nil {
-						select {
-						case ch <- struct{}{}:
-							return
-						default:
-						}
-						continue
+					if err != nil && err != io.EOF {
+						errnie.Error(err)
+						outputCh <- output.Bytes()
+						close(outputCh)
+						return
 					}
+
 					if n > 0 {
+						output.Write(buf[:n])
+						errnie.Debug("environment.Runner.waitforoutput.n", "n", n, "buf", string(buf[:n]))
+						noDataCount = 0
 						continue
 					}
+
+					// Only consider command complete after multiple zero reads
+					noDataCount++
+					if noDataCount > 5 {
+						outputCh <- output.Bytes()
+						close(outputCh)
+						return
+					}
+
+					time.Sleep(100 * time.Millisecond)
 				}
 			}
 		}()
 
-		return ch
+		return outputCh
 	}
 
 	runner.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 		errnie.Debug("environment.Runner.buffer.fn")
 
+		// Get the command from the metadata
+		command := datura.GetMetaValue[string](artifact, "command")
+		input := datura.GetMetaValue[string](artifact, "input")
+
+		if command == "" && input == "" {
+			return errnie.Error(errors.New("no command or input"))
+		}
+
+		// Handle input differently from commands
+		if input != "" {
+			errnie.Debug("environment.Runner.buffer.fn.input", "input", input)
+
+			// For input, just write to stdin and wait for output
+			if !strings.HasSuffix(input, "\n") {
+				input = input + "\n"
+			}
+
+			runner.muIn.Lock()
+			runner.bufIn.Write([]byte(input))
+			runner.muIn.Unlock()
+
+			// Wait for the program's response
+			output := <-waitforoutput()
+
+			errnie.Debug("environment.Runner.buffer.fn.out", "out", string(output))
+			artifact.SetMetaValue("output", string(output))
+
+			return nil
+		}
+
+		// For commands, reset all buffers
 		runner.muIn.Lock()
 		runner.bufIn.Reset()
 		runner.muIn.Unlock()
@@ -95,40 +144,31 @@ func NewRunner(runtime Runtime) *Runner {
 		runner.bufErr.Reset()
 		runner.muOutErr.Unlock()
 
-		// Get the command from the metadata
-		command := datura.GetMetaValue[string](artifact, "command")
-		if command == "" {
-			return errnie.Error(errors.New("no command"))
-		}
-
-		// Write the command and execute it
+		// Handle command execution
 		runner.muIn.Lock()
 		errnie.Debug("environment.Runner.buffer.fn.command", "command", command)
 		runner.bufIn.Write([]byte(command))
 		runner.muIn.Unlock()
 
-		if err := runner.runtime.ExecuteCommand(runner.ctx, command); err != nil {
+		if err := runner.runtime.ExecuteCommand(runner.ctx, command, runner.bufOut, runner.bufErr); err != nil {
 			return errnie.Error(fmt.Errorf("failed to execute command: %w", err))
 		}
 
 		// Wait until the output of the command returns 0 bytes
-		<-waitforoutput()
+		output := <-waitforoutput()
 
 		runner.muOutErr.Lock()
-		out := append(
-			runner.bufOut.Bytes(),
-			runner.bufErr.Bytes()...,
-		)
-
-		if len(out) == 0 {
-			out = []byte("Command executed successfully")
+		if bytes.Contains(runner.bufErr.Bytes(), []byte("EOFError: EOF when reading a line")) {
+			// If this is an EOF during input read, add explicit prompt
+			output = append(output, []byte("\n[WAITING FOR INPUT] Please provide input for the program.")...)
 		}
 
-		errnie.Debug("environment.Runner.buffer.fn.out", "out", string(out))
+		if len(output) == 0 {
+			output = []byte("Command executed successfully")
+		}
 
-		datura.WithPayload(
-			out,
-		)(artifact)
+		errnie.Debug("environment.Runner.buffer.fn.out", "out", string(output))
+		artifact.SetMetaValue("output", string(output))
 		runner.muOutErr.Unlock()
 
 		return nil

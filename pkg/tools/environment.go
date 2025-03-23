@@ -60,12 +60,18 @@ func NewEnvironment() *Environment {
 		Schema: provider.NewTool(
 			provider.WithFunction(
 				"environment",
-				"A tool which gives you a full Linux terminal-based environment to interact with.",
+				"A tool which gives you a full Linux terminal-based environment to interact with. You are directly connected to stdin, stdout, and stderr.",
 			),
 			provider.WithProperty(
 				"command",
 				"string",
-				"A valid bash command to execute in the environment. Note: Be careful not to execute any infinitely blocking commands, you will only be able to continue once the last executed command has finished.",
+				"A valid bash command to execute in the environment.",
+				[]any{},
+			),
+			provider.WithProperty(
+				"input",
+				"string",
+				"Valid input to pass to the environment, used for interactive sessions.",
 				[]any{},
 			),
 		),

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
+	"time"
 
 	"slices"
 
@@ -128,26 +130,74 @@ func (runtime *dockerRuntime) AttachIO(stdin io.Reader, stdout, stderr io.Writer
 		return errnie.Error(err)
 	}
 
-	go func() {
-		if stdin != nil {
-			if _, err := io.Copy(resp.Conn, stdin); err != nil {
-				errnie.Error(err)
-			}
-		}
-	}()
+	var wg sync.WaitGroup
 
+	if stdin != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			io.Copy(resp.Conn, stdin)
+			resp.CloseWrite()
+		}()
+	}
+
+	if stdout != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			io.Copy(stdout, resp.Reader)
+		}()
+	}
+
+	// Start a goroutine to wait for all IO operations to complete
 	go func() {
-		if stdout != nil {
-			if _, err := io.Copy(stdout, resp.Reader); err != nil {
-				errnie.Error(err)
-			}
-		}
+		wg.Wait()
+		resp.Close()
 	}()
 
 	return nil
 }
 
-func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string) error {
+// demultiplexDockerStream takes a Docker multiplexed stream and writes stdout/stderr to the appropriate writers
+func demultiplexDockerStream(reader io.Reader, stdout, stderr io.Writer) error {
+	var (
+		header = make([]byte, 8)
+		err    error
+	)
+
+	for {
+		// Read header
+		_, err = io.ReadFull(reader, header)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		// Get size of the coming message
+		size := int64(header[4])<<24 | int64(header[5])<<16 | int64(header[6])<<8 | int64(header[7])
+
+		// Choose writer based on stream type (header[0])
+		var w io.Writer
+		switch header[0] {
+		case 1:
+			w = stdout
+		case 2:
+			w = stderr
+		default:
+			continue
+		}
+
+		// Copy the message to the appropriate writer
+		_, err = io.CopyN(w, reader, size)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string, stdout, stderr io.Writer) error {
 	exec, err := runtime.client.ContainerExecCreate(
 		ctx,
 		runtime.containerID,
@@ -162,8 +212,53 @@ func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string
 		return errnie.Error(err)
 	}
 
+	// Attach to the exec instance to get the output
+	resp, err := runtime.client.ContainerExecAttach(ctx, exec.ID, container.ExecStartOptions{})
+	if err != nil {
+		return errnie.Error(err)
+	}
+	defer resp.Close()
+
+	// Start the command
 	if err := runtime.client.ContainerExecStart(ctx, exec.ID, container.ExecStartOptions{}); err != nil {
 		return errnie.Error(err)
+	}
+
+	// Create buffers to capture output
+	var stdoutBuf, stderrBuf bytes.Buffer
+	mw := io.MultiWriter(stdout, &stdoutBuf)
+	mwErr := io.MultiWriter(stderr, &stderrBuf)
+
+	// Copy output using the demultiplexer since we're not in TTY mode
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- demultiplexDockerStream(resp.Reader, mw, mwErr)
+	}()
+
+	// Wait for the command to complete
+	for {
+		inspectResp, err := runtime.client.ContainerExecInspect(ctx, exec.ID)
+		if err != nil {
+			return errnie.Error(err)
+		}
+		if !inspectResp.Running {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Wait for output copying to complete
+	copyErr := <-errCh
+	if copyErr != nil && copyErr != io.EOF {
+		return errnie.Error(copyErr)
+	}
+
+	// Check if this was an EOF during input read
+	if stderrStr := stderrBuf.String(); stderrStr != "" &&
+		(stderrStr == "EOFError: EOF when reading a line\n" ||
+			stderrStr == "EOFError: EOF when reading a line") {
+		// Just return without error - this is expected for interactive programs
+		return nil
 	}
 
 	return nil
