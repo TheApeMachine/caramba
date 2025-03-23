@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"bytes"
-	"encoding/json"
 
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -20,18 +19,13 @@ func NewConverter() *Converter {
 
 	conv := &Converter{
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-			var payload []byte
+			buf := &provider.Params{}
 
-			if payload, err = artifact.DecryptPayload(); err != nil {
+			if err = artifact.To(buf); err != nil {
 				return errnie.Error(err)
 			}
 
-			buf := &provider.Params{}
-
-			if err = json.Unmarshal(payload, buf); err != nil {
-				return errnie.Error(err, "payload", string(payload))
-			}
-
+			out.Reset()
 			out.WriteString(buf.Messages[len(buf.Messages)-1].Content)
 
 			return nil

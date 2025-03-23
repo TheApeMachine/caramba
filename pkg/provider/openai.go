@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -48,17 +47,8 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 			option.WithAPIKey(apiKey),
 		),
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			var payload []byte
-
-			if payload, err = artfct.DecryptPayload(); err != nil {
-				return errnie.Error(err)
-			}
-
-			if err = json.Unmarshal(payload, params); err != nil {
-				return errnie.Error(err, "payload", string(payload))
-			}
-
-			return nil
+			errnie.Debug("provider.OpenAIProvider.buffer.fn")
+			return errnie.Error(artfct.To(params))
 		}),
 		params: params,
 		ctx:    ctx,
@@ -155,6 +145,8 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 
 	var completion *openai.ChatCompletion
 
+	errnie.Info("provider.handleSingleRequest", "params", params)
+
 	if completion, err = prvdr.client.Chat.Completions.New(
 		prvdr.ctx, *params,
 	); errnie.Error(err) != nil {
@@ -163,6 +155,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 
 	msg := &Message{
 		Role:    MessageRoleAssistant,
+		Name:    prvdr.params.Model,
 		Content: completion.Choices[0].Message.Content,
 	}
 
@@ -196,11 +189,15 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		})
 	}
 
-	_, err = io.Copy(prvdr.buffer, datura.New(
-		datura.WithPayload(prvdr.params.Marshal()),
-	))
+	prvdr.params.Messages = append(prvdr.params.Messages, msg)
 
-	return err
+	if _, err = io.Copy(prvdr.buffer, datura.New(
+		datura.WithPayload(prvdr.params.Marshal()),
+	)); err != nil {
+		return errnie.Error(err)
+	}
+
+	return nil
 }
 
 /*
@@ -293,7 +290,30 @@ func (prvdr *OpenAIProvider) buildMessages(
 		case "user":
 			messages = append(messages, openai.UserMessage(message.Content))
 		case "assistant":
-			messages = append(messages, openai.AssistantMessage(message.Content))
+			toolCalls := make([]openai.ChatCompletionMessageToolCallParam, 0, len(message.ToolCalls))
+
+			for _, toolCall := range message.ToolCalls {
+				toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+					ID:   openai.F(toolCall.ID),
+					Type: openai.F(openai.ChatCompletionMessageToolCallTypeFunction),
+					Function: openai.F(openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      openai.F(toolCall.Function.Name),
+						Arguments: openai.F(toolCall.Function.Arguments),
+					}),
+				})
+			}
+
+			messages = append(messages, openai.ChatCompletionAssistantMessageParam{
+				Role: openai.F(openai.ChatCompletionAssistantMessageParamRoleAssistant),
+				Name: openai.F(message.Name),
+				Content: openai.F([]openai.ChatCompletionAssistantMessageParamContentUnion{
+					openai.ChatCompletionAssistantMessageParamContent{
+						Type: openai.F(openai.ChatCompletionAssistantMessageParamContentTypeText),
+						Text: openai.F(message.Content),
+					},
+				}),
+				ToolCalls: openai.F(toolCalls),
+			})
 		case "tool":
 			messages = append(messages, openai.ToolMessage(message.Reference, message.Content))
 		default:

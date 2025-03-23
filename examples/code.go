@@ -76,7 +76,6 @@ func (code *Code) Run() (err error) {
 		datura.WithPayload(provider.NewParams(
 			provider.WithModel("gpt-4o-mini"),
 			provider.WithTools(
-				tools.NewEditorTool().Schema,
 				tools.NewEnvironment().Schema,
 			),
 			provider.WithTopP(1),

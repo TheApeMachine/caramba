@@ -16,7 +16,7 @@ require (
 	github.com/consensys/gnark-crypto v0.17.0
 	github.com/containerd/console v1.0.4 // indirect
 	github.com/containerd/containerd/v2 v2.0.4
-	github.com/containerd/log v0.1.0
+	github.com/containerd/log v0.1.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/go-rod/rod v0.116.2

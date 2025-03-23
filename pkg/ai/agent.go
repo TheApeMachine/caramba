@@ -94,11 +94,14 @@ func NewAgent(options ...AgentOption) *Agent {
 
 		if len(msg.ToolCalls) == 0 {
 			// No tool calls, so we can just stop here.
+			errnie.Debug("no tool calls")
 			return nil
 		}
 
 		// Iterate over the tool calls and copy them to the caller.
 		for _, toolCall := range msg.ToolCalls {
+			errnie.Debug("tool call", "function", toolCall.Function.Name, "arguments", toolCall.Function.Arguments)
+
 			// Create an intermediary artifact to pass the tool call to the caller,
 			// and receive the response.
 			tc := datura.New(datura.WithPayload(toolCall.Marshal()))
@@ -121,6 +124,10 @@ func NewAgent(options ...AgentOption) *Agent {
 				Role:      provider.MessageRoleTool,
 				Content:   string(payload),
 			})
+		}
+
+		if err = artifact.From(params); err != nil {
+			return errnie.Error(err)
 		}
 
 		return nil

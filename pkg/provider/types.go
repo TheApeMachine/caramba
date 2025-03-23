@@ -270,17 +270,13 @@ func WithModel(model string) OptionParams {
 
 func WithMessages(messages ...*Message) OptionParams {
 	return func(params *Params) {
-		for _, message := range messages {
-			params.Messages = append(params.Messages, message)
-		}
+		params.Messages = append(params.Messages, messages...)
 	}
 }
 
 func WithTools(tools ...*Tool) OptionParams {
 	return func(params *Params) {
-		for _, tool := range tools {
-			params.Tools = append(params.Tools, tool)
-		}
+		params.Tools = append(params.Tools, tools...)
 	}
 }
 

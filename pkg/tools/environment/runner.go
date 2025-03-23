@@ -41,7 +41,7 @@ func NewRunner(runtime Runtime) *Runner {
 
 	// Attach IO
 	if err := runtime.AttachIO(runner.bufIn, runner.bufOut, runner.bufErr); err != nil {
-		errnie.Error(fmt.Errorf("failed to attach IO: %w", err))
+		errnie.Error(err)
 		return nil
 	}
 
@@ -103,6 +103,7 @@ func NewRunner(runtime Runtime) *Runner {
 
 		// Write the command and execute it
 		runner.muIn.Lock()
+		errnie.Debug("environment.Runner.buffer.fn.command", "command", command)
 		runner.bufIn.Write([]byte(command))
 		runner.muIn.Unlock()
 
@@ -114,11 +115,19 @@ func NewRunner(runtime Runtime) *Runner {
 		<-waitforoutput()
 
 		runner.muOutErr.Lock()
+		out := append(
+			runner.bufOut.Bytes(),
+			runner.bufErr.Bytes()...,
+		)
+
+		if len(out) == 0 {
+			out = []byte("Command executed successfully")
+		}
+
+		errnie.Debug("environment.Runner.buffer.fn.out", "out", string(out))
+
 		datura.WithPayload(
-			append(
-				runner.bufOut.Bytes(),
-				runner.bufErr.Bytes()...,
-			),
+			out,
 		)(artifact)
 		runner.muOutErr.Unlock()
 

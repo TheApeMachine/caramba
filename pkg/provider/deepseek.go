@@ -18,11 +18,12 @@ DeepseekProvider implements an LLM provider that connects to Deepseek's API.
 It supports regular chat completions and streaming responses.
 */
 type DeepseekProvider struct {
-	client *deepseek.Client
-	buffer *stream.Buffer
-	params *Params
-	ctx    context.Context
-	cancel context.CancelFunc
+	client   *deepseek.Client
+	endpoint string
+	buffer   *stream.Buffer
+	params   *Params
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 /*
@@ -47,16 +48,11 @@ func NewDeepseekProvider(
 	params := &Params{}
 
 	return &DeepseekProvider{
-		client: deepseek.NewClient(apiKey),
+		client:   deepseek.NewClient(apiKey),
+		endpoint: endpoint,
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			var payload []byte
-
-			if payload, err = artfct.EncryptedPayload(); err != nil {
-				return errnie.Error(err)
-			}
-
-			params.Unmarshal(payload)
-			return nil
+			errnie.Debug("provider.DeepseekProvider.buffer.fn")
+			return errnie.Error(artfct.To(params))
 		}),
 		params: params,
 		ctx:    ctx,

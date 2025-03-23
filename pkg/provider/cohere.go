@@ -20,11 +20,12 @@ CohereProvider implements an LLM provider that connects to Cohere's API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type CohereProvider struct {
-	client *cohereclient.Client
-	buffer *stream.Buffer
-	params *Params
-	ctx    context.Context
-	cancel context.CancelFunc
+	client   *cohereclient.Client
+	endpoint string
+	buffer   *stream.Buffer
+	params   *Params
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 /*
@@ -52,15 +53,10 @@ func NewCohereProvider(
 		client: cohereclient.NewClient(
 			cohereclient.WithToken(apiKey),
 		),
+		endpoint: endpoint,
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			var payload []byte
-
-			if payload, err = artfct.EncryptedPayload(); err != nil {
-				return errnie.Error(err)
-			}
-
-			params.Unmarshal(payload)
-			return nil
+			errnie.Debug("provider.CohereProvider.buffer.fn")
+			return errnie.Error(artfct.To(params))
 		}),
 		params: params,
 		ctx:    ctx,

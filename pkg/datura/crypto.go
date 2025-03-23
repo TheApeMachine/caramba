@@ -3,27 +3,26 @@ package datura
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/ecdsa"
-	"crypto/elliptic"
+	"crypto/ecdh"
 	"crypto/rand"
 	"errors"
 )
 
 // CryptoSuite handles encryption and decryption operations for Artifacts
 type CryptoSuite struct {
-	curve elliptic.Curve
+	curve ecdh.Curve
 }
 
 // NewCryptoSuite creates a new CryptoSuite using P-256 curve
 func NewCryptoSuite() *CryptoSuite {
 	return &CryptoSuite{
-		curve: elliptic.P256(),
+		curve: ecdh.P256(),
 	}
 }
 
 // GenerateEphemeralKeyPair generates a new ECDH key pair for one-time use
-func (cs *CryptoSuite) GenerateEphemeralKeyPair() (*ecdsa.PrivateKey, error) {
-	return ecdsa.GenerateKey(cs.curve, rand.Reader)
+func (cs *CryptoSuite) GenerateEphemeralKeyPair() (*ecdh.PrivateKey, error) {
+	return cs.curve.GenerateKey(rand.Reader)
 }
 
 // EncryptPayload encrypts a payload using AES-GCM with an ephemeral key
@@ -67,8 +66,8 @@ func (cs *CryptoSuite) EncryptPayload(payload []byte) ([]byte, []byte, []byte, e
 	var encryptedKey = make([]byte, len(aesKey))
 	copy(encryptedKey, aesKey) // For testing, we'll pass the key directly
 
-	// Marshal ephemeral public key
-	ephemeralPubKey := elliptic.Marshal(cs.curve, ephemeralKey.PublicKey.X, ephemeralKey.PublicKey.Y)
+	// Get the public key bytes
+	ephemeralPubKey := ephemeralKey.PublicKey().Bytes()
 
 	return encryptedPayload, encryptedKey, ephemeralPubKey, nil
 }

@@ -3,8 +3,10 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -19,11 +21,12 @@ AnthropicProvider implements an LLM provider that connects to Anthropic's API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type AnthropicProvider struct {
-	client *anthropic.Client
-	buffer *stream.Buffer
-	params *Params
-	ctx    context.Context
-	cancel context.CancelFunc
+	client   *anthropic.Client
+	endpoint string
+	buffer   *stream.Buffer
+	params   *Params
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 /*
@@ -51,15 +54,10 @@ func NewAnthropicProvider(
 		client: anthropic.NewClient(
 			option.WithAPIKey(apiKey),
 		),
+		endpoint: endpoint,
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			var payload []byte
-
-			if payload, err = artfct.EncryptedPayload(); err != nil {
-				return errnie.Error(err)
-			}
-
-			params.Unmarshal(payload)
-			return nil
+			errnie.Debug("provider.AnthropicProvider.buffer.fn")
+			return errnie.Error(artfct.To(params))
 		}),
 		params: params,
 		ctx:    ctx,
@@ -259,13 +257,25 @@ func (prvdr *AnthropicProvider) buildTools(
 	return nil
 }
 
-func (p *AnthropicProvider) buildResponseFormat(
+func (prvdr *AnthropicProvider) buildResponseFormat(
 	messageParams *anthropic.MessageNewParams,
 ) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
-	// Add response format logic here if Claude supports it
-	// Currently, Claude doesn't have a direct ResponseFormat equivalent
+	messageParams.Messages.Value = append(
+		messageParams.Messages.Value,
+		anthropic.NewAssistantMessage(
+			anthropic.NewTextBlock(
+				strings.Join([]string{
+					"Format your response as a JSON object using the following schema.",
+					fmt.Sprintf("Schema:\n\n%v", prvdr.params.ResponseFormat.Schema),
+					"Strictly follow the schema. Do not leave out required fields, and do not include any non-existent fields or properties.",
+					"Output only the JSON object, nothing else, and no Markdown code block.",
+				}, "\n\n"),
+			),
+		),
+	)
+
 	return nil
 }
 

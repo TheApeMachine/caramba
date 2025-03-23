@@ -14,13 +14,28 @@ func (artifact *Artifact) To(v any) (err error) {
 	var payload []byte
 
 	if payload, err = artifact.DecryptPayload(); err != nil {
-		return errnie.Error(err)
+		return errnie.Error(err, "payload", payload)
 	}
 
 	if err = json.Unmarshal(payload, v); err != nil {
 		return errnie.Error(err, "payload", payload)
 	}
 
+	return nil
+}
+
+/*
+From is a convenience function to set the artifact's payload from some
+other type by marshalling it into the artifact's payload.
+*/
+func (artifact *Artifact) From(v any) (err error) {
+	var payload []byte
+
+	if payload, err = json.Marshal(v); err != nil {
+		return errnie.Error(err)
+	}
+
+	WithPayload(payload)(artifact)
 	return nil
 }
 

@@ -5,9 +5,7 @@ import (
 
 	clog "github.com/charmbracelet/log"
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
-	"github.com/containerd/log"
 	"github.com/spf13/cobra"
-	"github.com/theapemachine/caramba/daemon"
 	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -26,13 +24,6 @@ var (
 			core.NewConfig(core.WithOpenAIAPIKey(openaiAPIKey))
 
 			errnie.SetLevel(clog.DebugLevel)
-
-			// Set up containerd to use our custom logger
-			logger := NewContainerdLogger()
-			log.G(cmd.Context())                             // Initialize the global logger
-			log.L = logger.WithField("module", "containerd") // Set our logger as the default
-
-			daemon.Start(cmd.Context())
 
 			var wf Example
 

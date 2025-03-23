@@ -19,11 +19,12 @@ GoogleProvider implements an LLM provider that connects to Google's Gemini API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type GoogleProvider struct {
-	client *genai.Client
-	buffer *stream.Buffer
-	params *Params
-	ctx    context.Context
-	cancel context.CancelFunc
+	client   *genai.Client
+	endpoint string
+	buffer   *stream.Buffer
+	params   *Params
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 /*
@@ -54,20 +55,16 @@ func NewGoogleProvider(
 
 	if err != nil {
 		errnie.Error("failed to create Google client", "error", err)
+		cancel()
 		return nil
 	}
 
 	return &GoogleProvider{
-		client: client,
+		client:   client,
+		endpoint: endpoint,
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			var payload []byte
-
-			if payload, err = artfct.EncryptedPayload(); err != nil {
-				return errnie.Error(err)
-			}
-
-			params.Unmarshal(payload)
-			return nil
+			errnie.Debug("provider.GoogleProvider.buffer.fn")
+			return errnie.Error(artfct.To(params))
 		}),
 		params: params,
 		ctx:    ctx,
@@ -95,12 +92,12 @@ func (prvdr *GoogleProvider) Write(p []byte) (n int, err error) {
 	}
 
 	chatConfig := &genai.GenerateContentConfig{
-		Temperature:      utils.Ptr[float32](float32(prvdr.params.Temperature)),
-		TopP:             utils.Ptr[float32](float32(prvdr.params.TopP)),
-		TopK:             utils.Ptr[float32](float32(prvdr.params.TopK)),
-		FrequencyPenalty: utils.Ptr[float32](float32(prvdr.params.FrequencyPenalty)),
-		PresencePenalty:  utils.Ptr[float32](float32(prvdr.params.PresencePenalty)),
-		MaxOutputTokens:  utils.Ptr[int32](int32(prvdr.params.MaxTokens)),
+		Temperature:      utils.Ptr(float32(prvdr.params.Temperature)),
+		TopP:             utils.Ptr(float32(prvdr.params.TopP)),
+		TopK:             utils.Ptr(float32(prvdr.params.TopK)),
+		FrequencyPenalty: utils.Ptr(float32(prvdr.params.FrequencyPenalty)),
+		PresencePenalty:  utils.Ptr(float32(prvdr.params.PresencePenalty)),
+		MaxOutputTokens:  utils.Ptr(int32(prvdr.params.MaxTokens)),
 	}
 
 	if err = prvdr.buildMessages(chatConfig); err != nil {

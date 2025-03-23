@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 
+	"slices"
+
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -35,10 +37,27 @@ func newDockerRuntime() (Runtime, error) {
 }
 
 func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
+	containerName := "caramba-env"
+
+	// Check if container already exists
+	containers, err := runtime.client.ContainerList(ctx, container.ListOptions{All: true})
+
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	// Look for our container
+	for _, container := range containers {
+		if slices.Contains(container.Names, "/"+containerName) {
+			runtime.containerID = container.ID
+			return nil
+		}
+	}
+
+	// If we get here, container doesn't exist, so create it
 	var (
-		artifact  = datura.New()
-		payload   []byte
-		imageName = "caramba-env"
+		artifact = datura.New()
+		payload  []byte
 	)
 
 	// Get the Dockerfile content from the artifact
@@ -54,21 +73,22 @@ func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
 	}
 
 	// Build the image using the Dockerfile
-	if err := runtime.BuildImage(ctx, payload, imageName); err != nil {
+	if err := runtime.BuildImage(ctx, payload, containerName); err != nil {
 		return errnie.Error(err)
 	}
 
 	// Create container using our built image
 	resp, err := runtime.client.ContainerCreate(ctx,
 		&container.Config{
-			Image: imageName,
+			Image: containerName,
 			Cmd:   []string{"/bin/bash"},
 			Tty:   true,
 		},
-		nil, nil, nil, imageName,
+		nil, nil, nil, containerName,
 	)
+
 	if err != nil {
-		return fmt.Errorf("failed to create container: %w", err)
+		return errnie.Error(err)
 	}
 
 	runtime.containerID = resp.ID
@@ -79,6 +99,7 @@ func (runtime *dockerRuntime) StartContainer(ctx context.Context) (err error) {
 	if err = runtime.client.ContainerStart(ctx, runtime.containerID, container.StartOptions{}); err != nil {
 		return errnie.Error(err)
 	}
+
 	return nil
 }
 
@@ -86,16 +107,23 @@ func (runtime *dockerRuntime) StopContainer(ctx context.Context) (err error) {
 	if err = runtime.client.ContainerStop(ctx, runtime.containerID, container.StopOptions{}); err != nil {
 		return errnie.Error(err)
 	}
+
 	return nil
 }
 
 func (runtime *dockerRuntime) AttachIO(stdin io.Reader, stdout, stderr io.Writer) error {
-	resp, err := runtime.client.ContainerAttach(context.Background(), runtime.containerID, container.AttachOptions{
-		Stream: true,
-		Stdin:  stdin != nil,
-		Stdout: stdout != nil,
-		Stderr: stderr != nil,
-	})
+	resp, err := runtime.client.ContainerAttach(
+		context.Background(),
+		runtime.containerID,
+		container.AttachOptions{
+			Stream: true,
+			Stdin:  stdin != nil,
+			Stdout: stdout != nil,
+			Stderr: stderr != nil,
+			Logs:   true,
+		},
+	)
+
 	if err != nil {
 		return errnie.Error(err)
 	}
@@ -120,11 +148,16 @@ func (runtime *dockerRuntime) AttachIO(stdin io.Reader, stdout, stderr io.Writer
 }
 
 func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string) error {
-	exec, err := runtime.client.ContainerExecCreate(ctx, runtime.containerID, container.ExecOptions{
-		Cmd:          []string{"/bin/sh", "-c", command},
-		AttachStdout: true,
-		AttachStderr: true,
-	})
+	exec, err := runtime.client.ContainerExecCreate(
+		ctx,
+		runtime.containerID,
+		container.ExecOptions{
+			Cmd:          []string{"/bin/sh", "-c", command},
+			AttachStdout: true,
+			AttachStderr: true,
+		},
+	)
+
 	if err != nil {
 		return errnie.Error(err)
 	}
@@ -140,9 +173,11 @@ func (runtime *dockerRuntime) PullImage(ctx context.Context, ref string) error {
 	errnie.Debug(fmt.Sprintf("Pulling image: %s", ref))
 
 	reader, err := runtime.client.ImagePull(ctx, ref, image.PullOptions{})
+
 	if err != nil {
 		return errnie.Error(err)
 	}
+
 	defer reader.Close()
 
 	// Read the output to complete the pull

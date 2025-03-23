@@ -18,12 +18,12 @@ OllamaProvider implements an LLM provider that connects to Ollama's API.
 It supports regular chat completions and streaming responses.
 */
 type OllamaProvider struct {
-	client *api.Client
-	model  string
-	buffer *stream.Buffer
-	params *Params
-	ctx    context.Context
-	cancel context.CancelFunc
+	client   *api.Client
+	endpoint string
+	buffer   *stream.Buffer
+	params   *Params
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 /*
@@ -31,13 +31,12 @@ NewOllamaProvider creates a new Ollama provider with the given host endpoint.
 If host is empty, it will try to read from configuration.
 */
 func NewOllamaProvider(
-	host string,
-	model string,
+	endpoint string,
 ) *OllamaProvider {
 	errnie.Debug("provider.NewOllamaProvider")
 
-	if host == "" {
-		host = viper.GetViper().GetString("endpoints.ollama")
+	if endpoint == "" {
+		endpoint = viper.GetViper().GetString("endpoints.ollama")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -45,21 +44,16 @@ func NewOllamaProvider(
 
 	client, err := api.ClientFromEnvironment()
 	if errnie.Error(err) != nil {
+		cancel()
 		return nil
 	}
 
 	return &OllamaProvider{
-		client: client,
-		model:  model,
+		client:   client,
+		endpoint: endpoint,
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			var payload []byte
-
-			if payload, err = artfct.EncryptedPayload(); err != nil {
-				return errnie.Error(err)
-			}
-
-			params.Unmarshal(payload)
-			return nil
+			errnie.Debug("provider.OllamaProvider.buffer.fn")
+			return errnie.Error(artfct.To(params))
 		}),
 		params: params,
 		ctx:    ctx,
@@ -269,17 +263,17 @@ func (prvdr *OllamaProvider) buildResponseFormat(
 }
 
 type OllamaEmbedder struct {
-	client *api.Client
-	model  string
-	ctx    context.Context
-	params *Params
+	client   *api.Client
+	endpoint string
+	ctx      context.Context
+	params   *Params
 }
 
-func NewOllamaEmbedder(host string) (*OllamaEmbedder, error) {
+func NewOllamaEmbedder(endpoint string) (*OllamaEmbedder, error) {
 	errnie.Debug("provider.NewOllamaEmbedder")
 
-	if host == "" {
-		host = viper.GetViper().GetString("endpoints.ollama")
+	if endpoint == "" {
+		endpoint = viper.GetViper().GetString("endpoints.ollama")
 	}
 
 	client, err := api.ClientFromEnvironment()
@@ -289,10 +283,10 @@ func NewOllamaEmbedder(host string) (*OllamaEmbedder, error) {
 	}
 
 	return &OllamaEmbedder{
-		client: client,
-		model:  "llama2",
-		ctx:    context.Background(),
-		params: &Params{},
+		client:   client,
+		endpoint: endpoint,
+		ctx:      context.Background(),
+		params:   &Params{},
 	}, nil
 }
 
@@ -338,7 +332,7 @@ func (embedder *OllamaEmbedder) Close() error {
 
 func (embedder *OllamaEmbedder) Embed(text string) ([]float32, error) {
 	response, err := embedder.client.Embed(embedder.ctx, &api.EmbedRequest{
-		Model: embedder.model,
+		Model: "llama2",
 		Input: text,
 	})
 	if err != nil {
