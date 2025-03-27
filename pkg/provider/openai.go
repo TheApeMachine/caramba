@@ -2,16 +2,20 @@ package provider
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/shared"
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
 /*
@@ -446,15 +450,63 @@ func NewOpenAIEmbedder(apiKey string, endpoint string) *OpenAIEmbedder {
 Read implements the io.Reader interface.
 */
 func (embedder *OpenAIEmbedder) Read(p []byte) (n int, err error) {
-	errnie.Debug("provider.OpenAIEmbedder.Read", "p", string(p))
-	return 0, nil
+	errnie.Debug("provider.OpenAIEmbedder.Read")
+
+	if embedder.params.Metadata == nil {
+		return 0, nil
+	}
+
+	// Retrieve stored embeddings from metadata
+	embeddings, ok := embedder.params.Metadata["embeddings"].([]byte)
+	if !ok {
+		return 0, nil
+	}
+
+	// Copy embeddings to output buffer
+	n = copy(p, embeddings)
+	return n, nil
 }
 
 /*
 Write implements the io.Writer interface.
 */
 func (embedder *OpenAIEmbedder) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.OpenAIEmbedder.Write", "p", string(p))
+	errnie.Debug("provider.OpenAIEmbedder.Write")
+
+	if len(embedder.params.Messages) == 0 {
+		return len(p), nil
+	}
+
+	message := embedder.params.Messages[0]
+	content := message.Content
+
+	response, err := embedder.client.Embeddings.New(context.TODO(), openai.EmbeddingNewParams{
+		Input:          openai.F[openai.EmbeddingNewParamsInputUnion](shared.UnionString(content)),
+		Model:          openai.F(openai.EmbeddingModelTextEmbedding3Large),
+		Dimensions:     openai.Int(tweaker.GetQdrantDimension()), // Standard OpenAI embedding dimensions
+		EncodingFormat: openai.F(openai.EmbeddingNewParamsEncodingFormatFloat),
+	})
+
+	if err != nil {
+		return len(p), errnie.Error(err)
+	}
+
+	if len(response.Data) == 0 {
+		return len(p), errnie.Error(errors.New("no embeddings returned"))
+	}
+
+	// Convert embeddings to bytes for transport
+	embeddings := response.Data[0].Embedding
+	buf := make([]byte, len(embeddings)*4)
+	for i, v := range embeddings {
+		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(float32(v)))
+	}
+
+	// Store embeddings in metadata for retrieval
+	embedder.params.Metadata = map[string]any{
+		"embeddings": buf,
+	}
+
 	return len(p), nil
 }
 

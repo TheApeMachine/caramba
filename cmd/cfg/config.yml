@@ -84,7 +84,7 @@ settings:
 
 tools:
   qdrant:
-    collection: "test"
+    collection: "longterm"
     dimension: 3072
 
 templates:

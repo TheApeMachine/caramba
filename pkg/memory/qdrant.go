@@ -15,6 +15,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
 type Qdrant struct {
@@ -49,7 +50,7 @@ func NewQdrant() *Qdrant {
 
 	qdrant := &Qdrant{
 		client:     client,
-		collection: os.Getenv("QDRANT_COLLECTION"),
+		collection: tweaker.GetQdrantCollection(),
 		embedder:   embedder,
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("memory.Qdrant.buffer")
@@ -95,7 +96,7 @@ func NewQdrant() *Qdrant {
 
 				// Store the points in Qdrant
 				_, err = client.Upsert(context.Background(), &sdk.UpsertPoints{
-					CollectionName: os.Getenv("QDRANT_COLLECTION"),
+					CollectionName: tweaker.GetQdrantCollection(),
 					Points:         points,
 				})
 				if err != nil {
@@ -134,7 +135,7 @@ func NewQdrant() *Qdrant {
 			// Perform semantic search in Qdrant
 			limit := uint64(5)
 			searchResult, err := client.Query(context.Background(), &sdk.QueryPoints{
-				CollectionName: os.Getenv("QDRANT_COLLECTION"),
+				CollectionName: tweaker.GetQdrantCollection(),
 				Query:          sdk.NewQuery(vectors...),
 				Limit:          &limit,
 				WithPayload: &sdk.WithPayloadSelector{
@@ -195,21 +196,4 @@ func (q *Qdrant) Close() error {
 		return q.buffer.Close()
 	}
 	return nil
-}
-
-func convertToQdrantPayload(metadata map[string]interface{}) map[string]*sdk.Value {
-	payload := make(map[string]*sdk.Value)
-	for k, v := range metadata {
-		switch val := v.(type) {
-		case string:
-			payload[k] = &sdk.Value{Kind: &sdk.Value_StringValue{StringValue: val}}
-		case float64:
-			payload[k] = &sdk.Value{Kind: &sdk.Value_DoubleValue{DoubleValue: val}}
-		case int:
-			payload[k] = &sdk.Value{Kind: &sdk.Value_IntegerValue{IntegerValue: int64(val)}}
-		case bool:
-			payload[k] = &sdk.Value{Kind: &sdk.Value_BoolValue{BoolValue: val}}
-		}
-	}
-	return payload
 }

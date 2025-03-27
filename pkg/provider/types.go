@@ -212,6 +212,7 @@ type Params struct {
 	PresencePenalty  float64         `json:"presence_penalty"`
 	MaxTokens        int             `json:"max_tokens"`
 	Stream           bool            `json:"stream"`
+	Metadata         map[string]any  `json:"metadata"`
 }
 
 type OptionParams func(*Params)

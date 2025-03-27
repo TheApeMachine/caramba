@@ -114,3 +114,11 @@ func GetArch() string {
 func GetVariant() string {
 	return get(defaultKey+"platform.variant", cfg.v().GetString, "")
 }
+
+func GetQdrantCollection() string {
+	return get("tools.qdrant.collection", cfg.v().GetString, "")
+}
+
+func GetQdrantDimension() int64 {
+	return get("tools.qdrant.dimension", cfg.v().GetInt64, 0)
+}
