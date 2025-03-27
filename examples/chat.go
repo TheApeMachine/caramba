@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/theapemachine/caramba/pkg/ai"
 	"github.com/theapemachine/caramba/pkg/core"
@@ -48,14 +49,19 @@ func NewChat() *Chat {
 
 func (chat *Chat) Run() (err error) {
 	errnie.Info("Starting pipeline example")
+	shouldExit := false
 
-	for {
+	for shouldExit {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("> ")
 		input, err := reader.ReadString('\n')
 
 		if err != nil {
 			return err
+		}
+
+		if strings.HasPrefix(input, "quit") {
+			shouldExit = true
 		}
 
 		msg := datura.New(

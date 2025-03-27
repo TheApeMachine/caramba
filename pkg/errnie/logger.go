@@ -6,11 +6,20 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+)
+
+var (
+	writeToFile = true
+	mu          sync.RWMutex
+	logFile     = "caramba.log"
+	fileHandle  *os.File
 )
 
 var logger = log.NewWithOptions(os.Stderr, log.Options{
@@ -20,13 +29,46 @@ var logger = log.NewWithOptions(os.Stderr, log.Options{
 	TimeFormat:      time.TimeOnly,
 })
 
+func init() {
+	// Clear and open the log file on startup
+	var err error
+	fileHandle, err = os.OpenFile(logFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to open log file: %v\n", err)
+		return
+	}
+}
+
+// Cleanup closes the log file handle
+func Cleanup() {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if fileHandle != nil {
+		fileHandle.Close()
+		fileHandle = nil
+	}
+}
+
+// SetLevel sets the logging level
 func SetLevel(level log.Level) {
 	logger.SetLevel(level)
 }
 
+func Log(msg any, keyvals ...any) {
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
+	}
+}
+
+// Error logs an error message and returns the original error
 func Error(msg any, keyvals ...any) (err error) {
 	if msg == nil {
 		return nil
+	}
+
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
 	}
 
 	// Log the error message and stack trace
@@ -47,16 +89,88 @@ func Error(msg any, keyvals ...any) (err error) {
 	return
 }
 
+// Warn logs a warning message
 func Warn(msg any, keyvals ...any) {
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
+	}
+
 	logger.Warn(msg, keyvals...)
 }
 
+// Info logs an informational message
 func Info(msg any, keyvals ...any) {
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
+	}
+
 	logger.Info(msg, keyvals...)
 }
 
+// Debug logs a debug message
 func Debug(msg any, keyvals ...any) {
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
+	}
+
 	logger.Debug(msg, keyvals...)
+}
+
+// WriteToFile writes log messages to a file
+func WriteToFile(msg any, keyvals ...any) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if fileHandle == nil {
+		var err error
+		fileHandle, err = os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return
+		}
+	}
+
+	// Get caller info
+	pc, file, line, ok := runtime.Caller(2) // Skip 2 frames to get actual caller
+	if !ok {
+		file = "unknown"
+		line = 0
+	}
+
+	funcName := runtime.FuncForPC(pc).Name()
+	if idx := strings.LastIndex(funcName, "/"); idx >= 0 {
+		funcName = funcName[idx+1:]
+	}
+
+	// Format key-value pairs
+	var kvStr string
+	if len(keyvals) > 0 {
+		pairs := make([]string, 0, len(keyvals)/2)
+		for i := 0; i < len(keyvals); i += 2 {
+			key := fmt.Sprintf("%v", keyvals[i])
+			var val string
+			if i+1 < len(keyvals) {
+				val = fmt.Sprintf("%v", keyvals[i+1])
+			}
+			pairs = append(pairs, fmt.Sprintf("%s=%s", key, val))
+		}
+		kvStr = " " + strings.Join(pairs, " ")
+	}
+
+	// Format log entry to match console output
+	logEntry := fmt.Sprintf("%s %s %s:%d %s%s\n",
+		time.Now().Format(time.RFC3339),
+		"["+strings.ReplaceAll(file, "/Users/theapemachine/go/src/github.com/theapemachine/caramba/", "")+":"+strconv.Itoa(line)+"]",
+		"<"+funcName+">",
+		line,
+		msg,
+		kvStr,
+	)
+
+	if _, err := fileHandle.WriteString(logEntry); err != nil {
+		// If write failed, try to reopen the file
+		fileHandle.Close()
+		fileHandle = nil
+	}
 }
 
 /*

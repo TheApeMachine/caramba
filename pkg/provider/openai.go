@@ -26,8 +26,6 @@ type OpenAIProvider struct {
 	cancel context.CancelFunc
 }
 
-type OpenAIProviderOption func(*OpenAIProvider)
-
 /*
 NewOpenAIProvider creates a new OpenAI provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the OPENAI_API_KEY environment variable.
@@ -61,6 +59,8 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 
 	return prvdr
 }
+
+type OpenAIProviderOption func(*OpenAIProvider)
 
 func WithAPIKey(apiKey string) OpenAIProviderOption {
 	return func(prvdr *OpenAIProvider) {

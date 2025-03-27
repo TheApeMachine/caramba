@@ -40,8 +40,8 @@ func NewAzure() *Azure {
 		client: client,
 		Schema: provider.NewTool(
 			provider.WithFunction(
-				"github",
-				"A tool for interacting with GitHub.",
+				"azure",
+				"A tool for interacting with Azure DevOps Boards and Wikis.",
 			),
 			provider.WithProperty(
 				"operation",

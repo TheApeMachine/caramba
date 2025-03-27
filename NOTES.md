@@ -4,134 +4,53 @@ Keep any important information, goals, insights, etc. by writing them down in th
 
 It will be attached to each request so you will have access to it.
 
-## Code Examples of Issues
+## Project Overview
 
-### Cap'n Proto Segment Out of Bounds Error Analysis
+Caramba is a Go-based agent framework with the following key characteristics:
 
-Error: `read pointer: far pointer: segment 1: out of bounds`
+1. Core Philosophy:
 
-After analyzing the actual code, here's what we know:
+   - Everything is treated as `io.ReadWriteCloser`
+   - Unified interface for connecting different components
+   - Strong focus on agent-based architecture
 
-1. **Artifact Structure** (from `pkg/datura/artifact.capnp`):
+2. Main Components:
 
-```capnp
-struct Artifact {
-    uuid @0 :Data;
-    checksum @1 :Data;
-    timestamp @2 :Int64;
-    mediatype @3 :Text;
-    role @4 :UInt32;
-    scope @5 :UInt32;
-    pseudonymHash @6 :Data;
-    merkleRoot @7 :Data;
-    metadata @8 :List(Metadata);
-    encryptedPayload @9 :Data;
-    encryptedKey @10 :Data;
-    ephemeralPublicKey @11 :Data;
-    approvals @12 :List(Approval);
-    signature @13 :Data;
-}
-```
+   - `/pkg/ai`: AI-related functionality
+   - `/pkg/provider`: Various service providers (OpenAI, Anthropic, etc.)
+   - `/pkg/workflow`: Pipeline and workflow management
+   - `/pkg/tools`: Framework tools
+   - `/pkg/memory`: Memory management systems
+   - `/pkg/core`: Core framework functionality
+   - `/pkg/system`: System-level operations
+   - `/pkg/kube`: Kubernetes integration
+   - `/pkg/stream`: Stream processing capabilities
+   - `/pkg/service`: Service management
+   - `/pkg/process`: Process handling
+   - `/pkg/fs`: File system operations
+   - `/pkg/errnie`: Error handling
 
-2. **Artifact Creation Flow** (from `pkg/datura/artifact.go`):
+3. Key Features:
 
-```go
-func New(options ...ArtifactOption) *Artifact {
-    var (
-        arena    = capnp.SingleSegment(nil)
-        seg      *capnp.Segment
-        artifact Artifact
-        uid      []byte
-        err      error
-    )
+   - Model Context Protocol (MCP) server capabilities
+   - Multiple AI provider integrations (OpenAI, Claude, Google, Cohere, Ollama)
+   - Docker and Kubernetes integration
+   - Browser automation
+   - Memory integration (QDrant vector store, Neo4j graph database)
+   - Pipeline architecture with bidirectional data flow
+   - Stream processing
+   - Tool system with dynamic loading
+   - DevOps integrations (Github, Azure DevOps)
 
-    if _, seg, err = capnp.NewMessage(arena); errnie.Error(err) != nil {
-        return nil
-    }
+4. Technical Stack:
 
-    if artifact, err = NewRootArtifact(seg); errnie.Error(err) != nil {
-        return nil
-    }
-    // ...
-}
-```
+   - Go 1.24.0
+   - Uses modern Go toolchain (go1.24.1)
+   - Extensive dependency list including containerd, docker, kubernetes clients
+   - Support for various AI/ML providers and tools
 
-3. **Critical Points in the Flow**:
-
-a. **Message Serialization** (`pkg/datura/io.go`):
-
-```go
-func (artifact *Artifact) Read(p []byte) (n int, err error) {
-    buf, err := artifact.Message().Marshal()
-    if err != nil {
-        return n, errnie.Error(err)
-    }
-    // ...
-}
-```
-
-b. **Message Deserialization** (`pkg/datura/io.go`):
-
-```go
-func (artifact *Artifact) Write(p []byte) (n int, err error) {
-    var (
-        msg *capnp.Message
-        buf Artifact
-    )
-
-    if msg, err = capnp.Unmarshal(p); err != nil {
-        return 0, errnie.Error(err, "p", string(p))
-    }
-    // ...
-}
-```
-
-The error occurs when trying to read from segment 1 when it doesn't exist. This can happen in two scenarios:
-
-1. **Deserialization Issues**:
-
-   - When unmarshaling a message that was improperly serialized
-   - When the message structure doesn't match the schema
-   - When a far pointer references a non-existent segment
-
-2. **Initialization Issues**:
-   - The artifact is created with `capnp.SingleSegment(nil)` which should only create segment 0
-   - Any attempt to access segment 1 would fail
-   - This suggests the error happens during deserialization of a message that claims to have multiple segments
-
-Key Findings:
-
-1. The error is NOT related to:
-
-   - Buffer synchronization (the code uses proper error handling)
-   - Race conditions (the error would manifest differently)
-   - Metadata access (which would fail earlier with different errors)
-
-2. The error IS likely related to:
-   - Improper message serialization before transmission
-   - Corrupted message during transmission
-   - Attempt to deserialize a message with an incompatible schema version
-
-Next Steps for Investigation:
-
-1. Add logging around message serialization/deserialization:
-
-```go
-// In Write method
-if msg, err = capnp.Unmarshal(p); err != nil {
-    errnie.Debug("Unmarshal failed", "len", len(p), "data", hex.EncodeToString(p[:min(len(p), 32)]))
-    return 0, errnie.Error(err, "p", string(p))
-}
-```
-
-2. Verify schema compatibility between serializing and deserializing components
-
-3. Check if any components are modifying the message bytes during transmission
-
-4. Consider adding validation before deserialization:
-
-```go
-if len(p) < 8 { // Cap'n Proto messages must be at least 8 bytes
-    return 0, errnie.Error(errors.New("message too short"))
-}
-```
+5. Project Status:
+   - Active development (based on recent commits)
+   - Well-structured modular architecture
+   - Comprehensive test coverage (based on CI badges)
+   - Strong focus on security and containerization

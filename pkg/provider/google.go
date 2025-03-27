@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
@@ -31,25 +30,14 @@ type GoogleProvider struct {
 NewGoogleProvider creates a new Google Gemini provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the GOOGLE_API_KEY environment variable.
 */
-func NewGoogleProvider(
-	apiKey string,
-	endpoint string,
-) *GoogleProvider {
+func NewGoogleProvider() *GoogleProvider {
 	errnie.Debug("provider.NewGoogleProvider")
-
-	if apiKey == "" {
-		apiKey = os.Getenv("GOOGLE_API_KEY")
-	}
-
-	if endpoint == "" {
-		endpoint = viper.GetViper().GetString("endpoints.google")
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	params := &Params{}
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  apiKey,
+		APIKey:  os.Getenv("GOOGLE_API_KEY"),
 		Backend: genai.BackendGeminiAPI,
 	})
 
@@ -61,7 +49,7 @@ func NewGoogleProvider(
 
 	return &GoogleProvider{
 		client:   client,
-		endpoint: endpoint,
+		endpoint: "",
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
 			errnie.Debug("provider.GoogleProvider.buffer.fn")
 			return errnie.Error(artfct.To(params))
@@ -252,6 +240,8 @@ func (prvdr *GoogleProvider) buildMessages(
 			errnie.Error("unknown message role", "role", message.Role)
 		}
 	}
+
+	_ = messages
 
 	return nil
 }

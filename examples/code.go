@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/theapemachine/caramba/pkg/ai"
-	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
@@ -21,7 +20,7 @@ workflow pipelines, and feedback mechanisms.
 */
 type Code struct {
 	agent    *ai.Agent
-	provider *provider.OpenAIProvider
+	provider *provider.MockProvider
 	workflow io.ReadWriter
 }
 
@@ -38,9 +37,7 @@ func NewCode() *Code {
 
 	agent := ai.NewAgent(ai.WithCaller(tools.NewCaller()))
 
-	provider := provider.NewOpenAIProvider(
-		provider.WithAPIKey(core.NewConfig().OpenAIAPIKey),
-	)
+	provider := provider.NewMockProvider()
 
 	converter := workflow.NewConverter()
 
@@ -100,7 +97,7 @@ func (code *Code) Run() (err error) {
 		return err
 	}
 
-	for range 5 {
+	for range 3 {
 		errnie.Info("copying code to stdout")
 		if _, err = io.Copy(os.Stdout, code); err != nil && err != io.EOF {
 			return err

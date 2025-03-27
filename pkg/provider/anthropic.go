@@ -10,7 +10,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
@@ -33,28 +32,17 @@ type AnthropicProvider struct {
 NewAnthropicProvider creates a new Anthropic provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the ANTHROPIC_API_KEY environment variable.
 */
-func NewAnthropicProvider(
-	apiKey string,
-	endpoint string,
-) *AnthropicProvider {
+func NewAnthropicProvider() *AnthropicProvider {
 	errnie.Debug("provider.NewAnthropicProvider")
-
-	if apiKey == "" {
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
-	}
-
-	if endpoint == "" {
-		endpoint = viper.GetViper().GetString("endpoints.anthropic")
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	params := &Params{}
 
 	prvdr := &AnthropicProvider{
 		client: anthropic.NewClient(
-			option.WithAPIKey(apiKey),
+			option.WithAPIKey(os.Getenv("ANTHROPIC_API_KEY")),
 		),
-		endpoint: endpoint,
+		endpoint: "",
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
 			errnie.Debug("provider.AnthropicProvider.buffer.fn")
 			return errnie.Error(artfct.To(params))
@@ -66,6 +54,8 @@ func NewAnthropicProvider(
 
 	return prvdr
 }
+
+type AnthropicProviderOption func(*AnthropicProvider)
 
 /*
 Read implements the io.Reader interface.

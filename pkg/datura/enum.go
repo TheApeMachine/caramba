@@ -19,6 +19,9 @@ const (
 	ArtifactRoleTrengoTool
 	ArtifactRoleBrowserTool
 	ArtifactRoleEnvironmentTool
+	ArtifactRoleInspect
+	ArtifactRoleMetadata
+	ArtifactRoleRegistration
 )
 
 type ArtifactScope uint
@@ -28,6 +31,7 @@ const (
 	ArtifactScopeEvent
 	ArtifactScopeMessage
 	ArtifactScopePrompt
+	ArtifactScopeProvider
 )
 
 type MediaType string
@@ -45,3 +49,7 @@ const (
 	MediaTypeApplicationGzip        MediaType = "application/gzip"
 	MediaTypeApplicationXZip        MediaType = "application/x-zip-compressed"
 )
+
+func (artifact *Artifact) Is(role ArtifactRole, scope ArtifactScope) (ok bool) {
+	return uint32(role) == artifact.Role() && uint32(scope) == artifact.Scope()
+}
