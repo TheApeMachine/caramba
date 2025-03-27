@@ -3,10 +3,12 @@ package memory
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"math"
 	"os"
 	"strconv"
+	"time"
 
 	sdk "github.com/qdrant/go-client/qdrant"
 	"github.com/theapemachine/caramba/pkg/datura"
@@ -51,6 +53,58 @@ func NewQdrant() *Qdrant {
 		embedder:   embedder,
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("memory.Qdrant.buffer")
+
+			// Check for documents to write
+			if documents := datura.GetMetaValue[string](artifact, "documents"); documents != "" {
+				var docs []struct {
+					Content  string                 `json:"content"`
+					Metadata map[string]interface{} `json:"metadata"`
+				}
+				if err := json.Unmarshal([]byte(documents), &docs); err != nil {
+					return errnie.Error(err)
+				}
+
+				points := make([]*sdk.PointStruct, len(docs))
+				for i, doc := range docs {
+					// Generate embeddings for the document content
+					if _, err = embedder.Write([]byte(doc.Content)); err != nil {
+						return errnie.Error(err)
+					}
+
+					// Read the embeddings
+					embeddings := make([]byte, 1024*1024)
+					n, err := embedder.Read(embeddings)
+					if err != nil && err != io.EOF {
+						return errnie.Error(err)
+					}
+
+					// Convert embeddings bytes to float32 slice
+					vectors := make([]float32, n/4)
+					for i := 0; i < n; i += 4 {
+						bits := binary.LittleEndian.Uint32(embeddings[i : i+4])
+						vectors[i/4] = math.Float32frombits(bits)
+					}
+
+					// Create point with unique ID and metadata
+					points[i] = &sdk.PointStruct{
+						Id:      sdk.NewIDNum(uint64(time.Now().UnixNano())),
+						Vectors: sdk.NewVectors(vectors...),
+						Payload: sdk.NewValueMap(doc.Metadata),
+					}
+				}
+
+				// Store the points in Qdrant
+				_, err = client.Upsert(context.Background(), &sdk.UpsertPoints{
+					CollectionName: os.Getenv("QDRANT_COLLECTION"),
+					Points:         points,
+				})
+				if err != nil {
+					return errnie.Error(err)
+				}
+
+				// Return early since this was a write operation
+				return nil
+			}
 
 			// Get the question from the artifact metadata
 			question := datura.GetMetaValue[string](artifact, "question")
@@ -141,4 +195,21 @@ func (q *Qdrant) Close() error {
 		return q.buffer.Close()
 	}
 	return nil
+}
+
+func convertToQdrantPayload(metadata map[string]interface{}) map[string]*sdk.Value {
+	payload := make(map[string]*sdk.Value)
+	for k, v := range metadata {
+		switch val := v.(type) {
+		case string:
+			payload[k] = &sdk.Value{Kind: &sdk.Value_StringValue{StringValue: val}}
+		case float64:
+			payload[k] = &sdk.Value{Kind: &sdk.Value_DoubleValue{DoubleValue: val}}
+		case int:
+			payload[k] = &sdk.Value{Kind: &sdk.Value_IntegerValue{IntegerValue: int64(val)}}
+		case bool:
+			payload[k] = &sdk.Value{Kind: &sdk.Value_BoolValue{BoolValue: val}}
+		}
+	}
+	return payload
 }

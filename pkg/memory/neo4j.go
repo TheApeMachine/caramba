@@ -45,6 +45,12 @@ func NewNeo4j() *Neo4j {
 
 			// If we have a direct cypher query, execute it
 			if cypher != "" {
+				// Check if this is a write operation (CREATE, MERGE, SET, DELETE, etc.)
+				isWriteOperation := strings.Contains(strings.ToUpper(cypher), "CREATE") ||
+					strings.Contains(strings.ToUpper(cypher), "MERGE") ||
+					strings.Contains(strings.ToUpper(cypher), "SET") ||
+					strings.Contains(strings.ToUpper(cypher), "DELETE")
+
 				result, err := sdk.ExecuteQuery(
 					context.Background(),
 					driver,
@@ -55,6 +61,11 @@ func NewNeo4j() *Neo4j {
 				)
 				if err != nil {
 					return errnie.Error(err)
+				}
+
+				// For write operations, we don't need to format the results
+				if isWriteOperation {
+					return nil
 				}
 
 				artifact.SetMetaValue("output", formatRelationships(result.Records))

@@ -116,6 +116,12 @@ func NewMemoryTool(stores ...io.ReadWriteCloser) *MemoryTool {
 				"A tool which can interact with various memory stores through a unified interface.",
 			),
 			provider.WithProperty(
+				"operation",
+				"string",
+				"The operation to perform on the memory.",
+				[]any{"read", "write"},
+			),
+			provider.WithProperty(
 				"question",
 				"string",
 				"A question which is used to retrieve information from a vector database.",
