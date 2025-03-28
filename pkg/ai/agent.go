@@ -1,8 +1,11 @@
 package ai
 
 import (
+	"fmt"
 	"io"
+	"time"
 
+	"github.com/goombaio/namegenerator"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
@@ -12,7 +15,17 @@ import (
 )
 
 func init() {
+	fmt.Println("ai.agent.init")
 	provider.RegisterTool("agent")
+}
+
+func GenerateName() string {
+	seed := time.Now().UTC().UnixNano()
+	nameGenerator := namegenerator.NewNameGenerator(seed)
+
+	name := nameGenerator.Generate()
+
+	return name
 }
 
 /*
@@ -21,6 +34,7 @@ and produce responses. It implements io.ReadWriteCloser to enable composable
 pipelines for complex workflows.
 */
 type Agent struct {
+	Name   string
 	buffer *stream.Buffer
 	params *provider.Params
 	Schema *provider.Tool
@@ -42,6 +56,7 @@ func NewAgent(options ...AgentOption) *Agent {
 	)
 
 	agent := &Agent{
+		Name:   GenerateName(),
 		params: params,
 		Schema: provider.NewTool(
 			provider.WithFunction(
@@ -84,42 +99,67 @@ func NewAgent(options ...AgentOption) *Agent {
 	agent.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 		errnie.Debug("agent.buffer.fn")
 
-		// Convert the artifact to a Params.
-		if err = artifact.To(params); err != nil {
-			return errnie.Error(err)
-		}
+		switch artifact.Role() {
+		case uint32(datura.ArtifactRoleInspect):
+			switch artifact.Scope() {
+			case uint32(datura.ArtifactScopeName):
+				artifact.SetMetaValue("name", agent.Name)
+			}
 
-		// Get the last message from the params.
-		msg := params.Messages[len(params.Messages)-1]
-
-		if len(msg.ToolCalls) == 0 {
-			// No tool calls, so we can just stop here.
-			errnie.Debug("no tool calls")
 			return nil
-		}
+		case uint32(datura.ArtifactRoleSignal):
+			var payload []byte
 
-		// Iterate over the tool calls and copy them to the caller.
-		for _, toolCall := range msg.ToolCalls {
-			errnie.Debug("tool call", "function", toolCall.Function.Name, "arguments", toolCall.Function.Arguments)
-
-			// Create an intermediary artifact to pass the tool call to the caller,
-			// and receive the response.
-			tc := datura.New(datura.WithPayload(toolCall.Marshal()))
-
-			// Copy the tool call to the caller and receive the response.
-			if err = workflow.NewFlipFlop(tc, agent.caller); err != nil {
+			if payload, err = artifact.DecryptPayload(); err != nil {
 				return errnie.Error(err)
 			}
 
 			// Add the response to the original artifact's Params payload.
 			params.Messages = append(params.Messages, &provider.Message{
-				Reference: toolCall.ID,
-				Role:      provider.MessageRoleTool,
-				Content:   datura.GetMetaValue[string](tc, "output"),
+				Name:    agent.Name,
+				Role:    provider.MessageRoleUser,
+				Content: string(payload),
 			})
+		default:
+			// Convert the artifact to a Params.
+			if err = artifact.To(params); err != nil {
+				return errnie.Error(err)
+			}
+
+			// Get the last message from the params.
+			msg := params.Messages[len(params.Messages)-1]
+
+			if len(msg.ToolCalls) == 0 {
+				// No tool calls, so we can just stop here.
+				errnie.Debug("no tool calls")
+				return nil
+			}
+
+			// Iterate over the tool calls and copy them to the caller.
+			for _, toolCall := range msg.ToolCalls {
+				errnie.Debug("tool call", "function", toolCall.Function.Name, "arguments", toolCall.Function.Arguments)
+
+				// Create an intermediary artifact to pass the tool call to the caller,
+				// and receive the response.
+				tc := datura.New(datura.WithPayload(toolCall.Marshal()))
+
+				// Copy the tool call to the caller and receive the response.
+				if err = workflow.NewFlipFlop(tc, agent.caller); err != nil {
+					return errnie.Error(err)
+				}
+
+				// Add the response to the original artifact's Params payload.
+				params.Messages = append(params.Messages, &provider.Message{
+					Reference: toolCall.ID,
+					Name:      agent.Name,
+					Role:      provider.MessageRoleTool,
+					Content:   datura.GetMetaValue[string](tc, "output"),
+				})
+			}
+
+			datura.WithPayload(params.Marshal())(artifact)
 		}
 
-		datura.WithPayload(params.Marshal())(artifact)
 		return nil
 	})
 
@@ -164,4 +204,8 @@ func WithCaller(caller io.ReadWriteCloser) AgentOption {
 	return func(agent *Agent) {
 		agent.caller = caller
 	}
+}
+
+func (agent *Agent) GetName() string {
+	return agent.Name
 }

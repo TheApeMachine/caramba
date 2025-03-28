@@ -12,7 +12,6 @@ import (
 	stdfs "io/fs"
 	"log"
 	"os"
-	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -55,6 +54,7 @@ Execute is the main entry point for the Caramba CLI. It initializes the root com
 and executes it.
 */
 func Execute() error {
+	errnie.Debug("Execute")
 	return rootCmd.Execute()
 }
 
@@ -62,6 +62,8 @@ func Execute() error {
 init is a function that initializes the root command and sets up the persistent flags.
 */
 func init() {
+	fmt.Println("cmd.root.init")
+
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(
@@ -90,6 +92,8 @@ and then reads the config file from the user's home directory.
 func initConfig() {
 	var err error
 
+	errnie.Debug("initConfig")
+
 	if err = writeConfig(); err != nil {
 		log.Fatal(err)
 	}
@@ -112,6 +116,8 @@ func writeConfig() (err error) {
 		fh  stdfs.File
 		buf bytes.Buffer
 	)
+
+	errnie.Debug("writeConfig")
 
 	home, err := os.UserHomeDir()
 	if errnie.Error(err) != nil {
@@ -142,17 +148,7 @@ func writeConfig() (err error) {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
-	// Ensure the config file is owned by the real user
-	if os.Getenv("SUDO_USER") != "" {
-		uid, _ := strconv.Atoi(os.Getenv("SUDO_UID"))
-		gid, _ := strconv.Atoi(os.Getenv("SUDO_GID"))
-		if err = os.Chown(fullPath, uid, gid); err != nil {
-			return fmt.Errorf("failed to chown config file: %w", err)
-		}
-		if err = os.Chown(home+"/."+projectName, uid, gid); err != nil {
-			return fmt.Errorf("failed to chown config directory: %w", err)
-		}
-	}
+	errnie.Debug("writeConfig", "fullPath", fullPath)
 
 	return
 }

@@ -3,12 +3,10 @@ package cmd
 import (
 	"fmt"
 
-	clog "github.com/charmbracelet/log"
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/core"
-	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 type Example interface {
@@ -23,8 +21,6 @@ var (
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			core.NewConfig(core.WithOpenAIAPIKey(openaiAPIKey))
 
-			errnie.SetLevel(clog.DebugLevel)
-
 			var wf Example
 
 			switch args[0] {
@@ -36,6 +32,8 @@ var (
 				wf = examples.NewCode()
 			case "memory":
 				wf = examples.NewMemory()
+			case "multiagent":
+				wf = examples.NewMultiAgent()
 			default:
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
@@ -46,6 +44,7 @@ var (
 )
 
 func init() {
+	fmt.Println("cmd.example.init")
 	rootCmd.AddCommand(exampleCmd)
 }
 

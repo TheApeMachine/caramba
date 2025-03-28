@@ -22,6 +22,8 @@ type MCP struct {
 }
 
 func NewMCP() *MCP {
+	errnie.Debug("NewMCP")
+
 	return &MCP{
 		stdio: server.NewMCPServer(
 			"caramba-server",
@@ -57,6 +59,8 @@ func NewMCP() *MCP {
 }
 
 func (service *MCP) Start() error {
+	errnie.Debug("MCP.Start")
+
 	service.stdio.AddTool(
 		service.tools["memory"].(*tools.MemoryTool).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -125,6 +129,8 @@ func (service *MCP) Start() error {
 }
 
 func (service *MCP) runTool(tool io.ReadWriteCloser, req *mcp.CallToolRequest, role datura.ArtifactRole) (*mcp.CallToolResult, error) {
+	errnie.Debug("MCP.runTool")
+
 	options := []datura.ArtifactOption{
 		datura.WithRole(role),
 	}
@@ -148,6 +154,7 @@ func (service *MCP) runTool(tool io.ReadWriteCloser, req *mcp.CallToolRequest, r
 }
 
 func (service *MCP) Stop() error {
+	errnie.Debug("MCP.Stop")
 	return nil
 }
 

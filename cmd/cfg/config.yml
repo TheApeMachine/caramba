@@ -297,13 +297,16 @@ tools:
           type: "string"
           description: "The top-level command to execute."
           options: ["inspect", "send"]
-        inspect_args:
-          type: "array"
+        inspect_arg:
+          type: "string"
           description: "Arguments for the inspect command."
-          options: [""]
-        send_args:
-          type: "array"
-          description: "The arguments to pass to the command."
+          options: ["agents", "topics"]
+        send_to_arg:
+          type: "string"
+          description: "The name of the agent or topic to send a message to"
+        message_arg:
+          type: "string"
+          description: "The message to send to the agent or topic"
       required: ["command"]
 
 templates:

@@ -22,6 +22,7 @@ const (
 	ArtifactRoleInspect
 	ArtifactRoleMetadata
 	ArtifactRoleRegistration
+	ArtifactRoleSignal
 )
 
 type ArtifactScope uint
@@ -32,6 +33,7 @@ const (
 	ArtifactScopeMessage
 	ArtifactScopePrompt
 	ArtifactScopeProvider
+	ArtifactScopeName
 )
 
 type MediaType string

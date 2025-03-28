@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 /*
@@ -15,11 +14,9 @@ It reads from the pipeline's output and feeds it back into its input, creating
 an infinite processing cycle that can be stopped via the done channel.
 */
 type Pump struct {
-	pipeline    io.ReadWriteCloser
-	buffer      *stream.Buffer
-	passthrough *bytes.Buffer
-	done        chan struct{}
-	wg          *sync.WaitGroup
+	pipeline io.ReadWriteCloser
+	done     chan struct{}
+	wg       *sync.WaitGroup
 }
 
 /*

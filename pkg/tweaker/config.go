@@ -13,6 +13,7 @@ var (
 )
 
 func init() {
+	fmt.Println("tweaker.init")
 	cfg = NewConfig()
 }
 
@@ -21,6 +22,8 @@ type Config struct {
 }
 
 func NewConfig() *Config {
+	errnie.Debug("tweaker.NewConfig")
+
 	return &Config{
 		v: func() *viper.Viper {
 			return viper.GetViper()
@@ -30,6 +33,8 @@ func NewConfig() *Config {
 
 // get is a generic helper function to retrieve values from viper with error handling
 func get[T any](key string, getter func(string) T, defaultValue T) T {
+	errnie.Debug("get", "key", key)
+
 	if out := getter(key); !isEmpty(out) {
 		return out
 	}
@@ -137,15 +142,21 @@ func GetQdrantAPIKey() string {
 
 // Get returns a string value from the config with a default value
 func Get(key string, defaultValue string) string {
+	errnie.Debug("Get", "key", key)
+
 	return get(key, cfg.v().GetString, defaultValue)
 }
 
 // GetStringMap returns a map[string]any from the config
 func GetStringMap(key string) map[string]any {
+	errnie.Debug("GetStringMap", "key", key)
+
 	return cfg.v().GetStringMap(key)
 }
 
 // GetStringSlice returns a []string from the config
 func GetStringSlice(key string) []string {
+	errnie.Debug("GetStringSlice", "key", key)
+
 	return cfg.v().GetStringSlice(key)
 }

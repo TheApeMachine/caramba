@@ -30,6 +30,7 @@ var logger = log.NewWithOptions(os.Stderr, log.Options{
 })
 
 func init() {
+	fmt.Println("errnie.logger.init")
 	// Clear and open the log file on startup
 	var err error
 	fileHandle, err = os.OpenFile(logFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)

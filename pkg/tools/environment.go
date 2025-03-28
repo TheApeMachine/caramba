@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"fmt"
+
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
@@ -10,6 +12,7 @@ import (
 )
 
 func init() {
+	fmt.Println("tools.environment.init")
 	provider.RegisterTool("environment")
 }
 

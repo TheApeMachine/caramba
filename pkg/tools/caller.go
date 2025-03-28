@@ -19,6 +19,7 @@ type Caller struct {
 
 func NewCaller() *Caller {
 	errnie.Debug("tools.NewCaller")
+
 	toolcall := &provider.ToolCall{}
 
 	return &Caller{
@@ -51,6 +52,8 @@ func NewCaller() *Caller {
 				tool = NewAzure()
 			case "trengo":
 				tool = NewTrengo()
+			case "system":
+				tool = NewSystemTool()
 			}
 
 			args := map[string]any{}

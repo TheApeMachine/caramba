@@ -55,6 +55,7 @@ require (
 require (
 	github.com/containerd/containerd v1.7.27
 	github.com/docker/docker v28.0.2+incompatible
+	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e
 	github.com/mdlayher/vsock v1.2.1
 	github.com/moby/hyperkit v0.0.0-20220220121959-3cb0d5475244
 	github.com/slack-go/slack v0.16.0
@@ -130,7 +131,6 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20240727154555-813a5fbdbec8 // indirect
 	github.com/google/safetext v0.0.0-20220905092116-b49f7bc46da2 // indirect
-	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.0.1 // indirect

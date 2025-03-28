@@ -20,7 +20,7 @@ workflow pipelines, and feedback mechanisms.
 */
 type Code struct {
 	agent    *ai.Agent
-	provider *provider.MockProvider
+	provider *provider.OpenAIProvider
 	workflow io.ReadWriter
 }
 
@@ -37,7 +37,7 @@ func NewCode() *Code {
 
 	agent := ai.NewAgent(ai.WithCaller(tools.NewCaller()))
 
-	provider := provider.NewMockProvider()
+	provider := provider.NewOpenAIProvider()
 
 	converter := workflow.NewConverter()
 

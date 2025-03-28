@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"errors"
+
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
@@ -31,4 +33,34 @@ func NewSystemTool() *SystemTool {
 		Schema:   GetToolSchema("system"),
 		registry: registry,
 	}
+}
+
+func (tool *SystemTool) Read(p []byte) (n int, err error) {
+	errnie.Debug("system.SystemTool.Read")
+
+	if tool.buffer == nil {
+		return 0, errnie.Error(errors.New("buffer not set"))
+	}
+
+	return tool.buffer.Read(p)
+}
+
+func (tool *SystemTool) Write(p []byte) (n int, err error) {
+	errnie.Debug("system.SystemTool.Write")
+
+	if tool.buffer == nil {
+		return 0, errnie.Error(errors.New("buffer not set"))
+	}
+
+	return tool.buffer.Write(p)
+}
+
+func (tool *SystemTool) Close() error {
+	errnie.Debug("system.SystemTool.Close")
+
+	if tool.buffer == nil {
+		return errnie.Error(errors.New("buffer not set"))
+	}
+
+	return tool.buffer.Close()
 }

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/theapemachine/caramba/pkg/datura"
@@ -12,6 +13,7 @@ import (
 )
 
 func init() {
+	fmt.Println("tools.memory.init")
 	provider.RegisterTool("memory")
 }
 

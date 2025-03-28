@@ -1,14 +1,21 @@
 package system
 
 import (
+	"errors"
 	"io"
-	"strings"
 	"sync"
 
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/workflow"
+)
+
+type ComponentType uint
+
+const (
+	ComponentTypeUnknown ComponentType = iota
+	ComponentTypeAgent
 )
 
 var (
@@ -18,38 +25,54 @@ var (
 
 type Registry struct {
 	buffer     *stream.Buffer
-	components *map[uint32]map[uint32][]io.ReadWriteCloser
+	components map[ComponentType][]io.ReadWriteCloser
 }
 
-func NewRegistry() *Registry {
-	once.Do(func() {
-		components := map[uint32]map[uint32][]io.ReadWriteCloser{}
+type RegistryOption func(*Registry)
 
+func NewRegistry(opts ...RegistryOption) *Registry {
+	errnie.Debug("system.NewRegistry")
+
+	once.Do(func() {
 		registry = &Registry{
 			buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 				errnie.Debug("system.NewRegistry.buffer.fn")
 
-				switch artifact.Role() {
-				case uint32(datura.ArtifactRoleRegistration):
-					
-				default:
-					out := make([]string, 0)
+				role := artifact.Role()
 
-					for _, component := range components[artifact.Role()][artifact.Scope()] {
-						if err = workflow.NewFlipFlop(artifact, component); err != nil {
-							out = append(out, errnie.Error(err).Error())
-							continue
+				switch role {
+				case uint32(datura.ArtifactRoleSignal):
+					command := datura.GetMetaValue[string](artifact, "command")
+
+					switch command {
+					case "inspect":
+						inspectArtifact := datura.New(
+							datura.WithRole(datura.ArtifactRoleInspect),
+							datura.WithScope(datura.ArtifactScopeName),
+						)
+
+						for _, component := range registry.components[ComponentTypeAgent] {
+							workflow.NewFlipFlop(inspectArtifact, component)
 						}
 
-						out = append(out, datura.GetMetaValue[string](artifact, "output"))
-					}
+						artifact.SetMetaValue("to", datura.GetMetaValue[string](inspectArtifact, "name"))
+					case "send":
+						message := datura.GetMetaValue[string](artifact, "message_arg")
 
-					artifact.SetMetaValue("output", strings.Join(out, "\n\n"))
+						for _, component := range registry.components[ComponentTypeAgent] {
+							datura.WithPayload([]byte(message))(artifact)
+							workflow.NewFlipFlop(artifact, component)
+						}
+					}
 				}
 
 				return nil
 			}),
-			components: &components,
+			components: make(map[ComponentType][]io.ReadWriteCloser),
+		}
+
+		for _, opt := range opts {
+			opt(registry)
 		}
 	})
 
@@ -57,13 +80,47 @@ func NewRegistry() *Registry {
 }
 
 func (registry *Registry) Read(p []byte) (n int, err error) {
+	errnie.Debug("system.Registry.Read")
+
+	if registry.buffer == nil {
+		return 0, errnie.Error(errors.New("buffer not set"))
+	}
+
 	return registry.buffer.Read(p)
 }
 
 func (registry *Registry) Write(p []byte) (n int, err error) {
+	errnie.Debug("system.Registry.Write")
+
+	if registry.buffer == nil {
+		return 0, errnie.Error(errors.New("buffer not set"))
+	}
+
 	return registry.buffer.Write(p)
 }
 
 func (registry *Registry) Close() error {
+	errnie.Debug("system.Registry.Close")
+
+	if registry.buffer == nil {
+		return errnie.Error(errors.New("buffer not set"))
+	}
+
 	return registry.buffer.Close()
+}
+
+func WithComponents(components map[ComponentType][]io.ReadWriteCloser) RegistryOption {
+	return func(registry *Registry) {
+		registry.components = components
+	}
+}
+
+func WithComponent(componentType ComponentType, component io.ReadWriteCloser) RegistryOption {
+	return func(registry *Registry) {
+		if _, ok := registry.components[componentType]; !ok {
+			registry.components[componentType] = make([]io.ReadWriteCloser, 0)
+		}
+
+		registry.components[componentType] = append(registry.components[componentType], component)
+	}
 }

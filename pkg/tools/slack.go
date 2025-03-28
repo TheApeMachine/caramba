@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/theapemachine/caramba/pkg/datura"
@@ -11,6 +12,7 @@ import (
 )
 
 func init() {
+	fmt.Println("tools.slack.init")
 	provider.RegisterTool("slack")
 }
 
