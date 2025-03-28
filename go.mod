@@ -7,7 +7,7 @@ toolchain go1.24.1
 require (
 	github.com/JesusIslam/tldr v0.6.0
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.1
-	github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.3
+	github.com/anthropics/anthropic-sdk-go v0.2.0-beta.3
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/charmbracelet/log v0.4.0
 	github.com/checkpoint-restore/go-criu/v7 v7.2.0 // indirect

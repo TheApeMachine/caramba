@@ -11,6 +11,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
@@ -40,10 +41,12 @@ func NewAnthropicProvider(opts ...AnthropicProviderOption) *AnthropicProvider {
 	ctx, cancel := context.WithCancel(context.Background())
 	params := &Params{}
 
+	client := anthropic.NewClient(
+		option.WithAPIKey(apiKey),
+	)
+
 	prvdr := &AnthropicProvider{
-		client: anthropic.NewClient(
-			option.WithAPIKey(apiKey),
-		),
+		client: &client,
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
 			errnie.Debug("provider.AnthropicProvider.buffer.fn")
 			return errnie.Error(artfct.To(params))
@@ -64,9 +67,7 @@ type AnthropicProviderOption func(*AnthropicProvider)
 
 func WithAnthropicAPIKey(apiKey string) AnthropicProviderOption {
 	return func(provider *AnthropicProvider) {
-		provider.client = anthropic.NewClient(
-			option.WithAPIKey(apiKey),
-		)
+		provider.client.Options = append(provider.client.Options, option.WithAPIKey(apiKey))
 	}
 }
 
@@ -89,10 +90,10 @@ func (prvdr *AnthropicProvider) Write(p []byte) (n int, err error) {
 	}
 
 	composed := anthropic.MessageNewParams{
-		Model:       anthropic.F(prvdr.params.Model),
-		Temperature: anthropic.F(prvdr.params.Temperature),
-		TopP:        anthropic.F(prvdr.params.TopP),
-		MaxTokens:   anthropic.F(int64(prvdr.params.MaxTokens)),
+		Model:       anthropic.Model(prvdr.params.Model),
+		Temperature: anthropic.Float(prvdr.params.Temperature),
+		TopP:        anthropic.Float(prvdr.params.TopP),
+		MaxTokens:   int64(prvdr.params.MaxTokens),
 	}
 
 	prvdr.buildMessages(&composed)
@@ -139,10 +140,10 @@ func (prvdr *AnthropicProvider) handleSingleRequest(
 	prvdr.params.Messages = append(prvdr.params.Messages, msg)
 
 	for _, block := range response.Content {
-		switch block.Type {
-		case anthropic.ContentBlockTypeText:
+		switch block := block.AsAny().(type) {
+		case anthropic.TextBlock:
 			msg.Content += block.Text
-		case anthropic.ContentBlockTypeToolUse:
+		case anthropic.ToolUseBlock:
 			msg.ToolCalls = append(msg.ToolCalls, ToolCall{
 				ID:   block.ID,
 				Type: "function",
@@ -179,23 +180,23 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 
 	for stream.Next() {
 		chunk := stream.Current()
-		accumulatedMessage.Accumulate(chunk)
-
-		// Extract text content from deltas
-		var content string
-		switch delta := chunk.Delta.(type) {
-		case anthropic.ContentBlockDeltaEventDelta:
-			content = delta.Text
+		if err = accumulatedMessage.Accumulate(chunk); err != nil {
+			return errnie.Error(err)
 		}
 
-		if content == "" {
-			continue
-		}
-
-		if _, err = io.Copy(prvdr.buffer, datura.New(
-			datura.WithPayload([]byte(content)),
-		)); errnie.Error(err) != nil {
-			continue
+		switch event := chunk.AsAny().(type) {
+		case anthropic.ContentBlockStartEvent:
+			if event.ContentBlock.Name != "" {
+				print(event.ContentBlock.Name + ": ")
+			}
+		case anthropic.ContentBlockDeltaEvent:
+			print(event.Delta.Text)
+			print(event.Delta.PartialJSON)
+		case anthropic.ContentBlockStopEvent:
+			println()
+			println()
+		case anthropic.MessageStopEvent:
+			println()
 		}
 	}
 
@@ -299,9 +300,9 @@ func (p *AnthropicProvider) buildMessages(
 	for i, message := range p.params.Messages {
 		switch message.Role {
 		case "system":
-			messageParams.System = anthropic.F([]anthropic.TextBlockParam{
-				anthropic.NewTextBlock(message.Content),
-			})
+			messageParams.System = []anthropic.TextBlockParam{
+				anthropic.TextBlockParam{Text: message.Content},
+			}
 		case "user":
 			// First add the regular user message
 			userMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(message.Content))
@@ -375,7 +376,7 @@ func (p *AnthropicProvider) buildMessages(
 		}
 	}
 
-	messageParams.Messages = anthropic.F(msgParams)
+	messageParams.Messages = msgParams
 	return nil
 }
 
@@ -424,16 +425,25 @@ func (prvdr *AnthropicProvider) buildTools(
 
 		// Create a tool parameter with this schema
 		toolParam := anthropic.ToolParam{
-			Name:        anthropic.F(tool.Function.Name),
-			Description: anthropic.F(tool.Function.Description),
-			InputSchema: anthropic.Raw[interface{}](schema),
+			Name:        tool.Function.Name,
+			Description: param.NewOpt(tool.Function.Description),
+			InputSchema: anthropic.ToolInputSchemaParam{
+				Type:       "object",
+				Properties: properties,
+			},
 		}
 
 		toolParams = append(toolParams, toolParam)
 	}
 
 	// Set the tools
-	messageParams.Tools = anthropic.F(toolParams)
+	toolUnionParams := make([]anthropic.ToolUnionParam, 0, len(toolParams))
+	for _, tool := range toolParams {
+		toolUnionParams = append(toolUnionParams, anthropic.ToolUnionParam{
+			OfTool: &tool,
+		})
+	}
+	messageParams.Tools = toolUnionParams
 	return nil
 }
 
@@ -446,8 +456,8 @@ func (prvdr *AnthropicProvider) buildResponseFormat(
 		return nil
 	}
 
-	messageParams.Messages.Value = append(
-		messageParams.Messages.Value,
+	messageParams.Messages = append(
+		messageParams.Messages,
 		anthropic.NewAssistantMessage(
 			anthropic.NewTextBlock(
 				strings.Join([]string{
@@ -473,11 +483,13 @@ type AnthropicEmbedder struct {
 func NewAnthropicEmbedder(apiKey string, endpoint string) *AnthropicEmbedder {
 	errnie.Debug("provider.NewAnthropicEmbedder")
 
+	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+
 	return &AnthropicEmbedder{
 		params:   &Params{},
 		apiKey:   apiKey,
 		endpoint: endpoint,
-		client:   anthropic.NewClient(option.WithAPIKey(apiKey)),
+		client:   &client,
 	}
 }
 

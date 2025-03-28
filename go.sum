@@ -39,6 +39,8 @@ github.com/alixaxel/pagerank v0.0.0-20200105181019-900657b89dcb h1:q45Ipu3ciM9kI
 github.com/alixaxel/pagerank v0.0.0-20200105181019-900657b89dcb/go.mod h1:e7Vic/xXDZAQ8ftWoLnVrXseAAvt54SVYrcirjCKcX0=
 github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.3 h1:7ETLWmeeIgS14CntHbZctT59+iGC/a7NzUwO6dG6ID8=
 github.com/anthropics/anthropic-sdk-go v0.2.0-alpha.3/go.mod h1:GJxtdOs9K4neo8Gg65CjJ7jNautmldGli5/OFNabOoo=
+github.com/anthropics/anthropic-sdk-go v0.2.0-beta.3 h1:b5t1ZJMvV/l99y4jbz7kRFdUp3BSDkI8EhSlHczivtw=
+github.com/anthropics/anthropic-sdk-go v0.2.0-beta.3/go.mod h1:AapDW22irxK2PSumZiQXYUFvsdQgkwIWlpESweWZI/c=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5/go.mod h1:wHh0iHkYZB8zMSxRWpUBQtwG5a7fFgvEO+odwuTv2gs=
 github.com/aws/aws-sdk-go-v2 v1.32.2 h1:AkNLZEyYMLnx/Q/mSKkcMqwNFXMAvFto9bNsHqcTduI=
