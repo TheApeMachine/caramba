@@ -174,6 +174,7 @@ require (
 	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.5 // indirect
+	github.com/slack-go/slack v0.16.0 // indirect
 	github.com/smallstep/pkcs7 v0.1.1 // indirect
 	github.com/smarty/assertions v1.15.0 // indirect
 	github.com/stefanberger/go-pkcs11uri v0.0.0-20230803200340-78284954bff6 // indirect

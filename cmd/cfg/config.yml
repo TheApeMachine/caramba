@@ -242,6 +242,52 @@ tools:
               "delete_label",
             ]
       required: ["operation"]
+    slack:
+      function:
+        name: "slack"
+        description: "A tool for interacting with Slack workspaces and channels."
+      properties:
+        operation:
+          type: "string"
+          description: "The operation to perform."
+          options:
+            [
+              "post_message",
+              "upload_file",
+              "add_reaction",
+              "remove_reaction",
+              "get_channel_info",
+              "list_channels",
+              "create_channel",
+              "archive_channel",
+              "unarchive_channel",
+              "get_thread_replies",
+              "search_messages",
+              "update_message",
+              "delete_message",
+            ]
+        channel:
+          type: "string"
+          description: "The channel ID to perform the operation in."
+        text:
+          type: "string"
+          description: "The text content for message operations."
+        thread_ts:
+          type: "string"
+          description: "The timestamp of a message to thread replies to."
+        blocks:
+          type: "string"
+          description: "JSON string of Slack blocks for rich message formatting."
+        attachments:
+          type: "string"
+          description: "JSON string of Slack attachments for message attachments."
+        file:
+          type: "string"
+          description: "File path for file upload operations."
+        reaction:
+          type: "string"
+          description: "Emoji reaction to add or remove from a message."
+      required: ["operation"]
     system:
       function:
         name: "system"
