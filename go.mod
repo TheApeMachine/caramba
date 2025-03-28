@@ -57,6 +57,7 @@ require (
 	github.com/docker/docker v28.0.2+incompatible
 	github.com/mdlayher/vsock v1.2.1
 	github.com/moby/hyperkit v0.0.0-20220220121959-3cb0d5475244
+	github.com/slack-go/slack v0.16.0
 )
 
 require (
@@ -174,7 +175,6 @@ require (
 	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.5 // indirect
-	github.com/slack-go/slack v0.16.0 // indirect
 	github.com/smallstep/pkcs7 v0.1.1 // indirect
 	github.com/smarty/assertions v1.15.0 // indirect
 	github.com/stefanberger/go-pkcs11uri v0.0.0-20230803200340-78284954bff6 // indirect

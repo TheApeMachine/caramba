@@ -301,7 +301,7 @@ func (p *AnthropicProvider) buildMessages(
 		switch message.Role {
 		case "system":
 			messageParams.System = []anthropic.TextBlockParam{
-				anthropic.TextBlockParam{Text: message.Content},
+				{Text: message.Content},
 			}
 		case "user":
 			// First add the regular user message
@@ -405,7 +405,7 @@ func (prvdr *AnthropicProvider) buildTools(
 			}
 
 			// Only add enum if not empty
-			if property.Enum != nil && len(property.Enum) > 0 {
+			if len(property.Enum) > 0 {
 				propDef["enum"] = property.Enum
 			}
 
