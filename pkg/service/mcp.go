@@ -143,11 +143,11 @@ func (service *MCP) runTool(tool io.ReadWriteCloser, req *mcp.CallToolRequest, r
 	buf := bytes.NewBuffer([]byte{})
 
 	if _, err := io.Copy(tool, artifact); err != nil {
-		return mcp.NewToolResultError(errnie.Error(err).Error()), nil
+		return mcp.NewToolResultText(errnie.Error(err).Error()), nil
 	}
 
 	if _, err := io.Copy(buf, tool); err != nil {
-		return mcp.NewToolResultError(errnie.Error(err).Error()), nil
+		return mcp.NewToolResultText(errnie.Error(err).Error()), nil
 	}
 
 	return mcp.NewToolResultText(buf.String()), nil

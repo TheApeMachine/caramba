@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -88,8 +90,9 @@ func (prvdr *GoogleProvider) Write(p []byte) (n int, err error) {
 		MaxOutputTokens:  utils.Ptr(int32(prvdr.params.MaxTokens)),
 	}
 
-	if err = prvdr.buildMessages(chatConfig); err != nil {
-		return n, errnie.Error(err)
+	messages, err := prvdr.buildMessages()
+	if err != nil {
+		return n, err
 	}
 
 	if err = prvdr.buildTools(chatConfig); err != nil {
@@ -101,12 +104,12 @@ func (prvdr *GoogleProvider) Write(p []byte) (n int, err error) {
 	}
 
 	if prvdr.params.Stream {
-		prvdr.handleStreamingRequest(chatConfig)
+		err = prvdr.handleStreamingRequest(chatConfig, messages)
 	} else {
-		prvdr.handleSingleRequest(chatConfig)
+		err = prvdr.handleSingleRequest(chatConfig, messages)
 	}
 
-	return n, nil
+	return n, errnie.Error(err)
 }
 
 /*
@@ -120,16 +123,9 @@ func (prvdr *GoogleProvider) Close() error {
 
 func (prvdr *GoogleProvider) handleSingleRequest(
 	chatConfig *genai.GenerateContentConfig,
+	messages []*genai.Content,
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
-
-	messages := make([]*genai.Content, 0, len(prvdr.params.Messages))
-	for _, msg := range prvdr.params.Messages {
-		messages = append(messages, &genai.Content{
-			Role:  string(msg.Role),
-			Parts: []*genai.Part{{Text: msg.Content}},
-		})
-	}
 
 	resp, err := prvdr.client.Models.GenerateContent(
 		prvdr.ctx,
@@ -147,15 +143,46 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 		return
 	}
 
-	content := ""
-	for _, part := range resp.Candidates[0].Content.Parts {
-		content += string(part.Text)
+	msg := &Message{
+		Role:    MessageRoleAssistant,
+		Name:    prvdr.params.Model,
+		Content: "",
 	}
 
+	// Combine all parts into the content
+	for _, part := range resp.Candidates[0].Content.Parts {
+		msg.Content += part.Text
+	}
+
+	// Handle tool calls if present
+	if resp.Candidates[0].Content.Parts[0].FunctionCall != nil {
+		fc := resp.Candidates[0].Content.Parts[0].FunctionCall
+		argsStr := ""
+		for k, v := range fc.Args {
+			argsStr += fmt.Sprintf(`"%s":%v,`, k, v)
+		}
+		if len(argsStr) > 0 {
+			argsStr = "{" + argsStr[:len(argsStr)-1] + "}"
+		}
+
+		msg.ToolCalls = []ToolCall{
+			{
+				ID:   fc.Name, // Using name as ID since Google API doesn't provide separate ID
+				Type: "function",
+				Function: ToolCallFunction{
+					Name:      fc.Name,
+					Arguments: argsStr,
+				},
+			},
+		}
+	}
+
+	prvdr.params.Messages = append(prvdr.params.Messages, msg)
+
 	if _, err = io.Copy(prvdr, datura.New(
-		datura.WithPayload([]byte(content)),
-	)); errnie.Error(err) != nil {
-		return err
+		datura.WithPayload(prvdr.params.Marshal()),
+	)); err != nil {
+		return errnie.Error(err)
 	}
 
 	return nil
@@ -163,16 +190,9 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 
 func (prvdr *GoogleProvider) handleStreamingRequest(
 	chatConfig *genai.GenerateContentConfig,
+	messages []*genai.Content,
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
-
-	messages := make([]*genai.Content, 0, len(prvdr.params.Messages))
-	for _, msg := range prvdr.params.Messages {
-		messages = append(messages, &genai.Content{
-			Role:  string(msg.Role),
-			Parts: []*genai.Part{{Text: msg.Content}},
-		})
-	}
 
 	for response, err := range prvdr.client.Models.GenerateContentStream(
 		prvdr.ctx,
@@ -185,69 +205,67 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 				break
 			}
 			errnie.Error("streaming error", "error", err)
-			return err
+			continue
 		}
 
 		if len(response.Candidates) == 0 {
 			continue
 		}
 
-		text := ""
-
-		if text, err = response.Text(); errnie.Error(err) != nil {
-			continue
-		}
-
-		if _, err = io.Copy(prvdr, datura.New(
-			datura.WithPayload([]byte(text)),
-		)); errnie.Error(err) != nil {
-			continue
+		for _, part := range response.Candidates[0].Content.Parts {
+			if _, err = io.Copy(prvdr, datura.New(
+				datura.WithPayload([]byte(part.Text)),
+			)); errnie.Error(err) != nil {
+				continue
+			}
 		}
 	}
 
 	return nil
 }
 
-func (prvdr *GoogleProvider) buildMessages(
-	chatParams *genai.GenerateContentConfig,
-) (err error) {
+func (prvdr *GoogleProvider) buildMessages() (messages []*genai.Content, err error) {
 	errnie.Debug("provider.buildMessages")
 
 	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
+		return nil, errnie.BadRequest(errors.New("params are nil"))
 	}
 
-	messages := make([]*genai.Content, 0, len(prvdr.params.Messages))
+	messages = make([]*genai.Content, 0, len(prvdr.params.Messages))
 
 	for _, message := range prvdr.params.Messages {
-		switch message.Role {
-		case "system":
-			chatParams.SystemInstruction = &genai.Content{
-				Role:  "system",
-				Parts: []*genai.Part{{Text: message.Content}},
-			}
-		case "user":
-			messages = append(messages, &genai.Content{
-				Role:  "user",
-				Parts: []*genai.Part{{Text: message.Content}},
-			})
-		case "assistant":
-			messages = append(messages, &genai.Content{
-				Role:  "model",
-				Parts: []*genai.Part{{Text: message.Content}},
-			})
-		default:
-			errnie.Error("unknown message role", "role", message.Role)
+		content := &genai.Content{
+			Role:  string(message.Role),
+			Parts: []*genai.Part{{Text: message.Content}},
 		}
+
+		// Handle tool calls for assistant messages
+		if message.Role == "assistant" && len(message.ToolCalls) > 0 {
+			for _, toolCall := range message.ToolCalls {
+				// Parse arguments string back to map
+				var args map[string]interface{}
+				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
+					errnie.Error("failed to parse tool call arguments", "error", err)
+					continue
+				}
+
+				content.Parts = append(content.Parts, &genai.Part{
+					FunctionCall: &genai.FunctionCall{
+						Name: toolCall.Function.Name,
+						Args: args,
+					},
+				})
+			}
+		}
+
+		messages = append(messages, content)
 	}
 
-	_ = messages
-
-	return nil
+	return messages, nil
 }
 
 func (prvdr *GoogleProvider) buildTools(
-	chatParams *genai.GenerateContentConfig,
+	chatConfig *genai.GenerateContentConfig,
 ) (err error) {
 	errnie.Debug("provider.buildTools")
 
@@ -256,30 +274,55 @@ func (prvdr *GoogleProvider) buildTools(
 	}
 
 	if len(prvdr.params.Tools) == 0 {
-		chatParams.Tools = nil
+		chatConfig.Tools = nil
 		return nil
 	}
 
-	functionDeclarations := make([]*genai.FunctionDeclaration, 0, len(prvdr.params.Tools))
+	tools := make([]*genai.Tool, 0, len(prvdr.params.Tools))
 
 	for _, tool := range prvdr.params.Tools {
-		functionDeclarations = append(functionDeclarations, &genai.FunctionDeclaration{
+		functionDeclaration := &genai.FunctionDeclaration{
 			Name:        tool.Function.Name,
 			Description: tool.Function.Description,
+		}
+
+		// Convert parameters to Google's format
+		if tool.Function.Parameters.Properties != nil {
+			schema := &genai.Schema{
+				Type:       genai.Type("object"),
+				Properties: make(map[string]*genai.Schema),
+				Required:   tool.Function.Parameters.Required,
+			}
+
+			for _, prop := range tool.Function.Parameters.Properties {
+				enumStr := make([]string, 0)
+				for _, e := range prop.Enum {
+					if s, ok := e.(string); ok {
+						enumStr = append(enumStr, s)
+					}
+				}
+
+				schema.Properties[prop.Name] = &genai.Schema{
+					Type:        genai.Type(prop.Type),
+					Description: prop.Description,
+					Enum:        enumStr,
+				}
+			}
+
+			functionDeclaration.Parameters = schema
+		}
+
+		tools = append(tools, &genai.Tool{
+			FunctionDeclarations: []*genai.FunctionDeclaration{functionDeclaration},
 		})
 	}
 
-	chatParams.Tools = []*genai.Tool{
-		{
-			FunctionDeclarations: functionDeclarations,
-		},
-	}
-
+	chatConfig.Tools = tools
 	return nil
 }
 
 func (prvdr *GoogleProvider) buildResponseFormat(
-	chatParams *genai.GenerateContentConfig,
+	chatConfig *genai.GenerateContentConfig,
 ) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
@@ -287,12 +330,25 @@ func (prvdr *GoogleProvider) buildResponseFormat(
 		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
-	// Add format instructions to system message
-	if prvdr.params.ResponseFormat.Name != "" {
-		chatParams.ResponseSchema = &genai.Schema{
-			Title:       prvdr.params.ResponseFormat.Name,
-			Description: prvdr.params.ResponseFormat.Description,
-		}
+	if prvdr.params.ResponseFormat == nil {
+		return nil
+	}
+
+	// Google's API doesn't have direct JSON schema support like OpenAI
+	// Instead, we'll add it to the system message
+	systemMsg := fmt.Sprintf(
+		"Please format your response as a JSON object following this schema:\n%s\n%s",
+		prvdr.params.ResponseFormat.Name,
+		prvdr.params.ResponseFormat.Description,
+	)
+
+	if prvdr.params.ResponseFormat.Schema != nil {
+		systemMsg += fmt.Sprintf("\nSchema: %v", prvdr.params.ResponseFormat.Schema)
+	}
+
+	chatConfig.SystemInstruction = &genai.Content{
+		Role:  "system",
+		Parts: []*genai.Part{{Text: systemMsg}},
 	}
 
 	return nil

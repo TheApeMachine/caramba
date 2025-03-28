@@ -11,6 +11,7 @@ import (
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -43,10 +44,12 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 	ctx, cancel := context.WithCancel(context.Background())
 	params := &Params{}
 
+	client := openai.NewClient(
+		option.WithAPIKey(apiKey),
+	)
+
 	prvdr := &OpenAIProvider{
-		client: openai.NewClient(
-			option.WithAPIKey(apiKey),
-		),
+		client: &client,
 		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
 			errnie.Debug("provider.OpenAIProvider.buffer.fn")
 			return errnie.Error(artfct.To(params))
@@ -96,15 +99,15 @@ func (prvdr *OpenAIProvider) Write(p []byte) (n int, err error) {
 	}
 
 	composed := &openai.ChatCompletionNewParams{
-		Model:            openai.F(prvdr.params.Model),
-		Temperature:      openai.F(prvdr.params.Temperature),
-		TopP:             openai.F(prvdr.params.TopP),
-		FrequencyPenalty: openai.F(prvdr.params.FrequencyPenalty),
-		PresencePenalty:  openai.F(prvdr.params.PresencePenalty),
+		Model:            prvdr.params.Model,
+		Temperature:      openai.Float(prvdr.params.Temperature),
+		TopP:             openai.Float(prvdr.params.TopP),
+		FrequencyPenalty: openai.Float(prvdr.params.FrequencyPenalty),
+		PresencePenalty:  openai.Float(prvdr.params.PresencePenalty),
 	}
 
 	if prvdr.params.MaxTokens > 1 {
-		composed.MaxTokens = openai.F(int64(prvdr.params.MaxTokens))
+		composed.MaxTokens = openai.Int(int64(prvdr.params.MaxTokens))
 	}
 
 	if err = prvdr.buildMessages(composed); err != nil {
@@ -232,12 +235,12 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		}
 
 		if tool, ok := acc.JustFinishedToolCall(); ok {
-			params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
+			params.Messages = append(params.Messages, openai.AssistantMessage(acc.Choices[0].Message.Content))
 
 			switch tool.Name {
 			case "browser":
 				if _, err = io.Copy(prvdr.buffer, datura.New(
-					datura.WithPayload([]byte(tool.JSON.RawJSON())),
+					datura.WithPayload([]byte(tool.Arguments)),
 				)); errnie.Error(err) != nil {
 					continue
 				}
@@ -295,28 +298,26 @@ func (prvdr *OpenAIProvider) buildMessages(
 
 			for _, toolCall := range message.ToolCalls {
 				toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-					ID:   openai.F(toolCall.ID),
-					Type: openai.F(openai.ChatCompletionMessageToolCallTypeFunction),
-					Function: openai.F(openai.ChatCompletionMessageToolCallFunctionParam{
-						Name:      openai.F(toolCall.Function.Name),
-						Arguments: openai.F(toolCall.Function.Arguments),
-					}),
+					ID:   toolCall.ID,
+					Type: "function",
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      toolCall.Function.Name,
+						Arguments: toolCall.Function.Arguments,
+					},
 				})
 			}
 
-			msg := openai.ChatCompletionAssistantMessageParam{
-				Role: openai.F(openai.ChatCompletionAssistantMessageParamRoleAssistant),
-				Name: openai.F(message.Name),
-				Content: openai.F([]openai.ChatCompletionAssistantMessageParamContentUnion{
-					openai.ChatCompletionAssistantMessageParamContent{
-						Type: openai.F(openai.ChatCompletionAssistantMessageParamContentTypeText),
-						Text: openai.F(message.Content),
-					},
-				}),
-			}
-
+			msg := openai.AssistantMessage(message.Content)
 			if len(toolCalls) > 0 {
-				msg.ToolCalls = openai.F(toolCalls)
+				msg = openai.ChatCompletionMessageParamUnion{
+					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+						Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+							OfString: param.NewOpt(message.Content),
+						},
+						ToolCalls: toolCalls,
+						Role:      "assistant",
+					},
+				}
 			}
 
 			messages = append(messages, msg)
@@ -328,7 +329,7 @@ func (prvdr *OpenAIProvider) buildMessages(
 		}
 	}
 
-	composed.Messages = openai.F(messages)
+	composed.Messages = messages
 
 	return nil
 }
@@ -372,18 +373,18 @@ func (prvdr *OpenAIProvider) buildTools(
 		}
 
 		toolParam := openai.ChatCompletionToolParam{
-			Type: openai.F(openai.ChatCompletionToolTypeFunction),
-			Function: openai.F(openai.FunctionDefinitionParam{
-				Name:        openai.String(tool.Function.Name),
-				Description: openai.String(tool.Function.Description),
-				Parameters:  openai.F(parameters),
-			}),
+			Type: "function",
+			Function: openai.FunctionDefinitionParam{
+				Name:        tool.Function.Name,
+				Description: param.NewOpt(tool.Function.Description),
+				Parameters:  parameters,
+			},
 		}
 
 		toolsOut = append(toolsOut, toolParam)
 	}
 
-	openaiParams.Tools = openai.F(toolsOut)
+	openaiParams.Tools = toolsOut
 
 	return nil
 }
@@ -403,17 +404,17 @@ func (prvdr *OpenAIProvider) buildResponseFormat(
 		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
-	openaiParams.ResponseFormat = openai.F[openai.ChatCompletionNewParamsResponseFormatUnion](
-		openai.ResponseFormatJSONSchemaParam{
-			Type: openai.F(openai.ResponseFormatJSONSchemaTypeJSONSchema),
-			JSONSchema: openai.F(openai.ResponseFormatJSONSchemaJSONSchemaParam{
-				Name:        openai.F(prvdr.params.ResponseFormat.Name),
-				Description: openai.F(prvdr.params.ResponseFormat.Description),
-				Schema:      openai.F(prvdr.params.ResponseFormat.Schema),
-				Strict:      openai.Bool(prvdr.params.ResponseFormat.Strict),
-			}),
+	openaiParams.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+		OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
+			Type: "json_schema",
+			JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
+				Name:        prvdr.params.ResponseFormat.Name,
+				Description: param.NewOpt(prvdr.params.ResponseFormat.Description),
+				Schema:      prvdr.params.ResponseFormat.Schema,
+				Strict:      param.NewOpt(prvdr.params.ResponseFormat.Strict),
+			},
 		},
-	)
+	}
 
 	return nil
 }
@@ -444,7 +445,7 @@ func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
 
 	embedder := &OpenAIEmbedder{
 		params: params,
-		client: client,
+		client: &client,
 	}
 
 	embedder.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
@@ -464,10 +465,10 @@ func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
 
 		// Get embeddings from OpenAI
 		if response, err = client.Embeddings.New(context.TODO(), openai.EmbeddingNewParams{
-			Input:          openai.F[openai.EmbeddingNewParamsInputUnion](shared.UnionString(string(content))),
-			Model:          openai.F(openai.EmbeddingModelTextEmbedding3Large),
+			Input:          openai.EmbeddingNewParamsInputUnion{OfArrayOfStrings: []string{string(content)}},
+			Model:          openai.EmbeddingModelTextEmbeddingAda002,
 			Dimensions:     openai.Int(tweaker.GetQdrantDimension()),
-			EncodingFormat: openai.F(openai.EmbeddingNewParamsEncodingFormatFloat),
+			EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 		}); errnie.Error(err) != nil {
 			return err
 		}
@@ -529,12 +530,14 @@ func (embedder *OpenAIEmbedder) Close() error {
 
 func WithOpenAIEmbedderAPIKey(apiKey string) OpenAIEmbedderOption {
 	return func(embedder *OpenAIEmbedder) {
-		embedder.client = openai.NewClient(option.WithAPIKey(apiKey))
+		client := openai.NewClient(option.WithAPIKey(apiKey))
+		embedder.client = &client
 	}
 }
 
 func WithOpenAIEmbedderEndpoint(endpoint string) OpenAIEmbedderOption {
 	return func(embedder *OpenAIEmbedder) {
-		embedder.client = openai.NewClient(option.WithBaseURL(endpoint))
+		client := openai.NewClient(option.WithBaseURL(endpoint))
+		embedder.client = &client
 	}
 }
