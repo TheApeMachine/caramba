@@ -13,9 +13,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/theapemachine/amsh/utils"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/fs"
 )
@@ -126,7 +126,11 @@ func writeConfig() (err error) {
 
 	fullPath := home + "/." + projectName + "/" + cfgFile
 
-	if utils.CheckFileExists(fullPath) {
+	exists, err := afero.Exists(afero.NewOsFs(), fullPath)
+	if err != nil {
+		return err
+	}
+	if exists {
 		return
 	}
 
