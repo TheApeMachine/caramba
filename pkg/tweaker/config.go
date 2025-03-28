@@ -122,3 +122,15 @@ func GetQdrantCollection() string {
 func GetQdrantDimension() int64 {
 	return get("tools.qdrant.dimension", cfg.v().GetInt64, 0)
 }
+
+func GetQdrantHost() string {
+	return get("tools.qdrant.host", cfg.v().GetString, "")
+}
+
+func GetQdrantPort() int {
+	return get("tools.qdrant.port", cfg.v().GetInt, 0)
+}
+
+func GetQdrantAPIKey() string {
+	return get("tools.qdrant.api_key", cfg.v().GetString, "")
+}

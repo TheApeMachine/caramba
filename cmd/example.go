@@ -34,6 +34,8 @@ var (
 				wf = examples.NewChat()
 			case "code":
 				wf = examples.NewCode()
+			case "memory":
+				wf = examples.NewMemory()
 			default:
 				return fmt.Errorf("unknown example: %s", args[0])
 			}

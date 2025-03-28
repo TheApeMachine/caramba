@@ -84,6 +84,9 @@ settings:
 
 tools:
   qdrant:
+    host: localhost
+    port: 6334
+    api_key: "gKzti5QyA5KeLQYQFLA1T6pT3GYE9pza"
     collection: "longterm"
     dimension: 3072
 

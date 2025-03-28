@@ -1,217 +1,127 @@
-x-n8n: &service-n8n
-    image: n8nio/n8n:latest
-    env_file:
-        - .env
-    environment:
-        - DB_TYPE=postgresdb
-        - DB_POSTGRESDB_HOST=postgres
-        - DB_POSTGRESDB_USER=${POSTGRES_USER}
-        - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-        - N8N_DIAGNOSTICS_ENABLED=false
-        - N8N_PERSONALIZATION_ENABLED=false
-        - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
-        - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
-        - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL}
-        - N8N_HOST=${N8N_HOST}
-        - N8N_TEMPLATES_ENABLED=${N8N_TEMPLATES_ENABLED}
-        - N8N_PORT=${N8N_PORT}
-        - N8N_LISTEN_ADDRESS=${N8N_LISTEN_ADDRESS}
-        - N8N_DIAGNOSTICS_ENABLED=${N8N_DIAGNOSTICS_ENABLED}
-        - N8N_HIRING_BANNER_ENABLED=${N8N_HIRING_BANNER_ENABLED}
-        - N8N_REINSTALL_MISSING_PACKAGES=${N8N_REINSTALL_MISSING_PACKAGES}
-        - N8N_EXTERNAL_STORAGE_S3_HOST=${N8N_EXTERNAL_STORAGE_S3_HOST}
-        - N8N_EXTERNAL_STORAGE_S3_BUCKET_NAME=${N8N_EXTERNAL_STORAGE_S3_BUCKET_NAME}
-        - N8N_EXTERNAL_STORAGE_S3_BUCKET_REGION=${N8N_EXTERNAL_STORAGE_S3_BUCKET_REGION}
-        - N8N_EXTERNAL_STORAGE_S3_ACCESS_KEY=${N8N_EXTERNAL_STORAGE_S3_ACCESS_KEY}
-        - N8N_EXTERNAL_STORAGE_S3_ACCESS_SECRET=${N8N_EXTERNAL_STORAGE_S3_ACCESS_SECRET}
-        - NODE_FUNCTION_ALLOW_BUILTIN=${NODE_FUNCTION_ALLOW_BUILTIN}
-        - QUEUE_BULL_REDIS_HOST=${QUEUE_BULL_REDIS_HOST}
-        - QUEUE_BULL_REDIS_PORT=${QUEUE_BULL_REDIS_PORT}
-        - QUEUE_BULL_REDIS_PASSWORD=${QUEUE_BULL_REDIS_PASSWORD}
-        - QUEUE_BULL_REDIS_DB=${QUEUE_BULL_REDIS_DB}
-        - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
-        - N8N_ONBOARDING_FLOW_DISABLED=${N8N_ONBOARDING_FLOW_DISABLED}
-    links:
-        - postgres
-
 x-ollama: &service-ollama
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    ports:
-        - 11434:11434
-    volumes:
-        - ollama_storage:/root/.ollama
+  image: ollama/ollama:latest
+  container_name: ollama
+  restart: unless-stopped
+  ports:
+    - 11434:11434
+  volumes:
+    - ollama_storage:/root/.ollama
 
 x-init-ollama: &init-ollama
-    image: ollama/ollama:latest
-    container_name: ollama-pull-llama
-    volumes:
-        - ollama_storage:/root/.ollama
-    entrypoint: /bin/sh
-    command:
-        - "-c"
-        - "sleep 3; OLLAMA_HOST=ollama:11434 ollama pull llama3.2"
+  image: ollama/ollama:latest
+  container_name: ollama-pull-llama
+  volumes:
+    - ollama_storage:/root/.ollama
+  entrypoint: /bin/sh
+  command:
+    - "-c"
+    - "sleep 3; OLLAMA_HOST=ollama:11434 ollama pull llama3.2"
 
 services:
-    n8n:
-        <<: *service-n8n
-        container_name: n8n
-        restart: unless-stopped
-        ports:
-            - 5678:5678
-        volumes:
-            - n8n_storage:/home/node/.n8n
-            - ./n8n/backup:/backup
-            - ./shared:/data/shared
-            - /Users/theapemachine/go/src/github.com/fanfactory/sharepoint/extracted_documents/:/tmp/extracted
-            - ./n8n/backup/n8n-nodes-mcp-server:/home/node/.n8n/custom/n8n-nodes-mcp-server
-        depends_on:
-            postgres:
-                condition: service_healthy
-            n8n-import:
-                condition: service_completed_successfully
+  minio:
+    image: minio/minio
+    container_name: minio
+    env_file:
+      - .env
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
 
-    n8n-import:
-        <<: *service-n8n
-        container_name: n8n-import
-        entrypoint: /bin/sh
-        command:
-            - "-c"
-            - "n8n import:credentials --separate --input=/backup/credentials && n8n import:workflow --separate --input=/backup/workflows"
-        links:
-            - postgres
-        volumes:
-            - ./n8n/backup:/backup
-        depends_on:
-            postgres:
-                condition: service_healthy
+  qdrant:
+    image: qdrant/qdrant
+    container_name: qdrant
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - 6333:6333
+      - 6334:6334
+    volumes:
+      - qdrant_storage:/qdrant/storage
 
-    postgres:
-        image: postgres:16-alpine
-        restart: unless-stopped
-        environment:
-            - POSTGRES_USER
-            - POSTGRES_PASSWORD
-            - POSTGRES_DB
-        volumes:
-            - postgres_storage:/var/lib/postgresql/data
-        healthcheck:
-            test:
-                [
-                    "CMD-SHELL",
-                    "pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
-                ]
-            interval: 5s
-            timeout: 5s
-            retries: 10
+  redis:
+    image: redis
+    container_name: redis
+    ports:
+      - "6379:6379"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-    minio:
-        image: minio/minio
-        container_name: minio
-        env_file:
-            - .env
-        ports:
-            - "9000:9000"
-            - "9001:9001"
-        extra_hosts:
-            - "host.docker.internal:host-gateway"
-        environment:
-            - MINIO_ROOT_USER=${MINIO_USER}
-            - MINIO_ROOT_PASSWORD=${MINIO_PASSWORD}
-        command: server /data --console-address ":9001"
-        volumes:
-            - minio_data:/data
+  neo4j:
+    image: neo4j:latest
+    healthcheck:
+      test: wget http://localhost:7687 || exit 1
+      interval: 1s
+      timeout: 10s
+      retries: 20
+      start_period: 3s
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - NEO4J_AUTH=neo4j/securepassword
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+      - NEO4J_PLUGINS=["apoc"]
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_plugins:/plugins
 
-    qdrant:
-        image: qdrant/qdrant
-        container_name: qdrant
-        restart: unless-stopped
-        env_file:
-            - .env
-        environment:
-            - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
-        extra_hosts:
-            - "host.docker.internal:host-gateway"
-        ports:
-            - 6333:6333
-            - 6334:6334
-        volumes:
-            - qdrant_storage:/qdrant/storage
+  ollama-cpu:
+    profiles: ["cpu"]
+    <<: *service-ollama
 
-    redis:
-        image: redis
-        container_name: redis
-        ports:
-            - "6379:6379"
-        extra_hosts:
-            - "host.docker.internal:host-gateway"
+  ollama-gpu:
+    profiles: ["gpu-nvidia"]
+    <<: *service-ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
-    neo4j:
-        image: neo4j:latest
-        healthcheck:
-            test: wget http://localhost:7687 || exit 1
-            interval: 1s
-            timeout: 10s
-            retries: 20
-            start_period: 3s
-        ports:
-            - "7474:7474"
-            - "7687:7687"
-        extra_hosts:
-            - "host.docker.internal:host-gateway"
-        environment:
-            - NEO4J_AUTH=neo4j/securepassword
-            - NEO4J_apoc_export_file_enabled=true
-            - NEO4J_apoc_import_file_enabled=true
-            - NEO4J_apoc_import_file_use__neo4j__config=true
-            - NEO4J_PLUGINS=["apoc"]
-        volumes:
-            - neo4j_data:/data
-            - neo4j_logs:/logs
-            - neo4j_plugins:/plugins
+  ollama-pull-llama-cpu:
+    profiles: ["cpu"]
+    <<: *init-ollama
+    depends_on:
+      - ollama-cpu
 
-    ollama-cpu:
-        profiles: ["cpu"]
-        <<: *service-ollama
+  ollama-pull-llama-gpu:
+    profiles: ["gpu-nvidia"]
+    <<: *init-ollama
+    depends_on:
+      - ollama-gpu
 
-    ollama-gpu:
-        profiles: ["gpu-nvidia"]
-        <<: *service-ollama
-        deploy:
-            resources:
-                reservations:
-                    devices:
-                        - driver: nvidia
-                          count: 1
-                          capabilities: [gpu]
-
-    ollama-pull-llama-cpu:
-        profiles: ["cpu"]
-        <<: *init-ollama
-        depends_on:
-            - ollama-cpu
-
-    ollama-pull-llama-gpu:
-        profiles: ["gpu-nvidia"]
-        <<: *init-ollama
-        depends_on:
-            - ollama-gpu
-
-    browserless:
-        image: ghcr.io/browserless/chromium
-        ports:
-            - "3000:3000"
-        environment:
-            - TOKEN=6R0W53R135510
+  browserless:
+    image: ghcr.io/browserless/chromium
+    ports:
+      - "3000:3000"
+    environment:
+      - TOKEN=6R0W53R135510
 
 volumes:
-    n8n_storage:
-    postgres_storage:
-    ollama_storage:
-    minio_data:
-    qdrant_storage:
-    neo4j_data:
-    neo4j_logs:
-    neo4j_import:
-    neo4j_plugins:
+  ollama_storage:
+  minio_data:
+  qdrant_storage:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  neo4j_plugins:

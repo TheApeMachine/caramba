@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"io"
 	"math"
-	"os"
-	"strconv"
 	"time"
+
+	"slices"
 
 	sdk "github.com/qdrant/go-client/qdrant"
 	"github.com/theapemachine/caramba/pkg/datura"
@@ -16,27 +15,30 @@ import (
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
+	"github.com/theapemachine/caramba/pkg/workflow"
 )
+
+type Document struct {
+	Content  string         `json:"content"`
+	Metadata map[string]any `json:"metadata"`
+}
 
 type Qdrant struct {
 	client     *sdk.Client
 	collection string
 	buffer     *stream.Buffer
-	embedder   io.ReadWriteCloser
+	embedder   *provider.OpenAIEmbedder
 }
 
 func NewQdrant() *Qdrant {
 	errnie.Debug("memory.NewQdrant")
 
-	port, err := strconv.Atoi(os.Getenv("QDRANT_PORT"))
-	if errnie.Error(err) != nil {
-		return nil
-	}
-
 	client, err := sdk.NewClient(&sdk.Config{
-		Host:   os.Getenv("QDRANT_HOST"),
-		Port:   port,
-		APIKey: os.Getenv("QDRANT_API_KEY"),
+		Host:                   tweaker.GetQdrantHost(),
+		Port:                   tweaker.GetQdrantPort(),
+		APIKey:                 tweaker.GetQdrantAPIKey(),
+		UseTLS:                 false,
+		SkipCompatibilityCheck: true,
 	})
 
 	if err != nil {
@@ -44,9 +46,38 @@ func NewQdrant() *Qdrant {
 		return nil
 	}
 
-	// Initialize embedder based on configuration
-	// Default to OpenAI embedder if not specified
-	embedder := provider.NewOpenAIEmbedder(os.Getenv("OPENAI_API_KEY"), "")
+	// Check if collection exists, if not create it
+	collections, err := client.ListCollections(context.Background())
+	if err != nil {
+		errnie.Error(err)
+		return nil
+	}
+
+	collectionExists := slices.Contains(collections, tweaker.GetQdrantCollection())
+
+	if !collectionExists {
+		// OpenAI ada-002 embeddings are 1536-dimensional vectors
+		vectorSize := uint64(tweaker.GetQdrantDimension())
+		distance := sdk.Distance_Cosine
+
+		err = client.CreateCollection(context.Background(), &sdk.CreateCollection{
+			CollectionName: tweaker.GetQdrantCollection(),
+			VectorsConfig: &sdk.VectorsConfig{
+				Config: &sdk.VectorsConfig_Params{
+					Params: &sdk.VectorParams{
+						Size:     vectorSize,
+						Distance: distance,
+					},
+				},
+			},
+		})
+		if err != nil {
+			errnie.Error(err)
+			return nil
+		}
+	}
+
+	embedder := provider.NewOpenAIEmbedder()
 
 	qdrant := &Qdrant{
 		client:     client,
@@ -55,117 +86,86 @@ func NewQdrant() *Qdrant {
 		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
 			errnie.Debug("memory.Qdrant.buffer")
 
-			// Check for documents to write
+			var docs []Document
+
+			// Handle document storage
 			if documents := datura.GetMetaValue[string](artifact, "documents"); documents != "" {
-				var docs []struct {
-					Content  string                 `json:"content"`
-					Metadata map[string]interface{} `json:"metadata"`
-				}
-				if err := json.Unmarshal([]byte(documents), &docs); err != nil {
+				if err = json.Unmarshal([]byte(documents), &docs); err != nil {
 					return errnie.Error(err)
 				}
 
-				points := make([]*sdk.PointStruct, len(docs))
-				for i, doc := range docs {
-					// Generate embeddings for the document content
-					if _, err = embedder.Write([]byte(doc.Content)); err != nil {
+				points := make([]*sdk.PointStruct, 0)
+
+				for _, doc := range docs {
+					docArtifact := datura.New(
+						datura.WithPayload([]byte(doc.Content)),
+					)
+
+					if err = workflow.NewFlipFlop(docArtifact, embedder); err != nil {
 						return errnie.Error(err)
 					}
 
-					// Read the embeddings
-					embeddings := make([]byte, 1024*1024)
-					n, err := embedder.Read(embeddings)
-					if err != nil && err != io.EOF {
+					// Get embeddings directly as float32 slice
+					vectors, err := docArtifact.DecryptPayload()
+					if err != nil {
 						return errnie.Error(err)
 					}
 
-					// Convert embeddings bytes to float32 slice
-					vectors := make([]float32, n/4)
-					for i := 0; i < n; i += 4 {
-						bits := binary.LittleEndian.Uint32(embeddings[i : i+4])
-						vectors[i/4] = math.Float32frombits(bits)
+					vectorsFloat := make([]float32, len(vectors)/4)
+					for i := 0; i < len(vectors); i += 4 {
+						vectorsFloat[i/4] = math.Float32frombits(binary.LittleEndian.Uint32(vectors[i : i+4]))
 					}
 
-					// Create point with unique ID and metadata
-					points[i] = &sdk.PointStruct{
+					points = append(points, &sdk.PointStruct{
 						Id:      sdk.NewIDNum(uint64(time.Now().UnixNano())),
-						Vectors: sdk.NewVectors(vectors...),
-						Payload: sdk.NewValueMap(doc.Metadata),
-					}
+						Vectors: sdk.NewVectors(vectorsFloat...),
+						Payload: sdk.NewValueMap(map[string]any{
+							"content": doc.Content,
+						}),
+					})
 				}
 
-				// Store the points in Qdrant
 				_, err = client.Upsert(context.Background(), &sdk.UpsertPoints{
 					CollectionName: tweaker.GetQdrantCollection(),
 					Points:         points,
+				})
+				return errnie.Error(err)
+			}
+
+			// Handle search query
+			if question := datura.GetMetaValue[string](artifact, "question"); question != "" {
+				if err = workflow.NewFlipFlop(artifact, embedder); err != nil {
+					return errnie.Error(err)
+				}
+
+				// Get embeddings directly as float32 slice
+				vectors := datura.GetMetaValue[[]float32](artifact, "embeddings")
+
+				limit := uint64(5)
+				searchResult, err := client.Query(context.Background(), &sdk.QueryPoints{
+					CollectionName: tweaker.GetQdrantCollection(),
+					Query:          sdk.NewQuery(vectors...),
+					Limit:          &limit,
+					WithPayload: &sdk.WithPayloadSelector{
+						SelectorOptions: &sdk.WithPayloadSelector_Enable{
+							Enable: true,
+						},
+					},
 				})
 				if err != nil {
 					return errnie.Error(err)
 				}
 
-				// Return early since this was a write operation
-				return nil
-			}
-
-			// Get the question from the artifact metadata
-			question := datura.GetMetaValue[string](artifact, "question")
-			if question == "" {
-				return nil
-			}
-
-			// Write the question to the embedder to get embeddings
-			if _, err = embedder.Write([]byte(question)); err != nil {
-				return errnie.Error(err)
-			}
-
-			// Read the embeddings from the embedder
-			embeddings := make([]byte, 1024*1024) // Adjust buffer size as needed
-			n, err := embedder.Read(embeddings)
-			if err != nil && err != io.EOF {
-				return errnie.Error(err)
-			}
-
-			// Convert embeddings bytes directly to float32 slice
-			vectors := make([]float32, n/4)
-			for i := 0; i < n; i += 4 {
-				bits := binary.LittleEndian.Uint32(embeddings[i : i+4])
-				vectors[i/4] = math.Float32frombits(bits)
-			}
-
-			// Perform semantic search in Qdrant
-			limit := uint64(5)
-			searchResult, err := client.Query(context.Background(), &sdk.QueryPoints{
-				CollectionName: tweaker.GetQdrantCollection(),
-				Query:          sdk.NewQuery(vectors...),
-				Limit:          &limit,
-				WithPayload: &sdk.WithPayloadSelector{
-					SelectorOptions: &sdk.WithPayloadSelector_Enable{
-						Enable: true,
-					},
-				},
-				WithVectors: &sdk.WithVectorsSelector{
-					SelectorOptions: &sdk.WithVectorsSelector_Enable{
-						Enable: true,
-					},
-				},
-			})
-
-			if err != nil {
-				return errnie.Error(err)
-			}
-
-			// Process search results
-			var results []map[string]any
-			for _, point := range searchResult {
-				result := map[string]any{
-					"score":   point.Score,
-					"payload": point.Payload,
+				var results []map[string]any
+				for _, point := range searchResult {
+					results = append(results, map[string]any{
+						"score":   point.Score,
+						"payload": point.Payload,
+					})
 				}
-				results = append(results, result)
-			}
 
-			// Store results in artifact metadata
-			artifact.SetMetaValue("output", results)
+				artifact.SetMetaValue("output", results)
+			}
 
 			return nil
 		}),

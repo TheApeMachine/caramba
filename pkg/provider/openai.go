@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/shared"
-	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
@@ -38,8 +38,7 @@ This can also be used for local AI, since most will follow the OpenAI API format
 func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 	errnie.Debug("provider.NewOpenAIProvider")
 
-	apiKey := core.NewConfig().OpenAIAPIKey
-	errnie.Debug("provider.NewOpenAIProvider", "apiKey", apiKey)
+	apiKey := os.Getenv("OPENAI_API_KEY")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	params := &Params{}
@@ -421,29 +420,85 @@ func (prvdr *OpenAIProvider) buildResponseFormat(
 
 /*
 OpenAIEmbedder implements an LLM provider that connects to OpenAI's API.
-It supports regular chat completions, tool calling, and structured outputs.
+It supports embedding generation for text inputs.
 */
 type OpenAIEmbedder struct {
-	params   *Params
-	apiKey   string
-	endpoint string
-	client   *openai.Client
+	client     *openai.Client
+	buffer     *stream.Buffer
+	params     *Params
+	embeddings []float32
 }
+
+type OpenAIEmbedderOption func(*OpenAIEmbedder)
 
 /*
 NewOpenAIEmbedder creates a new OpenAI embedder with the given API key and endpoint.
 If apiKey is empty, it will try to read from the OPENAI_API_KEY environment variable.
 This can also be used for local AI, since most will follow the OpenAI API format.
 */
-func NewOpenAIEmbedder(apiKey string, endpoint string) *OpenAIEmbedder {
+func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
 	errnie.Debug("provider.NewOpenAIEmbedder")
 
-	return &OpenAIEmbedder{
-		params:   &Params{},
-		apiKey:   apiKey,
-		endpoint: endpoint,
-		client:   openai.NewClient(option.WithAPIKey(apiKey)),
+	params := &Params{}
+	client := openai.NewClient(option.WithAPIKey(os.Getenv("OPENAI_API_KEY")))
+
+	embedder := &OpenAIEmbedder{
+		params: params,
+		client: client,
 	}
+
+	embedder.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
+		errnie.Debug("provider.OpenAIEmbedder.buffer.fn")
+
+		var content []byte
+
+		if content, err = artifact.DecryptPayload(); err != nil {
+			return errnie.Error(err)
+		}
+
+		if len(content) == 0 {
+			return errnie.Error(errors.New("content is empty"))
+		}
+
+		var response *openai.CreateEmbeddingResponse
+
+		// Get embeddings from OpenAI
+		if response, err = client.Embeddings.New(context.TODO(), openai.EmbeddingNewParams{
+			Input:          openai.F[openai.EmbeddingNewParamsInputUnion](shared.UnionString(string(content))),
+			Model:          openai.F(openai.EmbeddingModelTextEmbedding3Large),
+			Dimensions:     openai.Int(tweaker.GetQdrantDimension()),
+			EncodingFormat: openai.F(openai.EmbeddingNewParamsEncodingFormatFloat),
+		}); errnie.Error(err) != nil {
+			return err
+		}
+
+		if len(response.Data) == 0 {
+			return errnie.Error(errors.New("no embeddings returned"))
+		}
+
+		// Convert float64 embeddings to float32
+		embeddings := response.Data[0].Embedding
+		embedder.embeddings = make([]float32, len(embeddings))
+		for i, v := range embeddings {
+			embedder.embeddings[i] = float32(v)
+		}
+
+		// Convert embeddings to bytes and store in artifact payload
+		embeddingsBytes := make([]byte, len(embedder.embeddings)*4)
+		
+		for i, v := range embedder.embeddings {
+			binary.LittleEndian.PutUint32(embeddingsBytes[i*4:], math.Float32bits(v))
+		}
+
+		datura.WithPayload(embeddingsBytes)(artifact)
+		return nil
+	})
+
+	for _, opt := range opts {
+		opt(embedder)
+	}
+
+	return embedder
 }
 
 /*
@@ -451,20 +506,7 @@ Read implements the io.Reader interface.
 */
 func (embedder *OpenAIEmbedder) Read(p []byte) (n int, err error) {
 	errnie.Debug("provider.OpenAIEmbedder.Read")
-
-	if embedder.params.Metadata == nil {
-		return 0, nil
-	}
-
-	// Retrieve stored embeddings from metadata
-	embeddings, ok := embedder.params.Metadata["embeddings"].([]byte)
-	if !ok {
-		return 0, nil
-	}
-
-	// Copy embeddings to output buffer
-	n = copy(p, embeddings)
-	return n, nil
+	return embedder.buffer.Read(p)
 }
 
 /*
@@ -472,49 +514,27 @@ Write implements the io.Writer interface.
 */
 func (embedder *OpenAIEmbedder) Write(p []byte) (n int, err error) {
 	errnie.Debug("provider.OpenAIEmbedder.Write")
-
-	if len(embedder.params.Messages) == 0 {
-		return len(p), nil
-	}
-
-	message := embedder.params.Messages[0]
-	content := message.Content
-
-	response, err := embedder.client.Embeddings.New(context.TODO(), openai.EmbeddingNewParams{
-		Input:          openai.F[openai.EmbeddingNewParamsInputUnion](shared.UnionString(content)),
-		Model:          openai.F(openai.EmbeddingModelTextEmbedding3Large),
-		Dimensions:     openai.Int(tweaker.GetQdrantDimension()), // Standard OpenAI embedding dimensions
-		EncodingFormat: openai.F(openai.EmbeddingNewParamsEncodingFormatFloat),
-	})
-
-	if err != nil {
-		return len(p), errnie.Error(err)
-	}
-
-	if len(response.Data) == 0 {
-		return len(p), errnie.Error(errors.New("no embeddings returned"))
-	}
-
-	// Convert embeddings to bytes for transport
-	embeddings := response.Data[0].Embedding
-	buf := make([]byte, len(embeddings)*4)
-	for i, v := range embeddings {
-		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(float32(v)))
-	}
-
-	// Store embeddings in metadata for retrieval
-	embedder.params.Metadata = map[string]any{
-		"embeddings": buf,
-	}
-
-	return len(p), nil
+	return embedder.buffer.Write(p)
 }
 
 /*
-Close cleans up any resources.
+Close implements io.Closer for OpenAIEmbedder.
 */
 func (embedder *OpenAIEmbedder) Close() error {
 	errnie.Debug("provider.OpenAIEmbedder.Close")
 	embedder.params = nil
-	return nil
+	embedder.embeddings = nil
+	return embedder.buffer.Close()
+}
+
+func WithOpenAIEmbedderAPIKey(apiKey string) OpenAIEmbedderOption {
+	return func(embedder *OpenAIEmbedder) {
+		embedder.client = openai.NewClient(option.WithAPIKey(apiKey))
+	}
+}
+
+func WithOpenAIEmbedderEndpoint(endpoint string) OpenAIEmbedderOption {
+	return func(embedder *OpenAIEmbedder) {
+		embedder.client = openai.NewClient(option.WithBaseURL(endpoint))
+	}
 }

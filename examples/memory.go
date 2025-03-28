@@ -92,7 +92,7 @@ func (memory *Memory) Run() (err error) {
 				provider.NewMessage(
 					provider.WithUserRole(
 						"Danny",
-						"Research the state of the art in AI agents, then formulate a plan for a new AI agent that can help me achieve my goals.",
+						"Test out the memory tool by storing a document and relationship.",
 					),
 				),
 			),
