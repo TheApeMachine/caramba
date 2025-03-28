@@ -38,28 +38,7 @@ func NewAzure() *Azure {
 			return nil
 		}),
 		client: client,
-		Schema: provider.NewTool(
-			provider.WithFunction(
-				"azure",
-				"A tool for interacting with Azure DevOps Boards and Wikis.",
-			),
-			provider.WithProperty(
-				"operation",
-				"string",
-				"The operation to perform.",
-				[]any{
-					"create_work_item",
-					"update_work_item",
-					"get_work_item",
-					"list_work_items",
-					"create_wiki_page",
-					"update_wiki_page",
-					"get_wiki_page",
-					"list_wiki_pages",
-				},
-			),
-			provider.WithRequired("operation"),
-		),
+		Schema: GetToolSchema("azure"),
 	}
 }
 

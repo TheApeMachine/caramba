@@ -28,31 +28,7 @@ func NewSystemTool() *SystemTool {
 
 			return nil
 		}),
-		Schema: provider.NewTool(
-			provider.WithFunction(
-				"system",
-				"A tool for low-level system operations.",
-			),
-			provider.WithProperty(
-				"command",
-				"string",
-				"The top-level command to execute.",
-				[]any{"inspect", "send"},
-			),
-			provider.WithProperty(
-				"inspect_args",
-				"array",
-				"Arguments for the inspect command.",
-				[]any{""},
-			),
-			provider.WithProperty(
-				"send_args",
-				"array",
-				"The arguments to pass to the command.",
-				[]any{},
-			),
-			provider.WithRequired("command"),
-		),
+		Schema:   GetToolSchema("system"),
 		registry: registry,
 	}
 }

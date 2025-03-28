@@ -38,39 +38,7 @@ func NewGithub() *Github {
 			return nil
 		}),
 		client: client,
-		Schema: provider.NewTool(
-			provider.WithFunction(
-				"github",
-				"A tool for interacting with GitHub.",
-			),
-			provider.WithProperty(
-				"operation",
-				"string",
-				"The operation to perform.",
-				[]any{
-					"get_repositories",
-					"get_repository",
-					"create_repository",
-					"list_branches",
-					"get_contents",
-					"list_pull_requests",
-					"get_pull_request",
-					"create_pull_request",
-					"update_pull_request",
-					"list_issues",
-					"get_issue",
-					"create_issue",
-					"update_issue",
-					"create_pr_comment",
-					"list_pr_comments",
-					"create_pr_review",
-					"list_pr_reviews",
-					"create_review_comment",
-					"list_review_comments",
-				},
-			),
-			provider.WithRequired("operation"),
-		),
+		Schema: GetToolSchema("github"),
 	}
 }
 

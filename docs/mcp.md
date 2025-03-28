@@ -77,7 +77,7 @@ The MCP server is initialized with:
 
 For SSE connections:
 
-- Base URL: http://localhost:8080
+- Base URL: [http://localhost:8080](http://localhost:8080)
 - Authentication: Handled through request headers
 
 ## Tool Execution

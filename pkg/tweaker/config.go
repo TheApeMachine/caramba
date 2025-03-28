@@ -134,3 +134,18 @@ func GetQdrantPort() int {
 func GetQdrantAPIKey() string {
 	return get("tools.qdrant.api_key", cfg.v().GetString, "")
 }
+
+// Get returns a string value from the config with a default value
+func Get(key string, defaultValue string) string {
+	return get(key, cfg.v().GetString, defaultValue)
+}
+
+// GetStringMap returns a map[string]any from the config
+func GetStringMap(key string) map[string]any {
+	return cfg.v().GetStringMap(key)
+}
+
+// GetStringSlice returns a []string from the config
+func GetStringSlice(key string) []string {
+	return cfg.v().GetStringSlice(key)
+}

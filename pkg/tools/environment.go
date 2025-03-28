@@ -57,24 +57,7 @@ func NewEnvironment() *Environment {
 		}),
 		builder: builder,
 		runner:  runner,
-		Schema: provider.NewTool(
-			provider.WithFunction(
-				"environment",
-				"A tool which gives you a full Linux terminal-based environment to interact with. You are directly connected to stdin, stdout, and stderr.",
-			),
-			provider.WithProperty(
-				"command",
-				"string",
-				"A valid bash command to execute in the environment.",
-				[]any{},
-			),
-			provider.WithProperty(
-				"input",
-				"string",
-				"Valid input to pass to the environment, used for interactive sessions.",
-				[]any{},
-			),
-		),
+		Schema:  GetToolSchema("environment"),
 	}
 
 	return environment

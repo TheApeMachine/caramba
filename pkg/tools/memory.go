@@ -110,42 +110,7 @@ func NewMemoryTool(stores ...io.ReadWriteCloser) *MemoryTool {
 			return nil
 		}),
 		stores: storeMap,
-		Schema: provider.NewTool(
-			provider.WithFunction(
-				"memory",
-				"A tool which can interact with various memory stores through a unified interface.",
-			),
-			provider.WithProperty(
-				"operation",
-				"string",
-				"The operation to perform on the memory.",
-				[]any{"read", "write"},
-			),
-			provider.WithProperty(
-				"question",
-				"string",
-				"A question which is used to retrieve information from a vector database.",
-				[]any{},
-			),
-			provider.WithProperty(
-				"keywords",
-				"string",
-				"A comma separated list of keywords which are used to retrieve information from all memory stores.",
-				[]any{},
-			),
-			provider.WithProperty(
-				"cypher",
-				"string",
-				"A Cypher query which is used to retrieve from or store to a graph database. Useful when you're dealing with relational data.",
-				[]any{},
-			),
-			provider.WithProperty(
-				"documents",
-				"string",
-				`A JSON array of documents to store in the vector database. Follow this format: [{"content": "...", "metadata": {"<key>": "<value>", ...}, ...}]`,
-				[]any{},
-			),
-		),
+		Schema: GetToolSchema("memory"),
 	}
 }
 

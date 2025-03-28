@@ -38,30 +38,7 @@ func NewTrengo() *Trengo {
 			return nil
 		}),
 		client: client,
-		Schema: provider.NewTool(
-			provider.WithFunction(
-				"trengo",
-				"A tool for interacting with Trengo.",
-			),
-			provider.WithProperty(
-				"operation",
-				"string",
-				"The operation to perform.",
-				[]any{
-					"list_tickets",
-					"create_ticket",
-					"assign_ticket",
-					"close_ticket",
-					"reopen_ticket",
-					"list_labels",
-					"get_label",
-					"create_label",
-					"update_label",
-					"delete_label",
-				},
-			),
-			provider.WithRequired("operation"),
-		),
+		Schema: GetToolSchema("trengo"),
 	}
 }
 

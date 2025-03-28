@@ -485,7 +485,7 @@ func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
 
 		// Convert embeddings to bytes and store in artifact payload
 		embeddingsBytes := make([]byte, len(embedder.embeddings)*4)
-		
+
 		for i, v := range embedder.embeddings {
 			binary.LittleEndian.PutUint32(embeddingsBytes[i*4:], math.Float32bits(v))
 		}

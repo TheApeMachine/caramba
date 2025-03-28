@@ -47,23 +47,7 @@ func NewBrowser() *Browser {
 
 			return nil
 		}),
-		Schema: provider.NewTool(
-			provider.WithFunction(
-				"browser",
-				"A fully featured Chrome browser.",
-			),
-			provider.WithProperty("url", "string", "The URL to navigate to.", []any{}),
-			provider.WithProperty(
-				"operation",
-				"string",
-				"The operation to perform on the page you are navigating to.",
-				[]any{
-					"get_content",
-					"get_links",
-				},
-			),
-			provider.WithRequired("url", "operation"),
-		),
+		Schema:   GetToolSchema("browser"),
 		instance: instance,
 	}
 }

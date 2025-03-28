@@ -89,6 +89,176 @@ tools:
     api_key: "gKzti5QyA5KeLQYQFLA1T6pT3GYE9pza"
     collection: "longterm"
     dimension: 3072
+  schemas:
+    memory:
+      function:
+        name: "memory"
+        description: "A tool which can interact with various memory stores through a unified interface."
+      properties:
+        operation:
+          type: "string"
+          description: "The operation to perform on the memory."
+          options: ["read", "write"]
+        question:
+          type: "string"
+          description: "A question which is used to retrieve information from a vector database."
+        keywords:
+          type: "string"
+          description: "A comma separated list of keywords which are used to retrieve information from all memory stores."
+        cypher:
+          type: "string"
+          description: "A Cypher query which is used to retrieve from or store to a graph database. Useful when you're dealing with relational data."
+        documents:
+          type: "string"
+          description: 'A JSON array of documents to store in the vector database. Follow this format: [{"content": "...", "metadata": {"<key>": "<value>", ...}, ...}]'
+    environment:
+      function:
+        name: "environment"
+        description: "A tool which gives you a full Linux terminal-based environment to interact with. You are directly connected to stdin, stdout, and stderr."
+      properties:
+        command:
+          type: "string"
+          description: "A valid bash command to execute in the environment."
+        input:
+          type: "string"
+          description: "Valid input to pass to the environment, used for interactive sessions."
+    editor:
+      function:
+        name: "editor"
+        description: "A tool which can edit files in the workspace with special support for code editing."
+      properties:
+        file:
+          type: "string"
+          description: "The file to edit."
+        operation:
+          type: "string"
+          description: "The operation to perform."
+          options:
+            [
+              "read",
+              "write",
+              "delete",
+              "replace_lines",
+              "insert_lines",
+              "delete_lines",
+              "read_lines",
+            ]
+        content:
+          type: "string"
+          description: "The content to write to the file. For line operations, this can be multiple lines separated by newlines."
+        start_line:
+          type: "number"
+          description: "The line number to start the operation from (1-based indexing)."
+        end_line:
+          type: "number"
+          description: "The line number to end the operation at (1-based indexing, inclusive)."
+        line_number:
+          type: "number"
+          description: "The line number for single-line operations like insertion (1-based indexing)."
+      required: ["file", "operation"]
+    browser:
+      function:
+        name: "browser"
+        description: "A fully featured Chrome browser."
+      properties:
+        url:
+          type: "string"
+          description: "The URL to navigate to."
+        operation:
+          type: "string"
+          description: "The operation to perform on the page you are navigating to."
+          options: ["get_content", "get_links"]
+      required: ["url", "operation"]
+    github:
+      function:
+        name: "github"
+        description: "A tool for interacting with GitHub."
+      properties:
+        operation:
+          type: "string"
+          description: "The operation to perform."
+          options:
+            [
+              "get_repositories",
+              "get_repository",
+              "create_repository",
+              "list_branches",
+              "get_contents",
+              "list_pull_requests",
+              "get_pull_request",
+              "create_pull_request",
+              "update_pull_request",
+              "list_issues",
+              "get_issue",
+              "create_issue",
+              "update_issue",
+              "create_pr_comment",
+              "list_pr_comments",
+              "create_pr_review",
+              "list_pr_reviews",
+              "create_review_comment",
+              "list_review_comments",
+            ]
+      required: ["operation"]
+    azure:
+      function:
+        name: "azure"
+        description: "A tool for interacting with Azure DevOps Boards and Wikis."
+      properties:
+        operation:
+          type: "string"
+          description: "The operation to perform."
+          options:
+            [
+              "create_work_item",
+              "update_work_item",
+              "get_work_item",
+              "list_work_items",
+              "create_wiki_page",
+              "update_wiki_page",
+              "get_wiki_page",
+              "list_wiki_pages",
+            ]
+      required: ["operation"]
+    trengo:
+      function:
+        name: "trengo"
+        description: "A tool for interacting with Trengo."
+      properties:
+        operation:
+          type: "string"
+          description: "The operation to perform."
+          options:
+            [
+              "list_tickets",
+              "create_ticket",
+              "assign_ticket",
+              "close_ticket",
+              "reopen_ticket",
+              "list_labels",
+              "get_label",
+              "create_label",
+              "update_label",
+              "delete_label",
+            ]
+      required: ["operation"]
+    system:
+      function:
+        name: "system"
+        description: "A tool for low-level system operations."
+      properties:
+        command:
+          type: "string"
+          description: "The top-level command to execute."
+          options: ["inspect", "send"]
+        inspect_args:
+          type: "array"
+          description: "Arguments for the inspect command."
+          options: [""]
+        send_args:
+          type: "array"
+          description: "The arguments to pass to the command."
+      required: ["command"]
 
 templates:
   memory: |

@@ -47,57 +47,7 @@ func NewEditorTool() *EditorTool {
 			return nil
 		}),
 		client: client,
-		Schema: provider.NewTool(
-			provider.WithFunction(
-				"editor",
-				"A tool which can edit files in the workspace with special support for code editing.",
-			),
-			provider.WithProperty(
-				"file",
-				"string",
-				"The file to edit.",
-				[]any{},
-			),
-			provider.WithProperty(
-				"operation",
-				"string",
-				"The operation to perform.",
-				[]any{
-					"read",
-					"write",
-					"delete",
-					"replace_lines",
-					"insert_lines",
-					"delete_lines",
-					"read_lines",
-				},
-			),
-			provider.WithProperty(
-				"content",
-				"string",
-				"The content to write to the file. For line operations, this can be multiple lines separated by newlines.",
-				[]any{},
-			),
-			provider.WithProperty(
-				"start_line",
-				"number",
-				"The line number to start the operation from (1-based indexing).",
-				[]any{},
-			),
-			provider.WithProperty(
-				"end_line",
-				"number",
-				"The line number to end the operation at (1-based indexing, inclusive).",
-				[]any{},
-			),
-			provider.WithProperty(
-				"line_number",
-				"number",
-				"The line number for single-line operations like insertion (1-based indexing).",
-				[]any{},
-			),
-			provider.WithRequired("file", "operation"),
-		),
+		Schema: GetToolSchema("editor"),
 	}
 }
 
