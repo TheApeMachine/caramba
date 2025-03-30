@@ -11,6 +11,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
+func init() {
+	provider.RegisterTool("system")
+}
+
 type SystemTool struct {
 	buffer   *stream.Buffer
 	Schema   *provider.Tool

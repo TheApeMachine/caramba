@@ -181,7 +181,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 	msg.ToolCalls = make([]ToolCall, 0, len(toolCalls))
 
 	for _, toolCall := range toolCalls {
-		errnie.Info("toolCall", "tool", toolCall.Function.Name)
+		errnie.Info("toolCall", "tool", toolCall.Function.Name, "id", toolCall.ID)
 
 		msg.ToolCalls = append(msg.ToolCalls, ToolCall{
 			ID:   toolCall.ID,
@@ -307,6 +307,8 @@ func (prvdr *OpenAIProvider) buildMessages(
 				})
 			}
 
+			errnie.Info("toolCalls", "toolCalls", toolCalls)
+
 			msg := openai.AssistantMessage(message.Content)
 			if len(toolCalls) > 0 {
 				msg = openai.ChatCompletionMessageParamUnion{
@@ -322,7 +324,15 @@ func (prvdr *OpenAIProvider) buildMessages(
 
 			messages = append(messages, msg)
 		case "tool":
-			messages = append(messages, openai.ToolMessage(message.Reference, message.Content))
+			messages = append(messages, openai.ChatCompletionMessageParamUnion{
+				OfTool: &openai.ChatCompletionToolMessageParam{
+					Content: openai.ChatCompletionToolMessageParamContentUnion{
+						OfString: param.NewOpt(message.Content),
+					},
+					ToolCallID: message.Reference,
+					Role:       "tool",
+				},
+			})
 		default:
 			fmt.Println(message.Role, message.Content)
 			return errnie.Error(errors.New("unknown message role"))
@@ -359,17 +369,27 @@ func (prvdr *OpenAIProvider) buildTools(
 		properties := make(map[string]any)
 
 		for _, property := range tool.Function.Parameters.Properties {
-			properties[property.Name] = map[string]any{
+			propDef := map[string]any{
 				"type":        property.Type,
 				"description": property.Description,
-				"enum":        property.Enum,
 			}
+			if len(property.Enum) > 0 {
+				propDef["enum"] = property.Enum
+			}
+			properties[property.Name] = propDef
 		}
 
+		// Ensure we always have a valid parameters object that matches OpenAI's schema
 		parameters := openai.FunctionParameters{
 			"type":       "object",
 			"properties": properties,
-			"required":   tool.Function.Parameters.Required,
+		}
+
+		// Only include required if it has values
+		if len(tool.Function.Parameters.Required) > 0 {
+			parameters["required"] = tool.Function.Parameters.Required
+		} else {
+			parameters["required"] = []string{}
 		}
 
 		toolParam := openai.ChatCompletionToolParam{

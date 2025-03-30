@@ -60,14 +60,20 @@ func TestRead(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	Convey("Given a pipeline with components that produce data", t, func() {
-		c1 := bytes.NewBuffer([]byte{})
+		c1 := bytes.NewBuffer([]byte("data from first"))
 		c2 := bytes.NewBuffer([]byte{})
+		c3 := bytes.NewBuffer([]byte{})
+		c4 := bytes.NewBuffer([]byte{})
 
-		pipeline := NewPipeline(c1, c2)
-		n, err := pipeline.Write([]byte("data from first"))
+		pipeline := NewPipeline(c2, c3)
+		n, err := io.Copy(pipeline, c1)
 		So(err, ShouldBeNil)
 		So(n, ShouldEqual, len("data from first"))
-		So(c2.String(), ShouldEqual, "data from first")
+
+		n, err = io.Copy(c4, pipeline)
+		So(err, ShouldBeNil)
+		So(n, ShouldEqual, len("data from first"))
+		So(c4.String(), ShouldEqual, "data from first")
 	})
 }
 

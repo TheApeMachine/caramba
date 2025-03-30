@@ -52,6 +52,7 @@ require (
 )
 
 require (
+	capnproto.org/go/capnp/v3 v3.0.1-alpha.2
 	github.com/containerd/containerd v1.7.27
 	github.com/docker/docker v28.0.4+incompatible
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e
@@ -241,7 +242,6 @@ require (
 )
 
 require (
-	capnproto.org/go/capnp/v3 v3.1.0-alpha.1
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect

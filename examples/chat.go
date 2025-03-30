@@ -17,46 +17,39 @@ import (
 )
 
 type Chat struct {
-	agent    *ai.Agent
-	provider *provider.OpenAIProvider
 	workflow io.ReadWriter
 }
 
 func NewChat() *Chat {
 	errnie.Debug("examples.NewChat")
 
-	agent := ai.NewAgent()
-	provider := provider.NewOpenAIProvider(
-		provider.WithAPIKey(core.NewConfig().OpenAIAPIKey),
-	)
-
-	chat := &Chat{
-		agent:    agent,
-		provider: provider,
+	return &Chat{
 		workflow: workflow.NewPipeline(
-			agent,
 			workflow.NewFeedback(
-				provider,
-				agent,
+				provider.NewOpenAIProvider(
+					provider.WithAPIKey(core.NewConfig().OpenAIAPIKey),
+				),
+				ai.NewAgent(),
 			),
 			workflow.NewConverter(),
 			os.Stdout,
 		),
 	}
-
-	return chat
 }
 
 func (chat *Chat) Run() (err error) {
 	errnie.Info("Starting pipeline example")
-	shouldExit := false
 
-	for shouldExit {
+	var (
+		input     string
+		shouldExit = false
+	)
+
+	for !shouldExit {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("> ")
-		input, err := reader.ReadString('\n')
-
-		if err != nil {
+		
+		if input, err = reader.ReadString('\n'); err != nil {
 			return err
 		}
 
@@ -64,7 +57,7 @@ func (chat *Chat) Run() (err error) {
 			shouldExit = true
 		}
 
-		msg := datura.New(
+		if _, err = io.Copy(chat, datura.New(
 			datura.WithPayload(provider.NewParams(
 				provider.WithMessages(
 					provider.NewMessage(
@@ -75,9 +68,7 @@ func (chat *Chat) Run() (err error) {
 				provider.WithTemperature(tweaker.GetTemperature()),
 				provider.WithStream(tweaker.GetStream()),
 			).Marshal()),
-		)
-
-		if _, err = io.Copy(chat, msg); err != nil && err != io.EOF {
+		)); err != nil && err != io.EOF {
 			return err
 		}
 	}

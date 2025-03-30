@@ -54,7 +54,6 @@ Execute is the main entry point for the Caramba CLI. It initializes the root com
 and executes it.
 */
 func Execute() error {
-	errnie.Debug("Execute")
 	return rootCmd.Execute()
 }
 
@@ -62,8 +61,6 @@ func Execute() error {
 init is a function that initializes the root command and sets up the persistent flags.
 */
 func init() {
-	fmt.Println("cmd.root.init")
-
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(
@@ -92,8 +89,6 @@ and then reads the config file from the user's home directory.
 func initConfig() {
 	var err error
 
-	errnie.Debug("initConfig")
-
 	if err = writeConfig(); err != nil {
 		log.Fatal(err)
 	}
@@ -117,9 +112,8 @@ func writeConfig() (err error) {
 		buf bytes.Buffer
 	)
 
-	errnie.Debug("writeConfig")
-
 	home, err := os.UserHomeDir()
+
 	if errnie.Error(err) != nil {
 		return err
 	}
@@ -127,9 +121,11 @@ func writeConfig() (err error) {
 	fullPath := home + "/." + projectName + "/" + cfgFile
 
 	exists, err := afero.Exists(afero.NewOsFs(), fullPath)
+
 	if err != nil {
 		return err
 	}
+
 	if exists {
 		return
 	}
@@ -151,8 +147,6 @@ func writeConfig() (err error) {
 	if err = os.WriteFile(fullPath, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-
-	errnie.Debug("writeConfig", "fullPath", fullPath)
 
 	return
 }
