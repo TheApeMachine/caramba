@@ -8,70 +8,72 @@ import (
 	"github.com/theapemachine/caramba/pkg/api/ai"
 	"github.com/theapemachine/caramba/pkg/api/provider"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
-// CapnpExample demonstrates using Cap'n Proto interfaces
+// CapnpExample demonstrates using Cap'n Proto interfaces with multiple agents
 type CapnpExample struct {
-	agent ai.Agent
+	agents   map[string]ai.Agent
+	contexts map[string]*provider.ProviderParams
 }
 
-// NewCapnp creates a new Cap'n Proto example
+// NewCapnp creates a new Cap'n Proto example with multiple agents
 func NewCapnp() *CapnpExample {
 	errnie.Debug("examples.NewCapnp")
 
 	prvdr := provider.NewProvider(os.Getenv("OPENAI_API_KEY"))
-	agent, err := ai.NewAgent(prvdr)
 
-	if err != nil {
-		errnie.Error(err)
-		return nil
+	agents := make(map[string]ai.Agent)
+	contexts := make(map[string]*provider.ProviderParams)
+
+	// Create three agents and their contexts
+	for i := 1; i <= 3; i++ {
+		agentName := fmt.Sprintf("agent%d", i)
+		agent, err := ai.NewAgent(prvdr)
+
+		if errnie.Error(err) != nil {
+			return nil
+		}
+
+		context, err := provider.NewConversation()
+
+		if errnie.Error(err) != nil {
+			return nil
+		}
+
+		if err = provider.AddTool(context, "system"); errnie.Error(err) != nil {
+			return nil
+		}
+
+		if err = provider.AddSystemMessage(
+			context,
+			tweaker.GetSystemPrompt("default"),
+		); errnie.Error(err) != nil {
+			return nil
+		}
+
+		agents[agentName] = agent
+		contexts[agentName] = context
 	}
 
 	return &CapnpExample{
-		agent: agent,
+		agents:   agents,
+		contexts: contexts,
 	}
 }
 
 func (example *CapnpExample) Run() (err error) {
-	errnie.Info("Starting Cap'n Proto example")
+	errnie.Info("Starting Cap'n Proto multi-agent example")
 
-	// Start a new conversation
-	params, err := provider.NewConversation("Tell me about the benefits of using Cap'n Proto for serialization")
-
-	if err != nil {
-		return errnie.Error(err)
+	for name, agent := range example.agents {
+		if example.contexts[name], err = ai.Ask(
+			context.Background(),
+			agent,
+			example.contexts[name],
+		); err != nil {
+			return errnie.Error(err)
+		}
 	}
-
-	// Send the message and get the response
-	params, err = ai.Ask(context.Background(), example.agent, params)
-
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	lastMsg, err := provider.GetLastMessage(params)
-
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	fmt.Println(lastMsg.Content())
-
-	// Add a follow-up question
-	if err := provider.AddUserMessage(params, "How does Cap'n Proto compare to Protocol Buffers?"); err != nil {
-		return errnie.Error(err)
-	}
-
-	// Send the follow-up and get the final response
-	if params, err = ai.Ask(context.Background(), example.agent, params); err != nil {
-		return errnie.Error(err)
-	}
-
-	if lastMsg, err = provider.GetLastMessage(params); err != nil {
-		return errnie.Error(err)
-	}
-
-	fmt.Println(lastMsg.Content())
 
 	return nil
 }

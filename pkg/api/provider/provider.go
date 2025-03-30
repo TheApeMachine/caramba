@@ -8,6 +8,7 @@ import (
 	capnp "capnproto.org/go/capnp/v3"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/packages/param"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
@@ -31,18 +32,11 @@ func NewCapnpProvider(apiKey string) *CapnpProvider {
 	}
 }
 
-// Complete handles a single completion request
-func (p *CapnpProvider) Complete(ctx context.Context, call Provider_complete) error {
-	params := call.Args()
-	provParams, err := params.Params()
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	// Convert Cap'n Proto params to OpenAI format
+// convertProviderParamsToOpenAI converts Cap'n Proto params to OpenAI format
+func convertProviderParamsToOpenAI(provParams ProviderParams) (*openai.ChatCompletionNewParams, error) {
 	model, err := provParams.Model()
 	if err != nil {
-		return errnie.Error(err)
+		return nil, errnie.Error(err)
 	}
 
 	chatParams := &openai.ChatCompletionNewParams{
@@ -57,22 +51,32 @@ func (p *CapnpProvider) Complete(ctx context.Context, call Provider_complete) er
 		chatParams.MaxTokens = openai.Int(int64(provParams.MaxTokens()))
 	}
 
-	// Convert messages
+	messages, err := convertMessagesToOpenAI(provParams)
+	if err != nil {
+		return nil, err
+	}
+	chatParams.Messages = messages
+
+	return chatParams, nil
+}
+
+// convertMessagesToOpenAI converts Cap'n Proto messages to OpenAI format
+func convertMessagesToOpenAI(provParams ProviderParams) ([]openai.ChatCompletionMessageParamUnion, error) {
 	messages := make([]openai.ChatCompletionMessageParamUnion, 0)
 	messageList, err := provParams.Messages()
 	if err != nil {
-		return errnie.Error(err)
+		return nil, errnie.Error(err)
 	}
 
-	for i := range messageList.Len() {
+	for i := 0; i < messageList.Len(); i++ {
 		msg := messageList.At(i)
 		role, err := msg.Role()
 		if err != nil {
-			return errnie.Error(err)
+			return nil, errnie.Error(err)
 		}
 		content, err := msg.Content()
 		if err != nil {
-			return errnie.Error(err)
+			return nil, errnie.Error(err)
 		}
 
 		switch role {
@@ -81,53 +85,111 @@ func (p *CapnpProvider) Complete(ctx context.Context, call Provider_complete) er
 		case "user":
 			messages = append(messages, openai.UserMessage(content))
 		case "assistant":
-			messages = append(messages, openai.AssistantMessage(content))
+			toolcalls, err := msg.ToolCalls()
+			if err != nil {
+				return nil, errnie.Error(err)
+			}
+			toolCalls := make([]openai.ChatCompletionMessageToolCallParam, 0, toolcalls.Len())
+
+			for i := range toolcalls.Len() {
+				toolCall := toolcalls.At(i)
+
+				id, err := toolCall.Id()
+				if err != nil {
+					return nil, errnie.Error(err)
+				}
+
+				function, err := toolCall.Function()
+				if err != nil {
+					return nil, errnie.Error(err)
+				}
+
+				name, err := function.Name()
+				if err != nil {
+					return nil, errnie.Error(err)
+				}
+
+				arguments, err := function.Arguments()
+				if err != nil {
+					return nil, errnie.Error(err)
+				}
+
+				toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+					ID:   id,
+					Type: "function",
+					Function: openai.ChatCompletionMessageToolCallFunctionParam{
+						Name:      name,
+						Arguments: arguments,
+					},
+				})
+			}
+
+			errnie.Info("toolCalls", "toolCalls", toolCalls)
+
+			msg := openai.AssistantMessage(content)
+			if len(toolCalls) > 0 {
+				msg = openai.ChatCompletionMessageParamUnion{
+					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+						Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+							OfString: param.NewOpt(content),
+						},
+						ToolCalls: toolCalls,
+						Role:      "assistant",
+					},
+				}
+			}
+
+			messages = append(messages, msg)
+		case "tool":
+			reference, err := msg.Reference()
+			if err != nil {
+				return nil, errnie.Error(err)
+			}
+			messages = append(messages, openai.ChatCompletionMessageParamUnion{
+				OfTool: &openai.ChatCompletionToolMessageParam{
+					Content: openai.ChatCompletionToolMessageParamContentUnion{
+						OfString: param.NewOpt(content),
+					},
+					ToolCallID: reference,
+					Role:       "tool",
+				},
+			})
 		default:
-			return errnie.Error(fmt.Errorf("unknown message role: %s", role))
+			return nil, errnie.Error(fmt.Errorf("unknown message role: %s", role))
 		}
 	}
-	chatParams.Messages = messages
 
-	// Make the API call
+	return messages, nil
+}
+
+// Complete handles a single completion request
+func (p *CapnpProvider) Complete(ctx context.Context, call Provider_complete) error {
+	params := call.Args()
+	provParams, err := params.Params()
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	chatParams, err := convertProviderParamsToOpenAI(provParams)
+	if err != nil {
+		return errnie.Error(err)
+	}
+
 	completion, err := p.client.Chat.Completions.New(p.ctx, *chatParams)
 	if err != nil {
 		return errnie.Error(err)
 	}
 
-	// Set the response
 	results, err := call.AllocResults()
 	if err != nil {
 		return errnie.Error(err)
 	}
 
-	// Copy parameters to results
 	if err := CopyProviderParams(&provParams, &results); err != nil {
 		return errnie.Error(err)
 	}
 
-	// Get existing messages
-	existingMessages, err := results.Messages()
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	// Create new message list with length + 1
-	resultMessages, err := results.NewMessages(int32(existingMessages.Len() + 1))
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	// Copy existing messages
-	for i := 0; i < existingMessages.Len(); i++ {
-		resultMessages.Set(i, existingMessages.At(i))
-	}
-
-	// Add the new assistant message
-	resultMsg := resultMessages.At(existingMessages.Len())
-	if err := resultMsg.SetRole("assistant"); err != nil {
-		return errnie.Error(err)
-	}
-	if err := resultMsg.SetContent(completion.Choices[0].Message.Content); err != nil {
+	if err := appendMessageToResults(&results, "assistant", completion.Choices[0].Message.Content); err != nil {
 		return errnie.Error(err)
 	}
 
@@ -142,76 +204,23 @@ func (p *CapnpProvider) Stream(ctx context.Context, call Provider_stream) error 
 		return errnie.Error(err)
 	}
 
-	// Convert Cap'n Proto params to OpenAI format
-	model, err := provParams.Model()
+	chatParams, err := convertProviderParamsToOpenAI(provParams)
 	if err != nil {
 		return errnie.Error(err)
 	}
 
-	chatParams := &openai.ChatCompletionNewParams{
-		Model:            model,
-		Temperature:      openai.Float(provParams.Temperature()),
-		TopP:             openai.Float(provParams.TopP()),
-		FrequencyPenalty: openai.Float(provParams.FrequencyPenalty()),
-		PresencePenalty:  openai.Float(provParams.PresencePenalty()),
-	}
-
-	if provParams.MaxTokens() > 0 {
-		chatParams.MaxTokens = openai.Int(int64(provParams.MaxTokens()))
-	}
-
-	// Convert messages
-	messages := make([]openai.ChatCompletionMessageParamUnion, 0)
-	messageList, err := provParams.Messages()
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	for i := 0; i < messageList.Len(); i++ {
-		msg := messageList.At(i)
-		role, err := msg.Role()
-		if err != nil {
-			return errnie.Error(err)
-		}
-		content, err := msg.Content()
-		if err != nil {
-			return errnie.Error(err)
-		}
-
-		switch role {
-		case "system":
-			messages = append(messages, openai.SystemMessage(content))
-		case "user":
-			messages = append(messages, openai.UserMessage(content))
-		case "assistant":
-			messages = append(messages, openai.AssistantMessage(content))
-		default:
-			return errnie.Error(fmt.Errorf("unknown message role: %s", role))
-		}
-	}
-	chatParams.Messages = messages
-
-	// Create streaming client
 	stream := p.client.Chat.Completions.NewStreaming(p.ctx, *chatParams)
 	defer stream.Close()
 
-	// Get result params ready
 	results, err := call.AllocResults()
 	if err != nil {
 		return errnie.Error(err)
 	}
 
-	// Copy basic params
-	if err := results.SetModel(model); err != nil {
+	if err := CopyProviderParams(&provParams, &results); err != nil {
 		return errnie.Error(err)
 	}
-	results.SetTemperature(provParams.Temperature())
-	results.SetTopP(provParams.TopP())
-	results.SetFrequencyPenalty(provParams.FrequencyPenalty())
-	results.SetPresencePenalty(provParams.PresencePenalty())
-	results.SetMaxTokens(provParams.MaxTokens())
 
-	// Stream responses
 	acc := openai.ChatCompletionAccumulator{}
 	for stream.Next() {
 		chunk := stream.Current()
@@ -221,16 +230,7 @@ func (p *CapnpProvider) Stream(ctx context.Context, call Provider_stream) error 
 		}
 
 		if content, ok := acc.JustFinishedContent(); ok && content != "" {
-			// Add the response message
-			resultMessages, err := results.NewMessages(1)
-			if err != nil {
-				return errnie.Error(err)
-			}
-			resultMsg := resultMessages.At(0)
-			if err := resultMsg.SetRole("assistant"); err != nil {
-				return errnie.Error(err)
-			}
-			if err := resultMsg.SetContent(content); err != nil {
+			if err := appendMessageToResults(&results, "assistant", content); err != nil {
 				return errnie.Error(err)
 			}
 		}
@@ -240,6 +240,22 @@ func (p *CapnpProvider) Stream(ctx context.Context, call Provider_stream) error 
 		return errnie.Error(err)
 	}
 
+	return nil
+}
+
+// appendMessageToResults adds a new message to the results
+func appendMessageToResults(results *ProviderParams, role, content string) error {
+	messages, err := results.NewMessages(1)
+	if err != nil {
+		return errnie.Error(err)
+	}
+	msg := messages.At(0)
+	if err := msg.SetRole(role); err != nil {
+		return errnie.Error(err)
+	}
+	if err := msg.SetContent(content); err != nil {
+		return errnie.Error(err)
+	}
 	return nil
 }
 
@@ -344,56 +360,8 @@ func NewProvider(apiKey string) Provider {
 	return Provider_ServerToClient(NewCapnpProvider(apiKey))
 }
 
-// NewUserMessage creates a new message with the given content
-func NewUserMessage(seg *capnp.Segment, content string) (*Message, error) {
-	msg, err := NewMessage(seg)
-	if err != nil {
-		return nil, errnie.Error(err)
-	}
-
-	if err := msg.SetRole("user"); err != nil {
-		return nil, errnie.Error(err)
-	}
-	if err := msg.SetContent(content); err != nil {
-		return nil, errnie.Error(err)
-	}
-
-	return &msg, nil
-}
-
-// NewRequest creates a new request with the given user message
-func NewRequest(seg *capnp.Segment, content string) (*ProviderParams, error) {
-	// Create a new root struct for the params
-	params, err := NewRootProviderParams(seg)
-	if err != nil {
-		return nil, errnie.Error(err)
-	}
-
-	// Set default model
-	if err := params.SetModel(tweaker.GetModel("openai")); err != nil {
-		return nil, errnie.Error(err)
-	}
-
-	// Create a new message
-	msg, err := NewUserMessage(seg, content)
-	if err != nil {
-		return nil, errnie.Error(err)
-	}
-
-	// Create a new message list with length 1
-	messages, err := params.NewMessages(1)
-	if err != nil {
-		return nil, errnie.Error(err)
-	}
-
-	// Set the message in the list
-	messages.Set(0, *msg)
-
-	return &params, nil
-}
-
 // NewConversation creates a new conversation with an initial user message
-func NewConversation(content string) (*ProviderParams, error) {
+func NewConversation() (*ProviderParams, error) {
 	// Create a new message and segment internally
 	_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 	if err != nil {
@@ -411,24 +379,11 @@ func NewConversation(content string) (*ProviderParams, error) {
 		return nil, errnie.Error(err)
 	}
 
-	// Create and set the user message
-	msg, err := NewUserMessage(seg, content)
-	if err != nil {
-		return nil, errnie.Error(err)
-	}
-
-	// Create a new message list
-	messages, err := params.NewMessages(1)
-	if err != nil {
-		return nil, errnie.Error(err)
-	}
-	messages.Set(0, *msg)
-
 	return &params, nil
 }
 
-// AddUserMessage adds a new user message to existing conversation params
-func AddUserMessage(params *ProviderParams, content string) error {
+// addMessage is a helper function that adds a new message to the conversation
+func addMessage(params *ProviderParams, role, name, content string) error {
 	// Get current messages
 	currentMessages, err := params.Messages()
 	if err != nil {
@@ -447,11 +402,154 @@ func AddUserMessage(params *ProviderParams, content string) error {
 	}
 
 	// Add the new message
-	msg, err := NewUserMessage(params.Segment(), content)
+	msg, err := NewMessage(params.Segment())
 	if err != nil {
 		return errnie.Error(err)
 	}
-	newMessages.Set(currentMessages.Len(), *msg)
+
+	if err := msg.SetRole(role); err != nil {
+		return errnie.Error(err)
+	}
+
+	if name != "" {
+		if err := msg.SetName(name); err != nil {
+			return errnie.Error(err)
+		}
+	}
+
+	if err := msg.SetContent(content); err != nil {
+		return errnie.Error(err)
+	}
+
+	newMessages.Set(currentMessages.Len(), msg)
+
+	return nil
+}
+
+// AddSystemMessage adds a new system message to existing conversation params
+func AddSystemMessage(params *ProviderParams, content string) error {
+	return addMessage(params, "system", "", content)
+}
+
+// AddUserMessage adds a new user message to existing conversation params
+func AddUserMessage(params *ProviderParams, name, content string) error {
+	return addMessage(params, "user", name, content)
+}
+
+// AddAssistantMessage adds a new assistant message to existing conversation params
+func AddAssistantMessage(params *ProviderParams, content string) error {
+	return addMessage(params, "assistant", "", content)
+}
+
+// AddTool appends a new tool to the provider params Tools list
+func AddTool(params *ProviderParams, toolName string) error {
+	currentTools, err := params.Tools()
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	tools, err := params.NewTools(int32(currentTools.Len() + 1))
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	tool, err := NewTool(params.Segment())
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	function, err := NewFunction(params.Segment())
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	parameters, err := NewParameters(params.Segment())
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	base := fmt.Sprintf("tools.schemas.%s", toolName)
+
+	// Get function details from config
+	name := tweaker.Get(base+".function.name", toolName)
+	description := tweaker.Get(base+".function.description", "")
+
+	if err := function.SetName(name); err != nil {
+		return errnie.Error(err)
+	}
+
+	if err := function.SetDescription(description); err != nil {
+		return errnie.Error(err)
+	}
+
+	if err := parameters.SetType("object"); err != nil {
+		return errnie.Error(err)
+	}
+
+	// Get properties from config
+	if props := tweaker.GetStringMap(base + ".properties"); len(props) > 0 {
+		properties, err := parameters.NewProperties(int32(len(props)))
+		if err != nil {
+			return errnie.Error(err)
+		}
+
+		i := 0
+		for propName := range props {
+			propBase := fmt.Sprintf("%s.properties.%s", base, propName)
+
+			property, err := NewProperty(params.Segment())
+			if err != nil {
+				return errnie.Error(err)
+			}
+
+			if err := property.SetName(propName); err != nil {
+				return errnie.Error(err)
+			}
+
+			if err := property.SetType(tweaker.Get(propBase+".type", "string")); err != nil {
+				return errnie.Error(err)
+			}
+
+			if err := property.SetDescription(tweaker.Get(propBase+".description", "")); err != nil {
+				return errnie.Error(err)
+			}
+
+			// Handle enum/options if present
+			if options := tweaker.GetStringSlice(propBase + ".options"); len(options) > 0 {
+				enum, err := property.NewEnum(int32(len(options)))
+				if err != nil {
+					return errnie.Error(err)
+				}
+				for j, opt := range options {
+					enum.Set(j, opt)
+				}
+			}
+
+			properties.Set(i, property)
+			i++
+		}
+	}
+
+	// Handle required fields if present
+	if required := tweaker.GetStringSlice(base + ".required"); len(required) > 0 {
+		requiredList, err := parameters.NewRequired(int32(len(required)))
+		if err != nil {
+			return errnie.Error(err)
+		}
+		for i, req := range required {
+			requiredList.Set(i, req)
+		}
+	}
+
+	if err := function.SetParameters(parameters); err != nil {
+		return errnie.Error(err)
+	}
+
+	if err := tool.SetFunction(function); err != nil {
+		return errnie.Error(err)
+	}
+
+	tools.Set(currentTools.Len(), tool)
 
 	return nil
 }
