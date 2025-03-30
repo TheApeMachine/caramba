@@ -8,6 +8,13 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
+/*
+PostMessage sends a new message to a Slack channel.
+
+Takes a channel ID, message text, optional thread timestamp, and an artifact containing
+additional message options like blocks and attachments. Returns the channel ID and
+message timestamp on success, or an error if the post fails.
+*/
 func (client *Client) PostMessage(channel, text, threadTS string, artifact *datura.Artifact) (interface{}, error) {
 	msgOptions := []slack.MsgOption{
 		slack.MsgOptionText(text, false),
@@ -42,6 +49,12 @@ func (client *Client) PostMessage(channel, text, threadTS string, artifact *datu
 	}, nil
 }
 
+/*
+UpdateMessage updates an existing message in a Slack channel.
+
+Takes a channel ID, message timestamp, and new text.
+Returns an error if the timestamp is missing or if the update fails.
+*/
 func (client *Client) UpdateMessage(channel, threadTS, text string) error {
 	if threadTS == "" {
 		return errnie.Error("thread_ts is required for update_message operation")
@@ -51,6 +64,12 @@ func (client *Client) UpdateMessage(channel, threadTS, text string) error {
 	return err
 }
 
+/*
+DeleteMessage removes a message from a Slack channel.
+
+Takes a channel ID and message timestamp.
+Returns an error if the timestamp is missing or if the deletion fails.
+*/
 func (client *Client) DeleteMessage(channel, threadTS string) error {
 	if threadTS == "" {
 		return errnie.Error("thread_ts is required for delete_message operation")
@@ -60,6 +79,12 @@ func (client *Client) DeleteMessage(channel, threadTS string) error {
 	return err
 }
 
+/*
+SearchMessages searches for messages across all accessible Slack channels.
+
+Takes a search text string and returns matching messages.
+Returns an error if the search text is empty or if the search fails.
+*/
 func (client *Client) SearchMessages(text string) (interface{}, error) {
 	if text == "" {
 		return nil, errnie.Error("text is required for search_messages operation")

@@ -9,6 +9,11 @@ import (
 	"github.com/theapemachine/caramba/pkg/stream"
 )
 
+/*
+Client provides a high-level interface to Azure DevOps services.
+It manages connections and operations for both work items and wiki pages
+through a unified streaming interface.
+*/
 type Client struct {
 	buffer   *stream.Buffer
 	conn     *azuredevops.Connection
@@ -16,6 +21,12 @@ type Client struct {
 	wiki     *Wiki
 }
 
+/*
+NewClient creates a new Azure DevOps client using environment variables for authentication.
+
+It initializes connections to work item and wiki services using a personal access token.
+The client uses AZURE_ORG_URL and AZURE_PERSONAL_ACCESS_TOKEN environment variables.
+*/
 func NewClient() *Client {
 	conn := azuredevops.NewPatConnection(
 		os.Getenv("AZURE_ORG_URL"),
@@ -58,16 +69,33 @@ func NewClient() *Client {
 	}
 }
 
+/*
+Read implements the io.Reader interface.
+
+It reads processed data from the internal buffer after Azure DevOps operations
+have been completed.
+*/
 func (client *Client) Read(p []byte) (n int, err error) {
 	errnie.Debug("azure.Client.Read")
 	return client.buffer.Read(p)
 }
 
+/*
+Write implements the io.Writer interface.
+
+It writes operation requests to the internal buffer for processing by
+the appropriate Azure DevOps service (work items or wiki).
+*/
 func (client *Client) Write(p []byte) (n int, err error) {
 	errnie.Debug("azure.Client.Write")
 	return client.buffer.Write(p)
 }
 
+/*
+Close implements the io.Closer interface.
+
+It cleans up resources by closing the internal buffer.
+*/
 func (client *Client) Close() error {
 	errnie.Debug("azure.Client.Close")
 	return client.buffer.Close()

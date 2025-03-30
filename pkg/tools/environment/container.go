@@ -21,7 +21,11 @@ import (
 )
 
 /*
-Container represents a containerd container instance with its associated client, container, and image.
+Container manages containerd container instances.
+
+It provides functionality for creating, configuring, and managing containers
+using the containerd runtime. Each container instance maintains its own client
+connection and image reference.
 */
 type Container struct {
 	conn      *client.Client
@@ -30,7 +34,10 @@ type Container struct {
 }
 
 /*
-NewContainer creates a new Container instance with the given containerd client connection.
+NewContainer creates a new Container instance.
+
+It initializes a container manager with the provided containerd client connection.
+Returns nil if the client connection is invalid.
 */
 func NewContainer(conn *client.Client) *Container {
 	if conn == nil {
@@ -44,8 +51,16 @@ func NewContainer(conn *client.Client) *Container {
 }
 
 /*
-Load prepares and loads a new container image from a Dockerfile.
-It creates a build context, imports the image into containerd, and initializes a new container.
+Load prepares and loads a container image from a Dockerfile.
+
+It performs the following steps:
+1. Reads the Dockerfile from the filesystem
+2. Pulls the base Ubuntu image with appropriate platform settings
+3. Creates a new layer with the Dockerfile contents
+4. Builds and imports the final image into containerd
+5. Sets up necessary snapshot directories with proper permissions
+
+Returns an error if any step in the process fails.
 */
 func (container *Container) Load() (err error) {
 	var (

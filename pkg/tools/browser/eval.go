@@ -45,6 +45,7 @@ func (eval *Eval) Run() (result string, err error) {
 	}
 
 	val := runtime.Value.Get("val").Str()
+	errnie.Debug("browser.Eval.Run", "val", val)
 
 	return val, nil
 }

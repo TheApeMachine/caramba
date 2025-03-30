@@ -42,7 +42,7 @@ func NewInstance() *Instance {
 					return err
 				}
 
-				datura.WithPayload([]byte(utils.SummarizeText(markdown, 2000)))(artifact)
+				datura.WithPayload([]byte(markdown))(artifact)
 			default:
 				var val string
 

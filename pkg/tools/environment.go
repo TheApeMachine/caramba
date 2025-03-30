@@ -11,17 +11,22 @@ import (
 	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
+/*
+init registers the environment tool with the provider system.
+*/
 func init() {
 	fmt.Println("tools.environment.init")
 	provider.RegisterTool("environment")
 }
 
 /*
-Environment is a tool that allows the AI agent to interact with a full Linux terminal-based
-environment. It uses Docker containers to create a somewhat isolated environment for the agent
-to run in.
+Environment provides a sandboxed Linux environment for executing commands.
 
-In the future, this should be enhanced with a GVisor layer to further sandbox the environment.
+It uses Docker containers to create an isolated environment for running commands
+and interacting with a full Linux terminal. The environment is managed through
+a builder for setup and a runner for command execution.
+
+Future enhancements will include GVisor for additional sandboxing capabilities.
 */
 type Environment struct {
 	buffer  *stream.Buffer
@@ -31,7 +36,11 @@ type Environment struct {
 }
 
 /*
-NewEnvironment creates a new Environment tool.
+NewEnvironment creates a new Environment tool instance.
+
+It initializes a Docker container environment with necessary runtime components
+and sets up a buffered stream for processing commands. Returns nil if either
+the builder or runner initialization fails.
 */
 func NewEnvironment() *Environment {
 	errnie.Debug("environment.NewEnvironment")
@@ -67,7 +76,10 @@ func NewEnvironment() *Environment {
 }
 
 /*
-Read reads data from the environment.
+Read implements the io.Reader interface.
+
+It reads processed data from the internal buffer after environment operations
+have been completed.
 */
 func (environment *Environment) Read(p []byte) (n int, err error) {
 	errnie.Debug("environment.Environment.Read")
@@ -75,7 +87,10 @@ func (environment *Environment) Read(p []byte) (n int, err error) {
 }
 
 /*
-Write writes data to the environment.
+Write implements the io.Writer interface.
+
+It writes operation requests to the internal buffer for processing by
+the environment runner.
 */
 func (environment *Environment) Write(p []byte) (n int, err error) {
 	errnie.Debug("environment.Environment.Write")
@@ -83,7 +98,9 @@ func (environment *Environment) Write(p []byte) (n int, err error) {
 }
 
 /*
-Close closes the environment.
+Close implements the io.Closer interface.
+
+It cleans up resources by closing the internal buffer.
 */
 func (environment *Environment) Close() error {
 	errnie.Debug("environment.Environment.Close")

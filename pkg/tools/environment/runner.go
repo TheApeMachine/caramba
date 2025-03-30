@@ -15,6 +15,13 @@ import (
 	"github.com/theapemachine/caramba/pkg/stream"
 )
 
+/*
+Runner manages command execution and I/O operations within a container environment.
+
+It provides a buffered interface for running commands and handling interactive
+input/output with a container. The Runner maintains separate buffers for stdin,
+stdout, and stderr streams, and uses mutexes to ensure thread-safe operations.
+*/
 type Runner struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -27,6 +34,15 @@ type Runner struct {
 	muIn     sync.Mutex
 }
 
+/*
+NewRunner creates a new Runner instance with the specified runtime.
+
+It initializes the runner with a 5-minute timeout context and sets up buffered
+I/O streams for container interaction. The runtime's I/O is attached to the
+runner's buffers for command execution and interactive operations.
+
+Returns nil if I/O attachment fails.
+*/
 func NewRunner(runtime Runtime) *Runner {
 	errnie.Debug("environment.NewRunner")
 
@@ -177,16 +193,34 @@ func NewRunner(runtime Runtime) *Runner {
 	return runner
 }
 
+/*
+Read implements the io.Reader interface.
+
+It reads processed data from the internal buffer after command execution
+or input processing has completed.
+*/
 func (runner *Runner) Read(p []byte) (n int, err error) {
 	errnie.Debug("environment.Runner.Read")
 	return runner.buffer.Read(p)
 }
 
+/*
+Write implements the io.Writer interface.
+
+It writes command or input requests to the internal buffer for processing
+by the runner's execution logic.
+*/
 func (runner *Runner) Write(p []byte) (n int, err error) {
 	errnie.Debug("environment.Runner.Write")
 	return runner.buffer.Write(p)
 }
 
+/*
+Close implements the io.Closer interface.
+
+It cleans up resources by canceling the context, stopping the container,
+and closing the internal buffer.
+*/
 func (runner *Runner) Close() error {
 	errnie.Debug("environment.Runner.Close")
 	runner.cancel()

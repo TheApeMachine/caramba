@@ -41,26 +41,31 @@ func (manager *Manager) Initialize() (*Manager, error) {
 	url, err := manager.launch.Launch()
 
 	if errnie.Error(err) != nil {
-		return manager, err
+		return manager, errnie.Error(err)
 	}
 
 	if manager.browser = rod.New().ControlURL(url); manager.browser == nil {
-		return manager, manager.artifact.Error(errors.New("failed to create browser"))
+		return manager, errnie.Error(errors.New("failed to create browser"))
 	}
 
 	if err = manager.browser.Connect(); err != nil {
-		return manager, manager.artifact.Error(err)
+		return manager, errnie.Error(err)
 	}
 
 	if manager.page, err = stealth.Page(manager.browser); err != nil {
-		return manager, manager.artifact.Error(err)
+		return manager, errnie.Error(err)
 	}
 
 	navurl := datura.GetMetaValue[string](manager.artifact, "url")
 	errnie.Debug("browser.Instance.buffer.fn", "navurl", navurl)
 
-	if err = manager.page.Navigate(navurl); errnie.Error(err) != nil {
-		return manager, manager.artifact.Error(err)
+	if err = manager.page.Navigate(navurl); err != nil {
+		return manager, errnie.Error(err)
+	}
+
+	// Wait for the page to be fully loaded
+	if err = manager.page.WaitLoad(); err != nil {
+		return manager, errnie.Error(err)
 	}
 
 	return manager, nil

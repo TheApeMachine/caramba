@@ -291,12 +291,17 @@ tools:
     system:
       function:
         name: "system"
-        description: "A tool for low-level system operations."
+        description: |
+          A tool for low-level system operations.
+
+          You can use the `inspect` command to get a list of all the agents and topics in the system.
+          You can use the `send` command to send a message to an agent or topic.
+          You can use the `break` command to break out of the current iteration loop.
       properties:
         command:
           type: "string"
           description: "The top-level command to execute."
-          options: ["inspect", "send"]
+          options: ["inspect", "send", "break"]
         inspect_arg:
           type: "string"
           description: "Arguments for the inspect command."

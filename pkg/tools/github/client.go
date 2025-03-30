@@ -9,6 +9,11 @@ import (
 	"github.com/theapemachine/caramba/pkg/stream"
 )
 
+/*
+Client provides a high-level interface to GitHub services.
+It manages connections and operations for repositories, pull requests,
+and issues through a unified streaming interface.
+*/
 type Client struct {
 	buffer *stream.Buffer
 	conn   *github.Client
@@ -17,6 +22,12 @@ type Client struct {
 	issues *Issues
 }
 
+/*
+NewClient creates a new GitHub client using environment variables for authentication.
+
+It initializes connections to repository, pull request, and issues services using
+a GitHub personal access token from the GITHUB_TOKEN environment variable.
+*/
 func NewClient() *Client {
 	client := github.NewClient(nil).WithAuthToken(os.Getenv("GITHUB_TOKEN"))
 	repo := NewRepository(client)
@@ -81,16 +92,33 @@ func NewClient() *Client {
 	}
 }
 
+/*
+Read implements the io.Reader interface.
+
+It reads processed data from the internal buffer after GitHub operations
+have been completed.
+*/
 func (client *Client) Read(p []byte) (n int, err error) {
 	errnie.Debug("github.Client.Read")
 	return client.buffer.Read(p)
 }
 
+/*
+Write implements the io.Writer interface.
+
+It writes operation requests to the internal buffer for processing by
+the appropriate GitHub service (repositories, pull requests, or issues).
+*/
 func (client *Client) Write(p []byte) (n int, err error) {
 	errnie.Debug("github.Client.Write")
 	return client.buffer.Write(p)
 }
 
+/*
+Close implements the io.Closer interface.
+
+It cleans up resources by closing the internal buffer.
+*/
 func (client *Client) Close() error {
 	errnie.Debug("github.Client.Close")
 	return client.buffer.Close()

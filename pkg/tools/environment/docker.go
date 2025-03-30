@@ -22,11 +22,21 @@ import (
 	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
+/*
+dockerRuntime implements the Runtime interface using Docker.
+It manages container lifecycle and operations through the Docker API.
+*/
 type dockerRuntime struct {
 	client      *client.Client
 	containerID string
 }
 
+/*
+newDockerRuntime creates a new Docker runtime instance.
+
+It initializes a Docker client using environment configuration.
+Returns an error if client creation fails.
+*/
 func newDockerRuntime() (Runtime, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -38,6 +48,13 @@ func newDockerRuntime() (Runtime, error) {
 	}, nil
 }
 
+/*
+CreateContainer creates or reuses a Docker container.
+
+It checks for an existing container with the name "caramba-env". If none exists,
+it builds a new image from the Dockerfile and creates a container from it.
+Returns an error if container creation fails.
+*/
 func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
 	containerName := "caramba-env"
 
@@ -97,6 +114,11 @@ func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
 	return nil
 }
 
+/*
+StartContainer starts the Docker container.
+
+Returns an error if the container start operation fails.
+*/
 func (runtime *dockerRuntime) StartContainer(ctx context.Context) (err error) {
 	if err = runtime.client.ContainerStart(ctx, runtime.containerID, container.StartOptions{}); err != nil {
 		return errnie.Error(err)
@@ -105,6 +127,11 @@ func (runtime *dockerRuntime) StartContainer(ctx context.Context) (err error) {
 	return nil
 }
 
+/*
+StopContainer stops the Docker container.
+
+Returns an error if the container stop operation fails.
+*/
 func (runtime *dockerRuntime) StopContainer(ctx context.Context) (err error) {
 	if err = runtime.client.ContainerStop(ctx, runtime.containerID, container.StopOptions{}); err != nil {
 		return errnie.Error(err)
@@ -113,6 +140,13 @@ func (runtime *dockerRuntime) StopContainer(ctx context.Context) (err error) {
 	return nil
 }
 
+/*
+AttachIO attaches IO streams to the Docker container.
+
+It connects stdin, stdout, and stderr streams to the container for
+interactive communication. Uses goroutines to handle bidirectional
+data flow between the container and the provided IO writers/readers.
+*/
 func (runtime *dockerRuntime) AttachIO(stdin io.Reader, stdout, stderr io.Writer) error {
 	resp, err := runtime.client.ContainerAttach(
 		context.Background(),
@@ -158,7 +192,12 @@ func (runtime *dockerRuntime) AttachIO(stdin io.Reader, stdout, stderr io.Writer
 	return nil
 }
 
-// demultiplexDockerStream takes a Docker multiplexed stream and writes stdout/stderr to the appropriate writers
+/*
+demultiplexDockerStream processes a Docker multiplexed stream.
+
+It reads the Docker stream header format and routes the data to the appropriate
+stdout or stderr writer. Returns an error if stream processing fails.
+*/
 func demultiplexDockerStream(reader io.Reader, stdout, stderr io.Writer) error {
 	var (
 		header = make([]byte, 8)
@@ -197,6 +236,13 @@ func demultiplexDockerStream(reader io.Reader, stdout, stderr io.Writer) error {
 	}
 }
 
+/*
+ExecuteCommand runs a command in the Docker container.
+
+It creates an exec instance in the container, attaches to it, and streams
+the command output to the provided writers. Returns an error if command
+execution fails.
+*/
 func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string, stdout, stderr io.Writer) error {
 	exec, err := runtime.client.ContainerExecCreate(
 		ctx,
@@ -264,6 +310,12 @@ func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string
 	return nil
 }
 
+/*
+PullImage pulls a Docker image from a registry.
+
+Takes an image reference and pulls it from the configured registry.
+Returns an error if the pull operation fails.
+*/
 func (runtime *dockerRuntime) PullImage(ctx context.Context, ref string) error {
 	errnie.Debug(fmt.Sprintf("Pulling image: %s", ref))
 
@@ -280,6 +332,12 @@ func (runtime *dockerRuntime) PullImage(ctx context.Context, ref string) error {
 	return errnie.Error(err)
 }
 
+/*
+BuildImage builds a Docker image from a Dockerfile.
+
+It creates a tar archive containing the Dockerfile, builds the image,
+and processes the build output. Returns an error if the build fails.
+*/
 func (runtime *dockerRuntime) BuildImage(
 	ctx context.Context, dockerfile []byte, imageName string,
 ) error {
@@ -333,6 +391,13 @@ func (runtime *dockerRuntime) BuildImage(
 	return runtime.processAndPrintBuildOutput(resp.Body)
 }
 
+/*
+processAndPrintBuildOutput processes Docker build output.
+
+It decodes the JSON stream from the build process and prints progress
+information. Returns an error if output processing fails or if the
+build reports an error.
+*/
 func (runtime *dockerRuntime) processAndPrintBuildOutput(reader io.Reader) error {
 	decoder := json.NewDecoder(reader)
 	for {
