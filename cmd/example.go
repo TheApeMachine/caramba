@@ -34,6 +34,8 @@ var (
 				wf = examples.NewMemory()
 			case "multiagent":
 				wf = examples.NewMultiAgent()
+			case "capnp":
+				wf = examples.NewCapnp()
 			default:
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
@@ -50,4 +52,12 @@ func init() {
 
 var longExample = `
 Example demonstrates various capabilities of the Caramba framework.
+
+Available examples:
+  - pipeline: Demonstrates basic pipeline functionality
+  - chat: Shows chat capabilities
+  - code: Demonstrates code manipulation
+  - memory: Shows memory integration
+  - multiagent: Demonstrates multi-agent interaction
+  - capnp: Shows Cap'n Proto message serialization
 `
