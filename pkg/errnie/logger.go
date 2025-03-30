@@ -30,11 +30,11 @@ var logger = log.NewWithOptions(os.Stderr, log.Options{
 })
 
 func init() {
-	fmt.Println("errnie.logger.init")
-	// Clear and open the log file on startup
 	var err error
-	fileHandle, err = os.OpenFile(logFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
-	if err != nil {
+
+	if fileHandle, err = os.OpenFile(
+		logFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644,
+	); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open log file: %v\n", err)
 		return
 	}
@@ -193,11 +193,6 @@ func getStackTrace() string {
 			break
 		}
 
-		// Skip standard library frames
-		if strings.Contains(frame.File, "runtime/") || strings.Contains(frame.File, "/src/") {
-			continue
-		}
-
 		// Just show the last part of the path for clarity
 		file := filepath.Base(frame.File)
 		funcName := filepath.Base(frame.Function)
@@ -207,6 +202,7 @@ func getStackTrace() string {
 		}
 
 		prefix := "   "
+
 		if isFirst {
 			prefix = "➜ " // Arrow pointing to the error origin
 			isFirst = false
@@ -218,6 +214,7 @@ func getStackTrace() string {
 			frame.Line,
 			funcName,
 		)
+
 		trace.WriteString(line)
 
 		// Show code snippet only for the first (error origin) frame

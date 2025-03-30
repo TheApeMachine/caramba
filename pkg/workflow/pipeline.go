@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"errors"
 	"io"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -50,7 +49,7 @@ func (pipeline *Pipeline) Read(p []byte) (n int, err error) {
 	errnie.Debug("workflow.Pipeline.Read")
 
 	if len(pipeline.components) == 0 {
-		return 0, errnie.Error(errors.New("pipeline has no components"))
+		return 0, io.EOF
 	}
 
 	var nn int64

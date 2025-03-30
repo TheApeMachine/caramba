@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 
 	"github.com/sirupsen/logrus"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -20,7 +20,7 @@ func NewContainerdLogger() *logrus.Logger {
 	logger.AddHook(&errnieHook{})
 
 	// Disable the default output since we're using errnie
-	logger.SetOutput(ioutil.Discard)
+	logger.SetOutput(io.Discard)
 
 	// Set the formatter to JSON to match containerd's default
 	logger.SetFormatter(&logrus.JSONFormatter{})
