@@ -122,9 +122,13 @@ func NewAgent(options ...AgentOption) *Agent {
 			})
 		default:
 			// Convert the artifact to a Params.
-			if err = artifact.To(params); err != nil {
+			newParams := provider.NewParams()
+			if err = artifact.To(newParams); err != nil {
 				return errnie.Error(err)
 			}
+
+			// Append the new messages to the existing ones
+			params.Messages = append(params.Messages, newParams.Messages...)
 
 			// Get the last message from the params.
 			msg := params.Messages[len(params.Messages)-1]

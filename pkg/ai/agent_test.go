@@ -5,14 +5,29 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/provider"
 )
 
+func init() {
+	// Set up Viper configuration for testing
+	viper.Set("settings.defaults.provider", "openai")
+	viper.Set("models.openai", "gpt-4")
+	viper.Set("settings.defaults.temperature", 0.7)
+	viper.Set("settings.defaults.stream", true)
+}
+
 // testEvent creates a test event artifact with predefined data
 func testEvent() *datura.Artifact {
+	params := provider.NewParams()
+	params.Messages = append(params.Messages, &provider.Message{
+		Content: "test-content",
+		Role:    provider.MessageRoleUser,
+		Name:    "test-name",
+	})
 	return datura.New(
-		datura.WithPayload(provider.NewParams().Marshal()),
+		datura.WithPayload(params.Marshal()),
 	)
 }
 
@@ -25,7 +40,7 @@ func writeEventToAgent(agent *Agent, evt *datura.Artifact) {
 
 type messageVerification struct {
 	content string
-	role    string
+	role    provider.MessageRole
 	name    string
 }
 
@@ -37,15 +52,10 @@ func verifyMessages(agent *Agent, expected []messageVerification) {
 
 	for i, exp := range expected {
 		msg := messages[i]
-
-		content := msg.Content
-		So(content, ShouldEqual, exp.content)
-
-		role := msg.Role
-		So(role, ShouldEqual, exp.role)
-
-		name := msg.Name
-		So(name, ShouldEqual, exp.name)
+		So(msg, ShouldNotBeNil)
+		So(msg.Content, ShouldEqual, exp.content)
+		So(msg.Role, ShouldEqual, exp.role)
+		So(msg.Name, ShouldEqual, exp.name)
 	}
 }
 
@@ -65,6 +75,9 @@ func TestWrite(t *testing.T) {
 
 		Convey("When writing valid event data", func() {
 			writeEventToAgent(agent, testEvent())
+			verifyMessages(agent, []messageVerification{
+				{content: "test-content", role: provider.MessageRoleUser, name: "test-name"},
+			})
 		})
 
 		Convey("When writing empty data", func() {
@@ -75,30 +88,48 @@ func TestWrite(t *testing.T) {
 		})
 
 		Convey("When writing a message event", func() {
+			params := provider.NewParams()
+			params.Messages = append(params.Messages, &provider.Message{
+				Content: "test-content",
+				Role:    provider.MessageRoleUser,
+				Name:    "test-name",
+			})
 			evt := datura.New(
-				datura.WithPayload(provider.NewParams().Marshal()),
+				datura.WithPayload(params.Marshal()),
 			)
 			writeEventToAgent(agent, evt)
 
 			verifyMessages(agent, []messageVerification{
-				{content: "test-content", role: "user", name: "test-name"},
+				{content: "test-content", role: provider.MessageRoleUser, name: "test-name"},
 			})
 		})
 
 		Convey("When writing multiple message events", func() {
+			params1 := provider.NewParams()
+			params1.Messages = append(params1.Messages, &provider.Message{
+				Content: "test-content",
+				Role:    provider.MessageRoleUser,
+				Name:    "test-name",
+			})
 			evt1 := datura.New(
-				datura.WithPayload(provider.NewParams().Marshal()),
+				datura.WithPayload(params1.Marshal()),
 			)
 			writeEventToAgent(agent, evt1)
 
+			params2 := provider.NewParams()
+			params2.Messages = append(params2.Messages, &provider.Message{
+				Content: "test-content-2",
+				Role:    provider.MessageRoleAssistant,
+				Name:    "test-name-2",
+			})
 			evt2 := datura.New(
-				datura.WithPayload(provider.NewParams().Marshal()),
+				datura.WithPayload(params2.Marshal()),
 			)
 			writeEventToAgent(agent, evt2)
 
 			verifyMessages(agent, []messageVerification{
-				{content: "test-content", role: "user", name: "test-name"},
-				{content: "test-content-2", role: "assistant", name: "test-name-2"},
+				{content: "test-content", role: provider.MessageRoleUser, name: "test-name"},
+				{content: "test-content-2", role: provider.MessageRoleAssistant, name: "test-name-2"},
 			})
 		})
 	})

@@ -70,36 +70,47 @@ func TestRead(t *testing.T) {
 			return nil
 		})
 
-		Convey("When reading from an empty buffer without stream", func() {
-			testData := testArtifact()
-			data, _, err := readArtifactData(testData)
-			So(err, ShouldBeNil)
-
-			buffer.artifact = testData
-			verifyBufferRead(buffer, data, false)
-		})
-
-		Convey("When reading from a buffer with data in the stream", func() {
-			testData := testArtifact()
-			expectedData, _, err := readArtifactData(testData)
-			So(err, ShouldBeNil)
-
-			// Read from the buffer
-			verifyBufferRead(buffer, expectedData, true)
-		})
-
-		Convey("When reading from a closed stream", func() {
+		Convey("When reading from a nil artifact", func() {
+			buffer.artifact = nil
 			p := make([]byte, 1024)
 			n, err := buffer.Read(p)
 			So(err, ShouldEqual, io.EOF)
 			So(n, ShouldEqual, 0)
 		})
 
-		Convey("When reading from an empty stream", func() {
-			p := make([]byte, 1024)
-			n, err := buffer.Read(p)
-			So(err, ShouldEqual, io.EOF)
-			So(n, ShouldEqual, 0)
+		Convey("When reading after writing data", func() {
+			testData := testArtifact()
+			data, dataLen, err := readArtifactData(testData)
+			So(err, ShouldBeNil)
+
+			// Write data to the buffer first
+			n, err := buffer.Write(data)
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, dataLen)
+
+			// Read the data back
+			p := make([]byte, len(data))
+			n, err = buffer.Read(p)
+			So(err, ShouldEqual, io.EOF) // Buffer.Read always returns EOF after reading
+			So(n, ShouldEqual, len(data))
+			So(p, ShouldResemble, data)
+		})
+
+		Convey("When reading with a small buffer", func() {
+			testData := testArtifact()
+			data, dataLen, err := readArtifactData(testData)
+			So(err, ShouldBeNil)
+
+			// Write data to the buffer
+			n, err := buffer.Write(data)
+			So(err, ShouldBeNil)
+			So(n, ShouldEqual, dataLen)
+
+			// Read with a smaller buffer
+			p := make([]byte, 1) // Intentionally small buffer
+			n, err = buffer.Read(p)
+			So(err, ShouldEqual, io.ErrShortBuffer)
+			So(n, ShouldBeGreaterThan, 0)
 		})
 	})
 }
