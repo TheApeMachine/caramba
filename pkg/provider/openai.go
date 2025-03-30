@@ -226,7 +226,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			continue
 		}
 
-		if content, ok := acc.JustFinishedContent(); ok {
+		if content, ok := acc.JustFinishedContent(); ok && content != "" {
 			if _, err = io.Copy(prvdr.buffer, datura.New(
 				datura.WithPayload([]byte(content)),
 			)); errnie.Error(err) != nil {
@@ -239,15 +239,17 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 			switch tool.Name {
 			case "browser":
-				if _, err = io.Copy(prvdr.buffer, datura.New(
-					datura.WithPayload([]byte(tool.Arguments)),
-				)); errnie.Error(err) != nil {
-					continue
+				if tool.Arguments != "" {
+					if _, err = io.Copy(prvdr.buffer, datura.New(
+						datura.WithPayload([]byte(tool.Arguments)),
+					)); errnie.Error(err) != nil {
+						continue
+					}
 				}
 			}
 		}
 
-		if refusal, ok := acc.JustFinishedRefusal(); ok {
+		if refusal, ok := acc.JustFinishedRefusal(); ok && refusal != "" {
 			if _, err = io.Copy(prvdr.buffer, datura.New(
 				datura.WithPayload([]byte(refusal)),
 			)); errnie.Error(err) != nil {
@@ -255,8 +257,8 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			}
 		}
 
-		// It's best to use chunks after handling JustFinished events
-		if len(chunk.Choices) > 0 {
+		// Only write non-empty content from chunks
+		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 			if _, err = io.Copy(prvdr.buffer, datura.New(
 				datura.WithPayload([]byte(chunk.Choices[0].Delta.Content)),
 			)); errnie.Error(err) != nil {
@@ -267,7 +269,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 	if err = stream.Err(); err != nil {
 		errnie.Error("Streaming error", "error", err)
-		return
+		return err
 	}
 
 	return nil

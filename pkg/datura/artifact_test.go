@@ -71,7 +71,8 @@ func TestArtifactCreation(t *testing.T) {
 					So(err, ShouldBeNil)
 					So(key, ShouldEqual, "test_key")
 
-					value := item.Value()
+					value, err := item.Value().TextValue()
+					So(err, ShouldBeNil)
 					So(value, ShouldEqual, "test_value")
 				})
 			})
@@ -145,7 +146,8 @@ func TestArtifactMetadata(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(key, ShouldEqual, "test_key")
 
-				value := item.Value()
+				value, err := item.Value().TextValue()
+				So(err, ShouldBeNil)
 				So(value, ShouldEqual, "test_value")
 			})
 		})

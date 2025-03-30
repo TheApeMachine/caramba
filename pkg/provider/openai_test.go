@@ -17,8 +17,13 @@ func testParams(stream bool) *Params {
 	errnie.Debug("creating test params", "model", model)
 
 	params := &Params{
-		Model:            model,
-		Messages:         nil,
+		Model: model,
+		Messages: []*Message{
+			{
+				Role:    MessageRoleUser,
+				Content: "Hello, this is a test message",
+			},
+		},
 		Tools:            nil,
 		Temperature:      0.7,
 		TopP:             1.0,
@@ -112,8 +117,29 @@ func TestOpenAIProvider_BuildTools(t *testing.T) {
 		})
 
 		Convey("When building tools with valid context", func() {
-			tools := provider.buildTools(params)
-			So(tools, ShouldNotBeNil)
+			provider.params = &Params{
+				Tools: []*Tool{
+					{
+						Function: Function{
+							Name:        "test_tool",
+							Description: "A test tool",
+							Parameters: Parameters{
+								Properties: []Property{
+									{
+										Name:        "test_param",
+										Type:        "string",
+										Description: "A test parameter",
+									},
+								},
+								Required: []string{"test_param"},
+							},
+						},
+					},
+				},
+			}
+			err := provider.buildTools(params)
+			So(err, ShouldBeNil)
+			So(params.Tools, ShouldNotBeEmpty)
 		})
 	})
 }
