@@ -1,79 +1,61 @@
 package examples
 
 import (
-	"context"
-	"fmt"
-	"os"
-
 	"github.com/theapemachine/caramba/pkg/api/ai"
-	"github.com/theapemachine/caramba/pkg/api/provider"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
-// CapnpExample demonstrates using Cap'n Proto interfaces with multiple agents
+// CapnpExample demonstrates using Cap'n Proto interfaces with an agent
 type CapnpExample struct {
-	agents   map[string]ai.Agent
-	contexts map[string]*provider.ProviderParams
+	agents []*ai.Agent
 }
 
-// NewCapnp creates a new Cap'n Proto example with multiple agents
+// NewCapnp creates a new Cap'n Proto example with a single agent
 func NewCapnp() *CapnpExample {
 	errnie.Debug("examples.NewCapnp")
 
-	prvdr := provider.NewProvider(os.Getenv("OPENAI_API_KEY"))
+	agents := make([]*ai.Agent, 0)
 
-	agents := make(map[string]ai.Agent)
-	contexts := make(map[string]*provider.ProviderParams)
+	for _, agentName := range []string{"agent1", "agent2", "agent3"} {
+		agent, err := ai.NewCapnpAgent(agentName)
 
-	// Create three agents and their contexts
-	for i := 1; i <= 3; i++ {
-		agentName := fmt.Sprintf("agent%d", i)
-		agent, err := ai.NewAgent(prvdr)
-
-		if errnie.Error(err) != nil {
+		if err != nil {
+			errnie.Error(err)
 			return nil
 		}
 
-		context, err := provider.NewConversation()
+		agent.SetContext(*agent.AddTool("system"))
 
-		if errnie.Error(err) != nil {
-			return nil
-		}
-
-		if err = provider.AddTool(context, "system"); errnie.Error(err) != nil {
-			return nil
-		}
-
-		if err = provider.AddSystemMessage(
-			context,
+		agent.SetContext(*agent.AddMessage(
+			"system",
+			"",
 			tweaker.GetSystemPrompt("default"),
-		); errnie.Error(err) != nil {
-			return nil
-		}
+		))
 
-		agents[agentName] = agent
-		contexts[agentName] = context
+		agent.SetContext(*agent.AddMessage(
+			"user",
+			"danny",
+			"Try to find other agents in the system, then have a conversation with them.\n\nYour name is: "+agentName+", so you don't have to message yourself.",
+		))
+
+		agents = append(agents, agent)
 	}
 
+	ai.Agents = agents
+
 	return &CapnpExample{
-		agents:   agents,
-		contexts: contexts,
+		agents: agents,
 	}
 }
 
 func (example *CapnpExample) Run() (err error) {
-	errnie.Info("Starting Cap'n Proto multi-agent example")
+	errnie.Info("Starting Cap'n Proto example")
 
-	for name, agent := range example.agents {
-		if example.contexts[name], err = ai.Ask(
-			context.Background(),
-			agent,
-			example.contexts[name],
-		); err != nil {
-			return errnie.Error(err)
+	// Main interaction loop
+	for {
+		for _, agent := range example.agents {
+			agent.SetContext(*agent.Ask())
 		}
 	}
-
-	return nil
 }

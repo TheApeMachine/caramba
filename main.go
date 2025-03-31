@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	errnie.SetLevel(clog.DebugLevel)
+	errnie.SetLevel(clog.InfoLevel)
 
 	if err := cmd.Execute(); err != nil {
 		errnie.Error(err)

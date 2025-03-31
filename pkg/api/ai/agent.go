@@ -1,213 +1,370 @@
 package ai
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"capnproto.org/go/capnp/v3"
-	"github.com/theapemachine/caramba/pkg/api/provider"
+	provider "github.com/theapemachine/caramba/pkg/api/provider"
+	"github.com/theapemachine/caramba/pkg/api/tool"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-// CapnpAgent implements the Cap'n Proto Agent interface
-type CapnpAgent struct {
-	Provider provider.Provider
-	Context  provider.ProviderParams
+var Agents []*Agent
+
+func NewCapnpAgent(name string) (*Agent, error) {
+	errnie.Debug("ai.agent.NewCapnpAgent")
+
+	var (
+		arena = capnp.SingleSegment(nil)
+		seg   *capnp.Segment
+		agent Agent
+		err   error
+	)
+
+	if _, seg, err = capnp.NewMessage(arena); err != nil {
+		return nil, errnie.Error(err)
+	}
+
+	if agent, err = NewRootAgent(seg); err != nil {
+		return nil, errnie.Error(err)
+	}
+
+	if err = agent.SetName(name); err != nil {
+		return nil, errnie.Error(err)
+	}
+
+	providerParams, err := provider.NewProviderParams(seg)
+
+	if err != nil {
+		return nil, errnie.Error(err)
+	}
+
+	ml, err := provider.NewMessage_List(seg, 0)
+
+	if err != nil {
+		return nil, errnie.Error(err)
+	}
+
+	providerParams.SetMessages(ml)
+
+	if err = providerParams.SetModel("gpt-4o-mini"); err != nil {
+		return nil, errnie.Error(err)
+	}
+
+	if err = agent.SetContext(providerParams); err != nil {
+		return nil, errnie.Error(err)
+	}
+
+	return &agent, nil
 }
 
-// Process implements the Agent.process method
-func (a *CapnpAgent) Process(ctx context.Context, call Agent_process) error {
-	// Get the input parameters
-	params, err := call.Args().Params()
+func (agent *Agent) AddMessage(role, name, content string) *provider.ProviderParams {
+	errnie.Debug("ai.agent.AddMessage", "role", role, "name", name, "content", content)
+
+	context, err := agent.Context()
+
 	if err != nil {
-		return fmt.Errorf("failed to get params: %v", err)
-	}
-	if !params.IsValid() {
-		return fmt.Errorf("invalid parameters")
+		errnie.Error(err)
+		return &context
 	}
 
-	// Forward to provider
-	future, release := a.Provider.Complete(ctx, func(p provider.Provider_complete_Params) error {
-		return p.SetParams(params)
-	})
-	defer release()
+	message, err := provider.NewMessage(agent.Segment())
 
-	// Get the provider response
-	response, err := future.Struct()
 	if err != nil {
-		return fmt.Errorf("failed to get response: %v", err)
+		errnie.Error(err)
+		return &context
 	}
 
-	// Update agent context with the response
-	a.Context = response
+	if err = message.SetRole(role); err != nil {
+		errnie.Error(err)
+		return &context
+	}
 
-	// Allocate results
-	results, err := call.AllocResults()
+	if role == "tool" {
+		if err = message.SetReference(name); err != nil {
+			errnie.Error(err)
+			return &context
+		}
+	}
+
+	if err = message.SetName(name); err != nil {
+		errnie.Error(err)
+		return &context
+	}
+
+	if err = message.SetContent(content); err != nil {
+		errnie.Error(err)
+		return &context
+	}
+
+	currentMessages, err := context.Messages()
+
 	if err != nil {
-		return fmt.Errorf("failed to allocate results: %v", err)
+		errnie.Error(err)
+		return &context
 	}
 
-	// Copy response to results
-	return provider.CopyProviderParams(&response, &results)
+	messages, err := context.NewMessages(int32(currentMessages.Len() + 1))
+
+	if err != nil {
+		errnie.Error(err)
+		return &context
+	}
+
+	// Copy existing messages
+	for i := range currentMessages.Len() {
+		if err := messages.Set(i, currentMessages.At(i)); err != nil {
+			errnie.Error(err)
+			return &context
+		}
+	}
+
+	// Add new message
+	if err := messages.Set(currentMessages.Len(), message); err != nil {
+		errnie.Error(err)
+		return &context
+	}
+
+	// Set the updated messages list back to the context
+	if err := context.SetMessages(messages); err != nil {
+		errnie.Error(err)
+		return &context
+	}
+
+	return &context
 }
 
-// GetName implements the Agent.getName method
-func (a *CapnpAgent) GetName(ctx context.Context, call Agent_getName) error {
-	results, err := call.AllocResults()
+func (agent *Agent) AddTool(toolName string) *provider.ProviderParams {
+	errnie.Debug("ai.agent.AddTool")
+
+	context, err := agent.Context()
+
 	if err != nil {
-		return fmt.Errorf("failed to allocate results: %v", err)
+		errnie.Error(err)
+		return &context
 	}
 
-	return results.SetName("CapnpAgent")
-}
+	newTool, err := tool.NewCapnpTool(toolName)
 
-// GetContext implements the Agent.getContext method
-func (a *CapnpAgent) GetContext(ctx context.Context, call Agent_getContext) error {
-	results, err := call.AllocResults()
 	if err != nil {
-		return fmt.Errorf("failed to allocate results: %v", err)
+		errnie.Error(err)
+		return &context
 	}
 
-	// Copy context to results
-	return provider.CopyProviderParams(&a.Context, &results)
-}
+	currentTools, err := context.Tools()
 
-// SetContext implements the Agent.setContext method
-func (a *CapnpAgent) SetContext(ctx context.Context, call Agent_setContext) error {
-	params, err := call.Args().Params()
 	if err != nil {
-		return fmt.Errorf("failed to get params: %v", err)
-	}
-	if !params.IsValid() {
-		return fmt.Errorf("invalid parameters")
+		errnie.Error(err)
+		return &context
 	}
 
-	// Create new context in the same segment
-	newContext, err := provider.NewProviderParams(params.Segment())
+	tools, err := context.NewTools(int32(currentTools.Len() + 1))
+
 	if err != nil {
-		return fmt.Errorf("failed to create new context: %v", err)
-	}
-
-	// Copy parameters to new context
-	if err := provider.CopyProviderParams(&params, &newContext); err != nil {
-		return fmt.Errorf("failed to copy context: %v", err)
-	}
-
-	a.Context = newContext
-	return nil
-}
-
-// AddTool implements the Agent.addTool method
-func (a *CapnpAgent) AddTool(ctx context.Context, call Agent_addTool) error {
-	params := call.Args()
-	tool, err := params.Tool()
-	if err != nil {
-		return fmt.Errorf("failed to get tool: %v", err)
-	}
-
-	// Add tool to context
-	tools, err := a.Context.Tools()
-	if err != nil {
-		return fmt.Errorf("failed to get tools: %v", err)
-	}
-
-	newTools, err := provider.NewTool_List(a.Context.Segment(), int32(tools.Len()+1))
-	if err != nil {
-		return fmt.Errorf("failed to create new tool list: %v", err)
+		errnie.Error(err)
+		return &context
 	}
 
 	// Copy existing tools
-	for i := 0; i < tools.Len(); i++ {
-		newTools.Set(i, tools.At(i))
+	for i := range currentTools.Len() {
+		if err := tools.Set(i, currentTools.At(i)); err != nil {
+			errnie.Error(err)
+			return &context
+		}
 	}
+
 	// Add new tool
-	newTools.Set(tools.Len(), tool)
+	if err := tools.Set(currentTools.Len(), *newTool); err != nil {
+		errnie.Error(err)
+		return &context
+	}
 
-	return a.Context.SetTools(newTools)
+	return &context
 }
 
-// ListTools implements the Agent.listTools method
-func (a *CapnpAgent) ListTools(ctx context.Context, call Agent_listTools) error {
-	results, err := call.AllocResults()
+// Ask sends a request to the agent and returns the updated context
+func (agent *Agent) Ask() *provider.ProviderParams {
+	errnie.Debug("ai.agent.Ask")
+
+	context, err := agent.Context()
+
 	if err != nil {
-		return fmt.Errorf("failed to allocate results: %v", err)
+		errnie.Error(err)
+		return &context
 	}
 
-	tools, err := a.Context.Tools()
-	if err != nil {
-		return fmt.Errorf("failed to get tools: %v", err)
+	prvdr := provider.NewProvider()
+	prvdr.SetParams(&context)
+
+	// Call the provider's Generate method which will update the ProviderParams directly
+	if err := prvdr.Generate(); err != nil {
+		errnie.Error(err)
+		return &context
 	}
 
-	return results.SetTools(tools)
+	agent.HandleToolCalls()
+
+	return &context
 }
 
-// NewAgent creates a new agent with the given provider
-func NewAgent(prov provider.Provider) (Agent, error) {
-	// Create a new message
-	_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
-	if err != nil {
-		return Agent{}, fmt.Errorf("failed to create message: %v", err)
+func (agent *Agent) Send(
+	agentName string,
+	agents []*Agent,
+	sysArgs map[string]any,
+	toolId string,
+) (err error) {
+	if targetName, ok := sysArgs["send_to_arg"].(string); ok {
+		if msg, ok := sysArgs["message_arg"].(string); ok {
+			// Find the target agent
+			for _, targetAgent := range agents {
+				targetAgentName, err := targetAgent.Name()
+				if err != nil {
+					continue
+				}
+
+				out := strings.Builder{}
+				out.WriteString("MESSAGE RECEIVED\n")
+				out.WriteString("FROM: " + agentName + "\n")
+				out.WriteString("TO  : " + targetName + "\n")
+				out.WriteString("\n" + msg + "\n")
+
+				if targetAgentName == targetName {
+					// Add the message to the target agent
+					targetAgent.AddMessage(
+						"user",
+						agentName,
+						out.String(),
+					)
+
+					fmt.Printf("[%s -> %s]\n\n%s\n\n", agentName, targetName, out.String())
+
+					agent.AddMessage(
+						"tool",
+						toolId,
+						"Message sent to "+targetName,
+					)
+
+					break
+				}
+			}
+		}
 	}
 
-	// Create initial context
-	context, err := provider.NewProviderParams(seg)
-	if err != nil {
-		return Agent{}, fmt.Errorf("failed to create context: %v", err)
-	}
-
-	return Agent_ServerToClient(&CapnpAgent{
-		Provider: prov,
-		Context:  context,
-	}), nil
+	return nil
 }
 
-// Ask sends a message to the agent and returns the updated ProviderParams containing the full conversation
-func Ask(ctx context.Context, agent Agent, params *provider.ProviderParams) (*provider.ProviderParams, error) {
-	// Process the message through the agent
-	future, release := agent.Process(ctx, func(p Agent_process_Params) error {
-		return p.SetParams(*params)
-	})
-	defer release()
+func (agent *Agent) HandleToolCalls() *provider.ProviderParams {
+	errnie.Debug("ai.agent.HandleToolCalls")
 
-	// Get the response
-	response, err := future.Struct()
+	context, err := agent.Context()
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to get response: %v", err)
+		errnie.Error(err)
+		return &context
 	}
 
-	// Create a new message and segment for the response
-	_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+	messages, err := context.Messages()
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new message: %v", err)
+		errnie.Error(err)
+		return &context
 	}
 
-	// Create new provider params in the new segment
-	newParams, err := provider.NewRootProviderParams(seg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new params: %v", err)
-	}
+	lastMessage := messages.At(messages.Len() - 1)
 
-	// Copy the response data to the new params
-	if err := provider.CopyProviderParams(&response, &newParams); err != nil {
-		return nil, fmt.Errorf("failed to copy response: %v", err)
-	}
+	if lastMessage.HasToolCalls() {
+		toolCalls, err := lastMessage.ToolCalls()
 
-	// Get messages from response for logging
-	messages, err := response.Messages()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get messages: %v", err)
-	}
-
-	// Copy messages to new params
-	if messages.Len() > 0 {
-		newMessages, err := newParams.NewMessages(int32(messages.Len()))
 		if err != nil {
-			return nil, fmt.Errorf("failed to create new messages: %v", err)
+			errnie.Error(err)
+			return &context
 		}
 
-		for i := 0; i < messages.Len(); i++ {
-			newMessages.Set(i, messages.At(i))
+		for i := range toolCalls.Len() {
+			toolCall := toolCalls.At(i)
+
+			function, err := toolCall.Function()
+
+			if err != nil {
+				errnie.Error(err)
+				return &context
+			}
+
+			name, err := function.Name()
+
+			if err != nil {
+				errnie.Error(err)
+				return &context
+			}
+
+			arguments, err := function.Arguments()
+
+			if err != nil {
+				errnie.Error(err)
+				return &context
+			}
+
+			args := map[string]any{}
+
+			if err := json.Unmarshal([]byte(arguments), &args); err != nil {
+				errnie.Error(err)
+				return &context
+			}
+
+			agentName, err := agent.Name()
+
+			if err != nil {
+				errnie.Error(err)
+				return &context
+			}
+
+			id, err := toolCall.Id()
+
+			if err != nil {
+				errnie.Error(err)
+				return &context
+			}
+
+			switch name {
+			case "system":
+				if command, ok := args["command"].(string); ok {
+					switch command {
+					case "inspect":
+						out := strings.Builder{}
+
+						out.WriteString("INSPECTING SYSTEM\n")
+						for _, targetAgent := range Agents {
+							targetName, err := targetAgent.Name()
+
+							if err != nil {
+								errnie.Error(err)
+								continue
+							}
+
+							out.WriteString(targetName + " (agent)\n")
+						}
+
+						agent.AddMessage(
+							"tool",
+							id,
+							out.String(),
+						)
+
+						fmt.Printf("[%s]\n\n%s\n\n", agentName, out.String())
+					case "send":
+						agent.Send(
+							agentName,
+							Agents,
+							args,
+							id,
+						)
+					}
+				}
+			}
 		}
 	}
 
-	return &newParams, nil
+	return &context
 }

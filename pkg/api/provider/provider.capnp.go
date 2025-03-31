@@ -9,6 +9,7 @@ import (
 	schemas "capnproto.org/go/capnp/v3/schemas"
 	server "capnproto.org/go/capnp/v3/server"
 	context "context"
+	tool "github.com/theapemachine/caramba/pkg/api/tool"
 	math "math"
 )
 
@@ -399,495 +400,6 @@ func (f ToolCallFunction_Future) Struct() (ToolCallFunction, error) {
 	return ToolCallFunction(p.Struct()), err
 }
 
-type Tool capnp.Struct
-
-// Tool_TypeID is the unique identifier for the type Tool.
-const Tool_TypeID = 0xfd1fe2c5b22b2edc
-
-func NewTool(s *capnp.Segment) (Tool, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
-	return Tool(st), err
-}
-
-func NewRootTool(s *capnp.Segment) (Tool, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
-	return Tool(st), err
-}
-
-func ReadRootTool(msg *capnp.Message) (Tool, error) {
-	root, err := msg.Root()
-	return Tool(root.Struct()), err
-}
-
-func (s Tool) String() string {
-	str, _ := text.Marshal(0xfd1fe2c5b22b2edc, capnp.Struct(s))
-	return str
-}
-
-func (s Tool) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
-	return capnp.Struct(s).EncodeAsPtr(seg)
-}
-
-func (Tool) DecodeFromPtr(p capnp.Ptr) Tool {
-	return Tool(capnp.Struct{}.DecodeFromPtr(p))
-}
-
-func (s Tool) ToPtr() capnp.Ptr {
-	return capnp.Struct(s).ToPtr()
-}
-func (s Tool) IsValid() bool {
-	return capnp.Struct(s).IsValid()
-}
-
-func (s Tool) Message() *capnp.Message {
-	return capnp.Struct(s).Message()
-}
-
-func (s Tool) Segment() *capnp.Segment {
-	return capnp.Struct(s).Segment()
-}
-func (s Tool) Function() (Function, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return Function(p.Struct()), err
-}
-
-func (s Tool) HasFunction() bool {
-	return capnp.Struct(s).HasPtr(0)
-}
-
-func (s Tool) SetFunction(v Function) error {
-	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
-}
-
-// NewFunction sets the function field to a newly
-// allocated Function struct, preferring placement in s's segment.
-func (s Tool) NewFunction() (Function, error) {
-	ss, err := NewFunction(capnp.Struct(s).Segment())
-	if err != nil {
-		return Function{}, err
-	}
-	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
-	return ss, err
-}
-
-// Tool_List is a list of Tool.
-type Tool_List = capnp.StructList[Tool]
-
-// NewTool creates a new list of Tool.
-func NewTool_List(s *capnp.Segment, sz int32) (Tool_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
-	return capnp.StructList[Tool](l), err
-}
-
-// Tool_Future is a wrapper for a Tool promised by a client call.
-type Tool_Future struct{ *capnp.Future }
-
-func (f Tool_Future) Struct() (Tool, error) {
-	p, err := f.Future.Ptr()
-	return Tool(p.Struct()), err
-}
-func (p Tool_Future) Function() Function_Future {
-	return Function_Future{Future: p.Future.Field(0, nil)}
-}
-
-type Function capnp.Struct
-
-// Function_TypeID is the unique identifier for the type Function.
-const Function_TypeID = 0xf37ab2110076b105
-
-func NewFunction(s *capnp.Segment) (Function, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3})
-	return Function(st), err
-}
-
-func NewRootFunction(s *capnp.Segment) (Function, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3})
-	return Function(st), err
-}
-
-func ReadRootFunction(msg *capnp.Message) (Function, error) {
-	root, err := msg.Root()
-	return Function(root.Struct()), err
-}
-
-func (s Function) String() string {
-	str, _ := text.Marshal(0xf37ab2110076b105, capnp.Struct(s))
-	return str
-}
-
-func (s Function) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
-	return capnp.Struct(s).EncodeAsPtr(seg)
-}
-
-func (Function) DecodeFromPtr(p capnp.Ptr) Function {
-	return Function(capnp.Struct{}.DecodeFromPtr(p))
-}
-
-func (s Function) ToPtr() capnp.Ptr {
-	return capnp.Struct(s).ToPtr()
-}
-func (s Function) IsValid() bool {
-	return capnp.Struct(s).IsValid()
-}
-
-func (s Function) Message() *capnp.Message {
-	return capnp.Struct(s).Message()
-}
-
-func (s Function) Segment() *capnp.Segment {
-	return capnp.Struct(s).Segment()
-}
-func (s Function) Name() (string, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return p.Text(), err
-}
-
-func (s Function) HasName() bool {
-	return capnp.Struct(s).HasPtr(0)
-}
-
-func (s Function) NameBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return p.TextBytes(), err
-}
-
-func (s Function) SetName(v string) error {
-	return capnp.Struct(s).SetText(0, v)
-}
-
-func (s Function) Description() (string, error) {
-	p, err := capnp.Struct(s).Ptr(1)
-	return p.Text(), err
-}
-
-func (s Function) HasDescription() bool {
-	return capnp.Struct(s).HasPtr(1)
-}
-
-func (s Function) DescriptionBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(1)
-	return p.TextBytes(), err
-}
-
-func (s Function) SetDescription(v string) error {
-	return capnp.Struct(s).SetText(1, v)
-}
-
-func (s Function) Parameters() (Parameters, error) {
-	p, err := capnp.Struct(s).Ptr(2)
-	return Parameters(p.Struct()), err
-}
-
-func (s Function) HasParameters() bool {
-	return capnp.Struct(s).HasPtr(2)
-}
-
-func (s Function) SetParameters(v Parameters) error {
-	return capnp.Struct(s).SetPtr(2, capnp.Struct(v).ToPtr())
-}
-
-// NewParameters sets the parameters field to a newly
-// allocated Parameters struct, preferring placement in s's segment.
-func (s Function) NewParameters() (Parameters, error) {
-	ss, err := NewParameters(capnp.Struct(s).Segment())
-	if err != nil {
-		return Parameters{}, err
-	}
-	err = capnp.Struct(s).SetPtr(2, capnp.Struct(ss).ToPtr())
-	return ss, err
-}
-
-// Function_List is a list of Function.
-type Function_List = capnp.StructList[Function]
-
-// NewFunction creates a new list of Function.
-func NewFunction_List(s *capnp.Segment, sz int32) (Function_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3}, sz)
-	return capnp.StructList[Function](l), err
-}
-
-// Function_Future is a wrapper for a Function promised by a client call.
-type Function_Future struct{ *capnp.Future }
-
-func (f Function_Future) Struct() (Function, error) {
-	p, err := f.Future.Ptr()
-	return Function(p.Struct()), err
-}
-func (p Function_Future) Parameters() Parameters_Future {
-	return Parameters_Future{Future: p.Future.Field(2, nil)}
-}
-
-type Parameters capnp.Struct
-
-// Parameters_TypeID is the unique identifier for the type Parameters.
-const Parameters_TypeID = 0xdb8fb313a2bf1bbd
-
-func NewParameters(s *capnp.Segment) (Parameters, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3})
-	return Parameters(st), err
-}
-
-func NewRootParameters(s *capnp.Segment) (Parameters, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3})
-	return Parameters(st), err
-}
-
-func ReadRootParameters(msg *capnp.Message) (Parameters, error) {
-	root, err := msg.Root()
-	return Parameters(root.Struct()), err
-}
-
-func (s Parameters) String() string {
-	str, _ := text.Marshal(0xdb8fb313a2bf1bbd, capnp.Struct(s))
-	return str
-}
-
-func (s Parameters) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
-	return capnp.Struct(s).EncodeAsPtr(seg)
-}
-
-func (Parameters) DecodeFromPtr(p capnp.Ptr) Parameters {
-	return Parameters(capnp.Struct{}.DecodeFromPtr(p))
-}
-
-func (s Parameters) ToPtr() capnp.Ptr {
-	return capnp.Struct(s).ToPtr()
-}
-func (s Parameters) IsValid() bool {
-	return capnp.Struct(s).IsValid()
-}
-
-func (s Parameters) Message() *capnp.Message {
-	return capnp.Struct(s).Message()
-}
-
-func (s Parameters) Segment() *capnp.Segment {
-	return capnp.Struct(s).Segment()
-}
-func (s Parameters) Type() (string, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return p.TextDefault("object"), err
-}
-
-func (s Parameters) HasType() bool {
-	return capnp.Struct(s).HasPtr(0)
-}
-
-func (s Parameters) TypeBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return p.TextBytesDefault("object"), err
-}
-
-func (s Parameters) SetType(v string) error {
-	return capnp.Struct(s).SetNewText(0, v)
-}
-
-func (s Parameters) Properties() (Property_List, error) {
-	p, err := capnp.Struct(s).Ptr(1)
-	return Property_List(p.List()), err
-}
-
-func (s Parameters) HasProperties() bool {
-	return capnp.Struct(s).HasPtr(1)
-}
-
-func (s Parameters) SetProperties(v Property_List) error {
-	return capnp.Struct(s).SetPtr(1, v.ToPtr())
-}
-
-// NewProperties sets the properties field to a newly
-// allocated Property_List, preferring placement in s's segment.
-func (s Parameters) NewProperties(n int32) (Property_List, error) {
-	l, err := NewProperty_List(capnp.Struct(s).Segment(), n)
-	if err != nil {
-		return Property_List{}, err
-	}
-	err = capnp.Struct(s).SetPtr(1, l.ToPtr())
-	return l, err
-}
-func (s Parameters) Required() (capnp.TextList, error) {
-	p, err := capnp.Struct(s).Ptr(2)
-	return capnp.TextList(p.List()), err
-}
-
-func (s Parameters) HasRequired() bool {
-	return capnp.Struct(s).HasPtr(2)
-}
-
-func (s Parameters) SetRequired(v capnp.TextList) error {
-	return capnp.Struct(s).SetPtr(2, v.ToPtr())
-}
-
-// NewRequired sets the required field to a newly
-// allocated capnp.TextList, preferring placement in s's segment.
-func (s Parameters) NewRequired(n int32) (capnp.TextList, error) {
-	l, err := capnp.NewTextList(capnp.Struct(s).Segment(), n)
-	if err != nil {
-		return capnp.TextList{}, err
-	}
-	err = capnp.Struct(s).SetPtr(2, l.ToPtr())
-	return l, err
-}
-
-// Parameters_List is a list of Parameters.
-type Parameters_List = capnp.StructList[Parameters]
-
-// NewParameters creates a new list of Parameters.
-func NewParameters_List(s *capnp.Segment, sz int32) (Parameters_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3}, sz)
-	return capnp.StructList[Parameters](l), err
-}
-
-// Parameters_Future is a wrapper for a Parameters promised by a client call.
-type Parameters_Future struct{ *capnp.Future }
-
-func (f Parameters_Future) Struct() (Parameters, error) {
-	p, err := f.Future.Ptr()
-	return Parameters(p.Struct()), err
-}
-
-type Property capnp.Struct
-
-// Property_TypeID is the unique identifier for the type Property.
-const Property_TypeID = 0xa6c2b4b8797daa9f
-
-func NewProperty(s *capnp.Segment) (Property, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4})
-	return Property(st), err
-}
-
-func NewRootProperty(s *capnp.Segment) (Property, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4})
-	return Property(st), err
-}
-
-func ReadRootProperty(msg *capnp.Message) (Property, error) {
-	root, err := msg.Root()
-	return Property(root.Struct()), err
-}
-
-func (s Property) String() string {
-	str, _ := text.Marshal(0xa6c2b4b8797daa9f, capnp.Struct(s))
-	return str
-}
-
-func (s Property) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
-	return capnp.Struct(s).EncodeAsPtr(seg)
-}
-
-func (Property) DecodeFromPtr(p capnp.Ptr) Property {
-	return Property(capnp.Struct{}.DecodeFromPtr(p))
-}
-
-func (s Property) ToPtr() capnp.Ptr {
-	return capnp.Struct(s).ToPtr()
-}
-func (s Property) IsValid() bool {
-	return capnp.Struct(s).IsValid()
-}
-
-func (s Property) Message() *capnp.Message {
-	return capnp.Struct(s).Message()
-}
-
-func (s Property) Segment() *capnp.Segment {
-	return capnp.Struct(s).Segment()
-}
-func (s Property) Name() (string, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return p.Text(), err
-}
-
-func (s Property) HasName() bool {
-	return capnp.Struct(s).HasPtr(0)
-}
-
-func (s Property) NameBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return p.TextBytes(), err
-}
-
-func (s Property) SetName(v string) error {
-	return capnp.Struct(s).SetText(0, v)
-}
-
-func (s Property) Type() (string, error) {
-	p, err := capnp.Struct(s).Ptr(1)
-	return p.Text(), err
-}
-
-func (s Property) HasType() bool {
-	return capnp.Struct(s).HasPtr(1)
-}
-
-func (s Property) TypeBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(1)
-	return p.TextBytes(), err
-}
-
-func (s Property) SetType(v string) error {
-	return capnp.Struct(s).SetText(1, v)
-}
-
-func (s Property) Description() (string, error) {
-	p, err := capnp.Struct(s).Ptr(2)
-	return p.Text(), err
-}
-
-func (s Property) HasDescription() bool {
-	return capnp.Struct(s).HasPtr(2)
-}
-
-func (s Property) DescriptionBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(2)
-	return p.TextBytes(), err
-}
-
-func (s Property) SetDescription(v string) error {
-	return capnp.Struct(s).SetText(2, v)
-}
-
-func (s Property) Enum() (capnp.TextList, error) {
-	p, err := capnp.Struct(s).Ptr(3)
-	return capnp.TextList(p.List()), err
-}
-
-func (s Property) HasEnum() bool {
-	return capnp.Struct(s).HasPtr(3)
-}
-
-func (s Property) SetEnum(v capnp.TextList) error {
-	return capnp.Struct(s).SetPtr(3, v.ToPtr())
-}
-
-// NewEnum sets the enum field to a newly
-// allocated capnp.TextList, preferring placement in s's segment.
-func (s Property) NewEnum(n int32) (capnp.TextList, error) {
-	l, err := capnp.NewTextList(capnp.Struct(s).Segment(), n)
-	if err != nil {
-		return capnp.TextList{}, err
-	}
-	err = capnp.Struct(s).SetPtr(3, l.ToPtr())
-	return l, err
-}
-
-// Property_List is a list of Property.
-type Property_List = capnp.StructList[Property]
-
-// NewProperty creates a new list of Property.
-func NewProperty_List(s *capnp.Segment, sz int32) (Property_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4}, sz)
-	return capnp.StructList[Property](l), err
-}
-
-// Property_Future is a wrapper for a Property promised by a client call.
-type Property_Future struct{ *capnp.Future }
-
-func (f Property_Future) Struct() (Property, error) {
-	p, err := f.Future.Ptr()
-	return Property(p.Struct()), err
-}
-
 type ResponseFormat capnp.Struct
 
 // ResponseFormat_TypeID is the unique identifier for the type ResponseFormat.
@@ -1020,12 +532,12 @@ type ProviderParams capnp.Struct
 const ProviderParams_TypeID = 0xcc72bf78281e5832
 
 func NewProviderParams(s *capnp.Segment) (ProviderParams, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 48, PointerCount: 7})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 48, PointerCount: 4})
 	return ProviderParams(st), err
 }
 
 func NewRootProviderParams(s *capnp.Segment) (ProviderParams, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 48, PointerCount: 7})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 48, PointerCount: 4})
 	return ProviderParams(st), err
 }
 
@@ -1102,25 +614,25 @@ func (s ProviderParams) NewMessages(n int32) (Message_List, error) {
 	err = capnp.Struct(s).SetPtr(1, l.ToPtr())
 	return l, err
 }
-func (s ProviderParams) Tools() (Tool_List, error) {
+func (s ProviderParams) Tools() (tool.Tool_List, error) {
 	p, err := capnp.Struct(s).Ptr(2)
-	return Tool_List(p.List()), err
+	return tool.Tool_List(p.List()), err
 }
 
 func (s ProviderParams) HasTools() bool {
 	return capnp.Struct(s).HasPtr(2)
 }
 
-func (s ProviderParams) SetTools(v Tool_List) error {
+func (s ProviderParams) SetTools(v tool.Tool_List) error {
 	return capnp.Struct(s).SetPtr(2, v.ToPtr())
 }
 
 // NewTools sets the tools field to a newly
-// allocated Tool_List, preferring placement in s's segment.
-func (s ProviderParams) NewTools(n int32) (Tool_List, error) {
-	l, err := NewTool_List(capnp.Struct(s).Segment(), n)
+// allocated tool.Tool_List, preferring placement in s's segment.
+func (s ProviderParams) NewTools(n int32) (tool.Tool_List, error) {
+	l, err := tool.NewTool_List(capnp.Struct(s).Segment(), n)
 	if err != nil {
-		return Tool_List{}, err
+		return tool.Tool_List{}, err
 	}
 	err = capnp.Struct(s).SetPtr(2, l.ToPtr())
 	return l, err
@@ -1205,80 +717,12 @@ func (s ProviderParams) SetStream(v bool) {
 	capnp.Struct(s).SetBit(352, v)
 }
 
-func (s ProviderParams) Content() (string, error) {
-	p, err := capnp.Struct(s).Ptr(4)
-	return p.Text(), err
-}
-
-func (s ProviderParams) HasContent() bool {
-	return capnp.Struct(s).HasPtr(4)
-}
-
-func (s ProviderParams) ContentBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(4)
-	return p.TextBytes(), err
-}
-
-func (s ProviderParams) SetContent(v string) error {
-	return capnp.Struct(s).SetText(4, v)
-}
-
-func (s ProviderParams) ToolCall() (ToolCall, error) {
-	p, err := capnp.Struct(s).Ptr(5)
-	return ToolCall(p.Struct()), err
-}
-
-func (s ProviderParams) HasToolCall() bool {
-	return capnp.Struct(s).HasPtr(5)
-}
-
-func (s ProviderParams) SetToolCall(v ToolCall) error {
-	return capnp.Struct(s).SetPtr(5, capnp.Struct(v).ToPtr())
-}
-
-// NewToolCall sets the toolCall field to a newly
-// allocated ToolCall struct, preferring placement in s's segment.
-func (s ProviderParams) NewToolCall() (ToolCall, error) {
-	ss, err := NewToolCall(capnp.Struct(s).Segment())
-	if err != nil {
-		return ToolCall{}, err
-	}
-	err = capnp.Struct(s).SetPtr(5, capnp.Struct(ss).ToPtr())
-	return ss, err
-}
-
-func (s ProviderParams) Done() bool {
-	return capnp.Struct(s).Bit(353)
-}
-
-func (s ProviderParams) SetDone(v bool) {
-	capnp.Struct(s).SetBit(353, v)
-}
-
-func (s ProviderParams) Error() (string, error) {
-	p, err := capnp.Struct(s).Ptr(6)
-	return p.Text(), err
-}
-
-func (s ProviderParams) HasError() bool {
-	return capnp.Struct(s).HasPtr(6)
-}
-
-func (s ProviderParams) ErrorBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(6)
-	return p.TextBytes(), err
-}
-
-func (s ProviderParams) SetError(v string) error {
-	return capnp.Struct(s).SetText(6, v)
-}
-
 // ProviderParams_List is a list of ProviderParams.
 type ProviderParams_List = capnp.StructList[ProviderParams]
 
 // NewProviderParams creates a new list of ProviderParams.
 func NewProviderParams_List(s *capnp.Segment, sz int32) (ProviderParams_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 48, PointerCount: 7}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 48, PointerCount: 4}, sz)
 	return capnp.StructList[ProviderParams](l), err
 }
 
@@ -1291,9 +735,6 @@ func (f ProviderParams_Future) Struct() (ProviderParams, error) {
 }
 func (p ProviderParams_Future) ResponseFormat() ResponseFormat_Future {
 	return ResponseFormat_Future{Future: p.Future.Field(3, nil)}
-}
-func (p ProviderParams_Future) ToolCall() ToolCall_Future {
-	return ToolCall_Future{Future: p.Future.Field(5, nil)}
 }
 
 type Provider capnp.Client
@@ -1512,7 +953,7 @@ func (c Provider_complete) Args() Provider_complete_Params {
 
 // AllocResults allocates the results struct.
 func (c Provider_complete) AllocResults() (ProviderParams, error) {
-	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 48, PointerCount: 7})
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 48, PointerCount: 4})
 	return ProviderParams(r), err
 }
 
@@ -1529,7 +970,7 @@ func (c Provider_stream) Args() Provider_stream_Params {
 
 // AllocResults allocates the results struct.
 func (c Provider_stream) AllocResults() (ProviderParams, error) {
-	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 48, PointerCount: 7})
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 48, PointerCount: 4})
 	return ProviderParams(r), err
 }
 
@@ -1911,119 +1352,93 @@ func (f Provider_embed_Results_Future) Struct() (Provider_embed_Results, error) 
 	return Provider_embed_Results(p.Struct()), err
 }
 
-const schema_d4c9c9f76e89a0d2 = "x\xda\x94V\x7f\x88\x1cg\x19~\x9f\xef\x9b\xd9\xbd\xdc" +
-	"\xee\xe6v\x9c\x11\xd4R7J*M\xf4r\xbd\x94P" +
-	"9\x8c{FS\x9b\xb5\xa9;\xb7\x11K\xe8\x1f\x99\xec" +
-	"~\xb9[\xbb;3\x99\x9d\x8dw\x87\xd5*U\x93R" +
-	"0B\x0b\x06\xfcQ\x04\x055\"\x89\x15\x8c\xa5\x14[" +
-	"\x8b\xa6$XK\x05K[(\x82TA\xc1`\xb1\x15" +
-	"\x8c#\xef\xee\xce\x8f[\xcff\xf3\xdf|\xef\xf7\xcc\xf7" +
-	"=\xcf\xfb\xbd\xdf\xf3~\xb7\xbcG[\xd4\xe6K\xb7\xe5" +
-	"H\xd8w\xe8\xb9h\xfd\xa6\xe8\xc8\xb7/\xcd=L\xc6" +
-	"6D\xcf?z\xca}\xe3\xe2\xc5\x17H\xd7\xf3D\xb7" +
-	"B\xee\x83iH\xfe,\xc9\x0a\x08\xd1w~x\xdf\xda" +
-	"\xcf\x1f{\xea\xfbch\x8d!{\xb4\x1a\xcc\x03\xfci" +
-	"\xee\xd7^#D+\xf2\xae\xd3\xcf\xbf\xf7\xc6\x0bc\xe0" +
-	"\xc1z\xb3z\x0d\xe6Gx\x17s\xaf\xfe\x13B\xb4\xeb" +
-	"\x86\xd5\xdfv\x1f?\xff\x14\xd9\xdb\xf0?\xe8\x17\xf5u" +
-	"\x98\x7f\x1b\xa0\xff\xa2\xf3\xd2\x17O~e\xef\xf7\x1e\xfa" +
-	"\xf4\xb3d\xec\x00\x91\x0e\x06\xfd2w\x1e\x04\xf3w\xb9" +
-	"*!\xda}\xf7\xbbo^}2\xb8\xc4\xcb\xe52\xcb" +
-	"\xe5\x19y%\xb7\x0es\xf8\x89\xfc'%!\xd2\x7f<" +
-	"w\xf6[\x9f\xfa\xfce2\xb6\xc9\x14M\xb8\xf5\x07\xd3" +
-	"5\x98OL\xf3\xce\x17\xa6\x7fm\xee)\xe4\x89\xa2'" +
-	"nx\xf2\xbb\xe6O\xbf\xf6\xd2f\xc2n,\x1c\x869" +
-	"\xcf0s\xb6\xc0\xc2n;s\xee\xf4\xfb\x96\xff\xf9R" +
-	"\x96\xea\x95\xc2/\x98*\x8aL\xf5\x81W>|\xeam" +
-	"'^\xfbS\x16\xb0\xa78\x00\xecg\xc0\x1b\xfa\xb9\x13" +
-	"\xc6\xf9\xf5\x7fl\xb2\x99*\xd6`\xae\x15y\xb3~\x91" +
-	"7{\xfa\xf8\xc7\xbf\xfa\xb3\xca\xe3o\x8e1\x13\x0c~" +
-	"{\xe9A\x98\xb3%\x06\xef(}\x96\x10\xbd\xbc\xeb\xfd" +
-	"\xe7\x9f\xf9c\xe5\xea\x18x@\xe0Ti'\xcc3\x03" +
-	"\xf0#%fy\xd7\xe1\xa9G\x1bO\xff\xe8?Y\x96" +
-	"\x17J\xcf2\xcb\xcb\xa5*\xcdF\xfe\xbd\xcbs\x8e\xdf" +
-	"\x9e\xd3\xfc\xc0;\xd1n\xa9`.\xfe\xd8\xd5t|\xd7" +
-	"_8\xa8z=gYQ\x1d\xb0-\xa9\x11i 2" +
-	"\xee\xdbId\xafJ\xd8\x0f\x08\x18\x80\x05\x0e~q\x1f" +
-	"\x91\xfd9\x09\xfb\xa4\x80!\x84\x05Ad|\x99\x91\xf7" +
-	"K\xd8\x0f\x09\x18RZ\x90D\xc6\xa9%\"\xfb\xa4\x84" +
-	"\xfd\xb0\x80\xa1i\x164\"\xe3\xeb\x1c<-a\x9f\x15" +
-	"\x98\x09\xbc\x8eB\x91\x04\x8a\x84/4=7Tn\x18" +
-	"\x8fg\\\xa7\x9bLF\x81:\xa6\x02\xe56\x09i," +
-	"\xf4\xbc\xceG\x9dN\x87\xd0\xc3VB]\x02\xe5\xb4\xb0" +
-	"\x09\x1c\xbc\xb6\xf4z\xe0\xf9*\x08\xd7h \xbe\x9c\x88" +
-	"wX\xd2=\x12\xf6JF\xbc\xe2\xe0\x11\x09\xbb\x93\x11" +
-	"\xdf>Jd\xafH\xd8aF\xfcqFv\x86i\xda" +
-	" e&\\\xf3S\x0d-\xd5k\x06m?\xa4|\xdb" +
-	"s\x13\x88r\xfb\xddX\x12\xc7&\x12r(N\xc7@" +
-	"H1\x11\xb2\xff]D\xf6\xa2\x84}gF\xc8\x01\xa6" +
-	"\xf71\x09\xbb\x9e\x11r\xb0Fd\xdf)a\xdf- " +
-	"\xdb\xad\xcd\x19\x1f\xeb\xbb\xcd\xb0\xed\xb9D\x84rZ\xd4" +
-	"\x04\x94'a\xb9\xa4z\xbe\xe7\xf6T\xf5v/\xe8:" +
-	"\xe1$9\xe7\xf4\xb6$l?C\xb5\xbb\x90\xe6\x1cq" +
-	"\xca\x17F)_\x1dK\xf9\xe6Y\xae\xf6\x9a+\xaa\xeb" +
-	"\xa4\xc30h7C\x80\x04\x90Q\xa2\xbfE\xe1\x0c\x87" +
-	"\xaa{T\xb5\xb6\xd7+N\xe0t{\xb6\x96\xa8)\xb1" +
-	"\x9a)\x09\xdb\x12\x98\x09\xd5jR\xda\x13\x15\xe5`X" +
-	"\xad\x0f\x16\xe5,}(^\xd7|\x04\xbb\x89\x1a\xa7!" +
-	"\xd1\xf8&\xd2D\x99gP#j|\x83\xe3\x8f!\xcd" +
-	"\x95yn\x80?\xcb\xf1\xdf -Q\xf3\x19\xac\x135" +
-	"~\xc5\xf1\xe7 \x80\xe1\x0d5/\xe3(Q\xe3\x12\x87" +
-	"\xff\xc0p\x1d\x16t\"\xf3\xf7\xd8I\xd4x\x8e\xe3/" +
-	"s<',\xe4\x88\xcc\x17\x07\xf1\x178\xfe*\xc7\xf3" +
-	"\xd2b\x072_\xc1\x83D\x8dW9\xfeW\x8eOi" +
-	"\x16\xa6\xb8K\xe0KD\x8d?s\xfcu\x8eo\x99\xb6" +
-	"\xb0\x85\xc8\xbc\x82%\xa2\xc6\xdf9\xfeo\x08\xccO\x1f" +
-	"\x81\x85i\"\xf3_X j\xbc\x0e\x89%!`\x14" +
-	"4\x0b\x05\"\xf3*\xf6\x115\xded\xbc\xc6\xf1\xa2n" +
-	"\xa1HdB\xd4\x88\x96\x84D\xa3(\x04\xe6K\x0e," +
-	"\x94\x88\xcc-\x82yj<Qf\xfc\xd6\x9c\x85\xadD" +
-	"fIpz\xa68n\x09\x81J\xd7k\xa9NrT" +
-	"\xdd\xa13\xf6\xb8\xdc\x13\x93I\x1a\xf3\xd0d*\xecD" +
-	"\x19\x0fJ\xcc{\xe4A\xc1\xa8\xe6iT\xf4(\xa7-" +
-	"utoB\xd5\xf5U\xe0\x84\x94\xef\x07\x0a\x05\x12(" +
-	"\xf0\xc5\xf3\xfczv\xf0\x89x\x10\x1d\x0b\xd4\xf1\xber" +
-	"\x9bX\xab+\xd7\xe9\xb0}%s~\xa0z\xcam*" +
-	"\xc4S\xc9L\xd7Y=\xe4\xdd\xab\\v\xcc)\x12\x98" +
-	"\x1a\x96\xbdr\xbaq\xd9\x8f\xbbpj\xb2\x83\xeb\x9eu" +
-	"\xd72a\xa6\xe5\xb9*\xfe\xb5\xa2\x82\xc0\x0b\xae\xbf\xc6" +
-	"c\xbf\xd2\x89\x92N\x86\xf8\x8d`\xd85\x12\xc6\x81<" +
-	"\xd2^\x9c\xce\xed] a\xcc\xe7!\x927\x07\xe2\x8e" +
-	"n\xdc\xb4\x9b\x84\xf1\xce|\xd4\xf4\xba~G\x85\x8a\x88" +
-	"\x16c\xb1\x8b\xa8\x0c\xee\xec\"\xea\x98\x84(\xdfA\x15" +
-	"*\x19\xf42\xce\x0a\x18\xfbwn\xe2\xac\x07\x0f\x8fL" +
-	"t%cW\xaa6\xf2\xb0\xfb\xc5\x06;%\x03\x0bU" +
-	"\xef\xe8gT3\x8c\xfca#j\x93T\x99ZJ^" +
-	"uI-\x1d\xef\xb7\x03\xd5\xca\xd4\xe3x\x87\x98\xd4\xb1" +
-	"\x96\xaa\xaa\xd7\xef\x84\x1b,\x8b\xbbsQ\xc2\xbeY " +
-	"\x1a\xa0Zm\x97\xb0\x1co5}\xdd[\x0d3\xbe}" +
-	"dd\xd9\xad\x16Rw\xac\xfa\x83Y\x94\xd3\xb7\xe1\xa4" +
-	"\xfd\xe4\xf6\xa4\x1d\x8du\xbd\xcd\xce\xe6\x00\xb7\x92;$" +
-	"\xecC\x99\xb3\xb1\xf9\xc0\xea\x12\xf6=\x13\xb5\x8d\xc8\x1f" +
-	"\x95\x03\xc9\x80\x19'\x0f\xce1\xc6\xfa\xb5\xfa\xf4F\xe6" +
-	"S\x09\xf3\x1d\xcc|\xbb\x84}K\x86\xf9,\x1f\xcc\x07" +
-	"$\xec\x0f\x8e\x93t\x82\xe5~W\xb9!\xdf\xe9\xf1\xbb" +
-	"'\xff\x1f\x87\x19&\xc1\xdbf\xce\xa36:\xfaw\x88" +
-	"\xb1&\x1f?r\xc7\x04\xe6\xaey\xf6\xf1\xdd\xdb><" +
-	"|\xa2\xeb=\xfe\xff\x06\x00\x00\xff\xff\xa6\x971o"
+const schema_d4c9c9f76e89a0d2 = "x\xda\x94U\xcdoTU\x14?\xbf{\xe7\xcdG)" +
+	"\xd2\xe7{\x0b?\x82\xad\xa65@\x80\xf2\x11\xa34\xe2" +
+	"T\x04\x0c\x15\xc8\xdc\x0eD4\x90\xf41si'\xcc" +
+	"\xfb\xe8\x9b78m@\xc1T\xa4\x84\xc4\x9a\xb0q\xa1" +
+	"\xc1\x85+1\x06\x12\x17\xcaB#\x0bS\xc4\x18\x89;" +
+	"\xe3\x92\x10\xfe\x00\xbf\x16\xfa\xcc\x9d\xe9\xfb\xa0\xc4\x8c\xec" +
+	"\xee\xfd\x9d\x93s\xce\xef\xdcs~w\xd3#|4\xb3" +
+	"y\xe5{Ybb\xaf\x96\x0dg\x87\xc2\x89\x8fn\x0e" +
+	"_$}\x00\xe1\xadK\xf3\xce\x1f\x8b\x8b?\x93\xa6\xe5" +
+	"\x88\xb6n\xe0;`l\xe7\xea\xb8\x8d\xf7\x83\x10N\xf1" +
+	"\xfd\x0b\xb7\x9eZ\xfd\xe52\xef\xb6\x8b\x95\x19\x83\xd1\xcc" +
+	"\xe4\x88\x8c\xe9\xcc\xe7\x84p\xe3\xe3\xad\x1f\xedkW\xbf" +
+	"%1\x80\xfb\xbcWj\xb30\x9eTi\x8c\xd5\xda\x1d" +
+	"B\xb8x\xee\xec\xf6O.\xbcz\x83\xf4\xb5 \xd2\xa0" +
+	"\x9c~\xd3\xae\x82`h\xd9\"!\xdcr\xe8\x895\xad" +
+	"\xaf\xfd\x9b*\\6\x15Ne\xdc:\x94\x9d\x85\xb1-" +
+	"\xab\x8e\xcfd]F\x08\xb5\xcf\x86/\x7fx\xf0\xcd\x1f" +
+	"H\x1f\xe0\x897a\xeb\xdd\xfc\x18\x8c\xbf\xf3*\xf3_" +
+	"\xf9\xef\x8cf!G\x14>\xfb\xc1\x95\x85\xa7'\x7f\xff" +
+	"%\x9d\xfdH\xe1+\x95\xdd.\xa8\xecs\xbf\xbe0\xff" +
+	"\xf0\x89;\xb7\xd3\x0e\x1fw\x1c\xae\xb4\x1d\xaeO\xbf\xfc" +
+	"\xee\x17\xfd\xd7\xfe\\\xd6\x1a\xa6\x1c\x7f*\x9c\x87qW" +
+	"%2n\x17\xde \x84\xfb_\xcf_*_\xff\xf4\x9f" +
+	"t\xb4]=7T\xb4\xd7z\x8aT\x0d\xbd\xe3\x93\xc3" +
+	"\x96W\x1b\xcex\xbe{\xa2V\x95\xfept\xd8X\xb1" +
+	"<\xc7\x1b\xd9'\x1b\x0dkRR\x09\x10&\xcf\x10e" +
+	"@\xa4\x9fZG$Z\x1cb\x8eA\x07L(\xf0\xcc" +
+	"\x0e\"q\x92C\x9cc\xd0\x193\xc1\x88\xf4w\x94\xe7" +
+	"i\x0eq\x81A\xe7\xdc\x04'\xd2\xe7\xc7\x89\xc49\x0e" +
+	"q\x91A\xcfdLd\x88\xf4\xf7\x15\xb8\xc0!.3" +
+	"\xac\xf2\xdd\xbaD/1\xf4\x12\xde\xaa\xb8N \x9d " +
+	"\xba\xafr,;6\x86\xbe<&}\xe9T\x08\x09\x16" +
+	"\xb8n\xfd%\xab^'4\xf0\x10\xa1\xc4\x81\xbed\xa6" +
+	"\x08\x0a\xecN\xfd@\x14\xa5M\xbe7&\xbf\xeb1\"" +
+	"1\xca!\xf6\xa6\xc8\xefQ<wr\x88R\x8a\xfc\xbe" +
+	"1\"\xb1\x97C\x1cb\xe0\xb5jL \x98\xf1\x92b" +
+	"\x8f5\x9dJPs\x1d\"B_\xf2\xbc\x04\xf4\xfd\x9f" +
+	"*\xc7e\xc3s\x9d\x86,\xeev}\xdb\x0aT\xa9}" +
+	"q\xa9\x96\xaa\xea0\x87\x98J\x95*\x8f\x12\x89*\x87" +
+	"\xf0R\xa5\xda#Db\x8aC\x04\x0cXz\xa6i\x85" +
+	"\xd59D\x8b-kzU6*~\xcd\x0b(Ws" +
+	"\x9d\x08-6*S\xd2\xb6\x92k\xe0\xd7*\x01@\x0c" +
+	"H1\xd1\xfe\x8bI)\xbaJ\xfb\xa8\xac\x0e\x96\xfa-" +
+	"\xdf\xb2\x1b\"\x13\xb3Y\xa9\xd8\xe49\x84\xc9\xb0*\x90" +
+	"\xadx\"\xbaw)\x8a],\xb5\x83\xaa.\xad\x8f\xe2" +
+	"\x1aC\xd8BT\x1e\x00Gy=\x92F\x19k1F" +
+	"T^\xa3\xf0\x9dHze\xbc\xd8\xf6\x7f^\xe1\x87\x90" +
+	"\x8c\xb5q\x10\xb3D\xe5\x03\x0a\x9f\x00\x03:\x83m\x1c" +
+	"\xc1Q\xa2\xf2a\x05O)w\x0d&4\"Cb\x1d" +
+	"QyB\xe1u\x85g\x99\x89,\x91Qk\xe3U\x85" +
+	"{\x0a\xcfqS-\xaea\xe3<Q\xd9S\xf8I\x85" +
+	"\xe73&\xf2D\xc6\x0c\xde&*\xb7\x14>\xa7\xf0B" +
+	"\x8f\x89\x02\x91q\x06\xe3D\xe5\xd3\x0a\xbf\x00\x86\xcd=" +
+	"\x130\xd1Cd\xccc\x84\xa8<\xa7\x0c\x0b`\xe8\xb7" +
+	"\xdd\xaa\xac\xc7\xbd\xb4;\x1b\xdfP\xf3\x18/O,\xdf" +
+	"\x9d\xe5\xe9W\x1b\x96\xda\xad\x99\xb3\xa7\xbe\x0f\xcf\x7f\xb3" +
+	"\x18\xed\x96\xbf4\x94\xb44\x95\xe8KTzi\xb0\x03" +
+	"i{\xd2\xb7\x02\xca5}\x89\x15\xc4\xb0Bm\x86\xeb" +
+	"\x95\xd2\x97W\xa2Kx\xcc\x97\xd3M\xe9T0S\x92" +
+	"\x8eU\x0ff\x88b\x9b\xe7\xcb\x86t*\x12\x91)\xb6" +
+	"\xd8V\xeb\x80{\\:J\x09\xf2\xc4\x90\xef\xcc\xa5\xb4" +
+	"\xec\xfb\xe6\xb2\xeb\xecD:\xa0\x11\xc5\xc2\x8a\xe8\xb7\xd0" +
+	"\xc5\x181}O\x0e\x89\x84'\xb6\xed#\xc4\xf4\xcd9" +
+	"\xb0\xf8\xf7A\xf4\x11\xe8C[\x88\xe9\x8f\xe6\xc2\x8ak" +
+	"{u\x19H\"\x1a\x8dj\x1cE\x7f{\x17FQ\xc2" +
+	"\x83/\xd0xQ6\x9a\xf5\xe0\x9e\x0dR\x1a\xdb\xcb!" +
+	"\xd60\x84m\xafj\xcd!LF/\xd9C\xec\x1em" +
+	"\xec\x9e\xaaS\xe8\xe0\xd2^\xa5S\x8d$\xcbZ\xf4\xda" +
+	"V\xf4%\x9f\xeb2y\xd3\xba\x89\xf0\xeeX%\xd5#" +
+	"\xe4\xe34k\x95&\x0cr\x88M)\x85\xdb\xa0h\xae" +
+	"\xe7\x10\xcf-\x17.\xcb\x9fl\xda\xd2\x09\xd4<,\x17" +
+	"\x8flW\xb2\xd1\x1b\x0dv\xd8\x12=(\xdf\x7f\x03\x00" +
+	"\x00\xff\xff]<9\xd1"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{
 		String: schema_d4c9c9f76e89a0d2,
 		Nodes: []uint64{
 			0x942fcc9e60ff257a,
-			0xa6c2b4b8797daa9f,
 			0xb91d22d2904e0368,
 			0xc2b2bb6dcf781b2e,
 			0xca578ca53d8688c9,
 			0xcc72bf78281e5832,
 			0xcd7e559dac2fad05,
-			0xdb8fb313a2bf1bbd,
 			0xdbf6672690b19937,
 			0xe5e77612893edd84,
-			0xf37ab2110076b105,
 			0xf8bb1fb5874771c3,
-			0xfd1fe2c5b22b2edc,
 			0xfeabc353a0085a4e,
 		},
 		Compressed: true,
