@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"math"
 	"time"
 
@@ -13,9 +14,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
-	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 type Document struct {
@@ -24,9 +23,10 @@ type Document struct {
 }
 
 type Qdrant struct {
+	ctx        context.Context
+	cancel     context.CancelFunc
 	client     *sdk.Client
 	collection string
-	buffer     *stream.Buffer
 	embedder   *provider.OpenAIEmbedder
 }
 
@@ -78,20 +78,40 @@ func NewQdrant() *Qdrant {
 	}
 
 	embedder := provider.NewOpenAIEmbedder()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	qdrant := &Qdrant{
+		ctx:        ctx,
+		cancel:     cancel,
 		client:     client,
 		collection: tweaker.GetQdrantCollection(),
 		embedder:   embedder,
-		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-			errnie.Debug("memory.Qdrant.buffer")
+	}
 
+	return qdrant
+}
+
+func (q *Qdrant) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("memory.Qdrant.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-q.ctx.Done():
+			errnie.Debug("memory.Qdrant.Generate.ctx.Done")
+			q.cancel()
+			return
+		case artifact := <-buffer:
 			var docs []Document
 
 			// Handle document storage
 			if documents := datura.GetMetaValue[string](artifact, "documents"); documents != "" {
-				if err = json.Unmarshal([]byte(documents), &docs); err != nil {
-					return errnie.Error(err)
+				if err := json.Unmarshal([]byte(documents), &docs); err != nil {
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
 				}
 
 				points := make([]*sdk.PointStruct, 0)
@@ -101,14 +121,16 @@ func NewQdrant() *Qdrant {
 						datura.WithPayload([]byte(doc.Content)),
 					)
 
-					if err = workflow.NewFlipFlop(docArtifact, embedder); err != nil {
-						return errnie.Error(err)
-					}
+					// Get embeddings using the embedder's Generate method
+					embeddingChan := q.embedder.Generate(make(chan *datura.Artifact, 1))
+					embeddingChan <- docArtifact
+					embeddedDoc := <-embeddingChan
 
 					// Get embeddings directly as float32 slice
-					vectors, err := docArtifact.DecryptPayload()
+					vectors, err := embeddedDoc.DecryptPayload()
 					if err != nil {
-						return errnie.Error(err)
+						out <- datura.New(datura.WithError(errnie.Error(err)))
+						return
 					}
 
 					vectorsFloat := make([]float32, len(vectors)/4)
@@ -125,24 +147,31 @@ func NewQdrant() *Qdrant {
 					})
 				}
 
-				_, err = client.Upsert(context.Background(), &sdk.UpsertPoints{
+				_, err := q.client.Upsert(context.Background(), &sdk.UpsertPoints{
 					CollectionName: tweaker.GetQdrantCollection(),
 					Points:         points,
 				})
-				return errnie.Error(err)
+
+				if err != nil {
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
+				}
+
+				out <- datura.New(datura.WithPayload([]byte("Documents stored successfully")))
+				return
 			}
 
 			// Handle search query
 			if question := datura.GetMetaValue[string](artifact, "question"); question != "" {
-				if err = workflow.NewFlipFlop(artifact, embedder); err != nil {
-					return errnie.Error(err)
-				}
+				// Get embeddings using the embedder's Generate method
+				embeddingChan := q.embedder.Generate(make(chan *datura.Artifact, 1))
+				embeddingChan <- artifact
 
 				// Get embeddings directly as float32 slice
 				vectors := datura.GetMetaValue[[]float32](artifact, "embeddings")
 
 				limit := uint64(5)
-				searchResult, err := client.Query(context.Background(), &sdk.QueryPoints{
+				searchResult, err := q.client.Query(context.Background(), &sdk.QueryPoints{
 					CollectionName: tweaker.GetQdrantCollection(),
 					Query:          sdk.NewQuery(vectors...),
 					Limit:          &limit,
@@ -152,8 +181,10 @@ func NewQdrant() *Qdrant {
 						},
 					},
 				})
+
 				if err != nil {
-					return errnie.Error(err)
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
 				}
 
 				var results []map[string]any
@@ -165,35 +196,14 @@ func NewQdrant() *Qdrant {
 				}
 
 				artifact.SetMetaValue("output", results)
+				out <- artifact
+				return
 			}
 
-			return nil
-		}),
-	}
+			// If no specific operation was requested
+			out <- datura.New(datura.WithError(errnie.Error(fmt.Errorf("no valid operation specified"))))
+		}
+	}()
 
-	return qdrant
-}
-
-func (q *Qdrant) Read(p []byte) (n int, err error) {
-	errnie.Debug("Qdrant.Read")
-	if q.buffer == nil {
-		return 0, errnie.Error(err)
-	}
-	return q.buffer.Read(p)
-}
-
-func (q *Qdrant) Write(p []byte) (n int, err error) {
-	errnie.Debug("Qdrant.Write")
-	if q.buffer == nil {
-		return 0, errnie.Error(err)
-	}
-	return q.buffer.Write(p)
-}
-
-func (q *Qdrant) Close() error {
-	errnie.Debug("Qdrant.Close")
-	if q.buffer != nil {
-		return q.buffer.Close()
-	}
-	return nil
+	return out
 }

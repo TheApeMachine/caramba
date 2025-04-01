@@ -1,215 +1,178 @@
 package ai
 
 import (
-	"fmt"
-	"io"
+	"context"
 	"time"
 
-	"github.com/goombaio/namegenerator"
+	"github.com/google/uuid"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/tweaker"
-	"github.com/theapemachine/caramba/pkg/workflow"
+	"github.com/theapemachine/caramba/pkg/tools"
+	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 func init() {
-	fmt.Println("ai.agent.init")
 	provider.RegisterTool("agent")
 }
 
-func GenerateName() string {
-	seed := time.Now().UTC().UnixNano()
-	nameGenerator := namegenerator.NewNameGenerator(seed)
-
-	name := nameGenerator.Generate()
-
-	return name
+/*
+Builder wraps a Cap'n Proto Agent.
+*/
+type AgentBuilder struct {
+	*Agent
+	pctx   context.Context
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-/*
-Agent represents an entity that can process messages, interact with tools,
-and produce responses. It implements io.ReadWriteCloser to enable composable
-pipelines for complex workflows.
-*/
-type Agent struct {
-	Name   string
-	buffer *stream.Buffer
-	params *provider.Params
-	Schema *provider.Tool
-	caller io.ReadWriteCloser
-}
-
-type AgentOption func(*Agent)
+type AgentOption func(*AgentBuilder)
 
 /*
-NewAgent creates a new agent with initialized components.
+NewAgentBuilder creates a new agent with initialized components.
 */
-func NewAgent(options ...AgentOption) *Agent {
-	errnie.Debug("NewAgent")
+func NewAgentBuilder(options ...AgentOption) *AgentBuilder {
+	errnie.Debug("NewBuilder")
 
-	params := provider.NewParams(
-		provider.WithModel(tweaker.GetModel(tweaker.GetProvider())),
-		provider.WithTemperature(tweaker.GetTemperature()),
-		provider.WithStream(tweaker.GetStream()),
+	var (
+		cpnp  = utils.NewCapnp()
+		agent Agent
+		err   error
 	)
 
-	agent := &Agent{
-		Name:   GenerateName(),
-		params: params,
-		Schema: provider.NewTool(
-			provider.WithFunction(
-				"agent",
-				"An agent that can process messages, interact with tools, and produce responses.",
-			),
-			provider.WithProperty(
-				"model",
-				"string",
-				"The model to use for the agent.",
-				[]any{"gpt-4o-mini", "gemini-2.0-flash-thinking"},
-			),
-			provider.WithProperty(
-				"tools",
-				"array",
-				"The tools the agent should have access to.",
-				provider.RegisteredTools,
-			),
-			provider.WithProperty(
-				"system",
-				"string",
-				"The system message to use for the agent.",
-				[]any{},
-			),
-			provider.WithProperty(
-				"user",
-				"string",
-				"The user message to use for the agent.",
-				[]any{},
-			),
-			provider.WithProperty(
-				"temperature",
-				"number",
-				"The temperature to use for the agent.",
-				[]any{},
-			),
-		),
+	if agent, err = NewRootAgent(cpnp.Seg); errnie.Error(err) != nil {
+		return nil
 	}
 
-	agent.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-		errnie.Debug("agent.buffer.fn")
+	ctx, cancel := context.WithCancel(context.Background())
 
-		switch artifact.Role() {
-		case uint32(datura.ArtifactRoleInspect):
-			switch artifact.Scope() {
-			case uint32(datura.ArtifactScopeName):
-				artifact.SetMetaValue("name", agent.Name)
-			}
-
-			return nil
-		case uint32(datura.ArtifactRoleSignal):
-			var payload []byte
-
-			if payload, err = artifact.DecryptPayload(); err != nil {
-				return errnie.Error(err)
-			}
-
-			// Add the response to the original artifact's Params payload.
-			params.Messages = append(params.Messages, &provider.Message{
-				Name:    agent.Name,
-				Role:    provider.MessageRoleUser,
-				Content: string(payload),
-			})
-		default:
-			// Convert the artifact to a Params.
-			newParams := provider.NewParams()
-			if err = artifact.To(newParams); err != nil {
-				return errnie.Error(err)
-			}
-
-			// Append the new messages to the existing ones
-			params.Messages = append(params.Messages, newParams.Messages...)
-
-			// Get the last message from the params.
-			msg := params.Messages[len(params.Messages)-1]
-
-			if len(msg.ToolCalls) == 0 {
-				// No tool calls, so we can just stop here.
-				errnie.Debug("no tool calls")
-				return nil
-			}
-
-			// Iterate over the tool calls and copy them to the caller.
-			for _, toolCall := range msg.ToolCalls {
-				errnie.Debug("tool call", "function", toolCall.Function.Name, "arguments", toolCall.Function.Arguments)
-
-				// Create an intermediary artifact to pass the tool call to the caller,
-				// and receive the response.
-				tc := datura.New(datura.WithPayload(toolCall.Marshal()))
-
-				// Copy the tool call to the caller and receive the response.
-				if err = workflow.NewFlipFlop(tc, agent.caller); err != nil {
-					return errnie.Error(err)
-				}
-
-				// Add the response to the original artifact's Params payload.
-				params.Messages = append(params.Messages, &provider.Message{
-					Reference: toolCall.ID,
-					Name:      agent.Name,
-					Role:      provider.MessageRoleTool,
-					Content:   datura.GetMetaValue[string](tc, "output"),
-				})
-			}
-
-			datura.WithPayload(params.Marshal())(artifact)
-		}
-
-		return nil
-	})
+	builder := &AgentBuilder{
+		Agent:  &agent,
+		ctx:    ctx,
+		cancel: cancel,
+	}
 
 	for _, option := range options {
-		option(agent)
+		option(builder)
 	}
 
-	return agent
+	return builder
 }
 
-/*
-Read implements io.Reader for Agent.
+func (builder *AgentBuilder) Generate(
+	buffer chan *datura.Artifact,
+) chan *datura.Artifact {
+	errnie.Debug("ai.AgentBuilder.Generate")
 
-It reads from the internal context.
-*/
-func (agent *Agent) Read(p []byte) (n int, err error) {
-	errnie.Debug("Agent.Read")
-	return agent.buffer.Read(p)
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		for {
+			select {
+			case <-builder.pctx.Done():
+				errnie.Info("AgentBuilder context cancelled")
+				builder.cancel()
+				return
+			case <-builder.ctx.Done():
+				errnie.Info("AgentBuilder context cancelled")
+				builder.cancel()
+				return
+			case artifact := <-buffer:
+				out <- artifact
+			default:
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}()
+
+	return out
 }
 
-/*
-Write implements io.Writer for Agent.
-
-It writes to the internal context.
-*/
-func (agent *Agent) Write(p []byte) (n int, err error) {
-	errnie.Debug("Agent.Write")
-	return agent.buffer.Write(p)
-}
-
-/*
-Close implements io.Closer for Agent.
-
-It closes the internal context.
-*/
-func (agent *Agent) Close() error {
-	errnie.Debug("Agent.Close")
-	return agent.buffer.Close()
-}
-
-func WithCaller(caller io.ReadWriteCloser) AgentOption {
-	return func(agent *Agent) {
-		agent.caller = caller
+func WithCancel(ctx context.Context) AgentOption {
+	return func(builder *AgentBuilder) {
+		builder.pctx = ctx
 	}
 }
 
-func (agent *Agent) GetName() string {
-	return agent.Name
+func WithIdentity(name string, role string) AgentOption {
+	return func(builder *AgentBuilder) {
+		identity, err := builder.NewIdentity()
+
+		if errnie.Error(err) != nil {
+			return
+		}
+
+		if err = identity.SetIdentifier(
+			uuid.New().String(),
+		); errnie.Error(err) != nil {
+			return
+		}
+
+		if err = identity.SetName(name); errnie.Error(err) != nil {
+			return
+		}
+
+		if err = identity.SetRole(role); errnie.Error(err) != nil {
+			return
+		}
+
+		if err = builder.SetIdentity(identity); errnie.Error(err) != nil {
+			return
+		}
+	}
+}
+
+func WithProvider(prvdr provider.ProviderType) AgentOption {
+	return func(builder *AgentBuilder) {
+		pb := provider.NewProviderBuilder(
+			provider.WithSupplier(prvdr.Name()),
+		)
+
+		if err := builder.SetProvider(*pb.Provider); errnie.Error(err) != nil {
+			return
+		}
+	}
+}
+
+func WithParams(params *ParamsBuilder) AgentOption {
+	return func(builder *AgentBuilder) {
+		if err := builder.SetParams(*params.Params); errnie.Error(err) != nil {
+			return
+		}
+	}
+}
+
+func WithContext(context *ContextBuilder) AgentOption {
+	return func(builder *AgentBuilder) {
+		if err := builder.SetContext(*context.Context); errnie.Error(err) != nil {
+			return
+		}
+	}
+}
+
+func WithTools(tools ...*tools.ToolBuilder) AgentOption {
+	return func(builder *AgentBuilder) {
+		toolList, err := builder.NewTools(int32(len(tools)))
+
+		if errnie.Error(err) != nil {
+			return
+		}
+
+		for i, t := range tools {
+			fn, err := t.Function()
+
+			if errnie.Error(err) != nil {
+				return
+			}
+
+			tl := toolList.At(i)
+			tl.SetFunction(fn)
+		}
+
+		if err := builder.SetTools(toolList); errnie.Error(err) != nil {
+			return
+		}
+	}
 }

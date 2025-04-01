@@ -36,28 +36,49 @@ func NewCluster() *Cluster {
 	deployment := NewDeployment(store)
 
 	return &Cluster{
-		buffer: stream.NewBuffer(func(evt *datura.Artifact) (err error) {
-			errnie.Debug("kube.Cluster.buffer.fn")
-
-			// Create cluster with custom kubeconfig path
-			if err = prvdr.Create(
-				"caramba",
-				cluster.CreateWithKubeconfigPath(filepath.Join(carambaKubeDir, "config")),
-			); err != nil {
-				return errnie.Error(err)
-			}
-
-			// After cluster creation, deploy manifests
-			if err = deployment.Apply(); err != nil {
-				return errnie.Error(err)
-			}
-
-			return nil
-		}),
+		buffer:     stream.NewBuffer(),
 		provider:   prvdr,
 		store:      store,
 		deployment: deployment,
 	}
+}
+
+func (c *Cluster) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("kube.Cluster.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-buffer:
+			// Setup caramba kube directory
+			home := homedir.HomeDir()
+			carambaKubeDir := filepath.Join(home, ".caramba", "kube")
+			kubeConfigPath := filepath.Join(carambaKubeDir, "config")
+
+			// Create cluster with custom kubeconfig path
+			if err := c.provider.Create(
+				"caramba",
+				cluster.CreateWithKubeconfigPath(kubeConfigPath),
+			); err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
+
+			// After cluster creation, deploy manifests
+			if err := c.deployment.Apply(); err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
+
+			// Return success message
+			out <- datura.New(datura.WithPayload([]byte("Kubernetes cluster created and deployed successfully")))
+		}
+	}()
+
+	return out
 }
 
 func (c *Cluster) Read(p []byte) (n int, err error) {

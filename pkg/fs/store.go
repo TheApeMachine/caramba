@@ -2,7 +2,9 @@ package fs
 
 import (
 	"bytes"
+	"context"
 	"embed"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -10,7 +12,6 @@ import (
 	"github.com/spf13/afero"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 var once sync.Once
@@ -20,7 +21,8 @@ var store *Store
 Store represents a file system store with an in-memory filesystem and buffered operations.
 */
 type Store struct {
-	buffer *stream.Buffer
+	ctx    context.Context
+	cancel context.CancelFunc
 	conn   *Conn
 }
 
@@ -32,74 +34,110 @@ func NewStore() *Store {
 	errnie.Debug("fs.Store.New")
 	conn := NewConn()
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	once.Do(func() {
 		store = &Store{
-			buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-				errnie.Debug("fs.Store.buffer")
-
-				var (
-					fh    afero.File
-					files []string
-					path  = datura.GetMetaValue[string](artifact, "path")
-					n     int64
-				)
-
-				switch artifact.Role() {
-				case uint32(datura.ArtifactRoleOpenFile):
-					errnie.Debug("fs.Store.buffer", "op", "open", "path", path)
-					if fh, err = conn.Open(path); err != nil {
-						return errnie.Error(err)
-					}
-				case uint32(datura.ArtifactRoleSaveFile):
-					errnie.Debug("fs.Store.buffer", "op", "save", "path", path)
-					if fh, err = conn.Open(path); err != nil {
-						return errnie.Error(err)
-					}
-				case uint32(datura.ArtifactRoleDeleteFile):
-					errnie.Debug("fs.Store.buffer", "op", "delete", "path", path)
-					if err = conn.Remove(path); err != nil {
-						return errnie.Error(err)
-					}
-				case uint32(datura.ArtifactRoleListFiles):
-					errnie.Debug("fs.Store.buffer", "op", "list", "path", path)
-					if files, err = conn.Ls(path); err != nil {
-						return errnie.Error(err)
-					}
-				}
-
-				if fh != nil {
-					defer conn.Close(fh)
-
-					buf := bytes.NewBuffer([]byte{})
-					if n, err = io.Copy(buf, fh); err != nil {
-						return errnie.Error(err)
-					}
-
-					errnie.Debug("fs.Store.buffer", "n", n)
-
-					datura.WithPayload(buf.Bytes())(artifact)
-					return nil
-				}
-
-				if len(files) > 0 {
-					buf := bytes.NewBuffer([]byte{})
-
-					for _, file := range files {
-						buf.WriteString(file + "\n")
-					}
-
-					if _, err = io.Copy(artifact, buf); err != nil {
-						return errnie.Error(err)
-					}
-				}
-
-				return nil
-			}),
-			conn: conn,
+			ctx:    ctx,
+			cancel: cancel,
+			conn:   conn,
 		}
 	})
 
 	return store
+}
+
+/*
+Generate processes file operations and returns artifacts with the results.
+It implements the Generator pattern to handle file system operations asynchronously.
+*/
+func (s *Store) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("fs.Store.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-s.ctx.Done():
+			errnie.Debug("fs.Store.Generate.ctx.Done")
+			s.cancel()
+			return
+		case artifact := <-buffer:
+			// Extract file operation information from the artifact
+			var (
+				fh    afero.File
+				files []string
+				path  = datura.GetMetaValue[string](artifact, "path")
+				n     int64
+				err   error
+			)
+
+			// Process the artifact based on its role
+			switch artifact.Role() {
+			case uint32(datura.ArtifactRoleOpenFile):
+				errnie.Debug("fs.Store.Generate", "op", "open", "path", path)
+				if fh, err = s.conn.Open(path); err != nil {
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
+				}
+			case uint32(datura.ArtifactRoleSaveFile):
+				errnie.Debug("fs.Store.Generate", "op", "save", "path", path)
+				if fh, err = s.conn.Open(path); err != nil {
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
+				}
+			case uint32(datura.ArtifactRoleDeleteFile):
+				errnie.Debug("fs.Store.Generate", "op", "delete", "path", path)
+				if err = s.conn.Remove(path); err != nil {
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
+				}
+				out <- datura.New(datura.WithPayload([]byte("File deleted successfully")))
+				return
+			case uint32(datura.ArtifactRoleListFiles):
+				errnie.Debug("fs.Store.Generate", "op", "list", "path", path)
+				if files, err = s.conn.Ls(path); err != nil {
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
+				}
+			default:
+				out <- datura.New(datura.WithError(errnie.Error(fmt.Errorf("unknown file operation: %d", artifact.Role()))))
+				return
+			}
+
+			// Handle file content if we have an open file handle
+			if fh != nil {
+				defer s.conn.Close(fh)
+
+				buf := bytes.NewBuffer([]byte{})
+				if n, err = io.Copy(buf, fh); err != nil {
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
+				}
+
+				errnie.Debug("fs.Store.Generate", "n", n)
+				out <- datura.New(datura.WithPayload(buf.Bytes()))
+				return
+			}
+
+			// Handle file listing
+			if len(files) > 0 {
+				buf := bytes.NewBuffer([]byte{})
+				for _, file := range files {
+					buf.WriteString(file + "\n")
+				}
+				out <- datura.New(datura.WithPayload(buf.Bytes()))
+				return
+			}
+
+			// If no operation was performed
+			out <- datura.New(datura.WithError(errnie.Error(fmt.Errorf("no valid file operation performed"))))
+		}
+	}()
+
+	return out
 }
 
 /*
@@ -115,31 +153,4 @@ It returns the file info for the given path.
 */
 func (store *Store) Stat(path string) (fi os.FileInfo, err error) {
 	return store.conn.memfs.Stat(path)
-}
-
-/*
-Read implements the io.Reader interface for the Store.
-It reads data from the underlying buffer.
-*/
-func (s *Store) Read(p []byte) (n int, err error) {
-	errnie.Debug("fs.Store.Read")
-	return s.buffer.Read(p)
-}
-
-/*
-Write implements the io.Writer interface for the Store.
-It writes data to the underlying buffer.
-*/
-func (s *Store) Write(p []byte) (n int, err error) {
-	errnie.Debug("fs.Store.Write")
-	return s.buffer.Write(p)
-}
-
-/*
-Close implements the io.Closer interface for the Store.
-It closes the underlying buffer.
-*/
-func (s *Store) Close() error {
-	errnie.Debug("fs.Store.Close")
-	return s.buffer.Close()
 }

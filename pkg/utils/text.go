@@ -2,8 +2,10 @@ package utils
 
 import (
 	"strings"
+	"time"
 
 	"github.com/JesusIslam/tldr"
+	"github.com/goombaio/namegenerator"
 	"github.com/neurosnap/sentences"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -34,4 +36,13 @@ func SummarizeText(text string, maxLength int) string {
 
 	// Join the sentences back together with newlines
 	return strings.Join(result, "\n")
+}
+
+func GenerateName() string {
+	seed := time.Now().UTC().UnixNano()
+	nameGenerator := namegenerator.NewNameGenerator(seed)
+
+	name := nameGenerator.Generate()
+
+	return name
 }

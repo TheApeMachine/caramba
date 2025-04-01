@@ -32,38 +32,114 @@ type CohereProvider struct {
 NewCohereProvider creates a new Cohere provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the COHERE_API_KEY environment variable.
 */
-func NewCohereProvider(
-	apiKey string,
-	endpoint string,
-) *CohereProvider {
+func NewCohereProvider(opts ...CohereProviderOption) *CohereProvider {
 	errnie.Debug("provider.NewCohereProvider")
 
-	if apiKey == "" {
-		apiKey = os.Getenv("COHERE_API_KEY")
-	}
-
-	if endpoint == "" {
-		endpoint = viper.GetViper().GetString("endpoints.cohere")
-	}
-
+	apiKey := os.Getenv("COHERE_API_KEY")
+	endpoint := viper.GetViper().GetString("endpoints.cohere")
 	ctx, cancel := context.WithCancel(context.Background())
-	params := &Params{}
 
 	prvdr := &CohereProvider{
 		client: cohereclient.NewClient(
 			cohereclient.WithToken(apiKey),
 		),
 		endpoint: endpoint,
-		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			errnie.Debug("provider.CohereProvider.buffer.fn")
-			return errnie.Error(artfct.To(params))
-		}),
-		params: params,
-		ctx:    ctx,
-		cancel: cancel,
+		buffer:   stream.NewBuffer(),
+		params:   &Params{},
+		ctx:      ctx,
+		cancel:   cancel,
+	}
+
+	for _, opt := range opts {
+		opt(prvdr)
 	}
 
 	return prvdr
+}
+
+type CohereProviderOption func(*CohereProvider)
+
+func WithCohereAPIKey(apiKey string) CohereProviderOption {
+	return func(prvdr *CohereProvider) {
+		prvdr.client = cohereclient.NewClient(
+			cohereclient.WithToken(apiKey),
+		)
+	}
+}
+
+func WithCohereEndpoint(endpoint string) CohereProviderOption {
+	return func(prvdr *CohereProvider) {
+		prvdr.endpoint = endpoint
+	}
+}
+
+func (prvdr *CohereProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("provider.CohereProvider.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-prvdr.ctx.Done():
+			errnie.Debug("provider.CohereProvider.Generate.ctx.Done")
+			prvdr.cancel()
+			return
+		case artifact := <-buffer:
+			if err := artifact.To(prvdr.params); err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
+
+			composed := &cohere.ChatStreamRequest{
+				Model:            cohere.String(prvdr.params.Model),
+				Temperature:      cohere.Float64(prvdr.params.Temperature),
+				P:                cohere.Float64(prvdr.params.TopP),
+				K:                cohere.Int(int(prvdr.params.TopK)),
+				PresencePenalty:  cohere.Float64(prvdr.params.PresencePenalty),
+				FrequencyPenalty: cohere.Float64(prvdr.params.FrequencyPenalty),
+				MaxTokens:        cohere.Int(int(prvdr.params.MaxTokens)),
+			}
+
+			if err := prvdr.buildMessages(composed); err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			if err := prvdr.buildTools(composed); err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			if prvdr.params.ResponseFormat != nil {
+				if err := prvdr.buildResponseFormat(composed); err != nil {
+					out <- datura.New(datura.WithError(err))
+					return
+				}
+			}
+
+			var err error
+			if prvdr.params.Stream {
+				err = prvdr.handleStreamingRequest(composed)
+			} else {
+				err = prvdr.handleSingleRequest(composed)
+			}
+
+			if err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			out <- datura.New(datura.WithPayload(prvdr.params.Marshal()))
+		}
+	}()
+
+	return out
+}
+
+func (prvdr *CohereProvider) Name() string {
+	return "cohere"
 }
 
 /*

@@ -32,11 +32,10 @@ type GoogleProvider struct {
 NewGoogleProvider creates a new Google Gemini provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the GOOGLE_API_KEY environment variable.
 */
-func NewGoogleProvider() *GoogleProvider {
+func NewGoogleProvider(opts ...GoogleProviderOption) *GoogleProvider {
 	errnie.Debug("provider.NewGoogleProvider")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	params := &Params{}
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  os.Getenv("GOOGLE_API_KEY"),
@@ -49,17 +48,109 @@ func NewGoogleProvider() *GoogleProvider {
 		return nil
 	}
 
-	return &GoogleProvider{
+	prvdr := &GoogleProvider{
 		client:   client,
 		endpoint: "",
-		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			errnie.Debug("provider.GoogleProvider.buffer.fn")
-			return errnie.Error(artfct.To(params))
-		}),
-		params: params,
-		ctx:    ctx,
-		cancel: cancel,
+		buffer:   stream.NewBuffer(),
+		params:   &Params{},
+		ctx:      ctx,
+		cancel:   cancel,
 	}
+
+	for _, opt := range opts {
+		opt(prvdr)
+	}
+
+	return prvdr
+}
+
+type GoogleProviderOption func(*GoogleProvider)
+
+func WithGoogleAPIKey(apiKey string) GoogleProviderOption {
+	return func(prvdr *GoogleProvider) {
+		prvdr.client, _ = genai.NewClient(prvdr.ctx, &genai.ClientConfig{
+			APIKey:  apiKey,
+			Backend: genai.BackendGeminiAPI,
+		})
+	}
+}
+
+func WithGoogleEndpoint(endpoint string) GoogleProviderOption {
+	return func(prvdr *GoogleProvider) {
+		prvdr.endpoint = endpoint
+	}
+}
+
+func (prvdr *GoogleProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("provider.GoogleProvider.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-prvdr.ctx.Done():
+			errnie.Debug("provider.GoogleProvider.Generate.ctx.Done")
+			prvdr.cancel()
+			return
+		case artifact := <-buffer:
+			if err := artifact.To(prvdr.params); err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
+
+			chatConfig := &genai.GenerateContentConfig{
+				Temperature:      utils.Ptr(float32(prvdr.params.Temperature)),
+				TopP:             utils.Ptr(float32(prvdr.params.TopP)),
+				TopK:             utils.Ptr(float32(prvdr.params.TopK)),
+				FrequencyPenalty: utils.Ptr(float32(prvdr.params.FrequencyPenalty)),
+				PresencePenalty:  utils.Ptr(float32(prvdr.params.PresencePenalty)),
+			}
+
+			if prvdr.params.MaxTokens > 1 {
+				chatConfig.MaxOutputTokens = utils.Ptr(int32(prvdr.params.MaxTokens))
+			}
+
+			messages, err := prvdr.buildMessages()
+			if err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			if err = prvdr.buildTools(chatConfig); err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			if prvdr.params.ResponseFormat != nil {
+				if err = prvdr.buildResponseFormat(chatConfig); err != nil {
+					out <- datura.New(datura.WithError(err))
+					return
+				}
+			}
+
+			if prvdr.params.Stream {
+				if err = prvdr.handleStreamingRequest(chatConfig, messages); err != nil {
+					out <- datura.New(datura.WithError(err))
+					return
+				}
+			} else {
+				if err = prvdr.handleSingleRequest(chatConfig, messages); err != nil {
+					out <- datura.New(datura.WithError(err))
+					return
+				}
+			}
+
+			out <- datura.New(datura.WithPayload(prvdr.params.Marshal()))
+		}
+	}()
+
+	return out
+}
+
+func (prvdr *GoogleProvider) Name() string {
+	return "google"
 }
 
 /*
@@ -134,13 +225,13 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 		chatConfig,
 	)
 
-	if errnie.Error(err) != nil {
-		return
+	if err != nil {
+		return errnie.Error(err)
 	}
 
 	if len(resp.Candidates) == 0 {
-		errnie.Error("no response candidates")
-		return
+		err = errors.New("no response candidates")
+		return errnie.Error(err)
 	}
 
 	msg := &Message{
@@ -175,11 +266,12 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 				},
 			},
 		}
+		errnie.Info("toolCall detected", "name", fc.Name)
 	}
 
 	prvdr.params.Messages = append(prvdr.params.Messages, msg)
 
-	if _, err = io.Copy(prvdr, datura.New(
+	if _, err = io.Copy(prvdr.buffer, datura.New(
 		datura.WithPayload(prvdr.params.Marshal()),
 	)); err != nil {
 		return errnie.Error(err)
@@ -213,10 +305,44 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 		}
 
 		for _, part := range response.Candidates[0].Content.Parts {
-			if _, err = io.Copy(prvdr, datura.New(
-				datura.WithPayload([]byte(part.Text)),
-			)); errnie.Error(err) != nil {
-				continue
+			if part.Text != "" {
+				if _, err = io.Copy(prvdr.buffer, datura.New(
+					datura.WithPayload([]byte(part.Text)),
+				)); err != nil {
+					errnie.Error("failed to write stream chunk", "error", err)
+					continue
+				}
+			}
+
+			// Handle tool calls in streaming mode
+			if part.FunctionCall != nil {
+				fc := part.FunctionCall
+				argsStr := ""
+				for k, v := range fc.Args {
+					argsStr += fmt.Sprintf(`"%s":%v,`, k, v)
+				}
+				if len(argsStr) > 0 {
+					argsStr = "{" + argsStr[:len(argsStr)-1] + "}"
+				}
+
+				msg := &Message{
+					Role:    MessageRoleAssistant,
+					Name:    prvdr.params.Model,
+					Content: "",
+					ToolCalls: []ToolCall{
+						{
+							ID:   fc.Name,
+							Type: "function",
+							Function: ToolCallFunction{
+								Name:      fc.Name,
+								Arguments: argsStr,
+							},
+						},
+					},
+				}
+
+				prvdr.params.Messages = append(prvdr.params.Messages, msg)
+				errnie.Info("toolCall detected (streaming)", "name", fc.Name)
 			}
 		}
 	}

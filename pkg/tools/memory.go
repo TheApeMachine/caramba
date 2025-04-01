@@ -1,15 +1,14 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/memory"
 	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 func init() {
@@ -22,43 +21,55 @@ MemoryTool provides a unified interface for interacting with multiple memory sto
 It handles both vector-based (Qdrant) and graph-based (Neo4j) storage systems.
 */
 type MemoryTool struct {
-	buffer *stream.Buffer
-	stores map[string]io.ReadWriteCloser
+	ctx    context.Context
+	cancel context.CancelFunc
+	stores map[string]interface{} // Map of store types to their implementations
 	Schema *provider.Tool
 }
 
-func NewMemoryTool(stores ...io.ReadWriteCloser) *MemoryTool {
+// NewMemoryTool creates a new memory tool with the specified stores.
+// If no stores are provided, it initializes with default Qdrant and Neo4j stores.
+func NewMemoryTool() *MemoryTool {
 	errnie.Debug("NewMemoryTool")
 
-	// Initialize default stores if none provided
-	if len(stores) == 0 {
-		stores = []io.ReadWriteCloser{
-			memory.NewQdrant(),
-			memory.NewNeo4j(),
-		}
-	}
+	ctx, cancel := context.WithCancel(context.Background())
 
-	// Map stores by type for easier access
-	storeMap := make(map[string]io.ReadWriteCloser)
-	for _, store := range stores {
-		switch store.(type) {
-		case *memory.Qdrant:
-			storeMap["vector"] = store
-		case *memory.Neo4j:
-			storeMap["graph"] = store
-		}
-	}
+	// Initialize stores
+	storeMap := make(map[string]interface{})
+	storeMap["vector"] = memory.NewQdrant()
+	storeMap["graph"] = memory.NewNeo4j()
 
 	return &MemoryTool{
-		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-			errnie.Debug("MemoryTool.buffer")
+		ctx:    ctx,
+		cancel: cancel,
+		stores: storeMap,
+		Schema: GetToolSchema("memory"),
+	}
+}
 
+// Generate implements the Generator pattern for MemoryTool.
+// It processes queries and returns results through the artifact channel.
+func (mt *MemoryTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("tools.MemoryTool.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-mt.ctx.Done():
+			errnie.Debug("tools.MemoryTool.Generate.ctx.Done")
+			mt.cancel()
+			return
+		case artifact := <-buffer:
 			var results []map[string]any
 
 			// Process each store with its relevant metadata
-			for storeType, store := range storeMap {
+			for storeType, store := range mt.stores {
 				// Create store-specific artifact with relevant metadata
 				storeArtifact := datura.New()
+
 				switch storeType {
 				case "vector":
 					if q := datura.GetMetaValue[string](artifact, "question"); q != "" {
@@ -76,7 +87,7 @@ func NewMemoryTool(stores ...io.ReadWriteCloser) *MemoryTool {
 					}
 				}
 
-				// Only process if the store artifact has any metadata set
+				// Check if we have relevant metadata for this store type
 				hasMetadata := false
 				switch storeType {
 				case "vector":
@@ -90,49 +101,54 @@ func NewMemoryTool(stores ...io.ReadWriteCloser) *MemoryTool {
 				}
 
 				if hasMetadata {
-					if _, err = io.Copy(store, storeArtifact); err != nil {
-						return errnie.Error(err)
+					var storeOutput chan *datura.Artifact
+
+					// Use the appropriate Generate method based on store type
+					switch storeType {
+					case "vector":
+						qdrantStore := store.(*memory.Qdrant)
+						inputChan := make(chan *datura.Artifact, 1)
+						inputChan <- storeArtifact
+						storeOutput = qdrantStore.Generate(inputChan)
+					case "graph":
+						neo4jStore := store.(*memory.Neo4j)
+						inputChan := make(chan *datura.Artifact, 1)
+						inputChan <- storeArtifact
+						storeOutput = neo4jStore.Generate(inputChan)
 					}
 
-					// Read results
-					resultBytes := make([]byte, 1024*1024)
-					if _, err = store.Read(resultBytes); err != nil && err != io.EOF {
-						return errnie.Error(err)
-					}
+					// Process store output
+					if storeOutput != nil {
+						for resultArtifact := range storeOutput {
+							// Check for errors in the payload
+							payload, err := resultArtifact.DecryptPayload()
+							if err != nil {
+								errnie.Error(err)
+								continue
+							}
 
-					var storeResults []map[string]any
-					if err = json.Unmarshal(resultBytes, &storeResults); err == nil {
-						results = append(results, storeResults...)
+							// Skip processing if we have an empty payload
+							if len(payload) == 0 {
+								continue
+							}
+
+							output := datura.GetMetaValue[string](resultArtifact, "output")
+							if output != "" {
+								var storeResults []map[string]any
+								if err := json.Unmarshal([]byte(output), &storeResults); err == nil {
+									results = append(results, storeResults...)
+								}
+							}
+						}
 					}
 				}
 			}
 
 			// Set combined results in artifact metadata
 			artifact.SetMetaValue("output", results)
-			return nil
-		}),
-		stores: storeMap,
-		Schema: GetToolSchema("memory"),
-	}
-}
-
-func (mt *MemoryTool) Read(p []byte) (n int, err error) {
-	errnie.Debug("MemoryTool.Read")
-	return mt.buffer.Read(p)
-}
-
-func (mt *MemoryTool) Write(p []byte) (n int, err error) {
-	errnie.Debug("MemoryTool.Write")
-	return mt.buffer.Write(p)
-}
-
-func (mt *MemoryTool) Close() error {
-	errnie.Debug("MemoryTool.Close")
-	// Close all stores
-	for _, store := range mt.stores {
-		if err := store.Close(); err != nil {
-			errnie.Error(err)
+			out <- artifact
 		}
-	}
-	return mt.buffer.Close()
+	}()
+
+	return out
 }

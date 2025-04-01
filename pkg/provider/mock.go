@@ -1,115 +1,78 @@
 package provider
 
 import (
+	"context"
+
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 type MockProvider struct {
-	metadata *datura.Artifact
-	buffer   *stream.Buffer
-	params   *Params
+	*Provider
+	params *Params
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-var code = []*Message{
-	{
-		Role: "assistant",
-		ToolCalls: []ToolCall{
-			{
-				Function: ToolCallFunction{
-					Name:      "environment",
-					Arguments: `{"command":"echo \"import random\n\ndef play_game():\n    print('Welcome to the Number Guessing Game!')\n    number_to_guess = random.randint(1, 100)\n    attempts = 0\n    while True:\n        guess = int(input('Enter your guess (1-100): '))\n        attempts += 1\n        if guess < number_to_guess:\n            print('Too low! Try again.')\n        elif guess > number_to_guess:\n            print('Too high! Try again.')\n        else:\n            print(f'Congratulations! You guessed the number {number_to_guess} in {attempts} attempts.')\n            break\n\nplay_game()\" > number_mock_guessing_game.py"}`,
-				},
-			},
-		},
-	},
-	{
-		Role: "assistant",
-		ToolCalls: []ToolCall{
-			{
-				Function: ToolCallFunction{
-					Name:      "environment",
-					Arguments: `{"command":"python3 number_mock_guessing_game.py"}`,
-				},
-			},
-		},
-	},
-	{
-		Role: "assistant",
-		ToolCalls: []ToolCall{
-			{
-				Function: ToolCallFunction{
-					Name:      "environment",
-					Arguments: `{"input":"50\n"}`,
-				},
-			},
-		},
-	},
-	{
-		Role: "assistant",
-		ToolCalls: []ToolCall{
-			{
-				Function: ToolCallFunction{
-					Name:      "environment",
-					Arguments: `{"input":"10\n"}`,
-				},
-			},
-		},
-	},
-	{
-		Role: "assistant",
-		ToolCalls: []ToolCall{
-			{
-				Function: ToolCallFunction{
-					Name:      "environment",
-					Arguments: `{"input":"42\n"}`,
-				},
-			},
-		},
-	},
-}
+func NewMockProvider(opts ...MockProviderOption) *MockProvider {
+	errnie.Debug("provider.NewMockProvider")
 
-func NewMockProvider() *MockProvider {
-	metadata := datura.New(
-		datura.WithRole(datura.ArtifactRoleMetadata),
-		datura.WithScope(datura.ArtifactScopeProvider),
+	var (
+		cpnp     = utils.NewCapnp()
+		provider Provider
+		err      error
 	)
 
-	params := &Params{
-		Messages: []*Message{},
+	if provider, err = NewRootProvider(cpnp.Seg); errnie.Error(err) != nil {
+		return nil
 	}
 
-	return &MockProvider{
-		metadata: metadata,
-		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-			errnie.Debug("provider.MockProvider.Buffer.fn")
+	ctx, cancel := context.WithCancel(context.Background())
 
-			if artifact.Is(datura.ArtifactRoleInspect, datura.ArtifactScopeProvider) {
-				// System is requesting our metadata, so we override the buffer artifact.
-				*artifact = *metadata
+	prvdr := &MockProvider{
+		Provider: &provider,
+		params:   &Params{},
+		ctx:      ctx,
+		cancel:   cancel,
+	}
+
+	for _, opt := range opts {
+		opt(prvdr)
+	}
+
+	return prvdr
+}
+
+type MockProviderOption func(*MockProvider)
+
+func (prvdr *MockProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("provider.MockProvider.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-prvdr.ctx.Done():
+			errnie.Debug("provider.MockProvider.Generate.ctx.Done")
+			prvdr.cancel()
+			return
+		case artifact := <-buffer:
+			if err := artifact.To(prvdr.params); err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
 				return
 			}
 
-			params.Messages = append(params.Messages, code[len(params.Messages)])
+			// For mock provider, just echo back the received message
+			out <- datura.New(datura.WithPayload(prvdr.params.Marshal()))
+		}
+	}()
 
-			return artifact.From(params)
-		}),
-		params: params,
-	}
+	return out
 }
 
-func (prvdr *MockProvider) Read(p []byte) (n int, err error) {
-	errnie.Debug("provider.MockProvider.Read")
-	return prvdr.buffer.Read(p)
-}
-
-func (prvdr *MockProvider) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.MockProvider.Write")
-	return prvdr.buffer.Write(p)
-}
-
-func (prvdr *MockProvider) Close() error {
-	errnie.Debug("provider.MockProvider.Close")
-	return prvdr.buffer.Close()
+func (prvdr *MockProvider) Name() string {
+	return "mock"
 }

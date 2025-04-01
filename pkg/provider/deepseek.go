@@ -30,34 +30,109 @@ type DeepseekProvider struct {
 NewDeepseekProvider creates a new Deepseek provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the DEEPSEEK_API_KEY environment variable.
 */
-func NewDeepseekProvider(
-	apiKey string,
-	endpoint string,
-) *DeepseekProvider {
+func NewDeepseekProvider(opts ...DeepseekProviderOption) *DeepseekProvider {
 	errnie.Debug("provider.NewDeepseekProvider")
 
-	if apiKey == "" {
-		apiKey = os.Getenv("DEEPSEEK_API_KEY")
-	}
-
-	if endpoint == "" {
-		endpoint = viper.GetViper().GetString("endpoints.deepseek")
-	}
-
+	apiKey := os.Getenv("DEEPSEEK_API_KEY")
+	endpoint := viper.GetViper().GetString("endpoints.deepseek")
 	ctx, cancel := context.WithCancel(context.Background())
-	params := &Params{}
 
-	return &DeepseekProvider{
+	prvdr := &DeepseekProvider{
 		client:   deepseek.NewClient(apiKey),
 		endpoint: endpoint,
-		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			errnie.Debug("provider.DeepseekProvider.buffer.fn")
-			return errnie.Error(artfct.To(params))
-		}),
-		params: params,
-		ctx:    ctx,
-		cancel: cancel,
+		buffer:   stream.NewBuffer(),
+		params:   &Params{},
+		ctx:      ctx,
+		cancel:   cancel,
 	}
+
+	for _, opt := range opts {
+		opt(prvdr)
+	}
+
+	return prvdr
+}
+
+type DeepseekProviderOption func(*DeepseekProvider)
+
+func WithDeepseekAPIKey(apiKey string) DeepseekProviderOption {
+	return func(prvdr *DeepseekProvider) {
+		prvdr.client = deepseek.NewClient(apiKey)
+	}
+}
+
+func WithDeepseekEndpoint(endpoint string) DeepseekProviderOption {
+	return func(prvdr *DeepseekProvider) {
+		prvdr.endpoint = endpoint
+	}
+}
+
+func (prvdr *DeepseekProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("provider.DeepseekProvider.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-prvdr.ctx.Done():
+			errnie.Debug("provider.DeepseekProvider.Generate.ctx.Done")
+			prvdr.cancel()
+			return
+		case artifact := <-buffer:
+			if err := artifact.To(prvdr.params); err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
+
+			composed := &deepseek.StreamChatCompletionRequest{
+				Model:            deepseek.DeepSeekChat,
+				Temperature:      float32(prvdr.params.Temperature),
+				TopP:             float32(prvdr.params.TopP),
+				PresencePenalty:  float32(prvdr.params.PresencePenalty),
+				FrequencyPenalty: float32(prvdr.params.FrequencyPenalty),
+				MaxTokens:        int(prvdr.params.MaxTokens),
+			}
+
+			if err := prvdr.buildMessages(composed); err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			if err := prvdr.buildTools(composed); err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			if prvdr.params.ResponseFormat != nil {
+				if err := prvdr.buildResponseFormat(composed); err != nil {
+					out <- datura.New(datura.WithError(err))
+					return
+				}
+			}
+
+			var err error
+			if prvdr.params.Stream {
+				err = prvdr.handleStreamingRequest(composed)
+			} else {
+				err = prvdr.handleSingleRequest(composed)
+			}
+
+			if err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			out <- datura.New(datura.WithPayload(prvdr.params.Marshal()))
+		}
+	}()
+
+	return out
+}
+
+func (prvdr *DeepseekProvider) Name() string {
+	return "deepseek"
 }
 
 /*

@@ -3,6 +3,7 @@ package datura
 import (
 	"encoding/json"
 
+	capnp "capnproto.org/go/capnp/v3"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -41,6 +42,33 @@ func (artifact *Artifact) From(v any) (err error) {
 
 	WithPayload(payload)(artifact)
 	return nil
+}
+
+/*
+Unmarshal a byte slice buffer into a Artifact type, so we can access its
+fields and values.
+
+This is a very cheap operation, because of how Cap 'n Proto works.
+*/
+func Unmarshal(p []byte) *Artifact {
+	var (
+		msg *capnp.Message
+		dg  Artifact
+		err error
+	)
+
+	// Unmarshal is a bit of a misnomer in the world of Cap 'n Proto,
+	// but they went with it anyway.
+	if msg, err = capnp.Unmarshal(p); errnie.Error(err) != nil {
+		return nil
+	}
+
+	// Read a Datagram instance from the message.
+	if dg, err = ReadRootArtifact(msg); errnie.Error(err) != nil {
+		return nil
+	}
+
+	return &dg
 }
 
 /*

@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -14,9 +15,14 @@ It connects a sender and receiver through pipes, handling data transformations u
 Buffer implements io.Reader, io.Writer, and io.Closer interfaces to support standard streaming operations.
 */
 type Buffer struct {
-	artifact *datura.Artifact
-	fn       func(*datura.Artifact) error
+	ctx       context.Context
+	cancel    context.CancelFunc
+	in        chan *datura.Artifact
+	out       chan *datura.Artifact
+	generator Generator
 }
+
+type BufferOption func(*Buffer)
 
 /*
 NewBuffer creates a new Buffer with the specified receiver, sender, and handler function.
@@ -27,12 +33,23 @@ Parameters:
 
 Returns a configured Buffer instance that's ready to use.
 */
-func NewBuffer(fn func(*datura.Artifact) error) *Buffer {
+func NewBuffer(opts ...BufferOption) *Buffer {
 	errnie.Debug("stream.NewBuffer")
-	return &Buffer{
-		artifact: datura.New(),
-		fn:       fn,
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	buffer := &Buffer{
+		ctx:    ctx,
+		cancel: cancel,
+		in:     make(chan *datura.Artifact),
+		out:    make(chan *datura.Artifact),
 	}
+
+	for _, opt := range opts {
+		opt(buffer)
+	}
+
+	return buffer
 }
 
 /*
@@ -49,23 +66,18 @@ Returns:
 func (buffer *Buffer) Read(p []byte) (n int, err error) {
 	errnie.Debug("stream.Buffer.Read")
 
-	if buffer.artifact == nil {
+	if buffer.out == nil {
 		return 0, io.EOF
 	}
 
-	if n, err = buffer.artifact.Read(p); err != nil {
-		if err == io.EOF {
-			return n, err
-		}
-
-		return n, errnie.Error(err, "p", string(p))
-	}
-
-	if n == 0 {
+	select {
+	case <-buffer.ctx.Done():
+		errnie.Debug("stream.Buffer.Read", "ctx.Done()")
+		buffer.Close()
 		return 0, io.EOF
+	case artifact := <-buffer.out:
+		return artifact.Read(p)
 	}
-
-	return n, errnie.Error(err)
 }
 
 /*
@@ -87,19 +99,9 @@ func (buffer *Buffer) Write(p []byte) (n int, err error) {
 		return 0, errnie.Error(errors.New("empty input"))
 	}
 
-	if buffer.artifact == nil {
-		return 0, errnie.Error(errors.New("buffer artifact is nil"))
-	}
+	buffer.in <- datura.Unmarshal(p)
 
-	if n, err = buffer.artifact.Write(p); err != nil {
-		return n, errnie.Error(err, "p", string(p))
-	}
-
-	if err = buffer.fn(buffer.artifact); err != nil {
-		return n, errnie.Error(err)
-	}
-
-	return n, nil
+	return len(p), nil
 }
 
 /*
@@ -110,5 +112,20 @@ Returns any error encountered during the closing process.
 */
 func (buffer *Buffer) Close() error {
 	errnie.Debug("stream.Buffer.Close")
-	return buffer.artifact.Close()
+	buffer.cancel()
+	return nil
+}
+
+func WithCancel(ctx context.Context, cancel context.CancelFunc) BufferOption {
+	return func(buffer *Buffer) {
+		buffer.ctx = ctx
+		buffer.cancel = cancel
+	}
+}
+
+func WithGenerator(generator Generator) BufferOption {
+	return func(buffer *Buffer) {
+		buffer.generator = generator
+		buffer.out = generator.Generate(buffer.in)
+	}
 }

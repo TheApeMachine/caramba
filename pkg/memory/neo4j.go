@@ -5,17 +5,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	sdk "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 type Neo4j struct {
+	ctx    context.Context
+	cancel context.CancelFunc
 	client sdk.DriverWithContext
-	buffer *stream.Buffer
 }
 
 func NewNeo4j() *Neo4j {
@@ -35,11 +34,36 @@ func NewNeo4j() *Neo4j {
 		return nil
 	}
 
-	neo4j := &Neo4j{
-		client: driver,
-		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-			errnie.Debug("memory.Neo4j.buffer")
+	ctx, cancel := context.WithCancel(context.Background())
 
+	neo4j := &Neo4j{
+		ctx:    ctx,
+		cancel: cancel,
+		client: driver,
+	}
+
+	return neo4j
+}
+
+/*
+Generate processes a query and returns the results via the artifact channel.
+It implements the Generator pattern to handle graph database operations asynchronously.
+*/
+func (n4j *Neo4j) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("memory.Neo4j.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-n4j.ctx.Done():
+			errnie.Debug("memory.Neo4j.Generate.ctx.Done")
+			n4j.cancel()
+			return
+		case artifact := <-buffer:
+			// Extract query information from the artifact
 			cypher := datura.GetMetaValue[string](artifact, "cypher")
 			keywords := strings.Split(datura.GetMetaValue[string](artifact, "keywords"), ",")
 
@@ -53,22 +77,29 @@ func NewNeo4j() *Neo4j {
 
 				result, err := sdk.ExecuteQuery(
 					context.Background(),
-					driver,
+					n4j.client,
 					cypher,
 					map[string]any{},
 					sdk.EagerResultTransformer,
 					sdk.ExecuteQueryWithDatabase("neo4j"),
 				)
 				if err != nil {
-					return errnie.Error(err)
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
 				}
 
 				// For write operations, we don't need to format the results
 				if isWriteOperation {
-					return nil
+					out <- datura.New(datura.WithPayload([]byte("Write operation completed successfully")))
+					return
 				}
 
-				artifact.SetMetaValue("output", formatRelationships(result.Records))
+				// Format and return the results
+				formattedResults := formatRelationships(result.Records)
+				resultArtifact := datura.New(datura.WithPayload([]byte(formattedResults)))
+				resultArtifact.SetMetaValue("output", formattedResults)
+				out <- resultArtifact
+				return
 			}
 
 			// If we have keywords, search for nodes and their relationships
@@ -82,64 +113,43 @@ func NewNeo4j() *Neo4j {
 				`
 				result, err := sdk.ExecuteQuery(
 					context.Background(),
-					driver,
+					n4j.client,
 					query,
 					map[string]any{"keywords": keywords},
 					sdk.EagerResultTransformer,
 					sdk.ExecuteQueryWithDatabase("neo4j"),
 				)
 				if err != nil {
-					return errnie.Error(err)
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
 				}
 
-				// If there's existing output, combine it with the new results
-				existingOutput := datura.GetMetaValue[string](artifact, "output")
+				// Format the results
 				newOutput := formatRelationships(result.Records)
+				existingOutput := datura.GetMetaValue[string](artifact, "output")
 
+				var finalOutput string
 				if existingOutput != "" {
-					// Remove the closing tag from existing output and opening tag from new output
+					// Combine existing and new results
 					existingOutput = strings.TrimSuffix(existingOutput, "</relationships>")
 					newOutput = strings.TrimPrefix(newOutput, "<relationships>")
-					artifact.SetMetaValue("output", existingOutput+"\n"+newOutput)
+					finalOutput = existingOutput + "\n" + newOutput
 				} else {
-					artifact.SetMetaValue("output", newOutput)
+					finalOutput = newOutput
 				}
+
+				resultArtifact := datura.New(datura.WithPayload([]byte(finalOutput)))
+				resultArtifact.SetMetaValue("output", finalOutput)
+				out <- resultArtifact
+				return
 			}
 
-			return nil
-		}),
-	}
-
-	return neo4j
-}
-
-func (n4j *Neo4j) Read(p []byte) (n int, err error) {
-	errnie.Debug("Neo4j.Read")
-	return n4j.buffer.Read(p)
-}
-
-func (n4j *Neo4j) Write(p []byte) (n int, err error) {
-	errnie.Debug("Neo4j.Write")
-	return n4j.buffer.Write(p)
-}
-
-func (n4j *Neo4j) Close() error {
-	errnie.Debug("Neo4j.Close")
-
-	if n4j.client != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := n4j.client.Close(ctx); err != nil {
-			return errnie.Error(err)
+			// If no valid operation was specified
+			out <- datura.New(datura.WithError(errnie.Error(fmt.Errorf("no valid operation specified"))))
 		}
-	}
+	}()
 
-	if n4j.buffer != nil {
-		return n4j.buffer.Close()
-	}
-
-	return nil
+	return out
 }
 
 // formatRelationships takes a list of records and formats them into a relationship string

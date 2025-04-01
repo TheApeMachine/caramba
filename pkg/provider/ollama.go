@@ -30,17 +30,11 @@ type OllamaProvider struct {
 NewOllamaProvider creates a new Ollama provider with the given host endpoint.
 If host is empty, it will try to read from configuration.
 */
-func NewOllamaProvider(
-	endpoint string,
-) *OllamaProvider {
+func NewOllamaProvider(opts ...OllamaProviderOption) *OllamaProvider {
 	errnie.Debug("provider.NewOllamaProvider")
 
-	if endpoint == "" {
-		endpoint = viper.GetViper().GetString("endpoints.ollama")
-	}
-
+	endpoint := viper.GetViper().GetString("endpoints.ollama")
 	ctx, cancel := context.WithCancel(context.Background())
-	params := &Params{}
 
 	client, err := api.ClientFromEnvironment()
 	if errnie.Error(err) != nil {
@@ -48,17 +42,96 @@ func NewOllamaProvider(
 		return nil
 	}
 
-	return &OllamaProvider{
+	prvdr := &OllamaProvider{
 		client:   client,
 		endpoint: endpoint,
-		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			errnie.Debug("provider.OllamaProvider.buffer.fn")
-			return errnie.Error(artfct.To(params))
-		}),
-		params: params,
-		ctx:    ctx,
-		cancel: cancel,
+		buffer:   stream.NewBuffer(),
+		params:   &Params{},
+		ctx:      ctx,
+		cancel:   cancel,
 	}
+
+	for _, opt := range opts {
+		opt(prvdr)
+	}
+
+	return prvdr
+}
+
+type OllamaProviderOption func(*OllamaProvider)
+
+func WithOllamaEndpoint(endpoint string) OllamaProviderOption {
+	return func(prvdr *OllamaProvider) {
+		prvdr.endpoint = endpoint
+	}
+}
+
+func (prvdr *OllamaProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("provider.OllamaProvider.Generate")
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-prvdr.ctx.Done():
+			errnie.Debug("provider.OllamaProvider.Generate.ctx.Done")
+			prvdr.cancel()
+			return
+		case artifact := <-buffer:
+			if err := artifact.To(prvdr.params); err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
+
+			composed := &api.ChatRequest{
+				Model: prvdr.params.Model,
+				Options: map[string]interface{}{
+					"temperature": prvdr.params.Temperature,
+					"top_p":       prvdr.params.TopP,
+					"max_tokens":  prvdr.params.MaxTokens,
+				},
+			}
+
+			if err := prvdr.buildMessages(composed); err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			if err := prvdr.buildTools(composed); err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			if prvdr.params.ResponseFormat != nil {
+				if err := prvdr.buildResponseFormat(composed); err != nil {
+					out <- datura.New(datura.WithError(err))
+					return
+				}
+			}
+
+			var err error
+			if prvdr.params.Stream {
+				err = prvdr.handleStreamingRequest(composed)
+			} else {
+				err = prvdr.handleSingleRequest(composed)
+			}
+
+			if err != nil {
+				out <- datura.New(datura.WithError(err))
+				return
+			}
+
+			out <- datura.New(datura.WithPayload(prvdr.params.Marshal()))
+		}
+	}()
+
+	return out
+}
+
+func (prvdr *OllamaProvider) Name() string {
+	return "ollama"
 }
 
 /*

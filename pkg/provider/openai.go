@@ -42,7 +42,6 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	params := &Params{}
 
 	client := openai.NewClient(
 		option.WithAPIKey(apiKey),
@@ -50,11 +49,6 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 
 	prvdr := &OpenAIProvider{
 		client: &client,
-		buffer: stream.NewBuffer(func(artfct *datura.Artifact) (err error) {
-			errnie.Debug("provider.OpenAIProvider.buffer.fn")
-			return errnie.Error(artfct.To(params))
-		}),
-		params: params,
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -64,6 +58,74 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 	}
 
 	return prvdr
+}
+
+func (prvdr *OpenAIProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("provider.OpenAIProvider.Generate")
+
+	var (
+		out = make(chan *datura.Artifact)
+		err error
+	)
+
+	go func() {
+		defer close(out)
+
+		select {
+		case <-prvdr.ctx.Done():
+			return
+		case <-buffer:
+			composed := &openai.ChatCompletionNewParams{
+				Model:            prvdr.params.Model,
+				Temperature:      openai.Float(prvdr.params.Temperature),
+				TopP:             openai.Float(prvdr.params.TopP),
+				FrequencyPenalty: openai.Float(prvdr.params.FrequencyPenalty),
+				PresencePenalty:  openai.Float(prvdr.params.PresencePenalty),
+			}
+
+			if prvdr.params.MaxTokens > 1 {
+				composed.MaxTokens = openai.Int(int64(prvdr.params.MaxTokens))
+			}
+
+			if err = prvdr.buildMessages(composed); err != nil {
+				out <- datura.New(
+					datura.WithError(err),
+				)
+
+				return
+			}
+
+			if err = prvdr.buildTools(composed); err != nil {
+				out <- datura.New(
+					datura.WithError(err),
+				)
+
+				return
+			}
+
+			if prvdr.params.ResponseFormat != nil {
+				if err = prvdr.buildResponseFormat(composed); err != nil {
+					out <- datura.New(
+						datura.WithError(err),
+					)
+
+					return
+				}
+			}
+
+			if prvdr.params.Stream {
+				prvdr.handleStreamingRequest(composed, &out)
+			} else {
+				prvdr.handleSingleRequest(composed, &out)
+			}
+		}
+	}()
+
+	return out
+}
+
+func (prvdr *OpenAIProvider) Name() string {
+	return "openai"
 }
 
 type OpenAIProviderOption func(*OpenAIProvider)
@@ -81,71 +143,11 @@ func WithEndpoint(endpoint string) OpenAIProviderOption {
 }
 
 /*
-Read implements the io.Reader interface.
-*/
-func (prvdr *OpenAIProvider) Read(p []byte) (n int, err error) {
-	errnie.Debug("provider.OpenAIProvider.Read")
-	return prvdr.buffer.Read(p)
-}
-
-/*
-Write implements the io.Writer interface.
-*/
-func (prvdr *OpenAIProvider) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.OpenAIProvider.Write")
-
-	if n, err = prvdr.buffer.Write(p); err != nil {
-		return n, errnie.Error(err)
-	}
-
-	composed := &openai.ChatCompletionNewParams{
-		Model:            prvdr.params.Model,
-		Temperature:      openai.Float(prvdr.params.Temperature),
-		TopP:             openai.Float(prvdr.params.TopP),
-		FrequencyPenalty: openai.Float(prvdr.params.FrequencyPenalty),
-		PresencePenalty:  openai.Float(prvdr.params.PresencePenalty),
-	}
-
-	if prvdr.params.MaxTokens > 1 {
-		composed.MaxTokens = openai.Int(int64(prvdr.params.MaxTokens))
-	}
-
-	if err = prvdr.buildMessages(composed); err != nil {
-		return n, errnie.Error(err)
-	}
-
-	if err = prvdr.buildTools(composed); err != nil {
-		return n, errnie.Error(err)
-	}
-
-	if prvdr.params.ResponseFormat != nil {
-		if err = prvdr.buildResponseFormat(composed); err != nil {
-			return n, errnie.Error(err)
-		}
-	}
-
-	if prvdr.params.Stream {
-		prvdr.handleStreamingRequest(composed)
-	} else {
-		prvdr.handleSingleRequest(composed)
-	}
-
-	return n, nil
-}
-
-/*
-Close cleans up any resources.
-*/
-func (prvdr *OpenAIProvider) Close() error {
-	errnie.Debug("provider.OpenAIProvider.Close")
-	return prvdr.buffer.Close()
-}
-
-/*
 handleSingleRequest processes a single (non-streaming) completion request
 */
 func (prvdr *OpenAIProvider) handleSingleRequest(
 	params *openai.ChatCompletionNewParams,
+	out *chan *datura.Artifact,
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
 
@@ -210,6 +212,7 @@ and emits chunks as they're received.
 */
 func (prvdr *OpenAIProvider) handleStreamingRequest(
 	params *openai.ChatCompletionNewParams,
+	out *chan *datura.Artifact,
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
@@ -446,10 +449,9 @@ OpenAIEmbedder implements an LLM provider that connects to OpenAI's API.
 It supports embedding generation for text inputs.
 */
 type OpenAIEmbedder struct {
-	client     *openai.Client
-	buffer     *stream.Buffer
-	params     *Params
-	embeddings []float32
+	client *openai.Client
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 type OpenAIEmbedderOption func(*OpenAIEmbedder)
@@ -462,60 +464,18 @@ This can also be used for local AI, since most will follow the OpenAI API format
 func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
 	errnie.Debug("provider.NewOpenAIEmbedder")
 
-	params := &Params{}
-	client := openai.NewClient(option.WithAPIKey(os.Getenv("OPENAI_API_KEY")))
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	ctx, cancel := context.WithCancel(context.Background())
+
+	client := openai.NewClient(
+		option.WithAPIKey(apiKey),
+	)
 
 	embedder := &OpenAIEmbedder{
-		params: params,
 		client: &client,
+		ctx:    ctx,
+		cancel: cancel,
 	}
-
-	embedder.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-		errnie.Debug("provider.OpenAIEmbedder.buffer.fn")
-
-		var content []byte
-
-		if content, err = artifact.DecryptPayload(); err != nil {
-			return errnie.Error(err)
-		}
-
-		if len(content) == 0 {
-			return errnie.Error(errors.New("content is empty"))
-		}
-
-		var response *openai.CreateEmbeddingResponse
-
-		// Get embeddings from OpenAI
-		if response, err = client.Embeddings.New(context.TODO(), openai.EmbeddingNewParams{
-			Input:          openai.EmbeddingNewParamsInputUnion{OfArrayOfStrings: []string{string(content)}},
-			Model:          openai.EmbeddingModelTextEmbeddingAda002,
-			Dimensions:     openai.Int(tweaker.GetQdrantDimension()),
-			EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
-		}); errnie.Error(err) != nil {
-			return err
-		}
-
-		if len(response.Data) == 0 {
-			return errnie.Error(errors.New("no embeddings returned"))
-		}
-
-		// Convert float64 embeddings to float32
-		embeddings := response.Data[0].Embedding
-		embedder.embeddings = make([]float32, len(embeddings))
-		for i, v := range embeddings {
-			embedder.embeddings[i] = float32(v)
-		}
-
-		// Convert embeddings to bytes and store in artifact payload
-		embeddingsBytes := make([]byte, len(embedder.embeddings)*4)
-
-		for i, v := range embedder.embeddings {
-			binary.LittleEndian.PutUint32(embeddingsBytes[i*4:], math.Float32bits(v))
-		}
-
-		datura.WithPayload(embeddingsBytes)(artifact)
-		return nil
-	})
 
 	for _, opt := range opts {
 		opt(embedder)
@@ -525,41 +485,78 @@ func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
 }
 
 /*
-Read implements the io.Reader interface.
+Generate implements the Generator interface for OpenAIEmbedder.
+It takes input text through a channel and returns embeddings through another channel.
 */
-func (embedder *OpenAIEmbedder) Read(p []byte) (n int, err error) {
-	errnie.Debug("provider.OpenAIEmbedder.Read")
-	return embedder.buffer.Read(p)
-}
+func (embedder *OpenAIEmbedder) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("provider.OpenAIEmbedder.Generate")
 
-/*
-Write implements the io.Writer interface.
-*/
-func (embedder *OpenAIEmbedder) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.OpenAIEmbedder.Write")
-	return embedder.buffer.Write(p)
-}
+	out := make(chan *datura.Artifact)
 
-/*
-Close implements io.Closer for OpenAIEmbedder.
-*/
-func (embedder *OpenAIEmbedder) Close() error {
-	errnie.Debug("provider.OpenAIEmbedder.Close")
-	embedder.params = nil
-	embedder.embeddings = nil
-	return embedder.buffer.Close()
+	go func() {
+		defer close(out)
+
+		select {
+		case <-embedder.ctx.Done():
+			errnie.Debug("provider.OpenAIEmbedder.Generate.ctx.Done")
+			embedder.cancel()
+			return
+		case artifact := <-buffer:
+			content, err := artifact.DecryptPayload()
+			if err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
+
+			if len(content) == 0 {
+				out <- datura.New(datura.WithError(errnie.Error(errors.New("content is empty"))))
+				return
+			}
+
+			response, err := embedder.client.Embeddings.New(embedder.ctx, openai.EmbeddingNewParams{
+				Input:          openai.EmbeddingNewParamsInputUnion{OfArrayOfStrings: []string{string(content)}},
+				Model:          openai.EmbeddingModelTextEmbeddingAda002,
+				Dimensions:     openai.Int(tweaker.GetQdrantDimension()),
+				EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
+			})
+			if err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
+
+			if len(response.Data) == 0 {
+				out <- datura.New(datura.WithError(errnie.Error(errors.New("no embeddings returned"))))
+				return
+			}
+
+			// Convert float64 embeddings to float32
+			embeddings := response.Data[0].Embedding
+			float32Embeddings := make([]float32, len(embeddings))
+			for i, v := range embeddings {
+				float32Embeddings[i] = float32(v)
+			}
+
+			// Convert embeddings to bytes
+			embeddingsBytes := make([]byte, len(float32Embeddings)*4)
+			for i, v := range float32Embeddings {
+				binary.LittleEndian.PutUint32(embeddingsBytes[i*4:], math.Float32bits(v))
+			}
+
+			out <- datura.New(datura.WithPayload(embeddingsBytes))
+		}
+	}()
+
+	return out
 }
 
 func WithOpenAIEmbedderAPIKey(apiKey string) OpenAIEmbedderOption {
 	return func(embedder *OpenAIEmbedder) {
-		client := openai.NewClient(option.WithAPIKey(apiKey))
-		embedder.client = &client
+		embedder.client.Options = append(embedder.client.Options, option.WithAPIKey(apiKey))
 	}
 }
 
 func WithOpenAIEmbedderEndpoint(endpoint string) OpenAIEmbedderOption {
 	return func(embedder *OpenAIEmbedder) {
-		client := openai.NewClient(option.WithBaseURL(endpoint))
-		embedder.client = &client
+		embedder.client.Options = append(embedder.client.Options, option.WithBaseURL(endpoint))
 	}
 }

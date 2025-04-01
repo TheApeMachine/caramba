@@ -7,11 +7,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/core"
+	"github.com/theapemachine/caramba/pkg/datura"
+	"github.com/theapemachine/caramba/pkg/stream"
 )
-
-type Example interface {
-	Run() (err error)
-}
 
 var (
 	exampleCmd = &cobra.Command{
@@ -21,26 +19,20 @@ var (
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			core.NewConfig(core.WithOpenAIAPIKey(openaiAPIKey))
 
-			var wf Example
+			var wf stream.Generator
 
 			switch args[0] {
-			case "pipeline":
-				wf = examples.NewPipeline()
-			case "chat":
-				wf = examples.NewChat()
 			case "code":
 				wf = examples.NewCode()
-			case "memory":
-				wf = examples.NewMemory()
-			case "multiagent":
-				wf = examples.NewMultiAgent()
-			case "capnp":
-				wf = examples.NewCapnp()
 			default:
 				return fmt.Errorf("unknown example: %s", args[0])
 			}
 
-			return wf.Run()
+			for artifact := range wf.Generate(make(chan *datura.Artifact)) {
+				fmt.Println(artifact.String())
+			}
+
+			return nil
 		},
 	}
 )
