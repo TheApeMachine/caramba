@@ -12,13 +12,14 @@ import (
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/memory"
+	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tools"
 )
 
 type MCP struct {
 	stdio *server.MCPServer
 	sse   *server.SSEServer
-	tools map[string]io.ReadWriteCloser
+	tools map[string]stream.Generator
 }
 
 func NewMCP() *MCP {
@@ -43,10 +44,9 @@ func NewMCP() *MCP {
 			server.WithBaseURL("http://localhost:8080"),
 			server.WithSSEContextFunc(authFromRequest),
 		),
-		tools: map[string]io.ReadWriteCloser{
+		tools: map[string]stream.Generator{
 			"memory": tools.NewMemoryTool(
-				memory.NewQdrant(),
-				memory.NewNeo4j(),
+				tools.WithStores(memory.NewQdrant(), memory.NewNeo4j()),
 			),
 			"ai":      ai.NewAgent(),
 			"editor":  tools.NewEditorTool(),

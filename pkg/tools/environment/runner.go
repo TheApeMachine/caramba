@@ -12,7 +12,6 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 /*
@@ -25,7 +24,6 @@ stdout, and stderr streams, and uses mutexes to ensure thread-safe operations.
 type Runner struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
-	buffer   *stream.Buffer
 	runtime  Runtime
 	bufIn    *bytes.Buffer
 	bufOut   *bytes.Buffer
@@ -62,6 +60,12 @@ func NewRunner(runtime Runtime) *Runner {
 		errnie.Error(err)
 		return nil
 	}
+
+	return runner
+}
+
+func (runner *Runner) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	out := make(chan *datura.Artifact)
 
 	// Detect when the command has finished executing and the
 	// output has been written to the buffer.
@@ -117,15 +121,18 @@ func NewRunner(runtime Runtime) *Runner {
 		return outputCh
 	}
 
-	runner.buffer = stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-		errnie.Debug("environment.Runner.buffer.fn")
+	go func() {
+		defer close(out)
+
+		artifact := <-buffer
 
 		// Get the command from the metadata
 		command := datura.GetMetaValue[string](artifact, "command")
 		input := datura.GetMetaValue[string](artifact, "input")
 
 		if command == "" && input == "" {
-			return errnie.Error(errors.New("no command or input"))
+			errnie.Error(errors.New("no command or input"))
+			return
 		}
 
 		// Handle input differently from commands
@@ -147,7 +154,7 @@ func NewRunner(runtime Runtime) *Runner {
 			errnie.Debug("environment.Runner.buffer.fn.out", "out", string(output))
 			artifact.SetMetaValue("output", string(output))
 
-			return nil
+			out <- artifact
 		}
 
 		// For commands, reset all buffers
@@ -167,7 +174,8 @@ func NewRunner(runtime Runtime) *Runner {
 		runner.muIn.Unlock()
 
 		if err := runner.runtime.ExecuteCommand(runner.ctx, command, runner.bufOut, runner.bufErr); err != nil {
-			return errnie.Error(fmt.Errorf("failed to execute command: %w", err))
+			errnie.Error(fmt.Errorf("failed to execute command: %w", err))
+			return
 		}
 
 		// Wait until the output of the command returns 0 bytes
@@ -187,47 +195,8 @@ func NewRunner(runtime Runtime) *Runner {
 		artifact.SetMetaValue("output", string(output))
 		runner.muOutErr.Unlock()
 
-		return nil
-	})
+		out <- artifact
+	}()
 
-	return runner
-}
-
-/*
-Read implements the io.Reader interface.
-
-It reads processed data from the internal buffer after command execution
-or input processing has completed.
-*/
-func (runner *Runner) Read(p []byte) (n int, err error) {
-	errnie.Debug("environment.Runner.Read")
-	return runner.buffer.Read(p)
-}
-
-/*
-Write implements the io.Writer interface.
-
-It writes command or input requests to the internal buffer for processing
-by the runner's execution logic.
-*/
-func (runner *Runner) Write(p []byte) (n int, err error) {
-	errnie.Debug("environment.Runner.Write")
-	return runner.buffer.Write(p)
-}
-
-/*
-Close implements the io.Closer interface.
-
-It cleans up resources by canceling the context, stopping the container,
-and closing the internal buffer.
-*/
-func (runner *Runner) Close() error {
-	errnie.Debug("environment.Runner.Close")
-	runner.cancel()
-
-	if err := runner.runtime.StopContainer(runner.ctx); err != nil {
-		errnie.Error(fmt.Errorf("failed to stop container: %w", err))
-	}
-
-	return runner.buffer.Close()
+	return out
 }

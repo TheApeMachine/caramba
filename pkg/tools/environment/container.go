@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/fs"
 	"github.com/theapemachine/caramba/pkg/tweaker"
-	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 /*
@@ -68,13 +66,13 @@ func (container *Container) Load() (err error) {
 		payload  []byte
 	)
 
-	// Read our Dockerfile
-	if _, err = io.Copy(artifact, workflow.NewPipeline(datura.New(
-		datura.WithRole(datura.ArtifactRoleOpenFile),
-		datura.WithMeta("path", "manifests/Dockerfile"),
-	), fs.NewStore())); err != nil {
-		return errnie.Error(err)
-	}
+	ch := make(chan *datura.Artifact)
+
+	go func() {
+		ch <- artifact
+	}()
+
+	artifact = <-fs.NewStore().Generate(ch)
 
 	if payload, err = artifact.DecryptPayload(); err != nil {
 		return errnie.Error(err)

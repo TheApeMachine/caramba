@@ -27,24 +27,27 @@ type MemoryTool struct {
 	Schema *provider.Tool
 }
 
+type MemoryToolOption func(*MemoryTool)
+
 // NewMemoryTool creates a new memory tool with the specified stores.
 // If no stores are provided, it initializes with default Qdrant and Neo4j stores.
-func NewMemoryTool() *MemoryTool {
+func NewMemoryTool(opts ...MemoryToolOption) *MemoryTool {
 	errnie.Debug("NewMemoryTool")
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Initialize stores
-	storeMap := make(map[string]interface{})
-	storeMap["vector"] = memory.NewQdrant()
-	storeMap["graph"] = memory.NewNeo4j()
-
-	return &MemoryTool{
+	tool := &MemoryTool{
 		ctx:    ctx,
 		cancel: cancel,
-		stores: storeMap,
+		stores: make(map[string]interface{}),
 		Schema: GetToolSchema("memory"),
 	}
+
+	for _, opt := range opts {
+		opt(tool)
+	}
+
+	return tool
 }
 
 // Generate implements the Generator pattern for MemoryTool.
@@ -151,4 +154,18 @@ func (mt *MemoryTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifa
 	}()
 
 	return out
+}
+
+func WithStores(stores ...memory.Store) MemoryToolOption {
+	return func(tool *MemoryTool) {
+		for _, store := range stores {
+			tool.stores[store.Name()] = store
+		}
+	}
+}
+
+func WithStore(store memory.Store) MemoryToolOption {
+	return func(tool *MemoryTool) {
+		tool.stores[store.Name()] = store
+	}
 }

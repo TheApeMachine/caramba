@@ -117,63 +117,134 @@ tools:
           type: "string"
           description: 'A JSON array of documents to store in the vector database. Follow this format: [{"content": "...", "metadata": {"<key>": "<value>", ...}, ...}]'
     environment:
-      function:
-        name: "environment"
-        description: "A tool which gives you a full Linux terminal-based environment to interact with. You are directly connected to stdin, stdout, and stderr."
-      properties:
-        command:
-          type: "string"
-          description: "A valid bash command to execute in the environment."
-        input:
-          type: "string"
-          description: "Valid input to pass to the environment, used for interactive sessions."
+      command:
+        function:
+          name: "command"
+          description: "A tool which gives you a full Linux terminal-based environment to interact with. You are directly connected to stdin, stdout, and stderr."
+        properties:
+          command:
+            type: "string"
+            description: "A valid bash command to execute in the environment."
+        required: ["command"]
+      input:
+        function:
+          name: "input"
+          description: "A tool which gives you a full Linux terminal-based environment to interact with. You are directly connected to stdin, stdout, and stderr."
+        properties:
+          input:
+            type: "string"
+            description: "Valid input to pass to the environment, used for interactive sessions."
+        required: ["input"]
     editor:
-      function:
-        name: "editor"
-        description: "A tool which can edit files in the workspace with special support for code editing."
-      properties:
-        file:
-          type: "string"
-          description: "The file to edit."
-        operation:
-          type: "string"
-          description: "The operation to perform."
-          options:
-            [
-              "read",
-              "write",
-              "delete",
-              "replace_lines",
-              "insert_lines",
-              "delete_lines",
-              "read_lines",
-            ]
-        content:
-          type: "string"
-          description: "The content to write to the file. For line operations, this can be multiple lines separated by newlines."
-        start_line:
-          type: "number"
-          description: "The line number to start the operation from (1-based indexing)."
-        end_line:
-          type: "number"
-          description: "The line number to end the operation at (1-based indexing, inclusive)."
-        line_number:
-          type: "number"
-          description: "The line number for single-line operations like insertion (1-based indexing)."
-      required: ["file", "operation"]
+      read:
+        function:
+          name: "editor.read"
+          description: "A tool which can read files in the workspace."
+        properties:
+          file:
+            type: "string"
+            description: "The file to read."
+        required: ["file"]
+      write:
+        function:
+          name: "editor.write"
+          description: "A tool which can write to files in the workspace."
+        properties:
+          file:
+            type: "string"
+            description: "The file to write to."
+          content:
+            type: "string"
+            description: "The content to write to the file."
+        required: ["file", "content"]
+      delete:
+        function:
+          name: "editor.delete"
+          description: "A tool which can delete files in the workspace."
+        properties:
+          file:
+            type: "string"
+            description: "The file to delete."
+        required: ["file"]
+      replace_lines:
+        function:
+          name: "editor.replace_lines"
+          description: "A tool which can replace lines in a file."
+        properties:
+          file:
+            type: "string"
+            description: "The file to replace lines in."
+          start_line:
+            type: "number"
+            description: "The line number for single-line operations like insertion (1-based indexing)."
+          end_line:
+            type: "number"
+            description: "The line number for single-line operations like insertion (1-based indexing, inclusive)."
+          content:
+            type: "string"
+            description: "The content to replace the lines with."
+        required: ["file", "start_line", "end_line", "content"]
+      insert_lines:
+        function:
+          name: "editor.insert_lines"
+          description: "A tool which can insert lines into a file."
+        properties:
+          file:
+            type: "string"
+            description: "The file to insert lines into."
+          content:
+            type: "string"
+            description: "The content to insert into the file."
+        required: ["file", "content"]
+      delete_lines:
+        function:
+          name: "editor.delete_lines"
+          description: "A tool which can delete lines from a file."
+        properties:
+          file:
+            type: "string"
+            description: "The file to delete lines from."
+          start_line:
+            type: "number"
+            description: "The line number for single-line operations like insertion (1-based indexing)."
+          end_line:
+            type: "number"
+            description: "The line number for single-line operations like insertion (1-based indexing, inclusive)."
+        required: ["file", "start_line", "end_line"]
+      read_lines:
+        function:
+          name: "editor.read_lines"
+          description: "A tool which can read lines from a file."
+        properties:
+          file:
+            type: "string"
+            description: "The file to read lines from."
+          start_line:
+            type: "number"
+            description: "The line number for single-line operations like insertion (1-based indexing)."
+          end_line:
+            type: "number"
+            description: "The line number for single-line operations like insertion (1-based indexing, inclusive)."
+        required: ["file", "start_line", "end_line"]
     browser:
-      function:
-        name: "browser"
-        description: "A fully featured Chrome browser."
-      properties:
-        url:
-          type: "string"
-          description: "The URL to navigate to."
-        operation:
-          type: "string"
-          description: "The operation to perform on the page you are navigating to."
-          options: ["get_content", "get_links"]
-      required: ["url", "operation"]
+      get_content:
+        function:
+          name: "browser.get_content"
+          description: "A tool which can get the content of a page."
+        properties:
+          url:
+            type: "string"
+            description: "The URL to navigate to."
+        required: ["url"]
+      get_links:
+        function:
+          name: "browser.get_links"
+          description: "A tool which can get the links of a page."
+        properties:
+          url:
+            type: "string"
+            description: "The URL to navigate to."
+        required: ["url"]
     github:
       function:
         name: "github"

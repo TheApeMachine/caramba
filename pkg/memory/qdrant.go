@@ -207,3 +207,7 @@ func (q *Qdrant) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
 
 	return out
 }
+
+func (q *Qdrant) Name() string {
+	return "qdrant"
+}

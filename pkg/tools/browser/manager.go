@@ -75,3 +75,8 @@ func (manager *Manager) Close() (err error) {
 	manager.launch.Cleanup()
 	return manager.browser.Close()
 }
+
+// GetPage returns the page instance
+func (manager *Manager) GetPage() *rod.Page {
+	return manager.page
+}

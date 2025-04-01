@@ -152,6 +152,10 @@ func (n4j *Neo4j) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
 	return out
 }
 
+func (n4j *Neo4j) Name() string {
+	return "neo4j"
+}
+
 // formatRelationships takes a list of records and formats them into a relationship string
 func formatRelationships(records []*sdk.Record) string {
 	var relationships []string
