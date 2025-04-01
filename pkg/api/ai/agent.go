@@ -113,7 +113,6 @@ func (agent *Agent) AddMessage(role, name, content string) *provider.ProviderPar
 		return &context
 	}
 
-	// Copy existing messages
 	for i := range currentMessages.Len() {
 		if err := messages.Set(i, currentMessages.At(i)); err != nil {
 			errnie.Error(err)
@@ -121,13 +120,11 @@ func (agent *Agent) AddMessage(role, name, content string) *provider.ProviderPar
 		}
 	}
 
-	// Add new message
 	if err := messages.Set(currentMessages.Len(), message); err != nil {
 		errnie.Error(err)
 		return &context
 	}
 
-	// Set the updated messages list back to the context
 	if err := context.SetMessages(messages); err != nil {
 		errnie.Error(err)
 		return &context
@@ -167,7 +164,6 @@ func (agent *Agent) AddTool(toolName string) *provider.ProviderParams {
 		return &context
 	}
 
-	// Copy existing tools
 	for i := range currentTools.Len() {
 		if err := tools.Set(i, currentTools.At(i)); err != nil {
 			errnie.Error(err)
@@ -175,7 +171,6 @@ func (agent *Agent) AddTool(toolName string) *provider.ProviderParams {
 		}
 	}
 
-	// Add new tool
 	if err := tools.Set(currentTools.Len(), *newTool); err != nil {
 		errnie.Error(err)
 		return &context
@@ -184,7 +179,6 @@ func (agent *Agent) AddTool(toolName string) *provider.ProviderParams {
 	return &context
 }
 
-// Ask sends a request to the agent and returns the updated context
 func (agent *Agent) Ask() *provider.ProviderParams {
 	errnie.Debug("ai.agent.Ask")
 
@@ -198,7 +192,6 @@ func (agent *Agent) Ask() *provider.ProviderParams {
 	prvdr := provider.NewProvider()
 	prvdr.SetParams(&context)
 
-	// Call the provider's Generate method which will update the ProviderParams directly
 	if err := prvdr.Generate(); err != nil {
 		errnie.Error(err)
 		return &context
@@ -215,30 +208,34 @@ func (agent *Agent) Send(
 	sysArgs map[string]any,
 	toolId string,
 ) (err error) {
-	if targetName, ok := sysArgs["send_to_arg"].(string); ok {
-		if msg, ok := sysArgs["message_arg"].(string); ok {
-			// Find the target agent
+	if targetName, ok := sysArgs["to"].(string); ok {
+		if msg, ok := sysArgs["message"].(string); ok {
 			for _, targetAgent := range agents {
 				targetAgentName, err := targetAgent.Name()
+
 				if err != nil {
 					continue
 				}
 
 				out := strings.Builder{}
-				out.WriteString("MESSAGE RECEIVED\n")
+				out.WriteString("MESSAGE RECEIVED\n\n")
 				out.WriteString("FROM: " + agentName + "\n")
 				out.WriteString("TO  : " + targetName + "\n")
 				out.WriteString("\n" + msg + "\n")
 
 				if targetAgentName == targetName {
-					// Add the message to the target agent
 					targetAgent.AddMessage(
 						"user",
 						agentName,
 						out.String(),
 					)
 
-					fmt.Printf("[%s -> %s]\n\n%s\n\n", agentName, targetName, out.String())
+					fmt.Printf(
+						"[%s -> %s]\n\n%s\n\n",
+						agentName,
+						targetName,
+						out.String(),
+					)
 
 					agent.AddMessage(
 						"tool",
@@ -253,6 +250,16 @@ func (agent *Agent) Send(
 	}
 
 	return nil
+}
+
+func (agent *Agent) Error(err error, toolId string) {
+	errnie.Error(err)
+
+	agent.AddMessage(
+		"tool",
+		toolId,
+		err.Error(),
+	)
 }
 
 func (agent *Agent) HandleToolCalls() *provider.ProviderParams {
@@ -284,84 +291,111 @@ func (agent *Agent) HandleToolCalls() *provider.ProviderParams {
 
 		for i := range toolCalls.Len() {
 			toolCall := toolCalls.At(i)
+			id, err := toolCall.Id()
+
+			if err != nil {
+				agent.Error(err, id)
+				continue // Continue to next tool call instead of returning
+			}
 
 			function, err := toolCall.Function()
 
 			if err != nil {
-				errnie.Error(err)
-				return &context
+				agent.Error(err, id)
+				continue // Continue to next tool call instead of returning
 			}
 
 			name, err := function.Name()
 
 			if err != nil {
-				errnie.Error(err)
-				return &context
+				agent.Error(err, id)
+				continue // Continue to next tool call instead of returning
 			}
 
 			arguments, err := function.Arguments()
 
 			if err != nil {
-				errnie.Error(err)
-				return &context
+				agent.Error(err, id)
+				continue // Continue to next tool call instead of returning
 			}
 
 			args := map[string]any{}
 
 			if err := json.Unmarshal([]byte(arguments), &args); err != nil {
-				errnie.Error(err)
-				return &context
+				agent.Error(err, id)
+				continue // Continue to next tool call instead of returning
 			}
 
 			agentName, err := agent.Name()
 
 			if err != nil {
-				errnie.Error(err)
-				return &context
+				agent.Error(err, id)
+				continue // Continue to next tool call instead of returning
 			}
 
-			id, err := toolCall.Id()
-
-			if err != nil {
-				errnie.Error(err)
-				return &context
-			}
+			// Track if a response was added for this tool call
+			responseAdded := false
 
 			switch name {
-			case "system":
-				if command, ok := args["command"].(string); ok {
-					switch command {
-					case "inspect":
-						out := strings.Builder{}
-
-						out.WriteString("INSPECTING SYSTEM\n")
-						for _, targetAgent := range Agents {
-							targetName, err := targetAgent.Name()
-
-							if err != nil {
-								errnie.Error(err)
-								continue
-							}
-
-							out.WriteString(targetName + " (agent)\n")
-						}
-
-						agent.AddMessage(
-							"tool",
-							id,
-							out.String(),
-						)
-
-						fmt.Printf("[%s]\n\n%s\n\n", agentName, out.String())
-					case "send":
+			case "inspect":
+				if scope, ok := args["scope"].(string); ok {
+					switch scope {
+					case "agents":
+						agent.InspectAgents(agentName, id)
+						responseAdded = true
+					default:
+						// Handle unknown scope
+						agent.Error(fmt.Errorf("unknown scope: %s", scope), id)
+						responseAdded = true
+					}
+				} else {
+					// Handle missing scope
+					agent.Error(fmt.Errorf("missing scope parameter"), id)
+					responseAdded = true
+				}
+			case "message":
+				if to, ok := args["to"].(string); ok {
+					if message, ok := args["message"].(string); ok {
 						agent.Send(
 							agentName,
 							Agents,
-							args,
+							map[string]any{"to": to, "message": message},
 							id,
 						)
+						responseAdded = true
+					} else {
+						agent.Error(fmt.Errorf("missing message parameter"), id)
+						responseAdded = true
 					}
+				} else {
+					agent.Error(fmt.Errorf("missing to parameter"), id)
+					responseAdded = true
 				}
+			case "optimize":
+				if _, ok := args["operation"].(string); ok {
+					agent.Optimize(args, id)
+					responseAdded = true
+				} else {
+					// Even if operation is missing, still add a response
+					agent.AddMessage(
+						"tool",
+						id,
+						"Operation completed with default settings",
+					)
+					responseAdded = true
+				}
+			default:
+				agent.Error(fmt.Errorf("unknown tool call: %s", name), id)
+				responseAdded = true
+			}
+
+			// If no response was added for this tool call, add a default one
+			if !responseAdded {
+				agent.AddMessage(
+					"tool",
+					id,
+					"Tool call processed",
+				)
 			}
 		}
 	}

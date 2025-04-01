@@ -61,6 +61,11 @@ settings:
         You are also encouraged to use the tools available to you, and to use them in combination with each other,
         to achieve your goals.
 
+        You have the ability to self-optimize your behavior and adjust your parameters according to the current task
+        you are working on.
+
+        You can use the `optimize` tool to inspect your current values, and to make any changes you need to.
+
         Precision is more important than completeness. Do not make any assumptions, and do not skip any steps.
 
       code: |
@@ -288,32 +293,57 @@ tools:
           type: "string"
           description: "Emoji reaction to add or remove from a message."
       required: ["operation"]
-    system:
+    inspect:
       function:
-        name: "system"
+        name: "inspect"
         description: |
-          A tool for low-level system operations.
-
-          You can use the `inspect` command to get a list of all the agents and topics in the system.
-          You can use the `send` command to send a message to an agent or topic.
-          You can use the `break` command to break out of the current iteration loop.
+          A tool for inspecting the system.
       properties:
-        command:
+        scope:
           type: "string"
-          description: "The top-level command to execute."
-          options: ["inspect", "send", "break"]
-        inspect_arg:
-          type: "string"
-          description: "Arguments for the inspect command."
+          description: "The scope of the inspection."
           options: ["agents", "topics"]
-        send_to_arg:
+      required: ["scope"]
+    message:
+      function:
+        name: "message"
+        description: |
+          A tool for sending messages to other agents and topics.
+      properties:
+        to:
           type: "string"
           description: "The name of the agent or topic to send a message to"
-        message_arg:
+        message:
           type: "string"
           description: "The message to send to the agent or topic"
-      required: ["command"]
-
+      required: ["to", "message"]
+    optimize:
+      function:
+        name: "optimize"
+        description: "A tool for optimizing your performance and behavior."
+      properties:
+        operation:
+          type: "string"
+          description: "The operation to perform. Use inspect to get a list of your current values, and use optimize to make any changes."
+          options: ["inspect", "optimize"]
+        system_prompt:
+          type: "string"
+          description: "Your custom system prompt that defines your core behavior and capabilities."
+        temperature:
+          type: "number"
+          description: "Adjust temperature (0.0-2.0) to control randomness: lower values for consistent, deterministic outputs; higher values for creative, diverse responses."
+        topP:
+          type: "number"
+          description: "Set topP (0.0-1.0) to control response diversity by limiting token selection: lower values for focused, deterministic responses; higher values for broader variety."
+        topK:
+          type: "number"
+          description: "Adjust topK (1-100) to limit token selection pool: lower values produce more focused, predictable responses; higher values allow more diverse possibilities."
+        frequencyPenalty:
+          type: "number"
+          description: "Set frequencyPenalty (-2.0 to 2.0) to discourage repetition: positive values reduce word reuse; negative values may encourage repetition."
+        presencePenalty:
+          type: "number"
+          description: "Adjust presencePenalty (-2.0 to 2.0) to control topic focus: positive values encourage exploring new topics; negative values favor staying on existing topics."
 templates:
   memory: |
     You are an advanced memory extraction system for an AI agent. 

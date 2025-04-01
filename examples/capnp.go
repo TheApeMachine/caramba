@@ -25,7 +25,9 @@ func NewCapnp() *CapnpExample {
 			return nil
 		}
 
-		agent.SetContext(*agent.AddTool("system"))
+		agent.SetContext(*agent.AddTool("inspect"))
+		agent.SetContext(*agent.AddTool("message"))
+		agent.SetContext(*agent.AddTool("optimize"))
 
 		agent.SetContext(*agent.AddMessage(
 			"system",
@@ -36,7 +38,7 @@ func NewCapnp() *CapnpExample {
 		agent.SetContext(*agent.AddMessage(
 			"user",
 			"danny",
-			"Try to find other agents in the system, then have a conversation with them.\n\nYour name is: "+agentName+", so you don't have to message yourself.",
+			"Try to find other agents in the system, then have a conversation with them.\n\nYour name is: "+agentName+", so you don't have to message yourself.\n\nYou can use the optimize tool to optimize your performance and behavior.\n\nRemember: you can make multiple tool calls in a single response, so always keep evaluating whether you should change values to adjust to the current situation.",
 		))
 
 		agents = append(agents, agent)
@@ -52,7 +54,6 @@ func NewCapnp() *CapnpExample {
 func (example *CapnpExample) Run() (err error) {
 	errnie.Info("Starting Cap'n Proto example")
 
-	// Main interaction loop
 	for {
 		for _, agent := range example.agents {
 			agent.SetContext(*agent.Ask())
