@@ -246,175 +246,531 @@ tools:
             description: "The URL to navigate to."
         required: ["url"]
     github:
-      function:
-        name: "github"
-        description: "A tool for interacting with GitHub."
-      properties:
-        operation:
-          type: "string"
-          description: "The operation to perform."
-          options:
-            [
-              "get_repositories",
-              "get_repository",
-              "create_repository",
-              "list_branches",
-              "get_contents",
-              "list_pull_requests",
-              "get_pull_request",
-              "create_pull_request",
-              "update_pull_request",
-              "list_issues",
-              "get_issue",
-              "create_issue",
-              "update_issue",
-              "create_pr_comment",
-              "list_pr_comments",
-              "create_pr_review",
-              "list_pr_reviews",
-              "create_review_comment",
-              "list_review_comments",
-            ]
-      required: ["operation"]
+      get_repositories:
+        function:
+          name: "github.get_repositories"
+          description: "A tool for getting repositories from GitHub."
+        required: []
+      get_repository:
+        function:
+          name: "github.get_repository"
+          description: "A tool for getting a repository from GitHub."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to get."
+        required: ["repository"]
+      create_repository:
+        function:
+          name: "github.create_repository"
+          description: "A tool for creating a repository on GitHub."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to create."
+        required: ["repository"]
+      list_branches:
+        function:
+          name: "github.list_branches"
+          description: "A tool for listing branches on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to list branches on."
+        required: ["repository"]
+      get_contents:
+        function:
+          name: "github.get_contents"
+          description: "A tool for getting the contents of a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to get the contents of."
+        required: ["repository"]
+      list_pull_requests:
+        function:
+          name: "github.list_pull_requests"
+          description: "A tool for listing pull requests on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to list pull requests on."
+        required: ["repository"]
+      get_pull_request:
+        function:
+          name: "github.get_pull_request"
+          description: "A tool for getting a pull request on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to get the pull request from."
+        required: ["repository"]
+      create_pull_request:
+        function:
+          name: "github.create_pull_request"
+          description: "A tool for creating a pull request on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to create the pull request on."
+        required: ["repository"]
+      update_pull_request:
+        function:
+          name: "github.update_pull_request"
+          description: "A tool for updating a pull request on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to update the pull request on."
+        required: ["repository"]
+      list_issues:
+        function:
+          name: "github.list_issues"
+          description: "A tool for listing issues on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to list issues on."
+        required: ["repository"]
+      get_issue:
+        function:
+          name: "github.get_issue"
+          description: "A tool for getting an issue on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to get the issue from."
+        required: ["repository"]
+      create_issue:
+        function:
+          name: "github.create_issue"
+          description: "A tool for creating an issue on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to create the issue on."
+        required: ["repository"]
+      update_issue:
+        function:
+          name: "github.update_issue"
+          description: "A tool for updating an issue on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to update the issue on."
+        required: ["repository"]
+      create_pr_comment:
+        function:
+          name: "github.create_pr_comment"
+          description: "A tool for creating a comment on a pull request on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to create the pull request comment on."
+        required: ["repository"]
+      list_pr_comments:
+        function:
+          name: "github.list_pr_comments"
+          description: "A tool for listing comments on a pull request on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to list pull request comments on."
+        required: ["repository"]
+      create_pr_review:
+        function:
+          name: "github.create_pr_review"
+          description: "A tool for creating a review on a pull request on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to create the pull request review on."
+        required: ["repository"]
+      list_pr_reviews:
+        function:
+          name: "github.list_pr_reviews"
+          description: "A tool for listing reviews on a pull request on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to list pull request reviews on."
+        required: ["repository"]
+      create_review_comment:
+        function:
+          name: "github.create_review_comment"
+          description: "A tool for creating a review comment on a pull request on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to create the pull request review comment on."
+        required: ["repository"]
+      list_review_comments:
+        function:
+          name: "github.list_review_comments"
+          description: "A tool for listing review comments on a pull request on a repository."
+        properties:
+          repository:
+            type: "string"
+            description: "The repository to list review comments on."
+        required: ["repository"]
     azure:
-      function:
-        name: "azure"
-        description: "A tool for interacting with Azure DevOps Boards and Wikis."
-      properties:
-        operation:
-          type: "string"
-          description: "The operation to perform."
-          options:
-            [
-              "create_work_item",
-              "update_work_item",
-              "get_work_item",
-              "list_work_items",
-              "create_wiki_page",
-              "update_wiki_page",
-              "get_wiki_page",
-              "list_wiki_pages",
-            ]
-      required: ["operation"]
+      create_work_item:
+        function:
+          name: "azure.create_work_item"
+          description: "A tool for creating work items in Azure DevOps Boards."
+        required: []
+      update_work_item:
+        function:
+          name: "azure"
+          description: "A tool for interacting with Azure DevOps Boards and Wikis."
+        properties:
+          work_item_id:
+            type: "string"
+            description: "The ID of the work item to update."
+        required: ["work_item_id"]
+      get_work_item:
+        function:
+          name: "azure.get_work_item"
+          description: "A tool for getting a work item in Azure DevOps Boards."
+        properties:
+          work_item_id:
+            type: "string"
+            description: "The ID of the work item to get."
+        required: ["work_item_id"]
+      list_work_items:
+        function:
+          name: "azure.list_work_items"
+          description: "A tool for listing work items in Azure DevOps Boards."
+        required: []
+      create_wiki_page:
+        function:
+          name: "azure.create_wiki_page"
+          description: "A tool for creating wiki pages in Azure DevOps Boards."
+        required: []
+      update_wiki_page:
+        function:
+          name: "azure.update_wiki_page"
+          description: "A tool for updating wiki pages in Azure DevOps Boards."
+        properties:
+          wiki_page_id:
+            type: "string"
+            description: "The ID of the wiki page to update."
+        required: ["wiki_page_id"]
+      get_wiki_page:
+        function:
+          name: "azure.get_wiki_page"
+          description: "A tool for getting a wiki page in Azure DevOps Boards."
+        properties:
+          wiki_page_id:
+            type: "string"
+            description: "The ID of the wiki page to get."
+        required: ["wiki_page_id"]
+      list_wiki_pages:
+        function:
+          name: "azure.list_wiki_pages"
+          description: "A tool for listing wiki pages in Azure DevOps Boards."
+        required: []
+      delete_wiki_page:
+        function:
+          name: "azure.delete_wiki_page"
+          description: "A tool for deleting a wiki page in Azure DevOps Boards."
+        properties:
+          wiki_page_id:
+            type: "string"
+            description: "The ID of the wiki page to delete."
+        required: ["wiki_page_id"]
+      create_work_item_comment:
+        function:
+          name: "azure.create_work_item_comment"
+          description: "A tool for creating comments on work items in Azure DevOps Boards."
+        required: []
+      list_work_item_comments:
+        function:
+          name: "azure.list_work_item_comments"
+          description: "A tool for listing comments on work items in Azure DevOps Boards."
+        required: []
+      delete_work_item_comment:
+        function:
+          name: "azure.delete_work_item_comment"
+          description: "A tool for deleting comments on work items in Azure DevOps Boards."
+        properties:
+          comment_id:
+            type: "string"
+            description: "The ID of the comment to delete."
+        required: ["comment_id"]
+      create_work_item_attachment:
+        function:
+          name: "azure.create_work_item_attachment"
+          description: "A tool for creating attachments on work items in Azure DevOps Boards."
+        required: []
+      list_work_item_attachments:
+        function:
+          name: "azure.list_work_item_attachments"
+          description: "A tool for listing attachments on work items in Azure DevOps Boards."
+        required: []
+      delete_work_item_attachment:
+        function:
+          name: "azure.delete_work_item_attachment"
+          description: "A tool for deleting attachments on work items in Azure DevOps Boards."
+        properties:
+          attachment_id:
+            type: "string"
+            description: "The ID of the attachment to delete."
+        required: ["attachment_id"]
+      create_work_item_link:
+        function:
+          name: "azure.create_work_item_link"
+          description: "A tool for creating links on work items in Azure DevOps Boards."
+        required: []
+      list_work_item_links:
+        function:
+          name: "azure.list_work_item_links"
+          description: "A tool for listing links on work items in Azure DevOps Boards."
+        required: []
+      delete_work_item_link:
+        function:
+          name: "azure.delete_work_item_link"
+          description: "A tool for deleting links on work items in Azure DevOps Boards."
+        properties:
+          link_id:
+            type: "string"
+            description: "The ID of the link to delete."
+        required: ["link_id"]
+      search_work_items:
+        function:
+          name: "azure.search_work_items"
+          description: "A tool for searching for work items in Azure DevOps Boards."
+        required: []
     trengo:
-      function:
-        name: "trengo"
-        description: "A tool for interacting with Trengo."
-      properties:
-        operation:
-          type: "string"
-          description: "The operation to perform."
-          options:
-            [
-              "list_tickets",
-              "create_ticket",
-              "assign_ticket",
-              "close_ticket",
-              "reopen_ticket",
-              "list_labels",
-              "get_label",
-              "create_label",
-              "update_label",
-              "delete_label",
-            ]
-      required: ["operation"]
+      list_tickets:
+        function:
+          name: "trengo.list_tickets"
+          description: "A tool for listing tickets in Trengo."
+        required: []
+      create_ticket:
+        function:
+          name: "trengo.create_ticket"
+          description: "A tool for creating tickets in Trengo."
+        required: []
+      assign_ticket:
+        function:
+          name: "trengo"
+          description: "A tool for interacting with Trengo."
+        properties:
+          operation:
+            type: "string"
+            description: "The operation to perform."
+            options:
+      close_ticket:
+        function:
+          name: "trengo.close_ticket"
+          description: "A tool for closing tickets in Trengo."
+        required: []
+      reopen_ticket:
+        function:
+          name: "trengo.reopen_ticket"
+          description: "A tool for reopening tickets in Trengo."
+        required: []
+      list_labels:
+        function:
+          name: "trengo.list_labels"
+          description: "A tool for listing labels in Trengo."
+        required: []
+      get_label:
+        function:
+          name: "trengo.get_label"
+          description: "A tool for getting a label in Trengo."
+        required: []
+      create_label:
+        function:
+          name: "trengo.create_label"
+          description: "A tool for creating a label in Trengo."
+        required: []
+      update_label:
+        function:
+          name: "trengo.update_label"
+          description: "A tool for updating a label in Trengo."
+        required: []
+      delete_label:
+        function:
+          name: "trengo.delete_label"
+          description: "A tool for deleting a label in Trengo."
+        required: []
     slack:
-      function:
-        name: "slack"
-        description: "A tool for interacting with Slack workspaces and channels."
-      properties:
-        operation:
-          type: "string"
-          description: "The operation to perform."
-          options:
-            [
-              "post_message",
-              "upload_file",
-              "add_reaction",
-              "remove_reaction",
-              "get_channel_info",
-              "list_channels",
-              "create_channel",
-              "archive_channel",
-              "unarchive_channel",
-              "get_thread_replies",
-              "search_messages",
-              "update_message",
-              "delete_message",
-            ]
-        channel:
-          type: "string"
-          description: "The channel ID to perform the operation in."
-        text:
-          type: "string"
-          description: "The text content for message operations."
-        thread_ts:
-          type: "string"
-          description: "The timestamp of a message to thread replies to."
-        blocks:
-          type: "string"
-          description: "JSON string of Slack blocks for rich message formatting."
-        attachments:
-          type: "string"
-          description: "JSON string of Slack attachments for message attachments."
-        file:
-          type: "string"
-          description: "File path for file upload operations."
-        reaction:
-          type: "string"
-          description: "Emoji reaction to add or remove from a message."
-      required: ["operation"]
-    inspect:
-      function:
-        name: "inspect"
-        description: |
-          A tool for inspecting the system.
-      properties:
-        scope:
-          type: "string"
-          description: "The scope of the inspection."
-          options: ["agents", "topics"]
-      required: ["scope"]
-    message:
-      function:
-        name: "message"
-        description: |
-          A tool for sending messages to other agents and topics.
-      properties:
-        to:
-          type: "string"
-          description: "The name of the agent or topic to send a message to"
-        message:
-          type: "string"
-          description: "The message to send to the agent or topic"
-      required: ["to", "message"]
-    optimize:
-      function:
-        name: "optimize"
-        description: "A tool for optimizing your performance and behavior."
-      properties:
-        operation:
-          type: "string"
-          description: "The operation to perform. Use inspect to get a list of your current values, and use optimize to make any changes."
-          options: ["inspect", "optimize"]
-        system_prompt:
-          type: "string"
-          description: "Your custom system prompt that defines your core behavior and capabilities."
-        temperature:
-          type: "number"
-          description: "Adjust temperature (0.0-2.0) to control randomness: lower values for consistent, deterministic outputs; higher values for creative, diverse responses."
-        topP:
-          type: "number"
-          description: "Set topP (0.0-1.0) to control response diversity by limiting token selection: lower values for focused, deterministic responses; higher values for broader variety."
-        topK:
-          type: "number"
-          description: "Adjust topK (1-100) to limit token selection pool: lower values produce more focused, predictable responses; higher values allow more diverse possibilities."
-        frequencyPenalty:
-          type: "number"
-          description: "Set frequencyPenalty (-2.0 to 2.0) to discourage repetition: positive values reduce word reuse; negative values may encourage repetition."
-        presencePenalty:
-          type: "number"
-          description: "Adjust presencePenalty (-2.0 to 2.0) to control topic focus: positive values encourage exploring new topics; negative values favor staying on existing topics."
+      post_message:
+        function:
+          name: "slack.post_message"
+          description: "A tool for posting messages to Slack workspaces and channels."
+        properties:
+          channel:
+            type: "string"
+            description: "The channel to post the message to."
+          message:
+            type: "string"
+            description: "The message to post to the channel."
+        required: ["channel", "message"]
+      upload_file:
+        function:
+          name: "slack.upload_file"
+          description: "A tool for uploading files to Slack workspaces and channels."
+        properties:
+          channel:
+            type: "string"
+            description: "The channel to upload the file to."
+          file:
+            type: "string"
+            description: "The file to upload to the channel."
+        required: ["channel", "file"]
+      add_reaction:
+        function:
+          name: "slack.add_reaction"
+          description: "A tool for adding reactions to messages in Slack workspaces and channels."
+        properties:
+          channel:
+            type: "string"
+            description: "The channel to add the reaction to."
+          reaction:
+            type: "string"
+            description: "The reaction to add to the message."
+        required: ["channel", "reaction"]
+      remove_reaction:
+        function:
+          name: "slack.remove_reaction"
+          description: "A tool for removing reactions from messages in Slack workspaces and channels."
+        properties:
+          channel:
+            type: "string"
+            description: "The channel to remove the reaction from."
+          reaction:
+            type: "string"
+            description: "The reaction to remove from the message."
+        required: ["channel", "reaction"]
+      get_channel_info:
+        function:
+          name: "slack.get_channel_info"
+          description: "A tool for getting information about a Slack channel."
+        properties:
+          channel:
+            type: "string"
+            description: "The channel to get information about."
+        required: ["channel"]
+      list_channels:
+        function:
+          name: "slack.list_channels"
+          description: "A tool for listing all Slack channels."
+        required: []
+      create_channel:
+        function:
+          name: "slack.create_channel"
+          description: "A tool for creating a new Slack channel."
+        properties:
+          name:
+            type: "string"
+            description: "The name of the channel to create."
+        required: ["name"]
+      get_thread_replies:
+        function:
+          name: "slack.get_thread_replies"
+          description: "A tool for getting replies to a message in a Slack channel."
+        properties:
+          channel:
+            type: "string"
+            description: "The channel to get replies from."
+          thread_ts:
+            type: "string"
+            description: "The timestamp of the message to get replies from."
+        required: ["channel", "thread_ts"]
+      search_messages:
+        function:
+          name: "slack.search_messages"
+          description: "A tool for searching for messages in a Slack channel."
+        properties:
+          channel:
+            type: "string"
+            description: "The channel to search for messages in."
+          text:
+            type: "string"
+            description: "The text content to search for."
+          thread_ts:
+            type: "string"
+            description: "The timestamp of the message to search for."
+        required: ["channel", "text", "thread_ts"]
+      update_message:
+        function:
+          name: "slack.update_message"
+          description: "A tool for updating a message in a Slack channel."
+        properties:
+          channel:
+            type: "string"
+            description: "The channel to update the message in."
+          message_ts:
+            type: "string"
+            description: "The timestamp of the message to update."
+        required: ["channel", "message_ts"]
+      delete_message:
+        function:
+          name: "slack.delete_message"
+          description: "A tool for deleting a message in a Slack channel."
+        properties:
+          channel:
+            type: "string"
+            description: "The channel to delete the message from."
+          message_ts:
+            type: "string"
+            description: "The timestamp of the message to delete."
+        required: ["channel", "message_ts"]
+    system:
+      inspect:
+        function:
+          name: "inspect"
+          description: |
+            A tool for inspecting the system.
+        properties:
+          scope:
+            type: "string"
+            description: "The scope of the inspection."
+            options: ["agents", "topics"]
+        required: ["scope"]
+      message:
+        function:
+          name: "message"
+          description: |
+            A tool for sending messages to other agents and topics.
+        properties:
+          to:
+            type: "string"
+            description: "The name of the agent or topic to send a message to"
+          message:
+            type: "string"
+            description: "The message to send to the agent or topic"
+        required: ["to", "message"]
+      optimize:
+        function:
+          name: "optimize"
+          description: "A tool for optimizing your performance and behavior."
+        properties:
+          operation:
+            type: "string"
+            description: "The operation to perform. Use inspect to get a list of your current values, and use optimize to make any changes."
+            options: ["inspect", "optimize"]
+          system_prompt:
+            type: "string"
+            description: "Your custom system prompt that defines your core behavior and capabilities."
+          temperature:
+            type: "number"
+            description: "Adjust temperature (0.0-2.0) to control randomness: lower values for consistent, deterministic outputs; higher values for creative, diverse responses."
+          topP:
+            type: "number"
+            description: "Set topP (0.0-1.0) to control response diversity by limiting token selection: lower values for focused, deterministic responses; higher values for broader variety."
+          topK:
+            type: "number"
+            description: "Adjust topK (1-100) to limit token selection pool: lower values produce more focused, predictable responses; higher values allow more diverse possibilities."
+          frequencyPenalty:
+            type: "number"
+            description: "Set frequencyPenalty (-2.0 to 2.0) to discourage repetition: positive values reduce word reuse; negative values may encourage repetition."
+          presencePenalty:
+            type: "number"
+            description: "Adjust presencePenalty (-2.0 to 2.0) to control topic focus: positive values encourage exploring new topics; negative values favor staying on existing topics."
 templates:
   memory: |
     You are an advanced memory extraction system for an AI agent. 

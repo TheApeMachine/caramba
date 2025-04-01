@@ -1,14 +1,9 @@
 package tools
 
 import (
-	"errors"
-
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/system"
-	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 func init() {
@@ -16,55 +11,36 @@ func init() {
 }
 
 type SystemTool struct {
-	buffer   *stream.Buffer
-	Schema   *provider.Tool
-	registry *system.Registry
+	Schema    *provider.Tool
+	operation string
 }
 
-func NewSystemTool() *SystemTool {
-	registry := system.NewRegistry()
-
+func NewSystemTool(operation string) *SystemTool {
 	return &SystemTool{
-		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-			errnie.Debug("system.NewSystemTool.buffer.fn")
-
-			if err = workflow.NewFlipFlop(artifact, registry); err != nil {
-				return errnie.Error(err)
-			}
-
-			return nil
-		}),
-		Schema:   GetToolSchema("system"),
-		registry: registry,
+		Schema:    GetToolSchema("system"),
+		operation: operation,
 	}
 }
 
-func (tool *SystemTool) Read(p []byte) (n int, err error) {
-	errnie.Debug("system.SystemTool.Read")
+func (tool *SystemTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	errnie.Debug("system.SystemTool.Generate")
 
-	if tool.buffer == nil {
-		return 0, errnie.Error(errors.New("buffer not set"))
-	}
+	out := make(chan *datura.Artifact)
 
-	return tool.buffer.Read(p)
-}
+	go func() {
+		defer close(out)
 
-func (tool *SystemTool) Write(p []byte) (n int, err error) {
-	errnie.Debug("system.SystemTool.Write")
+		artifact := <-buffer
 
-	if tool.buffer == nil {
-		return 0, errnie.Error(errors.New("buffer not set"))
-	}
+		switch tool.operation {
+		case "inspect":
+			artifact.SetMetaValue("operation", "inspect")
+		case "optimize":
+			artifact.SetMetaValue("operation", "optimize")
+		case "message":
+			artifact.SetMetaValue("operation", "message")
+		}
+	}()
 
-	return tool.buffer.Write(p)
-}
-
-func (tool *SystemTool) Close() error {
-	errnie.Debug("system.SystemTool.Close")
-
-	if tool.buffer == nil {
-		return errnie.Error(errors.New("buffer not set"))
-	}
-
-	return tool.buffer.Close()
+	return out
 }

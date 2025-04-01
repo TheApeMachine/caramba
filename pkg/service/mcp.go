@@ -1,9 +1,7 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -48,12 +46,13 @@ func NewMCP() *MCP {
 			"memory": tools.NewMemoryTool(
 				tools.WithStores(memory.NewQdrant(), memory.NewNeo4j()),
 			),
-			"ai":      ai.NewAgent(),
-			"editor":  tools.NewEditorTool(),
-			"github":  tools.NewGithub(),
-			"azure":   tools.NewAzure(),
-			"trengo":  tools.NewTrengo(),
-			"browser": tools.NewBrowser(),
+			"editor":      tools.NewEditorReadTool(),
+			"github":      tools.NewGithub(),
+			"azure":       tools.NewAzure(),
+			"trengo":      tools.NewTrengo(),
+			"browser":     tools.NewBrowserGetContentTool(),
+			"environment": tools.NewEnvironment(),
+			"agent":       ai.NewAgentBuilder(),
 		},
 	}
 }
@@ -65,23 +64,23 @@ func (service *MCP) Start() error {
 		service.tools["memory"].(*tools.MemoryTool).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.memory.tool", req)
-			return service.runTool(service.tools["memory"], &req, datura.ArtifactRoleMemoryTool)
+			return service.runToolGenerator(service.tools["memory"], &req, datura.ArtifactRoleMemoryTool)
 		},
 	)
 
 	service.stdio.AddTool(
-		service.tools["ai"].(*ai.Agent).Schema.ToMCP(),
+		service.tools["agent"].(*ai.AgentBuilder).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.agent.tool", req)
-			return service.runTool(service.tools["ai"], &req, datura.ArtifactRoleAgentTool)
+			return service.runToolGenerator(service.tools["agent"], &req, datura.ArtifactRoleAgentTool)
 		},
 	)
 
 	service.stdio.AddTool(
-		service.tools["editor"].(*tools.EditorTool).Schema.ToMCP(),
+		service.tools["editor"].(*tools.EditorReadTool).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.editor.tool", req)
-			return service.runTool(service.tools["editor"], &req, datura.ArtifactRoleEditorTool)
+			return service.runToolGenerator(service.tools["editor"], &req, datura.ArtifactRoleEditorTool)
 		},
 	)
 
@@ -89,7 +88,7 @@ func (service *MCP) Start() error {
 		service.tools["github"].(*tools.Github).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.github.tool", req)
-			return service.runTool(service.tools["github"], &req, datura.ArtifactRoleGithubTool)
+			return service.runToolGenerator(service.tools["github"], &req, datura.ArtifactRoleGithubTool)
 		},
 	)
 
@@ -97,7 +96,7 @@ func (service *MCP) Start() error {
 		service.tools["azure"].(*tools.Azure).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.azure.tool", req)
-			return service.runTool(service.tools["azure"], &req, datura.ArtifactRoleAzureTool)
+			return service.runToolGenerator(service.tools["azure"], &req, datura.ArtifactRoleAzureTool)
 		},
 	)
 
@@ -105,15 +104,15 @@ func (service *MCP) Start() error {
 		service.tools["trengo"].(*tools.Trengo).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.trengo.tool", req)
-			return service.runTool(service.tools["trengo"], &req, datura.ArtifactRoleTrengoTool)
+			return service.runToolGenerator(service.tools["trengo"], &req, datura.ArtifactRoleTrengoTool)
 		},
 	)
 
 	service.stdio.AddTool(
-		service.tools["browser"].(*tools.Browser).Schema.ToMCP(),
+		service.tools["browser"].(*tools.BrowserGetContentTool).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.browser.tool", req)
-			return service.runTool(service.tools["browser"], &req, datura.ArtifactRoleBrowserTool)
+			return service.runToolGenerator(service.tools["browser"], &req, datura.ArtifactRoleBrowserTool)
 		},
 	)
 
@@ -121,15 +120,15 @@ func (service *MCP) Start() error {
 		service.tools["environment"].(*tools.Environment).Schema.ToMCP(),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			errnie.Debug("mcp.environment.tool", req)
-			return service.runTool(service.tools["environment"], &req, datura.ArtifactRoleEnvironmentTool)
+			return service.runToolGenerator(service.tools["environment"], &req, datura.ArtifactRoleEnvironmentTool)
 		},
 	)
 
 	return nil
 }
 
-func (service *MCP) runTool(tool io.ReadWriteCloser, req *mcp.CallToolRequest, role datura.ArtifactRole) (*mcp.CallToolResult, error) {
-	errnie.Debug("MCP.runTool")
+func (service *MCP) runToolGenerator(tool stream.Generator, req *mcp.CallToolRequest, role datura.ArtifactRole) (*mcp.CallToolResult, error) {
+	errnie.Debug("MCP.runToolGenerator")
 
 	options := []datura.ArtifactOption{
 		datura.WithRole(role),
@@ -140,17 +139,21 @@ func (service *MCP) runTool(tool io.ReadWriteCloser, req *mcp.CallToolRequest, r
 	}
 
 	artifact := datura.New(options...)
-	buf := bytes.NewBuffer([]byte{})
 
-	if _, err := io.Copy(tool, artifact); err != nil {
+	input := make(chan *datura.Artifact, 1)
+	input <- artifact
+	close(input)
+
+	output := tool.Generate(input)
+
+	result := <-output
+
+	payload, err := result.DecryptPayload()
+	if err != nil {
 		return mcp.NewToolResultText(errnie.Error(err).Error()), nil
 	}
 
-	if _, err := io.Copy(buf, tool); err != nil {
-		return mcp.NewToolResultText(errnie.Error(err).Error()), nil
-	}
-
-	return mcp.NewToolResultText(buf.String()), nil
+	return mcp.NewToolResultText(string(payload)), nil
 }
 
 func (service *MCP) Stop() error {

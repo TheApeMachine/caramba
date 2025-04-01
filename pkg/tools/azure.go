@@ -4,11 +4,8 @@ import (
 	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/datura"
-	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tools/github"
-	"github.com/theapemachine/caramba/pkg/workflow"
 )
 
 func init() {
@@ -22,7 +19,6 @@ for interacting with Azure DevOps services. It implements io.ReadWriteCloser
 interface for streaming data through the tool.
 */
 type Azure struct {
-	buffer *stream.Buffer
 	client *github.Client
 	Schema *provider.Tool
 }
@@ -37,49 +33,17 @@ func NewAzure() *Azure {
 	client := github.NewClient()
 
 	return &Azure{
-		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-			errnie.Debug("azure.Client.buffer")
-
-			if err = workflow.NewFlipFlop(artifact, client); err != nil {
-				return errnie.Error(err)
-			}
-
-			return nil
-		}),
 		client: client,
 		Schema: GetToolSchema("azure"),
 	}
 }
 
-/*
-Read implements the io.Reader interface.
+func (a *Azure) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	out := make(chan *datura.Artifact)
 
-It reads data from the internal buffer.
-Returns the number of bytes read and any error encountered.
-*/
-func (azure *Azure) Read(p []byte) (n int, err error) {
-	errnie.Debug("azure.Read")
-	return azure.buffer.Read(p)
-}
+	go func() {
+		defer close(out)
+	}()
 
-/*
-Write implements the io.Writer interface.
-
-It writes data to the internal buffer.
-Returns the number of bytes written and any error encountered.
-*/
-func (azure *Azure) Write(p []byte) (n int, err error) {
-	errnie.Debug("azure.Write")
-	return azure.buffer.Write(p)
-}
-
-/*
-Close implements the io.Closer interface.
-
-It closes the internal buffer and cleans up resources.
-Returns any error encountered during closing.
-*/
-func (azure *Azure) Close() error {
-	errnie.Debug("azure.Close")
-	return azure.buffer.Close()
+	return out
 }

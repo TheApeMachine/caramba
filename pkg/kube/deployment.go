@@ -3,7 +3,6 @@ package kube
 import (
 	"bytes"
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -81,16 +80,21 @@ func (deployment *Deployment) Apply() (err error) {
 		datura.WithMeta("path", "manifests"),
 	)
 
-	if _, err = io.Copy(deployment.store, listArtifact); err != nil {
+	ch := make(chan *datura.Artifact)
+
+	go func() {
+		ch <- listArtifact
+	}()
+
+	artifact := <-deployment.store.Generate(ch)
+
+	var payload []byte
+
+	if payload, err = artifact.DecryptPayload(); err != nil {
 		return errnie.Error(err)
 	}
 
-	buf := bytes.NewBuffer([]byte{})
-
-	// Read the response
-	if _, err = io.Copy(buf, deployment.store); err != nil {
-		return errnie.Error(err)
-	}
+	buf := bytes.NewBuffer(payload)
 
 	// Process the list of files
 	files := bytes.Split(buf.Bytes(), []byte("\n"))
@@ -106,45 +110,43 @@ func (deployment *Deployment) Apply() (err error) {
 		)
 
 		// Write the read request to the store
-		if _, err = io.Copy(deployment.store, readArtifact); err != nil {
-			return errnie.Error(err)
-		}
+		ch <- readArtifact
+	}
 
-		// Read the manifest content
-		manifestBuf := bytes.NewBuffer([]byte{})
-		if _, err = io.Copy(manifestBuf, deployment.store); err != nil {
-			return errnie.Error(err)
-		}
+	if payload, err = artifact.DecryptPayload(); err != nil {
+		return errnie.Error(err)
+	}
 
-		// Convert YAML to JSON and decode into unstructured object
-		obj := &unstructured.Unstructured{}
-		if err = yaml.Unmarshal(manifestBuf.Bytes(), obj); err != nil {
-			return errnie.Error(err)
-		}
+	manifestBuf := bytes.NewBuffer(payload)
 
-		// Find the GVR for this object
-		gvk := obj.GroupVersionKind()
-		mapping, err := deployment.mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-		if err != nil {
-			return errnie.Error(err)
-		}
+	// Convert YAML to JSON and decode into unstructured object
+	obj := &unstructured.Unstructured{}
+	if err = yaml.Unmarshal(manifestBuf.Bytes(), obj); err != nil {
+		return errnie.Error(err)
+	}
 
-		// Prepare the dynamic resource interface
-		var dr dynamic.ResourceInterface
-		if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-			dr = deployment.client.Resource(mapping.Resource).Namespace(obj.GetNamespace())
-		} else {
-			dr = deployment.client.Resource(mapping.Resource)
-		}
+	// Find the GVR for this object
+	gvk := obj.GroupVersionKind()
+	mapping, err := deployment.mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return errnie.Error(err)
+	}
 
-		// Apply the manifest using server-side apply
-		_, err = dr.Apply(context.Background(), obj.GetName(), obj, metav1.ApplyOptions{
-			FieldManager: "caramba-controller",
-			Force:        true,
-		})
-		if err != nil {
-			return errnie.Error(err)
-		}
+	// Prepare the dynamic resource interface
+	var dr dynamic.ResourceInterface
+	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+		dr = deployment.client.Resource(mapping.Resource).Namespace(obj.GetNamespace())
+	} else {
+		dr = deployment.client.Resource(mapping.Resource)
+	}
+
+	// Apply the manifest using server-side apply
+	_, err = dr.Apply(context.Background(), obj.GetName(), obj, metav1.ApplyOptions{
+		FieldManager: "caramba-controller",
+		Force:        true,
+	})
+	if err != nil {
+		return errnie.Error(err)
 	}
 
 	return nil

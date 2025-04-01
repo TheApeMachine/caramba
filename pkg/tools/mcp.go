@@ -2,16 +2,13 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
@@ -23,7 +20,6 @@ into the Caramba ecosystem. It provides a streaming interface to MCP operations
 and implements io.ReadWriteCloser for streaming data processing.
 */
 type MCP struct {
-	buffer *stream.Buffer
 	client client.MCPClient
 	Schema *provider.Tool
 	ctx    context.Context
@@ -80,77 +76,21 @@ func NewMCP() *MCP {
 	}
 
 	return &MCP{
-		buffer: stream.NewBuffer(func(artifact *datura.Artifact) (err error) {
-			errnie.Debug("mcp.MCP.buffer.fn")
-
-			// Process the artifact using the MCP client
-			// This is a placeholder - actual implementation would depend on how
-			// Caramba processes artifacts with MCP
-			if _, err = io.Copy(artifact, artifact); err != nil {
-				return errnie.Error(err)
-			}
-
-			return nil
-		}),
 		client: mcpClient,
 		Schema: GetToolSchema("mcp"),
 		ctx:    ctx,
 	}
 }
 
-/*
-Read implements the io.Reader interface.
+func (m *MCP) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+	out := make(chan *datura.Artifact)
 
-It reads processed data from the internal buffer after MCP operations
-have been completed.
-*/
-func (m *MCP) Read(p []byte) (n int, err error) {
-	errnie.Debug("mcp.MCP.Read")
+	go func() {
+		defer close(out)
+	}()
 
-	if m.buffer == nil {
-		return 0, errnie.Error(errors.New("buffer not set"))
-	}
-
-	return m.buffer.Read(p)
+	return out
 }
-
-/*
-Write implements the io.Writer interface.
-
-It writes operation requests to the internal buffer for processing
-by the MCP client.
-*/
-func (m *MCP) Write(p []byte) (n int, err error) {
-	errnie.Debug("mcp.MCP.Write")
-
-	if m.buffer == nil {
-		return 0, errnie.Error(errors.New("buffer not set"))
-	}
-
-	return m.buffer.Write(p)
-}
-
-/*
-Close implements the io.Closer interface.
-
-It cleans up resources by closing the internal buffer and the MCP client.
-*/
-func (m *MCP) Close() error {
-	errnie.Debug("mcp.MCP.Close")
-
-	if m.buffer == nil {
-		return errnie.Error(errors.New("buffer not set"))
-	}
-
-	// Close the client
-	if err := m.client.Close(); err != nil {
-		return errnie.Error(fmt.Errorf("failed to close MCP client: %w", err))
-	}
-
-	return m.buffer.Close()
-}
-
-// Helper methods for MCP client operations
 
 /*
 CallTool calls a tool via the MCP client.

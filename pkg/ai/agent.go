@@ -24,6 +24,7 @@ type AgentBuilder struct {
 	pctx   context.Context
 	ctx    context.Context
 	cancel context.CancelFunc
+	Schema *provider.Tool
 }
 
 type AgentOption func(*AgentBuilder)
