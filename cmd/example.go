@@ -38,7 +38,6 @@ var (
 )
 
 func init() {
-	fmt.Println("cmd.example.init")
 	rootCmd.AddCommand(exampleCmd)
 }
 

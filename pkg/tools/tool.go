@@ -3,7 +3,6 @@ package tools
 import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
 
@@ -36,14 +35,8 @@ func NewToolBuilder(opts ...ToolOption) *ToolBuilder {
 	return builder
 }
 
-func (builder *ToolBuilder) Schema() *provider.Tool {
-	if builder.mcp != nil {
-		// If we have an MCP tool, return a provider.Tool that wraps it
-		return provider.NewTool(
-			provider.WithFunction(builder.mcp.Name, builder.mcp.Description),
-		)
-	}
-	return nil
+func (builder *ToolBuilder) Schema() *Tool {
+	return builder.Tool
 }
 
 func WithMCP(mcp mcp.Tool) ToolOption {

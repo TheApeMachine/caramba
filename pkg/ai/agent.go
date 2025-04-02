@@ -3,29 +3,30 @@ package ai
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
-
-func init() {
-	provider.RegisterTool("agent")
-}
 
 /*
 Builder wraps a Cap'n Proto Agent.
 */
 type AgentBuilder struct {
 	*Agent
-	pctx   context.Context
-	ctx    context.Context
-	cancel context.CancelFunc
-	Schema *provider.Tool
+	pctx          context.Context
+	ctx           context.Context
+	cancel        context.CancelFunc
+	status        core.Status
+	waiters       []datura.ArtifactScope
+	out           chan *datura.Artifact
+	paramsBuilder *core.ParamsBuilder
+	ctxBuilder    *core.ContextBuilder
+	tools         []string
 }
 
 type AgentOption func(*AgentBuilder)
@@ -52,6 +53,7 @@ func NewAgentBuilder(options ...AgentOption) *AgentBuilder {
 		Agent:  &agent,
 		ctx:    ctx,
 		cancel: cancel,
+		status: core.StatusUnknown,
 	}
 
 	for _, option := range options {
@@ -59,6 +61,22 @@ func NewAgentBuilder(options ...AgentOption) *AgentBuilder {
 	}
 
 	return builder
+}
+
+func (builder *AgentBuilder) ID() string {
+	identity, err := builder.Agent.Identity()
+
+	if errnie.Error(err) != nil {
+		return ""
+	}
+
+	id, err := identity.Identifier()
+
+	if errnie.Error(err) != nil {
+		return ""
+	}
+
+	return id
 }
 
 func (builder *AgentBuilder) Generate(
@@ -71,39 +89,110 @@ func (builder *AgentBuilder) Generate(
 		return nil
 	}
 
-	out := make(chan *datura.Artifact)
+	builder.out = make(chan *datura.Artifact)
 
 	go func() {
-		defer close(out)
+		defer close(builder.out)
 
 		for {
 			select {
 			case <-builder.pctx.Done():
 				errnie.Info("AgentBuilder context cancelled")
+
+				builder.status = core.StatusDone
 				builder.cancel()
+
 				return
 			case <-builder.ctx.Done():
 				errnie.Info("AgentBuilder context cancelled")
-				builder.cancel()
+				builder.status = core.StatusDone
 				return
-			case artifact := <-buffer:
-				out <- artifact
+			case artifact, ok := <-buffer:
+				if !ok {
+					builder.status = core.StatusError
+					return
+				}
+
+				// Make sure we are either ready for work, or waiting for a specific artifact.
+				if builder.status != core.StatusReady && builder.status != core.StatusWaiting {
+					break
+				}
+
+				// If we are waiting for a specific artifact, we should not be doing anything else.
+				if builder.status == core.StatusWaiting {
+					builder.handleWaiting(artifact)
+					break
+				}
+
+				switch datura.ArtifactRole(artifact.Role()) {
+				case datura.ArtifactRoleAnswer:
+					builder.handleAnswer(artifact)
+				case datura.ArtifactRoleAcknowledge:
+					builder.handleAcknowledge(artifact)
+				case datura.ArtifactRoleQuestion:
+					builder.handleQuestion(artifact)
+				}
 			default:
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(10 * time.Millisecond)
 			}
 		}
 	}()
 
-	return out
+	return builder.out
+}
+
+func (builder *AgentBuilder) handleWaiting(artifact *datura.Artifact) {
+	if slices.Contains(builder.waiters, datura.ArtifactScope(artifact.Scope())) {
+		index := slices.Index(builder.waiters, datura.ArtifactScope(artifact.Scope()))
+		if index >= 0 {
+			builder.waiters = slices.Delete(builder.waiters, index, index+1)
+		}
+	}
+
+	if len(builder.waiters) == 0 {
+		builder.status = core.StatusReady
+		builder.waiters = nil
+	}
+}
+
+func (builder *AgentBuilder) handleAnswer(artifact *datura.Artifact) {
+	switch datura.ArtifactScope(artifact.Scope()) {
+	case datura.ArtifactScopeGeneration:
+		builder.status = core.StatusWorking
+
+		builder.ctxBuilder.AddMessage(artifact)
+
+		builder.out <- datura.New(
+			datura.WithRole(datura.ArtifactRoleQuestion),
+			datura.WithScope(datura.ArtifactScopeAquire),
+		)
+
+		builder.status = core.StatusWaiting
+		builder.waiters = append(builder.waiters, datura.ArtifactScopeAquire)
+	}
+}
+
+func (builder *AgentBuilder) handleAcknowledge(artifact *datura.Artifact) {
+	builder.ctxBuilder.AddMessage(artifact)
+	builder.status = core.StatusReady
+	builder.waiters = append(builder.waiters, datura.ArtifactScopeUnknown)
+}
+
+func (builder *AgentBuilder) handleQuestion(artifact *datura.Artifact) {
+	builder.ctxBuilder.AddMessage(artifact)
+
+	builder.status = core.StatusWorking
+
+	switch datura.ArtifactScope(artifact.Scope()) {
+	case datura.ArtifactScopePreflight:
+		builder.out <- builder.paramsBuilder.Artifact()
+		builder.out <- builder.ctxBuilder.Artifact()
+	}
 }
 
 func (builder *AgentBuilder) Validate(scope string) error {
 	if builder.Agent == nil {
 		return NewAgentValidationError(scope, errors.New("agent not set"))
-	}
-
-	if builder.Schema == nil {
-		return NewAgentValidationError(scope, errors.New("schema not set"))
 	}
 
 	if builder.pctx == nil {
@@ -155,55 +244,20 @@ func WithIdentity(name string, role string) AgentOption {
 	}
 }
 
-func WithProvider(prvdr provider.ProviderType) AgentOption {
+func WithParams(params *core.ParamsBuilder) AgentOption {
 	return func(builder *AgentBuilder) {
-		pb := provider.NewProviderBuilder(
-			provider.WithSupplier(prvdr.Name()),
-		)
-
-		if err := builder.SetProvider(*pb.Provider); errnie.Error(err) != nil {
-			return
-		}
+		builder.paramsBuilder = params
 	}
 }
 
-func WithParams(params *ParamsBuilder) AgentOption {
+func WithContext(context *core.ContextBuilder) AgentOption {
 	return func(builder *AgentBuilder) {
-		if err := builder.SetParams(*params.Params); errnie.Error(err) != nil {
-			return
-		}
+		builder.ctxBuilder = context
 	}
 }
 
-func WithContext(context *ContextBuilder) AgentOption {
+func WithTools(tools ...string) AgentOption {
 	return func(builder *AgentBuilder) {
-		if err := builder.SetContext(*context.Context); errnie.Error(err) != nil {
-			return
-		}
-	}
-}
-
-func WithTools(tools ...*tools.ToolBuilder) AgentOption {
-	return func(builder *AgentBuilder) {
-		toolList, err := builder.NewTools(int32(len(tools)))
-
-		if errnie.Error(err) != nil {
-			return
-		}
-
-		for i, t := range tools {
-			fn, err := t.Function()
-
-			if errnie.Error(err) != nil {
-				return
-			}
-
-			tl := toolList.At(i)
-			tl.SetFunction(fn)
-		}
-
-		if err := builder.SetTools(toolList); errnie.Error(err) != nil {
-			return
-		}
+		builder.tools = tools
 	}
 }

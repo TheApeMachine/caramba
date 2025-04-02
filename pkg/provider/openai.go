@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -13,9 +12,11 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
+	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
@@ -24,11 +25,15 @@ OpenAIProvider implements an LLM provider that connects to OpenAI's API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type OpenAIProvider struct {
-	client *openai.Client
-	buffer *stream.Buffer
-	params *Params
-	ctx    context.Context
-	cancel context.CancelFunc
+	client        *openai.Client
+	buffer        *stream.Buffer
+	pctx          context.Context
+	ctx           context.Context
+	cancel        context.CancelFunc
+	out           chan *datura.Artifact
+	paramsBuilder *core.ParamsBuilder
+	ctxBuilder    *core.ContextBuilder
+	toolset       *tools.Toolset
 }
 
 /*
@@ -62,69 +67,96 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 
 func (prvdr *OpenAIProvider) Generate(
 	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+	fn ...func(*datura.Artifact) *datura.Artifact,
 ) chan *datura.Artifact {
 	errnie.Debug("provider.OpenAIProvider.Generate")
 
-	var (
-		out = make(chan *datura.Artifact)
-		err error
-	)
+	prvdr.out = make(chan *datura.Artifact)
 
 	go func() {
-		defer close(out)
+		defer close(prvdr.out)
 
 		select {
-		case <-prvdr.ctx.Done():
+		case <-prvdr.pctx.Done():
+			errnie.Debug("provider.OpenAIProvider.Generate.pctx.Done")
+			prvdr.cancel()
 			return
-		case <-buffer:
-			composed := &openai.ChatCompletionNewParams{
-				Model:            prvdr.params.Model,
-				Temperature:      openai.Float(prvdr.params.Temperature),
-				TopP:             openai.Float(prvdr.params.TopP),
-				FrequencyPenalty: openai.Float(prvdr.params.FrequencyPenalty),
-				PresencePenalty:  openai.Float(prvdr.params.PresencePenalty),
-			}
-
-			if prvdr.params.MaxTokens > 1 {
-				composed.MaxTokens = openai.Int(int64(prvdr.params.MaxTokens))
-			}
-
-			if err = prvdr.buildMessages(composed); err != nil {
-				out <- datura.New(
-					datura.WithError(err),
-				)
-
+		case <-prvdr.ctx.Done():
+			errnie.Debug("provider.OpenAIProvider.Generate.ctx.Done")
+			return
+		case artifact, ok := <-buffer:
+			if !ok {
 				return
 			}
 
-			if err = prvdr.buildTools(composed); err != nil {
-				out <- datura.New(
-					datura.WithError(err),
-				)
-
-				return
-			}
-
-			if prvdr.params.ResponseFormat != nil {
-				if err = prvdr.buildResponseFormat(composed); err != nil {
-					out <- datura.New(
-						datura.WithError(err),
-					)
-
-					return
-				}
-			}
-
-			if prvdr.params.Stream {
-				prvdr.handleStreamingRequest(composed, &out)
-			} else {
-				prvdr.handleSingleRequest(composed, &out)
+			switch datura.ArtifactRole(artifact.Role()) {
+			case datura.ArtifactRoleAnswer:
+				prvdr.handleAnswer(artifact)
+			case datura.ArtifactRoleAcknowledge:
+				prvdr.handleAcknowledge(artifact)
+			case datura.ArtifactRoleQuestion:
+				prvdr.handleQuestion(artifact)
 			}
 		}
 	}()
 
-	return out
+	return prvdr.out
+}
+
+func (prvdr *OpenAIProvider) ID() string {
+	return "openai"
+}
+
+func (prvdr *OpenAIProvider) handleAnswer(artifact *datura.Artifact) {
+	// TODO: Implement
+}
+
+func (prvdr *OpenAIProvider) handleAcknowledge(artifact *datura.Artifact) {
+	// TODO: Implement
+}
+
+func (prvdr *OpenAIProvider) handleQuestion(artifact *datura.Artifact) {
+
+	model, err := prvdr.paramsBuilder.Model()
+
+	if errnie.Error(err) != nil {
+		return
+	}
+
+	composed := &openai.ChatCompletionNewParams{
+		Model:            openai.ChatModel(model),
+		Temperature:      openai.Float(prvdr.paramsBuilder.Temperature()),
+		TopP:             openai.Float(prvdr.paramsBuilder.TopP()),
+		FrequencyPenalty: openai.Float(prvdr.paramsBuilder.FrequencyPenalty()),
+		PresencePenalty:  openai.Float(prvdr.paramsBuilder.PresencePenalty()),
+	}
+
+	if prvdr.paramsBuilder.MaxTokens() > 1 {
+		composed.MaxTokens = openai.Int(int64(prvdr.paramsBuilder.MaxTokens()))
+	}
+
+	if err = prvdr.buildMessages(composed); err != nil {
+		prvdr.out <- datura.New(
+			datura.WithError(err),
+		)
+
+		return
+	}
+
+	if err = prvdr.buildTools(composed); err != nil {
+		prvdr.out <- datura.New(
+			datura.WithError(err),
+		)
+
+		return
+	}
+
+	if prvdr.paramsBuilder.Stream() {
+		prvdr.handleStreamingRequest(composed, &prvdr.out)
+	} else {
+		prvdr.handleSingleRequest(composed, &prvdr.out)
+	}
+
 }
 
 func (prvdr *OpenAIProvider) Name() string {
@@ -162,49 +194,50 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		return err
 	}
 
-	msg := &Message{
-		Role:    MessageRoleAssistant,
-		Name:    prvdr.params.Model,
-		Content: completion.Choices[0].Message.Content,
+	model, err := prvdr.paramsBuilder.Model()
+
+	if errnie.Error(err) != nil {
+		return
 	}
+
+	msg := core.NewMessageBuilder(
+		core.WithRole("assistant"),
+		core.WithName(model),
+		core.WithContent(completion.Choices[0].Message.Content),
+	)
 
 	toolCalls := completion.Choices[0].Message.ToolCalls
 
 	// Abort early if there are no tool calls
 	if len(toolCalls) == 0 {
-		prvdr.params.Messages = append(prvdr.params.Messages, msg)
-
-		if _, err = io.Copy(prvdr.buffer, datura.New(
-			datura.WithPayload(prvdr.params.Marshal()),
-		)); err != nil {
-			return errnie.Error(err)
-		}
-
+		prvdr.out <- msg.Artifact()
 		return nil
 	}
 
-	msg.ToolCalls = make([]ToolCall, 0, len(toolCalls))
+	toolCallList, err := core.NewToolCall_List(prvdr.ctxBuilder.Segment(), int32(len(toolCalls)))
 
-	for _, toolCall := range toolCalls {
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	for i, toolCall := range toolCalls {
 		errnie.Info("toolCall", "tool", toolCall.Function.Name, "id", toolCall.ID)
 
-		msg.ToolCalls = append(msg.ToolCalls, ToolCall{
-			ID:   toolCall.ID,
-			Type: "function",
-			Function: ToolCallFunction{
-				Name:      toolCall.Function.Name,
-				Arguments: toolCall.Function.Arguments,
-			},
-		})
+		if err = toolCallList.At(i).SetId(toolCall.ID); err != nil {
+			return errnie.Error(err)
+		}
+
+		if err = toolCallList.At(i).SetName(toolCall.Function.Name); err != nil {
+			return errnie.Error(err)
+		}
+
+		if err = toolCallList.At(i).SetArguments(toolCall.Function.Arguments); err != nil {
+			return errnie.Error(err)
+		}
 	}
 
-	prvdr.params.Messages = append(prvdr.params.Messages, msg)
-
-	if _, err = io.Copy(prvdr.buffer, datura.New(
-		datura.WithPayload(prvdr.params.Marshal()),
-	)); err != nil {
-		return errnie.Error(err)
-	}
+	msg.SetToolCalls(toolCallList)
+	prvdr.out <- msg.Artifact()
 
 	return nil
 }
@@ -289,42 +322,95 @@ func (prvdr *OpenAIProvider) buildMessages(
 ) (err error) {
 	errnie.Debug("provider.buildMessages")
 
-	if prvdr.params == nil {
+	if prvdr.paramsBuilder == nil {
 		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
-	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(prvdr.params.Messages))
+	msgs, err := prvdr.ctxBuilder.Messages()
 
-	for _, message := range prvdr.params.Messages {
-		switch message.Role {
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	messages := make([]openai.ChatCompletionMessageParamUnion, 0, msgs.Len())
+
+	for i := range msgs.Len() {
+		msg := msgs.At(i)
+
+		id, err := msg.Id()
+
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		role, err := msg.Role()
+
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		content, err := msg.Content()
+
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		toolCalls, err := msg.ToolCalls()
+
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		switch role {
 		case "system":
-			messages = append(messages, openai.SystemMessage(message.Content))
+			messages = append(messages, openai.SystemMessage(content))
 		case "user":
-			messages = append(messages, openai.UserMessage(message.Content))
+			messages = append(messages, openai.UserMessage(content))
 		case "assistant":
-			toolCalls := make([]openai.ChatCompletionMessageToolCallParam, 0, len(message.ToolCalls))
+			tcs := make([]openai.ChatCompletionMessageToolCallParam, 0, toolCalls.Len())
 
-			for _, toolCall := range message.ToolCalls {
-				toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-					ID:   toolCall.ID,
+			for i := range toolCalls.Len() {
+				toolCall := toolCalls.At(i)
+
+				id, err := toolCall.Id()
+
+				if errnie.Error(err) != nil {
+					return err
+				}
+
+				name, err := toolCall.Name()
+
+				if errnie.Error(err) != nil {
+					return err
+				}
+
+				arguments, err := toolCall.Arguments()
+
+				if errnie.Error(err) != nil {
+					return err
+				}
+
+				tcs = append(tcs, openai.ChatCompletionMessageToolCallParam{
+					ID:   id,
 					Type: "function",
 					Function: openai.ChatCompletionMessageToolCallFunctionParam{
-						Name:      toolCall.Function.Name,
-						Arguments: toolCall.Function.Arguments,
+						Name:      name,
+						Arguments: arguments,
 					},
 				})
 			}
 
 			errnie.Info("toolCalls", "toolCalls", toolCalls)
 
-			msg := openai.AssistantMessage(message.Content)
-			if len(toolCalls) > 0 {
+			msg := openai.AssistantMessage(content)
+
+			if toolCalls.Len() > 0 {
 				msg = openai.ChatCompletionMessageParamUnion{
 					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 						Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-							OfString: param.NewOpt(message.Content),
+							OfString: param.NewOpt(content),
 						},
-						ToolCalls: toolCalls,
+						ToolCalls: tcs,
 						Role:      "assistant",
 					},
 				}
@@ -335,15 +421,14 @@ func (prvdr *OpenAIProvider) buildMessages(
 			messages = append(messages, openai.ChatCompletionMessageParamUnion{
 				OfTool: &openai.ChatCompletionToolMessageParam{
 					Content: openai.ChatCompletionToolMessageParamContentUnion{
-						OfString: param.NewOpt(message.Content),
+						OfString: param.NewOpt(content),
 					},
-					ToolCallID: message.Reference,
+					ToolCallID: id,
 					Role:       "tool",
 				},
 			})
 		default:
-			fmt.Println(message.Role, message.Content)
-			return errnie.Error(errors.New("unknown message role"))
+			return errnie.Error(errors.New("unknown message role"), "role", role)
 		}
 	}
 
@@ -366,53 +451,31 @@ func (prvdr *OpenAIProvider) buildTools(
 		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
-	if len(prvdr.params.Tools) == 0 {
+	if len(prvdr.toolset.Tools) == 0 {
 		// No tools, no shoes, no dice.
 		return nil
 	}
 
-	toolsOut := make([]openai.ChatCompletionToolParam, 0)
+	toolsOut := make([]openai.ChatCompletionToolParam, 0, len(prvdr.toolset.Tools))
 
-	for _, tool := range prvdr.params.Tools {
-		properties := make(map[string]any)
-
-		for _, property := range tool.Function.Parameters.Properties {
-			propDef := map[string]any{
-				"type":        property.Type,
-				"description": property.Description,
-			}
-			if len(property.Enum) > 0 {
-				propDef["enum"] = property.Enum
-			}
-			properties[property.Name] = propDef
-		}
-
-		// Ensure we always have a valid parameters object that matches OpenAI's schema
-		parameters := openai.FunctionParameters{
-			"type":       "object",
-			"properties": properties,
-		}
-
-		// Only include required if it has values
-		if len(tool.Function.Parameters.Required) > 0 {
-			parameters["required"] = tool.Function.Parameters.Required
-		} else {
-			parameters["required"] = []string{}
-		}
-
+	for _, tool := range prvdr.toolset.ToMCP() {
 		toolParam := openai.ChatCompletionToolParam{
 			Type: "function",
 			Function: openai.FunctionDefinitionParam{
-				Name:        tool.Function.Name,
-				Description: param.NewOpt(tool.Function.Description),
-				Parameters:  parameters,
+				Name:        tool.Name,
+				Description: param.NewOpt(tool.Description),
+				Parameters: openai.FunctionParameters{
+					"type":       tool.InputSchema.Type,
+					"properties": tool.InputSchema.Properties,
+				},
 			},
 		}
-
 		toolsOut = append(toolsOut, toolParam)
 	}
 
-	openaiParams.Tools = toolsOut
+	if len(toolsOut) > 0 {
+		openaiParams.Tools = toolsOut
+	}
 
 	return nil
 }
@@ -432,14 +495,37 @@ func (prvdr *OpenAIProvider) buildResponseFormat(
 		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
+	// Get response format from paramsBuilder
+	responseFormat := prvdr.paramsBuilder.ResponseFormat()
+
+	name, err := responseFormat.Name()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	description, err := responseFormat.Description()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	schema, err := responseFormat.Schema()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	strict, err := responseFormat.Strict()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
 	openaiParams.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
 		OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
 			Type: "json_schema",
 			JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
-				Name:        prvdr.params.ResponseFormat.Name,
-				Description: param.NewOpt(prvdr.params.ResponseFormat.Description),
-				Schema:      prvdr.params.ResponseFormat.Schema,
-				Strict:      param.NewOpt(prvdr.params.ResponseFormat.Strict),
+				Name:        name,
+				Description: param.NewOpt(description),
+				Schema:      schema,
+				Strict:      param.NewOpt(strict),
 			},
 		},
 	}

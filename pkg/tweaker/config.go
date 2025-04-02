@@ -13,7 +13,6 @@ var (
 )
 
 func init() {
-	fmt.Println("tweaker.init")
 	cfg = NewConfig()
 }
 

@@ -44,6 +44,10 @@ func NewMockProvider(opts ...MockProviderOption) *MockProvider {
 	return prvdr
 }
 
+func (prvdr *MockProvider) ID() string {
+	return "mock"
+}
+
 type MockProviderOption func(*MockProvider)
 
 func (prvdr *MockProvider) Generate(

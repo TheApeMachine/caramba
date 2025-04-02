@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -51,8 +52,14 @@ func NewHub(options ...HubOption) *Hub {
 func (hub *Hub) Generate(
 	buffer chan *datura.Artifact,
 	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) (err error) {
+) chan *datura.Artifact {
+	out := make(chan *datura.Artifact)
+
 	go func() {
+		defer close(out)
+
+		var err error
+
 		for {
 			select {
 			case artifact := <-buffer:
@@ -108,7 +115,28 @@ func (hub *Hub) Generate(
 		}
 	}()
 
-	return
+	return out
+}
+
+func WithStreamers(streamers ...*core.Streamer) HubOption {
+	return func(hub *Hub) {
+		for _, streamer := range streamers {
+			// Turn the streamer into a client
+			hub.clients[streamer.ID()] = &Client{
+				ID:     streamer.ID(),
+				IO:     streamer,
+				Topics: []Topic{"broadcast"},
+			}
+		}
+	}
+}
+
+func WithClients(clients ...*Client) HubOption {
+	return func(hub *Hub) {
+		for _, client := range clients {
+			hub.clients[client.ID] = client
+		}
+	}
 }
 
 func WithClient(clientID string, client io.ReadWriteCloser) HubOption {

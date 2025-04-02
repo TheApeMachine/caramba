@@ -95,6 +95,82 @@ tools:
     collection: "longterm"
     dimension: 3072
   schemas:
+    agent:
+      function:
+        name: "agent"
+        description: "A tool which allows you to create your own AI agents, and delegate tasks to them."
+      properties:
+        name:
+          type: "string"
+          description: "The name of the agent."
+        role:
+          type: "string"
+          description: "The role of the agent."
+        provider:
+          type: "string"
+          description: "The provider of the agent."
+          options:
+            [
+              "openai",
+              "anthropic",
+              "gemini",
+              "cohere",
+              "deepseek",
+              "huggingface",
+              "nvidia",
+              "ollama",
+              "lmstudio",
+            ]
+        model:
+          type: "string"
+          description: "The model of the agent."
+        system_prompt:
+          type: "string"
+          description: "The system prompt for the agent."
+        temperature:
+          type: "number"
+          description: "The temperature for the agent."
+        top_p:
+          type: "number"
+          description: "The top_p for the agent."
+        top_k:
+          type: "number"
+          description: "The top_k for the agent."
+        max_tokens:
+          type: "number"
+          description: "The max_tokens for the agent."
+        tools:
+          type: "array"
+          description: "The tools for the agent."
+          items:
+            type: "string"
+            description: "The tool to delegate to the agent."
+            options:
+              [
+                "agent",
+                "memory",
+                "command",
+                "input",
+                "editor",
+                "browser",
+                "github",
+                "azure",
+                "trengo",
+                "system",
+              ]
+      required:
+        [
+          "name",
+          "role",
+          "provider",
+          "model",
+          "system_prompt",
+          "temperature",
+          "top_p",
+          "top_k",
+          "max_tokens",
+          "tools",
+        ]
     memory:
       function:
         name: "memory"
@@ -138,7 +214,7 @@ tools:
     editor:
       read:
         function:
-          name: "editor.read"
+          name: "read"
           description: "A tool which can read files in the workspace."
         properties:
           file:
@@ -147,7 +223,7 @@ tools:
         required: ["file"]
       write:
         function:
-          name: "editor.write"
+          name: "write"
           description: "A tool which can write to files in the workspace."
         properties:
           file:
@@ -159,7 +235,7 @@ tools:
         required: ["file", "content"]
       delete:
         function:
-          name: "editor.delete"
+          name: "delete"
           description: "A tool which can delete files in the workspace."
         properties:
           file:
@@ -168,7 +244,7 @@ tools:
         required: ["file"]
       replace_lines:
         function:
-          name: "editor.replace_lines"
+          name: "replace_lines"
           description: "A tool which can replace lines in a file."
         properties:
           file:
@@ -186,7 +262,7 @@ tools:
         required: ["file", "start_line", "end_line", "content"]
       insert_lines:
         function:
-          name: "editor.insert_lines"
+          name: "insert_lines"
           description: "A tool which can insert lines into a file."
         properties:
           file:
@@ -198,7 +274,7 @@ tools:
         required: ["file", "content"]
       delete_lines:
         function:
-          name: "editor.delete_lines"
+          name: "delete_lines"
           description: "A tool which can delete lines from a file."
         properties:
           file:
@@ -213,7 +289,7 @@ tools:
         required: ["file", "start_line", "end_line"]
       read_lines:
         function:
-          name: "editor.read_lines"
+          name: "read_lines"
           description: "A tool which can read lines from a file."
         properties:
           file:
@@ -229,7 +305,7 @@ tools:
     browser:
       get_content:
         function:
-          name: "browser.get_content"
+          name: "get_content"
           description: "A tool which can get the content of a page."
         properties:
           url:
@@ -238,7 +314,7 @@ tools:
         required: ["url"]
       get_links:
         function:
-          name: "browser.get_links"
+          name: "get_links"
           description: "A tool which can get the links of a page."
         properties:
           url:
@@ -248,12 +324,12 @@ tools:
     github:
       get_repositories:
         function:
-          name: "github.get_repositories"
+          name: "get_repositories"
           description: "A tool for getting repositories from GitHub."
         required: []
       get_repository:
         function:
-          name: "github.get_repository"
+          name: "get_repository"
           description: "A tool for getting a repository from GitHub."
         properties:
           repository:
@@ -262,7 +338,7 @@ tools:
         required: ["repository"]
       create_repository:
         function:
-          name: "github.create_repository"
+          name: "create_repository"
           description: "A tool for creating a repository on GitHub."
         properties:
           repository:
@@ -271,7 +347,7 @@ tools:
         required: ["repository"]
       list_branches:
         function:
-          name: "github.list_branches"
+          name: "list_branches"
           description: "A tool for listing branches on a repository."
         properties:
           repository:
@@ -280,7 +356,7 @@ tools:
         required: ["repository"]
       get_contents:
         function:
-          name: "github.get_contents"
+          name: "get_contents"
           description: "A tool for getting the contents of a repository."
         properties:
           repository:
@@ -289,7 +365,7 @@ tools:
         required: ["repository"]
       list_pull_requests:
         function:
-          name: "github.list_pull_requests"
+          name: "list_pull_requests"
           description: "A tool for listing pull requests on a repository."
         properties:
           repository:
@@ -298,7 +374,7 @@ tools:
         required: ["repository"]
       get_pull_request:
         function:
-          name: "github.get_pull_request"
+          name: "get_pull_request"
           description: "A tool for getting a pull request on a repository."
         properties:
           repository:
@@ -307,7 +383,7 @@ tools:
         required: ["repository"]
       create_pull_request:
         function:
-          name: "github.create_pull_request"
+          name: "create_pull_request"
           description: "A tool for creating a pull request on a repository."
         properties:
           repository:
@@ -316,7 +392,7 @@ tools:
         required: ["repository"]
       update_pull_request:
         function:
-          name: "github.update_pull_request"
+          name: "update_pull_request"
           description: "A tool for updating a pull request on a repository."
         properties:
           repository:
@@ -325,7 +401,7 @@ tools:
         required: ["repository"]
       list_issues:
         function:
-          name: "github.list_issues"
+          name: "list_issues"
           description: "A tool for listing issues on a repository."
         properties:
           repository:
@@ -334,7 +410,7 @@ tools:
         required: ["repository"]
       get_issue:
         function:
-          name: "github.get_issue"
+          name: "get_issue"
           description: "A tool for getting an issue on a repository."
         properties:
           repository:
@@ -343,7 +419,7 @@ tools:
         required: ["repository"]
       create_issue:
         function:
-          name: "github.create_issue"
+          name: "create_issue"
           description: "A tool for creating an issue on a repository."
         properties:
           repository:
@@ -352,7 +428,7 @@ tools:
         required: ["repository"]
       update_issue:
         function:
-          name: "github.update_issue"
+          name: "update_issue"
           description: "A tool for updating an issue on a repository."
         properties:
           repository:
@@ -361,7 +437,7 @@ tools:
         required: ["repository"]
       create_pr_comment:
         function:
-          name: "github.create_pr_comment"
+          name: "create_pr_comment"
           description: "A tool for creating a comment on a pull request on a repository."
         properties:
           repository:
@@ -370,7 +446,7 @@ tools:
         required: ["repository"]
       list_pr_comments:
         function:
-          name: "github.list_pr_comments"
+          name: "list_pr_comments"
           description: "A tool for listing comments on a pull request on a repository."
         properties:
           repository:
@@ -379,7 +455,7 @@ tools:
         required: ["repository"]
       create_pr_review:
         function:
-          name: "github.create_pr_review"
+          name: "create_pr_review"
           description: "A tool for creating a review on a pull request on a repository."
         properties:
           repository:
@@ -388,7 +464,7 @@ tools:
         required: ["repository"]
       list_pr_reviews:
         function:
-          name: "github.list_pr_reviews"
+          name: "list_pr_reviews"
           description: "A tool for listing reviews on a pull request on a repository."
         properties:
           repository:
@@ -397,7 +473,7 @@ tools:
         required: ["repository"]
       create_review_comment:
         function:
-          name: "github.create_review_comment"
+          name: "create_review_comment"
           description: "A tool for creating a review comment on a pull request on a repository."
         properties:
           repository:
@@ -406,7 +482,7 @@ tools:
         required: ["repository"]
       list_review_comments:
         function:
-          name: "github.list_review_comments"
+          name: "list_review_comments"
           description: "A tool for listing review comments on a pull request on a repository."
         properties:
           repository:
@@ -416,12 +492,12 @@ tools:
     azure:
       create_work_item:
         function:
-          name: "azure.create_work_item"
+          name: "create_work_item"
           description: "A tool for creating work items in Azure DevOps Boards."
         required: []
       update_work_item:
         function:
-          name: "azure"
+          name: "update_work_item"
           description: "A tool for interacting with Azure DevOps Boards and Wikis."
         properties:
           work_item_id:
@@ -430,7 +506,7 @@ tools:
         required: ["work_item_id"]
       get_work_item:
         function:
-          name: "azure.get_work_item"
+          name: "get_work_item"
           description: "A tool for getting a work item in Azure DevOps Boards."
         properties:
           work_item_id:
@@ -439,17 +515,17 @@ tools:
         required: ["work_item_id"]
       list_work_items:
         function:
-          name: "azure.list_work_items"
+          name: "list_work_items"
           description: "A tool for listing work items in Azure DevOps Boards."
         required: []
       create_wiki_page:
         function:
-          name: "azure.create_wiki_page"
+          name: "create_wiki_page"
           description: "A tool for creating wiki pages in Azure DevOps Boards."
         required: []
       update_wiki_page:
         function:
-          name: "azure.update_wiki_page"
+          name: "update_wiki_page"
           description: "A tool for updating wiki pages in Azure DevOps Boards."
         properties:
           wiki_page_id:
@@ -458,7 +534,7 @@ tools:
         required: ["wiki_page_id"]
       get_wiki_page:
         function:
-          name: "azure.get_wiki_page"
+          name: "get_wiki_page"
           description: "A tool for getting a wiki page in Azure DevOps Boards."
         properties:
           wiki_page_id:
@@ -467,12 +543,12 @@ tools:
         required: ["wiki_page_id"]
       list_wiki_pages:
         function:
-          name: "azure.list_wiki_pages"
+          name: "list_wiki_pages"
           description: "A tool for listing wiki pages in Azure DevOps Boards."
         required: []
       delete_wiki_page:
         function:
-          name: "azure.delete_wiki_page"
+          name: "delete_wiki_page"
           description: "A tool for deleting a wiki page in Azure DevOps Boards."
         properties:
           wiki_page_id:
@@ -481,17 +557,17 @@ tools:
         required: ["wiki_page_id"]
       create_work_item_comment:
         function:
-          name: "azure.create_work_item_comment"
+          name: "create_work_item_comment"
           description: "A tool for creating comments on work items in Azure DevOps Boards."
         required: []
       list_work_item_comments:
         function:
-          name: "azure.list_work_item_comments"
+          name: "list_work_item_comments"
           description: "A tool for listing comments on work items in Azure DevOps Boards."
         required: []
       delete_work_item_comment:
         function:
-          name: "azure.delete_work_item_comment"
+          name: "delete_work_item_comment"
           description: "A tool for deleting comments on work items in Azure DevOps Boards."
         properties:
           comment_id:
@@ -500,17 +576,17 @@ tools:
         required: ["comment_id"]
       create_work_item_attachment:
         function:
-          name: "azure.create_work_item_attachment"
+          name: "create_work_item_attachment"
           description: "A tool for creating attachments on work items in Azure DevOps Boards."
         required: []
       list_work_item_attachments:
         function:
-          name: "azure.list_work_item_attachments"
+          name: "list_work_item_attachments"
           description: "A tool for listing attachments on work items in Azure DevOps Boards."
         required: []
       delete_work_item_attachment:
         function:
-          name: "azure.delete_work_item_attachment"
+          name: "delete_work_item_attachment"
           description: "A tool for deleting attachments on work items in Azure DevOps Boards."
         properties:
           attachment_id:
@@ -519,17 +595,17 @@ tools:
         required: ["attachment_id"]
       create_work_item_link:
         function:
-          name: "azure.create_work_item_link"
+          name: "create_work_item_link"
           description: "A tool for creating links on work items in Azure DevOps Boards."
         required: []
       list_work_item_links:
         function:
-          name: "azure.list_work_item_links"
+          name: "list_work_item_links"
           description: "A tool for listing links on work items in Azure DevOps Boards."
         required: []
       delete_work_item_link:
         function:
-          name: "azure.delete_work_item_link"
+          name: "delete_work_item_link"
           description: "A tool for deleting links on work items in Azure DevOps Boards."
         properties:
           link_id:
@@ -538,23 +614,27 @@ tools:
         required: ["link_id"]
       search_work_items:
         function:
-          name: "azure.search_work_items"
+          name: "search_work_items"
           description: "A tool for searching for work items in Azure DevOps Boards."
-        required: []
+        properties:
+          query:
+            type: "string"
+            description: "The query to search for."
+        required: ["query"]
     trengo:
       list_tickets:
         function:
-          name: "trengo.list_tickets"
+          name: "list_tickets"
           description: "A tool for listing tickets in Trengo."
         required: []
       create_ticket:
         function:
-          name: "trengo.create_ticket"
+          name: "create_ticket"
           description: "A tool for creating tickets in Trengo."
         required: []
       assign_ticket:
         function:
-          name: "trengo"
+          name: "assign_ticket"
           description: "A tool for interacting with Trengo."
         properties:
           operation:
@@ -563,43 +643,43 @@ tools:
             options:
       close_ticket:
         function:
-          name: "trengo.close_ticket"
+          name: "close_ticket"
           description: "A tool for closing tickets in Trengo."
         required: []
       reopen_ticket:
         function:
-          name: "trengo.reopen_ticket"
+          name: "reopen_ticket"
           description: "A tool for reopening tickets in Trengo."
         required: []
       list_labels:
         function:
-          name: "trengo.list_labels"
+          name: "list_labels"
           description: "A tool for listing labels in Trengo."
         required: []
       get_label:
         function:
-          name: "trengo.get_label"
+          name: "get_label"
           description: "A tool for getting a label in Trengo."
         required: []
       create_label:
         function:
-          name: "trengo.create_label"
+          name: "create_label"
           description: "A tool for creating a label in Trengo."
         required: []
       update_label:
         function:
-          name: "trengo.update_label"
+          name: "update_label"
           description: "A tool for updating a label in Trengo."
         required: []
       delete_label:
         function:
-          name: "trengo.delete_label"
+          name: "delete_label"
           description: "A tool for deleting a label in Trengo."
         required: []
     slack:
       post_message:
         function:
-          name: "slack.post_message"
+          name: "post_message"
           description: "A tool for posting messages to Slack workspaces and channels."
         properties:
           channel:
@@ -611,7 +691,7 @@ tools:
         required: ["channel", "message"]
       upload_file:
         function:
-          name: "slack.upload_file"
+          name: "upload_file"
           description: "A tool for uploading files to Slack workspaces and channels."
         properties:
           channel:
@@ -623,7 +703,7 @@ tools:
         required: ["channel", "file"]
       add_reaction:
         function:
-          name: "slack.add_reaction"
+          name: "add_reaction"
           description: "A tool for adding reactions to messages in Slack workspaces and channels."
         properties:
           channel:
@@ -635,7 +715,7 @@ tools:
         required: ["channel", "reaction"]
       remove_reaction:
         function:
-          name: "slack.remove_reaction"
+          name: "remove_reaction"
           description: "A tool for removing reactions from messages in Slack workspaces and channels."
         properties:
           channel:
@@ -647,7 +727,7 @@ tools:
         required: ["channel", "reaction"]
       get_channel_info:
         function:
-          name: "slack.get_channel_info"
+          name: "get_channel_info"
           description: "A tool for getting information about a Slack channel."
         properties:
           channel:
@@ -656,12 +736,12 @@ tools:
         required: ["channel"]
       list_channels:
         function:
-          name: "slack.list_channels"
+          name: "list_channels"
           description: "A tool for listing all Slack channels."
         required: []
       create_channel:
         function:
-          name: "slack.create_channel"
+          name: "create_channel"
           description: "A tool for creating a new Slack channel."
         properties:
           name:
@@ -670,7 +750,7 @@ tools:
         required: ["name"]
       get_thread_replies:
         function:
-          name: "slack.get_thread_replies"
+          name: "get_thread_replies"
           description: "A tool for getting replies to a message in a Slack channel."
         properties:
           channel:
@@ -682,7 +762,7 @@ tools:
         required: ["channel", "thread_ts"]
       search_messages:
         function:
-          name: "slack.search_messages"
+          name: "search_messages"
           description: "A tool for searching for messages in a Slack channel."
         properties:
           channel:
@@ -697,7 +777,7 @@ tools:
         required: ["channel", "text", "thread_ts"]
       update_message:
         function:
-          name: "slack.update_message"
+          name: "update_message"
           description: "A tool for updating a message in a Slack channel."
         properties:
           channel:
@@ -709,7 +789,7 @@ tools:
         required: ["channel", "message_ts"]
       delete_message:
         function:
-          name: "slack.delete_message"
+          name: "delete_message"
           description: "A tool for deleting a message in a Slack channel."
         properties:
           channel:

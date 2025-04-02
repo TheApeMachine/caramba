@@ -11,7 +11,7 @@ func testArtifact() *Artifact {
 	return New(
 		WithMediatype(MediaTypeCapnp),
 		WithRole(ArtifactRoleUser),
-		WithScope(ArtifactScopePrompt),
+		WithScope(ArtifactScopeContext),
 		WithPayload([]byte("test payload")),
 	)
 }

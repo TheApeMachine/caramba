@@ -53,6 +53,10 @@ func NewBuffer(opts ...BufferOption) *Buffer {
 	return buffer
 }
 
+func (buffer *Buffer) ID() string {
+	return buffer.generator.ID()
+}
+
 /*
 Read implements the io.Reader interface.
 It reads data from the pipe reader, which contains data encoded by the Write method.

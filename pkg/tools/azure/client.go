@@ -22,12 +22,12 @@ type Client struct {
 NewClient creates a new Azure DevOps client using environment variables for authentication.
 
 It initializes connections to work item and wiki services using a personal access token.
-The client uses AZURE_ORG_URL and AZURE_PERSONAL_ACCESS_TOKEN environment variables.
+The client uses AZDO_ORG_URL and AZDO_PAT environment variables.
 */
 func NewClient() *Client {
 	conn := azuredevops.NewPatConnection(
-		os.Getenv("AZURE_ORG_URL"),
-		os.Getenv("AZURE_PERSONAL_ACCESS_TOKEN"),
+		os.Getenv("AZDO_ORG_URL"),
+		os.Getenv("AZDO_PAT"),
 	)
 
 	workitem := NewWorkItem(conn)

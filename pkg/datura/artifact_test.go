@@ -24,7 +24,7 @@ func TestArtifactCreation(t *testing.T) {
 			artifact := New(
 				WithMediatype(MediaTypeTextPlain),
 				WithRole(ArtifactRoleUser),
-				WithScope(ArtifactScopePrompt),
+				WithScope(ArtifactScopeContext),
 				WithPayload(payload),
 				WithMetadata(metadata),
 				WithSignature(signature),
@@ -89,7 +89,7 @@ func TestArtifactEncryption(t *testing.T) {
 			artifact := New(
 				WithMediatype(MediaTypeTextPlain),
 				WithRole(ArtifactRoleUser),
-				WithScope(ArtifactScopePrompt),
+				WithScope(ArtifactScopeContext),
 				WithPayload(payload),
 			)
 
@@ -130,7 +130,7 @@ func TestArtifactMetadata(t *testing.T) {
 			artifact := New(
 				WithMediatype(MediaTypeTextPlain),
 				WithRole(ArtifactRoleUser),
-				WithScope(ArtifactScopePrompt),
+				WithScope(ArtifactScopeContext),
 				WithMetadata(metadata),
 			)
 
@@ -160,7 +160,7 @@ func TestArtifactBasicFields(t *testing.T) {
 			artifact := New(
 				WithMediatype(MediaTypeTextPlain),
 				WithRole(ArtifactRoleUser),
-				WithScope(ArtifactScopePrompt),
+				WithScope(ArtifactScopeContext),
 			)
 
 			So(artifact, ShouldNotBeNil)
@@ -178,7 +178,7 @@ func TestArtifactBasicFields(t *testing.T) {
 				So(role, ShouldEqual, uint32(ArtifactRoleUser))
 
 				scope := artifact.Scope()
-				So(scope, ShouldEqual, uint32(ArtifactScopePrompt))
+				So(scope, ShouldEqual, uint32(ArtifactScopeContext))
 
 				timestamp := artifact.Timestamp()
 				So(timestamp, ShouldBeGreaterThan, 0)
@@ -192,7 +192,7 @@ func TestArtifactWithCircuit(t *testing.T) {
 		artifact := New(
 			WithMediatype(MediaTypeTextPlain),
 			WithRole(ArtifactRoleUser),
-			WithScope(ArtifactScopePrompt),
+			WithScope(ArtifactScopeContext),
 		)
 		So(artifact, ShouldNotBeNil)
 

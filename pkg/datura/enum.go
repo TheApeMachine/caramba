@@ -7,33 +7,26 @@ const (
 	ArtifactRoleSystem
 	ArtifactRoleUser
 	ArtifactRoleAssistant
+	ArtifactRoleTool
+	ArtifactRoleQuestion
+	ArtifactRoleAnswer
+	ArtifactRoleAcknowledge
 	ArtifactRoleOpenFile
 	ArtifactRoleSaveFile
 	ArtifactRoleDeleteFile
 	ArtifactRoleListFiles
-	ArtifactRoleMemoryTool
-	ArtifactRoleAgentTool
-	ArtifactRoleEditorTool
-	ArtifactRoleGithubTool
-	ArtifactRoleAzureTool
-	ArtifactRoleTrengoTool
-	ArtifactRoleBrowserTool
-	ArtifactRoleEnvironmentTool
-	ArtifactRoleInspect
-	ArtifactRoleMetadata
-	ArtifactRoleRegistration
-	ArtifactRoleSignal
+	ArtifactRoleResponseFormat
 )
 
 type ArtifactScope uint
 
 const (
 	ArtifactScopeUnknown ArtifactScope = iota
-	ArtifactScopeEvent
-	ArtifactScopeMessage
-	ArtifactScopePrompt
-	ArtifactScopeProvider
-	ArtifactScopeName
+	ArtifactScopeGeneration
+	ArtifactScopeParams
+	ArtifactScopeContext
+	ArtifactScopeAquire
+	ArtifactScopePreflight
 )
 
 type MediaType string

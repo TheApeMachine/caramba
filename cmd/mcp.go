@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -24,7 +22,6 @@ var (
 )
 
 func init() {
-	fmt.Println("cmd.mcp.init")
 	rootCmd.AddCommand(mcpCmd)
 }
 

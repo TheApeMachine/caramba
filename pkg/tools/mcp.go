@@ -8,7 +8,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
@@ -21,12 +20,7 @@ and implements io.ReadWriteCloser for streaming data processing.
 */
 type MCP struct {
 	client client.MCPClient
-	Schema *provider.Tool
 	ctx    context.Context
-}
-
-func init() {
-	provider.RegisterTool("mcp")
 }
 
 /*
@@ -77,7 +71,6 @@ func NewMCP() *MCP {
 
 	return &MCP{
 		client: mcpClient,
-		Schema: GetToolSchema("mcp"),
 		ctx:    ctx,
 	}
 }

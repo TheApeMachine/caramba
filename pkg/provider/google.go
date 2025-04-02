@@ -64,6 +64,10 @@ func NewGoogleProvider(opts ...GoogleProviderOption) *GoogleProvider {
 	return prvdr
 }
 
+func (prvdr *GoogleProvider) ID() string {
+	return "google"
+}
+
 type GoogleProviderOption func(*GoogleProvider)
 
 func WithGoogleAPIKey(apiKey string) GoogleProviderOption {

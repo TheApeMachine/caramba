@@ -7,7 +7,6 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stream"
-	"github.com/theapemachine/caramba/pkg/system"
 )
 
 /*
@@ -19,7 +18,6 @@ standard io package to help us out, like TeeReader, TeeWriter, MultiReader,
 MultiWriter, Pipe, etc.
 */
 type Streamer struct {
-	hub    *system.Hub
 	buffer *stream.Buffer
 }
 
@@ -33,11 +31,14 @@ so it always returns the same hub.
 */
 func NewStreamer(generator stream.Generator) *Streamer {
 	return &Streamer{
-		hub: system.NewHub(),
 		buffer: stream.NewBuffer(
 			stream.WithGenerator(generator),
 		),
 	}
+}
+
+func (streamer *Streamer) ID() string {
+	return streamer.buffer.ID()
 }
 
 /*
@@ -89,10 +90,6 @@ func (streamer *Streamer) Close() (err error) {
 Validate implements the StreamerValidator interface for the Streamer.
 */
 func (streamer *Streamer) Validate(scope string) error {
-	if streamer.hub == nil {
-		return NewStreamerNoHubError(scope)
-	}
-
 	if streamer.buffer == nil {
 		return NewStreamerNoBufferError(scope)
 	}

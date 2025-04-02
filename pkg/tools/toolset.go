@@ -19,14 +19,14 @@ type CompositeTool interface {
 // )
 
 type Toolset struct {
-	tools []CompositeTool
+	Tools []CompositeTool
 }
 
 type ToolsetOption func(*Toolset)
 
 func NewToolset(opts ...ToolsetOption) *Toolset {
 	toolset := &Toolset{
-		tools: []CompositeTool{},
+		Tools: []CompositeTool{},
 	}
 
 	for _, opt := range opts {
@@ -38,14 +38,14 @@ func NewToolset(opts ...ToolsetOption) *Toolset {
 
 func WithTools(tool CompositeTool) ToolsetOption {
 	return func(toolset *Toolset) {
-		toolset.tools = append(toolset.tools, tool)
+		toolset.Tools = append(toolset.Tools, tool)
 	}
 }
 
 // ToMCP returns the MCP tool definitions for all tools in the toolset
 func (t *Toolset) ToMCP() []mcp.Tool {
 	var tools []mcp.Tool
-	for _, tool := range t.tools {
+	for _, tool := range t.Tools {
 		tools = append(tools, tool.ToMCP()...)
 	}
 	return tools

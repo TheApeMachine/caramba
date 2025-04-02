@@ -53,6 +53,10 @@ func NewDeepseekProvider(opts ...DeepseekProviderOption) *DeepseekProvider {
 	return prvdr
 }
 
+func (prvdr *DeepseekProvider) ID() string {
+	return "deepseek"
+}
+
 type DeepseekProviderOption func(*DeepseekProvider)
 
 func WithDeepseekAPIKey(apiKey string) DeepseekProviderOption {

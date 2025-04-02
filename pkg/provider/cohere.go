@@ -57,6 +57,10 @@ func NewCohereProvider(opts ...CohereProviderOption) *CohereProvider {
 	return prvdr
 }
 
+func (prvdr *CohereProvider) ID() string {
+	return "cohere"
+}
+
 type CohereProviderOption func(*CohereProvider)
 
 func WithCohereAPIKey(apiKey string) CohereProviderOption {

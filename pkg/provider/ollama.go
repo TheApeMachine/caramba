@@ -58,6 +58,10 @@ func NewOllamaProvider(opts ...OllamaProviderOption) *OllamaProvider {
 	return prvdr
 }
 
+func (prvdr *OllamaProvider) ID() string {
+	return "ollama"
+}
+
 type OllamaProviderOption func(*OllamaProvider)
 
 func WithOllamaEndpoint(endpoint string) OllamaProviderOption {

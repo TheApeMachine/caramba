@@ -13,7 +13,7 @@ import (
 	sdk "github.com/qdrant/go-client/qdrant"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
@@ -27,10 +27,20 @@ type Qdrant struct {
 	cancel     context.CancelFunc
 	client     *sdk.Client
 	collection string
-	embedder   *provider.OpenAIEmbedder
+	embedder   stream.Generator
 }
 
-func NewQdrant() *Qdrant {
+// QdrantOption defines a functional option pattern for Qdrant
+type QdrantOption func(*Qdrant)
+
+// WithEmbedder sets the embedder for the Qdrant instance
+func WithEmbedder(embedder stream.Generator) QdrantOption {
+	return func(q *Qdrant) {
+		q.embedder = embedder
+	}
+}
+
+func NewQdrant(opts ...QdrantOption) *Qdrant {
 	errnie.Debug("memory.NewQdrant")
 
 	client, err := sdk.NewClient(&sdk.Config{
@@ -77,7 +87,6 @@ func NewQdrant() *Qdrant {
 		}
 	}
 
-	embedder := provider.NewOpenAIEmbedder()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	qdrant := &Qdrant{
@@ -85,10 +94,18 @@ func NewQdrant() *Qdrant {
 		cancel:     cancel,
 		client:     client,
 		collection: tweaker.GetQdrantCollection(),
-		embedder:   embedder,
+	}
+
+	// Apply all provided options
+	for _, opt := range opts {
+		opt(qdrant)
 	}
 
 	return qdrant
+}
+
+func (q *Qdrant) ID() string {
+	return "qdrant"
 }
 
 func (q *Qdrant) Generate(
@@ -120,22 +137,30 @@ func (q *Qdrant) Generate(
 				points := make([]*sdk.PointStruct, 0)
 
 				for _, doc := range docs {
+					// Create artifact with document content to be embedded
 					docArtifact := datura.New(
 						datura.WithPayload([]byte(doc.Content)),
 					)
+
+					// Check if embedder is available
+					if q.embedder == nil {
+						out <- datura.New(datura.WithError(errnie.Error(fmt.Errorf("embedder not set"))))
+						return
+					}
 
 					// Get embeddings using the embedder's Generate method
 					embeddingChan := q.embedder.Generate(make(chan *datura.Artifact, 1))
 					embeddingChan <- docArtifact
 					embeddedDoc := <-embeddingChan
 
-					// Get embeddings directly as float32 slice
+					// Get embeddings as bytes from the embedded document
 					vectors, err := embeddedDoc.DecryptPayload()
 					if err != nil {
 						out <- datura.New(datura.WithError(errnie.Error(err)))
 						return
 					}
 
+					// Convert bytes to float32 slice
 					vectorsFloat := make([]float32, len(vectors)/4)
 					for i := 0; i < len(vectors); i += 4 {
 						vectorsFloat[i/4] = math.Float32frombits(binary.LittleEndian.Uint32(vectors[i : i+4]))
@@ -145,7 +170,8 @@ func (q *Qdrant) Generate(
 						Id:      sdk.NewIDNum(uint64(time.Now().UnixNano())),
 						Vectors: sdk.NewVectors(vectorsFloat...),
 						Payload: sdk.NewValueMap(map[string]any{
-							"content": doc.Content,
+							"content":  doc.Content,
+							"metadata": doc.Metadata,
 						}),
 					})
 				}
@@ -166,17 +192,39 @@ func (q *Qdrant) Generate(
 
 			// Handle search query
 			if question := datura.GetMetaValue[string](artifact, "question"); question != "" {
+				// Check if embedder is available
+				if q.embedder == nil {
+					out <- datura.New(datura.WithError(errnie.Error(fmt.Errorf("embedder not set"))))
+					return
+				}
+
+				// Create artifact with question content to be embedded
+				questionArtifact := datura.New(
+					datura.WithPayload([]byte(question)),
+				)
+
 				// Get embeddings using the embedder's Generate method
 				embeddingChan := q.embedder.Generate(make(chan *datura.Artifact, 1))
-				embeddingChan <- artifact
+				embeddingChan <- questionArtifact
+				embeddedQuestion := <-embeddingChan
 
-				// Get embeddings directly as float32 slice
-				vectors := datura.GetMetaValue[[]float32](artifact, "embeddings")
+				// Get embeddings as bytes from the embedded question
+				vectors, err := embeddedQuestion.DecryptPayload()
+				if err != nil {
+					out <- datura.New(datura.WithError(errnie.Error(err)))
+					return
+				}
+
+				// Convert bytes to float32 slice
+				vectorsFloat := make([]float32, len(vectors)/4)
+				for i := 0; i < len(vectors); i += 4 {
+					vectorsFloat[i/4] = math.Float32frombits(binary.LittleEndian.Uint32(vectors[i : i+4]))
+				}
 
 				limit := uint64(5)
 				searchResult, err := q.client.Query(context.Background(), &sdk.QueryPoints{
 					CollectionName: tweaker.GetQdrantCollection(),
-					Query:          sdk.NewQuery(vectors...),
+					Query:          sdk.NewQuery(vectorsFloat...),
 					Limit:          &limit,
 					WithPayload: &sdk.WithPayloadSelector{
 						SelectorOptions: &sdk.WithPayloadSelector_Enable{

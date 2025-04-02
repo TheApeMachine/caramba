@@ -58,6 +58,10 @@ func NewAnthropicProvider(opts ...AnthropicProviderOption) *AnthropicProvider {
 	return prvdr
 }
 
+func (prvdr *AnthropicProvider) ID() string {
+	return "anthropic"
+}
+
 func (prvdr *AnthropicProvider) Generate(
 	buffer chan *datura.Artifact,
 	fn ...func(artifact *datura.Artifact) *datura.Artifact,

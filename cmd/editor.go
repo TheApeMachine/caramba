@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/piaf"
@@ -22,7 +20,6 @@ var (
 )
 
 func init() {
-	fmt.Println("cmd.editor.init")
 	rootCmd.AddCommand(editorCmd)
 }
 

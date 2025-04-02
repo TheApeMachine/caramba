@@ -45,6 +45,10 @@ func NewNeo4j() *Neo4j {
 	return neo4j
 }
 
+func (n4j *Neo4j) ID() string {
+	return "neo4j"
+}
+
 /*
 Generate processes a query and returns the results via the artifact channel.
 It implements the Generator pattern to handle graph database operations asynchronously.
