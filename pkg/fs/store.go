@@ -51,7 +51,10 @@ func NewStore() *Store {
 Generate processes file operations and returns artifacts with the results.
 It implements the Generator pattern to handle file system operations asynchronously.
 */
-func (s *Store) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (s *Store) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("fs.Store.Generate")
 
 	out := make(chan *datura.Artifact)

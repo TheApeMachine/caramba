@@ -236,14 +236,14 @@ type StreamComponent interface {
 func NewStreamer(component StreamComponent, opts ...StreamerOption) *Streamer
 ```
 
-2. **Unified Transport Layer**
+1. **Unified Transport Layer**
 
 - Uses datura.Artifact as a universal envelope
 - Maintains type safety through Cap'n Proto
 - Supports any Cap'n Proto message as payload
 - Uses metadata to describe transported types
 
-3. **Component Implementation**
+1. **Component Implementation**
 
 ```go
 // Example component
@@ -307,7 +307,7 @@ component := NewComponent()
 io.Copy(destination, component)
 ```
 
-### Next Steps
+### Streaming Next Steps
 
 1. **Migration Path**
 
@@ -363,7 +363,7 @@ func NewGenerator(component GeneratorComponent, hub *MessageHub) *Generator {
 }
 ```
 
-2. **Message Hub**
+1. **Message Hub**
 
 ```go
 // Central message routing
@@ -377,7 +377,7 @@ func (h *MessageHub) Publish(topic string, msg *datura.Artifact)
 func (h *MessageHub) Connect(from, to string) // Create route between generators
 ```
 
-3. **Component Implementation**
+1. **Component Implementation**
 
 ```go
 // Example generator component
@@ -412,7 +412,7 @@ func (g *MyGenerator) Handle(artifact *datura.Artifact) error {
 }
 ```
 
-### Benefits
+### Generator Benefits
 
 1. **Concurrent by Default**
 

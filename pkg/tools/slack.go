@@ -42,6 +42,9 @@ func NewSlack() *Slack {
 	}
 }
 
-func (s *Slack) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (s *Slack) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return s.client.Generate(buffer)
 }

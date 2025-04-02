@@ -30,7 +30,10 @@ func NewClient() *Client {
 	}
 }
 
-func (client *Client) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (client *Client) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	out := make(chan *datura.Artifact)
 
 	go func() {

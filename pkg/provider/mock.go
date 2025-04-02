@@ -46,7 +46,10 @@ func NewMockProvider(opts ...MockProviderOption) *MockProvider {
 
 type MockProviderOption func(*MockProvider)
 
-func (prvdr *MockProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (prvdr *MockProvider) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("provider.MockProvider.Generate")
 
 	out := make(chan *datura.Artifact)

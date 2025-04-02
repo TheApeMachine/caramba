@@ -81,7 +81,10 @@ func WithGoogleEndpoint(endpoint string) GoogleProviderOption {
 	}
 }
 
-func (prvdr *GoogleProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (prvdr *GoogleProvider) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("provider.GoogleProvider.Generate")
 
 	out := make(chan *datura.Artifact)

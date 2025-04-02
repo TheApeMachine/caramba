@@ -43,7 +43,10 @@ func NewCluster() *Cluster {
 	}
 }
 
-func (c *Cluster) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (c *Cluster) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("kube.Cluster.Generate")
 
 	out := make(chan *datura.Artifact)

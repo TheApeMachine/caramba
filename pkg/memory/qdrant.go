@@ -91,7 +91,10 @@ func NewQdrant() *Qdrant {
 	return qdrant
 }
 
-func (q *Qdrant) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (q *Qdrant) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("memory.Qdrant.Generate")
 
 	out := make(chan *datura.Artifact)

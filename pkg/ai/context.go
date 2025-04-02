@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"errors"
+
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
@@ -46,4 +48,33 @@ func WithMessages(messages ...*MessageBuilder) ContextOption {
 
 		builder.SetMessages(msgList)
 	}
+}
+
+func (builder *ContextBuilder) Validate(scope string) error {
+	if builder.Context == nil {
+		return NewAgentContextValidationError(scope, errors.New("context not set"))
+	}
+
+	msgList, err := builder.Messages()
+
+	if errnie.Error(err) != nil {
+		return NewAgentContextValidationError(scope, err)
+	}
+
+	for i := range msgList.Len() {
+		msg := msgList.At(i)
+		role, err := msg.Role()
+
+		if errnie.Error(err) != nil {
+			return NewAgentContextValidationError(scope, err)
+		}
+
+		if role != "system" && role != "user" && role != "assistant" {
+			return NewAgentContextValidationError(
+				scope, errors.New("first message not a system message"),
+			)
+		}
+	}
+
+	return nil
 }

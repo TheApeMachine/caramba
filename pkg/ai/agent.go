@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,8 +63,13 @@ func NewAgentBuilder(options ...AgentOption) *AgentBuilder {
 
 func (builder *AgentBuilder) Generate(
 	buffer chan *datura.Artifact,
+	fn ...func(*datura.Artifact) *datura.Artifact,
 ) chan *datura.Artifact {
 	errnie.Debug("ai.AgentBuilder.Generate")
+
+	if err := builder.Validate("ai.AgentBuilder.Generate"); err != nil {
+		return nil
+	}
 
 	out := make(chan *datura.Artifact)
 
@@ -89,6 +95,30 @@ func (builder *AgentBuilder) Generate(
 	}()
 
 	return out
+}
+
+func (builder *AgentBuilder) Validate(scope string) error {
+	if builder.Agent == nil {
+		return NewAgentValidationError(scope, errors.New("agent not set"))
+	}
+
+	if builder.Schema == nil {
+		return NewAgentValidationError(scope, errors.New("schema not set"))
+	}
+
+	if builder.pctx == nil {
+		return NewAgentValidationError(scope, errors.New("parent context not set"))
+	}
+
+	if builder.ctx == nil {
+		return NewAgentValidationError(scope, errors.New("context not set"))
+	}
+
+	if builder.cancel == nil {
+		return NewAgentValidationError(scope, errors.New("cancel function not set"))
+	}
+
+	return nil
 }
 
 func WithCancel(ctx context.Context) AgentOption {

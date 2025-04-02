@@ -60,7 +60,10 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 	return prvdr
 }
 
-func (prvdr *OpenAIProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (prvdr *OpenAIProvider) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("provider.OpenAIProvider.Generate")
 
 	var (
@@ -488,7 +491,10 @@ func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
 Generate implements the Generator interface for OpenAIEmbedder.
 It takes input text through a channel and returns embeddings through another channel.
 */
-func (embedder *OpenAIEmbedder) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (embedder *OpenAIEmbedder) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("provider.OpenAIEmbedder.Generate")
 
 	out := make(chan *datura.Artifact)

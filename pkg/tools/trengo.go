@@ -27,7 +27,10 @@ func NewTrengo() *Trengo {
 	}
 }
 
-func (t *Trengo) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (t *Trengo) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	out := make(chan *datura.Artifact)
 
 	go func() {

@@ -62,6 +62,9 @@ func NewEnvironment() *Environment {
 	return environment
 }
 
-func (env *Environment) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (env *Environment) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return env.runner.Generate(buffer)
 }

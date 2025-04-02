@@ -48,7 +48,10 @@ func NewHub(options ...HubOption) *Hub {
 	return hub
 }
 
-func (hub *Hub) Generate(buffer chan *datura.Artifact) (err error) {
+func (hub *Hub) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) (err error) {
 	go func() {
 		for {
 			select {

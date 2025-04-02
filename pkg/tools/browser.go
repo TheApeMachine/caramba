@@ -26,7 +26,10 @@ type BrowserBaseTool struct {
 }
 
 // Generate handles the common generation logic for all browser tools
-func (bbt *BrowserBaseTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (bbt *BrowserBaseTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("browser.BrowserBaseTool.Generate." + bbt.operation)
 
 	out := make(chan *datura.Artifact)
@@ -128,7 +131,10 @@ func NewBrowserGetContentTool() *BrowserGetContentTool {
 }
 
 // Generate forwards the generation to the base tool
-func (bgct *BrowserGetContentTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (bgct *BrowserGetContentTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return bgct.BrowserBaseTool.Generate(buffer)
 }
 
@@ -152,7 +158,10 @@ func NewBrowserGetLinksTool() *BrowserGetLinksTool {
 }
 
 // Generate forwards the generation to the base tool
-func (bglt *BrowserGetLinksTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (bglt *BrowserGetLinksTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return bglt.BrowserBaseTool.Generate(buffer)
 }
 

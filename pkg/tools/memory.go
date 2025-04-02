@@ -52,7 +52,10 @@ func NewMemoryTool(opts ...MemoryToolOption) *MemoryTool {
 
 // Generate implements the Generator pattern for MemoryTool.
 // It processes queries and returns results through the artifact channel.
-func (mt *MemoryTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (mt *MemoryTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("tools.MemoryTool.Generate")
 
 	out := make(chan *datura.Artifact)

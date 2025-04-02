@@ -66,7 +66,10 @@ func WithOllamaEndpoint(endpoint string) OllamaProviderOption {
 	}
 }
 
-func (prvdr *OllamaProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (prvdr *OllamaProvider) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("provider.OllamaProvider.Generate")
 
 	out := make(chan *datura.Artifact)

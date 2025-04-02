@@ -9,6 +9,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
 
@@ -43,7 +44,7 @@ func NewCode() *Code {
 			ai.WithIdentity(utils.GenerateName(), "teamlead"),
 			ai.WithProvider(provider.ProviderTypeOpenAI),
 			ai.WithParams(ai.NewParamsBuilder(
-				ai.WithModel("gpt-4o"),
+				ai.WithModel("gpt-4o-mini"),
 				ai.WithTemperature(0.5),
 			)),
 			ai.WithContext(
@@ -56,7 +57,13 @@ func NewCode() *Code {
 					),
 				),
 			),
-			ai.WithTools(),
+			ai.WithTools(
+				tools.NewToolBuilder(tools.WithMCP(tools.NewMemoryTool().Schema.ToMCP())),
+				tools.NewToolBuilder(tools.WithMCP(tools.NewAzure().Schema.ToMCP())),
+				tools.NewToolBuilder(tools.WithMCP(tools.NewSystemInspectTool().Schema.ToMCP())),
+				tools.NewToolBuilder(tools.WithMCP(tools.NewSystemOptimizeTool().Schema.ToMCP())),
+				tools.NewToolBuilder(tools.WithMCP(tools.NewSystemMessageTool().Schema.ToMCP())),
+			),
 		),
 	))
 
@@ -78,7 +85,10 @@ workflow pipeline, and outputs the results.
 Returns:
   - error: Any error that occurred during execution
 */
-func (code *Code) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (code *Code) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Info("Starting code example")
 
 	out := make(chan *datura.Artifact)

@@ -67,7 +67,10 @@ func WithDeepseekEndpoint(endpoint string) DeepseekProviderOption {
 	}
 }
 
-func (prvdr *DeepseekProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (prvdr *DeepseekProvider) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("provider.DeepseekProvider.Generate")
 
 	out := make(chan *datura.Artifact)

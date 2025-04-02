@@ -15,6 +15,7 @@ It connects a sender and receiver through pipes, handling data transformations u
 Buffer implements io.Reader, io.Writer, and io.Closer interfaces to support standard streaming operations.
 */
 type Buffer struct {
+	pctx      context.Context
 	ctx       context.Context
 	cancel    context.CancelFunc
 	in        chan *datura.Artifact
@@ -41,8 +42,8 @@ func NewBuffer(opts ...BufferOption) *Buffer {
 	buffer := &Buffer{
 		ctx:    ctx,
 		cancel: cancel,
-		in:     make(chan *datura.Artifact),
-		out:    make(chan *datura.Artifact),
+		in:     make(chan *datura.Artifact, 64),
+		out:    make(chan *datura.Artifact, 64),
 	}
 
 	for _, opt := range opts {
@@ -66,11 +67,22 @@ Returns:
 func (buffer *Buffer) Read(p []byte) (n int, err error) {
 	errnie.Debug("stream.Buffer.Read")
 
+	if err := buffer.Validate("stream.Buffer.Read"); err != nil {
+		return 0, err
+	}
+
 	if buffer.out == nil {
-		return 0, io.EOF
+		return 0, NewBufferIOError(
+			"stream.Buffer.Read",
+			errors.New("output channel not set"),
+		)
 	}
 
 	select {
+	case <-buffer.pctx.Done():
+		errnie.Debug("stream.Buffer.Read", "pctx.Done()")
+		buffer.Close()
+		return 0, io.EOF
 	case <-buffer.ctx.Done():
 		errnie.Debug("stream.Buffer.Read", "ctx.Done()")
 		buffer.Close()
@@ -95,8 +107,12 @@ Returns:
 func (buffer *Buffer) Write(p []byte) (n int, err error) {
 	errnie.Debug("stream.Buffer.Write")
 
+	if err := buffer.Validate("stream.Buffer.Write"); err != nil {
+		return 0, err
+	}
+
 	if len(p) == 0 {
-		return 0, errnie.Error(errors.New("empty input"))
+		return 0, NewBufferIOError("stream.Buffer.Write", errors.New("empty input"))
 	}
 
 	buffer.in <- datura.Unmarshal(p)
@@ -112,14 +128,22 @@ Returns any error encountered during the closing process.
 */
 func (buffer *Buffer) Close() error {
 	errnie.Debug("stream.Buffer.Close")
+
+	if err := buffer.Validate("stream.Buffer.Close"); err != nil {
+		return err
+	}
+
 	buffer.cancel()
+
+	close(buffer.in)
+	close(buffer.out)
+
 	return nil
 }
 
 func WithCancel(ctx context.Context, cancel context.CancelFunc) BufferOption {
 	return func(buffer *Buffer) {
-		buffer.ctx = ctx
-		buffer.cancel = cancel
+		buffer.pctx = ctx
 	}
 }
 
@@ -128,4 +152,24 @@ func WithGenerator(generator Generator) BufferOption {
 		buffer.generator = generator
 		buffer.out = generator.Generate(buffer.in)
 	}
+}
+
+func (buffer *Buffer) Validate(scope string) error {
+	if buffer.generator == nil {
+		return NewBufferNoGeneratorError(scope)
+	}
+
+	if buffer.out == nil {
+		return NewBufferNoOutputError(scope)
+	}
+
+	if buffer.in == nil {
+		return NewBufferNoInputError(scope)
+	}
+
+	if buffer.pctx == nil {
+		return NewBufferNoContextError(scope)
+	}
+
+	return nil
 }

@@ -26,7 +26,10 @@ type EditorBaseTool struct {
 }
 
 // Generate handles the common generation logic for all editor tools
-func (ebt *EditorBaseTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (ebt *EditorBaseTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("editor.EditorBaseTool.Generate." + ebt.operation)
 
 	out := make(chan *datura.Artifact)
@@ -83,7 +86,10 @@ func NewEditorReadTool() *EditorReadTool {
 }
 
 // Generate forwards the generation to the base tool
-func (ert *EditorReadTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (ert *EditorReadTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return ert.EditorBaseTool.Generate(buffer)
 }
 
@@ -107,7 +113,10 @@ func NewEditorWriteTool() *EditorWriteTool {
 }
 
 // Generate forwards the generation to the base tool
-func (ewt *EditorWriteTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (ewt *EditorWriteTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return ewt.EditorBaseTool.Generate(buffer)
 }
 
@@ -131,7 +140,10 @@ func NewEditorDeleteTool() *EditorDeleteTool {
 }
 
 // Generate forwards the generation to the base tool
-func (edt *EditorDeleteTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (edt *EditorDeleteTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return edt.EditorBaseTool.Generate(buffer)
 }
 
@@ -155,7 +167,10 @@ func NewEditorReplaceLinesTool() *EditorReplaceLinesTool {
 }
 
 // Generate forwards the generation to the base tool
-func (erlt *EditorReplaceLinesTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (erlt *EditorReplaceLinesTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return erlt.EditorBaseTool.Generate(buffer)
 }
 
@@ -179,7 +194,10 @@ func NewEditorInsertLinesTool() *EditorInsertLinesTool {
 }
 
 // Generate forwards the generation to the base tool
-func (eilt *EditorInsertLinesTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (eilt *EditorInsertLinesTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return eilt.EditorBaseTool.Generate(buffer)
 }
 
@@ -203,7 +221,10 @@ func NewEditorDeleteLinesTool() *EditorDeleteLinesTool {
 }
 
 // Generate forwards the generation to the base tool
-func (edlt *EditorDeleteLinesTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (edlt *EditorDeleteLinesTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return edlt.EditorBaseTool.Generate(buffer)
 }
 
@@ -227,7 +248,10 @@ func NewEditorReadLinesTool() *EditorReadLinesTool {
 }
 
 // Generate forwards the generation to the base tool
-func (erlt *EditorReadLinesTool) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (erlt *EditorReadLinesTool) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	return erlt.EditorBaseTool.Generate(buffer)
 }
 

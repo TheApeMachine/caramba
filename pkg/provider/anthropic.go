@@ -58,7 +58,10 @@ func NewAnthropicProvider(opts ...AnthropicProviderOption) *AnthropicProvider {
 	return prvdr
 }
 
-func (prvdr *AnthropicProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (prvdr *AnthropicProvider) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("provider.AnthropicProvider.Generate")
 
 	var (
@@ -515,7 +518,10 @@ func NewAnthropicEmbedder() *AnthropicEmbedder {
 	}
 }
 
-func (embedder *AnthropicEmbedder) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (embedder *AnthropicEmbedder) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("provider.AnthropicEmbedder.Generate")
 	errnie.Warn("provider.AnthropicEmbedder.Generate not implemented")
 

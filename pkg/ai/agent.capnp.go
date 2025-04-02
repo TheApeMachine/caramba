@@ -639,45 +639,247 @@ func (f Message_Future) Struct() (Message, error) {
 	return Message(p.Struct()), err
 }
 
-const schema_d4c9c9f76e88a0d0 = "x\xda|\x92MHT]\x18\xc7\x9f\xffy\xee8/" +
-	"8\xfa\xce\xe5\x8e\xef\xe2\x05\x91\x17\\\xf8\xf6\xa1\xf6\xb1" +
-	"07Z\x16\xf4%\xcdC-\"ZxsN\xe3\xa5" +
-	"\xf9\xe2\xce\xad4\x0a7\x89\xda\x07Y(D\x10T\x9b" +
-	"\x0a\x82\x10r\xd1.\x83\x08[E\xb8\xc9]A\xb4\x0c" +
-	"\xda\x14\x82\xdc83u\x9dL\xdc=\xe7y\xfe\xfc\xcf" +
-	"\xef\xfc\x9f\xd3\xf9\x12\xbd\xd6\xb6\x86\xf1\x18)\xe9\x8d\xd5" +
-	"\x85c\x9b\x8ft]}\xb1r\x83l\x07\xe1\xdb{\x13" +
-	"\x85o\x0b\x0b\x8b\x14\x8b\xc5\x89\x9c\xc7\xea\x8d3\xa7\xe2" +
-	"D;fU\x0b\x08\xe1\xce\xd1\x07W\xea\x82\xc9\xe95" +
-	"b\x18\xf1{^r>\xb1\xa9>p\x0f!\x9cox" +
-	"\x88\xa9\xaf3\x8f\xd6h+\x8a&\xeb\xa3\xf3\x9fe\xaa" +
-	"f\xeb)!\x9c\x9b\xdd\xb5\xd2\xb6\x9c[\\\xa3\xad(" +
-	"\x9e[K\xce\xabJ5o}&\x84\xed\xe3}\xb7\xfe" +
-	"\xe9o]\"q\xf0\x07\xc4L\xec\x9ds\xbf\xc2~7" +
-	"v\x9e.\x84\xa53\xd9\x0e\xd7\xebpUV\x17\x82\xf6" +
-	"A\xb7T(u\xef65Q\x1a\x90\x14[D\x16\x88" +
-	"\xecK\x07\x89\xe4\"C&\x14l \x05\xd3\x1c3\xcd" +
-	"\xcb\x0c\x99R\xb0\x95JA\x11\xd9\xd7\xbb\x89d\x82!" +
-	"\xd3\x0a6s\x0aLd\xdf\xdcC$\xd7\x18r[\xc1" +
-	"\xb6\xac\x14,\"{f;\x91L1\xe4\x89B\xe8e" +
-	"t!\xf0\x82\x11\"Br5\x1c\x02\x92\x84\xb0\xe4\x17" +
-	"\xcfy\x19\xedW\xa7\x93\xf5\x87\xbet\xd45\xcd\xfe\x9c" +
-	"\xf6\x94\\\xdf\xcd\x97\x91\\}{u0:X,\x04" +
-	"z8@ru3\xd5IKP,\xe6\xcah$\xa4" +
-	"\x19H\x86\x03\xcf^\xdfi>\xfa}\xd9\x8c\x1b\xcd}" +
-	"\xeb\xe4\xd2g\xccx80\xc1XQ0\x0d&\x83\x04" +
-	"C\xda\x14\xc2\xbc.\x97\xdd\xac.\x1b\xcc\xc8;Z\xde" +
-	"\x06\xde\x07\xcc\xeb\xe3^0b\xcc\x13\x91\xf9\xbe\x13D" +
-	"\xb2\x97!\xe9\x9a\xd4\xfb7\x11\xc9~\x86\x1c\xabI]" +
-	"L\xf30C\x8eGY\x9e\xf6\x88\xb5\x8f\x04)$\x08" +
-	"\x7f\x17\xdc\xbc\x8e\x0e~1\x17\x1d\xd6\x05\xea7/\xe1" +
-	"\xac6<\xc9\x88\xc7\xfd\x97HN2d\xa8\x86G\x9b" +
-	"\xab\x07\x18\x92\xab\xe1\xf1L3\xc3\x90R\xcd/\xc8\x9b" +
-	"_0\xc4\x90@\x81\xbd\xcc\xba4\xbfqV\x17X\x08" +
-	"6DM\x9b\xed\xa3lH\xff\x8aH\xff7\x7f\xab\x95" +
-	"!\x9d\x0a\xbf@\xb7\x9e\"\x92-\x0c\xe9Rh\xc9\x17" +
-	"3:\x17\xf9\x06:_\xd2\xbe\x1bP\xfc\xac\xafQO" +
-	"\x0a\xf5\x84\x1f\x01\x00\x00\xff\xff\x0d;\xf7\xc9"
+type Prompt capnp.Struct
+
+// Prompt_TypeID is the unique identifier for the type Prompt.
+const Prompt_TypeID = 0xa71ad80631a22c86
+
+func NewPrompt(s *capnp.Segment) (Prompt, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return Prompt(st), err
+}
+
+func NewRootPrompt(s *capnp.Segment) (Prompt, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return Prompt(st), err
+}
+
+func ReadRootPrompt(msg *capnp.Message) (Prompt, error) {
+	root, err := msg.Root()
+	return Prompt(root.Struct()), err
+}
+
+func (s Prompt) String() string {
+	str, _ := text.Marshal(0xa71ad80631a22c86, capnp.Struct(s))
+	return str
+}
+
+func (s Prompt) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Prompt) DecodeFromPtr(p capnp.Ptr) Prompt {
+	return Prompt(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Prompt) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Prompt) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Prompt) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Prompt) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Prompt) Fragments() (Fragment_List, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return Fragment_List(p.List()), err
+}
+
+func (s Prompt) HasFragments() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Prompt) SetFragments(v Fragment_List) error {
+	return capnp.Struct(s).SetPtr(0, v.ToPtr())
+}
+
+// NewFragments sets the fragments field to a newly
+// allocated Fragment_List, preferring placement in s's segment.
+func (s Prompt) NewFragments(n int32) (Fragment_List, error) {
+	l, err := NewFragment_List(capnp.Struct(s).Segment(), n)
+	if err != nil {
+		return Fragment_List{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, l.ToPtr())
+	return l, err
+}
+
+// Prompt_List is a list of Prompt.
+type Prompt_List = capnp.StructList[Prompt]
+
+// NewPrompt creates a new list of Prompt.
+func NewPrompt_List(s *capnp.Segment, sz int32) (Prompt_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[Prompt](l), err
+}
+
+// Prompt_Future is a wrapper for a Prompt promised by a client call.
+type Prompt_Future struct{ *capnp.Future }
+
+func (f Prompt_Future) Struct() (Prompt, error) {
+	p, err := f.Future.Ptr()
+	return Prompt(p.Struct()), err
+}
+
+type Fragment capnp.Struct
+
+// Fragment_TypeID is the unique identifier for the type Fragment.
+const Fragment_TypeID = 0xaad839a2b63c0738
+
+func NewFragment(s *capnp.Segment) (Fragment, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	return Fragment(st), err
+}
+
+func NewRootFragment(s *capnp.Segment) (Fragment, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	return Fragment(st), err
+}
+
+func ReadRootFragment(msg *capnp.Message) (Fragment, error) {
+	root, err := msg.Root()
+	return Fragment(root.Struct()), err
+}
+
+func (s Fragment) String() string {
+	str, _ := text.Marshal(0xaad839a2b63c0738, capnp.Struct(s))
+	return str
+}
+
+func (s Fragment) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Fragment) DecodeFromPtr(p capnp.Ptr) Fragment {
+	return Fragment(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Fragment) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Fragment) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Fragment) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Fragment) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Fragment) Template() (string, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s Fragment) HasTemplate() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Fragment) TemplateBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s Fragment) SetTemplate(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+func (s Fragment) Variables() (capnp.TextList, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return capnp.TextList(p.List()), err
+}
+
+func (s Fragment) HasVariables() bool {
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Fragment) SetVariables(v capnp.TextList) error {
+	return capnp.Struct(s).SetPtr(1, v.ToPtr())
+}
+
+// NewVariables sets the variables field to a newly
+// allocated capnp.TextList, preferring placement in s's segment.
+func (s Fragment) NewVariables(n int32) (capnp.TextList, error) {
+	l, err := capnp.NewTextList(capnp.Struct(s).Segment(), n)
+	if err != nil {
+		return capnp.TextList{}, err
+	}
+	err = capnp.Struct(s).SetPtr(1, l.ToPtr())
+	return l, err
+}
+
+// Fragment_List is a list of Fragment.
+type Fragment_List = capnp.StructList[Fragment]
+
+// NewFragment creates a new list of Fragment.
+func NewFragment_List(s *capnp.Segment, sz int32) (Fragment_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2}, sz)
+	return capnp.StructList[Fragment](l), err
+}
+
+// Fragment_Future is a wrapper for a Fragment promised by a client call.
+type Fragment_Future struct{ *capnp.Future }
+
+func (f Fragment_Future) Struct() (Fragment, error) {
+	p, err := f.Future.Ptr()
+	return Fragment(p.Struct()), err
+}
+
+const schema_d4c9c9f76e88a0d0 = "x\xda|\x93OL\x1ce\x18\xc6\xdf\xe7\xfbfg5" +
+	"\xec\xe2Nf\xf5@4\\8\xa0\"\xb0J\"\x10\x0d" +
+	"*jP\xd9\xb8\x9f\x7f\x125\x1e\x18\xd8\x8fe\xe2\xce" +
+	"\xecdv\xf8g4\\D\xc1?\x11\x0d$\xc6\x93!" +
+	"1h\xd3\xa6\xd9\xa4\xf4\xdc\x9e\x1azj\x09M\x08G" +
+	".=6\xe9\xa5\x0d\x09\x99\xe6\xdb-\xc3t\xbb\xe5\xf6" +
+	"\xcd\xf7>y\xde\xe7\xfb\xbd\xef\xf4?\xcf\xde\xd2r\xe9" +
+	"\xd7ubb,\xa1\x87\xcb/\x7f<\xf8\xcb\x95\xe3\xdf" +
+	"\xc90\x11\xde\xf8g\xc5\xbd\xb7\xb3\xb3G\x89D\x92\xc8" +
+	"\x04\xbfn\xa6y\x92\xe8\xb5\xa7y'\x08\xe1\xc0\xd2\xe6" +
+	"\xcfz\xb0\xba\xde$\x86\x12\xe7\xb4\x03\xf3MM\x9d\x86" +
+	"\xb4\x11B\xf8c\xcffN\xdf\xef\xd8j\xa5u\xb4]" +
+	"s\xb1\xae\x9d\xadk\xaf\xa6\xb7\xb0vw\xe3\xbf&\xad" +
+	"jm\xfe\xaf\x1d\x9a\xdbumM\xbbH\x08\x07\x93o" +
+	"\\\xde\x1c\xda?\xd7\xa4eJ\x91O\x1c\x9a_\xd6\xa3" +
+	"\x7f\x9e\x98'\x84\xdb\xb5\xa1\xe3\xee\xa3\xf2^\x93\xb6\xee" +
+	"\xb6\x9380o\xd5\xb57\x13\xb7\x09a\xefO\xa3\x7f" +
+	">\x97\xef: a\xe2\xb1\xc0\xff\xea\xbbfMW\xa7" +
+	"\x0b\xfa<}\x1bz\xdf\x94\xfa,\xbb\xcfb%\xe9\x06" +
+	"\xbdS\x96\xe7z\xc3o\xab3Q\x01\x10Y\xae\x11i" +
+	" 2\xbe\xff\x90H|\xc7!V\x18\x0c \x0bu\xb9" +
+	"\xac.\x7f\xe0\x10k\x0c\x06cY0\"\xe3\xb7a\"" +
+	"\xb1\xc2!\xd6\x19\x0c\xce\xb3\xe0D\xc6\x1f\xef\x10\x89_" +
+	"9\xc4_\x0c\x86\xa6e\xa1\x11\x19\x1b\xaf\x12\x895\x0e" +
+	"q\x9e!\xb4\x8b\xd2\x0d\xec`\x91\x88\x909\x05I@" +
+	"\x86\x10z~e\xce.J\xbfQ]m\xfb\xe8N\x9f" +
+	"\xfel\xedau\xc4\xb3|\xcb\xa9\"s\xfa\xf6Fa" +
+	"i\xaa\xe2\x06r!@\xe6t\xe2\x8dJgP\xa9\x94" +
+	"\xabh'\x148\x90\x09'.]\xfb\xfb\x85O\xef\x1f" +
+	"\xa9r\xbb\xea\xd7\x82\xcb\xa82\xe3\x0b\x81\x02\xa3E`" +
+	"\xd2\x8aA\x8aCt3\x84\x8e\xacV\xad\x92\xac\xaa\x98" +
+	"\x91w4\xbc3\xbc\x0b~\xc5\xf1\xd0l\xfdI\xccz" +
+	"\xda\xb7J\x8e\x1a\x0cb\xb1\xa3\x1d:\xc3\xfa\x03\x056" +
+	"i\x07\x8b\xca<\x15\x99\xbf\xf7\x15\x91x\x97C\x14b" +
+	"\x03\xcd\xbfD$\xc68\xc4g\xb1\x81\x0au9\xce!" +
+	"\xbe\x88\xc64m\x13\x97>R\xc4\x90\"<\xe3Z\x8e" +
+	"\x8c>\xfcJ9\xfah\x19\xe8}\xf5\x92\xa4t\xeb\xaf" +
+	"}*\x0a\xf4\xa2\x02\xd9\xcd!\x06b\x81r\x0aA?" +
+	"\x87\x18g\x08\x03\xe9xe+\x90\x8a\xeeI\x839\xcb" +
+	"\xb7\xad\xc9\xb2\x8caQ\xa5'\xc1\xc8\xab\x01\xf1\x92T" +
+	"\xad3Qk\xab\x83H|\xcd!fb\xad\xa5z\xf6" +
+	"\x04\x87(\xc7X\xd8\xea\xb2\xc8!\xbc\xd8r;j\xb9" +
+	"g8D\xc0\xc0\xedbK\x12\x8f0j\xec\xa5\x1b\x9c" +
+	"\x89\xa9\xa0\x96\x1a\xd5&H\xea\x97\xe9\xe2\x10\xfd\x0c'" +
+	"A_\x99$\x12=\x1cb\x90\xa1\xd3\xa9\x14e9\xf2" +
+	"U\xc4\xa4o\x05\x94\x9c\xf5%\xda\x88\xa1\x8d\xf0 \x00" +
+	"\x00\xff\xffC\xd3@p"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{
@@ -685,7 +887,9 @@ func RegisterSchema(reg *schemas.Registry) {
 		Nodes: []uint64{
 			0x8ffdc08b384f2b85,
 			0x948974068aa27f34,
+			0xa71ad80631a22c86,
 			0xa895f29001a70dc1,
+			0xaad839a2b63c0738,
 			0xd46cfa28fd39b1b5,
 			0xda244d169243872e,
 		},

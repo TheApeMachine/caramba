@@ -49,7 +49,10 @@ func NewNeo4j() *Neo4j {
 Generate processes a query and returns the results via the artifact channel.
 It implements the Generator pattern to handle graph database operations asynchronously.
 */
-func (n4j *Neo4j) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (n4j *Neo4j) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("memory.Neo4j.Generate")
 
 	out := make(chan *datura.Artifact)

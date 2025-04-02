@@ -37,3 +37,12 @@ struct Message {
     name    @2 :Text;
     content @3 :Text;
 }
+
+struct Prompt {
+    fragments @0 :List(Fragment);
+}
+
+struct Fragment {
+    template  @0 :Text;
+    variables @1 :List(Text);
+}

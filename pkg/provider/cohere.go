@@ -73,7 +73,10 @@ func WithCohereEndpoint(endpoint string) CohereProviderOption {
 	}
 }
 
-func (prvdr *CohereProvider) Generate(buffer chan *datura.Artifact) chan *datura.Artifact {
+func (prvdr *CohereProvider) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("provider.CohereProvider.Generate")
 
 	out := make(chan *datura.Artifact)
