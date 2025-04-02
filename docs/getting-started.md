@@ -4,80 +4,117 @@ This guide will help you get up and running with Caramba, the Go-based agent fra
 
 ## Installation
 
-1. Install Go (1.21 or higher)
-2. Install Caramba:
+Install Go (1.21 or higher)
+Clone the repository:
 
 ```bash
-go get github.com/theapemachine/caramba
+git clone https://github.com/theapemachine/caramba.git
+cd caramba
+```
+
+Build the binary:
+
+```bash
+go build
 ```
 
 ## Environment Setup
 
-Create a `.env` file in your project root:
+Create a `.env` file in your project root with your API keys:
 
 ```env
 OPENAI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here
-# Add other provider keys as needed
+GOOGLE_API_KEY=your_key_here
+COHERE_API_KEY=your_key_here
+AZURE_DEVOPS_PAT=your_token_here
+GITHUB_PAT=your_token_here
+SLACK_BOT_TOKEN=your_token_here
 ```
 
-Start required services:
+## Using Caramba as an MCP Server
+
+Start the MCP server:
 
 ```bash
-docker compose up
+./caramba mcp
 ```
 
-## Basic Usage
+This launches Caramba as a Model Context Protocol server, allowing AI systems like Claude to access its tools.
 
-### 1. Create a Simple Chat Agent
+## Basic Usage Example
+
+### Creating a Simple Agent
 
 ```go
 package main
 
 import (
+    "context"
+    "io"
+    "os"
+
     "github.com/theapemachine/caramba/pkg/ai"
+    "github.com/theapemachine/caramba/pkg/core"
+    "github.com/theapemachine/caramba/pkg/datura"
     "github.com/theapemachine/caramba/pkg/provider"
-    "github.com/theapemachine/caramba/pkg/workflow"
+    "github.com/theapemachine/caramba/pkg/tools"
 )
 
 func main() {
-    // Initialize agent
-    agent := ai.NewAgent(
-        ai.WithModel("gpt-4"),
+    // Create context for cancellation
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    // Create an agent
+    agent := ai.NewAgentBuilder(
+        ai.WithCancel(ctx),
+        ai.WithIdentity("assistant", "helper"),
+        ai.WithProvider(provider.ProviderTypeOpenAI),
+        ai.WithParams(ai.NewParamsBuilder(
+            ai.WithModel("gpt-4o"),
+            ai.WithTemperature(0.7),
+        )),
+        ai.WithTools(
+            tools.NewToolBuilder(tools.WithMCP(tools.NewBrowser().Schema.ToMCP())),
+        ),
     )
 
-    // Setup provider
-    provider := provider.NewOpenAIProvider(
-        os.Getenv("OPENAI_API_KEY"),
-        "https://api.openai.com/v1",
+    // Create a message
+    message := ai.NewMessageBuilder(
+        ai.WithRole("user"),
+        ai.WithContent("What is the current weather in New York?"),
     )
 
-    // Create workflow
-    pipeline := workflow.NewPipeline(
-        agent,
-        workflow.NewFeedback(provider, agent),
-        workflow.NewConverter(),
+    // Add message to context
+    context := ai.NewContextBuilder(
+        ai.WithMessages(message),
     )
 
-    // Use the pipeline...
+    // Update agent with context
+    ai.WithContext(context)(agent)
+
+    // Create streamer
+    streamer := core.NewStreamer(agent)
+
+    // Process request and output response
+    io.Copy(streamer, datura.New())
+    io.Copy(os.Stdout, streamer)
 }
 ```
 
-### 2. Run Examples
+### Running Built-in Examples
 
 Caramba comes with built-in examples:
 
 ```bash
-# Run the pipeline example
-go run main.go examples pipeline
-
-# Run the chat example
-go run main.go examples chat
+# Run the code generation example
+./caramba example
 ```
 
 ## Next Steps
 
 - Read about [Core Concepts](core-concepts.md)
-- Explore the [API Reference](api-reference.md)
+- Learn about MCP integration in [MCP Documentation](mcp.md)
 - Check out more [Examples](examples.md)
-- Learn how to [Contribute](contributing.md)
+- Contribute to the project (see [GitHub repository](https://github.com/theapemachine/caramba))

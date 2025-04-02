@@ -18,30 +18,29 @@ A powerful, Go-based agent framework that follows the "everything is `io`" philo
 
 ## MCP
 
-Besides an agent framework, Caramba can also be used as an MCP (Model Context Protocol) server, which will make all the built-in tools available to the client.
+Caramba can be used as an MCP (Model Context Protocol) server, providing built-in tools to AI clients like Claude. This feature allows external AI models to access Caramba's tools and capabilities.
 
-You will have to build a binary first.
+First, build the binary:
 
 ```bash
 go build
 ```
 
-To run it as an `mcp` server, use the appropriate `cli` command.
+Start the MCP server:
 
 ```bash
 caramba mcp
 ```
 
-To integrate it with Claude, you will have to modify the config.
+To integrate with Claude or other MCP clients, modify the config:
 
 ```json
 "mcpServers": {
-    ... (other MCP server configs),
     "caramba": {
       "command": "/path/to/caramba mcp",
       "args": [],
       "env": {
-        "PATH": "It seems Claude does not have access to the ENV, so you can set your PATH this way",
+        "PATH": "/your/path/environment",
         "AZURE_DEVOPS_ORG": "<your azure devops org>",
         "AZURE_DEVOPS_ORG_URL": "<your azure devops org url>",
         "AZDO_PAT": "<your azure devops personal access token>",
@@ -49,7 +48,7 @@ To integrate it with Claude, you will have to modify the config.
         "SLACK_DEFAULT_CHANNEL": "<your slack channel id>",
         "SLACK_BOT_TOKEN": "<your slack bot token>",
         "GITHUB_PAT": "<your github personal access token>",
-        "OPENAI_API_KEY": "<your OpenAI key>",
+        "OPENAI_API_KEY": "<your OpenAI key>"
       }
     }
 }
@@ -57,76 +56,64 @@ To integrate it with Claude, you will have to modify the config.
 
 ## ✨ Features
 
-Caramba comes with a wide array of features that focus on solving real-world problems through a unified I/O interface.
+Caramba provides a unified I/O interface with various components that work together seamlessly.
 
 ### Tool System
 
-- [x] Model Context Protocol (MCP)
+- [x] Model Context Protocol (MCP) integration
       [Read More](docs/mcp.md)
 - [x] Agent with dynamic tool loading
-- [x] Browser for web interaction
+- [x] Browser automation for web interaction
 - [x] Memory integration
   - [x] QDrant vector store
   - [x] Neo4j graph database
 - [x] Docker integration
-- [x] Github integration
+- [x] Kubernetes integration
+- [x] GitHub integration
 - [x] Azure DevOps integration
-- [x] File Editor
+- [x] File Editor with code manipulation
 - [x] Environment tool for terminal interaction
+- [x] Slack integration
 
-### Workflow System
+### Stream Processing
 
-- [x] Pipeline Architecture
-  - [x] Composable components
-  - [x] Bidirectional data flow
-- [x] Feedback Loops
-      [Read More](feedback.md)
-- [ ] Graph-based Workflows
-- [x] Stream Processing
-      [Read More](stream/README.md)
-- [x] Data Conversion
+- [x] IO-based architecture
+- [x] Bidirectional data flow
+- [x] Error handling and propagation
+- [x] Buffer management
+      [Read More](pkg/stream/README.md)
 
-[Read More](workflow/README.md)
+### AI Provider Support
 
-### AI Provider Integration
-
-- [x] OpenAI with full capabilities
+- [x] OpenAI
   - [x] Streaming responses
   - [x] Tool calling
+  - [x] Function calling
   - [x] Structured outputs
   - [x] Embeddings
-- [x] OpenAI-Compatible APIs
 - [x] Anthropic (Claude)
   - [x] Streaming responses
   - [x] Tool calling
-  - [ ] Structured outputs
-- [x] Google
-  - [ ] Streaming
-  - [ ] Tool calling
-  - [ ] Structured outputs
+- [x] Google (Gemini)
 - [x] Cohere
-  - [ ] Streaming
-  - [ ] Tool calling
-  - [ ] Structured outputs
-- [x] Ollama (Local Models)
-  - [ ] Streaming
-  - [ ] Tool calling
-  - [ ] Structured outputs
+- [x] DeepSeek
+- [x] Ollama (for local models)
 
-### Security & Data
+### System Components
 
-- [x] Encrypted Payloads
-- [x] Artifact System
-- [x] Metadata Management
-- [x] Cryptographic Signatures
+- [x] Error handling (errnie)
+- [x] File system abstraction
+- [x] Service management
+- [x] Configuration management
+- [x] Docker/Kubernetes orchestration
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Go 1.21 or higher
-- Docker and Docker Compose
-- API keys for desired providers
+- Docker (optional, for running QDrant, Neo4j, etc.)
+- API keys for desired AI providers
 
 ### Installation
 
@@ -136,52 +123,56 @@ go get github.com/theapemachine/caramba
 
 ### Basic Usage
 
-Start required services:
+Build the binary:
 
 ```bash
-docker compose up
+go build
 ```
 
-> The required services setup is being phased out, given that Caramba now has Docker and Kubernetes built into the framework, including everything that is needed to set up the services.
+Run the MCP server:
+
+```bash
+./caramba mcp
+```
 
 Run an example:
 
 ```bash
-go run main.go examples pipeline
+./caramba example
 ```
 
 ## 📚 Documentation
 
 - [Getting Started Guide](docs/getting-started.md)
 - [Core Concepts](docs/core-concepts.md)
-- [API Reference](docs/api-reference.md)
+- [MCP Integration](docs/mcp.md)
 - [Examples](docs/examples.md)
 
-## 🛠️ Example: Creating a Simple Agent
+## 🛠️ Example: Creating an Agent
 
 ```go
+// Initialize an AI agent with tools
 agent := ai.NewAgent(
-    ai.WithModel("gpt-4"),
-    ai.WithTools([]*provider.Tool{
-        tools.NewBrowser().Schema,
-    }),
+    ai.WithProvider("openai"),
+    ai.WithTools(
+        tools.NewBrowser(),
+        tools.NewEditor(),
+        tools.NewMemory(),
+    ),
 )
 
-provider := provider.NewOpenAIProvider(
-    os.Getenv("OPENAI_API_KEY"),
-    tweaker.GetEndpoint("openai"),
-)
+// Use the agent to interact with AI
+response, err := agent.Ask("Look up the current weather and save it to weather.txt")
+if err != nil {
+    log.Fatal(err)
+}
 
-pipeline := workflow.NewPipeline(
-    agent,
-    workflow.NewFeedback(provider, agent),
-    workflow.NewConverter(),
-)
+fmt.Println(response)
 ```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read our [Contributing Guidelines](docs/contributing.md) for details on how to submit pull requests, report issues, and contribute to the project.
+Contributions are welcome! Please read our [Contributing Guidelines](docs/contributing.md) for details on how to submit pull requests and report issues.
 
 ## 📄 License
 

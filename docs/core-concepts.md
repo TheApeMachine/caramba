@@ -21,9 +21,17 @@ Agents are the core processing units that:
 - Process responses
 
 ```go
-agent := ai.NewAgent(
-    ai.WithModel("gpt-4"),
-    ai.WithTools(tools),
+agent := ai.NewAgentBuilder(
+    ai.WithIdentity("assistant", "helper"),
+    ai.WithProvider(provider.ProviderTypeOpenAI),
+    ai.WithParams(ai.NewParamsBuilder(
+        ai.WithModel("gpt-4o"),
+        ai.WithTemperature(0.7),
+    )),
+    ai.WithTools(
+        tools.NewToolBuilder(tools.WithMCP(tools.NewBrowser().Schema.ToMCP())),
+        tools.NewToolBuilder(tools.WithMCP(tools.NewMemoryTool().Schema.ToMCP())),
+    ),
 )
 ```
 
@@ -36,27 +44,98 @@ Providers are the AI service integrations that:
 - Process tool calls
 - Format structured outputs
 
+The system supports multiple providers:
+
 ```go
-provider := provider.NewOpenAIProvider(
-    os.Getenv("OPENAI_API_KEY"),
-    endpoint,
-)
+// Available provider types
+provider.ProviderTypeMock
+provider.ProviderTypeOpenAI
+provider.ProviderTypeAnthropic
+provider.ProviderTypeGoogle
+provider.ProviderTypeCohere
+provider.ProviderTypeDeepSeek
+provider.ProviderTypeOllama
 ```
 
 ### Tools
 
-Tools extend agent capabilities:
+Tools extend agent capabilities through a unified interface:
 
-- Browser for web interaction
+- Browser for web automation
 - Memory for data persistence
 - Environment for system interaction
+- Editor for file manipulation
+- Azure DevOps integration
+- GitHub integration
+- Slack integration
 - Custom tools through MCP
 
 ```go
-tools := []*provider.Tool{
-    tools.NewBrowser().Schema,
-    tools.NewMemoryTool(stores).Schema,
-}
+// Tool creation
+tools.NewToolBuilder(tools.WithMCP(tools.NewBrowser().Schema.ToMCP()))
+tools.NewToolBuilder(tools.WithMCP(tools.NewEditor().Schema.ToMCP()))
+tools.NewToolBuilder(tools.WithMCP(tools.NewMemoryTool().Schema.ToMCP()))
+```
+
+## Stream Processing
+
+Caramba implements a stream-based architecture:
+
+- IO-based data flow
+- Generator pattern for data processing
+- Artifact-based communication
+- Buffer management
+
+```go
+// Creating and using streamers
+streamer := core.NewStreamer(agent)
+io.Copy(streamer, artifact)
+```
+
+### Artifacts
+
+Artifacts are secure data containers:
+
+- Structured message format
+- Metadata management
+- Serialization support
+- Cross-component communication
+
+```go
+artifact := datura.New(
+    datura.WithPayload(data),
+    datura.WithMetadata(meta),
+)
+```
+
+## Memory Integration
+
+Long-term storage through:
+
+- QDrant for vector storage
+- Neo4j for graph relationships
+- Unified memory interface
+- Context persistence
+
+```go
+// Memory components
+memory.NewQdrant()
+memory.NewNeo4j()
+```
+
+## MCP Integration
+
+Model Context Protocol support:
+
+- Tool integration with AI models
+- Standardized interfaces
+- Client-server architecture
+- Bidirectional communication
+
+```go
+// Starting MCP server
+service := service.NewMCP()
+service.Start()
 ```
 
 ## Workflow System
@@ -96,7 +175,7 @@ feedback := workflow.NewFeedback(
 
 ## Data & Security
 
-### Artifacts
+### Secure Artifacts
 
 Artifacts are secure data containers:
 
@@ -112,7 +191,7 @@ artifact := datura.New(
 )
 ```
 
-### Memory Integration
+### Persistent Storage
 
 Long-term storage through:
 
@@ -120,12 +199,3 @@ Long-term storage through:
 - Neo4j for graph relationships
 - Unified memory interface
 - Context persistence
-
-## Stream Processing
-
-Built-in streaming support:
-
-- Chunked data handling
-- Real-time processing
-- Resource efficiency
-- Backpressure handling

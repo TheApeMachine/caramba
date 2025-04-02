@@ -1,56 +1,67 @@
 # Examples
 
-## Basic Chat Agent
+## Basic AI Agent
 
-Create a simple chat agent that can interact with users:
+Create a simple AI agent that can interact with various tools:
 
 ```go
 package main
 
 import (
+    "context"
+    "fmt"
+    "io"
+    "os"
+
     "github.com/theapemachine/caramba/pkg/ai"
+    "github.com/theapemachine/caramba/pkg/core"
+    "github.com/theapemachine/caramba/pkg/datura"
+    "github.com/theapemachine/caramba/pkg/errnie"
     "github.com/theapemachine/caramba/pkg/provider"
-    "github.com/theapemachine/caramba/pkg/workflow"
+    "github.com/theapemachine/caramba/pkg/tools"
 )
 
 func main() {
-    // Create agent with OpenAI
-    agent := ai.NewAgent(
-        ai.WithModel("gpt-4"),
-    )
+    // Create context for cancellation
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
 
-    // Setup provider
-    provider := provider.NewOpenAIProvider(
-        os.Getenv("OPENAI_API_KEY"),
-        tweaker.GetEndpoint("openai"),
-    )
-
-    // Create pipeline
-    pipeline := workflow.NewPipeline(
-        agent,
-        workflow.NewFeedback(provider, agent),
-        workflow.NewConverter(),
-    )
-
-    // Handle chat
-    for {
-        // Read user input
-        fmt.Print("> ")
-        input, _ := reader.ReadString('\n')
-
-        // Process through pipeline
-        msg := datura.New(
-            datura.WithPayload(provider.NewParams(
-                provider.WithMessages(
-                    provider.NewMessage(
-                        provider.WithUserRole("User", input),
-                    ),
+    // Initialize agent
+    agent := ai.NewAgentBuilder(
+        ai.WithCancel(ctx),
+        ai.WithIdentity("assistant", "helper"),
+        ai.WithProvider(provider.ProviderTypeOpenAI),
+        ai.WithParams(ai.NewParamsBuilder(
+            ai.WithModel("gpt-4o"),
+            ai.WithTemperature(0.7),
+        )),
+        ai.WithContext(ai.NewContextBuilder(
+            ai.WithMessages(
+                ai.NewMessageBuilder(
+                    ai.WithRole("user"),
+                    ai.WithContent("Hello, what can you help me with?"),
                 ),
-            ).Marshal()),
-        )
+            ),
+        )),
+    )
 
-        io.Copy(pipeline, msg)
-        io.Copy(os.Stdout, pipeline)
+    // Create streamer to handle communication
+    streamer := core.NewStreamer(agent)
+
+    // Create artifact with initial message
+    artifact := datura.New(
+        datura.WithPayload([]byte("Hello, can you help me with a task?")),
+    )
+
+    // Process through streamer and display response
+    if _, err := io.Copy(streamer, artifact); err != nil {
+        errnie.Error(err)
+        return
+    }
+
+    // Output response
+    if _, err := io.Copy(os.Stdout, streamer); err != nil {
+        errnie.Error(err)
     }
 }
 ```
@@ -60,45 +71,34 @@ func main() {
 Create an agent that can browse the web and process information:
 
 ```go
-agent := ai.NewAgent(
-    ai.WithModel("gpt-4"),
-    ai.WithTools([]*provider.Tool{
-        tools.NewBrowser().Schema,
-    }),
-)
-
-provider := provider.NewOpenAIProvider(
-    os.Getenv("OPENAI_API_KEY"),
-    tweaker.GetEndpoint("openai"),
-)
-
-pipeline := workflow.NewPipeline(
-    agent,
-    workflow.NewFeedback(
-        provider,
-        agent,
+// Initialize agent with browser tool
+agent := ai.NewAgentBuilder(
+    ai.WithCancel(ctx),
+    ai.WithIdentity("researcher", "web-explorer"),
+    ai.WithProvider(provider.ProviderTypeOpenAI),
+    ai.WithParams(ai.NewParamsBuilder(
+        ai.WithModel("gpt-4o"),
+        ai.WithTemperature(0.5),
+    )),
+    ai.WithTools(
+        tools.NewToolBuilder(tools.WithMCP(tools.NewBrowser().Schema.ToMCP())),
     ),
-    workflow.NewConverter(),
-)
-
-// Research task
-msg := datura.New(
-    datura.WithPayload(provider.NewParams(
-        provider.WithModel("gpt-4"),
-        provider.WithTools(tools.NewBrowser().Schema),
-        provider.WithMessages(
-            provider.NewMessage(
-                provider.WithUserRole(
-                    "User",
-                    "Research the latest developments in AI and summarize them.",
-                ),
+    ai.WithContext(ai.NewContextBuilder(
+        ai.WithMessages(
+            ai.NewMessageBuilder(
+                ai.WithRole("user"),
+                ai.WithContent("Research the latest developments in AI and summarize them."),
             ),
         ),
-    ).Marshal()),
+    )),
 )
 
-io.Copy(pipeline, msg)
-io.Copy(os.Stdout, pipeline)
+// Create streamer
+streamer := core.NewStreamer(agent)
+
+// Process request and get response
+io.Copy(streamer, datura.New())
+io.Copy(os.Stdout, streamer)
 ```
 
 ## Memory-Enhanced Agent
@@ -106,129 +106,119 @@ io.Copy(os.Stdout, pipeline)
 Create an agent with long-term memory capabilities:
 
 ```go
-// Setup memory stores
-stores := map[string]io.ReadWriteCloser{
-    "qdrant": memory.NewQdrant(),
-    "neo4j":  memory.NewNeo4j(),
+// Initialize agent with memory tools
+agent := ai.NewAgentBuilder(
+    ai.WithCancel(ctx),
+    ai.WithIdentity("memory-agent", "assistant"),
+    ai.WithProvider(provider.ProviderTypeOpenAI),
+    ai.WithParams(ai.NewParamsBuilder(
+        ai.WithModel("gpt-4o"),
+        ai.WithTemperature(0.7),
+    )),
+    ai.WithTools(
+        tools.NewToolBuilder(tools.WithMCP(tools.NewMemoryTool().Schema.ToMCP())),
+    ),
+    ai.WithContext(ai.NewContextBuilder(
+        ai.WithMessages(
+            ai.NewMessageBuilder(
+                ai.WithRole("user"),
+                ai.WithContent("What do you remember about our previous conversations?"),
+            ),
+        ),
+    )),
+)
+
+// Create streamer
+streamer := core.NewStreamer(agent)
+
+// Process request and get response
+io.Copy(streamer, datura.New())
+io.Copy(os.Stdout, streamer)
+```
+
+## System Interaction Agent
+
+Create an agent that can interact with the system environment:
+
+```go
+// Initialize agent with environment tools
+agent := ai.NewAgentBuilder(
+    ai.WithCancel(ctx),
+    ai.WithIdentity("system-agent", "admin"),
+    ai.WithProvider(provider.ProviderTypeOpenAI),
+    ai.WithParams(ai.NewParamsBuilder(
+        ai.WithModel("gpt-4o"),
+        ai.WithTemperature(0.3),
+    )),
+    ai.WithTools(
+        tools.NewToolBuilder(tools.WithMCP(tools.NewEnvironment().Schema.ToMCP())),
+        tools.NewToolBuilder(tools.WithMCP(tools.NewSystemInspectTool().Schema.ToMCP())),
+        tools.NewToolBuilder(tools.WithMCP(tools.NewSystemOptimizeTool().Schema.ToMCP())),
+    ),
+    ai.WithContext(ai.NewContextBuilder(
+        ai.WithMessages(
+            ai.NewMessageBuilder(
+                ai.WithRole("user"),
+                ai.WithContent("List all running Docker containers and their status."),
+            ),
+        ),
+    )),
+)
+
+// Create streamer
+streamer := core.NewStreamer(agent)
+
+// Process request and get response
+io.Copy(streamer, datura.New())
+io.Copy(os.Stdout, streamer)
+```
+
+## Multi-Provider Example
+
+Create an example that can switch between AI providers:
+
+```go
+// Function to create an agent with specified provider
+func createAgent(providerType provider.ProviderType, model string) *ai.AgentBuilder {
+    return ai.NewAgentBuilder(
+        ai.WithCancel(ctx),
+        ai.WithIdentity("agent", "assistant"),
+        ai.WithProvider(providerType),
+        ai.WithParams(ai.NewParamsBuilder(
+            ai.WithModel(model),
+            ai.WithTemperature(0.7),
+        )),
+        ai.WithContext(ai.NewContextBuilder(
+            ai.WithMessages(
+                ai.NewMessageBuilder(
+                    ai.WithRole("user"),
+                    ai.WithContent("Compare how different models handle this prompt."),
+                ),
+            ),
+        )),
+    )
 }
 
-agent := ai.NewAgent(
-    ai.WithModel("gpt-4"),
-    ai.WithTools([]*provider.Tool{
-        tools.NewMemoryTool(stores).Schema,
-    }),
-)
+// Create agents with different providers
+openaiAgent := createAgent(provider.ProviderTypeOpenAI, "gpt-4o")
+anthropicAgent := createAgent(provider.ProviderTypeAnthropic, "claude-3-opus-20240229")
+googleAgent := createAgent(provider.ProviderTypeGoogle, "gemini-pro")
 
-provider := provider.NewOpenAIProvider(
-    os.Getenv("OPENAI_API_KEY"),
-    tweaker.GetEndpoint("openai"),
-)
+// Create streamers
+openaiStreamer := core.NewStreamer(openaiAgent)
+anthropicStreamer := core.NewStreamer(anthropicAgent)
+googleStreamer := core.NewStreamer(googleAgent)
 
-pipeline := workflow.NewPipeline(
-    agent,
-    workflow.NewFeedback(provider, agent),
-    workflow.NewConverter(),
-)
+// Process with each provider
+io.Copy(openaiStreamer, datura.New())
+io.Copy(anthropicStreamer, datura.New())
+io.Copy(googleStreamer, datura.New())
 
-// Query with memory context
-msg := datura.New(
-    datura.WithPayload(provider.NewParams(
-        provider.WithMessages(
-            provider.NewMessage(
-                provider.WithUserRole(
-                    "User",
-                    "What do you remember about our previous conversations?",
-                ),
-            ),
-        ),
-    ).Marshal()),
-)
-
-io.Copy(pipeline, msg)
-io.Copy(os.Stdout, pipeline)
-```
-
-## Environment Interaction
-
-Create an agent that can interact with the system:
-
-```go
-agent := ai.NewAgent(
-    ai.WithModel("gpt-4"),
-    ai.WithTools([]*provider.Tool{
-        tools.NewEnvironment().Schema,
-    }),
-)
-
-provider := provider.NewOpenAIProvider(
-    os.Getenv("OPENAI_API_KEY"),
-    tweaker.GetEndpoint("openai"),
-)
-
-pipeline := workflow.NewPipeline(
-    agent,
-    workflow.NewFeedback(provider, agent),
-    workflow.NewConverter(),
-)
-
-// System task
-msg := datura.New(
-    datura.WithPayload(provider.NewParams(
-        provider.WithMessages(
-            provider.NewMessage(
-                provider.WithUserRole(
-                    "User",
-                    "List all running Docker containers and their status.",
-                ),
-            ),
-        ),
-    ).Marshal()),
-)
-
-io.Copy(pipeline, msg)
-io.Copy(os.Stdout, pipeline)
-```
-
-## Multi-Provider Pipeline
-
-Create a pipeline that uses multiple AI providers:
-
-```go
-openai := provider.NewOpenAIProvider(
-    os.Getenv("OPENAI_API_KEY"),
-    tweaker.GetEndpoint("openai"),
-)
-
-anthropic := provider.NewAnthropicProvider(
-    os.Getenv("ANTHROPIC_API_KEY"),
-    tweaker.GetEndpoint("anthropic"),
-)
-
-agent := ai.NewAgent(
-    ai.WithModel("gpt-4"),
-)
-
-pipeline := workflow.NewPipeline(
-    agent,
-    workflow.NewFeedback(openai, agent),
-    workflow.NewFeedback(anthropic, agent),
-    workflow.NewConverter(),
-)
-
-// Process with both providers
-msg := datura.New(
-    datura.WithPayload(provider.NewParams(
-        provider.WithMessages(
-            provider.NewMessage(
-                provider.WithUserRole(
-                    "User",
-                    "Compare how different models handle this prompt.",
-                ),
-            ),
-        ),
-    ).Marshal()),
-)
-
-io.Copy(pipeline, msg)
-io.Copy(os.Stdout, pipeline)
+// Output results
+fmt.Println("OpenAI Response:")
+io.Copy(os.Stdout, openaiStreamer)
+fmt.Println("\nAnthropic Response:")
+io.Copy(os.Stdout, anthropicStreamer)
+fmt.Println("\nGoogle Response:")
+io.Copy(os.Stdout, googleStreamer)
 ```

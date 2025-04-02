@@ -84,23 +84,32 @@ For SSE connections:
 
 Tools in MCP follow a unified execution pattern:
 
-1. Tools implement the `io.ReadWriteCloser` interface
-2. Data is passed through artifacts with specific roles
+1. Tools implement the `stream.Generator` interface
+2. Data is passed through `datura.Artifact` objects with specific roles
 3. Results are returned in a standardized format
 
 Example tool execution flow:
 
 ```go
+// Create an artifact with role and metadata
 artifact := datura.New(
     datura.WithRole(role),
     datura.WithMeta(key, value)
 )
 
-// Copy data to tool
-io.Copy(tool, artifact)
+// Create input channel
+input := make(chan *datura.Artifact, 1)
+input <- artifact
+close(input)
 
-// Get result from tool
-io.Copy(buffer, tool)
+// Generate results using the tool
+output := tool.Generate(input)
+
+// Get the result artifact
+result := <-output
+
+// Extract and process the payload
+payload, err := result.DecryptPayload()
 ```
 
 ## Security
@@ -138,6 +147,6 @@ To integrate with the MCP service:
 
 The MCP system is designed to be extensible. New tools can be added by:
 
-1. Implementing the `io.ReadWriteCloser` interface
+1. Implementing the `stream.Generator` interface
 2. Creating appropriate schemas
 3. Registering with the MCP service
