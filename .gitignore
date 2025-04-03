@@ -8,3 +8,4 @@ id_marvin
 id_marvin.pub
 *.log
 caramba
+.DS_Store

@@ -2,7 +2,6 @@ package examples
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/ai"
 	"github.com/theapemachine/caramba/pkg/core"
@@ -11,6 +10,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/system"
 	"github.com/theapemachine/caramba/pkg/tools"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
 
@@ -40,38 +40,64 @@ func NewCode() *Code {
 	streams := make([]*core.Streamer, 0)
 
 	streams = append(streams, core.NewStreamer(
-		ai.NewAgentBuilder(
-			ai.WithCancel(ctx),
-			ai.WithIdentity(utils.GenerateName(), "teamlead"),
-			ai.WithParams(core.NewParamsBuilder(
-				core.WithModel("gpt-4o-mini"),
-				core.WithTemperature(0.5),
-			)),
-			ai.WithContext(
-				core.NewContextBuilder(
-					core.WithMessages(
-						core.NewMessageBuilder(
-							core.WithRole("user"),
-							core.WithContent("Write a Python game"),
+		core.WithGenerator(
+			ai.NewAgentBuilder(
+				ai.WithCancel(ctx),
+				ai.WithIdentity(utils.GenerateName(), "teamlead"),
+				ai.WithParams(core.NewParamsBuilder(
+					core.WithModel("gpt-4o-mini"),
+					core.WithTemperature(0.5),
+				)),
+				ai.WithContext(
+					core.NewContextBuilder(
+						core.WithMessages(
+							core.NewMessageBuilder(
+								core.WithRole("system"),
+								core.WithContent(tweaker.GetSystemPrompt("default")),
+							),
 						),
 					),
 				),
+				ai.WithTools("memory", "system_inspect", "system_optimize", "system_message"),
 			),
-			ai.WithTools("memory", "system_inspect", "system_optimize", "system_message"),
 		),
+		core.WithTopics("agent", "task"),
 	))
 
 	streams = append(streams, core.NewStreamer(
-		provider.NewProviderBuilder(
-			provider.WithCancel(ctx),
-			provider.WithSupplier("openai"),
+		core.WithGenerator(
+			provider.NewProviderBuilder(
+				provider.WithCancel(ctx),
+				provider.WithSupplier(provider.ProviderTypeOpenAI),
+			),
 		),
+		core.WithTopics("provider"),
 	))
 
-	streams = append(streams, core.NewStreamer(tools.NewMemoryTool()))
-	streams = append(streams, core.NewStreamer(tools.NewSystemInspectTool()))
-	streams = append(streams, core.NewStreamer(tools.NewSystemOptimizeTool()))
-	streams = append(streams, core.NewStreamer(tools.NewSystemMessageTool()))
+	streams = append(streams, core.NewStreamer(
+		core.WithGenerator(tools.NewMemoryTool(
+			tools.WithMemoryCancel(ctx),
+		)),
+		core.WithTopics("memory"),
+	))
+	streams = append(streams, core.NewStreamer(
+		core.WithGenerator(tools.NewSystemInspectTool(
+			tools.WithCancel(ctx),
+		)),
+		core.WithTopics("system_inspect"),
+	))
+	streams = append(streams, core.NewStreamer(
+		core.WithGenerator(tools.NewSystemOptimizeTool(
+			tools.WithCancel(ctx),
+		)),
+		core.WithTopics("system_optimize"),
+	))
+	streams = append(streams, core.NewStreamer(
+		core.WithGenerator(tools.NewSystemMessageTool(
+			tools.WithCancel(ctx),
+		)),
+		core.WithTopics("system_message"),
+	))
 
 	// Note that this time we have os.Stdout as the last argument.
 	// This is because we want to output the code to the console.
@@ -101,24 +127,10 @@ func (code *Code) Generate(
 ) chan *datura.Artifact {
 	errnie.Info("Starting code example")
 
-	out := make(chan *datura.Artifact)
-	hub := system.NewHub()
-
-	// Register each stream component with the hub
-	for i, stream := range code.streams {
-		clientID := fmt.Sprintf("stream-%d", i)
-		system.WithClient(clientID, stream)(hub)
-
-		// Subscribe to topics based on component type
-		switch i {
-		case 0: // Agent
-			system.WithTopics(clientID, "agent", "tools")(hub)
-		case 1: // Provider
-			system.WithTopics(clientID, "provider", "agent")(hub)
-		default: // Tools
-			system.WithTopics(clientID, "tools")(hub)
-		}
-	}
+	out := make(chan *datura.Artifact, 64)
+	hub := system.NewHub(
+		system.WithStreamers(code.streams...),
+	)
 
 	// Start the hub processing with the input buffer
 	hubChannel := hub.Generate(buffer)
@@ -132,24 +144,29 @@ func (code *Code) Generate(
 				errnie.Info("Code example cancelled")
 				code.cancel()
 				return
-			case artifact, ok := <-buffer:
-				if !ok {
-					return
-				}
-				// Add routing metadata to the artifact
-				datura.WithMeta("topic", system.Topic("broadcast"))(artifact)
-
-				// Echo the artifact to the output channel
-				out <- artifact
 			case artifact, ok := <-hubChannel:
 				if !ok {
+					errnie.Info("Hub channel closed")
 					return
 				}
+				errnie.Debug("Received artifact from hub", "topic", datura.GetMetaValue[string](artifact, "topic"))
 				// Forward hub processed artifacts to output
 				out <- artifact
 			}
 		}
 	}()
+
+	task := core.NewMessageBuilder(
+		core.WithRole("user"),
+		core.WithContent("Write a Python game"),
+	).Artifact()
+
+	datura.WithMeta("topic", "task")(task)
+	datura.WithRole(datura.ArtifactRoleQuestion)(task)
+	datura.WithScope(datura.ArtifactScopeAquire)(task)
+
+	errnie.Debug("Sending initial task", "topic", "task")
+	buffer <- task
 
 	return out
 }

@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"io"
 	"math"
 	"os"
+	"slices"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -15,7 +16,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/system"
 	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
@@ -26,14 +27,16 @@ It supports regular chat completions, tool calling, and structured outputs.
 */
 type OpenAIProvider struct {
 	client        *openai.Client
-	buffer        *stream.Buffer
 	pctx          context.Context
 	ctx           context.Context
 	cancel        context.CancelFunc
+	status        core.Status
+	waiters       []datura.ArtifactScope
 	out           chan *datura.Artifact
 	paramsBuilder *core.ParamsBuilder
 	ctxBuilder    *core.ContextBuilder
 	toolset       *tools.Toolset
+	protocol      *core.Protocol
 }
 
 /*
@@ -54,6 +57,7 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 
 	prvdr := &OpenAIProvider{
 		client: &client,
+		pctx:   ctx,
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -71,31 +75,52 @@ func (prvdr *OpenAIProvider) Generate(
 ) chan *datura.Artifact {
 	errnie.Debug("provider.OpenAIProvider.Generate")
 
-	prvdr.out = make(chan *datura.Artifact)
+	prvdr.out = make(chan *datura.Artifact, 64)
 
 	go func() {
 		defer close(prvdr.out)
 
-		select {
-		case <-prvdr.pctx.Done():
-			errnie.Debug("provider.OpenAIProvider.Generate.pctx.Done")
-			prvdr.cancel()
-			return
-		case <-prvdr.ctx.Done():
-			errnie.Debug("provider.OpenAIProvider.Generate.ctx.Done")
-			return
-		case artifact, ok := <-buffer:
-			if !ok {
+		for {
+			select {
+			case <-prvdr.pctx.Done():
+				errnie.Debug("provider.OpenAIProvider.Generate.pctx.Done")
+				prvdr.cancel()
 				return
-			}
+			case <-prvdr.ctx.Done():
+				errnie.Debug("provider.OpenAIProvider.Generate.ctx.Done")
+				return
+			case artifact, ok := <-buffer:
+				if !ok {
+					return
+				}
 
-			switch datura.ArtifactRole(artifact.Role()) {
-			case datura.ArtifactRoleAnswer:
-				prvdr.handleAnswer(artifact)
-			case datura.ArtifactRoleAcknowledge:
-				prvdr.handleAcknowledge(artifact)
-			case datura.ArtifactRoleQuestion:
-				prvdr.handleQuestion(artifact)
+				if prvdr.protocol == nil {
+					prvdr.protocol = system.NewHub().GetProtocol(
+						datura.GetMetaValue[string](artifact, "protocol"),
+					)
+				}
+
+				if len(prvdr.waiters) > 0 && !slices.Contains(prvdr.waiters, datura.ArtifactScope(artifact.Scope())) {
+					return
+				}
+
+				prvdr.waiters = slices.DeleteFunc(prvdr.waiters, func(scope datura.ArtifactScope) bool {
+					return scope == datura.ArtifactScope(artifact.Scope())
+				})
+
+				var step *datura.Artifact
+				step, prvdr.status = prvdr.protocol.HandleMessage(prvdr.ID(), artifact)
+
+				switch prvdr.status {
+				case core.StatusWorking:
+					prvdr.run(step)
+				case core.StatusWaiting:
+					prvdr.waiters = append(prvdr.waiters, datura.ArtifactScope(step.Scope()))
+				default:
+					prvdr.out <- step
+				}
+			case <-time.After(100 * time.Millisecond):
+				// Do nothing
 			}
 		}
 	}()
@@ -107,56 +132,71 @@ func (prvdr *OpenAIProvider) ID() string {
 	return "openai"
 }
 
-func (prvdr *OpenAIProvider) handleAnswer(artifact *datura.Artifact) {
-	// TODO: Implement
-}
+func (prvdr *OpenAIProvider) run(artifact *datura.Artifact) {
+	errnie.Debug("provider.OpenAIProvider.run")
 
-func (prvdr *OpenAIProvider) handleAcknowledge(artifact *datura.Artifact) {
-	// TODO: Implement
-}
-
-func (prvdr *OpenAIProvider) handleQuestion(artifact *datura.Artifact) {
-
-	model, err := prvdr.paramsBuilder.Model()
-
-	if errnie.Error(err) != nil {
-		return
-	}
-
-	composed := &openai.ChatCompletionNewParams{
-		Model:            openai.ChatModel(model),
-		Temperature:      openai.Float(prvdr.paramsBuilder.Temperature()),
-		TopP:             openai.Float(prvdr.paramsBuilder.TopP()),
-		FrequencyPenalty: openai.Float(prvdr.paramsBuilder.FrequencyPenalty()),
-		PresencePenalty:  openai.Float(prvdr.paramsBuilder.PresencePenalty()),
-	}
-
-	if prvdr.paramsBuilder.MaxTokens() > 1 {
-		composed.MaxTokens = openai.Int(int64(prvdr.paramsBuilder.MaxTokens()))
-	}
-
-	if err = prvdr.buildMessages(composed); err != nil {
+	// Handle different question scopes according to protocol
+	switch datura.ArtifactScope(artifact.Scope()) {
+	case datura.ArtifactScopeAquire:
+		// Initial request from agent, respond with preflight question and acquire ack
 		prvdr.out <- datura.New(
-			datura.WithError(err),
+			datura.WithRole(datura.ArtifactRoleQuestion),
+			datura.WithScope(datura.ArtifactScopePreflight),
+			datura.WithMeta("to", datura.GetMetaValue[string](artifact, "from")),
+			datura.WithMeta("from", prvdr.ID()),
 		)
-
-		return
-	}
-
-	if err = prvdr.buildTools(composed); err != nil {
 		prvdr.out <- datura.New(
-			datura.WithError(err),
+			datura.WithRole(datura.ArtifactRoleAcknowledge),
+			datura.WithScope(datura.ArtifactScopeAquire),
+			datura.WithMeta("to", datura.GetMetaValue[string](artifact, "from")),
+			datura.WithMeta("from", prvdr.ID()),
 		)
-
 		return
-	}
+	case datura.ArtifactScopePreflight:
+		// This shouldn't happen - provider doesn't handle preflight questions
+		prvdr.out <- datura.New(
+			datura.WithError(errnie.Error("provider received unexpected preflight question")),
+		)
+		return
+	default:
+		// Actual generation request
+		model, err := prvdr.paramsBuilder.Model()
+		if errnie.Error(err) != nil {
+			return
+		}
 
-	if prvdr.paramsBuilder.Stream() {
-		prvdr.handleStreamingRequest(composed, &prvdr.out)
-	} else {
-		prvdr.handleSingleRequest(composed, &prvdr.out)
-	}
+		composed := &openai.ChatCompletionNewParams{
+			Model:            openai.ChatModel(model),
+			Temperature:      openai.Float(prvdr.paramsBuilder.Temperature()),
+			TopP:             openai.Float(prvdr.paramsBuilder.TopP()),
+			FrequencyPenalty: openai.Float(prvdr.paramsBuilder.FrequencyPenalty()),
+			PresencePenalty:  openai.Float(prvdr.paramsBuilder.PresencePenalty()),
+		}
 
+		if prvdr.paramsBuilder.MaxTokens() > 1 {
+			composed.MaxTokens = openai.Int(int64(prvdr.paramsBuilder.MaxTokens()))
+		}
+
+		if err = prvdr.buildMessages(composed); err != nil {
+			prvdr.out <- datura.New(
+				datura.WithError(err),
+			)
+			return
+		}
+
+		if err = prvdr.buildTools(composed); err != nil {
+			prvdr.out <- datura.New(
+				datura.WithError(err),
+			)
+			return
+		}
+
+		if prvdr.paramsBuilder.Stream() {
+			prvdr.handleStreamingRequest(composed)
+		} else {
+			prvdr.handleSingleRequest(composed)
+		}
+	}
 }
 
 func (prvdr *OpenAIProvider) Name() string {
@@ -182,7 +222,6 @@ handleSingleRequest processes a single (non-streaming) completion request
 */
 func (prvdr *OpenAIProvider) handleSingleRequest(
 	params *openai.ChatCompletionNewParams,
-	out *chan *datura.Artifact,
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
 
@@ -248,7 +287,6 @@ and emits chunks as they're received.
 */
 func (prvdr *OpenAIProvider) handleStreamingRequest(
 	params *openai.ChatCompletionNewParams,
-	out *chan *datura.Artifact,
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
@@ -266,48 +304,44 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		}
 
 		if content, ok := acc.JustFinishedContent(); ok && content != "" {
-			if _, err = io.Copy(prvdr.buffer, datura.New(
+			prvdr.out <- datura.New(
+				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(content)),
-			)); errnie.Error(err) != nil {
-				continue
-			}
+			)
 		}
 
 		if tool, ok := acc.JustFinishedToolCall(); ok {
 			params.Messages = append(params.Messages, openai.AssistantMessage(acc.Choices[0].Message.Content))
-
-			switch tool.Name {
-			case "browser":
-				if tool.Arguments != "" {
-					if _, err = io.Copy(prvdr.buffer, datura.New(
-						datura.WithPayload([]byte(tool.Arguments)),
-					)); errnie.Error(err) != nil {
-						continue
-					}
-				}
-			}
+			prvdr.out <- datura.New(
+				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithScope(datura.ArtifactScopeGeneration),
+				datura.WithPayload([]byte(tool.Arguments)),
+			)
 		}
 
 		if refusal, ok := acc.JustFinishedRefusal(); ok && refusal != "" {
-			if _, err = io.Copy(prvdr.buffer, datura.New(
+			prvdr.out <- datura.New(
+				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(refusal)),
-			)); errnie.Error(err) != nil {
-				continue
-			}
+			)
 		}
 
 		// Only write non-empty content from chunks
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			if _, err = io.Copy(prvdr.buffer, datura.New(
+			prvdr.out <- datura.New(
+				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(chunk.Choices[0].Delta.Content)),
-			)); errnie.Error(err) != nil {
-				continue
-			}
+			)
 		}
 	}
 
 	if err = stream.Err(); err != nil {
-		errnie.Error("Streaming error", "error", err)
+		prvdr.out <- datura.New(
+			datura.WithError(errnie.Error("Streaming error", "error", err)),
+		)
 		return err
 	}
 

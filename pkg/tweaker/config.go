@@ -159,3 +159,7 @@ func GetStringSlice(key string) []string {
 
 	return cfg.v().GetStringSlice(key)
 }
+
+func GetProtocol(key string) []string {
+	return get("protocols."+key, cfg.v().GetStringSlice, []string{})
+}

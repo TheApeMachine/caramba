@@ -1,0 +1,32 @@
+openai_api_key: ${OPENAI_API_KEY}
+
+protocols:
+  # Protocol for agent-provider interaction
+  agent_provider:
+    steps:
+      # Initial request from agent to provider
+      - "<agent> -[question|aquire]-> <provider> (ready)"
+      # Provider asks for preflight info
+      - "<provider> -[question|preflight]-> <agent> (waiting)"
+      # Agent sends parameters
+      - "<agent> -[answer|params]-> <provider> (working)"
+      # Agent sends context
+      - "<agent> -[answer|context]-> <provider> (working)"
+      # Provider acknowledges receipt
+      - "<provider> -[ack|aquire]-> <agent> (busy)"
+      # Provider sends generation
+      - "<provider> -[answer|generation]-> <agent> (done)"
+      # Agent acknowledges receipt
+      - "<agent> -[ack|release]-> <provider> (ready)"
+
+  # Protocol for agent-tool interaction
+  agent_tool:
+    steps:
+      # Initial request from agent to tool
+      - "<agent> -[question|aquire]-> <tool> (ready)"
+      # Tool acknowledges and starts processing
+      - "<tool> -[ack|aquire]-> <agent> (working)"
+      # Tool sends result
+      - "<tool> -[answer|generation]-> <agent> (done)"
+      # Agent acknowledges receipt
+      - "<agent> -[ack|release]-> <tool> (ready)"

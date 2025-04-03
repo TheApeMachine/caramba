@@ -26,6 +26,7 @@ const (
 	ArtifactScopeParams
 	ArtifactScopeContext
 	ArtifactScopeAquire
+	ArtifactScopeRelease
 	ArtifactScopePreflight
 )
 

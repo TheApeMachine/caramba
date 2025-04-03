@@ -87,6 +87,18 @@ settings:
   global:
     iteration_limit: 10
 
+protocols:
+  task:
+    - <sender> -[question|aquire]-> <receiver> (waiting)
+    - <receiver> -[ack|aquire]-> <sender> (waiting)
+    - <sender> -[ack|aquire]-> <receiver> (busy)
+    - <receiver> -[question|preflight]-> <sender> (busy)
+    - <sender> -[answer|params]-> <receiver> (working)
+    - <sender> -[answer|context]-> <receiver> (working)
+    - <receiver> -[answer|generation]-> <sender> (busy)
+    - <sender> -[ack|release]-> <receiver> (ready)
+    - <receiver> -[ack|release]-> <sender> (ready)
+
 tools:
   qdrant:
     host: localhost
@@ -851,102 +863,3 @@ tools:
           presencePenalty:
             type: "number"
             description: "Adjust presencePenalty (-2.0 to 2.0) to control topic focus: positive values encourage exploring new topics; negative values favor staying on existing topics."
-templates:
-  memory: |
-    You are an advanced memory extraction system for an AI agent. 
-    Extract important information from the provided text that should be stored as memories.
-
-    The following rules apply:
-
-    1. Only extract high-value memories that contain information that is likely to be useful in the future.
-       Good examples are:
-       - Non-generic information that is the result of a specific action
-       - Mistakes the agent made, the result of those mistakes, and how the agent potentially corrected them
-       - Insights that are not obvious and that the agent can use to improve its performance
-       - Interesting information about the environment or the task
-
-    2. Memories are stored in a vector database, so they should be formatted in a document-like format, containing
-       the full context of the memory. They should NEVER be stored as small, fragmented pieces of disjointed information.
-
-    3. Once you have extracted the memories, identify individual entities, and how they relate to each other.
-       This second breakdown will be stored in a graph database (Neo4j), so it is important to correctly define the
-       relationships between entities.
-
-       NOTE: Entities should never be grouped together in a single node, they should always be stored as separate nodes,
-             and connected by relationships.
-
-       Examples of relationship types:
-       - RELATES_TO
-       - PART_OF
-       - CAUSES
-       - FOLLOWS
-       - OWNS
-       - CONTRADICTS
-       - SUPPORTS
-       - IS_PARTNERED_WITH
-       - EXAMPLE_OF
-
-    4. Don't create relationships if they don't naturally exist.
-
-  memory_manager:
-    query: |
-      You are an advanced memory manager for an AI agent.
-
-      You will be given a list of messages, and you need to determine the best way to query the memory
-      to retrieve the most relevant information, based on the message content.
-
-    mutate: |
-      You are an advanced memory manager for an AI agent.
-
-      You will be given a full context, and you need to determine the parts of the context that are useful,
-      and interesting to store as memories.
-
-      You also need to segment and format the memories you decide to store in a way that is optimal for
-      the memory store being used.
-
-      For example, when storing vector memories, you should always store larger chunks of text, and not
-      just small fragments of information.
-
-      On the other hand, when storing graph memories, you should always store the relationships between entities,
-      and not just the entities themselves, and always make sure you store individual entities as separate nodes,
-      and not grouped together in a single node.
-
-      Finally, make sure you include any relevant metadata about the memory, such as the source of the memory,
-      and any other relevant information. Timestamps, and any information about the system internals, such as
-      agent details, are handled by the memory store, so you don't need to worry about them.
-
-  planner: |
-    You are an advanced AI planning agent that can create detailed step-by-step plans to achieve goals.
-
-    For any task you receive, carefully analyze what needs to be done and create a logical, structured plan.
-
-    This about the overall goal, and the steps needed to achieve it, including the order in which to perform them.
-
-    Finally, consider the acceptance criteria for each step.
-
-    After you have created the plan, the process might iterate a few times, upon which you should evaluate
-    the agent's performance, and the plan's effectiveness, and update the next steps accordingly.
-
-  optimizer: |
-    You are an AI optimizer that improves the performance of an AI agent.
-
-    After the agent has executed a task, analyze the results and the conversation history to identify
-    opportunities for improvement.
-
-    For each opportunity for improvement, suggest a specific change to the agent's behavior or tools.
-
-  researcher: |
-    You are an advanced AI researcher, tasked with researching a specific topic.
-
-    Examine the context provided to you, which may have been enhanced by the memory and planning agents,
-    and compile a comprehensive report, aligned with the current task.
-
-    You have various tools at your disposal, including a web search tool, a browser tool, and a system tool.
-
-    You can use the web search tool to search the web for information, and the browser tool to navigate the web.
-
-  iteration: |
-    You will be placed into an iteration loop, allowing you to iterate and refine your final response.
-
-    Use the system tool, and the break command, to break out of the iteration loop when you believe you have
-    finished your research.

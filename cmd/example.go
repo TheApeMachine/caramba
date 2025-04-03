@@ -2,20 +2,22 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
 	"github.com/theapemachine/caramba/pkg/core"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 var (
 	exampleCmd = &cobra.Command{
-		Use:   "example",
+		Use:   "example [type]",
 		Short: "Run example scenarios",
 		Long:  longExample,
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			core.NewConfig(core.WithOpenAIAPIKey(openaiAPIKey))
 
@@ -25,11 +27,15 @@ var (
 			case "code":
 				wf = examples.NewCode()
 			default:
-				return fmt.Errorf("unknown example: %s", args[0])
+				return fmt.Errorf("unknown example type: %s\nAvailable types: code", args[0])
 			}
 
-			for artifact := range wf.Generate(make(chan *datura.Artifact)) {
-				fmt.Println(artifact.String())
+			streamer := core.NewStreamer(
+				core.WithGenerator(wf),
+			)
+
+			if _, err = io.Copy(os.Stdout, streamer); err != nil && err != io.EOF {
+				return err
 			}
 
 			return nil

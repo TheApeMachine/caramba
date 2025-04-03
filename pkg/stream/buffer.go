@@ -40,6 +40,7 @@ func NewBuffer(opts ...BufferOption) *Buffer {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	buffer := &Buffer{
+		pctx:   ctx,
 		ctx:    ctx,
 		cancel: cancel,
 		in:     make(chan *datura.Artifact, 64),
@@ -69,7 +70,7 @@ Returns:
   - err: Any error encountered during reading
 */
 func (buffer *Buffer) Read(p []byte) (n int, err error) {
-	errnie.Debug("stream.Buffer.Read")
+	errnie.Debug("stream.Buffer.Read", "id", buffer.ID())
 
 	if err := buffer.Validate("stream.Buffer.Read"); err != nil {
 		return 0, err
@@ -92,6 +93,7 @@ func (buffer *Buffer) Read(p []byte) (n int, err error) {
 		buffer.Close()
 		return 0, io.EOF
 	case artifact := <-buffer.out:
+		errnie.Debug("stream.Buffer.Read", "artifact_topic", datura.GetMetaValue[string](artifact, "topic"))
 		return artifact.Read(p)
 	}
 }
@@ -109,7 +111,7 @@ Returns:
   - err: Any error encountered during writing
 */
 func (buffer *Buffer) Write(p []byte) (n int, err error) {
-	errnie.Debug("stream.Buffer.Write")
+	errnie.Debug("stream.Buffer.Write", "id", buffer.ID())
 
 	if err := buffer.Validate("stream.Buffer.Write"); err != nil {
 		return 0, err
@@ -119,7 +121,9 @@ func (buffer *Buffer) Write(p []byte) (n int, err error) {
 		return 0, NewBufferIOError("stream.Buffer.Write", errors.New("empty input"))
 	}
 
-	buffer.in <- datura.Unmarshal(p)
+	artifact := datura.Unmarshal(p)
+	errnie.Debug("stream.Buffer.Write", "topic", datura.GetMetaValue[string](artifact, "topic"))
+	buffer.in <- artifact
 
 	return len(p), nil
 }
@@ -131,7 +135,7 @@ It properly closes both the pipe reader and writer to prevent resource leaks.
 Returns any error encountered during the closing process.
 */
 func (buffer *Buffer) Close() error {
-	errnie.Debug("stream.Buffer.Close")
+	errnie.Debug("stream.Buffer.Close", "id", buffer.ID())
 
 	if err := buffer.Validate("stream.Buffer.Close"); err != nil {
 		return err

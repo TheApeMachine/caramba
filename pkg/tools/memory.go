@@ -14,6 +14,7 @@ MemoryTool provides a unified interface for interacting with multiple memory sto
 It handles both vector-based (Qdrant) and graph-based (Neo4j) storage systems.
 */
 type MemoryTool struct {
+	pctx   context.Context
 	ctx    context.Context
 	cancel context.CancelFunc
 	stores map[string]interface{} // Map of store types to their implementations
@@ -73,6 +74,25 @@ func (mt *MemoryTool) Generate(
 	go func() {
 		defer close(out)
 
+		for {
+			select {
+			case <-mt.pctx.Done():
+				errnie.Debug("memory.MemoryTool.Generate: parent context done")
+				mt.cancel()
+				return
+			case <-mt.ctx.Done():
+				errnie.Debug("memory.MemoryTool.Generate: context done")
+				return
+			case artifact, ok := <-buffer:
+				if !ok {
+					return
+				}
+				// Process the artifact with the provided functions
+				for _, f := range fn {
+					out <- f(artifact)
+				}
+			}
+		}
 	}()
 
 	return out
@@ -89,5 +109,11 @@ func WithStores(stores ...memory.Store) MemoryToolOption {
 func WithStore(store memory.Store) MemoryToolOption {
 	return func(tool *MemoryTool) {
 		tool.stores[store.Name()] = store
+	}
+}
+
+func WithMemoryCancel(ctx context.Context) MemoryToolOption {
+	return func(tool *MemoryTool) {
+		tool.pctx = ctx
 	}
 }

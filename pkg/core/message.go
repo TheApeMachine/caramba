@@ -36,8 +36,16 @@ func NewMessageBuilder(opts ...MessageOption) *MessageBuilder {
 }
 
 func (builder *MessageBuilder) Artifact() *datura.Artifact {
+	errnie.Debug("core.MessageBuilder.Artifact")
+
+	data, err := builder.Message.Message().Marshal()
+
+	if errnie.Error(err) != nil {
+		return nil
+	}
+
 	return datura.New(
-		datura.WithPayload(builder.Segment().Data()),
+		datura.WithPayload(data),
 		datura.WithRole(datura.ArtifactRoleAnswer),
 		datura.WithScope(datura.ArtifactScopeContext),
 	)
@@ -69,19 +77,25 @@ func WithArtifact(artifact *datura.Artifact) MessageOption {
 
 func WithRole(role string) MessageOption {
 	return func(builder *MessageBuilder) {
-		builder.SetRole(role)
+		if errnie.Error(builder.SetRole(role)) != nil {
+			return
+		}
 	}
 }
 
 func WithName(name string) MessageOption {
 	return func(builder *MessageBuilder) {
-		builder.SetName(name)
+		if errnie.Error(builder.SetName(name)) != nil {
+			return
+		}
 	}
 }
 
 func WithContent(content string) MessageOption {
 	return func(builder *MessageBuilder) {
-		builder.SetContent(content)
+		if errnie.Error(builder.SetContent(content)) != nil {
+			return
+		}
 	}
 }
 
@@ -93,6 +107,8 @@ func WithToolCalls(toolCalls ...ToolCall) MessageOption {
 			return
 		}
 
-		builder.SetToolCalls(toolCallList)
+		if errnie.Error(builder.SetToolCalls(toolCallList)) != nil {
+			return
+		}
 	}
 }

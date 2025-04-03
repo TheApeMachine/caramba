@@ -9,4 +9,5 @@ const (
 	StatusWorking
 	StatusDone
 	StatusError
+	StatusBusy
 )

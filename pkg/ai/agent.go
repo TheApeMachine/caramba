@@ -10,6 +10,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/system"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
 
@@ -27,6 +28,7 @@ type AgentBuilder struct {
 	paramsBuilder *core.ParamsBuilder
 	ctxBuilder    *core.ContextBuilder
 	tools         []string
+	protocol      *core.Protocol
 }
 
 type AgentOption func(*AgentBuilder)
@@ -35,7 +37,7 @@ type AgentOption func(*AgentBuilder)
 NewAgentBuilder creates a new agent with initialized components.
 */
 func NewAgentBuilder(options ...AgentOption) *AgentBuilder {
-	errnie.Debug("NewBuilder")
+	errnie.Debug("ai.NewAgentBuilder")
 
 	var (
 		cpnp  = utils.NewCapnp()
@@ -53,7 +55,6 @@ func NewAgentBuilder(options ...AgentOption) *AgentBuilder {
 		Agent:  &agent,
 		ctx:    ctx,
 		cancel: cancel,
-		status: core.StatusUnknown,
 	}
 
 	for _, option := range options {
@@ -65,13 +66,11 @@ func NewAgentBuilder(options ...AgentOption) *AgentBuilder {
 
 func (builder *AgentBuilder) ID() string {
 	identity, err := builder.Agent.Identity()
-
 	if errnie.Error(err) != nil {
 		return ""
 	}
 
 	id, err := identity.Identifier()
-
 	if errnie.Error(err) != nil {
 		return ""
 	}
@@ -89,7 +88,7 @@ func (builder *AgentBuilder) Generate(
 		return nil
 	}
 
-	builder.out = make(chan *datura.Artifact)
+	builder.out = make(chan *datura.Artifact, 64)
 
 	go func() {
 		defer close(builder.out)
@@ -98,42 +97,22 @@ func (builder *AgentBuilder) Generate(
 			select {
 			case <-builder.pctx.Done():
 				errnie.Info("AgentBuilder context cancelled")
-
-				builder.status = core.StatusDone
 				builder.cancel()
-
 				return
 			case <-builder.ctx.Done():
 				errnie.Info("AgentBuilder context cancelled")
-				builder.status = core.StatusDone
 				return
 			case artifact, ok := <-buffer:
 				if !ok {
-					builder.status = core.StatusError
 					return
 				}
 
-				// Make sure we are either ready for work, or waiting for a specific artifact.
-				if builder.status != core.StatusReady && builder.status != core.StatusWaiting {
-					break
+				if err := builder.handleArtifact(artifact); err != nil {
+					errnie.Error(err)
+					continue
 				}
-
-				// If we are waiting for a specific artifact, we should not be doing anything else.
-				if builder.status == core.StatusWaiting {
-					builder.handleWaiting(artifact)
-					break
-				}
-
-				switch datura.ArtifactRole(artifact.Role()) {
-				case datura.ArtifactRoleAnswer:
-					builder.handleAnswer(artifact)
-				case datura.ArtifactRoleAcknowledge:
-					builder.handleAcknowledge(artifact)
-				case datura.ArtifactRoleQuestion:
-					builder.handleQuestion(artifact)
-				}
-			default:
-				time.Sleep(10 * time.Millisecond)
+			case <-time.After(100 * time.Millisecond):
+				// Do nothing
 			}
 		}
 	}()
@@ -141,56 +120,61 @@ func (builder *AgentBuilder) Generate(
 	return builder.out
 }
 
-func (builder *AgentBuilder) handleWaiting(artifact *datura.Artifact) {
-	if slices.Contains(builder.waiters, datura.ArtifactScope(artifact.Scope())) {
-		index := slices.Index(builder.waiters, datura.ArtifactScope(artifact.Scope()))
-		if index >= 0 {
-			builder.waiters = slices.Delete(builder.waiters, index, index+1)
-		}
+// handleArtifact processes a single artifact according to the protocol
+func (builder *AgentBuilder) handleArtifact(artifact *datura.Artifact) error {
+	if builder.protocol == nil {
+		builder.protocol = system.NewHub().RegisterProtocol(
+			core.NewProtocol(
+				datura.GetMetaValue[string](artifact, "topic"),
+				builder.ID(),
+				"provider",
+			),
+		)
 	}
 
-	if len(builder.waiters) == 0 {
-		builder.status = core.StatusReady
-		builder.waiters = nil
+	if len(builder.waiters) > 0 && !slices.Contains(builder.waiters, datura.ArtifactScope(artifact.Scope())) {
+		return nil
 	}
-}
 
-func (builder *AgentBuilder) handleAnswer(artifact *datura.Artifact) {
-	switch datura.ArtifactScope(artifact.Scope()) {
-	case datura.ArtifactScopeGeneration:
-		builder.status = core.StatusWorking
+	builder.waiters = slices.DeleteFunc(builder.waiters, func(scope datura.ArtifactScope) bool {
+		return scope == datura.ArtifactScope(artifact.Scope())
+	})
 
-		builder.ctxBuilder.AddMessage(artifact)
+	var step *datura.Artifact
+	step, builder.status = builder.protocol.HandleMessage(builder.ID(), artifact)
 
-		builder.out <- datura.New(
-			datura.WithRole(datura.ArtifactRoleQuestion),
-			datura.WithScope(datura.ArtifactScopeAquire),
+	switch builder.status {
+	case core.StatusWorking:
+		builder.handlePreflight()
+	case core.StatusWaiting:
+		builder.waiters = append(builder.waiters, datura.ArtifactScope(step.Scope()))
+	case core.StatusDone:
+		// Send acknowledgment and release
+		ack := datura.New(
+			datura.WithRole(datura.ArtifactRoleAcknowledge),
+			datura.WithScope(datura.ArtifactScopeRelease),
+			datura.WithMeta("from", builder.ID()),
+			datura.WithMeta("to", "provider"),
+			datura.WithMeta("protocol", datura.GetMetaValue[string](step, "protocol")),
 		)
 
-		builder.status = core.StatusWaiting
-		builder.waiters = append(builder.waiters, datura.ArtifactScopeAquire)
+		builder.out <- ack
+	default:
+		errnie.Debug("ai.AgentBuilder.handleArtifact", "status", builder.status)
+		builder.out <- step
 	}
+
+	return nil
 }
 
-func (builder *AgentBuilder) handleAcknowledge(artifact *datura.Artifact) {
-	builder.ctxBuilder.AddMessage(artifact)
-	builder.status = core.StatusReady
-	builder.waiters = append(builder.waiters, datura.ArtifactScopeUnknown)
-}
-
-func (builder *AgentBuilder) handleQuestion(artifact *datura.Artifact) {
-	builder.ctxBuilder.AddMessage(artifact)
-
-	builder.status = core.StatusWorking
-
-	switch datura.ArtifactScope(artifact.Scope()) {
-	case datura.ArtifactScopePreflight:
-		builder.out <- builder.paramsBuilder.Artifact()
-		builder.out <- builder.ctxBuilder.Artifact()
-	}
+func (builder *AgentBuilder) handlePreflight() {
+	builder.out <- builder.paramsBuilder.Artifact()
+	builder.out <- builder.ctxBuilder.Artifact()
 }
 
 func (builder *AgentBuilder) Validate(scope string) error {
+	errnie.Debug("ai.AgentBuilder.Validate")
+
 	if builder.Agent == nil {
 		return NewAgentValidationError(scope, errors.New("agent not set"))
 	}
@@ -219,7 +203,6 @@ func WithCancel(ctx context.Context) AgentOption {
 func WithIdentity(name string, role string) AgentOption {
 	return func(builder *AgentBuilder) {
 		identity, err := builder.NewIdentity()
-
 		if errnie.Error(err) != nil {
 			return
 		}

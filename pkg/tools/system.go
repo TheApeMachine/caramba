@@ -74,7 +74,7 @@ type SystemInspectTool struct {
 	*SystemTool
 }
 
-func NewSystemInspectTool() *SystemInspectTool {
+func NewSystemInspectTool(opts ...SystemToolOption) *SystemInspectTool {
 	inspectTool := mcp.NewTool(
 		"system_inspect",
 		mcp.WithDescription("A tool for inspecting the system."),
@@ -87,7 +87,7 @@ func NewSystemInspectTool() *SystemInspectTool {
 	)
 
 	sit := &SystemInspectTool{
-		SystemTool: NewSystemTool(),
+		SystemTool: NewSystemTool(opts...),
 	}
 
 	sit.ToolBuilder.mcp = &inspectTool
@@ -117,7 +117,7 @@ type SystemOptimizeTool struct {
 	*SystemTool
 }
 
-func NewSystemOptimizeTool() *SystemOptimizeTool {
+func NewSystemOptimizeTool(opts ...SystemToolOption) *SystemOptimizeTool {
 	optimizeTool := mcp.NewTool(
 		"system_optimize",
 		mcp.WithDescription("A tool for optimizing your performance and behavior."),
@@ -138,7 +138,7 @@ func NewSystemOptimizeTool() *SystemOptimizeTool {
 	)
 
 	sot := &SystemOptimizeTool{
-		SystemTool: NewSystemTool(),
+		SystemTool: NewSystemTool(opts...),
 	}
 
 	sot.ToolBuilder.mcp = &optimizeTool
@@ -169,7 +169,7 @@ type SystemMessageTool struct {
 	*SystemTool
 }
 
-func NewSystemMessageTool() *SystemMessageTool {
+func NewSystemMessageTool(opts ...SystemToolOption) *SystemMessageTool {
 	messageTool := mcp.NewTool(
 		"system_message",
 		mcp.WithDescription("A tool for sending messages to other agents and topics."),
@@ -186,7 +186,7 @@ func NewSystemMessageTool() *SystemMessageTool {
 	)
 
 	smt := &SystemMessageTool{
-		SystemTool: NewSystemTool(),
+		SystemTool: NewSystemTool(opts...),
 	}
 
 	smt.ToolBuilder.mcp = &messageTool

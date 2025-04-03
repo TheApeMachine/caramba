@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ MultiWriter, Pipe, etc.
 */
 type Streamer struct {
 	buffer *stream.Buffer
+	topics []string
 }
 
 type StreamerOption func(*Streamer)
@@ -29,12 +31,18 @@ NewStreamer creates a Streaner which wraps the Generator that is passed in.
 We can just use system.NewHub() to set the hub, since it is a sync.Once,
 so it always returns the same hub.
 */
-func NewStreamer(generator stream.Generator) *Streamer {
-	return &Streamer{
-		buffer: stream.NewBuffer(
-			stream.WithGenerator(generator),
-		),
+func NewStreamer(opts ...StreamerOption) *Streamer {
+	errnie.Debug("core.NewStreamer")
+
+	streamer := &Streamer{
+		topics: []string{},
 	}
+
+	for _, opt := range opts {
+		opt(streamer)
+	}
+
+	return streamer
 }
 
 func (streamer *Streamer) ID() string {
@@ -45,12 +53,21 @@ func (streamer *Streamer) ID() string {
 Read implements io.Reader for the Streamer.
 */
 func (streamer *Streamer) Read(p []byte) (n int, err error) {
+	errnie.Debug("core.Streamer.Read", "id", streamer.ID(), "bytes", n)
+
 	if err := streamer.Validate("core.Streamer.Read"); err != nil {
 		return 0, err
 	}
 
 	if n, err = streamer.buffer.Read(p); err != nil {
+		if err == io.EOF {
+			return n, io.EOF
+		}
 		return 0, NewStreamerIOError("core.Streamer.Read", err)
+	}
+
+	if n == 0 {
+		return 0, io.EOF
 	}
 
 	return
@@ -60,6 +77,8 @@ func (streamer *Streamer) Read(p []byte) (n int, err error) {
 Write implements io.Writer for the Streamer.
 */
 func (streamer *Streamer) Write(p []byte) (n int, err error) {
+	errnie.Debug("core.Streamer.Write", "id", streamer.ID())
+
 	if err := streamer.Validate("core.Streamer.Write"); err != nil {
 		return 0, err
 	}
@@ -75,6 +94,8 @@ func (streamer *Streamer) Write(p []byte) (n int, err error) {
 Close implements io.Closer for the Streamer.
 */
 func (streamer *Streamer) Close() (err error) {
+	errnie.Debug("core.Streamer.Close", "id", streamer.ID())
+
 	if err = streamer.Validate("core.Streamer.Close"); err != nil {
 		return err
 	}
@@ -84,6 +105,29 @@ func (streamer *Streamer) Close() (err error) {
 	}
 
 	return
+}
+
+func WithGenerator(generator stream.Generator) StreamerOption {
+	return func(streamer *Streamer) {
+		streamer.buffer = stream.NewBuffer(
+			stream.WithGenerator(generator),
+		)
+	}
+}
+
+func WithTopics(topics ...string) StreamerOption {
+	return func(streamer *Streamer) {
+		streamer.topics = topics
+	}
+}
+
+// WithContext sets the context for the streamer and its underlying buffer
+func WithContext(ctx context.Context) StreamerOption {
+	return func(streamer *Streamer) {
+		if streamer.buffer != nil {
+			stream.WithCancel(ctx, nil)(streamer.buffer)
+		}
+	}
 }
 
 /*
@@ -104,7 +148,10 @@ type StreamerIOError struct {
 
 func NewStreamerIOError(scope string, err error) *StreamerIOError {
 	if err == nil || err == io.EOF {
-		return nil
+		return &StreamerIOError{
+			err:   err,
+			scope: scope,
+		}
 	}
 
 	return &StreamerIOError{
@@ -118,6 +165,9 @@ func (e *StreamerIOError) Error() string {
 }
 
 func (e *StreamerIOError) Unwrap() error {
+	if e == nil || e.err == nil {
+		return nil
+	}
 	return e.err
 }
 
@@ -159,4 +209,8 @@ func (e *StreamerNoBufferError) Error() string {
 
 func (e *StreamerNoBufferError) Unwrap() error {
 	return e.err
+}
+
+func (streamer *Streamer) Topics() []string {
+	return streamer.topics
 }
