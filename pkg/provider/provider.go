@@ -2,28 +2,25 @@ package provider
 
 import (
 	"context"
+	"time"
 
+	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
+	"github.com/theapemachine/caramba/pkg/protocol"
+	"github.com/theapemachine/caramba/pkg/system"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 type ProviderInterface interface {
-	stream.Generator
 	Name() string
+	Handle(artifact *datura.Artifact) *datura.Artifact
 }
 
 type ProviderType ProviderInterface
 
 var (
-	ProviderTypeMock      ProviderType = NewMockProvider()
-	ProviderTypeOpenAI    ProviderType = NewOpenAIProvider()
-	ProviderTypeAnthropic ProviderType = NewAnthropicProvider()
-	ProviderTypeGoogle    ProviderType = NewGoogleProvider()
-	ProviderTypeCohere    ProviderType = NewCohereProvider()
-	ProviderTypeDeepSeek  ProviderType = NewDeepseekProvider()
-	ProviderTypeOllama    ProviderType = NewOllamaProvider()
+	ProviderTypeOpenAI ProviderType = NewOpenAIProvider()
 )
 
 type ProviderBuilder struct {
@@ -32,6 +29,9 @@ type ProviderBuilder struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	supplier ProviderType
+	out      chan *datura.Artifact
+	status   core.Status
+	protocol *protocol.Spec
 }
 
 type ProviderOption func(*ProviderBuilder)
@@ -68,7 +68,44 @@ func (builder *ProviderBuilder) Generate(
 	buffer chan *datura.Artifact,
 	fn ...func(*datura.Artifact) *datura.Artifact,
 ) chan *datura.Artifact {
-	return builder.supplier.Generate(buffer, fn...)
+	errnie.Debug("provider.ProviderBuilder.Generate")
+
+	builder.out = make(chan *datura.Artifact, 64)
+
+	go func() {
+		defer close(builder.out)
+
+		for {
+			select {
+			case <-builder.pctx.Done():
+				errnie.Info("AgentBuilder context cancelled")
+				builder.cancel()
+				return
+			case <-builder.ctx.Done():
+				errnie.Info("AgentBuilder context cancelled")
+				return
+			case artifact, ok := <-buffer:
+				if !ok {
+					return
+				}
+
+				if builder.protocol == nil {
+					builder.protocol = system.NewHub().GetProtocol(
+						datura.GetMetaValue[string](artifact, "topic"),
+					)
+				}
+
+				var out *datura.Artifact
+				out, builder.status = builder.protocol.Next(artifact)
+				builder.out <- builder.supplier.Handle(out)
+			case <-time.After(100 * time.Millisecond):
+				// Do nothing
+			}
+		}
+	}()
+
+	return builder.out
+
 }
 
 func WithCancel(ctx context.Context) ProviderOption {

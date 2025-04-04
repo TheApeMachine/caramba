@@ -10,6 +10,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/protocol"
 )
 
 type Topic string
@@ -24,7 +25,7 @@ type Hub struct {
 	clients     map[string]*Client
 	clientQueue chan *datura.Artifact
 	topicQueue  chan *datura.Artifact
-	protocols   map[string]*core.Protocol
+	protocols   map[string]*protocol.Spec
 }
 
 type HubOption func(*Hub)
@@ -42,7 +43,7 @@ func NewHub(options ...HubOption) *Hub {
 			clients:     make(map[string]*Client),
 			clientQueue: make(chan *datura.Artifact, 64),
 			topicQueue:  make(chan *datura.Artifact, 64),
-			protocols:   make(map[string]*core.Protocol),
+			protocols:   make(map[string]*protocol.Spec),
 		}
 
 		for _, option := range options {
@@ -53,14 +54,14 @@ func NewHub(options ...HubOption) *Hub {
 	return hub
 }
 
-func (hub *Hub) RegisterProtocol(protocol *core.Protocol) *core.Protocol {
+func (hub *Hub) RegisterProtocol(protocol *protocol.Spec) *protocol.Spec {
 	errnie.Debug("system.Hub.RegisterProtocol", "protocol", protocol.ID)
 
 	hub.protocols[protocol.ID] = protocol
 	return protocol
 }
 
-func (hub *Hub) GetProtocol(id string) *core.Protocol {
+func (hub *Hub) GetProtocol(id string) *protocol.Spec {
 	errnie.Debug("system.Hub.GetProtocol", "id", id)
 	return hub.protocols[id]
 }
