@@ -8,9 +8,12 @@ import (
 	"io"
 	"os"
 
+	"capnproto.org/go/capnp/v3"
+	"github.com/mark3labs/mcp-go/mcp"
+	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
+	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/utils"
 	"google.golang.org/genai"
 )
@@ -22,10 +25,11 @@ It supports regular chat completions, tool calling, and structured outputs.
 type GoogleProvider struct {
 	client   *genai.Client
 	endpoint string
-	buffer   *stream.Buffer
-	params   *Params
 	ctx      context.Context
 	cancel   context.CancelFunc
+	params   params.Params
+	buffer   io.Writer
+	segment  *capnp.Segment
 }
 
 /*
@@ -51,8 +55,6 @@ func NewGoogleProvider(opts ...GoogleProviderOption) *GoogleProvider {
 	prvdr := &GoogleProvider{
 		client:   client,
 		endpoint: "",
-		buffer:   stream.NewBuffer(),
-		params:   &Params{},
 		ctx:      ctx,
 		cancel:   cancel,
 	}
@@ -72,7 +74,7 @@ type GoogleProviderOption func(*GoogleProvider)
 
 func WithGoogleAPIKey(apiKey string) GoogleProviderOption {
 	return func(prvdr *GoogleProvider) {
-		prvdr.client, _ = genai.NewClient(prvdr.ctx, &genai.ClientConfig{
+		prvdr.client, _ = genai.NewClient(context.Background(), &genai.ClientConfig{
 			APIKey:  apiKey,
 			Backend: genai.BackendGeminiAPI,
 		})
@@ -86,70 +88,72 @@ func WithGoogleEndpoint(endpoint string) GoogleProviderOption {
 }
 
 func (prvdr *GoogleProvider) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+	params params.Params,
+	ctx aicontext.Context,
+	tools []mcp.Tool,
 ) chan *datura.Artifact {
 	errnie.Debug("provider.GoogleProvider.Generate")
 
 	out := make(chan *datura.Artifact)
 
+	// Store the params for use in other methods
+	prvdr.params = params
+
 	go func() {
 		defer close(out)
 
-		select {
-		case <-prvdr.ctx.Done():
-			errnie.Debug("provider.GoogleProvider.Generate.ctx.Done")
-			prvdr.cancel()
+		chatConfig := &genai.GenerateContentConfig{
+			Temperature:      utils.Ptr(float32(params.Temperature())),
+			TopP:             utils.Ptr(float32(params.TopP())),
+			TopK:             utils.Ptr(float32(params.TopK())),
+			FrequencyPenalty: utils.Ptr(float32(params.FrequencyPenalty())),
+			PresencePenalty:  utils.Ptr(float32(params.PresencePenalty())),
+		}
+
+		if params.MaxTokens() > 1 {
+			chatConfig.MaxOutputTokens = utils.Ptr(int32(params.MaxTokens()))
+		}
+
+		messages, err := prvdr.buildMessages(chatConfig, ctx)
+		if err != nil {
+			out <- datura.New(datura.WithError(err))
 			return
-		case artifact := <-buffer:
-			if err := artifact.To(prvdr.params); err != nil {
-				out <- datura.New(datura.WithError(errnie.Error(err)))
-				return
-			}
+		}
 
-			chatConfig := &genai.GenerateContentConfig{
-				Temperature:      utils.Ptr(float32(prvdr.params.Temperature)),
-				TopP:             utils.Ptr(float32(prvdr.params.TopP)),
-				TopK:             utils.Ptr(float32(prvdr.params.TopK)),
-				FrequencyPenalty: utils.Ptr(float32(prvdr.params.FrequencyPenalty)),
-				PresencePenalty:  utils.Ptr(float32(prvdr.params.PresencePenalty)),
-			}
+		if err = prvdr.buildTools(chatConfig, tools); err != nil {
+			out <- datura.New(datura.WithError(err))
+			return
+		}
 
-			if prvdr.params.MaxTokens > 1 {
-				chatConfig.MaxOutputTokens = utils.Ptr(int32(prvdr.params.MaxTokens))
-			}
+		format, err := params.Format()
 
-			messages, err := prvdr.buildMessages()
-			if err != nil {
+		if errnie.Error(err) != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
+
+		if err = prvdr.buildResponseFormat(chatConfig, format); err != nil {
+			out <- datura.New(datura.WithError(err))
+			return
+		}
+
+		model, err := params.Model()
+
+		if err != nil {
+			out <- datura.New(datura.WithError(err))
+			return
+		}
+
+		if params.Stream() {
+			if err = prvdr.handleStreamingRequest(chatConfig, messages); err != nil {
 				out <- datura.New(datura.WithError(err))
 				return
 			}
-
-			if err = prvdr.buildTools(chatConfig); err != nil {
+		} else {
+			if err = prvdr.handleSingleRequest(chatConfig, model, messages); err != nil {
 				out <- datura.New(datura.WithError(err))
 				return
 			}
-
-			if prvdr.params.ResponseFormat != nil {
-				if err = prvdr.buildResponseFormat(chatConfig); err != nil {
-					out <- datura.New(datura.WithError(err))
-					return
-				}
-			}
-
-			if prvdr.params.Stream {
-				if err = prvdr.handleStreamingRequest(chatConfig, messages); err != nil {
-					out <- datura.New(datura.WithError(err))
-					return
-				}
-			} else {
-				if err = prvdr.handleSingleRequest(chatConfig, messages); err != nil {
-					out <- datura.New(datura.WithError(err))
-					return
-				}
-			}
-
-			out <- datura.New(datura.WithPayload(prvdr.params.Marshal()))
 		}
 	}()
 
@@ -160,74 +164,16 @@ func (prvdr *GoogleProvider) Name() string {
 	return "google"
 }
 
-/*
-Read implements the io.Reader interface.
-*/
-func (prvdr *GoogleProvider) Read(p []byte) (n int, err error) {
-	errnie.Debug("provider.GoogleProvider.Read")
-	return prvdr.buffer.Read(p)
-}
-
-/*
-Write implements the io.Writer interface.
-*/
-func (prvdr *GoogleProvider) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.GoogleProvider.Write")
-
-	n, err = prvdr.buffer.Write(p)
-	if errnie.Error(err) != nil {
-		return n, err
-	}
-
-	chatConfig := &genai.GenerateContentConfig{
-		Temperature:      utils.Ptr(float32(prvdr.params.Temperature)),
-		TopP:             utils.Ptr(float32(prvdr.params.TopP)),
-		TopK:             utils.Ptr(float32(prvdr.params.TopK)),
-		FrequencyPenalty: utils.Ptr(float32(prvdr.params.FrequencyPenalty)),
-		PresencePenalty:  utils.Ptr(float32(prvdr.params.PresencePenalty)),
-		MaxOutputTokens:  utils.Ptr(int32(prvdr.params.MaxTokens)),
-	}
-
-	messages, err := prvdr.buildMessages()
-	if err != nil {
-		return n, err
-	}
-
-	if err = prvdr.buildTools(chatConfig); err != nil {
-		return n, errnie.Error(err)
-	}
-
-	if err = prvdr.buildResponseFormat(chatConfig); err != nil {
-		return n, errnie.Error(err)
-	}
-
-	if prvdr.params.Stream {
-		err = prvdr.handleStreamingRequest(chatConfig, messages)
-	} else {
-		err = prvdr.handleSingleRequest(chatConfig, messages)
-	}
-
-	return n, errnie.Error(err)
-}
-
-/*
-Close cleans up any resources.
-*/
-func (prvdr *GoogleProvider) Close() error {
-	errnie.Debug("provider.GoogleProvider.Close")
-	prvdr.cancel()
-	return nil
-}
-
 func (prvdr *GoogleProvider) handleSingleRequest(
 	chatConfig *genai.GenerateContentConfig,
+	model string,
 	messages []*genai.Content,
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
 
 	resp, err := prvdr.client.Models.GenerateContent(
-		prvdr.ctx,
-		prvdr.params.Model,
+		context.Background(),
+		model,
 		messages,
 		chatConfig,
 	)
@@ -241,15 +187,28 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 		return errnie.Error(err)
 	}
 
-	msg := &Message{
-		Role:    MessageRoleAssistant,
-		Name:    prvdr.params.Model,
-		Content: "",
+	msg, err := aicontext.NewMessage(prvdr.segment)
+
+	if errnie.Error(err) != nil {
+		return errnie.Error(err)
 	}
 
+	if err = msg.SetRole("assistant"); errnie.Error(err) != nil {
+		return errnie.Error(err)
+	}
+
+	if err = msg.SetContent(""); errnie.Error(err) != nil {
+		return errnie.Error(err)
+	}
+
+	contentText := ""
 	// Combine all parts into the content
 	for _, part := range resp.Candidates[0].Content.Parts {
-		msg.Content += part.Text
+		contentText += part.Text
+	}
+
+	if err = msg.SetContent(contentText); errnie.Error(err) != nil {
+		return errnie.Error(err)
 	}
 
 	// Handle tool calls if present
@@ -263,23 +222,28 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 			argsStr = "{" + argsStr[:len(argsStr)-1] + "}"
 		}
 
-		msg.ToolCalls = []ToolCall{
-			{
-				ID:   fc.Name, // Using name as ID since Google API doesn't provide separate ID
-				Type: "function",
-				Function: ToolCallFunction{
-					Name:      fc.Name,
-					Arguments: argsStr,
-				},
-			},
+		toolCalls, err := msg.NewToolCalls(1)
+		if errnie.Error(err) != nil {
+			return errnie.Error(err)
 		}
+
+		if err = toolCalls.At(0).SetId(fc.Name); errnie.Error(err) != nil {
+			return errnie.Error(err)
+		}
+
+		if err = toolCalls.At(0).SetName(fc.Name); errnie.Error(err) != nil {
+			return errnie.Error(err)
+		}
+
+		if err = toolCalls.At(0).SetArguments(argsStr); errnie.Error(err) != nil {
+			return errnie.Error(err)
+		}
+
 		errnie.Info("toolCall detected", "name", fc.Name)
 	}
 
-	prvdr.params.Messages = append(prvdr.params.Messages, msg)
-
 	if _, err = io.Copy(prvdr.buffer, datura.New(
-		datura.WithPayload(prvdr.params.Marshal()),
+		datura.WithPayload([]byte(contentText)),
 	)); err != nil {
 		return errnie.Error(err)
 	}
@@ -293,9 +257,14 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
+	model, err := prvdr.params.Model()
+	if err != nil {
+		return errnie.Error(err)
+	}
+
 	for response, err := range prvdr.client.Models.GenerateContentStream(
 		prvdr.ctx,
-		prvdr.params.Model,
+		model,
 		messages,
 		chatConfig,
 	) {
@@ -332,23 +301,36 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 					argsStr = "{" + argsStr[:len(argsStr)-1] + "}"
 				}
 
-				msg := &Message{
-					Role:    MessageRoleAssistant,
-					Name:    prvdr.params.Model,
-					Content: "",
-					ToolCalls: []ToolCall{
-						{
-							ID:   fc.Name,
-							Type: "function",
-							Function: ToolCallFunction{
-								Name:      fc.Name,
-								Arguments: argsStr,
-							},
-						},
-					},
+				msg, err := aicontext.NewMessage(prvdr.segment)
+				if errnie.Error(err) != nil {
+					return errnie.Error(err)
 				}
 
-				prvdr.params.Messages = append(prvdr.params.Messages, msg)
+				if err = msg.SetRole("assistant"); errnie.Error(err) != nil {
+					return errnie.Error(err)
+				}
+
+				if err = msg.SetContent(""); errnie.Error(err) != nil {
+					return errnie.Error(err)
+				}
+
+				toolCalls, err := msg.NewToolCalls(1)
+				if errnie.Error(err) != nil {
+					return errnie.Error(err)
+				}
+
+				if err = toolCalls.At(0).SetId(fc.Name); errnie.Error(err) != nil {
+					return errnie.Error(err)
+				}
+
+				if err = toolCalls.At(0).SetName(fc.Name); errnie.Error(err) != nil {
+					return errnie.Error(err)
+				}
+
+				if err = toolCalls.At(0).SetArguments(argsStr); errnie.Error(err) != nil {
+					return errnie.Error(err)
+				}
+
 				errnie.Info("toolCall detected (streaming)", "name", fc.Name)
 			}
 		}
@@ -357,38 +339,73 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 	return nil
 }
 
-func (prvdr *GoogleProvider) buildMessages() (messages []*genai.Content, err error) {
+func (prvdr *GoogleProvider) buildMessages(
+	chatConfig *genai.GenerateContentConfig,
+	ctx aicontext.Context,
+) (messages []*genai.Content, err error) {
 	errnie.Debug("provider.buildMessages")
 
-	if prvdr.params == nil {
-		return nil, errnie.BadRequest(errors.New("params are nil"))
+	msgs, err := ctx.Messages()
+	if err != nil {
+		return nil, errnie.Error(err)
 	}
 
-	messages = make([]*genai.Content, 0, len(prvdr.params.Messages))
+	messages = make([]*genai.Content, 0, msgs.Len())
 
-	for _, message := range prvdr.params.Messages {
-		content := &genai.Content{
-			Role:  string(message.Role),
-			Parts: []*genai.Part{{Text: message.Content}},
+	for i := 0; i < msgs.Len(); i++ {
+		msg := msgs.At(i)
+
+		role, err := msg.Role()
+		if err != nil {
+			return nil, errnie.Error(err)
 		}
 
+		msgContent, err := msg.Content()
+		if err != nil {
+			return nil, errnie.Error(err)
+		}
+
+		msgParts := []*genai.Part{{Text: msgContent}}
+
 		// Handle tool calls for assistant messages
-		if message.Role == "assistant" && len(message.ToolCalls) > 0 {
-			for _, toolCall := range message.ToolCalls {
+		if role == "assistant" {
+			toolCalls, err := msg.ToolCalls()
+			if err != nil {
+				return nil, errnie.Error(err)
+			}
+
+			for j := 0; j < toolCalls.Len(); j++ {
+				toolCall := toolCalls.At(j)
+
+				name, err := toolCall.Name()
+				if err != nil {
+					return nil, errnie.Error(err)
+				}
+
+				arguments, err := toolCall.Arguments()
+				if err != nil {
+					return nil, errnie.Error(err)
+				}
+
 				// Parse arguments string back to map
 				var args map[string]interface{}
-				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
+				if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 					errnie.Error("failed to parse tool call arguments", "error", err)
 					continue
 				}
 
-				content.Parts = append(content.Parts, &genai.Part{
+				msgParts = append(msgParts, &genai.Part{
 					FunctionCall: &genai.FunctionCall{
-						Name: toolCall.Function.Name,
+						Name: name,
 						Args: args,
 					},
 				})
 			}
+		}
+
+		content := &genai.Content{
+			Role:  role,
+			Parts: msgParts,
 		}
 
 		messages = append(messages, content)
@@ -399,84 +416,97 @@ func (prvdr *GoogleProvider) buildMessages() (messages []*genai.Content, err err
 
 func (prvdr *GoogleProvider) buildTools(
 	chatConfig *genai.GenerateContentConfig,
+	tools []mcp.Tool,
 ) (err error) {
 	errnie.Debug("provider.buildTools")
 
-	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
-	}
-
-	if len(prvdr.params.Tools) == 0 {
+	if len(tools) == 0 {
 		chatConfig.Tools = nil
 		return nil
 	}
 
-	tools := make([]*genai.Tool, 0, len(prvdr.params.Tools))
+	googleTools := make([]*genai.Tool, 0, len(tools))
 
-	for _, tool := range prvdr.params.Tools {
+	for _, tool := range tools {
 		functionDeclaration := &genai.FunctionDeclaration{
-			Name:        tool.Function.Name,
-			Description: tool.Function.Description,
+			Name:        tool.Name,
+			Description: tool.Description,
 		}
 
 		// Convert parameters to Google's format
-		if tool.Function.Parameters.Properties != nil {
+		properties := tool.InputSchema.Properties
+		required := tool.InputSchema.Required
+
+		if len(properties) > 0 {
 			schema := &genai.Schema{
 				Type:       genai.Type("object"),
 				Properties: make(map[string]*genai.Schema),
-				Required:   tool.Function.Parameters.Required,
+				Required:   required,
 			}
 
-			for _, prop := range tool.Function.Parameters.Properties {
-				enumStr := make([]string, 0)
-				for _, e := range prop.Enum {
-					if s, ok := e.(string); ok {
-						enumStr = append(enumStr, s)
-					}
+			for propName, propValue := range properties {
+				propMap, ok := propValue.(map[string]interface{})
+				if !ok {
+					continue
 				}
 
-				schema.Properties[prop.Name] = &genai.Schema{
-					Type:        genai.Type(prop.Type),
-					Description: prop.Description,
-					Enum:        enumStr,
+				propType, _ := propMap["type"].(string)
+				propDescription, _ := propMap["description"].(string)
+
+				// TODO: Handle enum properly
+				enumValues := []string{}
+
+				schema.Properties[propName] = &genai.Schema{
+					Type:        genai.Type(propType),
+					Description: propDescription,
+					Enum:        enumValues,
 				}
 			}
 
 			functionDeclaration.Parameters = schema
 		}
 
-		tools = append(tools, &genai.Tool{
+		googleTools = append(googleTools, &genai.Tool{
 			FunctionDeclarations: []*genai.FunctionDeclaration{functionDeclaration},
 		})
 	}
 
-	chatConfig.Tools = tools
+	chatConfig.Tools = googleTools
 	return nil
 }
 
 func (prvdr *GoogleProvider) buildResponseFormat(
 	chatConfig *genai.GenerateContentConfig,
+	format params.ResponseFormat,
 ) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
-	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
+	// Check if format is a zero value or nil pointer
+	name, err := format.Name()
+	if err != nil || name == "" {
+		return nil
 	}
 
-	if prvdr.params.ResponseFormat == nil {
-		return nil
+	description, err := format.Description()
+	if err != nil {
+		return errnie.Error(err)
 	}
 
 	// Google's API doesn't have direct JSON schema support like OpenAI
 	// Instead, we'll add it to the system message
 	systemMsg := fmt.Sprintf(
 		"Please format your response as a JSON object following this schema:\n%s\n%s",
-		prvdr.params.ResponseFormat.Name,
-		prvdr.params.ResponseFormat.Description,
+		name,
+		description,
 	)
 
-	if prvdr.params.ResponseFormat.Schema != nil {
-		systemMsg += fmt.Sprintf("\nSchema: %v", prvdr.params.ResponseFormat.Schema)
+	schema, err := format.Schema()
+	if err != nil {
+		return errnie.Error(err)
+	}
+
+	if schema != "" {
+		systemMsg += fmt.Sprintf("\nSchema: %v", schema)
 	}
 
 	chatConfig.SystemInstruction = &genai.Content{
@@ -488,7 +518,6 @@ func (prvdr *GoogleProvider) buildResponseFormat(
 }
 
 type GoogleEmbedder struct {
-	params   *Params
 	apiKey   string
 	endpoint string
 	client   *genai.Client
@@ -501,8 +530,7 @@ func NewGoogleEmbedder(apiKey string, endpoint string) *GoogleEmbedder {
 		apiKey = os.Getenv("GOOGLE_API_KEY")
 	}
 
-	ctx := context.Background()
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
 		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
 	})
@@ -512,7 +540,6 @@ func NewGoogleEmbedder(apiKey string, endpoint string) *GoogleEmbedder {
 	}
 
 	return &GoogleEmbedder{
-		params:   &Params{},
 		apiKey:   apiKey,
 		endpoint: endpoint,
 		client:   client,
@@ -531,6 +558,5 @@ func (embedder *GoogleEmbedder) Write(p []byte) (n int, err error) {
 
 func (embedder *GoogleEmbedder) Close() error {
 	errnie.Debug("provider.GoogleEmbedder.Close")
-	embedder.params = nil
 	return nil
 }

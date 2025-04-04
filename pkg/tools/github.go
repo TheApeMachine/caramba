@@ -4,954 +4,691 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
-	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/tools/github"
 )
 
-/*
-Github provides a streaming interface to GitHub operations.
-It manages GitHub API interactions through a buffered client connection
-and implements io.ReadWriteCloser for streaming data processing.
-*/
+/* GithubTool provides a base for all GitHub operations */
 type GithubTool struct {
-	*ToolBuilder
-	pctx   context.Context
-	ctx    context.Context
-	cancel context.CancelFunc
-	client *github.Client
+	operations map[string]ToolType
 }
 
-type GithubToolOption func(*GithubTool)
+/* NewGithubTool creates a new GitHub tool with all operations */
+func NewGithubTool() *GithubTool {
+	getRepositories := NewGithubGetRepositoriesTool()
+	getRepository := NewGithubGetRepositoryTool()
+	createRepository := NewGithubCreateRepositoryTool()
+	deleteRepository := NewGithubDeleteRepositoryTool()
+	updateRepository := NewGithubUpdateRepositoryTool()
+	listIssues := NewGithubListIssuesTool()
+	createIssue := NewGithubCreateIssueTool()
+	updateIssue := NewGithubUpdateIssueTool()
+	closeIssue := NewGithubCloseIssueTool()
+	listPulls := NewGithubListPullsTool()
+	createPull := NewGithubCreatePullTool()
+	updatePull := NewGithubUpdatePullTool()
+	mergePull := NewGithubMergePullTool()
+	listReviews := NewGithubListReviewsTool()
+	createReview := NewGithubCreateReviewTool()
+	updateReview := NewGithubUpdateReviewTool()
+	listReviewComments := NewGithubListReviewCommentsTool()
+	createReviewComment := NewGithubCreateReviewCommentTool()
 
-/*
-NewGithub creates a new GitHub tool instance.
+	return &GithubTool{
+		operations: map[string]ToolType{
+			"get_repositories":      {getRepositories.Tool, getRepositories.Use},
+			"get_repository":        {getRepository.Tool, getRepository.Use},
+			"create_repository":     {createRepository.Tool, createRepository.Use},
+			"delete_repository":     {deleteRepository.Tool, deleteRepository.Use},
+			"update_repository":     {updateRepository.Tool, updateRepository.Use},
+			"list_issues":           {listIssues.Tool, listIssues.Use},
+			"create_issue":          {createIssue.Tool, createIssue.Use},
+			"update_issue":          {updateIssue.Tool, updateIssue.Use},
+			"close_issue":           {closeIssue.Tool, closeIssue.Use},
+			"list_pulls":            {listPulls.Tool, listPulls.Use},
+			"create_pull":           {createPull.Tool, createPull.Use},
+			"update_pull":           {updatePull.Tool, updatePull.Use},
+			"merge_pull":            {mergePull.Tool, mergePull.Use},
+			"list_reviews":          {listReviews.Tool, listReviews.Use},
+			"create_review":         {createReview.Tool, createReview.Use},
+			"update_review":         {updateReview.Tool, updateReview.Use},
+			"list_review_comments":  {listReviewComments.Tool, listReviewComments.Use},
+			"create_review_comment": {createReviewComment.Tool, createReviewComment.Use},
+		},
+	}
+}
 
-It initializes a GitHub client and sets up a buffered stream for
-processing GitHub operations. The buffer copies data bidirectionally
-between the artifact and the GitHub client.
-*/
-func NewGithubTool(opts ...GithubToolOption) *GithubTool {
-	ctx, cancel := context.WithCancel(context.Background())
+/* ToMCP returns all GitHub tool definitions */
+func (tool *GithubTool) ToMCP() []ToolType {
+	tools := make([]ToolType, 0)
 
-	client := github.NewClient()
-
-	tool := &GithubTool{
-		ToolBuilder: NewToolBuilder(),
-		ctx:         ctx,
-		cancel:      cancel,
-		client:      client,
+	for _, tool := range tool.operations {
+		tools = append(tools, tool)
 	}
 
-	for _, opt := range opts {
-		opt(tool)
-	}
-
-	return tool
+	return tools
 }
 
-func WithGithubCancel(ctx context.Context) GithubToolOption {
-	return func(tool *GithubTool) {
-		tool.pctx = ctx
-	}
-}
-
-func (tool *GithubTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	errnie.Debug("github.GithubTool.Generate")
-
-	out := make(chan *datura.Artifact)
-
-	go func() {
-		defer close(out)
-
-		for {
-			select {
-			case <-tool.pctx.Done():
-				errnie.Debug("github.GithubTool.Generate: parent context done")
-				tool.cancel()
-				return
-			case <-tool.ctx.Done():
-				errnie.Debug("github.GithubTool.Generate: context done")
-				return
-			case artifact := <-buffer:
-				for _, f := range fn {
-					out <- f(artifact)
-				}
-			}
-		}
-	}()
-
-	return out
-}
-
-// GithubGetRepositoriesTool implements a tool for getting repositories from GitHub
+/* GithubGetRepositoriesTool implements a tool for getting repositories from GitHub */
 type GithubGetRepositoriesTool struct {
-	*GithubTool
+	mcp.Tool
 }
 
+/* NewGithubGetRepositoriesTool creates a new tool for getting repositories */
 func NewGithubGetRepositoriesTool() *GithubGetRepositoriesTool {
-	// Create MCP tool definition based on schema from config.yml
-	getReposTool := mcp.NewTool(
-		"get_repositories",
-		mcp.WithDescription("A tool for getting repositories from GitHub."),
-	)
-
-	grrt := &GithubGetRepositoriesTool{
-		GithubTool: NewGithubTool(),
+	return &GithubGetRepositoriesTool{
+		Tool: mcp.NewTool(
+			"get_repositories",
+			mcp.WithDescription("A tool for getting repositories from GitHub."),
+		),
 	}
-
-	grrt.ToolBuilder.mcp = &getReposTool
-	return grrt
 }
 
-func (tool *GithubGetRepositoriesTool) ID() string {
-	return "github_get_repositories"
+/* Use executes the get repositories operation and returns the results */
+func (tool *GithubGetRepositoriesTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubGetRepositoriesTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubGetRepositoriesTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for getting repositories
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubGetRepositoriesTool
-func (tool *GithubGetRepositoriesTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubGetRepositoryTool implements a tool for getting a repository from GitHub
+/* GithubGetRepositoryTool implements a tool for getting a repository from GitHub */
 type GithubGetRepositoryTool struct {
-	*GithubTool
+	mcp.Tool
 }
 
+/* NewGithubGetRepositoryTool creates a new tool for getting a repository */
 func NewGithubGetRepositoryTool() *GithubGetRepositoryTool {
-	// Create MCP tool definition based on schema from config.yml
-	getRepoTool := mcp.NewTool(
-		"get_repository",
-		mcp.WithDescription("A tool for getting a repository from GitHub."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to get."),
-			mcp.Required(),
+	return &GithubGetRepositoryTool{
+		Tool: mcp.NewTool(
+			"get_repository",
+			mcp.WithDescription("A tool for getting a repository from GitHub."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to get."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	grt := &GithubGetRepositoryTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	grt.ToolBuilder.mcp = &getRepoTool
-	return grt
 }
 
-func (tool *GithubGetRepositoryTool) ID() string {
-	return "github_get_repository"
+/* Use executes the get repository operation and returns the results */
+func (tool *GithubGetRepositoryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubGetRepositoryTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubGetRepositoryTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for getting a repository
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubGetRepositoryTool
-func (tool *GithubGetRepositoryTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubCreateRepositoryTool implements a tool for creating a repository
+/* GithubCreateRepositoryTool implements a tool for creating a repository */
 type GithubCreateRepositoryTool struct {
-	*GithubTool
+	mcp.Tool
 }
 
+/* NewGithubCreateRepositoryTool creates a new tool for creating repositories */
 func NewGithubCreateRepositoryTool() *GithubCreateRepositoryTool {
-	// Create MCP tool definition based on schema from config.yml
-	createRepoTool := mcp.NewTool(
-		"create_repository",
-		mcp.WithDescription("A tool for creating a repository on GitHub."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to create."),
-			mcp.Required(),
+	return &GithubCreateRepositoryTool{
+		Tool: mcp.NewTool(
+			"create_repository",
+			mcp.WithDescription("A tool for creating a repository on GitHub."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to create."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	gcrt := &GithubCreateRepositoryTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	gcrt.ToolBuilder.mcp = &createRepoTool
-	return gcrt
 }
 
-func (tool *GithubCreateRepositoryTool) ID() string {
-	return "github_create_repository"
+/* Use executes the create repository operation and returns the results */
+func (tool *GithubCreateRepositoryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubCreateRepositoryTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
+/* GithubDeleteRepositoryTool implements a tool for deleting a repository */
+type GithubDeleteRepositoryTool struct {
+	mcp.Tool
 }
 
-func (tool *GithubCreateRepositoryTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for creating a repository
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubCreateRepositoryTool
-func (tool *GithubCreateRepositoryTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubListBranchesTool implements a tool for listing branches on a repository
-type GithubListBranchesTool struct {
-	*GithubTool
-}
-
-func NewGithubListBranchesTool() *GithubListBranchesTool {
-	// Create MCP tool definition based on schema from config.yml
-	listBranchesTool := mcp.NewTool(
-		"list_branches",
-		mcp.WithDescription("A tool for listing branches on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to list branches on."),
-			mcp.Required(),
+/* NewGithubDeleteRepositoryTool creates a new tool for deleting repositories */
+func NewGithubDeleteRepositoryTool() *GithubDeleteRepositoryTool {
+	return &GithubDeleteRepositoryTool{
+		Tool: mcp.NewTool(
+			"delete_repository",
+			mcp.WithDescription("A tool for deleting a repository on GitHub."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to delete."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	glbt := &GithubListBranchesTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	glbt.ToolBuilder.mcp = &listBranchesTool
-	return glbt
 }
 
-func (tool *GithubListBranchesTool) ID() string {
-	return "github_list_branches"
+/* Use executes the delete repository operation */
+func (tool *GithubDeleteRepositoryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubListBranchesTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
+/* GithubUpdateRepositoryTool implements a tool for updating a repository */
+type GithubUpdateRepositoryTool struct {
+	mcp.Tool
 }
 
-func (tool *GithubListBranchesTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for listing branches on a repository
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubListBranchesTool
-func (tool *GithubListBranchesTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubGetContentsTool implements a tool for getting the contents of a repository
-type GithubGetContentsTool struct {
-	*GithubTool
-}
-
-func NewGithubGetContentsTool() *GithubGetContentsTool {
-	// Create MCP tool definition based on schema from config.yml
-	getContentsTool := mcp.NewTool(
-		"get_contents",
-		mcp.WithDescription("A tool for getting the contents of a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to get the contents of."),
-			mcp.Required(),
+/* NewGithubUpdateRepositoryTool creates a new tool for updating repositories */
+func NewGithubUpdateRepositoryTool() *GithubUpdateRepositoryTool {
+	return &GithubUpdateRepositoryTool{
+		Tool: mcp.NewTool(
+			"update_repository",
+			mcp.WithDescription("A tool for updating a repository on GitHub."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to update."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"description",
+				mcp.Description("New description for the repository."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	ggct := &GithubGetContentsTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	ggct.ToolBuilder.mcp = &getContentsTool
-	return ggct
 }
 
-func (tool *GithubGetContentsTool) ID() string {
-	return "github_get_contents"
+/* Use executes the update repository operation */
+func (tool *GithubUpdateRepositoryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubGetContentsTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubGetContentsTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for getting contents of a repository
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubGetContentsTool
-func (tool *GithubGetContentsTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubListPullRequestsTool implements a tool for listing pull requests on a repository
-type GithubListPullRequestsTool struct {
-	*GithubTool
-}
-
-func NewGithubListPullRequestsTool() *GithubListPullRequestsTool {
-	// Create MCP tool definition based on schema from config.yml
-	listPRsTool := mcp.NewTool(
-		"list_pull_requests",
-		mcp.WithDescription("A tool for listing pull requests on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to list pull requests on."),
-			mcp.Required(),
-		),
-	)
-
-	glprt := &GithubListPullRequestsTool{
-		GithubTool: NewGithubTool(),
-	}
-
-	glprt.ToolBuilder.mcp = &listPRsTool
-	return glprt
-}
-
-func (tool *GithubListPullRequestsTool) ID() string {
-	return "github_list_pull_requests"
-}
-
-func (tool *GithubListPullRequestsTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubListPullRequestsTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for listing pull requests
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubListPullRequestsTool
-func (tool *GithubListPullRequestsTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubGetPullRequestTool implements a tool for getting a pull request
-type GithubGetPullRequestTool struct {
-	*GithubTool
-}
-
-func NewGithubGetPullRequestTool() *GithubGetPullRequestTool {
-	// Create MCP tool definition based on schema from config.yml
-	getPRTool := mcp.NewTool(
-		"get_pull_request",
-		mcp.WithDescription("A tool for getting a pull request on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to get the pull request from."),
-			mcp.Required(),
-		),
-	)
-
-	ggprt := &GithubGetPullRequestTool{
-		GithubTool: NewGithubTool(),
-	}
-
-	ggprt.ToolBuilder.mcp = &getPRTool
-	return ggprt
-}
-
-func (tool *GithubGetPullRequestTool) ID() string {
-	return "github_get_pull_request"
-}
-
-func (tool *GithubGetPullRequestTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubGetPullRequestTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for getting a pull request
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubGetPullRequestTool
-func (tool *GithubGetPullRequestTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubCreatePullRequestTool implements a tool for creating a pull request
-type GithubCreatePullRequestTool struct {
-	*GithubTool
-}
-
-func NewGithubCreatePullRequestTool() *GithubCreatePullRequestTool {
-	// Create MCP tool definition based on schema from config.yml
-	createPRTool := mcp.NewTool(
-		"create_pull_request",
-		mcp.WithDescription("A tool for creating a pull request on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to create the pull request on."),
-			mcp.Required(),
-		),
-	)
-
-	gcprt := &GithubCreatePullRequestTool{
-		GithubTool: NewGithubTool(),
-	}
-
-	gcprt.ToolBuilder.mcp = &createPRTool
-	return gcprt
-}
-
-func (tool *GithubCreatePullRequestTool) ID() string {
-	return "github_create_pull_request"
-}
-
-func (tool *GithubCreatePullRequestTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubCreatePullRequestTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for creating a pull request
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubCreatePullRequestTool
-func (tool *GithubCreatePullRequestTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubUpdatePullRequestTool implements a tool for updating a pull request
-type GithubUpdatePullRequestTool struct {
-	*GithubTool
-}
-
-func NewGithubUpdatePullRequestTool() *GithubUpdatePullRequestTool {
-	// Create MCP tool definition based on schema from config.yml
-	updatePRTool := mcp.NewTool(
-		"update_pull_request",
-		mcp.WithDescription("A tool for updating a pull request on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to update the pull request on."),
-			mcp.Required(),
-		),
-	)
-
-	guprt := &GithubUpdatePullRequestTool{
-		GithubTool: NewGithubTool(),
-	}
-
-	guprt.ToolBuilder.mcp = &updatePRTool
-	return guprt
-}
-
-func (tool *GithubUpdatePullRequestTool) ID() string {
-	return "github_update_pull_request"
-}
-
-func (tool *GithubUpdatePullRequestTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubUpdatePullRequestTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for updating a pull request
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubUpdatePullRequestTool
-func (tool *GithubUpdatePullRequestTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubListIssuesTool implements a tool for listing issues
+/* GithubListIssuesTool implements a tool for listing repository issues */
 type GithubListIssuesTool struct {
-	*GithubTool
+	mcp.Tool
 }
 
+/* NewGithubListIssuesTool creates a new tool for listing issues */
 func NewGithubListIssuesTool() *GithubListIssuesTool {
-	// Create MCP tool definition based on schema from config.yml
-	listIssuesTool := mcp.NewTool(
-		"list_issues",
-		mcp.WithDescription("A tool for listing issues on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to list issues on."),
-			mcp.Required(),
+	return &GithubListIssuesTool{
+		Tool: mcp.NewTool(
+			"list_issues",
+			mcp.WithDescription("A tool for listing issues in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to list issues from."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	glit := &GithubListIssuesTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	glit.ToolBuilder.mcp = &listIssuesTool
-	return glit
 }
 
-func (tool *GithubListIssuesTool) ID() string {
-	return "github_list_issues"
+/* Use executes the list issues operation */
+func (tool *GithubListIssuesTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubListIssuesTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubListIssuesTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for listing issues
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubListIssuesTool
-func (tool *GithubListIssuesTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubGetIssueTool implements a tool for getting an issue
-type GithubGetIssueTool struct {
-	*GithubTool
-}
-
-func NewGithubGetIssueTool() *GithubGetIssueTool {
-	// Create MCP tool definition based on schema from config.yml
-	getIssueTool := mcp.NewTool(
-		"get_issue",
-		mcp.WithDescription("A tool for getting an issue on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to get the issue from."),
-			mcp.Required(),
-		),
-	)
-
-	ggit := &GithubGetIssueTool{
-		GithubTool: NewGithubTool(),
-	}
-
-	ggit.ToolBuilder.mcp = &getIssueTool
-	return ggit
-}
-
-func (tool *GithubGetIssueTool) ID() string {
-	return "github_get_issue"
-}
-
-func (tool *GithubGetIssueTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubGetIssueTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for getting an issue
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubGetIssueTool
-func (tool *GithubGetIssueTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubCreateIssueTool implements a tool for creating an issue
+/* GithubCreateIssueTool implements a tool for creating an issue */
 type GithubCreateIssueTool struct {
-	*GithubTool
+	mcp.Tool
 }
 
+/* NewGithubCreateIssueTool creates a new tool for creating issues */
 func NewGithubCreateIssueTool() *GithubCreateIssueTool {
-	// Create MCP tool definition based on schema from config.yml
-	createIssueTool := mcp.NewTool(
-		"create_issue",
-		mcp.WithDescription("A tool for creating an issue on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to create the issue on."),
-			mcp.Required(),
+	return &GithubCreateIssueTool{
+		Tool: mcp.NewTool(
+			"create_issue",
+			mcp.WithDescription("A tool for creating an issue in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to create the issue in."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"title",
+				mcp.Description("The title of the issue."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The body content of the issue."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	gcit := &GithubCreateIssueTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	gcit.ToolBuilder.mcp = &createIssueTool
-	return gcit
 }
 
-func (tool *GithubCreateIssueTool) ID() string {
-	return "github_create_issue"
+/* Use executes the create issue operation */
+func (tool *GithubCreateIssueTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubCreateIssueTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
-}
-
-func (tool *GithubCreateIssueTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for creating an issue
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubCreateIssueTool
-func (tool *GithubCreateIssueTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubUpdateIssueTool implements a tool for updating an issue
+/* GithubUpdateIssueTool implements a tool for updating an issue */
 type GithubUpdateIssueTool struct {
-	*GithubTool
+	mcp.Tool
 }
 
+/* NewGithubUpdateIssueTool creates a new tool for updating issues */
 func NewGithubUpdateIssueTool() *GithubUpdateIssueTool {
-	// Create MCP tool definition based on schema from config.yml
-	updateIssueTool := mcp.NewTool(
-		"update_issue",
-		mcp.WithDescription("A tool for updating an issue on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to update the issue on."),
-			mcp.Required(),
+	return &GithubUpdateIssueTool{
+		Tool: mcp.NewTool(
+			"update_issue",
+			mcp.WithDescription("A tool for updating an issue in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the issue."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"issue_number",
+				mcp.Description("The number of the issue to update."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"title",
+				mcp.Description("The new title of the issue."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The new body content of the issue."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	guit := &GithubUpdateIssueTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	guit.ToolBuilder.mcp = &updateIssueTool
-	return guit
 }
 
-func (tool *GithubUpdateIssueTool) ID() string {
-	return "github_update_issue"
+/* Use executes the update issue operation */
+func (tool *GithubUpdateIssueTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubUpdateIssueTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
+/* GithubCloseIssueTool implements a tool for closing an issue */
+type GithubCloseIssueTool struct {
+	mcp.Tool
 }
 
-func (tool *GithubUpdateIssueTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for updating an issue
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubUpdateIssueTool
-func (tool *GithubUpdateIssueTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubCreatePRCommentTool implements a tool for creating a PR comment
-type GithubCreatePRCommentTool struct {
-	*GithubTool
-}
-
-func NewGithubCreatePRCommentTool() *GithubCreatePRCommentTool {
-	// Create MCP tool definition based on schema from config.yml
-	createPRCommentTool := mcp.NewTool(
-		"create_pr_comment",
-		mcp.WithDescription("A tool for creating a comment on a pull request on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to create the pull request comment on."),
-			mcp.Required(),
+/* NewGithubCloseIssueTool creates a new tool for closing issues */
+func NewGithubCloseIssueTool() *GithubCloseIssueTool {
+	return &GithubCloseIssueTool{
+		Tool: mcp.NewTool(
+			"close_issue",
+			mcp.WithDescription("A tool for closing an issue in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the issue."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"issue_number",
+				mcp.Description("The number of the issue to close."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	gcpct := &GithubCreatePRCommentTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	gcpct.ToolBuilder.mcp = &createPRCommentTool
-	return gcpct
 }
 
-func (tool *GithubCreatePRCommentTool) ID() string {
-	return "github_create_pr_comment"
+/* Use executes the close issue operation */
+func (tool *GithubCloseIssueTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubCreatePRCommentTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
+/* GithubListPullsTool implements a tool for listing pull requests */
+type GithubListPullsTool struct {
+	mcp.Tool
 }
 
-func (tool *GithubCreatePRCommentTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for creating a PR comment
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubCreatePRCommentTool
-func (tool *GithubCreatePRCommentTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubListPRCommentsTool implements a tool for listing PR comments
-type GithubListPRCommentsTool struct {
-	*GithubTool
-}
-
-func NewGithubListPRCommentsTool() *GithubListPRCommentsTool {
-	// Create MCP tool definition based on schema from config.yml
-	listPRCommentsTool := mcp.NewTool(
-		"list_pr_comments",
-		mcp.WithDescription("A tool for listing comments on a pull request on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to list pull request comments on."),
-			mcp.Required(),
+/* NewGithubListPullsTool creates a new tool for listing pull requests */
+func NewGithubListPullsTool() *GithubListPullsTool {
+	return &GithubListPullsTool{
+		Tool: mcp.NewTool(
+			"list_pulls",
+			mcp.WithDescription("A tool for listing pull requests in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to list pull requests from."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	glpct := &GithubListPRCommentsTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	glpct.ToolBuilder.mcp = &listPRCommentsTool
-	return glpct
 }
 
-func (tool *GithubListPRCommentsTool) ID() string {
-	return "github_list_pr_comments"
+/* Use executes the list pulls operation */
+func (tool *GithubListPullsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubListPRCommentsTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
+/* GithubCreatePullTool implements a tool for creating a pull request */
+type GithubCreatePullTool struct {
+	mcp.Tool
 }
 
-func (tool *GithubListPRCommentsTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for listing PR comments
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubListPRCommentsTool
-func (tool *GithubListPRCommentsTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubCreatePRReviewTool implements a tool for creating a PR review
-type GithubCreatePRReviewTool struct {
-	*GithubTool
-}
-
-func NewGithubCreatePRReviewTool() *GithubCreatePRReviewTool {
-	// Create MCP tool definition based on schema from config.yml
-	createPRReviewTool := mcp.NewTool(
-		"create_pr_review",
-		mcp.WithDescription("A tool for creating a review on a pull request on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to create the pull request review on."),
-			mcp.Required(),
+/* NewGithubCreatePullTool creates a new tool for creating pull requests */
+func NewGithubCreatePullTool() *GithubCreatePullTool {
+	return &GithubCreatePullTool{
+		Tool: mcp.NewTool(
+			"create_pull",
+			mcp.WithDescription("A tool for creating a pull request in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to create the pull request in."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"title",
+				mcp.Description("The title of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"head",
+				mcp.Description("The name of the branch where your changes are implemented."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"base",
+				mcp.Description("The name of the branch you want your changes pulled into."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The contents of the pull request."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	gcprt := &GithubCreatePRReviewTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	gcprt.ToolBuilder.mcp = &createPRReviewTool
-	return gcprt
 }
 
-func (tool *GithubCreatePRReviewTool) ID() string {
-	return "github_create_pr_review"
+/* Use executes the create pull request operation */
+func (tool *GithubCreatePullTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubCreatePRReviewTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
+/* GithubUpdatePullTool implements a tool for updating a pull request */
+type GithubUpdatePullTool struct {
+	mcp.Tool
 }
 
-func (tool *GithubCreatePRReviewTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for creating a PR review
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubCreatePRReviewTool
-func (tool *GithubCreatePRReviewTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubListPRReviewsTool implements a tool for listing PR reviews
-type GithubListPRReviewsTool struct {
-	*GithubTool
-}
-
-func NewGithubListPRReviewsTool() *GithubListPRReviewsTool {
-	// Create MCP tool definition based on schema from config.yml
-	listPRReviewsTool := mcp.NewTool(
-		"list_pr_reviews",
-		mcp.WithDescription("A tool for listing reviews on a pull request on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to list pull request reviews on."),
-			mcp.Required(),
+/* NewGithubUpdatePullTool creates a new tool for updating pull requests */
+func NewGithubUpdatePullTool() *GithubUpdatePullTool {
+	return &GithubUpdatePullTool{
+		Tool: mcp.NewTool(
+			"update_pull",
+			mcp.WithDescription("A tool for updating a pull request in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request to update."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"title",
+				mcp.Description("The new title of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The new contents of the pull request."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	glprt := &GithubListPRReviewsTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	glprt.ToolBuilder.mcp = &listPRReviewsTool
-	return glprt
 }
 
-func (tool *GithubListPRReviewsTool) ID() string {
-	return "github_list_pr_reviews"
+/* Use executes the update pull request operation */
+func (tool *GithubUpdatePullTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubListPRReviewsTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
+/* GithubMergePullTool implements a tool for merging a pull request */
+type GithubMergePullTool struct {
+	mcp.Tool
 }
 
-func (tool *GithubListPRReviewsTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for listing PR reviews
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the GithubListPRReviewsTool
-func (tool *GithubListPRReviewsTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// GithubCreateReviewCommentTool implements a tool for creating a review comment
-type GithubCreateReviewCommentTool struct {
-	*GithubTool
-}
-
-func NewGithubCreateReviewCommentTool() *GithubCreateReviewCommentTool {
-	// Create MCP tool definition based on schema from config.yml
-	createReviewCommentTool := mcp.NewTool(
-		"create_review_comment",
-		mcp.WithDescription("A tool for creating a review comment on a pull request on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to create the pull request review comment on."),
-			mcp.Required(),
+/* NewGithubMergePullTool creates a new tool for merging pull requests */
+func NewGithubMergePullTool() *GithubMergePullTool {
+	return &GithubMergePullTool{
+		Tool: mcp.NewTool(
+			"merge_pull",
+			mcp.WithDescription("A tool for merging a pull request in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request to merge."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"merge_method",
+				mcp.Description("The merge method to use (merge, squash, or rebase)."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	gcrct := &GithubCreateReviewCommentTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	gcrct.ToolBuilder.mcp = &createReviewCommentTool
-	return gcrct
 }
 
-func (tool *GithubCreateReviewCommentTool) ID() string {
-	return "github_create_review_comment"
+/* Use executes the merge pull request operation */
+func (tool *GithubMergePullTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubCreateReviewCommentTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
+/* GithubListReviewsTool implements a tool for listing pull request reviews */
+type GithubListReviewsTool struct {
+	mcp.Tool
 }
 
-func (tool *GithubCreateReviewCommentTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for creating a review comment
-	return artifact
+/* NewGithubListReviewsTool creates a new tool for listing reviews */
+func NewGithubListReviewsTool() *GithubListReviewsTool {
+	return &GithubListReviewsTool{
+		Tool: mcp.NewTool(
+			"list_reviews",
+			mcp.WithDescription("A tool for listing reviews on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
+		),
+	}
 }
 
-// ToMCP returns the MCP tool definitions for the GithubCreateReviewCommentTool
-func (tool *GithubCreateReviewCommentTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
+/* Use executes the list reviews operation */
+func (tool *GithubListReviewsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-// GithubListReviewCommentsTool implements a tool for listing review comments
+/* GithubCreateReviewTool implements a tool for creating a pull request review */
+type GithubCreateReviewTool struct {
+	mcp.Tool
+}
+
+/* NewGithubCreateReviewTool creates a new tool for creating reviews */
+func NewGithubCreateReviewTool() *GithubCreateReviewTool {
+	return &GithubCreateReviewTool{
+		Tool: mcp.NewTool(
+			"create_review",
+			mcp.WithDescription("A tool for creating a review on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"event",
+				mcp.Description("The review action (APPROVE, REQUEST_CHANGES, or COMMENT)."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The review comment."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the create review operation */
+func (tool *GithubCreateReviewTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
+}
+
+/* GithubUpdateReviewTool implements a tool for updating a pull request review */
+type GithubUpdateReviewTool struct {
+	mcp.Tool
+}
+
+/* NewGithubUpdateReviewTool creates a new tool for updating reviews */
+func NewGithubUpdateReviewTool() *GithubUpdateReviewTool {
+	return &GithubUpdateReviewTool{
+		Tool: mcp.NewTool(
+			"update_review",
+			mcp.WithDescription("A tool for updating a review on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"review_id",
+				mcp.Description("The ID of the review to update."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The updated review comment."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the update review operation */
+func (tool *GithubUpdateReviewTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
+}
+
+/* GithubListReviewCommentsTool implements a tool for listing review comments */
 type GithubListReviewCommentsTool struct {
-	*GithubTool
+	mcp.Tool
 }
 
+/* NewGithubListReviewCommentsTool creates a new tool for listing review comments */
 func NewGithubListReviewCommentsTool() *GithubListReviewCommentsTool {
-	// Create MCP tool definition based on schema from config.yml
-	listReviewCommentsTool := mcp.NewTool(
-		"list_review_comments",
-		mcp.WithDescription("A tool for listing review comments on a pull request on a repository."),
-		mcp.WithString(
-			"repository",
-			mcp.Description("The repository to list review comments on."),
-			mcp.Required(),
+	return &GithubListReviewCommentsTool{
+		Tool: mcp.NewTool(
+			"list_review_comments",
+			mcp.WithDescription("A tool for listing review comments on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	glrct := &GithubListReviewCommentsTool{
-		GithubTool: NewGithubTool(),
 	}
-
-	glrct.ToolBuilder.mcp = &listReviewCommentsTool
-	return glrct
 }
 
-func (tool *GithubListReviewCommentsTool) ID() string {
-	return "github_list_review_comments"
+/* Use executes the list review comments operation */
+func (tool *GithubListReviewCommentsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *GithubListReviewCommentsTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.GithubTool.Generate(buffer, tool.fn)
+/* GithubCreateReviewCommentTool implements a tool for creating a review comment */
+type GithubCreateReviewCommentTool struct {
+	mcp.Tool
 }
 
-func (tool *GithubListReviewCommentsTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for listing review comments
-	return artifact
+/* NewGithubCreateReviewCommentTool creates a new tool for creating review comments */
+func NewGithubCreateReviewCommentTool() *GithubCreateReviewCommentTool {
+	return &GithubCreateReviewCommentTool{
+		Tool: mcp.NewTool(
+			"create_review_comment",
+			mcp.WithDescription("A tool for creating a review comment on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"commit_id",
+				mcp.Description("The SHA of the commit to comment on."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"path",
+				mcp.Description("The relative path to the file being commented on."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"position",
+				mcp.Description("The line index in the diff to comment on."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The text of the review comment."),
+				mcp.Required(),
+			),
+		),
+	}
 }
 
-// ToMCP returns the MCP tool definitions for the GithubListReviewCommentsTool
-func (tool *GithubListReviewCommentsTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
+/* Use executes the create review comment operation */
+func (tool *GithubCreateReviewCommentTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }

@@ -8,6 +8,7 @@ const (
 	ArtifactRoleUser
 	ArtifactRoleAssistant
 	ArtifactRoleTool
+	ArtifactRoleData
 	ArtifactRoleQuestion
 	ArtifactRoleAnswer
 	ArtifactRoleAcknowledge
@@ -26,6 +27,7 @@ func (role ArtifactRole) String() string {
 		"user",
 		"assistant",
 		"tool",
+		"data",
 		"question",
 		"answer",
 		"acknowledge",

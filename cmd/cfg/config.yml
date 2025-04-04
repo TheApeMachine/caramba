@@ -87,18 +87,6 @@ settings:
   global:
     iteration_limit: 10
 
-protocols:
-  task:
-    - <sender> -[question|aquire]-> <receiver> (waiting)
-    - <receiver> -[ack|aquire]-> <sender> (waiting)
-    - <sender> -[ack|aquire]-> <receiver> (busy)
-    - <receiver> -[question|preflight]-> <sender> (busy)
-    - <sender> -[answer|params]-> <receiver> (working)
-    - <sender> -[answer|context]-> <receiver> (working)
-    - <receiver> -[answer|generation]-> <sender> (busy)
-    - <sender> -[ack|release]-> <receiver> (ready)
-    - <receiver> -[ack|release]-> <sender> (ready)
-
 tools:
   qdrant:
     host: localhost

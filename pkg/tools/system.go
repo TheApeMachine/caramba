@@ -4,211 +4,132 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
-	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
+/* SystemTool provides a base for all system operations */
 type SystemTool struct {
-	*ToolBuilder
-	pctx   context.Context
-	ctx    context.Context
-	cancel context.CancelFunc
+	Operations map[string]ToolType
 }
 
-type SystemToolOption func(*SystemTool)
+/* NewSystemTool creates a new System tool with options */
+func NewSystemTool() *SystemTool {
 
-func NewSystemTool(opts ...SystemToolOption) *SystemTool {
-	ctx, cancel := context.WithCancel(context.Background())
+	inspect := NewSystemInspectTool()
+	optimize := NewSystemOptimizeTool()
+	message := NewSystemMessageTool()
 
-	tool := &SystemTool{
-		ToolBuilder: NewToolBuilder(),
-		ctx:         ctx,
-		cancel:      cancel,
-	}
-
-	for _, opt := range opts {
-		opt(tool)
-	}
-
-	return tool
-}
-
-func WithCancel(ctx context.Context) SystemToolOption {
-	return func(tool *SystemTool) {
-		tool.pctx = ctx
+	return &SystemTool{
+		Operations: map[string]ToolType{
+			"system_inspect":  {inspect.Tool, inspect.Use},
+			"system_optimize": {optimize.Tool, optimize.Use},
+			"system_message":  {message.Tool, message.Use},
+		},
 	}
 }
 
-func (tool *SystemTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	errnie.Debug("system.SystemTool.Generate")
+/* ToMCP returns all System tool definitions */
+func (tool *SystemTool) ToMCP() []ToolType {
+	tools := make([]ToolType, 0)
 
-	out := make(chan *datura.Artifact)
+	for _, tool := range tool.Operations {
+		tools = append(tools, tool)
+	}
 
-	go func() {
-		defer close(out)
-
-		for {
-			select {
-			case <-tool.pctx.Done():
-				errnie.Debug("system.SystemTool.Generate: parent context done")
-				tool.cancel()
-				return
-			case <-tool.ctx.Done():
-				errnie.Debug("system.SystemTool.Generate: context done")
-				return
-			case artifact := <-buffer:
-				for _, f := range fn {
-					out <- f(artifact)
-				}
-			}
-		}
-	}()
-
-	return out
+	return tools
 }
 
+/* SystemInspectTool implements a tool for inspecting system state */
 type SystemInspectTool struct {
-	*SystemTool
+	mcp.Tool
 }
 
-func NewSystemInspectTool(opts ...SystemToolOption) *SystemInspectTool {
-	inspectTool := mcp.NewTool(
-		"system_inspect",
-		mcp.WithDescription("A tool for inspecting the system."),
-		mcp.WithString(
-			"scope",
-			mcp.Description("The scope of the inspection."),
-			mcp.Enum("agents", "topics"),
-			mcp.Required(),
+/* NewSystemInspectTool creates a new tool for system inspection */
+func NewSystemInspectTool() *SystemInspectTool {
+	return &SystemInspectTool{
+		Tool: mcp.NewTool(
+			"system_inspect",
+			mcp.WithDescription("A tool for inspecting the system."),
+			mcp.WithString(
+				"scope",
+				mcp.Description("The scope of the inspection."),
+				mcp.Enum("agents", "topics"),
+				mcp.Required(),
+			),
 		),
-	)
-
-	sit := &SystemInspectTool{
-		SystemTool: NewSystemTool(opts...),
 	}
-
-	sit.ToolBuilder.mcp = &inspectTool
-	return sit
 }
 
-func (tool *SystemInspectTool) ID() string {
-	return "system_inspect"
+/* Use executes the system inspection operation and returns the results */
+func (tool *SystemInspectTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SystemInspectTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SystemTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SystemInspectTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SystemInspectTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
+/* SystemOptimizeTool implements a tool for optimizing system performance */
 type SystemOptimizeTool struct {
-	*SystemTool
+	mcp.Tool
 }
 
-func NewSystemOptimizeTool(opts ...SystemToolOption) *SystemOptimizeTool {
-	optimizeTool := mcp.NewTool(
-		"system_optimize",
-		mcp.WithDescription("A tool for optimizing your performance and behavior."),
-		mcp.WithString(
-			"operation",
-			mcp.Description("The operation to perform."),
-			mcp.Enum("inspect", "adjust"),
-			mcp.Required(),
+/* NewSystemOptimizeTool creates a new tool for system optimization */
+func NewSystemOptimizeTool() *SystemOptimizeTool {
+	return &SystemOptimizeTool{
+		Tool: mcp.NewTool(
+			"system_optimize",
+			mcp.WithDescription("A tool for optimizing your performance and behavior."),
+			mcp.WithString(
+				"operation",
+				mcp.Description("The operation to perform."),
+				mcp.Enum("inspect", "adjust"),
+				mcp.Required(),
+			),
+			mcp.WithNumber(
+				"temperature",
+				mcp.Description("The temperature parameter to adjust."),
+			),
+			mcp.WithNumber(
+				"topP",
+				mcp.Description("The top_p parameter to adjust."),
+			),
 		),
-		mcp.WithNumber(
-			"temperature",
-			mcp.Description("The temperature parameter to adjust."),
-		),
-		mcp.WithNumber(
-			"topP",
-			mcp.Description("The top_p parameter to adjust."),
-		),
-	)
-
-	sot := &SystemOptimizeTool{
-		SystemTool: NewSystemTool(opts...),
 	}
-
-	sot.ToolBuilder.mcp = &optimizeTool
-	return sot
 }
 
-func (tool *SystemOptimizeTool) ID() string {
-	return "system_optimize"
+/* Use executes the system optimization operation and returns the results */
+func (tool *SystemOptimizeTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SystemOptimizeTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SystemTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SystemOptimizeTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SystemOptimizeTool
-func (tool *SystemOptimizeTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
+/* SystemMessageTool implements a tool for inter-system communication */
 type SystemMessageTool struct {
-	*SystemTool
+	mcp.Tool
 }
 
-func NewSystemMessageTool(opts ...SystemToolOption) *SystemMessageTool {
-	messageTool := mcp.NewTool(
-		"system_message",
-		mcp.WithDescription("A tool for sending messages to other agents and topics."),
-		mcp.WithString(
-			"to",
-			mcp.Description("The name of the agent or topic to send a message to"),
-			mcp.Required(),
+/* NewSystemMessageTool creates a new tool for system messaging */
+func NewSystemMessageTool() *SystemMessageTool {
+	return &SystemMessageTool{
+		Tool: mcp.NewTool(
+			"system_message",
+			mcp.WithDescription("A tool for sending messages to other agents and topics."),
+			mcp.WithString(
+				"to",
+				mcp.Description("The name of the agent or topic to send a message to"),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"message",
+				mcp.Description("The message to send to the agent or topic"),
+				mcp.Required(),
+			),
 		),
-		mcp.WithString(
-			"message",
-			mcp.Description("The message to send to the agent or topic"),
-			mcp.Required(),
-		),
-	)
-
-	smt := &SystemMessageTool{
-		SystemTool: NewSystemTool(opts...),
 	}
-
-	smt.ToolBuilder.mcp = &messageTool
-	return smt
 }
 
-func (tool *SystemMessageTool) ID() string {
-	return "system_message"
-}
-
-func (tool *SystemMessageTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SystemTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SystemMessageTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SystemMessageTool
-func (tool *SystemMessageTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
+/* Use executes the system messaging operation and returns the results */
+func (tool *SystemMessageTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }

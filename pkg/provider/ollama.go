@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 
+	"capnproto.org/go/capnp/v3"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/ollama/ollama/api"
 	"github.com/spf13/viper"
+	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
+	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 /*
@@ -20,10 +22,10 @@ It supports regular chat completions and streaming responses.
 type OllamaProvider struct {
 	client   *api.Client
 	endpoint string
-	buffer   *stream.Buffer
-	params   *Params
+	pctx     context.Context
 	ctx      context.Context
 	cancel   context.CancelFunc
+	segment  *capnp.Segment
 }
 
 /*
@@ -45,8 +47,7 @@ func NewOllamaProvider(opts ...OllamaProviderOption) *OllamaProvider {
 	prvdr := &OllamaProvider{
 		client:   client,
 		endpoint: endpoint,
-		buffer:   stream.NewBuffer(),
-		params:   &Params{},
+		pctx:     ctx,
 		ctx:      ctx,
 		cancel:   cancel,
 	}
@@ -71,66 +72,57 @@ func WithOllamaEndpoint(endpoint string) OllamaProviderOption {
 }
 
 func (prvdr *OllamaProvider) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+	p params.Params,
+	ctx aicontext.Context,
+	tools []mcp.Tool,
 ) chan *datura.Artifact {
-	errnie.Debug("provider.OllamaProvider.Generate")
+	model, err := p.Model()
 
 	out := make(chan *datura.Artifact)
 
 	go func() {
 		defer close(out)
 
-		select {
-		case <-prvdr.ctx.Done():
-			errnie.Debug("provider.OllamaProvider.Generate.ctx.Done")
-			prvdr.cancel()
+		if errnie.Error(err) != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
 			return
-		case artifact := <-buffer:
-			if err := artifact.To(prvdr.params); err != nil {
-				out <- datura.New(datura.WithError(errnie.Error(err)))
-				return
-			}
+		}
 
-			composed := &api.ChatRequest{
-				Model: prvdr.params.Model,
-				Options: map[string]interface{}{
-					"temperature": prvdr.params.Temperature,
-					"top_p":       prvdr.params.TopP,
-					"max_tokens":  prvdr.params.MaxTokens,
-				},
-			}
+		composed := &api.ChatRequest{
+			Model: model,
+			Options: map[string]interface{}{
+				"temperature": p.Temperature(),
+				"top_p":       p.TopP(),
+				"max_tokens":  p.MaxTokens(),
+			},
+		}
 
-			if err := prvdr.buildMessages(composed); err != nil {
-				out <- datura.New(datura.WithError(err))
-				return
-			}
+		if err = prvdr.buildMessages(composed, ctx); err != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
 
-			if err := prvdr.buildTools(composed); err != nil {
-				out <- datura.New(datura.WithError(err))
-				return
-			}
+		if err = prvdr.buildTools(composed, tools); err != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
 
-			if prvdr.params.ResponseFormat != nil {
-				if err := prvdr.buildResponseFormat(composed); err != nil {
-					out <- datura.New(datura.WithError(err))
-					return
-				}
-			}
+		format, err := p.Format()
 
-			var err error
-			if prvdr.params.Stream {
-				err = prvdr.handleStreamingRequest(composed)
-			} else {
-				err = prvdr.handleSingleRequest(composed)
-			}
+		if errnie.Error(err) != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
 
-			if err != nil {
-				out <- datura.New(datura.WithError(err))
-				return
-			}
+		if err = prvdr.buildResponseFormat(composed, format); err != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
 
-			out <- datura.New(datura.WithPayload(prvdr.params.Marshal()))
+		if p.Stream() {
+			prvdr.handleStreamingRequest(composed, out)
+		} else {
+			prvdr.handleSingleRequest(composed, out)
 		}
 	}()
 
@@ -141,123 +133,133 @@ func (prvdr *OllamaProvider) Name() string {
 	return "ollama"
 }
 
-/*
-Read implements the io.Reader interface.
-*/
-func (prvdr *OllamaProvider) Read(p []byte) (n int, err error) {
-	errnie.Debug("provider.OllamaProvider.Read")
-	return prvdr.buffer.Read(p)
-}
-
-/*
-Write implements the io.Writer interface.
-*/
-func (prvdr *OllamaProvider) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.OllamaProvider.Write")
-
-	n, err = prvdr.buffer.Write(p)
-	if errnie.Error(err) != nil {
-		return n, err
-	}
-
-	composed := &api.ChatRequest{
-		Model: prvdr.params.Model,
-		Options: map[string]interface{}{
-			"temperature": prvdr.params.Temperature,
-			"top_p":       prvdr.params.TopP,
-			"max_tokens":  prvdr.params.MaxTokens,
-		},
-	}
-
-	prvdr.buildMessages(composed)
-	prvdr.buildTools(composed)
-	prvdr.buildResponseFormat(composed)
-
-	if prvdr.params.Stream {
-		prvdr.handleStreamingRequest(composed)
-	} else {
-		prvdr.handleSingleRequest(composed)
-	}
-
-	return n, nil
-}
-
-/*
-Close cleans up any resources.
-*/
-func (prvdr *OllamaProvider) Close() error {
-	errnie.Debug("provider.OllamaProvider.Close")
-	prvdr.cancel()
-	return nil
-}
-
 func (prvdr *OllamaProvider) handleSingleRequest(
 	params *api.ChatRequest,
-) (err error) {
+	channel chan *datura.Artifact,
+) {
 	errnie.Debug("provider.handleSingleRequest")
 
-	return errnie.Error(prvdr.client.Chat(
+	err := prvdr.client.Chat(
 		prvdr.ctx, params, func(response api.ChatResponse) error {
-			if _, err = io.Copy(prvdr, datura.New(
-				datura.WithPayload([]byte(response.Message.Content)),
-			)); errnie.Error(err) != nil {
+			// Create a new message using Cap'n Proto
+			msg, err := aicontext.NewMessage(prvdr.segment)
+			if errnie.Error(err) != nil {
 				return err
 			}
+
+			// Set message fields
+			if err = msg.SetRole("assistant"); errnie.Error(err) != nil {
+				return err
+			}
+
+			if err = msg.SetName(params.Model); errnie.Error(err) != nil {
+				return err
+			}
+
+			if err = msg.SetContent(response.Message.Content); errnie.Error(err) != nil {
+				return err
+			}
+
+			// Create artifact with message content
+			channel <- datura.New(datura.WithPayload([]byte(response.Message.Content)))
 			return nil
 		},
-	))
+	)
+
+	if errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+	}
 }
 
 func (prvdr *OllamaProvider) handleStreamingRequest(
 	params *api.ChatRequest,
-) (err error) {
+	channel chan *datura.Artifact,
+) {
 	errnie.Debug("provider.handleStreamingRequest")
 
 	stream := true
 	params.Stream = &stream
 
-	return prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
+	err := prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
 		if response.Message.Content != "" {
-			if _, err = io.Copy(prvdr, datura.New(
+			channel <- datura.New(
+				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(response.Message.Content)),
-			)); errnie.Error(err) != nil {
-				return err
-			}
+			)
 		}
 		return nil
 	})
+
+	if errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+	}
 }
 
 func (prvdr *OllamaProvider) buildMessages(
 	chatParams *api.ChatRequest,
+	ctx aicontext.Context,
 ) (err error) {
 	errnie.Debug("provider.buildMessages")
 
-	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
+	msgs, err := ctx.Messages()
+
+	if errnie.Error(err) != nil {
+		return err
 	}
 
-	messageList := make([]api.Message, 0, len(prvdr.params.Messages))
+	messageList := make([]api.Message, 0, msgs.Len())
 
-	for _, message := range prvdr.params.Messages {
-		switch message.Role {
+	for i := 0; i < msgs.Len(); i++ {
+		msg := msgs.At(i)
+
+		role, err := msg.Role()
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		content, err := msg.Content()
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		switch role {
 		case "system":
 			messageList = append(messageList, api.Message{
 				Role:    "system",
-				Content: message.Content,
+				Content: content,
 			})
 		case "user":
 			messageList = append(messageList, api.Message{
 				Role:    "user",
-				Content: message.Content,
+				Content: content,
 			})
 		case "assistant":
+			// Check for tool calls but don't store the variable since we don't use it
+			if _, err := msg.ToolCalls(); errnie.Error(err) != nil {
+				return err
+			}
+
+			// For Ollama, we currently don't handle tool calls in history
+			// But we can still add the assistant message
 			messageList = append(messageList, api.Message{
 				Role:    "assistant",
-				Content: message.Content,
+				Content: content,
+			})
+		case "tool":
+			// Ollama doesn't have a tool message type, so we'll add it as a user message
+			// with the content indicating it's a tool result
+			id, err := msg.Id()
+			if errnie.Error(err) != nil {
+				return err
+			}
+
+			messageList = append(messageList, api.Message{
+				Role:    "user",
+				Content: fmt.Sprintf("[Tool Result from %s: %s]", id, content),
 			})
 		default:
-			errnie.Error("unknown message role", "role", message.Role)
+			errnie.Error("unknown message role", "role", role)
 		}
 	}
 
@@ -268,25 +270,22 @@ func (prvdr *OllamaProvider) buildMessages(
 
 func (prvdr *OllamaProvider) buildTools(
 	chatParams *api.ChatRequest,
+	tools []mcp.Tool,
 ) (err error) {
 	errnie.Debug("provider.buildTools")
 
-	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
-	}
-
-	if len(prvdr.params.Tools) == 0 {
+	if len(tools) == 0 {
 		return
 	}
 
-	toolList := make([]api.Tool, 0, len(prvdr.params.Tools))
+	toolList := make([]api.Tool, 0, len(tools))
 
-	for _, tool := range prvdr.params.Tools {
+	for _, tool := range tools {
 		toolList = append(toolList, api.Tool{
 			Type: "function",
 			Function: api.ToolFunction{
-				Name:        tool.Function.Name,
-				Description: tool.Function.Description,
+				Name:        tool.Name,
+				Description: tool.Description,
 				Parameters: struct {
 					Type       string   `json:"type"`
 					Required   []string `json:"required"`
@@ -297,7 +296,7 @@ func (prvdr *OllamaProvider) buildTools(
 					} `json:"properties"`
 				}{
 					Type:     "object",
-					Required: tool.Function.Parameters.Required,
+					Required: []string{}, // Ollama doesn't seem to support required fields the same way
 					Properties: map[string]struct {
 						Type        string   `json:"type"`
 						Description string   `json:"description"`
@@ -322,19 +321,32 @@ func (prvdr *OllamaProvider) buildTools(
 
 func (prvdr *OllamaProvider) buildResponseFormat(
 	chatParams *api.ChatRequest,
+	format params.ResponseFormat,
 ) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
-	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
+	// Extract format details
+	name, err := format.Name()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	description, err := format.Description()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	schema, err := format.Schema()
+	if errnie.Error(err) != nil {
+		return err
 	}
 
 	// Add format instructions as a system message since Ollama doesn't support direct format control
-	if prvdr.params.ResponseFormat.Name != "" {
+	if name != "" || description != "" || schema != "" {
 		formatMsg := api.Message{
 			Role: "system",
 			Content: "Please format your response according to the specified schema: " +
-				prvdr.params.ResponseFormat.Name + ". " + prvdr.params.ResponseFormat.Description,
+				name + ". " + description + "\nSchema: " + schema,
 		}
 		chatParams.Messages = append(chatParams.Messages, formatMsg)
 	}
@@ -346,67 +358,90 @@ type OllamaEmbedder struct {
 	client   *api.Client
 	endpoint string
 	ctx      context.Context
-	params   *Params
+	cancel   context.CancelFunc
 }
 
-func NewOllamaEmbedder(endpoint string) (*OllamaEmbedder, error) {
+func NewOllamaEmbedder(opts ...OllamaEmbedderOption) *OllamaEmbedder {
 	errnie.Debug("provider.NewOllamaEmbedder")
 
-	if endpoint == "" {
-		endpoint = viper.GetViper().GetString("endpoints.ollama")
-	}
+	endpoint := viper.GetViper().GetString("endpoints.ollama")
+	ctx, cancel := context.WithCancel(context.Background())
 
 	client, err := api.ClientFromEnvironment()
 	if err != nil {
 		errnie.Error("failed to create Ollama embedder client", "error", err)
-		return nil, err
+		cancel()
+		return nil
 	}
 
-	return &OllamaEmbedder{
+	embedder := &OllamaEmbedder{
 		client:   client,
 		endpoint: endpoint,
-		ctx:      context.Background(),
-		params:   &Params{},
-	}, nil
+		ctx:      ctx,
+		cancel:   cancel,
+	}
+
+	for _, opt := range opts {
+		opt(embedder)
+	}
+
+	return embedder
 }
 
-func (embedder *OllamaEmbedder) Read(p []byte) (n int, err error) {
-	errnie.Debug("provider.OllamaEmbedder.Read", "p", string(p))
-	return 0, nil
+type OllamaEmbedderOption func(*OllamaEmbedder)
+
+func WithOllamaEmbedderEndpoint(endpoint string) OllamaEmbedderOption {
+	return func(embedder *OllamaEmbedder) {
+		embedder.endpoint = endpoint
+	}
 }
 
-func (embedder *OllamaEmbedder) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.OllamaEmbedder.Write")
+func (embedder *OllamaEmbedder) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
+	errnie.Debug("provider.OllamaEmbedder.Generate")
 
-	if len(embedder.params.Messages) == 0 {
-		return len(p), nil
-	}
+	out := make(chan *datura.Artifact)
 
-	message := embedder.params.Messages[0]
-	content := message.Content
+	go func() {
+		defer close(out)
 
-	response, err := embedder.client.Embeddings(context.Background(), &api.EmbeddingRequest{
-		Model:  "llama2",
-		Prompt: content,
-	})
-	if err != nil {
-		errnie.Error("embedding request failed", "error", err)
-		return 0, err
-	}
+		select {
+		case <-embedder.ctx.Done():
+			errnie.Debug("provider.OllamaEmbedder.Generate.ctx.Done")
+			embedder.cancel()
+			return
+		case artifact := <-buffer:
+			content, err := artifact.DecryptPayload()
+			if err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
 
-	if response != nil && len(response.Embedding) > 0 {
-		errnie.Debug("created embeddings",
-			"text_length", len(content),
-			"dimensions", len(response.Embedding),
-		)
-	}
+			if len(content) == 0 {
+				out <- datura.New(datura.WithError(errnie.Error(errors.New("content is empty"))))
+				return
+			}
 
-	return len(p), nil
+			embeddings, err := embedder.Embed(string(content))
+			if err != nil {
+				out <- datura.New(datura.WithError(errnie.Error(err)))
+				return
+			}
+
+			// Convert embeddings to bytes (this is a simplified version)
+			embeddingsBytes := make([]byte, len(embeddings)*4)
+			out <- datura.New(datura.WithPayload(embeddingsBytes))
+		}
+	}()
+
+	return out
 }
 
 func (embedder *OllamaEmbedder) Close() error {
 	errnie.Debug("provider.OllamaEmbedder.Close")
-	embedder.params = nil
+	embedder.cancel()
 	return nil
 }
 

@@ -13,7 +13,6 @@ import (
 	sdk "github.com/qdrant/go-client/qdrant"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 

@@ -5,16 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
+	"github.com/mark3labs/mcp-go/mcp"
+	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
+	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
+
+	"capnproto.org/go/capnp/v3"
 )
 
 /*
@@ -22,11 +25,11 @@ AnthropicProvider implements an LLM provider that connects to Anthropic's API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type AnthropicProvider struct {
-	client *anthropic.Client
-	buffer *stream.Buffer
-	params *Params
-	ctx    context.Context
-	cancel context.CancelFunc
+	client  *anthropic.Client
+	pctx    context.Context
+	ctx     context.Context
+	cancel  context.CancelFunc
+	segment *capnp.Segment
 }
 
 /*
@@ -45,8 +48,7 @@ func NewAnthropicProvider(opts ...AnthropicProviderOption) *AnthropicProvider {
 
 	prvdr := &AnthropicProvider{
 		client: &client,
-		buffer: stream.NewBuffer(),
-		params: &Params{},
+		pctx:   ctx,
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -63,70 +65,58 @@ func (prvdr *AnthropicProvider) ID() string {
 }
 
 func (prvdr *AnthropicProvider) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+	params params.Params,
+	ctx aicontext.Context,
+	tools []mcp.Tool,
 ) chan *datura.Artifact {
-	errnie.Debug("provider.AnthropicProvider.Generate")
+	model, err := params.Model()
 
-	var (
-		out = make(chan *datura.Artifact)
-		err error
-	)
+	out := make(chan *datura.Artifact)
 
 	go func() {
 		defer close(out)
 
-		select {
-		case <-prvdr.ctx.Done():
-			errnie.Debug("provider.AnthropicProvider.Generate.ctx.Done")
-			prvdr.cancel()
+		if errnie.Error(err) != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
 			return
-		case artifact := <-buffer:
-			if err := artifact.To(prvdr.params); err != nil {
-				out <- datura.New(datura.WithError(errnie.Error(err)))
-				return
-			}
+		}
 
-			composed := anthropic.MessageNewParams{
-				Model:       anthropic.Model(prvdr.params.Model),
-				Temperature: anthropic.Float(prvdr.params.Temperature),
-				TopP:        anthropic.Float(prvdr.params.TopP),
-			}
+		composed := anthropic.MessageNewParams{
+			Model:       anthropic.Model(model),
+			Temperature: anthropic.Float(params.Temperature()),
+			TopP:        anthropic.Float(params.TopP()),
+		}
 
-			if prvdr.params.MaxTokens > 1 {
-				composed.MaxTokens = int64(prvdr.params.MaxTokens)
-			}
+		if params.MaxTokens() > 1 {
+			composed.MaxTokens = int64(params.MaxTokens())
+		}
 
-			if err = prvdr.buildMessages(&composed); err != nil {
-				out <- datura.New(datura.WithError(err))
-				return
-			}
+		if err = prvdr.buildMessages(&composed, ctx); err != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
 
-			if err = prvdr.buildTools(&composed); err != nil {
-				out <- datura.New(datura.WithError(err))
-				return
-			}
+		if err = prvdr.buildTools(&composed, tools); err != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
 
-			if prvdr.params.ResponseFormat != nil {
-				if err = prvdr.buildResponseFormat(&composed); err != nil {
-					out <- datura.New(datura.WithError(err))
-					return
-				}
-			}
+		format, err := params.Format()
 
-			if prvdr.params.Stream {
-				if err = prvdr.handleStreamingRequest(&composed); err != nil {
-					out <- datura.New(datura.WithError(err))
-					return
-				}
-			} else {
-				if err = prvdr.handleSingleRequest(&composed); err != nil {
-					out <- datura.New(datura.WithError(err))
-					return
-				}
-			}
+		if errnie.Error(err) != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
 
-			out <- datura.New(datura.WithPayload(prvdr.params.Marshal()))
+		if err = prvdr.buildResponseFormat(&composed, format); err != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
+
+		if params.Stream() {
+			prvdr.handleStreamingRequest(&composed, out)
+		} else {
+			prvdr.handleSingleRequest(&composed, out)
 		}
 	}()
 
@@ -145,52 +135,99 @@ func WithAnthropicAPIKey(apiKey string) AnthropicProviderOption {
 	}
 }
 
+func WithAnthropicEndpoint(endpoint string) AnthropicProviderOption {
+	return func(provider *AnthropicProvider) {
+		provider.client.Options = append(provider.client.Options, option.WithBaseURL(endpoint))
+	}
+}
+
 func (prvdr *AnthropicProvider) handleSingleRequest(
 	params *anthropic.MessageNewParams,
-) (err error) {
+	channel chan *datura.Artifact,
+) {
 	errnie.Debug("provider.handleSingleRequest")
 
 	response, err := prvdr.client.Messages.New(prvdr.ctx, *params)
 	if err != nil {
-		return errnie.Error(err)
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
 	}
 
 	if response.Content == nil {
-		err = errors.New("content is nil")
-		return errnie.Error(err)
+		channel <- datura.New(datura.WithError(errnie.Error(errors.New("content is nil"))))
+		return
 	}
 
-	msg := &Message{
-		Role: MessageRoleAssistant,
-		Name: prvdr.params.Model,
+	// Create a new message using Cap'n Proto
+	msg, err := aicontext.NewMessage(prvdr.segment)
+	if errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
 	}
+
+	// Set message fields
+	if err = msg.SetRole("assistant"); errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
+	}
+
+	if err = msg.SetName(string(params.Model)); errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
+	}
+
+	var content string
+	var toolCalls []anthropic.ToolUseBlock
 
 	for _, block := range response.Content {
 		switch block := block.AsAny().(type) {
 		case anthropic.TextBlock:
-			msg.Content += block.Text
+			content += block.Text
 		case anthropic.ToolUseBlock:
-			msg.ToolCalls = append(msg.ToolCalls, ToolCall{
-				ID:   block.ID,
-				Type: "function",
-				Function: ToolCallFunction{
-					Name:      block.Name,
-					Arguments: block.JSON.Input.Raw(),
-				},
-			})
-			errnie.Info("toolCall detected", "name", block.Name, "id", block.ID)
+			toolCalls = append(toolCalls, block)
 		}
 	}
 
-	prvdr.params.Messages = append(prvdr.params.Messages, msg)
-
-	if _, err = io.Copy(prvdr.buffer, datura.New(
-		datura.WithPayload(prvdr.params.Marshal()),
-	)); err != nil {
-		return errnie.Error(err)
+	if err = msg.SetContent(content); errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
 	}
 
-	return nil
+	// Abort early if there are no tool calls
+	if len(toolCalls) == 0 {
+		channel <- datura.New(datura.WithPayload([]byte(content)))
+		return
+	}
+
+	// Create tool calls list
+	toolCallList, err := msg.NewToolCalls(int32(len(toolCalls)))
+	if errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
+	}
+
+	for i, toolCall := range toolCalls {
+		errnie.Info("toolCall", "tool", toolCall.Name, "id", toolCall.ID)
+
+		if err = toolCallList.At(i).SetId(toolCall.ID); errnie.Error(err) != nil {
+			channel <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
+
+		if err = toolCallList.At(i).SetName(toolCall.Name); errnie.Error(err) != nil {
+			channel <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
+
+		args := toolCall.JSON.Input.Raw()
+		if err = toolCallList.At(i).SetArguments(args); errnie.Error(err) != nil {
+			channel <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
+	}
+
+	// Create artifact with message content
+	channel <- datura.New(datura.WithPayload([]byte(content)))
 }
 
 /*
@@ -199,7 +236,8 @@ and emits chunks as they're received.
 */
 func (prvdr *AnthropicProvider) handleStreamingRequest(
 	params *anthropic.MessageNewParams,
-) (err error) {
+	channel chan *datura.Artifact,
+) {
 	errnie.Debug("provider.handleStreamingRequest")
 
 	stream := prvdr.client.Messages.NewStreaming(prvdr.ctx, *params)
@@ -209,46 +247,47 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 
 	for stream.Next() {
 		chunk := stream.Current()
-		if err = accumulatedMessage.Accumulate(chunk); err != nil {
-			return errnie.Error(err)
+		if err := accumulatedMessage.Accumulate(chunk); err != nil {
+			channel <- datura.New(datura.WithError(errnie.Error(err)))
+			continue
 		}
 
 		switch event := chunk.AsAny().(type) {
 		case anthropic.ContentBlockStartEvent:
 			if event.ContentBlock.Name != "" {
-				if _, err = io.Copy(prvdr.buffer, datura.New(
+				channel <- datura.New(
+					datura.WithRole(datura.ArtifactRoleAnswer),
+					datura.WithScope(datura.ArtifactScopeGeneration),
 					datura.WithPayload([]byte(event.ContentBlock.Name+": ")),
-				)); errnie.Error(err) != nil {
-					continue
-				}
+				)
 			}
 		case anthropic.ContentBlockDeltaEvent:
 			if event.Delta.Text != "" {
-				if _, err = io.Copy(prvdr.buffer, datura.New(
+				channel <- datura.New(
+					datura.WithRole(datura.ArtifactRoleAnswer),
+					datura.WithScope(datura.ArtifactScopeGeneration),
 					datura.WithPayload([]byte(event.Delta.Text)),
-				)); errnie.Error(err) != nil {
-					continue
-				}
+				)
 			}
 			if event.Delta.PartialJSON != "" {
-				if _, err = io.Copy(prvdr.buffer, datura.New(
+				channel <- datura.New(
+					datura.WithRole(datura.ArtifactRoleAnswer),
+					datura.WithScope(datura.ArtifactScopeGeneration),
 					datura.WithPayload([]byte(event.Delta.PartialJSON)),
-				)); errnie.Error(err) != nil {
-					continue
-				}
+				)
 			}
 		case anthropic.ContentBlockStopEvent:
-			if _, err = io.Copy(prvdr.buffer, datura.New(
+			channel <- datura.New(
+				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte("\n\n")),
-			)); errnie.Error(err) != nil {
-				continue
-			}
+			)
 		case anthropic.MessageStopEvent:
-			if _, err = io.Copy(prvdr.buffer, datura.New(
+			channel <- datura.New(
+				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte("\n")),
-			)); errnie.Error(err) != nil {
-				continue
-			}
+			)
 		}
 
 		// Handle tool calls if present in the accumulated message
@@ -278,125 +317,155 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 						continue
 					}
 
-					msg := &Message{
-						Role:    MessageRoleAssistant,
-						Name:    prvdr.params.Model,
-						Content: "",
-						ToolCalls: []ToolCall{{
-							ID:   toolInfo.ID,
-							Type: "function",
-							Function: ToolCallFunction{
-								Name:      toolInfo.Name,
-								Arguments: string(inputJSON),
-							},
-						}},
+					// Create a new message using Cap'n Proto
+					msg, err := aicontext.NewMessage(prvdr.segment)
+					if errnie.Error(err) != nil {
+						channel <- datura.New(datura.WithError(errnie.Error(err)))
+						return
 					}
 
-					prvdr.params.Messages = append(prvdr.params.Messages, msg)
+					// Set message fields
+					if err = msg.SetRole("assistant"); errnie.Error(err) != nil {
+						channel <- datura.New(datura.WithError(errnie.Error(err)))
+						return
+					}
+
+					if err = msg.SetName(string(params.Model)); errnie.Error(err) != nil {
+						channel <- datura.New(datura.WithError(errnie.Error(err)))
+						return
+					}
+
+					if err = msg.SetContent(""); errnie.Error(err) != nil {
+						channel <- datura.New(datura.WithError(errnie.Error(err)))
+						return
+					}
+
+					// Create tool calls list
+					toolCallList, err := msg.NewToolCalls(1)
+					if errnie.Error(err) != nil {
+						channel <- datura.New(datura.WithError(errnie.Error(err)))
+						return
+					}
+
+					if err = toolCallList.At(0).SetId(toolInfo.ID); errnie.Error(err) != nil {
+						channel <- datura.New(datura.WithError(errnie.Error(err)))
+						return
+					}
+
+					if err = toolCallList.At(0).SetName(toolInfo.Name); errnie.Error(err) != nil {
+						channel <- datura.New(datura.WithError(errnie.Error(err)))
+						return
+					}
+
+					if err = toolCallList.At(0).SetArguments(string(inputJSON)); errnie.Error(err) != nil {
+						channel <- datura.New(datura.WithError(errnie.Error(err)))
+						return
+					}
+
 					errnie.Info("toolCall detected (streaming)", "name", toolInfo.Name)
+					channel <- datura.New(
+						datura.WithRole(datura.ArtifactRoleAnswer),
+						datura.WithScope(datura.ArtifactScopeGeneration),
+						datura.WithPayload(inputJSON),
+					)
 				}
 			}
 		}
 	}
 
-	if err = stream.Err(); err != nil {
+	if err := stream.Err(); err != nil {
 		errnie.Error("Streaming error", "error", err)
-		return err
+		channel <- datura.New(
+			datura.WithError(errnie.Error("Streaming error", "error", err)),
+		)
 	}
-
-	return nil
 }
 
 func (prvdr *AnthropicProvider) buildMessages(
 	messageParams *anthropic.MessageNewParams,
+	ctx aicontext.Context,
 ) (err error) {
 	errnie.Debug("provider.buildMessages")
 
-	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
+	msgs, err := ctx.Messages()
+
+	if errnie.Error(err) != nil {
+		return err
 	}
 
-	msgParams := make([]anthropic.MessageParam, 0)
+	msgParams := make([]anthropic.MessageParam, 0, msgs.Len())
+	var systemMessage string
 
-	// Keep track of which tool messages we've processed
-	processedTools := make(map[int]bool)
+	for i := 0; i < msgs.Len(); i++ {
+		msg := msgs.At(i)
 
-	for i, message := range prvdr.params.Messages {
-		switch message.Role {
+		role, err := msg.Role()
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		content, err := msg.Content()
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		switch role {
 		case "system":
-			messageParams.System = []anthropic.TextBlockParam{
-				{Text: message.Content},
-			}
+			systemMessage = content
 		case "user":
-			// First add the regular user message
-			userMsg := anthropic.NewUserMessage(anthropic.NewTextBlock(message.Content))
-
-			// Check if there's a tool message that follows this user message
-			if i+1 < len(prvdr.params.Messages) && prvdr.params.Messages[i+1].Role == "tool" {
-				// Mark the tool message as processed
-				processedTools[i+1] = true
-
-				// Now manually handle the tool result by adding it to the message in a custom way
-				// The exact mechanism depends on how the Anthropic SDK handles tool results
-				// This would typically involve creating a message with both text and tool results
-				// Since we don't have exact structure, we'll annotate the user message
-
-				// Add a note about tool result in the user message
-				toolMsg := prvdr.params.Messages[i+1]
-				userMsg = anthropic.NewUserMessage(
-					anthropic.NewTextBlock(fmt.Sprintf("%s\n\n[Tool Result from %s: %s]",
-						message.Content, toolMsg.Reference, toolMsg.Content)),
-				)
+			msgParams = append(msgParams, anthropic.NewUserMessage(anthropic.NewTextBlock(content)))
+		case "assistant":
+			toolCalls, err := msg.ToolCalls()
+			if errnie.Error(err) != nil {
+				return err
 			}
 
-			msgParams = append(msgParams, userMsg)
-		case "assistant":
-			// Handle regular assistant message or one with tool calls
-			if len(message.ToolCalls) > 0 {
-				// For messages with tool calls, we need to add both the text content
-				// and information about the tool calls in a custom way
+			if toolCalls.Len() > 0 {
+				// Create assistant message with text content
+				msgParams = append(msgParams, anthropic.NewAssistantMessage(anthropic.NewTextBlock(content)))
 
-				// Create the text message first
-				textMsg := anthropic.NewAssistantMessage(
-					anthropic.NewTextBlock(message.Content),
-				)
+				// Add tool calls information
+				for j := 0; j < toolCalls.Len(); j++ {
+					toolCall := toolCalls.At(j)
 
-				// Add the message
-				msgParams = append(msgParams, textMsg)
+					name, err := toolCall.Name()
+					if errnie.Error(err) != nil {
+						return err
+					}
 
-				// For models that support tool calling, we would add tool call information here
-				// Since we don't have exact format, we add the tool call info in text
-				for _, toolCall := range message.ToolCalls {
-					// Add a note about tool calls
-					toolNote := fmt.Sprintf("[Tool Call: %s, Arguments: %s]",
-						toolCall.Function.Name, toolCall.Function.Arguments)
+					args, err := toolCall.Arguments()
+					if errnie.Error(err) != nil {
+						return err
+					}
 
-					toolMsg := anthropic.NewAssistantMessage(
-						anthropic.NewTextBlock(toolNote),
-					)
-
-					msgParams = append(msgParams, toolMsg)
+					toolNote := fmt.Sprintf("[Tool Call: %s, Arguments: %s]", name, args)
+					msgParams = append(msgParams, anthropic.NewAssistantMessage(anthropic.NewTextBlock(toolNote)))
 				}
 			} else {
 				// Regular assistant message without tool calls
-				msgParams = append(msgParams, anthropic.NewAssistantMessage(
-					anthropic.NewTextBlock(message.Content),
-				))
+				msgParams = append(msgParams, anthropic.NewAssistantMessage(anthropic.NewTextBlock(content)))
 			}
 		case "tool":
-			// Tool messages are handled when processing user messages
-			// If this tool message wasn't processed with a user message, process it now
-			if !processedTools[i] {
-				// Create a tool result message
-				toolMsg := anthropic.NewUserMessage(
-					anthropic.NewTextBlock(fmt.Sprintf("[Tool Result from %s: %s]",
-						message.Reference, message.Content)),
-				)
-
-				msgParams = append(msgParams, toolMsg)
+			id, err := msg.Id()
+			if errnie.Error(err) != nil {
+				return err
 			}
+
+			// Create a tool result message
+			toolMsg := anthropic.NewUserMessage(
+				anthropic.NewTextBlock(fmt.Sprintf("[Tool Result from %s: %s]", id, content)),
+			)
+
+			msgParams = append(msgParams, toolMsg)
 		default:
-			errnie.Error("unknown message role", "role", message.Role)
+			errnie.Error("unknown message role", "role", role)
+		}
+	}
+
+	// Set system message if present
+	if systemMessage != "" {
+		messageParams.System = []anthropic.TextBlockParam{
+			{Text: systemMessage},
 		}
 	}
 
@@ -406,54 +475,26 @@ func (prvdr *AnthropicProvider) buildMessages(
 
 func (prvdr *AnthropicProvider) buildTools(
 	messageParams *anthropic.MessageNewParams,
+	tools []mcp.Tool,
 ) (err error) {
 	errnie.Debug("provider.buildTools")
 
 	// If no tools, skip
-	if len(prvdr.params.Tools) == 0 {
+	if len(tools) == 0 {
 		return nil
 	}
 
 	// Prepare the tools
-	toolParams := make([]anthropic.ToolParam, 0, len(prvdr.params.Tools))
+	toolParams := make([]anthropic.ToolParam, 0, len(tools))
 
-	for _, tool := range prvdr.params.Tools {
-		// Create properties map for schema
-		properties := make(map[string]interface{})
-
-		// Add each property
-		for _, property := range tool.Function.Parameters.Properties {
-			propDef := map[string]interface{}{
-				"type":        property.Type,
-				"description": property.Description,
-			}
-
-			// Only add enum if not empty
-			if len(property.Enum) > 0 {
-				propDef["enum"] = property.Enum
-			}
-
-			properties[property.Name] = propDef
-		}
-
-		// Create overall schema
-		schema := map[string]interface{}{
-			"type":       "object",
-			"properties": properties,
-		}
-
-		// Add required fields if present
-		if len(tool.Function.Parameters.Required) > 0 {
-			schema["required"] = tool.Function.Parameters.Required
-		}
-
+	for _, tool := range tools {
 		// Create a tool parameter with this schema
 		toolParam := anthropic.ToolParam{
-			Name:        tool.Function.Name,
-			Description: param.NewOpt(tool.Function.Description),
+			Name:        tool.Name,
+			Description: param.NewOpt(tool.Description),
 			InputSchema: anthropic.ToolInputSchemaParam{
 				Type:       "object",
-				Properties: properties,
+				Properties: tool.InputSchema.Properties,
 			},
 		}
 
@@ -473,10 +514,27 @@ func (prvdr *AnthropicProvider) buildTools(
 
 func (prvdr *AnthropicProvider) buildResponseFormat(
 	messageParams *anthropic.MessageNewParams,
+	format params.ResponseFormat,
 ) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
-	if prvdr.params.ResponseFormat == nil {
+	name, err := format.Name()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	description, err := format.Description()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	schema, err := format.Schema()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	// If no format specified, skip
+	if name == "" && description == "" && schema == "" {
 		return nil
 	}
 
@@ -486,7 +544,7 @@ func (prvdr *AnthropicProvider) buildResponseFormat(
 			anthropic.NewTextBlock(
 				strings.Join([]string{
 					"Format your response as a JSON object using the following schema.",
-					fmt.Sprintf("Schema:\n\n%v", prvdr.params.ResponseFormat.Schema),
+					fmt.Sprintf("Schema:\n\n%v", schema),
 					"Strictly follow the schema. Do not leave out required fields, and do not include any non-existent fields or properties.",
 					"Output only the JSON object, nothing else, and no Markdown code block.",
 				}, "\n\n"),
@@ -499,12 +557,11 @@ func (prvdr *AnthropicProvider) buildResponseFormat(
 
 type AnthropicEmbedder struct {
 	client *anthropic.Client
-	params *Params
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-func NewAnthropicEmbedder() *AnthropicEmbedder {
+func NewAnthropicEmbedder(opts ...AnthropicEmbedderOption) *AnthropicEmbedder {
 	errnie.Debug("provider.NewAnthropicEmbedder")
 
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
@@ -514,12 +571,17 @@ func NewAnthropicEmbedder() *AnthropicEmbedder {
 		option.WithAPIKey(apiKey),
 	)
 
-	return &AnthropicEmbedder{
+	embedder := &AnthropicEmbedder{
 		client: &client,
-		params: &Params{},
 		ctx:    ctx,
 		cancel: cancel,
 	}
+
+	for _, opt := range opts {
+		opt(embedder)
+	}
+
+	return embedder
 }
 
 func (embedder *AnthropicEmbedder) Generate(

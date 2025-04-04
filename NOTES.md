@@ -1,56 +1,29 @@
-# NOTES
+Okay, we're working on redesigning our agent framework, and we need to get this test setup working.
 
-Keep any important information, goals, insights, etc. by writing them down in this file.
+The test setup should be a planner agent, and a developer agent, working together.
 
-It will be attached to each request so you will have access to it.
+Agents should be able to work concurrently, but also communicate with each other, and even be able to wait until another agent completes a requirement first.
 
-## Project Overview
+Further more, while we are working on the local first setup, eventually we will need to be able to deploy agents, providers, and tools on separate servers, and still have a single "grid" that works as a cohesive agent setup.
 
-Caramba is a Go-based agent framework with the following key characteristics:
+For this we are using Cap n Proto.
 
-1. Core Philosophy:
+This means that for the most part, all methods and functionality needs to be implemented using Cap n Proto schemas.
 
-   - Everything is treated as `io.ReadWriteCloser`
-   - Unified interface for connecting different components
-   - Strong focus on agent-based architecture
+If you need to create new Cap n Proto schema, please make sure to update the Makefile in the root of this project to add the generation command in there.
 
-2. Main Components:
+Then you should implement the server code for the cap n proto interfaces, like the agent and provider packages already do somewhat.
 
-   - `/pkg/ai`: AI-related functionality
-   - `/pkg/provider`: Various service providers (OpenAI, Anthropic, etc.)
-   - `/pkg/workflow`: Pipeline and workflow management
-   - `/pkg/tools`: Framework tools
-   - `/pkg/memory`: Memory management systems
-   - `/pkg/core`: Core framework functionality
-   - `/pkg/system`: System-level operations
-   - `/pkg/kube`: Kubernetes integration
-   - `/pkg/stream`: Stream processing capabilities
-   - `/pkg/service`: Service management
-   - `/pkg/process`: Process handling
-   - `/pkg/fs`: File system operations
-   - `/pkg/errnie`: Error handling
+Potentially you should also make some conveniance methods to keep the public API simple, like what happens in the datura package.
 
-3. Key Features:
+Please make sure you read code first, before you jump to conclusions and start generating all kinds of code, there is already a lot, though some of it may need to be removed.
 
-   - Model Context Protocol (MCP) server capabilities
-   - Multiple AI provider integrations (OpenAI, Claude, Google, Cohere, Ollama)
-   - Docker and Kubernetes integration
-   - Browser automation
-   - Memory integration (QDrant vector store, Neo4j graph database)
-   - Pipeline architecture with bidirectional data flow
-   - Stream processing
-   - Tool system with dynamic loading
-   - DevOps integrations (Github, Azure DevOps)
+If you encounter something that seems to have a missing implementation, it is most likely old and needs to be removed. Use good judgement in these situations, or ask me.
 
-4. Technical Stack:
+Also, mind you that we do not create all kinds of "types" of agents, instead we have one agent type that can be configured to become any type of agent.
 
-   - Go 1.24.0
-   - Uses modern Go toolchain (go1.24.1)
-   - Extensive dependency list including containerd, docker, kubernetes clients
-   - Support for various AI/ML providers and tools
+Finally, agents also need to be able to be used as a tool, given that agents in some cases should be able to create new agents and delegate tasks to them.
 
-5. Project Status:
-   - Active development (based on recent commits)
-   - Well-structured modular architecture
-   - Comprehensive test coverage (based on CI badges)
-   - Strong focus on security and containerization
+Please make the public API as simple as possible to use, this is extremely important. We want developers that use the framework to be able to focus on creating agent setups and experiment, and not worry about complexity and boilerplate, so please hide that away behind abstractions that are clean and comfortable to use, with extreme focus on minimizing boilerplate.
+
+Work in small steps, and verify with me if you are on the right track, do not just generate huge amounts of code, I am very specific about clean code.

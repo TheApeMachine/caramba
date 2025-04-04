@@ -7,14 +7,16 @@ import (
 	"math"
 	"os"
 
+	"capnproto.org/go/capnp/v3"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
-	"github.com/theapemachine/caramba/pkg/core"
+	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
+	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
@@ -23,13 +25,11 @@ OpenAIProvider implements an LLM provider that connects to OpenAI's API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type OpenAIProvider struct {
-	client        *openai.Client
-	pctx          context.Context
-	ctx           context.Context
-	cancel        context.CancelFunc
-	paramsBuilder *core.ParamsBuilder
-	ctxBuilder    *core.ContextBuilder
-	toolset       *tools.Toolset
+	client  *openai.Client
+	pctx    context.Context
+	ctx     context.Context
+	cancel  context.CancelFunc
+	segment *capnp.Segment
 }
 
 /*
@@ -66,64 +66,65 @@ func (prvdr *OpenAIProvider) ID() string {
 	return "openai"
 }
 
-func (prvdr *OpenAIProvider) Handle(
-	channel chan *datura.Artifact,
-	artifact *datura.Artifact,
-) *datura.Artifact {
-	switch datura.ArtifactRole(artifact.Role()) {
-	case datura.ArtifactRoleAcknowledge:
-		switch datura.ArtifactScope(artifact.Scope()) {
-		case datura.ArtifactScopeParams:
-			errnie.Info("provider.OpenAIProvider.Handle.Params")
-			prvdr.paramsBuilder = core.NewParamsBuilder().WithArtifact(artifact)
-		case datura.ArtifactScopeContext:
-			errnie.Info("provider.OpenAIProvider.Handle.Context")
-			prvdr.ctxBuilder = core.NewContextBuilder().WithArtifact(artifact)
+func (prvdr *OpenAIProvider) Generate(
+	params params.Params,
+	ctx aicontext.Context,
+	tools []mcp.Tool,
+) chan *datura.Artifact {
+	model, err := params.Model()
+
+	out := make(chan *datura.Artifact)
+
+	go func() {
+		defer close(out)
+
+		if errnie.Error(err) != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
 		}
-	default:
-		errnie.Debug("provider.OpenAIProvider.run")
-		// If we have both params and context, start generation
-		if prvdr.paramsBuilder != nil && prvdr.ctxBuilder != nil {
-			model, err := prvdr.paramsBuilder.Model()
-			if errnie.Error(err) != nil {
-				return artifact
-			}
 
-			composed := &openai.ChatCompletionNewParams{
-				Model:            openai.ChatModel(model),
-				Temperature:      openai.Float(prvdr.paramsBuilder.Temperature()),
-				TopP:             openai.Float(prvdr.paramsBuilder.TopP()),
-				FrequencyPenalty: openai.Float(prvdr.paramsBuilder.FrequencyPenalty()),
-				PresencePenalty:  openai.Float(prvdr.paramsBuilder.PresencePenalty()),
-			}
-
-			if prvdr.paramsBuilder.MaxTokens() > 1 {
-				composed.MaxTokens = openai.Int(int64(prvdr.paramsBuilder.MaxTokens()))
-			}
-
-			if err = prvdr.buildMessages(composed); err != nil {
-				return artifact
-			}
-
-			if err = prvdr.buildTools(composed); err != nil {
-				return artifact
-			}
-
-			if prvdr.paramsBuilder.ResponseFormat() != nil {
-				if err = prvdr.buildResponseFormat(composed); err != nil {
-					return artifact
-				}
-			}
-
-			if prvdr.paramsBuilder.Stream() {
-				artifact = prvdr.handleStreamingRequest(composed)
-			} else {
-				artifact = prvdr.handleSingleRequest(composed)
-			}
+		composed := &openai.ChatCompletionNewParams{
+			Model:            openai.ChatModel(model),
+			Temperature:      openai.Float(params.Temperature()),
+			TopP:             openai.Float(params.TopP()),
+			FrequencyPenalty: openai.Float(params.FrequencyPenalty()),
+			PresencePenalty:  openai.Float(params.PresencePenalty()),
 		}
-	}
 
-	return artifact
+		if params.MaxTokens() > 1 {
+			composed.MaxTokens = openai.Int(int64(params.MaxTokens()))
+		}
+
+		if err = prvdr.buildMessages(composed, ctx); err != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
+
+		if err = prvdr.buildTools(composed, tools); err != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
+
+		format, err := params.Format()
+
+		if errnie.Error(err) != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
+
+		if err = prvdr.buildResponseFormat(composed, format); err != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
+
+		if params.Stream() {
+			prvdr.handleStreamingRequest(composed, out)
+		} else {
+			prvdr.handleSingleRequest(composed, out)
+		}
+	}()
+
+	return out
 }
 
 func (prvdr *OpenAIProvider) Name() string {
@@ -149,7 +150,8 @@ handleSingleRequest processes a single (non-streaming) completion request
 */
 func (prvdr *OpenAIProvider) handleSingleRequest(
 	params *openai.ChatCompletionNewParams,
-) (artifact *datura.Artifact) {
+	channel chan *datura.Artifact,
+) {
 	errnie.Debug("provider.handleSingleRequest")
 
 	var (
@@ -160,52 +162,69 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 	if completion, err = prvdr.client.Chat.Completions.New(
 		prvdr.ctx, *params,
 	); errnie.Error(err) != nil {
-		return artifact
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
 	}
 
-	model, err := prvdr.paramsBuilder.Model()
-
+	// Create a new message using Cap'n Proto
+	msg, err := aicontext.NewMessage(prvdr.segment)
 	if errnie.Error(err) != nil {
-		return artifact
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
 	}
 
-	msg := core.NewMessageBuilder(
-		core.WithRole("assistant"),
-		core.WithName(model),
-		core.WithContent(completion.Choices[0].Message.Content),
-	)
+	// Set message fields
+	if err = msg.SetRole("assistant"); errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
+	}
+
+	if err = msg.SetName(params.Model); errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
+	}
+
+	if err = msg.SetContent(completion.Choices[0].Message.Content); errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
+	}
 
 	toolCalls := completion.Choices[0].Message.ToolCalls
 
 	// Abort early if there are no tool calls
 	if len(toolCalls) == 0 {
-		return msg.Artifact()
+		channel <- datura.New(datura.WithPayload([]byte(completion.Choices[0].Message.Content)))
+		return
 	}
 
-	toolCallList, err := core.NewToolCall_List(prvdr.ctxBuilder.Segment(), int32(len(toolCalls)))
-
+	// Create tool calls list
+	toolCallList, err := msg.NewToolCalls(int32(len(toolCalls)))
 	if errnie.Error(err) != nil {
-		return artifact
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
 	}
 
 	for i, toolCall := range toolCalls {
 		errnie.Info("toolCall", "tool", toolCall.Function.Name, "id", toolCall.ID)
 
 		if err = toolCallList.At(i).SetId(toolCall.ID); errnie.Error(err) != nil {
-			return artifact
+			channel <- datura.New(datura.WithError(errnie.Error(err)))
+			return
 		}
 
 		if err = toolCallList.At(i).SetName(toolCall.Function.Name); errnie.Error(err) != nil {
-			return artifact
+			channel <- datura.New(datura.WithError(errnie.Error(err)))
+			return
 		}
 
 		if err = toolCallList.At(i).SetArguments(toolCall.Function.Arguments); errnie.Error(err) != nil {
-			return artifact
+			channel <- datura.New(datura.WithError(errnie.Error(err)))
+			return
 		}
 	}
 
-	msg.SetToolCalls(toolCallList)
-	return msg.Artifact()
+	// Create artifact with message content
+	channel <- datura.New(datura.WithPayload([]byte(completion.Choices[0].Message.Content)))
 }
 
 /*
@@ -214,7 +233,8 @@ and emits chunks as they're received.
 */
 func (prvdr *OpenAIProvider) handleStreamingRequest(
 	params *openai.ChatCompletionNewParams,
-) (artifact *datura.Artifact) {
+	channel chan *datura.Artifact,
+) {
 	errnie.Debug("provider.handleStreamingRequest")
 
 	var err error
@@ -227,12 +247,12 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		chunk := stream.Current()
 
 		if ok := acc.AddChunk(chunk); !ok {
-			errnie.Error("chunk dropped", "id", acc.ID)
+			channel <- datura.New(datura.WithError(err))
 			continue
 		}
 
 		if content, ok := acc.JustFinishedContent(); ok && content != "" {
-			artifact = datura.New(
+			channel <- datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(content)),
@@ -241,7 +261,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 		if tool, ok := acc.JustFinishedToolCall(); ok {
 			params.Messages = append(params.Messages, openai.AssistantMessage(acc.Choices[0].Message.Content))
-			artifact = datura.New(
+			channel <- datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(tool.Arguments)),
@@ -249,7 +269,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		}
 
 		if refusal, ok := acc.JustFinishedRefusal(); ok && refusal != "" {
-			artifact = datura.New(
+			channel <- datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(refusal)),
@@ -258,7 +278,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 		// Only write non-empty content from chunks
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			artifact = datura.New(
+			channel <- datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(chunk.Choices[0].Delta.Content)),
@@ -267,12 +287,10 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 	}
 
 	if err = stream.Err(); err != nil {
-		return datura.New(
+		channel <- datura.New(
 			datura.WithError(errnie.Error("Streaming error", "error", err)),
 		)
 	}
-
-	return artifact
 }
 
 /*
@@ -280,14 +298,11 @@ buildMessages converts ContextData messages to OpenAI API format
 */
 func (prvdr *OpenAIProvider) buildMessages(
 	composed *openai.ChatCompletionNewParams,
+	ctx aicontext.Context,
 ) (err error) {
 	errnie.Debug("provider.buildMessages")
 
-	if prvdr.paramsBuilder == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
-	}
-
-	msgs, err := prvdr.ctxBuilder.Messages()
+	msgs, err := ctx.Messages()
 
 	if errnie.Error(err) != nil {
 		return err
@@ -405,6 +420,7 @@ to the OpenAI API will cause strange behavior, like the model guessing random to
 */
 func (prvdr *OpenAIProvider) buildTools(
 	openaiParams *openai.ChatCompletionNewParams,
+	tools []mcp.Tool,
 ) (err error) {
 	errnie.Debug("provider.buildTools")
 
@@ -412,14 +428,14 @@ func (prvdr *OpenAIProvider) buildTools(
 		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
-	if len(prvdr.toolset.Tools) == 0 {
+	if len(tools) == 0 {
 		// No tools, no shoes, no dice.
 		return nil
 	}
 
-	toolsOut := make([]openai.ChatCompletionToolParam, 0, len(prvdr.toolset.Tools))
+	toolsOut := make([]openai.ChatCompletionToolParam, 0, len(tools))
 
-	for _, tool := range prvdr.toolset.ToMCP() {
+	for _, tool := range tools {
 		toolParam := openai.ChatCompletionToolParam{
 			Type: "function",
 			Function: openai.FunctionDefinitionParam{
@@ -449,6 +465,7 @@ If you want this to be combined with the ability to call tools, you can set Stri
 */
 func (prvdr *OpenAIProvider) buildResponseFormat(
 	openaiParams *openai.ChatCompletionNewParams,
+	format params.ResponseFormat,
 ) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
@@ -456,28 +473,22 @@ func (prvdr *OpenAIProvider) buildResponseFormat(
 		return errnie.BadRequest(errors.New("params are nil"))
 	}
 
-	// Get response format from paramsBuilder
-	responseFormat := prvdr.paramsBuilder.ResponseFormat()
-
-	name, err := responseFormat.Name()
+	name, err := format.Name()
 	if errnie.Error(err) != nil {
 		return err
 	}
 
-	description, err := responseFormat.Description()
+	description, err := format.Description()
 	if errnie.Error(err) != nil {
 		return err
 	}
 
-	schema, err := responseFormat.Schema()
+	schema, err := format.Schema()
 	if errnie.Error(err) != nil {
 		return err
 	}
 
-	strict, err := responseFormat.Strict()
-	if errnie.Error(err) != nil {
-		return err
-	}
+	strict := format.Strict()
 
 	openaiParams.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
 		OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{

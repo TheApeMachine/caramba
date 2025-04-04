@@ -4,116 +4,140 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
-	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/memory"
 )
 
-/*
-MemoryTool provides a unified interface for interacting with multiple memory stores.
-It handles both vector-based (Qdrant) and graph-based (Neo4j) storage systems.
-*/
+/* MemoryTool provides a base for all memory operations */
 type MemoryTool struct {
-	pctx   context.Context
-	ctx    context.Context
-	cancel context.CancelFunc
-	stores map[string]interface{} // Map of store types to their implementations
-	*ToolBuilder
+	operations map[string]ToolType
 }
 
-type MemoryToolOption func(*MemoryTool)
+/* NewMemoryTool creates a new Memory tool with all operations */
+func NewMemoryTool() *MemoryTool {
+	query := NewMemoryQueryTool()
+	store := NewMemoryStoreTool()
+	search := NewMemorySearchTool()
 
-// NewMemoryTool creates a new memory tool with the specified stores.
-// If no stores are provided, it initializes with default Qdrant and Neo4j stores.
-func NewMemoryTool(opts ...MemoryToolOption) *MemoryTool {
-	errnie.Debug("NewMemoryTool")
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Create MCP tool definition for memory tool
-	memoryTool := mcp.NewTool(
-		"memory",
-		mcp.WithDescription("A tool which can interact with various memory stores through a unified interface."),
-	)
-
-	builder := NewToolBuilder()
-	builder.mcp = &memoryTool
-
-	tool := &MemoryTool{
-		ctx:         ctx,
-		cancel:      cancel,
-		stores:      make(map[string]interface{}),
-		ToolBuilder: builder,
-	}
-
-	for _, opt := range opts {
-		opt(tool)
-	}
-
-	return tool
-}
-
-func (mt *MemoryTool) ID() string {
-	return "memory"
-}
-
-func (mt *MemoryTool) ToMCP() mcp.Tool {
-	return *mt.ToolBuilder.mcp
-}
-
-// Generate implements the Generator pattern for MemoryTool.
-// It processes queries and returns results through the artifact channel.
-func (mt *MemoryTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	errnie.Debug("tools.MemoryTool.Generate")
-
-	out := make(chan *datura.Artifact)
-
-	go func() {
-		defer close(out)
-
-		for {
-			select {
-			case <-mt.pctx.Done():
-				errnie.Debug("memory.MemoryTool.Generate: parent context done")
-				mt.cancel()
-				return
-			case <-mt.ctx.Done():
-				errnie.Debug("memory.MemoryTool.Generate: context done")
-				return
-			case artifact, ok := <-buffer:
-				if !ok {
-					return
-				}
-				// Process the artifact with the provided functions
-				for _, f := range fn {
-					out <- f(artifact)
-				}
-			}
-		}
-	}()
-
-	return out
-}
-
-func WithStores(stores ...memory.Store) MemoryToolOption {
-	return func(tool *MemoryTool) {
-		for _, store := range stores {
-			tool.stores[store.Name()] = store
-		}
+	return &MemoryTool{
+		operations: map[string]ToolType{
+			"memory_query":  {query.Tool, query.Use},
+			"memory_store":  {store.Tool, store.Use},
+			"memory_search": {search.Tool, search.Use},
+		},
 	}
 }
 
-func WithStore(store memory.Store) MemoryToolOption {
-	return func(tool *MemoryTool) {
-		tool.stores[store.Name()] = store
+/* ToMCP returns all Memory tool definitions */
+func (tool *MemoryTool) ToMCP() []ToolType {
+	tools := make([]ToolType, 0)
+
+	for _, tool := range tool.operations {
+		tools = append(tools, tool)
+	}
+
+	return tools
+}
+
+/* MemoryQueryTool implements a tool for querying memory stores */
+type MemoryQueryTool struct {
+	mcp.Tool
+}
+
+/* NewMemoryQueryTool creates a new tool for memory queries */
+func NewMemoryQueryTool() *MemoryQueryTool {
+	return &MemoryQueryTool{
+		Tool: mcp.NewTool(
+			"memory_query",
+			mcp.WithDescription("A tool for querying memory stores with specific patterns."),
+			mcp.WithString(
+				"query",
+				mcp.Description("The query pattern to search for."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"store",
+				mcp.Description("The memory store to query (vector/graph)."),
+				mcp.Enum("vector", "graph"),
+				mcp.Required(),
+			),
+		),
 	}
 }
 
-func WithMemoryCancel(ctx context.Context) MemoryToolOption {
-	return func(tool *MemoryTool) {
-		tool.pctx = ctx
+/* Use executes the memory query operation and returns the results */
+func (tool *MemoryQueryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
+}
+
+/* MemoryStoreTool implements a tool for storing data in memory */
+type MemoryStoreTool struct {
+	mcp.Tool
+}
+
+/* NewMemoryStoreTool creates a new tool for storing memory */
+func NewMemoryStoreTool() *MemoryStoreTool {
+	return &MemoryStoreTool{
+		Tool: mcp.NewTool(
+			"memory_store",
+			mcp.WithDescription("A tool for storing data in memory stores."),
+			mcp.WithString(
+				"data",
+				mcp.Description("The data to store."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"store",
+				mcp.Description("The memory store to use (vector/graph)."),
+				mcp.Enum("vector", "graph"),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"metadata",
+				mcp.Description("Additional metadata to store with the data."),
+			),
+		),
 	}
+}
+
+/* Use executes the memory store operation and returns the results */
+func (tool *MemoryStoreTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
+}
+
+/* MemorySearchTool implements a tool for semantic search in memory */
+type MemorySearchTool struct {
+	mcp.Tool
+}
+
+/* NewMemorySearchTool creates a new tool for memory search */
+func NewMemorySearchTool() *MemorySearchTool {
+	return &MemorySearchTool{
+		Tool: mcp.NewTool(
+			"memory_search",
+			mcp.WithDescription("A tool for semantic search across memory stores."),
+			mcp.WithString(
+				"query",
+				mcp.Description("The semantic query to search for."),
+				mcp.Required(),
+			),
+			mcp.WithNumber(
+				"limit",
+				mcp.Description("Maximum number of results to return."),
+			),
+			mcp.WithNumber(
+				"threshold",
+				mcp.Description("Similarity threshold for matches."),
+			),
+		),
+	}
+}
+
+/* Use executes the memory search operation and returns the results */
+func (tool *MemorySearchTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }

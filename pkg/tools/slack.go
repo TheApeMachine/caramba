@@ -4,631 +4,388 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
-	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/tools/slack"
 )
 
-/*
-SlackTool provides a streaming interface to Slack operations.
-It manages Slack API interactions through a buffered client connection
-and implements io.ReadWriteCloser for streaming data processing.
-*/
+/* SlackTool provides a base for all Slack operations */
 type SlackTool struct {
-	*ToolBuilder
-	pctx   context.Context
-	ctx    context.Context
-	cancel context.CancelFunc
-	client *slack.Client
+	operations map[string]ToolType
 }
 
-type SlackToolOption func(*SlackTool)
+/* NewSlackTool creates a new Slack tool with all operations */
+func NewSlackTool() *SlackTool {
+	postMessage := NewSlackPostMessageTool()
+	uploadFile := NewSlackUploadFileTool()
+	addReaction := NewSlackAddReactionTool()
+	removeReaction := NewSlackRemoveReactionTool()
+	getChannelInfo := NewSlackGetChannelInfoTool()
+	listChannels := NewSlackListChannelsTool()
+	createChannel := NewSlackCreateChannelTool()
+	getThreadReplies := NewSlackGetThreadRepliesTool()
+	searchMessages := NewSlackSearchMessagesTool()
+	updateMessage := NewSlackUpdateMessageTool()
+	deleteMessage := NewSlackDeleteMessageTool()
 
-/*
-NewSlackTool creates a new Slack tool instance.
-
-It initializes a Slack client and sets up a buffered stream for
-processing Slack operations. The buffer copies data bidirectionally
-between the artifact and the Slack client.
-*/
-func NewSlackTool(opts ...SlackToolOption) *SlackTool {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	client := slack.NewClient()
-
-	tool := &SlackTool{
-		ToolBuilder: NewToolBuilder(),
-		ctx:         ctx,
-		cancel:      cancel,
-		client:      client,
-	}
-
-	for _, opt := range opts {
-		opt(tool)
-	}
-
-	return tool
-}
-
-func WithSlackCancel(ctx context.Context) SlackToolOption {
-	return func(tool *SlackTool) {
-		tool.pctx = ctx
+	return &SlackTool{
+		operations: map[string]ToolType{
+			"post_message":       {postMessage.Tool, postMessage.Use},
+			"upload_file":        {uploadFile.Tool, uploadFile.Use},
+			"add_reaction":       {addReaction.Tool, addReaction.Use},
+			"remove_reaction":    {removeReaction.Tool, removeReaction.Use},
+			"get_channel_info":   {getChannelInfo.Tool, getChannelInfo.Use},
+			"list_channels":      {listChannels.Tool, listChannels.Use},
+			"create_channel":     {createChannel.Tool, createChannel.Use},
+			"get_thread_replies": {getThreadReplies.Tool, getThreadReplies.Use},
+			"search_messages":    {searchMessages.Tool, searchMessages.Use},
+			"update_message":     {updateMessage.Tool, updateMessage.Use},
+			"delete_message":     {deleteMessage.Tool, deleteMessage.Use},
+		},
 	}
 }
 
-func (tool *SlackTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	errnie.Debug("slack.SlackTool.Generate")
+/* ToMCP returns all Slack tool definitions */
+func (tool *SlackTool) ToMCP() []ToolType {
+	tools := make([]ToolType, 0)
 
-	out := make(chan *datura.Artifact)
+	for _, tool := range tool.operations {
+		tools = append(tools, tool)
+	}
 
-	go func() {
-		defer close(out)
-
-		for {
-			select {
-			case <-tool.pctx.Done():
-				errnie.Debug("slack.SlackTool.Generate: parent context done")
-				tool.cancel()
-				return
-			case <-tool.ctx.Done():
-				errnie.Debug("slack.SlackTool.Generate: context done")
-				return
-			case artifact := <-buffer:
-				for _, f := range fn {
-					out <- f(artifact)
-				}
-			}
-		}
-	}()
-
-	return out
+	return tools
 }
 
-// SlackPostMessageTool implements a tool for posting messages to Slack
+/* SlackPostMessageTool implements a tool for posting messages to Slack */
 type SlackPostMessageTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackPostMessageTool creates a new tool for posting messages */
 func NewSlackPostMessageTool() *SlackPostMessageTool {
-	// Create MCP tool definition based on schema from config.yml
-	postMessageTool := mcp.NewTool(
-		"post_message",
-		mcp.WithDescription("A tool for posting messages to Slack workspaces and channels."),
-		mcp.WithString(
-			"channel",
-			mcp.Description("The channel to post the message to."),
-			mcp.Required(),
+	return &SlackPostMessageTool{
+		Tool: mcp.NewTool(
+			"post_message",
+			mcp.WithDescription("A tool for posting messages to Slack workspaces and channels."),
+			mcp.WithString(
+				"channel",
+				mcp.Description("The channel to post the message to."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"message",
+				mcp.Description("The message to post to the channel."),
+				mcp.Required(),
+			),
 		),
-		mcp.WithString(
-			"message",
-			mcp.Description("The message to post to the channel."),
-			mcp.Required(),
-		),
-	)
-
-	spmt := &SlackPostMessageTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	spmt.ToolBuilder.mcp = &postMessageTool
-	return spmt
 }
 
-func (tool *SlackPostMessageTool) ID() string {
-	return "slack_post_message"
+/* Use executes the post message operation and returns the results */
+func (tool *SlackPostMessageTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackPostMessageTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackPostMessageTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for posting messages
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackPostMessageTool
-func (tool *SlackPostMessageTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackUploadFileTool implements a tool for uploading files to Slack
+/* SlackUploadFileTool implements a tool for uploading files to Slack */
 type SlackUploadFileTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackUploadFileTool creates a new tool for uploading files */
 func NewSlackUploadFileTool() *SlackUploadFileTool {
-	// Create MCP tool definition based on schema from config.yml
-	uploadFileTool := mcp.NewTool(
-		"upload_file",
-		mcp.WithDescription("A tool for uploading files to Slack workspaces and channels."),
-		mcp.WithString(
-			"channel",
-			mcp.Description("The channel to upload the file to."),
-			mcp.Required(),
+	return &SlackUploadFileTool{
+		Tool: mcp.NewTool(
+			"upload_file",
+			mcp.WithDescription("A tool for uploading files to Slack workspaces and channels."),
+			mcp.WithString(
+				"channel",
+				mcp.Description("The channel to upload the file to."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"file",
+				mcp.Description("The file to upload to the channel."),
+				mcp.Required(),
+			),
 		),
-		mcp.WithString(
-			"file",
-			mcp.Description("The file to upload to the channel."),
-			mcp.Required(),
-		),
-	)
-
-	suft := &SlackUploadFileTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	suft.ToolBuilder.mcp = &uploadFileTool
-	return suft
 }
 
-func (tool *SlackUploadFileTool) ID() string {
-	return "slack_upload_file"
+/* Use executes the upload file operation and returns the results */
+func (tool *SlackUploadFileTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackUploadFileTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackUploadFileTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for uploading files
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackUploadFileTool
-func (tool *SlackUploadFileTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackAddReactionTool implements a tool for adding reactions to messages
+/* SlackAddReactionTool implements a tool for adding reactions to messages */
 type SlackAddReactionTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackAddReactionTool creates a new tool for adding reactions */
 func NewSlackAddReactionTool() *SlackAddReactionTool {
-	// Create MCP tool definition based on schema from config.yml
-	addReactionTool := mcp.NewTool(
-		"add_reaction",
-		mcp.WithDescription("A tool for adding reactions to messages in Slack workspaces and channels."),
-		mcp.WithString(
-			"channel",
-			mcp.Description("The channel to add the reaction to."),
-			mcp.Required(),
+	return &SlackAddReactionTool{
+		Tool: mcp.NewTool(
+			"add_reaction",
+			mcp.WithDescription("A tool for adding reactions to messages in Slack workspaces and channels."),
+			mcp.WithString(
+				"channel",
+				mcp.Description("The channel to add the reaction to."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"reaction",
+				mcp.Description("The reaction to add to the message."),
+				mcp.Required(),
+			),
 		),
-		mcp.WithString(
-			"reaction",
-			mcp.Description("The reaction to add to the message."),
-			mcp.Required(),
-		),
-	)
-
-	sart := &SlackAddReactionTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	sart.ToolBuilder.mcp = &addReactionTool
-	return sart
 }
 
-func (tool *SlackAddReactionTool) ID() string {
-	return "slack_add_reaction"
+/* Use executes the add reaction operation and returns the results */
+func (tool *SlackAddReactionTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackAddReactionTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackAddReactionTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for adding reactions
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackAddReactionTool
-func (tool *SlackAddReactionTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackRemoveReactionTool implements a tool for removing reactions from messages
+/* SlackRemoveReactionTool implements a tool for removing reactions from messages */
 type SlackRemoveReactionTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackRemoveReactionTool creates a new tool for removing reactions */
 func NewSlackRemoveReactionTool() *SlackRemoveReactionTool {
-	// Create MCP tool definition based on schema from config.yml
-	removeReactionTool := mcp.NewTool(
-		"remove_reaction",
-		mcp.WithDescription("A tool for removing reactions from messages in Slack workspaces and channels."),
-		mcp.WithString(
-			"channel",
-			mcp.Description("The channel to remove the reaction from."),
-			mcp.Required(),
+	return &SlackRemoveReactionTool{
+		Tool: mcp.NewTool(
+			"remove_reaction",
+			mcp.WithDescription("A tool for removing reactions from messages in Slack workspaces and channels."),
+			mcp.WithString(
+				"channel",
+				mcp.Description("The channel to remove the reaction from."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"reaction",
+				mcp.Description("The reaction to remove from the message."),
+				mcp.Required(),
+			),
 		),
-		mcp.WithString(
-			"reaction",
-			mcp.Description("The reaction to remove from the message."),
-			mcp.Required(),
-		),
-	)
-
-	srrt := &SlackRemoveReactionTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	srrt.ToolBuilder.mcp = &removeReactionTool
-	return srrt
 }
 
-func (tool *SlackRemoveReactionTool) ID() string {
-	return "slack_remove_reaction"
+/* Use executes the remove reaction operation and returns the results */
+func (tool *SlackRemoveReactionTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackRemoveReactionTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackRemoveReactionTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for removing reactions
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackRemoveReactionTool
-func (tool *SlackRemoveReactionTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackGetChannelInfoTool implements a tool for getting channel information
+/* SlackGetChannelInfoTool implements a tool for getting channel information */
 type SlackGetChannelInfoTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackGetChannelInfoTool creates a new tool for getting channel info */
 func NewSlackGetChannelInfoTool() *SlackGetChannelInfoTool {
-	// Create MCP tool definition based on schema from config.yml
-	getChannelInfoTool := mcp.NewTool(
-		"get_channel_info",
-		mcp.WithDescription("A tool for getting information about a Slack channel."),
-		mcp.WithString(
-			"channel",
-			mcp.Description("The channel to get information about."),
-			mcp.Required(),
+	return &SlackGetChannelInfoTool{
+		Tool: mcp.NewTool(
+			"get_channel_info",
+			mcp.WithDescription("A tool for getting information about a Slack channel."),
+			mcp.WithString(
+				"channel",
+				mcp.Description("The channel to get information about."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	sgcit := &SlackGetChannelInfoTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	sgcit.ToolBuilder.mcp = &getChannelInfoTool
-	return sgcit
 }
 
-func (tool *SlackGetChannelInfoTool) ID() string {
-	return "slack_get_channel_info"
+/* Use executes the get channel info operation and returns the results */
+func (tool *SlackGetChannelInfoTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackGetChannelInfoTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackGetChannelInfoTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for getting channel information
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackGetChannelInfoTool
-func (tool *SlackGetChannelInfoTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackListChannelsTool implements a tool for listing channels
+/* SlackListChannelsTool implements a tool for listing channels */
 type SlackListChannelsTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackListChannelsTool creates a new tool for listing channels */
 func NewSlackListChannelsTool() *SlackListChannelsTool {
-	// Create MCP tool definition based on schema from config.yml
-	listChannelsTool := mcp.NewTool(
-		"list_channels",
-		mcp.WithDescription("A tool for listing all Slack channels."),
-	)
-
-	slct := &SlackListChannelsTool{
-		SlackTool: NewSlackTool(),
+	return &SlackListChannelsTool{
+		Tool: mcp.NewTool(
+			"list_channels",
+			mcp.WithDescription("A tool for listing all Slack channels."),
+		),
 	}
-
-	slct.ToolBuilder.mcp = &listChannelsTool
-	return slct
 }
 
-func (tool *SlackListChannelsTool) ID() string {
-	return "slack_list_channels"
+/* Use executes the list channels operation and returns the results */
+func (tool *SlackListChannelsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackListChannelsTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackListChannelsTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for listing channels
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackListChannelsTool
-func (tool *SlackListChannelsTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackCreateChannelTool implements a tool for creating a channel
+/* SlackCreateChannelTool implements a tool for creating a channel */
 type SlackCreateChannelTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackCreateChannelTool creates a new tool for creating channels */
 func NewSlackCreateChannelTool() *SlackCreateChannelTool {
-	// Create MCP tool definition based on schema from config.yml
-	createChannelTool := mcp.NewTool(
-		"create_channel",
-		mcp.WithDescription("A tool for creating a new Slack channel."),
-		mcp.WithString(
-			"name",
-			mcp.Description("The name of the channel to create."),
-			mcp.Required(),
+	return &SlackCreateChannelTool{
+		Tool: mcp.NewTool(
+			"create_channel",
+			mcp.WithDescription("A tool for creating a new Slack channel."),
+			mcp.WithString(
+				"name",
+				mcp.Description("The name of the channel to create."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	scct := &SlackCreateChannelTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	scct.ToolBuilder.mcp = &createChannelTool
-	return scct
 }
 
-func (tool *SlackCreateChannelTool) ID() string {
-	return "slack_create_channel"
+/* Use executes the create channel operation and returns the results */
+func (tool *SlackCreateChannelTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackCreateChannelTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackCreateChannelTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for creating a channel
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackCreateChannelTool
-func (tool *SlackCreateChannelTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackGetThreadRepliesTool implements a tool for getting thread replies
+/* SlackGetThreadRepliesTool implements a tool for getting thread replies */
 type SlackGetThreadRepliesTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackGetThreadRepliesTool creates a new tool for getting thread replies */
 func NewSlackGetThreadRepliesTool() *SlackGetThreadRepliesTool {
-	// Create MCP tool definition based on schema from config.yml
-	getThreadRepliesTool := mcp.NewTool(
-		"get_thread_replies",
-		mcp.WithDescription("A tool for getting replies to a message in a Slack channel."),
-		mcp.WithString(
-			"channel",
-			mcp.Description("The channel to get replies from."),
-			mcp.Required(),
+	return &SlackGetThreadRepliesTool{
+		Tool: mcp.NewTool(
+			"get_thread_replies",
+			mcp.WithDescription("A tool for getting replies to a message in a Slack channel."),
+			mcp.WithString(
+				"channel",
+				mcp.Description("The channel to get replies from."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"thread_ts",
+				mcp.Description("The timestamp of the message to get replies from."),
+				mcp.Required(),
+			),
 		),
-		mcp.WithString(
-			"thread_ts",
-			mcp.Description("The timestamp of the message to get replies from."),
-			mcp.Required(),
-		),
-	)
-
-	sgtrt := &SlackGetThreadRepliesTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	sgtrt.ToolBuilder.mcp = &getThreadRepliesTool
-	return sgtrt
 }
 
-func (tool *SlackGetThreadRepliesTool) ID() string {
-	return "slack_get_thread_replies"
+/* Use executes the get thread replies operation and returns the results */
+func (tool *SlackGetThreadRepliesTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackGetThreadRepliesTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackGetThreadRepliesTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for getting thread replies
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackGetThreadRepliesTool
-func (tool *SlackGetThreadRepliesTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackSearchMessagesTool implements a tool for searching messages
+/* SlackSearchMessagesTool implements a tool for searching messages */
 type SlackSearchMessagesTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackSearchMessagesTool creates a new tool for searching messages */
 func NewSlackSearchMessagesTool() *SlackSearchMessagesTool {
-	// Create MCP tool definition based on schema from config.yml
-	searchMessagesTool := mcp.NewTool(
-		"search_messages",
-		mcp.WithDescription("A tool for searching for messages in a Slack channel."),
-		mcp.WithString(
-			"channel",
-			mcp.Description("The channel to search for messages in."),
-			mcp.Required(),
+	return &SlackSearchMessagesTool{
+		Tool: mcp.NewTool(
+			"search_messages",
+			mcp.WithDescription("A tool for searching for messages in a Slack channel."),
+			mcp.WithString(
+				"channel",
+				mcp.Description("The channel to search for messages in."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"text",
+				mcp.Description("The text content to search for."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"thread_ts",
+				mcp.Description("The timestamp of the message to search for."),
+				mcp.Required(),
+			),
 		),
-		mcp.WithString(
-			"text",
-			mcp.Description("The text content to search for."),
-			mcp.Required(),
-		),
-		mcp.WithString(
-			"thread_ts",
-			mcp.Description("The timestamp of the message to search for."),
-			mcp.Required(),
-		),
-	)
-
-	ssmt := &SlackSearchMessagesTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	ssmt.ToolBuilder.mcp = &searchMessagesTool
-	return ssmt
 }
 
-func (tool *SlackSearchMessagesTool) ID() string {
-	return "slack_search_messages"
+/* Use executes the search messages operation and returns the results */
+func (tool *SlackSearchMessagesTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackSearchMessagesTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackSearchMessagesTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for searching messages
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackSearchMessagesTool
-func (tool *SlackSearchMessagesTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackUpdateMessageTool implements a tool for updating messages
+/* SlackUpdateMessageTool implements a tool for updating messages */
 type SlackUpdateMessageTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackUpdateMessageTool creates a new tool for updating messages */
 func NewSlackUpdateMessageTool() *SlackUpdateMessageTool {
-	// Create MCP tool definition based on schema from config.yml
-	updateMessageTool := mcp.NewTool(
-		"update_message",
-		mcp.WithDescription("A tool for updating a message in a Slack channel."),
-		mcp.WithString(
-			"channel",
-			mcp.Description("The channel to update the message in."),
-			mcp.Required(),
+	return &SlackUpdateMessageTool{
+		Tool: mcp.NewTool(
+			"update_message",
+			mcp.WithDescription("A tool for updating a message in a Slack channel."),
+			mcp.WithString(
+				"channel",
+				mcp.Description("The channel to update the message in."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"message_ts",
+				mcp.Description("The timestamp of the message to update."),
+				mcp.Required(),
+			),
 		),
-		mcp.WithString(
-			"message_ts",
-			mcp.Description("The timestamp of the message to update."),
-			mcp.Required(),
-		),
-	)
-
-	sumt := &SlackUpdateMessageTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	sumt.ToolBuilder.mcp = &updateMessageTool
-	return sumt
 }
 
-func (tool *SlackUpdateMessageTool) ID() string {
-	return "slack_update_message"
+/* Use executes the update message operation and returns the results */
+func (tool *SlackUpdateMessageTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *SlackUpdateMessageTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackUpdateMessageTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for updating messages
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackUpdateMessageTool
-func (tool *SlackUpdateMessageTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// SlackDeleteMessageTool implements a tool for deleting messages
+/* SlackDeleteMessageTool implements a tool for deleting messages */
 type SlackDeleteMessageTool struct {
-	*SlackTool
+	mcp.Tool
 }
 
+/* NewSlackDeleteMessageTool creates a new tool for deleting messages */
 func NewSlackDeleteMessageTool() *SlackDeleteMessageTool {
-	// Create MCP tool definition based on schema from config.yml
-	deleteMessageTool := mcp.NewTool(
-		"delete_message",
-		mcp.WithDescription("A tool for deleting a message in a Slack channel."),
-		mcp.WithString(
-			"channel",
-			mcp.Description("The channel to delete the message from."),
-			mcp.Required(),
+	return &SlackDeleteMessageTool{
+		Tool: mcp.NewTool(
+			"delete_message",
+			mcp.WithDescription("A tool for deleting a message in a Slack channel."),
+			mcp.WithString(
+				"channel",
+				mcp.Description("The channel to delete the message from."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"message_ts",
+				mcp.Description("The timestamp of the message to delete."),
+				mcp.Required(),
+			),
 		),
-		mcp.WithString(
-			"message_ts",
-			mcp.Description("The timestamp of the message to delete."),
-			mcp.Required(),
-		),
-	)
-
-	sdmt := &SlackDeleteMessageTool{
-		SlackTool: NewSlackTool(),
 	}
-
-	sdmt.ToolBuilder.mcp = &deleteMessageTool
-	return sdmt
 }
 
-func (tool *SlackDeleteMessageTool) ID() string {
-	return "slack_delete_message"
-}
-
-func (tool *SlackDeleteMessageTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.SlackTool.Generate(buffer, tool.fn)
-}
-
-func (tool *SlackDeleteMessageTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for deleting messages
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the SlackDeleteMessageTool
-func (tool *SlackDeleteMessageTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
+/* Use executes the delete message operation and returns the results */
+func (tool *SlackDeleteMessageTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }

@@ -4,485 +4,272 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
-	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tools/trengo"
 )
 
-// TrengoTool provides a base for all Trengo operations
+/* TrengoTool provides a base for all Trengo operations */
 type TrengoTool struct {
-	*ToolBuilder
-	pctx   context.Context
-	ctx    context.Context
-	cancel context.CancelFunc
-	client *trengo.Client
+	client     *trengo.Client
+	operations map[string]ToolType
 }
 
-type TrengoToolOption func(*TrengoTool)
+/* NewTrengoTool creates a new Trengo tool with options */
+func NewTrengoTool() *TrengoTool {
+	list := NewTrengoListTicketsTool()
+	create := NewTrengoCreateTicketTool()
+	assign := NewTrengoAssignTicketTool()
+	close := NewTrengoCloseTicketTool()
+	reopen := NewTrengoReopenTicketTool()
+	labels := NewTrengoListLabelsTool()
+	get := NewTrengoGetLabelTool()
+	createLabel := NewTrengoCreateLabelTool()
+	updateLabel := NewTrengoUpdateLabelTool()
+	deleteLabel := NewTrengoDeleteLabelTool()
 
-// NewTrengoTool creates a new Trengo tool with options
-func NewTrengoTool(opts ...TrengoToolOption) *TrengoTool {
-	ctx, cancel := context.WithCancel(context.Background())
+	return &TrengoTool{
+		client: trengo.NewClient(),
+		operations: map[string]ToolType{
+			"list_tickets":  {list.Tool, list.Use},
+			"create_ticket": {create.Tool, create.Use},
+			"assign_ticket": {assign.Tool, assign.Use},
+			"close_ticket":  {close.Tool, close.Use},
+			"reopen_ticket": {reopen.Tool, reopen.Use},
+			"list_labels":   {labels.Tool, labels.Use},
+			"get_label":     {get.Tool, get.Use},
+			"create_label":  {createLabel.Tool, createLabel.Use},
+			"update_label":  {updateLabel.Tool, updateLabel.Use},
+			"delete_label":  {deleteLabel.Tool, deleteLabel.Use},
+		},
+	}
+}
 
-	client := trengo.NewClient()
+/* ToMCP returns all Trengo tool definitions */
+func (tool *TrengoTool) ToMCP() []ToolType {
+	tools := make([]ToolType, 0)
 
-	tool := &TrengoTool{
-		ToolBuilder: NewToolBuilder(),
-		ctx:         ctx,
-		cancel:      cancel,
-		client:      client,
+	for _, tool := range tool.operations {
+		tools = append(tools, tool)
 	}
 
-	for _, opt := range opts {
-		opt(tool)
-	}
-
-	return tool
+	return tools
 }
 
-func WithTrengoCancel(ctx context.Context) TrengoToolOption {
-	return func(tool *TrengoTool) {
-		tool.pctx = ctx
-	}
-}
-
-func (tool *TrengoTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	errnie.Debug("trengo.TrengoTool.Generate")
-
-	out := make(chan *datura.Artifact)
-
-	go func() {
-		defer close(out)
-
-		for {
-			select {
-			case <-tool.pctx.Done():
-				errnie.Debug("trengo.TrengoTool.Generate: parent context done")
-				tool.cancel()
-				return
-			case <-tool.ctx.Done():
-				errnie.Debug("trengo.TrengoTool.Generate: context done")
-				return
-			case artifact := <-buffer:
-				for _, f := range fn {
-					out <- f(artifact)
-				}
-			}
-		}
-	}()
-
-	return out
-}
-
-// TrengoListTicketsTool implements a tool for listing tickets
+/* TrengoListTicketsTool implements a tool for listing tickets in Trengo */
 type TrengoListTicketsTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoListTicketsTool creates a new tool for listing tickets */
 func NewTrengoListTicketsTool() *TrengoListTicketsTool {
-	// Create MCP tool definition based on schema from config.yml
-	listTicketsTool := mcp.NewTool(
-		"list_tickets",
-		mcp.WithDescription("A tool for listing tickets in Trengo."),
-	)
-
-	tltt := &TrengoListTicketsTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoListTicketsTool{
+		Tool: mcp.NewTool(
+			"list_tickets",
+			mcp.WithDescription("A tool for listing tickets in Trengo."),
+		),
 	}
-
-	tltt.ToolBuilder.mcp = &listTicketsTool
-	return tltt
 }
 
-func (tool *TrengoListTicketsTool) ID() string {
-	return "trengo_list_tickets"
+/* Use executes the list tickets operation and returns the results */
+func (tool *TrengoListTicketsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *TrengoListTicketsTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoListTicketsTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for listing tickets
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoListTicketsTool
-func (tool *TrengoListTicketsTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// TrengoCreateTicketTool implements a tool for creating tickets
+/* TrengoCreateTicketTool implements a tool for creating tickets in Trengo */
 type TrengoCreateTicketTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoCreateTicketTool creates a new tool for creating tickets */
 func NewTrengoCreateTicketTool() *TrengoCreateTicketTool {
-	// Create MCP tool definition based on schema from config.yml
-	createTicketTool := mcp.NewTool(
-		"create_ticket",
-		mcp.WithDescription("A tool for creating tickets in Trengo."),
-	)
-
-	tctt := &TrengoCreateTicketTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoCreateTicketTool{
+		Tool: mcp.NewTool(
+			"create_ticket",
+			mcp.WithDescription("A tool for creating tickets in Trengo."),
+		),
 	}
-
-	tctt.ToolBuilder.mcp = &createTicketTool
-	return tctt
 }
 
-func (tool *TrengoCreateTicketTool) ID() string {
-	return "trengo_create_ticket"
+/* Use executes the create ticket operation and returns the results */
+func (tool *TrengoCreateTicketTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *TrengoCreateTicketTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoCreateTicketTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for creating tickets
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoCreateTicketTool
-func (tool *TrengoCreateTicketTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// TrengoAssignTicketTool implements a tool for assigning tickets
+/* TrengoAssignTicketTool implements a tool for assigning tickets in Trengo */
 type TrengoAssignTicketTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoAssignTicketTool creates a new tool for assigning tickets */
 func NewTrengoAssignTicketTool() *TrengoAssignTicketTool {
-	// Create MCP tool definition based on schema from config.yml
-	assignTicketTool := mcp.NewTool(
-		"assign_ticket",
-		mcp.WithDescription("A tool for assigning tickets in Trengo."),
-	)
-
-	tatt := &TrengoAssignTicketTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoAssignTicketTool{
+		Tool: mcp.NewTool(
+			"assign_ticket",
+			mcp.WithDescription("A tool for assigning tickets in Trengo."),
+		),
 	}
-
-	tatt.ToolBuilder.mcp = &assignTicketTool
-	return tatt
 }
 
-func (tool *TrengoAssignTicketTool) ID() string {
-	return "trengo_assign_ticket"
+/* Use executes the assign ticket operation and returns the results */
+func (tool *TrengoAssignTicketTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *TrengoAssignTicketTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoAssignTicketTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for assigning tickets
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoAssignTicketTool
-func (tool *TrengoAssignTicketTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// TrengoCloseTicketTool implements a tool for closing tickets
+/* TrengoCloseTicketTool implements a tool for closing tickets in Trengo */
 type TrengoCloseTicketTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoCloseTicketTool creates a new tool for closing tickets */
 func NewTrengoCloseTicketTool() *TrengoCloseTicketTool {
-	// Create MCP tool definition based on schema from config.yml
-	closeTicketTool := mcp.NewTool(
-		"close_ticket",
-		mcp.WithDescription("A tool for closing tickets in Trengo."),
-	)
-
-	tctt := &TrengoCloseTicketTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoCloseTicketTool{
+		Tool: mcp.NewTool(
+			"close_ticket",
+			mcp.WithDescription("A tool for closing tickets in Trengo."),
+		),
 	}
-
-	tctt.ToolBuilder.mcp = &closeTicketTool
-	return tctt
 }
 
-func (tool *TrengoCloseTicketTool) ID() string {
-	return "trengo_close_ticket"
+/* Use executes the close ticket operation and returns the results */
+func (tool *TrengoCloseTicketTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *TrengoCloseTicketTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoCloseTicketTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for closing tickets
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoCloseTicketTool
-func (tool *TrengoCloseTicketTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// TrengoReopenTicketTool implements a tool for reopening tickets
+/* TrengoReopenTicketTool implements a tool for reopening tickets in Trengo */
 type TrengoReopenTicketTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoReopenTicketTool creates a new tool for reopening tickets */
 func NewTrengoReopenTicketTool() *TrengoReopenTicketTool {
-	// Create MCP tool definition based on schema from config.yml
-	reopenTicketTool := mcp.NewTool(
-		"reopen_ticket",
-		mcp.WithDescription("A tool for reopening tickets in Trengo."),
-	)
-
-	trtt := &TrengoReopenTicketTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoReopenTicketTool{
+		Tool: mcp.NewTool(
+			"reopen_ticket",
+			mcp.WithDescription("A tool for reopening tickets in Trengo."),
+		),
 	}
-
-	trtt.ToolBuilder.mcp = &reopenTicketTool
-	return trtt
 }
 
-func (tool *TrengoReopenTicketTool) ID() string {
-	return "trengo_reopen_ticket"
+/* Use executes the reopen ticket operation and returns the results */
+func (tool *TrengoReopenTicketTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *TrengoReopenTicketTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoReopenTicketTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for reopening tickets
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoReopenTicketTool
-func (tool *TrengoReopenTicketTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// TrengoListLabelsTool implements a tool for listing labels
+/* TrengoListLabelsTool implements a tool for listing labels in Trengo */
 type TrengoListLabelsTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoListLabelsTool creates a new tool for listing labels */
 func NewTrengoListLabelsTool() *TrengoListLabelsTool {
-	// Create MCP tool definition based on schema from config.yml
-	listLabelsTool := mcp.NewTool(
-		"list_labels",
-		mcp.WithDescription("A tool for listing labels in Trengo."),
-	)
-
-	tllt := &TrengoListLabelsTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoListLabelsTool{
+		Tool: mcp.NewTool(
+			"list_labels",
+			mcp.WithDescription("A tool for listing labels in Trengo."),
+		),
 	}
-
-	tllt.ToolBuilder.mcp = &listLabelsTool
-	return tllt
 }
 
-func (tool *TrengoListLabelsTool) ID() string {
-	return "trengo_list_labels"
+/* Use executes the list labels operation and returns the results */
+func (tool *TrengoListLabelsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *TrengoListLabelsTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoListLabelsTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for listing labels
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoListLabelsTool
-func (tool *TrengoListLabelsTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// TrengoGetLabelTool implements a tool for getting labels
+/* TrengoGetLabelTool implements a tool for getting labels in Trengo */
 type TrengoGetLabelTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoGetLabelTool creates a new tool for getting labels */
 func NewTrengoGetLabelTool() *TrengoGetLabelTool {
-	// Create MCP tool definition based on schema from config.yml
-	getLabelTool := mcp.NewTool(
-		"get_label",
-		mcp.WithDescription("A tool for getting a label in Trengo."),
-	)
-
-	tglt := &TrengoGetLabelTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoGetLabelTool{
+		Tool: mcp.NewTool(
+			"get_label",
+			mcp.WithDescription("A tool for getting a label in Trengo."),
+		),
 	}
-
-	tglt.ToolBuilder.mcp = &getLabelTool
-	return tglt
 }
 
-func (tool *TrengoGetLabelTool) ID() string {
-	return "trengo_get_label"
+/* Use executes the get label operation and returns the results */
+func (tool *TrengoGetLabelTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *TrengoGetLabelTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoGetLabelTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for getting a label
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoGetLabelTool
-func (tool *TrengoGetLabelTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// TrengoCreateLabelTool implements a tool for creating labels
+/* TrengoCreateLabelTool implements a tool for creating labels in Trengo */
 type TrengoCreateLabelTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoCreateLabelTool creates a new tool for creating labels */
 func NewTrengoCreateLabelTool() *TrengoCreateLabelTool {
-	// Create MCP tool definition based on schema from config.yml
-	createLabelTool := mcp.NewTool(
-		"create_label",
-		mcp.WithDescription("A tool for creating a label in Trengo."),
-	)
-
-	tclt := &TrengoCreateLabelTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoCreateLabelTool{
+		Tool: mcp.NewTool(
+			"create_label",
+			mcp.WithDescription("A tool for creating a label in Trengo."),
+		),
 	}
-
-	tclt.ToolBuilder.mcp = &createLabelTool
-	return tclt
 }
 
-func (tool *TrengoCreateLabelTool) ID() string {
-	return "trengo_create_label"
+/* Use executes the create label operation and returns the results */
+func (tool *TrengoCreateLabelTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *TrengoCreateLabelTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoCreateLabelTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for creating a label
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoCreateLabelTool
-func (tool *TrengoCreateLabelTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// TrengoUpdateLabelTool implements a tool for updating labels
+/* TrengoUpdateLabelTool implements a tool for updating labels in Trengo */
 type TrengoUpdateLabelTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoUpdateLabelTool creates a new tool for updating labels */
 func NewTrengoUpdateLabelTool() *TrengoUpdateLabelTool {
-	// Create MCP tool definition based on schema from config.yml
-	updateLabelTool := mcp.NewTool(
-		"update_label",
-		mcp.WithDescription("A tool for updating a label in Trengo."),
-	)
-
-	tult := &TrengoUpdateLabelTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoUpdateLabelTool{
+		Tool: mcp.NewTool(
+			"update_label",
+			mcp.WithDescription("A tool for updating a label in Trengo."),
+		),
 	}
-
-	tult.ToolBuilder.mcp = &updateLabelTool
-	return tult
 }
 
-func (tool *TrengoUpdateLabelTool) ID() string {
-	return "trengo_update_label"
+/* Use executes the update label operation and returns the results */
+func (tool *TrengoUpdateLabelTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-func (tool *TrengoUpdateLabelTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoUpdateLabelTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for updating a label
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoUpdateLabelTool
-func (tool *TrengoUpdateLabelTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// TrengoDeleteLabelTool implements a tool for deleting labels
+/* TrengoDeleteLabelTool implements a tool for deleting labels in Trengo */
 type TrengoDeleteLabelTool struct {
-	*TrengoTool
+	mcp.Tool
 }
 
+/* NewTrengoDeleteLabelTool creates a new tool for deleting labels */
 func NewTrengoDeleteLabelTool() *TrengoDeleteLabelTool {
-	// Create MCP tool definition based on schema from config.yml
-	deleteLabelTool := mcp.NewTool(
-		"delete_label",
-		mcp.WithDescription("A tool for deleting a label in Trengo."),
-	)
-
-	tdlt := &TrengoDeleteLabelTool{
-		TrengoTool: NewTrengoTool(),
+	return &TrengoDeleteLabelTool{
+		Tool: mcp.NewTool(
+			"delete_label",
+			mcp.WithDescription("A tool for deleting a label in Trengo."),
+		),
 	}
-
-	tdlt.ToolBuilder.mcp = &deleteLabelTool
-	return tdlt
 }
 
-func (tool *TrengoDeleteLabelTool) ID() string {
-	return "trengo_delete_label"
-}
-
-func (tool *TrengoDeleteLabelTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.TrengoTool.Generate(buffer, tool.fn)
-}
-
-func (tool *TrengoDeleteLabelTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	// Implementation for deleting a label
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the TrengoDeleteLabelTool
-func (tool *TrengoDeleteLabelTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
+/* Use executes the delete label operation and returns the results */
+func (tool *TrengoDeleteLabelTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }

@@ -13,8 +13,6 @@ import (
 type ArtifactOption func(*Artifact)
 
 func New(options ...ArtifactOption) *Artifact {
-	errnie.Debug("datura.New")
-
 	var (
 		arena    = capnp.SingleSegment(nil)
 		seg      *capnp.Segment

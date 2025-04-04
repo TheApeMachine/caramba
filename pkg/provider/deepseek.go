@@ -2,15 +2,15 @@ package provider
 
 import (
 	"context"
-	"errors"
-	"io"
 	"os"
 
+	"capnproto.org/go/capnp/v3"
 	deepseek "github.com/cohesion-org/deepseek-go"
-	"github.com/spf13/viper"
+	"github.com/mark3labs/mcp-go/mcp"
+	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
+	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/stream"
 )
 
 /*
@@ -18,12 +18,11 @@ DeepseekProvider implements an LLM provider that connects to Deepseek's API.
 It supports regular chat completions and streaming responses.
 */
 type DeepseekProvider struct {
-	client   *deepseek.Client
-	endpoint string
-	buffer   *stream.Buffer
-	params   *Params
-	ctx      context.Context
-	cancel   context.CancelFunc
+	client  *deepseek.Client
+	pctx    context.Context
+	ctx     context.Context
+	cancel  context.CancelFunc
+	segment *capnp.Segment
 }
 
 /*
@@ -34,16 +33,13 @@ func NewDeepseekProvider(opts ...DeepseekProviderOption) *DeepseekProvider {
 	errnie.Debug("provider.NewDeepseekProvider")
 
 	apiKey := os.Getenv("DEEPSEEK_API_KEY")
-	endpoint := viper.GetViper().GetString("endpoints.deepseek")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	prvdr := &DeepseekProvider{
-		client:   deepseek.NewClient(apiKey),
-		endpoint: endpoint,
-		buffer:   stream.NewBuffer(),
-		params:   &Params{},
-		ctx:      ctx,
-		cancel:   cancel,
+		client: deepseek.NewClient(apiKey),
+		pctx:   ctx,
+		ctx:    ctx,
+		cancel: cancel,
 	}
 
 	for _, opt := range opts {
@@ -67,13 +63,14 @@ func WithDeepseekAPIKey(apiKey string) DeepseekProviderOption {
 
 func WithDeepseekEndpoint(endpoint string) DeepseekProviderOption {
 	return func(prvdr *DeepseekProvider) {
-		prvdr.endpoint = endpoint
+		// TODO: Implement custom endpoint if the deepseek SDK supports it
 	}
 }
 
 func (prvdr *DeepseekProvider) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+	params params.Params,
+	ctx aicontext.Context,
+	tools []mcp.Tool,
 ) chan *datura.Artifact {
 	errnie.Debug("provider.DeepseekProvider.Generate")
 
@@ -82,56 +79,47 @@ func (prvdr *DeepseekProvider) Generate(
 	go func() {
 		defer close(out)
 
-		select {
-		case <-prvdr.ctx.Done():
-			errnie.Debug("provider.DeepseekProvider.Generate.ctx.Done")
-			prvdr.cancel()
+		model, err := params.Model()
+		if errnie.Error(err) != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
 			return
-		case artifact := <-buffer:
-			if err := artifact.To(prvdr.params); err != nil {
-				out <- datura.New(datura.WithError(errnie.Error(err)))
-				return
-			}
+		}
 
-			composed := &deepseek.StreamChatCompletionRequest{
-				Model:            deepseek.DeepSeekChat,
-				Temperature:      float32(prvdr.params.Temperature),
-				TopP:             float32(prvdr.params.TopP),
-				PresencePenalty:  float32(prvdr.params.PresencePenalty),
-				FrequencyPenalty: float32(prvdr.params.FrequencyPenalty),
-				MaxTokens:        int(prvdr.params.MaxTokens),
-			}
+		composed := &deepseek.StreamChatCompletionRequest{
+			Model:            model,
+			Temperature:      float32(params.Temperature()),
+			TopP:             float32(params.TopP()),
+			PresencePenalty:  float32(params.PresencePenalty()),
+			FrequencyPenalty: float32(params.FrequencyPenalty()),
+			MaxTokens:        int(params.MaxTokens()),
+		}
 
-			if err := prvdr.buildMessages(composed); err != nil {
-				out <- datura.New(datura.WithError(err))
-				return
-			}
+		if err = prvdr.buildMessages(composed, ctx); err != nil {
+			out <- datura.New(datura.WithError(err))
+			return
+		}
 
-			if err := prvdr.buildTools(composed); err != nil {
-				out <- datura.New(datura.WithError(err))
-				return
-			}
+		if err = prvdr.buildTools(composed, tools); err != nil {
+			out <- datura.New(datura.WithError(err))
+			return
+		}
 
-			if prvdr.params.ResponseFormat != nil {
-				if err := prvdr.buildResponseFormat(composed); err != nil {
-					out <- datura.New(datura.WithError(err))
-					return
-				}
-			}
+		format, err := params.Format()
 
-			var err error
-			if prvdr.params.Stream {
-				err = prvdr.handleStreamingRequest(composed)
-			} else {
-				err = prvdr.handleSingleRequest(composed)
-			}
+		if errnie.Error(err) != nil {
+			out <- datura.New(datura.WithError(errnie.Error(err)))
+			return
+		}
 
-			if err != nil {
-				out <- datura.New(datura.WithError(err))
-				return
-			}
+		if err = prvdr.buildResponseFormat(composed, format); err != nil {
+			out <- datura.New(datura.WithError(err))
+			return
+		}
 
-			out <- datura.New(datura.WithPayload(prvdr.params.Marshal()))
+		if params.Stream() {
+			prvdr.handleStreamingRequest(composed, out)
+		} else {
+			prvdr.handleSingleRequest(composed, out)
 		}
 	}()
 
@@ -142,58 +130,9 @@ func (prvdr *DeepseekProvider) Name() string {
 	return "deepseek"
 }
 
-/*
-Read implements the io.Reader interface.
-*/
-func (prvdr *DeepseekProvider) Read(p []byte) (n int, err error) {
-	errnie.Debug("provider.DeepseekProvider.Read")
-	return prvdr.buffer.Read(p)
-}
-
-/*
-Write implements the io.Writer interface.
-*/
-func (prvdr *DeepseekProvider) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.DeepseekProvider.Write")
-
-	n, err = prvdr.buffer.Write(p)
-	if errnie.Error(err) != nil {
-		return n, err
-	}
-
-	composed := &deepseek.StreamChatCompletionRequest{
-		Model:            deepseek.DeepSeekChat,
-		Temperature:      float32(prvdr.params.Temperature),
-		TopP:             float32(prvdr.params.TopP),
-		PresencePenalty:  float32(prvdr.params.PresencePenalty),
-		FrequencyPenalty: float32(prvdr.params.FrequencyPenalty),
-		MaxTokens:        int(prvdr.params.MaxTokens),
-	}
-
-	prvdr.buildMessages(composed)
-	prvdr.buildTools(composed)
-	prvdr.buildResponseFormat(composed)
-
-	if prvdr.params.Stream {
-		prvdr.handleStreamingRequest(composed)
-	} else {
-		prvdr.handleSingleRequest(composed)
-	}
-
-	return n, nil
-}
-
-/*
-Close cleans up any resources.
-*/
-func (prvdr *DeepseekProvider) Close() error {
-	errnie.Debug("provider.DeepseekProvider.Close")
-	prvdr.cancel()
-	return nil
-}
-
 func (prvdr *DeepseekProvider) handleSingleRequest(
 	params *deepseek.StreamChatCompletionRequest,
+	channel chan *datura.Artifact,
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
 
@@ -211,21 +150,46 @@ func (prvdr *DeepseekProvider) handleSingleRequest(
 	}
 
 	if len(response.Choices) == 0 {
-		errnie.Error("no response choices")
+		err = errnie.Error("no response choices")
 		return
 	}
 
-	if _, err = io.Copy(prvdr, datura.New(
-		datura.WithPayload([]byte(response.Choices[0].Message.Content)),
-	)); errnie.Error(err) != nil {
-		return err
+	// Create a new message using Cap'n Proto
+	msg, err := aicontext.NewMessage(prvdr.segment)
+	if errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
 	}
+
+	// Set message fields
+	if err = msg.SetRole("assistant"); errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
+	}
+
+	if err = msg.SetName(string(params.Model)); errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
+	}
+
+	if err = msg.SetContent(response.Choices[0].Message.Content); errnie.Error(err) != nil {
+		channel <- datura.New(datura.WithError(errnie.Error(err)))
+		return
+	}
+
+	// Create artifact with message content
+	channel <- datura.New(
+		datura.WithRole(datura.ArtifactRoleAnswer),
+		datura.WithScope(datura.ArtifactScopeGeneration),
+		datura.WithPayload([]byte(response.Choices[0].Message.Content)),
+	)
 
 	return nil
 }
 
 func (prvdr *DeepseekProvider) handleStreamingRequest(
 	params *deepseek.StreamChatCompletionRequest,
+	channel chan *datura.Artifact,
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
@@ -248,11 +212,11 @@ func (prvdr *DeepseekProvider) handleStreamingRequest(
 		if len(response.Choices) > 0 {
 			content := response.Choices[0].Delta.Content
 			if content != "" {
-				if _, err = io.Copy(prvdr, datura.New(
+				channel <- datura.New(
+					datura.WithRole(datura.ArtifactRoleAnswer),
+					datura.WithScope(datura.ArtifactScopeGeneration),
 					datura.WithPayload([]byte(content)),
-				)); errnie.Error(err) != nil {
-					continue
-				}
+				)
 			}
 		}
 	}
@@ -262,34 +226,49 @@ func (prvdr *DeepseekProvider) handleStreamingRequest(
 
 func (prvdr *DeepseekProvider) buildMessages(
 	chatParams *deepseek.StreamChatCompletionRequest,
+	ctx aicontext.Context,
 ) (err error) {
 	errnie.Debug("provider.buildMessages")
 
-	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
+	msgs, err := ctx.Messages()
+
+	if errnie.Error(err) != nil {
+		return err
 	}
 
-	messageList := make([]deepseek.ChatCompletionMessage, 0, len(prvdr.params.Messages))
+	messageList := make([]deepseek.ChatCompletionMessage, 0, msgs.Len())
 
-	for _, message := range prvdr.params.Messages {
-		switch message.Role {
+	for i := range msgs.Len() {
+		msg := msgs.At(i)
+
+		role, err := msg.Role()
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		content, err := msg.Content()
+		if errnie.Error(err) != nil {
+			return err
+		}
+
+		switch role {
 		case "system":
 			messageList = append(messageList, deepseek.ChatCompletionMessage{
 				Role:    deepseek.ChatMessageRoleSystem,
-				Content: message.Content,
+				Content: content,
 			})
 		case "user":
 			messageList = append(messageList, deepseek.ChatCompletionMessage{
 				Role:    deepseek.ChatMessageRoleUser,
-				Content: message.Content,
+				Content: content,
 			})
 		case "assistant":
 			messageList = append(messageList, deepseek.ChatCompletionMessage{
 				Role:    deepseek.ChatMessageRoleAssistant,
-				Content: message.Content,
+				Content: content,
 			})
 		default:
-			errnie.Error("unknown message role", "role", message.Role)
+			errnie.Error("unknown message role", "role", role)
 		}
 	}
 
@@ -300,42 +279,32 @@ func (prvdr *DeepseekProvider) buildMessages(
 
 func (prvdr *DeepseekProvider) buildTools(
 	chatParams *deepseek.StreamChatCompletionRequest,
+	tools []mcp.Tool,
 ) (err error) {
 	errnie.Debug("provider.buildTools")
 
-	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
-	}
-
-	if len(prvdr.params.Tools) == 0 {
+	if len(tools) == 0 {
 		return nil
 	}
 
-	toolList := make([]deepseek.Tool, 0, len(prvdr.params.Tools))
+	toolList := make([]deepseek.Tool, 0, len(tools))
 
-	for _, tool := range prvdr.params.Tools {
+	for _, tool := range tools {
 		properties := make(map[string]interface{})
 
-		for _, prop := range tool.Function.Parameters.Properties {
-			properties[prop.Name] = map[string]interface{}{
-				"type":        prop.Type,
-				"description": prop.Description,
-			}
-
-			if len(prop.Enum) > 0 {
-				properties[prop.Name].(map[string]interface{})["enum"] = prop.Enum
-			}
+		for name, prop := range tool.InputSchema.Properties {
+			properties[name] = prop
 		}
 
 		toolList = append(toolList, deepseek.Tool{
 			Type: "function",
 			Function: deepseek.Function{
-				Name:        tool.Function.Name,
-				Description: tool.Function.Description,
+				Name:        tool.Name,
+				Description: tool.Description,
 				Parameters: &deepseek.FunctionParameters{
 					Type:       "object",
 					Properties: properties,
-					Required:   tool.Function.Parameters.Required,
+					Required:   tool.InputSchema.Required,
 				},
 			},
 		})
@@ -350,61 +319,90 @@ func (prvdr *DeepseekProvider) buildTools(
 
 func (prvdr *DeepseekProvider) buildResponseFormat(
 	chatParams *deepseek.StreamChatCompletionRequest,
+	format params.ResponseFormat,
 ) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
-	if prvdr.params == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
+	name, err := format.Name()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	description, err := format.Description()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	schema, err := format.Schema()
+	if errnie.Error(err) != nil {
+		return err
+	}
+
+	// If no format specified, skip
+	if name == "" && description == "" && schema == "" {
+		return nil
 	}
 
 	// Add format instructions as a system message since Deepseek doesn't support direct format control
-	if prvdr.params.ResponseFormat.Name != "" {
-		formatMsg := deepseek.ChatCompletionMessage{
-			Role: deepseek.ChatMessageRoleSystem,
-			Content: "Please format your response according to the specified schema: " +
-				prvdr.params.ResponseFormat.Name + ". " + prvdr.params.ResponseFormat.Description,
-		}
-		chatParams.Messages = append(chatParams.Messages, formatMsg)
+	formatMsg := deepseek.ChatCompletionMessage{
+		Role: deepseek.ChatMessageRoleSystem,
+		Content: "Please format your response according to the following schema: " +
+			schema + ". " + description,
 	}
+	chatParams.Messages = append(chatParams.Messages, formatMsg)
 
 	return nil
 }
 
 type DeepseekEmbedder struct {
 	client *deepseek.Client
-	params *Params
 	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-func NewDeepseekEmbedder(apiKey string) (*DeepseekEmbedder, error) {
+func NewDeepseekEmbedder(opts ...DeepseekEmbedderOption) *DeepseekEmbedder {
 	errnie.Debug("provider.NewDeepseekEmbedder")
 
-	if apiKey == "" {
-		apiKey = os.Getenv("DEEPSEEK_API_KEY")
-	}
+	apiKey := os.Getenv("DEEPSEEK_API_KEY")
+	ctx, cancel := context.WithCancel(context.Background())
 
 	client := deepseek.NewClient(apiKey)
 
-	return &DeepseekEmbedder{
+	embedder := &DeepseekEmbedder{
 		client: client,
-		params: &Params{},
-		ctx:    context.Background(),
-	}, nil
+		ctx:    ctx,
+		cancel: cancel,
+	}
+
+	for _, opt := range opts {
+		opt(embedder)
+	}
+
+	return embedder
 }
 
-func (embedder *DeepseekEmbedder) Read(p []byte) (n int, err error) {
-	errnie.Debug("provider.DeepseekEmbedder.Read", "p", string(p))
-	return 0, nil
+type DeepseekEmbedderOption func(*DeepseekEmbedder)
+
+func WithDeepseekEmbedderAPIKey(apiKey string) DeepseekEmbedderOption {
+	return func(embedder *DeepseekEmbedder) {
+		embedder.client = deepseek.NewClient(apiKey)
+	}
 }
 
-func (embedder *DeepseekEmbedder) Write(p []byte) (n int, err error) {
-	errnie.Debug("provider.DeepseekEmbedder.Write")
+func WithDeepseekEmbedderEndpoint(endpoint string) DeepseekEmbedderOption {
+	return func(embedder *DeepseekEmbedder) {
+		// TODO: Implement custom endpoint if the deepseek SDK supports it
+	}
+}
+
+func (embedder *DeepseekEmbedder) Generate(
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
+	errnie.Debug("provider.DeepseekEmbedder.Generate")
 	errnie.Warn("Deepseek embedder is not implemented")
-	return len(p), nil
-}
 
-func (embedder *DeepseekEmbedder) Close() error {
-	errnie.Debug("provider.DeepseekEmbedder.Close")
-	embedder.params = nil
-	return nil
+	out := make(chan *datura.Artifact)
+	close(out)
+	return out
 }

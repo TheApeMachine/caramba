@@ -4,489 +4,258 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
-	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tools/azure"
 )
 
-// AzureTool provides common functionality for all Azure tools
+/* AzureTool provides a base for all Azure operations */
 type AzureTool struct {
-	*ToolBuilder
-	pctx   context.Context
-	ctx    context.Context
-	cancel context.CancelFunc
+	operations map[string]ToolType
+}
+
+/* NewAzureTool creates a new Azure tool with all operations */
+func NewAzureTool() *AzureTool {
+	createWorkItem := NewAzureCreateWorkItemTool()
+	updateWorkItem := NewAzureUpdateWorkItemTool()
+	getWorkItem := NewAzureGetWorkItemTool()
+	listWorkItems := NewAzureListWorkItemsTool()
+	createWikiPage := NewAzureCreateWikiPageTool()
+	updateWikiPage := NewAzureUpdateWikiPageTool()
+	getWikiPage := NewAzureGetWikiPageTool()
+	listWikiPages := NewAzureListWikiPagesTool()
+
+	return &AzureTool{
+		operations: map[string]ToolType{
+			"create_work_item": {createWorkItem.Tool, createWorkItem.Use},
+			"update_work_item": {updateWorkItem.Tool, updateWorkItem.Use},
+			"get_work_item":    {getWorkItem.Tool, getWorkItem.Use},
+			"list_work_items":  {listWorkItems.Tool, listWorkItems.Use},
+			"create_wiki_page": {createWikiPage.Tool, createWikiPage.Use},
+			"update_wiki_page": {updateWikiPage.Tool, updateWikiPage.Use},
+			"get_wiki_page":    {getWikiPage.Tool, getWikiPage.Use},
+			"list_wiki_pages":  {listWikiPages.Tool, listWikiPages.Use},
+		},
+	}
+}
+
+/* ToMCP returns all Azure tool definitions */
+func (tool *AzureTool) ToMCP() []ToolType {
+	tools := make([]ToolType, 0)
+
+	for _, tool := range tool.operations {
+		tools = append(tools, tool)
+	}
+
+	return tools
+}
+
+/* AzureCreateWorkItemTool implements a tool for creating work items */
+type AzureCreateWorkItemTool struct {
+	mcp.Tool
 	client *azure.Client
 }
 
-type AzureToolOption func(*AzureTool)
-
-// NewAzureTool creates a new Azure tool with the specified options
-func NewAzureTool(opts ...AzureToolOption) *AzureTool {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	client := azure.NewClient()
-
-	tool := &AzureTool{
-		ToolBuilder: NewToolBuilder(),
-		ctx:         ctx,
-		cancel:      cancel,
-		client:      client,
-	}
-
-	for _, opt := range opts {
-		opt(tool)
-	}
-
-	return tool
-}
-
-// WithAzureCancel sets the parent context for an Azure tool
-func WithAzureCancel(ctx context.Context) AzureToolOption {
-	return func(tool *AzureTool) {
-		tool.pctx = ctx
-	}
-}
-
-// Generate handles the common generation logic for all Azure tools
-func (tool *AzureTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	errnie.Debug("azure.AzureTool.Generate")
-
-	out := make(chan *datura.Artifact)
-
-	go func() {
-		defer close(out)
-
-		for {
-			select {
-			case <-tool.pctx.Done():
-				errnie.Debug("azure.AzureTool.Generate: parent context done")
-				tool.cancel()
-				return
-			case <-tool.ctx.Done():
-				errnie.Debug("azure.AzureTool.Generate: context done")
-				return
-			case artifact := <-buffer:
-				for _, f := range fn {
-					out <- f(artifact)
-				}
-			}
-		}
-	}()
-
-	return out
-}
-
-// AzureCreateWorkItemTool implements a tool for creating work items
-type AzureCreateWorkItemTool struct {
-	*AzureTool
-}
-
-// NewAzureCreateWorkItemTool creates a new tool for creating work items
+/* NewAzureCreateWorkItemTool creates a new tool for creating work items */
 func NewAzureCreateWorkItemTool() *AzureCreateWorkItemTool {
-	// Create MCP tool definition based on schema from config.yml
-	createWorkItemTool := mcp.NewTool(
-		"create_work_item",
-		mcp.WithDescription("A tool for creating work items in Azure DevOps Boards."),
-	)
-
-	acwit := &AzureCreateWorkItemTool{
-		AzureTool: NewAzureTool(),
+	return &AzureCreateWorkItemTool{
+		Tool: mcp.NewTool(
+			"create_work_item",
+			mcp.WithDescription("A tool for creating work items in Azure DevOps Boards."),
+		),
+		client: azure.NewClient(),
 	}
-
-	acwit.ToolBuilder.mcp = &createWorkItemTool
-	return acwit
 }
 
-func (tool *AzureCreateWorkItemTool) ID() string {
-	return "azure_create_work_item"
+/* Use executes the work item creation operation */
+func (tool *AzureCreateWorkItemTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-// Generate processes the work item creation operation
-func (tool *AzureCreateWorkItemTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.AzureTool.Generate(buffer, tool.fn)
-}
-
-// fn implements the work item creation operation
-func (tool *AzureCreateWorkItemTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	errnie.Debug("azure.AzureCreateWorkItemTool.fn")
-
-	// Set operation for processing
-	artifact.SetMetaValue("operation", "create_work_item")
-
-	// Implementation for creating work items
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the AzureCreateWorkItemTool
-func (tool *AzureCreateWorkItemTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// AzureUpdateWorkItemTool implements a tool for updating work items
+/* AzureUpdateWorkItemTool implements a tool for updating work items */
 type AzureUpdateWorkItemTool struct {
-	*AzureTool
+	mcp.Tool
+	client *azure.Client
 }
 
-// NewAzureUpdateWorkItemTool creates a new tool for updating work items
+/* NewAzureUpdateWorkItemTool creates a new tool for updating work items */
 func NewAzureUpdateWorkItemTool() *AzureUpdateWorkItemTool {
-	// Create MCP tool definition based on schema from config.yml
-	updateWorkItemTool := mcp.NewTool(
-		"update_work_item",
-		mcp.WithDescription("A tool for interacting with Azure DevOps Boards and Wikis."),
-		mcp.WithString(
-			"work_item_id",
-			mcp.Description("The ID of the work item to update."),
-			mcp.Required(),
+	return &AzureUpdateWorkItemTool{
+		Tool: mcp.NewTool(
+			"update_work_item",
+			mcp.WithDescription("A tool for updating work items in Azure DevOps Boards."),
+			mcp.WithString(
+				"work_item_id",
+				mcp.Description("The ID of the work item to update."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	auwit := &AzureUpdateWorkItemTool{
-		AzureTool: NewAzureTool(),
+		client: azure.NewClient(),
 	}
-
-	auwit.ToolBuilder.mcp = &updateWorkItemTool
-	return auwit
 }
 
-func (tool *AzureUpdateWorkItemTool) ID() string {
-	return "azure_update_work_item"
+/* Use executes the work item update operation */
+func (tool *AzureUpdateWorkItemTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-// Generate processes the work item update operation
-func (tool *AzureUpdateWorkItemTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.AzureTool.Generate(buffer, tool.fn)
-}
-
-// fn implements the work item update operation
-func (tool *AzureUpdateWorkItemTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	errnie.Debug("azure.AzureUpdateWorkItemTool.fn")
-
-	// Set operation for processing
-	artifact.SetMetaValue("operation", "update_work_item")
-
-	// Implementation for updating work items
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the AzureUpdateWorkItemTool
-func (tool *AzureUpdateWorkItemTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// AzureGetWorkItemTool implements a tool for getting work items
+/* AzureGetWorkItemTool implements a tool for getting work items */
 type AzureGetWorkItemTool struct {
-	*AzureTool
+	mcp.Tool
+	client *azure.Client
 }
 
-// NewAzureGetWorkItemTool creates a new tool for getting work items
+/* NewAzureGetWorkItemTool creates a new tool for getting work items */
 func NewAzureGetWorkItemTool() *AzureGetWorkItemTool {
-	// Create MCP tool definition based on schema from config.yml
-	getWorkItemTool := mcp.NewTool(
-		"get_work_item",
-		mcp.WithDescription("A tool for getting a work item in Azure DevOps Boards."),
-		mcp.WithString(
-			"work_item_id",
-			mcp.Description("The ID of the work item to get."),
-			mcp.Required(),
+	return &AzureGetWorkItemTool{
+		Tool: mcp.NewTool(
+			"get_work_item",
+			mcp.WithDescription("A tool for getting work items in Azure DevOps Boards."),
+			mcp.WithString(
+				"work_item_id",
+				mcp.Description("The ID of the work item to get."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	agwit := &AzureGetWorkItemTool{
-		AzureTool: NewAzureTool(),
+		client: azure.NewClient(),
 	}
-
-	agwit.ToolBuilder.mcp = &getWorkItemTool
-	return agwit
 }
 
-func (tool *AzureGetWorkItemTool) ID() string {
-	return "azure_get_work_item"
+/* Use executes the work item retrieval operation */
+func (tool *AzureGetWorkItemTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-// Generate processes the work item retrieval operation
-func (tool *AzureGetWorkItemTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.AzureTool.Generate(buffer, tool.fn)
-}
-
-// fn implements the work item retrieval operation
-func (tool *AzureGetWorkItemTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	errnie.Debug("azure.AzureGetWorkItemTool.fn")
-
-	// Set operation for processing
-	artifact.SetMetaValue("operation", "get_work_item")
-
-	// Implementation for getting work items
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the AzureGetWorkItemTool
-func (tool *AzureGetWorkItemTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// AzureListWorkItemsTool implements a tool for listing work items
+/* AzureListWorkItemsTool implements a tool for listing work items */
 type AzureListWorkItemsTool struct {
-	*AzureTool
+	mcp.Tool
+	client *azure.Client
 }
 
-// NewAzureListWorkItemsTool creates a new tool for listing work items
+/* NewAzureListWorkItemsTool creates a new tool for listing work items */
 func NewAzureListWorkItemsTool() *AzureListWorkItemsTool {
-	// Create MCP tool definition based on schema from config.yml
-	listWorkItemsTool := mcp.NewTool(
-		"list_work_items",
-		mcp.WithDescription("A tool for listing work items in Azure DevOps Boards."),
-	)
-
-	alwit := &AzureListWorkItemsTool{
-		AzureTool: NewAzureTool(),
+	return &AzureListWorkItemsTool{
+		Tool: mcp.NewTool(
+			"list_work_items",
+			mcp.WithDescription("A tool for listing work items in Azure DevOps Boards."),
+		),
+		client: azure.NewClient(),
 	}
-
-	alwit.ToolBuilder.mcp = &listWorkItemsTool
-	return alwit
 }
 
-func (tool *AzureListWorkItemsTool) ID() string {
-	return "azure_list_work_items"
+/* Use executes the work item listing operation */
+func (tool *AzureListWorkItemsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-// Generate processes the work item listing operation
-func (tool *AzureListWorkItemsTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.AzureTool.Generate(buffer, tool.fn)
-}
-
-// fn implements the work item listing operation
-func (tool *AzureListWorkItemsTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	errnie.Debug("azure.AzureListWorkItemsTool.fn")
-
-	// Set operation for processing
-	artifact.SetMetaValue("operation", "list_work_items")
-
-	// Implementation for listing work items
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the AzureListWorkItemsTool
-func (tool *AzureListWorkItemsTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// AzureCreateWikiPageTool implements a tool for creating wiki pages
+/* AzureCreateWikiPageTool implements a tool for creating wiki pages */
 type AzureCreateWikiPageTool struct {
-	*AzureTool
+	mcp.Tool
+	client *azure.Client
 }
 
-// NewAzureCreateWikiPageTool creates a new tool for creating wiki pages
+/* NewAzureCreateWikiPageTool creates a new tool for creating wiki pages */
 func NewAzureCreateWikiPageTool() *AzureCreateWikiPageTool {
-	// Create MCP tool definition based on schema from config.yml
-	createWikiPageTool := mcp.NewTool(
-		"create_wiki_page",
-		mcp.WithDescription("A tool for creating wiki pages in Azure DevOps Boards."),
-	)
-
-	acwpt := &AzureCreateWikiPageTool{
-		AzureTool: NewAzureTool(),
+	return &AzureCreateWikiPageTool{
+		Tool: mcp.NewTool(
+			"create_wiki_page",
+			mcp.WithDescription("A tool for creating wiki pages in Azure DevOps."),
+		),
+		client: azure.NewClient(),
 	}
-
-	acwpt.ToolBuilder.mcp = &createWikiPageTool
-	return acwpt
 }
 
-func (tool *AzureCreateWikiPageTool) ID() string {
-	return "azure_create_wiki_page"
+/* Use executes the wiki page creation operation */
+func (tool *AzureCreateWikiPageTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-// Generate processes the wiki page creation operation
-func (tool *AzureCreateWikiPageTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.AzureTool.Generate(buffer, tool.fn)
-}
-
-// fn implements the wiki page creation operation
-func (tool *AzureCreateWikiPageTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	errnie.Debug("azure.AzureCreateWikiPageTool.fn")
-
-	// Set operation for processing
-	artifact.SetMetaValue("operation", "create_wiki_page")
-
-	// Implementation for creating wiki pages
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the AzureCreateWikiPageTool
-func (tool *AzureCreateWikiPageTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// AzureUpdateWikiPageTool implements a tool for updating wiki pages
+/* AzureUpdateWikiPageTool implements a tool for updating wiki pages */
 type AzureUpdateWikiPageTool struct {
-	*AzureTool
+	mcp.Tool
+	client *azure.Client
 }
 
-// NewAzureUpdateWikiPageTool creates a new tool for updating wiki pages
+/* NewAzureUpdateWikiPageTool creates a new tool for updating wiki pages */
 func NewAzureUpdateWikiPageTool() *AzureUpdateWikiPageTool {
-	// Create MCP tool definition based on schema from config.yml
-	updateWikiPageTool := mcp.NewTool(
-		"update_wiki_page",
-		mcp.WithDescription("A tool for updating wiki pages in Azure DevOps Boards."),
-		mcp.WithString(
-			"wiki_page_id",
-			mcp.Description("The ID of the wiki page to update."),
-			mcp.Required(),
+	return &AzureUpdateWikiPageTool{
+		Tool: mcp.NewTool(
+			"update_wiki_page",
+			mcp.WithDescription("A tool for updating wiki pages in Azure DevOps."),
+			mcp.WithString(
+				"wiki_page_id",
+				mcp.Description("The ID of the wiki page to update."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	auwpt := &AzureUpdateWikiPageTool{
-		AzureTool: NewAzureTool(),
+		client: azure.NewClient(),
 	}
-
-	auwpt.ToolBuilder.mcp = &updateWikiPageTool
-	return auwpt
 }
 
-func (tool *AzureUpdateWikiPageTool) ID() string {
-	return "azure_update_wiki_page"
+/* Use executes the wiki page update operation */
+func (tool *AzureUpdateWikiPageTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-// Generate processes the wiki page update operation
-func (tool *AzureUpdateWikiPageTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.AzureTool.Generate(buffer, tool.fn)
-}
-
-// fn implements the wiki page update operation
-func (tool *AzureUpdateWikiPageTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	errnie.Debug("azure.AzureUpdateWikiPageTool.fn")
-
-	// Set operation for processing
-	artifact.SetMetaValue("operation", "update_wiki_page")
-
-	// Implementation for updating wiki pages
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the AzureUpdateWikiPageTool
-func (tool *AzureUpdateWikiPageTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// AzureGetWikiPageTool implements a tool for getting wiki pages
+/* AzureGetWikiPageTool implements a tool for getting wiki pages */
 type AzureGetWikiPageTool struct {
-	*AzureTool
+	mcp.Tool
+	client *azure.Client
 }
 
-// NewAzureGetWikiPageTool creates a new tool for getting wiki pages
+/* NewAzureGetWikiPageTool creates a new tool for getting wiki pages */
 func NewAzureGetWikiPageTool() *AzureGetWikiPageTool {
-	// Create MCP tool definition based on schema from config.yml
-	getWikiPageTool := mcp.NewTool(
-		"get_wiki_page",
-		mcp.WithDescription("A tool for getting a wiki page in Azure DevOps Boards."),
-		mcp.WithString(
-			"wiki_page_id",
-			mcp.Description("The ID of the wiki page to get."),
-			mcp.Required(),
+	return &AzureGetWikiPageTool{
+		Tool: mcp.NewTool(
+			"get_wiki_page",
+			mcp.WithDescription("A tool for getting wiki pages in Azure DevOps."),
+			mcp.WithString(
+				"wiki_page_id",
+				mcp.Description("The ID of the wiki page to get."),
+				mcp.Required(),
+			),
 		),
-	)
-
-	agwpt := &AzureGetWikiPageTool{
-		AzureTool: NewAzureTool(),
+		client: azure.NewClient(),
 	}
-
-	agwpt.ToolBuilder.mcp = &getWikiPageTool
-	return agwpt
 }
 
-func (tool *AzureGetWikiPageTool) ID() string {
-	return "azure_get_wiki_page"
+/* Use executes the wiki page retrieval operation */
+func (tool *AzureGetWikiPageTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
-// Generate processes the wiki page retrieval operation
-func (tool *AzureGetWikiPageTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.AzureTool.Generate(buffer, tool.fn)
-}
-
-// fn implements the wiki page retrieval operation
-func (tool *AzureGetWikiPageTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	errnie.Debug("azure.AzureGetWikiPageTool.fn")
-
-	// Set operation for processing
-	artifact.SetMetaValue("operation", "get_wiki_page")
-
-	// Implementation for getting wiki pages
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the AzureGetWikiPageTool
-func (tool *AzureGetWikiPageTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
-}
-
-// AzureListWikiPagesTool implements a tool for listing wiki pages
+/* AzureListWikiPagesTool implements a tool for listing wiki pages */
 type AzureListWikiPagesTool struct {
-	*AzureTool
+	mcp.Tool
+	client *azure.Client
 }
 
-// NewAzureListWikiPagesTool creates a new tool for listing wiki pages
+/* NewAzureListWikiPagesTool creates a new tool for listing wiki pages */
 func NewAzureListWikiPagesTool() *AzureListWikiPagesTool {
-	// Create MCP tool definition based on schema from config.yml
-	listWikiPagesTool := mcp.NewTool(
-		"list_wiki_pages",
-		mcp.WithDescription("A tool for listing wiki pages in Azure DevOps Boards."),
-	)
-
-	alwpt := &AzureListWikiPagesTool{
-		AzureTool: NewAzureTool(),
+	return &AzureListWikiPagesTool{
+		Tool: mcp.NewTool(
+			"list_wiki_pages",
+			mcp.WithDescription("A tool for listing wiki pages in Azure DevOps."),
+		),
+		client: azure.NewClient(),
 	}
-
-	alwpt.ToolBuilder.mcp = &listWikiPagesTool
-	return alwpt
 }
 
-func (tool *AzureListWikiPagesTool) ID() string {
-	return "azure_list_wiki_pages"
-}
-
-// Generate processes the wiki page listing operation
-func (tool *AzureListWikiPagesTool) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	return tool.AzureTool.Generate(buffer, tool.fn)
-}
-
-// fn implements the wiki page listing operation
-func (tool *AzureListWikiPagesTool) fn(artifact *datura.Artifact) *datura.Artifact {
-	errnie.Debug("azure.AzureListWikiPagesTool.fn")
-
-	// Set operation for processing
-	artifact.SetMetaValue("operation", "list_wiki_pages")
-
-	// Implementation for listing wiki pages
-	return artifact
-}
-
-// ToMCP returns the MCP tool definitions for the AzureListWikiPagesTool
-func (tool *AzureListWikiPagesTool) ToMCP() mcp.Tool {
-	return *tool.ToolBuilder.mcp
+/* Use executes the wiki page listing operation */
+func (tool *AzureListWikiPagesTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Hello, world!"), nil
 }
