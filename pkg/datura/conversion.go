@@ -77,9 +77,15 @@ Error is a convenience function to set an error as the payload of the artifact.
 func (artifact *Artifact) Error(e error) (err error) {
 	errnie.Debug("datura.Error", "e", e.Error())
 
-	WithError(errnie.New(
-		errnie.WithError(e),
-	))(artifact)
+	if e == nil {
+		return nil
+	}
 
+	errMsg := e.Error()
+	if errMsg == "" {
+		errMsg = "empty error"
+	}
+
+	WithPayload([]byte(errMsg))(artifact)
 	return e
 }
