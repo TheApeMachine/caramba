@@ -14,7 +14,7 @@ import (
 
 type ProviderInterface interface {
 	Name() string
-	Handle(artifact *datura.Artifact) *datura.Artifact
+	Handle(chan *datura.Artifact, *datura.Artifact) *datura.Artifact
 }
 
 type ProviderType ProviderInterface
@@ -91,13 +91,21 @@ func (builder *ProviderBuilder) Generate(
 
 				if builder.protocol == nil {
 					builder.protocol = system.NewHub().GetProtocol(
-						datura.GetMetaValue[string](artifact, "topic"),
+						datura.GetMetaValue[string](artifact, "protocol"),
 					)
 				}
 
-				var out *datura.Artifact
-				out, builder.status = builder.protocol.Next(artifact)
-				builder.out <- builder.supplier.Handle(out)
+				out, status := builder.protocol.Next(artifact, builder.status)
+
+				if builder.status == core.StatusWaiting && status == core.StatusWaiting {
+					// We should not continue to the next step until the
+					// waiting conditions have been resolved by the other party.
+					continue
+				}
+
+				builder.supplier.Handle(builder.out, out)
+				builder.status = status
+				errnie.Info("provider.ProviderBuilder.Generate.Status", "status", builder.status.String())
 			case <-time.After(100 * time.Millisecond):
 				// Do nothing
 			}

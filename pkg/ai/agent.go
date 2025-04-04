@@ -134,18 +134,24 @@ func (builder *AgentBuilder) Generate(
 
 				if builder.protocol == nil {
 					builder.protocol = system.NewHub().RegisterProtocol(
-						protocols[datura.GetMetaValue[string](artifact, "topic")](builder.ID()),
+						protocols[datura.GetMetaValue[string](artifact, "topic")](
+							builder.ID(),
+							"provider",
+						),
 					)
 				}
 
-				var out *datura.Artifact
-				out, builder.status = builder.protocol.Next(artifact)
+				out, status := builder.protocol.Next(artifact, builder.status)
 
-				if builder.status == core.StatusWaiting {
-					break
+				if builder.status == core.StatusWaiting && status == core.StatusWaiting {
+					// We should not continue to the next step until the
+					// waiting conditions have been resolved by the other party.
+					continue
 				}
 
-				builder.out <- builder.handle(out)
+				builder.handle(out)
+				builder.status = status
+				errnie.Info("ai.AgentBuilder.Generate.Status", "status", builder.status.String())
 			case <-time.After(100 * time.Millisecond):
 				// Do nothing
 			}
@@ -165,8 +171,24 @@ Parameters:
 
 Returns the processed artifact.
 */
-func (builder *AgentBuilder) handle(artifact *datura.Artifact) *datura.Artifact {
-	return artifact
+func (builder *AgentBuilder) handle(artifact *datura.Artifact) {
+	switch datura.ArtifactRole(artifact.Role()) {
+	case datura.ArtifactRoleQuestion:
+		switch datura.ArtifactScope(artifact.Scope()) {
+		case datura.ArtifactScopePreflight:
+			artifact.SetScope(uint32(datura.ArtifactScopeParams))
+			datura.WithPayload(builder.paramsBuilder.Payload())(artifact)
+			builder.out <- artifact
+
+			artifact.SetScope(uint32(datura.ArtifactScopeContext))
+			datura.WithPayload(builder.ctxBuilder.Payload())(artifact)
+			builder.out <- artifact
+
+			return
+		}
+	}
+
+	builder.out <- artifact
 }
 
 /*

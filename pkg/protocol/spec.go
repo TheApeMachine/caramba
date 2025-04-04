@@ -16,13 +16,13 @@ A protocol specification is uniquely identified and tracks both the initiating a
 participating agents, along with the current execution state.
 */
 type Spec struct {
-	ID          string       // Unique identifier for the protocol instance
-	initiator   string       // ID of the agent that initiated the protocol
-	participant string       // ID of the agent participating in the protocol
-	steps       []*Step      // Ordered sequence of protocol steps
-	conditions  []*Condition // Active conditions that need to be satisfied
-	status      core.Status  // Current status of the protocol
-	ptr         int          // Current step pointer in the protocol execution
+	ID                    string       // Unique identifier for the protocol instance
+	steps                 []*Step      // Ordered sequence of protocol steps
+	initiator             string       // Initiator of the protocol
+	participant           string       // Participant of the protocol
+	initiatorConditions   []*Condition // Active conditions that need to be satisfied
+	participantConditions []*Condition // Active conditions that need to be satisfied
+	ptr                   int          // Current step pointer in the protocol execution
 }
 
 // SpecOption defines a function type for configuring a Spec.
@@ -43,10 +43,9 @@ func NewSpec(opts ...SpecOption) *Spec {
 	errnie.Debug("core.NewSpec")
 
 	spec := &Spec{
-		ID:     uuid.New().String(),
-		steps:  make([]*Step, 0),
-		status: core.StatusUnknown,
-		ptr:    -1,
+		ID:    uuid.New().String(),
+		steps: make([]*Step, 0),
+		ptr:   -1,
 	}
 
 	for _, opt := range opts {
@@ -68,7 +67,7 @@ Returns:
   - The processed artifact
   - The updated status of the protocol
 */
-func (spec *Spec) Next(artifact *datura.Artifact) (*datura.Artifact, core.Status) {
+func (spec *Spec) Next(artifact *datura.Artifact, status core.Status) (*datura.Artifact, core.Status) {
 	errnie.Debug("core.Spec.Next")
 
 	spec.ptr++
@@ -78,40 +77,17 @@ func (spec *Spec) Next(artifact *datura.Artifact) (*datura.Artifact, core.Status
 	}
 
 	step := spec.steps[spec.ptr]
-	artifact, spec.status, spec.conditions = step.Do(
+	artifact, status, spec.initiatorConditions, spec.participantConditions = step.Do(
 		spec.ID,
 		artifact,
-		spec.status,
-		spec.conditions,
+		status,
+		spec.initiator,
+		spec.participant,
+		spec.initiatorConditions,
+		spec.participantConditions,
 	)
 
-	return artifact, spec.status
-}
-
-/*
-WithInitiator is a SpecOption that sets the initiating agent's ID for the protocol.
-The initiator is the agent that starts the protocol execution.
-
-Parameters:
-  - initiator: The ID of the initiating agent
-*/
-func WithInitiator(initiator string) SpecOption {
-	return func(spec *Spec) {
-		spec.initiator = initiator
-	}
-}
-
-/*
-WithParticipant is a SpecOption that sets the participating agent's ID for the protocol.
-The participant is the agent that responds to the protocol initiation.
-
-Parameters:
-  - participant: The ID of the participating agent
-*/
-func WithParticipant(participant string) SpecOption {
-	return func(spec *Spec) {
-		spec.participant = participant
-	}
+	return artifact, status
 }
 
 /*
@@ -123,19 +99,8 @@ Parameters:
 */
 func WithSteps(steps ...*Step) SpecOption {
 	return func(spec *Spec) {
+		spec.initiator = steps[0].Directions[0]
+		spec.participant = steps[0].Directions[1]
 		spec.steps = append(spec.steps, steps...)
-	}
-}
-
-/*
-WithStatus is a SpecOption that sets the initial status of the protocol.
-This defines the starting state of the protocol before execution begins.
-
-Parameters:
-  - status: The initial Status to set for the protocol
-*/
-func WithStatus(status core.Status) SpecOption {
-	return func(spec *Spec) {
-		spec.status = status
 	}
 }

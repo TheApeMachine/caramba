@@ -66,45 +66,60 @@ func (prvdr *OpenAIProvider) ID() string {
 	return "openai"
 }
 
-func (prvdr *OpenAIProvider) Handle(artifact *datura.Artifact) *datura.Artifact {
-	errnie.Debug("provider.OpenAIProvider.run")
-	// If we have both params and context, start generation
-	if prvdr.paramsBuilder != nil && prvdr.ctxBuilder != nil {
-		model, err := prvdr.paramsBuilder.Model()
-		if errnie.Error(err) != nil {
-			return artifact
+func (prvdr *OpenAIProvider) Handle(
+	channel chan *datura.Artifact,
+	artifact *datura.Artifact,
+) *datura.Artifact {
+	switch datura.ArtifactRole(artifact.Role()) {
+	case datura.ArtifactRoleAcknowledge:
+		switch datura.ArtifactScope(artifact.Scope()) {
+		case datura.ArtifactScopeParams:
+			errnie.Info("provider.OpenAIProvider.Handle.Params")
+			prvdr.paramsBuilder = core.NewParamsBuilder().WithArtifact(artifact)
+		case datura.ArtifactScopeContext:
+			errnie.Info("provider.OpenAIProvider.Handle.Context")
+			prvdr.ctxBuilder = core.NewContextBuilder().WithArtifact(artifact)
 		}
-
-		composed := &openai.ChatCompletionNewParams{
-			Model:            openai.ChatModel(model),
-			Temperature:      openai.Float(prvdr.paramsBuilder.Temperature()),
-			TopP:             openai.Float(prvdr.paramsBuilder.TopP()),
-			FrequencyPenalty: openai.Float(prvdr.paramsBuilder.FrequencyPenalty()),
-			PresencePenalty:  openai.Float(prvdr.paramsBuilder.PresencePenalty()),
-		}
-
-		if prvdr.paramsBuilder.MaxTokens() > 1 {
-			composed.MaxTokens = openai.Int(int64(prvdr.paramsBuilder.MaxTokens()))
-		}
-
-		if err = prvdr.buildMessages(composed); err != nil {
-			return artifact
-		}
-
-		if err = prvdr.buildTools(composed); err != nil {
-			return artifact
-		}
-
-		if prvdr.paramsBuilder.ResponseFormat() != nil {
-			if err = prvdr.buildResponseFormat(composed); err != nil {
+	default:
+		errnie.Debug("provider.OpenAIProvider.run")
+		// If we have both params and context, start generation
+		if prvdr.paramsBuilder != nil && prvdr.ctxBuilder != nil {
+			model, err := prvdr.paramsBuilder.Model()
+			if errnie.Error(err) != nil {
 				return artifact
 			}
-		}
 
-		if prvdr.paramsBuilder.Stream() {
-			artifact = prvdr.handleStreamingRequest(composed)
-		} else {
-			artifact = prvdr.handleSingleRequest(composed)
+			composed := &openai.ChatCompletionNewParams{
+				Model:            openai.ChatModel(model),
+				Temperature:      openai.Float(prvdr.paramsBuilder.Temperature()),
+				TopP:             openai.Float(prvdr.paramsBuilder.TopP()),
+				FrequencyPenalty: openai.Float(prvdr.paramsBuilder.FrequencyPenalty()),
+				PresencePenalty:  openai.Float(prvdr.paramsBuilder.PresencePenalty()),
+			}
+
+			if prvdr.paramsBuilder.MaxTokens() > 1 {
+				composed.MaxTokens = openai.Int(int64(prvdr.paramsBuilder.MaxTokens()))
+			}
+
+			if err = prvdr.buildMessages(composed); err != nil {
+				return artifact
+			}
+
+			if err = prvdr.buildTools(composed); err != nil {
+				return artifact
+			}
+
+			if prvdr.paramsBuilder.ResponseFormat() != nil {
+				if err = prvdr.buildResponseFormat(composed); err != nil {
+					return artifact
+				}
+			}
+
+			if prvdr.paramsBuilder.Stream() {
+				artifact = prvdr.handleStreamingRequest(composed)
+			} else {
+				artifact = prvdr.handleSingleRequest(composed)
+			}
 		}
 	}
 

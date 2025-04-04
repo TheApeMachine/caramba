@@ -59,19 +59,21 @@ func (builder *ContextBuilder) AddMessage(artifact *datura.Artifact) {
 }
 
 func (ctx *ContextBuilder) Artifact() *datura.Artifact {
-	message := ctx.Message()
+	return datura.New(
+		datura.WithPayload(ctx.Payload()),
+		datura.WithRole(datura.ArtifactRoleAnswer),
+		datura.WithScope(datura.ArtifactScopeContext),
+	)
+}
 
-	payload, err := message.Marshal()
+func (ctx *ContextBuilder) Payload() []byte {
+	payload, err := ctx.Message().Marshal()
 
 	if errnie.Error(err) != nil {
 		return nil
 	}
 
-	return datura.New(
-		datura.WithPayload(payload),
-		datura.WithRole(datura.ArtifactRoleAnswer),
-		datura.WithScope(datura.ArtifactScopeContext),
-	)
+	return payload
 }
 
 func (ctx *ContextBuilder) WithArtifact(artifact *datura.Artifact) *ContextBuilder {

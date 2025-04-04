@@ -18,6 +18,25 @@ const (
 	ArtifactRoleResponseFormat
 )
 
+// ArtifactRoleString returns the string representation of the ArtifactRole.
+func (role ArtifactRole) String() string {
+	return []string{
+		"unknown",
+		"system",
+		"user",
+		"assistant",
+		"tool",
+		"question",
+		"answer",
+		"acknowledge",
+		"open_file",
+		"save_file",
+		"delete_file",
+		"list_files",
+		"response_format",
+	}[role]
+}
+
 type ArtifactScope uint
 
 const (
@@ -29,6 +48,19 @@ const (
 	ArtifactScopeRelease
 	ArtifactScopePreflight
 )
+
+// ArtifactScopeString returns the string representation of the ArtifactScope.
+func (scope ArtifactScope) String() string {
+	return []string{
+		"unknown",
+		"generation",
+		"params",
+		"context",
+		"aquire",
+		"release",
+		"preflight",
+	}[scope]
+}
 
 type MediaType string
 

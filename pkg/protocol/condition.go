@@ -7,6 +7,7 @@ package protocol
 import (
 	"github.com/theapemachine/caramba/pkg/core"
 	"github.com/theapemachine/caramba/pkg/datura"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 /*
@@ -57,16 +58,25 @@ Returns true if all criteria are met, false otherwise.
 */
 func (condition *Condition) Check(artifact *datura.Artifact, status core.Status) bool {
 	if condition.Role != datura.ArtifactRole(artifact.Role()) {
+		errnie.Warn("protocol.Condition.Check.Role", "role", artifact.Role(), "expected", condition.Role)
 		return false
 	}
+
+	errnie.Info("protocol.Condition.Check.Role.resolved")
 
 	if condition.Scope != datura.ArtifactScope(artifact.Scope()) {
+		errnie.Warn("protocol.Condition.Check.Scope", "scope", artifact.Scope(), "expected", condition.Scope)
 		return false
 	}
 
+	errnie.Info("protocol.Condition.Check.Scope.resolved")
+
 	if condition.Status != status {
+		errnie.Warn("protocol.Condition.Check.Status", "status", status, "expected", condition.Status)
 		return false
 	}
+
+	errnie.Info("protocol.Condition.Check.Status.resolved")
 
 	return true
 }

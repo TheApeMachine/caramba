@@ -70,28 +70,40 @@ func (step *Step) Do(
 	id string,
 	artifact *datura.Artifact,
 	status core.Status,
-	conditions []*Condition,
-) (*datura.Artifact, core.Status, []*Condition) {
+	initiator string,
+	participant string,
+	initiatorConditions []*Condition,
+	participantConditions []*Condition,
+) (*datura.Artifact, core.Status, []*Condition, []*Condition) {
 	errnie.Debug("core.Step.Do")
+	var conditions []*Condition
+
+	if datura.GetMetaValue[string](artifact, "from") != initiator {
+		conditions = participantConditions
+	}
+
+	if datura.GetMetaValue[string](artifact, "from") != participant {
+		conditions = initiatorConditions
+	}
 
 	// Resolve any existing conditions.
 	for i, condition := range conditions {
 		if condition.Check(artifact, status) {
 			conditions = slices.Delete(conditions, i, i+1)
+			errnie.Info("core.Step.Do.Condition.Resolved", "role", artifact.Role(), "scope", artifact.Scope())
 		}
 	}
 
-	if len(conditions) > 0 {
-		return artifact, status, conditions
-	}
+	// Create a new artifact instead of modifying the input one
+	response := datura.New(
+		datura.WithRole(step.Role),
+		datura.WithScope(step.Scope),
+	)
+	response.SetMetaValue("from", step.Directions[0])
+	response.SetMetaValue("to", step.Directions[1])
+	response.SetMetaValue("protocol", id)
 
-	artifact.SetRole(uint32(step.Role))
-	artifact.SetScope(uint32(step.Scope))
-	artifact.SetMetaValue("from", step.Directions[0])
-	artifact.SetMetaValue("to", step.Directions[1])
-	artifact.SetMetaValue("protocol", id)
-
-	return artifact, step.Status, append(conditions, step.Conditions...)
+	return response, step.Status, initiatorConditions, participantConditions
 }
 
 /*

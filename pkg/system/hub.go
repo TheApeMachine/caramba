@@ -99,89 +99,34 @@ func (hub *Hub) Generate(
 				to := datura.GetMetaValue[string](artifact, "to")
 				topic := Topic(datura.GetMetaValue[string](artifact, "topic"))
 
-				errnie.Debug(
+				errnie.Info(
 					"Hub received artifact",
 					"topic", topic,
+					"from", datura.GetMetaValue[string](artifact, "from"),
 					"to", to,
-					"role", artifact.Role(),
-					"scope", artifact.Scope(),
+					"role", datura.ArtifactRole(artifact.Role()).String(),
+					"scope", datura.ArtifactScope(artifact.Scope()).String(),
 				)
 
-				// Route by topic first
-				topicClients := 0
 				for _, client := range hub.clients {
 					if !slices.Contains(client.Topics, topic) {
 						continue
 					}
 
-					errnie.Info("Routing to topic subscriber", "client", client.ID, "topic", topic)
-					select {
-					case hub.topicQueue <- artifact:
-						topicClients++
-					default:
-						errnie.Error("Topic queue full", "topic", topic)
-					}
-				}
-
-				// Then route by direct client ID
-				if to != "" {
-					clientFound := false
-					for _, client := range hub.clients {
-						if client.ID != to {
-							continue
-						}
-
-						errnie.Info("Routing to client", "client", client.ID)
-						select {
-						case hub.clientQueue <- artifact:
-							clientFound = true
-						default:
-							errnie.Error("Client queue full", "client", client.ID)
-						}
-						break
-					}
-
-					if !clientFound {
-						errnie.Debug("Client not found", "to", to)
-					}
-				}
-
-			case artifact := <-hub.topicQueue:
-				topic := Topic(datura.GetMetaValue[string](artifact, "topic"))
-				errnie.Debug("Processing topic queue", "topic", topic)
-
-				for _, client := range hub.clients {
-					if !slices.Contains(client.Topics, topic) {
-						continue
-					}
-
-					errnie.Debug("Copying to topic subscriber", "client", client.ID, "topic", topic)
-					if _, err = io.Copy(
-						client.IO, artifact,
-					); errnie.Error(err) != nil {
-						errnie.Debug("Failed to copy to client", "client", client.ID, "error", err)
+					if _, err = io.Copy(client.IO, artifact); errnie.Error(err) != nil {
 						continue
 					}
 				}
-
-			case artifact := <-hub.clientQueue:
-				to := datura.GetMetaValue[string](artifact, "to")
-				errnie.Debug("Processing client queue", "to", to)
 
 				for _, client := range hub.clients {
 					if client.ID != to {
 						continue
 					}
 
-					errnie.Debug("Copying to client", "client", client.ID)
-					if _, err = io.Copy(
-						client.IO, artifact,
-					); errnie.Error(err) != nil {
-						errnie.Debug("Failed to copy to client", "error", err)
+					if _, err = io.Copy(client.IO, artifact); errnie.Error(err) != nil {
 						continue
 					}
 				}
-
 			case <-time.After(100 * time.Millisecond):
 				// Do nothing
 			}

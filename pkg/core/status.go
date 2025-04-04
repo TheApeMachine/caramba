@@ -11,3 +11,15 @@ const (
 	StatusError
 	StatusBusy
 )
+
+func (status Status) String() string {
+	return []string{
+		"unknown",
+		"ready",
+		"waiting",
+		"working",
+		"done",
+		"error",
+		"busy",
+	}[status]
+}

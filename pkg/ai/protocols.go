@@ -6,30 +6,17 @@ import (
 	"github.com/theapemachine/caramba/pkg/protocol"
 )
 
-type Protocols struct {
+type Task struct {
+	ID          string
 	Initiator   string
 	Participant string
 }
 
-type ProtocolOption func(*Protocols)
-
-func NewProtocols(opts ...ProtocolOption) *Protocols {
-	protocols := &Protocols{}
-
-	for _, opt := range opts {
-		opt(protocols)
-	}
-
-	return protocols
-}
-
-func (protocols *Protocols) Task(id string) *protocol.Spec {
+func NewTask(initiator string, participant string) *protocol.Spec {
 	return protocol.NewSpec(
-		protocol.WithInitiator(protocols.Initiator),
-		protocol.WithParticipant(protocols.Participant),
 		protocol.WithSteps(
 			protocol.NewStep(
-				protocol.WithDirection(protocols.Initiator, protocols.Participant),
+				protocol.WithDirection(initiator, participant),
 				protocol.WithStepRole(datura.ArtifactRoleQuestion),
 				protocol.WithStepScope(datura.ArtifactScopeAquire),
 				protocol.WithStepStatus(core.StatusWaiting),
@@ -42,7 +29,7 @@ func (protocols *Protocols) Task(id string) *protocol.Spec {
 				),
 			),
 			protocol.NewStep(
-				protocol.WithDirection(protocols.Participant, protocols.Initiator),
+				protocol.WithDirection(participant, initiator),
 				protocol.WithStepRole(datura.ArtifactRoleAcknowledge),
 				protocol.WithStepScope(datura.ArtifactScopeAquire),
 				protocol.WithStepStatus(core.StatusWaiting),
@@ -55,13 +42,13 @@ func (protocols *Protocols) Task(id string) *protocol.Spec {
 				),
 			),
 			protocol.NewStep(
-				protocol.WithDirection(protocols.Initiator, protocols.Participant),
+				protocol.WithDirection(initiator, participant),
 				protocol.WithStepRole(datura.ArtifactRoleAcknowledge),
 				protocol.WithStepScope(datura.ArtifactScopeAquire),
 				protocol.WithStepStatus(core.StatusBusy),
 			),
 			protocol.NewStep(
-				protocol.WithDirection(protocols.Participant, protocols.Initiator),
+				protocol.WithDirection(participant, initiator),
 				protocol.WithStepRole(datura.ArtifactRoleQuestion),
 				protocol.WithStepScope(datura.ArtifactScopePreflight),
 				protocol.WithStepStatus(core.StatusWaiting),
@@ -82,21 +69,6 @@ func (protocols *Protocols) Task(id string) *protocol.Spec {
 	)
 }
 
-func WithInitiator(initiator string) ProtocolOption {
-	return func(protocols *Protocols) {
-		protocols.Initiator = initiator
-	}
-}
-
-func WithParticipant(participant string) ProtocolOption {
-	return func(protocols *Protocols) {
-		protocols.Participant = participant
-	}
-}
-
-var protocols = map[string]func(string) *protocol.Spec{
-	"task": NewProtocols(
-		WithInitiator("user"),
-		WithParticipant("agent"),
-	).Task,
+var protocols = map[string]func(string, string) *protocol.Spec{
+	"task": NewTask,
 }

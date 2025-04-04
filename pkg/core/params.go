@@ -37,10 +37,20 @@ func NewParamsBuilder(opts ...ParamsOption) *ParamsBuilder {
 
 func (builder *ParamsBuilder) Artifact() *datura.Artifact {
 	return datura.New(
-		datura.WithPayload(builder.Segment().Data()),
+		datura.WithPayload(builder.Payload()),
 		datura.WithRole(datura.ArtifactRoleAnswer),
 		datura.WithScope(datura.ArtifactScopeParams),
 	)
+}
+
+func (builder *ParamsBuilder) Payload() []byte {
+	payload, err := builder.Params.Message().Marshal()
+
+	if errnie.Error(err) != nil {
+		return nil
+	}
+
+	return payload
 }
 
 type ResponseFormat struct {
