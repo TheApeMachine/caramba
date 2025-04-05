@@ -4,36 +4,35 @@ $Go.package("datura");
 $Go.import("github.com/theapemachine/caramba/pkg/datura");
 
 struct Artifact {
-    uuid @0 :Data;
-    checksum @1 :Data;
-    timestamp @2 :Int64;
-    mediatype @3 :Text;
-    role @4 :UInt32;
-    scope @5 :UInt32;
-    pseudonymHash @6 :Data;  # zk-SNARK identity hash
-    merkleRoot @7 :Data;  # Root of the Merkle Tree
-
+    uuid          @0 :Data;
+    checksum      @1 :Data;
+    timestamp     @2 :Int64;
+    mediatype     @3 :Text;
+    origin        @4 :Text;
+    issuer        @5 :Text;
+    role          @6 :UInt32;
+    scope         @7 :UInt32;
+    pseudonymHash @8 :Data;
+    merkleRoot    @9 :Data;
     struct Metadata {
         key @0 :Text;
         value :union {
-            textValue @1 :Text;
-            intValue @2 :Int64;
-            floatValue @3 :Float64;
-            boolValue @4 :Bool;
+            textValue   @1 :Text;
+            intValue    @2 :Int64;
+            floatValue  @3 :Float64;
+            boolValue   @4 :Bool;
             binaryValue @5 :Data;
         }
     }
-    metadata @8 :List(Metadata);
-
-    encryptedPayload @9 :Data;
-    encryptedKey @10 :Data;
-    ephemeralPublicKey @11 :Data;
-
+    metadata           @10 :List(Metadata);
+    encryptedPayload   @11 :Data;
+    encryptedKey       @12 :Data;
+    ephemeralPublicKey @13 :Data;
     struct Approval {
-        zkProof @0 :Data;  # Employee's zero-knowledge proof
-        operatorBlindSignature @1 :Data;  # Operator's blind signature approval
+        zkProof                @0 :Data;
+        operatorBlindSignature @1 :Data;
     }
-    approvals @12 :List(Approval);
-
-    signature @13 :Data;
+    approvals @14 :List(Approval);
+    signature @15 :Data;
 }
+

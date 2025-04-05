@@ -133,6 +133,12 @@ func WithMetadata(metadata map[string]any) ArtifactBuilderOption {
 	}
 }
 
+func WithArtifact(artifact *Artifact) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
+		builder.Artifact = artifact
+	}
+}
+
 func WithSignature(signature []byte) ArtifactBuilderOption {
 	return func(builder *ArtifactBuilder) {
 		if errnie.Error(builder.SetSignature(signature)) != nil {

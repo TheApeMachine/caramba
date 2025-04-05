@@ -11,6 +11,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
+/*
+AgentBuilder wraps an Agent and provides various convenience methods
+for building and managing agents.
+*/
 type AgentBuilder struct {
 	*Agent
 	Transport io.ReadWriteCloser
@@ -38,6 +42,7 @@ func New(options ...AgentBuilderOption) *AgentBuilder {
 
 	// Create and set identity with default ID
 	identity, err := agent.NewIdentity()
+
 	if errnie.Error(err) != nil {
 		return nil
 	}
@@ -47,6 +52,7 @@ func New(options ...AgentBuilderOption) *AgentBuilder {
 	}
 
 	params, err := agent.NewParams()
+
 	if errnie.Error(err) != nil {
 		return nil
 	}
@@ -71,7 +77,7 @@ func New(options ...AgentBuilderOption) *AgentBuilder {
 	return builder
 }
 
-func (agent *Agent) Client() AgentRPC {
+func (agent *Agent) Client() RPC {
 	return AgentToClient(agent)
 }
 

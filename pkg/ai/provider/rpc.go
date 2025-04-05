@@ -2,6 +2,7 @@ package provider
 
 import (
 	context "context"
+	"fmt"
 
 	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -28,7 +29,13 @@ func (srv *ProviderRPCServer) Generate(
 	result := errnie.Try(call.AllocResults())
 
 	name := errnie.Try(Provider(cfn).Name())
-	prvdr := providers[name]
+	prvdr, ok := providers["openai"]
+
+	if !ok {
+		return errnie.Error(errnie.BadRequest(
+			fmt.Errorf("unknown provider: %s", name),
+		))
+	}
 
 	builder := datura.New()
 	builder.Artifact = &cfn

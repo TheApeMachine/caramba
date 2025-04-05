@@ -12,6 +12,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/ai/agent"
 	"github.com/theapemachine/caramba/pkg/ai/provider"
 	"github.com/theapemachine/caramba/pkg/datura"
+	"github.com/theapemachine/caramba/pkg/errnie"
 	prvdr "github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/twoface"
@@ -85,28 +86,18 @@ func (code *Code) Run() {
 		datura.WithRole(datura.ArtifactRoleSystem),
 		datura.WithScope(datura.ArtifactScopeGeneration),
 		datura.WithPayload(buf),
-		datura.WithMeta("model", "gpt-4o-mini"),
-		datura.WithMeta("temperature", 0.5),
-		datura.WithMeta("top_p", 1.0),
-		datura.WithMeta("frequency_penalty", 0.0),
-		datura.WithMeta("presence_penalty", 0.0),
+		datura.WithMeta("model", tweaker.GetModel("openai")),
+		datura.WithMeta("temperature", tweaker.GetTemperature()),
+		datura.WithMeta("top_p", tweaker.GetTopP()),
+		datura.WithMeta("frequency_penalty", tweaker.GetFrequencyPenalty()),
+		datura.WithMeta("presence_penalty", tweaker.GetPresencePenalty()),
 		datura.WithMeta("stream", false),
 	)
 
-	future, release := code.provider.Client().Generate(code.ctx, func(p provider.RPC_generate_Params) error {
-		return p.SetContext(*task.Artifact)
-	})
+	artifact := code.provider.Generate(code.ctx, task)
+	payload := errnie.Try(artifact.DecryptPayload())
 
-	defer release()
-
-	if _, err := future.Struct(); err != nil {
-		fmt.Printf("Error generating task: %v\n", err)
-		return
-	}
-
-	// Start agents
-	go code.planner.Run(code.ctx, code.dev.Transport)
-	go code.dev.Run(code.ctx, code.planner.Transport)
+	fmt.Printf("Artifact: %v\n", string(payload))
 
 	// Handle shutdown
 	code.shutdown()
@@ -121,7 +112,7 @@ func (code *Code) shutdown() {
 	case sig := <-sigChan:
 		fmt.Printf("\nReceived signal %v, shutting down...\n", sig)
 		code.cancel()
-	case <-time.After(30 * time.Second):
+	case <-time.After(60 * time.Second):
 		fmt.Println("Timeout reached, shutting down...")
 		code.cancel()
 	}

@@ -1,7 +1,10 @@
 package provider
 
 import (
+	context "context"
+
 	"capnproto.org/go/capnp/v3"
+	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -43,6 +46,36 @@ func New(opts ...ProviderBuilderOption) *ProviderBuilder {
 	}
 
 	return builder
+}
+
+func (builder *ProviderBuilder) Generate(
+	ctx context.Context,
+	artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	future, release := builder.Client().Generate(
+		ctx, func(p RPC_generate_Params) error {
+			return p.SetContext(*artifact.Artifact)
+		},
+	)
+
+	defer release()
+
+	var (
+		result RPC_generate_Results
+		err    error
+	)
+
+	if result, err = future.Struct(); errnie.Error(err) != nil {
+		return nil
+	}
+
+	out, err := result.Out()
+
+	if errnie.Error(err) != nil {
+		return nil
+	}
+
+	return datura.New(datura.WithArtifact(&out))
 }
 
 /*

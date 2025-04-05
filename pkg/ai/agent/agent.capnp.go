@@ -8,10 +8,12 @@ import (
 	fc "capnproto.org/go/capnp/v3/flowcontrol"
 	schemas "capnproto.org/go/capnp/v3/schemas"
 	server "capnproto.org/go/capnp/v3/server"
-	stream "capnproto.org/go/capnp/v3/std/capnp/stream"
 	context "context"
 	context2 "github.com/theapemachine/caramba/pkg/ai/context"
+	message "github.com/theapemachine/caramba/pkg/ai/message"
 	params "github.com/theapemachine/caramba/pkg/ai/params"
+	provider "github.com/theapemachine/caramba/pkg/ai/provider"
+	datura "github.com/theapemachine/caramba/pkg/datura"
 )
 
 type Agent capnp.Struct
@@ -20,12 +22,12 @@ type Agent capnp.Struct
 const Agent_TypeID = 0x8ffdc08b384f2b85
 
 func NewAgent(s *capnp.Segment) (Agent, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 5})
 	return Agent(st), err
 }
 
 func NewRootAgent(s *capnp.Segment) (Agent, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 5})
 	return Agent(st), err
 }
 
@@ -156,13 +158,36 @@ func (s Agent) NewTools(n int32) (capnp.TextList, error) {
 	err = capnp.Struct(s).SetPtr(3, l.ToPtr())
 	return l, err
 }
+func (s Agent) Provider() (provider.Provider, error) {
+	p, err := capnp.Struct(s).Ptr(4)
+	return provider.Provider(p.Struct()), err
+}
+
+func (s Agent) HasProvider() bool {
+	return capnp.Struct(s).HasPtr(4)
+}
+
+func (s Agent) SetProvider(v provider.Provider) error {
+	return capnp.Struct(s).SetPtr(4, capnp.Struct(v).ToPtr())
+}
+
+// NewProvider sets the provider field to a newly
+// allocated provider.Provider struct, preferring placement in s's segment.
+func (s Agent) NewProvider() (provider.Provider, error) {
+	ss, err := provider.NewProvider(capnp.Struct(s).Segment())
+	if err != nil {
+		return provider.Provider{}, err
+	}
+	err = capnp.Struct(s).SetPtr(4, capnp.Struct(ss).ToPtr())
+	return ss, err
+}
 
 // Agent_List is a list of Agent.
 type Agent_List = capnp.StructList[Agent]
 
 // NewAgent creates a new list of Agent.
 func NewAgent_List(s *capnp.Segment, sz int32) (Agent_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 5}, sz)
 	return capnp.StructList[Agent](l), err
 }
 
@@ -181,6 +206,9 @@ func (p Agent_Future) Params() params.Params_Future {
 }
 func (p Agent_Future) Context() context2.Context_Future {
 	return context2.Context_Future{Future: p.Future.Field(2, nil)}
+}
+func (p Agent_Future) Provider() provider.Provider_Future {
+	return provider.Provider_Future{Future: p.Future.Field(4, nil)}
 }
 
 type Identity capnp.Struct
@@ -301,50 +329,32 @@ func (f Identity_Future) Struct() (Identity, error) {
 	return Identity(p.Struct()), err
 }
 
-type AgentRPC capnp.Client
+type RPC capnp.Client
 
-// AgentRPC_TypeID is the unique identifier for the type AgentRPC.
-const AgentRPC_TypeID = 0x9048af051e281d80
+// RPC_TypeID is the unique identifier for the type RPC.
+const RPC_TypeID = 0x9b1c2beb128e44da
 
-func (c AgentRPC) Run(ctx context.Context, params func(AgentRPC_run_Params) error) error {
+func (c RPC) Send(ctx context.Context, params func(RPC_send_Params) error) (RPC_send_Results_Future, capnp.ReleaseFunc) {
+
 	s := capnp.Send{
 		Method: capnp.Method{
-			InterfaceID:   0x9048af051e281d80,
+			InterfaceID:   0x9b1c2beb128e44da,
 			MethodID:      0,
-			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
-			MethodName:    "run",
+			InterfaceName: "pkg/ai/agent/agent.capnp:RPC",
+			MethodName:    "send",
 		},
 	}
 	if params != nil {
-		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 0}
-		s.PlaceArgs = func(s capnp.Struct) error { return params(AgentRPC_run_Params(s)) }
-	}
-
-	return capnp.Client(c).SendStreamCall(ctx, s)
-
-}
-
-func (c AgentRPC) Stop(ctx context.Context, params func(AgentRPC_stop_Params) error) (AgentRPC_stop_Results_Future, capnp.ReleaseFunc) {
-
-	s := capnp.Send{
-		Method: capnp.Method{
-			InterfaceID:   0x9048af051e281d80,
-			MethodID:      1,
-			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
-			MethodName:    "stop",
-		},
-	}
-	if params != nil {
-		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 0}
-		s.PlaceArgs = func(s capnp.Struct) error { return params(AgentRPC_stop_Params(s)) }
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 1}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(RPC_send_Params(s)) }
 	}
 
 	ans, release := capnp.Client(c).SendCall(ctx, s)
-	return AgentRPC_stop_Results_Future{Future: ans.Future()}, release
+	return RPC_send_Results_Future{Future: ans.Future()}, release
 
 }
 
-func (c AgentRPC) WaitStreaming() error {
+func (c RPC) WaitStreaming() error {
 	return capnp.Client(c).WaitStreaming()
 }
 
@@ -352,14 +362,14 @@ func (c AgentRPC) WaitStreaming() error {
 // purposes.  Its format should not be depended on: in particular, it
 // should not be used to compare clients.  Use IsSame to compare clients
 // for equality.
-func (c AgentRPC) String() string {
-	return "AgentRPC(" + capnp.Client(c).String() + ")"
+func (c RPC) String() string {
+	return "RPC(" + capnp.Client(c).String() + ")"
 }
 
 // AddRef creates a new Client that refers to the same capability as c.
 // If c is nil or has resolved to null, then AddRef returns nil.
-func (c AgentRPC) AddRef() AgentRPC {
-	return AgentRPC(capnp.Client(c).AddRef())
+func (c RPC) AddRef() RPC {
+	return RPC(capnp.Client(c).AddRef())
 }
 
 // Release releases a capability reference.  If this is the last
@@ -368,28 +378,28 @@ func (c AgentRPC) AddRef() AgentRPC {
 //
 // Release will panic if c has already been released, but not if c is
 // nil or resolved to null.
-func (c AgentRPC) Release() {
+func (c RPC) Release() {
 	capnp.Client(c).Release()
 }
 
 // Resolve blocks until the capability is fully resolved or the Context
 // expires.
-func (c AgentRPC) Resolve(ctx context.Context) error {
+func (c RPC) Resolve(ctx context.Context) error {
 	return capnp.Client(c).Resolve(ctx)
 }
 
-func (c AgentRPC) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+func (c RPC) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
 	return capnp.Client(c).EncodeAsPtr(seg)
 }
 
-func (AgentRPC) DecodeFromPtr(p capnp.Ptr) AgentRPC {
-	return AgentRPC(capnp.Client{}.DecodeFromPtr(p))
+func (RPC) DecodeFromPtr(p capnp.Ptr) RPC {
+	return RPC(capnp.Client{}.DecodeFromPtr(p))
 }
 
 // IsValid reports whether c is a valid reference to a capability.
 // A reference is invalid if it is nil, has resolved to null, or has
 // been released.
-func (c AgentRPC) IsValid() bool {
+func (c RPC) IsValid() bool {
 	return capnp.Client(c).IsValid()
 }
 
@@ -397,7 +407,7 @@ func (c AgentRPC) IsValid() bool {
 // same call to NewClient.  This can return false negatives if c or other
 // are not fully resolved: use Resolve if this is an issue.  If either
 // c or other are released, then IsSame panics.
-func (c AgentRPC) IsSame(other AgentRPC) bool {
+func (c RPC) IsSame(other RPC) bool {
 	return capnp.Client(c).IsSame(capnp.Client(other))
 }
 
@@ -405,352 +415,310 @@ func (c AgentRPC) IsSame(other AgentRPC) bool {
 // this client. This affects all future calls, but not calls already
 // waiting to send. Passing nil sets the value to flowcontrol.NopLimiter,
 // which is also the default.
-func (c AgentRPC) SetFlowLimiter(lim fc.FlowLimiter) {
+func (c RPC) SetFlowLimiter(lim fc.FlowLimiter) {
 	capnp.Client(c).SetFlowLimiter(lim)
 }
 
 // Get the current flowcontrol.FlowLimiter used to manage flow control
 // for this client.
-func (c AgentRPC) GetFlowLimiter() fc.FlowLimiter {
+func (c RPC) GetFlowLimiter() fc.FlowLimiter {
 	return capnp.Client(c).GetFlowLimiter()
 }
 
-// A AgentRPC_Server is a AgentRPC with a local implementation.
-type AgentRPC_Server interface {
-	Run(context.Context, AgentRPC_run) error
-
-	Stop(context.Context, AgentRPC_stop) error
+// A RPC_Server is a RPC with a local implementation.
+type RPC_Server interface {
+	Send(context.Context, RPC_send) error
 }
 
-// AgentRPC_NewServer creates a new Server from an implementation of AgentRPC_Server.
-func AgentRPC_NewServer(s AgentRPC_Server) *server.Server {
+// RPC_NewServer creates a new Server from an implementation of RPC_Server.
+func RPC_NewServer(s RPC_Server) *server.Server {
 	c, _ := s.(server.Shutdowner)
-	return server.New(AgentRPC_Methods(nil, s), s, c)
+	return server.New(RPC_Methods(nil, s), s, c)
 }
 
-// AgentRPC_ServerToClient creates a new Client from an implementation of AgentRPC_Server.
+// RPC_ServerToClient creates a new Client from an implementation of RPC_Server.
 // The caller is responsible for calling Release on the returned Client.
-func AgentRPC_ServerToClient(s AgentRPC_Server) AgentRPC {
-	return AgentRPC(capnp.NewClient(AgentRPC_NewServer(s)))
+func RPC_ServerToClient(s RPC_Server) RPC {
+	return RPC(capnp.NewClient(RPC_NewServer(s)))
 }
 
-// AgentRPC_Methods appends Methods to a slice that invoke the methods on s.
+// RPC_Methods appends Methods to a slice that invoke the methods on s.
 // This can be used to create a more complicated Server.
-func AgentRPC_Methods(methods []server.Method, s AgentRPC_Server) []server.Method {
+func RPC_Methods(methods []server.Method, s RPC_Server) []server.Method {
 	if cap(methods) == 0 {
-		methods = make([]server.Method, 0, 2)
+		methods = make([]server.Method, 0, 1)
 	}
 
 	methods = append(methods, server.Method{
 		Method: capnp.Method{
-			InterfaceID:   0x9048af051e281d80,
+			InterfaceID:   0x9b1c2beb128e44da,
 			MethodID:      0,
-			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
-			MethodName:    "run",
+			InterfaceName: "pkg/ai/agent/agent.capnp:RPC",
+			MethodName:    "send",
 		},
 		Impl: func(ctx context.Context, call *server.Call) error {
-			return s.Run(ctx, AgentRPC_run{call})
-		},
-	})
-
-	methods = append(methods, server.Method{
-		Method: capnp.Method{
-			InterfaceID:   0x9048af051e281d80,
-			MethodID:      1,
-			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
-			MethodName:    "stop",
-		},
-		Impl: func(ctx context.Context, call *server.Call) error {
-			return s.Stop(ctx, AgentRPC_stop{call})
+			return s.Send(ctx, RPC_send{call})
 		},
 	})
 
 	return methods
 }
 
-// AgentRPC_run holds the state for a server call to AgentRPC.run.
+// RPC_send holds the state for a server call to RPC.send.
 // See server.Call for documentation.
-type AgentRPC_run struct {
+type RPC_send struct {
 	*server.Call
 }
 
 // Args returns the call's arguments.
-func (c AgentRPC_run) Args() AgentRPC_run_Params {
-	return AgentRPC_run_Params(c.Call.Args())
+func (c RPC_send) Args() RPC_send_Params {
+	return RPC_send_Params(c.Call.Args())
 }
 
 // AllocResults allocates the results struct.
-func (c AgentRPC_run) AllocResults() (stream.StreamResult, error) {
-	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 0})
-	return stream.StreamResult(r), err
+func (c RPC_send) AllocResults() (RPC_send_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_send_Results(r), err
 }
 
-// AgentRPC_stop holds the state for a server call to AgentRPC.stop.
-// See server.Call for documentation.
-type AgentRPC_stop struct {
-	*server.Call
-}
+// RPC_List is a list of RPC.
+type RPC_List = capnp.CapList[RPC]
 
-// Args returns the call's arguments.
-func (c AgentRPC_stop) Args() AgentRPC_stop_Params {
-	return AgentRPC_stop_Params(c.Call.Args())
-}
-
-// AllocResults allocates the results struct.
-func (c AgentRPC_stop) AllocResults() (AgentRPC_stop_Results, error) {
-	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 0})
-	return AgentRPC_stop_Results(r), err
-}
-
-// AgentRPC_List is a list of AgentRPC.
-type AgentRPC_List = capnp.CapList[AgentRPC]
-
-// NewAgentRPC_List creates a new list of AgentRPC.
-func NewAgentRPC_List(s *capnp.Segment, sz int32) (AgentRPC_List, error) {
+// NewRPC_List creates a new list of RPC.
+func NewRPC_List(s *capnp.Segment, sz int32) (RPC_List, error) {
 	l, err := capnp.NewPointerList(s, sz)
-	return capnp.CapList[AgentRPC](l), err
+	return capnp.CapList[RPC](l), err
 }
 
-type AgentRPC_run_Params capnp.Struct
+type RPC_send_Params capnp.Struct
 
-// AgentRPC_run_Params_TypeID is the unique identifier for the type AgentRPC_run_Params.
-const AgentRPC_run_Params_TypeID = 0xb9bda85dc6f0a9e7
+// RPC_send_Params_TypeID is the unique identifier for the type RPC_send_Params.
+const RPC_send_Params_TypeID = 0xa53e5c96ae3372c1
 
-func NewAgentRPC_run_Params(s *capnp.Segment) (AgentRPC_run_Params, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
-	return AgentRPC_run_Params(st), err
+func NewRPC_send_Params(s *capnp.Segment) (RPC_send_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_send_Params(st), err
 }
 
-func NewRootAgentRPC_run_Params(s *capnp.Segment) (AgentRPC_run_Params, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
-	return AgentRPC_run_Params(st), err
+func NewRootRPC_send_Params(s *capnp.Segment) (RPC_send_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_send_Params(st), err
 }
 
-func ReadRootAgentRPC_run_Params(msg *capnp.Message) (AgentRPC_run_Params, error) {
+func ReadRootRPC_send_Params(msg *capnp.Message) (RPC_send_Params, error) {
 	root, err := msg.Root()
-	return AgentRPC_run_Params(root.Struct()), err
+	return RPC_send_Params(root.Struct()), err
 }
 
-func (s AgentRPC_run_Params) String() string {
-	str, _ := text.Marshal(0xb9bda85dc6f0a9e7, capnp.Struct(s))
+func (s RPC_send_Params) String() string {
+	str, _ := text.Marshal(0xa53e5c96ae3372c1, capnp.Struct(s))
 	return str
 }
 
-func (s AgentRPC_run_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+func (s RPC_send_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
 	return capnp.Struct(s).EncodeAsPtr(seg)
 }
 
-func (AgentRPC_run_Params) DecodeFromPtr(p capnp.Ptr) AgentRPC_run_Params {
-	return AgentRPC_run_Params(capnp.Struct{}.DecodeFromPtr(p))
+func (RPC_send_Params) DecodeFromPtr(p capnp.Ptr) RPC_send_Params {
+	return RPC_send_Params(capnp.Struct{}.DecodeFromPtr(p))
 }
 
-func (s AgentRPC_run_Params) ToPtr() capnp.Ptr {
+func (s RPC_send_Params) ToPtr() capnp.Ptr {
 	return capnp.Struct(s).ToPtr()
 }
-func (s AgentRPC_run_Params) IsValid() bool {
+func (s RPC_send_Params) IsValid() bool {
 	return capnp.Struct(s).IsValid()
 }
 
-func (s AgentRPC_run_Params) Message() *capnp.Message {
+func (s RPC_send_Params) Message() *capnp.Message {
 	return capnp.Struct(s).Message()
 }
 
-func (s AgentRPC_run_Params) Segment() *capnp.Segment {
+func (s RPC_send_Params) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-
-// AgentRPC_run_Params_List is a list of AgentRPC_run_Params.
-type AgentRPC_run_Params_List = capnp.StructList[AgentRPC_run_Params]
-
-// NewAgentRPC_run_Params creates a new list of AgentRPC_run_Params.
-func NewAgentRPC_run_Params_List(s *capnp.Segment, sz int32) (AgentRPC_run_Params_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
-	return capnp.StructList[AgentRPC_run_Params](l), err
+func (s RPC_send_Params) Message_() (message.Message, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return message.Message(p.Struct()), err
 }
 
-// AgentRPC_run_Params_Future is a wrapper for a AgentRPC_run_Params promised by a client call.
-type AgentRPC_run_Params_Future struct{ *capnp.Future }
+func (s RPC_send_Params) HasMessage_() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
 
-func (f AgentRPC_run_Params_Future) Struct() (AgentRPC_run_Params, error) {
+func (s RPC_send_Params) SetMessage_(v message.Message) error {
+	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
+}
+
+// NewMessage_ sets the message_ field to a newly
+// allocated message.Message struct, preferring placement in s's segment.
+func (s RPC_send_Params) NewMessage_() (message.Message, error) {
+	ss, err := message.NewMessage(capnp.Struct(s).Segment())
+	if err != nil {
+		return message.Message{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
+	return ss, err
+}
+
+// RPC_send_Params_List is a list of RPC_send_Params.
+type RPC_send_Params_List = capnp.StructList[RPC_send_Params]
+
+// NewRPC_send_Params creates a new list of RPC_send_Params.
+func NewRPC_send_Params_List(s *capnp.Segment, sz int32) (RPC_send_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[RPC_send_Params](l), err
+}
+
+// RPC_send_Params_Future is a wrapper for a RPC_send_Params promised by a client call.
+type RPC_send_Params_Future struct{ *capnp.Future }
+
+func (f RPC_send_Params_Future) Struct() (RPC_send_Params, error) {
 	p, err := f.Future.Ptr()
-	return AgentRPC_run_Params(p.Struct()), err
+	return RPC_send_Params(p.Struct()), err
+}
+func (p RPC_send_Params_Future) Message_() message.Message_Future {
+	return message.Message_Future{Future: p.Future.Field(0, nil)}
 }
 
-type AgentRPC_stop_Params capnp.Struct
+type RPC_send_Results capnp.Struct
 
-// AgentRPC_stop_Params_TypeID is the unique identifier for the type AgentRPC_stop_Params.
-const AgentRPC_stop_Params_TypeID = 0xc3cd8b75d9d30639
+// RPC_send_Results_TypeID is the unique identifier for the type RPC_send_Results.
+const RPC_send_Results_TypeID = 0xd089d781c905d931
 
-func NewAgentRPC_stop_Params(s *capnp.Segment) (AgentRPC_stop_Params, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
-	return AgentRPC_stop_Params(st), err
+func NewRPC_send_Results(s *capnp.Segment) (RPC_send_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_send_Results(st), err
 }
 
-func NewRootAgentRPC_stop_Params(s *capnp.Segment) (AgentRPC_stop_Params, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
-	return AgentRPC_stop_Params(st), err
+func NewRootRPC_send_Results(s *capnp.Segment) (RPC_send_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_send_Results(st), err
 }
 
-func ReadRootAgentRPC_stop_Params(msg *capnp.Message) (AgentRPC_stop_Params, error) {
+func ReadRootRPC_send_Results(msg *capnp.Message) (RPC_send_Results, error) {
 	root, err := msg.Root()
-	return AgentRPC_stop_Params(root.Struct()), err
+	return RPC_send_Results(root.Struct()), err
 }
 
-func (s AgentRPC_stop_Params) String() string {
-	str, _ := text.Marshal(0xc3cd8b75d9d30639, capnp.Struct(s))
+func (s RPC_send_Results) String() string {
+	str, _ := text.Marshal(0xd089d781c905d931, capnp.Struct(s))
 	return str
 }
 
-func (s AgentRPC_stop_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+func (s RPC_send_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
 	return capnp.Struct(s).EncodeAsPtr(seg)
 }
 
-func (AgentRPC_stop_Params) DecodeFromPtr(p capnp.Ptr) AgentRPC_stop_Params {
-	return AgentRPC_stop_Params(capnp.Struct{}.DecodeFromPtr(p))
+func (RPC_send_Results) DecodeFromPtr(p capnp.Ptr) RPC_send_Results {
+	return RPC_send_Results(capnp.Struct{}.DecodeFromPtr(p))
 }
 
-func (s AgentRPC_stop_Params) ToPtr() capnp.Ptr {
+func (s RPC_send_Results) ToPtr() capnp.Ptr {
 	return capnp.Struct(s).ToPtr()
 }
-func (s AgentRPC_stop_Params) IsValid() bool {
+func (s RPC_send_Results) IsValid() bool {
 	return capnp.Struct(s).IsValid()
 }
 
-func (s AgentRPC_stop_Params) Message() *capnp.Message {
+func (s RPC_send_Results) Message() *capnp.Message {
 	return capnp.Struct(s).Message()
 }
 
-func (s AgentRPC_stop_Params) Segment() *capnp.Segment {
+func (s RPC_send_Results) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-
-// AgentRPC_stop_Params_List is a list of AgentRPC_stop_Params.
-type AgentRPC_stop_Params_List = capnp.StructList[AgentRPC_stop_Params]
-
-// NewAgentRPC_stop_Params creates a new list of AgentRPC_stop_Params.
-func NewAgentRPC_stop_Params_List(s *capnp.Segment, sz int32) (AgentRPC_stop_Params_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
-	return capnp.StructList[AgentRPC_stop_Params](l), err
+func (s RPC_send_Results) Out() (datura.Artifact, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return datura.Artifact(p.Struct()), err
 }
 
-// AgentRPC_stop_Params_Future is a wrapper for a AgentRPC_stop_Params promised by a client call.
-type AgentRPC_stop_Params_Future struct{ *capnp.Future }
+func (s RPC_send_Results) HasOut() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
 
-func (f AgentRPC_stop_Params_Future) Struct() (AgentRPC_stop_Params, error) {
+func (s RPC_send_Results) SetOut(v datura.Artifact) error {
+	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
+}
+
+// NewOut sets the out field to a newly
+// allocated datura.Artifact struct, preferring placement in s's segment.
+func (s RPC_send_Results) NewOut() (datura.Artifact, error) {
+	ss, err := datura.NewArtifact(capnp.Struct(s).Segment())
+	if err != nil {
+		return datura.Artifact{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
+	return ss, err
+}
+
+// RPC_send_Results_List is a list of RPC_send_Results.
+type RPC_send_Results_List = capnp.StructList[RPC_send_Results]
+
+// NewRPC_send_Results creates a new list of RPC_send_Results.
+func NewRPC_send_Results_List(s *capnp.Segment, sz int32) (RPC_send_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[RPC_send_Results](l), err
+}
+
+// RPC_send_Results_Future is a wrapper for a RPC_send_Results promised by a client call.
+type RPC_send_Results_Future struct{ *capnp.Future }
+
+func (f RPC_send_Results_Future) Struct() (RPC_send_Results, error) {
 	p, err := f.Future.Ptr()
-	return AgentRPC_stop_Params(p.Struct()), err
+	return RPC_send_Results(p.Struct()), err
+}
+func (p RPC_send_Results_Future) Out() datura.Artifact_Future {
+	return datura.Artifact_Future{Future: p.Future.Field(0, nil)}
 }
 
-type AgentRPC_stop_Results capnp.Struct
-
-// AgentRPC_stop_Results_TypeID is the unique identifier for the type AgentRPC_stop_Results.
-const AgentRPC_stop_Results_TypeID = 0xd0d73fbf288eff99
-
-func NewAgentRPC_stop_Results(s *capnp.Segment) (AgentRPC_stop_Results, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
-	return AgentRPC_stop_Results(st), err
-}
-
-func NewRootAgentRPC_stop_Results(s *capnp.Segment) (AgentRPC_stop_Results, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
-	return AgentRPC_stop_Results(st), err
-}
-
-func ReadRootAgentRPC_stop_Results(msg *capnp.Message) (AgentRPC_stop_Results, error) {
-	root, err := msg.Root()
-	return AgentRPC_stop_Results(root.Struct()), err
-}
-
-func (s AgentRPC_stop_Results) String() string {
-	str, _ := text.Marshal(0xd0d73fbf288eff99, capnp.Struct(s))
-	return str
-}
-
-func (s AgentRPC_stop_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
-	return capnp.Struct(s).EncodeAsPtr(seg)
-}
-
-func (AgentRPC_stop_Results) DecodeFromPtr(p capnp.Ptr) AgentRPC_stop_Results {
-	return AgentRPC_stop_Results(capnp.Struct{}.DecodeFromPtr(p))
-}
-
-func (s AgentRPC_stop_Results) ToPtr() capnp.Ptr {
-	return capnp.Struct(s).ToPtr()
-}
-func (s AgentRPC_stop_Results) IsValid() bool {
-	return capnp.Struct(s).IsValid()
-}
-
-func (s AgentRPC_stop_Results) Message() *capnp.Message {
-	return capnp.Struct(s).Message()
-}
-
-func (s AgentRPC_stop_Results) Segment() *capnp.Segment {
-	return capnp.Struct(s).Segment()
-}
-
-// AgentRPC_stop_Results_List is a list of AgentRPC_stop_Results.
-type AgentRPC_stop_Results_List = capnp.StructList[AgentRPC_stop_Results]
-
-// NewAgentRPC_stop_Results creates a new list of AgentRPC_stop_Results.
-func NewAgentRPC_stop_Results_List(s *capnp.Segment, sz int32) (AgentRPC_stop_Results_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
-	return capnp.StructList[AgentRPC_stop_Results](l), err
-}
-
-// AgentRPC_stop_Results_Future is a wrapper for a AgentRPC_stop_Results promised by a client call.
-type AgentRPC_stop_Results_Future struct{ *capnp.Future }
-
-func (f AgentRPC_stop_Results_Future) Struct() (AgentRPC_stop_Results, error) {
-	p, err := f.Future.Ptr()
-	return AgentRPC_stop_Results(p.Struct()), err
-}
-
-const schema_d4c9c9f76e88a0d0 = "x\xda\x94\x90OKTQ\x18\xc6\x9f\xe7\x9c{\x9d\x16" +
-	"\x9as\x1a7\x03\xa5 \x06b\xa0\xd9l\xd4\xcdX\x16" +
-	"X$\xdd#.\xa2\x90\xba\xe8\xcd\xa6\xc6;\xb7;w" +
-	"(\xdbT\x0bI\x14\xcb\x16\x11\xb6jU\xba(i\xe9" +
-	"\"2\xa4\xc0E`\x14D\x9f\xc0m\xb4\x09\x82\xb8q" +
-	"\xd4\xae\x83P\xd4\xe6\xf0\xbe\xef\xf3\xfe9\xcf\xef\xf0#" +
-	"\xf6Z\x9du\xf9\x14\x84\x1e\xb2k\xe2\xc9Cg\xbaf" +
-	"V~\xde\x87\xca2^\x7f2\xe5\x7f_[\xfb\x04\xdb" +
-	"J\x01\x99I\xf9#\xf3@\x9ahVn\x80\xf1\xed\x03" +
-	"\xad\x8d\xf6R\xff\x1cTV\xee\xf4\x82\xb9\x8a\xb5\x8f\x99" +
-	"\xc9\xcd\x99;\xd6\xdd\xcc\x07\x13\xc5o\xea\x9eq\xee\xdb" +
-	"\xc3\x85]\x9b\xcd\xbe\xdc\xb2\x19X\xdb\x1cxk-\x81" +
-	"\xf1\xc6\xe2\xd7w\xc3\x0b\xaf\x96\xa1\x9a\x09\x18!\xe7\xda" +
-	"W\x08+\xee\xae\xf9\xf8\xa52\xf3~\xb5J\x19\xb0C" +
-	"\xa3\xcc\xc7\xf7Z_\xe7?\xafW)\xdd\xf6Mb1" +
-	"\x0e\xae\x8eu\xb8\x85\x0eW\x8cy~\xd4\xe1\x9a\xb7}" +
-	"\xc4\x0d\xfc \xdfs\xd4$\x0e\xa9\xd3\xd2\x02,\x02\xca" +
-	"=\x05\xe8\x8b\x92\xba(\xa8\xc8\x06\x9ab\xa1\x07\xd0\xa3" +
-	"\x92:\x10TB4P\x00j\xfc\x18\xa0/K\xeaH" +
-	"PI\xd9@\x09\xa8kG\x00]\x94\xd4S\x82qa" +
-	"\xd4\xf3\xa3B4\x01\x80\xe9\x1d\x04 \xd3`>pC" +
-	"w\xbc\xcct\xdc8=\xdf\xd5?}~u[\xb85" +
-	"R\xf2#\xefF\xc4t\x9c}\xde5\xbc\xff\xc5\xd3\xd9" +
-	"m\xa5)*\x95\x8ae\xee\x05\x1dI\xd6B\x980\xf1" +
-	"'w\xfb\xdb\xb27\xe8\xb0\xcfX\xdc#m AK" +
-	"\xff\xe5\xca\xf5\xdc\xe3\x0b\xf3\xaa\xb3\x19B\x1dL\x91\x09" +
-	"\\\xfef\xa9\xb2m\x10\xaa.\x95\x0a+~/\xeb\xcb" +
-	"Q)\xe8\xa5\xc3\xbf\x9d<\xb9e\x99\x13\xe6dmB" +
-	"\xf5\xc49@\x1f\x97\xd4N\x15\xd5\x816@\xf7K\xea" +
-	"\xa1*\xaa\xda\x14OK\xea\xb3\x09\xc0K\x05H/\xdc" +
-	"\xf4[\x0b\xd6\xfb\xee\xb8\x97$a\xa9\x98$\xc9\xb7\xac" +
-	"?\x91\xe8k\x0f+~\x8b\xe3\xd6\x1b\xf2\xff\xd2n," +
-	"\xb78M\xee\x7f\xf5\x0f\xe6\xbdr\xa5\x18\x95\x7f\x05\x00" +
-	"\x00\xff\xff\x1e\x19\xf2\xdc"
+const schema_d4c9c9f76e88a0d0 = "x\xda\x8c\x91OH\x94A\x18\xc6\xdfg\xe6\x9b]#" +
+	"\xff\xec\xf8m\x07A\x13\xa2\x93\x82\x9bI B\xad\x96" +
+	"\x91i\xd1\x8et\x88\xca\xc3\x87\xfbeK\xee\xb7\xdb~" +
+	"\x9f\x91\xa0X\x91\xe0Z\x96\x17\x83\x08\xca\xa0\xbfP\x86" +
+	"\x87\x0e\xdd\x92N\xde<\x04Q\xd0%\xe8R\x87\xa8\x8b" +
+	"\x10\xc4\xc4\xac\xb6\xbbl\x04]\x86yg\xde\xf9\xcd\xfb" +
+	"<\xcf\xaeO\xe8\xb6\xdak\xeeU\x11SI\x11\xd2\xd3" +
+	"\xad\xc7:\xaf\xbd\xfeu\x93d\x03\xf4\xda\xe2\x8c\xb7\xbe" +
+	"\xba\xfa\x96\x84\x08\x13\xd9{\xac\x9fv\x8f\x15&\xea\xd8" +
+	"k5\x83\xa0?\xf4\xde\xa8\xff\xda\xdax\x87d\x03/" +
+	"5\x13lW|\xb1\xcf\x17\xde\xa4\xc5!{\xc1\xec\xf4" +
+	"J\xaec\xe9\xd6\xe9}\x0fI6\x81H\xc0p&E" +
+	"?\x08v^\xc4\x09z\xa5\xe61\xe6\x7f,<\xa9\xf8" +
+	"\x9a\x9b\xc6\xa7\xa2\x1e\xf6\xab\x02\xf1\xa5xA\xd0\xed\xef" +
+	"\xc5\xea\xe5w\xf9\xb5r\x9a\x0a\x0d\x1a\xdaP(N\x1f" +
+	"u\xf6\xdcH\xccI\xc5\x1c6\xe2zA\xcc1k\xdb" +
+	"\xb0\x93\xf5\xb2\xf1\xae\x1eS$\x00\x15\xe5\x16\x91\x05\"" +
+	"9\xd9O\xa4&8\xd4\x0c\x83\x04\xa20\x87\xd3]D" +
+	"\xea\x12\x87\xba\xce \x19\x8b\x82\x11\xc9\xfc~\"u\x95" +
+	"C\xcd3H\xce\xa3\xe0Drn7\x91\x9a\xe1P\x0f" +
+	"\x18\xa4eEa\x11\xc9\xfb\x86\xb9\xc8\xa1\x9e1\xe8T" +
+	"\xd2\xf5\x82T0ND\x88\x94\xa4\x12\x10!\xc4\xb3N" +
+	"\xceI\xfb\x88\xe8\xed\xb3\xb7;\xfbfO\xbd\xd9\xbc\x98" +
+	"\x1a\xcex\x81{1@D7<\xef\x1cj\\z4" +
+	"\xb7y\xd3\x1cd2\xa3>j\x09\x09\x0eT\x133[" +
+	"\x9d\xcde.\xa4\x92nn\xe3\x97\xfc\xd6\x81o\xb1\xd0" +
+	"\xb6\xe5\xcd'\xff\xb6\xa4\xaek0q\xc0\x18bqQ" +
+	"\x96\x14\xfe\x98,e\x0b1)\xc2u\xbe\xeb%\xbb\x91" +
+	"@\x89eU\xb2\x0c\xaa\xcd\xf4\xedL\x14D\x11)\xab" +
+	"hs\x8d1\xaf\x8aCE\x19\xa6\xd2\xae\xef;#." +
+	"\"\xfa\xee\xc0\xf7\xb3\x13M\xddW*\x07\xe5\x7f\xc1\x0f" +
+	"o\xd8\x88q3mu\x91{\xf0$\x91\xea\xe5P\x89" +
+	"\xb2\xf8\x8e\xb6\x10\xa9>\x0eu\xbc,>e\x0e\x8fp" +
+	"\xa8\x13\xc5P\xce\xa4\x88\xbb\xb9\x82\x87\xd5\x84:\xcfI" +
+	"\xbb\xc5\"\x97\x19-\x16\xff\xa3y\xd0\xf5\xc7F\x03\xf8" +
+	"\xe5\x9aw\x944\x873c\x01\"\xeb\x9f\xc7\x96j[" +
+	"\xb7,o\xa8\xfd\x1d\x00\x00\xff\xffAL\xe3D"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{
 		String: schema_d4c9c9f76e88a0d0,
 		Nodes: []uint64{
 			0x8ffdc08b384f2b85,
-			0x9048af051e281d80,
+			0x9b1c2beb128e44da,
+			0xa53e5c96ae3372c1,
 			0xa895f29001a70dc1,
-			0xb9bda85dc6f0a9e7,
-			0xc3cd8b75d9d30639,
-			0xd0d73fbf288eff99,
+			0xd089d781c905d931,
 		},
 		Compressed: true,
 	})

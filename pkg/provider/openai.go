@@ -14,7 +14,6 @@ import (
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
 	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
-	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tools"
@@ -33,14 +32,6 @@ type OpenAIProvider struct {
 	segment *capnp.Segment
 }
 
-// OpenAIMessage extends the base Message type with OpenAI-specific fields
-type OpenAIMessage struct {
-	Message
-	ID         string               `json:"id,omitempty"`
-	ToolCallID string               `json:"tool_call_id,omitempty"`
-	ToolCalls  []aicontext.ToolCall `json:"tool_calls,omitempty"`
-}
-
 /*
 NewOpenAIProvider creates a new OpenAI provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the OPENAI_API_KEY environment variable.
@@ -51,17 +42,26 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 
 	apiKey := os.Getenv("OPENAI_API_KEY")
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	client := openai.NewClient(
 		option.WithAPIKey(apiKey),
 	)
 
+	// Initialize a new segment
+	arena := capnp.SingleSegment(nil)
+	_, segment, err := capnp.NewMessage(arena)
+	if err != nil {
+		errnie.Error(err)
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
 	prvdr := &OpenAIProvider{
-		client: &client,
-		pctx:   ctx,
-		ctx:    ctx,
-		cancel: cancel,
+		client:  &client,
+		pctx:    ctx,
+		ctx:     ctx,
+		cancel:  cancel,
+		segment: segment,
 	}
 
 	for _, opt := range opts {
@@ -104,10 +104,12 @@ func (prvdr *OpenAIProvider) Generate(
 		return datura.New(datura.WithError(errnie.Error(err)))
 	}
 
-	format := datura.GetMetaValue[params.ResponseFormat](artifact, "format")
+	format := datura.GetMetaValue[string](artifact, "format")
 
-	if err = prvdr.buildResponseFormat(composed, format); err != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
+	if format != "" {
+		if err = prvdr.buildResponseFormat(composed, format); err != nil {
+			return datura.New(datura.WithError(errnie.Error(err)))
+		}
 	}
 
 	if datura.GetMetaValue[bool](artifact, "stream") {
@@ -154,7 +156,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		return datura.New(datura.WithError(errnie.Error(err)))
 	}
 
-	// Create a new message using Cap'n Proto
+	// Create a new message using the provider's segment
 	msg, err := aicontext.NewMessage(prvdr.segment)
 	if errnie.Error(err) != nil {
 		return datura.New(datura.WithError(errnie.Error(err)))
@@ -413,39 +415,24 @@ If you want this to be combined with the ability to call tools, you can set Stri
 */
 func (prvdr *OpenAIProvider) buildResponseFormat(
 	openaiParams *openai.ChatCompletionNewParams,
-	format params.ResponseFormat,
+	format string,
 ) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
-	if openaiParams == nil {
-		return errnie.BadRequest(errors.New("params are nil"))
-	}
+	buf := map[string]any{}
 
-	name, err := format.Name()
-	if errnie.Error(err) != nil {
+	if err = json.Unmarshal([]byte(format), &buf); errnie.Error(err) != nil {
 		return err
 	}
-
-	description, err := format.Description()
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	schema, err := format.Schema()
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	strict := format.Strict()
 
 	openaiParams.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
 		OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
 			Type: "json_schema",
 			JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
-				Name:        name,
-				Description: param.NewOpt(description),
-				Schema:      schema,
-				Strict:      param.NewOpt(strict),
+				Name:        buf["name"].(string),
+				Description: param.NewOpt(buf["description"].(string)),
+				Schema:      buf["schema"].(map[string]any),
+				Strict:      param.NewOpt(buf["strict"].(bool)),
 			},
 		},
 	}
