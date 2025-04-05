@@ -11,6 +11,7 @@ import (
 	"capnproto.org/go/capnp/v3"
 	"github.com/mark3labs/mcp-go/mcp"
 	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
+	"github.com/theapemachine/caramba/pkg/ai/message"
 	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -187,7 +188,7 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 		return errnie.Error(err)
 	}
 
-	msg, err := aicontext.NewMessage(prvdr.segment)
+	msg, err := message.NewMessage(prvdr.segment)
 
 	if errnie.Error(err) != nil {
 		return errnie.Error(err)
@@ -301,7 +302,7 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 					argsStr = "{" + argsStr[:len(argsStr)-1] + "}"
 				}
 
-				msg, err := aicontext.NewMessage(prvdr.segment)
+				msg, err := message.NewMessage(prvdr.segment)
 				if errnie.Error(err) != nil {
 					return errnie.Error(err)
 				}

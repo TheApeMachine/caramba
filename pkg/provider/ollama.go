@@ -10,6 +10,7 @@ import (
 	"github.com/ollama/ollama/api"
 	"github.com/spf13/viper"
 	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
+	"github.com/theapemachine/caramba/pkg/ai/message"
 	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -142,7 +143,7 @@ func (prvdr *OllamaProvider) handleSingleRequest(
 	err := prvdr.client.Chat(
 		prvdr.ctx, params, func(response api.ChatResponse) error {
 			// Create a new message using Cap'n Proto
-			msg, err := aicontext.NewMessage(prvdr.segment)
+			msg, err := message.NewMessage(prvdr.segment)
 			if errnie.Error(err) != nil {
 				return err
 			}

@@ -13,6 +13,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/mark3labs/mcp-go/mcp"
 	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
+	"github.com/theapemachine/caramba/pkg/ai/message"
 	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -159,7 +160,7 @@ func (prvdr *AnthropicProvider) handleSingleRequest(
 	}
 
 	// Create a new message using Cap'n Proto
-	msg, err := aicontext.NewMessage(prvdr.segment)
+	msg, err := message.NewMessage(prvdr.segment)
 	if errnie.Error(err) != nil {
 		channel <- datura.New(datura.WithError(errnie.Error(err)))
 		return
@@ -318,7 +319,7 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 					}
 
 					// Create a new message using Cap'n Proto
-					msg, err := aicontext.NewMessage(prvdr.segment)
+					msg, err := message.NewMessage(prvdr.segment)
 					if errnie.Error(err) != nil {
 						channel <- datura.New(datura.WithError(errnie.Error(err)))
 						return

@@ -13,7 +13,8 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
-	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
+	"github.com/theapemachine/caramba/pkg/ai/message"
+	"github.com/theapemachine/caramba/pkg/ai/toolcall"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tools"
@@ -137,6 +138,15 @@ func WithEndpoint(endpoint string) OpenAIProviderOption {
 	}
 }
 
+// OpenAIMessage represents a message in the OpenAI chat format
+type OpenAIMessage struct {
+	Role       string              `json:"role"`
+	Name       string              `json:"name"`
+	Content    string              `json:"content"`
+	ToolCallID string              `json:"tool_call_id,omitempty"`
+	ToolCalls  []toolcall.ToolCall `json:"tool_calls,omitempty"`
+}
+
 /*
 handleSingleRequest processes a single (non-streaming) completion request
 */
@@ -157,7 +167,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 	}
 
 	// Create a new message using the provider's segment
-	msg, err := aicontext.NewMessage(prvdr.segment)
+	msg, err := message.NewMessage(prvdr.segment)
 	if errnie.Error(err) != nil {
 		return datura.New(datura.WithError(errnie.Error(err)))
 	}
