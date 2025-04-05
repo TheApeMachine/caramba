@@ -1,3 +1,8 @@
+/*
+Package radix implements distributed networking functionality for the radix tree.
+It provides peer-to-peer communication, leader election, and data synchronization
+capabilities for maintaining a consistent distributed state across nodes.
+*/
 package radix
 
 import (
@@ -14,7 +19,11 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-// NetworkConfig holds configuration for distributed tree networking
+/*
+NetworkConfig holds configuration for distributed tree networking.
+It defines the network behavior including listen address, peer connections,
+node identification, and synchronization parameters.
+*/
 type NetworkConfig struct {
 	// Address to listen on, e.g. ":6380" for all interfaces port 6380
 	ListenAddr string
@@ -28,7 +37,11 @@ type NetworkConfig struct {
 	PersistDir string
 }
 
-// NetworkNode represents a distributed tree node
+/*
+NetworkNode represents a distributed tree node.
+It manages peer connections, handles RPC communication, maintains a merkle tree
+for consistency verification, and participates in leader election.
+*/
 type NetworkNode struct {
 	config     NetworkConfig
 	forest     *Forest
@@ -42,7 +55,11 @@ type NetworkNode struct {
 	election   *Election
 }
 
-// peer represents a connection to another tree node
+/*
+peer represents a connection to another tree node.
+It maintains both the raw network connection and the RPC client
+for communicating with the remote node.
+*/
 type peer struct {
 	addr    string
 	conn    net.Conn
@@ -50,7 +67,12 @@ type peer struct {
 	client  RadixRPC
 }
 
-// NewNetworkNode creates a new networked tree node
+/*
+NewNetworkNode creates a new networked tree node.
+It initializes the network infrastructure, starts background processes
+for connection management and synchronization, and sets up the merkle tree
+for consistency verification.
+*/
 func NewNetworkNode(config NetworkConfig, forest *Forest) (*NetworkNode, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -84,7 +106,11 @@ func NewNetworkNode(config NetworkConfig, forest *Forest) (*NetworkNode, error) 
 	return node, nil
 }
 
-// acceptLoop accepts incoming peer connections
+/*
+acceptLoop accepts incoming peer connections.
+It runs in the background and handles new peer connection attempts,
+creating appropriate handlers for each connection.
+*/
 func (n *NetworkNode) acceptLoop() {
 	for {
 		conn, err := n.listener.Accept()
@@ -101,7 +127,11 @@ func (n *NetworkNode) acceptLoop() {
 	}
 }
 
-// handleConnection handles incoming peer connections
+/*
+handleConnection handles incoming peer connections.
+It sets up the RPC infrastructure for the connection and maintains
+the connection until it is closed by the peer.
+*/
 func (n *NetworkNode) handleConnection(conn net.Conn) {
 	// Create transport from connection
 	transport := rpc.NewStreamTransport(conn)
@@ -117,7 +147,11 @@ func (n *NetworkNode) handleConnection(conn net.Conn) {
 	<-rpcConn.Done()
 }
 
-// connectLoop maintains connections to peers
+/*
+connectLoop maintains connections to peers.
+It periodically attempts to establish connections with configured peers
+that are not currently connected.
+*/
 func (n *NetworkNode) connectLoop() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -140,7 +174,11 @@ func (n *NetworkNode) connectLoop() {
 	}
 }
 
-// connectToPeer establishes a connection to a peer
+/*
+connectToPeer establishes a connection to a peer.
+It handles the connection setup, RPC client creation, and maintains
+the connection until it is closed.
+*/
 func (n *NetworkNode) connectToPeer(addr string) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -175,7 +213,11 @@ func (n *NetworkNode) connectToPeer(addr string) {
 	n.peersMutex.Unlock()
 }
 
-// syncLoop periodically syncs with peers
+/*
+syncLoop periodically syncs with peers.
+It ensures data consistency across the network by regularly
+initiating synchronization with connected peers.
+*/
 func (n *NetworkNode) syncLoop() {
 	ticker := time.NewTicker(n.config.SyncInterval)
 	defer ticker.Stop()
@@ -190,7 +232,11 @@ func (n *NetworkNode) syncLoop() {
 	}
 }
 
-// syncWithPeers initiates sync with all connected peers
+/*
+syncWithPeers initiates sync with all connected peers.
+It sends the current merkle root to each peer and processes any
+differences that need to be synchronized.
+*/
 func (n *NetworkNode) syncWithPeers() {
 	start := time.Now()
 	n.peersMutex.RLock()
@@ -250,7 +296,11 @@ func (n *NetworkNode) syncWithPeers() {
 	}
 }
 
-// Insert implements RadixRPC_Server.Insert
+/*
+Insert implements RadixRPC_Server.Insert.
+It handles insertion of new data into the local tree and merkle tree,
+ensuring consistency across the distributed system.
+*/
 func (n *NetworkNode) Insert(ctx context.Context, call RadixRPC_insert) error {
 	args := call.Args()
 	key, err := args.Key()
@@ -280,7 +330,11 @@ func (n *NetworkNode) Insert(ctx context.Context, call RadixRPC_insert) error {
 	return nil
 }
 
-// Sync implements RadixRPC_Server.Sync
+/*
+Sync implements RadixRPC_Server.Sync.
+It handles synchronization requests from peers, comparing merkle roots
+and sending any necessary updates to maintain consistency.
+*/
 func (n *NetworkNode) Sync(ctx context.Context, call RadixRPC_sync) error {
 	args := call.Args()
 	peerRoot, err := args.MerkleRoot()
@@ -356,13 +410,21 @@ func (n *NetworkNode) Sync(ctx context.Context, call RadixRPC_sync) error {
 	return nil
 }
 
-// Recover implements RadixRPC_Server.Recover
+/*
+Recover implements RadixRPC_Server.Recover.
+It provides a mechanism for peers to recover their state after
+failures or disconnections.
+*/
 func (n *NetworkNode) Recover(ctx context.Context, call RadixRPC_recover) error {
 	// Similar to Sync but sends complete state
 	return n.Sync(ctx, RadixRPC_sync(call))
 }
 
-// updateMerkleRoot updates the merkle root hash of the tree
+/*
+updateMerkleRoot updates the merkle root hash of the tree.
+It rebuilds the merkle tree from the current state of the fastest tree
+to ensure an accurate representation of the data.
+*/
 func (n *NetworkNode) updateMerkleRoot() {
 	tree := n.forest.getFastestTree()
 	if tree == nil {
@@ -377,7 +439,11 @@ func (n *NetworkNode) updateMerkleRoot() {
 	n.merkleTree.Rebuild()
 }
 
-// BroadcastInsert broadcasts an insert operation to all connected peers
+/*
+BroadcastInsert broadcasts an insert operation to all connected peers.
+It ensures data consistency by propagating insertions to all nodes
+in the network.
+*/
 func (n *NetworkNode) BroadcastInsert(key []byte, value []byte) {
 	start := time.Now()
 	n.peersMutex.RLock()
@@ -402,7 +468,10 @@ func (n *NetworkNode) BroadcastInsert(key []byte, value []byte) {
 	n.metrics.RecordInsert(time.Since(start), len(key)+len(value))
 }
 
-// Close shuts down the network node
+/*
+Close shuts down the network node.
+It properly closes all peer connections and releases resources.
+*/
 func (n *NetworkNode) Close() error {
 	n.cancel()
 
@@ -421,7 +490,11 @@ func (n *NetworkNode) Close() error {
 	return nil
 }
 
-// GetMetrics returns the current metrics
+/*
+GetMetrics returns the current metrics.
+It provides a snapshot of the node's operational metrics including
+peer count and other performance indicators.
+*/
 func (n *NetworkNode) GetMetrics() map[string]interface{} {
 	n.peersMutex.RLock()
 	n.metrics.UpdatePeerCount(int32(len(n.peers)))
@@ -429,7 +502,11 @@ func (n *NetworkNode) GetMetrics() map[string]interface{} {
 	return n.metrics.GetMetrics()
 }
 
-// RequestVote implements RadixRPC_Server.RequestVote
+/*
+RequestVote implements RadixRPC_Server.RequestVote.
+It handles vote requests during leader election, delegating the
+decision to the election manager.
+*/
 func (n *NetworkNode) RequestVote(ctx context.Context, call RadixRPC_requestVote) error {
 	args := call.Args()
 	term := args.Term()
@@ -452,7 +529,11 @@ func (n *NetworkNode) RequestVote(ctx context.Context, call RadixRPC_requestVote
 	return nil
 }
 
-// Heartbeat implements RadixRPC_Server.Heartbeat
+/*
+Heartbeat implements RadixRPC_Server.Heartbeat.
+It processes heartbeat messages from the leader to maintain
+the distributed system's consensus state.
+*/
 func (n *NetworkNode) Heartbeat(ctx context.Context, call RadixRPC_heartbeat) error {
 	args := call.Args()
 	term := args.Term()

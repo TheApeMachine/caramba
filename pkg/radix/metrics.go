@@ -1,3 +1,8 @@
+/*
+Package radix implements metrics tracking for the radix tree system.
+This includes performance metrics, operational counters, and network statistics
+that help monitor and optimize the distributed tree's behavior.
+*/
 package radix
 
 import (
@@ -6,7 +11,12 @@ import (
 	"time"
 )
 
-// Metrics tracks performance and operational metrics for the radix tree
+/*
+Metrics tracks performance and operational metrics for the radix tree.
+It maintains atomic counters for operations, latency tracking for performance
+measurement, and various network and election-related metrics for distributed
+operation monitoring.
+*/
 type Metrics struct {
 	// Operation counters
 	insertCount   atomic.Uint64
@@ -38,7 +48,11 @@ type Metrics struct {
 	mu           sync.RWMutex
 }
 
-// LatencyTracker maintains a rolling window of operation latencies
+/*
+LatencyTracker maintains a rolling window of operation latencies.
+It provides thread-safe tracking of operation durations and calculates
+average latency over the window period.
+*/
 type LatencyTracker struct {
 	window []time.Duration
 	mu     sync.RWMutex
@@ -46,7 +60,11 @@ type LatencyTracker struct {
 	pos    int
 }
 
-// NewMetrics creates a new metrics tracker
+/*
+NewMetrics creates a new metrics tracker with initialized latency trackers
+for various operation types. Each latency tracker maintains a window of
+100 measurements.
+*/
 func NewMetrics() *Metrics {
 	return &Metrics{
 		insertLatency:  NewLatencyTracker(100),
@@ -56,7 +74,11 @@ func NewMetrics() *Metrics {
 	}
 }
 
-// NewLatencyTracker creates a new latency tracker with given window size
+/*
+NewLatencyTracker creates a new latency tracker with the specified window size.
+The window size determines how many measurements are kept for calculating
+the rolling average.
+*/
 func NewLatencyTracker(size int) *LatencyTracker {
 	return &LatencyTracker{
 		window: make([]time.Duration, size),
@@ -64,7 +86,11 @@ func NewLatencyTracker(size int) *LatencyTracker {
 	}
 }
 
-// RecordLatency adds a new latency measurement
+/*
+RecordLatency adds a new latency measurement to the tracker.
+It stores the duration in the rolling window and updates the position
+for the next measurement.
+*/
 func (lt *LatencyTracker) RecordLatency(d time.Duration) {
 	lt.mu.Lock()
 	defer lt.mu.Unlock()
@@ -72,7 +98,11 @@ func (lt *LatencyTracker) RecordLatency(d time.Duration) {
 	lt.pos = (lt.pos + 1) % lt.size
 }
 
-// AverageLatency returns the average latency over the window
+/*
+AverageLatency returns the average latency over the window.
+It calculates the mean of all non-zero measurements in the window,
+providing a rolling average of operation latencies.
+*/
 func (lt *LatencyTracker) AverageLatency() time.Duration {
 	lt.mu.RLock()
 	defer lt.mu.RUnlock()
@@ -90,20 +120,31 @@ func (lt *LatencyTracker) AverageLatency() time.Duration {
 	return sum / time.Duration(count)
 }
 
-// RecordInsert records metrics for an insert operation
+/*
+RecordInsert records metrics for an insert operation.
+It updates the insert counter, records the operation latency, and
+tracks the number of bytes transmitted.
+*/
 func (m *Metrics) RecordInsert(duration time.Duration, bytes int) {
 	m.insertCount.Add(1)
 	m.insertLatency.RecordLatency(duration)
 	m.bytesTransmitted.Add(uint64(bytes))
 }
 
-// RecordLookup records metrics for a lookup operation
+/*
+RecordLookup records metrics for a lookup operation.
+It updates the lookup counter and records the operation latency.
+*/
 func (m *Metrics) RecordLookup(duration time.Duration) {
 	m.lookupCount.Add(1)
 	m.lookupLatency.RecordLatency(duration)
 }
 
-// RecordSync records metrics for a sync operation
+/*
+RecordSync records metrics for a sync operation.
+It updates the sync counter, records the operation latency,
+tracks received bytes, and updates the last sync timestamp.
+*/
 func (m *Metrics) RecordSync(duration time.Duration, bytes int) {
 	m.syncCount.Add(1)
 	m.syncLatency.RecordLatency(duration)
@@ -113,17 +154,26 @@ func (m *Metrics) RecordSync(duration time.Duration, bytes int) {
 	m.mu.Unlock()
 }
 
-// RecordConflict records a detected conflict
+/*
+RecordConflict records a detected conflict during operations.
+It increments the conflict counter for monitoring consistency issues.
+*/
 func (m *Metrics) RecordConflict() {
 	m.conflictCount.Add(1)
 }
 
-// UpdatePeerCount updates the current peer count
+/*
+UpdatePeerCount updates the current peer count.
+It atomically stores the new count of connected peers.
+*/
 func (m *Metrics) UpdatePeerCount(count int32) {
 	m.peerCount.Store(count)
 }
 
-// SetNodeRole updates the node's role
+/*
+SetNodeRole updates the node's role and weight in the network.
+It stores the role string and associated weight value for metrics reporting.
+*/
 func (m *Metrics) SetNodeRole(role string, weight float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -131,12 +181,18 @@ func (m *Metrics) SetNodeRole(role string, weight float64) {
 	m.nodeWeight = weight
 }
 
-// SetLeader updates the node's leader status
+/*
+SetLeader updates the node's leader status.
+It atomically stores whether this node is currently the leader.
+*/
 func (m *Metrics) SetLeader(isLeader bool) {
 	m.isLeader.Store(isLeader)
 }
 
-// RecordVote records a vote received during election
+/*
+RecordVote records a vote received during election.
+It increments the votes received counter and updates the last voter.
+*/
 func (m *Metrics) RecordVote(voter string) {
 	m.votesReceived.Add(1)
 	m.mu.Lock()
@@ -144,7 +200,11 @@ func (m *Metrics) RecordVote(voter string) {
 	m.mu.Unlock()
 }
 
-// GetMetrics returns a snapshot of current metrics
+/*
+GetMetrics returns a snapshot of current metrics.
+It provides a comprehensive view of the node's operational state,
+including performance metrics, election status, and network statistics.
+*/
 func (m *Metrics) GetMetrics() map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

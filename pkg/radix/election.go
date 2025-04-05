@@ -1,3 +1,8 @@
+/*
+Package radix implements leader election functionality for the distributed radix tree.
+It uses a Raft-like consensus algorithm to maintain a consistent leader across the
+network and handle leader failures gracefully.
+*/
 package radix
 
 import (
@@ -6,7 +11,11 @@ import (
 	"time"
 )
 
-// NodeState represents the current state of a node in the election process
+/*
+NodeState represents the current state of a node in the election process.
+A node can be in one of three states: Follower, Candidate, or Leader,
+following the Raft consensus algorithm.
+*/
 type NodeState int
 
 const (
@@ -15,7 +24,11 @@ const (
 	Leader
 )
 
-// ElectionConfig holds configuration for leader election
+/*
+ElectionConfig holds configuration for leader election.
+It defines timeouts, intervals, and quorum requirements that control
+the behavior of the election process.
+*/
 type ElectionConfig struct {
 	// Base timeout for elections (will be randomized)
 	ElectionTimeout time.Duration
@@ -25,7 +38,12 @@ type ElectionConfig struct {
 	QuorumSize int
 }
 
-// Election manages the leader election process
+/*
+Election manages the leader election process.
+It implements a Raft-like consensus algorithm to maintain a consistent
+leader across the distributed system, handling state transitions,
+vote counting, and heartbeat mechanisms.
+*/
 type Election struct {
 	config ElectionConfig
 	node   *NetworkNode
@@ -45,7 +63,11 @@ type Election struct {
 	shutdown chan struct{}
 }
 
-// NewElection creates a new election manager
+/*
+NewElection creates a new election manager.
+It initializes the election state machine with the provided configuration
+and network node, starting in the Follower state.
+*/
 func NewElection(config ElectionConfig, node *NetworkNode) *Election {
 	e := &Election{
 		config:   config,
@@ -61,7 +83,11 @@ func NewElection(config ElectionConfig, node *NetworkNode) *Election {
 	return e
 }
 
-// run manages the election state machine
+/*
+run manages the election state machine.
+It handles timer events, vote processing, and heartbeat sending
+in a continuous loop until shutdown.
+*/
 func (e *Election) run() {
 	e.resetElectionTimer()
 
@@ -84,7 +110,12 @@ func (e *Election) run() {
 	}
 }
 
-// startElection initiates a new election
+/*
+startElection initiates a new election.
+It transitions the node to Candidate state, increments the term,
+and requests votes from all peers. If sufficient votes are received,
+the node becomes the leader.
+*/
 func (e *Election) startElection() {
 	e.stateLock.Lock()
 	e.state = Candidate
@@ -149,7 +180,11 @@ func (e *Election) startElection() {
 	}
 }
 
-// becomeLeader transitions the node to leader state
+/*
+becomeLeader transitions the node to leader state.
+It updates the node's state to Leader, starts the heartbeat timer,
+and updates relevant metrics.
+*/
 func (e *Election) becomeLeader() {
 	e.stateLock.Lock()
 	e.state = Leader
@@ -162,7 +197,11 @@ func (e *Election) becomeLeader() {
 	e.heartbeatTimer = time.NewTimer(e.config.HeartbeatInterval)
 }
 
-// sendHeartbeats sends heartbeat messages to all peers
+/*
+sendHeartbeats sends heartbeat messages to all peers.
+Leaders periodically send heartbeats to maintain their authority
+and prevent new elections from being started.
+*/
 func (e *Election) sendHeartbeats() {
 	e.node.peersMutex.RLock()
 	peers := make([]*peer, 0, len(e.node.peers))
@@ -196,7 +235,11 @@ func (e *Election) sendHeartbeats() {
 	e.heartbeatTimer.Reset(e.config.HeartbeatInterval)
 }
 
-// stepDown steps down from leader/candidate to follower
+/*
+stepDown steps down from leader/candidate to follower.
+This occurs when a node discovers a higher term or when it needs
+to relinquish leadership for other reasons.
+*/
 func (e *Election) stepDown(newTerm uint64) {
 	e.stateLock.Lock()
 	e.state = Follower
@@ -211,7 +254,11 @@ func (e *Election) stepDown(newTerm uint64) {
 	e.resetElectionTimer()
 }
 
-// resetElectionTimer resets the election timeout with random jitter
+/*
+resetElectionTimer resets the election timeout with random jitter.
+The randomization helps prevent split votes by ensuring nodes don't
+all timeout at the same time.
+*/
 func (e *Election) resetElectionTimer() {
 	if e.electionTimer != nil {
 		e.electionTimer.Stop()
@@ -224,14 +271,22 @@ func (e *Election) resetElectionTimer() {
 	e.electionTimer = time.NewTimer(timeout)
 }
 
-// getState returns the current node state
+/*
+getState returns the current node state.
+It provides thread-safe access to the node's current role in the
+election process.
+*/
 func (e *Election) getState() NodeState {
 	e.stateLock.RLock()
 	defer e.stateLock.RUnlock()
 	return e.state
 }
 
-// handleVote processes a vote received from a peer
+/*
+handleVote processes a vote received from a peer.
+It updates voting metrics and counts votes during an election,
+but only if the node is still a candidate.
+*/
 func (e *Election) handleVote(voter string) {
 	e.stateLock.Lock()
 	defer e.stateLock.Unlock()
@@ -245,7 +300,11 @@ func (e *Election) handleVote(voter string) {
 	e.node.metrics.RecordVote(voter)
 }
 
-// handleVoteRequest processes a vote request from a candidate
+/*
+handleVoteRequest processes a vote request from a candidate.
+It implements the Raft voting rules, checking term numbers and log
+indices to decide whether to grant the vote.
+*/
 func (e *Election) handleVoteRequest(term uint64, candidateId string, lastLogIndex uint64) bool {
 	e.stateLock.Lock()
 	defer e.stateLock.Unlock()
@@ -274,7 +333,11 @@ func (e *Election) handleVoteRequest(term uint64, candidateId string, lastLogInd
 	return false
 }
 
-// handleHeartbeat processes a heartbeat from the leader
+/*
+handleHeartbeat processes a heartbeat from the leader.
+It updates terms if necessary, resets election timeouts, and
+maintains the leader-follower relationship in the cluster.
+*/
 func (e *Election) handleHeartbeat(term uint64, leaderId string) bool {
 	e.stateLock.Lock()
 	defer e.stateLock.Unlock()
@@ -304,7 +367,10 @@ func (e *Election) handleHeartbeat(term uint64, leaderId string) bool {
 	return false
 }
 
-// Close shuts down the election manager
+/*
+Close shuts down the election manager.
+It signals the run loop to stop and cleans up resources.
+*/
 func (e *Election) Close() {
 	close(e.shutdown)
 }

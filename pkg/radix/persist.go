@@ -1,3 +1,8 @@
+/*
+Package radix implements persistence functionality for the radix tree.
+The persistence layer uses a Write-Ahead Log (WAL) to ensure data durability
+and provides mechanisms for recovery in case of failures.
+*/
 package radix
 
 import (
@@ -8,20 +13,31 @@ import (
 	"sync"
 )
 
-// Operation types for the WAL
+/*
+Operation types for the WAL. These define the possible operations that can be
+recorded in the write-ahead log for persistence and recovery.
+*/
 const (
 	opInsert byte = iota
 	opDelete
 )
 
-// WALEntry represents a single write-ahead log entry
+/*
+WALEntry represents a single write-ahead log entry. Each entry contains the
+operation type and the associated key-value pair, allowing for replay during
+recovery operations.
+*/
 type WALEntry struct {
 	Op    byte
 	Key   []byte
 	Value []byte
 }
 
-// PersistentStore handles the persistence layer for the radix tree
+/*
+PersistentStore handles the persistence layer for the radix tree.
+It manages write-ahead logging and provides mechanisms for durable storage
+and recovery of tree data.
+*/
 type PersistentStore struct {
 	walFile    *os.File
 	walWriter  *bufio.Writer
@@ -31,7 +47,12 @@ type PersistentStore struct {
 	syncChan   chan struct{}
 }
 
-// NewPersistentStore creates a new persistent store instance
+/*
+NewPersistentStore creates a new persistent store instance.
+It initializes the WAL file and sets up background syncing to ensure
+data durability. The store will create necessary directories if they
+don't exist.
+*/
 func NewPersistentStore(dir string) (*PersistentStore, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
@@ -59,7 +80,11 @@ func NewPersistentStore(dir string) (*PersistentStore, error) {
 	return ps, nil
 }
 
-// LogInsert asynchronously logs an insert operation to the WAL
+/*
+LogInsert asynchronously logs an insert operation to the WAL.
+It writes the operation type, key, and value to the WAL buffer and
+signals the background sync goroutine to flush to disk.
+*/
 func (ps *PersistentStore) LogInsert(key, value []byte) error {
 	ps.writeMutex.Lock()
 	defer ps.writeMutex.Unlock()
@@ -94,7 +119,11 @@ func (ps *PersistentStore) LogInsert(key, value []byte) error {
 	return nil
 }
 
-// backgroundSync periodically flushes the WAL to disk
+/*
+backgroundSync periodically flushes the WAL to disk.
+It listens on the sync channel and ensures that buffered writes are
+persisted to stable storage.
+*/
 func (ps *PersistentStore) backgroundSync() {
 	for range ps.syncChan {
 		ps.writeMutex.Lock()
@@ -104,7 +133,10 @@ func (ps *PersistentStore) backgroundSync() {
 	}
 }
 
-// Close closes the persistent store
+/*
+Close closes the persistent store, ensuring all buffered data is
+written to disk and resources are properly released.
+*/
 func (ps *PersistentStore) Close() error {
 	close(ps.syncChan)
 	ps.writeMutex.Lock()

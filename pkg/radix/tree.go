@@ -121,7 +121,9 @@ func (tree *Tree) AVG() int64 {
 	return sum / int64(tree.perfs.Len())
 }
 
-// Close releases any resources held by the tree
+/*
+Close closes the tree and persists any remaining data.
+*/
 func (tree *Tree) Close() error {
 	if tree.persist != nil {
 		return tree.persist.Close()
