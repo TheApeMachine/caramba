@@ -2,6 +2,7 @@ package examples
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -11,6 +12,8 @@ import (
 	"github.com/theapemachine/caramba/pkg/ai/agent"
 	"github.com/theapemachine/caramba/pkg/ai/provider"
 	"github.com/theapemachine/caramba/pkg/datura"
+	prvdr "github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/twoface"
 )
 
@@ -43,11 +46,14 @@ func (code *Code) Run() {
 	code.planner = agent.New(
 		agent.WithName("planner"),
 		agent.WithRole("planner"),
+		agent.WithModel(tweaker.GetModel("openai")),
 		agent.WithTransport(code.hub.NewTransport()),
 	)
+
 	code.dev = agent.New(
 		agent.WithName("developer"),
 		agent.WithRole("developer"),
+		agent.WithModel(tweaker.GetModel("openai")),
 		agent.WithTransport(code.hub.NewTransport()),
 	)
 
@@ -56,15 +62,45 @@ func (code *Code) Run() {
 		provider.WithName("openai"),
 	)
 
+	messages := []prvdr.Message{
+		{
+			Role:    "system",
+			Content: tweaker.GetSystemPrompt("planner"),
+		},
+		{
+			Role:    "user",
+			Content: "Please plan the implementation of a basic HTTP server",
+		},
+	}
+
+	buf, err := json.Marshal(messages)
+
+	if err != nil {
+		fmt.Printf("Error marshalling messages: %v\n", err)
+		return
+	}
+
 	// Create and send initial task
 	task := datura.New(
 		datura.WithRole(datura.ArtifactRoleSystem),
 		datura.WithScope(datura.ArtifactScopeGeneration),
-		datura.WithPayload([]byte("Please implement a basic HTTP server")),
+		datura.WithPayload(buf),
+		datura.WithMeta("model", "gpt-4o-mini"),
+		datura.WithMeta("temperature", 0.5),
+		datura.WithMeta("top_p", 1.0),
+		datura.WithMeta("frequency_penalty", 0.0),
+		datura.WithMeta("presence_penalty", 0.0),
+		datura.WithMeta("stream", false),
 	)
 
-	if err := code.dev.SendTask(task); err != nil {
-		fmt.Printf("Error sending task: %v\n", err)
+	future, release := code.provider.Client().Generate(code.ctx, func(p provider.RPC_generate_Params) error {
+		return p.SetContext(*task.Artifact)
+	})
+
+	defer release()
+
+	if _, err := future.Struct(); err != nil {
+		fmt.Printf("Error generating task: %v\n", err)
 		return
 	}
 

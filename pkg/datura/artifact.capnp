@@ -1,7 +1,7 @@
 using Go = import "/go.capnp";
 @0x85d3acc39d94e0f8;
 $Go.package("datura");
-$Go.import("datura/artifact");
+$Go.import("github.com/theapemachine/caramba/pkg/datura");
 
 struct Artifact {
     uuid @0 :Data;

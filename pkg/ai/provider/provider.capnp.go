@@ -10,9 +10,7 @@ import (
 	server "capnproto.org/go/capnp/v3/server"
 	stream "capnproto.org/go/capnp/v3/std/capnp/stream"
 	context "context"
-	context2 "github.com/theapemachine/caramba/pkg/ai/context"
-	params "github.com/theapemachine/caramba/pkg/ai/params"
-	tool "github.com/theapemachine/caramba/pkg/ai/tool"
+	datura "github.com/theapemachine/caramba/pkg/datura"
 )
 
 type Provider capnp.Struct
@@ -97,32 +95,32 @@ func (f Provider_Future) Struct() (Provider, error) {
 	return Provider(p.Struct()), err
 }
 
-type Generate capnp.Client
+type RPC capnp.Client
 
-// Generate_TypeID is the unique identifier for the type Generate.
-const Generate_TypeID = 0xbc1e9719e5979ce2
+// RPC_TypeID is the unique identifier for the type RPC.
+const RPC_TypeID = 0xc5bc642f2dd0f9cb
 
-func (c Generate) Call(ctx context.Context, params func(Generate_call_Params) error) (Generate_call_Results_Future, capnp.ReleaseFunc) {
+func (c RPC) Generate(ctx context.Context, params func(RPC_generate_Params) error) (RPC_generate_Results_Future, capnp.ReleaseFunc) {
 
 	s := capnp.Send{
 		Method: capnp.Method{
-			InterfaceID:   0xbc1e9719e5979ce2,
+			InterfaceID:   0xc5bc642f2dd0f9cb,
 			MethodID:      0,
-			InterfaceName: "pkg/ai/provider/provider.capnp:Generate",
-			MethodName:    "call",
+			InterfaceName: "pkg/ai/provider/provider.capnp:RPC",
+			MethodName:    "generate",
 		},
 	}
 	if params != nil {
-		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 3}
-		s.PlaceArgs = func(s capnp.Struct) error { return params(Generate_call_Params(s)) }
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 1}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(RPC_generate_Params(s)) }
 	}
 
 	ans, release := capnp.Client(c).SendCall(ctx, s)
-	return Generate_call_Results_Future{Future: ans.Future()}, release
+	return RPC_generate_Results_Future{Future: ans.Future()}, release
 
 }
 
-func (c Generate) WaitStreaming() error {
+func (c RPC) WaitStreaming() error {
 	return capnp.Client(c).WaitStreaming()
 }
 
@@ -130,14 +128,14 @@ func (c Generate) WaitStreaming() error {
 // purposes.  Its format should not be depended on: in particular, it
 // should not be used to compare clients.  Use IsSame to compare clients
 // for equality.
-func (c Generate) String() string {
-	return "Generate(" + capnp.Client(c).String() + ")"
+func (c RPC) String() string {
+	return "RPC(" + capnp.Client(c).String() + ")"
 }
 
 // AddRef creates a new Client that refers to the same capability as c.
 // If c is nil or has resolved to null, then AddRef returns nil.
-func (c Generate) AddRef() Generate {
-	return Generate(capnp.Client(c).AddRef())
+func (c RPC) AddRef() RPC {
+	return RPC(capnp.Client(c).AddRef())
 }
 
 // Release releases a capability reference.  If this is the last
@@ -146,28 +144,28 @@ func (c Generate) AddRef() Generate {
 //
 // Release will panic if c has already been released, but not if c is
 // nil or resolved to null.
-func (c Generate) Release() {
+func (c RPC) Release() {
 	capnp.Client(c).Release()
 }
 
 // Resolve blocks until the capability is fully resolved or the Context
 // expires.
-func (c Generate) Resolve(ctx context.Context) error {
+func (c RPC) Resolve(ctx context.Context) error {
 	return capnp.Client(c).Resolve(ctx)
 }
 
-func (c Generate) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+func (c RPC) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
 	return capnp.Client(c).EncodeAsPtr(seg)
 }
 
-func (Generate) DecodeFromPtr(p capnp.Ptr) Generate {
-	return Generate(capnp.Client{}.DecodeFromPtr(p))
+func (RPC) DecodeFromPtr(p capnp.Ptr) RPC {
+	return RPC(capnp.Client{}.DecodeFromPtr(p))
 }
 
 // IsValid reports whether c is a valid reference to a capability.
 // A reference is invalid if it is nil, has resolved to null, or has
 // been released.
-func (c Generate) IsValid() bool {
+func (c RPC) IsValid() bool {
 	return capnp.Client(c).IsValid()
 }
 
@@ -175,7 +173,7 @@ func (c Generate) IsValid() bool {
 // same call to NewClient.  This can return false negatives if c or other
 // are not fully resolved: use Resolve if this is an issue.  If either
 // c or other are released, then IsSame panics.
-func (c Generate) IsSame(other Generate) bool {
+func (c RPC) IsSame(other RPC) bool {
 	return capnp.Client(c).IsSame(capnp.Client(other))
 }
 
@@ -183,303 +181,261 @@ func (c Generate) IsSame(other Generate) bool {
 // this client. This affects all future calls, but not calls already
 // waiting to send. Passing nil sets the value to flowcontrol.NopLimiter,
 // which is also the default.
-func (c Generate) SetFlowLimiter(lim fc.FlowLimiter) {
+func (c RPC) SetFlowLimiter(lim fc.FlowLimiter) {
 	capnp.Client(c).SetFlowLimiter(lim)
 }
 
 // Get the current flowcontrol.FlowLimiter used to manage flow control
 // for this client.
-func (c Generate) GetFlowLimiter() fc.FlowLimiter {
+func (c RPC) GetFlowLimiter() fc.FlowLimiter {
 	return capnp.Client(c).GetFlowLimiter()
 }
 
-// A Generate_Server is a Generate with a local implementation.
-type Generate_Server interface {
-	Call(context.Context, Generate_call) error
+// A RPC_Server is a RPC with a local implementation.
+type RPC_Server interface {
+	Generate(context.Context, RPC_generate) error
 }
 
-// Generate_NewServer creates a new Server from an implementation of Generate_Server.
-func Generate_NewServer(s Generate_Server) *server.Server {
+// RPC_NewServer creates a new Server from an implementation of RPC_Server.
+func RPC_NewServer(s RPC_Server) *server.Server {
 	c, _ := s.(server.Shutdowner)
-	return server.New(Generate_Methods(nil, s), s, c)
+	return server.New(RPC_Methods(nil, s), s, c)
 }
 
-// Generate_ServerToClient creates a new Client from an implementation of Generate_Server.
+// RPC_ServerToClient creates a new Client from an implementation of RPC_Server.
 // The caller is responsible for calling Release on the returned Client.
-func Generate_ServerToClient(s Generate_Server) Generate {
-	return Generate(capnp.NewClient(Generate_NewServer(s)))
+func RPC_ServerToClient(s RPC_Server) RPC {
+	return RPC(capnp.NewClient(RPC_NewServer(s)))
 }
 
-// Generate_Methods appends Methods to a slice that invoke the methods on s.
+// RPC_Methods appends Methods to a slice that invoke the methods on s.
 // This can be used to create a more complicated Server.
-func Generate_Methods(methods []server.Method, s Generate_Server) []server.Method {
+func RPC_Methods(methods []server.Method, s RPC_Server) []server.Method {
 	if cap(methods) == 0 {
 		methods = make([]server.Method, 0, 1)
 	}
 
 	methods = append(methods, server.Method{
 		Method: capnp.Method{
-			InterfaceID:   0xbc1e9719e5979ce2,
+			InterfaceID:   0xc5bc642f2dd0f9cb,
 			MethodID:      0,
-			InterfaceName: "pkg/ai/provider/provider.capnp:Generate",
-			MethodName:    "call",
+			InterfaceName: "pkg/ai/provider/provider.capnp:RPC",
+			MethodName:    "generate",
 		},
 		Impl: func(ctx context.Context, call *server.Call) error {
-			return s.Call(ctx, Generate_call{call})
+			return s.Generate(ctx, RPC_generate{call})
 		},
 	})
 
 	return methods
 }
 
-// Generate_call holds the state for a server call to Generate.call.
+// RPC_generate holds the state for a server call to RPC.generate.
 // See server.Call for documentation.
-type Generate_call struct {
+type RPC_generate struct {
 	*server.Call
 }
 
 // Args returns the call's arguments.
-func (c Generate_call) Args() Generate_call_Params {
-	return Generate_call_Params(c.Call.Args())
+func (c RPC_generate) Args() RPC_generate_Params {
+	return RPC_generate_Params(c.Call.Args())
 }
 
 // AllocResults allocates the results struct.
-func (c Generate_call) AllocResults() (Generate_call_Results, error) {
+func (c RPC_generate) AllocResults() (RPC_generate_Results, error) {
 	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 1})
-	return Generate_call_Results(r), err
+	return RPC_generate_Results(r), err
 }
 
-// Generate_List is a list of Generate.
-type Generate_List = capnp.CapList[Generate]
+// RPC_List is a list of RPC.
+type RPC_List = capnp.CapList[RPC]
 
-// NewGenerate_List creates a new list of Generate.
-func NewGenerate_List(s *capnp.Segment, sz int32) (Generate_List, error) {
+// NewRPC_List creates a new list of RPC.
+func NewRPC_List(s *capnp.Segment, sz int32) (RPC_List, error) {
 	l, err := capnp.NewPointerList(s, sz)
-	return capnp.CapList[Generate](l), err
+	return capnp.CapList[RPC](l), err
 }
 
-type Generate_call_Params capnp.Struct
+type RPC_generate_Params capnp.Struct
 
-// Generate_call_Params_TypeID is the unique identifier for the type Generate_call_Params.
-const Generate_call_Params_TypeID = 0x8d7da7a151f963b9
+// RPC_generate_Params_TypeID is the unique identifier for the type RPC_generate_Params.
+const RPC_generate_Params_TypeID = 0xe08f292ca43e53ad
 
-func NewGenerate_call_Params(s *capnp.Segment) (Generate_call_Params, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3})
-	return Generate_call_Params(st), err
+func NewRPC_generate_Params(s *capnp.Segment) (RPC_generate_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_generate_Params(st), err
 }
 
-func NewRootGenerate_call_Params(s *capnp.Segment) (Generate_call_Params, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3})
-	return Generate_call_Params(st), err
+func NewRootRPC_generate_Params(s *capnp.Segment) (RPC_generate_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_generate_Params(st), err
 }
 
-func ReadRootGenerate_call_Params(msg *capnp.Message) (Generate_call_Params, error) {
+func ReadRootRPC_generate_Params(msg *capnp.Message) (RPC_generate_Params, error) {
 	root, err := msg.Root()
-	return Generate_call_Params(root.Struct()), err
+	return RPC_generate_Params(root.Struct()), err
 }
 
-func (s Generate_call_Params) String() string {
-	str, _ := text.Marshal(0x8d7da7a151f963b9, capnp.Struct(s))
+func (s RPC_generate_Params) String() string {
+	str, _ := text.Marshal(0xe08f292ca43e53ad, capnp.Struct(s))
 	return str
 }
 
-func (s Generate_call_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+func (s RPC_generate_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
 	return capnp.Struct(s).EncodeAsPtr(seg)
 }
 
-func (Generate_call_Params) DecodeFromPtr(p capnp.Ptr) Generate_call_Params {
-	return Generate_call_Params(capnp.Struct{}.DecodeFromPtr(p))
+func (RPC_generate_Params) DecodeFromPtr(p capnp.Ptr) RPC_generate_Params {
+	return RPC_generate_Params(capnp.Struct{}.DecodeFromPtr(p))
 }
 
-func (s Generate_call_Params) ToPtr() capnp.Ptr {
+func (s RPC_generate_Params) ToPtr() capnp.Ptr {
 	return capnp.Struct(s).ToPtr()
 }
-func (s Generate_call_Params) IsValid() bool {
+func (s RPC_generate_Params) IsValid() bool {
 	return capnp.Struct(s).IsValid()
 }
 
-func (s Generate_call_Params) Message() *capnp.Message {
+func (s RPC_generate_Params) Message() *capnp.Message {
 	return capnp.Struct(s).Message()
 }
 
-func (s Generate_call_Params) Segment() *capnp.Segment {
+func (s RPC_generate_Params) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-func (s Generate_call_Params) Params() (params.Params, error) {
+func (s RPC_generate_Params) Context() (datura.Artifact, error) {
 	p, err := capnp.Struct(s).Ptr(0)
-	return params.Params(p.Struct()), err
+	return datura.Artifact(p.Struct()), err
 }
 
-func (s Generate_call_Params) HasParams() bool {
+func (s RPC_generate_Params) HasContext() bool {
 	return capnp.Struct(s).HasPtr(0)
 }
 
-func (s Generate_call_Params) SetParams(v params.Params) error {
+func (s RPC_generate_Params) SetContext(v datura.Artifact) error {
 	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
 }
 
-// NewParams sets the params field to a newly
-// allocated params.Params struct, preferring placement in s's segment.
-func (s Generate_call_Params) NewParams() (params.Params, error) {
-	ss, err := params.NewParams(capnp.Struct(s).Segment())
+// NewContext sets the context field to a newly
+// allocated datura.Artifact struct, preferring placement in s's segment.
+func (s RPC_generate_Params) NewContext() (datura.Artifact, error) {
+	ss, err := datura.NewArtifact(capnp.Struct(s).Segment())
 	if err != nil {
-		return params.Params{}, err
+		return datura.Artifact{}, err
 	}
 	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
 	return ss, err
 }
 
-func (s Generate_call_Params) Context() (context2.Context, error) {
-	p, err := capnp.Struct(s).Ptr(1)
-	return context2.Context(p.Struct()), err
+// RPC_generate_Params_List is a list of RPC_generate_Params.
+type RPC_generate_Params_List = capnp.StructList[RPC_generate_Params]
+
+// NewRPC_generate_Params creates a new list of RPC_generate_Params.
+func NewRPC_generate_Params_List(s *capnp.Segment, sz int32) (RPC_generate_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[RPC_generate_Params](l), err
 }
 
-func (s Generate_call_Params) HasContext() bool {
-	return capnp.Struct(s).HasPtr(1)
-}
+// RPC_generate_Params_Future is a wrapper for a RPC_generate_Params promised by a client call.
+type RPC_generate_Params_Future struct{ *capnp.Future }
 
-func (s Generate_call_Params) SetContext(v context2.Context) error {
-	return capnp.Struct(s).SetPtr(1, capnp.Struct(v).ToPtr())
-}
-
-// NewContext sets the context field to a newly
-// allocated context2.Context struct, preferring placement in s's segment.
-func (s Generate_call_Params) NewContext() (context2.Context, error) {
-	ss, err := context2.NewContext(capnp.Struct(s).Segment())
-	if err != nil {
-		return context2.Context{}, err
-	}
-	err = capnp.Struct(s).SetPtr(1, capnp.Struct(ss).ToPtr())
-	return ss, err
-}
-
-func (s Generate_call_Params) Tools() (tool.Tool_List, error) {
-	p, err := capnp.Struct(s).Ptr(2)
-	return tool.Tool_List(p.List()), err
-}
-
-func (s Generate_call_Params) HasTools() bool {
-	return capnp.Struct(s).HasPtr(2)
-}
-
-func (s Generate_call_Params) SetTools(v tool.Tool_List) error {
-	return capnp.Struct(s).SetPtr(2, v.ToPtr())
-}
-
-// NewTools sets the tools field to a newly
-// allocated tool.Tool_List, preferring placement in s's segment.
-func (s Generate_call_Params) NewTools(n int32) (tool.Tool_List, error) {
-	l, err := tool.NewTool_List(capnp.Struct(s).Segment(), n)
-	if err != nil {
-		return tool.Tool_List{}, err
-	}
-	err = capnp.Struct(s).SetPtr(2, l.ToPtr())
-	return l, err
-}
-
-// Generate_call_Params_List is a list of Generate_call_Params.
-type Generate_call_Params_List = capnp.StructList[Generate_call_Params]
-
-// NewGenerate_call_Params creates a new list of Generate_call_Params.
-func NewGenerate_call_Params_List(s *capnp.Segment, sz int32) (Generate_call_Params_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3}, sz)
-	return capnp.StructList[Generate_call_Params](l), err
-}
-
-// Generate_call_Params_Future is a wrapper for a Generate_call_Params promised by a client call.
-type Generate_call_Params_Future struct{ *capnp.Future }
-
-func (f Generate_call_Params_Future) Struct() (Generate_call_Params, error) {
+func (f RPC_generate_Params_Future) Struct() (RPC_generate_Params, error) {
 	p, err := f.Future.Ptr()
-	return Generate_call_Params(p.Struct()), err
+	return RPC_generate_Params(p.Struct()), err
 }
-func (p Generate_call_Params_Future) Params() params.Params_Future {
-	return params.Params_Future{Future: p.Future.Field(0, nil)}
-}
-func (p Generate_call_Params_Future) Context() context2.Context_Future {
-	return context2.Context_Future{Future: p.Future.Field(1, nil)}
+func (p RPC_generate_Params_Future) Context() datura.Artifact_Future {
+	return datura.Artifact_Future{Future: p.Future.Field(0, nil)}
 }
 
-type Generate_call_Results capnp.Struct
+type RPC_generate_Results capnp.Struct
 
-// Generate_call_Results_TypeID is the unique identifier for the type Generate_call_Results.
-const Generate_call_Results_TypeID = 0xfeaa7ae3fc604a1e
+// RPC_generate_Results_TypeID is the unique identifier for the type RPC_generate_Results.
+const RPC_generate_Results_TypeID = 0xe0a6c8f21681b1f9
 
-func NewGenerate_call_Results(s *capnp.Segment) (Generate_call_Results, error) {
+func NewRPC_generate_Results(s *capnp.Segment) (RPC_generate_Results, error) {
 	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
-	return Generate_call_Results(st), err
+	return RPC_generate_Results(st), err
 }
 
-func NewRootGenerate_call_Results(s *capnp.Segment) (Generate_call_Results, error) {
+func NewRootRPC_generate_Results(s *capnp.Segment) (RPC_generate_Results, error) {
 	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
-	return Generate_call_Results(st), err
+	return RPC_generate_Results(st), err
 }
 
-func ReadRootGenerate_call_Results(msg *capnp.Message) (Generate_call_Results, error) {
+func ReadRootRPC_generate_Results(msg *capnp.Message) (RPC_generate_Results, error) {
 	root, err := msg.Root()
-	return Generate_call_Results(root.Struct()), err
+	return RPC_generate_Results(root.Struct()), err
 }
 
-func (s Generate_call_Results) String() string {
-	str, _ := text.Marshal(0xfeaa7ae3fc604a1e, capnp.Struct(s))
+func (s RPC_generate_Results) String() string {
+	str, _ := text.Marshal(0xe0a6c8f21681b1f9, capnp.Struct(s))
 	return str
 }
 
-func (s Generate_call_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+func (s RPC_generate_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
 	return capnp.Struct(s).EncodeAsPtr(seg)
 }
 
-func (Generate_call_Results) DecodeFromPtr(p capnp.Ptr) Generate_call_Results {
-	return Generate_call_Results(capnp.Struct{}.DecodeFromPtr(p))
+func (RPC_generate_Results) DecodeFromPtr(p capnp.Ptr) RPC_generate_Results {
+	return RPC_generate_Results(capnp.Struct{}.DecodeFromPtr(p))
 }
 
-func (s Generate_call_Results) ToPtr() capnp.Ptr {
+func (s RPC_generate_Results) ToPtr() capnp.Ptr {
 	return capnp.Struct(s).ToPtr()
 }
-func (s Generate_call_Results) IsValid() bool {
+func (s RPC_generate_Results) IsValid() bool {
 	return capnp.Struct(s).IsValid()
 }
 
-func (s Generate_call_Results) Message() *capnp.Message {
+func (s RPC_generate_Results) Message() *capnp.Message {
 	return capnp.Struct(s).Message()
 }
 
-func (s Generate_call_Results) Segment() *capnp.Segment {
+func (s RPC_generate_Results) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-func (s Generate_call_Results) Out() (string, error) {
+func (s RPC_generate_Results) Out() (datura.Artifact, error) {
 	p, err := capnp.Struct(s).Ptr(0)
-	return p.Text(), err
+	return datura.Artifact(p.Struct()), err
 }
 
-func (s Generate_call_Results) HasOut() bool {
+func (s RPC_generate_Results) HasOut() bool {
 	return capnp.Struct(s).HasPtr(0)
 }
 
-func (s Generate_call_Results) OutBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return p.TextBytes(), err
+func (s RPC_generate_Results) SetOut(v datura.Artifact) error {
+	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
 }
 
-func (s Generate_call_Results) SetOut(v string) error {
-	return capnp.Struct(s).SetText(0, v)
+// NewOut sets the out field to a newly
+// allocated datura.Artifact struct, preferring placement in s's segment.
+func (s RPC_generate_Results) NewOut() (datura.Artifact, error) {
+	ss, err := datura.NewArtifact(capnp.Struct(s).Segment())
+	if err != nil {
+		return datura.Artifact{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
+	return ss, err
 }
 
-// Generate_call_Results_List is a list of Generate_call_Results.
-type Generate_call_Results_List = capnp.StructList[Generate_call_Results]
+// RPC_generate_Results_List is a list of RPC_generate_Results.
+type RPC_generate_Results_List = capnp.StructList[RPC_generate_Results]
 
-// NewGenerate_call_Results creates a new list of Generate_call_Results.
-func NewGenerate_call_Results_List(s *capnp.Segment, sz int32) (Generate_call_Results_List, error) {
+// NewRPC_generate_Results creates a new list of RPC_generate_Results.
+func NewRPC_generate_Results_List(s *capnp.Segment, sz int32) (RPC_generate_Results_List, error) {
 	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
-	return capnp.StructList[Generate_call_Results](l), err
+	return capnp.StructList[RPC_generate_Results](l), err
 }
 
-// Generate_call_Results_Future is a wrapper for a Generate_call_Results promised by a client call.
-type Generate_call_Results_Future struct{ *capnp.Future }
+// RPC_generate_Results_Future is a wrapper for a RPC_generate_Results promised by a client call.
+type RPC_generate_Results_Future struct{ *capnp.Future }
 
-func (f Generate_call_Results_Future) Struct() (Generate_call_Results, error) {
+func (f RPC_generate_Results_Future) Struct() (RPC_generate_Results, error) {
 	p, err := f.Future.Ptr()
-	return Generate_call_Results(p.Struct()), err
+	return RPC_generate_Results(p.Struct()), err
+}
+func (p RPC_generate_Results_Future) Out() datura.Artifact_Future {
+	return datura.Artifact_Future{Future: p.Future.Field(0, nil)}
 }
 
 type ByteStream capnp.Client
@@ -739,17 +695,28 @@ func (s ByteStream_write_Params) Message() *capnp.Message {
 func (s ByteStream_write_Params) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-func (s ByteStream_write_Params) Data() ([]byte, error) {
+func (s ByteStream_write_Params) Context() (datura.Artifact, error) {
 	p, err := capnp.Struct(s).Ptr(0)
-	return []byte(p.Data()), err
+	return datura.Artifact(p.Struct()), err
 }
 
-func (s ByteStream_write_Params) HasData() bool {
+func (s ByteStream_write_Params) HasContext() bool {
 	return capnp.Struct(s).HasPtr(0)
 }
 
-func (s ByteStream_write_Params) SetData(v []byte) error {
-	return capnp.Struct(s).SetData(0, v)
+func (s ByteStream_write_Params) SetContext(v datura.Artifact) error {
+	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
+}
+
+// NewContext sets the context field to a newly
+// allocated datura.Artifact struct, preferring placement in s's segment.
+func (s ByteStream_write_Params) NewContext() (datura.Artifact, error) {
+	ss, err := datura.NewArtifact(capnp.Struct(s).Segment())
+	if err != nil {
+		return datura.Artifact{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
+	return ss, err
 }
 
 // ByteStream_write_Params_List is a list of ByteStream_write_Params.
@@ -767,6 +734,9 @@ type ByteStream_write_Params_Future struct{ *capnp.Future }
 func (f ByteStream_write_Params_Future) Struct() (ByteStream_write_Params, error) {
 	p, err := f.Future.Ptr()
 	return ByteStream_write_Params(p.Struct()), err
+}
+func (p ByteStream_write_Params_Future) Context() datura.Artifact_Future {
+	return datura.Artifact_Future{Future: p.Future.Field(0, nil)}
 }
 
 type ByteStream_done_Params capnp.Struct
@@ -899,58 +869,53 @@ func (f ByteStream_done_Results_Future) Struct() (ByteStream_done_Results, error
 	return ByteStream_done_Results(p.Struct()), err
 }
 
-const schema_d4c9c9f76e88a0d2 = "x\xda\x94ROH\x14a\x1c\xfd\xbd\x99\xf9\x1c!\xd7" +
-	"\xddi\xec \x94\x0ba\x10\x1e\xdcT\x0c\xf1\xb2\x9b\xb4" +
-	"\xa8\xfd\x81\x19=\x8a\xe5\xc7\xee\x10[;\xb3\xd3\xec\x98" +
-	"\x19H\x87\x0e\x99\xb0\xa7\x10S\xfa\x7f(2*\x8c." +
-	"\x85Q\xd0!\xbc\xf6\x07\xa2nI\xa7\x0e\x1d\xfbC4" +
-	"\xf1\x8d\xbb\xab\x10\x92{\xfbf\xde\xfb\xde{\xdf\xfb\xfd" +
-	"\xf6\xbdEJ\xe9\x88\xdc\xa8'\xc9\xcc\xb2\xba\xa0g\xd2" +
-	"\xf0\xf7+K\x17H\x8b\xcb\xc1\x9b\x9b\xd3\xce\xf7\x95\x95" +
-	"wD\xe8\xeaV\x86\xa0\x0f**\x91\x9eV.\xea\xb3" +
-	"\xe2\x14<\xcd\xfc4o\xdd\x9d*\x91\xb6\x17DLV" +
-	"\x89\xba\xa6\x94\xdb \xe8%\xe5\x11!\xb8\xb4\xed\xf0\xb7" +
-	"D\xdd\x8e%\xd2\xe2X\x97c\x10\xc4n\xd6\x07=\xcd" +
-	"\x84\xe2\x01\x96$\x04\x9f\xaf\xce}i\x9ekY\xfe\xc7" +
-	"\x9b\x0b\xe6\xe9\x90i\xb3~}V\x9c^\x1c{?\xe2" +
-	"N^y\xae\xb5\x81H\x09\x8d\xd9c\x90\x12\\N\x7f" +
-	"\xc8-l?\xf9\x91\xd6\x11\x9b=\x13\xc8\xfd{\xa9\xeb" +
-	"\xd3\x9fV\xbf\xae!k!F\x05\x04\xdd\x0e\x03\xb4\x1c" +
-	"\x1a\xfb\xbdzn\xf1O\xf99!\xa1\xc4\x16\x05\xe1\x1a" +
-	"K\xd2r\xe0\x9e:\x91\xe0\xb9\x84\xabx\x853\xb9\xac" +
-	"\xe5%\xdc\xf2\xa1=\xc3]\xc7\xed\xed\x9b\xf4\xada\xdf" +
-	"\xb38l\x030\xebeFT\xb5\x85\xb3\xf4r\xa2k" +
-	"\xe1\xf8\xbc\xd6\xd1I\x92\xb6G\x05*\x8f\xd8\x10\xba\xb9" +
-	"\x8d$-\xa2\xc6'\xbc\x9co\xa5\x10\xcd\x16\x1c+\x05" +
-	"\x03\xa8\x9a\xb3M\xcc\xfb-\xc7\xf2\xb8o\xb5gx>" +
-	"\xdfjpO\xe5v\xd1l\x90\x15\"\x05DZ\xba\x97" +
-	"\xc8L\xc90\x8fH\xd0\x80&\x88\x9f\x83}D\xe6A" +
-	"\x19\xa6!A\x93\xa4&HD\xda\xd1N\"s@\x86" +
-	"\x99\x95\x90t\xb9\xc7\xed\"bA\xcb\xcc|\xcf\xc0\xcc" +
-	"\xc8+\" F8\x9f)8\xbeu\xd6G,h~" +
-	"\xd03\xba\xf3\xe1\x9dR\x19\x89\xfb\x85B\xbe\x88F\x82" +
-	"!\x03\xb1`\xec\xc9\xeb\x85]\xc3?~\x09\xb8\x91\xf0" +
-	"\xdf\x16\x8d\xf2'\x89\x0e\x95j\xfeH\x1b\x91Y/\xc3" +
-	"l\x92\x10u\xb8m\xa1\x81$4lA\xb0\xd2LY" +
-	"\x90m\xd8\\Tf\xaei\xa2x\xa6FE{[+" +
-	"\xbc:m\xbb]L\xa9\xd5\x88\x87U\xd5|o(i" +
-	"\x15\xc7\xf3~M\x17\xc3\xf5hM\x1a\xa1\xe3f%e" +
-	"\xb9\xcf\x11!\x09\x11\xaau}\x86\xacbTd\xda(" +
-	"\xbd{]Z-\x8c\xfb\x95\xfa\xff\x06\x00\x00\xff\xff\x05" +
-	"\xea@\xbf"
+const schema_d4c9c9f76e88a0d2 = "x\xda\x94RMh\xd3n\x18\x7f\x9e\xbco\x97\x95\xff" +
+	"\xfa\xdf^\xa3\x82^\x8aZ\x0f\xab\xda8\x0b\xa2\x1eL" +
+	"\xe9\x10A/i\xe6E\x04%\xac/#\xba\xa4!I" +
+	"\x9d=\x89\x88:O\x0a\"\xb8\x1eDD\x04\x11\x85x" +
+	"\x14E/\x82C\x04\x11\x05?\x10\x04\xd9A<\x08\x82" +
+	"\x8c\x9c\"I?\xd2\"\xd2\xed\xf6\x06~\xdfOv^" +
+	"\xc4\x12\x9d\xc8(\"\x08\x95#\xa9\xa1pOC\xf5v" +
+	"S\xff<\xb0,\x09\xdf\xde\x9a\xb7\x96\x17\x17\xdf\x01`" +
+	"\xf1\x02\xd1PZ \"\x80t\x9d\\\x92\x96\xa2Wx" +
+	"\xf9\xbf\xc3?\xe5\xa1u>\xb0,&\xe8\x14\x8a\x00\xc5" +
+	"\xd7\xa4\x8c\xd2\x97\x98\xf0\x91(\x80\xcf\x8e\xbf?f7" +
+	"n<ey\x04\xa0\x11\" \x8f\x10h\xf8*x\xb3" +
+	"C\xae>y\xf1\x97\xe5w\xb2\x11\xa5 V\xf8M\x0e" +
+	"J\x9b\"Rx\xed\xc0\x07\xa3\xb9\xe6\xe4'Ht\xd2" +
+	"\xf4q\xa4\xf3`j\xff\x9d\xed\xe3W\xbe\x02\xdb\x82\xd0" +
+	"\x0e\x11\x90&\x02Ji\xaa\x00\x86\x81\x7fn\xfd\xaf\x97" +
+	"w\xfb\x00\xe3\xf4v\x04\xd8\x1b\x03\xee\xdf+\xdd\x9c\xff" +
+	"\xfc\xedGK\xbb\x058\x1a\x89\xa3dP\x05\xae\x86\xf6" +
+	"\xa9\x19Y7d\x9b:\xb5\xd3F\x95;\xb2\xdd~\x14" +
+	"\xa6u\xdb\xb2\xf7\x95\x1b\x1e\x9f\xf2\x1c\xae\xa3\xa9\"V" +
+	"\x86I\x0a\xa0\xab\x8a\x96\xff|\xae\xd8<\xb1\xc0&v" +
+	"\x81\xc0\xb6\x8a\xd8\xdd\xa4\xa7\xd5\x86<\x08,#f\xe7" +
+	"\x1c\xc3\xe3%\x1c\xad\xd6,^B\x15q\xa0\xb9\xda\xfe" +
+	"\x84\xc8\x9a\x12\x0a@\x11\x80e\xf2\x00\x95a\x82\x95\xb5" +
+	"\x02\x8eZ\xba\xc9q\x04\x04\x1c\x81D05\xa8\x8dY" +
+	"\x88R\xe4\xd4\xac\xee\xe8\xa6\xdb\xe5\x91\x7f\xf04\xa2N" +
+	"\xb62D\xf5;g\xc1\xce\xfc\x8c\x1d\x02\x81\xa5\xc5p" +
+	"\x86[\xdc\xd1=\x0e\x00\xfd\x0dW\x1aHS\xb8[\x9f" +
+	"\xf5\xdc\x81DM\x9d,t\xdcr\xaa\xee\xe8\xc4t{" +
+	"'*'\x13\x9d\x9d\xaeY\x1e?\xe3\xe1\xd8\xf2R\xfd" +
+	"\xe1\xff\xdb\xd2> \x8e\xad`\xad>\x0f\x8d\xbbuq" +
+	"\xd6\xeb3\xd9\x9c\x98\x88\xb5\xfa\xea\x0dz\xda\xc7?G" +
+	"NQ\xe3{\xac\xb2\xc8\x9f\x00\x00\x00\xff\xff\xb3\xf36" +
+	"\x1e"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{
 		String: schema_d4c9c9f76e88a0d2,
 		Nodes: []uint64{
 			0x83b1043674507938,
-			0x8d7da7a151f963b9,
 			0xb115062fef4b0b89,
-			0xbc1e9719e5979ce2,
 			0xbd009879705bd55e,
+			0xc5bc642f2dd0f9cb,
 			0xda6a129a69d84593,
+			0xe08f292ca43e53ad,
+			0xe0a6c8f21681b1f9,
 			0xebe3db889e40a9ab,
-			0xfeaa7ae3fc604a1e,
 		},
 		Compressed: true,
 	})

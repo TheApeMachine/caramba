@@ -1,14 +1,12 @@
 package agent
 
 import (
-	"context"
-	"fmt"
 	"io"
 
 	"capnproto.org/go/capnp/v3"
 	"capnproto.org/go/capnp/v3/rpc"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
+	aictx "github.com/theapemachine/caramba/pkg/ai/context"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -48,6 +46,17 @@ func New(options ...AgentBuilderOption) *AgentBuilder {
 		return nil
 	}
 
+	params, err := agent.NewParams()
+	if errnie.Error(err) != nil {
+		return nil
+	}
+
+	if errnie.Error(agent.SetParams(params)) != nil {
+		return nil
+	}
+
+	agent.SetContext(*aictx.New().Context)
+
 	builder := &AgentBuilder{
 		Agent: &agent,
 	}
@@ -70,60 +79,6 @@ func (agent *Agent) Conn(transport io.ReadWriteCloser) *rpc.Conn {
 	return rpc.NewConn(rpc.NewStreamTransport(transport), &rpc.Options{
 		BootstrapClient: capnp.Client(agent.Client()),
 	})
-}
-
-// SendTask sends a task to the agent
-func (agent *AgentBuilder) SendTask(task *datura.ArtifactBuilder) error {
-	out := datura.New()
-
-	// Get agent client from bootstrapped connection
-	client := agent.Conn(out).Bootstrap(context.Background())
-	agentClient := AgentRPC(client)
-
-	// Marshal the task for transmission
-	msgData, err := task.Message().Marshal()
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	// Send message using the process method
-	future, release := agentClient.Process(context.Background(), func(p AgentRPC_process_Params) error {
-		return p.SetMessage_(msgData)
-	})
-	defer release()
-
-	// Wait for response
-	result, err := future.Struct()
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	// Process response if needed
-	response, err := result.Response()
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	spew.Dump(response)
-
-	// Handle response if present
-	if len(response) > 0 {
-		if responseArtifact := datura.Unmarshal(response); responseArtifact != nil {
-			if payload, err := responseArtifact.DecryptPayload(); err == nil {
-				identity, err := agent.Identity()
-				if err != nil {
-					return errnie.Error(err)
-				}
-				name, err := identity.Name()
-				if err != nil {
-					return errnie.Error(err)
-				}
-				fmt.Printf("Response from %s: %s\n", name, string(payload))
-			}
-		}
-	}
-
-	return nil
 }
 
 // WithName sets the agent's name
@@ -157,4 +112,76 @@ func WithTransport(transport io.ReadWriteCloser) AgentBuilderOption {
 		a.Transport = transport
 		return nil
 	}
+}
+
+func WithModel(model string) AgentBuilderOption {
+	return func(a *AgentBuilder) error {
+		params, err := a.Params()
+		if err != nil {
+			return errnie.Error(err)
+		}
+
+		return errnie.Error(params.SetModel(model))
+	}
+}
+
+// ProcessCommand handles command messages sent to the agent
+func (agent *AgentBuilder) ProcessCommand(msg *datura.ArtifactBuilder) error {
+	// Get command from message metadata
+	cmd := datura.GetMetaValue[string](msg, "command")
+	if cmd == "" {
+		return nil // Skip messages without a command
+	}
+
+	// Process command based on type
+	switch cmd {
+	case "stop":
+		// Handle stop command
+		return nil
+	default:
+		// Unknown command
+		return nil
+	}
+}
+
+// UpdateStatus handles status update messages
+func (agent *AgentBuilder) UpdateStatus(msg *datura.ArtifactBuilder) error {
+	// Update agent status based on message
+	status := datura.GetMetaValue[string](msg, "status")
+	if status == "" {
+		return nil // Skip messages without status
+	}
+
+	// Update agent state based on status
+	return nil
+}
+
+// ProcessMessage handles general messages sent to the agent
+func (agent *AgentBuilder) ProcessMessage(msg *datura.ArtifactBuilder) error {
+	// Process message based on its role
+	role := datura.GetMetaValue[string](msg, "role")
+	if role == "" {
+		return nil // Skip messages without role
+	}
+
+	// Get message payload
+	_, err := msg.DecryptPayload()
+	if err != nil {
+		return err
+	}
+
+	// Add message to agent's context
+	return nil
+}
+
+// IsActive checks if the agent is still active
+func (agent *AgentBuilder) IsActive() bool {
+	// Check agent's active status
+	return true // For now, always return true
+}
+
+// Maintain performs periodic maintenance tasks
+func (agent *AgentBuilder) Maintain() error {
+	// Perform any necessary maintenance
+	return nil
 }
