@@ -65,10 +65,10 @@ func NewRunner(runtime Runtime) *Runner {
 }
 
 func (runner *Runner) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	out := make(chan *datura.Artifact)
+	buffer chan *datura.ArtifactBuilder,
+	fn ...func(artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder,
+) chan *datura.ArtifactBuilder {
+	out := make(chan *datura.ArtifactBuilder)
 
 	// Detect when the command has finished executing and the
 	// output has been written to the buffer.

@@ -11,7 +11,7 @@ Job is an interface any type can implement if they want to be able to use the
 generics goroutine pool.
 */
 type Job interface {
-	Do(*datura.Artifact, chan *datura.Artifact) *datura.Artifact
+	Do(*datura.Artifact) *datura.Artifact
 }
 
 /*
@@ -31,10 +31,9 @@ type RetriableJob struct {
 	cancel context.CancelFunc
 	fn     Job
 	tries  int
-	out    chan *datura.Artifact
 }
 
-func NewRetriableJob(ctx context.Context, fn Job, tries int, out chan *datura.Artifact) Job {
+func NewRetriableJob(ctx context.Context, fn Job, tries int) Job {
 	ctx, cancel := context.WithCancel(ctx)
 
 	return NewJob(RetriableJob{
@@ -42,13 +41,12 @@ func NewRetriableJob(ctx context.Context, fn Job, tries int, out chan *datura.Ar
 		cancel: cancel,
 		fn:     fn,
 		tries:  tries,
-		out:    out,
 	})
 }
 
 /*
 Do the job and retry x amount of times when needed.
 */
-func (job RetriableJob) Do(artifact *datura.Artifact, out chan *datura.Artifact) *datura.Artifact {
-	return NewRetrier(NewFibonacci(job.tries)).Do(job.fn, artifact, out)
+func (job RetriableJob) Do(artifact *datura.Artifact) *datura.Artifact {
+	return NewRetrier(NewFibonacci(job.tries)).Do(job.fn, artifact)
 }

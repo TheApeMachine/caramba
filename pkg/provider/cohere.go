@@ -84,10 +84,10 @@ func (prvdr *CohereProvider) Generate(
 	params params.Params,
 	ctx aicontext.Context,
 	tools []mcp.Tool,
-) chan *datura.Artifact {
+) chan *datura.ArtifactBuilder {
 	model, err := params.Model()
 
-	out := make(chan *datura.Artifact)
+	out := make(chan *datura.ArtifactBuilder)
 
 	go func() {
 		defer close(out)
@@ -147,7 +147,7 @@ func (prvdr *CohereProvider) Name() string {
 
 func (prvdr *CohereProvider) handleSingleRequest(
 	params *cohere.ChatStreamRequest,
-	channel chan *datura.Artifact,
+	channel chan *datura.ArtifactBuilder,
 ) {
 	errnie.Debug("provider.handleSingleRequest")
 
@@ -245,7 +245,7 @@ func (prvdr *CohereProvider) handleSingleRequest(
 
 func (prvdr *CohereProvider) handleStreamingRequest(
 	params *cohere.ChatStreamRequest,
-	channel chan *datura.Artifact,
+	channel chan *datura.ArtifactBuilder,
 ) {
 	errnie.Debug("provider.handleStreamingRequest")
 
@@ -460,12 +460,12 @@ func NewCohereEmbedder(apiKey string, endpoint string) *CohereEmbedder {
 }
 
 func (embedder *CohereEmbedder) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
+	buffer chan *datura.ArtifactBuilder,
+	fn ...func(artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder,
+) chan *datura.ArtifactBuilder {
 	errnie.Debug("provider.CohereEmbedder.Generate")
 
-	out := make(chan *datura.Artifact)
+	out := make(chan *datura.ArtifactBuilder)
 
 	go func() {
 		defer close(out)

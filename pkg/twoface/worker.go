@@ -36,7 +36,6 @@ func NewWorker(pool *Pool) *Worker {
 
 func (worker *Worker) Generate(
 	artifact chan *datura.Artifact,
-	fn ...func(*datura.Artifact) *datura.Artifact,
 ) chan *datura.Artifact {
 	go func() {
 		var data *datura.Artifact
@@ -52,7 +51,7 @@ func (worker *Worker) Generate(
 				job := <-worker.jobs
 
 				t := time.Now()
-				job.Do(data, artifact)
+				job.Do(data)
 
 				worker.latency = time.Duration(
 					time.Since(t).Nanoseconds(),

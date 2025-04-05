@@ -8,10 +8,11 @@ import (
 	fc "capnproto.org/go/capnp/v3/flowcontrol"
 	schemas "capnproto.org/go/capnp/v3/schemas"
 	server "capnproto.org/go/capnp/v3/server"
+	stream "capnproto.org/go/capnp/v3/std/capnp/stream"
 	context "context"
 	context2 "github.com/theapemachine/caramba/pkg/ai/context"
 	params "github.com/theapemachine/caramba/pkg/ai/params"
-	tools "github.com/theapemachine/caramba/pkg/tools"
+	tool "github.com/theapemachine/caramba/pkg/ai/tool"
 )
 
 type Provider capnp.Struct
@@ -121,26 +122,6 @@ func (c Generate) Call(ctx context.Context, params func(Generate_call_Params) er
 
 }
 
-func (c Generate) Stream(ctx context.Context, params func(Generate_stream_Params) error) (Generate_stream_Results_Future, capnp.ReleaseFunc) {
-
-	s := capnp.Send{
-		Method: capnp.Method{
-			InterfaceID:   0xbc1e9719e5979ce2,
-			MethodID:      1,
-			InterfaceName: "pkg/ai/provider/provider.capnp:Generate",
-			MethodName:    "stream",
-		},
-	}
-	if params != nil {
-		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 3}
-		s.PlaceArgs = func(s capnp.Struct) error { return params(Generate_stream_Params(s)) }
-	}
-
-	ans, release := capnp.Client(c).SendCall(ctx, s)
-	return Generate_stream_Results_Future{Future: ans.Future()}, release
-
-}
-
 func (c Generate) WaitStreaming() error {
 	return capnp.Client(c).WaitStreaming()
 }
@@ -215,8 +196,6 @@ func (c Generate) GetFlowLimiter() fc.FlowLimiter {
 // A Generate_Server is a Generate with a local implementation.
 type Generate_Server interface {
 	Call(context.Context, Generate_call) error
-
-	Stream(context.Context, Generate_stream) error
 }
 
 // Generate_NewServer creates a new Server from an implementation of Generate_Server.
@@ -235,7 +214,7 @@ func Generate_ServerToClient(s Generate_Server) Generate {
 // This can be used to create a more complicated Server.
 func Generate_Methods(methods []server.Method, s Generate_Server) []server.Method {
 	if cap(methods) == 0 {
-		methods = make([]server.Method, 0, 2)
+		methods = make([]server.Method, 0, 1)
 	}
 
 	methods = append(methods, server.Method{
@@ -247,18 +226,6 @@ func Generate_Methods(methods []server.Method, s Generate_Server) []server.Metho
 		},
 		Impl: func(ctx context.Context, call *server.Call) error {
 			return s.Call(ctx, Generate_call{call})
-		},
-	})
-
-	methods = append(methods, server.Method{
-		Method: capnp.Method{
-			InterfaceID:   0xbc1e9719e5979ce2,
-			MethodID:      1,
-			InterfaceName: "pkg/ai/provider/provider.capnp:Generate",
-			MethodName:    "stream",
-		},
-		Impl: func(ctx context.Context, call *server.Call) error {
-			return s.Stream(ctx, Generate_stream{call})
 		},
 	})
 
@@ -280,23 +247,6 @@ func (c Generate_call) Args() Generate_call_Params {
 func (c Generate_call) AllocResults() (Generate_call_Results, error) {
 	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 1})
 	return Generate_call_Results(r), err
-}
-
-// Generate_stream holds the state for a server call to Generate.stream.
-// See server.Call for documentation.
-type Generate_stream struct {
-	*server.Call
-}
-
-// Args returns the call's arguments.
-func (c Generate_stream) Args() Generate_stream_Params {
-	return Generate_stream_Params(c.Call.Args())
-}
-
-// AllocResults allocates the results struct.
-func (c Generate_stream) AllocResults() (Generate_stream_Results, error) {
-	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 1})
-	return Generate_stream_Results(r), err
 }
 
 // Generate_List is a list of Generate.
@@ -403,25 +353,25 @@ func (s Generate_call_Params) NewContext() (context2.Context, error) {
 	return ss, err
 }
 
-func (s Generate_call_Params) Tools() (tools.Tool_List, error) {
+func (s Generate_call_Params) Tools() (tool.Tool_List, error) {
 	p, err := capnp.Struct(s).Ptr(2)
-	return tools.Tool_List(p.List()), err
+	return tool.Tool_List(p.List()), err
 }
 
 func (s Generate_call_Params) HasTools() bool {
 	return capnp.Struct(s).HasPtr(2)
 }
 
-func (s Generate_call_Params) SetTools(v tools.Tool_List) error {
+func (s Generate_call_Params) SetTools(v tool.Tool_List) error {
 	return capnp.Struct(s).SetPtr(2, v.ToPtr())
 }
 
 // NewTools sets the tools field to a newly
-// allocated tools.Tool_List, preferring placement in s's segment.
-func (s Generate_call_Params) NewTools(n int32) (tools.Tool_List, error) {
-	l, err := tools.NewTool_List(capnp.Struct(s).Segment(), n)
+// allocated tool.Tool_List, preferring placement in s's segment.
+func (s Generate_call_Params) NewTools(n int32) (tool.Tool_List, error) {
+	l, err := tool.NewTool_List(capnp.Struct(s).Segment(), n)
 	if err != nil {
-		return tools.Tool_List{}, err
+		return tool.Tool_List{}, err
 	}
 	err = capnp.Struct(s).SetPtr(2, l.ToPtr())
 	return l, err
@@ -532,273 +482,474 @@ func (f Generate_call_Results_Future) Struct() (Generate_call_Results, error) {
 	return Generate_call_Results(p.Struct()), err
 }
 
-type Generate_stream_Params capnp.Struct
+type ByteStream capnp.Client
 
-// Generate_stream_Params_TypeID is the unique identifier for the type Generate_stream_Params.
-const Generate_stream_Params_TypeID = 0xd3cd20884c685f8b
+// ByteStream_TypeID is the unique identifier for the type ByteStream.
+const ByteStream_TypeID = 0x83b1043674507938
 
-func NewGenerate_stream_Params(s *capnp.Segment) (Generate_stream_Params, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3})
-	return Generate_stream_Params(st), err
-}
-
-func NewRootGenerate_stream_Params(s *capnp.Segment) (Generate_stream_Params, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3})
-	return Generate_stream_Params(st), err
-}
-
-func ReadRootGenerate_stream_Params(msg *capnp.Message) (Generate_stream_Params, error) {
-	root, err := msg.Root()
-	return Generate_stream_Params(root.Struct()), err
-}
-
-func (s Generate_stream_Params) String() string {
-	str, _ := text.Marshal(0xd3cd20884c685f8b, capnp.Struct(s))
-	return str
-}
-
-func (s Generate_stream_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
-	return capnp.Struct(s).EncodeAsPtr(seg)
-}
-
-func (Generate_stream_Params) DecodeFromPtr(p capnp.Ptr) Generate_stream_Params {
-	return Generate_stream_Params(capnp.Struct{}.DecodeFromPtr(p))
-}
-
-func (s Generate_stream_Params) ToPtr() capnp.Ptr {
-	return capnp.Struct(s).ToPtr()
-}
-func (s Generate_stream_Params) IsValid() bool {
-	return capnp.Struct(s).IsValid()
-}
-
-func (s Generate_stream_Params) Message() *capnp.Message {
-	return capnp.Struct(s).Message()
-}
-
-func (s Generate_stream_Params) Segment() *capnp.Segment {
-	return capnp.Struct(s).Segment()
-}
-func (s Generate_stream_Params) Params() (params.Params, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return params.Params(p.Struct()), err
-}
-
-func (s Generate_stream_Params) HasParams() bool {
-	return capnp.Struct(s).HasPtr(0)
-}
-
-func (s Generate_stream_Params) SetParams(v params.Params) error {
-	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
-}
-
-// NewParams sets the params field to a newly
-// allocated params.Params struct, preferring placement in s's segment.
-func (s Generate_stream_Params) NewParams() (params.Params, error) {
-	ss, err := params.NewParams(capnp.Struct(s).Segment())
-	if err != nil {
-		return params.Params{}, err
+func (c ByteStream) Write(ctx context.Context, params func(ByteStream_write_Params) error) error {
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0x83b1043674507938,
+			MethodID:      0,
+			InterfaceName: "pkg/ai/provider/provider.capnp:ByteStream",
+			MethodName:    "write",
+		},
 	}
-	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
-	return ss, err
-}
-
-func (s Generate_stream_Params) Context() (context2.Context, error) {
-	p, err := capnp.Struct(s).Ptr(1)
-	return context2.Context(p.Struct()), err
-}
-
-func (s Generate_stream_Params) HasContext() bool {
-	return capnp.Struct(s).HasPtr(1)
-}
-
-func (s Generate_stream_Params) SetContext(v context2.Context) error {
-	return capnp.Struct(s).SetPtr(1, capnp.Struct(v).ToPtr())
-}
-
-// NewContext sets the context field to a newly
-// allocated context2.Context struct, preferring placement in s's segment.
-func (s Generate_stream_Params) NewContext() (context2.Context, error) {
-	ss, err := context2.NewContext(capnp.Struct(s).Segment())
-	if err != nil {
-		return context2.Context{}, err
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 1}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(ByteStream_write_Params(s)) }
 	}
-	err = capnp.Struct(s).SetPtr(1, capnp.Struct(ss).ToPtr())
-	return ss, err
+
+	return capnp.Client(c).SendStreamCall(ctx, s)
+
 }
 
-func (s Generate_stream_Params) Tools() (tools.Tool_List, error) {
-	p, err := capnp.Struct(s).Ptr(2)
-	return tools.Tool_List(p.List()), err
-}
+func (c ByteStream) Done(ctx context.Context, params func(ByteStream_done_Params) error) (ByteStream_done_Results_Future, capnp.ReleaseFunc) {
 
-func (s Generate_stream_Params) HasTools() bool {
-	return capnp.Struct(s).HasPtr(2)
-}
-
-func (s Generate_stream_Params) SetTools(v tools.Tool_List) error {
-	return capnp.Struct(s).SetPtr(2, v.ToPtr())
-}
-
-// NewTools sets the tools field to a newly
-// allocated tools.Tool_List, preferring placement in s's segment.
-func (s Generate_stream_Params) NewTools(n int32) (tools.Tool_List, error) {
-	l, err := tools.NewTool_List(capnp.Struct(s).Segment(), n)
-	if err != nil {
-		return tools.Tool_List{}, err
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0x83b1043674507938,
+			MethodID:      1,
+			InterfaceName: "pkg/ai/provider/provider.capnp:ByteStream",
+			MethodName:    "done",
+		},
 	}
-	err = capnp.Struct(s).SetPtr(2, l.ToPtr())
-	return l, err
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 0}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(ByteStream_done_Params(s)) }
+	}
+
+	ans, release := capnp.Client(c).SendCall(ctx, s)
+	return ByteStream_done_Results_Future{Future: ans.Future()}, release
+
 }
 
-// Generate_stream_Params_List is a list of Generate_stream_Params.
-type Generate_stream_Params_List = capnp.StructList[Generate_stream_Params]
-
-// NewGenerate_stream_Params creates a new list of Generate_stream_Params.
-func NewGenerate_stream_Params_List(s *capnp.Segment, sz int32) (Generate_stream_Params_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 3}, sz)
-	return capnp.StructList[Generate_stream_Params](l), err
+func (c ByteStream) WaitStreaming() error {
+	return capnp.Client(c).WaitStreaming()
 }
 
-// Generate_stream_Params_Future is a wrapper for a Generate_stream_Params promised by a client call.
-type Generate_stream_Params_Future struct{ *capnp.Future }
-
-func (f Generate_stream_Params_Future) Struct() (Generate_stream_Params, error) {
-	p, err := f.Future.Ptr()
-	return Generate_stream_Params(p.Struct()), err
-}
-func (p Generate_stream_Params_Future) Params() params.Params_Future {
-	return params.Params_Future{Future: p.Future.Field(0, nil)}
-}
-func (p Generate_stream_Params_Future) Context() context2.Context_Future {
-	return context2.Context_Future{Future: p.Future.Field(1, nil)}
+// String returns a string that identifies this capability for debugging
+// purposes.  Its format should not be depended on: in particular, it
+// should not be used to compare clients.  Use IsSame to compare clients
+// for equality.
+func (c ByteStream) String() string {
+	return "ByteStream(" + capnp.Client(c).String() + ")"
 }
 
-type Generate_stream_Results capnp.Struct
+// AddRef creates a new Client that refers to the same capability as c.
+// If c is nil or has resolved to null, then AddRef returns nil.
+func (c ByteStream) AddRef() ByteStream {
+	return ByteStream(capnp.Client(c).AddRef())
+}
 
-// Generate_stream_Results_TypeID is the unique identifier for the type Generate_stream_Results.
-const Generate_stream_Results_TypeID = 0xda9aa7c5b85459af
+// Release releases a capability reference.  If this is the last
+// reference to the capability, then the underlying resources associated
+// with the capability will be released.
+//
+// Release will panic if c has already been released, but not if c is
+// nil or resolved to null.
+func (c ByteStream) Release() {
+	capnp.Client(c).Release()
+}
 
-func NewGenerate_stream_Results(s *capnp.Segment) (Generate_stream_Results, error) {
+// Resolve blocks until the capability is fully resolved or the Context
+// expires.
+func (c ByteStream) Resolve(ctx context.Context) error {
+	return capnp.Client(c).Resolve(ctx)
+}
+
+func (c ByteStream) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Client(c).EncodeAsPtr(seg)
+}
+
+func (ByteStream) DecodeFromPtr(p capnp.Ptr) ByteStream {
+	return ByteStream(capnp.Client{}.DecodeFromPtr(p))
+}
+
+// IsValid reports whether c is a valid reference to a capability.
+// A reference is invalid if it is nil, has resolved to null, or has
+// been released.
+func (c ByteStream) IsValid() bool {
+	return capnp.Client(c).IsValid()
+}
+
+// IsSame reports whether c and other refer to a capability created by the
+// same call to NewClient.  This can return false negatives if c or other
+// are not fully resolved: use Resolve if this is an issue.  If either
+// c or other are released, then IsSame panics.
+func (c ByteStream) IsSame(other ByteStream) bool {
+	return capnp.Client(c).IsSame(capnp.Client(other))
+}
+
+// Update the flowcontrol.FlowLimiter used to manage flow control for
+// this client. This affects all future calls, but not calls already
+// waiting to send. Passing nil sets the value to flowcontrol.NopLimiter,
+// which is also the default.
+func (c ByteStream) SetFlowLimiter(lim fc.FlowLimiter) {
+	capnp.Client(c).SetFlowLimiter(lim)
+}
+
+// Get the current flowcontrol.FlowLimiter used to manage flow control
+// for this client.
+func (c ByteStream) GetFlowLimiter() fc.FlowLimiter {
+	return capnp.Client(c).GetFlowLimiter()
+}
+
+// A ByteStream_Server is a ByteStream with a local implementation.
+type ByteStream_Server interface {
+	Write(context.Context, ByteStream_write) error
+
+	Done(context.Context, ByteStream_done) error
+}
+
+// ByteStream_NewServer creates a new Server from an implementation of ByteStream_Server.
+func ByteStream_NewServer(s ByteStream_Server) *server.Server {
+	c, _ := s.(server.Shutdowner)
+	return server.New(ByteStream_Methods(nil, s), s, c)
+}
+
+// ByteStream_ServerToClient creates a new Client from an implementation of ByteStream_Server.
+// The caller is responsible for calling Release on the returned Client.
+func ByteStream_ServerToClient(s ByteStream_Server) ByteStream {
+	return ByteStream(capnp.NewClient(ByteStream_NewServer(s)))
+}
+
+// ByteStream_Methods appends Methods to a slice that invoke the methods on s.
+// This can be used to create a more complicated Server.
+func ByteStream_Methods(methods []server.Method, s ByteStream_Server) []server.Method {
+	if cap(methods) == 0 {
+		methods = make([]server.Method, 0, 2)
+	}
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0x83b1043674507938,
+			MethodID:      0,
+			InterfaceName: "pkg/ai/provider/provider.capnp:ByteStream",
+			MethodName:    "write",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.Write(ctx, ByteStream_write{call})
+		},
+	})
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0x83b1043674507938,
+			MethodID:      1,
+			InterfaceName: "pkg/ai/provider/provider.capnp:ByteStream",
+			MethodName:    "done",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.Done(ctx, ByteStream_done{call})
+		},
+	})
+
+	return methods
+}
+
+// ByteStream_write holds the state for a server call to ByteStream.write.
+// See server.Call for documentation.
+type ByteStream_write struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c ByteStream_write) Args() ByteStream_write_Params {
+	return ByteStream_write_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c ByteStream_write) AllocResults() (stream.StreamResult, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return stream.StreamResult(r), err
+}
+
+// ByteStream_done holds the state for a server call to ByteStream.done.
+// See server.Call for documentation.
+type ByteStream_done struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c ByteStream_done) Args() ByteStream_done_Params {
+	return ByteStream_done_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c ByteStream_done) AllocResults() (ByteStream_done_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return ByteStream_done_Results(r), err
+}
+
+// ByteStream_List is a list of ByteStream.
+type ByteStream_List = capnp.CapList[ByteStream]
+
+// NewByteStream_List creates a new list of ByteStream.
+func NewByteStream_List(s *capnp.Segment, sz int32) (ByteStream_List, error) {
+	l, err := capnp.NewPointerList(s, sz)
+	return capnp.CapList[ByteStream](l), err
+}
+
+type ByteStream_write_Params capnp.Struct
+
+// ByteStream_write_Params_TypeID is the unique identifier for the type ByteStream_write_Params.
+const ByteStream_write_Params_TypeID = 0xebe3db889e40a9ab
+
+func NewByteStream_write_Params(s *capnp.Segment) (ByteStream_write_Params, error) {
 	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
-	return Generate_stream_Results(st), err
+	return ByteStream_write_Params(st), err
 }
 
-func NewRootGenerate_stream_Results(s *capnp.Segment) (Generate_stream_Results, error) {
+func NewRootByteStream_write_Params(s *capnp.Segment) (ByteStream_write_Params, error) {
 	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
-	return Generate_stream_Results(st), err
+	return ByteStream_write_Params(st), err
 }
 
-func ReadRootGenerate_stream_Results(msg *capnp.Message) (Generate_stream_Results, error) {
+func ReadRootByteStream_write_Params(msg *capnp.Message) (ByteStream_write_Params, error) {
 	root, err := msg.Root()
-	return Generate_stream_Results(root.Struct()), err
+	return ByteStream_write_Params(root.Struct()), err
 }
 
-func (s Generate_stream_Results) String() string {
-	str, _ := text.Marshal(0xda9aa7c5b85459af, capnp.Struct(s))
+func (s ByteStream_write_Params) String() string {
+	str, _ := text.Marshal(0xebe3db889e40a9ab, capnp.Struct(s))
 	return str
 }
 
-func (s Generate_stream_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+func (s ByteStream_write_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
 	return capnp.Struct(s).EncodeAsPtr(seg)
 }
 
-func (Generate_stream_Results) DecodeFromPtr(p capnp.Ptr) Generate_stream_Results {
-	return Generate_stream_Results(capnp.Struct{}.DecodeFromPtr(p))
+func (ByteStream_write_Params) DecodeFromPtr(p capnp.Ptr) ByteStream_write_Params {
+	return ByteStream_write_Params(capnp.Struct{}.DecodeFromPtr(p))
 }
 
-func (s Generate_stream_Results) ToPtr() capnp.Ptr {
+func (s ByteStream_write_Params) ToPtr() capnp.Ptr {
 	return capnp.Struct(s).ToPtr()
 }
-func (s Generate_stream_Results) IsValid() bool {
+func (s ByteStream_write_Params) IsValid() bool {
 	return capnp.Struct(s).IsValid()
 }
 
-func (s Generate_stream_Results) Message() *capnp.Message {
+func (s ByteStream_write_Params) Message() *capnp.Message {
 	return capnp.Struct(s).Message()
 }
 
-func (s Generate_stream_Results) Segment() *capnp.Segment {
+func (s ByteStream_write_Params) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-func (s Generate_stream_Results) Out() (string, error) {
+func (s ByteStream_write_Params) Data() ([]byte, error) {
 	p, err := capnp.Struct(s).Ptr(0)
-	return p.Text(), err
+	return []byte(p.Data()), err
 }
 
-func (s Generate_stream_Results) HasOut() bool {
+func (s ByteStream_write_Params) HasData() bool {
 	return capnp.Struct(s).HasPtr(0)
 }
 
-func (s Generate_stream_Results) OutBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(0)
-	return p.TextBytes(), err
+func (s ByteStream_write_Params) SetData(v []byte) error {
+	return capnp.Struct(s).SetData(0, v)
 }
 
-func (s Generate_stream_Results) SetOut(v string) error {
-	return capnp.Struct(s).SetText(0, v)
-}
+// ByteStream_write_Params_List is a list of ByteStream_write_Params.
+type ByteStream_write_Params_List = capnp.StructList[ByteStream_write_Params]
 
-// Generate_stream_Results_List is a list of Generate_stream_Results.
-type Generate_stream_Results_List = capnp.StructList[Generate_stream_Results]
-
-// NewGenerate_stream_Results creates a new list of Generate_stream_Results.
-func NewGenerate_stream_Results_List(s *capnp.Segment, sz int32) (Generate_stream_Results_List, error) {
+// NewByteStream_write_Params creates a new list of ByteStream_write_Params.
+func NewByteStream_write_Params_List(s *capnp.Segment, sz int32) (ByteStream_write_Params_List, error) {
 	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
-	return capnp.StructList[Generate_stream_Results](l), err
+	return capnp.StructList[ByteStream_write_Params](l), err
 }
 
-// Generate_stream_Results_Future is a wrapper for a Generate_stream_Results promised by a client call.
-type Generate_stream_Results_Future struct{ *capnp.Future }
+// ByteStream_write_Params_Future is a wrapper for a ByteStream_write_Params promised by a client call.
+type ByteStream_write_Params_Future struct{ *capnp.Future }
 
-func (f Generate_stream_Results_Future) Struct() (Generate_stream_Results, error) {
+func (f ByteStream_write_Params_Future) Struct() (ByteStream_write_Params, error) {
 	p, err := f.Future.Ptr()
-	return Generate_stream_Results(p.Struct()), err
+	return ByteStream_write_Params(p.Struct()), err
 }
 
-const schema_d4c9c9f76e88a0d2 = "x\xda\xcc\x92Kh\x13Q\x14\x86\xcf\x7f\xef\x9dN\xc1" +
-	">rI\\\x044\x11\xa9 ]4\xd6nJ6\x09" +
-	"E\xb1j\x85\xb9\xd5\x85\"b\x87t\xd0`\x1e\xc3\xcc" +
-	"DT\x10\x97\xd6J\x17.$X\\\x18A\x0b\x05-" +
-	"\x11\x17*n\x8a\x88Tp\xe1c\xa3K\xc5\x85+q" +
-	"\xe5\x03q\xe4\xc6$\x0d\x88\x90\xa5\xbb3s\xbe9\xff" +
-	"\x9c\xff?;\x9e#+F\xfb\xab&1u\xd8\xe8\x09" +
-	"\x1f\xe6\xbe\xab\xda\xd2\xf9\x05\x92\xdbAdp\x93h\xac" +
-	"\xceo\x82\x10]\xe5+\x84\xf0\xd2\x86\xfd\x9fS=\x1b" +
-	"\xeb$\x93\x08_\xdd\x98+}][{C\x064\x98" +
-	"\x17\x13\x88\x9e\x15&Q\xb4\"2\x84\xf0\xfd\xf5\xea\xc7" +
-	"x5\xf1\x98d\x92\xaf\xc3\x84\xb1\xab\x9a\xbc\xd5 k" +
-	"\xe2b\xf4\x8b\xae\xc2\xcb\xc7ON\xcdmy\xf1\xbaS" +
-	"\xfb\xad\xb8\xa7\xb5?\x09\xad\xbdr\xe4\xd0\x83\xa7K\x8b" +
-	"\xef\x9a@C\xf3\x8a\xf1H\x035C\xeb%\xf6\xcd\xfc" +
-	"\xfcpn\xf9W'\xb0j,k\xe0\xa5\x91\xa1z\xe8" +
-	"\x9e:\x91\xb2\xf3)\xd7\xf0\xca\xa7\xf3\xb3\x8e\x97r\x9b" +
-	"\xc5H\xcevKnz\x8fSr<;pFrv" +
-	"\xa10d\xd9\x9ei\x17}\xd5\xc7\x05\x91\x00\x91\xdc\x9d" +
-	"&RY\x0e5\xc5 \x81\x18\xf4\xcb\xbd\x13Dj\x17" +
-	"\x87\xb2\x18$c10\"y`'\x91\x9a\xe4P\xb3" +
-	"\x0c\x19\xd7\xf6\xec\xa2\x8fH\x98\x98\xbf6>9\x7f\xf4" +
-	"\x09\x11\x10!\\\xc8\x95K\x81s&@$\x8c\xdf\x19" +
-	"?\xb6\xe9\xee\xed\x85f'\x19\x94\xcb\x05\x1f\x03\x04\x8b" +
-	"\x03\x91p\xe6\xfe\xb3\xc5\xcd\x07\xbf\xfd\xd0\xed\x01B{" +
-	"\x11\xf1\x8fE\xac\xe6#Y\x80\x12\xed\xff\xef\x1f&R" +
-	"\xbd\x1c*\xc60X\xb2\x8b\x0e\xfa\x88\xa1\xaf\x8b\x81-" +
-	"g\x1a\x03{\xb9A\xd4\xbe\x15\xb4l\x97\xa3\xc3\xc4\xe4" +
-	"6\x13hg\x89Vf2\x9e&&\xfb\xcdA\xedl" +
-	"\x16\x19?\xf0\x1c\xbb\x98\x85\x05t\x9f\xca\x9f\x8f\x86\xac" +
-	"d\xc3\xcf\xff9\x97nW\x99\xce8~\xa5\x10\xf8\x9d" +
-	"\x19m]\xcf\xc8,W\x82\xbf\"\xea\xeex\xa7\x1d\x7f" +
-	"\xb0\xcb\xc9\xbf\x03\x00\x00\xff\xff\xe2Y\x1bB"
+type ByteStream_done_Params capnp.Struct
+
+// ByteStream_done_Params_TypeID is the unique identifier for the type ByteStream_done_Params.
+const ByteStream_done_Params_TypeID = 0xbd009879705bd55e
+
+func NewByteStream_done_Params(s *capnp.Segment) (ByteStream_done_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return ByteStream_done_Params(st), err
+}
+
+func NewRootByteStream_done_Params(s *capnp.Segment) (ByteStream_done_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return ByteStream_done_Params(st), err
+}
+
+func ReadRootByteStream_done_Params(msg *capnp.Message) (ByteStream_done_Params, error) {
+	root, err := msg.Root()
+	return ByteStream_done_Params(root.Struct()), err
+}
+
+func (s ByteStream_done_Params) String() string {
+	str, _ := text.Marshal(0xbd009879705bd55e, capnp.Struct(s))
+	return str
+}
+
+func (s ByteStream_done_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (ByteStream_done_Params) DecodeFromPtr(p capnp.Ptr) ByteStream_done_Params {
+	return ByteStream_done_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s ByteStream_done_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s ByteStream_done_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s ByteStream_done_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s ByteStream_done_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+
+// ByteStream_done_Params_List is a list of ByteStream_done_Params.
+type ByteStream_done_Params_List = capnp.StructList[ByteStream_done_Params]
+
+// NewByteStream_done_Params creates a new list of ByteStream_done_Params.
+func NewByteStream_done_Params_List(s *capnp.Segment, sz int32) (ByteStream_done_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
+	return capnp.StructList[ByteStream_done_Params](l), err
+}
+
+// ByteStream_done_Params_Future is a wrapper for a ByteStream_done_Params promised by a client call.
+type ByteStream_done_Params_Future struct{ *capnp.Future }
+
+func (f ByteStream_done_Params_Future) Struct() (ByteStream_done_Params, error) {
+	p, err := f.Future.Ptr()
+	return ByteStream_done_Params(p.Struct()), err
+}
+
+type ByteStream_done_Results capnp.Struct
+
+// ByteStream_done_Results_TypeID is the unique identifier for the type ByteStream_done_Results.
+const ByteStream_done_Results_TypeID = 0xda6a129a69d84593
+
+func NewByteStream_done_Results(s *capnp.Segment) (ByteStream_done_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return ByteStream_done_Results(st), err
+}
+
+func NewRootByteStream_done_Results(s *capnp.Segment) (ByteStream_done_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return ByteStream_done_Results(st), err
+}
+
+func ReadRootByteStream_done_Results(msg *capnp.Message) (ByteStream_done_Results, error) {
+	root, err := msg.Root()
+	return ByteStream_done_Results(root.Struct()), err
+}
+
+func (s ByteStream_done_Results) String() string {
+	str, _ := text.Marshal(0xda6a129a69d84593, capnp.Struct(s))
+	return str
+}
+
+func (s ByteStream_done_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (ByteStream_done_Results) DecodeFromPtr(p capnp.Ptr) ByteStream_done_Results {
+	return ByteStream_done_Results(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s ByteStream_done_Results) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s ByteStream_done_Results) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s ByteStream_done_Results) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s ByteStream_done_Results) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+
+// ByteStream_done_Results_List is a list of ByteStream_done_Results.
+type ByteStream_done_Results_List = capnp.StructList[ByteStream_done_Results]
+
+// NewByteStream_done_Results creates a new list of ByteStream_done_Results.
+func NewByteStream_done_Results_List(s *capnp.Segment, sz int32) (ByteStream_done_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
+	return capnp.StructList[ByteStream_done_Results](l), err
+}
+
+// ByteStream_done_Results_Future is a wrapper for a ByteStream_done_Results promised by a client call.
+type ByteStream_done_Results_Future struct{ *capnp.Future }
+
+func (f ByteStream_done_Results_Future) Struct() (ByteStream_done_Results, error) {
+	p, err := f.Future.Ptr()
+	return ByteStream_done_Results(p.Struct()), err
+}
+
+const schema_d4c9c9f76e88a0d2 = "x\xda\x94ROH\x14a\x1c\xfd\xbd\x99\xf9\x1c!\xd7" +
+	"\xddi\xec \x94\x0ba\x10\x1e\xdcT\x0c\xf1\xb2\x9b\xb4" +
+	"\xa8\xfd\x81\x19=\x8a\xe5\xc7\xee\x10[;\xb3\xd3\xec\x98" +
+	"\x19H\x87\x0e\x99\xb0\xa7\x10S\xfa\x7f(2*\x8c." +
+	"\x85Q\xd0!\xbc\xf6\x07\xa2nI\xa7\x0e\x1d\xfbC4" +
+	"\xf1\x8d\xbb\xab\x10\x92{\xfbf\xde\xfb\xde{\xdf\xfb\xfd" +
+	"\xf6\xbdEJ\xe9\x88\xdc\xa8'\xc9\xcc\xb2\xba\xa0g\xd2" +
+	"\xf0\xf7+K\x17H\x8b\xcb\xc1\x9b\x9b\xd3\xce\xf7\x95\x95" +
+	"wD\xe8\xeaV\x86\xa0\x0f**\x91\x9eV.\xea\xb3" +
+	"\xe2\x14<\xcd\xfc4o\xdd\x9d*\x91\xb6\x17DLV" +
+	"\x89\xba\xa6\x94\xdb \xe8%\xe5\x11!\xb8\xb4\xed\xf0\xb7" +
+	"D\xdd\x8e%\xd2\xe2X\x97c\x10\xc4n\xd6\x07=\xcd" +
+	"\x84\xe2\x01\x96$\x04\x9f\xaf\xce}i\x9ekY\xfe\xc7" +
+	"\x9b\x0b\xe6\xe9\x90i\xb3~}V\x9c^\x1c{?\xe2" +
+	"N^y\xae\xb5\x81H\x09\x8d\xd9c\x90\x12\\N\x7f" +
+	"\xc8-l?\xf9\x91\xd6\x11\x9b=\x13\xc8\xfd{\xa9\xeb" +
+	"\xd3\x9fV\xbf\xae!k!F\x05\x04\xdd\x0e\x03\xb4\x1c" +
+	"\x1a\xfb\xbdzn\xf1O\xf99!\xa1\xc4\x16\x05\xe1\x1a" +
+	"K\xd2r\xe0\x9e:\x91\xe0\xb9\x84\xabx\x853\xb9\xac" +
+	"\xe5%\xdc\xf2\xa1=\xc3]\xc7\xed\xed\x9b\xf4\xada\xdf" +
+	"\xb38l\x030\xebeFT\xb5\x85\xb3\xf4r\xa2k" +
+	"\xe1\xf8\xbc\xd6\xd1I\x92\xb6G\x05*\x8f\xd8\x10\xba\xb9" +
+	"\x8d$-\xa2\xc6'\xbc\x9co\xa5\x10\xcd\x16\x1c+\x05" +
+	"\x03\xa8\x9a\xb3M\xcc\xfb-\xc7\xf2\xb8o\xb5gx>" +
+	"\xdfjpO\xe5v\xd1l\x90\x15\"\x05DZ\xba\x97" +
+	"\xc8L\xc90\x8fH\xd0\x80&\x88\x9f\x83}D\xe6A" +
+	"\x19\xa6!A\x93\xa4&HD\xda\xd1N\"s@\x86" +
+	"\x99\x95\x90t\xb9\xc7\xed\"bA\xcb\xcc|\xcf\xc0\xcc" +
+	"\xc8+\" F8\x9f)8\xbeu\xd6G,h~" +
+	"\xd03\xba\xf3\xe1\x9dR\x19\x89\xfb\x85B\xbe\x88F\x82" +
+	"!\x03\xb1`\xec\xc9\xeb\x85]\xc3?~\x09\xb8\x91\xf0" +
+	"\xdf\x16\x8d\xf2'\x89\x0e\x95j\xfeH\x1b\x91Y/\xc3" +
+	"l\x92\x10u\xb8m\xa1\x81$4lA\xb0\xd2LY" +
+	"\x90m\xd8\\Tf\xaei\xa2x\xa6FE{[+" +
+	"\xbc:m\xbb]L\xa9\xd5\x88\x87U\xd5|o(i" +
+	"\x15\xc7\xf3~M\x17\xc3\xf5hM\x1a\xa1\xe3f%e" +
+	"\xb9\xcf\x11!\x09\x11\xaau}\x86\xacbTd\xda(" +
+	"\xbd{]Z-\x8c\xfb\x95\xfa\xff\x06\x00\x00\xff\xff\x05" +
+	"\xea@\xbf"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{
 		String: schema_d4c9c9f76e88a0d2,
 		Nodes: []uint64{
+			0x83b1043674507938,
 			0x8d7da7a151f963b9,
 			0xb115062fef4b0b89,
 			0xbc1e9719e5979ce2,
-			0xd3cd20884c685f8b,
-			0xda9aa7c5b85459af,
+			0xbd009879705bd55e,
+			0xda6a129a69d84593,
+			0xebe3db889e40a9ab,
 			0xfeaa7ae3fc604a1e,
 		},
 		Compressed: true,

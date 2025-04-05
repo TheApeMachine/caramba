@@ -12,7 +12,7 @@ Retrier is an interface that can be implemented by any object that wants to
 schedule itself onto a worker pool and be retried under certain conditions.
 */
 type Retrier interface {
-	Do(Job, *datura.Artifact, chan *datura.Artifact) *datura.Artifact
+	Do(Job, *datura.Artifact) *datura.Artifact
 }
 
 func NewRetrier(retrierType Retrier) Retrier {
@@ -35,7 +35,7 @@ func NewFibonacci(max int) Retrier {
 	})
 }
 
-func (strategy *Fibonacci) Do(fn Job, artifact *datura.Artifact, out chan *datura.Artifact) *datura.Artifact {
+func (strategy *Fibonacci) Do(fn Job, dg *datura.Artifact) *datura.Artifact {
 	// We have reached the maximum number of retries.
 	// Bail.
 	if strategy.n > strategy.max {
@@ -43,7 +43,7 @@ func (strategy *Fibonacci) Do(fn Job, artifact *datura.Artifact, out chan *datur
 	}
 
 	// Error, retry.
-	if artifact = fn.Do(artifact, out); artifact == nil {
+	if dg = fn.Do(dg); dg == nil {
 		// Backoff delay time by using Fibonacci sequence.
 		strategy.n = int(
 			math.Round((math.Pow(
@@ -55,8 +55,8 @@ func (strategy *Fibonacci) Do(fn Job, artifact *datura.Artifact, out chan *datur
 
 		// Wait for the next retry.
 		time.Sleep(time.Duration(strategy.n) * time.Second)
-		strategy.Do(fn, artifact, out)
+		strategy.Do(fn, dg)
 	}
 
-	return artifact
+	return dg
 }

@@ -46,7 +46,7 @@ encode serializes the provided value into JSON and adds it to the artifact's pay
 
 Returns an error if JSON encoding fails.
 */
-func (w *Wiki) encode(artifact *datura.Artifact, v any) (err error) {
+func (w *Wiki) encode(artifact *datura.ArtifactBuilder, v any) (err error) {
 	payload := bytes.NewBuffer([]byte{})
 
 	if err = json.NewEncoder(payload).Encode(v); err != nil {
@@ -63,7 +63,7 @@ CreatePage creates a new wiki page in Azure DevOps.
 It uses metadata from the artifact to set the page content and path.
 Returns an error if the creation fails.
 */
-func (w *Wiki) CreatePage(artifact *datura.Artifact) (err error) {
+func (w *Wiki) CreatePage(artifact *datura.ArtifactBuilder) (err error) {
 	ctx := context.Background()
 	project := datura.GetMetaValue[string](artifact, "project")
 	wikiIdentifier := datura.GetMetaValue[string](artifact, "wiki_id")
@@ -92,7 +92,7 @@ UpdatePage updates an existing wiki page in Azure DevOps.
 It uses metadata from the artifact to update the page content and requires a version.
 Returns an error if the update fails.
 */
-func (w *Wiki) UpdatePage(artifact *datura.Artifact) (err error) {
+func (w *Wiki) UpdatePage(artifact *datura.ArtifactBuilder) (err error) {
 	ctx := context.Background()
 	project := datura.GetMetaValue[string](artifact, "project")
 	wikiIdentifier := datura.GetMetaValue[string](artifact, "wiki_id")
@@ -123,7 +123,7 @@ GetPage retrieves a single wiki page from Azure DevOps.
 The page path and wiki identifier are extracted from the artifact's metadata.
 Returns an error if the retrieval fails.
 */
-func (w *Wiki) GetPage(artifact *datura.Artifact) (err error) {
+func (w *Wiki) GetPage(artifact *datura.ArtifactBuilder) (err error) {
 	ctx := context.Background()
 	project := datura.GetMetaValue[string](artifact, "project")
 	wikiIdentifier := datura.GetMetaValue[string](artifact, "wiki_id")
@@ -150,7 +150,7 @@ ListPages retrieves all wiki pages from a specific wiki in Azure DevOps.
 The wiki identifier is extracted from the artifact's metadata.
 Returns an error if the retrieval fails.
 */
-func (w *Wiki) ListPages(artifact *datura.Artifact) (err error) {
+func (w *Wiki) ListPages(artifact *datura.ArtifactBuilder) (err error) {
 	ctx := context.Background()
 	project := datura.GetMetaValue[string](artifact, "project")
 	wikiIdentifier := datura.GetMetaValue[string](artifact, "wiki_id")

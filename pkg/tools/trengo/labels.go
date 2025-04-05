@@ -30,7 +30,7 @@ func NewLabels(client *Client) *Labels {
 	return &Labels{client: client}
 }
 
-func (l *Labels) encode(artifact *datura.Artifact, v any) (err error) {
+func (l *Labels) encode(artifact *datura.ArtifactBuilder, v any) (err error) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return errnie.Error(err)
@@ -40,7 +40,7 @@ func (l *Labels) encode(artifact *datura.Artifact, v any) (err error) {
 	return nil
 }
 
-func (l *Labels) ListLabels(artifact *datura.Artifact) (err error) {
+func (l *Labels) ListLabels(artifact *datura.ArtifactBuilder) (err error) {
 	resp, err := l.client.doRequest(http.MethodGet, "/labels", nil)
 	if err != nil {
 		return errnie.Error(err)
@@ -60,7 +60,7 @@ func (l *Labels) ListLabels(artifact *datura.Artifact) (err error) {
 	return l.encode(artifact, labels)
 }
 
-func (l *Labels) GetLabel(artifact *datura.Artifact) (err error) {
+func (l *Labels) GetLabel(artifact *datura.ArtifactBuilder) (err error) {
 	labelID := datura.GetMetaValue[int](artifact, "label_id")
 
 	resp, err := l.client.doRequest(
@@ -81,7 +81,7 @@ func (l *Labels) GetLabel(artifact *datura.Artifact) (err error) {
 	return l.encode(artifact, label)
 }
 
-func (l *Labels) CreateLabel(artifact *datura.Artifact) (err error) {
+func (l *Labels) CreateLabel(artifact *datura.ArtifactBuilder) (err error) {
 	label := map[string]interface{}{
 		"name":  datura.GetMetaValue[string](artifact, "name"),
 		"color": datura.GetMetaValue[string](artifact, "color"),
@@ -101,7 +101,7 @@ func (l *Labels) CreateLabel(artifact *datura.Artifact) (err error) {
 	return l.encode(artifact, newLabel)
 }
 
-func (l *Labels) UpdateLabel(artifact *datura.Artifact) (err error) {
+func (l *Labels) UpdateLabel(artifact *datura.ArtifactBuilder) (err error) {
 	labelID := datura.GetMetaValue[int](artifact, "label_id")
 	label := map[string]interface{}{
 		"name":  datura.GetMetaValue[string](artifact, "name"),
@@ -126,7 +126,7 @@ func (l *Labels) UpdateLabel(artifact *datura.Artifact) (err error) {
 	return l.encode(artifact, updatedLabel)
 }
 
-func (l *Labels) DeleteLabel(artifact *datura.Artifact) (err error) {
+func (l *Labels) DeleteLabel(artifact *datura.ArtifactBuilder) (err error) {
 	labelID := datura.GetMetaValue[int](artifact, "label_id")
 
 	resp, err := l.client.doRequest(

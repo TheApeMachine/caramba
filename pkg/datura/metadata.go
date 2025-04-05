@@ -8,14 +8,14 @@ import (
 )
 
 // GetMetaValue retrieves a typed metadata value from an artifact
-func GetMetaValue[T any](artifact *Artifact, key string) T {
+func GetMetaValue[T any](builder *ArtifactBuilder, key string) T {
 	var (
 		metadata Artifact_Metadata_List
 		err      error
 		result   T
 	)
 
-	if metadata, err = artifact.Metadata(); errnie.Error(err) != nil {
+	if metadata, err = builder.Metadata(); errnie.Error(err) != nil {
 		return *new(T)
 	}
 
@@ -86,11 +86,11 @@ func GetMetaValue[T any](artifact *Artifact, key string) T {
 }
 
 // SetMetaValue sets a metadata value with the appropriate type
-func (artifact *Artifact) SetMetaValue(key string, val any) error {
+func (artifact *ArtifactBuilder) SetMetaValue(key string, val any) error {
 	errnie.Debug("datura.SetMetaValue", "key", key, "value", val)
 
 	// Create a new option function
-	setOption := func(artifact *Artifact) {
+	setOption := func(builder *ArtifactBuilder) {
 		var (
 			mdList    Artifact_Metadata_List
 			newMdList Artifact_Metadata_List
@@ -98,31 +98,27 @@ func (artifact *Artifact) SetMetaValue(key string, val any) error {
 		)
 
 		// Get existing metadata
-		if mdList, err = artifact.Metadata(); err != nil {
-			errnie.Error(err)
+		if mdList, err = builder.Metadata(); errnie.Error(err) != nil {
 			return
 		}
 
 		// Create new metadata list with space for one more item
-		if newMdList, err = artifact.NewMetadata(
+		if newMdList, err = builder.NewMetadata(
 			int32(mdList.Len() + 1),
-		); err != nil {
-			errnie.Error(err)
+		); errnie.Error(err) != nil {
 			return
 		}
 
 		// Copy existing metadata
 		for idx := range mdList.Len() {
-			if err = newMdList.Set(idx, mdList.At(idx)); err != nil {
-				errnie.Error(err)
+			if err = newMdList.Set(idx, mdList.At(idx)); errnie.Error(err) != nil {
 				return
 			}
 		}
 
 		// Add the new item
 		item := newMdList.At(newMdList.Len() - 1)
-		if err = item.SetKey(key); err != nil {
-			errnie.Error(err)
+		if err = item.SetKey(key); errnie.Error(err) != nil {
 			return
 		}
 

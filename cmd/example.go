@@ -2,15 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"io"
-	"os"
 
 	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/examples"
-	"github.com/theapemachine/caramba/pkg/core"
-	"github.com/theapemachine/caramba/pkg/stream"
 )
+
+type Example interface {
+	Run()
+}
 
 var (
 	exampleCmd = &cobra.Command{
@@ -19,9 +19,7 @@ var (
 		Long:  longExample,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			core.NewConfig(core.WithOpenAIAPIKey(openaiAPIKey))
-
-			var wf stream.Generator
+			var wf Example
 
 			switch args[0] {
 			case "code":
@@ -30,13 +28,7 @@ var (
 				return fmt.Errorf("unknown example type: %s\nAvailable types: code", args[0])
 			}
 
-			streamer := core.NewStreamer(
-				core.WithGenerator(wf),
-			)
-
-			if _, err = io.Copy(os.Stdout, streamer); err != nil && err != io.EOF {
-				return err
-			}
+			wf.Run()
 
 			return nil
 		},

@@ -66,7 +66,7 @@ func (container *Container) Load() (err error) {
 		payload  []byte
 	)
 
-	ch := make(chan *datura.Artifact)
+	ch := make(chan *datura.ArtifactBuilder)
 
 	go func() {
 		ch <- artifact

@@ -52,12 +52,12 @@ Generate processes file operations and returns artifacts with the results.
 It implements the Generator pattern to handle file system operations asynchronously.
 */
 func (s *Store) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
+	buffer chan *datura.ArtifactBuilder,
+	fn ...func(artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder,
+) chan *datura.ArtifactBuilder {
 	errnie.Debug("fs.Store.Generate")
 
-	out := make(chan *datura.Artifact)
+	out := make(chan *datura.ArtifactBuilder)
 
 	go func() {
 		defer close(out)

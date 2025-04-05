@@ -1,8 +1,11 @@
 package memory
 
-import "github.com/theapemachine/caramba/pkg/stream"
+import "github.com/theapemachine/caramba/pkg/datura"
 
 type Store interface {
-	stream.Generator
+	Generate(
+		buffer chan *datura.ArtifactBuilder,
+		fn ...func(artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder,
+	) chan *datura.ArtifactBuilder
 	Name() string
 }

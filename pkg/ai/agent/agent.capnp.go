@@ -8,10 +8,10 @@ import (
 	fc "capnproto.org/go/capnp/v3/flowcontrol"
 	schemas "capnproto.org/go/capnp/v3/schemas"
 	server "capnproto.org/go/capnp/v3/server"
+	stream "capnproto.org/go/capnp/v3/std/capnp/stream"
 	context "context"
 	context2 "github.com/theapemachine/caramba/pkg/ai/context"
 	params "github.com/theapemachine/caramba/pkg/ai/params"
-	tools "github.com/theapemachine/caramba/pkg/tools"
 )
 
 type Agent capnp.Struct
@@ -133,25 +133,25 @@ func (s Agent) NewContext() (context2.Context, error) {
 	return ss, err
 }
 
-func (s Agent) Tools() (tools.Tool_List, error) {
+func (s Agent) Tools() (capnp.TextList, error) {
 	p, err := capnp.Struct(s).Ptr(3)
-	return tools.Tool_List(p.List()), err
+	return capnp.TextList(p.List()), err
 }
 
 func (s Agent) HasTools() bool {
 	return capnp.Struct(s).HasPtr(3)
 }
 
-func (s Agent) SetTools(v tools.Tool_List) error {
+func (s Agent) SetTools(v capnp.TextList) error {
 	return capnp.Struct(s).SetPtr(3, v.ToPtr())
 }
 
 // NewTools sets the tools field to a newly
-// allocated tools.Tool_List, preferring placement in s's segment.
-func (s Agent) NewTools(n int32) (tools.Tool_List, error) {
-	l, err := tools.NewTool_List(capnp.Struct(s).Segment(), n)
+// allocated capnp.TextList, preferring placement in s's segment.
+func (s Agent) NewTools(n int32) (capnp.TextList, error) {
+	l, err := capnp.NewTextList(capnp.Struct(s).Segment(), n)
 	if err != nil {
-		return tools.Tool_List{}, err
+		return capnp.TextList{}, err
 	}
 	err = capnp.Struct(s).SetPtr(3, l.ToPtr())
 	return l, err
@@ -299,6 +299,386 @@ type Identity_Future struct{ *capnp.Future }
 func (f Identity_Future) Struct() (Identity, error) {
 	p, err := f.Future.Ptr()
 	return Identity(p.Struct()), err
+}
+
+type Config capnp.Struct
+
+// Config_TypeID is the unique identifier for the type Config.
+const Config_TypeID = 0xeafb8894f78049a8
+
+func NewConfig(s *capnp.Segment) (Config, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 3})
+	return Config(st), err
+}
+
+func NewRootConfig(s *capnp.Segment) (Config, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 3})
+	return Config(st), err
+}
+
+func ReadRootConfig(msg *capnp.Message) (Config, error) {
+	root, err := msg.Root()
+	return Config(root.Struct()), err
+}
+
+func (s Config) String() string {
+	str, _ := text.Marshal(0xeafb8894f78049a8, capnp.Struct(s))
+	return str
+}
+
+func (s Config) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Config) DecodeFromPtr(p capnp.Ptr) Config {
+	return Config(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Config) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Config) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Config) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Config) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Config) Capabilities() (capnp.TextList, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return capnp.TextList(p.List()), err
+}
+
+func (s Config) HasCapabilities() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Config) SetCapabilities(v capnp.TextList) error {
+	return capnp.Struct(s).SetPtr(0, v.ToPtr())
+}
+
+// NewCapabilities sets the capabilities field to a newly
+// allocated capnp.TextList, preferring placement in s's segment.
+func (s Config) NewCapabilities(n int32) (capnp.TextList, error) {
+	l, err := capnp.NewTextList(capnp.Struct(s).Segment(), n)
+	if err != nil {
+		return capnp.TextList{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, l.ToPtr())
+	return l, err
+}
+func (s Config) Requirements() (capnp.TextList, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return capnp.TextList(p.List()), err
+}
+
+func (s Config) HasRequirements() bool {
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Config) SetRequirements(v capnp.TextList) error {
+	return capnp.Struct(s).SetPtr(1, v.ToPtr())
+}
+
+// NewRequirements sets the requirements field to a newly
+// allocated capnp.TextList, preferring placement in s's segment.
+func (s Config) NewRequirements(n int32) (capnp.TextList, error) {
+	l, err := capnp.NewTextList(capnp.Struct(s).Segment(), n)
+	if err != nil {
+		return capnp.TextList{}, err
+	}
+	err = capnp.Struct(s).SetPtr(1, l.ToPtr())
+	return l, err
+}
+func (s Config) Behavior() (string, error) {
+	p, err := capnp.Struct(s).Ptr(2)
+	return p.Text(), err
+}
+
+func (s Config) HasBehavior() bool {
+	return capnp.Struct(s).HasPtr(2)
+}
+
+func (s Config) BehaviorBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(2)
+	return p.TextBytes(), err
+}
+
+func (s Config) SetBehavior(v string) error {
+	return capnp.Struct(s).SetText(2, v)
+}
+
+func (s Config) Priority() uint32 {
+	return capnp.Struct(s).Uint32(0)
+}
+
+func (s Config) SetPriority(v uint32) {
+	capnp.Struct(s).SetUint32(0, v)
+}
+
+// Config_List is a list of Config.
+type Config_List = capnp.StructList[Config]
+
+// NewConfig creates a new list of Config.
+func NewConfig_List(s *capnp.Segment, sz int32) (Config_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 3}, sz)
+	return capnp.StructList[Config](l), err
+}
+
+// Config_Future is a wrapper for a Config promised by a client call.
+type Config_Future struct{ *capnp.Future }
+
+func (f Config_Future) Struct() (Config, error) {
+	p, err := f.Future.Ptr()
+	return Config(p.Struct()), err
+}
+
+type Task capnp.Struct
+
+// Task_TypeID is the unique identifier for the type Task.
+const Task_TypeID = 0x80683675bebdf166
+
+func NewTask(s *capnp.Segment) (Task, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 6})
+	return Task(st), err
+}
+
+func NewRootTask(s *capnp.Segment) (Task, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 6})
+	return Task(st), err
+}
+
+func ReadRootTask(msg *capnp.Message) (Task, error) {
+	root, err := msg.Root()
+	return Task(root.Struct()), err
+}
+
+func (s Task) String() string {
+	str, _ := text.Marshal(0x80683675bebdf166, capnp.Struct(s))
+	return str
+}
+
+func (s Task) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Task) DecodeFromPtr(p capnp.Ptr) Task {
+	return Task(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Task) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Task) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Task) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Task) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Task) Id() (string, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s Task) HasId() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Task) IdBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s Task) SetId(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+func (s Task) Description() (string, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.Text(), err
+}
+
+func (s Task) HasDescription() bool {
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Task) DescriptionBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.TextBytes(), err
+}
+
+func (s Task) SetDescription(v string) error {
+	return capnp.Struct(s).SetText(1, v)
+}
+
+func (s Task) Status() TaskStatus {
+	return TaskStatus(capnp.Struct(s).Uint16(0))
+}
+
+func (s Task) SetStatus(v TaskStatus) {
+	capnp.Struct(s).SetUint16(0, uint16(v))
+}
+
+func (s Task) Dependencies() (capnp.TextList, error) {
+	p, err := capnp.Struct(s).Ptr(2)
+	return capnp.TextList(p.List()), err
+}
+
+func (s Task) HasDependencies() bool {
+	return capnp.Struct(s).HasPtr(2)
+}
+
+func (s Task) SetDependencies(v capnp.TextList) error {
+	return capnp.Struct(s).SetPtr(2, v.ToPtr())
+}
+
+// NewDependencies sets the dependencies field to a newly
+// allocated capnp.TextList, preferring placement in s's segment.
+func (s Task) NewDependencies(n int32) (capnp.TextList, error) {
+	l, err := capnp.NewTextList(capnp.Struct(s).Segment(), n)
+	if err != nil {
+		return capnp.TextList{}, err
+	}
+	err = capnp.Struct(s).SetPtr(2, l.ToPtr())
+	return l, err
+}
+func (s Task) AssignedTo() (string, error) {
+	p, err := capnp.Struct(s).Ptr(3)
+	return p.Text(), err
+}
+
+func (s Task) HasAssignedTo() bool {
+	return capnp.Struct(s).HasPtr(3)
+}
+
+func (s Task) AssignedToBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(3)
+	return p.TextBytes(), err
+}
+
+func (s Task) SetAssignedTo(v string) error {
+	return capnp.Struct(s).SetText(3, v)
+}
+
+func (s Task) CreatedBy() (string, error) {
+	p, err := capnp.Struct(s).Ptr(4)
+	return p.Text(), err
+}
+
+func (s Task) HasCreatedBy() bool {
+	return capnp.Struct(s).HasPtr(4)
+}
+
+func (s Task) CreatedByBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(4)
+	return p.TextBytes(), err
+}
+
+func (s Task) SetCreatedBy(v string) error {
+	return capnp.Struct(s).SetText(4, v)
+}
+
+func (s Task) Result() (string, error) {
+	p, err := capnp.Struct(s).Ptr(5)
+	return p.Text(), err
+}
+
+func (s Task) HasResult() bool {
+	return capnp.Struct(s).HasPtr(5)
+}
+
+func (s Task) ResultBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(5)
+	return p.TextBytes(), err
+}
+
+func (s Task) SetResult(v string) error {
+	return capnp.Struct(s).SetText(5, v)
+}
+
+// Task_List is a list of Task.
+type Task_List = capnp.StructList[Task]
+
+// NewTask creates a new list of Task.
+func NewTask_List(s *capnp.Segment, sz int32) (Task_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 6}, sz)
+	return capnp.StructList[Task](l), err
+}
+
+// Task_Future is a wrapper for a Task promised by a client call.
+type Task_Future struct{ *capnp.Future }
+
+func (f Task_Future) Struct() (Task, error) {
+	p, err := f.Future.Ptr()
+	return Task(p.Struct()), err
+}
+
+type TaskStatus uint16
+
+// TaskStatus_TypeID is the unique identifier for the type TaskStatus.
+const TaskStatus_TypeID = 0xe266cb37ac3e2f45
+
+// Values of TaskStatus.
+const (
+	TaskStatus_pending   TaskStatus = 0
+	TaskStatus_blocked   TaskStatus = 1
+	TaskStatus_running   TaskStatus = 2
+	TaskStatus_completed TaskStatus = 3
+	TaskStatus_failed    TaskStatus = 4
+)
+
+// String returns the enum's constant name.
+func (c TaskStatus) String() string {
+	switch c {
+	case TaskStatus_pending:
+		return "pending"
+	case TaskStatus_blocked:
+		return "blocked"
+	case TaskStatus_running:
+		return "running"
+	case TaskStatus_completed:
+		return "completed"
+	case TaskStatus_failed:
+		return "failed"
+
+	default:
+		return ""
+	}
+}
+
+// TaskStatusFromString returns the enum value with a name,
+// or the zero value if there's no such value.
+func TaskStatusFromString(c string) TaskStatus {
+	switch c {
+	case "pending":
+		return TaskStatus_pending
+	case "blocked":
+		return TaskStatus_blocked
+	case "running":
+		return TaskStatus_running
+	case "completed":
+		return TaskStatus_completed
+	case "failed":
+		return TaskStatus_failed
+
+	default:
+		return 0
+	}
+}
+
+type TaskStatus_List = capnp.EnumList[TaskStatus]
+
+func NewTaskStatus_List(s *capnp.Segment, sz int32) (TaskStatus_List, error) {
+	return capnp.NewEnumList[TaskStatus](s, sz)
 }
 
 type State capnp.Client
@@ -879,56 +1259,1947 @@ func (f State_set_Results_Future) Struct() (State_set_Results, error) {
 	return State_set_Results(p.Struct()), err
 }
 
-const schema_d4c9c9f76e88a0d0 = "x\xda\xb4\x92MHTQ\x14\xc7\xcf\xff\xde\xf7\x1c\x17" +
-	"\x8e\xcd\xed\xd9b \x95\xc2\xa0\x0fr4[\x88\x8b\x1c" +
-	"\xfb\x00\x8b\xac\xb9cDj\x82\x0f}MC\xe3\xcc\xe4" +
-	"\xbba\xae\x82@\x12#j\x13a\x81D\x8b\x8a\xa0\"" +
-	"\xa8E+\x8b\x88\x906\x05\xd5\"h\x13D\xed\xfa\x80" +
-	"(\x8c\xb8q\xfdx\xf30(\x09\xda<\xee\xb9\xe7\xbc" +
-	"{~\xe7\xfc\xff\x0d\x9f\x90\xb4\x1a\xa3\x1f#\xc4\xe4A" +
-	"\xbbL'\xaf|\xf8\xfc\xae\xbfm\x8cD-\x88\xac\x08" +
-	"Q\xd3\x1b\x9e\x06Yzt\xc3\xde\xe6\xd3\x0f~\x9e%" +
-	"\x11\x87~vy,\xffmz\xfa\x05\xd9\xa6\xc4\x99\xe6" +
-	"3\xceKnN\xcf\xf9{\x82\x1e\xed\xda\xdf\x93\xac\xbf" +
-	"qa\xee\x15\x9b\x99g\xee[\xdd 8\x8f\xada\x82" +
-	"\x9e\xdcR]\xf36\xfdc\"\xd4f\x95\xddm\xda\xbc" +
-	"~\xfaJL\x9d\xccN\x92\x88\xf3R\x1b\x82\x13\xb5g" +
-	"\x9c\xb8mz\xac\xb0O9\x9e9\xe9\x87\xd1k8\xf7" +
-	"\xe5\xfc\xf5EL\x86\xa4\xa9\xc3^\x0e\xa7w\xf6\x87." +
-	"\xfb6Ao\xab\xbct/\xd1\xb0g*\x0c\xf5\xd5N" +
-	"\x1b(\x94\x0d\xd3\x1d]<\x92I\xb8\xd9\x84ke\xbc" +
-	"\xbcJ\xb8\xe6[\xdf\xef\x16\xf3\xc5\x96N\xe5*\xaf>" +
-	"\xe3\xa9\xba\x94;\xe4\x0e\xc2\x0fj\xd9\xe2\xda\xd6\x966" +
-	"\x13\xa4\x00\x19\xe3\x16\x91\x05\"\xe1\xee\"\x92}\x1c2" +
-	"\xc7 \x80*\x98\xcbl\x0b\x91\x1c\xe0\x90E\x06\xc1X" +
-	"\x15\x18\x91\x18\xdcJ$\x0fsH\xc5 8\xaf\x02'" +
-	"\x12G7\x11\xc9\x1c\x87\x1cc\xd0\xd9\x01/\xaf\xb2j" +
-	"\x84\x88\x10+m\x80\x80\x18\xa1\xb5h\xf8|\xc4t\xcd" +
-	"\xf8Ds\xfbx\xcf\xa3\xf9\xc4\x89\xfeB^y\xc7\x15" +
-	"b:~\xb3\xb9w\xe5\xad\xabg\xe63\xb5\xaaP\xc8" +
-	"\xf9\xa8$\xa48\x10\xd3}w\x9f\\\xac\xee\xfc>c" +
-	"\xd2\x95\x84%m%\xed\xf9\xc7r\\\xf9\xb2<\x18y" +
-	"\x9d\x99\xae\x8eC6\x84F\xdeh\xa6[\xcb!7\xb3" +
-	"\x7fA\xfd+\x8b\x1fb\xf9\x93D\xb3\xd5F\xa2rn" +
-	"\x13\x05\xa6\xc7\x82oE\xe3jbbM\x04%\xd7`" +
-	"\xc1\xb2\"nr\xd1H$\xe3\xa9$\"\xbe\xf9\xa6P" +
-	"b\xe3\xbf\xb1\xed\x9cS\x0c#\xa6cE\xb0\xa1\x1d\xdd" +
-	"Dr;\x87L\x856\xd4\xb1\x9eH\xb6s\xc8}!" +
-	"SHs\xb9\x9bC\x1e\x08\xf4?\x94%\xee\x0d\xa1\x82" +
-	"\x18*\x08\xcb\xf2\xee\xa0\x17\x04C\x85\\\x10,ie" +
-	"\xf3\xa6\xfe\xcf\xea\xfd\x0a\x00\x00\xff\xff\xde\xee,\xbc"
+type Tools capnp.Client
+
+// Tools_TypeID is the unique identifier for the type Tools.
+const Tools_TypeID = 0xb09b31fcf850aadd
+
+func (c Tools) Add(ctx context.Context, params func(Tools_add_Params) error) (Tools_add_Results_Future, capnp.ReleaseFunc) {
+
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0xb09b31fcf850aadd,
+			MethodID:      0,
+			InterfaceName: "pkg/ai/agent/agent.capnp:Tools",
+			MethodName:    "add",
+		},
+	}
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 1}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(Tools_add_Params(s)) }
+	}
+
+	ans, release := capnp.Client(c).SendCall(ctx, s)
+	return Tools_add_Results_Future{Future: ans.Future()}, release
+
+}
+
+func (c Tools) Use(ctx context.Context, params func(Tools_use_Params) error) (Tools_use_Results_Future, capnp.ReleaseFunc) {
+
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0xb09b31fcf850aadd,
+			MethodID:      1,
+			InterfaceName: "pkg/ai/agent/agent.capnp:Tools",
+			MethodName:    "use",
+		},
+	}
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 2}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(Tools_use_Params(s)) }
+	}
+
+	ans, release := capnp.Client(c).SendCall(ctx, s)
+	return Tools_use_Results_Future{Future: ans.Future()}, release
+
+}
+
+func (c Tools) WaitStreaming() error {
+	return capnp.Client(c).WaitStreaming()
+}
+
+// String returns a string that identifies this capability for debugging
+// purposes.  Its format should not be depended on: in particular, it
+// should not be used to compare clients.  Use IsSame to compare clients
+// for equality.
+func (c Tools) String() string {
+	return "Tools(" + capnp.Client(c).String() + ")"
+}
+
+// AddRef creates a new Client that refers to the same capability as c.
+// If c is nil or has resolved to null, then AddRef returns nil.
+func (c Tools) AddRef() Tools {
+	return Tools(capnp.Client(c).AddRef())
+}
+
+// Release releases a capability reference.  If this is the last
+// reference to the capability, then the underlying resources associated
+// with the capability will be released.
+//
+// Release will panic if c has already been released, but not if c is
+// nil or resolved to null.
+func (c Tools) Release() {
+	capnp.Client(c).Release()
+}
+
+// Resolve blocks until the capability is fully resolved or the Context
+// expires.
+func (c Tools) Resolve(ctx context.Context) error {
+	return capnp.Client(c).Resolve(ctx)
+}
+
+func (c Tools) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Client(c).EncodeAsPtr(seg)
+}
+
+func (Tools) DecodeFromPtr(p capnp.Ptr) Tools {
+	return Tools(capnp.Client{}.DecodeFromPtr(p))
+}
+
+// IsValid reports whether c is a valid reference to a capability.
+// A reference is invalid if it is nil, has resolved to null, or has
+// been released.
+func (c Tools) IsValid() bool {
+	return capnp.Client(c).IsValid()
+}
+
+// IsSame reports whether c and other refer to a capability created by the
+// same call to NewClient.  This can return false negatives if c or other
+// are not fully resolved: use Resolve if this is an issue.  If either
+// c or other are released, then IsSame panics.
+func (c Tools) IsSame(other Tools) bool {
+	return capnp.Client(c).IsSame(capnp.Client(other))
+}
+
+// Update the flowcontrol.FlowLimiter used to manage flow control for
+// this client. This affects all future calls, but not calls already
+// waiting to send. Passing nil sets the value to flowcontrol.NopLimiter,
+// which is also the default.
+func (c Tools) SetFlowLimiter(lim fc.FlowLimiter) {
+	capnp.Client(c).SetFlowLimiter(lim)
+}
+
+// Get the current flowcontrol.FlowLimiter used to manage flow control
+// for this client.
+func (c Tools) GetFlowLimiter() fc.FlowLimiter {
+	return capnp.Client(c).GetFlowLimiter()
+}
+
+// A Tools_Server is a Tools with a local implementation.
+type Tools_Server interface {
+	Add(context.Context, Tools_add) error
+
+	Use(context.Context, Tools_use) error
+}
+
+// Tools_NewServer creates a new Server from an implementation of Tools_Server.
+func Tools_NewServer(s Tools_Server) *server.Server {
+	c, _ := s.(server.Shutdowner)
+	return server.New(Tools_Methods(nil, s), s, c)
+}
+
+// Tools_ServerToClient creates a new Client from an implementation of Tools_Server.
+// The caller is responsible for calling Release on the returned Client.
+func Tools_ServerToClient(s Tools_Server) Tools {
+	return Tools(capnp.NewClient(Tools_NewServer(s)))
+}
+
+// Tools_Methods appends Methods to a slice that invoke the methods on s.
+// This can be used to create a more complicated Server.
+func Tools_Methods(methods []server.Method, s Tools_Server) []server.Method {
+	if cap(methods) == 0 {
+		methods = make([]server.Method, 0, 2)
+	}
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0xb09b31fcf850aadd,
+			MethodID:      0,
+			InterfaceName: "pkg/ai/agent/agent.capnp:Tools",
+			MethodName:    "add",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.Add(ctx, Tools_add{call})
+		},
+	})
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0xb09b31fcf850aadd,
+			MethodID:      1,
+			InterfaceName: "pkg/ai/agent/agent.capnp:Tools",
+			MethodName:    "use",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.Use(ctx, Tools_use{call})
+		},
+	})
+
+	return methods
+}
+
+// Tools_add holds the state for a server call to Tools.add.
+// See server.Call for documentation.
+type Tools_add struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c Tools_add) Args() Tools_add_Params {
+	return Tools_add_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c Tools_add) AllocResults() (Tools_add_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return Tools_add_Results(r), err
+}
+
+// Tools_use holds the state for a server call to Tools.use.
+// See server.Call for documentation.
+type Tools_use struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c Tools_use) Args() Tools_use_Params {
+	return Tools_use_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c Tools_use) AllocResults() (Tools_use_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return Tools_use_Results(r), err
+}
+
+// Tools_List is a list of Tools.
+type Tools_List = capnp.CapList[Tools]
+
+// NewTools_List creates a new list of Tools.
+func NewTools_List(s *capnp.Segment, sz int32) (Tools_List, error) {
+	l, err := capnp.NewPointerList(s, sz)
+	return capnp.CapList[Tools](l), err
+}
+
+type Tools_add_Params capnp.Struct
+
+// Tools_add_Params_TypeID is the unique identifier for the type Tools_add_Params.
+const Tools_add_Params_TypeID = 0xe4bd3ba07125d033
+
+func NewTools_add_Params(s *capnp.Segment) (Tools_add_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return Tools_add_Params(st), err
+}
+
+func NewRootTools_add_Params(s *capnp.Segment) (Tools_add_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return Tools_add_Params(st), err
+}
+
+func ReadRootTools_add_Params(msg *capnp.Message) (Tools_add_Params, error) {
+	root, err := msg.Root()
+	return Tools_add_Params(root.Struct()), err
+}
+
+func (s Tools_add_Params) String() string {
+	str, _ := text.Marshal(0xe4bd3ba07125d033, capnp.Struct(s))
+	return str
+}
+
+func (s Tools_add_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Tools_add_Params) DecodeFromPtr(p capnp.Ptr) Tools_add_Params {
+	return Tools_add_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Tools_add_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Tools_add_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Tools_add_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Tools_add_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Tools_add_Params) Name() (string, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s Tools_add_Params) HasName() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Tools_add_Params) NameBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s Tools_add_Params) SetName(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+// Tools_add_Params_List is a list of Tools_add_Params.
+type Tools_add_Params_List = capnp.StructList[Tools_add_Params]
+
+// NewTools_add_Params creates a new list of Tools_add_Params.
+func NewTools_add_Params_List(s *capnp.Segment, sz int32) (Tools_add_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[Tools_add_Params](l), err
+}
+
+// Tools_add_Params_Future is a wrapper for a Tools_add_Params promised by a client call.
+type Tools_add_Params_Future struct{ *capnp.Future }
+
+func (f Tools_add_Params_Future) Struct() (Tools_add_Params, error) {
+	p, err := f.Future.Ptr()
+	return Tools_add_Params(p.Struct()), err
+}
+
+type Tools_add_Results capnp.Struct
+
+// Tools_add_Results_TypeID is the unique identifier for the type Tools_add_Results.
+const Tools_add_Results_TypeID = 0x9b8f57232e3873c2
+
+func NewTools_add_Results(s *capnp.Segment) (Tools_add_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return Tools_add_Results(st), err
+}
+
+func NewRootTools_add_Results(s *capnp.Segment) (Tools_add_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return Tools_add_Results(st), err
+}
+
+func ReadRootTools_add_Results(msg *capnp.Message) (Tools_add_Results, error) {
+	root, err := msg.Root()
+	return Tools_add_Results(root.Struct()), err
+}
+
+func (s Tools_add_Results) String() string {
+	str, _ := text.Marshal(0x9b8f57232e3873c2, capnp.Struct(s))
+	return str
+}
+
+func (s Tools_add_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Tools_add_Results) DecodeFromPtr(p capnp.Ptr) Tools_add_Results {
+	return Tools_add_Results(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Tools_add_Results) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Tools_add_Results) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Tools_add_Results) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Tools_add_Results) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+
+// Tools_add_Results_List is a list of Tools_add_Results.
+type Tools_add_Results_List = capnp.StructList[Tools_add_Results]
+
+// NewTools_add_Results creates a new list of Tools_add_Results.
+func NewTools_add_Results_List(s *capnp.Segment, sz int32) (Tools_add_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
+	return capnp.StructList[Tools_add_Results](l), err
+}
+
+// Tools_add_Results_Future is a wrapper for a Tools_add_Results promised by a client call.
+type Tools_add_Results_Future struct{ *capnp.Future }
+
+func (f Tools_add_Results_Future) Struct() (Tools_add_Results, error) {
+	p, err := f.Future.Ptr()
+	return Tools_add_Results(p.Struct()), err
+}
+
+type Tools_use_Params capnp.Struct
+
+// Tools_use_Params_TypeID is the unique identifier for the type Tools_use_Params.
+const Tools_use_Params_TypeID = 0xefbdfb01067809b9
+
+func NewTools_use_Params(s *capnp.Segment) (Tools_use_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	return Tools_use_Params(st), err
+}
+
+func NewRootTools_use_Params(s *capnp.Segment) (Tools_use_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	return Tools_use_Params(st), err
+}
+
+func ReadRootTools_use_Params(msg *capnp.Message) (Tools_use_Params, error) {
+	root, err := msg.Root()
+	return Tools_use_Params(root.Struct()), err
+}
+
+func (s Tools_use_Params) String() string {
+	str, _ := text.Marshal(0xefbdfb01067809b9, capnp.Struct(s))
+	return str
+}
+
+func (s Tools_use_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Tools_use_Params) DecodeFromPtr(p capnp.Ptr) Tools_use_Params {
+	return Tools_use_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Tools_use_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Tools_use_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Tools_use_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Tools_use_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Tools_use_Params) Name() (string, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s Tools_use_Params) HasName() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Tools_use_Params) NameBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s Tools_use_Params) SetName(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+func (s Tools_use_Params) Arguments() (string, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.Text(), err
+}
+
+func (s Tools_use_Params) HasArguments() bool {
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Tools_use_Params) ArgumentsBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.TextBytes(), err
+}
+
+func (s Tools_use_Params) SetArguments(v string) error {
+	return capnp.Struct(s).SetText(1, v)
+}
+
+// Tools_use_Params_List is a list of Tools_use_Params.
+type Tools_use_Params_List = capnp.StructList[Tools_use_Params]
+
+// NewTools_use_Params creates a new list of Tools_use_Params.
+func NewTools_use_Params_List(s *capnp.Segment, sz int32) (Tools_use_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2}, sz)
+	return capnp.StructList[Tools_use_Params](l), err
+}
+
+// Tools_use_Params_Future is a wrapper for a Tools_use_Params promised by a client call.
+type Tools_use_Params_Future struct{ *capnp.Future }
+
+func (f Tools_use_Params_Future) Struct() (Tools_use_Params, error) {
+	p, err := f.Future.Ptr()
+	return Tools_use_Params(p.Struct()), err
+}
+
+type Tools_use_Results capnp.Struct
+
+// Tools_use_Results_TypeID is the unique identifier for the type Tools_use_Results.
+const Tools_use_Results_TypeID = 0x89b853680434a41c
+
+func NewTools_use_Results(s *capnp.Segment) (Tools_use_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return Tools_use_Results(st), err
+}
+
+func NewRootTools_use_Results(s *capnp.Segment) (Tools_use_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return Tools_use_Results(st), err
+}
+
+func ReadRootTools_use_Results(msg *capnp.Message) (Tools_use_Results, error) {
+	root, err := msg.Root()
+	return Tools_use_Results(root.Struct()), err
+}
+
+func (s Tools_use_Results) String() string {
+	str, _ := text.Marshal(0x89b853680434a41c, capnp.Struct(s))
+	return str
+}
+
+func (s Tools_use_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Tools_use_Results) DecodeFromPtr(p capnp.Ptr) Tools_use_Results {
+	return Tools_use_Results(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Tools_use_Results) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Tools_use_Results) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Tools_use_Results) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Tools_use_Results) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Tools_use_Results) Result() (string, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s Tools_use_Results) HasResult() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Tools_use_Results) ResultBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s Tools_use_Results) SetResult(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+// Tools_use_Results_List is a list of Tools_use_Results.
+type Tools_use_Results_List = capnp.StructList[Tools_use_Results]
+
+// NewTools_use_Results creates a new list of Tools_use_Results.
+func NewTools_use_Results_List(s *capnp.Segment, sz int32) (Tools_use_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[Tools_use_Results](l), err
+}
+
+// Tools_use_Results_Future is a wrapper for a Tools_use_Results promised by a client call.
+type Tools_use_Results_Future struct{ *capnp.Future }
+
+func (f Tools_use_Results_Future) Struct() (Tools_use_Results, error) {
+	p, err := f.Future.Ptr()
+	return Tools_use_Results(p.Struct()), err
+}
+
+type AgentRPC capnp.Client
+
+// AgentRPC_TypeID is the unique identifier for the type AgentRPC.
+const AgentRPC_TypeID = 0x9048af051e281d80
+
+func (c AgentRPC) Run(ctx context.Context, params func(AgentRPC_run_Params) error) error {
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      0,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "run",
+		},
+	}
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 0}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(AgentRPC_run_Params(s)) }
+	}
+
+	return capnp.Client(c).SendStreamCall(ctx, s)
+
+}
+
+func (c AgentRPC) Stop(ctx context.Context, params func(AgentRPC_stop_Params) error) (AgentRPC_stop_Results_Future, capnp.ReleaseFunc) {
+
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      1,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "stop",
+		},
+	}
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 0}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(AgentRPC_stop_Params(s)) }
+	}
+
+	ans, release := capnp.Client(c).SendCall(ctx, s)
+	return AgentRPC_stop_Results_Future{Future: ans.Future()}, release
+
+}
+
+func (c AgentRPC) Process(ctx context.Context, params func(AgentRPC_process_Params) error) (AgentRPC_process_Results_Future, capnp.ReleaseFunc) {
+
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      2,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "process",
+		},
+	}
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 1}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(AgentRPC_process_Params(s)) }
+	}
+
+	ans, release := capnp.Client(c).SendCall(ctx, s)
+	return AgentRPC_process_Results_Future{Future: ans.Future()}, release
+
+}
+
+func (c AgentRPC) GetState(ctx context.Context, params func(AgentRPC_getState_Params) error) (AgentRPC_getState_Results_Future, capnp.ReleaseFunc) {
+
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      3,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "getState",
+		},
+	}
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 0}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(AgentRPC_getState_Params(s)) }
+	}
+
+	ans, release := capnp.Client(c).SendCall(ctx, s)
+	return AgentRPC_getState_Results_Future{Future: ans.Future()}, release
+
+}
+
+func (c AgentRPC) SetState(ctx context.Context, params func(AgentRPC_setState_Params) error) (AgentRPC_setState_Results_Future, capnp.ReleaseFunc) {
+
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      4,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "setState",
+		},
+	}
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 1}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(AgentRPC_setState_Params(s)) }
+	}
+
+	ans, release := capnp.Client(c).SendCall(ctx, s)
+	return AgentRPC_setState_Results_Future{Future: ans.Future()}, release
+
+}
+
+func (c AgentRPC) AsTool(ctx context.Context, params func(AgentRPC_asTool_Params) error) (AgentRPC_asTool_Results_Future, capnp.ReleaseFunc) {
+
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      5,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "asTool",
+		},
+	}
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 2}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(AgentRPC_asTool_Params(s)) }
+	}
+
+	ans, release := capnp.Client(c).SendCall(ctx, s)
+	return AgentRPC_asTool_Results_Future{Future: ans.Future()}, release
+
+}
+
+func (c AgentRPC) WaitStreaming() error {
+	return capnp.Client(c).WaitStreaming()
+}
+
+// String returns a string that identifies this capability for debugging
+// purposes.  Its format should not be depended on: in particular, it
+// should not be used to compare clients.  Use IsSame to compare clients
+// for equality.
+func (c AgentRPC) String() string {
+	return "AgentRPC(" + capnp.Client(c).String() + ")"
+}
+
+// AddRef creates a new Client that refers to the same capability as c.
+// If c is nil or has resolved to null, then AddRef returns nil.
+func (c AgentRPC) AddRef() AgentRPC {
+	return AgentRPC(capnp.Client(c).AddRef())
+}
+
+// Release releases a capability reference.  If this is the last
+// reference to the capability, then the underlying resources associated
+// with the capability will be released.
+//
+// Release will panic if c has already been released, but not if c is
+// nil or resolved to null.
+func (c AgentRPC) Release() {
+	capnp.Client(c).Release()
+}
+
+// Resolve blocks until the capability is fully resolved or the Context
+// expires.
+func (c AgentRPC) Resolve(ctx context.Context) error {
+	return capnp.Client(c).Resolve(ctx)
+}
+
+func (c AgentRPC) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Client(c).EncodeAsPtr(seg)
+}
+
+func (AgentRPC) DecodeFromPtr(p capnp.Ptr) AgentRPC {
+	return AgentRPC(capnp.Client{}.DecodeFromPtr(p))
+}
+
+// IsValid reports whether c is a valid reference to a capability.
+// A reference is invalid if it is nil, has resolved to null, or has
+// been released.
+func (c AgentRPC) IsValid() bool {
+	return capnp.Client(c).IsValid()
+}
+
+// IsSame reports whether c and other refer to a capability created by the
+// same call to NewClient.  This can return false negatives if c or other
+// are not fully resolved: use Resolve if this is an issue.  If either
+// c or other are released, then IsSame panics.
+func (c AgentRPC) IsSame(other AgentRPC) bool {
+	return capnp.Client(c).IsSame(capnp.Client(other))
+}
+
+// Update the flowcontrol.FlowLimiter used to manage flow control for
+// this client. This affects all future calls, but not calls already
+// waiting to send. Passing nil sets the value to flowcontrol.NopLimiter,
+// which is also the default.
+func (c AgentRPC) SetFlowLimiter(lim fc.FlowLimiter) {
+	capnp.Client(c).SetFlowLimiter(lim)
+}
+
+// Get the current flowcontrol.FlowLimiter used to manage flow control
+// for this client.
+func (c AgentRPC) GetFlowLimiter() fc.FlowLimiter {
+	return capnp.Client(c).GetFlowLimiter()
+}
+
+// A AgentRPC_Server is a AgentRPC with a local implementation.
+type AgentRPC_Server interface {
+	Run(context.Context, AgentRPC_run) error
+
+	Stop(context.Context, AgentRPC_stop) error
+
+	Process(context.Context, AgentRPC_process) error
+
+	GetState(context.Context, AgentRPC_getState) error
+
+	SetState(context.Context, AgentRPC_setState) error
+
+	AsTool(context.Context, AgentRPC_asTool) error
+}
+
+// AgentRPC_NewServer creates a new Server from an implementation of AgentRPC_Server.
+func AgentRPC_NewServer(s AgentRPC_Server) *server.Server {
+	c, _ := s.(server.Shutdowner)
+	return server.New(AgentRPC_Methods(nil, s), s, c)
+}
+
+// AgentRPC_ServerToClient creates a new Client from an implementation of AgentRPC_Server.
+// The caller is responsible for calling Release on the returned Client.
+func AgentRPC_ServerToClient(s AgentRPC_Server) AgentRPC {
+	return AgentRPC(capnp.NewClient(AgentRPC_NewServer(s)))
+}
+
+// AgentRPC_Methods appends Methods to a slice that invoke the methods on s.
+// This can be used to create a more complicated Server.
+func AgentRPC_Methods(methods []server.Method, s AgentRPC_Server) []server.Method {
+	if cap(methods) == 0 {
+		methods = make([]server.Method, 0, 6)
+	}
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      0,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "run",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.Run(ctx, AgentRPC_run{call})
+		},
+	})
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      1,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "stop",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.Stop(ctx, AgentRPC_stop{call})
+		},
+	})
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      2,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "process",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.Process(ctx, AgentRPC_process{call})
+		},
+	})
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      3,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "getState",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.GetState(ctx, AgentRPC_getState{call})
+		},
+	})
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      4,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "setState",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.SetState(ctx, AgentRPC_setState{call})
+		},
+	})
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0x9048af051e281d80,
+			MethodID:      5,
+			InterfaceName: "pkg/ai/agent/agent.capnp:AgentRPC",
+			MethodName:    "asTool",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.AsTool(ctx, AgentRPC_asTool{call})
+		},
+	})
+
+	return methods
+}
+
+// AgentRPC_run holds the state for a server call to AgentRPC.run.
+// See server.Call for documentation.
+type AgentRPC_run struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c AgentRPC_run) Args() AgentRPC_run_Params {
+	return AgentRPC_run_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c AgentRPC_run) AllocResults() (stream.StreamResult, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return stream.StreamResult(r), err
+}
+
+// AgentRPC_stop holds the state for a server call to AgentRPC.stop.
+// See server.Call for documentation.
+type AgentRPC_stop struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c AgentRPC_stop) Args() AgentRPC_stop_Params {
+	return AgentRPC_stop_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c AgentRPC_stop) AllocResults() (AgentRPC_stop_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_stop_Results(r), err
+}
+
+// AgentRPC_process holds the state for a server call to AgentRPC.process.
+// See server.Call for documentation.
+type AgentRPC_process struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c AgentRPC_process) Args() AgentRPC_process_Params {
+	return AgentRPC_process_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c AgentRPC_process) AllocResults() (AgentRPC_process_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_process_Results(r), err
+}
+
+// AgentRPC_getState holds the state for a server call to AgentRPC.getState.
+// See server.Call for documentation.
+type AgentRPC_getState struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c AgentRPC_getState) Args() AgentRPC_getState_Params {
+	return AgentRPC_getState_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c AgentRPC_getState) AllocResults() (AgentRPC_getState_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_getState_Results(r), err
+}
+
+// AgentRPC_setState holds the state for a server call to AgentRPC.setState.
+// See server.Call for documentation.
+type AgentRPC_setState struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c AgentRPC_setState) Args() AgentRPC_setState_Params {
+	return AgentRPC_setState_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c AgentRPC_setState) AllocResults() (AgentRPC_setState_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_setState_Results(r), err
+}
+
+// AgentRPC_asTool holds the state for a server call to AgentRPC.asTool.
+// See server.Call for documentation.
+type AgentRPC_asTool struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c AgentRPC_asTool) Args() AgentRPC_asTool_Params {
+	return AgentRPC_asTool_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c AgentRPC_asTool) AllocResults() (AgentRPC_asTool_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_asTool_Results(r), err
+}
+
+// AgentRPC_List is a list of AgentRPC.
+type AgentRPC_List = capnp.CapList[AgentRPC]
+
+// NewAgentRPC_List creates a new list of AgentRPC.
+func NewAgentRPC_List(s *capnp.Segment, sz int32) (AgentRPC_List, error) {
+	l, err := capnp.NewPointerList(s, sz)
+	return capnp.CapList[AgentRPC](l), err
+}
+
+type AgentRPC_run_Params capnp.Struct
+
+// AgentRPC_run_Params_TypeID is the unique identifier for the type AgentRPC_run_Params.
+const AgentRPC_run_Params_TypeID = 0xb9bda85dc6f0a9e7
+
+func NewAgentRPC_run_Params(s *capnp.Segment) (AgentRPC_run_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_run_Params(st), err
+}
+
+func NewRootAgentRPC_run_Params(s *capnp.Segment) (AgentRPC_run_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_run_Params(st), err
+}
+
+func ReadRootAgentRPC_run_Params(msg *capnp.Message) (AgentRPC_run_Params, error) {
+	root, err := msg.Root()
+	return AgentRPC_run_Params(root.Struct()), err
+}
+
+func (s AgentRPC_run_Params) String() string {
+	str, _ := text.Marshal(0xb9bda85dc6f0a9e7, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_run_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_run_Params) DecodeFromPtr(p capnp.Ptr) AgentRPC_run_Params {
+	return AgentRPC_run_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_run_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_run_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_run_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_run_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+
+// AgentRPC_run_Params_List is a list of AgentRPC_run_Params.
+type AgentRPC_run_Params_List = capnp.StructList[AgentRPC_run_Params]
+
+// NewAgentRPC_run_Params creates a new list of AgentRPC_run_Params.
+func NewAgentRPC_run_Params_List(s *capnp.Segment, sz int32) (AgentRPC_run_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
+	return capnp.StructList[AgentRPC_run_Params](l), err
+}
+
+// AgentRPC_run_Params_Future is a wrapper for a AgentRPC_run_Params promised by a client call.
+type AgentRPC_run_Params_Future struct{ *capnp.Future }
+
+func (f AgentRPC_run_Params_Future) Struct() (AgentRPC_run_Params, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_run_Params(p.Struct()), err
+}
+
+type AgentRPC_stop_Params capnp.Struct
+
+// AgentRPC_stop_Params_TypeID is the unique identifier for the type AgentRPC_stop_Params.
+const AgentRPC_stop_Params_TypeID = 0xc3cd8b75d9d30639
+
+func NewAgentRPC_stop_Params(s *capnp.Segment) (AgentRPC_stop_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_stop_Params(st), err
+}
+
+func NewRootAgentRPC_stop_Params(s *capnp.Segment) (AgentRPC_stop_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_stop_Params(st), err
+}
+
+func ReadRootAgentRPC_stop_Params(msg *capnp.Message) (AgentRPC_stop_Params, error) {
+	root, err := msg.Root()
+	return AgentRPC_stop_Params(root.Struct()), err
+}
+
+func (s AgentRPC_stop_Params) String() string {
+	str, _ := text.Marshal(0xc3cd8b75d9d30639, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_stop_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_stop_Params) DecodeFromPtr(p capnp.Ptr) AgentRPC_stop_Params {
+	return AgentRPC_stop_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_stop_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_stop_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_stop_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_stop_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+
+// AgentRPC_stop_Params_List is a list of AgentRPC_stop_Params.
+type AgentRPC_stop_Params_List = capnp.StructList[AgentRPC_stop_Params]
+
+// NewAgentRPC_stop_Params creates a new list of AgentRPC_stop_Params.
+func NewAgentRPC_stop_Params_List(s *capnp.Segment, sz int32) (AgentRPC_stop_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
+	return capnp.StructList[AgentRPC_stop_Params](l), err
+}
+
+// AgentRPC_stop_Params_Future is a wrapper for a AgentRPC_stop_Params promised by a client call.
+type AgentRPC_stop_Params_Future struct{ *capnp.Future }
+
+func (f AgentRPC_stop_Params_Future) Struct() (AgentRPC_stop_Params, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_stop_Params(p.Struct()), err
+}
+
+type AgentRPC_stop_Results capnp.Struct
+
+// AgentRPC_stop_Results_TypeID is the unique identifier for the type AgentRPC_stop_Results.
+const AgentRPC_stop_Results_TypeID = 0xd0d73fbf288eff99
+
+func NewAgentRPC_stop_Results(s *capnp.Segment) (AgentRPC_stop_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_stop_Results(st), err
+}
+
+func NewRootAgentRPC_stop_Results(s *capnp.Segment) (AgentRPC_stop_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_stop_Results(st), err
+}
+
+func ReadRootAgentRPC_stop_Results(msg *capnp.Message) (AgentRPC_stop_Results, error) {
+	root, err := msg.Root()
+	return AgentRPC_stop_Results(root.Struct()), err
+}
+
+func (s AgentRPC_stop_Results) String() string {
+	str, _ := text.Marshal(0xd0d73fbf288eff99, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_stop_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_stop_Results) DecodeFromPtr(p capnp.Ptr) AgentRPC_stop_Results {
+	return AgentRPC_stop_Results(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_stop_Results) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_stop_Results) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_stop_Results) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_stop_Results) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+
+// AgentRPC_stop_Results_List is a list of AgentRPC_stop_Results.
+type AgentRPC_stop_Results_List = capnp.StructList[AgentRPC_stop_Results]
+
+// NewAgentRPC_stop_Results creates a new list of AgentRPC_stop_Results.
+func NewAgentRPC_stop_Results_List(s *capnp.Segment, sz int32) (AgentRPC_stop_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
+	return capnp.StructList[AgentRPC_stop_Results](l), err
+}
+
+// AgentRPC_stop_Results_Future is a wrapper for a AgentRPC_stop_Results promised by a client call.
+type AgentRPC_stop_Results_Future struct{ *capnp.Future }
+
+func (f AgentRPC_stop_Results_Future) Struct() (AgentRPC_stop_Results, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_stop_Results(p.Struct()), err
+}
+
+type AgentRPC_process_Params capnp.Struct
+
+// AgentRPC_process_Params_TypeID is the unique identifier for the type AgentRPC_process_Params.
+const AgentRPC_process_Params_TypeID = 0xa1ad6494ba2ca72f
+
+func NewAgentRPC_process_Params(s *capnp.Segment) (AgentRPC_process_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_process_Params(st), err
+}
+
+func NewRootAgentRPC_process_Params(s *capnp.Segment) (AgentRPC_process_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_process_Params(st), err
+}
+
+func ReadRootAgentRPC_process_Params(msg *capnp.Message) (AgentRPC_process_Params, error) {
+	root, err := msg.Root()
+	return AgentRPC_process_Params(root.Struct()), err
+}
+
+func (s AgentRPC_process_Params) String() string {
+	str, _ := text.Marshal(0xa1ad6494ba2ca72f, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_process_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_process_Params) DecodeFromPtr(p capnp.Ptr) AgentRPC_process_Params {
+	return AgentRPC_process_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_process_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_process_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_process_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_process_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s AgentRPC_process_Params) Message_() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return []byte(p.Data()), err
+}
+
+func (s AgentRPC_process_Params) HasMessage_() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s AgentRPC_process_Params) SetMessage_(v []byte) error {
+	return capnp.Struct(s).SetData(0, v)
+}
+
+// AgentRPC_process_Params_List is a list of AgentRPC_process_Params.
+type AgentRPC_process_Params_List = capnp.StructList[AgentRPC_process_Params]
+
+// NewAgentRPC_process_Params creates a new list of AgentRPC_process_Params.
+func NewAgentRPC_process_Params_List(s *capnp.Segment, sz int32) (AgentRPC_process_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[AgentRPC_process_Params](l), err
+}
+
+// AgentRPC_process_Params_Future is a wrapper for a AgentRPC_process_Params promised by a client call.
+type AgentRPC_process_Params_Future struct{ *capnp.Future }
+
+func (f AgentRPC_process_Params_Future) Struct() (AgentRPC_process_Params, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_process_Params(p.Struct()), err
+}
+
+type AgentRPC_process_Results capnp.Struct
+
+// AgentRPC_process_Results_TypeID is the unique identifier for the type AgentRPC_process_Results.
+const AgentRPC_process_Results_TypeID = 0xf034bc90fcf1affd
+
+func NewAgentRPC_process_Results(s *capnp.Segment) (AgentRPC_process_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_process_Results(st), err
+}
+
+func NewRootAgentRPC_process_Results(s *capnp.Segment) (AgentRPC_process_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_process_Results(st), err
+}
+
+func ReadRootAgentRPC_process_Results(msg *capnp.Message) (AgentRPC_process_Results, error) {
+	root, err := msg.Root()
+	return AgentRPC_process_Results(root.Struct()), err
+}
+
+func (s AgentRPC_process_Results) String() string {
+	str, _ := text.Marshal(0xf034bc90fcf1affd, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_process_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_process_Results) DecodeFromPtr(p capnp.Ptr) AgentRPC_process_Results {
+	return AgentRPC_process_Results(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_process_Results) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_process_Results) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_process_Results) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_process_Results) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s AgentRPC_process_Results) Response() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return []byte(p.Data()), err
+}
+
+func (s AgentRPC_process_Results) HasResponse() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s AgentRPC_process_Results) SetResponse(v []byte) error {
+	return capnp.Struct(s).SetData(0, v)
+}
+
+// AgentRPC_process_Results_List is a list of AgentRPC_process_Results.
+type AgentRPC_process_Results_List = capnp.StructList[AgentRPC_process_Results]
+
+// NewAgentRPC_process_Results creates a new list of AgentRPC_process_Results.
+func NewAgentRPC_process_Results_List(s *capnp.Segment, sz int32) (AgentRPC_process_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[AgentRPC_process_Results](l), err
+}
+
+// AgentRPC_process_Results_Future is a wrapper for a AgentRPC_process_Results promised by a client call.
+type AgentRPC_process_Results_Future struct{ *capnp.Future }
+
+func (f AgentRPC_process_Results_Future) Struct() (AgentRPC_process_Results, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_process_Results(p.Struct()), err
+}
+
+type AgentRPC_getState_Params capnp.Struct
+
+// AgentRPC_getState_Params_TypeID is the unique identifier for the type AgentRPC_getState_Params.
+const AgentRPC_getState_Params_TypeID = 0xbba2d55bd6f3e57b
+
+func NewAgentRPC_getState_Params(s *capnp.Segment) (AgentRPC_getState_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_getState_Params(st), err
+}
+
+func NewRootAgentRPC_getState_Params(s *capnp.Segment) (AgentRPC_getState_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_getState_Params(st), err
+}
+
+func ReadRootAgentRPC_getState_Params(msg *capnp.Message) (AgentRPC_getState_Params, error) {
+	root, err := msg.Root()
+	return AgentRPC_getState_Params(root.Struct()), err
+}
+
+func (s AgentRPC_getState_Params) String() string {
+	str, _ := text.Marshal(0xbba2d55bd6f3e57b, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_getState_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_getState_Params) DecodeFromPtr(p capnp.Ptr) AgentRPC_getState_Params {
+	return AgentRPC_getState_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_getState_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_getState_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_getState_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_getState_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+
+// AgentRPC_getState_Params_List is a list of AgentRPC_getState_Params.
+type AgentRPC_getState_Params_List = capnp.StructList[AgentRPC_getState_Params]
+
+// NewAgentRPC_getState_Params creates a new list of AgentRPC_getState_Params.
+func NewAgentRPC_getState_Params_List(s *capnp.Segment, sz int32) (AgentRPC_getState_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
+	return capnp.StructList[AgentRPC_getState_Params](l), err
+}
+
+// AgentRPC_getState_Params_Future is a wrapper for a AgentRPC_getState_Params promised by a client call.
+type AgentRPC_getState_Params_Future struct{ *capnp.Future }
+
+func (f AgentRPC_getState_Params_Future) Struct() (AgentRPC_getState_Params, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_getState_Params(p.Struct()), err
+}
+
+type AgentRPC_getState_Results capnp.Struct
+
+// AgentRPC_getState_Results_TypeID is the unique identifier for the type AgentRPC_getState_Results.
+const AgentRPC_getState_Results_TypeID = 0xb1fdf1524eea27f6
+
+func NewAgentRPC_getState_Results(s *capnp.Segment) (AgentRPC_getState_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_getState_Results(st), err
+}
+
+func NewRootAgentRPC_getState_Results(s *capnp.Segment) (AgentRPC_getState_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_getState_Results(st), err
+}
+
+func ReadRootAgentRPC_getState_Results(msg *capnp.Message) (AgentRPC_getState_Results, error) {
+	root, err := msg.Root()
+	return AgentRPC_getState_Results(root.Struct()), err
+}
+
+func (s AgentRPC_getState_Results) String() string {
+	str, _ := text.Marshal(0xb1fdf1524eea27f6, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_getState_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_getState_Results) DecodeFromPtr(p capnp.Ptr) AgentRPC_getState_Results {
+	return AgentRPC_getState_Results(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_getState_Results) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_getState_Results) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_getState_Results) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_getState_Results) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s AgentRPC_getState_Results) State() (Agent, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return Agent(p.Struct()), err
+}
+
+func (s AgentRPC_getState_Results) HasState() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s AgentRPC_getState_Results) SetState(v Agent) error {
+	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
+}
+
+// NewState sets the state field to a newly
+// allocated Agent struct, preferring placement in s's segment.
+func (s AgentRPC_getState_Results) NewState() (Agent, error) {
+	ss, err := NewAgent(capnp.Struct(s).Segment())
+	if err != nil {
+		return Agent{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
+	return ss, err
+}
+
+// AgentRPC_getState_Results_List is a list of AgentRPC_getState_Results.
+type AgentRPC_getState_Results_List = capnp.StructList[AgentRPC_getState_Results]
+
+// NewAgentRPC_getState_Results creates a new list of AgentRPC_getState_Results.
+func NewAgentRPC_getState_Results_List(s *capnp.Segment, sz int32) (AgentRPC_getState_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[AgentRPC_getState_Results](l), err
+}
+
+// AgentRPC_getState_Results_Future is a wrapper for a AgentRPC_getState_Results promised by a client call.
+type AgentRPC_getState_Results_Future struct{ *capnp.Future }
+
+func (f AgentRPC_getState_Results_Future) Struct() (AgentRPC_getState_Results, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_getState_Results(p.Struct()), err
+}
+func (p AgentRPC_getState_Results_Future) State() Agent_Future {
+	return Agent_Future{Future: p.Future.Field(0, nil)}
+}
+
+type AgentRPC_setState_Params capnp.Struct
+
+// AgentRPC_setState_Params_TypeID is the unique identifier for the type AgentRPC_setState_Params.
+const AgentRPC_setState_Params_TypeID = 0xc1da2b2ba9a022a4
+
+func NewAgentRPC_setState_Params(s *capnp.Segment) (AgentRPC_setState_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_setState_Params(st), err
+}
+
+func NewRootAgentRPC_setState_Params(s *capnp.Segment) (AgentRPC_setState_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_setState_Params(st), err
+}
+
+func ReadRootAgentRPC_setState_Params(msg *capnp.Message) (AgentRPC_setState_Params, error) {
+	root, err := msg.Root()
+	return AgentRPC_setState_Params(root.Struct()), err
+}
+
+func (s AgentRPC_setState_Params) String() string {
+	str, _ := text.Marshal(0xc1da2b2ba9a022a4, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_setState_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_setState_Params) DecodeFromPtr(p capnp.Ptr) AgentRPC_setState_Params {
+	return AgentRPC_setState_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_setState_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_setState_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_setState_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_setState_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s AgentRPC_setState_Params) State() (Agent, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return Agent(p.Struct()), err
+}
+
+func (s AgentRPC_setState_Params) HasState() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s AgentRPC_setState_Params) SetState(v Agent) error {
+	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
+}
+
+// NewState sets the state field to a newly
+// allocated Agent struct, preferring placement in s's segment.
+func (s AgentRPC_setState_Params) NewState() (Agent, error) {
+	ss, err := NewAgent(capnp.Struct(s).Segment())
+	if err != nil {
+		return Agent{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
+	return ss, err
+}
+
+// AgentRPC_setState_Params_List is a list of AgentRPC_setState_Params.
+type AgentRPC_setState_Params_List = capnp.StructList[AgentRPC_setState_Params]
+
+// NewAgentRPC_setState_Params creates a new list of AgentRPC_setState_Params.
+func NewAgentRPC_setState_Params_List(s *capnp.Segment, sz int32) (AgentRPC_setState_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[AgentRPC_setState_Params](l), err
+}
+
+// AgentRPC_setState_Params_Future is a wrapper for a AgentRPC_setState_Params promised by a client call.
+type AgentRPC_setState_Params_Future struct{ *capnp.Future }
+
+func (f AgentRPC_setState_Params_Future) Struct() (AgentRPC_setState_Params, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_setState_Params(p.Struct()), err
+}
+func (p AgentRPC_setState_Params_Future) State() Agent_Future {
+	return Agent_Future{Future: p.Future.Field(0, nil)}
+}
+
+type AgentRPC_setState_Results capnp.Struct
+
+// AgentRPC_setState_Results_TypeID is the unique identifier for the type AgentRPC_setState_Results.
+const AgentRPC_setState_Results_TypeID = 0xf7b8d9311796ea41
+
+func NewAgentRPC_setState_Results(s *capnp.Segment) (AgentRPC_setState_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_setState_Results(st), err
+}
+
+func NewRootAgentRPC_setState_Results(s *capnp.Segment) (AgentRPC_setState_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0})
+	return AgentRPC_setState_Results(st), err
+}
+
+func ReadRootAgentRPC_setState_Results(msg *capnp.Message) (AgentRPC_setState_Results, error) {
+	root, err := msg.Root()
+	return AgentRPC_setState_Results(root.Struct()), err
+}
+
+func (s AgentRPC_setState_Results) String() string {
+	str, _ := text.Marshal(0xf7b8d9311796ea41, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_setState_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_setState_Results) DecodeFromPtr(p capnp.Ptr) AgentRPC_setState_Results {
+	return AgentRPC_setState_Results(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_setState_Results) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_setState_Results) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_setState_Results) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_setState_Results) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+
+// AgentRPC_setState_Results_List is a list of AgentRPC_setState_Results.
+type AgentRPC_setState_Results_List = capnp.StructList[AgentRPC_setState_Results]
+
+// NewAgentRPC_setState_Results creates a new list of AgentRPC_setState_Results.
+func NewAgentRPC_setState_Results_List(s *capnp.Segment, sz int32) (AgentRPC_setState_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 0}, sz)
+	return capnp.StructList[AgentRPC_setState_Results](l), err
+}
+
+// AgentRPC_setState_Results_Future is a wrapper for a AgentRPC_setState_Results promised by a client call.
+type AgentRPC_setState_Results_Future struct{ *capnp.Future }
+
+func (f AgentRPC_setState_Results_Future) Struct() (AgentRPC_setState_Results, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_setState_Results(p.Struct()), err
+}
+
+type AgentRPC_asTool_Params capnp.Struct
+
+// AgentRPC_asTool_Params_TypeID is the unique identifier for the type AgentRPC_asTool_Params.
+const AgentRPC_asTool_Params_TypeID = 0xba649b8cdc7451db
+
+func NewAgentRPC_asTool_Params(s *capnp.Segment) (AgentRPC_asTool_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	return AgentRPC_asTool_Params(st), err
+}
+
+func NewRootAgentRPC_asTool_Params(s *capnp.Segment) (AgentRPC_asTool_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
+	return AgentRPC_asTool_Params(st), err
+}
+
+func ReadRootAgentRPC_asTool_Params(msg *capnp.Message) (AgentRPC_asTool_Params, error) {
+	root, err := msg.Root()
+	return AgentRPC_asTool_Params(root.Struct()), err
+}
+
+func (s AgentRPC_asTool_Params) String() string {
+	str, _ := text.Marshal(0xba649b8cdc7451db, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_asTool_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_asTool_Params) DecodeFromPtr(p capnp.Ptr) AgentRPC_asTool_Params {
+	return AgentRPC_asTool_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_asTool_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_asTool_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_asTool_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_asTool_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s AgentRPC_asTool_Params) Name() (string, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s AgentRPC_asTool_Params) HasName() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s AgentRPC_asTool_Params) NameBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s AgentRPC_asTool_Params) SetName(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+func (s AgentRPC_asTool_Params) Args() (string, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.Text(), err
+}
+
+func (s AgentRPC_asTool_Params) HasArgs() bool {
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s AgentRPC_asTool_Params) ArgsBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.TextBytes(), err
+}
+
+func (s AgentRPC_asTool_Params) SetArgs(v string) error {
+	return capnp.Struct(s).SetText(1, v)
+}
+
+// AgentRPC_asTool_Params_List is a list of AgentRPC_asTool_Params.
+type AgentRPC_asTool_Params_List = capnp.StructList[AgentRPC_asTool_Params]
+
+// NewAgentRPC_asTool_Params creates a new list of AgentRPC_asTool_Params.
+func NewAgentRPC_asTool_Params_List(s *capnp.Segment, sz int32) (AgentRPC_asTool_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2}, sz)
+	return capnp.StructList[AgentRPC_asTool_Params](l), err
+}
+
+// AgentRPC_asTool_Params_Future is a wrapper for a AgentRPC_asTool_Params promised by a client call.
+type AgentRPC_asTool_Params_Future struct{ *capnp.Future }
+
+func (f AgentRPC_asTool_Params_Future) Struct() (AgentRPC_asTool_Params, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_asTool_Params(p.Struct()), err
+}
+
+type AgentRPC_asTool_Results capnp.Struct
+
+// AgentRPC_asTool_Results_TypeID is the unique identifier for the type AgentRPC_asTool_Results.
+const AgentRPC_asTool_Results_TypeID = 0xe2ecec1755f8873c
+
+func NewAgentRPC_asTool_Results(s *capnp.Segment) (AgentRPC_asTool_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_asTool_Results(st), err
+}
+
+func NewRootAgentRPC_asTool_Results(s *capnp.Segment) (AgentRPC_asTool_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return AgentRPC_asTool_Results(st), err
+}
+
+func ReadRootAgentRPC_asTool_Results(msg *capnp.Message) (AgentRPC_asTool_Results, error) {
+	root, err := msg.Root()
+	return AgentRPC_asTool_Results(root.Struct()), err
+}
+
+func (s AgentRPC_asTool_Results) String() string {
+	str, _ := text.Marshal(0xe2ecec1755f8873c, capnp.Struct(s))
+	return str
+}
+
+func (s AgentRPC_asTool_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (AgentRPC_asTool_Results) DecodeFromPtr(p capnp.Ptr) AgentRPC_asTool_Results {
+	return AgentRPC_asTool_Results(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s AgentRPC_asTool_Results) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s AgentRPC_asTool_Results) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s AgentRPC_asTool_Results) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s AgentRPC_asTool_Results) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s AgentRPC_asTool_Results) Result() (string, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s AgentRPC_asTool_Results) HasResult() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s AgentRPC_asTool_Results) ResultBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s AgentRPC_asTool_Results) SetResult(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+// AgentRPC_asTool_Results_List is a list of AgentRPC_asTool_Results.
+type AgentRPC_asTool_Results_List = capnp.StructList[AgentRPC_asTool_Results]
+
+// NewAgentRPC_asTool_Results creates a new list of AgentRPC_asTool_Results.
+func NewAgentRPC_asTool_Results_List(s *capnp.Segment, sz int32) (AgentRPC_asTool_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[AgentRPC_asTool_Results](l), err
+}
+
+// AgentRPC_asTool_Results_Future is a wrapper for a AgentRPC_asTool_Results promised by a client call.
+type AgentRPC_asTool_Results_Future struct{ *capnp.Future }
+
+func (f AgentRPC_asTool_Results_Future) Struct() (AgentRPC_asTool_Results, error) {
+	p, err := f.Future.Ptr()
+	return AgentRPC_asTool_Results(p.Struct()), err
+}
+
+const schema_d4c9c9f76e88a0d0 = "x\xda\xbcV}l\x14\xd7\x11\x9f\xd9w\xe7=\xf0\xad" +
+	"\xcf/g)q\x05X\xa5F\x05\x13l\x08\xa4u\xdc" +
+	"*>\x9b\"AT\xd2{\x07\xb4\x0d\x08\xb5\xcb\xed\xfa" +
+	"X8\xef\x1d\xbb{\x05\xb7\x95L\"YPR\x0a\x8d" +
+	"H[C\x15\xd1\x886\x105%\xfc\x81\x04).\xa1" +
+	"I\xaa\xa2\xa8\x12\xa8m*\xd2 5(V\x00\x05\x15" +
+	"\xa7\x1f\xa4\x10\xb4\xd5\xec\xdd\xee\xad?b;\x95\x9a\x7f" +
+	"\xeevw\xe6\xcd\xc7\xef73o\x167DS\x91%" +
+	"\xca\xf6:\x90\xc4\xd1h\x8d\xdb32\xf4\x9b\xd2\xe76" +
+	"\xef\x04\xd1\x88\xe8^8\xbc\xdb\xbcu\xfe\xfc\x9f Z" +
+	"#\x03$?-\xbf\x9f\\$\xcb\x00K\x17\xc8\xfb\x10" +
+	"\xd0M={ud8\xdb\xb5\x1bx\x13\x02DHr" +
+	"1\x96A\x88\xb8\xb3\x8e,\x8bl^s\xea{eI" +
+	"\x14I4\x14[\x8f\x80\xc9\xf3\xb1N@w`\xe1W" +
+	"\xda\x9f|\xf9\xee>\xe0\x8da?d#y-v;" +
+	"\xf9\xaf\x18=\x8d\xc4\xde\x05tw\xce\x9e?'z|" +
+	"\xe5~\xe0\x8d\xac\xaa\x0b\xb8\xf4\xd2\x8c{0ym\x06" +
+	"\x19\x1f\x9e\xb1\x0b\x93\x97g\xca\x00\xee\xc0c_\xdd\x90" +
+	"j}\xfe\xc7\x15\xdf\x12\x89_\x9b\xe9\xf9\xbe8s;" +
+	"\xa0\xfb\xcc\xc3\xb3\xe7\\\xc9\xdc\x19\x0c\x85\xbd\xa8v=" +
+	"\x85\xfd[\xbb\xbd\xf53_\xdbw($i,K\xde" +
+	"|\xfd\x0d~\xf6\x09\xe3\x99\xb11$\xa3\xb5\xb7\x93\xbc" +
+	"\x96\x82Ujw%7\xd2\x93\xdb\xf6\xdc\xfd/\x1d\xd0" +
+	"^\xf8\x19\xf0\xb9A\xf6+j\xf7P\x04\xebj)\xfb" +
+	"s\xcas\xb8\xff\xfd\xa7\x8f\x8e\xc9\x9e\x91b\xa9\xf6\x1e" +
+	"L\x0ex\x16\x1f\xaf=\x0e\xe8^~>\xfd\xc1\x87K" +
+	"\x0e\xbd8\xce\xf5\xec\xf8\xed\xe4\x828)\xce\x8b\xefJ" +
+	"\x96\xe8\xc9\xfd\xf7g\xaf?\x9a\x19\xb9{\"\xeczc" +
+	"\xfc \xb9\xee\x8d\x93\xebw\x8f\xdd\xfc\xdd\xc6\xa3C\xa7" +
+	"\xcb\x0a^\x8a{\xe3[(\xc5\xbf\x0a\xe7\xad\xef\x1f\xd2" +
+	"^\xaa\x1c\xf5p\xeb\x8b?AG\x07\xe2\x84\xdbw\x86" +
+	"\xff\xf1\xc6\x86??\xfb\xeb\xd0\xd1\xb7\xe3O\xd1\xd1\xe5" +
+	"u\x87N\xb6-~\xf4l\x18\xf2\x8b\xf1\x0c\x1d\xbd\xec" +
+	"\x1d=2\xf7\xf0\xb1\x85\x0b\xdf<\x17\x0e\xeb!\xe5)" +
+	"RX\xa5PX\x0f\xd5\xfc\xf1R\xe9\xc9?\xbc\x12\xb2" +
+	"m(\x16\xd9\x1et\x7f0\xffl\xe7_.\x84$\xeb" +
+	"\x94o\x93dE\xdb\xc3\xbf\xfc\xfc\xeb=W\x807J" +
+	"\xa3\xea\xa2K\x99\x8bI\xa1\x102\xab\x95~@\xf7\x8b" +
+	"\xbb>Xw\xef{\xef]\x09\xbb\x1fP<B\x9e\xf6" +
+	"\xdc/\xbd0o\xdb\xe1/\x0c\xbd\x13\xae\xd7\x93\x8a\x97" +
+	"\xc09O\xe1\xe8\xaa\x9d\xb7\x0e\xec\xbes}lcx" +
+	"\x94\xbd\xadH\x98\xbc\xe1\xf9\xbb\xa6P\xc5\x9e\x9e\xb1\xa3" +
+	"\x06\xef\x0c\xfd=\x8c\xc7\x8d:\xcf\xdc\x7f\xea\x08\x8f\xbb" +
+	"\xc7G>\xdc\x7ff\xd9\xcdp@\x8f%<<\x8c\x04" +
+	"\xf9\xeb\xba\xfe\xa3{\x97\\:u+LS\xe2 \xc2" +
+	"1\xb7\xb85\xd7\xa6\x1am\xaa\x94\xd3M\xa7M\xa5\xdf" +
+	"\xd6\xacZ4\x8bM\x1dkU{k\x1aQ\xccb\x11" +
+	"\x80\x08\x02\xf0\x93\x9f\x02\x10/2\x14g$\xe4\x88\x0d" +
+	"H\x1fOo\x02\x10\xa7\x18\x8aW%D\xa9\x01%\x00" +
+	"~\xae\x03@\x9ca(~/!gR\x032\x00\xfe" +
+	"\xda\x16\x00\xf1*C\xf17\x09y\x845`\x04\x80_" +
+	"^\x0f \xdeb(\xaeJ\xc8\xa3\x91\x06\x8c\x02\xf0\xe1" +
+	"\x0c\x80x\x87\xa1\xb8)!\xaf\x896`\x0d\x00\xbfA" +
+	"6\xaf2\x14\xff\x94\x90\x19\x1a\xc6A\xc28\xa0\xab\xe9" +
+	"v\xd62\x8a\x0e\xc8F\xc1\xf4\xbfv\xda\x8e\xea\x94l" +
+	"LTi\x05\xc4\x84\xa7^\xd4MM7!\x915t" +
+	"\x1b\xeb\x00\xd3\x0c\xbdcu\x80\xaej\xdbF\xce\xd45" +
+	"`k\x0b\x81\x87\xac\xa5\xab\x8e\xaeu\x03\xf6\x05\xf6-" +
+	"\xdd.\xe5\x9d@\xc5\x8712\x16\xc6\x8e5\x8e\xea\xe8" +
+	"\xad9\xddiN\xab\x96\xda\x8b\xf6$\xbak\x0b\x85\xbc" +
+	"\xddZ\xb2\xf5\xe6\x0c\x99g\x8e-\"\x01\xf8\x0a\xe5\x1f" +
+	"c(\x1a\xa4\x8ft?\x8e\xc5\xce\x8e.z!\x1a\xeb" +
+	"\x03K\xea#\x00\xe2\x9b\x0cE>D\xa3A\xe65\x86" +
+	"\xa2(!\x97*<\xf6v\x03\x88\xcd\x0c\x85C<\xb2" +
+	"2\x8f\xdb\x1e\x00\x10y\x86b\xb7\x84\xae\xa1\xe9\xa6c" +
+	"8}\x00\x80\xf5\xd5I\x04\x88\xf5\x80\x9dEJ\xd9\xc6" +
+	"zw\xce\x9e\xc1\xf6\x95{6\xbcR\x11\xf4g\x0b\xa6" +
+	"\xa3\xefp\xb0\xdem|\xa1}\xe3\xac_\xfdboE" +
+	"\xd2\xe4\x10\x06ci\xf1\xf3c\xe3 \xf3\xd2\xcb\xa4q" +
+	"9\xa5x\x1f\x8b\x02\x043\x09\xcd\x13/o_z\xf0" +
+	"\x1b\x83\xfc\xc4\\\x90\xf8\xcfe\xac\x0e\x06\xf4\xe7\x00\x1f" +
+	"l\x01\x89\xef\x95Q\x0a\xe6,\xfa\xed\xc4\x1f\xef\x06\x89" +
+	"\x97dd\xc1\xb0B\x7f\"r\xe3\x11\x90\xb8*c$" +
+	"\x98F\xe8w\x19_G\xb2\xd52F\x83)\x88\xfe\xcc" +
+	"\xe0]\x1d \xf1\x07e\xd9*\x99)L\xd8N\xa1\x98" +
+	"\xc2\xfe\xa2U\xc8\xea\xb6\x9dB7\xa7;^\xc5\x00@" +
+	"\x0a];\xfc\xd6\xa9\xdaT )L\xe3\xf4\x0a.(" +
+	"\xa2X@\xfd\x02b\xb9\x99\xa1X\x1c\xa2~\x11\xb1<" +
+	"\x9f\xa1X&\xfd/\x94M\x19\x8b\x1d\x8ae\xca\xeaW" +
+	"5m\xbc\xf2\x04u\xed\x99&\xd2c\x1e\xe9\xfe\xf2\x80" +
+	"\xfe}\xcd\x97\x10\xe9\xf3\x88t\xff>A\xff\xaa\xe6\x8d" +
+	"$Sd9\xa7;)\x94m\xfa\x0d\x83\x1a\xfd\xa82" +
+	"[\xdeZa\xaa\xdc\xcc6@\xb8A\xbb\xab\x0d\xda\xdf" +
+	"\xab\xdb\xb6\x9a\xd3Q\x01\x09\x95I+xU\xb9\x83\xb0" +
+	"\x8f\x92\x89\x07\xd6V\xd0`\xfc\x12C\x91\x0e1\xb5\xba" +
+	"\x05@\xacd(\xd6\x86\x9aT\xd0\xc7/3\x14_\x0f" +
+	"\xfa\xb1\xc7\x00\xa6[\xfexH\x98j\xaf\x1e\xbcX\x85" +
+	"\xbc>\x9d\xc1\xe1\xd1Q\x05\xd8\xbf\xd3\xd0\xdfjB\x00" +
+	"\xfb\x17\x14\xfa\x8bZ\x00\xb0\xaai)\x94K\xb6>m" +
+	"\x80\xfd\x06\x98p\x04>PE\xb8\x89&\xbc\x8e\xf5\xd5" +
+	"\xddo\xcaj\x0c|X%\xb39\xad&\x88\xc1\xe9\x84" +
+	"T\xee;\x9f\xf2p7\xb5L\xd4M-\xd5n\x1a\x8d" +
+	"\xbcj\xe5\xecq\xc8O\x07\x8a\xa9o\x8ej\xa3Ut" +
+	"?\xa9\x9e\x9f$|{L\xf8\xff\x07\"i|6\xa7" +
+	"\x9b\xd4QLN\xa5\x9f\xe9\xf4.O{\x92\x9e\xa4\xd5" +
+	"g\x8d\xa3\xcaN\xc9\xeb\x80r\x9f=\xd8M\x91y\xc8" +
+	"\xa1\xc4\xe7\xd1\x1f\xe3\xb33\x00\x18\xe1\x8d\x1d\x00\xfd\xb4" +
+	"X\x18f\xae\x7fS\xbe\x90\xdd\xaak\xfdV\xc94\x0d" +
+	"3\xe7f\x0b\xbd\xc5\xbc\xee\xe8\x80Zg\x8fj\xe4u" +
+	"\xedcT]\xa6\x1c\xec\xe8I3\x8dU`\xb2\xf9:" +
+	"\x01!-U\x8b\xa3\x8av\x12\x90\x96\x17\xcc\x1e#\x07" +
+	"cv\x8b-\x95\xdd\xe2\xbb\xa1b\xeb\xa3\x8f;\x18\x8a" +
+	"\x03\xa1\xb1\xf5C\xdaB\xf63\x14?\x95\x10+\xab\xc5" +
+	" }\xfb\x09CqDB7\xab\x16\xd5MF\xde\x80" +
+	"\x843\xc1\xa6f\xe9\xdbJ\x86\xa5\xf7BB7\x9dq" +
+	"\xd2M\xfaf\xf5[F\xc1\xa2\xb5$\xc8\xc42\x0aV" +
+	"eU\x89\x81\x84\xb1i\xa0E\xbb\xd8\x04\x1d5a\xdf" +
+	"\xd3\xd2z?C\xd1>\x16B\xd5\xca\x95zu\xd3\x01" +
+	"\xfcX\xed\xef_5\xe5\x0a\x18M\x17\xe1\x14g(\xee" +
+	"\x93\x08\x09\xbbX0mZ\x12\xc6]7\xd3iO\x7f" +
+	"\xd0\xfe7\x00\x00\xff\xff\xac\x0fW#"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{
 		String: schema_d4c9c9f76e88a0d0,
 		Nodes: []uint64{
+			0x80683675bebdf166,
 			0x884163e5f1e8a240,
+			0x89b853680434a41c,
 			0x8ffdc08b384f2b85,
+			0x9048af051e281d80,
 			0x97aa2e405b565985,
 			0x99fb52e21e1d3e9e,
+			0x9b8f57232e3873c2,
 			0x9e6982bf11d6cbda,
+			0xa1ad6494ba2ca72f,
 			0xa895f29001a70dc1,
+			0xb09b31fcf850aadd,
+			0xb1fdf1524eea27f6,
+			0xb9bda85dc6f0a9e7,
+			0xba649b8cdc7451db,
+			0xbba2d55bd6f3e57b,
 			0xbf4e302fb59b0e43,
+			0xc1da2b2ba9a022a4,
+			0xc3cd8b75d9d30639,
+			0xd0d73fbf288eff99,
+			0xe266cb37ac3e2f45,
+			0xe2ecec1755f8873c,
+			0xe4bd3ba07125d033,
+			0xeafb8894f78049a8,
+			0xefbdfb01067809b9,
+			0xf034bc90fcf1affd,
+			0xf7b8d9311796ea41,
 		},
 		Compressed: true,
 	})

@@ -26,14 +26,14 @@ type Qdrant struct {
 	cancel     context.CancelFunc
 	client     *sdk.Client
 	collection string
-	embedder   stream.Generator
+	embedder   Store
 }
 
 // QdrantOption defines a functional option pattern for Qdrant
 type QdrantOption func(*Qdrant)
 
 // WithEmbedder sets the embedder for the Qdrant instance
-func WithEmbedder(embedder stream.Generator) QdrantOption {
+func WithEmbedder(embedder Store) QdrantOption {
 	return func(q *Qdrant) {
 		q.embedder = embedder
 	}
@@ -108,12 +108,12 @@ func (q *Qdrant) ID() string {
 }
 
 func (q *Qdrant) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
+	buffer chan *datura.ArtifactBuilder,
+	fn ...func(artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder,
+) chan *datura.ArtifactBuilder {
 	errnie.Debug("memory.Qdrant.Generate")
 
-	out := make(chan *datura.Artifact)
+	out := make(chan *datura.ArtifactBuilder)
 
 	go func() {
 		defer close(out)
@@ -148,7 +148,7 @@ func (q *Qdrant) Generate(
 					}
 
 					// Get embeddings using the embedder's Generate method
-					embeddingChan := q.embedder.Generate(make(chan *datura.Artifact, 1))
+					embeddingChan := q.embedder.Generate(make(chan *datura.ArtifactBuilder, 1))
 					embeddingChan <- docArtifact
 					embeddedDoc := <-embeddingChan
 
@@ -203,7 +203,7 @@ func (q *Qdrant) Generate(
 				)
 
 				// Get embeddings using the embedder's Generate method
-				embeddingChan := q.embedder.Generate(make(chan *datura.Artifact, 1))
+				embeddingChan := q.embedder.Generate(make(chan *datura.ArtifactBuilder, 1))
 				embeddingChan <- questionArtifact
 				embeddedQuestion := <-embeddingChan
 

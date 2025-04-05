@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"capnproto.org/go/capnp/v3"
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
@@ -17,6 +16,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
@@ -69,11 +69,11 @@ func (prvdr *OpenAIProvider) ID() string {
 func (prvdr *OpenAIProvider) Generate(
 	params params.Params,
 	ctx aicontext.Context,
-	tools []mcp.Tool,
-) chan *datura.Artifact {
+	tools []tools.ToolType,
+) chan *datura.ArtifactBuilder {
 	model, err := params.Model()
 
-	out := make(chan *datura.Artifact)
+	out := make(chan *datura.ArtifactBuilder)
 
 	go func() {
 		defer close(out)
@@ -150,7 +150,7 @@ handleSingleRequest processes a single (non-streaming) completion request
 */
 func (prvdr *OpenAIProvider) handleSingleRequest(
 	params *openai.ChatCompletionNewParams,
-	channel chan *datura.Artifact,
+	channel chan *datura.ArtifactBuilder,
 ) {
 	errnie.Debug("provider.handleSingleRequest")
 
@@ -233,7 +233,7 @@ and emits chunks as they're received.
 */
 func (prvdr *OpenAIProvider) handleStreamingRequest(
 	params *openai.ChatCompletionNewParams,
-	channel chan *datura.Artifact,
+	channel chan *datura.ArtifactBuilder,
 ) {
 	errnie.Debug("provider.handleStreamingRequest")
 
@@ -420,7 +420,7 @@ to the OpenAI API will cause strange behavior, like the model guessing random to
 */
 func (prvdr *OpenAIProvider) buildTools(
 	openaiParams *openai.ChatCompletionNewParams,
-	tools []mcp.Tool,
+	tools []tools.ToolType,
 ) (err error) {
 	errnie.Debug("provider.buildTools")
 
@@ -439,11 +439,11 @@ func (prvdr *OpenAIProvider) buildTools(
 		toolParam := openai.ChatCompletionToolParam{
 			Type: "function",
 			Function: openai.FunctionDefinitionParam{
-				Name:        tool.Name,
-				Description: param.NewOpt(tool.Description),
+				Name:        tool.Tool.Name,
+				Description: param.NewOpt(tool.Tool.Description),
 				Parameters: openai.FunctionParameters{
-					"type":       tool.InputSchema.Type,
-					"properties": tool.InputSchema.Properties,
+					"type":       tool.Tool.InputSchema.Type,
+					"properties": tool.Tool.InputSchema.Properties,
 				},
 			},
 		}
@@ -550,12 +550,12 @@ Generate implements the Generator interface for OpenAIEmbedder.
 It takes input text through a channel and returns embeddings through another channel.
 */
 func (embedder *OpenAIEmbedder) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
+	buffer chan *datura.ArtifactBuilder,
+	fn ...func(artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder,
+) chan *datura.ArtifactBuilder {
 	errnie.Debug("provider.OpenAIEmbedder.Generate")
 
-	out := make(chan *datura.Artifact)
+	out := make(chan *datura.ArtifactBuilder)
 
 	go func() {
 		defer close(out)

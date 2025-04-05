@@ -7,7 +7,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-func testArtifact() *Artifact {
+func testArtifact() *ArtifactBuilder {
 	return New(
 		WithMediatype(MediaTypeCapnp),
 		WithRole(ArtifactRoleUser),
@@ -38,7 +38,7 @@ func TestRead(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	Convey("Given an empty artifact", t, func() {
-		empty := &Artifact{}
+		empty := New()
 
 		Convey("When writing a marshaled artifact", func() {
 			artifact := testArtifact()

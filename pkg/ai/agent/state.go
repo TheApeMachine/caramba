@@ -2,27 +2,56 @@ package agent
 
 import (
 	"context"
-	"sync"
-
-	"capnproto.org/go/capnp/v3"
 )
+
+// GetState returns the agent's current state
+func (srv *AgentServer) GetState(ctx context.Context, call AgentRPC_getState) error {
+	results, err := call.AllocResults()
+	if err != nil {
+		return err
+	}
+
+	return results.SetState(*srv.agent)
+}
+
+// SetState updates the agent's state
+func (srv *AgentServer) SetState(ctx context.Context, call AgentRPC_setState) error {
+	state, err := call.Args().State()
+	if err != nil {
+		return err
+	}
+
+	// Update agent state
+	*srv.agent = state
+	return nil
+}
+
+// checkState verifies the agent's state and performs any necessary actions
+func (srv *AgentServer) checkState(ctx context.Context) error {
+	// TODO: Implement state checking logic
+	return nil
+}
 
 // StateServer manages the state for a single agent
 type StateServer struct {
-	mu    sync.RWMutex
-	agent Agent // The agent's current state
+	agent *Agent // The agent's current state
 }
 
+type StateServerOption func(*StateServer) error
+
 // NewStateServer creates a new state server for an agent
-func NewStateServer(segment *capnp.Segment) (*StateServer, error) {
-	agent, err := NewAgent(segment)
-	if err != nil {
-		return nil, err
+func NewStateServer(options ...StateServerOption) (*StateServer, error) {
+	var (
+		srv = &StateServer{}
+	)
+
+	for _, option := range options {
+		if err := option(srv); err != nil {
+			return nil, err
+		}
 	}
 
-	return &StateServer{
-		agent: agent,
-	}, nil
+	return srv, nil
 }
 
 // Get returns the agent's current parameters and context
@@ -31,25 +60,24 @@ func (srv *StateServer) Get(
 	call State_get,
 ) error {
 	results, err := call.AllocResults()
+
 	if err != nil {
 		return err
 	}
 
-	srv.mu.RLock()
-	defer srv.mu.RUnlock()
-
 	// Get current state
 	params, err := srv.agent.Params()
+
 	if err != nil {
 		return err
 	}
 
 	context, err := srv.agent.Context()
+
 	if err != nil {
 		return err
 	}
 
-	// Return current state
 	if err := results.SetParams(params); err != nil {
 		return err
 	}
@@ -79,9 +107,6 @@ func (srv *StateServer) Set(
 		return err
 	}
 
-	srv.mu.Lock()
-	defer srv.mu.Unlock()
-
 	// Update agent state
 	if err := srv.agent.SetParams(params); err != nil {
 		return err
@@ -92,4 +117,11 @@ func (srv *StateServer) Set(
 	}
 
 	return nil
+}
+
+func WithAgent(agent *Agent) StateServerOption {
+	return func(srv *StateServer) error {
+		srv.agent = agent
+		return nil
+	}
 }

@@ -11,7 +11,7 @@ import (
 To is a convenience function to convert the artifact's payload into some
 other type by unmarshalling it into the provided type.
 */
-func (artifact *Artifact) To(v any) (err error) {
+func (artifact *ArtifactBuilder) To(v any) (err error) {
 	errnie.Debug("datura.To")
 
 	var payload []byte
@@ -31,7 +31,7 @@ func (artifact *Artifact) To(v any) (err error) {
 From is a convenience function to set the artifact's payload from some
 other type by marshalling it into the artifact's payload.
 */
-func (artifact *Artifact) From(v any) (err error) {
+func (artifact *ArtifactBuilder) From(v any) (err error) {
 	errnie.Debug("datura.From")
 
 	var payload []byte
@@ -74,7 +74,7 @@ func Unmarshal(p []byte) *Artifact {
 /*
 Error is a convenience function to set an error as the payload of the artifact.
 */
-func (artifact *Artifact) Error(e error) (err error) {
+func (artifact *ArtifactBuilder) Error(e error) (err error) {
 	errnie.Debug("datura.Error", "e", e.Error())
 
 	if e == nil {

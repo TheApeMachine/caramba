@@ -3,6 +3,8 @@ package twoface
 import (
 	"context"
 	"sync"
+
+	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 var (
@@ -36,6 +38,21 @@ func NewPool(ctx context.Context) *Pool {
 	})
 
 	return pool
+}
+
+/*
+Submit runs a function concurrently in the pool.
+*/
+func (pool *Pool) Submit(fn func()) {
+	pool.Do(NewJob(funcJob(fn)))
+}
+
+// funcJob wraps a function to implement the Job interface
+type funcJob func()
+
+func (f funcJob) Do(artifact *datura.Artifact) *datura.Artifact {
+	f()
+	return artifact
 }
 
 /*

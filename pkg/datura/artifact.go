@@ -10,9 +10,13 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-type ArtifactOption func(*Artifact)
+type ArtifactBuilder struct {
+	*Artifact
+}
 
-func New(options ...ArtifactOption) *Artifact {
+type ArtifactBuilderOption func(*ArtifactBuilder)
+
+func New(options ...ArtifactBuilderOption) *ArtifactBuilder {
 	var (
 		arena    = capnp.SingleSegment(nil)
 		seg      *capnp.Segment
@@ -39,20 +43,24 @@ func New(options ...ArtifactOption) *Artifact {
 
 	artifact.SetTimestamp(time.Now().UnixNano())
 
-	for _, option := range options {
-		option(&artifact)
+	builder := &ArtifactBuilder{
+		Artifact: &artifact,
 	}
 
-	return &artifact
+	for _, option := range options {
+		option(builder)
+	}
+
+	return builder
 }
 
-func WithPayload(payload []byte) ArtifactOption {
+func WithPayload(payload []byte) ArtifactBuilderOption {
 	if len(payload) == 0 {
 		errnie.Error(errors.New("payload is empty"))
 		return nil
 	}
 
-	return func(artifact *Artifact) {
+	return func(builder *ArtifactBuilder) {
 		var (
 			crypto           = NewCryptoSuite()
 			encryptedPayload []byte
@@ -66,25 +74,25 @@ func WithPayload(payload []byte) ArtifactOption {
 			return
 		}
 
-		errnie.Error(artifact.SetEncryptedPayload(encryptedPayload))
-		errnie.Error(artifact.SetEncryptedKey(encryptedKey))
-		errnie.Error(artifact.SetEphemeralPublicKey(ephemeralPubKey))
+		errnie.Error(builder.SetEncryptedPayload(encryptedPayload))
+		errnie.Error(builder.SetEncryptedKey(encryptedKey))
+		errnie.Error(builder.SetEphemeralPublicKey(ephemeralPubKey))
 	}
 }
 
-func WithMetadata(metadata map[string]any) ArtifactOption {
-	return func(artifact *Artifact) {
+func WithMetadata(metadata map[string]any) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
 		var (
 			mdList    Artifact_Metadata_List
 			newMdList Artifact_Metadata_List
 			err       error
 		)
 
-		if mdList, err = artifact.Metadata(); errnie.Error(err) != nil {
+		if mdList, err = builder.Metadata(); errnie.Error(err) != nil {
 			return
 		}
 
-		if newMdList, err = (*artifact).NewMetadata(
+		if newMdList, err = builder.NewMetadata(
 			int32(mdList.Len() + len(metadata)),
 		); errnie.Error(err) != nil {
 			return
@@ -125,42 +133,42 @@ func WithMetadata(metadata map[string]any) ArtifactOption {
 	}
 }
 
-func WithSignature(signature []byte) ArtifactOption {
-	return func(artifact *Artifact) {
-		if errnie.Error(artifact.SetSignature(signature)) != nil {
+func WithSignature(signature []byte) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
+		if errnie.Error(builder.SetSignature(signature)) != nil {
 			return
 		}
 	}
 }
 
-func WithRole(role ArtifactRole) ArtifactOption {
-	return func(artifact *Artifact) {
-		artifact.SetRole(uint32(role))
+func WithRole(role ArtifactRole) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
+		builder.SetRole(uint32(role))
 	}
 }
 
-func WithScope(scope ArtifactScope) ArtifactOption {
-	return func(artifact *Artifact) {
-		artifact.SetScope(uint32(scope))
+func WithScope(scope ArtifactScope) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
+		builder.SetScope(uint32(scope))
 	}
 }
 
-func WithMediatype(mediatype MediaType) ArtifactOption {
-	return func(artifact *Artifact) {
-		if errnie.Error(artifact.SetMediatype(string(mediatype))) != nil {
+func WithMediatype(mediatype MediaType) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
+		if errnie.Error(builder.SetMediatype(string(mediatype))) != nil {
 			return
 		}
 	}
 }
 
-func WithMeta(key string, value any) ArtifactOption {
-	return func(artifact *Artifact) {
-		artifact.SetMetaValue(key, value)
+func WithMeta(key string, value any) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
+		builder.SetMetaValue(key, value)
 	}
 }
 
-func WithError(err error) ArtifactOption {
-	return func(artifact *Artifact) {
-		WithPayload([]byte(err.Error()))(artifact)
+func WithError(err error) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
+		WithPayload([]byte(err.Error()))(builder)
 	}
 }
