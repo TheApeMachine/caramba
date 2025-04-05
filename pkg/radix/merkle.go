@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
 )
 
 // MerkleNode represents a node in the Merkle tree
@@ -53,10 +54,16 @@ func (mt *MerkleTree) Rebuild() {
 		return
 	}
 
-	// Convert leaves to slice
+	// Convert leaves to slice and sort by key for deterministic ordering
 	leaves := make([]*MerkleNode, 0, len(mt.leafMap))
-	for _, leaf := range mt.leafMap {
-		leaves = append(leaves, leaf)
+	keys := make([]string, 0, len(mt.leafMap))
+	for k := range mt.leafMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		leaves = append(leaves, mt.leafMap[k])
 	}
 
 	// Build tree bottom-up

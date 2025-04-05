@@ -132,17 +132,28 @@ func (forest *Forest) synchronizeTrees() {
 	// Use the first tree as reference
 	reference := forest.trees[0]
 
-	// Create a map of all key-value pairs from the reference tree
-	dataMap := make(map[string][]byte)
+	// Build Merkle tree for reference
+	refMerkle := NewMerkleTree()
 	it := reference.root.Root().Iterator()
 	for key, value, ok := it.Next(); ok; key, value, ok = it.Next() {
-		dataMap[string(key)] = value
+		refMerkle.Insert(key, value)
 	}
+	refMerkle.Rebuild()
 
-	// Synchronize all other trees
+	// Sync other trees using Merkle diffs
 	for _, tree := range forest.trees[1:] {
-		for key, value := range dataMap {
-			tree.Insert([]byte(key), value)
+		// Build Merkle tree for target
+		targetMerkle := NewMerkleTree()
+		it := tree.root.Root().Iterator()
+		for key, value, ok := it.Next(); ok; key, value, ok = it.Next() {
+			targetMerkle.Insert(key, value)
+		}
+		targetMerkle.Rebuild()
+
+		// Get diff and apply changes
+		diffs := refMerkle.GetDiff(targetMerkle)
+		for _, diff := range diffs {
+			tree.Insert(diff.Key, diff.Value)
 		}
 	}
 }
@@ -228,19 +239,13 @@ func (forest *Forest) Insert(key []byte, value []byte) {
 	forest.mu.Lock()
 	defer forest.mu.Unlock()
 
-	// Update the first tree immediately
-	if len(forest.trees) > 0 {
-		forest.trees[0].Insert(key, value)
+	// Update all local trees immediately
+	for _, tree := range forest.trees {
+		tree.Insert(key, value)
 	}
 
 	// Broadcast to other nodes if networked
 	if forest.network != nil {
 		forest.network.BroadcastInsert(key, value)
-	}
-
-	// Signal that an update needs to be synchronized
-	select {
-	case forest.updates <- struct{}{}:
-	default:
 	}
 }

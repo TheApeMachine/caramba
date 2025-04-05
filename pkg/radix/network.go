@@ -242,13 +242,20 @@ func (n *NetworkNode) syncWithPeers() {
 	n.peersMutex.RLock()
 	defer n.peersMutex.RUnlock()
 
-	// Update merkle root before syncing
+	// Update merkle root and get current log state
 	n.updateMerkleRoot()
+	currentTerm := n.election.getCurrentTerm()
+	lastLogIndex := n.election.getLastLogIndex()
 
 	for _, p := range n.peers {
 		go func(peer *peer) {
 			future, release := peer.client.Sync(n.ctx, func(p RadixRPC_sync_Params) error {
-				return p.SetMerkleRoot(n.merkleTree.Root.Hash)
+				if err := p.SetMerkleRoot(n.merkleTree.Root.Hash); err != nil {
+					return err
+				}
+				p.SetTerm(currentTerm)
+				p.SetLogIndex(lastLogIndex)
+				return nil
 			})
 			defer release()
 
@@ -313,12 +320,21 @@ func (n *NetworkNode) Insert(ctx context.Context, call RadixRPC_insert) error {
 		return err
 	}
 
+	term := args.Term()
+	index := args.LogIndex()
+
+	// Validate term/index
+	if term < n.election.getCurrentTerm() {
+		return fmt.Errorf("stale term")
+	}
+
 	data := artifact.ToPtr().Data()
 
-	// Insert into local forest and Merkle tree
+	// Update local state with log tracking
 	n.forest.Insert(key, data)
 	n.merkleTree.Insert(key, data)
 	n.merkleTree.Rebuild()
+	n.election.updateLogState(index, term)
 	n.updateMerkleRoot()
 
 	result, err := call.AllocResults()
@@ -327,6 +343,8 @@ func (n *NetworkNode) Insert(ctx context.Context, call RadixRPC_insert) error {
 	}
 
 	result.SetSuccess(true)
+	result.SetTerm(term)
+	result.SetLogIndex(index)
 	return nil
 }
 
@@ -341,14 +359,23 @@ func (n *NetworkNode) Sync(ctx context.Context, call RadixRPC_sync) error {
 	if err != nil {
 		return err
 	}
+	peerTerm := args.Term()
+	peerLogIndex := args.LogIndex()
+
+	// Step down if peer term is higher
+	if peerTerm > n.election.getCurrentTerm() {
+		n.election.stepDown(peerTerm)
+		return fmt.Errorf("outdated term")
+	}
 
 	result, err := call.AllocResults()
 	if err != nil {
 		return err
 	}
 
-	// If merkle roots match, no sync needed
-	if bytes.Equal(peerRoot, n.merkleTree.Root.Hash) {
+	// If merkle roots match and log indices align, no sync needed
+	if bytes.Equal(peerRoot, n.merkleTree.Root.Hash) &&
+		peerLogIndex <= n.election.getLastLogIndex() {
 		diff, err := result.NewDiff()
 		if err != nil {
 			return err
@@ -361,41 +388,33 @@ func (n *NetworkNode) Sync(ctx context.Context, call RadixRPC_sync) error {
 		return nil
 	}
 
-	// Get fastest tree for data
-	tree := n.forest.getFastestTree()
-	if tree == nil {
-		return fmt.Errorf("no trees available")
-	}
+	// Get differences using Merkle tree
+	otherTree := NewMerkleTree()
+	diffs := n.merkleTree.GetDiff(otherTree)
 
-	// Create sync payload
+	// Create sync payload with log metadata
 	diff, err := result.NewDiff()
 	if err != nil {
 		return err
 	}
 
-	// Get differences using Merkle tree
-	otherTree := NewMerkleTree()
-	// Rebuild other tree from peer's data (implementation depends on protocol)
-	diffs := n.merkleTree.GetDiff(otherTree)
-
-	// Create entries list
 	entries, err := diff.NewEntries(int32(len(diffs)))
 	if err != nil {
 		return err
 	}
 
-	// Fill entries from diffs
+	// Fill entries from diffs with term/index tracking
 	for i, d := range diffs {
 		entry := entries.At(i)
 		entry.SetKey(d.Key)
+		entry.SetTerm(n.election.getCurrentTerm())
+		entry.SetIndex(n.election.getLastLogIndex() + uint64(i) + 1)
 
-		// Get value from local tree
-		value, ok := tree.Get(d.Key)
+		value, ok := n.forest.getFastestTree().Get(d.Key)
 		if !ok {
 			continue
 		}
 
-		// Convert value to Artifact
 		artifact := datura.Unmarshal(value)
 		if artifact == nil {
 			continue
@@ -406,6 +425,8 @@ func (n *NetworkNode) Sync(ctx context.Context, call RadixRPC_sync) error {
 
 	diff.SetEntries(entries)
 	diff.SetMerkleRoot(n.merkleTree.Root.Hash)
+	diff.SetTerm(n.election.getCurrentTerm())
+	diff.SetLogIndex(n.election.getLastLogIndex())
 
 	return nil
 }
@@ -449,6 +470,9 @@ func (n *NetworkNode) BroadcastInsert(key []byte, value []byte) {
 	n.peersMutex.RLock()
 	defer n.peersMutex.RUnlock()
 
+	currentTerm := n.election.getCurrentTerm()
+	newLogIndex := n.election.getLastLogIndex() + 1
+
 	for _, p := range n.peers {
 		go func(peer *peer) {
 			_, release := peer.client.Insert(n.ctx, func(p RadixRPC_insert_Params) error {
@@ -459,7 +483,12 @@ func (n *NetworkNode) BroadcastInsert(key []byte, value []byte) {
 				if artifact == nil {
 					return fmt.Errorf("failed to unmarshal artifact")
 				}
-				return p.SetArtifact(*artifact)
+				if err := p.SetArtifact(*artifact); err != nil {
+					return err
+				}
+				p.SetTerm(currentTerm)
+				p.SetLogIndex(newLogIndex)
+				return nil
 			})
 			defer release()
 		}(p)
@@ -517,7 +546,7 @@ func (n *NetworkNode) RequestVote(ctx context.Context, call RadixRPC_requestVote
 	lastLogIndex := args.LastLogIndex()
 
 	// Let election manager handle the vote request
-	voteGranted := n.election.handleVoteRequest(term, candidateId, lastLogIndex)
+	voteGranted := n.election.handleVoteRequest(term, candidateId, lastLogIndex, term)
 
 	result, err := call.AllocResults()
 	if err != nil {

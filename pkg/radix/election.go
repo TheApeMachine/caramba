@@ -54,6 +54,11 @@ type Election struct {
 	votedFor  string
 	stateLock sync.RWMutex
 
+	// Log tracking
+	lastLogTerm  uint64
+	lastLogIndex uint64
+	logLock      sync.RWMutex
+
 	// Election timers
 	electionTimer  *time.Timer
 	heartbeatTimer *time.Timer
@@ -305,32 +310,34 @@ handleVoteRequest processes a vote request from a candidate.
 It implements the Raft voting rules, checking term numbers and log
 indices to decide whether to grant the vote.
 */
-func (e *Election) handleVoteRequest(term uint64, candidateId string, lastLogIndex uint64) bool {
+func (e *Election) handleVoteRequest(term uint64, candidateId string, lastLogIndex uint64, lastLogTerm uint64) bool {
 	e.stateLock.Lock()
 	defer e.stateLock.Unlock()
 
-	// Step down if term is higher
+	// Step down if term is newer
 	if term > e.term {
 		e.stepDown(term)
 	}
 
-	// Don't grant vote if candidate's term is lower
-	if term < e.term {
+	// Check term and whether we've voted this term
+	if term < e.term || (e.votedFor != "" && e.votedFor != candidateId) {
 		return false
 	}
 
-	// Only vote if we haven't voted for anyone else in this term
-	// or if we've already voted for this candidate
-	if e.votedFor == "" || e.votedFor == candidateId {
-		// Verify the candidate's log is at least as up-to-date as ours
-		if lastLogIndex >= uint64(len(e.node.merkleTree.Root.Hash)) {
-			e.votedFor = candidateId
-			e.term = term
-			return true
-		}
+	// Check if candidate's log is at least as up-to-date as ours
+	e.logLock.RLock()
+	logOK := lastLogTerm > e.lastLogTerm ||
+		(lastLogTerm == e.lastLogTerm && lastLogIndex >= e.lastLogIndex)
+	e.logLock.RUnlock()
+
+	if !logOK {
+		return false
 	}
 
-	return false
+	// Grant vote
+	e.votedFor = candidateId
+	e.resetElectionTimer()
+	return true
 }
 
 /*
@@ -373,4 +380,31 @@ It signals the run loop to stop and cleans up resources.
 */
 func (e *Election) Close() {
 	close(e.shutdown)
+}
+
+/*
+Update log state when applying new entries
+*/
+func (e *Election) updateLogState(index uint64, term uint64) {
+	e.logLock.Lock()
+	defer e.logLock.Unlock()
+
+	if index > e.lastLogIndex {
+		e.lastLogIndex = index
+		e.lastLogTerm = term
+	}
+}
+
+// getCurrentTerm returns the current term number
+func (e *Election) getCurrentTerm() uint64 {
+	e.stateLock.RLock()
+	defer e.stateLock.RUnlock()
+	return e.term
+}
+
+// getLastLogIndex returns the index of the last log entry
+func (e *Election) getLastLogIndex() uint64 {
+	e.logLock.RLock()
+	defer e.logLock.RUnlock()
+	return e.lastLogIndex
 }

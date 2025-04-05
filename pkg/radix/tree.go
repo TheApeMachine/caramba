@@ -9,6 +9,7 @@ package radix
 import (
 	"bytes"
 	"container/ring"
+	"sync"
 	"time"
 
 	iradix "github.com/hashicorp/go-immutable-radix/v2"
@@ -20,11 +21,13 @@ It stores byte slices as both keys and values, providing efficient prefix-based 
 The immutable nature ensures thread-safety and enables persistent data structures.
 */
 type Tree struct {
-	root    *iradix.Tree[[]byte]
-	updated bool
-	perfs   *ring.Ring
-	// Add persistence store
-	persist *PersistentStore
+	root     *iradix.Tree[[]byte]
+	updated  bool
+	perfs    *ring.Ring
+	persist  *PersistentStore
+	term     uint64
+	logIndex uint64
+	mu       sync.RWMutex
 }
 
 /*
@@ -34,18 +37,22 @@ The underlying radix tree is initialized with no entries.
 func NewTree(persistDir string) (*Tree, error) {
 	var persist *PersistentStore
 	var err error
+	var term, index uint64
 
 	if persistDir != "" {
 		persist, err = NewPersistentStore(persistDir)
 		if err != nil {
 			return nil, err
 		}
+		term, index = persist.GetLastState()
 	}
 
 	return &Tree{
-		root:    iradix.New[[]byte](),
-		perfs:   ring.New(10),
-		persist: persist,
+		root:     iradix.New[[]byte](),
+		perfs:    ring.New(10),
+		persist:  persist,
+		term:     term,
+		logIndex: index,
 	}, nil
 }
 
@@ -79,15 +86,21 @@ of the tree rather than modifying the existing one.
 Returns the updated tree and a boolean indicating if the tree was modified.
 */
 func (tree *Tree) Insert(key []byte, value []byte) (*Tree, bool) {
+	tree.mu.Lock()
+	defer tree.mu.Unlock()
+
 	t := time.Now()
 	tree.root, _, tree.updated = tree.root.Insert(key, value)
 
-	// Log to WAL if persistence is enabled
-	if tree.persist != nil && tree.updated {
-		if err := tree.persist.LogInsert(key, value); err != nil {
-			// Log error but don't fail the operation
-			// TODO: Add proper error handling/logging
-			_ = err
+	if tree.updated {
+		tree.logIndex++
+		// Log to WAL if persistence is enabled
+		if tree.persist != nil {
+			if err := tree.persist.LogInsert(key, value, tree.term, tree.logIndex); err != nil {
+				// Log error but don't fail the operation
+				// TODO: Add proper error handling/logging
+				_ = err
+			}
 		}
 	}
 
@@ -129,4 +142,18 @@ func (tree *Tree) Close() error {
 		return tree.persist.Close()
 	}
 	return nil
+}
+
+// UpdateTerm updates the current term number
+func (tree *Tree) UpdateTerm(term uint64) {
+	tree.mu.Lock()
+	defer tree.mu.Unlock()
+	tree.term = term
+}
+
+// GetLogState returns the current term and log index
+func (tree *Tree) GetLogState() (term, index uint64) {
+	tree.mu.RLock()
+	defer tree.mu.RUnlock()
+	return tree.term, tree.logIndex
 }
