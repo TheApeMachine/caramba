@@ -15,20 +15,25 @@ TEXT ·compareBuffersNEON(SB), NOSPLIT, $0-49
     CMP $0, R1
     BEQ equal
 
-    // Calculate number of 16-byte (4 runes) blocks
+    // Calculate number of 32-byte (8 runes) blocks
     MOVD R1, R4              // Copy length
-    LSR  $2, R4              // R4 = len / 4 (number of 4-rune blocks)
-    CBZ  R4, remainder       // If no full blocks, go straight to remainder
+    LSR  $3, R4              // R4 = len / 8 (number of 8-rune blocks)
+    CBZ  R4, small_blocks    // If no full blocks, try 4-rune blocks
 
-    // Loop over 16-byte blocks
+    // Loop over 32-byte blocks
 loop:
-    VLD1.P 16(R0), [V0.S4]   // Load 4 runes from a, increment pointer
-    VLD1.P 16(R2), [V1.S4]   // Load 4 runes from b, increment pointer
+    // Load 8 runes (32 bytes) from each buffer
+    VLD1.P 32(R0), [V0.S4, V1.S4]   // Load 8 runes from a
+    VLD1.P 32(R2), [V2.S4, V3.S4]   // Load 8 runes from b
 
-    // Compare vectors - CMEQ sets each bit to 1 if equal, 0 if not equal
-    WORD $0x6E231C00         // CMEQ V0.4S, V0.4S, V1.4S
+    // Compare both vectors
+    WORD $0x6E231C00         // CMEQ V0.4S, V0.4S, V2.4S
+    WORD $0x6E231C21         // CMEQ V1.4S, V1.4S, V3.4S
 
-    // Find minimum value across lanes - if any lane was not equal (0), min will be 0
+    // Combine results with AND
+    WORD $0x4E201C20         // AND V0.16B, V0.16B, V1.16B
+
+    // Find minimum value across lanes
     WORD $0x6E21A810         // UMINV S0, V0.4S
     WORD $0x0E213C08         // MOV W8, V0.S[0]
     
@@ -39,6 +44,30 @@ loop:
     // Decrement block counter and loop
     SUBS $1, R4
     BNE  loop
+
+small_blocks:
+    // Handle remaining blocks of 4 runes
+    AND $7, R1, R4           // R4 = remaining runes
+    LSR $2, R4, R4           // R4 = (remaining runes) / 4
+    CBZ R4, remainder
+
+small_loop:
+    VLD1.P 16(R0), [V0.S4]   // Load 4 runes from a
+    VLD1.P 16(R2), [V1.S4]   // Load 4 runes from b
+
+    // Compare vectors
+    WORD $0x6E231C00         // CMEQ V0.4S, V0.4S, V1.4S
+
+    // Find minimum value across lanes
+    WORD $0x6E21A810         // UMINV S0, V0.4S
+    WORD $0x0E213C08         // MOV W8, V0.S[0]
+    
+    // If minimum is 0, vectors had a difference
+    CMP $0, R8
+    BEQ not_equal
+
+    SUBS $1, R4
+    BNE small_loop
 
 remainder:
     // Handle remaining runes (0 to 3)
