@@ -38,5 +38,7 @@ func (srv *ContextRPCServer) Add(ctx context.Context, call RPC_add) error {
 
 	ml.Set(messages.Len(), msg)
 
+	srv.context.SetMessages(ml)
+
 	return nil
 }
