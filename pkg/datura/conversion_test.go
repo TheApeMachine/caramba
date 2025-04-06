@@ -80,7 +80,7 @@ func TestUnmarshal(t *testing.T) {
 			WithMediatype(MediaTypeTextPlain),
 			WithRole(ArtifactRoleUser),
 			WithScope(ArtifactScopeContext),
-			WithPayload([]byte("test payload")),
+			WithEncryptedPayload([]byte("test payload")),
 		)
 
 		marshaled, err := original.Message().Marshal()

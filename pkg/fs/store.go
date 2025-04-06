@@ -97,7 +97,7 @@ func (s *Store) Generate(
 					out <- datura.New(datura.WithError(errnie.Error(err)))
 					return
 				}
-				out <- datura.New(datura.WithPayload([]byte("File deleted successfully")))
+				out <- datura.New(datura.WithEncryptedPayload([]byte("File deleted successfully")))
 				return
 			case uint32(datura.ArtifactRoleListFiles):
 				errnie.Debug("fs.Store.Generate", "op", "list", "path", path)
@@ -121,7 +121,7 @@ func (s *Store) Generate(
 				}
 
 				errnie.Debug("fs.Store.Generate", "n", n)
-				out <- datura.New(datura.WithPayload(buf.Bytes()))
+				out <- datura.New(datura.WithEncryptedPayload(buf.Bytes()))
 				return
 			}
 
@@ -131,7 +131,7 @@ func (s *Store) Generate(
 				for _, file := range files {
 					buf.WriteString(file + "\n")
 				}
-				out <- datura.New(datura.WithPayload(buf.Bytes()))
+				out <- datura.New(datura.WithEncryptedPayload(buf.Bytes()))
 				return
 			}
 

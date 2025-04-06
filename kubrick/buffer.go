@@ -25,82 +25,82 @@ func NewBuffer(width, height int) *Buffer {
 	b := &Buffer{
 		width:         width,
 		height:        height,
+		data:          globalBufferPool.GetBuffer(height, width),
 		pooledRegions: make([]DirtyRegion, 0, 16), // Pre-allocate space for dirty regions
 	}
-	b.Resize(width, height)
 	return b
 }
 
 // MarkDirty marks a region as needing updates
-func (b *Buffer) MarkDirty(region DirtyRegion) {
-	b.regionMu.Lock()
-	defer b.regionMu.Unlock()
+func (buffer *Buffer) MarkDirty(region DirtyRegion) {
+	buffer.regionMu.Lock()
+	defer buffer.regionMu.Unlock()
 
 	// Clamp region to buffer bounds
 	if region.StartRow < 0 {
 		region.StartRow = 0
 	}
-	if region.EndRow >= b.height {
-		region.EndRow = b.height - 1
+	if region.EndRow >= buffer.height {
+		region.EndRow = buffer.height - 1
 	}
 	if region.StartCol < 0 {
 		region.StartCol = 0
 	}
-	if region.EndCol >= b.width {
-		region.EndCol = b.width - 1
+	if region.EndCol >= buffer.width {
+		region.EndCol = buffer.width - 1
 	}
 
 	// Try to merge with existing regions
-	for i := 0; i < len(b.dirtyRegions); i++ {
-		if b.regionsOverlap(region, b.dirtyRegions[i]) {
+	for i := 0; i < len(buffer.dirtyRegions); i++ {
+		if buffer.regionsOverlap(region, buffer.dirtyRegions[i]) {
 			// Merge regions
-			b.dirtyRegions[i] = b.mergeRegions(region, b.dirtyRegions[i])
+			buffer.dirtyRegions[i] = buffer.mergeRegions(region, buffer.dirtyRegions[i])
 			return
 		}
 	}
 
 	// No overlap found, add new region
-	if len(b.pooledRegions) > 0 {
+	if len(buffer.pooledRegions) > 0 {
 		// Reuse a pooled region
-		b.dirtyRegions = append(b.dirtyRegions, region)
-		b.pooledRegions = b.pooledRegions[:len(b.pooledRegions)-1]
+		buffer.dirtyRegions = append(buffer.dirtyRegions, region)
+		buffer.pooledRegions = buffer.pooledRegions[:len(buffer.pooledRegions)-1]
 	} else {
-		b.dirtyRegions = append(b.dirtyRegions, region)
+		buffer.dirtyRegions = append(buffer.dirtyRegions, region)
 	}
 }
 
 // Clear removes all content and dirty regions
-func (b *Buffer) Clear() {
-	b.regionMu.Lock()
-	defer b.regionMu.Unlock()
+func (buffer *Buffer) Clear() {
+	buffer.regionMu.Lock()
+	defer buffer.regionMu.Unlock()
 
 	// Return current buffer to pool and get a fresh one
-	globalBufferPool.PutBuffer(b.data)
-	b.data = globalBufferPool.GetBuffer(b.height, b.width)
-	b.dirtyRegions = b.dirtyRegions[:0]
-	b.MarkDirty(DirtyRegion{0, b.height - 1, 0, b.width - 1})
+	globalBufferPool.PutBuffer(buffer.data)
+	buffer.data = globalBufferPool.GetBuffer(buffer.height, buffer.width)
+	buffer.dirtyRegions = buffer.dirtyRegions[:0]
+	buffer.MarkDirty(DirtyRegion{0, buffer.height - 1, 0, buffer.width - 1})
 }
 
 // GetDirtyRegions returns a copy of current dirty regions
-func (b *Buffer) GetDirtyRegions() []DirtyRegion {
-	b.regionMu.RLock()
-	defer b.regionMu.RUnlock()
+func (buffer *Buffer) GetDirtyRegions() []DirtyRegion {
+	buffer.regionMu.RLock()
+	defer buffer.regionMu.RUnlock()
 
-	result := make([]DirtyRegion, len(b.dirtyRegions))
-	copy(result, b.dirtyRegions)
+	result := make([]DirtyRegion, len(buffer.dirtyRegions))
+	copy(result, buffer.dirtyRegions)
 	return result
 }
 
 // ClearDirtyRegions removes all dirty region markers
-func (b *Buffer) ClearDirtyRegions() {
-	b.regionMu.Lock()
-	b.pooledRegions = append(b.pooledRegions, b.dirtyRegions...)
-	b.dirtyRegions = b.dirtyRegions[:0]
-	b.regionMu.Unlock()
+func (buffer *Buffer) ClearDirtyRegions() {
+	buffer.regionMu.Lock()
+	buffer.pooledRegions = append(buffer.pooledRegions, buffer.dirtyRegions...)
+	buffer.dirtyRegions = buffer.dirtyRegions[:0]
+	buffer.regionMu.Unlock()
 }
 
 // regionsOverlap checks if two regions overlap or are adjacent
-func (b *Buffer) regionsOverlap(r1, r2 DirtyRegion) bool {
+func (buffer *Buffer) regionsOverlap(r1, r2 DirtyRegion) bool {
 	// Check if regions are within one row/column of each other
 	rowOverlap := r1.StartRow <= r2.EndRow+1 && r2.StartRow <= r1.EndRow+1
 	colOverlap := r1.StartCol <= r2.EndCol+1 && r2.StartCol <= r1.EndCol+1
@@ -108,7 +108,7 @@ func (b *Buffer) regionsOverlap(r1, r2 DirtyRegion) bool {
 }
 
 // mergeRegions combines two overlapping or adjacent regions
-func (b *Buffer) mergeRegions(r1, r2 DirtyRegion) DirtyRegion {
+func (buffer *Buffer) mergeRegions(r1, r2 DirtyRegion) DirtyRegion {
 	return DirtyRegion{
 		StartRow: min(r1.StartRow, r2.StartRow),
 		EndRow:   max(r1.EndRow, r2.EndRow),
@@ -118,15 +118,15 @@ func (b *Buffer) mergeRegions(r1, r2 DirtyRegion) DirtyRegion {
 }
 
 // Write writes content to the buffer at specified position
-func (b *Buffer) Write(row, col int, content []rune) {
-	if row < 0 || row >= b.height || col < 0 || col >= b.width {
+func (buffer *Buffer) Write(row, col int, content []rune) {
+	if row < 0 || row >= buffer.height || col < 0 || col >= buffer.width {
 		return
 	}
 
-	endCol := min(col+len(content), b.width)
-	copy(b.data[row][col:endCol], content[:endCol-col])
+	endCol := min(col+len(content), buffer.width)
+	copy(buffer.data[row][col:endCol], content[:endCol-col])
 
-	b.MarkDirty(DirtyRegion{
+	buffer.MarkDirty(DirtyRegion{
 		StartRow: row,
 		EndRow:   row,
 		StartCol: col,
@@ -135,23 +135,23 @@ func (b *Buffer) Write(row, col int, content []rune) {
 }
 
 // WriteString writes a string to the buffer at specified position
-func (b *Buffer) WriteString(row, col int, content string) {
-	b.Write(row, col, []rune(content))
+func (buffer *Buffer) WriteString(row, col int, content string) {
+	buffer.Write(row, col, []rune(content))
 }
 
 // CopyFrom copies content from another buffer
-func (b *Buffer) CopyFrom(other *Buffer) {
-	minHeight := min(b.height, other.height)
-	minWidth := min(b.width, other.width)
+func (buffer *Buffer) CopyFrom(other *Buffer) {
+	minHeight := min(buffer.height, other.height)
+	minWidth := min(buffer.width, other.width)
 
 	for i := 0; i < minHeight; i++ {
-		copy(b.data[i][:minWidth], other.data[i][:minWidth])
+		copy(buffer.data[i][:minWidth], other.data[i][:minWidth])
 	}
 }
 
 // Resize adjusts buffer size, preserving content where possible
-func (b *Buffer) Resize(width, height int) {
-	if width == b.width && height == b.height {
+func (buffer *Buffer) Resize(width, height int) {
+	if width == buffer.width && height == buffer.height {
 		return
 	}
 
@@ -159,48 +159,48 @@ func (b *Buffer) Resize(width, height int) {
 	newData := globalBufferPool.GetBuffer(height, width)
 
 	// Copy existing content
-	minHeight := min(b.height, height)
-	minWidth := min(b.width, width)
+	minHeight := min(buffer.height, height)
+	minWidth := min(buffer.width, width)
 	for i := 0; i < minHeight; i++ {
-		copy(newData[i][:minWidth], b.data[i][:minWidth])
+		copy(newData[i][:minWidth], buffer.data[i][:minWidth])
 	}
 
 	// Return old buffer to pool
-	globalBufferPool.PutBuffer(b.data)
+	globalBufferPool.PutBuffer(buffer.data)
 
-	b.data = newData
-	b.width = width
-	b.height = height
+	buffer.data = newData
+	buffer.width = width
+	buffer.height = height
 
 	// Mark entire buffer as dirty after resize
-	b.dirtyRegions = b.dirtyRegions[:0]
-	b.MarkDirty(DirtyRegion{0, height - 1, 0, width - 1})
+	buffer.dirtyRegions = buffer.dirtyRegions[:0]
+	buffer.MarkDirty(DirtyRegion{0, height - 1, 0, width - 1})
 }
 
 // Close releases the buffer's resources back to the pool
-func (b *Buffer) Close() {
-	if b.data != nil {
-		globalBufferPool.PutBuffer(b.data)
-		b.data = nil
+func (buffer *Buffer) Close() {
+	if buffer.data != nil {
+		globalBufferPool.PutBuffer(buffer.data)
+		buffer.data = nil
 	}
 }
 
 // CompareWith efficiently compares this buffer with another using SIMD
-func (b *Buffer) CompareWith(other *Buffer) []DirtyRegion {
-	if b.width != other.width || b.height != other.height {
+func (buffer *Buffer) CompareWith(other *Buffer) []DirtyRegion {
+	if buffer.width != other.width || buffer.height != other.height {
 		// If dimensions differ, mark entire buffer as dirty
-		return []DirtyRegion{{0, b.height - 1, 0, b.width - 1}}
+		return []DirtyRegion{{0, buffer.height - 1, 0, buffer.width - 1}}
 	}
 
 	var regions []DirtyRegion
 	var currentRegion *DirtyRegion
 
 	// Compare each row
-	for row := 0; row < b.height; row++ {
+	for row := 0; row < buffer.height; row++ {
 		// Use SIMD to find first difference in the row
-		if !CompareBuffers(b.data[row], other.data[row]) {
+		if !CompareBuffers(buffer.data[row], other.data[row]) {
 			// Find exact differences using SIMD
-			diffs := FindDifferences(b.data[row], other.data[row])
+			diffs := FindDifferences(buffer.data[row], other.data[row])
 
 			for _, diff := range diffs {
 				if currentRegion == nil {

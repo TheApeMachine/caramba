@@ -9,51 +9,79 @@ import (
 
 /*
 Read implements the io.Reader interface for the Artifact.
-It marshals the entire artifact into the provided byte slice.
+It streams the artifact using a Cap'n Proto Encoder.
 */
-func (artifact *Artifact) Read(p []byte) (n int, err error) {
-	buf, err := artifact.Message().Marshal()
+func (artifact *ArtifactBuilder) Read(p []byte) (n int, err error) {
 
-	if err != nil {
-		return n, errnie.Error(err, "p", string(p))
+	if artifact.state != ArtifactStateBuffered {
+		// Buffer is empty, encode current message state
+		if err = artifact.encoder.Encode(artifact.Artifact.Message()); err != nil {
+			return 0, errnie.Error(err)
+		}
+
+		if err = artifact.buffer.Flush(); err != nil {
+			return 0, errnie.Error(err)
+		}
+
+		artifact.state = ArtifactStateBuffered
 	}
 
-	n = copy(p, buf)
-
-	if n < len(buf) {
-		return n, errnie.Error(io.ErrShortBuffer)
-	}
-
-	return n, io.EOF
+	return artifact.buffer.Read(p)
 }
 
 /*
 Write implements the io.Writer interface for the Artifact.
-It unmarshals the provided bytes into the current artifact.
+It streams the provided bytes using a Cap'n Proto Decoder.
 */
-func (artifact *Artifact) Write(p []byte) (n int, err error) {
+func (artifact *ArtifactBuilder) Write(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	if n, err = artifact.buffer.Write(p); err != nil {
+		return n, errnie.Error(err)
+	}
+
+	if err = artifact.buffer.Flush(); err != nil {
+		return n, errnie.Error(err)
+	}
+
 	var (
 		msg *capnp.Message
 		buf Artifact
 	)
 
-	if msg, err = capnp.Unmarshal(p); err != nil {
-		return 0, errnie.Error(err, "p", string(p))
+	if msg, err = artifact.decoder.Decode(); err != nil {
+		if err == io.EOF {
+			// EOF is expected when there's no more data to decode
+			return n, nil
+		}
+		return n, errnie.Error(err)
 	}
 
 	if buf, err = ReadRootArtifact(msg); err != nil {
-		return 0, errnie.Error(err)
+		return n, errnie.Error(err)
 	}
 
-	*artifact = buf
-	return len(p), nil
+	artifact.Artifact = &buf
+	artifact.state = ArtifactStateBuffered
+	return n, nil
 }
 
 /*
 Close implements the io.Closer interface for the Artifact.
 */
-func (artifact *Artifact) Close() error {
+func (artifact *ArtifactBuilder) Close() error {
 	errnie.Debug("artifact.Close")
-	artifact = nil
+
+	if err := artifact.buffer.Flush(); err != nil {
+		return errnie.Error(err)
+	}
+
+	artifact.buffer = nil
+	artifact.encoder = nil
+	artifact.decoder = nil
+	artifact.Artifact = nil
+
 	return nil
 }

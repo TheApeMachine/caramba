@@ -43,7 +43,7 @@ artifact := datura.New(
     datura.WithMediatype(datura.MediaTypeTextPlain),
     datura.WithRole(datura.ArtifactRoleUser),
     datura.WithScope(datura.ArtifactScopePrompt),
-    datura.WithPayload([]byte("Hello, World!")),
+    datura.WithEncryptedPayload([]byte("Hello, World!")),
 )
 
 // Add metadata

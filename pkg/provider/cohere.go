@@ -196,7 +196,7 @@ func (prvdr *CohereProvider) handleSingleRequest(
 
 	// Abort early if there are no tool calls
 	if len(toolCalls) == 0 {
-		channel <- datura.New(datura.WithPayload([]byte(response.Text)))
+		channel <- datura.New(datura.WithEncryptedPayload([]byte(response.Text)))
 		return
 	}
 
@@ -241,7 +241,7 @@ func (prvdr *CohereProvider) handleSingleRequest(
 	}
 
 	// Create artifact with message content
-	channel <- datura.New(datura.WithPayload([]byte(response.Text)))
+	channel <- datura.New(datura.WithEncryptedPayload([]byte(response.Text)))
 }
 
 func (prvdr *CohereProvider) handleStreamingRequest(
@@ -274,7 +274,7 @@ func (prvdr *CohereProvider) handleStreamingRequest(
 			channel <- datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithPayload([]byte(content)),
+				datura.WithEncryptedPayload([]byte(content)),
 			)
 		}
 	}
@@ -511,7 +511,7 @@ func (embedder *CohereEmbedder) Generate(
 				)
 
 				// Convert to bytes - not fully implemented
-				out <- datura.New(datura.WithPayload([]byte(string(content))))
+				out <- datura.New(datura.WithEncryptedPayload([]byte(string(content))))
 			}
 		}
 	}()

@@ -1,6 +1,8 @@
 package datura
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"time"
@@ -10,8 +12,20 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
+type ArtifactState uint
+
+const (
+	ArtifactStateCreated ArtifactState = iota
+	ArtifactStateBuffered
+	ArtifactStateRead
+)
+
 type ArtifactBuilder struct {
 	*Artifact
+	encoder *capnp.Encoder
+	decoder *capnp.Decoder
+	buffer  *bufio.ReadWriter
+	state   ArtifactState
 }
 
 type ArtifactBuilderOption func(*ArtifactBuilder)
@@ -43,8 +57,18 @@ func New(options ...ArtifactBuilderOption) *ArtifactBuilder {
 
 	artifact.SetTimestamp(time.Now().UnixNano())
 
+	shared := bytes.NewBuffer(nil)
+	buffer := bufio.NewReadWriter(
+		bufio.NewReader(shared),
+		bufio.NewWriter(shared),
+	)
+
 	builder := &ArtifactBuilder{
 		Artifact: &artifact,
+		encoder:  capnp.NewEncoder(buffer),
+		decoder:  capnp.NewDecoder(buffer),
+		buffer:   buffer,
+		state:    ArtifactStateCreated,
 	}
 
 	for _, option := range options {
@@ -55,6 +79,14 @@ func New(options ...ArtifactBuilderOption) *ArtifactBuilder {
 }
 
 func WithPayload(payload []byte) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
+		if errnie.Error(builder.SetPayload(payload)) != nil {
+			return
+		}
+	}
+}
+
+func WithEncryptedPayload(payload []byte) ArtifactBuilderOption {
 	if len(payload) == 0 {
 		errnie.Error(errors.New("payload is empty"))
 		return nil
@@ -175,6 +207,6 @@ func WithMeta(key string, value any) ArtifactBuilderOption {
 
 func WithError(err error) ArtifactBuilderOption {
 	return func(builder *ArtifactBuilder) {
-		WithPayload([]byte(err.Error()))(builder)
+		WithEncryptedPayload([]byte(err.Error()))(builder)
 	}
 }

@@ -1,6 +1,7 @@
 .PHONY: all
 
 capnp:
+	capnp compile -I ../../capnproto/go-capnp/std -ogo pkg/datura/artifact.capnp
 	capnp compile -I ../../capnproto/go-capnp/std -ogo pkg/radix/radix.capnp
 	capnp compile -I ../../capnproto/go-capnp/std -ogo pkg/ai/prompt/prompt.capnp
 	capnp compile -I ../../capnproto/go-capnp/std -ogo pkg/ai/toolcall/toolcall.capnp

@@ -138,7 +138,7 @@ func (q *Qdrant) Generate(
 				for _, doc := range docs {
 					// Create artifact with document content to be embedded
 					docArtifact := datura.New(
-						datura.WithPayload([]byte(doc.Content)),
+						datura.WithEncryptedPayload([]byte(doc.Content)),
 					)
 
 					// Check if embedder is available
@@ -185,7 +185,7 @@ func (q *Qdrant) Generate(
 					return
 				}
 
-				out <- datura.New(datura.WithPayload([]byte("Documents stored successfully")))
+				out <- datura.New(datura.WithEncryptedPayload([]byte("Documents stored successfully")))
 				return
 			}
 
@@ -199,7 +199,7 @@ func (q *Qdrant) Generate(
 
 				// Create artifact with question content to be embedded
 				questionArtifact := datura.New(
-					datura.WithPayload([]byte(question)),
+					datura.WithEncryptedPayload([]byte(question)),
 				)
 
 				// Get embeddings using the embedder's Generate method

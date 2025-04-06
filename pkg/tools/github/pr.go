@@ -38,7 +38,7 @@ func (pr *PR) encode(artifact *datura.ArtifactBuilder, v any) (err error) {
 		return errnie.Error(err)
 	}
 
-	datura.WithPayload(payload.Bytes())(artifact)
+	datura.WithEncryptedPayload(payload.Bytes())(artifact)
 
 	return nil
 }

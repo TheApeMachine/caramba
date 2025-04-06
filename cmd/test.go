@@ -6,7 +6,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/theapemachine/caramba/examples/tui"
 	"github.com/theapemachine/caramba/kubrick"
+	"github.com/theapemachine/caramba/kubrick/components/spinner"
+	"github.com/theapemachine/caramba/kubrick/layouts"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 var (
@@ -19,6 +23,9 @@ var (
 			switch args[0] {
 			case "simd":
 				return testSIMD()
+			case "tui":
+				errnie.SetOutput(false)
+				return tui.NewSimple().Run()
 			default:
 				return fmt.Errorf("unknown test type: %s", args[0])
 			}
@@ -35,6 +42,7 @@ Test the TUI package.
 
 Available test types:
   simd    Test SIMD buffer operations performance
+  tui     Test TUI framework with interactive components
 `
 
 func testSIMD() error {
@@ -280,4 +288,43 @@ func testSIMD() error {
 	fmt.Printf("Speedup: %.2fx\n", float64(standardDuration)/float64(simdDuration))
 
 	return nil
+}
+
+func testTUI() {
+	// Create a new app with a grid layout containing a spinner
+	app := kubrick.NewApp(
+		kubrick.WithScreen(
+			layouts.NewGridLayout(
+				layouts.WithRows(1),
+				layouts.WithColumns(1),
+				layouts.WithSpacing(1),
+				layouts.WithComponents(
+					spinner.NewSpinner(
+						spinner.WithLabel("Loading system components..."),
+					),
+				),
+			),
+		),
+	)
+
+	// Simulate some work
+	go func() {
+		time.Sleep(2 * time.Second)
+		app.Write([]byte("Processing..."))
+
+		time.Sleep(2 * time.Second)
+		app.Write([]byte("Almost done..."))
+
+		time.Sleep(2 * time.Second)
+		app.Close()
+	}()
+
+	// Read from app until it's closed
+	buf := make([]byte, 1024)
+	for {
+		_, err := app.Read(buf)
+		if err != nil {
+			break
+		}
+	}
 }

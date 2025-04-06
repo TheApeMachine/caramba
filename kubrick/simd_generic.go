@@ -101,12 +101,9 @@ func FindDifferences(old, new []rune) []DiffResult {
 	inDiff := false
 	diffStart := 0
 
-	minLen := len(old)
-	if len(new) < minLen {
-		minLen = len(new)
-	}
+	minLen := min(len(old), len(new))
 
-	for i := 0; i < minLen; i++ {
+	for i := range minLen {
 		if old[i] != new[i] {
 			if !inDiff {
 				inDiff = true
@@ -148,12 +145,9 @@ func FindDifferences(old, new []rune) []DiffResult {
 // FindFirstDifference finds the first difference between two buffers.
 // Returns the index of the first difference, or -1 if buffers are identical.
 func FindFirstDifference(old, new []rune) int {
-	minLen := len(old)
-	if len(new) < minLen {
-		minLen = len(new)
-	}
+	minLen := min(len(old), len(new))
 
-	for i := 0; i < minLen; i++ {
+	for i := range minLen {
 		if old[i] != new[i] {
 			return i
 		}

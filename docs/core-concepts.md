@@ -103,7 +103,7 @@ Artifacts are secure data containers:
 
 ```go
 artifact := datura.New(
-    datura.WithPayload(data),
+    datura.WithEncryptedPayload(data),
     datura.WithMetadata(meta),
 )
 ```
@@ -186,7 +186,7 @@ Artifacts are secure data containers:
 
 ```go
 artifact := datura.New(
-    datura.WithPayload(data),
+    datura.WithEncryptedPayload(data),
     datura.WithMetadata(meta),
 )
 ```

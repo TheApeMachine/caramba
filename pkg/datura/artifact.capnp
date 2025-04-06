@@ -25,14 +25,15 @@ struct Artifact {
         }
     }
     metadata           @10 :List(Metadata);
-    encryptedPayload   @11 :Data;
-    encryptedKey       @12 :Data;
-    ephemeralPublicKey @13 :Data;
+    payload            @11 :Data;
+    encryptedPayload   @12 :Data;
+    encryptedKey       @13 :Data;
+    ephemeralPublicKey @14 :Data;
     struct Approval {
         zkProof                @0 :Data;
         operatorBlindSignature @1 :Data;
     }
-    approvals @14 :List(Approval);
-    signature @15 :Data;
+    approvals @15 :List(Approval);
+    signature @16 :Data;
 }
 

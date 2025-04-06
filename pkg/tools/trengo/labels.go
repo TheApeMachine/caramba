@@ -36,7 +36,7 @@ func (l *Labels) encode(artifact *datura.ArtifactBuilder, v any) (err error) {
 		return errnie.Error(err)
 	}
 
-	datura.WithPayload(data)(artifact)
+	datura.WithEncryptedPayload(data)(artifact)
 	return nil
 }
 

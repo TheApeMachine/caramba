@@ -97,13 +97,13 @@ func (n4j *Neo4j) Generate(
 
 				// For write operations, we don't need to format the results
 				if isWriteOperation {
-					out <- datura.New(datura.WithPayload([]byte("Write operation completed successfully")))
+					out <- datura.New(datura.WithEncryptedPayload([]byte("Write operation completed successfully")))
 					return
 				}
 
 				// Format and return the results
 				formattedResults := formatRelationships(result.Records)
-				resultArtifact := datura.New(datura.WithPayload([]byte(formattedResults)))
+				resultArtifact := datura.New(datura.WithEncryptedPayload([]byte(formattedResults)))
 				resultArtifact.SetMetaValue("output", formattedResults)
 				out <- resultArtifact
 				return
@@ -145,7 +145,7 @@ func (n4j *Neo4j) Generate(
 					finalOutput = newOutput
 				}
 
-				resultArtifact := datura.New(datura.WithPayload([]byte(finalOutput)))
+				resultArtifact := datura.New(datura.WithEncryptedPayload([]byte(finalOutput)))
 				resultArtifact.SetMetaValue("output", finalOutput)
 				out <- resultArtifact
 				return

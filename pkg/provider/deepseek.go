@@ -182,7 +182,7 @@ func (prvdr *DeepseekProvider) handleSingleRequest(
 	channel <- datura.New(
 		datura.WithRole(datura.ArtifactRoleAnswer),
 		datura.WithScope(datura.ArtifactScopeGeneration),
-		datura.WithPayload([]byte(response.Choices[0].Message.Content)),
+		datura.WithEncryptedPayload([]byte(response.Choices[0].Message.Content)),
 	)
 
 	return nil
@@ -216,7 +216,7 @@ func (prvdr *DeepseekProvider) handleStreamingRequest(
 				channel <- datura.New(
 					datura.WithRole(datura.ArtifactRoleAnswer),
 					datura.WithScope(datura.ArtifactScopeGeneration),
-					datura.WithPayload([]byte(content)),
+					datura.WithEncryptedPayload([]byte(content)),
 				)
 			}
 		}

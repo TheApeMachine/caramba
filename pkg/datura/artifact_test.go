@@ -25,7 +25,7 @@ func TestArtifactCreation(t *testing.T) {
 				WithMediatype(MediaTypeTextPlain),
 				WithRole(ArtifactRoleUser),
 				WithScope(ArtifactScopeContext),
-				WithPayload(payload),
+				WithEncryptedPayload(payload),
 				WithMetadata(metadata),
 				WithSignature(signature),
 			)
@@ -90,7 +90,7 @@ func TestArtifactEncryption(t *testing.T) {
 				WithMediatype(MediaTypeTextPlain),
 				WithRole(ArtifactRoleUser),
 				WithScope(ArtifactScopeContext),
-				WithPayload(payload),
+				WithEncryptedPayload(payload),
 			)
 
 			So(artifact, ShouldNotBeNil)

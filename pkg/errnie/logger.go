@@ -16,6 +16,7 @@ import (
 )
 
 var (
+	output      = true
 	writeToFile = true
 	mu          sync.RWMutex
 	logFile     = "caramba.log"
@@ -56,6 +57,13 @@ func SetLevel(level log.Level) {
 	logger.SetLevel(level)
 }
 
+func SetOutput(out bool) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	output = out
+}
+
 func Log(msg any, keyvals ...any) {
 	if writeToFile {
 		WriteToFile(msg, keyvals...)
@@ -70,6 +78,10 @@ func Error(msg any, keyvals ...any) (err error) {
 
 	if writeToFile {
 		WriteToFile(msg, keyvals...)
+	}
+
+	if !output {
+		return
 	}
 
 	// Log the error message and stack trace
@@ -96,6 +108,10 @@ func Warn(msg any, keyvals ...any) {
 		WriteToFile(msg, keyvals...)
 	}
 
+	if !output {
+		return
+	}
+
 	logger.Warn(msg, keyvals...)
 }
 
@@ -105,6 +121,10 @@ func Info(msg any, keyvals ...any) {
 		WriteToFile(msg, keyvals...)
 	}
 
+	if !output {
+		return
+	}
+
 	logger.Info(msg, keyvals...)
 }
 
@@ -112,6 +132,10 @@ func Info(msg any, keyvals ...any) {
 func Debug(msg any, keyvals ...any) {
 	if writeToFile {
 		WriteToFile(msg, keyvals...)
+	}
+
+	if !output {
+		return
 	}
 
 	logger.Debug(msg, keyvals...)

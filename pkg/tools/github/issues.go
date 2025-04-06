@@ -35,7 +35,7 @@ func (issues *Issues) encode(artifact *datura.ArtifactBuilder, v any) (err error
 	if err = json.NewEncoder(payload).Encode(v); err != nil {
 		return errnie.Error(err)
 	}
-	datura.WithPayload(payload.Bytes())(artifact)
+	datura.WithEncryptedPayload(payload.Bytes())(artifact)
 	return nil
 }
 

@@ -51,7 +51,7 @@ func (bg *BrowserGenerator) Generate(in chan *datura.ArtifactBuilder) chan *datu
 					continue
 				}
 
-				datura.WithPayload([]byte(markdown))(artifact)
+				datura.WithEncryptedPayload([]byte(markdown))(artifact)
 			default:
 				var val string
 
@@ -61,7 +61,7 @@ func (bg *BrowserGenerator) Generate(in chan *datura.ArtifactBuilder) chan *datu
 					continue
 				}
 
-				datura.WithPayload([]byte(utils.SummarizeText(val, 2000)))(artifact)
+				datura.WithEncryptedPayload([]byte(utils.SummarizeText(val, 2000)))(artifact)
 			}
 
 			out <- artifact

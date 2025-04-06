@@ -162,7 +162,7 @@ func (prvdr *OllamaProvider) handleSingleRequest(
 			}
 
 			// Create artifact with message content
-			channel <- datura.New(datura.WithPayload([]byte(response.Message.Content)))
+			channel <- datura.New(datura.WithEncryptedPayload([]byte(response.Message.Content)))
 			return nil
 		},
 	)
@@ -186,7 +186,7 @@ func (prvdr *OllamaProvider) handleStreamingRequest(
 			channel <- datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithPayload([]byte(response.Message.Content)),
+				datura.WithEncryptedPayload([]byte(response.Message.Content)),
 			)
 		}
 		return nil
@@ -433,7 +433,7 @@ func (embedder *OllamaEmbedder) Generate(
 
 			// Convert embeddings to bytes (this is a simplified version)
 			embeddingsBytes := make([]byte, len(embeddings)*4)
-			out <- datura.New(datura.WithPayload(embeddingsBytes))
+			out <- datura.New(datura.WithEncryptedPayload(embeddingsBytes))
 		}
 	}()
 

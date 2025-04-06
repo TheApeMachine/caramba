@@ -50,7 +50,7 @@ func main() {
 
     // Create artifact with initial message
     artifact := datura.New(
-        datura.WithPayload([]byte("Hello, can you help me with a task?")),
+        datura.WithEncryptedPayload([]byte("Hello, can you help me with a task?")),
     )
 
     // Process through streamer and display response

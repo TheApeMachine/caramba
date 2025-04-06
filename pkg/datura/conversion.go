@@ -40,7 +40,7 @@ func (artifact *ArtifactBuilder) From(v any) (err error) {
 		return errnie.Error(err, "payload", string(payload))
 	}
 
-	WithPayload(payload)(artifact)
+	WithEncryptedPayload(payload)(artifact)
 	return nil
 }
 
@@ -86,6 +86,6 @@ func (artifact *ArtifactBuilder) Error(e error) (err error) {
 		errMsg = "empty error"
 	}
 
-	WithPayload([]byte(errMsg))(artifact)
+	WithEncryptedPayload([]byte(errMsg))(artifact)
 	return e
 }

@@ -16,12 +16,12 @@ type Artifact capnp.Struct
 const Artifact_TypeID = 0xb1092b0e00ae75e5
 
 func NewArtifact(s *capnp.Segment) (Artifact, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 11})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 14})
 	return Artifact(st), err
 }
 
 func NewRootArtifact(s *capnp.Segment) (Artifact, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 11})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 16, PointerCount: 14})
 	return Artifact(st), err
 }
 
@@ -109,6 +109,42 @@ func (s Artifact) SetMediatype(v string) error {
 	return capnp.Struct(s).SetText(2, v)
 }
 
+func (s Artifact) Origin() (string, error) {
+	p, err := capnp.Struct(s).Ptr(3)
+	return p.Text(), err
+}
+
+func (s Artifact) HasOrigin() bool {
+	return capnp.Struct(s).HasPtr(3)
+}
+
+func (s Artifact) OriginBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(3)
+	return p.TextBytes(), err
+}
+
+func (s Artifact) SetOrigin(v string) error {
+	return capnp.Struct(s).SetText(3, v)
+}
+
+func (s Artifact) Issuer() (string, error) {
+	p, err := capnp.Struct(s).Ptr(4)
+	return p.Text(), err
+}
+
+func (s Artifact) HasIssuer() bool {
+	return capnp.Struct(s).HasPtr(4)
+}
+
+func (s Artifact) IssuerBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(4)
+	return p.TextBytes(), err
+}
+
+func (s Artifact) SetIssuer(v string) error {
+	return capnp.Struct(s).SetText(4, v)
+}
+
 func (s Artifact) Role() uint32 {
 	return capnp.Struct(s).Uint32(8)
 }
@@ -126,42 +162,42 @@ func (s Artifact) SetScope(v uint32) {
 }
 
 func (s Artifact) PseudonymHash() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(3)
+	p, err := capnp.Struct(s).Ptr(5)
 	return []byte(p.Data()), err
 }
 
 func (s Artifact) HasPseudonymHash() bool {
-	return capnp.Struct(s).HasPtr(3)
+	return capnp.Struct(s).HasPtr(5)
 }
 
 func (s Artifact) SetPseudonymHash(v []byte) error {
-	return capnp.Struct(s).SetData(3, v)
+	return capnp.Struct(s).SetData(5, v)
 }
 
 func (s Artifact) MerkleRoot() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(4)
+	p, err := capnp.Struct(s).Ptr(6)
 	return []byte(p.Data()), err
 }
 
 func (s Artifact) HasMerkleRoot() bool {
-	return capnp.Struct(s).HasPtr(4)
+	return capnp.Struct(s).HasPtr(6)
 }
 
 func (s Artifact) SetMerkleRoot(v []byte) error {
-	return capnp.Struct(s).SetData(4, v)
+	return capnp.Struct(s).SetData(6, v)
 }
 
 func (s Artifact) Metadata() (Artifact_Metadata_List, error) {
-	p, err := capnp.Struct(s).Ptr(5)
+	p, err := capnp.Struct(s).Ptr(7)
 	return Artifact_Metadata_List(p.List()), err
 }
 
 func (s Artifact) HasMetadata() bool {
-	return capnp.Struct(s).HasPtr(5)
+	return capnp.Struct(s).HasPtr(7)
 }
 
 func (s Artifact) SetMetadata(v Artifact_Metadata_List) error {
-	return capnp.Struct(s).SetPtr(5, v.ToPtr())
+	return capnp.Struct(s).SetPtr(7, v.ToPtr())
 }
 
 // NewMetadata sets the metadata field to a newly
@@ -171,59 +207,72 @@ func (s Artifact) NewMetadata(n int32) (Artifact_Metadata_List, error) {
 	if err != nil {
 		return Artifact_Metadata_List{}, err
 	}
-	err = capnp.Struct(s).SetPtr(5, l.ToPtr())
+	err = capnp.Struct(s).SetPtr(7, l.ToPtr())
 	return l, err
 }
-func (s Artifact) EncryptedPayload() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(6)
-	return []byte(p.Data()), err
-}
-
-func (s Artifact) HasEncryptedPayload() bool {
-	return capnp.Struct(s).HasPtr(6)
-}
-
-func (s Artifact) SetEncryptedPayload(v []byte) error {
-	return capnp.Struct(s).SetData(6, v)
-}
-
-func (s Artifact) EncryptedKey() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(7)
-	return []byte(p.Data()), err
-}
-
-func (s Artifact) HasEncryptedKey() bool {
-	return capnp.Struct(s).HasPtr(7)
-}
-
-func (s Artifact) SetEncryptedKey(v []byte) error {
-	return capnp.Struct(s).SetData(7, v)
-}
-
-func (s Artifact) EphemeralPublicKey() ([]byte, error) {
+func (s Artifact) Payload() ([]byte, error) {
 	p, err := capnp.Struct(s).Ptr(8)
 	return []byte(p.Data()), err
 }
 
-func (s Artifact) HasEphemeralPublicKey() bool {
+func (s Artifact) HasPayload() bool {
 	return capnp.Struct(s).HasPtr(8)
 }
 
-func (s Artifact) SetEphemeralPublicKey(v []byte) error {
+func (s Artifact) SetPayload(v []byte) error {
 	return capnp.Struct(s).SetData(8, v)
 }
 
-func (s Artifact) Approvals() (Artifact_Approval_List, error) {
+func (s Artifact) EncryptedPayload() ([]byte, error) {
 	p, err := capnp.Struct(s).Ptr(9)
+	return []byte(p.Data()), err
+}
+
+func (s Artifact) HasEncryptedPayload() bool {
+	return capnp.Struct(s).HasPtr(9)
+}
+
+func (s Artifact) SetEncryptedPayload(v []byte) error {
+	return capnp.Struct(s).SetData(9, v)
+}
+
+func (s Artifact) EncryptedKey() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(10)
+	return []byte(p.Data()), err
+}
+
+func (s Artifact) HasEncryptedKey() bool {
+	return capnp.Struct(s).HasPtr(10)
+}
+
+func (s Artifact) SetEncryptedKey(v []byte) error {
+	return capnp.Struct(s).SetData(10, v)
+}
+
+func (s Artifact) EphemeralPublicKey() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(11)
+	return []byte(p.Data()), err
+}
+
+func (s Artifact) HasEphemeralPublicKey() bool {
+	return capnp.Struct(s).HasPtr(11)
+}
+
+func (s Artifact) SetEphemeralPublicKey(v []byte) error {
+	return capnp.Struct(s).SetData(11, v)
+}
+
+func (s Artifact) Approvals() (Artifact_Approval_List, error) {
+	p, err := capnp.Struct(s).Ptr(12)
 	return Artifact_Approval_List(p.List()), err
 }
 
 func (s Artifact) HasApprovals() bool {
-	return capnp.Struct(s).HasPtr(9)
+	return capnp.Struct(s).HasPtr(12)
 }
 
 func (s Artifact) SetApprovals(v Artifact_Approval_List) error {
-	return capnp.Struct(s).SetPtr(9, v.ToPtr())
+	return capnp.Struct(s).SetPtr(12, v.ToPtr())
 }
 
 // NewApprovals sets the approvals field to a newly
@@ -233,20 +282,20 @@ func (s Artifact) NewApprovals(n int32) (Artifact_Approval_List, error) {
 	if err != nil {
 		return Artifact_Approval_List{}, err
 	}
-	err = capnp.Struct(s).SetPtr(9, l.ToPtr())
+	err = capnp.Struct(s).SetPtr(12, l.ToPtr())
 	return l, err
 }
 func (s Artifact) Signature() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(10)
+	p, err := capnp.Struct(s).Ptr(13)
 	return []byte(p.Data()), err
 }
 
 func (s Artifact) HasSignature() bool {
-	return capnp.Struct(s).HasPtr(10)
+	return capnp.Struct(s).HasPtr(13)
 }
 
 func (s Artifact) SetSignature(v []byte) error {
-	return capnp.Struct(s).SetData(10, v)
+	return capnp.Struct(s).SetData(13, v)
 }
 
 // Artifact_List is a list of Artifact.
@@ -254,7 +303,7 @@ type Artifact_List = capnp.StructList[Artifact]
 
 // NewArtifact creates a new list of Artifact.
 func NewArtifact_List(s *capnp.Segment, sz int32) (Artifact_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 16, PointerCount: 11}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 16, PointerCount: 14}, sz)
 	return capnp.StructList[Artifact](l), err
 }
 
@@ -574,62 +623,66 @@ func (f Artifact_Approval_Future) Struct() (Artifact_Approval, error) {
 	return Artifact_Approval(p.Struct()), err
 }
 
-const schema_85d3acc39d94e0f8 = "x\xda\x84\x93_h\x1cU\x14\xc6\xbf\xef\xde\x9d\xecn" +
-	"\x92m\\f@(\x86\xa8\x15\xfc\x9b6&/R\x04" +
-	"\xdb>i\x8a\x90\x9b\xc5\x80\x05\x91\x9b\xdd\x9bd\xcc\xec" +
-	"\xce0;\x93\xba\xd2\xa0\x0f\x0d\x14I!H\x0aU\x12" +
-	"\xe8\x83B\x1f\xaa\xd4\x17A\xc1\x07\x15\xb1>\x14\"\xfa" +
-	"\"T\xf0\xc1\x80\xbe\x08\xea\x83\x82\xad#w\xe8\xfe\xb1" +
-	"\xa0\xce\xdb\xfc\xee\xb9\xe7|\xf7\x9c\xefL\xfd\xc6c\x85" +
-	"\xc7+_\x08\x08u\xaf3\x94U\xc4/W\x1f\x12\x9f" +
-	"n\xa2z\x88\xbf\xef\xa7\xef\x1dx\xb4\xfc\xbe#\x8a\xc0" +
-	"\xcc3\\\xa4\xfb\x02\x8b\x80\xfb<O\xa3w\xaa\x0eR" +
-	"d\x7f|\xbf\xbd\xfb\xd9\x95\xaf7\xe0\x8c\xd8\xd8\x8fy" +
-	"\x90\xeeu>\x08\xcc\xfc\xc4\xbb%\x98\xfd\xec\x1c\xbd\xfe" +
-	"\xe2\x07\xf7}\x02u\x88\xe2\x9f\x89}g\x91\xee\xbac" +
-	"\x13w\x9c\xd3`6\xb6\xbf\xf0\xeb\xf4\xdew{P\x8f" +
-	"Q\xf4o>'\x8at\x80\x99\x0f\x9d7\x08\xce|\xe9" +
-	"L\x10\x93Y\xb4\xba|\xa4\xa1\x93\xb4\x10\xeb#:N" +
-	"\xfc%]O\x0e\xd7u\xd4\x8a\x8e\x1e\xef\xfe\x1e\x8f\xa2" +
-	"8,\xae\xe9`\x8eT%Y\x00\x0a\x04\xaa\x0f\x9f\x00" +
-	"\xd4\x03\x92jJ\xb0Jz\xb4p\xf2#@MI\xaa" +
-	"'\x05_}eu.\x0e\xc3%V X\x01\xb30" +
-	"2\xb1N\xc2\x98'\x02\xbf\xd5\xa8\xf9\xcbO\xb5t\x92" +
-	"\xc6\xa6\x17\xd0U#\xffM\x8d\xac'\xaa\xc4\x81~T" +
-	"\xcb\xb3\x03M/\xcff\xcf\x9aD7t\xa2\x01d\xb9" +
-	"\xf05\x1d\x00POtu\xbb\x1d>\x02\xd4\x12J\xd6" +
-	"^c_\xba\xbb\xceY\xa0v\xc6\xf2s\x14\xa4\xf0(" +
-	"\x00w\x83\xf3@\xed\xac\xc5[6\\\x0a\x8f\x12p\xcf" +
-	"\xe7|\xd3\xf2\x8b\x96\x17\x84\xc7\x02\xe0^\xc8\xd3oY" +
-	"\xbec\xb9#=\xdbw\xf7MN\x03\xb5m\xcb/Y" +
-	">$=\x0e\x01\xee.c\xa0\xb6c\xf9e\xcb\x8b\x05" +
-	"/w\xc9;<\x05\xd4\xde\xb6\xfc\xaa\xe5%\xc7c\x09" +
-	"p\xdf\xcde^\xb1\xfc\x9a\xe5\xe5!\x8fe\xc0\xfd\x9c" +
-	"\xaf\x03\xb5k\x96\x7fc\xf9p\xd1\xe30\xe0~\xc5\x97" +
-	"\x80\xda\x9e\xe57,\x1f)y\x1c\x01\xdco\xf9\x16P" +
-	"\xbba\xf9\x8f\x96\x8f\x96=\x8e\x02\xee~\xfe\xae\x1f(" +
-	"9/\x04\xab\x95a\x8f\x15\xc0\xbd\x95\xe3\x9b6\xbc$" +
-	"\x04\xc7\xd2\xd4o\xf4\xe6V_1\xf5\xd5v\xda\x04\xd0" +
-	"c\x89\xdf4\xedD7\xc1\x88\x0e\x04\x1d0k\x9a\x86" +
-	"\xaf\x93N\x04\x1a\x8eBp\x14\x1c\x8b\xc3\xc0\xb0\x04\xc1" +
-	"\x128\xd1\xae\x87Q\xef/\x8b\xda&m\x84\xad\x0e&" +
-	"\x9aO\xeb\xf6J/u\xd3\xc4\xab\x81\x99\x0f!\xc3d" +
-	"\x00\xf6\x06\xcf\x03\xe0\x9c$\xef\xea\xfb\x04\xb403\xad" +
-	"z\xdc\x89\x12\xc3\xc6\x9c\xee\x04\xa1n\x0c\x08\xee\x9ea" +
-	"\xacq\xd2t\xfa8Z1M\x13k\x06s\xe9b\xe0" +
-	"\xd7O\xca\x81C\xddu\x18\xdb\xfd\xa2=?\xde.\xda" +
-	"\xf6\x97s\x9f\xdbW\xdf\xe9\xf4\xff\xda\xbb\xdc\xcaE\x9d" +
-	"\xe8;\xf6\xee\xfe\xfe\xde\xd9\xaf\xbf\xf0\xd5\xc9i\x88\xe2" +
-	"\xaa\xe9t\x9b;\xb1\xa6\x83\xd4\xf4\x8a9\xffWL'" +
-	"\xfa\xb0\xbdB\xa3<Y\xb8'\xcbno\xf5\xfa<\xa0" +
-	"\xceH\xaas\x82\xe3\xfc\xcbb\x01T7f\x01uV" +
-	"Rm\x09\x8e\x8b[\x16K\xa0z\xfe\x14\xa06%\xd5" +
-	"E\xc1qy3;\x96/F\xf5\x82M\xb2-\xa9." +
-	"\x09\x8e\x17\xfe\xb4\xd1\x0eP\xdd]\x04\xd4\x8e\xa4\xba," +
-	"\x98%\xe6\xe5dA\x07\xe9\x80A2\xbf\x95#c\x07" +
-	"\xdb5\xd2R\x10jK!S\xc3\x11\x08\x8e\x80\xd9b" +
-	"\x18\x06\xdd\xcb\x84 -\xf3[:\xee,h\x14\x83\xb4" +
-	"\xd7\xfd\xbf\x03\x00\x00\xff\xff=r[1"
+const schema_85d3acc39d94e0f8 = "x\xda\x84\xd4]h\x1cU\x1b\x07\xf0\xff\xff\x9c\xfdL" +
+	"v\xb3Yf\xaeJC\xda\xb7}1~\xa4\xcd\x877" +
+	"\x86@\xdbP\xa1\xa6\x08\x99\x0c\x06,\x16=\xd9=I" +
+	"\xc6\xcc\xee\x0c\xb33\xa9+\x96\xdeX\x10\xa9 RA" +
+	"\xc4\x82\x97^\x88\xe8\x8d\x17\x82\x88z\xa17\x81\x88^" +
+	"((Th\xc1B\x95V\x14#VG\xce\xd6\xfd\xb0" +
+	"\xa0\xee\xdd\xf9\x9d\xaf\xe7<\xfb<3\xb5O\x1c\xcdL" +
+	"\x97?\x11\x10\xce\xbel.-\x8b\x9boO\x88\x8f." +
+	"\xa0z\x80\xbf\\M\xde\x1a\xb9\xb7\xf8NV\xe4\x81\xd9" +
+	"\x87\xb8J\xeb4\xf3\x80\xf5(\xcf\xa07\xeb\xec\xa1H" +
+	"w/_\xbc\xf4\xf1\x9b\x9f\x9fGv\xc4\xac}\x9f{" +
+	"hm\xf3.`\xf6\x1a?\x90`\xfaCvn\xfb\xf1" +
+	"w\xf7\x7f\x08\xe7\x00\xc5\xdf\x0f\x1e\xcb\xad\xd2\x9a\xce\x99" +
+	"\x83'sg\xc0\xb4ru\xe5\xc7\x99\x9dov\xe0\xdc" +
+	"G\xd1\xdf\xf9\x88\xc83\x0b\xcc6r/\x11\x9c=\x9b" +
+	"\x1b'&\xd3ps\xfdp]\xc5I&R\x87U\x14" +
+	"{k\xaa\x16\x1f\xaa\xa9\xb0\x19\xce\x1d\xeb\x0e\x8f\x85a" +
+	"\x14\xe4\xb7\x94\xbfD:\x05\x99\x012\x04\xaaw/\x00" +
+	"\xceAIgJ\xb0J\xda48\xf9\x1e\xe0LI:" +
+	"\xf3\x82\xe7\x9e\xde\\\x8a\x82`\x8de\x08\x96\xc14\x08" +
+	"u\xa4\xe2 \xe2\x82\xef5\xeb\xae\xb7~\xa4\xa9\xe2$" +
+	"\xd2\xbd\x05\xddh\xe4?E#k\xb1S\xe0@>\xaa" +
+	"\xc5\xc5\x81\xa4\x17\x17\xd3\x87u\xac\xea*V\x00\xd2N" +
+	"\xe0[\xca\x07\xe0\x1c\xef\xc6mm\xf3\x1e\xc0\xfd\x94\x92" +
+	"\xee\x17\xec\x87n}\xc6E\xc0\xdd1\xfe5\x05)l" +
+	"\x0a\xc0\xfa\x8a\xcb\x80\xfb\xa5\xe1+f\xb9\x146%`" +
+	"}\xdb\xf1\xcb\xc6\xaf\x1b\xcfH\x9b\x19\xc0\xba\xc69\xc0" +
+	"\xbdb\xfc\x86\xf1l\xc66y\xb7\xbe\xef\xf8w\xc6\x7f" +
+	"2\x9e\x136s\x80u\xb3\x13\xceu\xe3\xbb\xc6\xf3\xd2" +
+	"\xeeT\xc9\xcf\x9c\x01\xdc\x1b\xc6o\x19/dm\x16\x00" +
+	"\xebWF\x80\xbbk<#\x04\xab\xc5\x9c\xcd\"`Q" +
+	"\x9c\x02\x96\x85\xa4[2<\x94\xb79\x04XEa^" +
+	"U0~\xd0\xf8p\xc1\xe60`\xed\x17\x0b\x80\xbb\xd7" +
+	"\xf8\x84\xf1R\xd1f\x09\xb0\xfe/\x9e\x07\xdc\x09\xe3\xf7" +
+	"\x1b/\x0f\xd9,\x03\xd6\xb4x\x12p\xa7\x8c\xcf\x1b\x1f" +
+	"\x19\xb69\x02X\x0f\x88W\x01w\xde\xf8\x09\xe3\x95\x92" +
+	"\xcd\x0a`=(Lz\x8e\x1b\x7f\xc2\xf8h\xd9\xe6(" +
+	"`\x9d\xee\xf8c\xc67\x84`%I\xbcz\xef\xff\xaf" +
+	"m\xe8\xdaf+i\x00\xe8Y\xec5t+V\x0d0" +
+	"d\x16\x82Y0m\xe8\xba\xa7\xe2v\x08j\x96 X" +
+	"\x02\x8f\x04\x91\xb7\xee5{C\xaf\xd5Jt\xd4\x1dV" +
+	"\xa2\xc0\xd7,@\xb0\x00\x8e\xb7jA\xd8\x1b\xa5aK" +
+	"'\xf5\xa0\xd9\xc6x\xe3\x84jm\xf4.n\xe8h\xd3" +
+	"\xd7\xcb\x01d\x10\x0f`\xaf\xbc8\x02.Ir\xb4_" +
+	"\x8d\xa0\xc1s\xa1j\xfb\x81\xea?K7kQ;\x8c" +
+	"5\xebK\xb7g\x06\x9e\xd7\x9dC\xa5~R\xb7\xfb\x1c" +
+	"n\xe8\x86\x8e\x14\xfd\xa5d\xd5\xf7j'\xe5\xc0\xa4\xea" +
+	"\xd65[\xfd z]p;\x88\xb4\xe5\xadw\xba\xcb" +
+	"\xe4\xe8\xce\xfe\xfa\xb7n\xef4P^\xc5\xea\x8en\xff" +
+	"_\xbf\xdb\xcd\xaf\xff\x99\xa9N\xce@\xe47u\xbb\x9b" +
+	"\xec\xf1-\xe5'\xbawY\xf6\xbf.S\xb1:d\xb6" +
+	"P;\xb6\xcc\xecM\xd3\xbf\xbe%g\x97\x01\xe7\x19I" +
+	"\xe79\xc11\xfeaX\x00\xd5\xf3\x8b\x80\xf3\xac\xa4\xf3" +
+	"\xa2\xe0\x98\xf8\xdd\xb0\x04\xaa/\x9c\x02\x9c\x0b\x92\xce+" +
+	"\x82c\xf2Vz\xb4\xd3\x8e\xd5\x97\xcd!\x17%\x9d\xd7" +
+	"\x05\xc72\xbf\x99\xd5Y\xa0zi\x15p^\x93t\xde" +
+	"\x10Lc\xfdT\xbc\xa2\xfcd\xa0\x9cR\xaf\xd9!m" +
+	"\xfe\xe8n\xd9\xad\xf9\x812\x0a\x99h\x0eCp\x18L" +
+	"W\x83\xc0\xefn&\x04i\xcck\xaa\xa8\xbd\xa2\x90\xf7" +
+	"\x93^\xf6\xff\x0c\x00\x00\xff\xff*Lg\xe7"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{

@@ -196,7 +196,7 @@ func (prvdr *AnthropicProvider) handleSingleRequest(
 
 	// Abort early if there are no tool calls
 	if len(toolCalls) == 0 {
-		channel <- datura.New(datura.WithPayload([]byte(content)))
+		channel <- datura.New(datura.WithEncryptedPayload([]byte(content)))
 		return
 	}
 
@@ -228,7 +228,7 @@ func (prvdr *AnthropicProvider) handleSingleRequest(
 	}
 
 	// Create artifact with message content
-	channel <- datura.New(datura.WithPayload([]byte(content)))
+	channel <- datura.New(datura.WithEncryptedPayload([]byte(content)))
 }
 
 /*
@@ -259,7 +259,7 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 				channel <- datura.New(
 					datura.WithRole(datura.ArtifactRoleAnswer),
 					datura.WithScope(datura.ArtifactScopeGeneration),
-					datura.WithPayload([]byte(event.ContentBlock.Name+": ")),
+					datura.WithEncryptedPayload([]byte(event.ContentBlock.Name+": ")),
 				)
 			}
 		case anthropic.ContentBlockDeltaEvent:
@@ -267,27 +267,27 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 				channel <- datura.New(
 					datura.WithRole(datura.ArtifactRoleAnswer),
 					datura.WithScope(datura.ArtifactScopeGeneration),
-					datura.WithPayload([]byte(event.Delta.Text)),
+					datura.WithEncryptedPayload([]byte(event.Delta.Text)),
 				)
 			}
 			if event.Delta.PartialJSON != "" {
 				channel <- datura.New(
 					datura.WithRole(datura.ArtifactRoleAnswer),
 					datura.WithScope(datura.ArtifactScopeGeneration),
-					datura.WithPayload([]byte(event.Delta.PartialJSON)),
+					datura.WithEncryptedPayload([]byte(event.Delta.PartialJSON)),
 				)
 			}
 		case anthropic.ContentBlockStopEvent:
 			channel <- datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithPayload([]byte("\n\n")),
+				datura.WithEncryptedPayload([]byte("\n\n")),
 			)
 		case anthropic.MessageStopEvent:
 			channel <- datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithPayload([]byte("\n")),
+				datura.WithEncryptedPayload([]byte("\n")),
 			)
 		}
 
@@ -367,7 +367,7 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 					channel <- datura.New(
 						datura.WithRole(datura.ArtifactRoleAnswer),
 						datura.WithScope(datura.ArtifactScopeGeneration),
-						datura.WithPayload(inputJSON),
+						datura.WithEncryptedPayload(inputJSON),
 					)
 				}
 			}

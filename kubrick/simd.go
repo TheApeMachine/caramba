@@ -137,12 +137,9 @@ func FindDifferences(old, new []rune) []DiffResult {
 		inDiff := false
 		diffStart := 0
 
-		minLen := len(old)
-		if len(new) < minLen {
-			minLen = len(new)
-		}
+		minLen := min(len(old), len(new))
 
-		for i := 0; i < minLen; i++ {
+		for i := range minLen {
 			if old[i] != new[i] {
 				if !inDiff {
 					inDiff = true
@@ -193,12 +190,9 @@ func findDifferencesAVX2(old, new []rune) []DiffResult
 func FindFirstDifference(old, new []rune) int {
 	if !hasAVX2 {
 		// Fall back to generic implementation
-		minLen := len(old)
-		if len(new) < minLen {
-			minLen = len(new)
-		}
+		minLen := min(len(old), len(new))
 
-		for i := 0; i < minLen; i++ {
+		for i := range old {
 			if old[i] != new[i] {
 				return i
 			}

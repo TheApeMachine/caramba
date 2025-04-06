@@ -244,7 +244,7 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 	}
 
 	if _, err = io.Copy(prvdr.buffer, datura.New(
-		datura.WithPayload([]byte(contentText)),
+		datura.WithEncryptedPayload([]byte(contentText)),
 	)); err != nil {
 		return errnie.Error(err)
 	}
@@ -284,7 +284,7 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 		for _, part := range response.Candidates[0].Content.Parts {
 			if part.Text != "" {
 				if _, err = io.Copy(prvdr.buffer, datura.New(
-					datura.WithPayload([]byte(part.Text)),
+					datura.WithEncryptedPayload([]byte(part.Text)),
 				)); err != nil {
 					errnie.Error("failed to write stream chunk", "error", err)
 					continue

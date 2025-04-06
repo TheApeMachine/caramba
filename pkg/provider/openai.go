@@ -189,7 +189,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 
 	// Abort early if there are no tool calls
 	if len(toolCalls) == 0 {
-		return datura.New(datura.WithPayload([]byte(completion.Choices[0].Message.Content)))
+		return datura.New(datura.WithEncryptedPayload([]byte(completion.Choices[0].Message.Content)))
 	}
 
 	// Create tool calls list
@@ -215,7 +215,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 	}
 
 	// Create artifact with message content
-	return datura.New(datura.WithPayload([]byte(completion.Choices[0].Message.Content)))
+	return datura.New(datura.WithEncryptedPayload([]byte(completion.Choices[0].Message.Content)))
 }
 
 /*
@@ -244,7 +244,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			return datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithPayload([]byte(content)),
+				datura.WithEncryptedPayload([]byte(content)),
 			)
 		}
 
@@ -253,7 +253,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			return datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithPayload([]byte(tool.Arguments)),
+				datura.WithEncryptedPayload([]byte(tool.Arguments)),
 			)
 		}
 
@@ -261,7 +261,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			return datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithPayload([]byte(refusal)),
+				datura.WithEncryptedPayload([]byte(refusal)),
 			)
 		}
 
@@ -270,7 +270,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			return datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithPayload([]byte(chunk.Choices[0].Delta.Content)),
+				datura.WithEncryptedPayload([]byte(chunk.Choices[0].Delta.Content)),
 			)
 		}
 	}
@@ -535,7 +535,7 @@ func (embedder *OpenAIEmbedder) Generate(
 		binary.LittleEndian.PutUint32(embeddingsBytes[i*4:], math.Float32bits(v))
 	}
 
-	return datura.New(datura.WithPayload(embeddingsBytes))
+	return datura.New(datura.WithEncryptedPayload(embeddingsBytes))
 }
 
 func WithOpenAIEmbedderAPIKey(apiKey string) OpenAIEmbedderOption {

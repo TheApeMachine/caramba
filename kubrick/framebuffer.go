@@ -56,12 +56,14 @@ func NewFramebuffer() *Framebuffer {
 		cursor:     Position{0, 0},
 		viewOffset: Position{0, 0},
 		numBuf:     make([]byte, 0, 16),
+		width:      minWidth,  // Set default width
+		height:     minHeight, // Set default height
 	}
 
 	// Get initial size
-	_ = fb.updateTerminalSize()
+	fb.updateTerminalSize()
 
-	// Initialize buffers
+	// Initialize buffers with current dimensions
 	fb.frontBuffer = NewBuffer(fb.width, fb.height)
 	fb.backBuffer = NewBuffer(fb.width, fb.height)
 

@@ -13,7 +13,7 @@ func TestDecryptPayload(t *testing.T) {
 			WithMediatype(MediaTypeTextPlain),
 			WithRole(ArtifactRoleUser),
 			WithScope(ArtifactScopeContext),
-			WithPayload(originalPayload),
+			WithEncryptedPayload(originalPayload),
 		)
 
 		Convey("When decrypting the payload", func() {
