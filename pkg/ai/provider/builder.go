@@ -48,6 +48,36 @@ func New(opts ...ProviderBuilderOption) *ProviderBuilder {
 	return builder
 }
 
+func (prvdr *Provider) Generate(
+	ctx context.Context,
+	artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	future, release := prvdr.Client().Generate(
+		ctx, func(p RPC_generate_Params) error {
+			return p.SetContext(*artifact.Artifact)
+		},
+	)
+
+	defer release()
+
+	var (
+		result RPC_generate_Results
+		err    error
+	)
+
+	if result, err = future.Struct(); errnie.Error(err) != nil {
+		return nil
+	}
+
+	out, err := result.Out()
+
+	if errnie.Error(err) != nil {
+		return nil
+	}
+
+	return datura.New(datura.WithArtifact(&out))
+}
+
 func (builder *ProviderBuilder) Generate(
 	ctx context.Context,
 	artifact *datura.ArtifactBuilder,
@@ -91,6 +121,11 @@ func WithName(name string) ProviderBuilderOption {
 }
 
 // Client converts the provider to an RPC client
+func (p *Provider) Client() RPC {
+	return ProviderToClient(p)
+}
+
+// Client converts the provider builder to an RPC client
 func (p *ProviderBuilder) Client() RPC {
 	return ProviderToClient(p.Provider)
 }

@@ -1,13 +1,17 @@
 package agent
 
 import (
+	context "context"
 	"io"
 
 	"capnproto.org/go/capnp/v3"
 	"capnproto.org/go/capnp/v3/rpc"
 	"github.com/google/uuid"
 	aictx "github.com/theapemachine/caramba/pkg/ai/context"
-	"github.com/theapemachine/caramba/pkg/datura"
+	"github.com/theapemachine/caramba/pkg/ai/message"
+	"github.com/theapemachine/caramba/pkg/ai/prompt"
+	prvdr "github.com/theapemachine/caramba/pkg/ai/provider"
+	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -77,6 +81,72 @@ func New(options ...AgentBuilderOption) *AgentBuilder {
 	return builder
 }
 
+func (builder *AgentBuilder) Send(message *message.MessageBuilder) *datura.ArtifactBuilder {
+	future, release := builder.Client().Send(
+		context.Background(), func(p RPC_send_Params) error {
+			return nil
+		},
+	)
+
+	defer release()
+
+	var (
+		result RPC_send_Results
+		err    error
+		out    datura.Artifact
+	)
+
+	if result, err = future.Struct(); errnie.Error(err) != nil {
+		return nil
+	}
+
+	out, err = result.Out()
+
+	if errnie.Error(err) != nil {
+		return nil
+	}
+
+	return datura.New(datura.WithArtifact(&out))
+}
+
+func (builder *AgentBuilder) Identity() (string, string) {
+	identity, err := builder.Agent.Identity()
+
+	if errnie.Error(err) != nil {
+		return "noid", "noname"
+	}
+
+	id, err := identity.Identifier()
+
+	if errnie.Error(err) != nil {
+		return "noid", "noname"
+	}
+
+	name, err := identity.Name()
+
+	if errnie.Error(err) != nil {
+		return "noid", "noname"
+	}
+
+	return id, name
+}
+
+func (builder *AgentBuilder) Role() string {
+	identity, err := builder.Agent.Identity()
+
+	if errnie.Error(err) != nil {
+		return ""
+	}
+
+	role, err := identity.Role()
+
+	if errnie.Error(err) != nil {
+		return ""
+	}
+
+	return role
+}
+
 func (agent *Agent) Client() RPC {
 	return AgentToClient(agent)
 }
@@ -90,7 +160,7 @@ func (agent *Agent) Conn(transport io.ReadWriteCloser) *rpc.Conn {
 // WithName sets the agent's name
 func WithName(name string) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
-		identity, err := a.Identity()
+		identity, err := a.Agent.Identity()
 
 		if err != nil {
 			return errnie.Error(err)
@@ -103,7 +173,7 @@ func WithName(name string) AgentBuilderOption {
 // WithRole sets the agent's role
 func WithRole(role string) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
-		identity, err := a.Identity()
+		identity, err := a.Agent.Identity()
 
 		if err != nil {
 			return errnie.Error(err)
@@ -131,63 +201,46 @@ func WithModel(model string) AgentBuilderOption {
 	}
 }
 
-// ProcessCommand handles command messages sent to the agent
-func (agent *AgentBuilder) ProcessCommand(msg *datura.ArtifactBuilder) error {
-	// Get command from message metadata
-	cmd := datura.GetMetaValue[string](msg, "command")
-	if cmd == "" {
-		return nil // Skip messages without a command
-	}
+func WithProvider(provider string) AgentBuilderOption {
+	return func(a *AgentBuilder) error {
+		p := prvdr.New(prvdr.WithName(provider))
 
-	// Process command based on type
-	switch cmd {
-	case "stop":
-		// Handle stop command
-		return nil
-	default:
-		// Unknown command
+		if err := a.SetProvider(*p.Provider); err != nil {
+			return errnie.Error(err)
+		}
+
 		return nil
 	}
 }
 
-// UpdateStatus handles status update messages
-func (agent *AgentBuilder) UpdateStatus(msg *datura.ArtifactBuilder) error {
-	// Update agent status based on message
-	status := datura.GetMetaValue[string](msg, "status")
-	if status == "" {
-		return nil // Skip messages without status
+func WithPrompt(role string, prompt *prompt.PromptBuilder) AgentBuilderOption {
+	return func(a *AgentBuilder) error {
+		ctx, err := a.Context()
+
+		if errnie.Error(err) != nil {
+			return errnie.Error(err)
+		}
+
+		messages := errnie.Try(ctx.Messages())
+		ml := errnie.Try(message.NewMessage_List(a.Segment(), int32(messages.Len()+1)))
+
+		for i := range messages.Len() {
+			ml.Set(i, messages.At(i))
+		}
+
+		msg := message.New(
+			message.WithRole(role),
+			message.WithContent(prompt.String()),
+		)
+
+		if errnie.Error(ml.Set(messages.Len(), *msg.Message)) != nil {
+			return errnie.Error(err)
+		}
+
+		if errnie.Error(ctx.SetMessages(ml)) != nil {
+			return errnie.Error(err)
+		}
+
+		return nil
 	}
-
-	// Update agent state based on status
-	return nil
-}
-
-// ProcessMessage handles general messages sent to the agent
-func (agent *AgentBuilder) ProcessMessage(msg *datura.ArtifactBuilder) error {
-	// Process message based on its role
-	role := datura.GetMetaValue[string](msg, "role")
-	if role == "" {
-		return nil // Skip messages without role
-	}
-
-	// Get message payload
-	_, err := msg.DecryptPayload()
-	if err != nil {
-		return err
-	}
-
-	// Add message to agent's context
-	return nil
-}
-
-// IsActive checks if the agent is still active
-func (agent *AgentBuilder) IsActive() bool {
-	// Check agent's active status
-	return true // For now, always return true
-}
-
-// Maintain performs periodic maintenance tasks
-func (agent *AgentBuilder) Maintain() error {
-	// Perform any necessary maintenance
-	return nil
 }

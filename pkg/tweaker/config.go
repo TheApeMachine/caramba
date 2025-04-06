@@ -2,6 +2,7 @@ package tweaker
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -137,6 +138,24 @@ func GetQdrantPort() int {
 
 func GetQdrantAPIKey() string {
 	return get("tools.qdrant.api_key", cfg.v().GetString, "")
+}
+
+func WithVariables(
+	key string,
+	variable1 string, value1 string,
+	variable2 string, value2 string,
+) string {
+	return strings.ReplaceAll(
+		strings.ReplaceAll(
+			cfg.v().GetString(key),
+			"{{"+variable1+"}}", value1,
+		),
+		"{{"+variable2+"}}", value2,
+	)
+}
+
+func WithVariable(key string, variable string, value string) string {
+	return strings.ReplaceAll(cfg.v().GetString(key), "{{"+variable+"}}", value)
 }
 
 // Get returns a string value from the config with a default value

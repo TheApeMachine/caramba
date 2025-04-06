@@ -16,6 +16,17 @@ struct Agent {
     context  @2 :Context.Context;
     tools    @3 :List(Text);
     provider @4 :Provider.Provider;
+    status   @5 :Status;
+
+    enum Status {
+        idle    @0;
+        ready   @1;
+        waiting @2;
+        pending @3;
+        working @4;
+        errored @5;
+        failed  @6;
+    }
 }
 
 struct Identity {

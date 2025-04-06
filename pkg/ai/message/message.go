@@ -12,7 +12,7 @@ type MessageBuilder struct {
 
 type MessageOption func(*MessageBuilder)
 
-func NewMessageBuilder(opts ...MessageOption) *MessageBuilder {
+func New(opts ...MessageOption) *MessageBuilder {
 	var (
 		arena = capnp.SingleSegment(nil)
 		seg   *capnp.Segment

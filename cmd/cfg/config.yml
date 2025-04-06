@@ -93,6 +93,129 @@ settings:
   global:
     iteration_limit: 10
 
+prompts:
+  fragments:
+    advice:
+      iteration: |
+        Each time you begin generating a response, you will be automatically placed inside
+        an iteration loop. This means that whenever you finish generating a response, the
+        new response will be added to the current context, and the updated current context
+        will be fed back to you as the loop cycles back around. This gives you abilities
+        that are traditionally not available to language models, and opportunities to self-correct.
+        This means that you are highly encouraged to work in small, singular steps, and break 
+        down your task into smaller, more manageable pieces.
+        Iteration should give you the freedom to try out different approaches, and to explore 
+        different angles of the task, without being constrained by the need to complete 
+        the task in a single step.
+
+        > [!TIP]
+        > You have a tool called `finalize` which you can use whenever you have finished
+        > you work, and you want to break out of the iteration loop.
+      shared: |
+        Remember to always keep your own identity in mind, especially when you are working
+        with a shared context, where other agents may also have their generated responses
+        mixed in with your own. If you don't keep track of who you are, you may end up
+        repeating yourself, or worse, mixing up your own responses with other agents.
+      dynamic: |
+        You have a tool called `optimize` which you can use to dynamically adjust your
+        behavior and parameters according to the current context. This allows you to
+        sacrifice accuracy for diversity/creativity, or vice versa.
+      collaboration: |
+        Using the `inspect` tool, and the messaging system, you should be able to meet
+        and communicate with other agents. You are encouraged to do so, for whatever
+        purpose you see fit, but especially to seek out active collaboration.
+    rules:
+      messaging: |
+        When you receive a message that is addressed directly to you, you must respond.
+        When a message mentions you by name, you should respond if that is appropriate.
+        All other messages (topics, or broadcasts) are optional.
+      hallucination: |
+        When dealing with a factual context, you should never hallucinate, make assumptions,
+        make up false or unsubstantiated information, or invent baseless facts.
+        If you are unsure about the accuracy of your claims, then you should say so to
+        clarify that you are not sure. Never mix these kinds of thoughts in with
+        any work that requires precision and accuracy.
+      tools: |
+        Make efficient use of any tools that are available to you. They significantly
+        enhance your capabilities, and you should use them to their fullest extent.
+
+        > [!TIP]
+        > You can make multiple tool calls in a single response, but always keep in mind
+        > the correct sequence of operations, and whether one tool call depends on the
+        > result of another tool call.
+        
+  builtin:
+    roles:
+      planner:
+        domains:
+          - science
+          - technology
+          - business
+          - mathematics
+        skills:
+          - planning
+          - delegating
+          - monitoring
+          - making changes
+        responsibilities:
+          - planning
+          - delegating
+          - monitoring
+          - making changes
+      developer:
+        domains:
+          - science
+          - technology
+          - mathematics
+        skills:
+          - software development
+          - web development
+          - mobile development
+          - data science
+          - machine learning
+          - artificial intelligence
+        responsibilities:
+          - software development
+          - web development
+          - mobile development
+          - data science
+          - machine learning
+          - artificial intelligence
+    domains: 
+      - science
+      - technology
+      - engineering
+      - mathematics
+      - art
+      - literature
+      - history
+      - philosophy
+      - psychology
+      - sociology
+      - business
+      - law
+    skills:
+      - software development
+      - web development
+      - mobile development
+      - data science
+      - machine learning
+      - artificial intelligence
+    responsibilities:
+      - planning
+      - delegating
+      - monitoring
+      - making changes
+  system:
+    role: |
+      You are a {{role}}, well versed in {{domains}}.
+    skills: |
+      Your skills include {{skills}}.
+    responsibilities: |
+      You are responsible for {{responsibilities}}.
+    identity: |
+      You are {{name}}, with ID {{id}}.
+
 tools:
   qdrant:
     host: localhost

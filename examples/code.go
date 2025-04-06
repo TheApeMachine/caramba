@@ -2,30 +2,29 @@ package examples
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/theapemachine/caramba/pkg/ai/agent"
-	"github.com/theapemachine/caramba/pkg/ai/provider"
-	"github.com/theapemachine/caramba/pkg/datura"
+	"github.com/theapemachine/caramba/pkg/ai/message"
+	"github.com/theapemachine/caramba/pkg/ai/prompt"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	prvdr "github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/twoface"
+	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 // Code represents a test setup for the agent framework
 type Code struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	hub      *twoface.Hub
-	planner  *agent.AgentBuilder
-	dev      *agent.AgentBuilder
-	provider *provider.ProviderBuilder
+	ctx     context.Context
+	cancel  context.CancelFunc
+	hub     *twoface.Hub
+	planner *agent.AgentBuilder
+	dev     *agent.AgentBuilder
 }
 
 // NewCode creates a new test setup for the agent framework
@@ -41,69 +40,47 @@ func NewCode() *Code {
 
 // Run executes the test setup
 func (code *Code) Run() {
-	fmt.Println("Starting agent framework test...")
+	errnie.Info("Starting agent framework test...")
 
-	// Create agents
 	code.planner = agent.New(
-		agent.WithName("planner"),
+		agent.WithName(utils.GenerateName()),
 		agent.WithRole("planner"),
 		agent.WithModel(tweaker.GetModel("openai")),
+		agent.WithProvider("openai"),
 		agent.WithTransport(code.hub.NewTransport()),
 	)
 
 	code.dev = agent.New(
-		agent.WithName("developer"),
+		agent.WithName(utils.GenerateName()),
 		agent.WithRole("developer"),
 		agent.WithModel(tweaker.GetModel("openai")),
+		agent.WithProvider("openai"),
 		agent.WithTransport(code.hub.NewTransport()),
+		agent.WithPrompt("system", prompt.New(
+			prompt.WithFragments(
+				prompt.NewFragmentBuilder(
+					prompt.WithBuiltin(code.planner.Role()),
+					prompt.WithIdentity(code.planner.Identity()),
+				),
+			),
+		)),
 	)
 
-	// Set up provider
-	code.provider = provider.New(
-		provider.WithName("openai"),
-	)
+	code.planner.Send(message.New(
+		message.WithRole(code.planner.Role()),
+		message.WithContent(strings.Join([]string{
+			"Write a plan for an innovative research and development project",
+			"focused on the development of new AI architectures.",
+			"The goal is to increase intelligence, while reducing cost and energy consumption.",
+			"The target is to create a new AI architecture that is more intelligent than any",
+			"existing architecture, while able to run on consumer hardware.",
+		}, " ")),
+	))
 
-	messages := []prvdr.Message{
-		{
-			Role:    "system",
-			Content: tweaker.GetSystemPrompt("planner"),
-		},
-		{
-			Role:    "user",
-			Content: "Please plan the implementation of a basic HTTP server",
-		},
-	}
-
-	buf, err := json.Marshal(messages)
-
-	if err != nil {
-		fmt.Printf("Error marshalling messages: %v\n", err)
-		return
-	}
-
-	// Create and send initial task
-	task := datura.New(
-		datura.WithRole(datura.ArtifactRoleSystem),
-		datura.WithScope(datura.ArtifactScopeGeneration),
-		datura.WithPayload(buf),
-		datura.WithMeta("model", tweaker.GetModel("openai")),
-		datura.WithMeta("temperature", tweaker.GetTemperature()),
-		datura.WithMeta("top_p", tweaker.GetTopP()),
-		datura.WithMeta("frequency_penalty", tweaker.GetFrequencyPenalty()),
-		datura.WithMeta("presence_penalty", tweaker.GetPresencePenalty()),
-		datura.WithMeta("stream", false),
-	)
-
-	artifact := code.provider.Generate(code.ctx, task)
-	payload := errnie.Try(artifact.DecryptPayload())
-
-	fmt.Printf("Artifact: %v\n", string(payload))
-
-	// Handle shutdown
-	code.shutdown()
+	code.wait()
 }
 
-func (code *Code) shutdown() {
+func (code *Code) wait() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
