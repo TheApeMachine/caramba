@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -551,6 +552,66 @@ func TestWithStatus(t *testing.T) {
 		Convey("When using an undefined status", func() {
 			err := New(WithStatus(ErrnieStatusType(999)))
 			So(err.Status(), ShouldEqual, http.StatusInternalServerError)
+		})
+	})
+}
+
+func TestRetryPolicy(t *testing.T) {
+	Convey("Given various retry scenarios", t, func() {
+		Convey("When using default retry policy", func() {
+			attempts := 0
+			operation := func() error {
+				attempts++
+				if attempts < 2 {
+					return errors.New("temporary error")
+				}
+				return nil
+			}
+
+			err := New(
+				WithDefaultRetryPolicy(),
+				WithMessage("initial error"),
+			)
+
+			retryErr := err.Retry(operation)
+			So(retryErr, ShouldBeNil)
+			So(attempts, ShouldEqual, 2)
+			So(err.attempts, ShouldEqual, 2)
+		})
+
+		Convey("When all retry attempts fail", func() {
+			attempts := 0
+			operation := func() error {
+				attempts++
+				return errors.New("persistent error")
+			}
+
+			err := New(
+				WithRetryPolicy(2, time.Millisecond, nil),
+				WithMessage("initial error"),
+			)
+
+			retryErr := err.Retry(operation)
+			So(retryErr, ShouldNotBeNil)
+			So(retryErr.Error(), ShouldContainSubstring, "all retry attempts failed")
+			So(attempts, ShouldEqual, 2)
+			So(err.attempts, ShouldEqual, 2)
+		})
+
+		Convey("When using custom backoff", func() {
+			customBackoff := func(attempt int, delay time.Duration) time.Duration {
+				return delay * time.Duration(attempt+1)
+			}
+
+			err := New(
+				WithRetryPolicy(3, time.Millisecond, customBackoff),
+				WithMessage("initial error"),
+			)
+
+			So(err.IsRetryable(), ShouldBeTrue)
+			So(err.retryPolicy.BackoffFunc, ShouldNotBeNil)
+			So(err.retryPolicy.MaxAttempts, ShouldEqual, 3)
+			So(err.retryPolicy.Delay, ShouldEqual, time.Millisecond)
 		})
 	})
 }

@@ -32,6 +32,12 @@ models:
   lmstudio: bartowski/Llama-3.1-8B-Lexi-Uncensored-V2-GGUF
 
 settings:
+  sentry:
+    enabled: true
+    dsn: "https://sentry.io/api/1234567890/store/"
+    environment: "production"
+    release: "1.0.0"
+    sample_rate: 1.0
   defaults:
     provider: openai
     temperature: 0.7
@@ -143,7 +149,7 @@ prompts:
         > You can make multiple tool calls in a single response, but always keep in mind
         > the correct sequence of operations, and whether one tool call depends on the
         > result of another tool call.
-        
+
   builtin:
     roles:
       planner:
@@ -181,7 +187,7 @@ prompts:
           - data science
           - machine learning
           - artificial intelligence
-    domains: 
+    domains:
       - science
       - technology
       - engineering
