@@ -14,6 +14,8 @@ type PromptBuilder struct {
 type PromptOption func(*PromptBuilder)
 
 func New(opts ...PromptOption) *PromptBuilder {
+	errnie.Trace("prompt.New")
+
 	var (
 		arena  = capnp.SingleSegment(nil)
 		seg    *capnp.Segment
@@ -46,10 +48,14 @@ func New(opts ...PromptOption) *PromptBuilder {
 }
 
 func (prompt *PromptBuilder) Bytes() []byte {
+	errnie.Trace("prompt.Bytes")
+
 	return []byte(prompt.String())
 }
 
 func (prompt *PromptBuilder) String() string {
+	errnie.Trace("prompt.String")
+
 	var frags strings.Builder
 
 	fragments, err := prompt.Prompt.Fragments()
@@ -72,6 +78,8 @@ func (prompt *PromptBuilder) String() string {
 }
 
 func WithFragments(fragments ...*FragmentBuilder) PromptOption {
+	errnie.Trace("prompt.WithFragments")
+
 	return func(pb *PromptBuilder) {
 		frgmts, err := pb.Prompt.Fragments()
 		if errnie.Error(err) != nil {

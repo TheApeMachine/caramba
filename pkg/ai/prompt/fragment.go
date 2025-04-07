@@ -15,6 +15,8 @@ type FragmentBuilder struct {
 type FragmentOption func(*FragmentBuilder)
 
 func NewFragmentBuilder(opts ...FragmentOption) *FragmentBuilder {
+	errnie.Trace("prompt.NewFragmentBuilder")
+
 	var (
 		arena = capnp.SingleSegment(nil)
 		seg   *capnp.Segment
@@ -42,6 +44,8 @@ func NewFragmentBuilder(opts ...FragmentOption) *FragmentBuilder {
 }
 
 func WithRole(role string) FragmentOption {
+	errnie.Trace("prompt.WithRole")
+
 	return func(fragBuilder *FragmentBuilder) {
 		fragBuilder.Fragment.SetTemplate(
 			tweaker.WithVariable("prompts.system.role", "role", role),
@@ -50,6 +54,8 @@ func WithRole(role string) FragmentOption {
 }
 
 func WithSkill(skill string) FragmentOption {
+	errnie.Trace("prompt.WithSkill")
+
 	return func(fragBuilder *FragmentBuilder) {
 		fragBuilder.Fragment.SetTemplate(
 			tweaker.WithVariable("prompts.system.skills", "skill", skill),
@@ -58,6 +64,8 @@ func WithSkill(skill string) FragmentOption {
 }
 
 func WithResponsibility(responsibility string) FragmentOption {
+	errnie.Trace("prompt.WithResponsibility")
+
 	return func(fragBuilder *FragmentBuilder) {
 		fragBuilder.Fragment.SetTemplate(
 			tweaker.WithVariable("prompts.system.responsibilities", "responsibility", responsibility),
@@ -66,6 +74,8 @@ func WithResponsibility(responsibility string) FragmentOption {
 }
 
 func WithIdentity(id string, name string) FragmentOption {
+	errnie.Trace("prompt.WithIdentity")
+
 	return func(fragBuilder *FragmentBuilder) {
 		fragBuilder.Fragment.SetTemplate(
 			tweaker.WithVariables("prompts.system.identity", "name", name, "id", id),
@@ -74,6 +84,8 @@ func WithIdentity(id string, name string) FragmentOption {
 }
 
 func WithBuiltin(template string) FragmentOption {
+	errnie.Trace("prompt.WithBuiltin")
+
 	return func(fragBuilder *FragmentBuilder) {
 		var frags strings.Builder
 
@@ -98,6 +110,8 @@ func WithBuiltin(template string) FragmentOption {
 }
 
 func WithTemplate(template string) FragmentOption {
+	errnie.Trace("prompt.WithTemplate")
+
 	return func(fragBuilder *FragmentBuilder) {
 		fragBuilder.Fragment.SetTemplate(
 			tweaker.Get("prompts.fragments."+template, ""),
@@ -106,6 +120,8 @@ func WithTemplate(template string) FragmentOption {
 }
 
 func WithVariables(variables []string) FragmentOption {
+	errnie.Trace("prompt.WithVariables")
+
 	return func(fragBuilder *FragmentBuilder) {
 		vrbls, err := fragBuilder.Fragment.Variables()
 		if errnie.Error(err) != nil {

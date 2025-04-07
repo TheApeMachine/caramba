@@ -38,6 +38,8 @@ type AgentBuilderOption func(*AgentBuilder) error
 
 // New creates a new agent with the provided options
 func New(options ...AgentBuilderOption) *AgentBuilder {
+	errnie.Trace("agent.New")
+
 	var (
 		arena = capnp.SingleSegment(nil)
 		seg   *capnp.Segment
@@ -98,7 +100,7 @@ func New(options ...AgentBuilderOption) *AgentBuilder {
 }
 
 func (builder *AgentBuilder) Send(message *message.MessageBuilder) datura.Artifact {
-	errnie.Debug("agent.Send")
+	errnie.Trace("agent.Send")
 
 	// Add the message to the context first
 	builder.AIContext.Add(message)
@@ -141,6 +143,8 @@ func (builder *AgentBuilder) Send(message *message.MessageBuilder) datura.Artifa
 }
 
 func (builder *AgentBuilder) Identity() (string, string) {
+	errnie.Trace("agent.Identity")
+
 	identity, err := builder.Agent.Identity()
 
 	if errnie.Error(err) != nil {
@@ -163,6 +167,8 @@ func (builder *AgentBuilder) Identity() (string, string) {
 }
 
 func (builder *AgentBuilder) Role() string {
+	errnie.Trace("agent.Role")
+
 	identity, err := builder.Agent.Identity()
 
 	if errnie.Error(err) != nil {
@@ -179,10 +185,14 @@ func (builder *AgentBuilder) Role() string {
 }
 
 func (agent *AgentBuilder) Client() RPC {
+	errnie.Trace("agent.Client")
+
 	return AgentToClient(agent)
 }
 
 func (agent *AgentBuilder) Conn(transport io.ReadWriteCloser) *rpc.Conn {
+	errnie.Trace("agent.Conn")
+
 	return rpc.NewConn(rpc.NewStreamTransport(transport), &rpc.Options{
 		BootstrapClient: capnp.Client(agent.Client()),
 	})
@@ -191,6 +201,8 @@ func (agent *AgentBuilder) Conn(transport io.ReadWriteCloser) *rpc.Conn {
 // WithName sets the agent's name
 func WithName(name string) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
+		errnie.Trace("agent.WithName")
+
 		identity, err := a.Agent.Identity()
 
 		if err != nil {
@@ -204,6 +216,8 @@ func WithName(name string) AgentBuilderOption {
 // WithRole sets the agent's role
 func WithRole(role string) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
+		errnie.Trace("agent.WithRole")
+
 		identity, err := a.Agent.Identity()
 
 		if err != nil {
@@ -216,6 +230,8 @@ func WithRole(role string) AgentBuilderOption {
 
 func WithTransport(transport io.ReadWriteCloser) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
+		errnie.Trace("agent.WithTransport")
+
 		a.Transport = transport
 		return nil
 	}
@@ -223,6 +239,8 @@ func WithTransport(transport io.ReadWriteCloser) AgentBuilderOption {
 
 func WithModel(model string) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
+		errnie.Trace("agent.WithModel")
+
 		params, err := a.Params()
 		if err != nil {
 			return errnie.Error(err)
@@ -234,6 +252,8 @@ func WithModel(model string) AgentBuilderOption {
 
 func WithProvider(provider *prvdr.ProviderBuilder) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
+		errnie.Trace("agent.WithProvider")
+
 		a.AIProvider = provider
 
 		if err := a.SetProvider(*a.AIProvider.Provider); err != nil {
@@ -246,6 +266,8 @@ func WithProvider(provider *prvdr.ProviderBuilder) AgentBuilderOption {
 
 func WithPrompt(role string, prompt *prompt.PromptBuilder) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
+		errnie.Trace("agent.WithPrompt")
+
 		msg := message.New(
 			message.WithRole(role),
 			message.WithContent(prompt.String()),
@@ -264,6 +286,8 @@ func WithPrompt(role string, prompt *prompt.PromptBuilder) AgentBuilderOption {
 
 func WithTools(tools ...*tool.ToolBuilder) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
+		errnie.Trace("agent.WithTools")
+
 		tl, err := tool.NewTool_List(a.Segment(), int32(len(tools)))
 
 		if errnie.Error(err) != nil {

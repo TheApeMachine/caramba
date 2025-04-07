@@ -19,6 +19,8 @@ type AgentServer struct {
 NewAgentServer creates a new AgentServer.
 */
 func NewAgentServer(agent *AgentBuilder) *AgentServer {
+	errnie.Trace("agent.NewAgentServer")
+
 	return &AgentServer{
 		agent: agent,
 	}
@@ -28,6 +30,7 @@ func NewAgentServer(agent *AgentBuilder) *AgentServer {
 AgentToClient converts an Agent to a client capability.
 */
 func AgentToClient(agent *AgentBuilder) RPC {
+	errnie.Trace("agent.AgentToClient")
 	server := NewAgentServer(agent)
 	return RPC_ServerToClient(server)
 }
@@ -36,7 +39,7 @@ func AgentToClient(agent *AgentBuilder) RPC {
 Send a message to the agent.
 */
 func (srv *AgentServer) Send(ctx context.Context, call RPC_send) error {
-	errnie.Debug("agent.Send")
+	errnie.Trace("agent.Send")
 
 	artifact := datura.New()
 	result := errnie.Try(call.AllocResults())

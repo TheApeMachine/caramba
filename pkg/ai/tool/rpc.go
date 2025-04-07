@@ -12,6 +12,8 @@ type ToolRPCServer struct {
 }
 
 func NewToolRPCServer(tool *ToolBuilder) *ToolRPCServer {
+	errnie.Trace("tool.NewToolRPCServer")
+
 	return &ToolRPCServer{tool: tool}
 }
 
@@ -19,7 +21,7 @@ func (srv *ToolRPCServer) Use(
 	ctx context.Context,
 	call RPC_use,
 ) (err error) {
-	errnie.Debug("tool.Use RPC", "tool_name", srv.tool.Name)
+	errnie.Trace("tool.Use RPC", "tool_name", srv.tool.Name)
 
 	artifact := errnie.Try(call.Args().Artifact())
 	result := errnie.Try(call.AllocResults())
@@ -34,6 +36,8 @@ func (srv *ToolRPCServer) Use(
 }
 
 func ToolToClient(tool *ToolBuilder) RPC {
+	errnie.Trace("tool.ToolToClient")
+
 	server := NewToolRPCServer(tool)
 	return RPC_ServerToClient(server)
 }

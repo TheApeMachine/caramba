@@ -5,6 +5,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/datura"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 /* SystemTool provides a base for all system operations */
@@ -14,6 +15,7 @@ type SystemTool struct {
 
 /* NewSystemTool creates a new System tool with options */
 func NewSystemTool() *SystemTool {
+	errnie.Trace("tools.NewSystemTool")
 
 	inspect := NewSystemInspectTool()
 	optimize := NewSystemOptimizeTool()
@@ -31,6 +33,8 @@ func NewSystemTool() *SystemTool {
 func (tool *SystemTool) Use(
 	ctx context.Context, artifact *datura.ArtifactBuilder,
 ) *datura.ArtifactBuilder {
+	errnie.Trace("tools.SystemTool.Use")
+
 	toolName := datura.GetMetaValue[string](artifact, "tool")
 	return tool.Operations[toolName].Use(ctx, artifact)
 }
@@ -38,11 +42,15 @@ func (tool *SystemTool) Use(
 func (tool *SystemTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	errnie.Trace("tools.SystemTool.UseMCP")
+
 	return tool.Operations[req.Params.Name].UseMCP(ctx, req)
 }
 
 /* ToMCP returns all System tool definitions */
 func (tool *SystemTool) ToMCP() []ToolType {
+	errnie.Trace("tools.SystemTool.ToMCP")
+
 	tools := make([]ToolType, 0)
 
 	for _, tool := range tool.Operations {
@@ -59,6 +67,8 @@ type SystemInspectTool struct {
 
 /* NewSystemInspectTool creates a new tool for system inspection */
 func NewSystemInspectTool() *SystemInspectTool {
+	errnie.Trace("tools.NewSystemInspectTool")
+
 	return &SystemInspectTool{
 		Tool: mcp.NewTool(
 			"system_inspect",
@@ -77,12 +87,16 @@ func NewSystemInspectTool() *SystemInspectTool {
 func (tool *SystemInspectTool) Use(
 	ctx context.Context, artifact *datura.ArtifactBuilder,
 ) *datura.ArtifactBuilder {
+	errnie.Trace("tools.SystemInspectTool.Use")
+
 	return datura.New(datura.WithArtifact(artifact.Artifact))
 }
 
 func (tool *SystemInspectTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	errnie.Trace("tools.SystemInspectTool.UseMCP")
+
 	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
@@ -93,6 +107,8 @@ type SystemOptimizeTool struct {
 
 /* NewSystemOptimizeTool creates a new tool for system optimization */
 func NewSystemOptimizeTool() *SystemOptimizeTool {
+	errnie.Trace("tools.NewSystemOptimizeTool")
+
 	return &SystemOptimizeTool{
 		Tool: mcp.NewTool(
 			"system_optimize",
@@ -119,12 +135,16 @@ func NewSystemOptimizeTool() *SystemOptimizeTool {
 func (tool *SystemOptimizeTool) Use(
 	ctx context.Context, artifact *datura.ArtifactBuilder,
 ) *datura.ArtifactBuilder {
+	errnie.Trace("tools.SystemOptimizeTool.Use")
+
 	return datura.New(datura.WithArtifact(artifact.Artifact))
 }
 
 func (tool *SystemOptimizeTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	errnie.Trace("tools.SystemOptimizeTool.UseMCP")
+
 	return mcp.NewToolResultText("Hello, world!"), nil
 }
 
@@ -135,6 +155,8 @@ type SystemMessageTool struct {
 
 /* NewSystemMessageTool creates a new tool for system messaging */
 func NewSystemMessageTool() *SystemMessageTool {
+	errnie.Trace("tools.NewSystemMessageTool")
+
 	return &SystemMessageTool{
 		Tool: mcp.NewTool(
 			"system_message",
@@ -157,11 +179,15 @@ func NewSystemMessageTool() *SystemMessageTool {
 func (tool *SystemMessageTool) Use(
 	ctx context.Context, artifact *datura.ArtifactBuilder,
 ) *datura.ArtifactBuilder {
+	errnie.Trace("tools.SystemMessageTool.Use")
+
 	return datura.New(datura.WithArtifact(artifact.Artifact))
 }
 
 func (tool *SystemMessageTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	errnie.Trace("tools.SystemMessageTool.UseMCP")
+
 	return mcp.NewToolResultText("Hello, world!"), nil
 }

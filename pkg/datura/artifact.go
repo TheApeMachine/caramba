@@ -32,6 +32,8 @@ type ArtifactBuilder struct {
 type ArtifactBuilderOption func(*ArtifactBuilder)
 
 func New(options ...ArtifactBuilderOption) *ArtifactBuilder {
+	errnie.Trace("artifact.New")
+
 	var (
 		arena    = capnp.SingleSegment(nil)
 		seg      *capnp.Segment
@@ -80,6 +82,8 @@ func New(options ...ArtifactBuilderOption) *ArtifactBuilder {
 }
 
 func WithPayload(payload []byte) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithPayload")
+
 	return func(builder *ArtifactBuilder) {
 		if errnie.Error(builder.SetPayload(payload)) != nil {
 			return
@@ -88,6 +92,8 @@ func WithPayload(payload []byte) ArtifactBuilderOption {
 }
 
 func WithEncryptedPayload(payload []byte) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithEncryptedPayload")
+
 	if len(payload) == 0 {
 		errnie.Error(errors.New("payload is empty"))
 		return nil
@@ -114,6 +120,8 @@ func WithEncryptedPayload(payload []byte) ArtifactBuilderOption {
 }
 
 func WithMetadata(metadata map[string]any) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithMetadata")
+
 	return func(builder *ArtifactBuilder) {
 		var (
 			mdList    Artifact_Metadata_List
@@ -167,12 +175,16 @@ func WithMetadata(metadata map[string]any) ArtifactBuilderOption {
 }
 
 func WithArtifact(artifact *Artifact) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithArtifact")
+
 	return func(builder *ArtifactBuilder) {
 		builder.Artifact = artifact
 	}
 }
 
 func WithSignature(signature []byte) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithSignature")
+
 	return func(builder *ArtifactBuilder) {
 		if errnie.Error(builder.SetSignature(signature)) != nil {
 			return
@@ -181,18 +193,24 @@ func WithSignature(signature []byte) ArtifactBuilderOption {
 }
 
 func WithRole(role ArtifactRole) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithRole")
+
 	return func(builder *ArtifactBuilder) {
 		builder.SetRole(uint32(role))
 	}
 }
 
 func WithScope(scope ArtifactScope) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithScope")
+
 	return func(builder *ArtifactBuilder) {
 		builder.SetScope(uint32(scope))
 	}
 }
 
 func WithMediatype(mediatype MediaType) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithMediatype")
+
 	return func(builder *ArtifactBuilder) {
 		if errnie.Error(builder.SetMediatype(string(mediatype))) != nil {
 			return
@@ -201,18 +219,24 @@ func WithMediatype(mediatype MediaType) ArtifactBuilderOption {
 }
 
 func WithMeta(key string, value any) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithMeta")
+
 	return func(builder *ArtifactBuilder) {
 		builder.SetMetaValue(key, value)
 	}
 }
 
 func WithError(err error) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithError")
+
 	return func(builder *ArtifactBuilder) {
 		WithEncryptedPayload([]byte(err.Error()))(builder)
 	}
 }
 
 func WithBytes(b []byte) ArtifactBuilderOption {
+	errnie.Trace("artifact.WithBytes")
+
 	return func(builder *ArtifactBuilder) {
 		if _, err := io.Copy(
 			builder.buffer, bytes.NewBuffer(b),

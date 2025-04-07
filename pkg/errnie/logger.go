@@ -23,6 +23,13 @@ var (
 	fileHandle  *os.File
 )
 
+// Custom log levels
+const (
+	TraceLevel   = log.DebugLevel - 1
+	SuccessLevel = log.InfoLevel + 1
+	OutLevel     = log.InfoLevel + 2
+)
+
 var logger = log.NewWithOptions(os.Stderr, log.Options{
 	ReportCaller:    true,
 	CallerOffset:    1,
@@ -39,6 +46,68 @@ func init() {
 		fmt.Fprintf(os.Stderr, "Failed to open log file: %v\n", err)
 		return
 	}
+
+	// Set up custom level styles with inverted colors for all levels except Trace
+	styles := log.DefaultStyles()
+
+	// Trace remains subtle with grey text
+	styles.Levels[TraceLevel] = lipgloss.NewStyle().
+		SetString("TRC").
+		Foreground(lipgloss.Color("#495057")). // Dark grey text
+		Padding(0, 1)
+
+	// Debug gets a lighter grey as a label
+	styles.Levels[log.DebugLevel] = lipgloss.NewStyle().
+		SetString("DBG").
+		Background(lipgloss.Color("#868e96")). // Light grey background
+		Foreground(lipgloss.Color("#ffffff")). // White text
+		Padding(0, 1)
+
+	// Info gets a blue label
+	styles.Levels[log.InfoLevel] = lipgloss.NewStyle().
+		SetString("INF").
+		Background(lipgloss.Color("#228be6")). // Blue background
+		Foreground(lipgloss.Color("#ffffff")). // White text
+		Padding(0, 1)
+
+	// Success gets a green label
+	styles.Levels[SuccessLevel] = lipgloss.NewStyle().
+		SetString("SUC").
+		Background(lipgloss.Color("#40c057")). // Green background
+		Foreground(lipgloss.Color("#ffffff")). // White text
+		Bold(true).
+		Padding(0, 1)
+
+	// Out gets a cyan label
+	styles.Levels[OutLevel] = lipgloss.NewStyle().
+		SetString("OUT").
+		Background(lipgloss.Color("#6c50ff")). // Cyan background
+		Foreground(lipgloss.Color("#ffffff")). // White text
+		Padding(0, 1)
+
+	// Warn gets an orange/yellow label
+	styles.Levels[log.WarnLevel] = lipgloss.NewStyle().
+		SetString("WRN").
+		Background(lipgloss.Color("#fab005")). // Orange background
+		Foreground(lipgloss.Color("#ffffff")). // White text
+		Padding(0, 1)
+
+	// Error gets a red label
+	styles.Levels[log.ErrorLevel] = lipgloss.NewStyle().
+		SetString("ERR").
+		Background(lipgloss.Color("#fa5252")). // Red background
+		Foreground(lipgloss.Color("#ffffff")). // White text
+		Padding(0, 1)
+
+	// Fatal gets a bright red label
+	styles.Levels[log.FatalLevel] = lipgloss.NewStyle().
+		SetString("FTL").
+		Background(lipgloss.Color("#e03131")). // Darker red background
+		Foreground(lipgloss.Color("#ffffff")). // White text
+		Bold(true).
+		Padding(0, 1)
+
+	logger.SetStyles(styles)
 }
 
 // Cleanup closes the log file handle
@@ -68,6 +137,23 @@ func Log(msg any, keyvals ...any) {
 	if writeToFile {
 		WriteToFile(msg, keyvals...)
 	}
+}
+
+func Fatal(msg any, keyvals ...any) {
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
+	}
+
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
+	}
+
+	if !output {
+		return
+	}
+
+	logger.Fatal(msg, keyvals...)
+	os.Exit(1)
 }
 
 // Error logs an error message and returns the original error
@@ -139,6 +225,45 @@ func Debug(msg any, keyvals ...any) {
 	}
 
 	logger.Debug(msg, keyvals...)
+}
+
+// Trace logs a trace message (more detailed than debug)
+func Trace(msg any, keyvals ...any) {
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
+	}
+
+	if !output {
+		return
+	}
+
+	logger.Log(TraceLevel, msg, keyvals...)
+}
+
+// Success logs a success message (higher priority than Info)
+func Success(msg any, keyvals ...any) {
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
+	}
+
+	if !output {
+		return
+	}
+
+	logger.Log(SuccessLevel, msg, keyvals...)
+}
+
+// Out logs an output message
+func Out(msg any, keyvals ...any) {
+	if writeToFile {
+		WriteToFile(msg, keyvals...)
+	}
+
+	if !output {
+		return
+	}
+
+	logger.Log(OutLevel, msg, keyvals...)
 }
 
 // WriteToFile writes log messages to a file

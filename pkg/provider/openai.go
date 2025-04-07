@@ -42,7 +42,7 @@ If apiKey is empty, it will try to read from the OPENAI_API_KEY environment vari
 This can also be used for local AI, since most will follow the OpenAI API format.
 */
 func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
-	errnie.Debug("provider.NewOpenAIProvider")
+	errnie.Trace("provider.NewOpenAIProvider")
 
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
@@ -155,7 +155,7 @@ handleSingleRequest processes a single (non-streaming) completion request
 func (prvdr *OpenAIProvider) handleSingleRequest(
 	params *openai.ChatCompletionNewParams,
 ) *datura.ArtifactBuilder {
-	errnie.Debug("provider.handleSingleRequest")
+	errnie.Trace("provider.handleSingleRequest")
 
 	var (
 		err        error
@@ -229,7 +229,7 @@ and emits chunks as they're received.
 func (prvdr *OpenAIProvider) handleStreamingRequest(
 	params *openai.ChatCompletionNewParams,
 ) *datura.ArtifactBuilder {
-	errnie.Debug("provider.handleStreamingRequest")
+	errnie.Trace("provider.handleStreamingRequest")
 
 	var err error
 	stream := prvdr.client.Chat.Completions.NewStreaming(prvdr.ctx, *params)
@@ -295,7 +295,7 @@ func (prvdr *OpenAIProvider) buildMessages(
 	composed *openai.ChatCompletionNewParams,
 	artifact *datura.ArtifactBuilder,
 ) (err error) {
-	errnie.Debug("provider.buildMessages")
+	errnie.Trace("provider.buildMessages")
 
 	payload := errnie.Try(artifact.Payload())
 	agentCtx := aictx.New()
@@ -385,7 +385,7 @@ func (prvdr *OpenAIProvider) buildTools(
 	openaiParams *openai.ChatCompletionNewParams,
 	tools []tools.ToolType,
 ) (err error) {
-	errnie.Debug("provider.buildTools", "tools", tools)
+	errnie.Trace("provider.buildTools", "tools", tools)
 
 	if openaiParams == nil {
 		return errnie.BadRequest(errors.New("params are nil"))
@@ -430,7 +430,7 @@ func (prvdr *OpenAIProvider) buildResponseFormat(
 	openaiParams *openai.ChatCompletionNewParams,
 	format string,
 ) (err error) {
-	errnie.Debug("provider.buildResponseFormat")
+	errnie.Trace("provider.buildResponseFormat")
 
 	buf := map[string]any{}
 
@@ -471,7 +471,7 @@ If apiKey is empty, it will try to read from the OPENAI_API_KEY environment vari
 This can also be used for local AI, since most will follow the OpenAI API format.
 */
 func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
-	errnie.Debug("provider.NewOpenAIEmbedder")
+	errnie.Trace("provider.NewOpenAIEmbedder")
 
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -500,7 +500,7 @@ It takes input text through a channel and returns embeddings through another cha
 func (embedder *OpenAIEmbedder) Generate(
 	artifact *datura.ArtifactBuilder,
 ) *datura.ArtifactBuilder {
-	errnie.Debug("provider.OpenAIEmbedder.Generate")
+	errnie.Trace("provider.OpenAIEmbedder.Generate")
 
 	content, err := artifact.DecryptPayload()
 	if err != nil {

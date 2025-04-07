@@ -13,6 +13,8 @@ type ParamsBuilder struct {
 type ParamsOption func(*ParamsBuilder)
 
 func New(opts ...ParamsOption) *ParamsBuilder {
+	errnie.Trace("params.New")
+
 	var (
 		arena  = capnp.SingleSegment(nil)
 		seg    *capnp.Segment

@@ -20,6 +20,8 @@ type ContextBuilder struct {
 }
 
 func New() *ContextBuilder {
+	errnie.Trace("context.New")
+
 	var (
 		arena = capnp.SingleSegment(nil)
 		seg   *capnp.Segment
@@ -61,6 +63,8 @@ func New() *ContextBuilder {
 }
 
 func (ctx *ContextBuilder) Add(msg *message.MessageBuilder) *ContextBuilder {
+	errnie.Trace("context.Add")
+
 	messages, err := ctx.Context.Messages()
 	if errnie.Error(err) != nil {
 		return ctx
@@ -93,10 +97,14 @@ func (ctx *ContextBuilder) Add(msg *message.MessageBuilder) *ContextBuilder {
 }
 
 func (ctx *ContextBuilder) Client() RPC {
+	errnie.Trace("context.Client")
+
 	return ContextToClient(ctx.Context)
 }
 
 func (ctx *ContextBuilder) Conn(transport io.ReadWriteCloser) *rpc.Conn {
+	errnie.Trace("context.Conn")
+
 	return rpc.NewConn(rpc.NewStreamTransport(transport), &rpc.Options{
 		BootstrapClient: capnp.Client(ctx.Client()),
 	})

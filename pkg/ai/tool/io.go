@@ -20,17 +20,19 @@ Read implements the io.Reader interface for the Message.
 It streams the message using a Cap'n Proto Encoder.
 */
 func (tb *ToolBuilder) Read(p []byte) (n int, err error) {
+	errnie.Trace("tool.Read")
+
 	if tb.State != ToolStateBuffered {
 		// Buffer is empty, encode current message state
 		if err = tb.encoder.Encode(tb.Message()); err != nil {
 			return 0, errnie.Error(err)
 		}
 
-		if err = tb.buffer.Flush(); err != nil {
-			return 0, errnie.Error(err)
-		}
-
 		tb.State = ToolStateBuffered
+	}
+
+	if err = tb.buffer.Flush(); err != nil {
+		return 0, errnie.Error(err)
 	}
 
 	return tb.buffer.Read(p)
@@ -41,6 +43,8 @@ Write implements the io.Writer interface for the Message.
 It streams the provided bytes using a Cap'n Proto Decoder.
 */
 func (tb *ToolBuilder) Write(p []byte) (n int, err error) {
+	errnie.Trace("tool.Write")
+
 	if len(p) == 0 {
 		return 0, nil
 	}
@@ -79,7 +83,7 @@ func (tb *ToolBuilder) Write(p []byte) (n int, err error) {
 Close implements the io.Closer interface for the Message.
 */
 func (tb *ToolBuilder) Close() error {
-	errnie.Debug("tool.Close")
+	errnie.Trace("tool.Close")
 
 	if err := tb.buffer.Flush(); err != nil {
 		return errnie.Error(err)

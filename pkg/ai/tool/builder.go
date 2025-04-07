@@ -27,6 +27,8 @@ type ToolBuilderOption func(*ToolBuilder) error
 
 // New creates a new tool with the provided options
 func New(options ...ToolBuilderOption) *ToolBuilder {
+	errnie.Trace("tool.New")
+
 	var (
 		arena = capnp.SingleSegment(nil)
 		seg   *capnp.Segment
@@ -60,6 +62,8 @@ func New(options ...ToolBuilderOption) *ToolBuilder {
 }
 
 func (tb *ToolBuilder) Use(ctx context.Context, artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder {
+	errnie.Trace("tool.Use")
+
 	future, release := tb.client.Use(
 		ctx, func(p RPC_use_Params) error {
 			return p.SetArtifact(*artifact.Artifact)
@@ -87,6 +91,8 @@ func (tb *ToolBuilder) Use(ctx context.Context, artifact *datura.ArtifactBuilder
 }
 
 func WithBytes(b []byte) ToolBuilderOption {
+	errnie.Trace("tool.WithBytes")
+
 	return func(t *ToolBuilder) error {
 		if _, err := io.Copy(t, bytes.NewBuffer(b)); errnie.Error(err) != nil {
 			return errnie.Error(err)
@@ -97,6 +103,8 @@ func WithBytes(b []byte) ToolBuilderOption {
 }
 
 func WithMCPTool(mcpTools ...tools.ToolType) ToolBuilderOption {
+	errnie.Trace("tool.WithMCPTool")
+
 	return func(t *ToolBuilder) (err error) {
 		var (
 			ops      Operation_List

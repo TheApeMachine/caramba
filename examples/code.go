@@ -46,7 +46,7 @@ func NewCode() *Code {
 
 // Run executes the test setup
 func (code *Code) Run() (err error) {
-	errnie.Info("Starting agent framework test...")
+	errnie.Info("Agent framework test")
 
 	systemTool := tool.New(
 		tool.WithMCPTool(tools.NewSystemTool().ToMCP()...),

@@ -25,6 +25,8 @@ type ProviderBuilderOption func(*ProviderBuilder)
 New creates a new Provider, wrapped in a ProviderBuilder.
 */
 func New(opts ...ProviderBuilderOption) *ProviderBuilder {
+	errnie.Trace("provider.New")
+
 	var (
 		arena = capnp.SingleSegment(nil)
 		seg   *capnp.Segment
@@ -54,6 +56,8 @@ func New(opts ...ProviderBuilderOption) *ProviderBuilder {
 }
 
 func (prvdr *ProviderBuilder) Generate(ctx context.Context, artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder {
+	errnie.Trace("provider.Generate")
+
 	future, release := prvdr.client.Generate(
 		ctx, func(p RPC_generate_Params) error {
 			return p.SetArtifact(*artifact.Artifact)
@@ -85,6 +89,8 @@ WithName sets the name of the provider.
 The name serves as the key for the LLM provider.
 */
 func WithName(name string) ProviderBuilderOption {
+	errnie.Trace("provider.WithName")
+
 	return func(p *ProviderBuilder) {
 		if err := p.SetName(name); err != nil {
 			errnie.Error(err)
@@ -93,6 +99,8 @@ func WithName(name string) ProviderBuilderOption {
 }
 
 func WithAIProvider(name string, provider aiprvdr.ProviderType) ProviderBuilderOption {
+	errnie.Trace("provider.WithAIProvider")
+
 	return func(p *ProviderBuilder) {
 		p.AIProvider = provider
 		if err := p.SetName(name); errnie.Error(err) != nil {

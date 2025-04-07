@@ -8,6 +8,8 @@ import (
 )
 
 func (msg *MessageBuilder) Bytes() []byte {
+	errnie.Trace("message.Bytes")
+
 	buf := bytes.NewBuffer(nil)
 
 	if _, err := io.Copy(buf, msg); errnie.Error(err) != nil {

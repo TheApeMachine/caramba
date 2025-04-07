@@ -20,17 +20,19 @@ Read implements the io.Reader interface for the Message.
 It streams the message using a Cap'n Proto Encoder.
 */
 func (msg *MessageBuilder) Read(p []byte) (n int, err error) {
+	errnie.Trace("message.Read")
+
 	if msg.State != MessageStateBuffered {
 		// Buffer is empty, encode current message state
 		if err = msg.encoder.Encode(msg.Message.Message()); err != nil {
 			return 0, errnie.Error(err)
 		}
 
-		if err = msg.buffer.Flush(); err != nil {
-			return 0, errnie.Error(err)
-		}
-
 		msg.State = MessageStateBuffered
+	}
+
+	if err = msg.buffer.Flush(); err != nil {
+		return 0, errnie.Error(err)
 	}
 
 	return msg.buffer.Read(p)
@@ -41,6 +43,8 @@ Write implements the io.Writer interface for the Message.
 It streams the provided bytes using a Cap'n Proto Decoder.
 */
 func (msg *MessageBuilder) Write(p []byte) (n int, err error) {
+	errnie.Trace("message.Write")
+
 	if len(p) == 0 {
 		return 0, nil
 	}
@@ -54,7 +58,7 @@ func (msg *MessageBuilder) Write(p []byte) (n int, err error) {
 	}
 
 	var (
-		m *capnp.Message
+		m   *capnp.Message
 		buf Message
 	)
 
@@ -79,7 +83,7 @@ func (msg *MessageBuilder) Write(p []byte) (n int, err error) {
 Close implements the io.Closer interface for the Message.
 */
 func (msg *MessageBuilder) Close() error {
-	errnie.Debug("message.Close")
+	errnie.Trace("message.Close")
 
 	if err := msg.buffer.Flush(); err != nil {
 		return errnie.Error(err)

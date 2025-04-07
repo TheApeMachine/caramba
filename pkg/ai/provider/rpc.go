@@ -12,6 +12,8 @@ type ProviderRPCServer struct {
 }
 
 func NewProviderRPCServer(provider *ProviderBuilder) *ProviderRPCServer {
+	errnie.Trace("provider.NewProviderRPCServer")
+
 	return &ProviderRPCServer{provider: provider}
 }
 
@@ -19,7 +21,7 @@ func (srv *ProviderRPCServer) Generate(
 	ctx context.Context,
 	call RPC_generate,
 ) (err error) {
-	errnie.Debug("provider.Generate RPC", "provider_name", srv.provider.Name)
+	errnie.Trace("provider.Generate RPC", "provider_name", srv.provider.Name)
 
 	artifact := errnie.Try(call.Args().Artifact())
 	result := errnie.Try(call.AllocResults())
@@ -34,6 +36,8 @@ func (srv *ProviderRPCServer) Generate(
 }
 
 func ProviderToClient(provider *ProviderBuilder) RPC {
+	errnie.Trace("provider.ProviderToClient")
+
 	server := NewProviderRPCServer(provider)
 	return RPC_ServerToClient(server)
 }

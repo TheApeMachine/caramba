@@ -20,17 +20,19 @@ Read implements the io.Reader interface for the ToolCall.
 It streams the tool call using a Cap'n Proto Encoder.
 */
 func (tc *ToolCallBuilder) Read(p []byte) (n int, err error) {
+	errnie.Trace("toolcall.Read")
+
 	if tc.State != ToolCallStateBuffered {
 		// Buffer is empty, encode current tool call state
 		if err = tc.encoder.Encode(tc.ToolCall.Message()); err != nil {
 			return 0, errnie.Error(err)
 		}
 
-		if err = tc.buffer.Flush(); err != nil {
-			return 0, errnie.Error(err)
-		}
-
 		tc.State = ToolCallStateBuffered
+	}
+
+	if err = tc.buffer.Flush(); err != nil {
+		return 0, errnie.Error(err)
 	}
 
 	return tc.buffer.Read(p)
@@ -41,6 +43,8 @@ Write implements the io.Writer interface for the ToolCall.
 It streams the provided bytes using a Cap'n Proto Decoder.
 */
 func (tc *ToolCallBuilder) Write(p []byte) (n int, err error) {
+	errnie.Trace("toolcall.Write")
+
 	if len(p) == 0 {
 		return 0, nil
 	}
@@ -79,7 +83,7 @@ func (tc *ToolCallBuilder) Write(p []byte) (n int, err error) {
 Close implements the io.Closer interface for the ToolCall.
 */
 func (tc *ToolCallBuilder) Close() error {
-	errnie.Debug("toolcall.Close")
+	errnie.Trace("toolcall.Close")
 
 	if err := tc.buffer.Flush(); err != nil {
 		return errnie.Error(err)

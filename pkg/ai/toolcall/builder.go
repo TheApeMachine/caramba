@@ -20,6 +20,8 @@ type ToolCallBuilder struct {
 type ToolCallOption func(*ToolCallBuilder)
 
 func New(opts ...ToolCallOption) *ToolCallBuilder {
+	errnie.Trace("toolcall.New")
+
 	var (
 		arena    = capnp.SingleSegment(nil)
 		seg      *capnp.Segment
@@ -56,18 +58,24 @@ func New(opts ...ToolCallOption) *ToolCallBuilder {
 }
 
 func WithID(id string) ToolCallOption {
+	errnie.Trace("toolcall.WithID")
+
 	return func(toolCallBuilder *ToolCallBuilder) {
 		toolCallBuilder.ToolCall.SetId(id)
 	}
 }
 
 func WithName(name string) ToolCallOption {
+	errnie.Trace("toolcall.WithName")
+
 	return func(toolCallBuilder *ToolCallBuilder) {
 		toolCallBuilder.ToolCall.SetName(name)
 	}
 }
 
 func WithArgs(args string) ToolCallOption {
+	errnie.Trace("toolcall.WithArgs")
+
 	return func(toolCallBuilder *ToolCallBuilder) {
 		if err := toolCallBuilder.ToolCall.SetArguments(args); errnie.Error(err) != nil {
 			return
@@ -76,6 +84,8 @@ func WithArgs(args string) ToolCallOption {
 }
 
 func WithBytes(b []byte) ToolCallOption {
+	errnie.Trace("toolcall.WithBytes")
+
 	return func(toolCallBuilder *ToolCallBuilder) {
 		if _, err := io.Copy(
 			toolCallBuilder.buffer, bytes.NewBuffer(b),

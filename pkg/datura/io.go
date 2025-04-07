@@ -12,6 +12,7 @@ Read implements the io.Reader interface for the Artifact.
 It streams the artifact using a Cap'n Proto Encoder.
 */
 func (artifact *ArtifactBuilder) Read(p []byte) (n int, err error) {
+	errnie.Trace("artifact.Read")
 
 	if artifact.state != ArtifactStateBuffered {
 		// Buffer is empty, encode current message state
@@ -19,11 +20,11 @@ func (artifact *ArtifactBuilder) Read(p []byte) (n int, err error) {
 			return 0, errnie.Error(err)
 		}
 
-		if err = artifact.buffer.Flush(); err != nil {
-			return 0, errnie.Error(err)
-		}
-
 		artifact.state = ArtifactStateBuffered
+	}
+
+	if err = artifact.buffer.Flush(); err != nil {
+		return 0, errnie.Error(err)
 	}
 
 	return artifact.buffer.Read(p)
@@ -34,6 +35,8 @@ Write implements the io.Writer interface for the Artifact.
 It streams the provided bytes using a Cap'n Proto Decoder.
 */
 func (artifact *ArtifactBuilder) Write(p []byte) (n int, err error) {
+	errnie.Trace("artifact.Write")
+
 	if len(p) == 0 {
 		return 0, nil
 	}
@@ -72,7 +75,7 @@ func (artifact *ArtifactBuilder) Write(p []byte) (n int, err error) {
 Close implements the io.Closer interface for the Artifact.
 */
 func (artifact *ArtifactBuilder) Close() error {
-	errnie.Debug("artifact.Close")
+	errnie.Trace("artifact.Close")
 
 	if err := artifact.buffer.Flush(); err != nil {
 		return errnie.Error(err)

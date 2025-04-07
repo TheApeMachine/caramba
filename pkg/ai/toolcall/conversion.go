@@ -8,6 +8,8 @@ import (
 )
 
 func (tc *ToolCallBuilder) Bytes() []byte {
+	errnie.Trace("toolcall.Bytes")
+
 	buf := bytes.NewBuffer(nil)
 
 	if _, err := io.Copy(buf, tc); errnie.Error(err) != nil {

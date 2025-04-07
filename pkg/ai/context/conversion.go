@@ -8,6 +8,8 @@ import (
 )
 
 func (ctx *ContextBuilder) Bytes() []byte {
+	errnie.Trace("context.Bytes")
+
 	buf := bytes.NewBuffer(nil)
 
 	if _, err := io.Copy(buf, ctx); errnie.Error(err) != nil {
