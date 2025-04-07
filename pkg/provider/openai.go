@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"io"
 	"math"
 	"os"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
+	aictx "github.com/theapemachine/caramba/pkg/ai/context"
 	"github.com/theapemachine/caramba/pkg/ai/message"
 	"github.com/theapemachine/caramba/pkg/ai/toolcall"
 	"github.com/theapemachine/caramba/pkg/datura"
@@ -79,6 +82,8 @@ func (prvdr *OpenAIProvider) ID() string {
 func (prvdr *OpenAIProvider) Generate(
 	artifact *datura.ArtifactBuilder,
 ) *datura.ArtifactBuilder {
+	errnie.Info("provider.Generate", "supplier", "openai")
+
 	composed := &openai.ChatCompletionNewParams{
 		Model:            openai.ChatModel(datura.GetMetaValue[string](artifact, "model")),
 		Temperature:      openai.Float(datura.GetMetaValue[float64](artifact, "temperature")),
@@ -138,15 +143,6 @@ func WithEndpoint(endpoint string) OpenAIProviderOption {
 	}
 }
 
-// OpenAIMessage represents a message in the OpenAI chat format
-type OpenAIMessage struct {
-	Role       string              `json:"role"`
-	Name       string              `json:"name"`
-	Content    string              `json:"content"`
-	ToolCallID string              `json:"tool_call_id,omitempty"`
-	ToolCalls  []toolcall.ToolCall `json:"tool_calls,omitempty"`
-}
-
 /*
 handleSingleRequest processes a single (non-streaming) completion request
 */
@@ -163,59 +159,59 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 	if completion, err = prvdr.client.Chat.Completions.New(
 		prvdr.ctx, *params,
 	); errnie.Error(err) != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
+		return datura.New(datura.WithError(err))
 	}
 
-	// Create a new message using the provider's segment
-	msg, err := message.NewMessage(prvdr.segment)
-	if errnie.Error(err) != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
-	}
-
-	// Set message fields
-	if err = msg.SetRole("assistant"); errnie.Error(err) != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
-	}
-
-	if err = msg.SetName(params.Model); errnie.Error(err) != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
-	}
-
-	if err = msg.SetContent(completion.Choices[0].Message.Content); errnie.Error(err) != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
-	}
+	msg := message.New(
+		message.WithRole("assistant"),
+		message.WithName(params.Model),
+		message.WithContent(completion.Choices[0].Message.Content),
+	)
 
 	toolCalls := completion.Choices[0].Message.ToolCalls
 
 	// Abort early if there are no tool calls
 	if len(toolCalls) == 0 {
-		return datura.New(datura.WithEncryptedPayload([]byte(completion.Choices[0].Message.Content)))
+		buf := bytes.NewBuffer(nil)
+
+		if _, err = io.Copy(buf, msg); errnie.Error(err) != nil {
+			return datura.New(datura.WithError(errnie.Error(err)))
+		}
+
+		return datura.New(
+			datura.WithPayload(buf.Bytes()),
+		)
 	}
 
 	// Create tool calls list
-	toolCallList, err := msg.NewToolCalls(int32(len(toolCalls)))
+	toolCallList, err := msg.Message.NewToolCalls(int32(len(toolCalls)))
 	if errnie.Error(err) != nil {
 		return datura.New(datura.WithError(errnie.Error(err)))
 	}
 
 	for i, toolCall := range toolCalls {
 		errnie.Info("toolCall", "tool", toolCall.Function.Name, "id", toolCall.ID)
+		tc := toolcall.New(
+			toolcall.WithID(toolCall.ID),
+			toolcall.WithName(toolCall.Function.Name),
+			toolcall.WithArgs(toolCall.Function.Arguments),
+		)
 
-		if err = toolCallList.At(i).SetId(toolCall.ID); errnie.Error(err) != nil {
-			return datura.New(datura.WithError(errnie.Error(err)))
-		}
-
-		if err = toolCallList.At(i).SetName(toolCall.Function.Name); errnie.Error(err) != nil {
-			return datura.New(datura.WithError(errnie.Error(err)))
-		}
-
-		if err = toolCallList.At(i).SetArguments(toolCall.Function.Arguments); errnie.Error(err) != nil {
+		if err = toolCallList.Set(i, *tc.ToolCall); err != nil {
 			return datura.New(datura.WithError(errnie.Error(err)))
 		}
 	}
 
+	msg.Message.SetToolCalls(toolCallList)
+
+	buf := bytes.NewBuffer(nil)
+
+	if _, err = io.Copy(buf, msg); errnie.Error(err) != nil {
+		return datura.New(datura.WithError(errnie.Error(err)))
+	}
+
 	// Create artifact with message content
-	return datura.New(datura.WithEncryptedPayload([]byte(completion.Choices[0].Message.Content)))
+	return datura.New(datura.WithPayload(buf.Bytes()))
 }
 
 /*
@@ -244,7 +240,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			return datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithEncryptedPayload([]byte(content)),
+				datura.WithPayload([]byte(content)),
 			)
 		}
 
@@ -253,7 +249,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			return datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithEncryptedPayload([]byte(tool.Arguments)),
+				datura.WithPayload([]byte(tool.Arguments)),
 			)
 		}
 
@@ -261,7 +257,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			return datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithEncryptedPayload([]byte(refusal)),
+				datura.WithPayload([]byte(refusal)),
 			)
 		}
 
@@ -270,7 +266,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 			return datura.New(
 				datura.WithRole(datura.ArtifactRoleAnswer),
 				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithEncryptedPayload([]byte(chunk.Choices[0].Delta.Content)),
+				datura.WithPayload([]byte(chunk.Choices[0].Delta.Content)),
 			)
 		}
 	}
@@ -293,42 +289,38 @@ func (prvdr *OpenAIProvider) buildMessages(
 ) (err error) {
 	errnie.Debug("provider.buildMessages")
 
-	payload, err := artifact.DecryptPayload()
-	if errnie.Error(err) != nil {
-		return err
+	payload := errnie.Try(artifact.Payload())
+	agentCtx := aictx.New()
+
+	if _, err = io.Copy(agentCtx, bytes.NewReader(payload)); errnie.Error(err) != nil {
+		return errnie.Error(err)
 	}
 
-	messages := []OpenAIMessage{}
-	if err := json.Unmarshal(payload, &messages); errnie.Error(err) != nil {
-		return err
-	}
+	errnie.Info("provider.buildMessages", "messages", errnie.Try(agentCtx.Context.Messages()))
 
-	openaiMessages := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
+	openaiMessages := make([]openai.ChatCompletionMessageParamUnion, 0, errnie.Try(agentCtx.Context.Messages()).Len())
 
-	for _, msg := range messages {
-		switch msg.Role {
+	for i := range errnie.Try(agentCtx.Context.Messages()).Len() {
+		msg := errnie.Try(agentCtx.Context.Messages()).At(i)
+
+		errnie.Info("msg", "mesg", errnie.Try(msg.Content()))
+
+		switch errnie.Try(msg.Role()) {
 		case "system":
-			openaiMessages = append(openaiMessages, openai.SystemMessage(msg.Content))
+			openaiMessages = append(openaiMessages, openai.SystemMessage(errnie.Try(msg.Content())))
 		case "user":
-			openaiMessages = append(openaiMessages, openai.UserMessage(msg.Content))
+			openaiMessages = append(openaiMessages, openai.UserMessage(errnie.Try(msg.Content())))
 		case "assistant":
-			tcs := make([]openai.ChatCompletionMessageToolCallParam, 0, len(msg.ToolCalls))
+			toolCalls := errnie.Try(msg.ToolCalls())
 
-			for _, toolCall := range msg.ToolCalls {
-				id, err := toolCall.Id()
-				if errnie.Error(err) != nil {
-					return err
-				}
+			tcs := make([]openai.ChatCompletionMessageToolCallParam, 0, toolCalls.Len())
 
-				name, err := toolCall.Name()
-				if errnie.Error(err) != nil {
-					return err
-				}
+			for j := range toolCalls.Len() {
+				toolCall := toolCalls.At(j)
 
-				arguments, err := toolCall.Arguments()
-				if errnie.Error(err) != nil {
-					return err
-				}
+				id := errnie.Try(toolCall.Id())
+				name := errnie.Try(toolCall.Name())
+				arguments := errnie.Try(toolCall.Arguments())
 
 				tcs = append(tcs, openai.ChatCompletionMessageToolCallParam{
 					ID:   id,
@@ -340,12 +332,12 @@ func (prvdr *OpenAIProvider) buildMessages(
 				})
 			}
 
-			assistantMsg := openai.AssistantMessage(msg.Content)
+			assistantMsg := openai.AssistantMessage(errnie.Try(msg.Content()))
 			if len(tcs) > 0 {
 				assistantMsg = openai.ChatCompletionMessageParamUnion{
 					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
 						Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-							OfString: param.NewOpt(msg.Content),
+							OfString: param.NewOpt(errnie.Try(msg.Content())),
 						},
 						ToolCalls: tcs,
 						Role:      "assistant",
@@ -358,14 +350,17 @@ func (prvdr *OpenAIProvider) buildMessages(
 			openaiMessages = append(openaiMessages, openai.ChatCompletionMessageParamUnion{
 				OfTool: &openai.ChatCompletionToolMessageParam{
 					Content: openai.ChatCompletionToolMessageParamContentUnion{
-						OfString: param.NewOpt(msg.Content),
+						OfString: param.NewOpt(errnie.Try(msg.Content())),
 					},
-					ToolCallID: msg.ToolCallID,
+					ToolCallID: errnie.Try(msg.Id()),
 					Role:       "tool",
 				},
 			})
 		default:
-			return errnie.Error(errors.New("unknown message role"), "role", msg.Role)
+			return errnie.Error(
+				errors.New("unknown message role"),
+				"role", errnie.Try(msg.Role()),
+			)
 		}
 	}
 

@@ -25,21 +25,24 @@ func (srv *ProviderRPCServer) Generate(
 	ctx context.Context,
 	call RPC_generate,
 ) (err error) {
+	errnie.Debug("provider.Generate")
+
 	cfn := errnie.Try(call.Args().Context())
 	result := errnie.Try(call.AllocResults())
 
-	name := errnie.Try(Provider(cfn).Name())
+	out := datura.New(
+		datura.WithArtifact(&cfn),
+	)
+
 	prvdr, ok := providers["openai"]
 
 	if !ok {
 		return errnie.Error(errnie.BadRequest(
-			fmt.Errorf("unknown provider: %s", name),
+			fmt.Errorf("unknown provider: %s", "openai"),
 		))
 	}
 
-	builder := datura.New()
-	builder.Artifact = &cfn
-	response := prvdr.Generate(builder)
+	response := prvdr.Generate(out)
 
 	return result.SetOut(*response.Artifact)
 }

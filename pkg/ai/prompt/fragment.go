@@ -77,20 +77,20 @@ func WithBuiltin(template string) FragmentOption {
 	return func(fragBuilder *FragmentBuilder) {
 		var frags strings.Builder
 
-		frags.WriteString(tweaker.WithVariable(
-			"prompts.system.role", "role", template,
+		frags.WriteString(tweaker.WithVariables(
+			"prompts.system.role", "role", template, "domains", strings.Join(tweaker.GetStringSlice("prompts.builtin.roles."+template+".domains"), ", "),
 		) + "\n\n")
 
 		frags.WriteString(tweaker.WithVariable(
 			"prompts.system.skills",
 			"skills",
-			strings.Join(tweaker.GetStringSlice("prompts.builtins."+template+".skills"), ", "),
+			strings.Join(tweaker.GetStringSlice("prompts.builtin.roles."+template+".skills"), ", "),
 		) + "\n\n")
 
 		frags.WriteString(tweaker.WithVariable(
 			"prompts.system.responsibilities",
 			"responsibilities",
-			strings.Join(tweaker.GetStringSlice("prompts.builtins."+template+".responsibilities"), ", "),
+			strings.Join(tweaker.GetStringSlice("prompts.builtin.roles."+template+".responsibilities"), ", "),
 		) + "\n\n")
 
 		fragBuilder.Fragment.SetTemplate(frags.String())

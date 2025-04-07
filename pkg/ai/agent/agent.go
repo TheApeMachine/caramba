@@ -3,7 +3,8 @@ package agent
 import (
 	"context"
 
-	aictx "github.com/theapemachine/caramba/pkg/ai/context"
+	prvdr "github.com/theapemachine/caramba/pkg/ai/provider"
+	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -11,13 +12,13 @@ import (
 AgentServer implements the RPC interface for the Agent.
 */
 type AgentServer struct {
-	agent *Agent
+	agent *AgentBuilder
 }
 
 /*
 NewAgentServer creates a new AgentServer.
 */
-func NewAgentServer(agent *Agent) *AgentServer {
+func NewAgentServer(agent *AgentBuilder) *AgentServer {
 	return &AgentServer{
 		agent: agent,
 	}
@@ -26,7 +27,7 @@ func NewAgentServer(agent *Agent) *AgentServer {
 /*
 AgentToClient converts an Agent to a client capability.
 */
-func AgentToClient(agent *Agent) RPC {
+func AgentToClient(agent *AgentBuilder) RPC {
 	server := NewAgentServer(agent)
 	return RPC_ServerToClient(server)
 }
@@ -35,16 +36,23 @@ func AgentToClient(agent *Agent) RPC {
 Send a message to the agent.
 */
 func (srv *AgentServer) Send(ctx context.Context, call RPC_send) error {
-	msg := errnie.Try(call.Args().Message_())
-	agentCtx := errnie.Try(srv.agent.Context())
+	errnie.Debug("agent.Send")
 
-	future, release := aictx.ContextToClient(
-		&agentCtx).Add(ctx, func(p aictx.RPC_add_Params) error {
-		return p.SetContext(msg)
-	})
+	artifact := datura.New()
+
+	provider := errnie.Try(srv.agent.Provider())
+	result := errnie.Try(call.AllocResults())
+
+	response, release := provider.Client().Generate(
+		ctx, func(p prvdr.RPC_generate_Params) error {
+			return p.SetContext(*artifact.Artifact)
+		},
+	)
 
 	defer release()
 
-	_, err := future.Struct()
-	return err
+	out := errnie.Try(response.Struct())
+	outArtifact := errnie.Try(out.Out())
+
+	return result.SetOut(outArtifact)
 }

@@ -1,6 +1,9 @@
 package message
 
 import (
+	"bufio"
+	"bytes"
+
 	"capnproto.org/go/capnp/v3"
 	"github.com/theapemachine/caramba/pkg/ai/toolcall"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -8,6 +11,10 @@ import (
 
 type MessageBuilder struct {
 	Message *Message
+	encoder *capnp.Encoder
+	decoder *capnp.Decoder
+	buffer  *bufio.ReadWriter
+	State   MessageState
 }
 
 type MessageOption func(*MessageBuilder)
@@ -28,8 +35,17 @@ func New(opts ...MessageOption) *MessageBuilder {
 		return nil
 	}
 
+	shared := bytes.NewBuffer(nil)
+	buffer := bufio.NewReadWriter(
+		bufio.NewReader(shared),
+		bufio.NewWriter(shared),
+	)
+
 	message := &MessageBuilder{
 		Message: &msg,
+		encoder: capnp.NewEncoder(buffer),
+		decoder: capnp.NewDecoder(buffer),
+		buffer:  buffer,
 	}
 
 	for _, opt := range opts {
@@ -37,6 +53,12 @@ func New(opts ...MessageOption) *MessageBuilder {
 	}
 
 	return message
+}
+
+func WithMessage(msg *Message) MessageOption {
+	return func(m *MessageBuilder) {
+		m.Message = msg
+	}
 }
 
 func WithRole(role string) MessageOption {

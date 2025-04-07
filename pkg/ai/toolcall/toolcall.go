@@ -1,17 +1,24 @@
 package toolcall
 
 import (
+	"bufio"
+	"bytes"
+
 	"capnproto.org/go/capnp/v3"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 type ToolCallBuilder struct {
 	ToolCall *ToolCall
+	encoder  *capnp.Encoder
+	decoder  *capnp.Decoder
+	buffer   *bufio.ReadWriter
+	State    ToolCallState
 }
 
 type ToolCallOption func(*ToolCallBuilder)
 
-func NewToolCallBuilder(opts ...ToolCallOption) *ToolCallBuilder {
+func New(opts ...ToolCallOption) *ToolCallBuilder {
 	var (
 		arena    = capnp.SingleSegment(nil)
 		seg      *capnp.Segment
@@ -27,8 +34,17 @@ func NewToolCallBuilder(opts ...ToolCallOption) *ToolCallBuilder {
 		return nil
 	}
 
+	shared := bytes.NewBuffer(nil)
+	buffer := bufio.NewReadWriter(
+		bufio.NewReader(shared),
+		bufio.NewWriter(shared),
+	)
+
 	toolCallBuilder := &ToolCallBuilder{
 		ToolCall: &toolCall,
+		encoder:  capnp.NewEncoder(buffer),
+		decoder:  capnp.NewDecoder(buffer),
+		buffer:   buffer,
 	}
 
 	for _, opt := range opts {

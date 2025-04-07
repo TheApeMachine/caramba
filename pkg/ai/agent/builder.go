@@ -1,14 +1,18 @@
 package agent
 
 import (
+	"bytes"
 	context "context"
 	"io"
+
+	"errors"
 
 	"capnproto.org/go/capnp/v3"
 	"capnproto.org/go/capnp/v3/rpc"
 	"github.com/google/uuid"
 	aictx "github.com/theapemachine/caramba/pkg/ai/context"
 	"github.com/theapemachine/caramba/pkg/ai/message"
+	params "github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/ai/prompt"
 	prvdr "github.com/theapemachine/caramba/pkg/ai/provider"
 	datura "github.com/theapemachine/caramba/pkg/datura"
@@ -20,8 +24,10 @@ AgentBuilder wraps an Agent and provides various convenience methods
 for building and managing agents.
 */
 type AgentBuilder struct {
-	*Agent
-	Transport io.ReadWriteCloser
+	*Agent    `json:"agent"`
+	AIParams  *params.ParamsBuilder `json:"ai_params"`
+	AIContext *aictx.ContextBuilder `json:"ai_context"`
+	Transport io.ReadWriteCloser    `json:"transport"`
 }
 
 // AgentBuilderOption defines a function that configures an Agent
@@ -55,20 +61,27 @@ func New(options ...AgentBuilderOption) *AgentBuilder {
 		return nil
 	}
 
-	params, err := agent.NewParams()
+	params := params.New()
 
-	if errnie.Error(err) != nil {
+	if errnie.Error(agent.SetParams(*params.Params)) != nil {
 		return nil
 	}
 
-	if errnie.Error(agent.SetParams(params)) != nil {
+	// Initialize context
+	agentCtx := aictx.New()
+	if agentCtx == nil {
+		errnie.Error(errors.New("failed to create context"))
 		return nil
 	}
 
-	agent.SetContext(*aictx.New().Context)
+	if err := agent.SetContext(*agentCtx.Context); errnie.Error(err) != nil {
+		return nil
+	}
 
 	builder := &AgentBuilder{
-		Agent: &agent,
+		Agent:     &agent,
+		AIParams:  params,
+		AIContext: agentCtx,
 	}
 
 	// Apply all options
@@ -81,32 +94,61 @@ func New(options ...AgentBuilderOption) *AgentBuilder {
 	return builder
 }
 
-func (builder *AgentBuilder) Send(message *message.MessageBuilder) *datura.ArtifactBuilder {
-	future, release := builder.Client().Send(
-		context.Background(), func(p RPC_send_Params) error {
-			return nil
+func (builder *AgentBuilder) Send(message *message.MessageBuilder) datura.Artifact {
+	errnie.Debug("agent.Send")
+
+	// Add the message to the context first
+	builder.AIContext.Add(message)
+
+	// Update the agent's context
+	if err := builder.SetContext(*builder.AIContext.Context); errnie.Error(err) != nil {
+		return *datura.New(datura.WithError(errnie.Error(err))).Artifact
+	}
+
+	// Get the updated context
+	buf := bytes.NewBuffer(nil)
+	if _, err := io.Copy(buf, builder.AIContext); errnie.Error(err) != nil {
+		return *datura.New(datura.WithError(errnie.Error(err))).Artifact
+	}
+
+	// Create artifact with context payload
+	artifact := datura.New(
+		datura.WithPayload(buf.Bytes()),
+		datura.WithMeta("model", errnie.Try(errnie.Try(builder.Params()).Model())),
+		datura.WithMeta("temperature", errnie.Try(builder.Params()).Temperature()),
+		datura.WithMeta("top_p", errnie.Try(builder.Params()).TopP()),
+	)
+
+	provider := errnie.Try(builder.Provider())
+	response, release := provider.Client().Generate(
+		context.Background(), func(p prvdr.RPC_generate_Params) error {
+			return p.SetContext(*artifact.Artifact)
 		},
 	)
 
 	defer release()
 
-	var (
-		result RPC_send_Results
-		err    error
-		out    datura.Artifact
+	result := errnie.Try(response.Struct())
+	outArtifactStruct := errnie.Try(result.Out())
+
+	// The provider returns an artifact struct from the RPC response segment.
+	// We need to copy its payload into a new artifact with a managed segment
+	// to avoid segment lifetime issues when the caller accesses the payload later.
+	newArtifactBuilder := datura.New(
+		datura.WithPayload(errnie.Try(outArtifactStruct.Payload())),
+		// Optionally copy metadata if needed, though payload seems the main issue
+		// datura.WithMetadata(datura.GetMetadataMap(outArtifactStruct)),
 	)
 
-	if result, err = future.Struct(); errnie.Error(err) != nil {
-		return nil
+	// Add error handling for payload extraction and new artifact creation if necessary
+	if newArtifactBuilder == nil {
+		// Handle error, maybe return an artifact with an error payload
+		err := errors.New("failed to create new artifact builder after RPC call")
+		return *datura.New(datura.WithError(err)).Artifact
 	}
 
-	out, err = result.Out()
-
-	if errnie.Error(err) != nil {
-		return nil
-	}
-
-	return datura.New(datura.WithArtifact(&out))
+	// Return the artifact struct value from the newly created builder.
+	return *newArtifactBuilder.Artifact
 }
 
 func (builder *AgentBuilder) Identity() (string, string) {
@@ -147,11 +189,11 @@ func (builder *AgentBuilder) Role() string {
 	return role
 }
 
-func (agent *Agent) Client() RPC {
+func (agent *AgentBuilder) Client() RPC {
 	return AgentToClient(agent)
 }
 
-func (agent *Agent) Conn(transport io.ReadWriteCloser) *rpc.Conn {
+func (agent *AgentBuilder) Conn(transport io.ReadWriteCloser) *rpc.Conn {
 	return rpc.NewConn(rpc.NewStreamTransport(transport), &rpc.Options{
 		BootstrapClient: capnp.Client(agent.Client()),
 	})
@@ -215,32 +257,18 @@ func WithProvider(provider string) AgentBuilderOption {
 
 func WithPrompt(role string, prompt *prompt.PromptBuilder) AgentBuilderOption {
 	return func(a *AgentBuilder) error {
-		ctx, err := a.Context()
-
-		if errnie.Error(err) != nil {
-			return errnie.Error(err)
-		}
-
-		messages := errnie.Try(ctx.Messages())
-		ml := errnie.Try(message.NewMessage_List(a.Segment(), int32(messages.Len()+1)))
-
-		for i := range messages.Len() {
-			ml.Set(i, messages.At(i))
-		}
-
 		msg := message.New(
 			message.WithRole(role),
 			message.WithContent(prompt.String()),
 		)
 
-		if errnie.Error(ml.Set(messages.Len(), *msg.Message)) != nil {
-			return errnie.Error(err)
+		// Ensure the context is initialized
+		if a.AIContext == nil {
+			a.AIContext = aictx.New()
 		}
 
-		if errnie.Error(ctx.SetMessages(ml)) != nil {
-			return errnie.Error(err)
-		}
-
-		return nil
+		// Add the message and update the agent's context
+		a.AIContext.Add(msg)
+		return a.SetContext(*a.AIContext.Context)
 	}
 }

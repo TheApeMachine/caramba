@@ -1,8 +1,10 @@
 package examples
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -48,6 +50,13 @@ func (code *Code) Run() {
 		agent.WithModel(tweaker.GetModel("openai")),
 		agent.WithProvider("openai"),
 		agent.WithTransport(code.hub.NewTransport()),
+		agent.WithPrompt("system", prompt.New(
+			prompt.WithFragments(
+				prompt.NewFragmentBuilder(
+					prompt.WithBuiltin("planner"),
+				),
+			),
+		)),
 	)
 
 	code.dev = agent.New(
@@ -59,15 +68,14 @@ func (code *Code) Run() {
 		agent.WithPrompt("system", prompt.New(
 			prompt.WithFragments(
 				prompt.NewFragmentBuilder(
-					prompt.WithBuiltin(code.planner.Role()),
-					prompt.WithIdentity(code.planner.Identity()),
+					prompt.WithBuiltin("developer"),
 				),
 			),
 		)),
 	)
 
-	code.planner.Send(message.New(
-		message.WithRole(code.planner.Role()),
+	out := code.planner.Send(message.New(
+		message.WithRole("user"),
 		message.WithContent(strings.Join([]string{
 			"Write a plan for an innovative research and development project",
 			"focused on the development of new AI architectures.",
@@ -76,6 +84,21 @@ func (code *Code) Run() {
 			"existing architecture, while able to run on consumer hardware.",
 		}, " ")),
 	))
+
+	payload := errnie.Try(out.Payload())
+	errnie.Info("payload", "payload", string(payload))
+	msg := message.New()
+
+	if _, err := io.Copy(msg, bytes.NewBuffer(payload)); errnie.Error(err) != nil {
+		return
+	}
+
+	if _, err := io.Copy(
+		os.Stdout,
+		bytes.NewBufferString(errnie.Try(msg.Message.Content())),
+	); errnie.Error(err) != nil {
+		return
+	}
 
 	code.wait()
 }
