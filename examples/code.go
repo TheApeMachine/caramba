@@ -14,7 +14,11 @@ import (
 	"github.com/theapemachine/caramba/pkg/ai/agent"
 	"github.com/theapemachine/caramba/pkg/ai/message"
 	"github.com/theapemachine/caramba/pkg/ai/prompt"
+	prvdr "github.com/theapemachine/caramba/pkg/ai/provider"
+	"github.com/theapemachine/caramba/pkg/ai/tool"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 	"github.com/theapemachine/caramba/pkg/twoface"
 	"github.com/theapemachine/caramba/pkg/utils"
@@ -41,15 +45,24 @@ func NewCode() *Code {
 }
 
 // Run executes the test setup
-func (code *Code) Run() {
+func (code *Code) Run() (err error) {
 	errnie.Info("Starting agent framework test...")
+
+	systemTool := tool.New(
+		tool.WithMCPTool(tools.NewSystemTool().ToMCP()...),
+	)
 
 	code.planner = agent.New(
 		agent.WithName(utils.GenerateName()),
 		agent.WithRole("planner"),
 		agent.WithModel(tweaker.GetModel("openai")),
-		agent.WithProvider("openai"),
+		agent.WithProvider(
+			prvdr.New(
+				prvdr.WithAIProvider("openai", provider.NewOpenAIProvider()),
+			),
+		),
 		agent.WithTransport(code.hub.NewTransport()),
+		agent.WithTools(systemTool),
 		agent.WithPrompt("system", prompt.New(
 			prompt.WithFragments(
 				prompt.NewFragmentBuilder(
@@ -63,8 +76,13 @@ func (code *Code) Run() {
 		agent.WithName(utils.GenerateName()),
 		agent.WithRole("developer"),
 		agent.WithModel(tweaker.GetModel("openai")),
-		agent.WithProvider("openai"),
+		agent.WithProvider(
+			prvdr.New(
+				prvdr.WithAIProvider("openai", provider.NewOpenAIProvider()),
+			),
+		),
 		agent.WithTransport(code.hub.NewTransport()),
+		agent.WithTools(systemTool),
 		agent.WithPrompt("system", prompt.New(
 			prompt.WithFragments(
 				prompt.NewFragmentBuilder(
@@ -89,18 +107,19 @@ func (code *Code) Run() {
 	errnie.Info("payload", "payload", string(payload))
 	msg := message.New()
 
-	if _, err := io.Copy(msg, bytes.NewBuffer(payload)); errnie.Error(err) != nil {
-		return
+	if _, err = io.Copy(msg, bytes.NewBuffer(payload)); errnie.Error(err) != nil {
+		return errnie.Error(err)
 	}
 
-	if _, err := io.Copy(
+	if _, err = io.Copy(
 		os.Stdout,
 		bytes.NewBufferString(errnie.Try(msg.Message.Content())),
 	); errnie.Error(err) != nil {
-		return
+		return errnie.Error(err)
 	}
 
 	code.wait()
+	return nil
 }
 
 func (code *Code) wait() {

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 /* MemoryTool provides a base for all memory operations */
@@ -19,11 +20,18 @@ func NewMemoryTool() *MemoryTool {
 
 	return &MemoryTool{
 		operations: map[string]ToolType{
-			"memory_query":  {query.Tool, query.Use},
-			"memory_store":  {store.Tool, store.Use},
-			"memory_search": {search.Tool, search.Use},
+			"memory_query":  {query.Tool, query.Use, query.UseMCP},
+			"memory_store":  {store.Tool, store.Use, store.UseMCP},
+			"memory_search": {search.Tool, search.Use, search.UseMCP},
 		},
 	}
+}
+
+func (tool *MemoryTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	toolName := datura.GetMetaValue[string](artifact, "tool")
+	return tool.operations[toolName].Use(ctx, artifact)
 }
 
 /* ToMCP returns all Memory tool definitions */
@@ -65,9 +73,15 @@ func NewMemoryQueryTool() *MemoryQueryTool {
 
 /* Use executes the memory query operation and returns the results */
 func (tool *MemoryQueryTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *MemoryQueryTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* MemoryStoreTool implements a tool for storing data in memory */
@@ -102,9 +116,15 @@ func NewMemoryStoreTool() *MemoryStoreTool {
 
 /* Use executes the memory store operation and returns the results */
 func (tool *MemoryStoreTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *MemoryStoreTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* MemorySearchTool implements a tool for semantic search in memory */
@@ -137,7 +157,13 @@ func NewMemorySearchTool() *MemorySearchTool {
 
 /* Use executes the memory search operation and returns the results */
 func (tool *MemorySearchTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *MemorySearchTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }

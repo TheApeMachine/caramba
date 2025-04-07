@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/tools/editor"
 )
 
@@ -24,15 +25,22 @@ func NewEditorTool() *EditorTool {
 
 	return &EditorTool{
 		operations: map[string]ToolType{
-			"read":          {read.Tool, read.Use},
-			"write":         {write.Tool, write.Use},
-			"delete":        {delete.Tool, delete.Use},
-			"replace_lines": {replaceLines.Tool, replaceLines.Use},
-			"insert_lines":  {insertLines.Tool, insertLines.Use},
-			"delete_lines":  {deleteLines.Tool, deleteLines.Use},
-			"read_lines":    {readLines.Tool, readLines.Use},
+			"read":          {read.Tool, read.Use, read.UseMCP},
+			"write":         {write.Tool, write.Use, write.UseMCP},
+			"delete":        {delete.Tool, delete.Use, delete.UseMCP},
+			"replace_lines": {replaceLines.Tool, replaceLines.Use, replaceLines.UseMCP},
+			"insert_lines":  {insertLines.Tool, insertLines.Use, insertLines.UseMCP},
+			"delete_lines":  {deleteLines.Tool, deleteLines.Use, deleteLines.UseMCP},
+			"read_lines":    {readLines.Tool, readLines.Use, readLines.UseMCP},
 		},
 	}
+}
+
+func (tool *EditorTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	toolName := datura.GetMetaValue[string](artifact, "tool")
+	return tool.operations[toolName].Use(ctx, artifact)
 }
 
 /* ToMCP returns all editor tool definitions */
@@ -70,10 +78,16 @@ func NewEditorReadTool() *EditorReadTool {
 
 /* Use executes the read operation */
 func (tool *EditorReadTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	// TODO: Implement actual file reading using client
+	return artifact
+}
+
+func (tool *EditorReadTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	// TODO: Implement actual file reading using client
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* EditorWriteTool implements a tool for writing to files */
@@ -105,10 +119,16 @@ func NewEditorWriteTool() *EditorWriteTool {
 
 /* Use executes the write operation */
 func (tool *EditorWriteTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	// TODO: Implement actual file writing using client
+	return artifact
+}
+
+func (tool *EditorWriteTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	// TODO: Implement actual file writing using client
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* EditorDeleteTool implements a tool for deleting files */
@@ -135,10 +155,16 @@ func NewEditorDeleteTool() *EditorDeleteTool {
 
 /* Use executes the delete operation */
 func (tool *EditorDeleteTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	// TODO: Implement actual file deletion using client
+	return artifact
+}
+
+func (tool *EditorDeleteTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	// TODO: Implement actual file deletion using client
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* EditorReplaceLinesTool implements a tool for replacing lines in files */
@@ -180,10 +206,16 @@ func NewEditorReplaceLinesTool() *EditorReplaceLinesTool {
 
 /* Use executes the replace lines operation */
 func (tool *EditorReplaceLinesTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	// TODO: Implement actual line replacement using client
+	return artifact
+}
+
+func (tool *EditorReplaceLinesTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	// TODO: Implement actual line replacement using client
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* EditorInsertLinesTool implements a tool for inserting lines into files */
@@ -215,10 +247,16 @@ func NewEditorInsertLinesTool() *EditorInsertLinesTool {
 
 /* Use executes the insert lines operation */
 func (tool *EditorInsertLinesTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	// TODO: Implement actual line insertion using client
+	return artifact
+}
+
+func (tool *EditorInsertLinesTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	// TODO: Implement actual line insertion using client
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* EditorDeleteLinesTool implements a tool for deleting lines from files */
@@ -255,10 +293,16 @@ func NewEditorDeleteLinesTool() *EditorDeleteLinesTool {
 
 /* Use executes the delete lines operation */
 func (tool *EditorDeleteLinesTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	// TODO: Implement actual line deletion using client
+	return artifact
+}
+
+func (tool *EditorDeleteLinesTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	// TODO: Implement actual line deletion using client
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* EditorReadLinesTool implements a tool for reading lines from files */
@@ -295,8 +339,14 @@ func NewEditorReadLinesTool() *EditorReadLinesTool {
 
 /* Use executes the read lines operation */
 func (tool *EditorReadLinesTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	// TODO: Implement actual line reading using client
+	return artifact
+}
+
+func (tool *EditorReadLinesTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	// TODO: Implement actual line reading using client
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }

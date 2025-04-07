@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 /* GithubTool provides a base for all GitHub operations */
@@ -34,26 +35,33 @@ func NewGithubTool() *GithubTool {
 
 	return &GithubTool{
 		operations: map[string]ToolType{
-			"get_repositories":      {getRepositories.Tool, getRepositories.Use},
-			"get_repository":        {getRepository.Tool, getRepository.Use},
-			"create_repository":     {createRepository.Tool, createRepository.Use},
-			"delete_repository":     {deleteRepository.Tool, deleteRepository.Use},
-			"update_repository":     {updateRepository.Tool, updateRepository.Use},
-			"list_issues":           {listIssues.Tool, listIssues.Use},
-			"create_issue":          {createIssue.Tool, createIssue.Use},
-			"update_issue":          {updateIssue.Tool, updateIssue.Use},
-			"close_issue":           {closeIssue.Tool, closeIssue.Use},
-			"list_pulls":            {listPulls.Tool, listPulls.Use},
-			"create_pull":           {createPull.Tool, createPull.Use},
-			"update_pull":           {updatePull.Tool, updatePull.Use},
-			"merge_pull":            {mergePull.Tool, mergePull.Use},
-			"list_reviews":          {listReviews.Tool, listReviews.Use},
-			"create_review":         {createReview.Tool, createReview.Use},
-			"update_review":         {updateReview.Tool, updateReview.Use},
-			"list_review_comments":  {listReviewComments.Tool, listReviewComments.Use},
-			"create_review_comment": {createReviewComment.Tool, createReviewComment.Use},
+			"get_repositories":      {getRepositories.Tool, getRepositories.Use, getRepositories.UseMCP},
+			"get_repository":        {getRepository.Tool, getRepository.Use, getRepository.UseMCP},
+			"create_repository":     {createRepository.Tool, createRepository.Use, createRepository.UseMCP},
+			"delete_repository":     {deleteRepository.Tool, deleteRepository.Use, deleteRepository.UseMCP},
+			"update_repository":     {updateRepository.Tool, updateRepository.Use, updateRepository.UseMCP},
+			"list_issues":           {listIssues.Tool, listIssues.Use, listIssues.UseMCP},
+			"create_issue":          {createIssue.Tool, createIssue.Use, createIssue.UseMCP},
+			"update_issue":          {updateIssue.Tool, updateIssue.Use, updateIssue.UseMCP},
+			"close_issue":           {closeIssue.Tool, closeIssue.Use, closeIssue.UseMCP},
+			"list_pulls":            {listPulls.Tool, listPulls.Use, listPulls.UseMCP},
+			"create_pull":           {createPull.Tool, createPull.Use, createPull.UseMCP},
+			"update_pull":           {updatePull.Tool, updatePull.Use, updatePull.UseMCP},
+			"merge_pull":            {mergePull.Tool, mergePull.Use, mergePull.UseMCP},
+			"list_reviews":          {listReviews.Tool, listReviews.Use, listReviews.UseMCP},
+			"create_review":         {createReview.Tool, createReview.Use, createReview.UseMCP},
+			"update_review":         {updateReview.Tool, updateReview.Use, updateReview.UseMCP},
+			"list_review_comments":  {listReviewComments.Tool, listReviewComments.Use, listReviewComments.UseMCP},
+			"create_review_comment": {createReviewComment.Tool, createReviewComment.Use, createReviewComment.UseMCP},
 		},
 	}
+}
+
+func (tool *GithubTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	toolName := datura.GetMetaValue[string](artifact, "tool")
+	return tool.operations[toolName].Use(ctx, artifact)
 }
 
 /* ToMCP returns all GitHub tool definitions */
@@ -84,9 +92,15 @@ func NewGithubGetRepositoriesTool() *GithubGetRepositoriesTool {
 
 /* Use executes the get repositories operation and returns the results */
 func (tool *GithubGetRepositoriesTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubGetRepositoriesTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubGetRepositoryTool implements a tool for getting a repository from GitHub */
@@ -111,9 +125,15 @@ func NewGithubGetRepositoryTool() *GithubGetRepositoryTool {
 
 /* Use executes the get repository operation and returns the results */
 func (tool *GithubGetRepositoryTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubGetRepositoryTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubCreateRepositoryTool implements a tool for creating a repository */
@@ -138,9 +158,15 @@ func NewGithubCreateRepositoryTool() *GithubCreateRepositoryTool {
 
 /* Use executes the create repository operation and returns the results */
 func (tool *GithubCreateRepositoryTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubCreateRepositoryTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubDeleteRepositoryTool implements a tool for deleting a repository */
@@ -165,9 +191,15 @@ func NewGithubDeleteRepositoryTool() *GithubDeleteRepositoryTool {
 
 /* Use executes the delete repository operation */
 func (tool *GithubDeleteRepositoryTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubDeleteRepositoryTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubUpdateRepositoryTool implements a tool for updating a repository */
@@ -197,9 +229,15 @@ func NewGithubUpdateRepositoryTool() *GithubUpdateRepositoryTool {
 
 /* Use executes the update repository operation */
 func (tool *GithubUpdateRepositoryTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubUpdateRepositoryTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubListIssuesTool implements a tool for listing repository issues */
@@ -224,9 +262,15 @@ func NewGithubListIssuesTool() *GithubListIssuesTool {
 
 /* Use executes the list issues operation */
 func (tool *GithubListIssuesTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubListIssuesTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubCreateIssueTool implements a tool for creating an issue */
@@ -261,9 +305,15 @@ func NewGithubCreateIssueTool() *GithubCreateIssueTool {
 
 /* Use executes the create issue operation */
 func (tool *GithubCreateIssueTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubCreateIssueTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubUpdateIssueTool implements a tool for updating an issue */
@@ -303,9 +353,15 @@ func NewGithubUpdateIssueTool() *GithubUpdateIssueTool {
 
 /* Use executes the update issue operation */
 func (tool *GithubUpdateIssueTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubUpdateIssueTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubCloseIssueTool implements a tool for closing an issue */
@@ -335,9 +391,15 @@ func NewGithubCloseIssueTool() *GithubCloseIssueTool {
 
 /* Use executes the close issue operation */
 func (tool *GithubCloseIssueTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubCloseIssueTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubListPullsTool implements a tool for listing pull requests */
@@ -362,9 +424,15 @@ func NewGithubListPullsTool() *GithubListPullsTool {
 
 /* Use executes the list pulls operation */
 func (tool *GithubListPullsTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubListPullsTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubCreatePullTool implements a tool for creating a pull request */
@@ -409,9 +477,15 @@ func NewGithubCreatePullTool() *GithubCreatePullTool {
 
 /* Use executes the create pull request operation */
 func (tool *GithubCreatePullTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubCreatePullTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubUpdatePullTool implements a tool for updating a pull request */
@@ -451,9 +525,15 @@ func NewGithubUpdatePullTool() *GithubUpdatePullTool {
 
 /* Use executes the update pull request operation */
 func (tool *GithubUpdatePullTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubUpdatePullTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubMergePullTool implements a tool for merging a pull request */
@@ -488,9 +568,15 @@ func NewGithubMergePullTool() *GithubMergePullTool {
 
 /* Use executes the merge pull request operation */
 func (tool *GithubMergePullTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubMergePullTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubListReviewsTool implements a tool for listing pull request reviews */
@@ -520,9 +606,15 @@ func NewGithubListReviewsTool() *GithubListReviewsTool {
 
 /* Use executes the list reviews operation */
 func (tool *GithubListReviewsTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubListReviewsTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubCreateReviewTool implements a tool for creating a pull request review */
@@ -562,9 +654,15 @@ func NewGithubCreateReviewTool() *GithubCreateReviewTool {
 
 /* Use executes the create review operation */
 func (tool *GithubCreateReviewTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubCreateReviewTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubUpdateReviewTool implements a tool for updating a pull request review */
@@ -604,9 +702,15 @@ func NewGithubUpdateReviewTool() *GithubUpdateReviewTool {
 
 /* Use executes the update review operation */
 func (tool *GithubUpdateReviewTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubUpdateReviewTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubListReviewCommentsTool implements a tool for listing review comments */
@@ -636,9 +740,15 @@ func NewGithubListReviewCommentsTool() *GithubListReviewCommentsTool {
 
 /* Use executes the list review comments operation */
 func (tool *GithubListReviewCommentsTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubListReviewCommentsTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* GithubCreateReviewCommentTool implements a tool for creating a review comment */
@@ -688,7 +798,13 @@ func NewGithubCreateReviewCommentTool() *GithubCreateReviewCommentTool {
 
 /* Use executes the create review comment operation */
 func (tool *GithubCreateReviewCommentTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *GithubCreateReviewCommentTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }

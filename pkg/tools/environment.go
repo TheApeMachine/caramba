@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/tools/environment"
 )
 
@@ -19,10 +20,17 @@ func NewEnvironmentTool() *EnvironmentTool {
 
 	return &EnvironmentTool{
 		operations: map[string]ToolType{
-			"command": {command.Tool, command.Use},
-			"input":   {input.Tool, input.Use},
+			"command": {command.Tool, command.Use, command.UseMCP},
+			"input":   {input.Tool, input.Use, input.UseMCP},
 		},
 	}
+}
+
+func (tool *EnvironmentTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	toolName := datura.GetMetaValue[string](artifact, "tool")
+	return tool.operations[toolName].Use(ctx, artifact)
 }
 
 /* ToMCP returns all environment tool definitions */
@@ -72,10 +80,16 @@ func NewEnvironmentCommandTool() *EnvironmentCommandTool {
 
 /* Use executes the command operation */
 func (tool *EnvironmentCommandTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	// TODO: Implement actual command execution using builder/runner
+	return artifact
+}
+
+func (tool *EnvironmentCommandTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	// TODO: Implement actual command execution using builder/runner
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 func (tool *EnvironmentCommandTool) ID() string {
@@ -118,10 +132,16 @@ func NewEnvironmentInputTool() *EnvironmentInputTool {
 
 /* Use executes the input operation */
 func (tool *EnvironmentInputTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	// TODO: Implement actual input handling using builder/runner
+	return artifact
+}
+
+func (tool *EnvironmentInputTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	// TODO: Implement actual input handling using builder/runner
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 func (tool *EnvironmentInputTool) ID() string {

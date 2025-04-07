@@ -9,7 +9,7 @@ import (
 )
 
 type Example interface {
-	Run()
+	Run() (err error)
 }
 
 var (
@@ -28,9 +28,7 @@ var (
 				return fmt.Errorf("unknown example type: %s\nAvailable types: code", args[0])
 			}
 
-			wf.Run()
-
-			return nil
+			return wf.Run()
 		},
 	}
 )

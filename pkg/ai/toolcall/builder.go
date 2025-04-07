@@ -3,6 +3,7 @@ package toolcall
 import (
 	"bufio"
 	"bytes"
+	"io"
 
 	"capnproto.org/go/capnp/v3"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -69,6 +70,16 @@ func WithName(name string) ToolCallOption {
 func WithArgs(args string) ToolCallOption {
 	return func(toolCallBuilder *ToolCallBuilder) {
 		if err := toolCallBuilder.ToolCall.SetArguments(args); errnie.Error(err) != nil {
+			return
+		}
+	}
+}
+
+func WithBytes(b []byte) ToolCallOption {
+	return func(toolCallBuilder *ToolCallBuilder) {
+		if _, err := io.Copy(
+			toolCallBuilder.buffer, bytes.NewBuffer(b),
+		); errnie.Error(err) != nil {
 			return
 		}
 	}

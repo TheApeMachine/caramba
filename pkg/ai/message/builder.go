@@ -3,6 +3,7 @@ package message
 import (
 	"bufio"
 	"bytes"
+	"io"
 
 	"capnproto.org/go/capnp/v3"
 	"github.com/theapemachine/caramba/pkg/ai/toolcall"
@@ -53,6 +54,16 @@ func New(opts ...MessageOption) *MessageBuilder {
 	}
 
 	return message
+}
+
+func WithBytes(b []byte) MessageOption {
+	return func(m *MessageBuilder) {
+		if _, err := io.Copy(
+			m.buffer, bytes.NewBuffer(b),
+		); errnie.Error(err) != nil {
+			return
+		}
+	}
 }
 
 func WithMessage(msg *Message) MessageOption {

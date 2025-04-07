@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/tools/azure"
 )
 
@@ -25,16 +26,23 @@ func NewAzureTool() *AzureTool {
 
 	return &AzureTool{
 		operations: map[string]ToolType{
-			"create_work_item": {createWorkItem.Tool, createWorkItem.Use},
-			"update_work_item": {updateWorkItem.Tool, updateWorkItem.Use},
-			"get_work_item":    {getWorkItem.Tool, getWorkItem.Use},
-			"list_work_items":  {listWorkItems.Tool, listWorkItems.Use},
-			"create_wiki_page": {createWikiPage.Tool, createWikiPage.Use},
-			"update_wiki_page": {updateWikiPage.Tool, updateWikiPage.Use},
-			"get_wiki_page":    {getWikiPage.Tool, getWikiPage.Use},
-			"list_wiki_pages":  {listWikiPages.Tool, listWikiPages.Use},
+			"create_work_item": {createWorkItem.Tool, createWorkItem.Use, createWorkItem.UseMCP},
+			"update_work_item": {updateWorkItem.Tool, updateWorkItem.Use, updateWorkItem.UseMCP},
+			"get_work_item":    {getWorkItem.Tool, getWorkItem.Use, getWorkItem.UseMCP},
+			"list_work_items":  {listWorkItems.Tool, listWorkItems.Use, listWorkItems.UseMCP},
+			"create_wiki_page": {createWikiPage.Tool, createWikiPage.Use, createWikiPage.UseMCP},
+			"update_wiki_page": {updateWikiPage.Tool, updateWikiPage.Use, updateWikiPage.UseMCP},
+			"get_wiki_page":    {getWikiPage.Tool, getWikiPage.Use, getWikiPage.UseMCP},
+			"list_wiki_pages":  {listWikiPages.Tool, listWikiPages.Use, listWikiPages.UseMCP},
 		},
 	}
+}
+
+func (tool *AzureTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	toolName := datura.GetMetaValue[string](artifact, "tool")
+	return tool.operations[toolName].Use(ctx, artifact)
 }
 
 /* ToMCP returns all Azure tool definitions */
@@ -67,9 +75,15 @@ func NewAzureCreateWorkItemTool() *AzureCreateWorkItemTool {
 
 /* Use executes the work item creation operation */
 func (tool *AzureCreateWorkItemTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *AzureCreateWorkItemTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* AzureUpdateWorkItemTool implements a tool for updating work items */
@@ -96,9 +110,15 @@ func NewAzureUpdateWorkItemTool() *AzureUpdateWorkItemTool {
 
 /* Use executes the work item update operation */
 func (tool *AzureUpdateWorkItemTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *AzureUpdateWorkItemTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* AzureGetWorkItemTool implements a tool for getting work items */
@@ -125,9 +145,15 @@ func NewAzureGetWorkItemTool() *AzureGetWorkItemTool {
 
 /* Use executes the work item retrieval operation */
 func (tool *AzureGetWorkItemTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *AzureGetWorkItemTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* AzureListWorkItemsTool implements a tool for listing work items */
@@ -149,9 +175,15 @@ func NewAzureListWorkItemsTool() *AzureListWorkItemsTool {
 
 /* Use executes the work item listing operation */
 func (tool *AzureListWorkItemsTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *AzureListWorkItemsTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* AzureCreateWikiPageTool implements a tool for creating wiki pages */
@@ -173,9 +205,15 @@ func NewAzureCreateWikiPageTool() *AzureCreateWikiPageTool {
 
 /* Use executes the wiki page creation operation */
 func (tool *AzureCreateWikiPageTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *AzureCreateWikiPageTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* AzureUpdateWikiPageTool implements a tool for updating wiki pages */
@@ -202,9 +240,15 @@ func NewAzureUpdateWikiPageTool() *AzureUpdateWikiPageTool {
 
 /* Use executes the wiki page update operation */
 func (tool *AzureUpdateWikiPageTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *AzureUpdateWikiPageTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* AzureGetWikiPageTool implements a tool for getting wiki pages */
@@ -231,9 +275,15 @@ func NewAzureGetWikiPageTool() *AzureGetWikiPageTool {
 
 /* Use executes the wiki page retrieval operation */
 func (tool *AzureGetWikiPageTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *AzureGetWikiPageTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* AzureListWikiPagesTool implements a tool for listing wiki pages */
@@ -255,7 +305,13 @@ func NewAzureListWikiPagesTool() *AzureListWikiPagesTool {
 
 /* Use executes the wiki page listing operation */
 func (tool *AzureListWikiPagesTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return artifact
+}
+
+func (tool *AzureListWikiPagesTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Hello, world!"), nil
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }

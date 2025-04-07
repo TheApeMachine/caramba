@@ -2,8 +2,8 @@ package agent
 
 import (
 	"context"
+	"errors"
 
-	prvdr "github.com/theapemachine/caramba/pkg/ai/provider"
 	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -39,20 +39,14 @@ func (srv *AgentServer) Send(ctx context.Context, call RPC_send) error {
 	errnie.Debug("agent.Send")
 
 	artifact := datura.New()
-
-	provider := errnie.Try(srv.agent.Provider())
 	result := errnie.Try(call.AllocResults())
 
-	response, release := provider.Client().Generate(
-		ctx, func(p prvdr.RPC_generate_Params) error {
-			return p.SetContext(*artifact.Artifact)
-		},
-	)
+	// Generate response using the provider
+	response := srv.agent.AIProvider.Generate(ctx, artifact)
+	if response == nil {
+		return errnie.Error(errors.New("failed to generate response"))
+	}
 
-	defer release()
-
-	out := errnie.Try(response.Struct())
-	outArtifact := errnie.Try(out.Out())
-
-	return result.SetOut(outArtifact)
+	// Set the response in the result
+	return result.SetOut(*response.Artifact)
 }

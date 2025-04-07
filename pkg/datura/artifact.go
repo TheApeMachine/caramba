@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"capnproto.org/go/capnp/v3"
@@ -208,5 +209,15 @@ func WithMeta(key string, value any) ArtifactBuilderOption {
 func WithError(err error) ArtifactBuilderOption {
 	return func(builder *ArtifactBuilder) {
 		WithEncryptedPayload([]byte(err.Error()))(builder)
+	}
+}
+
+func WithBytes(b []byte) ArtifactBuilderOption {
+	return func(builder *ArtifactBuilder) {
+		if _, err := io.Copy(
+			builder.buffer, bytes.NewBuffer(b),
+		); errnie.Error(err) != nil {
+			return
+		}
 	}
 }

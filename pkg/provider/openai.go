@@ -45,6 +45,11 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 	errnie.Debug("provider.NewOpenAIProvider")
 
 	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		// Return an error if the API key is missing
+		errnie.Error(errors.New("OPENAI_API_KEY environment variable not set"))
+		return nil
+	}
 
 	client := openai.NewClient(
 		option.WithAPIKey(apiKey),
@@ -54,6 +59,7 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 	arena := capnp.SingleSegment(nil)
 	_, segment, err := capnp.NewMessage(arena)
 	if err != nil {
+		// Log and return error on segment failure
 		errnie.Error(err)
 		return nil
 	}
@@ -80,7 +86,7 @@ func (prvdr *OpenAIProvider) ID() string {
 }
 
 func (prvdr *OpenAIProvider) Generate(
-	artifact *datura.ArtifactBuilder,
+	ctx context.Context, artifact *datura.ArtifactBuilder,
 ) *datura.ArtifactBuilder {
 	errnie.Info("provider.Generate", "supplier", "openai")
 
@@ -155,6 +161,8 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		err        error
 		completion *openai.ChatCompletion
 	)
+
+	errnie.Info("provider.handleSingleRequest", "tools", params.Tools)
 
 	if completion, err = prvdr.client.Chat.Completions.New(
 		prvdr.ctx, *params,
@@ -377,7 +385,7 @@ func (prvdr *OpenAIProvider) buildTools(
 	openaiParams *openai.ChatCompletionNewParams,
 	tools []tools.ToolType,
 ) (err error) {
-	errnie.Debug("provider.buildTools")
+	errnie.Debug("provider.buildTools", "tools", tools)
 
 	if openaiParams == nil {
 		return errnie.BadRequest(errors.New("params are nil"))

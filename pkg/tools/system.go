@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 /* SystemTool provides a base for all system operations */
@@ -20,11 +21,24 @@ func NewSystemTool() *SystemTool {
 
 	return &SystemTool{
 		Operations: map[string]ToolType{
-			"system_inspect":  {inspect.Tool, inspect.Use},
-			"system_optimize": {optimize.Tool, optimize.Use},
-			"system_message":  {message.Tool, message.Use},
+			"system_inspect":  {inspect.Tool, inspect.Use, inspect.UseMCP},
+			"system_optimize": {optimize.Tool, optimize.Use, optimize.UseMCP},
+			"system_message":  {message.Tool, message.Use, message.UseMCP},
 		},
 	}
+}
+
+func (tool *SystemTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	toolName := datura.GetMetaValue[string](artifact, "tool")
+	return tool.Operations[toolName].Use(ctx, artifact)
+}
+
+func (tool *SystemTool) UseMCP(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return tool.Operations[req.Params.Name].UseMCP(ctx, req)
 }
 
 /* ToMCP returns all System tool definitions */
@@ -61,6 +75,12 @@ func NewSystemInspectTool() *SystemInspectTool {
 
 /* Use executes the system inspection operation and returns the results */
 func (tool *SystemInspectTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return datura.New(datura.WithArtifact(artifact.Artifact))
+}
+
+func (tool *SystemInspectTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Hello, world!"), nil
@@ -97,6 +117,12 @@ func NewSystemOptimizeTool() *SystemOptimizeTool {
 
 /* Use executes the system optimization operation and returns the results */
 func (tool *SystemOptimizeTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return datura.New(datura.WithArtifact(artifact.Artifact))
+}
+
+func (tool *SystemOptimizeTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Hello, world!"), nil
@@ -129,6 +155,12 @@ func NewSystemMessageTool() *SystemMessageTool {
 
 /* Use executes the system messaging operation and returns the results */
 func (tool *SystemMessageTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	return datura.New(datura.WithArtifact(artifact.Artifact))
+}
+
+func (tool *SystemMessageTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Hello, world!"), nil

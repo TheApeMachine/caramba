@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/tools/browser"
 )
 
@@ -19,10 +20,17 @@ func NewBrowserTool() *BrowserTool {
 
 	return &BrowserTool{
 		operations: map[string]ToolType{
-			"get_content": {getContent.Tool, getContent.Use},
-			"get_links":   {getLinks.Tool, getLinks.Use},
+			"get_content": {getContent.Tool, getContent.Use, getContent.UseMCP},
+			"get_links":   {getLinks.Tool, getLinks.Use, getLinks.UseMCP},
 		},
 	}
+}
+
+func (tool *BrowserTool) Use(
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
+	toolName := datura.GetMetaValue[string](artifact, "tool")
+	return tool.operations[toolName].Use(ctx, artifact)
 }
 
 /* ToMCP returns all browser tool definitions */
@@ -60,26 +68,34 @@ func NewBrowserGetContentTool() *BrowserGetContentTool {
 
 /* Use executes the content retrieval operation */
 func (tool *BrowserGetContentTool) Use(
-	ctx context.Context, req mcp.CallToolRequest,
-) (*mcp.CallToolResult, error) {
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
 	instance, err := tool.instance.Initialize()
 	if err != nil {
-		return mcp.NewToolResultText(err.Error()), err
+		return artifact
 	}
 	defer instance.Close()
 
 	content, err := instance.GetPage().HTML()
 	if err != nil {
-		return mcp.NewToolResultText(err.Error()), err
+		return artifact
 	}
 
 	// Convert HTML to markdown
 	markdown, err := browser.ConvertToMarkdown(content)
 	if err != nil {
-		return mcp.NewToolResultText(err.Error()), err
+		return artifact
 	}
 
-	return mcp.NewToolResultText(markdown), nil
+	datura.WithPayload([]byte(markdown))
+
+	return artifact
+}
+
+func (tool *BrowserGetContentTool) UseMCP(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* BrowserGetLinksTool implements a tool for extracting links from a page */
@@ -106,19 +122,27 @@ func NewBrowserGetLinksTool() *BrowserGetLinksTool {
 
 /* Use executes the link extraction operation */
 func (tool *BrowserGetLinksTool) Use(
-	ctx context.Context, req mcp.CallToolRequest,
-) (*mcp.CallToolResult, error) {
+	ctx context.Context, artifact *datura.ArtifactBuilder,
+) *datura.ArtifactBuilder {
 	instance, err := tool.instance.Initialize()
 	if err != nil {
-		return mcp.NewToolResultText(err.Error()), err
+		return artifact
 	}
 	defer instance.Close()
 
 	// Use eval for link extraction
 	val, err := browser.NewEval(instance.GetPage(), nil, "get_links").Run()
 	if err != nil {
-		return mcp.NewToolResultText(err.Error()), err
+		return artifact
 	}
 
-	return mcp.NewToolResultText(val), nil
+	datura.WithPayload([]byte(val))
+
+	return artifact
+}
+
+func (tool *BrowserGetLinksTool) UseMCP(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }

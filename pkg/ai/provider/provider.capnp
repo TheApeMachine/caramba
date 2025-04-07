@@ -11,10 +11,5 @@ struct Provider {
 }
 
 interface RPC {
-    generate @0 (context :Artifact.Artifact) -> (out :Artifact.Artifact);
-}
-
-interface ByteStream {
-    write @0 (context :Artifact.Artifact) -> stream;
-    done  @1 ();
+    generate @0 (artifact :Artifact.Artifact) -> (out :Artifact.Artifact);
 }

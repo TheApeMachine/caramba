@@ -5,7 +5,11 @@ package tool
 import (
 	capnp "capnproto.org/go/capnp/v3"
 	text "capnproto.org/go/capnp/v3/encoding/text"
+	fc "capnproto.org/go/capnp/v3/flowcontrol"
 	schemas "capnproto.org/go/capnp/v3/schemas"
+	server "capnproto.org/go/capnp/v3/server"
+	context "context"
+	datura "github.com/theapemachine/caramba/pkg/datura"
 )
 
 type Tool capnp.Struct
@@ -14,12 +18,12 @@ type Tool capnp.Struct
 const Tool_TypeID = 0xfaf8531d9ac7b460
 
 func NewTool(s *capnp.Segment) (Tool, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
 	return Tool(st), err
 }
 
 func NewRootTool(s *capnp.Segment) (Tool, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2})
 	return Tool(st), err
 }
 
@@ -73,12 +77,36 @@ func (s Tool) SetName(v string) error {
 	return capnp.Struct(s).SetText(0, v)
 }
 
+func (s Tool) Operations() (Operation_List, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return Operation_List(p.List()), err
+}
+
+func (s Tool) HasOperations() bool {
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Tool) SetOperations(v Operation_List) error {
+	return capnp.Struct(s).SetPtr(1, v.ToPtr())
+}
+
+// NewOperations sets the operations field to a newly
+// allocated Operation_List, preferring placement in s's segment.
+func (s Tool) NewOperations(n int32) (Operation_List, error) {
+	l, err := NewOperation_List(capnp.Struct(s).Segment(), n)
+	if err != nil {
+		return Operation_List{}, err
+	}
+	err = capnp.Struct(s).SetPtr(1, l.ToPtr())
+	return l, err
+}
+
 // Tool_List is a list of Tool.
 type Tool_List = capnp.StructList[Tool]
 
 // NewTool creates a new list of Tool.
 func NewTool_List(s *capnp.Segment, sz int32) (Tool_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 2}, sz)
 	return capnp.StructList[Tool](l), err
 }
 
@@ -90,20 +118,685 @@ func (f Tool_Future) Struct() (Tool, error) {
 	return Tool(p.Struct()), err
 }
 
-const schema_d4c9c9f76e88a0d1 = "x\xda\x12\x08r`1\xe4\xdd\xcf\xc8\xc0\x14(\xc2\xca" +
-	"\xf6?a\xcb\xf1Y\xb2\xc1?~1\x08\x8a3\xfe\xbf" +
-	"\xb8\xa0#\xef\xfb\xc9\x93W\x18X\x19\xd9\x19\x18\x04\x8f" +
-	">\x12\xbc\x08\xa2\xcf\xda3\xe8\xfe/\xc8N\xd7O\xcc" +
-	"\xd4/a\xca\xcf\xcf\xd1/\xc9\xcf\xcf\xd1KN,\xc8" +
-	"+\xb0\x0aa\xcf\xcf\xcf\x09`d\x0cdafa`" +
-	"`ad`\x10\xe4\xd5b`\x08\xe4`f\x0c\x14a" +
-	"b\xe4\xcfK\xccMe\xe4a`b\xe4a`\x04\x04" +
-	"\x00\x00\xff\xff\xc8\x85!\x93"
+type Operation capnp.Struct
+
+// Operation_TypeID is the unique identifier for the type Operation.
+const Operation_TypeID = 0xe83fe24566d5cdde
+
+func NewOperation(s *capnp.Segment) (Operation, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4})
+	return Operation(st), err
+}
+
+func NewRootOperation(s *capnp.Segment) (Operation, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4})
+	return Operation(st), err
+}
+
+func ReadRootOperation(msg *capnp.Message) (Operation, error) {
+	root, err := msg.Root()
+	return Operation(root.Struct()), err
+}
+
+func (s Operation) String() string {
+	str, _ := text.Marshal(0xe83fe24566d5cdde, capnp.Struct(s))
+	return str
+}
+
+func (s Operation) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Operation) DecodeFromPtr(p capnp.Ptr) Operation {
+	return Operation(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Operation) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Operation) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Operation) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Operation) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Operation) Name() (string, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s Operation) HasName() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Operation) NameBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s Operation) SetName(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+func (s Operation) Description() (string, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.Text(), err
+}
+
+func (s Operation) HasDescription() bool {
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Operation) DescriptionBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.TextBytes(), err
+}
+
+func (s Operation) SetDescription(v string) error {
+	return capnp.Struct(s).SetText(1, v)
+}
+
+func (s Operation) Parameters() (Parameter_List, error) {
+	p, err := capnp.Struct(s).Ptr(2)
+	return Parameter_List(p.List()), err
+}
+
+func (s Operation) HasParameters() bool {
+	return capnp.Struct(s).HasPtr(2)
+}
+
+func (s Operation) SetParameters(v Parameter_List) error {
+	return capnp.Struct(s).SetPtr(2, v.ToPtr())
+}
+
+// NewParameters sets the parameters field to a newly
+// allocated Parameter_List, preferring placement in s's segment.
+func (s Operation) NewParameters(n int32) (Parameter_List, error) {
+	l, err := NewParameter_List(capnp.Struct(s).Segment(), n)
+	if err != nil {
+		return Parameter_List{}, err
+	}
+	err = capnp.Struct(s).SetPtr(2, l.ToPtr())
+	return l, err
+}
+func (s Operation) Required() (capnp.TextList, error) {
+	p, err := capnp.Struct(s).Ptr(3)
+	return capnp.TextList(p.List()), err
+}
+
+func (s Operation) HasRequired() bool {
+	return capnp.Struct(s).HasPtr(3)
+}
+
+func (s Operation) SetRequired(v capnp.TextList) error {
+	return capnp.Struct(s).SetPtr(3, v.ToPtr())
+}
+
+// NewRequired sets the required field to a newly
+// allocated capnp.TextList, preferring placement in s's segment.
+func (s Operation) NewRequired(n int32) (capnp.TextList, error) {
+	l, err := capnp.NewTextList(capnp.Struct(s).Segment(), n)
+	if err != nil {
+		return capnp.TextList{}, err
+	}
+	err = capnp.Struct(s).SetPtr(3, l.ToPtr())
+	return l, err
+}
+
+// Operation_List is a list of Operation.
+type Operation_List = capnp.StructList[Operation]
+
+// NewOperation creates a new list of Operation.
+func NewOperation_List(s *capnp.Segment, sz int32) (Operation_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4}, sz)
+	return capnp.StructList[Operation](l), err
+}
+
+// Operation_Future is a wrapper for a Operation promised by a client call.
+type Operation_Future struct{ *capnp.Future }
+
+func (f Operation_Future) Struct() (Operation, error) {
+	p, err := f.Future.Ptr()
+	return Operation(p.Struct()), err
+}
+
+type Parameter capnp.Struct
+
+// Parameter_TypeID is the unique identifier for the type Parameter.
+const Parameter_TypeID = 0xb0a6c433e133ec81
+
+func NewParameter(s *capnp.Segment) (Parameter, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4})
+	return Parameter(st), err
+}
+
+func NewRootParameter(s *capnp.Segment) (Parameter, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4})
+	return Parameter(st), err
+}
+
+func ReadRootParameter(msg *capnp.Message) (Parameter, error) {
+	root, err := msg.Root()
+	return Parameter(root.Struct()), err
+}
+
+func (s Parameter) String() string {
+	str, _ := text.Marshal(0xb0a6c433e133ec81, capnp.Struct(s))
+	return str
+}
+
+func (s Parameter) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (Parameter) DecodeFromPtr(p capnp.Ptr) Parameter {
+	return Parameter(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s Parameter) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s Parameter) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s Parameter) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s Parameter) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s Parameter) Name() (string, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s Parameter) HasName() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Parameter) NameBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s Parameter) SetName(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+func (s Parameter) Type() (string, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.Text(), err
+}
+
+func (s Parameter) HasType() bool {
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Parameter) TypeBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.TextBytes(), err
+}
+
+func (s Parameter) SetType(v string) error {
+	return capnp.Struct(s).SetText(1, v)
+}
+
+func (s Parameter) Description() (string, error) {
+	p, err := capnp.Struct(s).Ptr(2)
+	return p.Text(), err
+}
+
+func (s Parameter) HasDescription() bool {
+	return capnp.Struct(s).HasPtr(2)
+}
+
+func (s Parameter) DescriptionBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(2)
+	return p.TextBytes(), err
+}
+
+func (s Parameter) SetDescription(v string) error {
+	return capnp.Struct(s).SetText(2, v)
+}
+
+func (s Parameter) Enum() (capnp.TextList, error) {
+	p, err := capnp.Struct(s).Ptr(3)
+	return capnp.TextList(p.List()), err
+}
+
+func (s Parameter) HasEnum() bool {
+	return capnp.Struct(s).HasPtr(3)
+}
+
+func (s Parameter) SetEnum(v capnp.TextList) error {
+	return capnp.Struct(s).SetPtr(3, v.ToPtr())
+}
+
+// NewEnum sets the enum field to a newly
+// allocated capnp.TextList, preferring placement in s's segment.
+func (s Parameter) NewEnum(n int32) (capnp.TextList, error) {
+	l, err := capnp.NewTextList(capnp.Struct(s).Segment(), n)
+	if err != nil {
+		return capnp.TextList{}, err
+	}
+	err = capnp.Struct(s).SetPtr(3, l.ToPtr())
+	return l, err
+}
+
+// Parameter_List is a list of Parameter.
+type Parameter_List = capnp.StructList[Parameter]
+
+// NewParameter creates a new list of Parameter.
+func NewParameter_List(s *capnp.Segment, sz int32) (Parameter_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 4}, sz)
+	return capnp.StructList[Parameter](l), err
+}
+
+// Parameter_Future is a wrapper for a Parameter promised by a client call.
+type Parameter_Future struct{ *capnp.Future }
+
+func (f Parameter_Future) Struct() (Parameter, error) {
+	p, err := f.Future.Ptr()
+	return Parameter(p.Struct()), err
+}
+
+type RPC capnp.Client
+
+// RPC_TypeID is the unique identifier for the type RPC.
+const RPC_TypeID = 0xa986ae1a729c6d19
+
+func (c RPC) Use(ctx context.Context, params func(RPC_use_Params) error) (RPC_use_Results_Future, capnp.ReleaseFunc) {
+
+	s := capnp.Send{
+		Method: capnp.Method{
+			InterfaceID:   0xa986ae1a729c6d19,
+			MethodID:      0,
+			InterfaceName: "pkg/ai/tool/tool.capnp:RPC",
+			MethodName:    "use",
+		},
+	}
+	if params != nil {
+		s.ArgsSize = capnp.ObjectSize{DataSize: 0, PointerCount: 1}
+		s.PlaceArgs = func(s capnp.Struct) error { return params(RPC_use_Params(s)) }
+	}
+
+	ans, release := capnp.Client(c).SendCall(ctx, s)
+	return RPC_use_Results_Future{Future: ans.Future()}, release
+
+}
+
+func (c RPC) WaitStreaming() error {
+	return capnp.Client(c).WaitStreaming()
+}
+
+// String returns a string that identifies this capability for debugging
+// purposes.  Its format should not be depended on: in particular, it
+// should not be used to compare clients.  Use IsSame to compare clients
+// for equality.
+func (c RPC) String() string {
+	return "RPC(" + capnp.Client(c).String() + ")"
+}
+
+// AddRef creates a new Client that refers to the same capability as c.
+// If c is nil or has resolved to null, then AddRef returns nil.
+func (c RPC) AddRef() RPC {
+	return RPC(capnp.Client(c).AddRef())
+}
+
+// Release releases a capability reference.  If this is the last
+// reference to the capability, then the underlying resources associated
+// with the capability will be released.
+//
+// Release will panic if c has already been released, but not if c is
+// nil or resolved to null.
+func (c RPC) Release() {
+	capnp.Client(c).Release()
+}
+
+// Resolve blocks until the capability is fully resolved or the Context
+// expires.
+func (c RPC) Resolve(ctx context.Context) error {
+	return capnp.Client(c).Resolve(ctx)
+}
+
+func (c RPC) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Client(c).EncodeAsPtr(seg)
+}
+
+func (RPC) DecodeFromPtr(p capnp.Ptr) RPC {
+	return RPC(capnp.Client{}.DecodeFromPtr(p))
+}
+
+// IsValid reports whether c is a valid reference to a capability.
+// A reference is invalid if it is nil, has resolved to null, or has
+// been released.
+func (c RPC) IsValid() bool {
+	return capnp.Client(c).IsValid()
+}
+
+// IsSame reports whether c and other refer to a capability created by the
+// same call to NewClient.  This can return false negatives if c or other
+// are not fully resolved: use Resolve if this is an issue.  If either
+// c or other are released, then IsSame panics.
+func (c RPC) IsSame(other RPC) bool {
+	return capnp.Client(c).IsSame(capnp.Client(other))
+}
+
+// Update the flowcontrol.FlowLimiter used to manage flow control for
+// this client. This affects all future calls, but not calls already
+// waiting to send. Passing nil sets the value to flowcontrol.NopLimiter,
+// which is also the default.
+func (c RPC) SetFlowLimiter(lim fc.FlowLimiter) {
+	capnp.Client(c).SetFlowLimiter(lim)
+}
+
+// Get the current flowcontrol.FlowLimiter used to manage flow control
+// for this client.
+func (c RPC) GetFlowLimiter() fc.FlowLimiter {
+	return capnp.Client(c).GetFlowLimiter()
+}
+
+// A RPC_Server is a RPC with a local implementation.
+type RPC_Server interface {
+	Use(context.Context, RPC_use) error
+}
+
+// RPC_NewServer creates a new Server from an implementation of RPC_Server.
+func RPC_NewServer(s RPC_Server) *server.Server {
+	c, _ := s.(server.Shutdowner)
+	return server.New(RPC_Methods(nil, s), s, c)
+}
+
+// RPC_ServerToClient creates a new Client from an implementation of RPC_Server.
+// The caller is responsible for calling Release on the returned Client.
+func RPC_ServerToClient(s RPC_Server) RPC {
+	return RPC(capnp.NewClient(RPC_NewServer(s)))
+}
+
+// RPC_Methods appends Methods to a slice that invoke the methods on s.
+// This can be used to create a more complicated Server.
+func RPC_Methods(methods []server.Method, s RPC_Server) []server.Method {
+	if cap(methods) == 0 {
+		methods = make([]server.Method, 0, 1)
+	}
+
+	methods = append(methods, server.Method{
+		Method: capnp.Method{
+			InterfaceID:   0xa986ae1a729c6d19,
+			MethodID:      0,
+			InterfaceName: "pkg/ai/tool/tool.capnp:RPC",
+			MethodName:    "use",
+		},
+		Impl: func(ctx context.Context, call *server.Call) error {
+			return s.Use(ctx, RPC_use{call})
+		},
+	})
+
+	return methods
+}
+
+// RPC_use holds the state for a server call to RPC.use.
+// See server.Call for documentation.
+type RPC_use struct {
+	*server.Call
+}
+
+// Args returns the call's arguments.
+func (c RPC_use) Args() RPC_use_Params {
+	return RPC_use_Params(c.Call.Args())
+}
+
+// AllocResults allocates the results struct.
+func (c RPC_use) AllocResults() (RPC_use_Results, error) {
+	r, err := c.Call.AllocResults(capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_use_Results(r), err
+}
+
+// RPC_List is a list of RPC.
+type RPC_List = capnp.CapList[RPC]
+
+// NewRPC_List creates a new list of RPC.
+func NewRPC_List(s *capnp.Segment, sz int32) (RPC_List, error) {
+	l, err := capnp.NewPointerList(s, sz)
+	return capnp.CapList[RPC](l), err
+}
+
+type RPC_use_Params capnp.Struct
+
+// RPC_use_Params_TypeID is the unique identifier for the type RPC_use_Params.
+const RPC_use_Params_TypeID = 0xaadaedbd50d14e4a
+
+func NewRPC_use_Params(s *capnp.Segment) (RPC_use_Params, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_use_Params(st), err
+}
+
+func NewRootRPC_use_Params(s *capnp.Segment) (RPC_use_Params, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_use_Params(st), err
+}
+
+func ReadRootRPC_use_Params(msg *capnp.Message) (RPC_use_Params, error) {
+	root, err := msg.Root()
+	return RPC_use_Params(root.Struct()), err
+}
+
+func (s RPC_use_Params) String() string {
+	str, _ := text.Marshal(0xaadaedbd50d14e4a, capnp.Struct(s))
+	return str
+}
+
+func (s RPC_use_Params) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (RPC_use_Params) DecodeFromPtr(p capnp.Ptr) RPC_use_Params {
+	return RPC_use_Params(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s RPC_use_Params) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s RPC_use_Params) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s RPC_use_Params) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s RPC_use_Params) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s RPC_use_Params) Artifact() (datura.Artifact, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return datura.Artifact(p.Struct()), err
+}
+
+func (s RPC_use_Params) HasArtifact() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s RPC_use_Params) SetArtifact(v datura.Artifact) error {
+	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
+}
+
+// NewArtifact sets the artifact field to a newly
+// allocated datura.Artifact struct, preferring placement in s's segment.
+func (s RPC_use_Params) NewArtifact() (datura.Artifact, error) {
+	ss, err := datura.NewArtifact(capnp.Struct(s).Segment())
+	if err != nil {
+		return datura.Artifact{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
+	return ss, err
+}
+
+// RPC_use_Params_List is a list of RPC_use_Params.
+type RPC_use_Params_List = capnp.StructList[RPC_use_Params]
+
+// NewRPC_use_Params creates a new list of RPC_use_Params.
+func NewRPC_use_Params_List(s *capnp.Segment, sz int32) (RPC_use_Params_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[RPC_use_Params](l), err
+}
+
+// RPC_use_Params_Future is a wrapper for a RPC_use_Params promised by a client call.
+type RPC_use_Params_Future struct{ *capnp.Future }
+
+func (f RPC_use_Params_Future) Struct() (RPC_use_Params, error) {
+	p, err := f.Future.Ptr()
+	return RPC_use_Params(p.Struct()), err
+}
+func (p RPC_use_Params_Future) Artifact() datura.Artifact_Future {
+	return datura.Artifact_Future{Future: p.Future.Field(0, nil)}
+}
+
+type RPC_use_Results capnp.Struct
+
+// RPC_use_Results_TypeID is the unique identifier for the type RPC_use_Results.
+const RPC_use_Results_TypeID = 0xe425e4be3c5b365e
+
+func NewRPC_use_Results(s *capnp.Segment) (RPC_use_Results, error) {
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_use_Results(st), err
+}
+
+func NewRootRPC_use_Results(s *capnp.Segment) (RPC_use_Results, error) {
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	return RPC_use_Results(st), err
+}
+
+func ReadRootRPC_use_Results(msg *capnp.Message) (RPC_use_Results, error) {
+	root, err := msg.Root()
+	return RPC_use_Results(root.Struct()), err
+}
+
+func (s RPC_use_Results) String() string {
+	str, _ := text.Marshal(0xe425e4be3c5b365e, capnp.Struct(s))
+	return str
+}
+
+func (s RPC_use_Results) EncodeAsPtr(seg *capnp.Segment) capnp.Ptr {
+	return capnp.Struct(s).EncodeAsPtr(seg)
+}
+
+func (RPC_use_Results) DecodeFromPtr(p capnp.Ptr) RPC_use_Results {
+	return RPC_use_Results(capnp.Struct{}.DecodeFromPtr(p))
+}
+
+func (s RPC_use_Results) ToPtr() capnp.Ptr {
+	return capnp.Struct(s).ToPtr()
+}
+func (s RPC_use_Results) IsValid() bool {
+	return capnp.Struct(s).IsValid()
+}
+
+func (s RPC_use_Results) Message() *capnp.Message {
+	return capnp.Struct(s).Message()
+}
+
+func (s RPC_use_Results) Segment() *capnp.Segment {
+	return capnp.Struct(s).Segment()
+}
+func (s RPC_use_Results) Out() (datura.Artifact, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return datura.Artifact(p.Struct()), err
+}
+
+func (s RPC_use_Results) HasOut() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s RPC_use_Results) SetOut(v datura.Artifact) error {
+	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
+}
+
+// NewOut sets the out field to a newly
+// allocated datura.Artifact struct, preferring placement in s's segment.
+func (s RPC_use_Results) NewOut() (datura.Artifact, error) {
+	ss, err := datura.NewArtifact(capnp.Struct(s).Segment())
+	if err != nil {
+		return datura.Artifact{}, err
+	}
+	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
+	return ss, err
+}
+
+// RPC_use_Results_List is a list of RPC_use_Results.
+type RPC_use_Results_List = capnp.StructList[RPC_use_Results]
+
+// NewRPC_use_Results creates a new list of RPC_use_Results.
+func NewRPC_use_Results_List(s *capnp.Segment, sz int32) (RPC_use_Results_List, error) {
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	return capnp.StructList[RPC_use_Results](l), err
+}
+
+// RPC_use_Results_Future is a wrapper for a RPC_use_Results promised by a client call.
+type RPC_use_Results_Future struct{ *capnp.Future }
+
+func (f RPC_use_Results_Future) Struct() (RPC_use_Results, error) {
+	p, err := f.Future.Ptr()
+	return RPC_use_Results(p.Struct()), err
+}
+func (p RPC_use_Results_Future) Out() datura.Artifact_Future {
+	return datura.Artifact_Future{Future: p.Future.Field(0, nil)}
+}
+
+const schema_d4c9c9f76e88a0d1 = "x\xda\x8c\x93\xcdK\x15a\x14\xc6\xcf\xf3\x9e\xb9\x8d\x89" +
+	"\x1fw\x98\x0b\xf6A\x04b\x8b\xbe\xbc\x96\xd0B\x04\x05" +
+	"\x89\xc2E\xcdk\xad*\xc2\xc9;\xe6\xd0\xbd3\xe3|" +
+	"\x10-Z\x04\x19\xf6\x07\xb4\x89\x02WBARPK" +
+	"\x83 \x08\x17.\x84\xda\x08\x05\x89QB.Z\x84\xd1" +
+	"f\xe2\xbd\xe9x\xbb(\xb9\x9b9\x9c\xf9\xcdy~\xe7" +
+	"}\xbb\xa6\xd1\xaf\x9dh.\xe6H\xc8\xde\xdc\xaeto" +
+	"\xe5Q\xb8o\xe6\xde\x132\xda8]\x98\x9a\xf4\xd6\xe6" +
+	"\xe6\xde\x13\xc1\xbc-\x16\xcd\xfbB'2'\xc4\x19\xf3" +
+	"\x99zJ\x07\xcf-X\xb3\xab\x8bO\xc9\xd8\x0f\xa2\x1c" +
+	"t\xa2\xee\x07\xe2$\x08\xe6c\xd1GH\xef|\xef\xfe" +
+	"\xdc\xfdv\xfa9\x19m\xd8\xa4\xe54\xd5\xf8F4\xc2" +
+	"\\\xa8\x12\xe7\xc5WBz\xf5\xd4\xe5\xde\xd7\xcb\x87\x96" +
+	"ki\xaf\xb8G\xd1fY\xd1>\xcd\x7f\x18=\xbd\xd4" +
+	"\xf7m+\xdaGn\x84\xb9\xca\x8a\xb6\xc2\x8a6\xfc\xf2" +
+	"\xdd\xc3\x03\x17~\xfd\xaek\xae\xfeoE[2\x7f\xaa" +
+	"\xcf\xcc\x1f\xdaM*\xa5\xc1\x8d\xebE\xdb-\xc6\xc2\xf7" +
+	"\xcb\xc5\xd8\xf7\xcb\x9d#v\xe0\x05=Cl\x0dX\x80" +
+	"\xd48W\x93\x16\x1b\x83\x1aF;\x09#\xa7\xebI\xe4" +
+	"\xf4\xc3\x022\x10\xd7\x83\xac\x81\xce$r:\xac\x83v" +
+	"hW\"\xa9\xb1F\xa4\x81\xc8h\x1e$\x92M\x0c\xb9" +
+	"G \xb5\xc3\xd8\x1d\xb5Gb\"B~\xedK2\xd3" +
+	"rt\xf7\x0b\x02\xf2\xb4=\xdaRD'vB\"5" +
+	"j>#\xdbG\x88\xe4\x15\x86\x1c\x130\x80\x02T\xd1" +
+	"Q\xc5a\x86,\x0b\x18B\x14 \x88\x0c\xf7\x1a\x91\x1c" +
+	"c\xc8X\xc0`.\x80\x89\x8cq\xd5Yf\xc8I\x81" +
+	"V\xcf\xae8h\"\x81&Bk|+\xc8^\xd2\x92" +
+	"\x13\x8d\x84n\x10\x93\xee\xfa^\xd6\xe2xI\x05-\x04" +
+	"\x8bQ\xad\xb5\xd0\xff\xdd\x0c\xf59QR\x8e\xff\x91\xd3" +
+	"N$\x1b\x18\xb2 \xa0\xfbI\xbcc)\xe7\x03'\xb4" +
+	"c\xd7\xf7v&E\xe5/1dP#\xa5ri3" +
+	"\x7f&eBm\xeb.CN\xd5I\xd9\xdaC\x1a\xac" +
+	"/\x878\x8c6|\xe47o\x05\xa1j&t\xc6\x13" +
+	"7tJj\xed\xdbH\xab?\x99\x17u\xdf/\xabh" +
+	"\x0dY\xb4\xc3*Z\x07Cv\xd5D;\xaeR\x1cc" +
+	"\xc8\xb3\xf5\x03\xfb\xeb\x8a\x88\xbd\x9a\xd1\xb2+\xf6w\xb4" +
+	"?\x01\x00\x00\xff\xff\xd0|\x0a\x0d"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{
 		String: schema_d4c9c9f76e88a0d1,
 		Nodes: []uint64{
+			0xa986ae1a729c6d19,
+			0xaadaedbd50d14e4a,
+			0xb0a6c433e133ec81,
+			0xe425e4be3c5b365e,
+			0xe83fe24566d5cdde,
 			0xfaf8531d9ac7b460,
 		},
 		Compressed: true,

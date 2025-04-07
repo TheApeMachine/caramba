@@ -1,11 +1,13 @@
 package provider
 
 import (
+	"context"
+
 	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 type ProviderType interface {
-	Generate(*datura.ArtifactBuilder) *datura.ArtifactBuilder
+	Generate(context.Context, *datura.ArtifactBuilder) *datura.ArtifactBuilder
 }
 
 type Message struct {

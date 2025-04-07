@@ -43,39 +43,39 @@ func (service *MCP) Start() error {
 	errnie.Debug("MCP.Start")
 
 	for _, tool := range tools.NewSystemTool().ToMCP() {
-		service.stdio.AddTool(tool.Tool, tool.Use)
+		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
 	for _, tool := range tools.NewMemoryTool().ToMCP() {
-		service.stdio.AddTool(tool.Tool, tool.Use)
+		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
 	for _, tool := range tools.NewEnvironmentTool().ToMCP() {
-		service.stdio.AddTool(tool.Tool, tool.Use)
+		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
 	for _, tool := range tools.NewEditorTool().ToMCP() {
-		service.stdio.AddTool(tool.Tool, tool.Use)
+		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
 	for _, tool := range tools.NewBrowserTool().ToMCP() {
-		service.stdio.AddTool(tool.Tool, tool.Use)
+		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
 	for _, tool := range tools.NewGithubTool().ToMCP() {
-		service.stdio.AddTool(tool.Tool, tool.Use)
+		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
 	for _, tool := range tools.NewAzureTool().ToMCP() {
-		service.stdio.AddTool(tool.Tool, tool.Use)
+		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
 	for _, tool := range tools.NewSlackTool().ToMCP() {
-		service.stdio.AddTool(tool.Tool, tool.Use)
+		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
 	for _, tool := range tools.NewTrengoTool().ToMCP() {
-		service.stdio.AddTool(tool.Tool, tool.Use)
+		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
 	return nil

@@ -9,12 +9,13 @@ using Context  = import "../context/context.capnp";
 using Artifact = import "../../datura/artifact.capnp";
 using Provider = import "../provider/provider.capnp";
 using Message  = import "../message/message.capnp";
+using Tool     = import "../tool/tool.capnp";
 
 struct Agent {
     identity @0 :Identity;
     params   @1 :Params.Params;
     context  @2 :Context.Context;
-    tools    @3 :List(Text);
+    tools    @3 :List(Tool.Tool);
     provider @4 :Provider.Provider;
     status   @5 :Status;
 

@@ -1,4 +1,4 @@
-package datura
+package toolcall
 
 import (
 	"bytes"
@@ -7,10 +7,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-func (artifact *ArtifactBuilder) Bytes() []byte {
+func (tc *ToolCallBuilder) Bytes() []byte {
 	buf := bytes.NewBuffer(nil)
 
-	if _, err := io.Copy(buf, artifact); errnie.Error(err) != nil {
+	if _, err := io.Copy(buf, tc); errnie.Error(err) != nil {
 		return nil
 	}
 
