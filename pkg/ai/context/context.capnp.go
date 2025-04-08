@@ -18,12 +18,12 @@ type Context capnp.Struct
 const Context_TypeID = 0x8da6ae1c5d38ad19
 
 func NewContext(s *capnp.Segment) (Context, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2})
 	return Context(st), err
 }
 
 func NewRootContext(s *capnp.Segment) (Context, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2})
 	return Context(st), err
 }
 
@@ -59,17 +59,43 @@ func (s Context) Message() *capnp.Message {
 func (s Context) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-func (s Context) Messages() (message.Message_List, error) {
+func (s Context) Uuid() (string, error) {
 	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s Context) HasUuid() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Context) UuidBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s Context) SetUuid(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+func (s Context) State() uint64 {
+	return capnp.Struct(s).Uint64(0)
+}
+
+func (s Context) SetState(v uint64) {
+	capnp.Struct(s).SetUint64(0, v)
+}
+
+func (s Context) Messages() (message.Message_List, error) {
+	p, err := capnp.Struct(s).Ptr(1)
 	return message.Message_List(p.List()), err
 }
 
 func (s Context) HasMessages() bool {
-	return capnp.Struct(s).HasPtr(0)
+	return capnp.Struct(s).HasPtr(1)
 }
 
 func (s Context) SetMessages(v message.Message_List) error {
-	return capnp.Struct(s).SetPtr(0, v.ToPtr())
+	return capnp.Struct(s).SetPtr(1, v.ToPtr())
 }
 
 // NewMessages sets the messages field to a newly
@@ -79,7 +105,7 @@ func (s Context) NewMessages(n int32) (message.Message_List, error) {
 	if err != nil {
 		return message.Message_List{}, err
 	}
-	err = capnp.Struct(s).SetPtr(0, l.ToPtr())
+	err = capnp.Struct(s).SetPtr(1, l.ToPtr())
 	return l, err
 }
 
@@ -88,7 +114,7 @@ type Context_List = capnp.StructList[Context]
 
 // NewContext creates a new list of Context.
 func NewContext_List(s *capnp.Segment, sz int32) (Context_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2}, sz)
 	return capnp.StructList[Context](l), err
 }
 
@@ -417,27 +443,31 @@ func (f RPC_add_Results_Future) Struct() (RPC_add_Results, error) {
 	return RPC_add_Results(p.Struct()), err
 }
 
-const schema_d4c9c9f76e88a0d6 = "x\xda\x12\xb8\xec\xc0b\xc8\xab\xce\xc2\xc0\x14h\xc0\xca" +
-	"\xf6\xff\x91\xd0\xa7\x17\xb5\xc7v\xb62\x08*220" +
-	"\xb02\xb230\x18\xffdLbd`\x14fe\xb2" +
-	"g`\xfc/\xb9\xd6\"Vf\xdd\xb2^\x06AY\xc6" +
-	"\xff\xd7\x16t\xe4}?y\xf2\x0aT\xa1*\x93\x16\xa3" +
-	"\xb0)\x13;\x03\x83\xb0!X\xf1\xb3\x04m-\xd18" +
-	"\x8by\x0c\x82\xb2\xcc\x08\xc5\x0c\x8c\xc6\xa9L\\\x8c\xc2" +
-	"\xa5`\x95\x85L\xee\xc23A\xac\xffgt\xbc\xfa\x9a" +
-	"\xee\x88\xbd\x86\xd8\xcd\x022\xb1\x91)\x8b\x91!\xe6\x7f" +
-	"Av\xba~b\xa6~2K~^IjE\x89~" +
-	"2\x84\xd6KN,\xc8+\xb0\x0a\x0ap\xd6KLI" +
-	"Q\x09H,bO\xcc-\x0edafa``a" +
-	"d`\x10\xe4ub`\x08\xe4`f\x0c\x14ab\xac" +
-	"\x87jb\x14\xf8?\xcf\xfbcF\x8d\xacC\x13\x03\x03" +
-	"#\xa3\x00\x03#\xdcxf\xac\xc6;\xe7\xe7\xf1\x83\xb8" +
-	"\x01\x8c\x8c\xc8F{10\x04\xf203\x06j01" +
-	"\xfe\xcfM-.NLO-f```\xe4c`" +
-	"\x0c`fD\xb3\x85\x8f\xa0-A\x01\xce\x0c\x0c\x10+" +
-	"X\x19\x18\xe0\xf1\xc0\x08\x0b\x14AA%\x06&AV" +
-	"v\xf6\xc4\x94\x14\x07\xc6\x00FF\"\x03%(\xb5\x98" +
-	"\xbf4\xa7\xa4\x18\x10\x00\x00\xff\xff\xf1O\x8c\xde"
+const schema_d4c9c9f76e88a0d6 = "x\xda\x8cQ\xbfk\x14Q\x18\x9c\xf9\xde[\xd7\xc8%" +
+	"w\xcf=\x05\xc1C\x14E8%g\x0cB\xb0q\xf1" +
+	"\x141F\xd8w\xb5\x8a\xcf\xdb%\x89\x9a\xcd\xe1\xee\x81" +
+	"\x85\"\x04\x04\x1b\xfd\x13\x82\x95\x9dZ\xfb\x0f\x08\x01K" +
+	"\xb1\xd2\xc6B\x14\xb1\x88\x8dX=\xd9\x9c\x9e \x82V" +
+	"\xdf\x0f\xe6\x9b\x19\xe6kl\xc6zf\xf2\xb0\x86\xd8c" +
+	"\xc16\xff~\xe7\xd7\x8fw_\xbe\xb8\x0f\xb3\x9f@\xc0" +
+	"\x10\x98\xfd\xcek\x04\xa3@N\x81~\xcf\xd3\xb9\xcb{" +
+	"\x9f=y\x08\xdb\"\xfd\x9b\xc7\x0f\xf2o\x1b\x1b\xaf\x11" +
+	"H\x85<$mF'\xaa6\x9a\x91\xe7\xa0\xffp\xf5" +
+	"H{\xd7\x95\xb9u\x98\x96\xfa\x0d\x06g\xdf\xc9\x0eF" +
+	"_\xb6\x90\x9f\xe4\\dT\x08\xf8WG\xe7\x1f\xad\xbd" +
+	"\xdd\xfdy$\xae\xb7\xb4\xe5:q\xc9\x0fn,v\xdc" +
+	"r\xa7\xafW\xf32\xbb]v\xfa\xa3:\xddw\x83|" +
+	"p\xb2\x97t\xa7]\x9a\x1eL\xdc\xad\xd0\xad\x14V+" +
+	"\x0dh\x02f\xf24`\xb7+\xda\xa6\xf0\xde\xcf#6" +
+	"\xfc\xfa\x85\xcd\xa5;\xadx\x0d \x1b\xe0\x98^\xfd\x95" +
+	"\xbe\xbb\x9a\xd7\xab1!mmL}\xb6\x0d\xd8X\xd1" +
+	".\x08\xc9&\xab\xdd\xf9\xe3\x80=\xa3h\x13\xa1\x116" +
+	")\x80\xb98\x0f\xd8\x05E\xbb$\xac\x0f\x87\xcb)k" +
+	"\x10\xd6\xc0}E\xe9\xca\x8c\x13\x10N\x80~%+\x0a" +
+	"\xb7\x98\x15\x008\x05&\x8a\x7f8\x9d\xfa\xa7\xd3^\xd2" +
+	"\x05*\x9bZ\x05\xc0\xf8\x99\xfc\x15\xac1\x07 &\x08" +
+	"C\x97\xa61\x13\xf2?\x83\xedeE}x\xb3,~" +
+	"\x04\x00\x00\xff\xff\xcc]\x97\xca"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{

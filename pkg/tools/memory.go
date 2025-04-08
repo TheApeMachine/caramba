@@ -13,10 +13,10 @@ type MemoryTool struct {
 }
 
 /* NewMemoryTool creates a new Memory tool with all operations */
-func NewMemoryTool() *MemoryTool {
-	query := NewMemoryQueryTool()
-	store := NewMemoryStoreTool()
-	search := NewMemorySearchTool()
+func NewMemoryTool(artifact datura.Artifact) *MemoryTool {
+	query := NewMemoryQueryTool(artifact)
+	store := NewMemoryStoreTool(artifact)
+	search := NewMemorySearchTool(artifact)
 
 	return &MemoryTool{
 		operations: map[string]ToolType{
@@ -28,8 +28,8 @@ func NewMemoryTool() *MemoryTool {
 }
 
 func (tool *MemoryTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	toolName := datura.GetMetaValue[string](artifact, "tool")
 	return tool.operations[toolName].Use(ctx, artifact)
 }
@@ -51,7 +51,7 @@ type MemoryQueryTool struct {
 }
 
 /* NewMemoryQueryTool creates a new tool for memory queries */
-func NewMemoryQueryTool() *MemoryQueryTool {
+func NewMemoryQueryTool(artifact datura.Artifact) *MemoryQueryTool {
 	return &MemoryQueryTool{
 		Tool: mcp.NewTool(
 			"memory_query",
@@ -73,8 +73,8 @@ func NewMemoryQueryTool() *MemoryQueryTool {
 
 /* Use executes the memory query operation and returns the results */
 func (tool *MemoryQueryTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -90,7 +90,7 @@ type MemoryStoreTool struct {
 }
 
 /* NewMemoryStoreTool creates a new tool for storing memory */
-func NewMemoryStoreTool() *MemoryStoreTool {
+func NewMemoryStoreTool(artifact datura.Artifact) *MemoryStoreTool {
 	return &MemoryStoreTool{
 		Tool: mcp.NewTool(
 			"memory_store",
@@ -116,8 +116,8 @@ func NewMemoryStoreTool() *MemoryStoreTool {
 
 /* Use executes the memory store operation and returns the results */
 func (tool *MemoryStoreTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -133,7 +133,7 @@ type MemorySearchTool struct {
 }
 
 /* NewMemorySearchTool creates a new tool for memory search */
-func NewMemorySearchTool() *MemorySearchTool {
+func NewMemorySearchTool(artifact datura.Artifact) *MemorySearchTool {
 	return &MemorySearchTool{
 		Tool: mcp.NewTool(
 			"memory_search",
@@ -157,8 +157,8 @@ func NewMemorySearchTool() *MemorySearchTool {
 
 /* Use executes the memory search operation and returns the results */
 func (tool *MemorySearchTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 

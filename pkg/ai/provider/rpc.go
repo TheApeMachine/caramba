@@ -3,18 +3,22 @@ package provider
 import (
 	context "context"
 
-	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	aiprvdr "github.com/theapemachine/caramba/pkg/provider"
 )
 
 type ProviderRPCServer struct {
-	provider *ProviderBuilder
+	provider Provider
 }
 
-func NewProviderRPCServer(provider *ProviderBuilder) *ProviderRPCServer {
+func NewProviderRPCServer(
+	provider Provider,
+) *ProviderRPCServer {
 	errnie.Trace("provider.NewProviderRPCServer")
 
-	return &ProviderRPCServer{provider: provider}
+	return &ProviderRPCServer{
+		provider: provider,
+	}
 }
 
 func (srv *ProviderRPCServer) Generate(
@@ -26,18 +30,27 @@ func (srv *ProviderRPCServer) Generate(
 	artifact := errnie.Try(call.Args().Artifact())
 	result := errnie.Try(call.AllocResults())
 
-	artifactBuilder := datura.New(
-		datura.WithArtifact(&artifact),
-	)
+	response := getProvider(errnie.Try(srv.provider.Name())).Generate(ctx, artifact)
 
-	responseBuilder := srv.provider.AIProvider.Generate(ctx, artifactBuilder)
-
-	return result.SetOut(*responseBuilder.Artifact)
+	return result.SetOut(response)
 }
 
-func ProviderToClient(provider *ProviderBuilder) RPC {
+func ProviderToClient(
+	provider Provider,
+) RPC {
 	errnie.Trace("provider.ProviderToClient")
 
 	server := NewProviderRPCServer(provider)
 	return RPC_ServerToClient(server)
+}
+
+func getProvider(name string) aiprvdr.ProviderType {
+	errnie.Trace("provider.getProvider", "name", name)
+
+	switch name {
+	case "openai":
+		return aiprvdr.NewOpenAIProvider()
+	}
+
+	return nil
 }

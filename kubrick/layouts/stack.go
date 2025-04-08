@@ -12,7 +12,7 @@ type StackLayout struct {
 	Vertical   bool
 	Spacing    int
 	Components []components.Component
-	artifact   *datura.ArtifactBuilder
+	artifact   datura.Artifact
 }
 
 func NewVerticalStackLayout(spacing int) *StackLayout {

@@ -1,26 +1,19 @@
 package message
 
 import (
-	"bufio"
 	"bytes"
 	"io"
 
 	"capnproto.org/go/capnp/v3"
+	"github.com/google/uuid"
 	"github.com/theapemachine/caramba/pkg/ai/toolcall"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-type MessageBuilder struct {
-	Message *Message
-	encoder *capnp.Encoder
-	decoder *capnp.Decoder
-	buffer  *bufio.ReadWriter
-	State   MessageState
-}
+type MessageOption func(Message) Message
 
-type MessageOption func(*MessageBuilder)
-
-func New(opts ...MessageOption) *MessageBuilder {
+func New(opts ...MessageOption) Message {
 	errnie.Trace("message.New")
 
 	var (
@@ -31,91 +24,72 @@ func New(opts ...MessageOption) *MessageBuilder {
 	)
 
 	if _, seg, err = capnp.NewMessage(arena); errnie.Error(err) != nil {
-		return nil
+		return errnie.Try(NewMessage(seg)).ToState(errnie.StateError)
 	}
 
 	if msg, err = NewRootMessage(seg); errnie.Error(err) != nil {
-		return nil
+		return errnie.Try(NewMessage(seg)).ToState(errnie.StateError)
 	}
 
-	shared := bytes.NewBuffer(nil)
-	buffer := bufio.NewReadWriter(
-		bufio.NewReader(shared),
-		bufio.NewWriter(shared),
-	)
-
-	message := &MessageBuilder{
-		Message: &msg,
-		encoder: capnp.NewEncoder(buffer),
-		decoder: capnp.NewDecoder(buffer),
-		buffer:  buffer,
-	}
+	msg.SetUuid(uuid.New().String())
+	msg.SetState(uint64(errnie.StatePending))
 
 	for _, opt := range opts {
-		opt(message)
+		opt(msg)
 	}
 
-	return message
+	return datura.Register(msg)
 }
 
 func WithBytes(b []byte) MessageOption {
-	return func(m *MessageBuilder) {
+	return func(m Message) Message {
 		errnie.Trace("message.WithBytes")
-
-		if _, err := io.Copy(
-			m.buffer, bytes.NewBuffer(b),
-		); errnie.Error(err) != nil {
-			return
-		}
+		errnie.Try(io.Copy(m, bytes.NewBuffer(b)))
+		return m
 	}
 }
 
 func WithMessage(msg *Message) MessageOption {
-	return func(m *MessageBuilder) {
+	return func(m Message) Message {
 		errnie.Trace("message.WithMessage")
-
-		m.Message = msg
+		m = errnie.Try(ReadRootMessage(m.Message()))
+		return m
 	}
 }
 
 func WithRole(role string) MessageOption {
-	return func(msg *MessageBuilder) {
+	return func(m Message) Message {
 		errnie.Trace("message.WithRole")
-
-		if err := msg.Message.SetRole(role); errnie.Error(err) != nil {
-			return
-		}
+		m.SetRole(role)
+		return m
 	}
 }
 
 func WithContent(content string) MessageOption {
-	return func(msg *MessageBuilder) {
+	return func(m Message) Message {
 		errnie.Trace("message.WithContent")
-
-		if err := msg.Message.SetContent(content); errnie.Error(err) != nil {
-			return
-		}
+		m.SetContent(content)
+		return m
 	}
 }
 
 func WithName(name string) MessageOption {
-	return func(msg *MessageBuilder) {
+	return func(m Message) Message {
 		errnie.Trace("message.WithName")
-
-		if err := msg.Message.SetName(name); errnie.Error(err) != nil {
-			return
-		}
+		m = errnie.Try(ReadRootMessage(m.Message()))
+		m.SetName(name)
+		return m
 	}
 }
 
 func WithToolCalls(toolCalls []toolcall.ToolCallBuilder) MessageOption {
-	return func(msg *MessageBuilder) {
+	return func(m Message) Message {
 		errnie.Trace("message.WithToolCalls")
 
 		// Create a new ToolCall_List with the same length as toolCalls
-		tcList, err := toolcall.NewToolCall_List(msg.Message.Segment(), int32(len(toolCalls)))
+		tcList, err := toolcall.NewToolCall_List(m.Segment(), int32(len(toolCalls)))
 		if errnie.Error(err) != nil {
-			return
+			return errnie.Try(NewMessage(m.Segment())).ToState(errnie.StateError)
 		}
 
 		// Copy each ToolCall from the builders into the list
@@ -123,8 +97,7 @@ func WithToolCalls(toolCalls []toolcall.ToolCallBuilder) MessageOption {
 			tcList.Set(i, *tc.ToolCall)
 		}
 
-		if err := msg.Message.SetToolCalls(tcList); errnie.Error(err) != nil {
-			return
-		}
+		m.SetToolCalls(tcList)
+		return m
 	}
 }

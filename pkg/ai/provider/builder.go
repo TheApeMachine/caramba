@@ -1,110 +1,71 @@
 package provider
 
 import (
-	context "context"
-
 	"capnproto.org/go/capnp/v3"
+
+	"github.com/google/uuid"
 	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	aiprvdr "github.com/theapemachine/caramba/pkg/provider"
 )
 
-/*
-ProviderBuilder wraps around a Provider and decorates it with
-additional functionality, making it more convenient to use.
-*/
-type ProviderBuilder struct {
-	*Provider
-	AIProvider aiprvdr.ProviderType
-	client     RPC
-}
-
-type ProviderBuilderOption func(*ProviderBuilder)
+type ProviderOption func(Provider) Provider
 
 /*
 New creates a new Provider, wrapped in a ProviderBuilder.
 */
-func New(opts ...ProviderBuilderOption) *ProviderBuilder {
+func New(opts ...ProviderOption) Provider {
 	errnie.Trace("provider.New")
 
 	var (
-		arena = capnp.SingleSegment(nil)
-		seg   *capnp.Segment
-		prvdr Provider
-		err   error
+		arena   = capnp.SingleSegment(nil)
+		seg     *capnp.Segment
+		builder Provider
+		err     error
 	)
 
 	if _, seg, err = capnp.NewMessage(arena); errnie.Error(err) != nil {
-		return nil
+		return errnie.Try(NewProvider(seg)).ToState(errnie.StateError)
 	}
 
-	if prvdr, err = NewRootProvider(seg); errnie.Error(err) != nil {
-		return nil
+	if builder, err = NewRootProvider(seg); errnie.Error(err) != nil {
+		return errnie.Try(NewProvider(seg)).ToState(errnie.StateError)
 	}
 
-	builder := &ProviderBuilder{
-		Provider: &prvdr,
-	}
+	builder.SetUuid(uuid.New().String())
+	builder.SetState(uint64(errnie.StatePending))
 
 	for _, opt := range opts {
 		opt(builder)
 	}
 
-	builder.client = ProviderToClient(builder)
-
-	return builder
-}
-
-func (prvdr *ProviderBuilder) Generate(ctx context.Context, artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder {
-	errnie.Trace("provider.Generate")
-
-	future, release := prvdr.client.Generate(
-		ctx, func(p RPC_generate_Params) error {
-			return p.SetArtifact(*artifact.Artifact)
-		},
-	)
-
-	defer release()
-
-	var (
-		result RPC_generate_Results
-		err    error
-	)
-
-	if result, err = future.Struct(); errnie.Error(err) != nil {
-		return nil
-	}
-
-	out, err := result.Out()
-
-	if errnie.Error(err) != nil {
-		return nil
-	}
-
-	return datura.New(datura.WithArtifact(&out))
+	return datura.Register(builder)
 }
 
 /*
 WithName sets the name of the provider.
 The name serves as the key for the LLM provider.
 */
-func WithName(name string) ProviderBuilderOption {
+func WithName(name string) ProviderOption {
 	errnie.Trace("provider.WithName")
 
-	return func(p *ProviderBuilder) {
-		if err := p.SetName(name); err != nil {
-			errnie.Error(err)
+	return func(p Provider) Provider {
+		if err := p.SetName(name); errnie.Error(err) != nil {
+			return p
 		}
+
+		return p
 	}
 }
 
-func WithAIProvider(name string, provider aiprvdr.ProviderType) ProviderBuilderOption {
+func WithAIProvider(name string, provider aiprvdr.ProviderType) ProviderOption {
 	errnie.Trace("provider.WithAIProvider")
 
-	return func(p *ProviderBuilder) {
-		p.AIProvider = provider
+	return func(p Provider) Provider {
 		if err := p.SetName(name); errnie.Error(err) != nil {
-			errnie.Error(err)
+			return p
 		}
+
+		return p
 	}
 }

@@ -76,10 +76,10 @@ func (prvdr *OllamaProvider) Generate(
 	p params.Params,
 	ctx aicontext.Context,
 	tools []mcp.Tool,
-) chan *datura.ArtifactBuilder {
+) chan datura.Artifact {
 	model, err := p.Model()
 
-	out := make(chan *datura.ArtifactBuilder)
+	out := make(chan datura.Artifact)
 
 	go func() {
 		defer close(out)
@@ -136,7 +136,7 @@ func (prvdr *OllamaProvider) Name() string {
 
 func (prvdr *OllamaProvider) handleSingleRequest(
 	params *api.ChatRequest,
-	channel chan *datura.ArtifactBuilder,
+	channel chan datura.Artifact,
 ) {
 	errnie.Debug("provider.handleSingleRequest")
 
@@ -174,7 +174,7 @@ func (prvdr *OllamaProvider) handleSingleRequest(
 
 func (prvdr *OllamaProvider) handleStreamingRequest(
 	params *api.ChatRequest,
-	channel chan *datura.ArtifactBuilder,
+	channel chan datura.Artifact,
 ) {
 	errnie.Debug("provider.handleStreamingRequest")
 
@@ -398,12 +398,12 @@ func WithOllamaEmbedderEndpoint(endpoint string) OllamaEmbedderOption {
 }
 
 func (embedder *OllamaEmbedder) Generate(
-	buffer chan *datura.ArtifactBuilder,
-	fn ...func(artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder,
-) chan *datura.ArtifactBuilder {
+	buffer chan datura.Artifact,
+	fn ...func(artifact datura.Artifact) datura.Artifact,
+) chan datura.Artifact {
 	errnie.Debug("provider.OllamaEmbedder.Generate")
 
-	out := make(chan *datura.ArtifactBuilder)
+	out := make(chan datura.Artifact)
 
 	go func() {
 		defer close(out)

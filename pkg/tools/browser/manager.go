@@ -14,10 +14,10 @@ type Manager struct {
 	launch   *launcher.Launcher
 	browser  *rod.Browser
 	page     *rod.Page
-	artifact *datura.ArtifactBuilder
+	artifact datura.Artifact
 }
 
-func NewManager(artifact *datura.ArtifactBuilder) *Manager {
+func NewManager(artifact datura.Artifact) *Manager {
 	return &Manager{artifact: artifact}
 }
 

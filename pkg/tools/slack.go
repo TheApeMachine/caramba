@@ -13,18 +13,18 @@ type SlackTool struct {
 }
 
 /* NewSlackTool creates a new Slack tool with all operations */
-func NewSlackTool() *SlackTool {
-	postMessage := NewSlackPostMessageTool()
-	uploadFile := NewSlackUploadFileTool()
-	addReaction := NewSlackAddReactionTool()
-	removeReaction := NewSlackRemoveReactionTool()
-	getChannelInfo := NewSlackGetChannelInfoTool()
-	listChannels := NewSlackListChannelsTool()
-	createChannel := NewSlackCreateChannelTool()
-	getThreadReplies := NewSlackGetThreadRepliesTool()
-	searchMessages := NewSlackSearchMessagesTool()
-	updateMessage := NewSlackUpdateMessageTool()
-	deleteMessage := NewSlackDeleteMessageTool()
+func NewSlackTool(artifact datura.Artifact) *SlackTool {
+	postMessage := NewSlackPostMessageTool(artifact)
+	uploadFile := NewSlackUploadFileTool(artifact)
+	addReaction := NewSlackAddReactionTool(artifact)
+	removeReaction := NewSlackRemoveReactionTool(artifact)
+	getChannelInfo := NewSlackGetChannelInfoTool(artifact)
+	listChannels := NewSlackListChannelsTool(artifact)
+	createChannel := NewSlackCreateChannelTool(artifact)
+	getThreadReplies := NewSlackGetThreadRepliesTool(artifact)
+	searchMessages := NewSlackSearchMessagesTool(artifact)
+	updateMessage := NewSlackUpdateMessageTool(artifact)
+	deleteMessage := NewSlackDeleteMessageTool(artifact)
 
 	return &SlackTool{
 		operations: map[string]ToolType{
@@ -44,8 +44,8 @@ func NewSlackTool() *SlackTool {
 }
 
 func (tool *SlackTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	toolName := datura.GetMetaValue[string](artifact, "tool")
 	return tool.operations[toolName].Use(ctx, artifact)
 }
@@ -67,7 +67,7 @@ type SlackPostMessageTool struct {
 }
 
 /* NewSlackPostMessageTool creates a new tool for posting messages */
-func NewSlackPostMessageTool() *SlackPostMessageTool {
+func NewSlackPostMessageTool(artifact datura.Artifact) *SlackPostMessageTool {
 	return &SlackPostMessageTool{
 		Tool: mcp.NewTool(
 			"post_message",
@@ -88,8 +88,8 @@ func NewSlackPostMessageTool() *SlackPostMessageTool {
 
 /* Use executes the post message operation and returns the results */
 func (tool *SlackPostMessageTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -105,7 +105,7 @@ type SlackUploadFileTool struct {
 }
 
 /* NewSlackUploadFileTool creates a new tool for uploading files */
-func NewSlackUploadFileTool() *SlackUploadFileTool {
+func NewSlackUploadFileTool(artifact datura.Artifact) *SlackUploadFileTool {
 	return &SlackUploadFileTool{
 		Tool: mcp.NewTool(
 			"upload_file",
@@ -126,8 +126,8 @@ func NewSlackUploadFileTool() *SlackUploadFileTool {
 
 /* Use executes the upload file operation and returns the results */
 func (tool *SlackUploadFileTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -143,7 +143,7 @@ type SlackAddReactionTool struct {
 }
 
 /* NewSlackAddReactionTool creates a new tool for adding reactions */
-func NewSlackAddReactionTool() *SlackAddReactionTool {
+func NewSlackAddReactionTool(artifact datura.Artifact) *SlackAddReactionTool {
 	return &SlackAddReactionTool{
 		Tool: mcp.NewTool(
 			"add_reaction",
@@ -164,8 +164,8 @@ func NewSlackAddReactionTool() *SlackAddReactionTool {
 
 /* Use executes the add reaction operation and returns the results */
 func (tool *SlackAddReactionTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -181,7 +181,7 @@ type SlackRemoveReactionTool struct {
 }
 
 /* NewSlackRemoveReactionTool creates a new tool for removing reactions */
-func NewSlackRemoveReactionTool() *SlackRemoveReactionTool {
+func NewSlackRemoveReactionTool(artifact datura.Artifact) *SlackRemoveReactionTool {
 	return &SlackRemoveReactionTool{
 		Tool: mcp.NewTool(
 			"remove_reaction",
@@ -202,8 +202,8 @@ func NewSlackRemoveReactionTool() *SlackRemoveReactionTool {
 
 /* Use executes the remove reaction operation and returns the results */
 func (tool *SlackRemoveReactionTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -219,7 +219,7 @@ type SlackGetChannelInfoTool struct {
 }
 
 /* NewSlackGetChannelInfoTool creates a new tool for getting channel info */
-func NewSlackGetChannelInfoTool() *SlackGetChannelInfoTool {
+func NewSlackGetChannelInfoTool(artifact datura.Artifact) *SlackGetChannelInfoTool {
 	return &SlackGetChannelInfoTool{
 		Tool: mcp.NewTool(
 			"get_channel_info",
@@ -235,8 +235,8 @@ func NewSlackGetChannelInfoTool() *SlackGetChannelInfoTool {
 
 /* Use executes the get channel info operation and returns the results */
 func (tool *SlackGetChannelInfoTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -252,7 +252,7 @@ type SlackListChannelsTool struct {
 }
 
 /* NewSlackListChannelsTool creates a new tool for listing channels */
-func NewSlackListChannelsTool() *SlackListChannelsTool {
+func NewSlackListChannelsTool(artifact datura.Artifact) *SlackListChannelsTool {
 	return &SlackListChannelsTool{
 		Tool: mcp.NewTool(
 			"list_channels",
@@ -263,8 +263,8 @@ func NewSlackListChannelsTool() *SlackListChannelsTool {
 
 /* Use executes the list channels operation and returns the results */
 func (tool *SlackListChannelsTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -280,7 +280,7 @@ type SlackCreateChannelTool struct {
 }
 
 /* NewSlackCreateChannelTool creates a new tool for creating channels */
-func NewSlackCreateChannelTool() *SlackCreateChannelTool {
+func NewSlackCreateChannelTool(artifact datura.Artifact) *SlackCreateChannelTool {
 	return &SlackCreateChannelTool{
 		Tool: mcp.NewTool(
 			"create_channel",
@@ -296,8 +296,8 @@ func NewSlackCreateChannelTool() *SlackCreateChannelTool {
 
 /* Use executes the create channel operation and returns the results */
 func (tool *SlackCreateChannelTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -313,7 +313,7 @@ type SlackGetThreadRepliesTool struct {
 }
 
 /* NewSlackGetThreadRepliesTool creates a new tool for getting thread replies */
-func NewSlackGetThreadRepliesTool() *SlackGetThreadRepliesTool {
+func NewSlackGetThreadRepliesTool(artifact datura.Artifact) *SlackGetThreadRepliesTool {
 	return &SlackGetThreadRepliesTool{
 		Tool: mcp.NewTool(
 			"get_thread_replies",
@@ -334,8 +334,8 @@ func NewSlackGetThreadRepliesTool() *SlackGetThreadRepliesTool {
 
 /* Use executes the get thread replies operation and returns the results */
 func (tool *SlackGetThreadRepliesTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -351,7 +351,7 @@ type SlackSearchMessagesTool struct {
 }
 
 /* NewSlackSearchMessagesTool creates a new tool for searching messages */
-func NewSlackSearchMessagesTool() *SlackSearchMessagesTool {
+func NewSlackSearchMessagesTool(artifact datura.Artifact) *SlackSearchMessagesTool {
 	return &SlackSearchMessagesTool{
 		Tool: mcp.NewTool(
 			"search_messages",
@@ -377,8 +377,8 @@ func NewSlackSearchMessagesTool() *SlackSearchMessagesTool {
 
 /* Use executes the search messages operation and returns the results */
 func (tool *SlackSearchMessagesTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -394,7 +394,7 @@ type SlackUpdateMessageTool struct {
 }
 
 /* NewSlackUpdateMessageTool creates a new tool for updating messages */
-func NewSlackUpdateMessageTool() *SlackUpdateMessageTool {
+func NewSlackUpdateMessageTool(artifact datura.Artifact) *SlackUpdateMessageTool {
 	return &SlackUpdateMessageTool{
 		Tool: mcp.NewTool(
 			"update_message",
@@ -415,8 +415,8 @@ func NewSlackUpdateMessageTool() *SlackUpdateMessageTool {
 
 /* Use executes the update message operation and returns the results */
 func (tool *SlackUpdateMessageTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 
@@ -432,7 +432,7 @@ type SlackDeleteMessageTool struct {
 }
 
 /* NewSlackDeleteMessageTool creates a new tool for deleting messages */
-func NewSlackDeleteMessageTool() *SlackDeleteMessageTool {
+func NewSlackDeleteMessageTool(artifact datura.Artifact) *SlackDeleteMessageTool {
 	return &SlackDeleteMessageTool{
 		Tool: mcp.NewTool(
 			"delete_message",
@@ -453,8 +453,8 @@ func NewSlackDeleteMessageTool() *SlackDeleteMessageTool {
 
 /* Use executes the delete message operation and returns the results */
 func (tool *SlackDeleteMessageTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	return artifact
 }
 

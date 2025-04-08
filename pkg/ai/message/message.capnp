@@ -7,9 +7,11 @@ $Go.import("github.com/theapemachine/caramba/pkg/ai/message");
 using ToolCall = import "../toolcall/toolcall.capnp";
 
 struct Message {
-    id        @0 :Text;
-    role      @1 :Text;
-    name      @2 :Text;
-    content   @3 :Text;
-    toolCalls @4 :List(ToolCall.ToolCall);
+    uuid      @0 :Text;
+    state     @1 :UInt64;
+    id        @2 :Text;
+    role      @3 :Text;
+    name      @4 :Text;
+    content   @5 :Text;
+    toolCalls @6 :List(ToolCall.ToolCall);
 }

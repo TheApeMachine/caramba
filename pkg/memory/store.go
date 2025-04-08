@@ -4,8 +4,8 @@ import "github.com/theapemachine/caramba/pkg/datura"
 
 type Store interface {
 	Generate(
-		buffer chan *datura.ArtifactBuilder,
-		fn ...func(artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder,
-	) chan *datura.ArtifactBuilder
+		buffer chan datura.Artifact,
+		fn ...func(artifact datura.Artifact) datura.Artifact,
+	) chan datura.Artifact
 	Name() string
 }

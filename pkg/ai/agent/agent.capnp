@@ -13,21 +13,11 @@ using Tool     = import "../tool/tool.capnp";
 
 struct Agent {
     identity @0 :Identity;
-    params   @1 :Params.Params;
-    context  @2 :Context.Context;
-    tools    @3 :List(Tool.Tool);
-    provider @4 :Provider.Provider;
-    status   @5 :Status;
-
-    enum Status {
-        idle    @0;
-        ready   @1;
-        waiting @2;
-        pending @3;
-        working @4;
-        errored @5;
-        failed  @6;
-    }
+    state    @1 :UInt64;
+    params   @2 :Params.Params;
+    context  @3 :Context.Context;
+    tools    @4 :List(Tool.Tool);
+    provider @5 :Provider.Provider;
 }
 
 struct Identity {
@@ -37,5 +27,5 @@ struct Identity {
 }
 
 interface RPC {
-    send @0 (message :Message.Message) -> (out :Artifact.Artifact);
+    send @0 (artifact :Artifact.Artifact) -> (out :Artifact.Artifact);
 }

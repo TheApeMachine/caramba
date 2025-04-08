@@ -86,8 +86,8 @@ func (prvdr *OpenAIProvider) ID() string {
 }
 
 func (prvdr *OpenAIProvider) Generate(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	errnie.Info("provider.Generate", "supplier", "openai")
 
 	composed := &openai.ChatCompletionNewParams{
@@ -107,20 +107,20 @@ func (prvdr *OpenAIProvider) Generate(
 	var err error
 
 	if err = prvdr.buildMessages(composed, artifact); err != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
+		return datura.Artifact{}
 	}
 
 	// Get tools from the artifact metadata
 	toolsData := datura.GetMetaValue[[]tools.ToolType](artifact, "tools")
 	if err = prvdr.buildTools(composed, toolsData); err != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
+		return datura.Artifact{}
 	}
 
 	format := datura.GetMetaValue[string](artifact, "format")
 
 	if format != "" {
 		if err = prvdr.buildResponseFormat(composed, format); err != nil {
-			return datura.New(datura.WithError(errnie.Error(err)))
+			return datura.Artifact{}
 		}
 	}
 
@@ -154,7 +154,7 @@ handleSingleRequest processes a single (non-streaming) completion request
 */
 func (prvdr *OpenAIProvider) handleSingleRequest(
 	params *openai.ChatCompletionNewParams,
-) *datura.ArtifactBuilder {
+) datura.Artifact {
 	errnie.Trace("provider.handleSingleRequest")
 
 	var (
@@ -167,7 +167,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 	if completion, err = prvdr.client.Chat.Completions.New(
 		prvdr.ctx, *params,
 	); errnie.Error(err) != nil {
-		return datura.New(datura.WithError(err))
+		return datura.Artifact{}
 	}
 
 	msg := message.New(
@@ -183,7 +183,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		buf := bytes.NewBuffer(nil)
 
 		if _, err = io.Copy(buf, msg); errnie.Error(err) != nil {
-			return datura.New(datura.WithError(errnie.Error(err)))
+			return datura.Artifact{}
 		}
 
 		return datura.New(
@@ -192,9 +192,9 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 	}
 
 	// Create tool calls list
-	toolCallList, err := msg.Message.NewToolCalls(int32(len(toolCalls)))
+	toolCallList, err := msg.NewToolCalls(int32(len(toolCalls)))
 	if errnie.Error(err) != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
+		return datura.Artifact{}
 	}
 
 	for i, toolCall := range toolCalls {
@@ -205,17 +205,17 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 			toolcall.WithArgs(toolCall.Function.Arguments),
 		)
 
-		if err = toolCallList.Set(i, *tc.ToolCall); err != nil {
-			return datura.New(datura.WithError(errnie.Error(err)))
+		if err = toolCallList.Set(i, *tc.ToolCall); errnie.Error(err) != nil {
+			return datura.Artifact{}
 		}
 	}
 
-	msg.Message.SetToolCalls(toolCallList)
+	msg.SetToolCalls(toolCallList)
 
 	buf := bytes.NewBuffer(nil)
 
 	if _, err = io.Copy(buf, msg); errnie.Error(err) != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
+		return datura.Artifact{}
 	}
 
 	// Create artifact with message content
@@ -228,7 +228,7 @@ and emits chunks as they're received.
 */
 func (prvdr *OpenAIProvider) handleStreamingRequest(
 	params *openai.ChatCompletionNewParams,
-) *datura.ArtifactBuilder {
+) datura.Artifact {
 	errnie.Trace("provider.handleStreamingRequest")
 
 	var err error
@@ -241,7 +241,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		chunk := stream.Current()
 
 		if ok := acc.AddChunk(chunk); !ok {
-			return datura.New(datura.WithError(err))
+			return datura.Artifact{}
 		}
 
 		if content, ok := acc.JustFinishedContent(); ok && content != "" {
@@ -285,7 +285,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		)
 	}
 
-	return nil
+	return datura.Artifact{}
 }
 
 /*
@@ -293,7 +293,7 @@ buildMessages converts ContextData messages to OpenAI API format
 */
 func (prvdr *OpenAIProvider) buildMessages(
 	composed *openai.ChatCompletionNewParams,
-	artifact *datura.ArtifactBuilder,
+	artifact datura.Artifact,
 ) (err error) {
 	errnie.Trace("provider.buildMessages")
 
@@ -304,12 +304,12 @@ func (prvdr *OpenAIProvider) buildMessages(
 		return errnie.Error(err)
 	}
 
-	errnie.Info("provider.buildMessages", "messages", errnie.Try(agentCtx.Context.Messages()))
+	errnie.Info("provider.buildMessages", "messages", errnie.Try(agentCtx.Messages()))
 
-	openaiMessages := make([]openai.ChatCompletionMessageParamUnion, 0, errnie.Try(agentCtx.Context.Messages()).Len())
+	openaiMessages := make([]openai.ChatCompletionMessageParamUnion, 0, errnie.Try(agentCtx.Messages()).Len())
 
-	for i := range errnie.Try(agentCtx.Context.Messages()).Len() {
-		msg := errnie.Try(agentCtx.Context.Messages()).At(i)
+	for i := range errnie.Try(agentCtx.Messages()).Len() {
+		msg := errnie.Try(agentCtx.Messages()).At(i)
 
 		errnie.Info("msg", "mesg", errnie.Try(msg.Content()))
 
@@ -498,8 +498,8 @@ Generate implements the Generator interface for OpenAIEmbedder.
 It takes input text through a channel and returns embeddings through another channel.
 */
 func (embedder *OpenAIEmbedder) Generate(
-	artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	artifact datura.Artifact,
+) datura.Artifact {
 	errnie.Trace("provider.OpenAIEmbedder.Generate")
 
 	content, err := artifact.DecryptPayload()

@@ -61,12 +61,12 @@ func New(options ...ToolBuilderOption) *ToolBuilder {
 	return builder
 }
 
-func (tb *ToolBuilder) Use(ctx context.Context, artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder {
+func (tb *ToolBuilder) Use(ctx context.Context, artifact datura.Artifact) datura.Artifact {
 	errnie.Trace("tool.Use")
 
 	future, release := tb.client.Use(
 		ctx, func(p RPC_use_Params) error {
-			return p.SetArtifact(*artifact.Artifact)
+			return p.SetArtifact(artifact)
 		},
 	)
 
@@ -78,16 +78,18 @@ func (tb *ToolBuilder) Use(ctx context.Context, artifact *datura.ArtifactBuilder
 	)
 
 	if result, err = future.Struct(); errnie.Error(err) != nil {
-		return nil
+		return datura.New()
 	}
 
 	out, err := result.Out()
 
 	if errnie.Error(err) != nil {
-		return nil
+		return datura.New()
 	}
 
-	return datura.New(datura.WithArtifact(&out))
+	return datura.New(
+		datura.WithArtifact(out),
+	)
 }
 
 func WithBytes(b []byte) ToolBuilderOption {

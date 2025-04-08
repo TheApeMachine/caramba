@@ -30,12 +30,12 @@ encode serializes the provided value into JSON and adds it to the artifact's pay
 
 Returns an error if JSON encoding fails.
 */
-func (issues *Issues) encode(artifact *datura.ArtifactBuilder, v any) (err error) {
+func (issues *Issues) encode(artifact datura.Artifact, v any) (err error) {
 	payload := bytes.NewBuffer([]byte{})
 	if err = json.NewEncoder(payload).Encode(v); err != nil {
 		return errnie.Error(err)
 	}
-	datura.WithEncryptedPayload(payload.Bytes())(artifact)
+	artifact = datura.WithEncryptedPayload(payload.Bytes())(artifact)
 	return nil
 }
 
@@ -45,7 +45,7 @@ GetIssue retrieves a single issue from a repository.
 Uses owner, repository name, and issue number from the artifact's metadata.
 Returns an error if the retrieval fails.
 */
-func (issues *Issues) GetIssue(artifact *datura.ArtifactBuilder) (err error) {
+func (issues *Issues) GetIssue(artifact datura.Artifact) (err error) {
 	issue, _, err := issues.conn.Issues.Get(
 		context.Background(),
 		datura.GetMetaValue[string](artifact, "owner"),
@@ -64,7 +64,7 @@ ListIssues retrieves all issues from a repository.
 Uses owner and repository name from the artifact's metadata.
 Returns an error if the retrieval fails.
 */
-func (issues *Issues) ListIssues(artifact *datura.ArtifactBuilder) (err error) {
+func (issues *Issues) ListIssues(artifact datura.Artifact) (err error) {
 	issueList, _, err := issues.conn.Issues.ListByRepo(
 		context.Background(),
 		datura.GetMetaValue[string](artifact, "owner"),
@@ -83,7 +83,7 @@ CreateIssue creates a new issue in a repository.
 Uses metadata from the artifact to set issue fields like title and body.
 Returns an error if the creation fails.
 */
-func (issues *Issues) CreateIssue(artifact *datura.ArtifactBuilder) (err error) {
+func (issues *Issues) CreateIssue(artifact datura.Artifact) (err error) {
 	issue := &github.IssueRequest{
 		Title:     github.Ptr(datura.GetMetaValue[string](artifact, "title")),
 		Body:      github.Ptr(datura.GetMetaValue[string](artifact, "body")),
@@ -109,7 +109,7 @@ UpdateIssue updates an existing issue in a repository.
 Uses metadata from the artifact to update issue fields like title, body, and state.
 Returns an error if the update fails.
 */
-func (issues *Issues) UpdateIssue(artifact *datura.ArtifactBuilder) (err error) {
+func (issues *Issues) UpdateIssue(artifact datura.Artifact) (err error) {
 	update := &github.IssueRequest{
 		Title: github.Ptr(datura.GetMetaValue[string](artifact, "title")),
 		Body:  github.Ptr(datura.GetMetaValue[string](artifact, "body")),

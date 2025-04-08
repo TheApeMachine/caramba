@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tools"
 )
@@ -46,7 +47,7 @@ func (service *MCP) Start() error {
 		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
-	for _, tool := range tools.NewMemoryTool().ToMCP() {
+	for _, tool := range tools.NewMemoryTool(datura.New()).ToMCP() {
 		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
@@ -54,27 +55,27 @@ func (service *MCP) Start() error {
 		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
-	for _, tool := range tools.NewEditorTool().ToMCP() {
+	for _, tool := range tools.NewEditorTool(datura.New()).ToMCP() {
 		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
-	for _, tool := range tools.NewBrowserTool().ToMCP() {
+	for _, tool := range tools.NewBrowserTool(datura.New()).ToMCP() {
 		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
-	for _, tool := range tools.NewGithubTool().ToMCP() {
+	for _, tool := range tools.NewGithubTool(datura.New()).ToMCP() {
 		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
-	for _, tool := range tools.NewAzureTool().ToMCP() {
+	for _, tool := range tools.NewAzureTool(datura.New()).ToMCP() {
 		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
-	for _, tool := range tools.NewSlackTool().ToMCP() {
+	for _, tool := range tools.NewSlackTool(datura.New()).ToMCP() {
 		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 
-	for _, tool := range tools.NewTrengoTool().ToMCP() {
+	for _, tool := range tools.NewTrengoTool(datura.New()).ToMCP() {
 		service.stdio.AddTool(tool.Tool, tool.UseMCP)
 	}
 

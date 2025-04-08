@@ -79,7 +79,7 @@ func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
 	)
 
 	// Get the Dockerfile content from the artifact
-	ch := make(chan *datura.ArtifactBuilder)
+	ch := make(chan datura.Artifact)
 
 	go func() {
 		ch <- artifact

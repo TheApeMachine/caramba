@@ -28,7 +28,7 @@ func NewCause(options ...CauseOption) *Cause {
 	return cause
 }
 
-func (cause *Cause) Check(artifact *datura.ArtifactBuilder) bool {
+func (cause *Cause) Check(artifact datura.Artifact) bool {
 	if cause.Role != datura.ArtifactRoleUnknown && cause.Role != datura.ArtifactRole(artifact.Role()) {
 		return false
 	}

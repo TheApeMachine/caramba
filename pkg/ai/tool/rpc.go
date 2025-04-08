@@ -3,7 +3,6 @@ package tool
 import (
 	context "context"
 
-	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -23,21 +22,14 @@ func (srv *ToolRPCServer) Use(
 ) (err error) {
 	errnie.Trace("tool.Use RPC", "tool_name", srv.tool.Name)
 
-	artifact := errnie.Try(call.Args().Artifact())
 	result := errnie.Try(call.AllocResults())
 
-	artifactBuilder := datura.New(
-		datura.WithArtifact(&artifact),
-	)
-
-	responseBuilder := srv.tool.MCPTool.Use(ctx, artifactBuilder)
-
-	return result.SetOut(*responseBuilder.Artifact)
+	return result.SetOut(srv.tool.MCPTool.Use(
+		ctx, errnie.Try(call.Args().Artifact()),
+	))
 }
 
 func ToolToClient(tool *ToolBuilder) RPC {
 	errnie.Trace("tool.ToolToClient")
-
-	server := NewToolRPCServer(tool)
-	return RPC_ServerToClient(server)
+	return RPC_ServerToClient(NewToolRPCServer(tool))
 }

@@ -8,16 +8,14 @@ import (
 )
 
 // GetMetaValue retrieves a typed metadata value from an artifact
-func GetMetaValue[T any](builder *ArtifactBuilder, key string) T {
-	errnie.Trace("datura.GetMetaValue")
-
+func GetMetaValue[T any](artifact Artifact, key string) T {
 	var (
 		metadata Artifact_Metadata_List
 		err      error
 		result   T
 	)
 
-	if metadata, err = builder.Metadata(); errnie.Error(err) != nil {
+	if metadata, err = artifact.Metadata(); errnie.Error(err) != nil {
 		return *new(T)
 	}
 
@@ -88,11 +86,11 @@ func GetMetaValue[T any](builder *ArtifactBuilder, key string) T {
 }
 
 // SetMetaValue sets a metadata value with the appropriate type
-func (artifact *ArtifactBuilder) SetMetaValue(key string, val any) error {
-	errnie.Trace("datura.SetMetaValue")
+func (artifact Artifact) SetMetaValue(key string, val any) Artifact {
+	errnie.Trace("datura.SetMetaValue", "key", key, "value", val)
 
 	// Create a new option function
-	setOption := func(builder *ArtifactBuilder) {
+	setOption := func(builder Artifact) {
 		var (
 			mdList    Artifact_Metadata_List
 			newMdList Artifact_Metadata_List
@@ -146,5 +144,5 @@ func (artifact *ArtifactBuilder) SetMetaValue(key string, val any) error {
 
 	// Apply the option
 	setOption(artifact)
-	return nil
+	return artifact
 }

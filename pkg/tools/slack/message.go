@@ -15,7 +15,7 @@ Takes a channel ID, message text, optional thread timestamp, and an artifact con
 additional message options like blocks and attachments. Returns the channel ID and
 message timestamp on success, or an error if the post fails.
 */
-func (client *Client) PostMessage(channel, text, threadTS string, artifact *datura.ArtifactBuilder) (interface{}, error) {
+func (client *Client) PostMessage(channel, text, threadTS string, artifact datura.Artifact) (interface{}, error) {
 	msgOptions := []slack.MsgOption{
 		slack.MsgOptionText(text, false),
 	}

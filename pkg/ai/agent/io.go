@@ -1,24 +1,33 @@
-package datura
+package agent
 
 import (
 	"io"
 
 	capnp "capnproto.org/go/capnp/v3"
+	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
+type AgentState uint
+
+const (
+	AgentStateUninitialized AgentState = iota
+	AgentStateInitialized
+	AgentStateBuffered
+)
+
 /*
-Read implements the io.Reader interface for the Artifact.
-It streams the artifact using a Cap'n Proto Encoder.
+Read implements the io.Reader interface for the Agent.
+It streams the agent using a Cap'n Proto Encoder.
 */
-func (artifact Artifact) Read(p []byte) (n int, err error) {
-	errnie.Trace("artifact.Read")
+func (agent Agent) Read(p []byte) (n int, err error) {
+	errnie.Trace("agent.Read")
 
-	builder := NewRegistry().Get(artifact.ID())
+	builder := datura.NewRegistry().Get(agent.ID())
 
-	if artifact.Is(errnie.StateReady) {
+	if agent.Is(errnie.StateReady) {
 		// Buffer is empty, encode current message state
-		if err = builder.Encoder.Encode(artifact.Message()); err != nil {
+		if err = builder.Encoder.Encode(agent.Message()); err != nil {
 			return 0, errnie.Error(err)
 		}
 
@@ -26,20 +35,20 @@ func (artifact Artifact) Read(p []byte) (n int, err error) {
 			return 0, errnie.Error(err)
 		}
 
-		artifact.ToState(errnie.StateBusy)
+		agent.ToState(errnie.StateBusy)
 	}
 
 	return builder.Buffer.Read(p)
 }
 
 /*
-Write implements the io.Writer interface for the Artifact.
+Write implements the io.Writer interface for the Agent.
 It streams the provided bytes using a Cap'n Proto Decoder.
 */
-func (artifact Artifact) Write(p []byte) (n int, err error) {
-	errnie.Trace("artifact.Write")
+func (agent Agent) Write(p []byte) (n int, err error) {
+	errnie.Trace("agent.Write")
 
-	builder := NewRegistry().Get(artifact.ID())
+	builder := datura.NewRegistry().Get(agent.ID())
 
 	if len(p) == 0 {
 		return 0, nil
@@ -65,22 +74,21 @@ func (artifact Artifact) Write(p []byte) (n int, err error) {
 		return n, errnie.Error(err)
 	}
 
-	if artifact, err = ReadRootArtifact(msg); err != nil {
+	if agent, err = ReadRootAgent(msg); err != nil {
 		return n, errnie.Error(err)
 	}
 
-	artifact.ToState(errnie.StateReady)
+	agent.ToState(errnie.StateReady)
 	return n, nil
 }
 
 /*
-Close implements the io.Closer interface for the Artifact.
+Close implements the io.Closer interface for the Agent.
 */
-func (artifact Artifact) Close() error {
-	errnie.Trace("artifact.Close")
+func (agent Agent) Close() error {
+	errnie.Trace("agent.Close")
 
-	registry := NewRegistry()
-	builder := registry.Get(artifact.ID())
+	builder := datura.NewRegistry().Get(agent.ID())
 
 	if err := builder.Buffer.Flush(); err != nil {
 		return errnie.Error(err)
@@ -89,7 +97,6 @@ func (artifact Artifact) Close() error {
 	builder.Buffer = nil
 	builder.Encoder = nil
 	builder.Decoder = nil
-	registry.Unregister(artifact.ID())
 
 	return nil
 }

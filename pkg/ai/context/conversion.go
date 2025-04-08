@@ -7,7 +7,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-func (ctx *ContextBuilder) Bytes() []byte {
+func (ctx Context) Bytes() []byte {
 	errnie.Trace("context.Bytes")
 
 	buf := bytes.NewBuffer(nil)

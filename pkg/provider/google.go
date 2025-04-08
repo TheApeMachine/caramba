@@ -92,10 +92,10 @@ func (prvdr *GoogleProvider) Generate(
 	params params.Params,
 	ctx aicontext.Context,
 	tools []mcp.Tool,
-) chan *datura.ArtifactBuilder {
+) chan datura.Artifact {
 	errnie.Debug("provider.GoogleProvider.Generate")
 
-	out := make(chan *datura.ArtifactBuilder)
+	out := make(chan datura.Artifact)
 
 	// Store the params for use in other methods
 	prvdr.params = params

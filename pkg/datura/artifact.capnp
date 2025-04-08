@@ -4,16 +4,17 @@ $Go.package("datura");
 $Go.import("github.com/theapemachine/caramba/pkg/datura");
 
 struct Artifact {
-    uuid          @0 :Data;
-    checksum      @1 :Data;
-    timestamp     @2 :Int64;
-    mediatype     @3 :Text;
-    origin        @4 :Text;
-    issuer        @5 :Text;
-    role          @6 :UInt32;
-    scope         @7 :UInt32;
-    pseudonymHash @8 :Data;
-    merkleRoot    @9 :Data;
+    uuid          @0  :Text;
+    state         @1  :UInt64;
+    checksum      @2  :Data;
+    timestamp     @3  :Int64;
+    mediatype     @4  :Text;
+    origin        @5  :Text;
+    issuer        @6  :Text;
+    role          @7  :UInt32;
+    scope         @8  :UInt32;
+    pseudonymHash @9  :Data;
+    merkleRoot    @10 :Data;
     struct Metadata {
         key @0 :Text;
         value :union {
@@ -24,16 +25,16 @@ struct Artifact {
             binaryValue @5 :Data;
         }
     }
-    metadata           @10 :List(Metadata);
-    payload            @11 :Data;
-    encryptedPayload   @12 :Data;
-    encryptedKey       @13 :Data;
-    ephemeralPublicKey @14 :Data;
+    metadata           @11 :List(Metadata);
+    payload            @12 :Data;
+    encryptedPayload   @13 :Data;
+    encryptedKey       @14 :Data;
+    ephemeralPublicKey @15 :Data;
     struct Approval {
         zkProof                @0 :Data;
         operatorBlindSignature @1 :Data;
     }
-    approvals @15 :List(Approval);
-    signature @16 :Data;
+    approvals @16 :List(Approval);
+    signature @17 :Data;
 }
 

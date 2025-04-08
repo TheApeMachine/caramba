@@ -12,11 +12,11 @@ import (
 
 type Eval struct {
 	page     *rod.Page
-	artifact *datura.ArtifactBuilder	
+	artifact datura.Artifact
 	op       string
 }
 
-func NewEval(page *rod.Page, artifact *datura.ArtifactBuilder, op string) *Eval {
+func NewEval(page *rod.Page, artifact datura.Artifact, op string) *Eval {
 	return &Eval{page: page, artifact: artifact, op: op}
 }
 
@@ -29,7 +29,7 @@ func (eval *Eval) Run() (result string, err error) {
 
 	// Create store and input channel
 	store := fs.NewStore()
-	inputChan := make(chan *datura.ArtifactBuilder, 1)
+	inputChan := make(chan datura.Artifact, 1)
 	inputChan <- scriptArtifact
 	close(inputChan)
 

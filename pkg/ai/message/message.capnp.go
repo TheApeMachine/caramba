@@ -15,12 +15,12 @@ type Message capnp.Struct
 const Message_TypeID = 0x82401d7c68f14b9e
 
 func NewMessage(s *capnp.Segment) (Message, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 5})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 6})
 	return Message(st), err
 }
 
 func NewRootMessage(s *capnp.Segment) (Message, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 5})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 6})
 	return Message(st), err
 }
 
@@ -56,89 +56,115 @@ func (s Message) Message() *capnp.Message {
 func (s Message) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-func (s Message) Id() (string, error) {
+func (s Message) Uuid() (string, error) {
 	p, err := capnp.Struct(s).Ptr(0)
+	return p.Text(), err
+}
+
+func (s Message) HasUuid() bool {
+	return capnp.Struct(s).HasPtr(0)
+}
+
+func (s Message) UuidBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(0)
+	return p.TextBytes(), err
+}
+
+func (s Message) SetUuid(v string) error {
+	return capnp.Struct(s).SetText(0, v)
+}
+
+func (s Message) State() uint64 {
+	return capnp.Struct(s).Uint64(0)
+}
+
+func (s Message) SetState(v uint64) {
+	capnp.Struct(s).SetUint64(0, v)
+}
+
+func (s Message) Id() (string, error) {
+	p, err := capnp.Struct(s).Ptr(1)
 	return p.Text(), err
 }
 
 func (s Message) HasId() bool {
-	return capnp.Struct(s).HasPtr(0)
+	return capnp.Struct(s).HasPtr(1)
 }
 
 func (s Message) IdBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(0)
+	p, err := capnp.Struct(s).Ptr(1)
 	return p.TextBytes(), err
 }
 
 func (s Message) SetId(v string) error {
-	return capnp.Struct(s).SetText(0, v)
+	return capnp.Struct(s).SetText(1, v)
 }
 
 func (s Message) Role() (string, error) {
-	p, err := capnp.Struct(s).Ptr(1)
+	p, err := capnp.Struct(s).Ptr(2)
 	return p.Text(), err
 }
 
 func (s Message) HasRole() bool {
-	return capnp.Struct(s).HasPtr(1)
+	return capnp.Struct(s).HasPtr(2)
 }
 
 func (s Message) RoleBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(1)
+	p, err := capnp.Struct(s).Ptr(2)
 	return p.TextBytes(), err
 }
 
 func (s Message) SetRole(v string) error {
-	return capnp.Struct(s).SetText(1, v)
+	return capnp.Struct(s).SetText(2, v)
 }
 
 func (s Message) Name() (string, error) {
-	p, err := capnp.Struct(s).Ptr(2)
+	p, err := capnp.Struct(s).Ptr(3)
 	return p.Text(), err
 }
 
 func (s Message) HasName() bool {
-	return capnp.Struct(s).HasPtr(2)
+	return capnp.Struct(s).HasPtr(3)
 }
 
 func (s Message) NameBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(2)
+	p, err := capnp.Struct(s).Ptr(3)
 	return p.TextBytes(), err
 }
 
 func (s Message) SetName(v string) error {
-	return capnp.Struct(s).SetText(2, v)
+	return capnp.Struct(s).SetText(3, v)
 }
 
 func (s Message) Content() (string, error) {
-	p, err := capnp.Struct(s).Ptr(3)
+	p, err := capnp.Struct(s).Ptr(4)
 	return p.Text(), err
 }
 
 func (s Message) HasContent() bool {
-	return capnp.Struct(s).HasPtr(3)
+	return capnp.Struct(s).HasPtr(4)
 }
 
 func (s Message) ContentBytes() ([]byte, error) {
-	p, err := capnp.Struct(s).Ptr(3)
+	p, err := capnp.Struct(s).Ptr(4)
 	return p.TextBytes(), err
 }
 
 func (s Message) SetContent(v string) error {
-	return capnp.Struct(s).SetText(3, v)
+	return capnp.Struct(s).SetText(4, v)
 }
 
 func (s Message) ToolCalls() (toolcall.ToolCall_List, error) {
-	p, err := capnp.Struct(s).Ptr(4)
+	p, err := capnp.Struct(s).Ptr(5)
 	return toolcall.ToolCall_List(p.List()), err
 }
 
 func (s Message) HasToolCalls() bool {
-	return capnp.Struct(s).HasPtr(4)
+	return capnp.Struct(s).HasPtr(5)
 }
 
 func (s Message) SetToolCalls(v toolcall.ToolCall_List) error {
-	return capnp.Struct(s).SetPtr(4, v.ToPtr())
+	return capnp.Struct(s).SetPtr(5, v.ToPtr())
 }
 
 // NewToolCalls sets the toolCalls field to a newly
@@ -148,7 +174,7 @@ func (s Message) NewToolCalls(n int32) (toolcall.ToolCall_List, error) {
 	if err != nil {
 		return toolcall.ToolCall_List{}, err
 	}
-	err = capnp.Struct(s).SetPtr(4, l.ToPtr())
+	err = capnp.Struct(s).SetPtr(5, l.ToPtr())
 	return l, err
 }
 
@@ -157,7 +183,7 @@ type Message_List = capnp.StructList[Message]
 
 // NewMessage creates a new list of Message.
 func NewMessage_List(s *capnp.Segment, sz int32) (Message_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 5}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 6}, sz)
 	return capnp.StructList[Message](l), err
 }
 
@@ -169,23 +195,26 @@ func (f Message_Future) Struct() (Message, error) {
 	return Message(p.Struct()), err
 }
 
-const schema_d4c9c9f76e88a0d9 = "x\xda<\xc8=J3Q\x18\xc5\xf1s\xees\xf3\xbe" +
-	"MLrq*1\xd8\xd8\x18\xd0A\xec\xac\x82)E" +
-	"\xc8\xe3\x0e\x868\xc4\xe0|\xe1La\x11\xf1\x83\x88\x11" +
-	"#\xb8\x02\xb1\x14\x1b\xd7\x91\xdeFp\x13V\x96#\x83" +
-	"\x98\xea\x9c\xdf\xbf\xf5\xda\xb5\xdbK\xa9\x81\xd1\xd5\xda\xbf" +
-	"\xf2i\xff\xebx\xdc\xee^\xc3\xb5Y~<O\x93\xef" +
-	"\xf9\xfc\x1d\xb5\xda\x7f`\xa7\xcd\x0e\x977Y\xdd\x0d\xae" +
-	"\x11\xbd2;\x19\xfa\xc1\xc8\x8f%\xcc\xf3`\x18\xfa\xf1" +
-	"\xefn\x0d\x82,\xc9v\x0f\xc2\xbcY\xb1O\xaa'\x16" +
-	"\xb0\x04\xdc\xf9\x0a\xa0gB\x9d\x18:\xd2c\x15\xaf:" +
-	"\x80\x8e\x85:5t\xc6x4\x80\xbb\xa9\xe2\xa5Pg" +
-	"\x86N\xc4\xa3\x00\xeen\x0f\xd0\x89P\x1f\x0d\x9d\xb5\x1e" +
-	"-\xe0\x1e\x0e\x01\x9d\x09\xf5\xc5PFG\xac\xc3\xb0\x0e" +
-	"6O\xd3(\\ \x09\xe2\x05.\x06iR\x84I\xf1" +
-	"\xe7\xb2H\xd3\xa8\x17D\x11\x98\xb3\x01\xf6\x85l\x95\xfa" +
-	"y\xfb\xb6\xde\xc8\xee\x01V\xf1'\x00\x00\xff\xff\xade" +
-	">\x01"
+const schema_d4c9c9f76e88a0d9 = "x\xdaD\xcb1K\xeb`\x14\xc6\xf1\xe7y\xdf$\x97" +
+	"Bo\xdb\x97\x9b\xe9\xd2r\x97\xbbX\xd0\xa2nN\xc5" +
+	"\x8e\"\xf4\xf8\x0dB\x0d\xb5\x98&\xc1\xa4\x9b \xb8(" +
+	"8\xf8\x0d\xc4o\xa0\x83\x82B\x85\x0a\x15Z\xa8\xe0\xe0" +
+	"\"\xf8\x01\\\x9d\x1c#A\xac\xd39\xbf\xff\xe1T&" +
+	"Mk\xf9w\xa4\xa0\xa4j;\xd9\xd9\xc6\xfb\xce~\xad" +
+	"y\x08\xa9\x91\xd9\xcb\xf9q\xf81\x9d>\xc3v~\x01" +
+	"\xab5\xd6\xf9g\x91\xf9\xba\xc0S\xa2\x95\xc5\xbb\xdd\x86" +
+	"\xd7k\xf4\xb5\x9f$^\xd7o\xf4\xbf\xe6R\xc7\x8b\xc3" +
+	"xm\xd3O\xca9\xdb\xa4T\xb5\x05X\x04\xccu\x1d" +
+	"\x90KM\x19*\x92.\xf3v\xbb\x02\xc8\x95\xa6\x8c\x14" +
+	"\x8d\xa2K\x05\x98\xbb\xbf\x80\xdch\xcaX\xd1h\xe5R" +
+	"\x03\xe6>\xff\x1ej\xcaD\xd1X\xda\xa5\x05\x98\x87<" +
+	"\x8e4e\xa6hl\xcb\xa5\x0d\x98\xe9: cMy" +
+	"R4\x8e\xed\xd2\x01\xcc\xe3\x16 3MyS,\x0f" +
+	"\x06\xbdm\x16\xa1X\x04\xff%\xa9\x97\xfa,@\xb1\x00" +
+	"\xea\x9fCy/\x0a\xfc9B\xaf?\xc7A'\x0aS" +
+	"?L\xbf\x9d\xa5Q\x14\xb4\xbc \x00\x13\x96\xc0\xb6&" +
+	"+\x99\xbc\x1e]\xfc/\xc5'\x00\xf3\xf8\x19\x00\x00\xff" +
+	"\xff\x90\xcfMH"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{

@@ -13,7 +13,7 @@ import (
 
 type Simple struct {
 	app      *kubrick.App
-	artifact *datura.ArtifactBuilder
+	artifact datura.Artifact
 }
 
 func NewSimple() *Simple {
@@ -36,9 +36,6 @@ func NewSimple() *Simple {
 
 func (simple *Simple) Run() (err error) {
 	for err == nil {
-		// Create a new artifact for each iteration
-		simple.artifact = datura.New()
-
 		if _, err = io.Copy(os.Stdout, simple); err != nil {
 			if err == io.EOF {
 				return nil

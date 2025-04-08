@@ -10,7 +10,6 @@ import (
 	server "capnproto.org/go/capnp/v3/server"
 	context "context"
 	context2 "github.com/theapemachine/caramba/pkg/ai/context"
-	message "github.com/theapemachine/caramba/pkg/ai/message"
 	params "github.com/theapemachine/caramba/pkg/ai/params"
 	provider "github.com/theapemachine/caramba/pkg/ai/provider"
 	tool "github.com/theapemachine/caramba/pkg/ai/tool"
@@ -86,6 +85,14 @@ func (s Agent) NewIdentity() (Identity, error) {
 	}
 	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
 	return ss, err
+}
+
+func (s Agent) State() uint64 {
+	return capnp.Struct(s).Uint64(0)
+}
+
+func (s Agent) SetState(v uint64) {
+	capnp.Struct(s).SetUint64(0, v)
 }
 
 func (s Agent) Params() (params.Params, error) {
@@ -183,14 +190,6 @@ func (s Agent) NewProvider() (provider.Provider, error) {
 	return ss, err
 }
 
-func (s Agent) Status() Agent_Status {
-	return Agent_Status(capnp.Struct(s).Uint16(0))
-}
-
-func (s Agent) SetStatus(v Agent_Status) {
-	capnp.Struct(s).SetUint16(0, uint16(v))
-}
-
 // Agent_List is a list of Agent.
 type Agent_List = capnp.StructList[Agent]
 
@@ -218,75 +217,6 @@ func (p Agent_Future) Context() context2.Context_Future {
 }
 func (p Agent_Future) Provider() provider.Provider_Future {
 	return provider.Provider_Future{Future: p.Future.Field(4, nil)}
-}
-
-type Agent_Status uint16
-
-// Agent_Status_TypeID is the unique identifier for the type Agent_Status.
-const Agent_Status_TypeID = 0xb08cef90775e4be3
-
-// Values of Agent_Status.
-const (
-	Agent_Status_idle    Agent_Status = 0
-	Agent_Status_ready   Agent_Status = 1
-	Agent_Status_waiting Agent_Status = 2
-	Agent_Status_pending Agent_Status = 3
-	Agent_Status_working Agent_Status = 4
-	Agent_Status_errored Agent_Status = 5
-	Agent_Status_failed  Agent_Status = 6
-)
-
-// String returns the enum's constant name.
-func (c Agent_Status) String() string {
-	switch c {
-	case Agent_Status_idle:
-		return "idle"
-	case Agent_Status_ready:
-		return "ready"
-	case Agent_Status_waiting:
-		return "waiting"
-	case Agent_Status_pending:
-		return "pending"
-	case Agent_Status_working:
-		return "working"
-	case Agent_Status_errored:
-		return "errored"
-	case Agent_Status_failed:
-		return "failed"
-
-	default:
-		return ""
-	}
-}
-
-// Agent_StatusFromString returns the enum value with a name,
-// or the zero value if there's no such value.
-func Agent_StatusFromString(c string) Agent_Status {
-	switch c {
-	case "idle":
-		return Agent_Status_idle
-	case "ready":
-		return Agent_Status_ready
-	case "waiting":
-		return Agent_Status_waiting
-	case "pending":
-		return Agent_Status_pending
-	case "working":
-		return Agent_Status_working
-	case "errored":
-		return Agent_Status_errored
-	case "failed":
-		return Agent_Status_failed
-
-	default:
-		return 0
-	}
-}
-
-type Agent_Status_List = capnp.EnumList[Agent_Status]
-
-func NewAgent_Status_List(s *capnp.Segment, sz int32) (Agent_Status_List, error) {
-	return capnp.NewEnumList[Agent_Status](s, sz)
 }
 
 type Identity capnp.Struct
@@ -615,25 +545,25 @@ func (s RPC_send_Params) Message() *capnp.Message {
 func (s RPC_send_Params) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-func (s RPC_send_Params) Message_() (message.Message, error) {
+func (s RPC_send_Params) Artifact() (datura.Artifact, error) {
 	p, err := capnp.Struct(s).Ptr(0)
-	return message.Message(p.Struct()), err
+	return datura.Artifact(p.Struct()), err
 }
 
-func (s RPC_send_Params) HasMessage_() bool {
+func (s RPC_send_Params) HasArtifact() bool {
 	return capnp.Struct(s).HasPtr(0)
 }
 
-func (s RPC_send_Params) SetMessage_(v message.Message) error {
+func (s RPC_send_Params) SetArtifact(v datura.Artifact) error {
 	return capnp.Struct(s).SetPtr(0, capnp.Struct(v).ToPtr())
 }
 
-// NewMessage_ sets the message_ field to a newly
-// allocated message.Message struct, preferring placement in s's segment.
-func (s RPC_send_Params) NewMessage_() (message.Message, error) {
-	ss, err := message.NewMessage(capnp.Struct(s).Segment())
+// NewArtifact sets the artifact field to a newly
+// allocated datura.Artifact struct, preferring placement in s's segment.
+func (s RPC_send_Params) NewArtifact() (datura.Artifact, error) {
+	ss, err := datura.NewArtifact(capnp.Struct(s).Segment())
 	if err != nil {
-		return message.Message{}, err
+		return datura.Artifact{}, err
 	}
 	err = capnp.Struct(s).SetPtr(0, capnp.Struct(ss).ToPtr())
 	return ss, err
@@ -655,8 +585,8 @@ func (f RPC_send_Params_Future) Struct() (RPC_send_Params, error) {
 	p, err := f.Future.Ptr()
 	return RPC_send_Params(p.Struct()), err
 }
-func (p RPC_send_Params_Future) Message_() message.Message_Future {
-	return message.Message_Future{Future: p.Future.Field(0, nil)}
+func (p RPC_send_Params_Future) Artifact() datura.Artifact_Future {
+	return datura.Artifact_Future{Future: p.Future.Field(0, nil)}
 }
 
 type RPC_send_Results capnp.Struct
@@ -750,54 +680,46 @@ func (p RPC_send_Results_Future) Out() datura.Artifact_Future {
 	return datura.Artifact_Future{Future: p.Future.Field(0, nil)}
 }
 
-const schema_d4c9c9f76e88a0d0 = "x\xda\x8cR]h\\E\x18=g\xe6\xfeXM\xb2" +
-	";\xdd\x15\x0dd\x0d\x88}i0\xb1\x09BX\xd0\x8d" +
-	"\xb5\xc5\xda\xf8\xb3\x93\x08\x15\xff\xf0\xd2\x9d\xc6K7w" +
-	"\x97{\xef\x9a\x06\x84P\xa1`\xea_}\xa8X\x15i" +
-	"\xa1\xd5\x0a6Z\xf0EPH\x11\xd1\x80B\x1f\x14\xa9" +
-	"\xe0\x83\x88/\xfaP\xf4\xa5R\x90+\xb3Iv\x17E" +
-	"\xe9\xcb\xfd\xee\xcc\xf7\xcd9g\xce\x99;\x1e\x12S\xce" +
-	"\x8e\xfe}\xd7C\xe8C\xae\x97\x1d\x19yx\xf2\xc5\xd5" +
-	"\xbf^\x85\x1e$\xb3\x8b'_\x88\xae\xac\xad}\x0b\xd7" +
-	"\xf5\x81\x82r\xaf\x16J\xeeM\xc0\xc46w\x1f\xc1\xec" +
-	"\x87]\xafl\xfdmd\xe8-\xa8A\xd9\x1d\x06\x0b\xcb" +
-	"\xde\xaf\x85\xe3\x9e=\xf3\x9aw_\xe1\x13\xfb\x97]\x88" +
-	"'V^\x7f\xe2\xee3P%\x02.}`\xe2\x94\xb7" +
-	"\x97`\xe1\x9cW\x01\xb3\x0b\xfd\xef\xf1\xd8\x1f\xc7\xcfB" +
-	"\x0d\xf6RK;\xf8\x8d\xb7\x95\x85\x1f\xdb\x88\x97\xbc\x0f" +
-	"\xc1\xec\xe7\xe9\xa7\x16\x8e]~\xe9#\xa8a\xd1U\x0d" +
-	"N\xb4\xfcq\x16\x8e\xf8v\xf2\xb0o'w\\r\xd7" +
-	"\x0e\x7f\xbf|\xb1\x97\xf7;\x7f\xc6\xf2\xfe\xe4W\x90a" +
-	"K\xd6<87\x16\x84c\x81\x983Q:\x16\xd8\xef" +
-	"\xe8\xfe\xa0\x195+\xe5{\xecB;\xeced\xb92" +
-	"\x9b\x06i+\xd17K\x07p\x08\xa8\x13{\x01\xfd\x86" +
-	"\xa4>-\xa8\xc8\"\xed\xe6\xa92\xa0\xdf\x96\xd4g\x05" +
-	"\x95\x10E\x0a@\x9d\xd9\x09\xe8\x93\x92\xfa\x03A%e" +
-	"\x91\x12P\xef\x8f\x03\xfa\xb4\xa4^\x15T\x8eS\xa4\x03" +
-	"\xa8\xcf,\xe6\xa7\x92\xfa+A\xbaE\xba\x80\xfa\xc2B" +
-	"\xaeJ\xea\xaf\x05\xb3\xb0f\xa24L\x17\x010\xdf\xf5" +
-	"\x0fd\x1e\xac4\x838\x98O\x98\xcfn9zbr" +
-	"\xcf\xd1\xc7?\xdfh,\xedoD\xa99\x942\x9f\x0d" +
-	"\x9e\x9b|rh\xe5\xdd\x977:\xc3i\xa3QO8" +
-	"\x00V%\x99\xcf\x9e\xfe\xf8\xcb7K\xb3\x7f^\xb5\xed" +
-	"\x010k\xc6\x8dg\xc3\x9a\x89\xd7\xf9\x96o\x98\xbe<" +
-	"\xe6\xddx~\x93/i{\xc2\\\xd7)\x909{\xec" +
-	"\xbf\xec\xcd\x95g\xaa\xf7VI\xedH\xb7\xe7\x85p3" +
-	"2\xa5\xb6C(\xd7\xcf%&\xaaM\xb1\xca.\x96\xf3" +
-	"O,\x0b5j\xe7n\xab\xb6\xef\x0dh\xa7\x93N\xbf" +
-	"\xf5\xfc:I]\x14\\\x9a7I\x12\xcc\x19\xe6\xb3w" +
-	"\xa6\x7f\x7f\xe6\xb9\xd2\xd4\xf3\x1b7\xe8\x80\xcb\x7f\x81\xdf" +
-	"\xbf\xee4\x17\xad\xda\xbe\x0e\xee\xee\xc7\x00\xbdKRW" +
-	"{R\x7fp;\xa0\xf7H\xeaGzR\xd7v\xf3\x01" +
-	"I\xfdh'\xb7\x03!\xa4\x89\xd9\x07\xc1>0\x17\x05" +
-	"\xf3\xa6\xb3\x88\x1b\xf5\xce\xe2\x7fd\xb5_\xe7\xe8\xecp" +
-	"\xdby+m\xa8Mf\x15\x90j\xf78@\xa1\xee\xda" +
-	"\x09P\xaa;mq\xd4\xed\xb6\xb8j\x9b-\x9e*\x95" +
-	"\x81\\X\xab\x9b\xe1\xd8\x04\xb5\xc5\xa5\x85 L\xc3h" +
-	"n\xa9i\xa2\x9a\xad\x0b\x8d\xf8\xa0\xad&\x8e\x1b\xb1\xa9" +
-	"U\x0e\x04a\xdd\xd4\xae%\x85\x19\x93\xb4\xea)\x93\xde" +
-	"\x14n\xed\xa6\xe07Z)\xf3W~i\xad\x0c\x8cl" +
-	"9\xbf\xee\xff\xdf\x01\x00\x00\xff\xff\xb7E7*"
+const schema_d4c9c9f76e88a0d0 = "x\xda\x8c\x91\xdfKTi\x18\xc7\xbf\xdf\xf7=\xe7\xcc" +
+	"\x0e;\xea\xbc\xce,8\xa0.,{\xa5\xe0\xac\xeb\x8d" +
+	"x\xb1\xa3\xbb.\xeb\xba+\xcdkA?\x85\x0ez\x94" +
+	"!\x9d\x19f\xceD^\x85\x17A\x1a\xfd\xb8)\xb2\xba" +
+	"0\xd0RHK\xe8\x0fP\x0aB\xe8\xc2\x8b \xea\xde" +
+	"\x9b\"\xa2n\x0c!N\xbc\xfe\x18\x07#\xe8\xe6p\x9e" +
+	"\xe7}\x9e\xcf\xf3<\xdf\xefo\x8d\xa2\xd3j\xad\x0a\xc2" +
+	"\x10\xda\xb7\x9d\xe0B\xf3\xa1\xf6K+\x9f\xafB'\xc8" +
+	"`}\xe6bvsm\xed\x05l;\x04\xc46\xac\xad" +
+	"\xd8\x07+\x04\xb4\xbd\xb3\x8e\x12\x0c^w_\xa9}\xdb" +
+	"\\\x7f\x1b*!\xf7\x8b\xc1\x98v\xde\xc4\x06\x1c\xd3s" +
+	"\xdc\xf9'6a\xfe\x82\xd5B\xdb\xd2\x8dS\x7f\xccA" +
+	"5\x10\xb0i8\x19\xa7\x97`\xac\xe4\xa4\xc0`\xb5\xea" +
+	">\xaf}\xbc>\x0f\x95\xa8\x1c-M\xe1\xb4S\xcb\xd8" +
+	"\xc26q\xcey\x08\x06\xad\xaf\xec\xb5\x89\x97\x93\xeb\x95" +
+	"\xb4\xaeP\xbf\xa1\xf5\x85R\x08\x10\x0e\xf2gF\x92n" +
+	"&\xe9\x8a\x11/\xeb']\xf3m\x19t\xf3\xd9|\xaa" +
+	"\xa3\xcb\x04iR\xd7I\x0b\xb0\x08\xa8\xe9^@\xdf\x94" +
+	"\xd4\xb3\x82d\x9c&w\xf7w@\xdf\x91\xd4\xf3\x82J" +
+	"0N\x01\xa8\xb9\x0e@\xcfH\xea\x07\x82J\x8a8%" +
+	"\xa0\x16\xfe\x04\xf4\xac\xa4~$\xa8,\x19\xa7\x05\xa8E" +
+	"\xd3>/\xa9\x9f\x0a*\xdb\x8a\xd3\x06\xd4\xaa\x99\xb3\"" +
+	"\xa9\x9f\x0b\x06\x99!/\xebg\xfcq\x00\x8c\xee\x0b\x00" +
+	"2\x0a\xfe\\\xf4]\xdfc\x18\x82a0\x95w\x0b\xee" +
+	"X\x91\xd1\xa0qj\xba\xbdg\xea\xe4\x93\xdd\xb2\xf3\x83" +
+	"\xb9\xac\xef\x9d\xf3\x19\x0d\x12\x8b\xed\x03\xf5K\xf7.\xef" +
+	"\x01\xfc\\n\xb4\xc8j0-\xc9hp\xfa\xf1\xb3[" +
+	"\x0d\x87?m\x99\xe7j0\xc8\x17rg3C^a" +
+	"g\xfa\xe4\x8f\xff\xbdO:?-\xef6\x7f[\xbe\x9a" +
+	"\x8e\xfe\xf4_F<K\xda\x15\xber\xcf\x12\xa5\x9a " +
+	"\x94\x1d\xaa)z\xd9\xa1N\xa6\xb9\xcf\xb2\x0e\xb2\x0c\xaa" +
+	"\xc5\xd4\xfd\x9a\xde>\x0f\xd0V\xd9\x92*#UDR" +
+	"\xd7\x09\x06n\xc1\xcf\x0c\xbb\x83\xfe\xf6\xb2\x9b\x1b\xa5\xa5" +
+	"\xea\xe6\xf0\xf2\x81U\xe5W\xf8\x7fw\x04\xe6\xb8\xd97" +
+	"R&\xff}\x02\xd0\xdd\x92:-\xa8\xf6\xdc\xeek\x02" +
+	"t\x8f\xa4>b\xdc\x16;nk\x93\xfc_R\x1f+" +
+	"\xdb5\x9c\x81\xf4\x0a\x8c@0\x02\xd6d\xdd1\xaf\x1c" +
+	"\x14r\xa3\xe5\xe0{\xae\xee\xf7\x8a\xa5Q\x9f\xc5\xca\xab" +
+	"\x7f\x01\xf4\x0f\x92:.\x18\xca\x95\xfc\x83\xd7~\x09\x00" +
+	"\x00\xff\xff\xa6]\xf21"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{
@@ -807,7 +729,6 @@ func RegisterSchema(reg *schemas.Registry) {
 			0x9b1c2beb128e44da,
 			0xa53e5c96ae3372c1,
 			0xa895f29001a70dc1,
-			0xb08cef90775e4be3,
 			0xd089d781c905d931,
 		},
 		Compressed: true,

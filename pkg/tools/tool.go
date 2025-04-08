@@ -9,6 +9,6 @@ import (
 
 type ToolType struct {
 	Tool   mcp.Tool
-	Use    func(ctx context.Context, artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder
+	Use    func(ctx context.Context, artifact datura.Artifact) datura.Artifact
 	UseMCP func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error)
 }

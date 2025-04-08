@@ -225,3 +225,27 @@ func TestArtifactWithCircuit(t *testing.T) {
 		})
 	})
 }
+
+func TestWithBytes(t *testing.T) {
+	Convey("Given a new artifact with bytes", t, func() {
+		testArtifact := New(
+			WithPayload([]byte("Hello, world!")),
+		)
+
+		targetArtifact := New(
+			WithBytes(testArtifact.Bytes()),
+		)
+
+		So(targetArtifact, ShouldNotBeNil)
+
+		Convey("When reading the bytes", func() {
+			testPayload, err := testArtifact.Payload()
+			So(err, ShouldBeNil)
+
+			targetPayload, err := targetArtifact.Payload()
+			So(err, ShouldBeNil)
+
+			So(targetPayload, ShouldEqual, testPayload)
+		})
+	})
+}

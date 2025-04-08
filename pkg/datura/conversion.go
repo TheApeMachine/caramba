@@ -7,7 +7,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-func (artifact *ArtifactBuilder) Bytes() []byte {
+func (artifact Artifact) Bytes() []byte {
 	errnie.Trace("datura.Bytes")
 
 	buf := bytes.NewBuffer(nil)

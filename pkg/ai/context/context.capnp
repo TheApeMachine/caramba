@@ -7,7 +7,9 @@ $Go.import("github.com/theapemachine/caramba/pkg/ai/context");
 using Message = import "../message/message.capnp";
 
 struct Context {
-    messages @0 :List(Message.Message);
+    uuid     @0 :Text;
+    state    @1 :UInt64;
+    messages @2 :List(Message.Message);
 }
 
 interface RPC {

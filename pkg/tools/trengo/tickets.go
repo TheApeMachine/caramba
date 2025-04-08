@@ -34,7 +34,7 @@ func NewTickets(client *Client) *Tickets {
 	return &Tickets{client: client}
 }
 
-func (t *Tickets) encode(artifact *datura.ArtifactBuilder, v any) (err error) {
+func (t *Tickets) encode(artifact datura.Artifact, v any) (err error) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return errnie.Error(err)
@@ -44,7 +44,7 @@ func (t *Tickets) encode(artifact *datura.ArtifactBuilder, v any) (err error) {
 	return nil
 }
 
-func (t *Tickets) ListTickets(artifact *datura.ArtifactBuilder) (err error) {
+func (t *Tickets) ListTickets(artifact datura.Artifact) (err error) {
 	resp, err := t.client.doRequest(http.MethodGet, "/tickets", nil)
 	if err != nil {
 		return errnie.Error(err)
@@ -64,7 +64,7 @@ func (t *Tickets) ListTickets(artifact *datura.ArtifactBuilder) (err error) {
 	return t.encode(artifact, tickets)
 }
 
-func (t *Tickets) CreateTicket(artifact *datura.ArtifactBuilder) (err error) {
+func (t *Tickets) CreateTicket(artifact datura.Artifact) (err error) {
 	ticket := map[string]interface{}{
 		"subject":    datura.GetMetaValue[string](artifact, "subject"),
 		"body":       datura.GetMetaValue[string](artifact, "body"),
@@ -86,7 +86,7 @@ func (t *Tickets) CreateTicket(artifact *datura.ArtifactBuilder) (err error) {
 	return t.encode(artifact, newTicket)
 }
 
-func (t *Tickets) AssignTicket(artifact *datura.ArtifactBuilder) (err error) {
+func (t *Tickets) AssignTicket(artifact datura.Artifact) (err error) {
 	ticketID := datura.GetMetaValue[int](artifact, "ticket_id")
 	userID := datura.GetMetaValue[int](artifact, "user_id")
 
@@ -108,7 +108,7 @@ func (t *Tickets) AssignTicket(artifact *datura.ArtifactBuilder) (err error) {
 	return t.encode(artifact, ticket)
 }
 
-func (t *Tickets) CloseTicket(artifact *datura.ArtifactBuilder) (err error) {
+func (t *Tickets) CloseTicket(artifact datura.Artifact) (err error) {
 	ticketID := datura.GetMetaValue[int](artifact, "ticket_id")
 
 	resp, err := t.client.doRequest(
@@ -129,7 +129,7 @@ func (t *Tickets) CloseTicket(artifact *datura.ArtifactBuilder) (err error) {
 	return t.encode(artifact, ticket)
 }
 
-func (t *Tickets) ReopenTicket(artifact *datura.ArtifactBuilder) (err error) {
+func (t *Tickets) ReopenTicket(artifact datura.Artifact) (err error) {
 	ticketID := datura.GetMetaValue[int](artifact, "ticket_id")
 
 	resp, err := t.client.doRequest(

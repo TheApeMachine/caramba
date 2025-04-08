@@ -419,11 +419,7 @@ func (n *NetworkNode) Sync(ctx context.Context, call RadixRPC_sync) error {
 			datura.WithBytes(value),
 		)
 
-		if artifact == nil {
-			continue
-		}
-
-		entry.SetArtifact(*artifact.Artifact)
+		entry.SetArtifact(artifact)
 	}
 
 	diff.SetEntries(entries)
@@ -485,10 +481,7 @@ func (n *NetworkNode) BroadcastInsert(key []byte, value []byte) {
 				artifact := datura.New(
 					datura.WithBytes(value),
 				)
-				if artifact == nil {
-					return fmt.Errorf("failed to unmarshal artifact")
-				}
-				if err := p.SetArtifact(*artifact.Artifact); err != nil {
+				if err := p.SetArtifact(artifact); err != nil {
 					return err
 				}
 				p.SetTerm(currentTerm)

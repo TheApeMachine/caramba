@@ -25,7 +25,7 @@ type Spinner struct {
 	cancel   context.CancelFunc
 	frames   *ring.Ring
 	label    string
-	artifact *datura.ArtifactBuilder
+	artifact datura.Artifact
 	state    types.State
 	err      error
 }

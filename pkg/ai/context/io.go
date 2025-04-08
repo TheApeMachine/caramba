@@ -4,6 +4,7 @@ import (
 	"io"
 
 	capnp "capnproto.org/go/capnp/v3"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -19,50 +20,53 @@ const (
 Read implements the io.Reader interface for the Context.
 It streams the context using a Cap'n Proto Encoder.
 */
-func (ctx *ContextBuilder) Read(p []byte) (n int, err error) {
+func (ctx Context) Read(p []byte) (n int, err error) {
 	errnie.Trace("context.Read")
 
-	if ctx.State != ContextStateBuffered {
+	builder := datura.NewRegistry().Get(ctx.ID())
+
+	if ctx.Is(errnie.StateReady) {
 		// Buffer is empty, encode current message state
-		if err = ctx.encoder.Encode(ctx.Context.Message()); err != nil {
+		if err = builder.Encoder.Encode(ctx.Message()); err != nil {
 			return 0, errnie.Error(err)
 		}
 
-		ctx.State = ContextStateBuffered
+		if err = builder.Buffer.Flush(); err != nil {
+			return 0, errnie.Error(err)
+		}
+
+		ctx.ToState(errnie.StateBusy)
 	}
 
-	if err = ctx.buffer.Flush(); err != nil {
-		return 0, errnie.Error(err)
-	}
-
-	return ctx.buffer.Read(p)
+	return builder.Buffer.Read(p)
 }
 
 /*
 Write implements the io.Writer interface for the Context.
 It streams the provided bytes using a Cap'n Proto Decoder.
 */
-func (ctx *ContextBuilder) Write(p []byte) (n int, err error) {
+func (ctx Context) Write(p []byte) (n int, err error) {
 	errnie.Trace("context.Write")
+
+	builder := datura.NewRegistry().Get(ctx.ID())
 
 	if len(p) == 0 {
 		return 0, nil
 	}
 
-	if n, err = ctx.buffer.Write(p); err != nil {
+	if n, err = builder.Buffer.Write(p); err != nil {
 		return n, errnie.Error(err)
 	}
 
-	if err = ctx.buffer.Flush(); err != nil {
+	if err = builder.Buffer.Flush(); err != nil {
 		return n, errnie.Error(err)
 	}
 
 	var (
 		msg *capnp.Message
-		buf Context
 	)
 
-	if msg, err = ctx.decoder.Decode(); err != nil {
+	if msg, err = builder.Decoder.Decode(); err != nil {
 		if err == io.EOF {
 			// EOF is expected when there's no more data to decode
 			return n, nil
@@ -70,29 +74,30 @@ func (ctx *ContextBuilder) Write(p []byte) (n int, err error) {
 		return n, errnie.Error(err)
 	}
 
-	if buf, err = ReadRootContext(msg); err != nil {
+	if ctx, err = ReadRootContext(msg); err != nil {
 		return n, errnie.Error(err)
 	}
 
-	ctx.Context = &buf
-	ctx.State = ContextStateBuffered
+	ctx.ToState(errnie.StateReady)
 	return n, nil
 }
 
 /*
 Close implements the io.Closer interface for the Context.
 */
-func (ctx *ContextBuilder) Close() error {
+func (ctx Context) Close() error {
 	errnie.Trace("context.Close")
 
-	if err := ctx.buffer.Flush(); err != nil {
+	builder := datura.NewRegistry().Get(ctx.ID())
+
+	if err := builder.Buffer.Flush(); err != nil {
 		return errnie.Error(err)
 	}
 
-	ctx.buffer = nil
-	ctx.encoder = nil
-	ctx.decoder = nil
-	ctx.Context = nil
+	builder.Buffer = nil
+	builder.Encoder = nil
+	builder.Decoder = nil
+	datura.NewRegistry().Unregister(ctx.ID())
 
 	return nil
 }

@@ -14,9 +14,9 @@ type BrowserTool struct {
 }
 
 /* NewBrowserTool creates a new browser tool with all operations */
-func NewBrowserTool() *BrowserTool {
-	getContent := NewBrowserGetContentTool()
-	getLinks := NewBrowserGetLinksTool()
+func NewBrowserTool(artifact datura.Artifact) *BrowserTool {
+	getContent := NewBrowserGetContentTool(artifact)
+	getLinks := NewBrowserGetLinksTool(artifact)
 
 	return &BrowserTool{
 		operations: map[string]ToolType{
@@ -27,8 +27,8 @@ func NewBrowserTool() *BrowserTool {
 }
 
 func (tool *BrowserTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	toolName := datura.GetMetaValue[string](artifact, "tool")
 	return tool.operations[toolName].Use(ctx, artifact)
 }
@@ -51,7 +51,7 @@ type BrowserGetContentTool struct {
 }
 
 /* NewBrowserGetContentTool creates a new tool for retrieving page content */
-func NewBrowserGetContentTool() *BrowserGetContentTool {
+func NewBrowserGetContentTool(artifact datura.Artifact) *BrowserGetContentTool {
 	return &BrowserGetContentTool{
 		Tool: mcp.NewTool(
 			"get_content",
@@ -62,14 +62,14 @@ func NewBrowserGetContentTool() *BrowserGetContentTool {
 				mcp.Required(),
 			),
 		),
-		instance: browser.NewManager(nil),
+		instance: browser.NewManager(artifact),
 	}
 }
 
 /* Use executes the content retrieval operation */
 func (tool *BrowserGetContentTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	instance, err := tool.instance.Initialize()
 	if err != nil {
 		return artifact
@@ -105,7 +105,7 @@ type BrowserGetLinksTool struct {
 }
 
 /* NewBrowserGetLinksTool creates a new tool for extracting links */
-func NewBrowserGetLinksTool() *BrowserGetLinksTool {
+func NewBrowserGetLinksTool(artifact datura.Artifact) *BrowserGetLinksTool {
 	return &BrowserGetLinksTool{
 		Tool: mcp.NewTool(
 			"get_links",
@@ -116,14 +116,14 @@ func NewBrowserGetLinksTool() *BrowserGetLinksTool {
 				mcp.Required(),
 			),
 		),
-		instance: browser.NewManager(nil),
+		instance: browser.NewManager(artifact),
 	}
 }
 
 /* Use executes the link extraction operation */
 func (tool *BrowserGetLinksTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	instance, err := tool.instance.Initialize()
 	if err != nil {
 		return artifact
@@ -131,7 +131,7 @@ func (tool *BrowserGetLinksTool) Use(
 	defer instance.Close()
 
 	// Use eval for link extraction
-	val, err := browser.NewEval(instance.GetPage(), nil, "get_links").Run()
+	val, err := browser.NewEval(instance.GetPage(), artifact, "get_links").Run()
 	if err != nil {
 		return artifact
 	}

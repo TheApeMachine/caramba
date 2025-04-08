@@ -72,10 +72,10 @@ func (prvdr *DeepseekProvider) Generate(
 	params params.Params,
 	ctx aicontext.Context,
 	tools []mcp.Tool,
-) chan *datura.ArtifactBuilder {
+) chan datura.Artifact {
 	errnie.Debug("provider.DeepseekProvider.Generate")
 
-	out := make(chan *datura.ArtifactBuilder)
+	out := make(chan datura.Artifact)
 
 	go func() {
 		defer close(out)
@@ -133,7 +133,7 @@ func (prvdr *DeepseekProvider) Name() string {
 
 func (prvdr *DeepseekProvider) handleSingleRequest(
 	params *deepseek.StreamChatCompletionRequest,
-	channel chan *datura.ArtifactBuilder,
+	channel chan datura.Artifact,
 ) (err error) {
 	errnie.Debug("provider.handleSingleRequest")
 
@@ -190,7 +190,7 @@ func (prvdr *DeepseekProvider) handleSingleRequest(
 
 func (prvdr *DeepseekProvider) handleStreamingRequest(
 	params *deepseek.StreamChatCompletionRequest,
-	channel chan *datura.ArtifactBuilder,
+	channel chan datura.Artifact,
 ) (err error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
@@ -397,13 +397,13 @@ func WithDeepseekEmbedderEndpoint(endpoint string) DeepseekEmbedderOption {
 }
 
 func (embedder *DeepseekEmbedder) Generate(
-	buffer chan *datura.ArtifactBuilder,
-	fn ...func(artifact *datura.ArtifactBuilder) *datura.ArtifactBuilder,
-) chan *datura.ArtifactBuilder {
+	buffer chan datura.Artifact,
+	fn ...func(artifact datura.Artifact) datura.Artifact,
+) chan datura.Artifact {
 	errnie.Debug("provider.DeepseekEmbedder.Generate")
 	errnie.Warn("Deepseek embedder is not implemented")
 
-	out := make(chan *datura.ArtifactBuilder)
+	out := make(chan datura.Artifact)
 	close(out)
 	return out
 }

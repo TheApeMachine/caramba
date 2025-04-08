@@ -27,7 +27,7 @@ type App struct {
 	// Rendering infrastructure
 	framebuffer *Framebuffer
 	transport   Transport
-	artifact    *datura.ArtifactBuilder
+	artifact    datura.Artifact
 	writer      *bufio.Writer
 	terminal    *Terminal
 

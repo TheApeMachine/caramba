@@ -7,7 +7,9 @@ $Go.import("github.com/theapemachine/caramba/pkg/ai/provider");
 using Artifact = import "../../datura/artifact.capnp";
 
 struct Provider {
-    name @0 :Text;
+    uuid  @0 :Text;
+    state @1 :UInt64;
+    name  @2 :Text;
 }
 
 interface RPC {

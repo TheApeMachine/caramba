@@ -27,8 +27,8 @@ func NewEnvironmentTool() *EnvironmentTool {
 }
 
 func (tool *EnvironmentTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	toolName := datura.GetMetaValue[string](artifact, "tool")
 	return tool.operations[toolName].Use(ctx, artifact)
 }
@@ -80,8 +80,8 @@ func NewEnvironmentCommandTool() *EnvironmentCommandTool {
 
 /* Use executes the command operation */
 func (tool *EnvironmentCommandTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	// TODO: Implement actual command execution using builder/runner
 	return artifact
 }
@@ -132,8 +132,8 @@ func NewEnvironmentInputTool() *EnvironmentInputTool {
 
 /* Use executes the input operation */
 func (tool *EnvironmentInputTool) Use(
-	ctx context.Context, artifact *datura.ArtifactBuilder,
-) *datura.ArtifactBuilder {
+	ctx context.Context, artifact datura.Artifact,
+) datura.Artifact {
 	// TODO: Implement actual input handling using builder/runner
 	return artifact
 }

@@ -69,10 +69,10 @@ func (prvdr *AnthropicProvider) Generate(
 	params params.Params,
 	ctx aicontext.Context,
 	tools []mcp.Tool,
-) chan *datura.ArtifactBuilder {
+) chan datura.Artifact {
 	model, err := params.Model()
 
-	out := make(chan *datura.ArtifactBuilder)
+	out := make(chan datura.Artifact)
 
 	go func() {
 		defer close(out)
@@ -144,7 +144,7 @@ func WithAnthropicEndpoint(endpoint string) AnthropicProviderOption {
 
 func (prvdr *AnthropicProvider) handleSingleRequest(
 	params *anthropic.MessageNewParams,
-	channel chan *datura.ArtifactBuilder,
+	channel chan datura.Artifact,
 ) {
 	errnie.Debug("provider.handleSingleRequest")
 
@@ -237,7 +237,7 @@ and emits chunks as they're received.
 */
 func (prvdr *AnthropicProvider) handleStreamingRequest(
 	params *anthropic.MessageNewParams,
-	channel chan *datura.ArtifactBuilder,
+	channel chan datura.Artifact,
 ) {
 	errnie.Debug("provider.handleStreamingRequest")
 

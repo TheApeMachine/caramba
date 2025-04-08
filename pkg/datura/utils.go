@@ -2,7 +2,7 @@ package datura
 
 import "github.com/theapemachine/caramba/pkg/errnie"
 
-func (artifact *Artifact) DecryptPayload() (payload []byte, err error) {
+func (artifact Artifact) DecryptPayload() (payload []byte, err error) {
 	errnie.Debug("datura.Artifact.DecryptPayload")
 
 	encryptedKey, err := artifact.EncryptedKey()

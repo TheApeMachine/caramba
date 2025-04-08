@@ -7,7 +7,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-func (msg *MessageBuilder) Bytes() []byte {
+func (msg Message) Bytes() []byte {
 	errnie.Trace("message.Bytes")
 
 	buf := bytes.NewBuffer(nil)

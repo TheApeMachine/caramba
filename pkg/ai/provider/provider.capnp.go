@@ -18,12 +18,12 @@ type Provider capnp.Struct
 const Provider_TypeID = 0xb115062fef4b0b89
 
 func NewProvider(s *capnp.Segment) (Provider, error) {
-	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	st, err := capnp.NewStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2})
 	return Provider(st), err
 }
 
 func NewRootProvider(s *capnp.Segment) (Provider, error) {
-	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1})
+	st, err := capnp.NewRootStruct(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2})
 	return Provider(st), err
 }
 
@@ -59,22 +59,48 @@ func (s Provider) Message() *capnp.Message {
 func (s Provider) Segment() *capnp.Segment {
 	return capnp.Struct(s).Segment()
 }
-func (s Provider) Name() (string, error) {
+func (s Provider) Uuid() (string, error) {
 	p, err := capnp.Struct(s).Ptr(0)
 	return p.Text(), err
 }
 
-func (s Provider) HasName() bool {
+func (s Provider) HasUuid() bool {
 	return capnp.Struct(s).HasPtr(0)
 }
 
-func (s Provider) NameBytes() ([]byte, error) {
+func (s Provider) UuidBytes() ([]byte, error) {
 	p, err := capnp.Struct(s).Ptr(0)
 	return p.TextBytes(), err
 }
 
-func (s Provider) SetName(v string) error {
+func (s Provider) SetUuid(v string) error {
 	return capnp.Struct(s).SetText(0, v)
+}
+
+func (s Provider) State() uint64 {
+	return capnp.Struct(s).Uint64(0)
+}
+
+func (s Provider) SetState(v uint64) {
+	capnp.Struct(s).SetUint64(0, v)
+}
+
+func (s Provider) Name() (string, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.Text(), err
+}
+
+func (s Provider) HasName() bool {
+	return capnp.Struct(s).HasPtr(1)
+}
+
+func (s Provider) NameBytes() ([]byte, error) {
+	p, err := capnp.Struct(s).Ptr(1)
+	return p.TextBytes(), err
+}
+
+func (s Provider) SetName(v string) error {
+	return capnp.Struct(s).SetText(1, v)
 }
 
 // Provider_List is a list of Provider.
@@ -82,7 +108,7 @@ type Provider_List = capnp.StructList[Provider]
 
 // NewProvider creates a new list of Provider.
 func NewProvider_List(s *capnp.Segment, sz int32) (Provider_List, error) {
-	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 0, PointerCount: 1}, sz)
+	l, err := capnp.NewCompositeList(s, capnp.ObjectSize{DataSize: 8, PointerCount: 2}, sz)
 	return capnp.StructList[Provider](l), err
 }
 
@@ -437,28 +463,32 @@ func (p RPC_generate_Results_Future) Out() datura.Artifact_Future {
 	return datura.Artifact_Future{Future: p.Future.Field(0, nil)}
 }
 
-const schema_d4c9c9f76e88a0d2 = "x\xda\x94\x90\xbdO\xf2P\x1c\x85\xcf\xef\xb6\xa5/y" +
-	"Ai\xaa\xc6\xb8\x90\xf81\xf8EC\xd0\xc5A\x88\x0c" +
-	"&\xb8\xb48;\xdc@%D)\xb5\x14W\xc3&\x93" +
-	"\xbb\x931\xea\xa6\x09\x83\x9b\xab\x89\xc4\xc5\x18\xff\x00\x17" +
-	"Gc\xe2B\x98j@\x100ap;7y\xees" +
-	"\xce\xbd\xa1\xf7\x84\x18\x0d\x1e\x89`\xc6\x8a\xe4\xf3\xaa\xff" +
-	"\xb7>4\xdfx\x0dJ\x98\xbc\xe7\xb3c\xabQ\xaf\xbf" +
-	"@\"\x19\x88\xcd\xb1\x0dRW\x99\x0c\xa8Q\x16\x07y" +
-	"\x8f\xcd\xa7e-{w\x0f%,\xf4`P\xcc`S" +
-	"\xa4\xf26\xb9\xc36\xd5j+y\xd7\xdb\xeb\x17K\xf3" +
-	"'\xafPf\x08\x1d\xe5\x01;%\x90Zi\xeb\x9a\xb5" +
-	"\xca\xc4\xe7\xc3\xd5\x00p\xc9\xce[\xc0-\x8b#\xeb\xd9" +
-	"{9\x8d\xe75[t\x8a\x87\xf9\xac\xe9hv'D" +
-	"2\xdc\xb6\xec5\xbds\x84Nd\x88\x82\x08\x88\x04(" +
-	"\xc1\x05\xc0\xf8'\x901\xc6h\xd4\xe2\x05\x93\x02`\x14" +
-	"\x00\xfd\x08\x85!\xc2\xb4\xa0'\xbf]R\xdf\x03\xa8;" +
-	"TQR`\x8a_\xf6r\xa6e:\xdc5\x01$H" +
-	"\xa7\x9eX\x1a&\xd6\x93\x91\xee\xa5Y\x9d;\\(\x94" +
-	"\xfa\x17\xa7\x00# \x901\xc9\xc8\xe3\x8e\x9b\xdf\xe5\x19" +
-	"\x17\x00\x85\x1ao\xe5\x9b\x91E\x7f\x0dD!\xfc\xb1'" +
-	"m\x96\xca\xf2\xbe;P4\xdd\xfb\x1a\xb9Xv\x7f\x17" +
-	"|\x05\x00\x00\xff\xff\xb4I\x99\xb2"
+const schema_d4c9c9f76e88a0d2 = "x\xda\x94\x90\xbdk\x14A\x18\xc6\x9f\xe7\x9d\xdd\xacG" +
+	".&\xc3\x9e\"\x82\x1c\xf8Q\xf8\x91\xac1\xdaX\x98" +
+	"\xc3(jT\xd8\x89\xfe\x03Cn\x0d\x8bf\xb3\xec\xed" +
+	"\xda\x8a\x9dV\xf6V\"b\xa7r\xbd\xad\xe0a#\xa2" +
+	"\x85\x9d\x8d\x85\x95`\x13\xae\x1aY\xc9%F\xb8\xc2\xee" +
+	"\x9d\x99\xdf<\x1f\xef\xe9Iv\xbc\xf9\xa9\x07\x1e\xc4\x9c" +
+	"\xf5'\xdc\xe3\xc9\xeb?\xa3\x89}}\x986\xe9>=" +
+	"{\x94m\x0e\x06\x9f\xe1K\x00,\x1c\x93\x8b\x0c\xcf\xd5" +
+	"c8/o@\xf7a\xf8q6\xea\xbe}\x07\xddV" +
+	";0\xb80\x90\x83\x0c\xbf\xfe!\xbf\xc8\x95\x90*\x00" +
+	"\xdc\xab[\x17^\x9c:\xfe\xe4\x1b\xf4\x11\x02>k\xc9" +
+	"\x1f\xf2\x94`8\x94E\xd0\x0d\xfb\x0f\xf7\xffz\xffr" +
+	"\x17pH=\xaf\x81Y\xb5\x88\xae\xcb\xef\xaeE6\x8d" +
+	"r\xaf\xd8\xb8\x9fv\x93\"\xca\xb7\x86\xb9U\x9bg\xf9" +
+	"\xf9x\xeb\x88\x984M\xe5\x01\x1e\x01}\xf9\x04`:" +
+	"\x8a\xe6\x86\x90l\xb1\xbe\xbbv\x060\x97\x14M,\xd4" +
+	"\xc2\x16\x05\xd07k\xf0\xaa\xa2\xb9-\x9c\xae\xaa\xb4\xcb" +
+	"&\x84M\xb0\xdd+m\x99\xb0\x01a\x03\x9c\xce\xecz" +
+	"2z\xda\x0e\xa5\xc6\x84ZQ\xf1R\x9d\xc7S\xfe_" +
+	"K\xe0\xa8\xac\xd6\xcb\x10\xdd\x08\xdcZ\x92%\x85-\x13" +
+	"\x00\x1d\xc6\xdc\x11\xf6\xc7\x09\xc7Ks\xa3OGc[" +
+	"X\xb5\xde3\xdev\xeb\xa9e\xc04\x15\xcd\x01\xa1\xb3" +
+	"E\x99\xde\xb1\xab%\x00\xcel~\xaf^\xef=\xd9\xe8" +
+	"\x83\x9c\xc1\x7f\xfa\xac$\xbd*\xb8W\xee2:\x0c\x98" +
+	"=\x8a\xa6%\x0c6\xaa\xf2_\x83\xdf\x01\x00\x00\xff\xff" +
+	"\xee\x9c\xa3)"
 
 func RegisterSchema(reg *schemas.Registry) {
 	reg.Register(&schemas.Schema{

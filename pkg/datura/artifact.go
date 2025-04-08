@@ -1,7 +1,6 @@
 package datura
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -13,85 +12,52 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-type ArtifactState uint
+type ArtifactOption func(Artifact) Artifact
 
-const (
-	ArtifactStateCreated ArtifactState = iota
-	ArtifactStateBuffered
-	ArtifactStateRead
-)
-
-type ArtifactBuilder struct {
-	*Artifact
-	encoder *capnp.Encoder
-	decoder *capnp.Decoder
-	buffer  *bufio.ReadWriter
-	state   ArtifactState
-}
-
-type ArtifactBuilderOption func(*ArtifactBuilder)
-
-func New(options ...ArtifactBuilderOption) *ArtifactBuilder {
+func New(options ...ArtifactOption) Artifact {
 	errnie.Trace("artifact.New")
 
 	var (
 		arena    = capnp.SingleSegment(nil)
 		seg      *capnp.Segment
 		artifact Artifact
-		uid      []byte
 		err      error
 	)
 
 	if _, seg, err = capnp.NewMessage(arena); errnie.Error(err) != nil {
-		return nil
+		return errnie.Try(NewArtifact(seg)).ToState(errnie.StateError)
 	}
 
 	if artifact, err = NewRootArtifact(seg); errnie.Error(err) != nil {
-		return nil
+		return errnie.Try(NewArtifact(seg)).ToState(errnie.StateError)
 	}
 
-	if uid, err = uuid.New().MarshalBinary(); errnie.Error(err) != nil {
-		return nil
-	}
-
-	if errnie.Error(artifact.SetUuid(uid)) != nil {
-		return nil
+	if errnie.Error(artifact.SetUuid(uuid.New().String())) != nil {
+		return errnie.Try(NewArtifact(seg)).ToState(errnie.StateError)
 	}
 
 	artifact.SetTimestamp(time.Now().UnixNano())
 
-	shared := bytes.NewBuffer(nil)
-	buffer := bufio.NewReadWriter(
-		bufio.NewReader(shared),
-		bufio.NewWriter(shared),
-	)
-
-	builder := &ArtifactBuilder{
-		Artifact: &artifact,
-		encoder:  capnp.NewEncoder(buffer),
-		decoder:  capnp.NewDecoder(buffer),
-		buffer:   buffer,
-		state:    ArtifactStateCreated,
-	}
-
 	for _, option := range options {
-		option(builder)
+		artifact = option(artifact)
 	}
 
-	return builder
+	return Register(artifact)
 }
 
-func WithPayload(payload []byte) ArtifactBuilderOption {
+func WithPayload(payload []byte) ArtifactOption {
 	errnie.Trace("artifact.WithPayload")
 
-	return func(builder *ArtifactBuilder) {
-		if errnie.Error(builder.SetPayload(payload)) != nil {
-			return
+	return func(artifact Artifact) Artifact {
+		if errnie.Error(artifact.SetPayload(payload)) != nil {
+			return artifact
 		}
+
+		return artifact
 	}
 }
 
-func WithEncryptedPayload(payload []byte) ArtifactBuilderOption {
+func WithEncryptedPayload(payload []byte) ArtifactOption {
 	errnie.Trace("artifact.WithEncryptedPayload")
 
 	if len(payload) == 0 {
@@ -99,7 +65,7 @@ func WithEncryptedPayload(payload []byte) ArtifactBuilderOption {
 		return nil
 	}
 
-	return func(builder *ArtifactBuilder) {
+	return func(artifact Artifact) Artifact {
 		var (
 			crypto           = NewCryptoSuite()
 			encryptedPayload []byte
@@ -110,38 +76,40 @@ func WithEncryptedPayload(payload []byte) ArtifactBuilderOption {
 
 		if encryptedPayload, encryptedKey, ephemeralPubKey, err = crypto.EncryptPayload(payload); err != nil {
 			errnie.Error(err)
-			return
+			return artifact
 		}
 
-		errnie.Error(builder.SetEncryptedPayload(encryptedPayload))
-		errnie.Error(builder.SetEncryptedKey(encryptedKey))
-		errnie.Error(builder.SetEphemeralPublicKey(ephemeralPubKey))
+		errnie.Error(artifact.SetEncryptedPayload(encryptedPayload))
+		errnie.Error(artifact.SetEncryptedKey(encryptedKey))
+		errnie.Error(artifact.SetEphemeralPublicKey(ephemeralPubKey))
+
+		return artifact
 	}
 }
 
-func WithMetadata(metadata map[string]any) ArtifactBuilderOption {
+func WithMetadata(metadata map[string]any) ArtifactOption {
 	errnie.Trace("artifact.WithMetadata")
 
-	return func(builder *ArtifactBuilder) {
+	return func(artifact Artifact) Artifact {
 		var (
 			mdList    Artifact_Metadata_List
 			newMdList Artifact_Metadata_List
 			err       error
 		)
 
-		if mdList, err = builder.Metadata(); errnie.Error(err) != nil {
-			return
+		if mdList, err = artifact.Metadata(); errnie.Error(err) != nil {
+			return artifact
 		}
 
-		if newMdList, err = builder.NewMetadata(
+		if newMdList, err = artifact.NewMetadata(
 			int32(mdList.Len() + len(metadata)),
 		); errnie.Error(err) != nil {
-			return
+			return artifact
 		}
 
 		for idx := range mdList.Len() {
 			if errnie.Error(newMdList.Set(idx, mdList.At(idx))) != nil {
-				return
+				return artifact
 			}
 		}
 
@@ -149,13 +117,13 @@ func WithMetadata(metadata map[string]any) ArtifactBuilderOption {
 			item := newMdList.At(newMdList.Len() - 1)
 
 			if errnie.Error(item.SetKey(key)) != nil {
-				return
+				return artifact
 			}
 
 			switch v := value.(type) {
 			case string:
 				if errnie.Error(item.Value().SetTextValue(v)) != nil {
-					return
+					return artifact
 				}
 			case int:
 				item.Value().SetIntValue(int64(v))
@@ -171,77 +139,93 @@ func WithMetadata(metadata map[string]any) ArtifactBuilderOption {
 				item.Value().SetTextValue(fmt.Sprintf("%v", v))
 			}
 		}
+
+		return artifact
 	}
 }
 
-func WithArtifact(artifact *Artifact) ArtifactBuilderOption {
+func WithArtifact(artifact Artifact) ArtifactOption {
 	errnie.Trace("artifact.WithArtifact")
 
-	return func(builder *ArtifactBuilder) {
-		builder.Artifact = artifact
+	return func(artifact Artifact) Artifact {
+		artifact = errnie.Try(
+			ReadRootArtifact(artifact.Message()),
+		)
+
+		return artifact
 	}
 }
 
-func WithSignature(signature []byte) ArtifactBuilderOption {
+func WithSignature(signature []byte) ArtifactOption {
 	errnie.Trace("artifact.WithSignature")
 
-	return func(builder *ArtifactBuilder) {
-		if errnie.Error(builder.SetSignature(signature)) != nil {
-			return
+	return func(artifact Artifact) Artifact {
+		if errnie.Error(artifact.SetSignature(signature)) != nil {
+			return artifact
 		}
+
+		return artifact
 	}
 }
 
-func WithRole(role ArtifactRole) ArtifactBuilderOption {
+func WithRole(role ArtifactRole) ArtifactOption {
 	errnie.Trace("artifact.WithRole")
 
-	return func(builder *ArtifactBuilder) {
-		builder.SetRole(uint32(role))
+	return func(artifact Artifact) Artifact {
+		artifact.SetRole(uint32(role))
+		return artifact
 	}
 }
 
-func WithScope(scope ArtifactScope) ArtifactBuilderOption {
+func WithScope(scope ArtifactScope) ArtifactOption {
 	errnie.Trace("artifact.WithScope")
 
-	return func(builder *ArtifactBuilder) {
-		builder.SetScope(uint32(scope))
+	return func(artifact Artifact) Artifact {
+		artifact.SetScope(uint32(scope))
+		return artifact
 	}
 }
 
-func WithMediatype(mediatype MediaType) ArtifactBuilderOption {
+func WithMediatype(mediatype MediaType) ArtifactOption {
 	errnie.Trace("artifact.WithMediatype")
 
-	return func(builder *ArtifactBuilder) {
-		if errnie.Error(builder.SetMediatype(string(mediatype))) != nil {
-			return
+	return func(artifact Artifact) Artifact {
+		if errnie.Error(artifact.SetMediatype(string(mediatype))) != nil {
+			return artifact
 		}
+
+		return artifact
 	}
 }
 
-func WithMeta(key string, value any) ArtifactBuilderOption {
+func WithMeta(key string, value any) ArtifactOption {
 	errnie.Trace("artifact.WithMeta")
 
-	return func(builder *ArtifactBuilder) {
-		builder.SetMetaValue(key, value)
+	return func(artifact Artifact) Artifact {
+		artifact.SetMetaValue(key, value)
+		return artifact
 	}
 }
 
-func WithError(err error) ArtifactBuilderOption {
+func WithError(err error) ArtifactOption {
 	errnie.Trace("artifact.WithError")
 
-	return func(builder *ArtifactBuilder) {
-		WithEncryptedPayload([]byte(err.Error()))(builder)
+	return func(artifact Artifact) Artifact {
+		WithEncryptedPayload([]byte(err.Error()))(artifact)
+		return artifact
 	}
 }
 
-func WithBytes(b []byte) ArtifactBuilderOption {
+func WithBytes(b []byte) ArtifactOption {
 	errnie.Trace("artifact.WithBytes")
 
-	return func(builder *ArtifactBuilder) {
+	return func(artifact Artifact) Artifact {
 		if _, err := io.Copy(
-			builder.buffer, bytes.NewBuffer(b),
+			artifact, bytes.NewBuffer(b),
 		); errnie.Error(err) != nil {
-			return
+			return artifact
 		}
+
+		return artifact
 	}
 }

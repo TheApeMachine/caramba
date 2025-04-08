@@ -8,16 +8,16 @@ import (
 )
 
 type ContextRPCServer struct {
-	context *Context
+	context Context
 }
 
-func NewContextRPCServer(context *Context) *ContextRPCServer {
+func NewContextRPCServer(context Context) *ContextRPCServer {
 	errnie.Trace("context.NewContextRPCServer")
 
 	return &ContextRPCServer{context: context}
 }
 
-func ContextToClient(context *Context) RPC {
+func ContextToClient(context Context) RPC {
 	errnie.Trace("context.ContextToClient")
 
 	server := NewContextRPCServer(context)
