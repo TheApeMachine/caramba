@@ -13,7 +13,7 @@ type GithubTool struct {
 }
 
 /* NewGithubTool creates a new GitHub tool with all operations */
-func NewGithubTool(artifact datura.Artifact) *GithubTool {
+func NewGithubTool(artifact *datura.Artifact) *GithubTool {
 	getRepositories := NewGithubGetRepositoriesTool(artifact)
 	getRepository := NewGithubGetRepositoryTool(artifact)
 	createRepository := NewGithubCreateRepositoryTool(artifact)
@@ -58,8 +58,8 @@ func NewGithubTool(artifact datura.Artifact) *GithubTool {
 }
 
 func (tool *GithubTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	toolName := datura.GetMetaValue[string](artifact, "tool")
 	return tool.operations[toolName].Use(ctx, artifact)
 }
@@ -81,7 +81,7 @@ type GithubGetRepositoriesTool struct {
 }
 
 /* NewGithubGetRepositoriesTool creates a new tool for getting repositories */
-func NewGithubGetRepositoriesTool(artifact datura.Artifact) *GithubGetRepositoriesTool {
+func NewGithubGetRepositoriesTool(artifact *datura.Artifact) *GithubGetRepositoriesTool {
 	return &GithubGetRepositoriesTool{
 		Tool: mcp.NewTool(
 			"get_repositories",
@@ -92,8 +92,8 @@ func NewGithubGetRepositoriesTool(artifact datura.Artifact) *GithubGetRepositori
 
 /* Use executes the get repositories operation and returns the results */
 func (tool *GithubGetRepositoriesTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -109,7 +109,7 @@ type GithubGetRepositoryTool struct {
 }
 
 /* NewGithubGetRepositoryTool creates a new tool for getting a repository */
-func NewGithubGetRepositoryTool(artifact datura.Artifact) *GithubGetRepositoryTool {
+func NewGithubGetRepositoryTool(artifact *datura.Artifact) *GithubGetRepositoryTool {
 	return &GithubGetRepositoryTool{
 		Tool: mcp.NewTool(
 			"get_repository",
@@ -125,8 +125,8 @@ func NewGithubGetRepositoryTool(artifact datura.Artifact) *GithubGetRepositoryTo
 
 /* Use executes the get repository operation and returns the results */
 func (tool *GithubGetRepositoryTool) Use(
-		ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -142,7 +142,7 @@ type GithubCreateRepositoryTool struct {
 }
 
 /* NewGithubCreateRepositoryTool creates a new tool for creating repositories */
-func NewGithubCreateRepositoryTool(artifact datura.Artifact) *GithubCreateRepositoryTool {
+func NewGithubCreateRepositoryTool(artifact *datura.Artifact) *GithubCreateRepositoryTool {
 	return &GithubCreateRepositoryTool{
 		Tool: mcp.NewTool(
 			"create_repository",
@@ -158,8 +158,8 @@ func NewGithubCreateRepositoryTool(artifact datura.Artifact) *GithubCreateReposi
 
 /* Use executes the create repository operation and returns the results */
 func (tool *GithubCreateRepositoryTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -175,7 +175,7 @@ type GithubDeleteRepositoryTool struct {
 }
 
 /* NewGithubDeleteRepositoryTool creates a new tool for deleting repositories */
-func NewGithubDeleteRepositoryTool(artifact datura.Artifact) *GithubDeleteRepositoryTool {
+func NewGithubDeleteRepositoryTool(artifact *datura.Artifact) *GithubDeleteRepositoryTool {
 	return &GithubDeleteRepositoryTool{
 		Tool: mcp.NewTool(
 			"delete_repository",
@@ -191,8 +191,8 @@ func NewGithubDeleteRepositoryTool(artifact datura.Artifact) *GithubDeleteReposi
 
 /* Use executes the delete repository operation */
 func (tool *GithubDeleteRepositoryTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -208,7 +208,7 @@ type GithubUpdateRepositoryTool struct {
 }
 
 /* NewGithubUpdateRepositoryTool creates a new tool for updating repositories */
-func NewGithubUpdateRepositoryTool(artifact datura.Artifact) *GithubUpdateRepositoryTool {
+func NewGithubUpdateRepositoryTool(artifact *datura.Artifact) *GithubUpdateRepositoryTool {
 	return &GithubUpdateRepositoryTool{
 		Tool: mcp.NewTool(
 			"update_repository",
@@ -229,8 +229,8 @@ func NewGithubUpdateRepositoryTool(artifact datura.Artifact) *GithubUpdateReposi
 
 /* Use executes the update repository operation */
 func (tool *GithubUpdateRepositoryTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -246,7 +246,7 @@ type GithubListIssuesTool struct {
 }
 
 /* NewGithubListIssuesTool creates a new tool for listing issues */
-func NewGithubListIssuesTool(artifact datura.Artifact) *GithubListIssuesTool {
+func NewGithubListIssuesTool(artifact *datura.Artifact) *GithubListIssuesTool {
 	return &GithubListIssuesTool{
 		Tool: mcp.NewTool(
 			"list_issues",
@@ -262,8 +262,8 @@ func NewGithubListIssuesTool(artifact datura.Artifact) *GithubListIssuesTool {
 
 /* Use executes the list issues operation */
 func (tool *GithubListIssuesTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -279,7 +279,7 @@ type GithubCreateIssueTool struct {
 }
 
 /* NewGithubCreateIssueTool creates a new tool for creating issues */
-func NewGithubCreateIssueTool(artifact datura.Artifact) *GithubCreateIssueTool {
+func NewGithubCreateIssueTool(artifact *datura.Artifact) *GithubCreateIssueTool {
 	return &GithubCreateIssueTool{
 		Tool: mcp.NewTool(
 			"create_issue",
@@ -305,8 +305,8 @@ func NewGithubCreateIssueTool(artifact datura.Artifact) *GithubCreateIssueTool {
 
 /* Use executes the create issue operation */
 func (tool *GithubCreateIssueTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -322,7 +322,7 @@ type GithubUpdateIssueTool struct {
 }
 
 /* NewGithubUpdateIssueTool creates a new tool for updating issues */
-func NewGithubUpdateIssueTool(artifact datura.Artifact) *GithubUpdateIssueTool {
+func NewGithubUpdateIssueTool(artifact *datura.Artifact) *GithubUpdateIssueTool {
 	return &GithubUpdateIssueTool{
 		Tool: mcp.NewTool(
 			"update_issue",
@@ -353,8 +353,8 @@ func NewGithubUpdateIssueTool(artifact datura.Artifact) *GithubUpdateIssueTool {
 
 /* Use executes the update issue operation */
 func (tool *GithubUpdateIssueTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -370,7 +370,7 @@ type GithubCloseIssueTool struct {
 }
 
 /* NewGithubCloseIssueTool creates a new tool for closing issues */
-func NewGithubCloseIssueTool(artifact datura.Artifact) *GithubCloseIssueTool {
+func NewGithubCloseIssueTool(artifact *datura.Artifact) *GithubCloseIssueTool {
 	return &GithubCloseIssueTool{
 		Tool: mcp.NewTool(
 			"close_issue",
@@ -391,8 +391,8 @@ func NewGithubCloseIssueTool(artifact datura.Artifact) *GithubCloseIssueTool {
 
 /* Use executes the close issue operation */
 func (tool *GithubCloseIssueTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -408,7 +408,7 @@ type GithubListPullsTool struct {
 }
 
 /* NewGithubListPullsTool creates a new tool for listing pull requests */
-func NewGithubListPullsTool(artifact datura.Artifact) *GithubListPullsTool {
+func NewGithubListPullsTool(artifact *datura.Artifact) *GithubListPullsTool {
 	return &GithubListPullsTool{
 		Tool: mcp.NewTool(
 			"list_pulls",
@@ -424,8 +424,8 @@ func NewGithubListPullsTool(artifact datura.Artifact) *GithubListPullsTool {
 
 /* Use executes the list pulls operation */
 func (tool *GithubListPullsTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -441,7 +441,7 @@ type GithubCreatePullTool struct {
 }
 
 /* NewGithubCreatePullTool creates a new tool for creating pull requests */
-func NewGithubCreatePullTool(artifact datura.Artifact) *GithubCreatePullTool {
+func NewGithubCreatePullTool(artifact *datura.Artifact) *GithubCreatePullTool {
 	return &GithubCreatePullTool{
 		Tool: mcp.NewTool(
 			"create_pull",
@@ -477,8 +477,8 @@ func NewGithubCreatePullTool(artifact datura.Artifact) *GithubCreatePullTool {
 
 /* Use executes the create pull request operation */
 func (tool *GithubCreatePullTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -494,7 +494,7 @@ type GithubUpdatePullTool struct {
 }
 
 /* NewGithubUpdatePullTool creates a new tool for updating pull requests */
-func NewGithubUpdatePullTool(artifact datura.Artifact) *GithubUpdatePullTool {
+func NewGithubUpdatePullTool(artifact *datura.Artifact) *GithubUpdatePullTool {
 	return &GithubUpdatePullTool{
 		Tool: mcp.NewTool(
 			"update_pull",
@@ -525,8 +525,8 @@ func NewGithubUpdatePullTool(artifact datura.Artifact) *GithubUpdatePullTool {
 
 /* Use executes the update pull request operation */
 func (tool *GithubUpdatePullTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -542,7 +542,7 @@ type GithubMergePullTool struct {
 }
 
 /* NewGithubMergePullTool creates a new tool for merging pull requests */
-func NewGithubMergePullTool(artifact datura.Artifact) *GithubMergePullTool {
+func NewGithubMergePullTool(artifact *datura.Artifact) *GithubMergePullTool {
 	return &GithubMergePullTool{
 		Tool: mcp.NewTool(
 			"merge_pull",
@@ -568,8 +568,8 @@ func NewGithubMergePullTool(artifact datura.Artifact) *GithubMergePullTool {
 
 /* Use executes the merge pull request operation */
 func (tool *GithubMergePullTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -585,7 +585,7 @@ type GithubListReviewsTool struct {
 }
 
 /* NewGithubListReviewsTool creates a new tool for listing reviews */
-func NewGithubListReviewsTool(artifact datura.Artifact) *GithubListReviewsTool {
+func NewGithubListReviewsTool(artifact *datura.Artifact) *GithubListReviewsTool {
 	return &GithubListReviewsTool{
 		Tool: mcp.NewTool(
 			"list_reviews",
@@ -606,8 +606,8 @@ func NewGithubListReviewsTool(artifact datura.Artifact) *GithubListReviewsTool {
 
 /* Use executes the list reviews operation */
 func (tool *GithubListReviewsTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -623,7 +623,7 @@ type GithubCreateReviewTool struct {
 }
 
 /* NewGithubCreateReviewTool creates a new tool for creating reviews */
-func NewGithubCreateReviewTool(artifact datura.Artifact) *GithubCreateReviewTool {
+func NewGithubCreateReviewTool(artifact *datura.Artifact) *GithubCreateReviewTool {
 	return &GithubCreateReviewTool{
 		Tool: mcp.NewTool(
 			"create_review",
@@ -654,8 +654,8 @@ func NewGithubCreateReviewTool(artifact datura.Artifact) *GithubCreateReviewTool
 
 /* Use executes the create review operation */
 func (tool *GithubCreateReviewTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -671,7 +671,7 @@ type GithubUpdateReviewTool struct {
 }
 
 /* NewGithubUpdateReviewTool creates a new tool for updating reviews */
-func NewGithubUpdateReviewTool(artifact datura.Artifact) *GithubUpdateReviewTool {
+func NewGithubUpdateReviewTool(artifact *datura.Artifact) *GithubUpdateReviewTool {
 	return &GithubUpdateReviewTool{
 		Tool: mcp.NewTool(
 			"update_review",
@@ -702,8 +702,8 @@ func NewGithubUpdateReviewTool(artifact datura.Artifact) *GithubUpdateReviewTool
 
 /* Use executes the update review operation */
 func (tool *GithubUpdateReviewTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -719,7 +719,7 @@ type GithubListReviewCommentsTool struct {
 }
 
 /* NewGithubListReviewCommentsTool creates a new tool for listing review comments */
-func NewGithubListReviewCommentsTool(artifact datura.Artifact) *GithubListReviewCommentsTool {
+func NewGithubListReviewCommentsTool(artifact *datura.Artifact) *GithubListReviewCommentsTool {
 	return &GithubListReviewCommentsTool{
 		Tool: mcp.NewTool(
 			"list_review_comments",
@@ -740,8 +740,8 @@ func NewGithubListReviewCommentsTool(artifact datura.Artifact) *GithubListReview
 
 /* Use executes the list review comments operation */
 func (tool *GithubListReviewCommentsTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -757,7 +757,7 @@ type GithubCreateReviewCommentTool struct {
 }
 
 /* NewGithubCreateReviewCommentTool creates a new tool for creating review comments */
-func NewGithubCreateReviewCommentTool(artifact datura.Artifact) *GithubCreateReviewCommentTool {
+func NewGithubCreateReviewCommentTool(artifact *datura.Artifact) *GithubCreateReviewCommentTool {
 	return &GithubCreateReviewCommentTool{
 		Tool: mcp.NewTool(
 			"create_review_comment",
@@ -798,8 +798,8 @@ func NewGithubCreateReviewCommentTool(artifact datura.Artifact) *GithubCreateRev
 
 /* Use executes the create review comment operation */
 func (tool *GithubCreateReviewCommentTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 

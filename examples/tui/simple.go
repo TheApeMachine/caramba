@@ -13,7 +13,7 @@ import (
 
 type Simple struct {
 	app      *kubrick.App
-	artifact datura.Artifact
+	artifact *datura.Artifact
 }
 
 func NewSimple() *Simple {

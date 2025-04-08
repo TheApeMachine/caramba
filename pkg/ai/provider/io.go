@@ -11,7 +11,7 @@ import (
 func (prvdr Provider) Read(p []byte) (n int, err error) {
 	errnie.Trace("provider.Read")
 
-	builder := datura.NewRegistry().Get(prvdr.ID())
+	builder := datura.NewRegistry().Get(prvdr)
 
 	if prvdr.Is(errnie.StateReady) {
 		// Buffer is empty, encode current message state
@@ -32,7 +32,7 @@ func (prvdr Provider) Read(p []byte) (n int, err error) {
 func (prvdr Provider) Write(p []byte) (n int, err error) {
 	errnie.Trace("provider.Write")
 
-	builder := datura.NewRegistry().Get(prvdr.ID())
+	builder := datura.NewRegistry().Get(prvdr)
 
 	if len(p) == 0 {
 		return 0, nil
@@ -69,7 +69,7 @@ func (prvdr Provider) Write(p []byte) (n int, err error) {
 func (prvdr Provider) Close() error {
 	errnie.Trace("provider.Close")
 
-	builder := datura.NewRegistry().Get(prvdr.ID())
+	builder := datura.NewRegistry().Get(prvdr)
 
 	builder.Buffer = nil
 	builder.Encoder = nil

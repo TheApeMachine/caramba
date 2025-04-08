@@ -30,9 +30,8 @@ func (srv *ProviderRPCServer) Generate(
 	artifact := errnie.Try(call.Args().Artifact())
 	result := errnie.Try(call.AllocResults())
 
-	response := getProvider(errnie.Try(srv.provider.Name())).Generate(ctx, artifact)
-
-	return result.SetOut(response)
+	response := getProvider(errnie.Try(srv.provider.Name())).Generate(ctx, &artifact)
+	return result.SetOut(*response)
 }
 
 func ProviderToClient(

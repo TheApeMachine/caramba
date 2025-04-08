@@ -31,8 +31,8 @@ func NewSystemTool() *SystemTool {
 }
 
 func (tool *SystemTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	errnie.Trace("tools.SystemTool.Use")
 
 	toolName := datura.GetMetaValue[string](artifact, "tool")
@@ -85,8 +85,8 @@ func NewSystemInspectTool() *SystemInspectTool {
 
 /* Use executes the system inspection operation and returns the results */
 func (tool *SystemInspectTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	errnie.Trace("tools.SystemInspectTool.Use")
 
 	return datura.New(
@@ -135,8 +135,8 @@ func NewSystemOptimizeTool() *SystemOptimizeTool {
 
 /* Use executes the system optimization operation and returns the results */
 func (tool *SystemOptimizeTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	errnie.Trace("tools.SystemOptimizeTool.Use")
 
 	return datura.New(
@@ -181,8 +181,8 @@ func NewSystemMessageTool() *SystemMessageTool {
 
 /* Use executes the system messaging operation and returns the results */
 func (tool *SystemMessageTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	errnie.Trace("tools.SystemMessageTool.Use")
 
 	return datura.New(

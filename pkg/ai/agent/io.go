@@ -20,10 +20,10 @@ const (
 Read implements the io.Reader interface for the Agent.
 It streams the agent using a Cap'n Proto Encoder.
 */
-func (agent Agent) Read(p []byte) (n int, err error) {
+func (agent *Agent) Read(p []byte) (n int, err error) {
 	errnie.Trace("agent.Read")
 
-	builder := datura.NewRegistry().Get(agent.ID())
+	builder := datura.NewRegistry().Get(agent)
 
 	if agent.Is(errnie.StateReady) {
 		// Buffer is empty, encode current message state
@@ -45,10 +45,10 @@ func (agent Agent) Read(p []byte) (n int, err error) {
 Write implements the io.Writer interface for the Agent.
 It streams the provided bytes using a Cap'n Proto Decoder.
 */
-func (agent Agent) Write(p []byte) (n int, err error) {
+func (agent *Agent) Write(p []byte) (n int, err error) {
 	errnie.Trace("agent.Write")
 
-	builder := datura.NewRegistry().Get(agent.ID())
+	builder := datura.NewRegistry().Get(agent)
 
 	if len(p) == 0 {
 		return 0, nil
@@ -64,6 +64,7 @@ func (agent Agent) Write(p []byte) (n int, err error) {
 
 	var (
 		msg *capnp.Message
+		buf Agent
 	)
 
 	if msg, err = builder.Decoder.Decode(); err != nil {
@@ -74,10 +75,11 @@ func (agent Agent) Write(p []byte) (n int, err error) {
 		return n, errnie.Error(err)
 	}
 
-	if agent, err = ReadRootAgent(msg); err != nil {
+	if buf, err = ReadRootAgent(msg); err != nil {
 		return n, errnie.Error(err)
 	}
 
+	agent = &buf
 	agent.ToState(errnie.StateReady)
 	return n, nil
 }
@@ -85,10 +87,10 @@ func (agent Agent) Write(p []byte) (n int, err error) {
 /*
 Close implements the io.Closer interface for the Agent.
 */
-func (agent Agent) Close() error {
+func (agent *Agent) Close() error {
 	errnie.Trace("agent.Close")
 
-	builder := datura.NewRegistry().Get(agent.ID())
+	builder := datura.NewRegistry().Get(agent)
 
 	if err := builder.Buffer.Flush(); err != nil {
 		return errnie.Error(err)
@@ -97,6 +99,6 @@ func (agent Agent) Close() error {
 	builder.Buffer = nil
 	builder.Encoder = nil
 	builder.Decoder = nil
-
+	datura.NewRegistry().Unregister(agent)
 	return nil
 }

@@ -1,14 +1,18 @@
 package context
 
 import (
+	"bytes"
+	"io"
+
 	"capnproto.org/go/capnp/v3"
 	"github.com/google/uuid"
 	"github.com/theapemachine/caramba/pkg/ai/message"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-func New() Context {
+type ContextOption func(*Context)
+
+func New(opts ...ContextOption) *Context {
 	errnie.Trace("context.New")
 
 	var (
@@ -19,30 +23,34 @@ func New() Context {
 	)
 
 	if _, seg, err = capnp.NewMessage(arena); errnie.Error(err) != nil {
-		return errnie.Try(NewContext(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	if ctx, err = NewRootContext(seg); errnie.Error(err) != nil {
-		return errnie.Try(NewContext(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	ctx.SetUuid(uuid.New().String())
-	ctx.SetState(uint64(errnie.StatePending))
+	ctx.SetState(uint64(errnie.StateReady))
 
 	// Initialize an empty message list
 	ml, err := message.NewMessage_List(seg, 0)
 	if errnie.Error(err) != nil {
-		return errnie.Try(NewContext(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	if errnie.Error(ctx.SetMessages(ml)) != nil {
-		return errnie.Try(NewContext(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
-	return datura.Register(ctx)
+	for _, opt := range opts {
+		opt(&ctx)
+	}
+
+	return &ctx
 }
 
-func (ctx Context) Add(msg message.Message) Context {
+func (ctx *Context) Add(msg *message.Message) *Context {
 	errnie.Trace("context.Add")
 
 	messages := errnie.Try(ctx.Messages())
@@ -54,14 +62,14 @@ func (ctx Context) Add(msg message.Message) Context {
 	}
 
 	// Copy existing messages
-	for i := 0; i < messages.Len(); i++ {
+	for i := range messages.Len() {
 		if err := ml.Set(i, messages.At(i)); errnie.Error(err) != nil {
 			return ctx
 		}
 	}
 
 	// Add the new message
-	if err := ml.Set(messages.Len(), msg); errnie.Error(err) != nil {
+	if err := ml.Set(messages.Len(), *msg); errnie.Error(err) != nil {
 		return ctx
 	}
 
@@ -71,4 +79,12 @@ func (ctx Context) Add(msg message.Message) Context {
 	}
 
 	return ctx
+}
+
+func WithBytes(b []byte) ContextOption {
+	return func(ctx *Context) {
+		errnie.Trace("context.WithBytes")
+		errnie.Try(io.Copy(ctx, bytes.NewBuffer(b)))
+		ctx.ToState(errnie.StateReady)
+	}
 }

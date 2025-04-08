@@ -11,9 +11,9 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-type MessageOption func(Message) Message
+type MessageOption func(*Message)
 
-func New(opts ...MessageOption) Message {
+func New(opts ...MessageOption) *Message {
 	errnie.Trace("message.New")
 
 	var (
@@ -24,72 +24,76 @@ func New(opts ...MessageOption) Message {
 	)
 
 	if _, seg, err = capnp.NewMessage(arena); errnie.Error(err) != nil {
-		return errnie.Try(NewMessage(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	if msg, err = NewRootMessage(seg); errnie.Error(err) != nil {
-		return errnie.Try(NewMessage(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	msg.SetUuid(uuid.New().String())
-	msg.SetState(uint64(errnie.StatePending))
+	msg.SetState(uint64(errnie.StateReady))
 
 	for _, opt := range opts {
-		opt(msg)
+		opt(&msg)
 	}
 
-	return datura.Register(msg)
+	return datura.Register(&msg)
 }
 
 func WithBytes(b []byte) MessageOption {
-	return func(m Message) Message {
+	return func(m *Message) {
 		errnie.Trace("message.WithBytes")
 		errnie.Try(io.Copy(m, bytes.NewBuffer(b)))
-		return m
+		m.ToState(errnie.StateReady)
 	}
 }
 
 func WithMessage(msg *Message) MessageOption {
-	return func(m Message) Message {
+	return func(m *Message) {
 		errnie.Trace("message.WithMessage")
-		m = errnie.Try(ReadRootMessage(m.Message()))
-		return m
+		buf, err := ReadRootMessage(msg.Message())
+		if errnie.Error(err) != nil {
+			return
+		}
+		*m = buf
+		m.ToState(errnie.StateReady)
 	}
 }
 
 func WithRole(role string) MessageOption {
-	return func(m Message) Message {
+	return func(m *Message) {
 		errnie.Trace("message.WithRole")
 		m.SetRole(role)
-		return m
 	}
 }
 
 func WithContent(content string) MessageOption {
-	return func(m Message) Message {
+	return func(m *Message) {
 		errnie.Trace("message.WithContent")
 		m.SetContent(content)
-		return m
 	}
 }
 
 func WithName(name string) MessageOption {
-	return func(m Message) Message {
+	return func(m *Message) {
 		errnie.Trace("message.WithName")
-		m = errnie.Try(ReadRootMessage(m.Message()))
-		m.SetName(name)
-		return m
+		buf, err := ReadRootMessage(m.Message())
+		if errnie.Error(err) != nil {
+			return
+		}
+		buf.SetName(name)
 	}
 }
 
 func WithToolCalls(toolCalls []toolcall.ToolCallBuilder) MessageOption {
-	return func(m Message) Message {
+	return func(m *Message) {
 		errnie.Trace("message.WithToolCalls")
 
 		// Create a new ToolCall_List with the same length as toolCalls
 		tcList, err := toolcall.NewToolCall_List(m.Segment(), int32(len(toolCalls)))
 		if errnie.Error(err) != nil {
-			return errnie.Try(NewMessage(m.Segment())).ToState(errnie.StateError)
+			return
 		}
 
 		// Copy each ToolCall from the builders into the list
@@ -98,6 +102,5 @@ func WithToolCalls(toolCalls []toolcall.ToolCallBuilder) MessageOption {
 		}
 
 		m.SetToolCalls(tcList)
-		return m
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-func (ctx Context) Bytes() []byte {
+func (ctx *Context) Bytes() []byte {
 	errnie.Trace("context.Bytes")
 
 	buf := bytes.NewBuffer(nil)
@@ -16,5 +16,6 @@ func (ctx Context) Bytes() []byte {
 		return nil
 	}
 
+	ctx.ToState(errnie.StateReady)
 	return buf.Bytes()
 }

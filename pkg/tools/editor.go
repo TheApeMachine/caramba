@@ -14,7 +14,7 @@ type EditorTool struct {
 }
 
 /* NewEditorTool creates a new editor tool with all operations */
-func NewEditorTool(artifact datura.Artifact) *EditorTool {
+func NewEditorTool(artifact *datura.Artifact) *EditorTool {
 	read := NewEditorReadTool(artifact)
 	write := NewEditorWriteTool(artifact)
 	delete := NewEditorDeleteTool(artifact)
@@ -37,8 +37,8 @@ func NewEditorTool(artifact datura.Artifact) *EditorTool {
 }
 
 func (tool *EditorTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	toolName := datura.GetMetaValue[string](artifact, "tool")
 	return tool.operations[toolName].Use(ctx, artifact)
 }
@@ -61,7 +61,7 @@ type EditorReadTool struct {
 }
 
 /* NewEditorReadTool creates a new tool for reading files */
-func NewEditorReadTool(artifact datura.Artifact) *EditorReadTool {
+func NewEditorReadTool(artifact *datura.Artifact) *EditorReadTool {
 	return &EditorReadTool{
 		Tool: mcp.NewTool(
 			"read",
@@ -78,8 +78,8 @@ func NewEditorReadTool(artifact datura.Artifact) *EditorReadTool {
 
 /* Use executes the read operation */
 func (tool *EditorReadTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	// TODO: Implement actual file reading using client
 	return artifact
 }
@@ -97,7 +97,7 @@ type EditorWriteTool struct {
 }
 
 /* NewEditorWriteTool creates a new tool for writing to files */
-func NewEditorWriteTool(artifact datura.Artifact) *EditorWriteTool {
+func NewEditorWriteTool(artifact *datura.Artifact) *EditorWriteTool {
 	return &EditorWriteTool{
 		Tool: mcp.NewTool(
 			"write",
@@ -119,8 +119,8 @@ func NewEditorWriteTool(artifact datura.Artifact) *EditorWriteTool {
 
 /* Use executes the write operation */
 func (tool *EditorWriteTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	// TODO: Implement actual file writing using client
 	return artifact
 }
@@ -138,7 +138,7 @@ type EditorDeleteTool struct {
 }
 
 /* NewEditorDeleteTool creates a new tool for deleting files */
-func NewEditorDeleteTool(artifact datura.Artifact) *EditorDeleteTool {
+func NewEditorDeleteTool(artifact *datura.Artifact) *EditorDeleteTool {
 	return &EditorDeleteTool{
 		Tool: mcp.NewTool(
 			"delete",
@@ -155,8 +155,8 @@ func NewEditorDeleteTool(artifact datura.Artifact) *EditorDeleteTool {
 
 /* Use executes the delete operation */
 func (tool *EditorDeleteTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	// TODO: Implement actual file deletion using client
 	return artifact
 }
@@ -174,7 +174,7 @@ type EditorReplaceLinesTool struct {
 }
 
 /* NewEditorReplaceLinesTool creates a new tool for replacing lines */
-func NewEditorReplaceLinesTool(artifact datura.Artifact) *EditorReplaceLinesTool {
+func NewEditorReplaceLinesTool(artifact *datura.Artifact) *EditorReplaceLinesTool {
 	return &EditorReplaceLinesTool{
 		Tool: mcp.NewTool(
 			"replace_lines",
@@ -206,8 +206,8 @@ func NewEditorReplaceLinesTool(artifact datura.Artifact) *EditorReplaceLinesTool
 
 /* Use executes the replace lines operation */
 func (tool *EditorReplaceLinesTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	// TODO: Implement actual line replacement using client
 	return artifact
 }
@@ -225,7 +225,7 @@ type EditorInsertLinesTool struct {
 }
 
 /* NewEditorInsertLinesTool creates a new tool for inserting lines */
-func NewEditorInsertLinesTool(artifact datura.Artifact) *EditorInsertLinesTool {
+func NewEditorInsertLinesTool(artifact *datura.Artifact) *EditorInsertLinesTool {
 	return &EditorInsertLinesTool{
 		Tool: mcp.NewTool(
 			"insert_lines",
@@ -247,8 +247,8 @@ func NewEditorInsertLinesTool(artifact datura.Artifact) *EditorInsertLinesTool {
 
 /* Use executes the insert lines operation */
 func (tool *EditorInsertLinesTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	// TODO: Implement actual line insertion using client
 	return artifact
 }
@@ -266,7 +266,7 @@ type EditorDeleteLinesTool struct {
 }
 
 /* NewEditorDeleteLinesTool creates a new tool for deleting lines */
-func NewEditorDeleteLinesTool(artifact datura.Artifact) *EditorDeleteLinesTool {
+func NewEditorDeleteLinesTool(artifact *datura.Artifact) *EditorDeleteLinesTool {
 	return &EditorDeleteLinesTool{
 		Tool: mcp.NewTool(
 			"delete_lines",
@@ -293,8 +293,8 @@ func NewEditorDeleteLinesTool(artifact datura.Artifact) *EditorDeleteLinesTool {
 
 /* Use executes the delete lines operation */
 func (tool *EditorDeleteLinesTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	// TODO: Implement actual line deletion using client
 	return artifact
 }
@@ -312,7 +312,7 @@ type EditorReadLinesTool struct {
 }
 
 /* NewEditorReadLinesTool creates a new tool for reading lines */
-func NewEditorReadLinesTool(artifact datura.Artifact) *EditorReadLinesTool {
+func NewEditorReadLinesTool(artifact *datura.Artifact) *EditorReadLinesTool {
 	return &EditorReadLinesTool{
 		Tool: mcp.NewTool(
 			"read_lines",
@@ -339,8 +339,8 @@ func NewEditorReadLinesTool(artifact datura.Artifact) *EditorReadLinesTool {
 
 /* Use executes the read lines operation */
 func (tool *EditorReadLinesTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	// TODO: Implement actual line reading using client
 	return artifact
 }

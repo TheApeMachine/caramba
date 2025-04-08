@@ -419,7 +419,7 @@ func (n *NetworkNode) Sync(ctx context.Context, call RadixRPC_sync) error {
 			datura.WithBytes(value),
 		)
 
-		entry.SetArtifact(artifact)
+		entry.SetArtifact(*artifact)
 	}
 
 	diff.SetEntries(entries)
@@ -481,7 +481,7 @@ func (n *NetworkNode) BroadcastInsert(key []byte, value []byte) {
 				artifact := datura.New(
 					datura.WithBytes(value),
 				)
-				if err := p.SetArtifact(artifact); err != nil {
+				if err := p.SetArtifact(*artifact); err != nil {
 					return err
 				}
 				p.SetTerm(currentTerm)

@@ -11,7 +11,7 @@ import (
 type BorderLayout struct {
 	Spacing    int
 	Components []components.Component
-	artifact   datura.Artifact
+	artifact   *datura.Artifact
 }
 
 func NewBorderLayout(spacing int) *BorderLayout {

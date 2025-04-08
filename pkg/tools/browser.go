@@ -14,7 +14,7 @@ type BrowserTool struct {
 }
 
 /* NewBrowserTool creates a new browser tool with all operations */
-func NewBrowserTool(artifact datura.Artifact) *BrowserTool {
+func NewBrowserTool(artifact *datura.Artifact) *BrowserTool {
 	getContent := NewBrowserGetContentTool(artifact)
 	getLinks := NewBrowserGetLinksTool(artifact)
 
@@ -27,8 +27,8 @@ func NewBrowserTool(artifact datura.Artifact) *BrowserTool {
 }
 
 func (tool *BrowserTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	toolName := datura.GetMetaValue[string](artifact, "tool")
 	return tool.operations[toolName].Use(ctx, artifact)
 }
@@ -51,7 +51,7 @@ type BrowserGetContentTool struct {
 }
 
 /* NewBrowserGetContentTool creates a new tool for retrieving page content */
-func NewBrowserGetContentTool(artifact datura.Artifact) *BrowserGetContentTool {
+func NewBrowserGetContentTool(artifact *datura.Artifact) *BrowserGetContentTool {
 	return &BrowserGetContentTool{
 		Tool: mcp.NewTool(
 			"get_content",
@@ -68,8 +68,8 @@ func NewBrowserGetContentTool(artifact datura.Artifact) *BrowserGetContentTool {
 
 /* Use executes the content retrieval operation */
 func (tool *BrowserGetContentTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	instance, err := tool.instance.Initialize()
 	if err != nil {
 		return artifact
@@ -105,7 +105,7 @@ type BrowserGetLinksTool struct {
 }
 
 /* NewBrowserGetLinksTool creates a new tool for extracting links */
-func NewBrowserGetLinksTool(artifact datura.Artifact) *BrowserGetLinksTool {
+func NewBrowserGetLinksTool(artifact *datura.Artifact) *BrowserGetLinksTool {
 	return &BrowserGetLinksTool{
 		Tool: mcp.NewTool(
 			"get_links",
@@ -122,8 +122,8 @@ func NewBrowserGetLinksTool(artifact datura.Artifact) *BrowserGetLinksTool {
 
 /* Use executes the link extraction operation */
 func (tool *BrowserGetLinksTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	instance, err := tool.instance.Initialize()
 	if err != nil {
 		return artifact

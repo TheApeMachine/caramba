@@ -108,12 +108,12 @@ func (q *Qdrant) ID() string {
 }
 
 func (q *Qdrant) Generate(
-	buffer chan datura.Artifact,
-	fn ...func(artifact datura.Artifact) datura.Artifact,
-) chan datura.Artifact {
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("memory.Qdrant.Generate")
 
-	out := make(chan datura.Artifact)
+	out := make(chan *datura.Artifact)
 
 	go func() {
 		defer close(out)
@@ -129,7 +129,7 @@ func (q *Qdrant) Generate(
 			// Handle document storage
 			if documents := datura.GetMetaValue[string](artifact, "documents"); documents != "" {
 				if err := json.Unmarshal([]byte(documents), &docs); err != nil {
-					out <- datura.New(datura.WithError(errnie.Error(err)))
+						out <- datura.New(datura.WithError(errnie.Error(err)))
 					return
 				}
 
@@ -148,7 +148,7 @@ func (q *Qdrant) Generate(
 					}
 
 					// Get embeddings using the embedder's Generate method
-					embeddingChan := q.embedder.Generate(make(chan datura.Artifact, 1))
+					embeddingChan := q.embedder.Generate(make(chan *datura.Artifact, 1))
 					embeddingChan <- docArtifact
 					embeddedDoc := <-embeddingChan
 
@@ -203,7 +203,7 @@ func (q *Qdrant) Generate(
 				)
 
 				// Get embeddings using the embedder's Generate method
-				embeddingChan := q.embedder.Generate(make(chan datura.Artifact, 1))
+				embeddingChan := q.embedder.Generate(make(chan *datura.Artifact, 1))
 				embeddingChan <- questionArtifact
 				embeddedQuestion := <-embeddingChan
 

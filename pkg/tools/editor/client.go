@@ -22,7 +22,7 @@ func NewClient() *Client {
 	}
 }
 
-func (client *Client) encode(artifact datura.Artifact, v any) (err error) {
+func (client *Client) encode(artifact *datura.Artifact, v any) (err error) {
 	errnie.Debug("editor.Client.encode")
 
 	payload := bytes.NewBuffer([]byte{})
@@ -31,11 +31,11 @@ func (client *Client) encode(artifact datura.Artifact, v any) (err error) {
 		return errnie.Error(err)
 	}
 
-	artifact = datura.WithEncryptedPayload(payload.Bytes())(artifact)
+	datura.WithEncryptedPayload(payload.Bytes())(artifact)
 	return nil
 }
 
-func (client *Client) ReadFile(artifact datura.Artifact) error {
+func (client *Client) ReadFile(artifact *datura.Artifact) error {
 	errnie.Debug("editor.Client.ReadFile")
 
 	filePath := datura.GetMetaValue[string](artifact, "file")
@@ -49,7 +49,7 @@ func (client *Client) ReadFile(artifact datura.Artifact) error {
 	})
 }
 
-func (client *Client) WriteFile(artifact datura.Artifact) error {
+func (client *Client) WriteFile(artifact *datura.Artifact) error {
 	errnie.Debug("editor.Client.WriteFile")
 
 	filePath := datura.GetMetaValue[string](artifact, "file")
@@ -65,7 +65,7 @@ func (client *Client) WriteFile(artifact datura.Artifact) error {
 	})
 }
 
-func (client *Client) DeleteFile(artifact datura.Artifact) error {
+func (client *Client) DeleteFile(artifact *datura.Artifact) error {
 	errnie.Debug("editor.Client.DeleteFile")
 
 	filePath := datura.GetMetaValue[string](artifact, "file")
@@ -80,7 +80,7 @@ func (client *Client) DeleteFile(artifact datura.Artifact) error {
 	})
 }
 
-func (client *Client) ReplaceLines(artifact datura.Artifact) error {
+func (client *Client) ReplaceLines(artifact *datura.Artifact) error {
 	errnie.Debug("editor.Client.ReplaceLines")
 
 	filePath := datura.GetMetaValue[string](artifact, "file")
@@ -116,7 +116,7 @@ func (client *Client) ReplaceLines(artifact datura.Artifact) error {
 	})
 }
 
-func (client *Client) InsertLines(artifact datura.Artifact) error {
+func (client *Client) InsertLines(artifact *datura.Artifact) error {
 	errnie.Debug("editor.Client.InsertLines")
 
 	filePath := datura.GetMetaValue[string](artifact, "file")
@@ -151,7 +151,7 @@ func (client *Client) InsertLines(artifact datura.Artifact) error {
 	})
 }
 
-func (client *Client) DeleteLines(artifact datura.Artifact) error {
+func (client *Client) DeleteLines(artifact *datura.Artifact) error {
 	errnie.Debug("editor.Client.DeleteLines")
 
 	filePath := datura.GetMetaValue[string](artifact, "file")
@@ -185,7 +185,7 @@ func (client *Client) DeleteLines(artifact datura.Artifact) error {
 	})
 }
 
-func (client *Client) ReadLines(artifact datura.Artifact) error {
+func (client *Client) ReadLines(artifact *datura.Artifact) error {
 	errnie.Debug("editor.Client.ReadLines")
 
 	filePath := datura.GetMetaValue[string](artifact, "file")

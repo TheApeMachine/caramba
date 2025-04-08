@@ -8,7 +8,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-func testArtifact() Artifact {
+func testArtifact() *Artifact {
 	return New(
 		WithMediatype(MediaTypeCapnp),
 		WithRole(ArtifactRoleUser),

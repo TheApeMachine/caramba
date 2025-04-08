@@ -11,8 +11,8 @@ import (
 type BrowserGenerator struct{}
 
 // Generate processes browser operations
-func (bg *BrowserGenerator) Generate(in chan datura.Artifact) chan datura.Artifact {
-	out := make(chan datura.Artifact)
+func (bg *BrowserGenerator) Generate(in chan *datura.Artifact) chan *datura.Artifact {
+	out := make(chan *datura.Artifact)
 
 	go func() {
 		defer close(out)

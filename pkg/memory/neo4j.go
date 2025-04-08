@@ -54,12 +54,12 @@ Generate processes a query and returns the results via the artifact channel.
 It implements the Generator pattern to handle graph database operations asynchronously.
 */
 func (n4j *Neo4j) Generate(
-	buffer chan datura.Artifact,
-	fn ...func(artifact datura.Artifact) datura.Artifact,
-) chan datura.Artifact {
+	buffer chan *datura.Artifact,
+	fn ...func(artifact *datura.Artifact) *datura.Artifact,
+) chan *datura.Artifact {
 	errnie.Debug("memory.Neo4j.Generate")
 
-	out := make(chan datura.Artifact)
+	out := make(chan *datura.Artifact)
 
 	go func() {
 		defer close(out)

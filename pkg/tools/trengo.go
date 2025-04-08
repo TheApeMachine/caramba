@@ -15,7 +15,7 @@ type TrengoTool struct {
 }
 
 /* NewTrengoTool creates a new Trengo tool with options */
-func NewTrengoTool(artifact datura.Artifact) *TrengoTool {
+func NewTrengoTool(artifact *datura.Artifact) *TrengoTool {
 	list := NewTrengoListTicketsTool(artifact)
 	create := NewTrengoCreateTicketTool(artifact)
 	assign := NewTrengoAssignTicketTool(artifact)
@@ -45,8 +45,8 @@ func NewTrengoTool(artifact datura.Artifact) *TrengoTool {
 }
 
 func (tool *TrengoTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	toolName := datura.GetMetaValue[string](artifact, "tool")
 	return tool.operations[toolName].Use(ctx, artifact)
 }
@@ -68,7 +68,7 @@ type TrengoListTicketsTool struct {
 }
 
 /* NewTrengoListTicketsTool creates a new tool for listing tickets */
-func NewTrengoListTicketsTool(artifact datura.Artifact) *TrengoListTicketsTool {
+func NewTrengoListTicketsTool(artifact *datura.Artifact) *TrengoListTicketsTool {
 	return &TrengoListTicketsTool{
 		Tool: mcp.NewTool(
 			"list_tickets",
@@ -79,8 +79,8 @@ func NewTrengoListTicketsTool(artifact datura.Artifact) *TrengoListTicketsTool {
 
 /* Use executes the list tickets operation and returns the results */
 func (tool *TrengoListTicketsTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -96,7 +96,7 @@ type TrengoCreateTicketTool struct {
 }
 
 /* NewTrengoCreateTicketTool creates a new tool for creating tickets */
-func NewTrengoCreateTicketTool(artifact datura.Artifact) *TrengoCreateTicketTool {
+func NewTrengoCreateTicketTool(artifact *datura.Artifact) *TrengoCreateTicketTool {
 	return &TrengoCreateTicketTool{
 		Tool: mcp.NewTool(
 			"create_ticket",
@@ -107,8 +107,8 @@ func NewTrengoCreateTicketTool(artifact datura.Artifact) *TrengoCreateTicketTool
 
 /* Use executes the create ticket operation and returns the results */
 func (tool *TrengoCreateTicketTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -124,7 +124,7 @@ type TrengoAssignTicketTool struct {
 }
 
 /* NewTrengoAssignTicketTool creates a new tool for assigning tickets */
-func NewTrengoAssignTicketTool(artifact datura.Artifact) *TrengoAssignTicketTool {
+func NewTrengoAssignTicketTool(artifact *datura.Artifact) *TrengoAssignTicketTool {
 	return &TrengoAssignTicketTool{
 		Tool: mcp.NewTool(
 			"assign_ticket",
@@ -135,8 +135,8 @@ func NewTrengoAssignTicketTool(artifact datura.Artifact) *TrengoAssignTicketTool
 
 /* Use executes the assign ticket operation and returns the results */
 func (tool *TrengoAssignTicketTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -152,7 +152,7 @@ type TrengoCloseTicketTool struct {
 }
 
 /* NewTrengoCloseTicketTool creates a new tool for closing tickets */
-func NewTrengoCloseTicketTool(artifact datura.Artifact) *TrengoCloseTicketTool {
+func NewTrengoCloseTicketTool(artifact *datura.Artifact) *TrengoCloseTicketTool {
 	return &TrengoCloseTicketTool{
 		Tool: mcp.NewTool(
 			"close_ticket",
@@ -163,8 +163,8 @@ func NewTrengoCloseTicketTool(artifact datura.Artifact) *TrengoCloseTicketTool {
 
 /* Use executes the close ticket operation and returns the results */
 func (tool *TrengoCloseTicketTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -180,7 +180,7 @@ type TrengoReopenTicketTool struct {
 }
 
 /* NewTrengoReopenTicketTool creates a new tool for reopening tickets */
-func NewTrengoReopenTicketTool(artifact datura.Artifact) *TrengoReopenTicketTool {
+func NewTrengoReopenTicketTool(artifact *datura.Artifact) *TrengoReopenTicketTool {
 	return &TrengoReopenTicketTool{
 		Tool: mcp.NewTool(
 			"reopen_ticket",
@@ -191,8 +191,8 @@ func NewTrengoReopenTicketTool(artifact datura.Artifact) *TrengoReopenTicketTool
 
 /* Use executes the reopen ticket operation and returns the results */
 func (tool *TrengoReopenTicketTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -208,7 +208,7 @@ type TrengoListLabelsTool struct {
 }
 
 /* NewTrengoListLabelsTool creates a new tool for listing labels */
-func NewTrengoListLabelsTool(artifact datura.Artifact) *TrengoListLabelsTool {
+func NewTrengoListLabelsTool(artifact *datura.Artifact) *TrengoListLabelsTool {
 	return &TrengoListLabelsTool{
 		Tool: mcp.NewTool(
 			"list_labels",
@@ -219,8 +219,8 @@ func NewTrengoListLabelsTool(artifact datura.Artifact) *TrengoListLabelsTool {
 
 /* Use executes the list labels operation and returns the results */
 func (tool *TrengoListLabelsTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -236,7 +236,7 @@ type TrengoGetLabelTool struct {
 }
 
 /* NewTrengoGetLabelTool creates a new tool for getting labels */
-func NewTrengoGetLabelTool(artifact datura.Artifact) *TrengoGetLabelTool {
+func NewTrengoGetLabelTool(artifact *datura.Artifact) *TrengoGetLabelTool {
 	return &TrengoGetLabelTool{
 		Tool: mcp.NewTool(
 			"get_label",
@@ -247,8 +247,8 @@ func NewTrengoGetLabelTool(artifact datura.Artifact) *TrengoGetLabelTool {
 
 /* Use executes the get label operation and returns the results */
 func (tool *TrengoGetLabelTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -264,7 +264,7 @@ type TrengoCreateLabelTool struct {
 }
 
 /* NewTrengoCreateLabelTool creates a new tool for creating labels */
-func NewTrengoCreateLabelTool(artifact datura.Artifact) *TrengoCreateLabelTool {
+func NewTrengoCreateLabelTool(artifact *datura.Artifact) *TrengoCreateLabelTool {
 	return &TrengoCreateLabelTool{
 		Tool: mcp.NewTool(
 			"create_label",
@@ -275,8 +275,8 @@ func NewTrengoCreateLabelTool(artifact datura.Artifact) *TrengoCreateLabelTool {
 
 /* Use executes the create label operation and returns the results */
 func (tool *TrengoCreateLabelTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -292,7 +292,7 @@ type TrengoUpdateLabelTool struct {
 }
 
 /* NewTrengoUpdateLabelTool creates a new tool for updating labels */
-func NewTrengoUpdateLabelTool(artifact datura.Artifact) *TrengoUpdateLabelTool {
+func NewTrengoUpdateLabelTool(artifact *datura.Artifact) *TrengoUpdateLabelTool {
 	return &TrengoUpdateLabelTool{
 		Tool: mcp.NewTool(
 			"update_label",
@@ -303,8 +303,8 @@ func NewTrengoUpdateLabelTool(artifact datura.Artifact) *TrengoUpdateLabelTool {
 
 /* Use executes the update label operation and returns the results */
 func (tool *TrengoUpdateLabelTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 
@@ -320,7 +320,7 @@ type TrengoDeleteLabelTool struct {
 }
 
 /* NewTrengoDeleteLabelTool creates a new tool for deleting labels */
-func NewTrengoDeleteLabelTool(artifact datura.Artifact) *TrengoDeleteLabelTool {
+func NewTrengoDeleteLabelTool(artifact *datura.Artifact) *TrengoDeleteLabelTool {
 	return &TrengoDeleteLabelTool{
 		Tool: mcp.NewTool(
 			"delete_label",
@@ -331,8 +331,8 @@ func NewTrengoDeleteLabelTool(artifact datura.Artifact) *TrengoDeleteLabelTool {
 
 /* Use executes the delete label operation and returns the results */
 func (tool *TrengoDeleteLabelTool) Use(
-	ctx context.Context, artifact datura.Artifact,
-) datura.Artifact {
+	ctx context.Context, artifact *datura.Artifact,
+) *datura.Artifact {
 	return artifact
 }
 

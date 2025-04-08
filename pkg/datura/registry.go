@@ -3,6 +3,7 @@ package datura
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"sync"
 
@@ -14,6 +15,10 @@ var (
 	once     sync.Once
 	registry *Registry
 )
+
+func init() {
+	registry = NewRegistry()
+}
 
 type Registerable interface {
 	io.ReadWriteCloser
@@ -49,6 +54,7 @@ func NewBuffer(registerable Registerable) *Buffer {
 
 type Registry struct {
 	buffers map[string]*Buffer
+	mu      sync.RWMutex
 }
 
 func NewRegistry() *Registry {
@@ -66,18 +72,64 @@ func NewRegistry() *Registry {
 func Register[T Registerable](builder T) T {
 	errnie.Trace("datura.Register", "id", builder.ID())
 
-	NewRegistry().buffers[builder.ID()] = NewBuffer(builder)
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+
+	if builder.ID() == "" {
+		errnie.Fatal(errnie.New(
+			errnie.WithError(errors.New("id is empty")),
+			errnie.WithMessage("no id provided for registration"),
+		))
+	}
+
+	registry.buffers[builder.ID()] = NewBuffer(builder)
 	return builder
 }
 
-func (registry *Registry) Unregister(id string) {
-	errnie.Trace("datura.Unregister")
+func (registry *Registry) Unregister(registerable Registerable) {
+	errnie.Trace("datura.Unregister", "id", registerable.ID())
 
-	delete(registry.buffers, id)
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+
+	if registerable.ID() == "" {
+		errnie.Fatal(errnie.New(
+			errnie.WithError(errors.New("id is empty")),
+			errnie.WithMessage("no id provided for unregistration"),
+		))
+	}
+
+	delete(registry.buffers, registerable.ID())
 }
 
-func (registry *Registry) Get(id string) *Buffer {
-	errnie.Trace("datura.Get", "id", id)
+func (registry *Registry) Get(registerable Registerable) *Buffer {
+	errnie.Trace("datura.Get", "id", registerable.ID())
 
-	return registry.buffers[id]
+	registry.mu.RLock()
+	buffer, ok := registry.buffers[registerable.ID()]
+	registry.mu.RUnlock()
+
+	if ok {
+		return buffer
+	}
+
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+
+	buffer, ok = registry.buffers[registerable.ID()]
+
+	if ok {
+		return buffer
+	}
+
+	if registerable.ID() == "" {
+		errnie.Fatal(errnie.New(
+			errnie.WithError(errors.New("id is empty during registration attempt")),
+			errnie.WithMessage("no id provided for registration attempt"),
+		))
+	}
+
+	newBuffer := NewBuffer(registerable)
+	registry.buffers[registerable.ID()] = newBuffer
+	return newBuffer
 }

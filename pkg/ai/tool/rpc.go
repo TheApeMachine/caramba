@@ -23,9 +23,10 @@ func (srv *ToolRPCServer) Use(
 	errnie.Trace("tool.Use RPC", "tool_name", srv.tool.Name)
 
 	result := errnie.Try(call.AllocResults())
+	artifact := errnie.Try(call.Args().Artifact())
 
-	return result.SetOut(srv.tool.MCPTool.Use(
-		ctx, errnie.Try(call.Args().Artifact()),
+	return result.SetOut(*srv.tool.MCPTool.Use(
+		ctx, &artifact,
 	))
 }
 

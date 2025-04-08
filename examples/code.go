@@ -29,8 +29,8 @@ type Code struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	hub     *twoface.Hub
-	planner agent.Agent
-	dev     agent.Agent
+	planner *agent.Agent
+	dev     *agent.Agent
 }
 
 // NewCode creates a new test setup for the agent framework
@@ -96,8 +96,8 @@ func (code *Code) Run() (err error) {
 		client := agent.AgentToClient(code.planner)
 
 		future, release := client.Send(context.Background(), func(params agent.RPC_send_Params) error {
-			return params.SetArtifact(datura.New(
-				datura.WithBytes(
+			return params.SetArtifact(*datura.New(
+				datura.WithPayload(
 					message.New(
 						message.WithRole("user"),
 						message.WithContent(strings.Join([]string{
@@ -109,6 +109,7 @@ func (code *Code) Run() (err error) {
 						}, " ")),
 					).Bytes(),
 				),
+				datura.WithMeta("model", "gpt-4o-mini"),
 			))
 		})
 

@@ -7,7 +7,7 @@ import (
 )
 
 type ProviderType interface {
-	Generate(context.Context, datura.Artifact) datura.Artifact
+	Generate(context.Context, *datura.Artifact) *datura.Artifact
 }
 
 type Message struct {

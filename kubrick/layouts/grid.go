@@ -19,7 +19,7 @@ type GridLayout struct {
 	pctx       context.Context
 	ctx        context.Context
 	cancel     context.CancelFunc
-	artifact   datura.Artifact
+	artifact   *datura.Artifact
 	components []components.Component
 	Rows       int
 	Columns    int

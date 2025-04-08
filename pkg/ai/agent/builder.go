@@ -16,10 +16,10 @@ import (
 )
 
 // AgentBuilderOption defines a function that configures an Agent
-type AgentOption func(Agent) error
+type AgentOption func(*Agent) error
 
 // New creates a new agent with the provided options
-func New(options ...AgentOption) Agent {
+func New(options ...AgentOption) *Agent {
 	errnie.Trace("agent.New")
 
 	var (
@@ -30,48 +30,48 @@ func New(options ...AgentOption) Agent {
 	)
 
 	if _, seg, err = capnp.NewMessage(arena); errnie.Error(err) != nil {
-		return errnie.Try(NewAgent(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	if agent, err = NewRootAgent(seg); errnie.Error(err) != nil {
-		return errnie.Try(NewAgent(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	// Create and set identity with default ID
 	identity, err := agent.NewIdentity()
 
 	if errnie.Error(err) != nil {
-		return errnie.Try(NewAgent(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	if errnie.Error(identity.SetIdentifier(uuid.New().String())) != nil {
-		return errnie.Try(NewAgent(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	params := params.New()
 
 	if errnie.Error(agent.SetParams(*params.Params)) != nil {
-		return errnie.Try(NewAgent(seg)).ToState(errnie.StateError)
+		return nil
 	}
 
 	// Initialize context
 	agentCtx := aictx.New()
 
-	if err := agent.SetContext(agentCtx); errnie.Error(err) != nil {
-		return errnie.Try(NewAgent(seg)).ToState(errnie.StateError)
+	if errnie.Error(agent.SetContext(*agentCtx)) != nil {
+		return nil
 	}
 
 	for _, option := range options {
-		if err := option(agent); errnie.Error(err) != nil {
-			return errnie.Try(NewAgent(seg)).ToState(errnie.StateError)
+		if err := option(&agent); errnie.Error(err) != nil {
+			return nil
 		}
 	}
 
-	return datura.Register(agent)
+	return datura.Register(&agent)
 }
 
-func WithArtifact(artifact datura.Artifact) AgentOption {
-	return func(a Agent) (err error) {
+func WithArtifact(artifact *datura.Artifact) AgentOption {
+	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithArtifact")
 		if _, err = io.Copy(a, artifact); err != nil {
 			return errnie.New(
@@ -86,7 +86,7 @@ func WithArtifact(artifact datura.Artifact) AgentOption {
 
 // WithName sets the agent's name
 func WithName(name string) AgentOption {
-	return func(a Agent) (err error) {
+	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithName")
 		identity := errnie.Try(a.Identity())
 		return errnie.Error(identity.SetName(name))
@@ -95,7 +95,7 @@ func WithName(name string) AgentOption {
 
 // WithRole sets the agent's role
 func WithRole(role string) AgentOption {
-	return func(a Agent) (err error) {
+	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithRole")
 		identity := errnie.Try(a.Identity())
 		return errnie.Error(identity.SetRole(role))
@@ -103,7 +103,7 @@ func WithRole(role string) AgentOption {
 }
 
 func WithTransport(transport io.ReadWriteCloser) AgentOption {
-	return func(a Agent) (err error) {
+	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithTransport")
 
 		return nil
@@ -111,7 +111,7 @@ func WithTransport(transport io.ReadWriteCloser) AgentOption {
 }
 
 func WithModel(model string) AgentOption {
-	return func(a Agent) (err error) {
+	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithModel")
 		params := errnie.Try(a.Params())
 		return errnie.Error(params.SetModel(model))
@@ -119,14 +119,14 @@ func WithModel(model string) AgentOption {
 }
 
 func WithProvider(provider prvdr.Provider) AgentOption {
-	return func(a Agent) (err error) {
+	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithProvider")
 		return errnie.Error(a.SetProvider(provider))
 	}
 }
 
 func WithPrompt(role string, prompt *prompt.PromptBuilder) AgentOption {
-	return func(a Agent) (err error) {
+	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithPrompt")
 
 		msg := datura.Register(message.New(
@@ -142,7 +142,7 @@ func WithPrompt(role string, prompt *prompt.PromptBuilder) AgentOption {
 }
 
 func WithTools(tools ...*tool.ToolBuilder) AgentOption {
-	return func(a Agent) (err error) {
+	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithTools")
 
 		tl, err := tool.NewTool_List(a.Segment(), int32(len(tools)))
