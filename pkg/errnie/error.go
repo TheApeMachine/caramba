@@ -560,10 +560,12 @@ Example:
 
 	err := New(WithMessage("something went wrong"))
 */
-func WithMessage(message string) ErrnieErrorOption {
+func WithMessage(message ...string) ErrnieErrorOption {
 	return func(e *ErrnieError) {
-		if message != "" {
-			e.messages = append(e.messages, message)
+		for _, msg := range message {
+			if msg != "" {
+				e.messages = append(e.messages, msg)
+			}
 		}
 	}
 }

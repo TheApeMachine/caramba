@@ -14,10 +14,13 @@ type TestStruct struct {
 func TestBytes(t *testing.T) {
 	Convey("Given an artifact", t, func() {
 		testData := New(
-			WithMediatype(MediaTypeApplicationJson),
-			WithRole(ArtifactRoleUser),
-			WithScope(ArtifactScopeContext),
+			WithPayload([]byte("Hello, world!")),
+			WithMeta("test", "test"),
 		)
+
+		payload, err := testData.Payload()
+		So(err, ShouldBeNil)
+		So(string(payload), ShouldEqual, "Hello, world!")
 
 		Convey("When converting to bytes", func() {
 			buf := testData.Bytes()
@@ -26,14 +29,24 @@ func TestBytes(t *testing.T) {
 				So(buf, ShouldNotBeEmpty)
 			})
 
-			Convey("When converting from bytes", func() {
+			Convey("And it should have the same payload", func() {
 				artifact := New(
 					WithBytes(buf),
 				)
 
-				Convey("Then it should unmarshal correctly", func() {
-					So(artifact, ShouldResemble, testData)
-				})
+				payload, err := artifact.Payload()
+				So(err, ShouldBeNil)
+				So(string(payload), ShouldEqual, "Hello, world!")
+			})
+
+			Convey("And it should have the same metadata", func() {
+				artifact := New(
+					WithBytes(buf),
+				)
+
+				meta := GetMetaValue[string](artifact, "test")
+
+				So(meta, ShouldEqual, "test")
 			})
 		})
 	})

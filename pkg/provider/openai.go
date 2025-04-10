@@ -15,6 +15,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
+	"github.com/theapemachine/caramba/pkg/ai/agent"
 	aictx "github.com/theapemachine/caramba/pkg/ai/context"
 	"github.com/theapemachine/caramba/pkg/ai/message"
 	"github.com/theapemachine/caramba/pkg/ai/toolcall"
@@ -90,12 +91,19 @@ func (prvdr *OpenAIProvider) Generate(
 ) *datura.Artifact {
 	errnie.Info("provider.Generate", "supplier", "openai")
 
+	agent := agent.New(
+		agent.WithArtifact(artifact),
+	)
+
+	params := errnie.Try(agent.Params())
+	agentctx := errnie.Try(agent.Context())
+
 	composed := &openai.ChatCompletionNewParams{
-		Model:            openai.ChatModel(datura.GetMetaValue[string](artifact, "model")),
-		Temperature:      openai.Float(datura.GetMetaValue[float64](artifact, "temperature")),
-		TopP:             openai.Float(datura.GetMetaValue[float64](artifact, "top_p")),
-		FrequencyPenalty: openai.Float(datura.GetMetaValue[float64](artifact, "frequency_penalty")),
-		PresencePenalty:  openai.Float(datura.GetMetaValue[float64](artifact, "presence_penalty")),
+		Model:            openai.ChatModel(errnie.Try(params.Model())),
+		Temperature:      openai.Float(params.Temperature()),
+		TopP:             openai.Float(params.TopP()),
+		FrequencyPenalty: openai.Float(params.FrequencyPenalty()),
+		PresencePenalty:  openai.Float(params.PresencePenalty()),
 	}
 
 	if datura.GetMetaValue[int](artifact, "max_tokens") > 1 {
@@ -106,7 +114,7 @@ func (prvdr *OpenAIProvider) Generate(
 
 	var err error
 
-	if err = prvdr.buildMessages(composed, artifact); err != nil {
+	if err = prvdr.buildMessages(composed, &agentctx); err != nil {
 		return nil
 	}
 
@@ -246,7 +254,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 		if content, ok := acc.JustFinishedContent(); ok && content != "" {
 			return datura.New(
-				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithRole(datura.ArtifactRoleAssistant),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(content)),
 			)
@@ -255,7 +263,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		if tool, ok := acc.JustFinishedToolCall(); ok {
 			params.Messages = append(params.Messages, openai.AssistantMessage(acc.Choices[0].Message.Content))
 			return datura.New(
-				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithRole(datura.ArtifactRoleAssistant),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(tool.Arguments)),
 			)
@@ -263,7 +271,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 
 		if refusal, ok := acc.JustFinishedRefusal(); ok && refusal != "" {
 			return datura.New(
-				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithRole(datura.ArtifactRoleAssistant),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(refusal)),
 			)
@@ -272,7 +280,7 @@ func (prvdr *OpenAIProvider) handleStreamingRequest(
 		// Only write non-empty content from chunks
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 			return datura.New(
-				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithRole(datura.ArtifactRoleAssistant),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithPayload([]byte(chunk.Choices[0].Delta.Content)),
 			)
@@ -293,20 +301,18 @@ buildMessages converts ContextData messages to OpenAI API format
 */
 func (prvdr *OpenAIProvider) buildMessages(
 	composed *openai.ChatCompletionNewParams,
-	artifact *datura.Artifact,
+	agentctx *aictx.Context,
 ) (err error) {
 	errnie.Trace("provider.buildMessages")
 
-	payload := errnie.Try(artifact.Payload())
+	messages := errnie.Try(agentctx.Messages())
 
-	agentCtx := aictx.New(
-		aictx.WithBytes(payload),
-	)
+	errnie.Info("provider.buildMessages", "message", string(errnie.Try(messages.At(0).Content())))
 
-	openaiMessages := make([]openai.ChatCompletionMessageParamUnion, 0, errnie.Try(agentCtx.Messages()).Len())
+	openaiMessages := make([]openai.ChatCompletionMessageParamUnion, 0, messages.Len())
 
-	for i := range errnie.Try(agentCtx.Messages()).Len() {
-		msg := errnie.Try(agentCtx.Messages()).At(i)
+	for i := range messages.Len() {
+		msg := messages.At(i)
 
 		errnie.Info("msg", "mesg", errnie.Try(msg.Content()))
 

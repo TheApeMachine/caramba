@@ -7,8 +7,10 @@ $Go.import("github.com/theapemachine/caramba/pkg/ai/tool");
 using Artifact = import "../../datura/artifact.capnp";
 
 struct Tool {
-    name       @0 :Text;
-    operations @1 :List(Operation);
+    uuid       @0 :Text;
+    state      @1 :UInt64;
+    name       @2 :Text;
+    operations @3 :List(Operation);
 }
 
 struct Operation {

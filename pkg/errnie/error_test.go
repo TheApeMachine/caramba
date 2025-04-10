@@ -10,7 +10,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-func TestString(t *testing.T) {
+func TestRun(t *testing.T) {
 	Convey("Given various error types", t, func() {
 		testCases := []struct {
 			name    string

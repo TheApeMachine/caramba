@@ -12,7 +12,7 @@ func testArtifact() *Artifact {
 	return New(
 		WithMediatype(MediaTypeCapnp),
 		WithRole(ArtifactRoleUser),
-		WithScope(ArtifactScopeContext),
+		WithScope(ArtifactScopeError),
 		WithEncryptedPayload([]byte("test payload")),
 	)
 }

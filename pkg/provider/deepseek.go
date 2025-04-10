@@ -180,7 +180,7 @@ func (prvdr *DeepseekProvider) handleSingleRequest(
 
 	// Create artifact with message content
 	channel <- datura.New(
-		datura.WithRole(datura.ArtifactRoleAnswer),
+		datura.WithRole(datura.ArtifactRoleAssistant),
 		datura.WithScope(datura.ArtifactScopeGeneration),
 		datura.WithEncryptedPayload([]byte(response.Choices[0].Message.Content)),
 	)
@@ -214,7 +214,7 @@ func (prvdr *DeepseekProvider) handleStreamingRequest(
 			content := response.Choices[0].Delta.Content
 			if content != "" {
 				channel <- datura.New(
-					datura.WithRole(datura.ArtifactRoleAnswer),
+					datura.WithRole(datura.ArtifactRoleAssistant),
 					datura.WithScope(datura.ArtifactScopeGeneration),
 					datura.WithEncryptedPayload([]byte(content)),
 				)

@@ -64,9 +64,9 @@ func TestEncryptDecryptPayload(t *testing.T) {
 		})
 
 		Convey("When decrypting with invalid data", func() {
-			invalidPayload := []byte("invalid")
-			invalidKey := []byte("invalid")
-			invalidPubKey := []byte("invalid")
+			invalidPayload := []byte("invalid ciphertext")
+			invalidKey := make([]byte, 16)
+			invalidPubKey := []byte("invalid pub key bytes")
 
 			_, err := cs.DecryptPayload(invalidPayload, invalidKey, invalidPubKey)
 

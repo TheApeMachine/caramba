@@ -1,7 +1,10 @@
 package tools
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/datura"
@@ -47,22 +50,10 @@ func (tool *EnvironmentTool) ToMCP() []ToolType {
 /* EnvironmentCommandTool implements a tool for executing commands */
 type EnvironmentCommandTool struct {
 	mcp.Tool
-	builder *environment.Builder
-	runner  *environment.Runner
 }
 
 /* NewEnvironmentCommandTool creates a new tool for executing commands */
 func NewEnvironmentCommandTool() *EnvironmentCommandTool {
-	builder := environment.NewBuilder()
-	if builder == nil {
-		return nil
-	}
-
-	runner := environment.NewRunner(builder.Runtime)
-	if runner == nil {
-		return nil
-	}
-
 	return &EnvironmentCommandTool{
 		Tool: mcp.NewTool(
 			"command",
@@ -73,8 +64,6 @@ func NewEnvironmentCommandTool() *EnvironmentCommandTool {
 				mcp.Required(),
 			),
 		),
-		builder: builder,
-		runner:  runner,
 	}
 }
 
@@ -82,14 +71,104 @@ func NewEnvironmentCommandTool() *EnvironmentCommandTool {
 func (tool *EnvironmentCommandTool) Use(
 	ctx context.Context, artifact *datura.Artifact,
 ) *datura.Artifact {
-	// TODO: Implement actual command execution using builder/runner
-	return artifact
+	builder := environment.NewBuilder()
+
+	if builder == nil {
+		return nil
+	}
+
+	runner := environment.NewRunner(builder.Runtime)
+
+	if runner == nil {
+		return nil
+	}
+
+	command := datura.GetMetaValue[string](artifact, "command")
+
+	if command == "" {
+		return datura.New(
+			datura.WithRole(datura.ArtifactRoleTool),
+			datura.WithScope(datura.ArtifactScopeError),
+			datura.WithError(errors.New("missing required field: command")),
+		)
+	}
+
+	// Create a buffer to hold the output
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	// Execute the command via the runner
+	if err := runner.ExecuteCommand(ctx, command, &stdoutBuf, &stderrBuf); err != nil {
+		return datura.New(
+			datura.WithRole(datura.ArtifactRoleTool),
+			datura.WithScope(datura.ArtifactScopeError),
+			datura.WithError(err),
+		)
+	}
+
+	output := stdoutBuf.String()
+
+	if output == "" && stderrBuf.Len() > 0 {
+		output = stderrBuf.String()
+	}
+
+	return datura.New(
+		datura.WithRole(datura.ArtifactRoleTool),
+		datura.WithScope(datura.ArtifactScopeResult),
+		datura.WithPayload([]byte(output)),
+	)
 }
 
 func (tool *EnvironmentCommandTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Operation not implemented"), nil
+	builder := environment.NewBuilder()
+
+	if builder == nil {
+		return mcp.NewToolResultText("Error: Failed to create environment builder"), nil
+	}
+
+	runner := environment.NewRunner(builder.Runtime)
+
+	if runner == nil {
+		return mcp.NewToolResultText(
+			"Error: Failed to create environment runner",
+		), nil
+	}
+
+	var command string
+
+	for name, value := range req.Params.Arguments {
+		if name == "command" {
+			command, _ = value.(string)
+			break
+		}
+	}
+
+	if command == "" {
+		return mcp.NewToolResultText(
+			"Error: Missing required parameter 'command'",
+		), nil
+	}
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	if err := runner.ExecuteCommand(ctx, command, &stdoutBuf, &stderrBuf); err != nil {
+		return mcp.NewToolResultText(
+			fmt.Sprintf("Error executing command: %s", err.Error()),
+		), nil
+	}
+
+	output := stdoutBuf.String()
+
+	if output == "" && stderrBuf.Len() > 0 {
+		output = stderrBuf.String()
+	}
+
+	if output == "" {
+		output = "Command executed successfully with no output"
+	}
+
+	return mcp.NewToolResultText(output), nil
 }
 
 func (tool *EnvironmentCommandTool) ID() string {
@@ -99,34 +178,24 @@ func (tool *EnvironmentCommandTool) ID() string {
 /* EnvironmentInputTool implements a tool for providing input */
 type EnvironmentInputTool struct {
 	mcp.Tool
-	builder *environment.Builder
-	runner  *environment.Runner
 }
 
 /* NewEnvironmentInputTool creates a new tool for providing input */
 func NewEnvironmentInputTool() *EnvironmentInputTool {
-	builder := environment.NewBuilder()
-	if builder == nil {
-		return nil
-	}
-
-	runner := environment.NewRunner(builder.Runtime)
-	if runner == nil {
-		return nil
-	}
-
 	return &EnvironmentInputTool{
 		Tool: mcp.NewTool(
 			"input",
-			mcp.WithDescription("A tool which gives you a full Linux terminal-based environment to interact with."),
+			mcp.WithDescription(
+				"A tool which gives you a full Linux terminal-based environment to interact with.",
+			),
 			mcp.WithString(
 				"input",
-				mcp.Description("Valid input to pass to the environment, used for interactive sessions."),
+				mcp.Description(
+					"Valid input to pass to the environment, used for interactive sessions.",
+				),
 				mcp.Required(),
 			),
 		),
-		builder: builder,
-		runner:  runner,
 	}
 }
 
@@ -134,14 +203,98 @@ func NewEnvironmentInputTool() *EnvironmentInputTool {
 func (tool *EnvironmentInputTool) Use(
 	ctx context.Context, artifact *datura.Artifact,
 ) *datura.Artifact {
-	// TODO: Implement actual input handling using builder/runner
-	return artifact
+	builder := environment.NewBuilder()
+
+	if builder == nil {
+		return nil
+	}
+
+	runner := environment.NewRunner(builder.Runtime)
+
+	if runner == nil {
+		return nil
+	}
+
+	input := datura.GetMetaValue[string](artifact, "input")
+
+	if input == "" {
+		return datura.New(
+			datura.WithRole(datura.ArtifactRoleTool),
+			datura.WithScope(datura.ArtifactScopeError),
+			datura.WithError(errors.New("missing required field: input")),
+		)
+	}
+
+	if input[len(input)-1] != '\n' {
+		input += "\n"
+	}
+
+	output, err := runner.SendInput(input)
+
+	if err != nil {
+		return datura.New(
+			datura.WithRole(datura.ArtifactRoleTool),
+			datura.WithScope(datura.ArtifactScopeError),
+			datura.WithError(err),
+		)
+	}
+
+	return datura.New(
+		datura.WithRole(datura.ArtifactRoleTool),
+		datura.WithScope(datura.ArtifactScopeResult),
+		datura.WithPayload([]byte(output)),
+	)
 }
 
 func (tool *EnvironmentInputTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultText("Operation not implemented"), nil
+	builder := environment.NewBuilder()
+
+	if builder == nil {
+		return mcp.NewToolResultText("Error: Failed to create environment builder"), nil
+	}
+
+	runner := environment.NewRunner(builder.Runtime)
+
+	if runner == nil {
+		return mcp.NewToolResultText(
+			"Error: Failed to create environment runner",
+		), nil
+	}
+
+	var input string
+
+	for name, value := range req.Params.Arguments {
+		if name == "input" {
+			input, _ = value.(string)
+			break
+		}
+	}
+
+	if input == "" {
+		return mcp.NewToolResultText(
+			"Error: Missing required parameter 'input'",
+		), nil
+	}
+
+	if input[len(input)-1] != '\n' {
+		input += "\n"
+	}
+
+	output, err := runner.SendInput(input)
+
+	if err != nil {
+		return mcp.NewToolResultText(
+			fmt.Sprintf("Error sending input: %s", err.Error()),
+		), nil
+	}
+
+	if output == "" {
+		output = "Input accepted"
+	}
+
+	return mcp.NewToolResultText(output), nil
 }
 
 func (tool *EnvironmentInputTool) ID() string {

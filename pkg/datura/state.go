@@ -35,3 +35,11 @@ func (artifact *Artifact) ID() string {
 
 	return uid
 }
+
+func (artifact *Artifact) HasError() bool {
+	return artifact.ActsAs(ArtifactRoleAcknowledger) && artifact.ScopedAs(ArtifactScopeError)
+}
+
+func (artifact *Artifact) Error() string {
+	return string(errnie.Try(artifact.Payload()))
+}

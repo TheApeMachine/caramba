@@ -12,3 +12,14 @@ type ToolType struct {
 	Use    func(ctx context.Context, artifact *datura.Artifact) *datura.Artifact
 	UseMCP func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error)
 }
+
+func GetTool(name string) []ToolType {
+	switch name {
+	case "tool.system":
+		return NewSystemTool().ToMCP()
+	case "tool.environment":
+		return NewEnvironmentTool().ToMCP()
+	}
+
+	return nil
+}

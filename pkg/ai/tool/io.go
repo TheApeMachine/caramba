@@ -1,68 +1,79 @@
 package tool
 
 import (
+	"errors"
 	"io"
 
 	capnp "capnproto.org/go/capnp/v3"
+	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-type ToolState uint
+type ContextState uint
 
 const (
-	ToolStateUninitialized ToolState = iota
-	ToolStateInitialized
-	ToolStateBuffered
+	ContextStateUninitialized ContextState = iota
+	ContextStateInitialized
+	ContextStateBuffered
 )
 
 /*
-Read implements the io.Reader interface for the Message.
-It streams the message using a Cap'n Proto Encoder.
+Read implements the io.Reader interface for the Context.
+It streams the context using a Cap'n Proto Encoder.
 */
-func (tb *ToolBuilder) Read(p []byte) (n int, err error) {
+func (tool *Tool) Read(p []byte) (n int, err error) {
 	errnie.Trace("tool.Read")
 
-	if tb.State != ToolStateBuffered {
+	builder := datura.NewRegistry().Get(tool)
+
+	if tool.Is(errnie.StateReady) {
 		// Buffer is empty, encode current message state
-		if err = tb.encoder.Encode(tb.Message()); err != nil {
+		if err = builder.Encoder.Encode(tool.Message()); err != nil {
 			return 0, errnie.Error(err)
 		}
 
-		tb.State = ToolStateBuffered
+		if err = builder.Buffer.Flush(); err != nil {
+			return 0, errnie.Error(err)
+		}
+
+		tool.ToState(errnie.StateBusy)
 	}
 
-	if err = tb.buffer.Flush(); err != nil {
-		return 0, errnie.Error(err)
+	if !tool.Is(errnie.StateBusy) {
+		return 0, errnie.New(
+			errnie.WithError(errors.New("bad read state")),
+			errnie.WithMessage("tool is not busy"),
+		)
 	}
 
-	return tb.buffer.Read(p)
+	return builder.Buffer.Read(p)
 }
 
 /*
-Write implements the io.Writer interface for the Message.
+Write implements the io.Writer interface for the Context.
 It streams the provided bytes using a Cap'n Proto Decoder.
 */
-func (tb *ToolBuilder) Write(p []byte) (n int, err error) {
+func (tool *Tool) Write(p []byte) (n int, err error) {
 	errnie.Trace("tool.Write")
+
+	tool.ToState(errnie.StateBusy)
+
+	builder := datura.NewRegistry().Get(tool)
 
 	if len(p) == 0 {
 		return 0, nil
 	}
 
-	if n, err = tb.buffer.Write(p); err != nil {
-		return n, errnie.Error(err)
-	}
-
-	if err = tb.buffer.Flush(); err != nil {
+	if n, err = builder.Buffer.Write(p); err != nil {
 		return n, errnie.Error(err)
 	}
 
 	var (
-		m   *capnp.Message
+		msg *capnp.Message
 		buf Tool
 	)
 
-	if m, err = tb.decoder.Decode(); err != nil {
+	if msg, err = builder.Decoder.Decode(); err != nil {
 		if err == io.EOF {
 			// EOF is expected when there's no more data to decode
 			return n, nil
@@ -70,29 +81,31 @@ func (tb *ToolBuilder) Write(p []byte) (n int, err error) {
 		return n, errnie.Error(err)
 	}
 
-	if buf, err = ReadRootTool(m); err != nil {
+	if buf, err = ReadRootTool(msg); err != nil {
 		return n, errnie.Error(err)
 	}
 
-	tb.Tool = &buf
-	tb.State = ToolStateBuffered
+	*tool = buf
+	tool.ToState(errnie.StateReady)
 	return n, nil
 }
 
 /*
-Close implements the io.Closer interface for the Message.
+Close implements the io.Closer interface for the Context.
 */
-func (tb *ToolBuilder) Close() error {
+func (tool *Tool) Close() error {
 	errnie.Trace("tool.Close")
 
-	if err := tb.buffer.Flush(); err != nil {
+	builder := datura.NewRegistry().Get(tool)
+
+	if err := builder.Buffer.Flush(); err != nil {
 		return errnie.Error(err)
 	}
 
-	tb.buffer = nil
-	tb.encoder = nil
-	tb.decoder = nil
-	tb.Tool = nil
+	builder.Buffer = nil
+	builder.Encoder = nil
+	builder.Decoder = nil
+	datura.NewRegistry().Unregister(tool)
 
 	return nil
 }

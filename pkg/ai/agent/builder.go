@@ -9,10 +9,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/ai/message"
 	params "github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/ai/prompt"
-	prvdr "github.com/theapemachine/caramba/pkg/ai/provider"
 	tool "github.com/theapemachine/caramba/pkg/ai/tool"
 	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/tools"
 )
 
 // AgentBuilderOption defines a function that configures an Agent
@@ -118,13 +118,6 @@ func WithModel(model string) AgentOption {
 	}
 }
 
-func WithProvider(provider prvdr.Provider) AgentOption {
-	return func(a *Agent) (err error) {
-		errnie.Trace("agent.WithProvider")
-		return errnie.Error(a.SetProvider(provider))
-	}
-}
-
 func WithPrompt(role string, prompt *prompt.PromptBuilder) AgentOption {
 	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithPrompt")
@@ -141,18 +134,20 @@ func WithPrompt(role string, prompt *prompt.PromptBuilder) AgentOption {
 	}
 }
 
-func WithTools(tools ...*tool.ToolBuilder) AgentOption {
+func WithTools(tls ...string) AgentOption {
 	return func(a *Agent) (err error) {
 		errnie.Trace("agent.WithTools")
 
-		tl, err := tool.NewTool_List(a.Segment(), int32(len(tools)))
+		tl, err := tool.NewTool_List(a.Segment(), int32(len(tls)))
 
 		if errnie.Error(err) != nil {
 			return errnie.Error(err)
 		}
 
-		for i, t := range tools {
-			tl.Set(i, *t.Tool)
+		for i, t := range tls {
+			tl.Set(i, *tool.New(
+				tool.WithMCPTool(tools.GetTool(t)...),
+			))
 		}
 
 		if err := a.SetTools(tl); err != nil {

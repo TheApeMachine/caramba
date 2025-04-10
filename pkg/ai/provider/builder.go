@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	aiprvdr "github.com/theapemachine/caramba/pkg/provider"
 )
 
 type ProviderOption func(Provider) Provider
@@ -58,7 +57,7 @@ func WithName(name string) ProviderOption {
 	}
 }
 
-func WithAIProvider(name string, provider aiprvdr.ProviderType) ProviderOption {
+func WithAIProvider(name string) ProviderOption {
 	errnie.Trace("provider.WithAIProvider")
 
 	return func(p Provider) Provider {

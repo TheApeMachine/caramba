@@ -1,0 +1,10 @@
+.cursor
+.github
+.kube
+.vscode
+docs
+docker-compose.yml
+Dockerfile
+LICENSE
+Makefile
+README.md

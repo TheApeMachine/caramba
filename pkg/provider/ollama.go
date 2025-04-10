@@ -184,7 +184,7 @@ func (prvdr *OllamaProvider) handleStreamingRequest(
 	err := prvdr.client.Chat(prvdr.ctx, params, func(response api.ChatResponse) error {
 		if response.Message.Content != "" {
 			channel <- datura.New(
-				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithRole(datura.ArtifactRoleAssistant),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithEncryptedPayload([]byte(response.Message.Content)),
 			)

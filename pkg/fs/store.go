@@ -79,19 +79,19 @@ func (s *Store) Generate(
 
 			// Process the artifact based on its role
 			switch artifact.Role() {
-			case uint32(datura.ArtifactRoleOpenFile):
+			case uint32(datura.ArtifactRoleResource):
 				errnie.Debug("fs.Store.Generate", "op", "open", "path", path)
 				if fh, err = s.conn.Open(path); err != nil {
 					out <- datura.New(datura.WithError(errnie.Error(err)))
 					return
 				}
-			case uint32(datura.ArtifactRoleSaveFile):
+			case uint32(datura.ArtifactRolePrompt):
 				errnie.Debug("fs.Store.Generate", "op", "save", "path", path)
 				if fh, err = s.conn.Open(path); err != nil {
 					out <- datura.New(datura.WithError(errnie.Error(err)))
 					return
 				}
-			case uint32(datura.ArtifactRoleDeleteFile):
+			case uint32(datura.ArtifactRolePublisher):
 				errnie.Debug("fs.Store.Generate", "op", "delete", "path", path)
 				if err = s.conn.Remove(path); err != nil {
 					out <- datura.New(datura.WithError(errnie.Error(err)))
@@ -99,7 +99,7 @@ func (s *Store) Generate(
 				}
 				out <- datura.New(datura.WithEncryptedPayload([]byte("File deleted successfully")))
 				return
-			case uint32(datura.ArtifactRoleListFiles):
+			case uint32(datura.ArtifactRoleSubscriber):
 				errnie.Debug("fs.Store.Generate", "op", "list", "path", path)
 				if files, err = s.conn.Ls(path); err != nil {
 					out <- datura.New(datura.WithError(errnie.Error(err)))

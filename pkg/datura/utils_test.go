@@ -12,7 +12,7 @@ func TestDecryptPayload(t *testing.T) {
 		artifact := New(
 			WithMediatype(MediaTypeTextPlain),
 			WithRole(ArtifactRoleUser),
-			WithScope(ArtifactScopeContext),
+			WithScope(ArtifactScopeError),
 			WithEncryptedPayload(originalPayload),
 		)
 
@@ -30,7 +30,7 @@ func TestDecryptPayload(t *testing.T) {
 		artifact := New(
 			WithMediatype(MediaTypeTextPlain),
 			WithRole(ArtifactRoleUser),
-			WithScope(ArtifactScopeContext),
+			WithScope(ArtifactScopeError),
 		)
 
 		Convey("When attempting to decrypt non-existent payload", func() {

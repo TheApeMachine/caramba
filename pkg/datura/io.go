@@ -51,17 +51,13 @@ func (artifact *Artifact) Write(p []byte) (n int, err error) {
 
 	builder := NewRegistry().Get(artifact)
 
-	if len(p) == 0 {
-		return 0, nil
-	}
-
 	if n, err = builder.Buffer.Write(p); err != nil {
 		return n, errnie.Error(err)
 	}
 
-	// if err = builder.Buffer.Flush(); err != nil {
-	// 	return n, errnie.Error(err)
-	// }
+	if err = builder.Buffer.Flush(); err != nil {
+		return n, errnie.Error(err)
+	}
 
 	var (
 		msg *capnp.Message

@@ -257,7 +257,7 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 		case anthropic.ContentBlockStartEvent:
 			if event.ContentBlock.Name != "" {
 				channel <- datura.New(
-					datura.WithRole(datura.ArtifactRoleAnswer),
+					datura.WithRole(datura.ArtifactRoleAssistant),
 					datura.WithScope(datura.ArtifactScopeGeneration),
 					datura.WithEncryptedPayload([]byte(event.ContentBlock.Name+": ")),
 				)
@@ -265,27 +265,27 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 		case anthropic.ContentBlockDeltaEvent:
 			if event.Delta.Text != "" {
 				channel <- datura.New(
-					datura.WithRole(datura.ArtifactRoleAnswer),
+					datura.WithRole(datura.ArtifactRoleAssistant),
 					datura.WithScope(datura.ArtifactScopeGeneration),
 					datura.WithEncryptedPayload([]byte(event.Delta.Text)),
 				)
 			}
 			if event.Delta.PartialJSON != "" {
 				channel <- datura.New(
-					datura.WithRole(datura.ArtifactRoleAnswer),
+					datura.WithRole(datura.ArtifactRoleAssistant),
 					datura.WithScope(datura.ArtifactScopeGeneration),
 					datura.WithEncryptedPayload([]byte(event.Delta.PartialJSON)),
 				)
 			}
 		case anthropic.ContentBlockStopEvent:
 			channel <- datura.New(
-				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithRole(datura.ArtifactRoleAssistant),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithEncryptedPayload([]byte("\n\n")),
 			)
 		case anthropic.MessageStopEvent:
 			channel <- datura.New(
-				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithRole(datura.ArtifactRoleAssistant),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithEncryptedPayload([]byte("\n")),
 			)
@@ -365,7 +365,7 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 
 					errnie.Info("toolCall detected (streaming)", "name", toolInfo.Name)
 					channel <- datura.New(
-						datura.WithRole(datura.ArtifactRoleAnswer),
+						datura.WithRole(datura.ArtifactRoleAssistant),
 						datura.WithScope(datura.ArtifactScopeGeneration),
 						datura.WithEncryptedPayload(inputJSON),
 					)

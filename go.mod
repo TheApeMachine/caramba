@@ -62,6 +62,7 @@ require (
 	github.com/mdlayher/vsock v1.2.1
 	github.com/moby/hyperkit v0.0.0-20220220121959-3cb0d5475244
 	github.com/slack-go/slack v0.16.0
+	github.com/zeromq/goczmq v4.1.0+incompatible
 	golang.org/x/term v0.30.0
 )
 

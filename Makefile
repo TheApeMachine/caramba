@@ -1,5 +1,10 @@
-.PHONY: all
+.PHONY: all run capnp
 
+run:
+	docker compose down
+	docker build -t caramba .
+	docker compose up --build
+	
 capnp:
 	capnp compile -I ../../capnproto/go-capnp/std -ogo pkg/datura/artifact.capnp
 	capnp compile -I ../../capnproto/go-capnp/std -ogo pkg/radix/radix.capnp

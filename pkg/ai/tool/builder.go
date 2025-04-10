@@ -1,32 +1,21 @@
 package tool
 
 import (
-	"bufio"
 	"bytes"
-	context "context"
 	"errors"
 	"io"
 
+	"github.com/google/uuid"
+
 	"capnproto.org/go/capnp/v3"
-	datura "github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tools"
 )
 
-type ToolBuilder struct {
-	*Tool
-	MCPTool *tools.ToolType
-	encoder *capnp.Encoder
-	decoder *capnp.Decoder
-	buffer  *bufio.ReadWriter
-	State   ToolState
-	client  RPC
-}
-
-type ToolBuilderOption func(*ToolBuilder) error
+type ToolOption func(*Tool) error
 
 // New creates a new tool with the provided options
-func New(options ...ToolBuilderOption) *ToolBuilder {
+func New(options ...ToolOption) *Tool {
 	errnie.Trace("tool.New")
 
 	var (
@@ -44,57 +33,27 @@ func New(options ...ToolBuilderOption) *ToolBuilder {
 		return nil
 	}
 
-	builder := &ToolBuilder{
-		Tool: &tool,
+	if errnie.Error(tool.SetUuid(uuid.New().String())) != nil {
+		return nil
 	}
+
+	tool.ToState(errnie.StateReady)
 
 	// Apply all options
 	for _, option := range options {
-		if err := option(builder); errnie.Error(err) != nil {
+		if err := option(&tool); errnie.Error(err) != nil {
 			return nil
 		}
 	}
 
-	// Initialize the RPC client
-	builder.client = ToolToClient(builder)
-
-	return builder
+	return &tool
 }
 
-func (tb *ToolBuilder) Use(ctx context.Context, artifact *datura.Artifact) *datura.Artifact {
-	errnie.Trace("tool.Use")
-
-	future, release := tb.client.Use(
-		ctx, func(p RPC_use_Params) error {
-			return p.SetArtifact(*artifact)
-		},
-	)
-
-	defer release()
-
-	var (
-		result RPC_use_Results
-		err    error
-	)
-
-	if result, err = future.Struct(); errnie.Error(err) != nil {
-		return nil
-	}
-
-	out, err := result.Out()
-
-	if errnie.Error(err) != nil {
-		return nil
-	}
-
-	return &out
-}
-
-func WithBytes(b []byte) ToolBuilderOption {
+func WithBytes(b []byte) ToolOption {
 	errnie.Trace("tool.WithBytes")
 
-	return func(t *ToolBuilder) error {
-		if _, err := io.Copy(t, bytes.NewBuffer(b)); errnie.Error(err) != nil {
+	return func(tool *Tool) error {
+		if _, err := io.Copy(tool, bytes.NewBuffer(b)); errnie.Error(err) != nil {
 			return errnie.Error(err)
 		}
 
@@ -102,10 +61,10 @@ func WithBytes(b []byte) ToolBuilderOption {
 	}
 }
 
-func WithMCPTool(mcpTools ...tools.ToolType) ToolBuilderOption {
+func WithMCPTool(mcpTools ...tools.ToolType) ToolOption {
 	errnie.Trace("tool.WithMCPTool")
 
-	return func(t *ToolBuilder) (err error) {
+	return func(tool *Tool) (err error) {
 		var (
 			ops      Operation_List
 			opIdx    int32 = 0
@@ -113,36 +72,26 @@ func WithMCPTool(mcpTools ...tools.ToolType) ToolBuilderOption {
 		)
 
 		// Get existing operations if they exist
-		if ops, err = t.Tool.Operations(); err == nil {
+		if ops, err = tool.Operations(); err == nil {
 			totalOps = int32(ops.Len())
 		} else {
 			// Initialize if list doesn't exist
-			if ops, err = NewOperation_List(t.Tool.Segment(), int32(len(mcpTools))); err != nil {
+			if ops, err = NewOperation_List(tool.Segment(), int32(len(mcpTools))); err != nil {
 				return errnie.Error(err)
 			}
 		}
 
-		// Resize list if needed
 		if totalOps < int32(ops.Len()+len(mcpTools)) {
-			// This is likely incorrect usage of capnp list resizing/appending logic.
-			// Need to re-allocate or use a different approach if appending is the goal.
-			// For now, assuming we are creating a new list or replacing.
-			// Let's recreate the list with the correct total size.
 			requiredSize := totalOps + int32(len(mcpTools))
-			if ops, err = NewOperation_List(t.Tool.Segment(), requiredSize); err != nil {
+			if ops, err = NewOperation_List(tool.Segment(), requiredSize); err != nil {
 				return errnie.Error(err)
 			}
-			// Note: If appending was intended, the original elements need to be copied here.
-			// Resetting totalOps as we are starting fresh.
 			totalOps = 0
 		}
 
-		opIdx = totalOps // Start adding new ops after existing ones
+		opIdx = totalOps
 
-		// Iterate over the provided MCP tools
 		for _, mcpTool := range mcpTools {
-			t.MCPTool = &mcpTool
-
 			if opIdx >= int32(ops.Len()) {
 				// This should ideally not happen if resizing logic is correct
 				return errnie.Error(errors.New("operation list length exceeded unexpectedly"))
@@ -159,7 +108,7 @@ func WithMCPTool(mcpTools ...tools.ToolType) ToolBuilderOption {
 
 			// --- Translate Parameters ---
 			paramsMap := mcpTool.Tool.InputSchema.Properties
-			params, err := NewParameter_List(t.Tool.Segment(), int32(len(paramsMap)))
+			params, err := NewParameter_List(tool.Segment(), int32(len(paramsMap)))
 			if err != nil {
 				return errnie.Error(err)
 			}
@@ -184,7 +133,7 @@ func WithMCPTool(mcpTools ...tools.ToolType) ToolBuilderOption {
 						}
 					}
 					if pEnum, ok := schemaMap["enum"].([]interface{}); ok {
-						enumList, err := capnp.NewTextList(t.Tool.Segment(), int32(len(pEnum)))
+						enumList, err := capnp.NewTextList(tool.Segment(), int32(len(pEnum)))
 						if err != nil {
 							return errnie.Error(err)
 						}
@@ -208,7 +157,7 @@ func WithMCPTool(mcpTools ...tools.ToolType) ToolBuilderOption {
 
 			// --- Translate Required Parameters ---
 			requiredSlice := mcpTool.Tool.InputSchema.Required
-			required, err := capnp.NewTextList(t.Tool.Segment(), int32(len(requiredSlice)))
+			required, err := capnp.NewTextList(tool.Segment(), int32(len(requiredSlice)))
 			if err != nil {
 				return errnie.Error(err)
 			}
@@ -225,7 +174,7 @@ func WithMCPTool(mcpTools ...tools.ToolType) ToolBuilderOption {
 		}
 
 		// Set the final operations list on the tool
-		if err = t.Tool.SetOperations(ops); err != nil {
+		if err = tool.SetOperations(ops); err != nil {
 			return errnie.Error(err)
 		}
 

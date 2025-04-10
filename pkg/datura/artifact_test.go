@@ -232,6 +232,12 @@ func TestWithBytes(t *testing.T) {
 			WithPayload([]byte("Hello, world!")),
 		)
 
+		So(testArtifact, ShouldNotBeNil)
+
+		testPayload, err := testArtifact.Payload()
+		So(err, ShouldBeNil)
+		So(testPayload, ShouldEqual, []byte("Hello, world!"))
+
 		targetArtifact := New(
 			WithBytes(testArtifact.Bytes()),
 		)
@@ -239,9 +245,6 @@ func TestWithBytes(t *testing.T) {
 		So(targetArtifact, ShouldNotBeNil)
 
 		Convey("When reading the bytes", func() {
-			testPayload, err := testArtifact.Payload()
-			So(err, ShouldBeNil)
-
 			targetPayload, err := targetArtifact.Payload()
 			So(err, ShouldBeNil)
 

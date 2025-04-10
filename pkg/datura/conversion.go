@@ -10,7 +10,9 @@ import (
 func (artifact *Artifact) Bytes() []byte {
 	errnie.Trace("datura.Bytes")
 
-	buf := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer([]byte{})
+
+	artifact.ToState(errnie.StateReady)
 
 	if _, err := io.Copy(buf, artifact); errnie.Error(err) != nil {
 		return nil

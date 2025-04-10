@@ -11,24 +11,20 @@ func TestGetMetaValue(t *testing.T) {
 		artifact := New(
 			WithMediatype(MediaTypeTextPlain),
 			WithRole(ArtifactRoleUser),
-			WithScope(ArtifactScopeContext),
+			WithScope(ArtifactScopeError),
 		)
 
 		// Test string metadata
-		err := artifact.SetMetaValue("string_key", "test_value")
-		So(err, ShouldBeNil)
+		artifact.SetMetaValue("string_key", "test_value")
 
 		// Test int metadata
-		err = artifact.SetMetaValue("int_key", 42)
-		So(err, ShouldBeNil)
+		artifact.SetMetaValue("int_key", 42)
 
 		// Test float metadata
-		err = artifact.SetMetaValue("float_key", 3.14)
-		So(err, ShouldBeNil)
+		artifact.SetMetaValue("float_key", 3.14)
 
 		// Test bool metadata
-		err = artifact.SetMetaValue("bool_key", true)
-		So(err, ShouldBeNil)
+		artifact.SetMetaValue("bool_key", true)
 
 		Convey("When retrieving string metadata", func() {
 			value := GetMetaValue[string](artifact, "string_key")
@@ -72,40 +68,36 @@ func TestSetMetaValue(t *testing.T) {
 		artifact := New(
 			WithMediatype(MediaTypeTextPlain),
 			WithRole(ArtifactRoleUser),
-			WithScope(ArtifactScopeContext),
+			WithScope(ArtifactScopeError),
 		)
 
 		Convey("When setting string metadata", func() {
-			err := artifact.SetMetaValue("string_key", "test_value")
+			artifact.SetMetaValue("string_key", "test_value")
 			Convey("Then it should succeed", func() {
-				So(err, ShouldBeNil)
 				value := GetMetaValue[string](artifact, "string_key")
 				So(value, ShouldEqual, "test_value")
 			})
 		})
 
 		Convey("When setting int metadata", func() {
-			err := artifact.SetMetaValue("int_key", 42)
+			artifact.SetMetaValue("int_key", 42)
 			Convey("Then it should succeed", func() {
-				So(err, ShouldBeNil)
 				value := GetMetaValue[int](artifact, "int_key")
 				So(value, ShouldEqual, 42)
 			})
 		})
 
 		Convey("When setting float metadata", func() {
-			err := artifact.SetMetaValue("float_key", 3.14)
+			artifact.SetMetaValue("float_key", 3.14)
 			Convey("Then it should succeed", func() {
-				So(err, ShouldBeNil)
 				value := GetMetaValue[float64](artifact, "float_key")
 				So(value, ShouldEqual, 3.14)
 			})
 		})
 
 		Convey("When setting bool metadata", func() {
-			err := artifact.SetMetaValue("bool_key", true)
+			artifact.SetMetaValue("bool_key", true)
 			Convey("Then it should succeed", func() {
-				So(err, ShouldBeNil)
 				value := GetMetaValue[bool](artifact, "bool_key")
 				So(value, ShouldBeTrue)
 			})
@@ -113,9 +105,8 @@ func TestSetMetaValue(t *testing.T) {
 
 		Convey("When setting binary metadata", func() {
 			binaryData := []byte{1, 2, 3, 4}
-			err := artifact.SetMetaValue("binary_key", binaryData)
+			artifact.SetMetaValue("binary_key", binaryData)
 			Convey("Then it should succeed", func() {
-				So(err, ShouldBeNil)
 				mdList, err := artifact.Metadata()
 				So(err, ShouldBeNil)
 

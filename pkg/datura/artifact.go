@@ -1,7 +1,6 @@
 package datura
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -156,6 +155,26 @@ func WithArtifact(artifact *Artifact) ArtifactOption {
 	}
 }
 
+func WithOrigin(origin string) ArtifactOption {
+	errnie.Trace("artifact.WithOrigin")
+
+	return func(artifact *Artifact) {
+		if errnie.Error(artifact.SetOrigin(origin)) != nil {
+			return
+		}
+	}
+}
+
+func WithIssuer(issuer string) ArtifactOption {
+	errnie.Trace("artifact.WithIssuer")
+
+	return func(artifact *Artifact) {
+		if errnie.Error(artifact.SetIssuer(issuer)) != nil {
+			return
+		}
+	}
+}
+
 func WithSignature(signature []byte) ArtifactOption {
 	errnie.Trace("artifact.WithSignature")
 
@@ -216,10 +235,90 @@ func WithBytes(b []byte) ArtifactOption {
 
 	return func(artifact *Artifact) {
 		artifact.ToState(errnie.StateReady)
-		if _, err := io.Copy(
-			artifact, bytes.NewBuffer(b),
-		); errnie.Error(err) != nil {
+
+		msg, err := capnp.Unmarshal(b)
+		if errnie.Error(err) != nil {
 			return
+		}
+
+		decodedArtifact, err := ReadRootArtifact(msg)
+		if errnie.Error(err) != nil {
+			return
+		}
+
+		// Copy fields from decoded artifact to the target artifact
+		if p, err := decodedArtifact.Payload(); err == nil {
+			errnie.Error(artifact.SetPayload(p))
+		} else {
+			errnie.Error(err)
+		}
+
+		if uuidStr, err := decodedArtifact.Uuid(); err == nil {
+			errnie.Error(artifact.SetUuid(uuidStr))
+		} else {
+			errnie.Error(err)
+		}
+
+		artifact.SetTimestamp(decodedArtifact.Timestamp())
+		artifact.SetState(decodedArtifact.State())
+		artifact.SetRole(decodedArtifact.Role())
+		artifact.SetScope(decodedArtifact.Scope())
+
+		if mt, err := decodedArtifact.Mediatype(); err == nil {
+			errnie.Error(artifact.SetMediatype(mt))
+		} else {
+			errnie.Error(err)
+		}
+
+		if origin, err := decodedArtifact.Origin(); err == nil {
+			errnie.Error(artifact.SetOrigin(origin))
+		} else {
+			errnie.Error(err)
+		}
+
+		if issuer, err := decodedArtifact.Issuer(); err == nil {
+			errnie.Error(artifact.SetIssuer(issuer))
+		} else {
+			errnie.Error(err)
+		}
+
+		if sig, err := decodedArtifact.Signature(); err == nil {
+			errnie.Error(artifact.SetSignature(sig))
+		} else {
+			errnie.Error(err)
+		}
+
+		if ep, err := decodedArtifact.EncryptedPayload(); err == nil {
+			errnie.Error(artifact.SetEncryptedPayload(ep))
+		} else {
+			errnie.Error(err)
+		}
+
+		if ek, err := decodedArtifact.EncryptedKey(); err == nil {
+			errnie.Error(artifact.SetEncryptedKey(ek))
+		} else {
+			errnie.Error(err)
+		}
+
+		if epk, err := decodedArtifact.EphemeralPublicKey(); err == nil {
+			errnie.Error(artifact.SetEphemeralPublicKey(epk))
+		} else {
+			errnie.Error(err)
+		}
+
+		// Copy metadata
+		if decodedMdList, err := decodedArtifact.Metadata(); err == nil {
+			mdListLen := decodedMdList.Len()
+			if mdListLen > 0 {
+				newMdList, err := artifact.NewMetadata(int32(mdListLen))
+				if errnie.Error(err) == nil {
+					for i := 0; i < mdListLen; i++ {
+						errnie.Error(newMdList.Set(i, decodedMdList.At(i)))
+					}
+				}
+			}
+		} else {
+			errnie.Error(err)
 		}
 
 		artifact.ToState(errnie.StateReady)

@@ -7,12 +7,12 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
-func (tb *ToolBuilder) Bytes() []byte {
+func (tool *Tool) Bytes() []byte {
 	errnie.Trace("tool.Bytes")
 
 	buf := bytes.NewBuffer(nil)
 
-	if _, err := io.Copy(buf, tb); err != nil {
+	if _, err := io.Copy(buf, tool); err != nil {
 		return nil
 	}
 

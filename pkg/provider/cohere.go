@@ -272,7 +272,7 @@ func (prvdr *CohereProvider) handleStreamingRequest(
 
 		if content := chunk.TextGeneration.String(); content != "" {
 			channel <- datura.New(
-				datura.WithRole(datura.ArtifactRoleAnswer),
+				datura.WithRole(datura.ArtifactRoleAssistant),
 				datura.WithScope(datura.ArtifactScopeGeneration),
 				datura.WithEncryptedPayload([]byte(content)),
 			)

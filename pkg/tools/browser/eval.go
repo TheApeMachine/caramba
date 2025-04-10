@@ -23,7 +23,7 @@ func NewEval(page *rod.Page, artifact *datura.Artifact, op string) *Eval {
 func (eval *Eval) Run() (result string, err error) {
 	// Create a script artifact
 	scriptArtifact := datura.New(
-		datura.WithRole(datura.ArtifactRoleOpenFile),
+		datura.WithRole(datura.ArtifactRoleResource),
 		datura.WithMeta("path", "scripts/"+eval.op+".js"),
 	)
 

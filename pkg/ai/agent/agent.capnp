@@ -7,7 +7,6 @@ $Go.import("github.com/theapemachine/caramba/pkg/ai/agent");
 using Params   = import "../params/params.capnp";
 using Context  = import "../context/context.capnp";
 using Artifact = import "../../datura/artifact.capnp";
-using Provider = import "../provider/provider.capnp";
 using Message  = import "../message/message.capnp";
 using Tool     = import "../tool/tool.capnp";
 
@@ -17,7 +16,6 @@ struct Agent {
     params   @2 :Params.Params;
     context  @3 :Context.Context;
     tools    @4 :List(Tool.Tool);
-    provider @5 :Provider.Provider;
 }
 
 struct Identity {

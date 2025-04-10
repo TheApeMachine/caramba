@@ -8,15 +8,11 @@ const (
 	ArtifactRoleUser
 	ArtifactRoleAssistant
 	ArtifactRoleTool
-	ArtifactRoleData
-	ArtifactRoleQuestion
-	ArtifactRoleAnswer
-	ArtifactRoleAcknowledge
-	ArtifactRoleOpenFile
-	ArtifactRoleSaveFile
-	ArtifactRoleDeleteFile
-	ArtifactRoleListFiles
-	ArtifactRoleResponseFormat
+	ArtifactRoleResource
+	ArtifactRolePrompt
+	ArtifactRoleSubscriber
+	ArtifactRoleAcknowledger
+	ArtifactRolePublisher
 )
 
 // ArtifactRoleString returns the string representation of the ArtifactRole.
@@ -27,28 +23,31 @@ func (role ArtifactRole) String() string {
 		"user",
 		"assistant",
 		"tool",
-		"data",
-		"question",
-		"answer",
-		"acknowledge",
-		"open_file",
-		"save_file",
-		"delete_file",
-		"list_files",
-		"response_format",
+		"resource",
+		"prompt",
+		"subscriber",
+		"acknowledger",
+		"publisher",
 	}[role]
+}
+
+func (artifact *Artifact) ActsAs(role ArtifactRole) bool {
+	return artifact.Role() == uint32(role)
 }
 
 type ArtifactScope uint
 
 const (
 	ArtifactScopeUnknown ArtifactScope = iota
+	ArtifactScopeError
 	ArtifactScopeGeneration
 	ArtifactScopeParams
 	ArtifactScopeContext
-	ArtifactScopeAquire
-	ArtifactScopeRelease
-	ArtifactScopePreflight
+	ArtifactScopeAgent
+	ArtifactScopeTool
+	ArtifactScopeProvider
+	ArtifactScopeTopic
+	ArtifactScopeResult
 )
 
 // ArtifactScopeString returns the string representation of the ArtifactScope.
@@ -58,10 +57,16 @@ func (scope ArtifactScope) String() string {
 		"generation",
 		"params",
 		"context",
-		"aquire",
-		"release",
-		"preflight",
+		"agent",
+		"tool",
+		"provider",
+		"topic",
+		"result",
 	}[scope]
+}
+
+func (artifact *Artifact) ScopedAs(scope ArtifactScope) bool {
+	return artifact.Scope() == uint32(scope)
 }
 
 type MediaType string

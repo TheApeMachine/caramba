@@ -203,3 +203,43 @@ func (runner *Runner) Generate(
 
 	return out
 }
+
+/*
+ExecuteCommand runs a command in the container and returns the result.
+This is a wrapper around the runtime's ExecuteCommand method that handles
+the buffer management internally.
+*/
+func (runner *Runner) ExecuteCommand(ctx context.Context, command string, stdout, stderr io.Writer) error {
+	return runner.runtime.ExecuteCommand(ctx, command, stdout, stderr)
+}
+
+/*
+SendInput sends input to the container and returns the resulting output.
+This method handles locking and buffer management internally.
+*/
+func (runner *Runner) SendInput(input string) (string, error) {
+	// Write to the input buffer
+	runner.muIn.Lock()
+	_, err := runner.bufIn.Write([]byte(input))
+	runner.muIn.Unlock()
+
+	if err != nil {
+		return "", err
+	}
+
+	// Give time for the process to respond
+	time.Sleep(500 * time.Millisecond)
+
+	// Read from the output buffer
+	runner.muOutErr.Lock()
+	outputBytes := make([]byte, runner.bufOut.Len())
+	_, err = runner.bufOut.Read(outputBytes)
+	runner.bufOut.Reset() // Clear the buffer after reading
+	runner.muOutErr.Unlock()
+
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+
+	return string(outputBytes), nil
+}

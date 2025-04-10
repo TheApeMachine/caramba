@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/datura"
@@ -185,8 +186,45 @@ func (tool *SystemMessageTool) Use(
 ) *datura.Artifact {
 	errnie.Trace("tools.SystemMessageTool.Use")
 
+	// Extract message details from the artifact
+	targetAgent := datura.GetMetaValue[string](artifact, "to")
+	message := datura.GetMetaValue[string](artifact, "message")
+	fromAgent := datura.GetMetaValue[string](artifact, "origin")
+
+	if targetAgent == "" || message == "" {
+		return datura.New(
+			datura.WithArtifact(artifact),
+			datura.WithMetadata(map[string]any{
+				"error": "missing required fields: to and/or message",
+			}),
+		)
+	}
+
+	// Create a private topic for the target agent
+	privateTopic := fmt.Sprintf("%s-private", targetAgent)
+
+	// Create a new artifact for the private channel and it's automatically registered
+	datura.New(
+		datura.WithPayload([]byte(message)),
+		datura.WithMetadata(map[string]any{
+			"from":    fromAgent,
+			"to":      targetAgent,
+			"message": message,
+			"topic":   privateTopic,
+		}),
+	)
+
+	// The message will be delivered via the hub's topic system
+	// This is handled by the agent service
+
+	// Create response artifact
 	return datura.New(
 		datura.WithArtifact(artifact),
+		datura.WithMetadata(map[string]any{
+			"result":  "Message sent successfully",
+			"to":      targetAgent,
+			"message": message,
+		}),
 	)
 }
 
@@ -195,5 +233,39 @@ func (tool *SystemMessageTool) UseMCP(
 ) (*mcp.CallToolResult, error) {
 	errnie.Trace("tools.SystemMessageTool.UseMCP")
 
-	return mcp.NewToolResultText("Hello, world!"), nil
+	// Extract parameters
+	to := ""
+	message := ""
+	var fromAgent string = "system_message"
+
+	for name, value := range req.Params.Arguments {
+		if name == "to" {
+			to, _ = value.(string)
+		}
+		if name == "message" {
+			message, _ = value.(string)
+		}
+	}
+
+	if to == "" || message == "" {
+		return mcp.NewToolResultText("Error: Missing required parameters 'to' and/or 'message'"), nil
+	}
+
+	// Create a private topic for the target agent
+	privateTopic := fmt.Sprintf("%s-private", to)
+
+	// Create a message artifact for the private topic
+	datura.New(
+		datura.WithPayload([]byte(message)),
+		datura.WithMetadata(map[string]any{
+			"from":    fromAgent,
+			"to":      to,
+			"message": message,
+			"topic":   privateTopic,
+		}),
+	)
+
+	// The message will be delivered via the hub's topic system
+
+	return mcp.NewToolResultText(fmt.Sprintf("Message sent to %s: %s", to, message)), nil
 }
