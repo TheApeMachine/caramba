@@ -4,45 +4,31 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 /* MemoryTool provides a base for all memory operations */
 type MemoryTool struct {
-	operations map[string]ToolType
+	Tools []Tool
 }
 
 /* NewMemoryTool creates a new Memory tool with all operations */
-func NewMemoryTool(artifact *datura.Artifact) *MemoryTool {
-	query := NewMemoryQueryTool(artifact)
-	store := NewMemoryStoreTool(artifact)
-	search := NewMemorySearchTool(artifact)
-
+func NewMemoryTool() *MemoryTool {
 	return &MemoryTool{
-		operations: map[string]ToolType{
-			"memory_query":  {query.Tool, query.Use, query.UseMCP},
-			"memory_store":  {store.Tool, store.Use, store.UseMCP},
-			"memory_search": {search.Tool, search.Use, search.UseMCP},
+		Tools: []Tool{
+			{
+				Tool: NewMemoryQueryTool().Tool,
+				Use:  NewMemoryQueryTool().Use,
+			},
+			{
+				Tool: NewMemoryStoreTool().Tool,
+				Use:  NewMemoryStoreTool().Use,
+			},
+			{
+				Tool: NewMemorySearchTool().Tool,
+				Use:  NewMemorySearchTool().Use,
+			},
 		},
 	}
-}
-
-func (tool *MemoryTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	toolName := datura.GetMetaValue[string](artifact, "tool")
-	return tool.operations[toolName].Use(ctx, artifact)
-}
-
-/* ToMCP returns all Memory tool definitions */
-func (tool *MemoryTool) ToMCP() []ToolType {
-	tools := make([]ToolType, 0)
-
-	for _, tool := range tool.operations {
-		tools = append(tools, tool)
-	}
-
-	return tools
 }
 
 /* MemoryQueryTool implements a tool for querying memory stores */
@@ -51,7 +37,7 @@ type MemoryQueryTool struct {
 }
 
 /* NewMemoryQueryTool creates a new tool for memory queries */
-func NewMemoryQueryTool(artifact *datura.Artifact) *MemoryQueryTool {
+func NewMemoryQueryTool() *MemoryQueryTool {
 	return &MemoryQueryTool{
 		Tool: mcp.NewTool(
 			"memory_query",
@@ -73,12 +59,6 @@ func NewMemoryQueryTool(artifact *datura.Artifact) *MemoryQueryTool {
 
 /* Use executes the memory query operation and returns the results */
 func (tool *MemoryQueryTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *MemoryQueryTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -90,7 +70,7 @@ type MemoryStoreTool struct {
 }
 
 /* NewMemoryStoreTool creates a new tool for storing memory */
-func NewMemoryStoreTool(artifact *datura.Artifact) *MemoryStoreTool {
+func NewMemoryStoreTool() *MemoryStoreTool {
 	return &MemoryStoreTool{
 		Tool: mcp.NewTool(
 			"memory_store",
@@ -116,12 +96,6 @@ func NewMemoryStoreTool(artifact *datura.Artifact) *MemoryStoreTool {
 
 /* Use executes the memory store operation and returns the results */
 func (tool *MemoryStoreTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *MemoryStoreTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -133,7 +107,7 @@ type MemorySearchTool struct {
 }
 
 /* NewMemorySearchTool creates a new tool for memory search */
-func NewMemorySearchTool(artifact *datura.Artifact) *MemorySearchTool {
+func NewMemorySearchTool() *MemorySearchTool {
 	return &MemorySearchTool{
 		Tool: mcp.NewTool(
 			"memory_search",
@@ -157,12 +131,6 @@ func NewMemorySearchTool(artifact *datura.Artifact) *MemorySearchTool {
 
 /* Use executes the memory search operation and returns the results */
 func (tool *MemorySearchTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *MemorySearchTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil

@@ -4,61 +4,55 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 /* SlackTool provides a base for all Slack operations */
 type SlackTool struct {
-	operations map[string]ToolType
+	Tools []Tool
 }
 
 /* NewSlackTool creates a new Slack tool with all operations */
-func NewSlackTool(artifact *datura.Artifact) *SlackTool {
-	postMessage := NewSlackPostMessageTool(artifact)
-	uploadFile := NewSlackUploadFileTool(artifact)
-	addReaction := NewSlackAddReactionTool(artifact)
-	removeReaction := NewSlackRemoveReactionTool(artifact)
-	getChannelInfo := NewSlackGetChannelInfoTool(artifact)
-	listChannels := NewSlackListChannelsTool(artifact)
-	createChannel := NewSlackCreateChannelTool(artifact)
-	getThreadReplies := NewSlackGetThreadRepliesTool(artifact)
-	searchMessages := NewSlackSearchMessagesTool(artifact)
-	updateMessage := NewSlackUpdateMessageTool(artifact)
-	deleteMessage := NewSlackDeleteMessageTool(artifact)
-
+func NewSlackTool() *SlackTool {
 	return &SlackTool{
-		operations: map[string]ToolType{
-			"post_message":       {postMessage.Tool, postMessage.Use, postMessage.UseMCP},
-			"upload_file":        {uploadFile.Tool, uploadFile.Use, uploadFile.UseMCP},
-			"add_reaction":       {addReaction.Tool, addReaction.Use, addReaction.UseMCP},
-			"remove_reaction":    {removeReaction.Tool, removeReaction.Use, removeReaction.UseMCP},
-			"get_channel_info":   {getChannelInfo.Tool, getChannelInfo.Use, getChannelInfo.UseMCP},
-			"list_channels":      {listChannels.Tool, listChannels.Use, listChannels.UseMCP},
-			"create_channel":     {createChannel.Tool, createChannel.Use, createChannel.UseMCP},
-			"get_thread_replies": {getThreadReplies.Tool, getThreadReplies.Use, getThreadReplies.UseMCP},
-			"search_messages":    {searchMessages.Tool, searchMessages.Use, searchMessages.UseMCP},
-			"update_message":     {updateMessage.Tool, updateMessage.Use, updateMessage.UseMCP},
-			"delete_message":     {deleteMessage.Tool, deleteMessage.Use, deleteMessage.UseMCP},
+		Tools: []Tool{
+			{
+				Tool: NewSlackPostMessageTool().Tool,
+				Use:  NewSlackPostMessageTool().Use,
+			},
+			{
+				Tool: NewSlackUploadFileTool().Tool,
+				Use:  NewSlackUploadFileTool().Use,
+			},
+			{
+				Tool: NewSlackAddReactionTool().Tool,
+				Use:  NewSlackAddReactionTool().Use,
+			},
+			{
+				Tool: NewSlackListChannelsTool().Tool,
+				Use:  NewSlackListChannelsTool().Use,
+			},
+			{
+				Tool: NewSlackCreateChannelTool().Tool,
+				Use:  NewSlackCreateChannelTool().Use,
+			},
+			{
+				Tool: NewSlackGetThreadRepliesTool().Tool,
+				Use:  NewSlackGetThreadRepliesTool().Use,
+			},
+			{
+				Tool: NewSlackSearchMessagesTool().Tool,
+				Use:  NewSlackSearchMessagesTool().Use,
+			},
+			{
+				Tool: NewSlackUpdateMessageTool().Tool,
+				Use:  NewSlackUpdateMessageTool().Use,
+			},
+			{
+				Tool: NewSlackDeleteMessageTool().Tool,
+				Use:  NewSlackDeleteMessageTool().Use,
+			},
 		},
 	}
-}
-
-func (tool *SlackTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	toolName := datura.GetMetaValue[string](artifact, "tool")
-	return tool.operations[toolName].Use(ctx, artifact)
-}
-
-/* ToMCP returns all Slack tool definitions */
-func (tool *SlackTool) ToMCP() []ToolType {
-	tools := make([]ToolType, 0)
-
-	for _, tool := range tool.operations {
-		tools = append(tools, tool)
-	}
-
-	return tools
 }
 
 /* SlackPostMessageTool implements a tool for posting messages to Slack */
@@ -67,7 +61,7 @@ type SlackPostMessageTool struct {
 }
 
 /* NewSlackPostMessageTool creates a new tool for posting messages */
-func NewSlackPostMessageTool(artifact *datura.Artifact) *SlackPostMessageTool {
+func NewSlackPostMessageTool() *SlackPostMessageTool {
 	return &SlackPostMessageTool{
 		Tool: mcp.NewTool(
 			"post_message",
@@ -88,12 +82,6 @@ func NewSlackPostMessageTool(artifact *datura.Artifact) *SlackPostMessageTool {
 
 /* Use executes the post message operation and returns the results */
 func (tool *SlackPostMessageTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackPostMessageTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -105,7 +93,7 @@ type SlackUploadFileTool struct {
 }
 
 /* NewSlackUploadFileTool creates a new tool for uploading files */
-func NewSlackUploadFileTool(artifact *datura.Artifact) *SlackUploadFileTool {
+func NewSlackUploadFileTool() *SlackUploadFileTool {
 	return &SlackUploadFileTool{
 		Tool: mcp.NewTool(
 			"upload_file",
@@ -126,12 +114,6 @@ func NewSlackUploadFileTool(artifact *datura.Artifact) *SlackUploadFileTool {
 
 /* Use executes the upload file operation and returns the results */
 func (tool *SlackUploadFileTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-	) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackUploadFileTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -143,7 +125,7 @@ type SlackAddReactionTool struct {
 }
 
 /* NewSlackAddReactionTool creates a new tool for adding reactions */
-func NewSlackAddReactionTool(artifact *datura.Artifact) *SlackAddReactionTool {
+func NewSlackAddReactionTool() *SlackAddReactionTool {
 	return &SlackAddReactionTool{
 		Tool: mcp.NewTool(
 			"add_reaction",
@@ -164,12 +146,6 @@ func NewSlackAddReactionTool(artifact *datura.Artifact) *SlackAddReactionTool {
 
 /* Use executes the add reaction operation and returns the results */
 func (tool *SlackAddReactionTool) Use(
-		ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackAddReactionTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -181,7 +157,7 @@ type SlackRemoveReactionTool struct {
 }
 
 /* NewSlackRemoveReactionTool creates a new tool for removing reactions */
-func NewSlackRemoveReactionTool(artifact *datura.Artifact) *SlackRemoveReactionTool {
+func NewSlackRemoveReactionTool() *SlackRemoveReactionTool {
 	return &SlackRemoveReactionTool{
 		Tool: mcp.NewTool(
 			"remove_reaction",
@@ -202,12 +178,6 @@ func NewSlackRemoveReactionTool(artifact *datura.Artifact) *SlackRemoveReactionT
 
 /* Use executes the remove reaction operation and returns the results */
 func (tool *SlackRemoveReactionTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackRemoveReactionTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -219,7 +189,7 @@ type SlackGetChannelInfoTool struct {
 }
 
 /* NewSlackGetChannelInfoTool creates a new tool for getting channel info */
-func NewSlackGetChannelInfoTool(artifact *datura.Artifact) *SlackGetChannelInfoTool {
+func NewSlackGetChannelInfoTool() *SlackGetChannelInfoTool {
 	return &SlackGetChannelInfoTool{
 		Tool: mcp.NewTool(
 			"get_channel_info",
@@ -235,12 +205,6 @@ func NewSlackGetChannelInfoTool(artifact *datura.Artifact) *SlackGetChannelInfoT
 
 /* Use executes the get channel info operation and returns the results */
 func (tool *SlackGetChannelInfoTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackGetChannelInfoTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -252,7 +216,7 @@ type SlackListChannelsTool struct {
 }
 
 /* NewSlackListChannelsTool creates a new tool for listing channels */
-func NewSlackListChannelsTool(artifact *datura.Artifact) *SlackListChannelsTool {
+func NewSlackListChannelsTool() *SlackListChannelsTool {
 	return &SlackListChannelsTool{
 		Tool: mcp.NewTool(
 			"list_channels",
@@ -263,12 +227,6 @@ func NewSlackListChannelsTool(artifact *datura.Artifact) *SlackListChannelsTool 
 
 /* Use executes the list channels operation and returns the results */
 func (tool *SlackListChannelsTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackListChannelsTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -280,7 +238,7 @@ type SlackCreateChannelTool struct {
 }
 
 /* NewSlackCreateChannelTool creates a new tool for creating channels */
-func NewSlackCreateChannelTool(artifact *datura.Artifact) *SlackCreateChannelTool {
+func NewSlackCreateChannelTool() *SlackCreateChannelTool {
 	return &SlackCreateChannelTool{
 		Tool: mcp.NewTool(
 			"create_channel",
@@ -296,12 +254,6 @@ func NewSlackCreateChannelTool(artifact *datura.Artifact) *SlackCreateChannelToo
 
 /* Use executes the create channel operation and returns the results */
 func (tool *SlackCreateChannelTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackCreateChannelTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -313,7 +265,7 @@ type SlackGetThreadRepliesTool struct {
 }
 
 /* NewSlackGetThreadRepliesTool creates a new tool for getting thread replies */
-func NewSlackGetThreadRepliesTool(artifact *datura.Artifact) *SlackGetThreadRepliesTool {
+func NewSlackGetThreadRepliesTool() *SlackGetThreadRepliesTool {
 	return &SlackGetThreadRepliesTool{
 		Tool: mcp.NewTool(
 			"get_thread_replies",
@@ -334,12 +286,6 @@ func NewSlackGetThreadRepliesTool(artifact *datura.Artifact) *SlackGetThreadRepl
 
 /* Use executes the get thread replies operation and returns the results */
 func (tool *SlackGetThreadRepliesTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackGetThreadRepliesTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -351,7 +297,7 @@ type SlackSearchMessagesTool struct {
 }
 
 /* NewSlackSearchMessagesTool creates a new tool for searching messages */
-func NewSlackSearchMessagesTool(artifact *datura.Artifact) *SlackSearchMessagesTool {
+func NewSlackSearchMessagesTool() *SlackSearchMessagesTool {
 	return &SlackSearchMessagesTool{
 		Tool: mcp.NewTool(
 			"search_messages",
@@ -377,12 +323,6 @@ func NewSlackSearchMessagesTool(artifact *datura.Artifact) *SlackSearchMessagesT
 
 /* Use executes the search messages operation and returns the results */
 func (tool *SlackSearchMessagesTool) Use(
-		ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackSearchMessagesTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -394,7 +334,7 @@ type SlackUpdateMessageTool struct {
 }
 
 /* NewSlackUpdateMessageTool creates a new tool for updating messages */
-func NewSlackUpdateMessageTool(artifact *datura.Artifact) *SlackUpdateMessageTool {
+func NewSlackUpdateMessageTool() *SlackUpdateMessageTool {
 	return &SlackUpdateMessageTool{
 		Tool: mcp.NewTool(
 			"update_message",
@@ -415,12 +355,6 @@ func NewSlackUpdateMessageTool(artifact *datura.Artifact) *SlackUpdateMessageToo
 
 /* Use executes the update message operation and returns the results */
 func (tool *SlackUpdateMessageTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackUpdateMessageTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -432,7 +366,7 @@ type SlackDeleteMessageTool struct {
 }
 
 /* NewSlackDeleteMessageTool creates a new tool for deleting messages */
-func NewSlackDeleteMessageTool(artifact *datura.Artifact) *SlackDeleteMessageTool {
+func NewSlackDeleteMessageTool() *SlackDeleteMessageTool {
 	return &SlackDeleteMessageTool{
 		Tool: mcp.NewTool(
 			"delete_message",
@@ -453,12 +387,6 @@ func NewSlackDeleteMessageTool(artifact *datura.Artifact) *SlackDeleteMessageToo
 
 /* Use executes the delete message operation and returns the results */
 func (tool *SlackDeleteMessageTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *SlackDeleteMessageTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil

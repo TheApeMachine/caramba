@@ -39,15 +39,12 @@ func (router *Router) Close() error {
 
 // Send sends a message through the router socket.
 func (router *Router) Send(msg []byte) error {
-	errnie.Trace("twoface.router.Send")
-
 	_, err := router.sock.Write(msg)
 	return err
 }
 
 // SendMessage sends a multi-part message through the router socket.
 func (router *Router) SendMessage(msg [][]byte) error {
-	errnie.Trace("twoface.router.SendMessage")
 
 	return router.sock.SendMessage(msg)
 }

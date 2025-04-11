@@ -8,8 +8,6 @@ import (
 )
 
 func (artifact *Artifact) Bytes() []byte {
-	errnie.Trace("datura.Bytes")
-
 	buf := bytes.NewBuffer([]byte{})
 
 	artifact.ToState(errnie.StateReady)

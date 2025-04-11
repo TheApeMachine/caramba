@@ -13,8 +13,6 @@ Read implements the io.Reader interface for the Artifact.
 It streams the artifact using a Cap'n Proto Encoder.
 */
 func (artifact *Artifact) Read(p []byte) (n int, err error) {
-	errnie.Trace("artifact.Read")
-
 	builder := NewRegistry().Get(artifact)
 
 	if artifact.Is(errnie.StateReady) {
@@ -45,8 +43,6 @@ Write implements the io.Writer interface for the Artifact.
 It streams the provided bytes using a Cap'n Proto Decoder.
 */
 func (artifact *Artifact) Write(p []byte) (n int, err error) {
-	errnie.Trace("artifact.Write")
-
 	artifact.ToState(errnie.StateBusy)
 
 	builder := NewRegistry().Get(artifact)
@@ -85,8 +81,6 @@ func (artifact *Artifact) Write(p []byte) (n int, err error) {
 Close implements the io.Closer interface for the Artifact.
 */
 func (artifact *Artifact) Close() error {
-	errnie.Trace("artifact.Close")
-
 	registry := NewRegistry()
 	builder := registry.Get(artifact)
 

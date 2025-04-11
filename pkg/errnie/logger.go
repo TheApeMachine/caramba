@@ -32,7 +32,7 @@ const (
 
 var logger = log.NewWithOptions(os.Stderr, log.Options{
 	ReportCaller:    true,
-	CallerOffset:    0,
+	CallerOffset:    1,
 	ReportTimestamp: true,
 	TimeFormat:      time.TimeOnly,
 })

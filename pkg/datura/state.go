@@ -8,20 +8,16 @@ import (
 )
 
 func (artifact *Artifact) ToState(state errnie.State) *Artifact {
-	errnie.Trace("artifact.ToState", "id", artifact.ID(), "state", state)
 	artifact.SetState(uint64(state))
-	errnie.Debug("artifact.ToState", "id", artifact.ID(), "state", state)
 	return artifact
 }
 
 func (artifact *Artifact) Is(state errnie.State) (ok bool) {
 	ok = artifact.State() == uint64(state)
-	errnie.Debug("artifact.Is", "id", artifact.ID(), "state", state, "ok", ok)
 	return
 }
 
 func (artifact *Artifact) ID() string {
-	errnie.Trace("artifact.ID", "id", errnie.Try(artifact.Uuid()))
 	uid := errnie.Try(artifact.Uuid())
 
 	if uid == "" {

@@ -80,15 +80,11 @@ func GetMetaValue[T any](artifact *Artifact, key string) T {
 		}
 	}
 
-	errnie.Trace("datura.GetMetaValue", "key", key, "value", result)
-
 	return *new(T)
 }
 
 // SetMetaValue sets a metadata value with the appropriate type
 func (artifact *Artifact) SetMetaValue(key string, val any) *Artifact {
-	errnie.Trace("datura.SetMetaValue", "key", key, "value", val)
-
 	// Create a new option function
 	setOption := func(builder *Artifact) {
 		var (

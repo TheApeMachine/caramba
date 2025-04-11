@@ -2,6 +2,7 @@ package layouts
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/theapemachine/caramba/kubrick/components"
@@ -9,16 +10,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/datura"
 )
 
-// ContextAware is implemented by components that can receive a parent context
-type ContextAware interface {
-	WithContext(context.Context)
-}
-
-// GridLayout arranges components in a grid pattern
 type GridLayout struct {
-	pctx       context.Context
-	ctx        context.Context
-	cancel     context.CancelFunc
+	*types.Contextualizer
+
+	wg         *sync.WaitGroup
 	artifact   *datura.Artifact
 	components []components.Component
 	Rows       int
@@ -32,64 +27,65 @@ type GridLayout struct {
 type GridLayoutOption func(*GridLayout)
 
 func NewGridLayout(options ...GridLayoutOption) *GridLayout {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	layout := &GridLayout{
-		ctx:        ctx,
-		cancel:     cancel,
-		artifact:   datura.New(),
-		components: make([]components.Component, 0),
-		Rows:       1,
-		Columns:    1,
-		Spacing:    0,
-		status:     types.StateInitialized,
+		Contextualizer: types.NewContextualizer(),
+		wg:             &sync.WaitGroup{},
+		artifact:       datura.New(),
+		components:     make([]components.Component, 0),
+		Rows:           1,
+		Columns:        1,
+		Spacing:        0,
+		status:         types.StateInitialized,
 	}
+
+	// Ensure the context is set before passing it to components
+	layout.Contextualizer.WithContext(context.Background())
 
 	for _, option := range options {
 		option(layout)
 	}
 
-	// Only start render loop if we have a parent context
-	if layout.pctx != nil {
-		go layout.render()
+	layout.wg.Add(1)
+
+	if err := layout.render(); err != nil {
+		layout.err = err
 	}
 
 	return layout
 }
 
 // renderLoop handles continuous updates from components
-func (layout *GridLayout) render() {
+func (layout *GridLayout) render() (err error) {
 	layout.status = types.StateRunning
 
-	for {
-		select {
-		case <-layout.pctx.Done():
-			// A parent component cancelled us
-			layout.status = types.StateCanceled
-			layout.Close()
-			return
-		case <-layout.ctx.Done():
-			// We cancelled ourselves
-			layout.status = types.StateCanceled
-			layout.Close()
-			return
-		case <-time.After(10 * time.Millisecond):
-			if layout.status != types.StateRunning {
+	go func() {
+		layout.wg.Wait()
+
+		for {
+			select {
+			case <-layout.Done():
+				layout.Close()
 				return
-			}
+			case <-time.After(10 * time.Millisecond):
+				if layout.status != types.StateRunning {
+					return
+				}
 
-			// Update component positions based on current rect
-			layout.updatePositions()
+				// Update component positions based on current rect
+				layout.updatePositions()
 
-			// Read from all components and combine their artifacts
-			for _, comp := range layout.components {
-				buf := make([]byte, 1024)
-				if n, err := comp.Read(buf); err == nil && n > 0 {
-					layout.artifact.Write(buf[:n])
+				// Read from all components and combine their artifacts
+				for _, comp := range layout.components {
+					buf := make([]byte, 1024)
+					if n, err := comp.Read(buf); err == nil && n > 0 {
+						layout.artifact.Write(buf[:n])
+					}
 				}
 			}
 		}
-	}
+	}()
+
+	return nil
 }
 
 // updatePositions calculates and sets the position of each component
@@ -126,17 +122,6 @@ func (layout *GridLayout) updatePositions() {
 	}
 }
 
-// WithContext implements ContextAware
-func (layout *GridLayout) WithContext(ctx context.Context) {
-	layout.pctx = ctx
-	// Start render loop now that we have a parent context
-	if layout.status == types.StateInitialized {
-		go layout.render()
-		layout.status = types.StateRunning
-	}
-}
-
-// SetRect sets the layout's dimensions
 func (layout *GridLayout) SetRect(rect Rect) {
 	layout.rect = rect
 }
@@ -161,20 +146,21 @@ func (layout *GridLayout) Write(p []byte) (n int, err error) {
 
 // Close implements io.Closer
 func (layout *GridLayout) Close() error {
-	layout.cancel() // Cancel our context first
+	layout.Cancel()
 	layout.status = types.StateCanceled
 	return layout.artifact.Close()
+}
+
+func (layout *GridLayout) WithContext(ctx context.Context) {
+	layout.Contextualizer.WithContext(ctx)
 }
 
 func WithComponents(components ...components.Component) GridLayoutOption {
 	return func(l *GridLayout) {
 		l.components = components
 
-		// Propagate context to any components that can accept it
 		for _, comp := range components {
-			if ctxAware, ok := comp.(ContextAware); ok {
-				ctxAware.WithContext(l.ctx)
-			}
+			comp.WithContext(l.Context())
 		}
 	}
 }
@@ -194,11 +180,5 @@ func WithColumns(columns int) GridLayoutOption {
 func WithSpacing(spacing int) GridLayoutOption {
 	return func(l *GridLayout) {
 		l.Spacing = spacing
-	}
-}
-
-func WithContext(ctx context.Context) GridLayoutOption {
-	return func(l *GridLayout) {
-		l.pctx = ctx
 	}
 }

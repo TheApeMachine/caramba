@@ -3,6 +3,7 @@ package spinner
 import (
 	"container/ring"
 	"context"
+	"sync"
 	"time"
 
 	"github.com/theapemachine/caramba/kubrick/types"
@@ -20,7 +21,7 @@ var (
 )
 
 type Spinner struct {
-	pctx     context.Context
+	wg       *sync.WaitGroup
 	ctx      context.Context
 	cancel   context.CancelFunc
 	frames   *ring.Ring
@@ -40,13 +41,9 @@ func NewSpinner(options ...SpinnerOption) *Spinner {
 		frames = frames.Next()
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	spinner := &Spinner{
+		wg:       &sync.WaitGroup{},
 		frames:   frames,
-		pctx:     ctx,
-		ctx:      ctx,
-		cancel:   cancel,
 		artifact: datura.New(),
 		state:    types.StateCreated,
 	}
@@ -55,7 +52,12 @@ func NewSpinner(options ...SpinnerOption) *Spinner {
 		option(spinner)
 	}
 
-	spinner.render()
+	spinner.wg.Add(1)
+
+	if err := spinner.render(); err != nil {
+		spinner.err = err
+	}
+
 	return spinner
 }
 
@@ -98,17 +100,14 @@ func (spinner *Spinner) Close() error {
 	return spinner.err
 }
 
-func (spinner *Spinner) render() {
+func (spinner *Spinner) render() (err error) {
 	spinner.state = types.StateRunning
 
 	go func() {
+		spinner.wg.Wait()
+
 		for {
 			select {
-			case <-spinner.pctx.Done():
-				// A parent component cancelled us.
-				spinner.state = types.StateCanceled
-				spinner.Close()
-				return
 			case <-spinner.ctx.Done():
 				// We cancelled ourselves.
 				spinner.state = types.StateCanceled
@@ -140,16 +139,17 @@ func (spinner *Spinner) render() {
 			}
 		}
 	}()
+
+	return nil
+}
+
+func (spinner *Spinner) WithContext(ctx context.Context) {
+	spinner.ctx, spinner.cancel = context.WithCancel(ctx)
+	spinner.wg.Done()
 }
 
 func WithLabel(label string) SpinnerOption {
 	return func(s *Spinner) {
 		s.label = label
-	}
-}
-
-func WithContext(ctx context.Context) SpinnerOption {
-	return func(s *Spinner) {
-		s.pctx = ctx
 	}
 }

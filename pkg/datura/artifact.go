@@ -14,8 +14,6 @@ import (
 type ArtifactOption func(*Artifact)
 
 func New(options ...ArtifactOption) *Artifact {
-	errnie.Trace("artifact.New")
-
 	var (
 		arena    = capnp.SingleSegment(nil)
 		seg      *capnp.Segment
@@ -47,8 +45,6 @@ func New(options ...ArtifactOption) *Artifact {
 }
 
 func WithPayload(payload []byte) ArtifactOption {
-	errnie.Trace("artifact.WithPayload")
-
 	return func(artifact *Artifact) {
 		if errnie.Error(artifact.SetPayload(payload)) != nil {
 			return
@@ -59,8 +55,6 @@ func WithPayload(payload []byte) ArtifactOption {
 }
 
 func WithEncryptedPayload(payload []byte) ArtifactOption {
-	errnie.Trace("artifact.WithEncryptedPayload")
-
 	if len(payload) == 0 {
 		errnie.Error(errors.New("payload is empty"))
 		return nil
@@ -89,8 +83,6 @@ func WithEncryptedPayload(payload []byte) ArtifactOption {
 }
 
 func WithMetadata(metadata map[string]any) ArtifactOption {
-	errnie.Trace("artifact.WithMetadata")
-
 	return func(artifact *Artifact) {
 		var (
 			mdList    Artifact_Metadata_List
@@ -146,8 +138,6 @@ func WithMetadata(metadata map[string]any) ArtifactOption {
 }
 
 func WithArtifact(artifact *Artifact) ArtifactOption {
-	errnie.Trace("artifact.WithArtifact")
-
 	return func(a *Artifact) {
 		a.ToState(errnie.StateReady)
 		errnie.Try(io.Copy(a, artifact))
@@ -156,8 +146,6 @@ func WithArtifact(artifact *Artifact) ArtifactOption {
 }
 
 func WithOrigin(origin string) ArtifactOption {
-	errnie.Trace("artifact.WithOrigin")
-
 	return func(artifact *Artifact) {
 		if errnie.Error(artifact.SetOrigin(origin)) != nil {
 			return
@@ -166,8 +154,6 @@ func WithOrigin(origin string) ArtifactOption {
 }
 
 func WithIssuer(issuer string) ArtifactOption {
-	errnie.Trace("artifact.WithIssuer")
-
 	return func(artifact *Artifact) {
 		if errnie.Error(artifact.SetIssuer(issuer)) != nil {
 			return
@@ -176,8 +162,6 @@ func WithIssuer(issuer string) ArtifactOption {
 }
 
 func WithSignature(signature []byte) ArtifactOption {
-	errnie.Trace("artifact.WithSignature")
-
 	return func(artifact *Artifact) {
 		if errnie.Error(artifact.SetSignature(signature)) != nil {
 			return
@@ -188,24 +172,18 @@ func WithSignature(signature []byte) ArtifactOption {
 }
 
 func WithRole(role ArtifactRole) ArtifactOption {
-	errnie.Trace("artifact.WithRole")
-
 	return func(artifact *Artifact) {
 		artifact.SetRole(uint32(role))
 	}
 }
 
 func WithScope(scope ArtifactScope) ArtifactOption {
-	errnie.Trace("artifact.WithScope")
-
 	return func(artifact *Artifact) {
 		artifact.SetScope(uint32(scope))
 	}
 }
 
 func WithMediatype(mediatype MediaType) ArtifactOption {
-	errnie.Trace("artifact.WithMediatype")
-
 	return func(artifact *Artifact) {
 		if errnie.Error(artifact.SetMediatype(string(mediatype))) != nil {
 			return
@@ -215,24 +193,18 @@ func WithMediatype(mediatype MediaType) ArtifactOption {
 }
 
 func WithMeta(key string, value any) ArtifactOption {
-	errnie.Trace("artifact.WithMeta")
-
 	return func(artifact *Artifact) {
 		artifact.SetMetaValue(key, value)
 	}
 }
 
 func WithError(err error) ArtifactOption {
-	errnie.Trace("artifact.WithError")
-
 	return func(artifact *Artifact) {
 		WithEncryptedPayload([]byte(err.Error()))(artifact)
 	}
 }
 
 func WithBytes(b []byte) ArtifactOption {
-	errnie.Trace("artifact.WithBytes")
-
 	return func(artifact *Artifact) {
 		artifact.ToState(errnie.StateReady)
 

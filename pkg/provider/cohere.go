@@ -8,14 +8,10 @@ import (
 	"io"
 	"os"
 
-	"capnproto.org/go/capnp/v3"
 	cohere "github.com/cohere-ai/cohere-go/v2"
 	cohereclient "github.com/cohere-ai/cohere-go/v2/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/spf13/viper"
-	aicontext "github.com/theapemachine/caramba/pkg/ai/context"
-	"github.com/theapemachine/caramba/pkg/ai/message"
-	"github.com/theapemachine/caramba/pkg/ai/params"
 	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -30,7 +26,6 @@ type CohereProvider struct {
 	pctx     context.Context
 	ctx      context.Context
 	cancel   context.CancelFunc
-	segment  *capnp.Segment
 }
 
 /*
@@ -82,64 +77,44 @@ func WithCohereEndpoint(endpoint string) CohereProviderOption {
 }
 
 func (prvdr *CohereProvider) Generate(
-	params params.Params,
-	ctx aicontext.Context,
-	tools []mcp.Tool,
-) chan *datura.Artifact {
-	model, err := params.Model()
+	params ProviderParams,
+) (ProviderEvent, error) {
+	errnie.Info("provider.Generate", "supplier", "cohere")
 
-	out := make(chan *datura.Artifact)
+	composed := &cohere.ChatStreamRequest{
+		Model:            cohere.String(params.Model),
+		Temperature:      cohere.Float64(params.Temperature),
+		P:                cohere.Float64(params.TopP),
+		FrequencyPenalty: cohere.Float64(params.FrequencyPenalty),
+		PresencePenalty:  cohere.Float64(params.PresencePenalty),
+	}
 
-	go func() {
-		defer close(out)
+	if params.MaxTokens > 1 {
+		composed.MaxTokens = cohere.Int(int(params.MaxTokens))
+	}
 
-		if errnie.Error(err) != nil {
-			out <- datura.New(datura.WithError(errnie.Error(err)))
-			return
+	var err error
+
+	if err = prvdr.buildMessages(composed, params.Messages); err != nil {
+		return ProviderEvent{}, err
+	}
+
+	// Get tools from the artifact metadata
+	if err = prvdr.buildTools(composed, params.Tools); err != nil {
+		return ProviderEvent{}, err
+	}
+
+	if params.ResponseFormat != (ResponseFormat{}) {
+		if err = prvdr.buildResponseFormat(composed, params.ResponseFormat); err != nil {
+			return ProviderEvent{}, err
 		}
+	}
 
-		composed := &cohere.ChatStreamRequest{
-			Model:            cohere.String(model),
-			Temperature:      cohere.Float64(params.Temperature()),
-			P:                cohere.Float64(params.TopP()),
-			FrequencyPenalty: cohere.Float64(params.FrequencyPenalty()),
-			PresencePenalty:  cohere.Float64(params.PresencePenalty()),
-		}
+	if params.Stream {
+		return prvdr.handleStreamingRequest(composed)
+	}
 
-		if params.MaxTokens() > 1 {
-			composed.MaxTokens = cohere.Int(int(params.MaxTokens()))
-		}
-
-		if err = prvdr.buildMessages(composed, ctx); err != nil {
-			out <- datura.New(datura.WithError(errnie.Error(err)))
-			return
-		}
-
-		if err = prvdr.buildTools(composed, tools); err != nil {
-			out <- datura.New(datura.WithError(errnie.Error(err)))
-			return
-		}
-
-		format, err := params.Format()
-
-		if errnie.Error(err) != nil {
-			out <- datura.New(datura.WithError(errnie.Error(err)))
-			return
-		}
-
-		if err = prvdr.buildResponseFormat(composed, format); err != nil {
-			out <- datura.New(datura.WithError(errnie.Error(err)))
-			return
-		}
-
-		if params.Stream() {
-			prvdr.handleStreamingRequest(composed, out)
-		} else {
-			prvdr.handleSingleRequest(composed, out)
-		}
-	}()
-
-	return out
+	return prvdr.handleSingleRequest(composed)
 }
 
 func (prvdr *CohereProvider) Name() string {
@@ -148,8 +123,7 @@ func (prvdr *CohereProvider) Name() string {
 
 func (prvdr *CohereProvider) handleSingleRequest(
 	params *cohere.ChatStreamRequest,
-	channel chan *datura.Artifact,
-) {
+) (ProviderEvent, error) {
 	errnie.Debug("provider.handleSingleRequest")
 
 	// Convert stream request to regular chat request
@@ -164,31 +138,7 @@ func (prvdr *CohereProvider) handleSingleRequest(
 
 	response, err := prvdr.client.Chat(prvdr.ctx, chatRequest)
 	if errnie.Error(err) != nil {
-		channel <- datura.New(datura.WithError(errnie.Error(err)))
-		return
-	}
-
-	// Create a new message using Cap'n Proto
-	msg, err := message.NewMessage(prvdr.segment)
-	if errnie.Error(err) != nil {
-		channel <- datura.New(datura.WithError(errnie.Error(err)))
-		return
-	}
-
-	// Set message fields
-	if err = msg.SetRole("assistant"); errnie.Error(err) != nil {
-		channel <- datura.New(datura.WithError(errnie.Error(err)))
-		return
-	}
-
-	if err = msg.SetName("cohere"); errnie.Error(err) != nil {
-		channel <- datura.New(datura.WithError(errnie.Error(err)))
-		return
-	}
-
-	if err = msg.SetContent(response.Text); errnie.Error(err) != nil {
-		channel <- datura.New(datura.WithError(errnie.Error(err)))
-		return
+		return ProviderEvent{}, errnie.Error(err)
 	}
 
 	// Check for tool calls
@@ -196,16 +146,17 @@ func (prvdr *CohereProvider) handleSingleRequest(
 
 	// Abort early if there are no tool calls
 	if len(toolCalls) == 0 {
-		channel <- datura.New(datura.WithEncryptedPayload([]byte(response.Text)))
-		return
+		return ProviderEvent{
+			Message: Message{
+				Role:    "assistant",
+				Name:    "cohere",
+				Content: response.Text,
+			},
+		}, nil
 	}
 
 	// Create tool calls list
-	toolCallList, err := msg.NewToolCalls(int32(len(toolCalls)))
-	if errnie.Error(err) != nil {
-		channel <- datura.New(datura.WithError(errnie.Error(err)))
-		return
-	}
+	var toolCallsList []mcp.CallToolRequest
 
 	for i, toolCall := range toolCalls {
 		// Cohere's ToolCall has Name, Parameters fields
@@ -217,43 +168,51 @@ func (prvdr *CohereProvider) handleSingleRequest(
 		// Marshal parameters to JSON string for arguments
 		paramBytes, err := json.Marshal(toolCall.GetParameters())
 		if err != nil {
-			channel <- datura.New(datura.WithError(errnie.Error(err)))
-			return
+			return ProviderEvent{}, errnie.Error(err)
 		}
-		arguments := string(paramBytes)
 
 		errnie.Info("toolCall", "tool", name, "id", id)
 
-		if err = toolCallList.At(i).SetId(id); errnie.Error(err) != nil {
-			channel <- datura.New(datura.WithError(errnie.Error(err)))
-			return
+		tc := mcp.CallToolRequest{
+			Params: struct {
+				Name      string                 `json:"name"`
+				Arguments map[string]interface{} `json:"arguments,omitempty"`
+				Meta      *struct {
+					ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
+				} `json:"_meta,omitempty"`
+			}{
+				Name: name,
+			},
 		}
 
-		if err = toolCallList.At(i).SetName(name); errnie.Error(err) != nil {
-			channel <- datura.New(datura.WithError(errnie.Error(err)))
-			return
+		// Parse arguments from JSON
+		var args map[string]interface{}
+		if err := json.Unmarshal(paramBytes, &args); err == nil {
+			tc.Params.Arguments = args
 		}
 
-		if err = toolCallList.At(i).SetArguments(arguments); errnie.Error(err) != nil {
-			channel <- datura.New(datura.WithError(errnie.Error(err)))
-			return
-		}
+		toolCallsList = append(toolCallsList, tc)
 	}
 
-	// Create artifact with message content
-	channel <- datura.New(datura.WithEncryptedPayload([]byte(response.Text)))
+	// Return provider event with message and tool calls
+	return ProviderEvent{
+		Message: Message{
+			Role:      "assistant",
+			Name:      "cohere",
+			Content:   response.Text,
+			ToolCalls: toolCallsList,
+		},
+	}, nil
 }
 
 func (prvdr *CohereProvider) handleStreamingRequest(
 	params *cohere.ChatStreamRequest,
-	channel chan *datura.Artifact,
-) {
+) (ProviderEvent, error) {
 	errnie.Debug("provider.handleStreamingRequest")
 
 	stream, err := prvdr.client.ChatStream(prvdr.ctx, params)
 	if errnie.Error(err) != nil {
-		channel <- datura.New(datura.WithError(errnie.Error(err)))
-		return
+		return ProviderEvent{}, errnie.Error(err)
 	}
 
 	defer stream.Close()
@@ -266,66 +225,52 @@ func (prvdr *CohereProvider) handleStreamingRequest(
 				break
 			}
 
-			channel <- datura.New(datura.WithError(errnie.Error(err)))
-			continue
+			return ProviderEvent{}, errnie.Error(err)
 		}
 
 		if content := chunk.TextGeneration.String(); content != "" {
-			channel <- datura.New(
-				datura.WithRole(datura.ArtifactRoleAssistant),
-				datura.WithScope(datura.ArtifactScopeGeneration),
-				datura.WithEncryptedPayload([]byte(content)),
-			)
+			return ProviderEvent{
+				Message: Message{
+					Role:    "assistant",
+					Name:    "cohere",
+					Content: content,
+				},
+			}, nil
 		}
 	}
+
+	return ProviderEvent{}, nil
 }
 
 func (prvdr *CohereProvider) buildMessages(
 	chatParams *cohere.ChatStreamRequest,
-	ctx aicontext.Context,
+	messages []Message,
 ) (err error) {
 	errnie.Debug("provider.buildMessages")
 
-	msgs, err := ctx.Messages()
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	messageList := make([]*cohere.Message, 0, msgs.Len())
+	messageList := make([]*cohere.Message, 0, len(messages))
 	var systemMessage string
 
-	for i := 0; i < msgs.Len(); i++ {
-		msg := msgs.At(i)
-
-		role, err := msg.Role()
-		if errnie.Error(err) != nil {
-			return err
-		}
-
-		content, err := msg.Content()
-		if errnie.Error(err) != nil {
-			return err
-		}
-
-		switch role {
+	for _, msg := range messages {
+		switch msg.Role {
 		case "system":
-			systemMessage = content
+			systemMessage = msg.Content
 		case "user":
 			messageList = append(messageList, &cohere.Message{
 				Role: "user",
 				User: &cohere.ChatMessage{
-					Message: content,
+					Message: msg.Content,
 				},
 			})
 		case "assistant":
 			messageList = append(messageList, &cohere.Message{
 				Role: "chatbot",
 				Chatbot: &cohere.ChatMessage{
-					Message: content,
+					Message: msg.Content,
 				},
 			})
 		default:
-			errnie.Error("unknown message role", "role", role)
+			errnie.Error("unknown message role", "role", msg.Role)
 		}
 	}
 
@@ -395,33 +340,27 @@ func (prvdr *CohereProvider) buildTools(
 
 func (prvdr *CohereProvider) buildResponseFormat(
 	chatParams *cohere.ChatStreamRequest,
-	format params.ResponseFormat,
+	format ResponseFormat,
 ) (err error) {
 	errnie.Debug("provider.buildResponseFormat")
 
-	name, err := format.Name()
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	description, err := format.Description()
-	if errnie.Error(err) != nil {
-		return err
-	}
-
-	schema, err := format.Schema()
-	if errnie.Error(err) != nil {
-		return err
-	}
-
 	// If no format is specified, return early
-	if name == "" && description == "" && schema == "" {
+	if format.Name == "" && format.Description == "" && format.Schema == nil {
 		return nil
 	}
 
 	var schemaMap map[string]interface{}
-	if err = json.Unmarshal([]byte(schema), &schemaMap); err != nil {
-		return errnie.Error(err)
+	schemaStr, ok := format.Schema.(string)
+	if ok {
+		if err = json.Unmarshal([]byte(schemaStr), &schemaMap); err != nil {
+			return errnie.Error(err)
+		}
+	} else {
+		// Try to use the schema directly if it's already a map
+		schemaMap, ok = format.Schema.(map[string]interface{})
+		if !ok {
+			return errnie.Error(errors.New("schema is not a string or map"))
+		}
 	}
 
 	chatParams.ResponseFormat = &cohere.ResponseFormat{
@@ -442,87 +381,67 @@ type CohereEmbedder struct {
 	cancel   context.CancelFunc
 }
 
-func NewCohereEmbedder(apiKey string, endpoint string) *CohereEmbedder {
+func NewCohereEmbedder(opts ...CohereEmbedderOption) *CohereEmbedder {
 	errnie.Debug("provider.NewCohereEmbedder")
 
-	if apiKey == "" {
-		apiKey = os.Getenv("COHERE_API_KEY")
-	}
-
+	apiKey := os.Getenv("COHERE_API_KEY")
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &CohereEmbedder{
-		apiKey:   apiKey,
-		endpoint: endpoint,
-		client:   cohereclient.NewClient(cohereclient.WithToken(apiKey)),
-		ctx:      ctx,
-		cancel:   cancel,
+	embedder := &CohereEmbedder{
+		apiKey: apiKey,
+		client: cohereclient.NewClient(cohereclient.WithToken(apiKey)),
+		ctx:    ctx,
+		cancel: cancel,
 	}
+
+	for _, opt := range opts {
+		opt(embedder)
+	}
+
+	return embedder
 }
 
 func (embedder *CohereEmbedder) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
+	artifact *datura.Artifact,
+) *datura.Artifact {
 	errnie.Debug("provider.CohereEmbedder.Generate")
 
-	out := make(chan *datura.Artifact)
+	content, err := artifact.DecryptPayload()
+	if err != nil {
+		return datura.New(datura.WithError(errnie.Error(err)))
+	}
 
-	go func() {
-		defer close(out)
+	if len(content) == 0 {
+		return datura.New(datura.WithError(errnie.Error(errors.New("content is empty"))))
+	}
 
-		select {
-		case <-embedder.ctx.Done():
-			errnie.Debug("provider.CohereEmbedder.Generate.ctx.Done")
-			embedder.cancel()
-			return
-		case artifact := <-buffer:
-			content, err := artifact.DecryptPayload()
-			if err != nil {
-				out <- datura.New(datura.WithError(errnie.Error(err)))
-				return
-			}
+	in := cohere.EmbedInputType(cohere.EmbedInputTypeSearchDocument)
 
-			if len(content) == 0 {
-				out <- datura.New(datura.WithError(errnie.Error(errors.New("content is empty"))))
-				return
-			}
+	embedRequest := cohere.EmbedRequest{
+		Texts:     []string{string(content)},
+		Model:     cohere.String("embed-english-v3.0"),
+		InputType: &in,
+	}
 
-			in := cohere.EmbedInputType(cohere.EmbedInputTypeSearchDocument)
+	response, err := embedder.client.Embed(context.Background(), &embedRequest)
+	if err != nil {
+		errnie.Error("embedding request failed", "error", err)
+		return datura.New(datura.WithError(errnie.Error(err)))
+	}
 
-			embedRequest := cohere.EmbedRequest{
-				Texts:     []string{string(content)},
-				Model:     cohere.String("embed-english-v3.0"),
-				InputType: &in,
-			}
+	if response != nil && len(response.EmbeddingsFloats.Embeddings) > 0 {
+		embeddings := response.EmbeddingsFloats.Embeddings
+		errnie.Debug("created embeddings",
+			"text_length", len(string(content)),
+			"dimensions", len(embeddings),
+		)
 
-			response, err := embedder.client.Embed(context.Background(), &embedRequest)
-			if err != nil {
-				errnie.Error("embedding request failed", "error", err)
-				out <- datura.New(datura.WithError(errnie.Error(err)))
-				return
-			}
+		// Convert embeddings to bytes - we'd ideally do binary conversion here
+		// but for now we'll just return the content
+		return datura.New(datura.WithEncryptedPayload([]byte(string(content))))
+	}
 
-			if response != nil && len(response.EmbeddingsFloats.Embeddings) > 0 {
-				embeddings := response.EmbeddingsFloats.Embeddings
-				errnie.Debug("created embeddings",
-					"text_length", len(string(content)),
-					"dimensions", len(embeddings),
-				)
-
-				// Convert to bytes - not fully implemented
-				out <- datura.New(datura.WithEncryptedPayload([]byte(string(content))))
-			}
-		}
-	}()
-
-	return out
-}
-
-func (embedder *CohereEmbedder) Close() error {
-	errnie.Debug("provider.CohereEmbedder.Close")
-	embedder.cancel()
-	return nil
+	return datura.New(datura.WithError(errnie.Error(errors.New("failed to generate embeddings"))))
 }
 
 type CohereEmbedderOption func(*CohereEmbedder)

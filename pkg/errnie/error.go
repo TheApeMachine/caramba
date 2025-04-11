@@ -112,6 +112,8 @@ const (
 	InvalidInputError                            // Invalid input errors
 	SystemError                                  // Internal system errors
 	DependencyError                              // External dependency errors
+	ContextError                                 // Context errors
+	RenderError                                  // Render errors
 
 	/*
 		Status Types define the HTTP status codes that can be returned.

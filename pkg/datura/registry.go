@@ -35,8 +35,6 @@ type Buffer struct {
 }
 
 func NewBuffer(registerable Registerable) *Buffer {
-	errnie.Trace("datura.NewBuffer")
-
 	shared := bytes.NewBuffer(nil)
 	buffer := bufio.NewReadWriter(
 		bufio.NewReader(shared),
@@ -58,8 +56,6 @@ type Registry struct {
 }
 
 func NewRegistry() *Registry {
-	errnie.Trace("datura.NewRegistry")
-
 	once.Do(func() {
 		registry = &Registry{
 			buffers: make(map[string]*Buffer),
@@ -70,8 +66,6 @@ func NewRegistry() *Registry {
 }
 
 func Register[T Registerable](builder T) T {
-	errnie.Trace("datura.Register", "id", builder.ID())
-
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
 
@@ -87,8 +81,6 @@ func Register[T Registerable](builder T) T {
 }
 
 func (registry *Registry) Unregister(registerable Registerable) {
-	errnie.Trace("datura.Unregister", "id", registerable.ID())
-
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
 
@@ -103,8 +95,6 @@ func (registry *Registry) Unregister(registerable Registerable) {
 }
 
 func (registry *Registry) Get(registerable Registerable) *Buffer {
-	errnie.Trace("datura.Get", "id", registerable.ID())
-
 	registry.mu.RLock()
 	buffer, ok := registry.buffers[registerable.ID()]
 	registry.mu.RUnlock()

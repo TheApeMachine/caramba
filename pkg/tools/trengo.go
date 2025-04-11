@@ -4,62 +4,68 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/tools/trengo"
 )
 
 /* TrengoTool provides a base for all Trengo operations */
 type TrengoTool struct {
-	client     *trengo.Client
-	operations map[string]ToolType
+	client *trengo.Client
+	Tools  []Tool
 }
 
 /* NewTrengoTool creates a new Trengo tool with options */
-func NewTrengoTool(artifact *datura.Artifact) *TrengoTool {
-	list := NewTrengoListTicketsTool(artifact)
-	create := NewTrengoCreateTicketTool(artifact)
-	assign := NewTrengoAssignTicketTool(artifact)
-	close := NewTrengoCloseTicketTool(artifact)
-	reopen := NewTrengoReopenTicketTool(artifact)
-	labels := NewTrengoListLabelsTool(artifact)
-	get := NewTrengoGetLabelTool(artifact)
-	createLabel := NewTrengoCreateLabelTool(artifact)
-	updateLabel := NewTrengoUpdateLabelTool(artifact)
-	deleteLabel := NewTrengoDeleteLabelTool(artifact)
-
+func NewTrengoTool() *TrengoTool {
 	return &TrengoTool{
 		client: trengo.NewClient(),
-		operations: map[string]ToolType{
-			"list_tickets":  {list.Tool, list.Use, list.UseMCP},
-			"create_ticket": {create.Tool, create.Use, create.UseMCP},
-			"assign_ticket": {assign.Tool, assign.Use, assign.UseMCP},
-			"close_ticket":  {close.Tool, close.Use, close.UseMCP},
-			"reopen_ticket": {reopen.Tool, reopen.Use, reopen.UseMCP},
-			"list_labels":   {labels.Tool, labels.Use, labels.UseMCP},
-			"get_label":     {get.Tool, get.Use, get.UseMCP},
-			"create_label":  {createLabel.Tool, createLabel.Use, createLabel.UseMCP},
-			"update_label":  {updateLabel.Tool, updateLabel.Use, updateLabel.UseMCP},
-			"delete_label":  {deleteLabel.Tool, deleteLabel.Use, deleteLabel.UseMCP},
+		Tools: []Tool{
+			{
+				Tool: NewTrengoListTicketsTool().Tool,
+				Use:  NewTrengoListTicketsTool().Use,
+			},
+			{
+				Tool: NewTrengoCreateTicketTool().Tool,
+				Use:  NewTrengoCreateTicketTool().Use,
+			},
+			{
+				Tool: NewTrengoAssignTicketTool().Tool,
+				Use:  NewTrengoAssignTicketTool().Use,
+			},
+			{
+				Tool: NewTrengoCloseTicketTool().Tool,
+				Use:  NewTrengoCloseTicketTool().Use,
+			},
+			{
+				Tool: NewTrengoReopenTicketTool().Tool,
+				Use:  NewTrengoReopenTicketTool().Use,
+			},
+			{
+				Tool: NewTrengoListLabelsTool().Tool,
+				Use:  NewTrengoListLabelsTool().Use,
+			},
+			{
+				Tool: NewTrengoGetLabelTool().Tool,
+				Use:  NewTrengoGetLabelTool().Use,
+			},
+			{
+				Tool: NewTrengoCreateLabelTool().Tool,
+				Use:  NewTrengoCreateLabelTool().Use,
+			},
+			{
+				Tool: NewTrengoUpdateLabelTool().Tool,
+				Use:  NewTrengoUpdateLabelTool().Use,
+			},
+			{
+				Tool: NewTrengoDeleteLabelTool().Tool,
+				Use:  NewTrengoDeleteLabelTool().Use,
+			},
 		},
 	}
 }
 
 func (tool *TrengoTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	toolName := datura.GetMetaValue[string](artifact, "tool")
-	return tool.operations[toolName].Use(ctx, artifact)
-}
-
-/* ToMCP returns all Trengo tool definitions */
-func (tool *TrengoTool) ToMCP() []ToolType {
-	tools := make([]ToolType, 0)
-
-	for _, tool := range tool.operations {
-		tools = append(tools, tool)
-	}
-
-	return tools
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
 }
 
 /* TrengoListTicketsTool implements a tool for listing tickets in Trengo */
@@ -68,7 +74,7 @@ type TrengoListTicketsTool struct {
 }
 
 /* NewTrengoListTicketsTool creates a new tool for listing tickets */
-func NewTrengoListTicketsTool(artifact *datura.Artifact) *TrengoListTicketsTool {
+func NewTrengoListTicketsTool() *TrengoListTicketsTool {
 	return &TrengoListTicketsTool{
 		Tool: mcp.NewTool(
 			"list_tickets",
@@ -79,12 +85,6 @@ func NewTrengoListTicketsTool(artifact *datura.Artifact) *TrengoListTicketsTool 
 
 /* Use executes the list tickets operation and returns the results */
 func (tool *TrengoListTicketsTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoListTicketsTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -96,7 +96,7 @@ type TrengoCreateTicketTool struct {
 }
 
 /* NewTrengoCreateTicketTool creates a new tool for creating tickets */
-func NewTrengoCreateTicketTool(artifact *datura.Artifact) *TrengoCreateTicketTool {
+func NewTrengoCreateTicketTool() *TrengoCreateTicketTool {
 	return &TrengoCreateTicketTool{
 		Tool: mcp.NewTool(
 			"create_ticket",
@@ -107,12 +107,6 @@ func NewTrengoCreateTicketTool(artifact *datura.Artifact) *TrengoCreateTicketToo
 
 /* Use executes the create ticket operation and returns the results */
 func (tool *TrengoCreateTicketTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoCreateTicketTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -124,7 +118,7 @@ type TrengoAssignTicketTool struct {
 }
 
 /* NewTrengoAssignTicketTool creates a new tool for assigning tickets */
-func NewTrengoAssignTicketTool(artifact *datura.Artifact) *TrengoAssignTicketTool {
+func NewTrengoAssignTicketTool() *TrengoAssignTicketTool {
 	return &TrengoAssignTicketTool{
 		Tool: mcp.NewTool(
 			"assign_ticket",
@@ -135,12 +129,6 @@ func NewTrengoAssignTicketTool(artifact *datura.Artifact) *TrengoAssignTicketToo
 
 /* Use executes the assign ticket operation and returns the results */
 func (tool *TrengoAssignTicketTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoAssignTicketTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -152,7 +140,7 @@ type TrengoCloseTicketTool struct {
 }
 
 /* NewTrengoCloseTicketTool creates a new tool for closing tickets */
-func NewTrengoCloseTicketTool(artifact *datura.Artifact) *TrengoCloseTicketTool {
+func NewTrengoCloseTicketTool() *TrengoCloseTicketTool {
 	return &TrengoCloseTicketTool{
 		Tool: mcp.NewTool(
 			"close_ticket",
@@ -163,12 +151,6 @@ func NewTrengoCloseTicketTool(artifact *datura.Artifact) *TrengoCloseTicketTool 
 
 /* Use executes the close ticket operation and returns the results */
 func (tool *TrengoCloseTicketTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoCloseTicketTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -180,7 +162,7 @@ type TrengoReopenTicketTool struct {
 }
 
 /* NewTrengoReopenTicketTool creates a new tool for reopening tickets */
-func NewTrengoReopenTicketTool(artifact *datura.Artifact) *TrengoReopenTicketTool {
+func NewTrengoReopenTicketTool() *TrengoReopenTicketTool {
 	return &TrengoReopenTicketTool{
 		Tool: mcp.NewTool(
 			"reopen_ticket",
@@ -191,12 +173,6 @@ func NewTrengoReopenTicketTool(artifact *datura.Artifact) *TrengoReopenTicketToo
 
 /* Use executes the reopen ticket operation and returns the results */
 func (tool *TrengoReopenTicketTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoReopenTicketTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -208,7 +184,7 @@ type TrengoListLabelsTool struct {
 }
 
 /* NewTrengoListLabelsTool creates a new tool for listing labels */
-func NewTrengoListLabelsTool(artifact *datura.Artifact) *TrengoListLabelsTool {
+func NewTrengoListLabelsTool() *TrengoListLabelsTool {
 	return &TrengoListLabelsTool{
 		Tool: mcp.NewTool(
 			"list_labels",
@@ -219,12 +195,6 @@ func NewTrengoListLabelsTool(artifact *datura.Artifact) *TrengoListLabelsTool {
 
 /* Use executes the list labels operation and returns the results */
 func (tool *TrengoListLabelsTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoListLabelsTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -236,7 +206,7 @@ type TrengoGetLabelTool struct {
 }
 
 /* NewTrengoGetLabelTool creates a new tool for getting labels */
-func NewTrengoGetLabelTool(artifact *datura.Artifact) *TrengoGetLabelTool {
+func NewTrengoGetLabelTool() *TrengoGetLabelTool {
 	return &TrengoGetLabelTool{
 		Tool: mcp.NewTool(
 			"get_label",
@@ -247,12 +217,6 @@ func NewTrengoGetLabelTool(artifact *datura.Artifact) *TrengoGetLabelTool {
 
 /* Use executes the get label operation and returns the results */
 func (tool *TrengoGetLabelTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoGetLabelTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -264,7 +228,7 @@ type TrengoCreateLabelTool struct {
 }
 
 /* NewTrengoCreateLabelTool creates a new tool for creating labels */
-func NewTrengoCreateLabelTool(artifact *datura.Artifact) *TrengoCreateLabelTool {
+func NewTrengoCreateLabelTool() *TrengoCreateLabelTool {
 	return &TrengoCreateLabelTool{
 		Tool: mcp.NewTool(
 			"create_label",
@@ -275,12 +239,6 @@ func NewTrengoCreateLabelTool(artifact *datura.Artifact) *TrengoCreateLabelTool 
 
 /* Use executes the create label operation and returns the results */
 func (tool *TrengoCreateLabelTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoCreateLabelTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -292,7 +250,7 @@ type TrengoUpdateLabelTool struct {
 }
 
 /* NewTrengoUpdateLabelTool creates a new tool for updating labels */
-func NewTrengoUpdateLabelTool(artifact *datura.Artifact) *TrengoUpdateLabelTool {
+func NewTrengoUpdateLabelTool() *TrengoUpdateLabelTool {
 	return &TrengoUpdateLabelTool{
 		Tool: mcp.NewTool(
 			"update_label",
@@ -303,12 +261,6 @@ func NewTrengoUpdateLabelTool(artifact *datura.Artifact) *TrengoUpdateLabelTool 
 
 /* Use executes the update label operation and returns the results */
 func (tool *TrengoUpdateLabelTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoUpdateLabelTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil
@@ -320,7 +272,7 @@ type TrengoDeleteLabelTool struct {
 }
 
 /* NewTrengoDeleteLabelTool creates a new tool for deleting labels */
-func NewTrengoDeleteLabelTool(artifact *datura.Artifact) *TrengoDeleteLabelTool {
+func NewTrengoDeleteLabelTool() *TrengoDeleteLabelTool {
 	return &TrengoDeleteLabelTool{
 		Tool: mcp.NewTool(
 			"delete_label",
@@ -331,12 +283,6 @@ func NewTrengoDeleteLabelTool(artifact *datura.Artifact) *TrengoDeleteLabelTool 
 
 /* Use executes the delete label operation and returns the results */
 func (tool *TrengoDeleteLabelTool) Use(
-	ctx context.Context, artifact *datura.Artifact,
-) *datura.Artifact {
-	return artifact
-}
-
-func (tool *TrengoDeleteLabelTool) UseMCP(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText("Operation not implemented"), nil

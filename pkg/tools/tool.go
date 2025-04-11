@@ -4,22 +4,9 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
 )
 
-type ToolType struct {
-	Tool   mcp.Tool
-	Use    func(ctx context.Context, artifact *datura.Artifact) *datura.Artifact
-	UseMCP func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error)
-}
-
-func GetTool(name string) []ToolType {
-	switch name {
-	case "tool.system":
-		return NewSystemTool().ToMCP()
-	case "tool.environment":
-		return NewEnvironmentTool().ToMCP()
-	}
-
-	return nil
+type Tool struct {
+	Tool mcp.Tool
+	Use  func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error)
 }

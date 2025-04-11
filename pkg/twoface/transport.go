@@ -17,6 +17,8 @@ type Transport struct {
 // NewTransport creates a new Dealer socket connected to the specified Hub address.
 func NewTransport(name string) (*Transport, error) {
 	hubAddr := viper.GetViper().GetString("settings.hub.address")
+	errnie.Info("NewTransport", "hub_addr", hubAddr)
+
 	sock, err := goczmq.NewDealer(hubAddr)
 
 	if err != nil {
@@ -40,6 +42,8 @@ func (transport *Transport) Sock() *goczmq.Sock {
 }
 
 func (transport *Transport) Subscribe(topics []string) (err error) {
+	errnie.Trace("Transport.Subscribe", "topics", topics)
+
 	identity := transport.sock.Identity()
 
 	if identity == "" {
@@ -104,6 +108,8 @@ func (transport *Transport) Subscribe(topics []string) (err error) {
 }
 
 func (transport *Transport) Publish(artifact *datura.Artifact) error {
+	errnie.Trace("Transport.Publish", "artifact", artifact)
+
 	msg := [][]byte{
 		artifact.Bytes(),
 	}
@@ -116,6 +122,8 @@ func (transport *Transport) Publish(artifact *datura.Artifact) error {
 }
 
 func (transport *Transport) Recv() (msg [][]byte, err error) {
+	errnie.Trace("Transport.Recv")
+
 	if msg, err = transport.sock.RecvMessage(); err != nil {
 		return nil, errnie.InternalError(err)
 	}
@@ -124,6 +132,8 @@ func (transport *Transport) Recv() (msg [][]byte, err error) {
 }
 
 func (transport *Transport) Send(msg [][]byte) error {
+	errnie.Trace("Transport.Send", "msg", msg)
+
 	if err := transport.sock.SendMessage(msg); err != nil {
 		return errnie.InternalError(err)
 	}
@@ -132,6 +142,8 @@ func (transport *Transport) Send(msg [][]byte) error {
 }
 
 func (transport *Transport) Close() error {
+	errnie.Trace("Transport.Close")
+
 	if transport.sock != nil {
 		transport.sock.Destroy()
 	}

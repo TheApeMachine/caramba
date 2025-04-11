@@ -17,8 +17,9 @@ import (
 App is a container for a Kubrick application that manages screens and their rendering.
 */
 type App struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
+	*types.Contextualizer
+
+	wg           *sync.WaitGroup
 	screens      []layouts.Layout
 	activeScreen int
 	status       types.State
@@ -45,19 +46,16 @@ type AppOption func(*App)
 NewApp creates a new Kubrick application with the specified options.
 */
 func NewApp(options ...AppOption) *App {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	artifact := datura.New()
 
 	app := &App{
-		ctx:          ctx,
-		cancel:       cancel,
-		screens:      make([]layouts.Layout, 0),
-		activeScreen: 0,
-		status:       types.StateInitialized,
-		framebuffer:  NewFramebuffer(),
-		transport:    NewStreamTransport(artifact, 1024, 1024),
-		artifact:     artifact,
+		Contextualizer: types.NewContextualizer(),
+		screens:        make([]layouts.Layout, 0),
+		activeScreen:   0,
+		status:         types.StateInitialized,
+		framebuffer:    NewFramebuffer(),
+		transport:      NewStreamTransport(artifact, 1024, 1024),
+		artifact:       artifact,
 	}
 
 	var err error
@@ -65,6 +63,9 @@ func NewApp(options ...AppOption) *App {
 		errnie.Error(err)
 		return nil
 	}
+
+	// Ensure the context is set before passing it to screens
+	app.Contextualizer.WithContext(context.Background())
 
 	for _, option := range options {
 		option(app)
@@ -76,7 +77,11 @@ func NewApp(options ...AppOption) *App {
 			WithRoot(app.screens[app.activeScreen]),
 			WithTransport(app.transport),
 		)
+
+		app.terminal.WithContext(app.Context())
 	}
+
+	app.wg.Add(1)
 
 	if err := app.render(); err != nil {
 		errnie.Error(err)
@@ -91,7 +96,8 @@ func (app *App) render() error {
 	go func() {
 		for {
 			select {
-			case <-app.ctx.Done():
+			case <-app.Done():
+				app.Close()
 				return
 			case <-time.Tick(time.Millisecond * 16):
 				if _, app.err = io.Copy(app.transport, app.screens[app.activeScreen]); app.err != nil {
@@ -106,6 +112,10 @@ func (app *App) render() error {
 	}()
 
 	return nil
+}
+
+func (app *App) Error() string {
+	return app.err.Error()
 }
 
 func (app *App) Read(p []byte) (n int, err error) {
@@ -132,7 +142,7 @@ func (app *App) Close() error {
 	app.mu.Lock()
 	defer app.mu.Unlock()
 
-	app.cancel() // Cancel our context first
+	app.Cancel()
 	app.status = types.StateCanceled
 
 	// Close each screen
@@ -149,20 +159,11 @@ func (app *App) Close() error {
 	return app.artifact.Close()
 }
 
-// WithContext implements layouts.ContextAware
-func (app *App) WithContext(ctx context.Context) {
-	app.mu.Lock()
-	defer app.mu.Unlock()
-	app.ctx = ctx
-}
-
 func WithScreen(screen layouts.Layout) AppOption {
 	return func(app *App) {
-		// Propagate context if screen supports it
-		if ctxAware, ok := screen.(layouts.ContextAware); ok {
-			ctxAware.WithContext(app.ctx)
-		}
 		app.screens = append(app.screens, screen)
+
+		screen.WithContext(app.Context())
 
 		// Set initial dimensions for the screen
 		screen.SetRect(layouts.Rect{
