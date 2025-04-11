@@ -94,8 +94,8 @@ func (handler *SendSubscribeHandler) setupLLMAndProvider(
 			handler.store, t, "Failed to prepare LLM parameters", handler.err,
 		)
 		return llmParams, nil, &task.TaskRequestError{
-			Code:    -32000,
-			Message: "Failed to prepare LLM parameters",
+			Code:    -32004,
+			Message: "This operation is not supported",
 			Data:    handler.err.Error(),
 		}
 	}

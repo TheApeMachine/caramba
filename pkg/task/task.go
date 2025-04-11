@@ -72,12 +72,13 @@ type TaskState string
 
 // Constants defining the possible task states according to the A2A specification.
 const (
-	TaskStateUnknown   TaskState = ""          // Default/unset state
-	TaskStatePending   TaskState = "pending"   // Task created but not yet processed
-	TaskStateWorking   TaskState = "working"   // Task is actively being processed
-	TaskStateCompleted TaskState = "completed" // Task finished successfully
-	TaskStateFailed    TaskState = "failed"    // Task execution failed
-	TaskStateCanceled  TaskState = "canceled"  // Task was canceled by request
+	TaskStateUnknown       TaskState = ""               // Default/unset state
+	TaskStateSubmitted     TaskState = "submitted"      // Task has been submitted but not yet processed
+	TaskStateWorking       TaskState = "working"        // Task is actively being processed
+	TaskStateInputRequired TaskState = "input-required" // Task requires user input
+	TaskStateCompleted     TaskState = "completed"      // Task finished successfully
+	TaskStateFailed        TaskState = "failed"         // Task execution failed
+	TaskStateCanceled      TaskState = "canceled"       // Task was canceled by request
 )
 
 // String returns the string representation of the TaskState.
@@ -153,4 +154,9 @@ func NewTaskResponse(task *Task) *TaskResponse {
 		Artifacts: task.Artifacts,
 		Metadata:  task.Metadata,
 	}
+}
+
+type TaskIdParams struct {
+	ID       string         `json:"id"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }

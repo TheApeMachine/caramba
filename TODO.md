@@ -42,3 +42,106 @@ Based on a review of the A2A specification and the current codebase, the followi
 - [ ] Implement handling for the `input-required` task state.
 - [ ] Verify implementation and handling of `AgentAuthentication` schemes.
 - [ ] Verify implementation and handling of `AgentCapabilities` (e.g., `stateTransitionHistory`).
+
+# MCP Implementation TODOs
+
+Based on a review of the MCP specification and the current codebase, the following areas need attention:
+
+**1. Resource Management:**
+
+- [x] Implement `resources/list` endpoint for resource discovery
+- [x] Implement `resources/read` endpoint for reading resource contents
+- [x] Implement resource templates for dynamic resources
+- [x] Add support for both text and binary resources
+- [x] Implement resource subscription mechanism
+- [ ] Add resource update notifications
+- [x] Implement proper MIME type handling
+- [ ] Add resource access controls
+
+**2. Prompt Management:**
+
+- [x] Implement `prompts/list` endpoint for prompt discovery
+- [x] Implement `prompts/get` endpoint for retrieving prompts
+- [x] Add support for dynamic prompts with embedded resource context
+- [x] Implement multi-step workflows
+- [ ] Add UI integration support (slash commands, quick actions)
+- [x] Implement prompt versioning
+- [ ] Add prompt validation
+
+**3. Sampling Support:**
+
+- [x] Implement `sampling/createMessage` endpoint
+- [x] Add support for model preferences
+- [x] Implement context inclusion options
+- [x] Add sampling parameters (temperature, maxTokens, etc.)
+- [x] Implement proper error handling for sampling
+- [ ] Add rate limiting for sampling requests
+- [ ] Implement cost monitoring
+
+**4. Roots Management:**
+
+- [x] Implement roots capability declaration
+- [x] Add support for multiple root URIs
+- [x] Implement root change notifications
+- [x] Add root validation
+- [x] Implement root-based access controls
+- [x] Add root monitoring
+
+**5. Tool Enhancements:**
+
+- [ ] Add proper tool annotations (readOnlyHint, destructiveHint, etc.)
+- [ ] Implement tool update notifications
+- [ ] Add tool versioning support
+- [ ] Enhance error handling with specific error codes
+- [ ] Implement proper input validation
+- [ ] Add rate limiting for tool calls
+- [ ] Implement tool usage monitoring
+- [ ] Add tool documentation generation
+
+**6. Security Enhancements:**
+
+- [ ] Implement proper authentication for all endpoints
+- [ ] Add authorization checks for resources and tools
+- [ ] Implement rate limiting across all features
+- [ ] Add audit logging
+- [ ] Implement proper error handling
+- [ ] Add input sanitization
+- [ ] Implement timeout handling
+- [ ] Add security monitoring
+
+**7. Testing Requirements:**
+
+- [ ] Add unit tests for all new features
+- [ ] Implement integration tests
+- [ ] Add security testing
+- [ ] Implement performance testing
+- [ ] Add error handling tests
+- [ ] Implement load testing
+- [ ] Add documentation tests
+
+# TODO List
+
+## Completed
+
+- [x] Implement resource templates for dynamic resources
+- [x] Implement resource subscription mechanism
+- [x] Implement prompt management system
+- [x] Implement sampling system with model preferences and context support
+
+## In Progress
+
+- [ ] Implement resource caching
+- [ ] Add resource validation
+- [ ] Implement resource versioning
+
+## Planned
+
+- [ ] Add resource compression
+- [ ] Implement resource encryption
+- [ ] Add resource access control
+- [ ] Implement resource backup/restore
+- [ ] Add resource monitoring
+- [ ] Implement resource cleanup
+- [ ] Add resource logging
+- [ ] Implement resource metrics
+- [ ] Add resource documentation

@@ -76,7 +76,11 @@ func HandleTaskSend(
 		// Update task to failed? For now, return generic error.
 		updateTaskToFailed(store, t, "Failed to prepare LLM parameters", err)
 		sendFinalStatusUpdate(updater, t.ID, t.Status, true)
-		return nil, &task.TaskRequestError{Code: -32000, Message: "Failed to prepare LLM parameters", Data: err.Error()}
+		return nil, &task.TaskRequestError{
+			Code:    -32004, // UnsupportedOperationError
+			Message: "This operation is not supported",
+			Data:    err.Error(),
+		}
 	}
 
 	// --- Initiate Streaming Generation ---
@@ -85,7 +89,11 @@ func HandleTaskSend(
 		errnie.Error(err, "taskID", t.ID)
 		updateTaskToFailed(store, t, "Failed to initiate LLM generation", err)
 		sendFinalStatusUpdate(updater, t.ID, t.Status, true)
-		return nil, &task.TaskRequestError{Code: -32003, Message: "Failed to initiate LLM generation", Data: err.Error()}
+		return nil, &task.TaskRequestError{
+			Code:    -32003, // Capability required
+			Message: "Capability required",
+			Data:    err.Error(),
+		}
 	}
 
 	// Channel to receive the final result from the stream processing goroutine

@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/task"
 )
 
 /*
@@ -170,14 +171,24 @@ and data fields.
 func (sse *SSE) sendMessage(writer *bufio.Writer, msg any) error {
 	// Serialize the message to JSON
 	data, err := json.Marshal(msg)
-
 	if err != nil {
 		errnie.New(errnie.WithError(err))
 		return nil
 	}
 
-	// Write event data
-	fmt.Fprintf(writer, "event: update\n")
+	// Determine event type based on message type
+	var eventType string
+	switch msg.(type) {
+	case task.TaskStatusUpdateEvent:
+		eventType = "task.status"
+	case task.TaskArtifactUpdateEvent:
+		eventType = "task.artifact"
+	default:
+		eventType = "update" // Fallback for other message types
+	}
+
+	// Write event data with correct event type
+	fmt.Fprintf(writer, "event: %s\n", eventType)
 	fmt.Fprintf(writer, "data: %s\n\n", string(data))
 
 	if err := writer.Flush(); err != nil {

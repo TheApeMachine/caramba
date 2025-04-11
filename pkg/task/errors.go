@@ -84,3 +84,12 @@ func NewLLMError(method string, message string, err error) *TaskRequestError {
 	code := -32000
 	return NewInternalError(method, fmt.Sprintf("LLM Error: %s", message), err, code)
 }
+
+// NewIncompatibleContentTypesError creates a TaskRequestError for content type mismatches.
+func NewIncompatibleContentTypesError(methodName string, clientType, agentType string) *TaskRequestError {
+	return &TaskRequestError{
+		Code:    -32005,
+		Message: "Incompatible content types",
+		Data:    fmt.Sprintf("Method %s: Client content type '%s' is incompatible with agent content type '%s'", methodName, clientType, agentType),
+	}
+}

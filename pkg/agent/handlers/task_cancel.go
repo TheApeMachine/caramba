@@ -18,31 +18,35 @@ type taskCancelParams struct {
 // HandleTaskCancel implements the logic for the task.cancel A2A method.
 func HandleTaskCancel(store task.TaskStore, params json.RawMessage) (any, *task.TaskRequestError) {
 	methodName := "tasks/cancel"
-	var cancelParams taskCancelParams
+	var cancelParams task.TaskIdParams
+
+	// Parse and validate parameters
 	if taskErr := parseAndValidateParams(params, &cancelParams, methodName); taskErr != nil {
 		return nil, taskErr
 	}
 
-	// Retrieve task using helper (also handles missing ID)
+	// Get the task
 	t, taskErr := getTaskByID(store, cancelParams.ID, methodName)
 	if taskErr != nil {
 		return nil, taskErr
 	}
 
-	// Check if task is already in a final state (cannot be cancelled)
-	if t.Status.State.IsFinal() { // Use IsFinal() method
+	// Check if task can be canceled (not in a final state)
+	if t.Status.State.IsFinal() {
 		return nil, task.NewTaskCannotBeCanceledError(cancelParams.ID, t.Status.State)
 	}
 
-	// Update task status to Canceled
-	t.Status = task.TaskStatus{
-		State:     task.TaskStateCanceled,
-		Timestamp: time.Now().Format(time.RFC3339),
-		// Optionally add a cancellation message
-		// Message: task.Message{ Role: task.MessageRoleAgent, Parts: []task.MessagePart{task.TextPart{Type: "text", Text: "Task canceled by request"}} },
+	// Update task state to canceled
+	t.Status.State = task.TaskStateCanceled
+	t.Status.Timestamp = time.Now().Format(time.RFC3339)
+	t.Status.Message = task.Message{
+		Role: task.MessageRoleAgent,
+		Parts: []task.MessagePart{
+			task.TextPart{Type: "text", Text: "Task canceled by user request"},
+		},
 	}
 
-	// Update the task in the store using helper
+	// Update task in store
 	if taskErr := updateTaskInStore(store, t, methodName); taskErr != nil {
 		return nil, taskErr
 	}
