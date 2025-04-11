@@ -2,11 +2,9 @@ package provider
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"strings"
 
@@ -15,7 +13,6 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
@@ -537,48 +534,30 @@ func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
 Generate implements the Generator interface for OpenAIEmbedder.
 It takes input text through a channel and returns embeddings through another channel.
 */
-func (embedder *OpenAIEmbedder) Generate(
-	artifact *datura.Artifact,
-) *datura.Artifact {
+func (embedder *OpenAIEmbedder) Generate(document string) (embeddings []float32) {
 	errnie.Trace("provider.OpenAIEmbedder.Generate")
 
-	content, err := artifact.DecryptPayload()
-	if err != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
-	}
-
-	if len(content) == 0 {
-		return datura.New(datura.WithError(errnie.Error(errors.New("content is empty"))))
-	}
-
 	response, err := embedder.client.Embeddings.New(embedder.ctx, openai.EmbeddingNewParams{
-		Input:          openai.EmbeddingNewParamsInputUnion{OfArrayOfStrings: []string{string(content)}},
+		Input:          openai.EmbeddingNewParamsInputUnion{OfArrayOfStrings: []string{document}},
 		Model:          openai.EmbeddingModelTextEmbeddingAda002,
 		Dimensions:     openai.Int(tweaker.GetQdrantDimension()),
 		EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 	})
 	if err != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
+		errnie.Error(err)
 	}
 
 	if len(response.Data) == 0 {
-		return datura.New(datura.WithError(errnie.Error(errors.New("no embeddings returned"))))
+		errnie.Error(errors.New("no embeddings returned"))
 	}
 
 	// Convert float64 embeddings to float32
-	embeddings := response.Data[0].Embedding
-	float32Embeddings := make([]float32, len(embeddings))
-	for i, v := range embeddings {
+	float32Embeddings := make([]float32, len(response.Data[0].Embedding))
+	for i, v := range response.Data[0].Embedding {
 		float32Embeddings[i] = float32(v)
 	}
 
-	// Convert embeddings to bytes
-	embeddingsBytes := make([]byte, len(float32Embeddings)*4)
-	for i, v := range float32Embeddings {
-		binary.LittleEndian.PutUint32(embeddingsBytes[i*4:], math.Float32bits(v))
-	}
-
-	return datura.New(datura.WithEncryptedPayload(embeddingsBytes))
+	return float32Embeddings
 }
 
 func WithOpenAIEmbedderAPIKey(apiKey string) OpenAIEmbedderOption {

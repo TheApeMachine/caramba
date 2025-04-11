@@ -1,10 +1,15 @@
 package azure
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
-	"github.com/theapemachine/caramba/pkg/datura"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 /*
@@ -40,15 +45,92 @@ func NewClient() *Client {
 	}
 }
 
-func (c *Client) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	out := make(chan *datura.Artifact)
+/*
+Do handles incoming tool calls for Azure DevOps operations.
+It routes the request to the appropriate service (WorkItem or Wiki)
+and executes the specified operation.
+*/
+func (c *Client) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult {
+	ctx := context.Background()
+	args := toolcall.Params.Arguments
+	parts := strings.Split(toolcall.Params.Name, ".")
 
-	go func() {
-		defer close(out)
-	}()
+	if len(parts) != 3 {
+		errMsg := fmt.Sprintf("invalid operation format: expected 'azure.<service>.<action>', got '%s'", toolcall.Params.Name)
+		errnie.Error(fmt.Errorf(errMsg))
+		return mcp.CallToolResult{
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: errMsg}},
+		}
+	}
 
-	return out
+	service := parts[1]
+	action := parts[2]
+
+	var result interface{}
+	var err error
+
+	switch service {
+	case "workitem":
+		if c.workitem == nil {
+			errMsg := "workitem client not initialized"
+			errnie.Error(fmt.Errorf(errMsg))
+			return mcp.CallToolResult{
+				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: errMsg}},
+			}
+		}
+		switch action {
+		case "create":
+			result, err = c.workitem.CreateWorkItem(ctx, args)
+		case "update":
+			result, err = c.workitem.UpdateWorkItem(ctx, args)
+		case "get":
+			result, err = c.workitem.GetWorkItem(ctx, args)
+		case "list":
+			result, err = c.workitem.ListWorkItems(ctx, args)
+		default:
+			err = fmt.Errorf("unknown workitem action: %s", action)
+		}
+	case "wiki":
+		if c.wiki == nil {
+			errMsg := "wiki client not initialized"
+			errnie.Error(fmt.Errorf(errMsg))
+			return mcp.CallToolResult{
+				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: errMsg}},
+			}
+		}
+		switch action {
+		case "create_page":
+			result, err = c.wiki.CreatePage(ctx, args)
+		case "update_page":
+			result, err = c.wiki.UpdatePage(ctx, args)
+		case "get_page":
+			result, err = c.wiki.GetPage(ctx, args)
+		case "list_pages":
+			result, err = c.wiki.ListPages(ctx, args)
+		default:
+			err = fmt.Errorf("unknown wiki action: %s", action)
+		}
+	default:
+		err = fmt.Errorf("unknown azure service: %s", service)
+	}
+
+	if err != nil {
+		errnie.Error(err)
+		return mcp.CallToolResult{
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: err.Error()}},
+		}
+	}
+
+	// Marshal the result to JSON
+	jsonResult, marshalErr := json.MarshalIndent(result, "", "  ")
+	if marshalErr != nil {
+		errnie.Error(marshalErr)
+		return mcp.CallToolResult{
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("failed to marshal result: %s", marshalErr.Error())}},
+		}
+	}
+
+	return mcp.CallToolResult{
+		Content: []mcp.Content{mcp.TextContent{Type: "text", Text: string(jsonResult)}},
+	}
 }

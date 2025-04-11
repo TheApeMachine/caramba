@@ -12,7 +12,6 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -468,9 +467,8 @@ func NewAnthropicEmbedder(opts ...AnthropicEmbedderOption) *AnthropicEmbedder {
 	return embedder
 }
 
-func (embedder *AnthropicEmbedder) Generate(artifact *datura.Artifact) *datura.Artifact {
+func (embedder *AnthropicEmbedder) Generate() {
 	errnie.Warn("provider.AnthropicEmbedder.Generate not implemented")
-	return datura.New(datura.WithError(errnie.Error(errors.New("embeddings not supported for Anthropic yet"))))
 }
 
 type AnthropicEmbedderOption func(*AnthropicEmbedder)

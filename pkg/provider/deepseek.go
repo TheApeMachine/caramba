@@ -7,7 +7,6 @@ import (
 
 	deepseek "github.com/cohesion-org/deepseek-go"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -289,48 +288,4 @@ type DeepseekEmbedder struct {
 	client *deepseek.Client
 	ctx    context.Context
 	cancel context.CancelFunc
-}
-
-func NewDeepseekEmbedder(opts ...DeepseekEmbedderOption) *DeepseekEmbedder {
-	errnie.Debug("provider.NewDeepseekEmbedder")
-
-	apiKey := os.Getenv("DEEPSEEK_API_KEY")
-	ctx, cancel := context.WithCancel(context.Background())
-
-	client := deepseek.NewClient(apiKey)
-
-	embedder := &DeepseekEmbedder{
-		client: client,
-		ctx:    ctx,
-		cancel: cancel,
-	}
-
-	for _, opt := range opts {
-		opt(embedder)
-	}
-
-	return embedder
-}
-
-type DeepseekEmbedderOption func(*DeepseekEmbedder)
-
-func WithDeepseekEmbedderAPIKey(apiKey string) DeepseekEmbedderOption {
-	return func(embedder *DeepseekEmbedder) {
-		embedder.client = deepseek.NewClient(apiKey)
-	}
-}
-
-func WithDeepseekEmbedderEndpoint(endpoint string) DeepseekEmbedderOption {
-	return func(embedder *DeepseekEmbedder) {
-		return
-	}
-}
-
-func (embedder *DeepseekEmbedder) Generate(
-	artifact *datura.Artifact,
-) *datura.Artifact {
-	errnie.Debug("provider.DeepseekEmbedder.Generate")
-	errnie.Warn("Deepseek embedder is not implemented")
-
-	return nil
 }

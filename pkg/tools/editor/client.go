@@ -2,11 +2,9 @@ package editor
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"strings"
 
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -22,71 +20,58 @@ func NewClient() *Client {
 	}
 }
 
-func (client *Client) encode(artifact *datura.Artifact, v any) (err error) {
-	errnie.Debug("editor.Client.encode")
-
-	payload := bytes.NewBuffer([]byte{})
-
-	if err = json.NewEncoder(payload).Encode(v); err != nil {
-		return errnie.Error(err)
-	}
-
-	datura.WithEncryptedPayload(payload.Bytes())(artifact)
-	return nil
-}
-
-func (client *Client) ReadFile(artifact *datura.Artifact) error {
+func (client *Client) ReadFile(artifact map[string]interface{}) error {
 	errnie.Debug("editor.Client.ReadFile")
 
-	filePath := datura.GetMetaValue[string](artifact, "file")
+	filePath := artifact["file"].(string)
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return errnie.Error(err)
 	}
 
-	return client.encode(artifact, map[string]any{
-		"content": string(content),
-	})
+	artifact["content"] = string(content)
+
+	return nil
 }
 
-func (client *Client) WriteFile(artifact *datura.Artifact) error {
+func (client *Client) WriteFile(artifact map[string]interface{}) error {
 	errnie.Debug("editor.Client.WriteFile")
 
-	filePath := datura.GetMetaValue[string](artifact, "file")
-	content := datura.GetMetaValue[string](artifact, "content")
+	filePath := artifact["file"].(string)
+	content := artifact["content"].(string)
 
 	err := os.WriteFile(filePath, []byte(content), 0644)
 	if err != nil {
 		return errnie.Error(err)
 	}
 
-	return client.encode(artifact, map[string]any{
-		"success": true,
-	})
+	artifact["success"] = true
+
+	return nil
 }
 
-func (client *Client) DeleteFile(artifact *datura.Artifact) error {
+func (client *Client) DeleteFile(artifact map[string]interface{}) error {
 	errnie.Debug("editor.Client.DeleteFile")
 
-	filePath := datura.GetMetaValue[string](artifact, "file")
+	filePath := artifact["file"].(string)
 
 	err := os.Remove(filePath)
 	if err != nil {
 		return errnie.Error(err)
 	}
 
-	return client.encode(artifact, map[string]any{
-		"success": true,
-	})
+	artifact["success"] = true
+
+	return nil
 }
 
-func (client *Client) ReplaceLines(artifact *datura.Artifact) error {
+func (client *Client) ReplaceLines(artifact map[string]interface{}) error {
 	errnie.Debug("editor.Client.ReplaceLines")
 
-	filePath := datura.GetMetaValue[string](artifact, "file")
-	content := datura.GetMetaValue[string](artifact, "content")
-	startLine := datura.GetMetaValue[int](artifact, "start_line")
-	endLine := datura.GetMetaValue[int](artifact, "end_line")
+	filePath := artifact["file"].(string)
+	content := artifact["content"].(string)
+	startLine := artifact["start_line"].(int)
+	endLine := artifact["end_line"].(int)
 
 	// Read the entire file
 	fileContent, err := os.ReadFile(filePath)
@@ -111,17 +96,17 @@ func (client *Client) ReplaceLines(artifact *datura.Artifact) error {
 		return errnie.Error(err)
 	}
 
-	return client.encode(artifact, map[string]any{
-		"success": true,
-	})
+	artifact["success"] = true
+
+	return nil
 }
 
-func (client *Client) InsertLines(artifact *datura.Artifact) error {
+func (client *Client) InsertLines(artifact map[string]interface{}) error {
 	errnie.Debug("editor.Client.InsertLines")
 
-	filePath := datura.GetMetaValue[string](artifact, "file")
-	content := datura.GetMetaValue[string](artifact, "content")
-	lineNumber := datura.GetMetaValue[int](artifact, "line_number")
+	filePath := artifact["file"].(string)
+	content := artifact["content"].(string)
+	lineNumber := artifact["line_number"].(int)
 
 	// Read the entire file
 	fileContent, err := os.ReadFile(filePath)
@@ -146,17 +131,17 @@ func (client *Client) InsertLines(artifact *datura.Artifact) error {
 		return errnie.Error(err)
 	}
 
-	return client.encode(artifact, map[string]any{
-		"success": true,
-	})
+	artifact["success"] = true
+
+	return nil
 }
 
-func (client *Client) DeleteLines(artifact *datura.Artifact) error {
+func (client *Client) DeleteLines(artifact map[string]interface{}) error {
 	errnie.Debug("editor.Client.DeleteLines")
 
-	filePath := datura.GetMetaValue[string](artifact, "file")
-	startLine := datura.GetMetaValue[int](artifact, "start_line")
-	endLine := datura.GetMetaValue[int](artifact, "end_line")
+	filePath := artifact["file"].(string)
+	startLine := artifact["start_line"].(int)
+	endLine := artifact["end_line"].(int)
 
 	// Read the entire file
 	fileContent, err := os.ReadFile(filePath)
@@ -180,17 +165,17 @@ func (client *Client) DeleteLines(artifact *datura.Artifact) error {
 		return errnie.Error(err)
 	}
 
-	return client.encode(artifact, map[string]any{
-		"success": true,
-	})
+	artifact["success"] = true
+
+	return nil
 }
 
-func (client *Client) ReadLines(artifact *datura.Artifact) error {
+func (client *Client) ReadLines(artifact map[string]interface{}) error {
 	errnie.Debug("editor.Client.ReadLines")
 
-	filePath := datura.GetMetaValue[string](artifact, "file")
-	startLine := datura.GetMetaValue[int](artifact, "start_line")
-	endLine := datura.GetMetaValue[int](artifact, "end_line")
+	filePath := artifact["file"].(string)
+	startLine := artifact["start_line"].(int)
+	endLine := artifact["end_line"].(int)
 
 	// Read the entire file
 	fileContent, err := os.ReadFile(filePath)
@@ -208,9 +193,9 @@ func (client *Client) ReadLines(artifact *datura.Artifact) error {
 	// Extract the specified lines
 	selectedLines := lines[startLine-1 : endLine]
 
-	return client.encode(artifact, map[string]any{
-		"content": strings.Join(selectedLines, "\n"),
-	})
+	artifact["content"] = strings.Join(selectedLines, "\n")
+
+	return nil
 }
 
 func (client *Client) Read(p []byte) (n int, err error) {

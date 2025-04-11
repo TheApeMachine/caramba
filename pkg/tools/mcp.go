@@ -6,7 +6,6 @@ import (
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
@@ -76,10 +75,10 @@ func NewMCP() *MCP {
 }
 
 func (m *MCP) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	out := make(chan *datura.Artifact)
+	buffer chan map[string]interface{},
+	fn ...func(artifact map[string]interface{}) map[string]interface{},
+) chan map[string]interface{} {
+	out := make(chan map[string]interface{})
 
 	go func() {
 		defer close(out)

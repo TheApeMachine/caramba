@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/utils"
 	"google.golang.org/genai"
@@ -389,66 +388,6 @@ func (prvdr *GoogleProvider) buildResponseFormat(
 		Role:  "system",
 		Parts: []*genai.Part{{Text: systemMsg}},
 	}
-
-	return nil
-}
-
-type GoogleEmbedder struct {
-	apiKey   string
-	endpoint string
-	client   *genai.Client
-}
-
-func NewGoogleEmbedder(opts ...GoogleEmbedderOption) *GoogleEmbedder {
-	errnie.Debug("provider.NewGoogleEmbedder")
-
-	apiKey := os.Getenv("GOOGLE_API_KEY")
-
-	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
-	})
-
-	if errnie.Error(err) != nil {
-		return nil
-	}
-
-	embedder := &GoogleEmbedder{
-		apiKey: apiKey,
-		client: client,
-	}
-
-	for _, opt := range opts {
-		opt(embedder)
-	}
-
-	return embedder
-}
-
-type GoogleEmbedderOption func(*GoogleEmbedder)
-
-func WithGoogleEmbedderAPIKey(apiKey string) GoogleEmbedderOption {
-	return func(embedder *GoogleEmbedder) {
-		client, _ := genai.NewClient(context.Background(), &genai.ClientConfig{
-			APIKey:  apiKey,
-			Backend: genai.BackendGeminiAPI,
-		})
-		embedder.client = client
-		embedder.apiKey = apiKey
-	}
-}
-
-func WithGoogleEmbedderEndpoint(endpoint string) GoogleEmbedderOption {
-	return func(embedder *GoogleEmbedder) {
-		embedder.endpoint = endpoint
-	}
-}
-
-func (embedder *GoogleEmbedder) Generate(
-	artifact *datura.Artifact,
-) *datura.Artifact {
-	errnie.Debug("provider.GoogleEmbedder.Generate")
-	errnie.Warn("Google embedder is not implemented")
 
 	return nil
 }

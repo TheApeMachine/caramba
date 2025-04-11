@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -64,11 +63,12 @@ func NewRunner(runtime Runtime) *Runner {
 	return runner
 }
 
-func (runner *Runner) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	out := make(chan *datura.Artifact)
+func (runner *Runner) Execute(
+	buffer chan map[string]interface{},
+	command string,
+	input string,
+) chan map[string]interface{} {
+	out := make(chan map[string]interface{})
 
 	// Detect when the command has finished executing and the
 	// output has been written to the buffer.
@@ -129,10 +129,6 @@ func (runner *Runner) Generate(
 
 		artifact := <-buffer
 
-		// Get the command from the metadata
-		command := datura.GetMetaValue[string](artifact, "command")
-		input := datura.GetMetaValue[string](artifact, "input")
-
 		if command == "" && input == "" {
 			errnie.Error(errors.New("no command or input"))
 			return
@@ -155,7 +151,7 @@ func (runner *Runner) Generate(
 			output := <-waitforoutput()
 
 			errnie.Debug("environment.Runner.buffer.fn.out", "out", string(output))
-			artifact.SetMetaValue("output", string(output))
+			artifact["output"] = string(output)
 
 			out <- artifact
 		}
@@ -195,7 +191,7 @@ func (runner *Runner) Generate(
 		}
 
 		errnie.Debug("environment.Runner.buffer.fn.out", "out", string(output))
-		artifact.SetMetaValue("output", string(output))
+		artifact["output"] = string(output)
 		runner.muOutErr.Unlock()
 
 		out <- artifact

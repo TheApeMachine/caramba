@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/google/go-github/v70/github"
-	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 /*
@@ -39,11 +38,11 @@ func NewClient() *Client {
 	}
 }
 
-func (c *Client) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	out := make(chan *datura.Artifact)
+func (c *Client) Do(
+	buffer chan []byte,
+	fn ...func(artifact []byte) []byte,
+) chan []byte {
+	out := make(chan []byte)
 
 	go func() {
 		defer close(out)

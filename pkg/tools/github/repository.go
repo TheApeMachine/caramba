@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 
 	"github.com/google/go-github/v70/github"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -31,14 +30,14 @@ encode serializes the provided value into JSON and adds it to the artifact's pay
 
 Returns an error if JSON encoding fails.
 */
-func (repository *Repository) encode(artifact *datura.Artifact, v any) (err error) {
+func (repository *Repository) encode(artifact map[string]interface{}, v any) (err error) {
 	payload := bytes.NewBuffer([]byte{})
 
 	if err = json.NewEncoder(payload).Encode(v); err != nil {
 		return errnie.Error(err)
 	}
 
-	datura.WithEncryptedPayload(payload.Bytes())(artifact)
+	artifact["payload"] = payload.Bytes()
 
 	return nil
 }
@@ -48,7 +47,7 @@ GetRepositories retrieves all repositories accessible to the authenticated user.
 
 Returns an error if the retrieval fails.
 */
-func (repository *Repository) GetRepositories(artifact *datura.Artifact) (err error) {
+func (repository *Repository) GetRepositories(artifact map[string]interface{}) (err error) {
 	repos, _, err := repository.conn.Repositories.ListByAuthenticatedUser(
 		context.Background(),
 		nil,
@@ -67,11 +66,11 @@ GetRepository retrieves information about a specific repository.
 Uses owner and repository name from the artifact's metadata.
 Returns an error if the retrieval fails.
 */
-func (repository *Repository) GetRepository(artifact *datura.Artifact) (err error) {
+func (repository *Repository) GetRepository(artifact map[string]interface{}) (err error) {
 	repo, _, err := repository.conn.Repositories.Get(
 		context.Background(),
-		datura.GetMetaValue[string](artifact, "owner"),
-		datura.GetMetaValue[string](artifact, "name"),
+		artifact["owner"].(string),
+		artifact["name"].(string),
 	)
 
 	if err != nil {
@@ -87,11 +86,11 @@ CreateRepository creates a new repository for the authenticated user.
 Uses metadata from the artifact to set repository fields like name,
 description, and visibility. Returns an error if the creation fails.
 */
-func (repository *Repository) CreateRepository(artifact *datura.Artifact) (err error) {
+func (repository *Repository) CreateRepository(artifact map[string]interface{}) (err error) {
 	repo := &github.Repository{
-		Name:        github.Ptr(datura.GetMetaValue[string](artifact, "name")),
-		Description: github.Ptr(datura.GetMetaValue[string](artifact, "description")),
-		Private:     github.Ptr(datura.GetMetaValue[bool](artifact, "private")),
+		Name:        github.Ptr(artifact["name"].(string)),
+		Description: github.Ptr(artifact["description"].(string)),
+		Private:     github.Ptr(artifact["private"].(bool)),
 		AutoInit:    github.Ptr(true),
 	}
 
@@ -112,11 +111,11 @@ ListBranches retrieves all branches from a repository.
 Uses owner and repository name from the artifact's metadata.
 Returns an error if the retrieval fails.
 */
-func (repository *Repository) ListBranches(artifact *datura.Artifact) (err error) {
+func (repository *Repository) ListBranches(artifact map[string]interface{}) (err error) {
 	branches, _, err := repository.conn.Repositories.ListBranches(
 		context.Background(),
-		datura.GetMetaValue[string](artifact, "owner"),
-		datura.GetMetaValue[string](artifact, "name"),
+		artifact["owner"].(string),
+		artifact["name"].(string),
 		nil,
 	)
 	if err != nil {
@@ -131,12 +130,12 @@ GetContents retrieves the contents of a file or directory in a repository.
 Uses owner, repository name, and file path from the artifact's metadata.
 Returns an error if the retrieval fails.
 */
-func (repository *Repository) GetContents(artifact *datura.Artifact) (err error) {
+func (repository *Repository) GetContents(artifact map[string]interface{}) (err error) {
 	content, _, _, err := repository.conn.Repositories.GetContents(
 		context.Background(),
-		datura.GetMetaValue[string](artifact, "owner"),
-		datura.GetMetaValue[string](artifact, "name"),
-		datura.GetMetaValue[string](artifact, "path"),
+		artifact["owner"].(string),
+		artifact["name"].(string),
+		artifact["path"].(string),
 		nil,
 	)
 	if err != nil {

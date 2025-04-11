@@ -12,7 +12,6 @@ import (
 	cohereclient "github.com/cohere-ai/cohere-go/v2/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/spf13/viper"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -371,89 +370,4 @@ func (prvdr *CohereProvider) buildResponseFormat(
 	}
 
 	return nil
-}
-
-type CohereEmbedder struct {
-	client   *cohereclient.Client
-	apiKey   string
-	endpoint string
-	ctx      context.Context
-	cancel   context.CancelFunc
-}
-
-func NewCohereEmbedder(opts ...CohereEmbedderOption) *CohereEmbedder {
-	errnie.Debug("provider.NewCohereEmbedder")
-
-	apiKey := os.Getenv("COHERE_API_KEY")
-	ctx, cancel := context.WithCancel(context.Background())
-
-	embedder := &CohereEmbedder{
-		apiKey: apiKey,
-		client: cohereclient.NewClient(cohereclient.WithToken(apiKey)),
-		ctx:    ctx,
-		cancel: cancel,
-	}
-
-	for _, opt := range opts {
-		opt(embedder)
-	}
-
-	return embedder
-}
-
-func (embedder *CohereEmbedder) Generate(
-	artifact *datura.Artifact,
-) *datura.Artifact {
-	errnie.Debug("provider.CohereEmbedder.Generate")
-
-	content, err := artifact.DecryptPayload()
-	if err != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
-	}
-
-	if len(content) == 0 {
-		return datura.New(datura.WithError(errnie.Error(errors.New("content is empty"))))
-	}
-
-	in := cohere.EmbedInputType(cohere.EmbedInputTypeSearchDocument)
-
-	embedRequest := cohere.EmbedRequest{
-		Texts:     []string{string(content)},
-		Model:     cohere.String("embed-english-v3.0"),
-		InputType: &in,
-	}
-
-	response, err := embedder.client.Embed(context.Background(), &embedRequest)
-	if err != nil {
-		errnie.Error("embedding request failed", "error", err)
-		return datura.New(datura.WithError(errnie.Error(err)))
-	}
-
-	if response != nil && len(response.EmbeddingsFloats.Embeddings) > 0 {
-		embeddings := response.EmbeddingsFloats.Embeddings
-		errnie.Debug("created embeddings",
-			"text_length", len(string(content)),
-			"dimensions", len(embeddings),
-		)
-
-		// Convert embeddings to bytes - we'd ideally do binary conversion here
-		// but for now we'll just return the content
-		return datura.New(datura.WithEncryptedPayload([]byte(string(content))))
-	}
-
-	return datura.New(datura.WithError(errnie.Error(errors.New("failed to generate embeddings"))))
-}
-
-type CohereEmbedderOption func(*CohereEmbedder)
-
-func WithCohereEmbedderAPIKey(apiKey string) CohereEmbedderOption {
-	return func(embedder *CohereEmbedder) {
-		embedder.client = cohereclient.NewClient(cohereclient.WithToken(apiKey))
-	}
-}
-
-func WithCohereEmbedderEndpoint(endpoint string) CohereEmbedderOption {
-	return func(embedder *CohereEmbedder) {
-		embedder.endpoint = endpoint
-	}
 }

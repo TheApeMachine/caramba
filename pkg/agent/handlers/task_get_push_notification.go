@@ -35,19 +35,20 @@ func HandleTaskGetPushNotification(store task.TaskStore, params json.RawMessage)
 	t, err := store.GetTask(getParams.TaskID)
 	if err != nil {
 		return nil, &task.TaskRequestError{
-			Code:    -32000, // Task not found or store error
-			Message: "Task not found or error retrieving task",
+			Code:    -32001,           // Task not found
+			Message: "Task not found", // Simplified message
 			Data:    err.Error(),
 		}
 	}
 
+	// TODO: Check agent capabilities here. If !srv.card.Capabilities.PushNotifications, return error -32003
+
 	// Retrieve the push notification config from the task's metadata
 	config, ok := t.Metadata["pushNotificationConfig"]
 	if !ok || config == nil {
-		// If no config is found, return an empty object or appropriate error/response
-		// according to the A2A spec for when no config is set.
-		// Returning an empty map for now.
-		return map[string]interface{}{}, nil
+		// If no config is found, return null as per A2A spec
+		var result interface{} = nil
+		return result, nil
 	}
 
 	// Return the configuration

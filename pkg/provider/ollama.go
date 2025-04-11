@@ -3,13 +3,11 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/ollama/ollama/api"
 	"github.com/spf13/viper"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -290,86 +288,4 @@ func (prvdr *OllamaProvider) buildResponseFormat(
 	}
 
 	return nil
-}
-
-type OllamaEmbedder struct {
-	client   *api.Client
-	endpoint string
-	ctx      context.Context
-	cancel   context.CancelFunc
-}
-
-func NewOllamaEmbedder(opts ...OllamaEmbedderOption) *OllamaEmbedder {
-	errnie.Debug("provider.NewOllamaEmbedder")
-
-	endpoint := viper.GetViper().GetString("endpoints.ollama")
-	ctx, cancel := context.WithCancel(context.Background())
-
-	client, err := api.ClientFromEnvironment()
-	if err != nil {
-		errnie.Error("failed to create Ollama embedder client", "error", err)
-		cancel()
-		return nil
-	}
-
-	embedder := &OllamaEmbedder{
-		client:   client,
-		endpoint: endpoint,
-		ctx:      ctx,
-		cancel:   cancel,
-	}
-
-	for _, opt := range opts {
-		opt(embedder)
-	}
-
-	return embedder
-}
-
-type OllamaEmbedderOption func(*OllamaEmbedder)
-
-func WithOllamaEmbedderEndpoint(endpoint string) OllamaEmbedderOption {
-	return func(embedder *OllamaEmbedder) {
-		embedder.endpoint = endpoint
-	}
-}
-
-func (embedder *OllamaEmbedder) Generate(
-	artifact *datura.Artifact,
-) *datura.Artifact {
-	errnie.Debug("provider.OllamaEmbedder.Generate")
-
-	content, err := artifact.DecryptPayload()
-	if err != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
-	}
-
-	if len(content) == 0 {
-		return datura.New(datura.WithError(errnie.Error(errors.New("content is empty"))))
-	}
-
-	embeddings, err := embedder.Embed(string(content))
-	if err != nil {
-		return datura.New(datura.WithError(errnie.Error(err)))
-	}
-
-	// Convert embeddings to bytes (this is a simplified version)
-	embeddingsBytes := make([]byte, len(embeddings)*4)
-	return datura.New(datura.WithEncryptedPayload(embeddingsBytes))
-}
-
-func (embedder *OllamaEmbedder) Embed(text string) ([]float32, error) {
-	response, err := embedder.client.Embed(embedder.ctx, &api.EmbedRequest{
-		Model: "llama2",
-		Input: text,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// The Embed endpoint returns [][]float32, but we only need the first embedding
-	if len(response.Embeddings) == 0 {
-		return nil, fmt.Errorf("no embeddings returned")
-	}
-	return response.Embeddings[0], nil
 }

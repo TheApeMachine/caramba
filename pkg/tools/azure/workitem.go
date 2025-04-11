@@ -1,14 +1,12 @@
 package azure
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"fmt"
 
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/webapi"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/workitemtracking"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/utils"
 )
@@ -43,43 +41,65 @@ func NewWorkItem(conn *azuredevops.Connection) *WorkItem {
 	}
 }
 
-/*
-encode serializes the provided value into JSON and adds it to the artifact's payload.
-
-Returns an error if JSON encoding fails.
-*/
-func (w *WorkItem) encode(artifact *datura.Artifact, v any) (err error) {
-	payload := bytes.NewBuffer([]byte{})
-
-	if err = json.NewEncoder(payload).Encode(v); err != nil {
-		return errnie.Error(err)
+// Helper function to get string arguments
+func getStringArg(args map[string]interface{}, key string) (string, error) {
+	val, ok := args[key].(string)
+	if !ok {
+		return "", fmt.Errorf("missing or invalid type for argument '%s'", key)
 	}
+	return val, nil
+}
 
-	datura.WithEncryptedPayload(payload.Bytes())(artifact)
-	return nil
+// Helper function to get int arguments
+func getIntArg(args map[string]interface{}, key string) (int, error) {
+	// JSON numbers are often float64
+	valFloat, ok := args[key].(float64)
+	if !ok {
+		// Try int directly just in case
+		valInt, okInt := args[key].(int)
+		if !okInt {
+			return 0, fmt.Errorf("missing or invalid type for argument '%s'", key)
+		}
+		return valInt, nil
+	}
+	return int(valFloat), nil
 }
 
 /*
 CreateWorkItem creates a new work item in Azure DevOps.
 
-It uses metadata from the artifact to set work item fields like title and description.
-Returns an error if the creation fails.
+It uses arguments from the map to set work item fields like title and description.
+Returns the created work item or an error.
 */
-func (w *WorkItem) CreateWorkItem(artifact *datura.Artifact) (err error) {
-	ctx := context.Background()
-	project := datura.GetMetaValue[string](artifact, "project")
-	workItemType := datura.GetMetaValue[string](artifact, "type")
+func (w *WorkItem) CreateWorkItem(ctx context.Context, args map[string]interface{}) (*workitemtracking.WorkItem, error) {
+	project, err := getStringArg(args, "project")
+	if err != nil {
+		return nil, errnie.Error(err)
+	}
+	workItemType, err := getStringArg(args, "type")
+	if err != nil {
+		return nil, errnie.Error(err)
+	}
+	title, err := getStringArg(args, "title")
+	if err != nil {
+		return nil, errnie.Error(err)
+	}
+	description, err := getStringArg(args, "description")
+	if err != nil {
+		// Description might be optional, handle accordingly or make mandatory via schema
+		description = "" // Default to empty if not provided/error
+	}
 
 	operations := []webapi.JsonPatchOperation{
 		{
 			Op:    &webapi.OperationValues.Add,
 			Path:  utils.Ptr("/fields/System.Title"),
-			Value: datura.GetMetaValue[string](artifact, "title"),
+			Value: title,
 		},
 		{
 			Op:    &webapi.OperationValues.Add,
 			Path:  utils.Ptr("/fields/System.Description"),
-			Value: datura.GetMetaValue[string](artifact, "description"),
+			Value: description,
 		},
 	}
 
@@ -90,32 +110,42 @@ func (w *WorkItem) CreateWorkItem(artifact *datura.Artifact) (err error) {
 	})
 
 	if err != nil {
-		return errnie.Error(err)
+		return nil, errnie.Error(err)
 	}
 
-	return w.encode(artifact, workItem)
+	return workItem, nil
 }
 
 /*
 UpdateWorkItem updates an existing work item in Azure DevOps.
 
-It uses metadata from the artifact to update work item fields.
-Returns an error if the update fails.
+It uses arguments from the map to update work item fields.
+Returns the updated work item or an error.
 */
-func (w *WorkItem) UpdateWorkItem(artifact *datura.Artifact) (err error) {
-	ctx := context.Background()
-	id := datura.GetMetaValue[int](artifact, "id")
+func (w *WorkItem) UpdateWorkItem(ctx context.Context, args map[string]interface{}) (*workitemtracking.WorkItem, error) {
+	id, err := getIntArg(args, "id")
+	if err != nil {
+		return nil, errnie.Error(err)
+	}
+	title, err := getStringArg(args, "title")
+	if err != nil {
+		return nil, errnie.Error(err) // Assume title is required for update
+	}
+	description, err := getStringArg(args, "description")
+	if err != nil {
+		description = "" // Default to empty if not provided/error
+	}
 
 	operations := []webapi.JsonPatchOperation{
 		{
 			Op:    &webapi.OperationValues.Replace,
 			Path:  utils.Ptr("/fields/System.Title"),
-			Value: datura.GetMetaValue[string](artifact, "title"),
+			Value: title,
 		},
 		{
 			Op:    &webapi.OperationValues.Replace,
 			Path:  utils.Ptr("/fields/System.Description"),
-			Value: datura.GetMetaValue[string](artifact, "description"),
+			Value: description,
 		},
 	}
 
@@ -125,43 +155,50 @@ func (w *WorkItem) UpdateWorkItem(artifact *datura.Artifact) (err error) {
 	})
 
 	if err != nil {
-		return errnie.Error(err)
+		return nil, errnie.Error(err)
 	}
 
-	return w.encode(artifact, workItem)
+	return workItem, nil
 }
 
 /*
 GetWorkItem retrieves a single work item from Azure DevOps by its ID.
 
-The work item ID is extracted from the artifact's metadata.
-Returns an error if the retrieval fails.
+The work item ID is extracted from the arguments map.
+Returns the work item or an error.
 */
-func (w *WorkItem) GetWorkItem(artifact *datura.Artifact) (err error) {
-	ctx := context.Background()
-	id := datura.GetMetaValue[int](artifact, "id")
+func (w *WorkItem) GetWorkItem(ctx context.Context, args map[string]interface{}) (*workitemtracking.WorkItem, error) {
+	id, err := getIntArg(args, "id")
+	if err != nil {
+		return nil, errnie.Error(err)
+	}
 
 	workItem, err := w.wit.GetWorkItem(ctx, workitemtracking.GetWorkItemArgs{
 		Id: &id,
 	})
 
 	if err != nil {
-		return errnie.Error(err)
+		return nil, errnie.Error(err)
 	}
 
-	return w.encode(artifact, workItem)
+	return workItem, nil
 }
 
 /*
 ListWorkItems queries and retrieves multiple work items from Azure DevOps.
 
-Uses a WIQL query from the artifact's metadata to filter work items.
-Returns an error if the query fails.
+Uses a WIQL query from the arguments map to filter work items.
+Returns the query result or an error.
 */
-func (w *WorkItem) ListWorkItems(artifact *datura.Artifact) (err error) {
-	ctx := context.Background()
-	project := datura.GetMetaValue[string](artifact, "project")
-	query := datura.GetMetaValue[string](artifact, "query")
+func (w *WorkItem) ListWorkItems(ctx context.Context, args map[string]interface{}) (*workitemtracking.WorkItemQueryResult, error) {
+	project, err := getStringArg(args, "project")
+	if err != nil {
+		return nil, errnie.Error(err)
+	}
+	query, err := getStringArg(args, "query")
+	if err != nil {
+		return nil, errnie.Error(err)
+	}
 
 	wiql := workitemtracking.Wiql{
 		Query: &query,
@@ -173,8 +210,8 @@ func (w *WorkItem) ListWorkItems(artifact *datura.Artifact) (err error) {
 	})
 
 	if err != nil {
-		return errnie.Error(err)
+		return nil, errnie.Error(err)
 	}
 
-	return w.encode(artifact, workItems)
+	return workItems, nil
 }

@@ -49,3 +49,7 @@ type ResponseFormat struct {
 	Schema      any    `json:"schema"`
 	Strict      bool   `json:"strict"`
 }
+
+type Embedder interface {
+	Generate(document string) (embeddings []float32)
+}

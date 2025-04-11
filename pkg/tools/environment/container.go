@@ -12,9 +12,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/fs"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
@@ -62,21 +60,8 @@ Returns an error if any step in the process fails.
 */
 func (container *Container) Load() (err error) {
 	var (
-		artifact = datura.New()
-		payload  []byte
+		payload []byte
 	)
-
-	ch := make(chan *datura.Artifact)
-
-	go func() {
-		ch <- artifact
-	}()
-
-	artifact = <-fs.NewStore().Generate(ch)
-
-	if payload, err = artifact.DecryptPayload(); err != nil {
-		return errnie.Error(err)
-	}
 
 	// Create a unique reference for the image
 	imageName := "caramba-env:" + time.Now().Format("20060102-150405")

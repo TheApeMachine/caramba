@@ -35,11 +35,13 @@ func HandleTaskSetPushNotification(store task.TaskStore, params json.RawMessage)
 	t, err := store.GetTask(setParams.TaskID)
 	if err != nil {
 		return nil, &task.TaskRequestError{
-			Code:    -32000, // Task not found or store error
-			Message: "Task not found or error retrieving task",
+			Code:    -32001,           // Task not found
+			Message: "Task not found", // Simplified message
 			Data:    err.Error(),
 		}
 	}
+
+	// TODO: Check agent capabilities here. If !srv.card.Capabilities.PushNotifications, return error -32003
 
 	// Store the push notification config in the task's metadata
 	if t.Metadata == nil {
@@ -50,12 +52,13 @@ func HandleTaskSetPushNotification(store task.TaskStore, params json.RawMessage)
 	// Update the task in the store
 	if err := store.UpdateTask(t); err != nil {
 		return nil, &task.TaskRequestError{
-			Code:    -32000, // Store update error
-			Message: "Failed to update task with push notification config",
+			Code:    -32603, // Internal error
+			Message: "Internal error: Failed to update task with push notification config",
 			Data:    err.Error(),
 		}
 	}
 
-	// Return confirmation as per A2A spec
-	return map[string]string{"status": "configured"}, nil
+	// Return null on success as per A2A spec
+	var result interface{} = nil
+	return result, nil
 }

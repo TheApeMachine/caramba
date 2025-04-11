@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -32,17 +31,8 @@ func NewClient() *Client {
 	return client
 }
 
-func (c *Client) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	out := make(chan *datura.Artifact)
-
-	go func() {
-		defer close(out)
-	}()
-
-	return out
+func (client *Client) Do() string {
+	return "trengo"
 }
 
 func (client *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {

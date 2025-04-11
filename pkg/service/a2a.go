@@ -175,22 +175,20 @@ func (srv *A2A) RegisterRoutes() {
 		var err *task.TaskRequestError
 
 		switch req.Method {
-		case "task.create":
-			result, err = handlers.HandleTaskCreate(srv.taskStore, req.Params)
-		case "task.get":
+		case "tasks/send":
+			result, err = handlers.HandleTaskSend(srv.taskStore, srv.llmProvider, srv.toolRegistry, srv, req.Params)
+		case "tasks/get":
 			result, err = handlers.HandleTaskGet(srv.taskStore, req.Params)
-		case "task.send":
-			result, err = handlers.HandleTaskSend(ctx.Context(), srv.taskStore, srv.llmProvider, srv.toolRegistry, req.Params)
-		case "tasks/sendSubscribe":
-			result, err = handlers.HandleTaskSendSubscribe(srv.taskStore, srv.llmProvider, srv.toolRegistry, srv, req.Params)
-		case "task.setPushNotification":
-			result, err = handlers.HandleTaskSetPushNotification(srv.taskStore, req.Params)
-		case "task.cancel":
+		case "tasks/cancel":
 			result, err = handlers.HandleTaskCancel(srv.taskStore, req.Params)
-		case "task.getPushNotification":
+		case "tasks/pushNotification/set":
+			result, err = handlers.HandleTaskSetPushNotification(srv.taskStore, req.Params)
+		case "tasks/pushNotification/get":
 			result, err = handlers.HandleTaskGetPushNotification(srv.taskStore, req.Params)
-		case "task.artifact.get":
-			result, err = handlers.HandleTaskArtifactGet(srv.taskStore, srv.s3Repo, srv.bucketName, req.Params)
+		case "tasks/sendSubscribe":
+			handlers.HandleTaskSendSubscribe(ctx, srv.taskStore, srv.llmProvider, srv.toolRegistry, req.Params, req.ID)
+		case "tasks/resubscribe":
+			result, err = handlers.HandleTaskResubscribe(srv.taskStore, req.Params)
 		default:
 			// Method not found error according to JSON-RPC spec
 			err = &task.TaskRequestError{

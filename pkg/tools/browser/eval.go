@@ -1,59 +1,53 @@
 package browser
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/fs"
+	"github.com/theapemachine/caramba/pkg/provider"
+	fs "github.com/theapemachine/caramba/pkg/stores/fs"
 )
 
 type Eval struct {
 	page     *rod.Page
-	artifact *datura.Artifact
 	op       string
+	fsStore  *fs.Store
+	toolcall provider.PendingToolCall
 }
 
-func NewEval(page *rod.Page, artifact *datura.Artifact, op string) *Eval {
-	return &Eval{page: page, artifact: artifact, op: op}
+func NewEval(page *rod.Page, fsStore *fs.Store, toolcall provider.PendingToolCall) *Eval {
+	op := toolcall.Request.Method
+	return &Eval{
+		page:     page,
+		op:       op,
+		fsStore:  fsStore,
+		toolcall: toolcall,
+	}
 }
 
 func (eval *Eval) Run() (result string, err error) {
-	// Create a script artifact
-	scriptArtifact := datura.New(
-		datura.WithRole(datura.ArtifactRoleResource),
-		datura.WithMeta("path", "scripts/"+eval.op+".js"),
-	)
-
-	// Create store and input channel
-	store := fs.NewStore()
-	inputChan := make(chan *datura.Artifact, 1)
-	inputChan <- scriptArtifact
-	close(inputChan)
-
-	// Get output from store
-	outputChan := store.Generate(inputChan)
-	scriptContent := <-outputChan
-
-	// Copy script content to the artifact
-	if _, err = io.Copy(eval.artifact, scriptContent); err != nil {
-		return err.Error(), errnie.Error(err)
-	}
-
-	errnie.Debug("browser.Eval.Run", "status", "decrypting file")
-
-	var payload []byte
-	if payload, err = eval.artifact.DecryptPayload(); err != nil {
-		return err.Error(), errnie.Error(err)
-	}
-
 	var (
 		runtime *proto.RuntimeRemoteObject
 	)
 
-	if runtime, err = eval.page.Eval(string(payload)); err != nil {
+	scriptPath := fmt.Sprintf("scripts/%s.js", eval.op)
+
+	scriptFile, err := eval.fsStore.Get(scriptPath)
+	if err != nil {
+		return "", errnie.Error(fmt.Errorf("failed to get script '%s': %w", scriptPath, err))
+	}
+	defer scriptFile.Close()
+
+	scriptContentBytes, err := io.ReadAll(scriptFile)
+	if err != nil {
+		return "", errnie.Error(fmt.Errorf("failed to read script '%s': %w", scriptPath, err))
+	}
+	scriptContent := string(scriptContentBytes)
+
+	if runtime, err = eval.page.Eval(scriptContent); err != nil {
 		return err.Error(), errnie.Error(err)
 	}
 

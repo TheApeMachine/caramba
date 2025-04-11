@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 
 	"github.com/slack-go/slack"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -15,7 +14,7 @@ Takes a channel ID, message text, optional thread timestamp, and an artifact con
 additional message options like blocks and attachments. Returns the channel ID and
 message timestamp on success, or an error if the post fails.
 */
-func (client *Client) PostMessage(channel, text, threadTS string, artifact *datura.Artifact) (interface{}, error) {
+func (client *Client) PostMessage(channel, text, threadTS string, artifact map[string]interface{}) (interface{}, error) {
 	msgOptions := []slack.MsgOption{
 		slack.MsgOptionText(text, false),
 	}
@@ -24,14 +23,14 @@ func (client *Client) PostMessage(channel, text, threadTS string, artifact *datu
 		msgOptions = append(msgOptions, slack.MsgOptionTS(threadTS))
 	}
 
-	if blocks := datura.GetMetaValue[string](artifact, "blocks"); blocks != "" {
+	if blocks := artifact["blocks"].(string); blocks != "" {
 		var msgBlocks []slack.Block
 		if err := json.Unmarshal([]byte(blocks), &msgBlocks); err == nil {
 			msgOptions = append(msgOptions, slack.MsgOptionBlocks(msgBlocks...))
 		}
 	}
 
-	if attachments := datura.GetMetaValue[string](artifact, "attachments"); attachments != "" {
+	if attachments := artifact["attachments"].(string); attachments != "" {
 		var msgAttachments []slack.Attachment
 		if err := json.Unmarshal([]byte(attachments), &msgAttachments); err == nil {
 			msgOptions = append(msgOptions, slack.MsgOptionAttachments(msgAttachments...))

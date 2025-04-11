@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -14,30 +13,166 @@ import (
 	"github.com/theapemachine/caramba/pkg/service/types"
 	"github.com/theapemachine/caramba/pkg/task"
 	"github.com/theapemachine/caramba/pkg/tools"
-	"github.com/theapemachine/caramba/pkg/tweaker"
-	"github.com/theapemachine/caramba/pkg/utils"
 )
 
-// --- Example Structured Response Definition ---
-// In a real app, move this to a shared types/models package
-type ExampleStructuredResponse struct {
-	Field1 string `json:"field_1" jsonschema_description:"Description for field 1"`
-	Field2 int    `json:"field_2" jsonschema_description:"Description for field 2"`
+// StreamUpdateSender defines the interface required to send updates.
+// Duplicated here to avoid import cycle. Consider moving to a shared package.
+type StreamUpdateSender interface {
+	SendTaskUpdate(taskID string, update interface{})
 }
 
-// --- Schema Registry ---
-// Maps a schema name requested by the client to a function that generates the schema
-var responseSchemaRegistry = map[string]func() any{
-	"example_response": func() any { return utils.GenerateSchema[ExampleStructuredResponse]() },
-	// Add other response types here, e.g.:
-	// "historical_computer": func() any { return utils.GenerateSchema[HistoricalComputer]() },
+// streamProcessingResult holds the accumulated data from the LLM stream.
+type streamProcessingResult struct {
+	accumulatedContent   string
+	accumulatedToolCalls []provider.PendingToolCall
+	assistantMessage     provider.Message // Store the assistant's message that led to tool calls
+	err                  error
 }
 
-// taskSendParams defines the expected parameters for the task.send method
+// taskSendParams defines the expected parameters for the task.send method.
+// Based on TaskSendParams in the A2A schema.
 type taskSendParams struct {
-	TaskID  string       `json:"task_id"` // Assuming A2A spec uses task_id
-	Message task.Message `json:"message"` // Assuming message structure is defined in task package
-	// Add other fields as needed by A2A spec (e.g., historyLength, metadata)
+	ID               string                 `json:"id"` // Renamed from TaskID
+	SessionID        string                 `json:"sessionId,omitempty"`
+	Message          task.Message           `json:"message"`
+	PushNotification *task.PushNotification `json:"pushNotification,omitempty"`
+	HistoryLength    *int                   `json:"historyLength,omitempty"`
+	Metadata         map[string]any         `json:"metadata,omitempty"`
+}
+
+// HandleTaskSend orchestrates the streaming task request.
+func HandleTaskSend(
+	store task.TaskStore,
+	llmProvider provider.ProviderType,
+	toolRegistry *tools.Registry,
+	updater StreamUpdateSender, // Use the interface
+	params json.RawMessage,
+) (interface{}, *task.TaskRequestError) {
+
+	// --- Parameter Parsing ---
+	var sendParams taskSendParams
+	if err := types.SimdUnmarshalJSON(params, &sendParams); err != nil {
+		return nil, &task.TaskRequestError{Code: -32602, Message: "Invalid params for task.send", Data: err.Error()}
+	}
+	if sendParams.ID == "" { // Check ID instead of TaskID
+		return nil, &task.TaskRequestError{Code: -32602, Message: "Invalid params for task.send", Data: "Missing required parameter: id"}
+	}
+
+	// --- Task Retrieval & Initial Update ---
+	// Pass the full sendParams to potentially use PushNotification config
+	t, taskErr := retrieveAndPrepareTask(store, sendParams)
+	if taskErr != nil {
+		return nil, taskErr // Already formatted as TaskRequestError
+	}
+
+	// --- Prepare LLM Call Parameters ---
+	// Pass historyLength from params
+	llmParams, err := prepareLLMParams(t, toolRegistry, sendParams.HistoryLength)
+	if err != nil {
+		// This function currently doesn't return an error, but could in the future
+		// Update task to failed? For now, return generic error.
+		updateTaskToFailed(store, t, "Failed to prepare LLM parameters", err)
+		sendFinalStatusUpdate(updater, t.ID, t.Status, true)
+		return nil, &task.TaskRequestError{Code: -32000, Message: "Failed to prepare LLM parameters", Data: err.Error()}
+	}
+
+	// --- Initiate Streaming Generation ---
+	providerEventChan, err := llmProvider.Generate(llmParams)
+	if err != nil {
+		errnie.Error(err, "taskID", t.ID)
+		updateTaskToFailed(store, t, "Failed to initiate LLM generation", err)
+		sendFinalStatusUpdate(updater, t.ID, t.Status, true)
+		return nil, &task.TaskRequestError{Code: -32003, Message: "Failed to initiate LLM generation", Data: err.Error()}
+	}
+
+	// Channel to receive the final result from the stream processing goroutine
+	resultChan := make(chan streamProcessingResult, 1)
+
+	// --- Launch Goroutine to Process Stream ---
+	go processStreamEvents(sendParams.ID, providerEventChan, updater, resultChan)
+
+	// --- Wait for Stream Processing and Handle Results ---
+	errnie.Info("Waiting for stream processing result", "taskID", sendParams.ID)
+	streamResult := <-resultChan
+	errnie.Info("Received stream processing result", "taskID", sendParams.ID)
+
+	// --- Handle Post-Stream Processing ---
+	// This function now encapsulates handling stream errors, tool execution, final LLM call,
+	// final task updates, and sending the final SSE.
+	handlePostStreamProcessing(t, streamResult, llmProvider, llmParams, toolRegistry, store, updater)
+
+	// --- Return Initial Confirmation ---
+	// Return the status reflecting the *start* of processing.
+	initialConfirmationStatus := task.TaskStatus{
+		State:     task.TaskStateWorking,
+		Timestamp: t.Status.Timestamp, // Use timestamp from initial update
+		Message:   sendParams.Message,
+	}
+	return map[string]interface{}{
+		"status": initialConfirmationStatus,
+	}, nil
+}
+
+// retrieveAndPrepareTask fetches the task and updates its status to Working.
+func retrieveAndPrepareTask(store task.TaskStore, sendParams taskSendParams) (*task.Task, *task.TaskRequestError) {
+	t, err := store.GetTask(sendParams.ID) // Use ID
+	if err != nil {
+		// Use A2A specific error code
+		return nil, &task.TaskRequestError{Code: -32001, Message: "Task not found", Data: fmt.Sprintf("Task with ID '%s' not found or error retrieving: %s", sendParams.ID, err.Error())}
+	}
+	t.History = append(t.History, sendParams.Message)
+	t.Status = task.TaskStatus{
+		State:     task.TaskStateWorking,
+		Timestamp: time.Now().Format(time.RFC3339),
+		Message:   sendParams.Message,
+	}
+
+	// Store push notification config if provided in this send request
+	if sendParams.PushNotification != nil {
+		if t.Metadata == nil {
+			t.Metadata = make(map[string]any)
+		}
+		t.Metadata["pushNotificationConfig"] = *sendParams.PushNotification // Dereference pointer
+	}
+
+	if err := store.UpdateTask(t); err != nil {
+		errnie.Error("Failed to update task before streaming", "error", err, "taskID", t.ID)
+		return nil, &task.TaskRequestError{Code: -32000, Message: "Failed to update task initially", Data: err.Error()}
+	}
+	return t, nil
+}
+
+// prepareLLMParams sets up the parameters for the initial streaming LLM call.
+// Added historyLength argument.
+func prepareLLMParams(t *task.Task, toolRegistry *tools.Registry, historyLength *int) (provider.ProviderParams, error) {
+	// Determine history to use
+	historyForLLM := t.History
+	if historyLength != nil && *historyLength > 0 && len(t.History) > *historyLength {
+		startIndex := len(t.History) - *historyLength
+		historyForLLM = t.History[startIndex:]
+	}
+
+	// Convert potentially truncated history for the provider
+	providerMessages := convertA2AMessagesToProviderMessages(historyForLLM)
+
+	availableTools := make([]mcp.Tool, 0, len(toolRegistry.Tools))
+	for _, registeredTool := range toolRegistry.Tools {
+		availableTools = append(availableTools, registeredTool.Tool)
+	}
+
+	// Fetch these parameters from task metadata or a configuration service.
+	// Using hardcoded values for now.
+	llmParams := provider.ProviderParams{
+		Model:       "gpt-4o", // Configurable: e.g., t.Config.Model or config.Get("default_model")
+		Temperature: 0.7,      // Configurable
+		TopP:        1.0,      // Configurable
+		MaxTokens:   1024,     // Configurable
+		Messages:    providerMessages,
+		Tools:       availableTools,
+		Stream:      true,
+	}
+	// Currently no error path, but return error for future flexibility
+	return llmParams, nil
 }
 
 // Helper function to build content string from various message parts
@@ -91,430 +226,386 @@ func convertA2AMessagesToProviderMessages(a2aHistory []task.Message) []provider.
 	return providerMessages
 }
 
-// Helper function to get metadata from a MessagePart
-func getPartMetadata(part task.MessagePart) map[string]any {
-	switch p := part.(type) {
-	case task.TextPart:
-		return p.Metadata
-	case task.FilePart:
-		return p.Metadata
-	case task.DataPart:
-		return p.Metadata
-	default:
-		return nil
-	}
-}
+// processStreamEvents consumes events from the provider channel, sends artifact updates,
+// and accumulates results, sending them back on the resultChan when done.
+func processStreamEvents(
+	taskID string,
+	providerEventChan <-chan provider.ProviderEvent,
+	updater StreamUpdateSender,
+	resultChan chan<- streamProcessingResult,
+) {
+	errnie.Info("Starting stream processing goroutine", "taskID", taskID)
+	defer errnie.Info("Exiting stream processing goroutine", "taskID", taskID)
 
-// Parses and validates the input parameters for task.send
-func parseAndValidateTaskSendParams(params json.RawMessage) (taskSendParams, *task.TaskRequestError) {
-	var sendParams taskSendParams
-	if err := types.SimdUnmarshalJSON(params, &sendParams); err != nil {
-		return taskSendParams{}, &task.TaskRequestError{
-			Code:    -32602, // Invalid params
-			Message: "Invalid params for task.send",
-			Data:    err.Error(),
-		}
-	}
+	var accumulatedContent strings.Builder
+	var accumulatedToolCalls []provider.PendingToolCall
+	var assistantMessage provider.Message // Store the full assistant message if available
+	var processingError error
 
-	if sendParams.TaskID == "" {
-		return taskSendParams{}, &task.TaskRequestError{
-			Code:    -32602, // Invalid params
-			Message: "Invalid params for task.send",
-			Data:    "Missing required parameter: task_id",
-		}
-	}
-	return sendParams, nil
-}
+	for event := range providerEventChan { // Read events until channel is closed
+		errnie.Debug("Received provider event", "taskID", taskID)
 
-// Retrieves a task from the store by ID
-func getTaskFromStore(store task.TaskStore, taskID string) (*task.Task, *task.TaskRequestError) {
-	t, err := store.GetTask(taskID)
-	if err != nil {
-		// Handle potential store errors (e.g., not found)
-		return nil, &task.TaskRequestError{
-			Code:    -32000, // Example: Application-specific error code for not found
-			Message: "Task not found",
-			Data:    fmt.Sprintf("Task with ID '%s' not found or error retrieving: %s", taskID, err.Error()),
-		}
-	}
-	return t, nil
-}
-
-// Prepares the ProviderParams for the LLM call
-func prepareProviderParams(a2aHistory []task.Message, toolRegistry *tools.Registry, userMessage task.Message) provider.ProviderParams {
-	// Convert history for the provider
-	providerMessages := convertA2AMessagesToProviderMessages(a2aHistory)
-
-	// Get available tools from the registry
-	availableTools := make([]mcp.Tool, 0, len(toolRegistry.Tools))
-	for _, registeredTool := range toolRegistry.Tools {
-		availableTools = append(availableTools, registeredTool.Tool)
-	}
-
-	// Base LLM parameters
-	llmParams := provider.ProviderParams{
-		Model:            tweaker.GetModel(tweaker.GetProvider()),
-		Temperature:      tweaker.GetTemperature(),
-		TopP:             tweaker.GetTopP(),
-		MaxTokens:        tweaker.GetMaxTokens(),
-		FrequencyPenalty: tweaker.GetFrequencyPenalty(),
-		PresencePenalty:  tweaker.GetPresencePenalty(),
-		Stream:           true, // Assuming streaming is always desired here
-		Messages:         providerMessages,
-		Tools:            availableTools,
-	}
-
-	// Determine the response format based on user message metadata
-	llmParams.ResponseFormat = determineResponseFormat(userMessage)
-
-	return llmParams
-}
-
-// determines the desired response format (if any) based on metadata in the user message parts.
-func determineResponseFormat(userMessage task.Message) provider.ResponseFormat {
-	var foundFormat *provider.ResponseFormat = nil
-
-	for _, part := range userMessage.Parts {
-		metadata := getPartMetadata(part)
-		if metadata == nil {
-			continue
+		// --- Handle Potential Error Event First ---
+		if event.Message.Role == "error" {
+			errnie.Error("Received error event from provider", "taskID", taskID, "error", event.Message.Content)
+			processingError = fmt.Errorf("provider stream error: %s", event.Message.Content)
+			// Optionally break or continue depending on whether other events might follow an error
+			// Assuming the stream terminates on error, we can break here.
+			break
 		}
 
-		// PRIORITY 1: Check for Named Schema
-		namedFormat, found := findNamedResponseFormat(metadata)
-		if found {
-			foundFormat = namedFormat
-			break // Found the highest priority format, stop checking parts
+		// Store the full assistant message if it's the container for tool calls
+		// (Some providers might structure events differently)
+		if event.Message.Role == "assistant" && len(event.ToolCalls) > 0 {
+			assistantMessage = event.Message // Store the message requesting tools
 		}
-	}
 
-	// PRIORITY 2: Check for Inline Schema (only if named wasn't found)
-	if foundFormat == nil {
-		for _, part := range userMessage.Parts {
-			metadata := getPartMetadata(part)
-			if metadata == nil {
-				continue
+		// --- Handle Message Content ---
+		if event.Message.Content != "" {
+			accumulatedContent.WriteString(event.Message.Content)
+			// Send artifact update via SSE
+			artifactUpdate := task.TaskArtifactUpdateEvent{
+				ID: taskID,
+				Artifact: task.Artifact{
+					Index:     0,     // Assuming one primary artifact stream
+					Append:    true,  // Append chunks
+					LastChunk: false, // Assume not last unless channel closes
+					Parts:     []task.Part{{Text: event.Message.Content}},
+				},
 			}
+			updater.SendTaskUpdate(taskID, artifactUpdate)
+		}
 
-			inlineFormat, found := findInlineResponseFormat(metadata)
-			if found {
-				foundFormat = inlineFormat
-				break // Found an inline format, stop checking parts
-			}
+		// --- Accumulate Tool Calls ---
+		if len(event.ToolCalls) > 0 {
+			errnie.Info("Received tool call request(s) in stream", "taskID", taskID, "count", len(event.ToolCalls))
+			accumulatedToolCalls = append(accumulatedToolCalls, event.ToolCalls...)
 		}
 	}
 
-	if foundFormat != nil {
-		return *foundFormat
+	// --- Stream Finished ---
+	errnie.Info("Provider event channel closed", "taskID", taskID)
+
+	// Check for stream error *after* the loop (relevant for OpenAI provider)
+	// This requires modification if the provider can send error events *during* the stream.
+	// Example: if providerEventChan was type <-chan ResultOrError
+
+	// If assistantMessage wasn't explicitly captured (e.g., only content chunks came),
+	// and there were tool calls, synthesize an assistant message from accumulated content.
+	if assistantMessage.Role == "" && len(accumulatedToolCalls) > 0 {
+		assistantMessage = provider.Message{Role: "assistant", Content: accumulatedContent.String()}
 	}
 
-	// Return a zero-value ResponseFormat if none was determined
-	return provider.ResponseFormat{}
+	// Send the accumulated result back
+	resultChan <- streamProcessingResult{
+		accumulatedContent:   accumulatedContent.String(),
+		accumulatedToolCalls: accumulatedToolCalls,
+		assistantMessage:     assistantMessage,
+		err:                  processingError, // Send any error encountered during processing
+	}
+	close(resultChan) // Close channel after sending the single result
 }
 
-// findNamedResponseFormat checks metadata for a named response schema and returns it if found.
-func findNamedResponseFormat(metadata map[string]any) (*provider.ResponseFormat, bool) {
-	schemaName, ok := metadata["responseSchemaName"].(string)
-	if !ok {
-		return nil, false // No name specified
+// handlePostStreamProcessing deals with the results after the LLM stream has finished.
+func handlePostStreamProcessing(
+	t *task.Task,
+	streamResult streamProcessingResult,
+	llmProvider provider.ProviderType,
+	baseLLMParams provider.ProviderParams, // Pass the base params used for streaming
+	toolRegistry *tools.Registry,
+	store task.TaskStore,
+	updater StreamUpdateSender,
+) {
+	// Handle stream processing error first
+	if streamResult.err != nil {
+		errnie.Error("Stream processing failed", "error", streamResult.err, "taskID", t.ID)
+		updateTaskToFailed(store, t, "Stream processing error", streamResult.err)
+		sendFinalStatusUpdate(updater, t.ID, t.Status, true)
+		return // Task failed, nothing more to do
 	}
 
-	schemaGenerator, found := responseSchemaRegistry[schemaName]
-	if !found {
-		// Optional: Log warning if name provided but not found
-		fmt.Printf("Warning: Requested response schema name '%s' not found in registry\n", schemaName)
-		return nil, false // Name specified but not found in registry
+	// Add the assistant's response from the stream to history
+	addAssistantStreamResponseToHistory(t, streamResult)
+
+	var finalAgentMessage task.Message
+	var finalTaskState task.TaskState
+
+	if len(streamResult.accumulatedToolCalls) > 0 {
+		// Delegate tool execution and final response generation
+		finalMsg, finalState, execErr := executeToolsAndGetResponse(
+			t, streamResult.accumulatedToolCalls, toolRegistry, llmProvider, baseLLMParams, store,
+		)
+		finalAgentMessage = finalMsg // Use the message (success or error) from the execution function
+		finalTaskState = finalState
+		if execErr != nil {
+			// Error was already logged, task updated by executeToolsAndGetResponse
+			errnie.Warn("Tool execution or final response generation failed", "taskID", t.ID, "error", execErr)
+		} else {
+			finalTaskState = task.TaskStateCompleted // Explicitly set completed on success
+		}
+	} else {
+		// No tool calls, the accumulated content is the final response
+		finalAgentMessage = task.Message{
+			Role: task.MessageRoleAgent,
+			Parts: []task.MessagePart{
+				task.TextPart{Type: "text", Text: streamResult.accumulatedContent},
+			},
+		}
+		finalTaskState = task.TaskStateCompleted
 	}
 
-	generatedSchema := schemaGenerator()
-	return &provider.ResponseFormat{
-		Name:        schemaName,
-		Description: fmt.Sprintf("Structured response for %s", schemaName),
-		Schema:      generatedSchema,
-		Strict:      true,
-	}, true // Found and created successfully
+	// Update task with the determined final state and message
+	updateFinalTaskStatus(store, t, finalAgentMessage, finalTaskState)
+
+	// Send final SSE update
+	sendFinalStatusUpdate(updater, t.ID, t.Status, true)
+	errnie.Info("Post-stream processing complete", "taskID", t.ID, "finalState", t.Status.State)
 }
 
-// findInlineResponseFormat checks metadata for an inline JSON schema and returns it if found.
-func findInlineResponseFormat(metadata map[string]any) (*provider.ResponseFormat, bool) {
-	mimeType, mimeOk := metadata["mimeType"].(string)
-	schema, schemaOk := metadata["schema"]
-
-	if mimeOk && mimeType == "application/json" && schemaOk {
-		// Found an inline JSON schema request
-		return &provider.ResponseFormat{
-			// Name/Description could potentially be extracted from metadata too if desired
-			Schema: schema,
-			Strict: true,
-		}, true
+// addAssistantStreamResponseToHistory adds the assistant message from the stream result to the task history.
+func addAssistantStreamResponseToHistory(t *task.Task, streamResult streamProcessingResult) {
+	// Only add if there was content OR tool calls were made (indicating an assistant turn)
+	if streamResult.accumulatedContent != "" || len(streamResult.accumulatedToolCalls) > 0 {
+		assistantMsgToStore := streamResult.assistantMessage
+		// Synthesize if not explicitly provided but tools were called
+		if assistantMsgToStore.Role == "" && len(streamResult.accumulatedToolCalls) > 0 {
+			assistantMsgToStore = provider.Message{Role: "assistant", Content: streamResult.accumulatedContent}
+		}
+		// Convert provider.Message to task.Message before appending
+		taskAssistantMsg := task.Message{
+			Role: task.MessageRoleAgent,
+			Parts: []task.MessagePart{
+				task.TextPart{Type: "text", Text: assistantMsgToStore.Content},
+			},
+			// Tool call requests are implicitly handled by the flow (execution + subsequent tool messages)
+			// and don't need explicit representation in the assistant's message parts in history.
+		}
+		// If there was text content OR tool calls were requested, add the message.
+		if assistantMsgToStore.Content != "" || len(streamResult.accumulatedToolCalls) > 0 {
+			t.History = append(t.History, taskAssistantMsg)
+		}
 	}
-	return nil, false // No inline schema found
 }
 
-// Calls the LLM provider and waits for the event, handling channel communication and timeout.
-func callLLMAndReceiveEvent(llmProvider provider.ProviderType, params provider.ProviderParams, taskID string) (provider.ProviderEvent, *task.TaskRequestError) {
-	// Call the LLM provider
-	providerEventChan, err := llmProvider.Generate(params)
-	if err != nil {
-		errnie.Error("LLM generation failed", "taskID", taskID, "error", err)
-		return provider.ProviderEvent{}, &task.TaskRequestError{Code: -32003, Message: "LLM generation failed", Data: err.Error()}
+// executeToolsAndGetResponse handles the sequence of executing tools and getting a final LLM response.
+func executeToolsAndGetResponse(
+	t *task.Task,
+	pendingCalls []provider.PendingToolCall,
+	toolRegistry *tools.Registry,
+	llmProvider provider.ProviderType,
+	baseLLMParams provider.ProviderParams,
+	store task.TaskStore,
+) (finalMessage task.Message, finalState task.TaskState, err error) {
+	errnie.Info("Executing accumulated tool calls", "taskID", t.ID, "count", len(pendingCalls))
+
+	// Convert current task history back to provider format
+	currentProviderMessages := convertA2AMessagesToProviderMessages(t.History)
+
+	// Execute tools
+	toolResultMessages, toolExecErr := executeTools(toolRegistry, pendingCalls) // Use existing helper
+	if toolExecErr != nil {
+		errnie.Error(toolExecErr, "taskID", t.ID)
+		updateTaskToFailed(store, t, "Tool execution failed", toolExecErr)
+		errMsg := task.Message{
+			Role:  task.MessageRoleAgent,
+			Parts: []task.MessagePart{task.TextPart{Type: "text", Text: fmt.Sprintf("Error during tool execution: %s", toolExecErr)}},
+		}
+		return errMsg, task.TaskStateFailed, toolExecErr // Return error message, failed state, and error
 	}
 
-	// Receive the actual event from the channel with timeout
-	var providerEvent provider.ProviderEvent
+	// Add tool results to provider messages
+	currentProviderMessages = append(currentProviderMessages, toolResultMessages...)
+
+	// Call LLM again (non-streaming)
+	finalLLMParams := provider.ProviderParams{
+		Model:            baseLLMParams.Model,
+		Temperature:      baseLLMParams.Temperature,
+		TopP:             baseLLMParams.TopP,
+		MaxTokens:        baseLLMParams.MaxTokens,
+		FrequencyPenalty: baseLLMParams.FrequencyPenalty, // Copy relevant fields
+		PresencePenalty:  baseLLMParams.PresencePenalty,  // Copy relevant fields
+		Messages:         currentProviderMessages,        // Use updated messages
+		Tools:            nil,                            // No tools for final response
+		Stream:           false,                          // Not streaming
+		ResponseFormat:   baseLLMParams.ResponseFormat,   // Keep original format spec if any
+	}
+
+	finalEventChan, finalErr := llmProvider.Generate(finalLLMParams)
+	if finalErr != nil {
+		errnie.Error("Failed to get final LLM response after tools", "error", finalErr, "taskID", t.ID)
+		updateTaskToFailed(store, t, "Failed final LLM call after tools", finalErr)
+		errMsg := task.Message{Role: task.MessageRoleAgent, Parts: []task.MessagePart{task.TextPart{Type: "text", Text: "Error generating final response after tool use."}}}
+		return errMsg, task.TaskStateFailed, finalErr
+	}
+
+	// Wait for the single final event
+	var finalEvent provider.ProviderEvent
 	select {
-	case event, ok := <-providerEventChan:
+	case event, ok := <-finalEventChan:
 		if !ok {
-			errnie.Error("LLM provider channel closed unexpectedly", "taskID", taskID)
-			return provider.ProviderEvent{}, &task.TaskRequestError{Code: -32004, Message: "LLM provider communication error", Data: "Channel closed"}
+			errnie.Error("Final LLM response channel closed unexpectedly", "taskID", t.ID)
+			llmErr := fmt.Errorf("LLM communication error: channel closed")
+			updateTaskToFailed(store, t, llmErr.Error(), nil) // Pass error message directly
+			errMsg := task.Message{Role: task.MessageRoleAgent, Parts: []task.MessagePart{task.TextPart{Type: "text", Text: "Error receiving final LLM response."}}}
+			return errMsg, task.TaskStateFailed, llmErr
 		}
-		providerEvent = event
-	case <-time.After(30 * time.Second): // Add a timeout
-		errnie.Error("Timeout waiting for LLM provider event", "taskID", taskID)
-		return provider.ProviderEvent{}, &task.TaskRequestError{Code: -32005, Message: "LLM provider timeout", Data: "Timeout waiting for response"}
+		finalEvent = event
+		// Convert final provider message to task message
+		finalMsg := task.Message{
+			Role: task.MessageRoleAgent,
+			Parts: []task.MessagePart{
+				task.TextPart{Type: "text", Text: finalEvent.Message.Content},
+			},
+		}
+		return finalMsg, task.TaskStateCompleted, nil // Success
+
+	case <-time.After(30 * time.Second): // Timeout for final response
+		errnie.Error("Timeout waiting for final LLM response", "taskID", t.ID)
+		timeoutErr := fmt.Errorf("LLM timeout waiting for final response")
+		updateTaskToFailed(store, t, timeoutErr.Error(), nil) // Pass error message directly
+		errMsg := task.Message{Role: task.MessageRoleAgent, Parts: []task.MessagePart{task.TextPart{Type: "text", Text: "Timeout receiving final LLM response."}}}
+		return errMsg, task.TaskStateFailed, timeoutErr
 	}
-	return providerEvent, nil
 }
 
-// executeSingleToolConcurrently handles the execution of a single tool within a goroutine.
-func executeSingleToolConcurrently(ctx context.Context, toolRegistry *tools.Registry, call provider.PendingToolCall, taskID string, wg *sync.WaitGroup, resultChan chan<- provider.Message) {
-	defer wg.Done()
+// executeSingleTool executes a single requested tool and returns the result message and any error.
+func executeSingleTool(toolRegistry *tools.Registry, pendingCall provider.PendingToolCall) (provider.Message, error) {
 	var resultMsg provider.Message
+	var executionError error
 	toolFound := false
 
 	for _, registeredTool := range toolRegistry.Tools {
-		if registeredTool.Tool.Name == call.Request.Params.Name {
+		if registeredTool.Tool.Name == pendingCall.Request.Params.Name {
 			toolFound = true
-			errnie.Info("Executing tool", "name", registeredTool.Tool.Name, "id", call.ID, "taskID", taskID)
-			toolResult, toolErr := registeredTool.Use(ctx, call.Request) // Pass down the main context
+			errnie.Info("Executing tool", "name", registeredTool.Tool.Name, "id", pendingCall.ID)
+
+			// Pass a context derived from the overall request or task lifecycle
+			// instead of context.Background() if cancellation/timeouts need propagation.
+			toolResult, toolErr := registeredTool.Use(context.Background(), pendingCall.Request)
 
 			resultMsg = provider.Message{
-				ID:   call.ID, // Use the ID from the request for correlation
+				ID:   pendingCall.ID, // Use the ID from the request for correlation
 				Role: "tool",
 				Name: registeredTool.Tool.Name,
 			}
+
 			if toolErr != nil {
-				// Use the helper function to format the error message
-				resultMsg = handleToolExecutionErrorConcurrent(call, registeredTool.Tool.Name, taskID, toolErr)
+				// Use the helper function to handle the error
+				resultMsg, executionError = handleToolExecutionError(pendingCall, registeredTool.Tool.Name, toolErr)
 			} else {
-				// Use the helper function to process the result content
-				resultMsg.Content = processToolResultContentConcurrent(toolResult, registeredTool.Tool.Name, call.ID, taskID)
+				// Extract text content using the helper function
+				resultMsg.Content = processToolResultContent(toolResult)
 			}
-			break // Found and processed the tool, exit inner loop
+			break // Tool found and processed
 		}
 	}
 
 	if !toolFound {
 		// Use the helper function to handle the tool not found case
-		resultMsg = handleToolNotFoundConcurrent(call, taskID)
+		return handleToolNotFound(pendingCall)
 	}
-	resultChan <- resultMsg // Send result to channel
+
+	return resultMsg, executionError
 }
 
-// processToolResultContentConcurrent extracts the text content from a tool execution result, logging warnings for unexpected content.
-func processToolResultContentConcurrent(toolResult *mcp.CallToolResult, toolName, callID, taskID string) string {
+// processToolResultContent extracts the text content from a tool execution result.
+func processToolResultContent(toolResult *mcp.CallToolResult) string {
 	if toolResult == nil || len(toolResult.Content) == 0 {
-		errnie.Warn("Tool produced no result content", "name", toolName, "id", callID, "taskID", taskID)
-		return "[Tool produced no result content]"
+		return "[Tool produced no content]"
 	}
-
+	// Assuming the first part is the primary text content.
+	// Adapt this logic if the structure of mcp.CallToolResult can vary more.
 	if textContent, ok := toolResult.Content[0].(mcp.TextContent); ok {
 		return textContent.Text
 	}
-
-	errnie.Warn("Tool result content was not text", "name", toolName, "id", callID, "taskID", taskID)
+	// Handle cases where the content isn't simple text or needs different processing.
+	// For now, return a generic message.
 	return "[Tool produced non-text content]"
 }
 
-// handleToolExecutionErrorConcurrent formats the error message for a failed concurrent tool execution.
-func handleToolExecutionErrorConcurrent(call provider.PendingToolCall, toolName string, taskID string, toolErr error) provider.Message {
-	errnie.Error("Tool execution failed", "name", toolName, "id", call.ID, "taskID", taskID, "error", toolErr)
-	return provider.Message{
-		ID:      call.ID,
+// executeTools runs the necessary tools sequentially and returns the results as provider messages.
+func executeTools(toolRegistry *tools.Registry, pendingCalls []provider.PendingToolCall) ([]provider.Message, error) {
+	// Consider concurrent execution? For now, sequential.
+	toolResultMessages := make([]provider.Message, 0, len(pendingCalls))
+	var firstError error // Store the first error encountered
+
+	for _, pendingCall := range pendingCalls {
+		resultMsg, err := executeSingleTool(toolRegistry, pendingCall)
+		if err != nil && firstError == nil {
+			firstError = err
+		}
+		toolResultMessages = append(toolResultMessages, resultMsg)
+	}
+
+	return toolResultMessages, firstError
+}
+
+// updateFinalTaskStatus updates the task history and status in the store with the final result.
+func updateFinalTaskStatus(store task.TaskStore, t *task.Task, finalMessage task.Message, finalState task.TaskState) {
+	t.History = append(t.History, finalMessage) // Append final agent response
+	t.Status = task.TaskStatus{
+		State:     finalState,
+		Timestamp: time.Now().Format(time.RFC3339),
+		Message:   finalMessage, // Store final message in status
+	}
+	if err := store.UpdateTask(t); err != nil {
+		errnie.Error("Failed to update task with final status", "error", err, "taskID", t.ID)
+		// Log error, but the state (potentially Failed) and message are already set.
+		// We could potentially revert the state or add another message part, but
+		// it might be confusing. The SSE update will reflect the state before the failed save.
+	}
+}
+
+// updateTaskToFailed updates the task status to failed in the store.
+func updateTaskToFailed(store task.TaskStore, t *task.Task, message string, err error) {
+	t.Status.State = task.TaskStateFailed
+	t.Status.Timestamp = time.Now().Format(time.RFC3339)
+	errorMsg := message
+	if err != nil {
+		errorMsg = fmt.Sprintf("%s: %s", message, err.Error())
+	}
+	// Append or replace the status message? Replacing for clarity of final error.
+	t.Status.Message = task.Message{Role: task.MessageRoleAgent, Parts: []task.MessagePart{task.TextPart{Type: "text", Text: "ERROR: " + errorMsg}}}
+
+	if updateErr := store.UpdateTask(t); updateErr != nil {
+		errnie.Error("Failed to update task status to failed in store", "error", updateErr, "taskID", t.ID)
+	}
+}
+
+// sendFinalStatusUpdate sends the final task status via SSE.
+func sendFinalStatusUpdate(updater StreamUpdateSender, taskID string, status task.TaskStatus, final bool) {
+	finalUpdate := task.TaskStatusUpdateEvent{
+		ID:     taskID,
+		Status: status,
+		Final:  final,
+	}
+	// This function handles sending the update via the updater interface (which likely handles SSE).
+	updater.SendTaskUpdate(taskID, finalUpdate)
+}
+
+// handleToolExecutionError formats the error message for a failed tool execution.
+func handleToolExecutionError(pendingCall provider.PendingToolCall, toolName string, toolErr error) (provider.Message, error) {
+	errnie.Error("Tool execution failed", "name", toolName, "id", pendingCall.ID, "error", toolErr)
+	resultMsg := provider.Message{
+		ID:      pendingCall.ID,
 		Role:    "tool",
 		Name:    toolName,
 		Content: fmt.Sprintf("Error executing tool: %s", toolErr.Error()),
 	}
+	executionError := fmt.Errorf("tool '%s' failed: %w", toolName, toolErr)
+	return resultMsg, executionError
 }
 
-// handleToolNotFoundConcurrent handles the case where a requested tool is not found during concurrent execution.
-func handleToolNotFoundConcurrent(call provider.PendingToolCall, taskID string) provider.Message {
-	toolName := call.Request.Params.Name
-	errnie.Info("LLM requested unknown tool", "name", toolName, "id", call.ID, "taskID", taskID)
-	return provider.Message{
-		ID:      call.ID,
+// handleToolNotFound handles the case where a requested tool is not found in the registry.
+func handleToolNotFound(pendingCall provider.PendingToolCall) (provider.Message, error) {
+	toolName := pendingCall.Request.Params.Name
+	errnie.Warn("LLM requested unknown tool", "name", toolName, "id", pendingCall.ID)
+	resultMsg := provider.Message{
+		ID:      pendingCall.ID,
 		Role:    "tool",
 		Name:    toolName,
 		Content: fmt.Sprintf("Error: Tool '%s' not found.", toolName),
 	}
-}
-
-// Executes requested tools concurrently and collects their results.
-func executeToolsAndCollectResults(ctx context.Context, toolRegistry *tools.Registry, toolCalls []provider.PendingToolCall, taskID string) []provider.Message {
-	toolResultMessages := []provider.Message{}
-	var wg sync.WaitGroup
-	resultChan := make(chan provider.Message, len(toolCalls))
-
-	for _, pendingCall := range toolCalls {
-		wg.Add(1)
-		// Pass pendingCall by value to the goroutine
-		go executeSingleToolConcurrently(ctx, toolRegistry, pendingCall, taskID, &wg, resultChan)
-	}
-
-	// Close the channel once all goroutines are done
-	go func() {
-		wg.Wait()
-		close(resultChan)
-	}()
-
-	// Collect results from the channel
-	for res := range resultChan {
-		toolResultMessages = append(toolResultMessages, res)
-	}
-
-	return toolResultMessages
-}
-
-// Executes the LLM call, handling the tool execution loop if necessary.
-func executeLLMWithTools(ctx context.Context, llmProvider provider.ProviderType, toolRegistry *tools.Registry, initialParams provider.ProviderParams, taskID string) (provider.ProviderEvent, []provider.Message, *task.TaskRequestError) {
-	var finalProviderEvent provider.ProviderEvent
-	currentMessages := initialParams.Messages
-	llmParams := initialParams // Start with initial params
-
-	for i := 0; i < 5; i++ { // Limit iterations to prevent infinite loops
-		// Prepare params for this iteration
-		currentLLMParams := llmParams               // Copy base params from the initial/previous iteration
-		currentLLMParams.Messages = currentMessages // Update messages
-		// *** Crucially, only send tools on the FIRST request in the loop ***
-		if i > 0 {
-			currentLLMParams.Tools = nil
-		}
-
-		// Call the LLM provider using the helper function
-		providerEvent, reqErr := callLLMAndReceiveEvent(llmProvider, currentLLMParams, taskID)
-		if reqErr != nil {
-			return provider.ProviderEvent{}, currentMessages, reqErr
-		}
-
-		// If no tool calls, this is the final event
-		if len(providerEvent.ToolCalls) == 0 {
-			finalProviderEvent = providerEvent
-			break
-		}
-
-		// --- Tool Execution Step --- (Remains complex, but now isolated)
-		// Add the assistant message requesting tool calls to the history
-		assistantMessage := providerEvent.Message // This message contains the tool call *requests*
-		currentMessages = append(currentMessages, assistantMessage)
-
-		// Execute tools and collect results using the helper function
-		toolResultMessages := executeToolsAndCollectResults(ctx, toolRegistry, providerEvent.ToolCalls, taskID)
-
-		// Add tool results to messages for the next LLM iteration
-		currentMessages = append(currentMessages, toolResultMessages...)
-
-		// Safety break if loop runs too long
-		if i == 4 {
-			errnie.Error("Tool execution loop reached max iterations", "taskID", taskID)
-			// Use the last assistant message *before* attempting to process results as the final event
-			finalProviderEvent = providerEvent
-			break
-			// Alternatively, create an error response:
-			// finalProviderEvent = provider.ProviderEvent{Message: provider.Message{Role: "assistant", Content: "Error: Tool execution took too many steps."}}
-			// break
-		}
-	}
-
-	// Return the final event and the final message history
-	return finalProviderEvent, currentMessages, nil
-}
-
-// Updates the task with the final agent response and saves it to the store.
-func updateTaskWithFinalResponse(store task.TaskStore, t *task.Task, finalProviderEvent provider.ProviderEvent) *task.TaskRequestError {
-	// Create agent response message from the final event
-	agentResponse := task.Message{
-		Role: task.MessageRoleAgent,
-		Parts: []task.MessagePart{
-			task.TextPart{
-				Type: "text",
-				Text: finalProviderEvent.Message.Content,
-			},
-		},
-		// Final providerEvent.ToolCalls are not mapped back
-	}
-
-	// Add final agent response to history
-	t.History = append(t.History, agentResponse)
-
-	// Determine final task state
-	finalState := task.TaskStateCompleted
-	if finalProviderEvent.Message.Content == "" && len(finalProviderEvent.ToolCalls) == 0 {
-		// Handle the error case from max iterations if needed (e.g., set to Failed)
-		errnie.Info("Tool loop ended with potentially empty final event", "taskID", t.ID)
-		// finalState = task.TaskStateFailed // Example: Mark as failed if loop maxed out
-	}
-
-	t.Status = task.TaskStatus{
-		State:     finalState,
-		Timestamp: time.Now().Format(time.RFC3339),
-		Message:   agentResponse, // Store the final agent message
-	}
-
-	// Update the task in the store
-	if err := store.UpdateTask(t); err != nil {
-		return &task.TaskRequestError{
-			Code:    -32000, // Store update error
-			Message: "Failed to update task after LLM response",
-			Data:    err.Error(),
-		}
-	}
-
-	return nil // Success
-}
-
-// Modified signature to accept LLM provider AND tool registry
-func HandleTaskSend(ctx context.Context, store task.TaskStore, llmProvider provider.ProviderType, toolRegistry *tools.Registry, params json.RawMessage) (interface{}, *task.TaskRequestError) {
-	// Parse and validate parameters
-	sendParams, reqErr := parseAndValidateTaskSendParams(params)
-	if reqErr != nil {
-		return nil, reqErr
-	}
-
-	// Retrieve task from store
-	t, reqErr := getTaskFromStore(store, sendParams.TaskID)
-	if reqErr != nil {
-		return nil, reqErr
-	}
-
-	// Add user message to task history
-	t.History = append(t.History, sendParams.Message)
-
-	// Prepare LLM parameters using the helper function
-	llmParams := prepareProviderParams(t.History, toolRegistry, sendParams.Message)
-
-	// Execute LLM call, handling tool loop if necessary
-	finalProviderEvent, _, reqErr := executeLLMWithTools(ctx, llmProvider, toolRegistry, llmParams, t.ID)
-	if reqErr != nil {
-		// Update task status to Failed based on the error from the loop
-		t.Status = task.TaskStatus{
-			State:     task.TaskStateFailed,
-			Timestamp: time.Now().Format(time.RFC3339),
-			Message:   task.Message{Role: task.MessageRoleAgent, Parts: []task.MessagePart{task.TextPart{Type: "text", Text: reqErr.Message + ": " + fmt.Sprintf("%v", reqErr.Data)}}}, // Include error details
-		}
-		_ = store.UpdateTask(t) // Attempt to update task even on failure
-		return nil, reqErr
-	}
-
-	// Update task with the final response
-	if reqErr := updateTaskWithFinalResponse(store, t, finalProviderEvent); reqErr != nil {
-		return nil, reqErr
-	}
-
-	// SSE updates are typically handled by a separate mechanism or service
-	// tied to task status changes, not directly within this handler.
-
-	// Return confirmation (updated status)
-	return map[string]interface{}{
-		"status": t.Status,
-	}, nil
+	executionError := fmt.Errorf("tool '%s' not found", toolName)
+	return resultMsg, executionError
 }

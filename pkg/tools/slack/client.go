@@ -4,7 +4,6 @@ import (
 	"os"
 
 	sdk "github.com/slack-go/slack"
-	"github.com/theapemachine/caramba/pkg/datura"
 )
 
 /*
@@ -31,10 +30,10 @@ func NewClient() *Client {
 }
 
 func (client *Client) Generate(
-	buffer chan *datura.Artifact,
-	fn ...func(artifact *datura.Artifact) *datura.Artifact,
-) chan *datura.Artifact {
-	out := make(chan *datura.Artifact)
+	buffer chan map[string]interface{},
+	fn ...func(artifact map[string]interface{}) map[string]interface{},
+) chan map[string]interface{} {
+	out := make(chan map[string]interface{})
 
 	go func() {
 		defer close(out)

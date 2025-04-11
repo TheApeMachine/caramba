@@ -6,7 +6,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/stealth"
-	"github.com/theapemachine/caramba/pkg/datura"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -14,11 +14,11 @@ type Manager struct {
 	launch   *launcher.Launcher
 	browser  *rod.Browser
 	page     *rod.Page
-	artifact *datura.Artifact
+	toolcall mcp.CallToolRequest
 }
 
-func NewManager(artifact *datura.Artifact) *Manager {
-	return &Manager{artifact: artifact}
+func NewManager(toolcall mcp.CallToolRequest) *Manager {
+	return &Manager{toolcall: toolcall}
 }
 
 func (manager *Manager) Initialize() (*Manager, error) {
@@ -56,7 +56,7 @@ func (manager *Manager) Initialize() (*Manager, error) {
 		return manager, errnie.Error(err)
 	}
 
-	navurl := datura.GetMetaValue[string](manager.artifact, "url")
+	navurl := manager.toolcall.Params.Arguments["url"].(string)
 	errnie.Debug("browser.Instance.buffer.fn", "navurl", navurl)
 
 	if err = manager.page.Navigate(navurl); err != nil {

@@ -2,6 +2,7 @@ package task
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/theapemachine/caramba/pkg/service/types"
@@ -101,6 +102,11 @@ type TaskRequestError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    string `json:"data"`
+}
+
+// Error implements the error interface.
+func (e *TaskRequestError) Error() string {
+	return fmt.Sprintf("A2A Error - Code: %d, Message: %s, Data: %s", e.Code, e.Message, e.Data)
 }
 
 func NewTaskRequest(msg json.RawMessage) (*TaskRequest, *TaskRequestError) {

@@ -16,9 +16,8 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/fs"
+	fs "github.com/theapemachine/caramba/pkg/stores/fs"
 )
 
 /*
@@ -28,6 +27,7 @@ It manages container lifecycle and operations through the Docker API.
 type dockerRuntime struct {
 	client      *client.Client
 	containerID string
+	fsStore     *fs.Store
 }
 
 /*
@@ -36,14 +36,15 @@ newDockerRuntime creates a new Docker runtime instance.
 It initializes a Docker client using environment configuration.
 Returns an error if client creation fails.
 */
-func newDockerRuntime() (Runtime, error) {
+func newDockerRuntime(fsStore *fs.Store) (Runtime, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
 
 	return &dockerRuntime{
-		client: cli,
+		client:  cli,
+		fsStore: fsStore,
 	}, nil
 }
 
@@ -56,6 +57,18 @@ Returns an error if container creation fails.
 */
 func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
 	containerName := "caramba-env"
+	const dockerfilePath = "manifests/Dockerfile"
+
+	// Read the Dockerfile content from the filesystem store
+	dockerfileFile, err := runtime.fsStore.Get(dockerfilePath)
+	if err != nil {
+		return errnie.Error(fmt.Errorf("failed to get Dockerfile '%s' from fs store: %w", dockerfilePath, err))
+	}
+	defer dockerfileFile.Close()
+	dockerfileContent, err := io.ReadAll(dockerfileFile)
+	if err != nil {
+		return errnie.Error(fmt.Errorf("failed to read Dockerfile '%s' content: %w", dockerfilePath, err))
+	}
 
 	// Check if container already exists
 	containers, err := runtime.client.ContainerList(ctx, container.ListOptions{All: true})
@@ -72,27 +85,8 @@ func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
 		}
 	}
 
-	// If we get here, container doesn't exist, so create it
-	var (
-		artifact = datura.New()
-		payload  []byte
-	)
-
-	// Get the Dockerfile content from the artifact
-	ch := make(chan *datura.Artifact)
-
-	go func() {
-		ch <- artifact
-	}()
-
-	artifact = <-fs.NewStore().Generate(ch)
-
-	if payload, err = artifact.DecryptPayload(); err != nil {
-		return errnie.Error(err)
-	}
-
 	// Build the image using the Dockerfile
-	if err := runtime.BuildImage(ctx, payload, containerName); err != nil {
+	if err := runtime.BuildImage(ctx, dockerfileContent, containerName); err != nil {
 		return errnie.Error(err)
 	}
 

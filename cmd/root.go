@@ -17,7 +17,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/fs"
+	"github.com/theapemachine/caramba/pkg/stores/fs"
 )
 
 /*
@@ -72,6 +72,11 @@ func init() {
 
 	// Initialize the filesystem store and load manifests
 	if err := fs.NewStore().Initialize(manifests, "manifests"); err != nil {
+		errnie.Error(err)
+	}
+
+	// Initialize the browser scripts
+	if err := fs.NewStore().Initialize(browserScripts, "scripts"); err != nil {
 		errnie.Error(err)
 	}
 

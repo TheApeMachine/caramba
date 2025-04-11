@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/theapemachine/caramba/pkg/datura"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
@@ -30,105 +29,76 @@ func NewLabels(client *Client) *Labels {
 	return &Labels{client: client}
 }
 
-func (l *Labels) encode(artifact *datura.Artifact, v any) (err error) {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return errnie.Error(err)
-	}
-
-	datura.WithEncryptedPayload(data)(artifact)
-	return nil
-}
-
-func (l *Labels) ListLabels(artifact *datura.Artifact) (err error) {
+func (l *Labels) ListLabels() (labels LabelList, err error) {
 	resp, err := l.client.doRequest(http.MethodGet, "/labels", nil)
 	if err != nil {
-		return errnie.Error(err)
+		return LabelList{}, errnie.Error(err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return errnie.Error(err)
+		return LabelList{}, errnie.Error(err)
 	}
 
-	var labels LabelList
 	if err = json.Unmarshal(body, &labels); err != nil {
-		return errnie.Error(err)
+		return LabelList{}, errnie.Error(err)
 	}
 
-	return l.encode(artifact, labels)
+	return labels, nil
 }
 
-func (l *Labels) GetLabel(artifact *datura.Artifact) (err error) {
-	labelID := datura.GetMetaValue[int](artifact, "label_id")
-
+func (l *Labels) GetLabel(labelID int) (label Label, err error) {
 	resp, err := l.client.doRequest(
 		http.MethodGet,
 		fmt.Sprintf("/labels/%d", labelID),
 		nil,
 	)
 	if err != nil {
-		return errnie.Error(err)
+		return Label{}, errnie.Error(err)
 	}
 	defer resp.Body.Close()
 
-	var label Label
 	if err = json.NewDecoder(resp.Body).Decode(&label); err != nil {
-		return errnie.Error(err)
+		return Label{}, errnie.Error(err)
 	}
 
-	return l.encode(artifact, label)
+	return label, nil
 }
 
-func (l *Labels) CreateLabel(artifact *datura.Artifact) (err error) {
-	label := map[string]interface{}{
-		"name":  datura.GetMetaValue[string](artifact, "name"),
-		"color": datura.GetMetaValue[string](artifact, "color"),
-	}
-
+func (l *Labels) CreateLabel(label Label) (newLabel Label, err error) {
 	resp, err := l.client.doRequest(http.MethodPost, "/labels", label)
 	if err != nil {
-		return errnie.Error(err)
+		return Label{}, errnie.Error(err)
 	}
 	defer resp.Body.Close()
 
-	var newLabel Label
 	if err = json.NewDecoder(resp.Body).Decode(&newLabel); err != nil {
-		return errnie.Error(err)
+		return Label{}, errnie.Error(err)
 	}
 
-	return l.encode(artifact, newLabel)
+	return newLabel, nil
 }
 
-func (l *Labels) UpdateLabel(artifact *datura.Artifact) (err error) {
-	labelID := datura.GetMetaValue[int](artifact, "label_id")
-	label := map[string]interface{}{
-		"name":  datura.GetMetaValue[string](artifact, "name"),
-		"color": datura.GetMetaValue[string](artifact, "color"),
-	}
-
+func (l *Labels) UpdateLabel(labelID int, label Label) (updatedLabel Label, err error) {
 	resp, err := l.client.doRequest(
 		http.MethodPut,
 		fmt.Sprintf("/labels/%d", labelID),
 		label,
 	)
 	if err != nil {
-		return errnie.Error(err)
+		return Label{}, errnie.Error(err)
 	}
 	defer resp.Body.Close()
 
-	var updatedLabel Label
 	if err = json.NewDecoder(resp.Body).Decode(&updatedLabel); err != nil {
-		return errnie.Error(err)
+		return Label{}, errnie.Error(err)
 	}
 
-	return l.encode(artifact, updatedLabel)
+	return updatedLabel, nil
 }
 
-func (l *Labels) DeleteLabel(artifact *datura.Artifact) (err error) {
-	labelID := datura.GetMetaValue[int](artifact, "label_id")
-
+func (l *Labels) DeleteLabel(labelID int) (err error) {
 	resp, err := l.client.doRequest(
 		http.MethodDelete,
 		fmt.Sprintf("/labels/%d", labelID),
