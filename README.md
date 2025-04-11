@@ -14,9 +14,9 @@
 
 # 🔮 Caramba: AI Agent Framework
 
-Unleashing AI agent collaboration across ecosystems.
+_Unleashing AI agent collaboration across ecosystems._
 
-> Caramba is a cutting-edge platform that implements Google's Agent-to-Agent (A2A) protocol alongside Anthropic's Model Context Protocol (MCP), enabling seamless communication and collaboration between AI agents across different frameworks, vendors, and systems.
+Caramba is a cutting-edge platform that implements [Google's Agent-to-Agent (A2A) protocol](https://google.github.io/A2A/#/) alongside [Anthropic's Model Context Protocol (MCP)](https://www.anthropic.com/news/model-context-protocol), enabling seamless communication and collaboration between AI agents across different frameworks, vendors, and systems.
 
 ---
 
@@ -98,7 +98,7 @@ Caramba provides comprehensive observability features, including:
 
 ## 🔌 Protocol Integration
 
-Caramba uniquely bridges two powerful protocols to create a comprehensive agent orchestration platform:
+Caramba bridges two powerful protocols to create a comprehensive agent orchestration platform:
 
 ### A2A (Agent-to-Agent) Protocol
 
@@ -122,7 +122,7 @@ Anthropic's MCP provides a standard interface for tools to interact with AI mode
 - **Type Safety**: Strong typing for tool interactions
 - **Execution Control**: Coordinated invocation of tools across systems
 
-As per the [A2A Protocol Post](https://google.github.io/A2A/#/topics/a2a_and_mcp), agents are implemented as MCP tools,
+As per the [A2A Protocol Post](https://google.github.io/A2A/#/topics/a2a_and_mcp), agents are implemented as MCP resources,
 so "frameworks can then use A2A to communicate with their user, the remote agents, and other agents."
 
 ```go

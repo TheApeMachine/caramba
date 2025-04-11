@@ -1,4 +1,4 @@
-package agent
+package service
 
 import (
 	"fmt"
@@ -12,7 +12,9 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
+	"github.com/theapemachine/caramba/pkg/auth"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/service/types"
 )
 
 type Middleware struct {
@@ -64,9 +66,9 @@ func (middleware *Middleware) Register() { // Request ID for tracing requests
 				errnie.WithStatus(errnie.TooManyRequestsStatus),
 			)
 
-			return c.Status(err.Status()).JSON(JSONRPCResponse{
+			return c.Status(err.Status()).JSON(types.JSONRPCResponse{
 				Version: "2.0",
-				Error: &JSONRPCError{
+				Error: &types.JSONRPCError{
 					Code:    -32429,
 					Message: "Too Many Requests",
 					Data:    "Rate limit exceeded. Please try again later.",
@@ -79,8 +81,8 @@ func (middleware *Middleware) Register() { // Request ID for tracing requests
 	middleware.app.Use(keyauth.New(keyauth.Config{
 		KeyLookup:  "header:Authorization",
 		AuthScheme: "Bearer",
-		Validator:  validateAPIKey,
-		Next:       AuthFilter,
+		Validator:  auth.ValidateAPIKey,
+		Next:       auth.AuthFilter,
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			if err == keyauth.ErrMissingOrMalformedAPIKey {
 				authErr := errnie.New(
@@ -89,9 +91,9 @@ func (middleware *Middleware) Register() { // Request ID for tracing requests
 					errnie.WithStatus(errnie.UnauthorizedStatus),
 				)
 
-				return c.Status(authErr.Status()).JSON(JSONRPCResponse{
+				return c.Status(authErr.Status()).JSON(types.JSONRPCResponse{
 					Version: "2.0",
-					Error: &JSONRPCError{
+					Error: &types.JSONRPCError{
 						Code:    -32001,
 						Message: "Unauthorized",
 						Data:    "Missing or invalid API key",
@@ -106,9 +108,9 @@ func (middleware *Middleware) Register() { // Request ID for tracing requests
 				errnie.WithError(err),
 			)
 
-			return c.Status(authErr.Status()).JSON(JSONRPCResponse{
+			return c.Status(authErr.Status()).JSON(types.JSONRPCResponse{
 				Version: "2.0",
-				Error: &JSONRPCError{
+				Error: &types.JSONRPCError{
 					Code:    -32001,
 					Message: "Unauthorized",
 					Data:    err.Error(),

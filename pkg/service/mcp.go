@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/theapemachine/caramba/pkg/agent"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/tools"
 )
@@ -71,6 +72,10 @@ func (service *MCP) Start() error {
 	}
 
 	for _, tool := range tools.NewTrengoTool().Tools {
+		service.StdIO.AddTool(tool.Tool, tool.Use)
+	}
+
+	for _, tool := range agent.NewAgentTool().Tools {
 		service.StdIO.AddTool(tool.Tool, tool.Use)
 	}
 

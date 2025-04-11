@@ -1,4 +1,4 @@
-package agent
+package task
 
 type MessageRole string
 
@@ -52,4 +52,9 @@ type DataPart struct {
 
 func (d DataPart) GetType() string {
 	return d.Type
+}
+
+// MessagePart represents a part of a message that can be text, file, or data
+type MessagePart interface {
+	GetType() string
 }

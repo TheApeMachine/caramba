@@ -1,4 +1,4 @@
-package agent
+package task
 
 import (
 	"bytes"
@@ -7,12 +7,14 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/theapemachine/caramba/pkg/auth"
 )
 
 type PushNotificationConfig struct {
-	URL            string         `json:"url"`
-	Token          string         `json:"token"` // token unique to this task/session
-	Authentication Authentication `json:"authentication"`
+	URL            string              `json:"url"`
+	Token          string              `json:"token"` // token unique to this task/session
+	Authentication auth.Authentication `json:"authentication"`
 }
 
 type TaskPushNotificationConfig struct {
@@ -56,7 +58,12 @@ func (nm *NotificationManager) RemovePushConfig(taskID string) {
 }
 
 // SendTaskStatusUpdate sends a task status update notification
-func (nm *NotificationManager) SendTaskStatusUpdate(taskID string, status TaskStatus, final bool, metadata map[string]any) error {
+func (nm *NotificationManager) SendTaskStatusUpdate(
+	taskID string,
+	status TaskStatus,
+	final bool,
+	metadata map[string]any,
+) error {
 	config, exists := nm.configs[taskID]
 	if !exists {
 		// No configured push endpoint for this task

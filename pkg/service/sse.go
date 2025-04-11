@@ -1,4 +1,4 @@
-package agent
+package service
 
 import (
 	"bufio"
@@ -13,10 +13,10 @@ import (
 
 type SSE struct {
 	app     *fiber.App
-	service *Service // Reference to the service
+	service *A2A // Reference to the service
 }
 
-func NewSSE(service *Service) *SSE {
+func NewSSE(service *A2A) *SSE {
 	return &SSE{
 		app:     service.app,
 		service: service,

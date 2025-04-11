@@ -1,4 +1,4 @@
-package agent
+package auth
 
 import (
 	"crypto/sha256"
@@ -11,6 +11,22 @@ import (
 	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
+type AuthenticationResponse struct {
+	Version string               `json:"version"`
+	Error   *AuthenticationError `json:"error"`
+	ID      *string              `json:"id"`
+}
+
+type AuthenticationError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    string `json:"data"`
+}
+
+func (e *AuthenticationError) Error() string {
+	return e.Message
+}
+
 type Authentication struct {
 	Schemes     string `json:"schemes,omitempty"`     // Single auth scheme according to A2A spec
 	Credentials string `json:"credentials,omitempty"` // Optional credentials
@@ -21,12 +37,12 @@ func NewKeyAuth() fiber.Handler {
 	return keyauth.New(keyauth.Config{
 		KeyLookup:  "header:Authorization",
 		AuthScheme: "Bearer",
-		Validator:  validateAPIKey,
+		Validator:  ValidateAPIKey,
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			if err == keyauth.ErrMissingOrMalformedAPIKey {
-				return c.Status(fiber.StatusUnauthorized).JSON(JSONRPCResponse{
+				return c.Status(fiber.StatusUnauthorized).JSON(AuthenticationResponse{
 					Version: "2.0",
-					Error: &JSONRPCError{
+					Error: &AuthenticationError{
 						Code:    -32001,
 						Message: "Unauthorized",
 						Data:    "Missing or invalid API key",
@@ -34,9 +50,9 @@ func NewKeyAuth() fiber.Handler {
 					ID: nil,
 				})
 			}
-			return c.Status(fiber.StatusUnauthorized).JSON(JSONRPCResponse{
+			return c.Status(fiber.StatusUnauthorized).JSON(AuthenticationResponse{
 				Version: "2.0",
-				Error: &JSONRPCError{
+				Error: &AuthenticationError{
 					Code:    -32001,
 					Message: "Unauthorized",
 					Data:    err.Error(),
@@ -48,7 +64,7 @@ func NewKeyAuth() fiber.Handler {
 }
 
 // validateAPIKey checks if the provided API key is valid
-func validateAPIKey(c fiber.Ctx, key string) (bool, error) {
+func ValidateAPIKey(c fiber.Ctx, key string) (bool, error) {
 	// Get API key from environment or config
 	apiKey := os.Getenv("API_KEY")
 	if apiKey == "" {

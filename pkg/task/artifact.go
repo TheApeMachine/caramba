@@ -1,4 +1,4 @@
-package agent
+package task
 
 type Artifact struct {
 	Name        string         `json:"name"`

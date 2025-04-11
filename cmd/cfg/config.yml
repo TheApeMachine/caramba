@@ -33,22 +33,24 @@ models:
 
 settings:
   domain: "caramba.ai"
-  agent:
-    name: "Caramba Agent"
-    description: "An A2A-compatible agent powered by Caramba"
-    version: "1.0.0"
-    provider:
-      organization: "TheApeMachine"
-      url: "https://github.com/theapemachine/caramba"
-    authentication:
-      schemes: "none"
-    defaultInputModes:
-      - "text"
-    defaultOutputModes:
-      - "text"
-    capabilities:
-      streaming: true
-      pushNotifications: false
+  agents:
+    default:
+      url: "https://alliedmastercomputer.org/.well-known/agents/default"
+      name: "Caramba Agent"
+      description: "An A2A-compatible agent powered by Caramba"
+      version: "1.0.0"
+      provider:
+        organization: "TheApeMachine"
+        url: "https://github.com/theapemachine/caramba"
+      authentication:
+        schemes: "none"
+      defaultInputModes:
+        - "text"
+      defaultOutputModes:
+        - "text"
+      capabilities:
+        streaming: true
+        pushNotifications: false
   hub:
     address: "tcp://hub:5555"
   sentry:

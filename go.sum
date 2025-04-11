@@ -116,8 +116,6 @@ github.com/cohere-ai/cohere-go/v2 v2.13.0 h1:LBVBOBNCrQnp/CCNpRhkOBOFK6uXcE9m/Fm
 github.com/cohere-ai/cohere-go/v2 v2.13.0/go.mod h1:MuiJkCxlR18BDV2qQPbz2Yb/OCVphT1y6nD2zYaKeR0=
 github.com/cohesion-org/deepseek-go v1.2.8 h1:4sbbHP1sYBjTf7CR9km7PMQWDouzO5IiyFBTO+4VC6Q=
 github.com/cohesion-org/deepseek-go v1.2.8/go.mod h1:nPPJT25HSnmxaQJCC4ZFAdbhKjoXN0GbZ4dSsHYxhG0=
-github.com/cohesivestack/valgo v0.4.1 h1:E5V3CB8gyXU0L8uJZ0HSOIOiwv1MUVL9ydbeM8ONR2M=
-github.com/cohesivestack/valgo v0.4.1/go.mod h1:mEg7FISa6Zu0iSiCjK0mIDkudxphC9iTT5TNDZ3WrIQ=
 github.com/colega/zeropool v0.0.0-20230505084239-6fb4a4f75381 h1:d5EKgQfRQvO97jnISfR89AiCCCJMwMFoSxUiU0OGCRU=
 github.com/colega/zeropool v0.0.0-20230505084239-6fb4a4f75381/go.mod h1:OU76gHeRo8xrzGJU3F3I1CqX1ekM8dfJw0+wPeMwnp0=
 github.com/consensys/bavard v0.1.30 h1:wwAj9lSnMLFXjEclKwyhf7Oslg8EoaFz9u1QGgt0bsk=
@@ -616,8 +614,6 @@ github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6Kllzaw
 github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
 github.com/valyala/fasthttp v1.58.0 h1:GGB2dWxSbEprU9j0iMJHgdKYJVDyjrOwF9RE59PbRuE=
 github.com/valyala/fasthttp v1.58.0/go.mod h1:SYXvHHaFp7QZHGKSHmoMipInhrI5StHrhDTYVEjK/Kw=
-github.com/valyala/fasttemplate v1.2.2 h1:lxLXG0uE3Qnshl9QyaK6XJxMXlQZELvChBOCmQD0Loo=
-github.com/valyala/fasttemplate v1.2.2/go.mod h1:KHLXt3tVN2HBp8eijSv/kGJopbvo7S+qRAEEKiv+SiQ=
 github.com/valyala/tcplisten v1.0.0 h1:rBHj/Xf+E1tRGZyWIWwJDiRY0zc1Js+CV5DqwacVSA8=
 github.com/valyala/tcplisten v1.0.0/go.mod h1:T0xQ8SeCZGxckz9qRXTfG43PvQ/mcWh7FwZEA7Ioqkc=
 github.com/vbatts/tar-split v0.12.1 h1:CqKoORW7BUWBe7UL/iqTVvkTBOF8UvOMKOIZykxnnbo=

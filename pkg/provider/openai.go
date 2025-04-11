@@ -5,8 +5,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
@@ -64,8 +66,8 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 
 func (prvdr *OpenAIProvider) Generate(
 	params ProviderParams,
-) (ProviderEvent, error) {
-	errnie.Info("provider.Generate", "supplier", "openai")
+) (<-chan ProviderEvent, error) {
+	errnie.Info("provider.Generate", "supplier", "openai", "stream", params.Stream)
 
 	composed := &openai.ChatCompletionNewParams{
 		Model:            openai.ChatModel(params.Model),
@@ -82,25 +84,34 @@ func (prvdr *OpenAIProvider) Generate(
 	var err error
 
 	if err = prvdr.buildMessages(composed, params.Messages); err != nil {
-		return ProviderEvent{}, err
+		return nil, err
 	}
 
-	// Get tools from the artifact metadata
 	if err = prvdr.buildTools(composed, params.Tools); err != nil {
-		return ProviderEvent{}, err
+		return nil, err
 	}
 
 	if params.ResponseFormat != (ResponseFormat{}) {
 		if err = prvdr.buildResponseFormat(composed, params.ResponseFormat); err != nil {
-			return ProviderEvent{}, err
+			return nil, err
 		}
 	}
 
 	if params.Stream {
 		return prvdr.handleStreamingRequest(composed)
+	} else {
+		eventChan := make(chan ProviderEvent, 1)
+		go func() {
+			defer close(eventChan)
+			event, err := prvdr.handleSingleRequest(composed)
+			if err != nil {
+				errnie.Error("Error in handleSingleRequest goroutine", "error", err)
+			} else {
+				eventChan <- event
+			}
+		}()
+		return eventChan, nil
 	}
-
-	return prvdr.handleSingleRequest(composed)
 }
 
 func (prvdr *OpenAIProvider) Name() string {
@@ -142,122 +153,190 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 		return ProviderEvent{}, err
 	}
 
-	msg := Message{
-		Role:    "assistant",
-		Name:    params.Model,
-		Content: completion.Choices[0].Message.Content,
-	}
+	// Use a temporary list for pending calls
+	pendingCalls := []PendingToolCall{}
+	assistantContent := completion.Choices[0].Message.Content // Store potential text content
 
-	toolCalls := completion.Choices[0].Message.ToolCalls
+	// Process tool calls if any
+	if len(completion.Choices[0].Message.ToolCalls) > 0 {
+		assistantContent = "" // OpenAI often leaves content empty when making tool calls
+		for _, toolCall := range completion.Choices[0].Message.ToolCalls {
+			errnie.Info("ToolCall requested by LLM", "tool", toolCall.Function.Name, "id", toolCall.ID)
 
-	// Abort early if there are no tool calls
-	if len(toolCalls) == 0 {
-		return ProviderEvent{
-			Message: msg,
-		}, nil
-	}
+			// Parse arguments from JSON
+			var args map[string]interface{}
+			if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
+				errnie.Error("failed to parse tool call arguments", "error", err, "id", toolCall.ID)
+				// Decide how to handle parse errors - skip this call, return error?
+				continue // Skipping for now
+			}
 
-	// Create tool calls list
-	for _, toolCall := range toolCalls {
-		errnie.Info("toolCall", "tool", toolCall.Function.Name, "id", toolCall.ID)
-
-		// Parse arguments from JSON
-		var args map[string]interface{}
-		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
-			errnie.Error("failed to parse tool call arguments", "error", err)
-			continue
+			pendingCalls = append(pendingCalls, PendingToolCall{
+				ID: toolCall.ID, // Store the crucial ID
+				Request: mcp.CallToolRequest{
+					Params: struct {
+						Name      string                 `json:"name"`
+						Arguments map[string]interface{} `json:"arguments,omitempty"`
+						Meta      *struct {
+							ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
+						} `json:"_meta,omitempty"`
+					}{
+						Name:      toolCall.Function.Name,
+						Arguments: args,
+					},
+				},
+			})
 		}
-
-		msg.ToolCalls = append(msg.ToolCalls, mcp.CallToolRequest{
-			Params: struct {
-				Name      string                 `json:"name"`
-				Arguments map[string]interface{} `json:"arguments,omitempty"`
-				Meta      *struct {
-					ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-				} `json:"_meta,omitempty"`
-			}{
-				Name:      toolCall.Function.Name,
-				Arguments: args,
-			},
-		})
 	}
 
-	// Create artifact with message content
+	// Return ProviderEvent with assistant message content and pending tool calls
 	return ProviderEvent{
-		Message: msg,
+		Message: Message{
+			Role:    "assistant",
+			Name:    params.Model,
+			Content: assistantContent, // Will be empty if tool calls were made
+			// ToolCalls field in Message struct is for *requests* made by assistant,
+			// which we are packaging into ProviderEvent.ToolCalls instead.
+		},
+		ToolCalls: pendingCalls, // Pass the list with IDs
 	}, nil
 }
 
 /*
 handleStreamingRequest processes a streaming completion request
-and emits chunks as they're received.
+and sends ProviderEvents on the returned channel.
 */
 func (prvdr *OpenAIProvider) handleStreamingRequest(
 	params *openai.ChatCompletionNewParams,
-) (ProviderEvent, error) {
-	errnie.Trace("provider.handleStreamingRequest")
+) (<-chan ProviderEvent, error) {
+	errnie.Trace("provider.handleStreamingRequest starting")
 
-	var err error
+	events := make(chan ProviderEvent, 10) // Buffered channel for events
+
+	// Start the OpenAI stream
+	// Note: NewStreaming itself doesn't return an error here
 	stream := prvdr.client.Chat.Completions.NewStreaming(prvdr.ctx, *params)
-	defer stream.Close()
 
-	acc := openai.ChatCompletionAccumulator{}
+	// Start processing the stream in a goroutine
+	go func() {
+		defer close(events)
+		defer stream.Close() // Ensure stream is closed when goroutine exits
+		errnie.Trace("provider.handleStreamingRequest goroutine started")
 
-	for stream.Next() {
-		chunk := stream.Current()
+		// Accumulator helps manage tool calls across chunks
+		acc := openai.ChatCompletionAccumulator{}
+		var accumulatedContent strings.Builder // Use strings.Builder
 
-		if ok := acc.AddChunk(chunk); !ok {
-			return ProviderEvent{}, err
+		for stream.Next() {
+			chunk := stream.Current()
+			errnie.Debug("Received stream chunk") // Less verbose default logging
+
+			// Use accumulator to process chunks
+			if ok := acc.AddChunk(chunk); !ok {
+				errnie.Error("Accumulator failed to add chunk", "chunk", chunk)
+				continue
+			}
+
+			// --- Send Content Chunks ---
+			if len(chunk.Choices) > 0 {
+				handleContentChunk(chunk.Choices[0], params.Model, events, &accumulatedContent)
+			}
+
+			// --- Send Completed Tool Calls ---
+			if toolCall, ok := acc.JustFinishedToolCall(); ok {
+				handleFinishedToolCall(toolCall, params.Model, events, &accumulatedContent)
+			}
+
+			// Handle JustFinishedContent() and JustFinishedRefusal() if needed for streaming
+			// These accumulator states might be useful for more complex streaming logic,
+			// but are not strictly required for the current implementation.
 		}
 
-		if content, ok := acc.JustFinishedContent(); ok && content != "" {
-			return ProviderEvent{
+		// Check for stream errors
+		if err := stream.Err(); err != nil {
+			errnie.Error("OpenAI stream error", "error", err)
+			// Send a specific event to signal the error, using the Message field.
+			events <- ProviderEvent{
 				Message: Message{
-					Role:    "assistant",
-					Name:    params.Model,
-					Content: content,
+					Role:    "error",
+					Content: err.Error(),
 				},
-			}, nil
+			}
 		}
 
-		if tool, ok := acc.JustFinishedToolCall(); ok {
-			params.Messages = append(params.Messages, openai.AssistantMessage(acc.Choices[0].Message.Content))
-			return ProviderEvent{
-				Message: Message{
-					Role:    "assistant",
-					Name:    params.Model,
-					Content: tool.Arguments,
-				},
-			}, nil
-		}
+		errnie.Trace("provider.handleStreamingRequest goroutine finished")
+	}()
 
-		if refusal, ok := acc.JustFinishedRefusal(); ok && refusal != "" {
-			return ProviderEvent{
-				Message: Message{
-					Role:    "assistant",
-					Name:    params.Model,
-					Content: refusal,
-				},
-			}, nil
-		}
+	errnie.Trace("provider.handleStreamingRequest returning channel")
+	return events, nil // Return the channel immediately
+}
 
-		// Only write non-empty content from chunks
-		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			return ProviderEvent{
-				Message: Message{
-					Role:    "assistant",
-					Name:    params.Model,
-					Content: chunk.Choices[0].Delta.Content,
-				},
-			}, nil
+// handleContentChunk processes a content delta chunk and sends an event.
+func handleContentChunk(
+	choice openai.ChatCompletionChunkChoice,
+	model string,
+	events chan<- ProviderEvent,
+	accumulatedContent *strings.Builder,
+) {
+	if choice.Delta.Content != "" {
+		contentPart := choice.Delta.Content
+		accumulatedContent.WriteString(contentPart)
+		events <- ProviderEvent{
+			Message: Message{
+				Role:    "assistant",
+				Name:    model,
+				Content: contentPart, // Send just the delta
+			},
+			// Artifact streaming flags (Index, Append, LastChunk) seem to be handled
+			// at the task handler level (e.g., task_send_subscribe.go) rather than
+			// needing to be part of the provider event itself.
 		}
 	}
+}
 
-	if err = stream.Err(); err != nil {
-		return ProviderEvent{}, errnie.Error(err)
+// handleFinishedToolCall processes a completed tool call from the stream and sends an event.
+func handleFinishedToolCall(
+	toolCall openai.FinishedChatCompletionToolCall,
+	model string,
+	events chan<- ProviderEvent,
+	accumulatedContent *strings.Builder,
+) {
+	errnie.Info("Accumulator finished tool call", "tool", toolCall.Name, "id", toolCall.Id)
+
+	// Parse arguments
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(toolCall.Arguments), &args); err != nil {
+		errnie.Error("failed to parse tool call arguments in stream", "error", err, "id", toolCall.Id)
+		return // Skip sending event if parsing fails
 	}
 
-	return ProviderEvent{}, nil
+	// Send event with the completed tool call request
+	events <- ProviderEvent{
+		ToolCalls: []PendingToolCall{
+			{
+				ID: toolCall.Id,
+				Request: mcp.CallToolRequest{
+					Params: struct {
+						Name      string                 `json:"name"`
+						Arguments map[string]interface{} `json:"arguments,omitempty"`
+						Meta      *struct {
+							ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
+						} `json:"_meta,omitempty"`
+					}{
+						Name:      toolCall.Name,
+						Arguments: args,
+					},
+				},
+			},
+		},
+		// Message content might be empty here if only tool calls are made
+		Message: Message{
+			Role: "assistant",
+			Name: model,
+			// Content: accumulatedContent.String(), // Consider if sending full accumulated content here is needed
+		},
+	}
+	accumulatedContent.Reset() // Reset accumulated content after sending tool call
 }
 
 /*
@@ -282,21 +361,31 @@ func (prvdr *OpenAIProvider) buildMessages(
 
 			tcs := make([]openai.ChatCompletionMessageToolCallParam, 0, len(toolCalls))
 
-			for _, toolCall := range msg.ToolCalls {
-				id := "todo"
+			for idx, toolCall := range msg.ToolCalls {
+				// NOTE: The OpenAI API requires an ID for historical tool calls made by the assistant.
+				// Our current mcp.CallToolRequest structure doesn't store the original ID assigned by
+				// the LLM when the call was *first* made. We generate a placeholder here.
+				// This might need refinement if precise historical correlation becomes necessary.
+				id := fmt.Sprintf("call_%d_%s", idx, toolCall.Params.Name) // Placeholder ID
 				name := toolCall.Params.Name
 
-				var arguments string
-				for _, arg := range toolCall.Params.Arguments {
-					arguments += arg.(string) + "\n"
+				// Serialize arguments back to JSON string for the API
+				var argumentsStr string
+				if argsBytes, err := json.Marshal(toolCall.Params.Arguments); err == nil {
+					argumentsStr = string(argsBytes)
+				} else {
+					// Handle error: maybe log, maybe set a default, maybe skip?
+					// For now, setting to empty JSON object string and logging.
+					errnie.Warn("Failed to marshal tool arguments for OpenAI history", "error", err, "tool", name)
+					argumentsStr = "{}"
 				}
 
 				tcs = append(tcs, openai.ChatCompletionMessageToolCallParam{
 					ID:   id,
-					Type: "function",
+					Type: "function", // Use the string literal "function"
 					Function: openai.ChatCompletionMessageToolCallFunctionParam{
 						Name:      name,
-						Arguments: arguments,
+						Arguments: argumentsStr, // Pass the JSON string
 					},
 				})
 			}
@@ -321,7 +410,7 @@ func (prvdr *OpenAIProvider) buildMessages(
 					Content: openai.ChatCompletionToolMessageParamContentUnion{
 						OfString: param.NewOpt(msg.Content),
 					},
-					ToolCallID: msg.ID,
+					ToolCallID: msg.ID, // Use the Message ID field for ToolCallID
 					Role:       "tool",
 				},
 			})
