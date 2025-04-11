@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 
-	"github.com/theapemachine/caramba/pkg/service/types"
 	"github.com/theapemachine/caramba/pkg/task"
 )
 
@@ -15,50 +13,37 @@ type taskGetParams struct {
 	HistoryLength *int   `json:"historyLength,omitempty"` // Pointer to handle optional field
 }
 
-func HandleTaskGet(store task.TaskStore, params json.RawMessage) (interface{}, *task.TaskRequestError) {
+func HandleTaskGet(store task.TaskStore, params json.RawMessage) (any, *task.TaskRequestError) {
+	methodName := "tasks/get"
 	var getParams taskGetParams
-	if err := types.SimdUnmarshalJSON(params, &getParams); err != nil {
-		return nil, &task.TaskRequestError{
-			Code:    -32602, // Invalid params
-			Message: "Invalid params for task.get",
-			Data:    err.Error(),
-		}
+	if taskErr := parseAndValidateParams(params, &getParams, methodName); taskErr != nil {
+		return nil, taskErr
 	}
 
-	if getParams.TaskID == "" {
-		return nil, &task.TaskRequestError{
-			Code:    -32602, // Invalid params
-			Message: "Invalid params for task.get",
-			Data:    "Missing required parameter: id", // Changed from task_id
-		}
+	// Retrieve task using helper (handles missing ID and not found)
+	t, taskErr := getTaskByID(store, getParams.TaskID, methodName) // TaskID field is already named "id" in struct
+	if taskErr != nil {
+		return nil, taskErr
 	}
 
-	// Retrieve task from store
-	t, err := store.GetTask(getParams.TaskID)
-	if err != nil {
-		// Handle potential store errors (e.g., not found)
-		// Use A2A specific error code
-		return nil, &task.TaskRequestError{
-			Code:    -32001, // Task not found
-			Message: "Task not found",
-			Data:    fmt.Sprintf("Task with ID '%s' not found or error retrieving: %s", getParams.TaskID, err.Error()),
-		}
-	}
-
-	// Determine if the task is in a final state
-	final := t.Status.State == task.TaskStateCompleted ||
-		t.Status.State == task.TaskStateCanceled ||
-		t.Status.State == task.TaskStateFailed
+	// Determine if the task is in a final state using helper method
+	final := t.Status.State.IsFinal()
 
 	// Prepare metadata, including history if requested
 	metadata := make(map[string]any)
 	if getParams.HistoryLength != nil && *getParams.HistoryLength > 0 && len(t.History) > 0 {
-		historyLen := *getParams.HistoryLength
-		if historyLen > len(t.History) {
-			historyLen = len(t.History)
+		// Use the helper function to get the potentially truncated history
+		historyForMetadata := getHistorySlice(t.History, getParams.HistoryLength)
+		if len(historyForMetadata) > 0 { // Only add if there's history after slicing
+			metadata["history"] = historyForMetadata
 		}
-		// Get the last N messages
-		metadata["history"] = t.History[len(t.History)-historyLen:]
+	}
+
+	// Add other metadata from the task if it exists
+	for k, v := range t.Metadata {
+		if k != "history" { // Avoid overwriting history if it was explicitly requested
+			metadata[k] = v
+		}
 	}
 
 	// Construct the response according to A2A spec (TaskStatusUpdateEvent)
@@ -66,7 +51,7 @@ func HandleTaskGet(store task.TaskStore, params json.RawMessage) (interface{}, *
 		ID:       t.ID,
 		Status:   t.Status,
 		Final:    final,
-		Metadata: metadata,
+		Metadata: metadata, // Use the combined metadata map
 	}
 
 	return response, nil

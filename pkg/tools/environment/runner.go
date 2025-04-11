@@ -64,11 +64,11 @@ func NewRunner(runtime Runtime) *Runner {
 }
 
 func (runner *Runner) Execute(
-	buffer chan map[string]interface{},
+	buffer chan map[string]any,
 	command string,
 	input string,
-) chan map[string]interface{} {
-	out := make(chan map[string]interface{})
+) chan map[string]any {
+	out := make(chan map[string]any)
 
 	// Detect when the command has finished executing and the
 	// output has been written to the buffer.

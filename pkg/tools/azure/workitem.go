@@ -42,7 +42,7 @@ func NewWorkItem(conn *azuredevops.Connection) *WorkItem {
 }
 
 // Helper function to get string arguments
-func getStringArg(args map[string]interface{}, key string) (string, error) {
+func getStringArg(args map[string]any, key string) (string, error) {
 	val, ok := args[key].(string)
 	if !ok {
 		return "", fmt.Errorf("missing or invalid type for argument '%s'", key)
@@ -51,7 +51,7 @@ func getStringArg(args map[string]interface{}, key string) (string, error) {
 }
 
 // Helper function to get int arguments
-func getIntArg(args map[string]interface{}, key string) (int, error) {
+func getIntArg(args map[string]any, key string) (int, error) {
 	// JSON numbers are often float64
 	valFloat, ok := args[key].(float64)
 	if !ok {
@@ -71,7 +71,7 @@ CreateWorkItem creates a new work item in Azure DevOps.
 It uses arguments from the map to set work item fields like title and description.
 Returns the created work item or an error.
 */
-func (w *WorkItem) CreateWorkItem(ctx context.Context, args map[string]interface{}) (*workitemtracking.WorkItem, error) {
+func (w *WorkItem) CreateWorkItem(ctx context.Context, args map[string]any) (*workitemtracking.WorkItem, error) {
 	project, err := getStringArg(args, "project")
 	if err != nil {
 		return nil, errnie.Error(err)
@@ -122,7 +122,7 @@ UpdateWorkItem updates an existing work item in Azure DevOps.
 It uses arguments from the map to update work item fields.
 Returns the updated work item or an error.
 */
-func (w *WorkItem) UpdateWorkItem(ctx context.Context, args map[string]interface{}) (*workitemtracking.WorkItem, error) {
+func (w *WorkItem) UpdateWorkItem(ctx context.Context, args map[string]any) (*workitemtracking.WorkItem, error) {
 	id, err := getIntArg(args, "id")
 	if err != nil {
 		return nil, errnie.Error(err)
@@ -167,7 +167,7 @@ GetWorkItem retrieves a single work item from Azure DevOps by its ID.
 The work item ID is extracted from the arguments map.
 Returns the work item or an error.
 */
-func (w *WorkItem) GetWorkItem(ctx context.Context, args map[string]interface{}) (*workitemtracking.WorkItem, error) {
+func (w *WorkItem) GetWorkItem(ctx context.Context, args map[string]any) (*workitemtracking.WorkItem, error) {
 	id, err := getIntArg(args, "id")
 	if err != nil {
 		return nil, errnie.Error(err)
@@ -190,7 +190,7 @@ ListWorkItems queries and retrieves multiple work items from Azure DevOps.
 Uses a WIQL query from the arguments map to filter work items.
 Returns the query result or an error.
 */
-func (w *WorkItem) ListWorkItems(ctx context.Context, args map[string]interface{}) (*workitemtracking.WorkItemQueryResult, error) {
+func (w *WorkItem) ListWorkItems(ctx context.Context, args map[string]any) (*workitemtracking.WorkItemQueryResult, error) {
 	project, err := getStringArg(args, "project")
 	if err != nil {
 		return nil, errnie.Error(err)

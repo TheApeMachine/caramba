@@ -24,10 +24,10 @@ type TaskPushNotificationConfig struct {
 
 // PushNotification represents a notification to be sent to a client
 type PushNotification struct {
-	TaskID   string      `json:"taskId"`
-	Type     string      `json:"type"`
-	Payload  interface{} `json:"payload"`
-	Metadata interface{} `json:"metadata,omitempty"`
+	TaskID   string `json:"taskId"`
+	Type     string `json:"type"`
+	Payload  any    `json:"payload"`
+	Metadata any    `json:"metadata,omitempty"`
 }
 
 // NotificationManager handles sending notifications

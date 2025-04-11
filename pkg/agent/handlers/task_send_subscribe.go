@@ -14,230 +14,347 @@ import (
 	"github.com/theapemachine/caramba/pkg/tools"
 )
 
-// HandleTaskSendSubscribe handles the tasks/sendSubscribe method, streaming SSE results directly.
-func HandleTaskSendSubscribe(
+type SendSubscribeHandler struct {
+	ctx          fiber.Ctx
+	store        task.TaskStore
+	llmProvider  provider.ProviderType
+	toolRegistry *tools.Registry
+	err          error
+}
+
+func NewSendSubscriberHandler(
 	ctx fiber.Ctx,
 	store task.TaskStore,
 	llmProvider provider.ProviderType,
 	toolRegistry *tools.Registry,
-	params json.RawMessage,
-	requestID interface{},
-) error {
-	var sendParams taskSendParams
+) *SendSubscribeHandler {
+	return &SendSubscribeHandler{
+		ctx:          ctx,
+		store:        store,
+		llmProvider:  llmProvider,
+		toolRegistry: toolRegistry,
+	}
+}
 
-	if err := types.SimdUnmarshalJSON(params, &sendParams); err != nil {
-		return &task.TaskRequestError{
-			Code:    -32602,
-			Message: "Invalid params for tasks/sendSubscribe",
-			Data:    err.Error(),
-		}
+// HandleTaskSendSubscribe handles the tasks/sendSubscribe method, streaming SSE results directly.
+func (handler *SendSubscribeHandler) HandleRequest(
+	params json.RawMessage, requestID any,
+) error {
+	// Step 1: Parse parameters and retrieve task
+	t, _, err := handler.parseParamsAndGetTask(params)
+	if err != nil {
+		return err
+	}
+
+	// Step 2: Setup LLM parameters and provider
+	llmParams, providerEventChan, err := handler.setupLLMAndProvider(t)
+	if err != nil {
+		return err
+	}
+
+	// Step 3: Configure SSE headers and start streaming
+	return handler.startSSEStream(t, llmParams, providerEventChan, requestID)
+}
+
+// parseParamsAndGetTask handles parameter validation and task retrieval
+func (handler *SendSubscribeHandler) parseParamsAndGetTask(
+	params json.RawMessage,
+) (*task.Task, string, error) {
+	var sendParams taskSendParams
+	methodName := "tasks/sendSubscribe"
+
+	if taskErr := parseAndValidateParams(params, &sendParams, methodName); taskErr != nil {
+		return nil, methodName, taskErr
 	}
 
 	if sendParams.ID == "" {
-		return &task.TaskRequestError{
-			Code:    -32602,
-			Message: "Invalid params for tasks/sendSubscribe",
-			Data:    "Missing required parameter: id",
-		}
+		return nil, methodName, task.NewMissingParamError(methodName, "id")
 	}
 
-	// --- Task Retrieval & Initial Update ---
-	t, taskErr := retrieveAndPrepareTask(store, sendParams) // Reuse helper
+	t, taskErr := retrieveAndPrepareTask(handler.store, sendParams)
 	if taskErr != nil {
-		return taskErr // Return error to be formatted as JSONRPCError by the caller
+		return nil, methodName, taskErr
 	}
 
-	// --- Prepare LLM Call Parameters ---
-	llmParams, err := prepareLLMParams(t, toolRegistry, sendParams.HistoryLength) // Reuse helper
-	if err != nil {
-		// Attempt to update task state before returning error
-		updateTaskToFailed(store, t, "Failed to prepare LLM parameters", err) // Reuse helper
-		return &task.TaskRequestError{Code: -32000, Message: "Failed to prepare LLM parameters", Data: err.Error()}
+	return t, methodName, nil
+}
+
+// setupLLMAndProvider prepares LLM parameters and initializes the provider
+func (handler *SendSubscribeHandler) setupLLMAndProvider(
+	t *task.Task,
+) (provider.ProviderParams, <-chan provider.ProviderEvent, error) {
+	var llmParams provider.ProviderParams
+	var providerEventChan <-chan provider.ProviderEvent
+
+	// Prepare LLM parameters
+	if llmParams, handler.err = prepareLLMParams(
+		t, handler.toolRegistry, nil, // Use default history length
+	); handler.err != nil {
+		updateTaskToFailed(
+			handler.store, t, "Failed to prepare LLM parameters", handler.err,
+		)
+		return llmParams, nil, &task.TaskRequestError{
+			Code:    -32000,
+			Message: "Failed to prepare LLM parameters",
+			Data:    handler.err.Error(),
+		}
 	}
 
-	// --- Initiate Streaming Generation ---
-	providerEventChan, err := llmProvider.Generate(llmParams)
-	if err != nil {
-		errnie.Error(err, "taskID", t.ID)
-		updateTaskToFailed(store, t, "Failed to initiate LLM generation", err)                                       // Reuse helper
-		return &task.TaskRequestError{Code: -32003, Message: "Failed to initiate LLM generation", Data: err.Error()} // Use appropriate code?
+	// Initialize provider
+	if providerEventChan, handler.err = handler.llmProvider.Generate(llmParams); handler.err != nil {
+		errnie.Error(handler.err, "taskID", t.ID)
+		updateTaskToFailed(
+			handler.store, t, "Failed to initiate LLM generation", handler.err,
+		)
+		return llmParams, nil, &task.TaskRequestError{
+			Code:    -32003,
+			Message: "Failed to initiate LLM generation",
+			Data:    handler.err.Error(),
+		}
 	}
 
-	// --- Set SSE Headers ---
-	ctx.Set("Content-Type", "text/event-stream")
-	ctx.Set("Cache-Control", "no-cache")
-	ctx.Set("Connection", "keep-alive")
-	// ctx.Set("Transfer-Encoding", "chunked") // Fiber handles chunked encoding with SendStreamWriter
+	return llmParams, providerEventChan, nil
+}
 
-	// --- Use SendStreamWriter for robust streaming ---
-	err = ctx.SendStreamWriter(func(w *bufio.Writer) { // Correct signature: no error return
-		errnie.Info("Starting SSE stream writer for tasks/sendSubscribe", "taskID", t.ID, "requestID", requestID)
-		defer errnie.Info("Exiting SSE stream writer for tasks/sendSubscribe", "taskID", t.ID, "requestID", requestID)
+// startSSEStream sets up SSE headers and starts the streaming process
+func (handler *SendSubscribeHandler) startSSEStream(
+	t *task.Task,
+	llmParams provider.ProviderParams,
+	providerEventChan <-chan provider.ProviderEvent,
+	requestID any,
+) error {
+	// Set SSE Headers
+	handler.ctx.Set("Content-Type", "text/event-stream")
+	handler.ctx.Set("Cache-Control", "no-cache")
+	handler.ctx.Set("Connection", "keep-alive")
 
-		var accumulatedContent strings.Builder
-		var accumulatedToolCalls []provider.PendingToolCall
-		var assistantMessage provider.Message
-		var streamErr error
+	// Start streaming
+	streamErr := handler.ctx.SendStreamWriter(func(w *bufio.Writer) {
+		handler.handleStreamEvents(w, t, llmParams, providerEventChan, requestID)
+	})
 
-		// --- Send Initial Working Status ---
-		// We send the initial 'working' status update immediately after starting stream
-		initialStatusEvent := task.TaskStatusUpdateEvent{
-			ID: t.ID,
-			Status: task.TaskStatus{
-				State:     task.TaskStateWorking,
-				Timestamp: t.Status.Timestamp, // Use timestamp from retrieveAndPrepareTask
-				// Message:   t.Status.Message, // Optionally include the initial user message?
-			},
-			Final: false,
-		}
-		if err := writeSSEEvent(w, requestID, initialStatusEvent); err != nil {
-			errnie.New(errnie.WithError(err))
-			updateTaskToFailed(store, t, "Failed to write initial SSE status", err)
-			return
-		}
-
-		isStreaming := true
-
-		for isStreaming {
-			for event := range providerEventChan {
-				errnie.Debug("Received provider event in sendSubscribe", "taskID", t.ID)
-
-				if event.Message.Role == "error" {
-					errnie.Error("Received error event from provider", "taskID", t.ID, "error", event.Message.Content)
-					streamErr = fmt.Errorf("provider stream error: %s", event.Message.Content)
-					isStreaming = false
-					break
-				}
-
-				// Store assistant message if it contains tool calls
-				if event.Message.Role == "assistant" && len(event.ToolCalls) > 0 {
-					assistantMessage = event.Message
-				}
-
-				// Handle Message Content -> TaskArtifactUpdateEvent
-				if event.Message.Content != "" {
-					accumulatedContent.WriteString(event.Message.Content)
-					artifactUpdate := task.TaskArtifactUpdateEvent{
-						ID: t.ID,
-						Artifact: task.Artifact{
-							Index:     0,    // Assuming one artifact stream for now
-							Append:    true, // Append content chunks
-							LastChunk: false,
-							Parts:     []task.Part{{Text: event.Message.Content}}, // Assign struct value directly
-						},
-					}
-					if err := writeSSEEvent(w, requestID, artifactUpdate); err != nil {
-						errnie.Error("Failed to write SSE artifact chunk", "error", err, "taskID", t.ID)
-						streamErr = err // Store error and break
-						isStreaming = false
-						break
-					}
-				}
-
-				// Accumulate Tool Calls
-				if len(event.ToolCalls) > 0 {
-					errnie.Info("Received tool call request(s) in sendSubscribe stream", "taskID", t.ID, "count", len(event.ToolCalls))
-					accumulatedToolCalls = append(accumulatedToolCalls, event.ToolCalls...)
-				}
-			} // End of providerEventChan loop
-
-			// Synthesize assistant message if needed
-			if assistantMessage.Role == "" && len(accumulatedToolCalls) > 0 {
-				assistantMessage = provider.Message{Role: "assistant", Content: accumulatedContent.String()}
-			}
-
-			// Add assistant's streamed response/request to history *before* tool execution
-			addAssistantStreamResponseToHistory(t, streamProcessingResult{
-				accumulatedContent:   accumulatedContent.String(),
-				accumulatedToolCalls: accumulatedToolCalls,
-				assistantMessage:     assistantMessage,
-				err:                  nil, // Error handled separately below
-			})
-		}
-
-		// --- Handle End of Stream / Errors / Tool Execution ---
-		finalAgentMessage := task.Message{}
-		finalTaskState := task.TaskStateFailed // Default to failed unless successful completion
-
-		if streamErr != nil {
-			// Error during stream processing from provider
-			errnie.Error("Error processing provider stream", "error", streamErr, "taskID", t.ID)
-			updateTaskToFailed(store, t, "Provider stream error", streamErr)
-			finalAgentMessage = task.Message{Role: task.MessageRoleAgent, Parts: []task.MessagePart{task.TextPart{Text: "ERROR: " + streamErr.Error()}}}
-			finalTaskState = task.TaskStateFailed
-
-		} else if len(accumulatedToolCalls) > 0 {
-			// Execute tools and get final response (non-streaming for the final bit)
-			finalAgentMessage, finalTaskState = executeToolcall(
-				finalAgentMessage,
-				finalTaskState,
-				t,
-				accumulatedToolCalls,
-				toolRegistry,
-				llmProvider,
-				llmParams,
-				store,
-				w,
-				requestID,
-			)
-		} else {
-			// No tool calls, stream finished successfully
-			finalTaskState, finalAgentMessage = streamFinished(
-				finalTaskState,
-				finalAgentMessage,
-				accumulatedContent,
-				t,
-				w,
-				requestID,
-				store,
-			)
-		}
-
-		// --- Update Task and Send Final Status ---
-		// Update the task in the store *before* sending the final SSE status
-		updateFinalTaskStatus(store, t, finalAgentMessage, finalTaskState) // Reuse helper
-
-		// Send final status update via SSE
-		finalStatusEvent := task.TaskStatusUpdateEvent{
-			ID:     t.ID,
-			Status: t.Status, // Use the status updated by updateFinalTaskStatus
-			Final:  true,
-		}
-		if err := writeSSEEvent(w, requestID, finalStatusEvent); err != nil {
-			// Log error, but can't do much else as stream is ending
-			errnie.Error("Failed to write final SSE status", "error", err, "taskID", t.ID)
-		}
-
-		// Log completion
-		errnie.Info("SSE stream completed for tasks/sendSubscribe", "taskID", t.ID, "finalState", t.Status.State)
-	}) // End of SendStreamWriter func
-
-	// Check if SendStreamWriter itself returned an error (e.g., connection closed prematurely)
-	if err != nil {
-		errnie.Error("SendStreamWriter failed", "error", err, "taskID", t.ID)
-		// Task status might be inconsistent if error happened after some events were sent.
-		// Update task to failed if it wasn't already.
-		currentTask, _ := store.GetTask(t.ID) // Fetch latest status
-		if currentTask != nil && currentTask.Status.State != task.TaskStateFailed && currentTask.Status.State != task.TaskStateCanceled {
-			updateTaskToFailed(store, t, "SSE stream writer failed", err)
-		}
-		// Cannot return a JSONRPC error here as headers were likely sent.
+	// Handle SendStreamWriter errors
+	if streamErr != nil {
+		errnie.Error("SendStreamWriter failed", "error", streamErr, "taskID", t.ID)
+		handler.ensureTaskFailedStatus(t, streamErr)
 	}
 
-	// If setup succeeded, we return nil, as the response was handled by SendStreamWriter.
 	return nil
 }
 
-func streamFinished(
+// handleStreamEvents processes events from the provider and sends SSE updates
+func (handler *SendSubscribeHandler) handleStreamEvents(
+	w *bufio.Writer,
+	t *task.Task,
+	llmParams provider.ProviderParams,
+	providerEventChan <-chan provider.ProviderEvent,
+	requestID any,
+) {
+	errnie.Info("Starting SSE stream writer", "taskID", t.ID, "requestID", requestID)
+	defer errnie.Info("Exiting SSE stream writer", "taskID", t.ID)
+
+	// Initialize stream state
+	state := handler.initStreamState(w, t, requestID)
+	if state.streamErr != nil {
+		return
+	}
+
+	// Process provider events
+	handler.processProviderEvents(state, t, providerEventChan)
+
+	// Handle end of stream
+	handler.handleEndOfStream(state, t, llmParams, w, requestID)
+}
+
+// streamState contains the accumulated state during streaming
+type streamState struct {
+	accumulatedContent   strings.Builder
+	accumulatedToolCalls []provider.PendingToolCall
+	assistantMessage     provider.Message
+	streamErr            error
+}
+
+// initStreamState sets up initial stream state and sends initial status
+func (handler *SendSubscribeHandler) initStreamState(
+	w *bufio.Writer,
+	t *task.Task,
+	requestID any,
+) *streamState {
+	state := &streamState{}
+
+	// Send initial status update
+	initialStatusEvent := task.TaskStatusUpdateEvent{
+		ID: t.ID,
+		Status: task.TaskStatus{
+			State:     task.TaskStateWorking,
+			Timestamp: t.Status.Timestamp,
+		},
+		Final: false,
+	}
+
+	if err := handler.writeSSEEvent(
+		w, requestID, initialStatusEvent,
+	); err != nil {
+		state.streamErr = errnie.New(errnie.WithError(err))
+		updateTaskToFailed(handler.store, t, "Failed to write initial SSE status", err)
+	}
+
+	return state
+}
+
+// processProviderEvents handles incoming events from the provider
+func (handler *SendSubscribeHandler) processProviderEvents(
+	state *streamState,
+	t *task.Task,
+	providerEventChan <-chan provider.ProviderEvent,
+) {
+	isStreaming := true
+
+	for isStreaming && state.streamErr == nil {
+		for event := range providerEventChan {
+			errnie.Debug("Received provider event", "taskID", t.ID)
+
+			if state.streamErr = handler.handleProviderEvent(state, t, event); state.streamErr != nil {
+				isStreaming = false
+				break
+			}
+		}
+
+		isStreaming = false
+
+		// Synthesize assistant message if needed
+		if state.assistantMessage.Role == "" && len(state.accumulatedToolCalls) > 0 {
+			state.assistantMessage = provider.Message{
+				Role:    "assistant",
+				Content: state.accumulatedContent.String(),
+			}
+		}
+
+		// Add to history before tool execution
+		addAssistantStreamResponseToHistory(t, streamProcessingResult{
+			accumulatedContent:   state.accumulatedContent.String(),
+			accumulatedToolCalls: state.accumulatedToolCalls,
+			assistantMessage:     state.assistantMessage,
+			err:                  nil,
+		})
+	}
+}
+
+// handleProviderEvent processes a single event from the provider
+func (handler *SendSubscribeHandler) handleProviderEvent(
+	state *streamState,
+	t *task.Task,
+	event provider.ProviderEvent,
+) error {
+	// Check for error events
+	if event.Message.Role == "error" {
+		errnie.Error("Received error event from provider", "taskID", t.ID, "error", event.Message.Content)
+		return fmt.Errorf("provider stream error: %s", event.Message.Content)
+	}
+
+	// Store assistant message with tool calls
+	if event.Message.Role == "assistant" && len(event.ToolCalls) > 0 {
+		state.assistantMessage = event.Message
+	}
+
+	// Handle message content
+	if event.Message.Content != "" {
+		state.accumulatedContent.WriteString(event.Message.Content)
+	}
+
+	// Accumulate tool calls
+	if len(event.ToolCalls) > 0 {
+		errnie.Info("Received tool call request(s)", "taskID", t.ID, "count", len(event.ToolCalls))
+		state.accumulatedToolCalls = append(state.accumulatedToolCalls, event.ToolCalls...)
+	}
+
+	return nil
+}
+
+// handleEndOfStream processes the final state after streaming completes
+func (handler *SendSubscribeHandler) handleEndOfStream(
+	state *streamState,
+	t *task.Task,
+	llmParams provider.ProviderParams,
+	w *bufio.Writer,
+	requestID any,
+) {
+	finalAgentMessage := task.Message{}
+	finalTaskState := task.TaskStateFailed // Default to failed
+
+	if state.streamErr != nil {
+		// Handle stream error
+		finalAgentMessage, finalTaskState = handler.handleStreamError(t, state.streamErr)
+	} else if len(state.accumulatedToolCalls) > 0 {
+		// Execute tools
+		finalAgentMessage, finalTaskState = handler.executeToolcall(
+			finalAgentMessage, t, state.accumulatedToolCalls, llmParams, w, requestID,
+		)
+	} else {
+		// Stream finished successfully
+		finalTaskState, finalAgentMessage = handler.streamFinished(
+			finalAgentMessage, state.accumulatedContent, t, w, requestID,
+		)
+	}
+
+	// Update task status and send final SSE event
+	handler.finalizeTasks(t, finalAgentMessage, finalTaskState, w, requestID)
+}
+
+// handleStreamError processes errors from the stream
+func (handler *SendSubscribeHandler) handleStreamError(
+	t *task.Task,
+	streamErr error,
+) (task.Message, task.TaskState) {
+	errnie.Error("Error processing provider stream", "error", streamErr, "taskID", t.ID)
+	updateTaskToFailed(handler.store, t, "Provider stream error", streamErr)
+	return task.Message{
+		Role:  task.MessageRoleAgent,
+		Parts: []task.MessagePart{task.TextPart{Text: "ERROR: " + streamErr.Error()}},
+	}, task.TaskStateFailed
+}
+
+// finalizeTasks updates the task status and sends the final SSE event
+func (handler *SendSubscribeHandler) finalizeTasks(
+	t *task.Task,
+	finalAgentMessage task.Message,
 	finalTaskState task.TaskState,
+	w *bufio.Writer,
+	requestID any,
+) {
+	updateFinalTaskStatus(handler.store, t, finalAgentMessage, finalTaskState)
+
+	finalStatusEvent := task.TaskStatusUpdateEvent{
+		ID:     t.ID,
+		Status: t.Status,
+		Final:  true,
+	}
+
+	if err := handler.writeSSEEvent(
+		w, requestID, finalStatusEvent,
+	); err != nil {
+		errnie.Error("Failed to write final SSE status", "error", err, "taskID", t.ID)
+	}
+}
+
+// ensureTaskFailedStatus ensures task is marked as failed after stream errors
+func (handler *SendSubscribeHandler) ensureTaskFailedStatus(t *task.Task, streamErr error) {
+	currentTask, _ := handler.store.GetTask(t.ID)
+	if currentTask != nil &&
+		currentTask.Status.State != task.TaskStateFailed &&
+		currentTask.Status.State != task.TaskStateCanceled {
+		updateTaskToFailed(handler.store, t, "SSE stream writer failed", streamErr)
+	}
+}
+
+func (handler *SendSubscribeHandler) streamFinished(
 	finalAgentMessage task.Message,
 	accumulatedContent strings.Builder,
 	t *task.Task,
 	w *bufio.Writer,
-	requestID interface{},
-	store task.TaskStore,
+	requestID any,
 ) (task.TaskState, task.Message) {
-	finalTaskState = task.TaskStateCompleted
+	finalTaskState := task.TaskStateCompleted
 	finalAgentMessage = task.Message{
 		Role: task.MessageRoleAgent,
 		Parts: []task.MessagePart{
@@ -261,47 +378,60 @@ func streamFinished(
 			Parts:     finalParts, // Use the converted slice
 		},
 	}
-	if err := writeSSEEvent(w, requestID, finalArtifactUpdate); err != nil {
+	if err := handler.writeSSEEvent(
+		w, requestID, finalArtifactUpdate,
+	); err != nil {
 		errnie.Error("Failed to write final SSE artifact", "error", err, "taskID", t.ID)
-		updateTaskToFailed(store, t, "Failed to write final artifact SSE", err)
+		updateTaskToFailed(handler.store, t, "Failed to write final artifact SSE", err)
 		finalTaskState = task.TaskStateFailed // Mark failed if write fails
 	}
 	return finalTaskState, finalAgentMessage
 }
 
-func executeToolcall(finalAgentMessage task.Message, finalTaskState task.TaskState, t *task.Task, accumulatedToolCalls []provider.PendingToolCall, toolRegistry *tools.Registry, llmProvider provider.ProviderType, llmParams provider.ProviderParams, store task.TaskStore, w *bufio.Writer, requestID interface{}) (task.Message, task.TaskState) {
+func (handler *SendSubscribeHandler) executeToolcall(
+	finalAgentMessage task.Message,
+	t *task.Task,
+	accumulatedToolCalls []provider.PendingToolCall,
+	llmParams provider.ProviderParams,
+	w *bufio.Writer,
+	requestID any,
+) (task.Message, task.TaskState) {
 	var toolExecErr error
-	finalAgentMessage, finalTaskState, toolExecErr = executeToolsAndGetResponse( // Reuse helper
-		t, accumulatedToolCalls, toolRegistry, llmProvider, llmParams, store,
+	var finalTaskState task.TaskState
+
+	finalAgentMessage, finalTaskState, toolExecErr = executeToolsAndGetResponse(
+		t, accumulatedToolCalls, handler.toolRegistry, handler.llmProvider, llmParams, handler.store,
 	)
 	if toolExecErr != nil {
-		// Error message and state are already set by executeToolsAndGetResponse
 		errnie.Warn("Tool execution or final response failed in sendSubscribe", "taskID", t.ID, "error", toolExecErr)
-		// The task state should already be Failed in t.Status if error occurred
 	} else {
-		// Successful tool execution and final response
 		finalTaskState = task.TaskStateCompleted
 
-		// Convert finalAgentMessage.Parts ([]MessagePart) to []Part
 		finalParts := make([]task.Part, len(finalAgentMessage.Parts))
 		for i, p := range finalAgentMessage.Parts {
 			finalParts[i] = task.Part{Text: fmt.Sprintf("[Unsupported Part: %T]", p)} // Assign fallback struct value
 		}
 
-		// Send the final message as an artifact update
 		finalArtifactUpdate := task.TaskArtifactUpdateEvent{
 			ID: t.ID,
 			Artifact: task.Artifact{
 				Index:     0,
 				Append:    false,
 				LastChunk: true,
-				Parts:     finalParts, // Use the converted slice
+				Parts:     finalParts,
 			},
 		}
-		if err := writeSSEEvent(w, requestID, finalArtifactUpdate); err != nil {
+		if err := handler.writeSSEEvent(
+			w,
+			requestID,
+			finalArtifactUpdate,
+		); err != nil {
 			errnie.Error("Failed to write final SSE artifact after tools", "error", err, "taskID", t.ID)
-			// Update status to failed even if tools worked but write failed
-			updateTaskToFailed(store, t, "Failed to write final artifact SSE", err)
+
+			updateTaskToFailed(
+				handler.store, t, "Failed to write final artifact SSE", err,
+			)
+
 			finalTaskState = task.TaskStateFailed
 		}
 	}
@@ -309,7 +439,7 @@ func executeToolcall(finalAgentMessage task.Message, finalTaskState task.TaskSta
 }
 
 // writeSSEEvent formats and writes a JSON-RPC structured SSE event.
-func writeSSEEvent(w *bufio.Writer, requestID interface{}, payload interface{}) error {
+func (handler *SendSubscribeHandler) writeSSEEvent(w *bufio.Writer, requestID any, payload any) error {
 	// Wrap the payload (TaskStatusUpdateEvent or TaskArtifactUpdateEvent)
 	// in the JSON-RPC response structure.
 	sseResponse := types.JSONRPCResponse{

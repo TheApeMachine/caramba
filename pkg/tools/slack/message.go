@@ -14,7 +14,7 @@ Takes a channel ID, message text, optional thread timestamp, and an artifact con
 additional message options like blocks and attachments. Returns the channel ID and
 message timestamp on success, or an error if the post fails.
 */
-func (client *Client) PostMessage(channel, text, threadTS string, artifact map[string]interface{}) (interface{}, error) {
+func (client *Client) PostMessage(channel, text, threadTS string, artifact map[string]any) (any, error) {
 	msgOptions := []slack.MsgOption{
 		slack.MsgOptionText(text, false),
 	}
@@ -42,7 +42,7 @@ func (client *Client) PostMessage(channel, text, threadTS string, artifact map[s
 		return nil, err
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"channel": channelID,
 		"ts":      timestamp,
 	}, nil
@@ -84,7 +84,7 @@ SearchMessages searches for messages across all accessible Slack channels.
 Takes a search text string and returns matching messages.
 Returns an error if the search text is empty or if the search fails.
 */
-func (client *Client) SearchMessages(text string) (interface{}, error) {
+func (client *Client) SearchMessages(text string) (any, error) {
 	if text == "" {
 		return nil, errnie.Error("text is required for search_messages operation")
 	}

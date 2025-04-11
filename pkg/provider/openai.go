@@ -161,7 +161,7 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 			errnie.Info("ToolCall requested by LLM", "tool", toolCall.Function.Name, "id", toolCall.ID)
 
 			// Parse arguments from JSON
-			var args map[string]interface{}
+			var args map[string]any
 			if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
 				errnie.Error("failed to parse tool call arguments", "error", err, "id", toolCall.ID)
 				// Decide how to handle parse errors - skip this call, return error?
@@ -172,8 +172,8 @@ func (prvdr *OpenAIProvider) handleSingleRequest(
 				ID: toolCall.ID, // Store the crucial ID
 				Request: mcp.CallToolRequest{
 					Params: struct {
-						Name      string                 `json:"name"`
-						Arguments map[string]interface{} `json:"arguments,omitempty"`
+						Name      string         `json:"name"`
+						Arguments map[string]any `json:"arguments,omitempty"`
 						Meta      *struct {
 							ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
 						} `json:"_meta,omitempty"`
@@ -301,7 +301,7 @@ func handleFinishedToolCall(
 	errnie.Info("Accumulator finished tool call", "tool", toolCall.Name, "id", toolCall.Id)
 
 	// Parse arguments
-	var args map[string]interface{}
+	var args map[string]any
 	if err := json.Unmarshal([]byte(toolCall.Arguments), &args); err != nil {
 		errnie.Error("failed to parse tool call arguments in stream", "error", err, "id", toolCall.Id)
 		return // Skip sending event if parsing fails
@@ -314,8 +314,8 @@ func handleFinishedToolCall(
 				ID: toolCall.Id,
 				Request: mcp.CallToolRequest{
 					Params: struct {
-						Name      string                 `json:"name"`
-						Arguments map[string]interface{} `json:"arguments,omitempty"`
+						Name      string         `json:"name"`
+						Arguments map[string]any `json:"arguments,omitempty"`
 						Meta      *struct {
 							ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
 						} `json:"_meta,omitempty"`

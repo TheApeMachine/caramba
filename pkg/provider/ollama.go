@@ -71,7 +71,7 @@ func (prvdr *OllamaProvider) Generate(
 
 	composed := &api.ChatRequest{
 		Model: params.Model,
-		Options: map[string]interface{}{
+		Options: map[string]any{
 			"temperature": params.Temperature,
 			"top_p":       params.TopP,
 			"max_tokens":  params.MaxTokens,

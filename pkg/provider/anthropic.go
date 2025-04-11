@@ -158,8 +158,8 @@ func (prvdr *AnthropicProvider) handleSingleRequest(
 
 		tc := mcp.CallToolRequest{
 			Params: struct {
-				Name      string                 `json:"name"`
-				Arguments map[string]interface{} `json:"arguments,omitempty"`
+				Name      string         `json:"name"`
+				Arguments map[string]any `json:"arguments,omitempty"`
 				Meta      *struct {
 					ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
 				} `json:"_meta,omitempty"`
@@ -169,7 +169,7 @@ func (prvdr *AnthropicProvider) handleSingleRequest(
 		}
 
 		// Parse arguments from raw JSON
-		var args map[string]interface{}
+		var args map[string]any
 		if err := json.Unmarshal([]byte(toolCall.JSON.Input.Raw()), &args); err == nil {
 			tc.Params.Arguments = args
 		}
@@ -267,9 +267,9 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 					}
 
 					var toolInfo struct {
-						ID    string                 `json:"id"`
-						Name  string                 `json:"name"`
-						Input map[string]interface{} `json:"input"`
+						ID    string         `json:"id"`
+						Name  string         `json:"name"`
+						Input map[string]any `json:"input"`
 					}
 
 					if err := json.Unmarshal(toolData, &toolInfo); err != nil {
@@ -286,8 +286,8 @@ func (prvdr *AnthropicProvider) handleStreamingRequest(
 					// Create tool request
 					tc := mcp.CallToolRequest{
 						Params: struct {
-							Name      string                 `json:"name"`
-							Arguments map[string]interface{} `json:"arguments,omitempty"`
+							Name      string         `json:"name"`
+							Arguments map[string]any `json:"arguments,omitempty"`
 							Meta      *struct {
 								ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
 							} `json:"_meta,omitempty"`

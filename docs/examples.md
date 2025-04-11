@@ -39,21 +39,21 @@ const (
 type JsonRpcRequest struct {
     JsonRpc string      `json:"jsonrpc"`
     Method  string      `json:"method"`
-    Params  interface{} `json:"params"`
+    Params  any `json:"params"`
     ID      string      `json:"id"`
 }
 
 type JsonRpcResponse struct {
     JsonRpc string      `json:"jsonrpc"`
-    Result  interface{} `json:"result,omitempty"`
-    Error   interface{} `json:"error,omitempty"`
+    Result  any `json:"result,omitempty"`
+    Error   any `json:"error,omitempty"`
     ID      string      `json:"id"`
 }
 
 // Define A2A specific parameter structures
 type TaskCreateParams struct {
     TaskID       string      `json:"task_id"`
-    Input        interface{} `json:"input,omitempty"` // Define detailed Input struct if needed
+    Input        any `json:"input,omitempty"` // Define detailed Input struct if needed
     AgentCardURL string      `json:"agent_card_url,omitempty"`
 }
 
@@ -66,7 +66,7 @@ type Message struct {
     RequestID string        `json:"request_id,omitempty"`
     Role      string        `json:"role"`
     Parts     []MessagePart `json:"parts"`
-    Metadata  interface{}   `json:"metadata,omitempty"`
+    Metadata  any   `json:"metadata,omitempty"`
 }
 
 type TaskSendParams struct {
@@ -76,7 +76,7 @@ type TaskSendParams struct {
 }
 
 // Helper to send JSON-RPC requests
-func sendRpcRequest(url, method string, params interface{}, id string) (*JsonRpcResponse, error) {
+func sendRpcRequest(url, method string, params any, id string) (*JsonRpcResponse, error) {
     reqBody := JsonRpcRequest{
         JsonRpc: "2.0",
         Method:  method,

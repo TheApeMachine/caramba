@@ -20,7 +20,7 @@ func NewClient() *Client {
 	}
 }
 
-func (client *Client) ReadFile(artifact map[string]interface{}) error {
+func (client *Client) ReadFile(artifact map[string]any) error {
 	errnie.Debug("editor.Client.ReadFile")
 
 	filePath := artifact["file"].(string)
@@ -34,7 +34,7 @@ func (client *Client) ReadFile(artifact map[string]interface{}) error {
 	return nil
 }
 
-func (client *Client) WriteFile(artifact map[string]interface{}) error {
+func (client *Client) WriteFile(artifact map[string]any) error {
 	errnie.Debug("editor.Client.WriteFile")
 
 	filePath := artifact["file"].(string)
@@ -50,7 +50,7 @@ func (client *Client) WriteFile(artifact map[string]interface{}) error {
 	return nil
 }
 
-func (client *Client) DeleteFile(artifact map[string]interface{}) error {
+func (client *Client) DeleteFile(artifact map[string]any) error {
 	errnie.Debug("editor.Client.DeleteFile")
 
 	filePath := artifact["file"].(string)
@@ -65,7 +65,7 @@ func (client *Client) DeleteFile(artifact map[string]interface{}) error {
 	return nil
 }
 
-func (client *Client) ReplaceLines(artifact map[string]interface{}) error {
+func (client *Client) ReplaceLines(artifact map[string]any) error {
 	errnie.Debug("editor.Client.ReplaceLines")
 
 	filePath := artifact["file"].(string)
@@ -101,7 +101,7 @@ func (client *Client) ReplaceLines(artifact map[string]interface{}) error {
 	return nil
 }
 
-func (client *Client) InsertLines(artifact map[string]interface{}) error {
+func (client *Client) InsertLines(artifact map[string]any) error {
 	errnie.Debug("editor.Client.InsertLines")
 
 	filePath := artifact["file"].(string)
@@ -136,7 +136,7 @@ func (client *Client) InsertLines(artifact map[string]interface{}) error {
 	return nil
 }
 
-func (client *Client) DeleteLines(artifact map[string]interface{}) error {
+func (client *Client) DeleteLines(artifact map[string]any) error {
 	errnie.Debug("editor.Client.DeleteLines")
 
 	filePath := artifact["file"].(string)
@@ -170,7 +170,7 @@ func (client *Client) DeleteLines(artifact map[string]interface{}) error {
 	return nil
 }
 
-func (client *Client) ReadLines(artifact map[string]interface{}) error {
+func (client *Client) ReadLines(artifact map[string]any) error {
 	errnie.Debug("editor.Client.ReadLines")
 
 	filePath := artifact["file"].(string)

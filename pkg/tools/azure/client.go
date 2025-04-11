@@ -66,7 +66,7 @@ func (c *Client) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult {
 	service := parts[1]
 	action := parts[2]
 
-	var result interface{}
+	var result any
 	var err error
 
 	switch service {

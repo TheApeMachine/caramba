@@ -35,7 +35,7 @@ func (client *Client) Do() string {
 	return "trengo"
 }
 
-func (client *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {
+func (client *Client) doRequest(method, path string, body any) (*http.Response, error) {
 	var bodyReader *bytes.Reader
 
 	if body != nil {

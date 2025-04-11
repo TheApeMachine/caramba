@@ -40,7 +40,7 @@ func NewWiki(conn *azuredevops.Connection) *Wiki {
 }
 
 // Helper function to get string arguments (consider moving to a shared utils package if used widely)
-func getStringArgWiki(args map[string]interface{}, key string) (string, error) {
+func getStringArgWiki(args map[string]any, key string) (string, error) {
 	val, ok := args[key].(string)
 	if !ok {
 		return "", fmt.Errorf("missing or invalid type for argument '%s'", key)
@@ -54,7 +54,7 @@ CreatePage creates a new wiki page in Azure DevOps.
 It uses arguments from the map to set the page content and path.
 Returns the page response or an error.
 */
-func (w *Wiki) CreatePage(ctx context.Context, args map[string]interface{}) (*wiki.WikiPageResponse, error) {
+func (w *Wiki) CreatePage(ctx context.Context, args map[string]any) (*wiki.WikiPageResponse, error) {
 	project, err := getStringArgWiki(args, "project")
 	if err != nil {
 		return nil, errnie.Error(err)
@@ -94,7 +94,7 @@ UpdatePage updates an existing wiki page in Azure DevOps.
 It uses arguments from the map to update the page content and requires a version.
 Returns the page response or an error.
 */
-func (w *Wiki) UpdatePage(ctx context.Context, args map[string]interface{}) (*wiki.WikiPageResponse, error) {
+func (w *Wiki) UpdatePage(ctx context.Context, args map[string]any) (*wiki.WikiPageResponse, error) {
 	project, err := getStringArgWiki(args, "project")
 	if err != nil {
 		return nil, errnie.Error(err)
@@ -139,7 +139,7 @@ GetPage retrieves a single wiki page from Azure DevOps.
 The page path and wiki identifier are extracted from the arguments map.
 Returns the page response or an error.
 */
-func (w *Wiki) GetPage(ctx context.Context, args map[string]interface{}) (*wiki.WikiPageResponse, error) {
+func (w *Wiki) GetPage(ctx context.Context, args map[string]any) (*wiki.WikiPageResponse, error) {
 	project, err := getStringArgWiki(args, "project")
 	if err != nil {
 		return nil, errnie.Error(err)
@@ -174,7 +174,7 @@ ListPages retrieves all wiki pages from a specific wiki in Azure DevOps.
 The wiki identifier is extracted from the arguments map.
 Returns the batch response value containing the list of pages or an error.
 */
-func (w *Wiki) ListPages(ctx context.Context, args map[string]interface{}) (*wiki.GetPagesBatchResponseValue, error) {
+func (w *Wiki) ListPages(ctx context.Context, args map[string]any) (*wiki.GetPagesBatchResponseValue, error) {
 	project, err := getStringArgWiki(args, "project")
 	if err != nil {
 		return nil, errnie.Error(err)

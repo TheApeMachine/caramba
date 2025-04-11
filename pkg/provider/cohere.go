@@ -174,8 +174,8 @@ func (prvdr *CohereProvider) handleSingleRequest(
 
 		tc := mcp.CallToolRequest{
 			Params: struct {
-				Name      string                 `json:"name"`
-				Arguments map[string]interface{} `json:"arguments,omitempty"`
+				Name      string         `json:"name"`
+				Arguments map[string]any `json:"arguments,omitempty"`
 				Meta      *struct {
 					ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
 				} `json:"_meta,omitempty"`
@@ -185,7 +185,7 @@ func (prvdr *CohereProvider) handleSingleRequest(
 		}
 
 		// Parse arguments from JSON
-		var args map[string]interface{}
+		var args map[string]any
 		if err := json.Unmarshal(paramBytes, &args); err == nil {
 			tc.Params.Arguments = args
 		}
@@ -300,7 +300,7 @@ func (prvdr *CohereProvider) buildTools(
 		)
 
 		for name, property := range tool.InputSchema.Properties {
-			propMap, ok := property.(map[string]interface{})
+			propMap, ok := property.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -348,7 +348,7 @@ func (prvdr *CohereProvider) buildResponseFormat(
 		return nil
 	}
 
-	var schemaMap map[string]interface{}
+	var schemaMap map[string]any
 	schemaStr, ok := format.Schema.(string)
 	if ok {
 		if err = json.Unmarshal([]byte(schemaStr), &schemaMap); err != nil {
@@ -356,7 +356,7 @@ func (prvdr *CohereProvider) buildResponseFormat(
 		}
 	} else {
 		// Try to use the schema directly if it's already a map
-		schemaMap, ok = format.Schema.(map[string]interface{})
+		schemaMap, ok = format.Schema.(map[string]any)
 		if !ok {
 			return errnie.Error(errors.New("schema is not a string or map"))
 		}

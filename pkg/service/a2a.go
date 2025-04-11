@@ -1,3 +1,8 @@
+/*
+Package service provides the Agent-to-Agent (A2A) communication service, enabling
+seamless interaction between AI agents through a REST API and Server-Sent Events.
+*/
+
 package service
 
 import (
@@ -21,11 +26,27 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
-// StreamUpdateSender defines the interface for sending updates to task streams.
+/*
+StreamUpdateSender defines the interface for components that can send updates
+to task streams. This enables decoupled communication between task processors
+and stream managers.
+*/
 type StreamUpdateSender interface {
-	SendTaskUpdate(taskID string, update interface{})
+	SendTaskUpdate(taskID string, update any)
 }
 
+/*
+A2A implements the Agent-to-Agent communication service, providing a REST API
+for task management and real-time updates through Server-Sent Events. It supports
+TLS, rate limiting, authentication, and push notifications.
+
+Example:
+
+	a2a := NewA2A()
+	if err := a2a.Listen(":8080"); err != nil {
+	    log.Fatal(err)
+	}
+*/
 type A2A struct {
 	app             *fiber.App
 	certManager     *autocert.Manager
@@ -42,12 +63,21 @@ type A2A struct {
 	toolRegistry    *tools.Registry
 }
 
+/*
+taskStream represents a single client connection for receiving task updates.
+It manages message delivery and connection lifecycle.
+*/
 type taskStream struct {
 	taskID   string
 	messages chan any
 	done     chan struct{}
 }
 
+/*
+NewA2A creates a new Agent-to-Agent service with configured S3 storage,
+LLM provider, and tool registry. It initializes the Fiber application with
+appropriate middleware and settings.
+*/
 func NewA2A() *A2A {
 	s3Conn := &s3.Conn{}
 	bucketName := tweaker.Value[string]("settings.s3.bucketName")
@@ -108,6 +138,10 @@ func NewA2A() *A2A {
 	}
 }
 
+/*
+RegisterRoutes sets up all HTTP endpoints for the A2A service, including
+health checks, agent catalog, JSON-RPC endpoints, and SSE streams.
+*/
 func (srv *A2A) RegisterRoutes() {
 	// Root handler
 	srv.app.Get("/", func(ctx fiber.Ctx) error {
@@ -171,7 +205,7 @@ func (srv *A2A) RegisterRoutes() {
 		}
 
 		// Process the request based on method
-		var result interface{}
+		var result any
 		var err *task.TaskRequestError
 
 		switch req.Method {
@@ -186,9 +220,15 @@ func (srv *A2A) RegisterRoutes() {
 		case "tasks/pushNotification/get":
 			result, err = handlers.HandleTaskGetPushNotification(srv.taskStore, req.Params)
 		case "tasks/sendSubscribe":
-			handlers.HandleTaskSendSubscribe(ctx, srv.taskStore, srv.llmProvider, srv.toolRegistry, req.Params, req.ID)
+			handlers.NewSendSubscriberHandler(
+				ctx, srv.taskStore, srv.llmProvider, srv.toolRegistry,
+			).HandleRequest(
+				req.Params, req.ID,
+			)
 		case "tasks/resubscribe":
-			result, err = handlers.HandleTaskResubscribe(srv.taskStore, req.Params)
+			result, err = handlers.NewTaskResubscribeHandler(
+				ctx, srv.taskStore,
+			).HandleRequest(req.Params)
 		default:
 			// Method not found error according to JSON-RPC spec
 			err = &task.TaskRequestError{
@@ -228,9 +268,12 @@ func (srv *A2A) RegisterRoutes() {
 	})
 }
 
-// SendTaskUpdate sends an update to all streams for a specific task
-// and also sends a push notification if configured
-func (srv *A2A) SendTaskUpdate(taskID string, update interface{}) {
+/*
+SendTaskUpdate delivers updates to all connected clients for a specific task
+and triggers push notifications when appropriate. It handles concurrent access
+to streams safely using a read lock.
+*/
+func (srv *A2A) SendTaskUpdate(taskID string, update any) {
 	// Send SSE update
 	srv.streamMutex.RLock()
 	streams, exists := srv.streams[taskID]
@@ -252,7 +295,7 @@ func (srv *A2A) SendTaskUpdate(taskID string, update interface{}) {
 
 	// Send push notification if appropriate
 	// Check if the update contains a status
-	if statusUpdate, ok := update.(map[string]interface{}); ok {
+	if statusUpdate, ok := update.(map[string]any); ok {
 		if status, hasStatus := statusUpdate["status"]; hasStatus {
 			if typedStatus, ok := status.(task.TaskStatus); ok && srv.card.Capabilities.PushNotifications {
 				srv.notificationMgr.SendTaskStatusUpdate(
@@ -268,6 +311,10 @@ func (srv *A2A) SendTaskUpdate(taskID string, update interface{}) {
 	}
 }
 
+/*
+Listen starts the A2A service on the specified address, registering all routes
+and configuring TLS using the certificate manager.
+*/
 func (srv *A2A) Listen(addr string) error {
 	// Register routes before starting the server
 	srv.RegisterRoutes()
@@ -277,7 +324,10 @@ func (srv *A2A) Listen(addr string) error {
 	})
 }
 
-// Add a helper function to convert TaskRequestError to JSONRPCError
+/*
+convertToJSONRPCError transforms a TaskRequestError into a JSONRPCError for
+consistent error handling across the API.
+*/
 func convertToJSONRPCError(err *task.TaskRequestError) *types.JSONRPCError {
 	return &types.JSONRPCError{
 		Code:    err.Code,

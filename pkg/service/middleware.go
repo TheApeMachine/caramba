@@ -1,3 +1,8 @@
+/*
+Package service provides middleware components for the application, including
+authentication, rate limiting, logging, and error handling.
+*/
+
 package service
 
 import (
@@ -17,15 +22,34 @@ import (
 	"github.com/theapemachine/caramba/pkg/service/types"
 )
 
+/*
+Middleware manages the application's HTTP middleware stack, providing a centralized
+way to configure and apply middleware components like authentication, logging,
+and error handling.
+
+Example:
+
+	app := fiber.New()
+	middleware := NewMiddleware(app)
+	middleware.Register()
+*/
 type Middleware struct {
 	app *fiber.App
 }
 
+/*
+NewMiddleware creates a new middleware manager for the given Fiber application.
+*/
 func NewMiddleware(app *fiber.App) *Middleware {
 	return &Middleware{app: app}
 }
 
-func (middleware *Middleware) Register() { // Request ID for tracing requests
+/*
+Register applies all middleware components to the Fiber application in the correct
+order. This includes request ID generation, logging, error recovery, compression,
+rate limiting, and authentication.
+*/
+func (middleware *Middleware) Register() {
 	middleware.app.Use(requestid.New())
 
 	middleware.app.Use(logger.New(logger.Config{
@@ -36,7 +60,7 @@ func (middleware *Middleware) Register() { // Request ID for tracing requests
 
 	middleware.app.Use(recover.New(recover.Config{
 		EnableStackTrace: true,
-		StackTraceHandler: func(c fiber.Ctx, e interface{}) {
+		StackTraceHandler: func(c fiber.Ctx, e any) {
 			// Log the error with our error system
 			err := errnie.New(
 				errnie.WithMessage(fmt.Sprintf("Panic recovered: %v", e)),

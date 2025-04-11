@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 
-	"github.com/theapemachine/caramba/pkg/service/types"
 	"github.com/theapemachine/caramba/pkg/task"
 )
 
@@ -13,41 +12,34 @@ type taskGetPushNotificationParams struct {
 }
 
 // HandleTaskGetPushNotification implements the logic for the task.getPushNotification A2A method.
-func HandleTaskGetPushNotification(store task.TaskStore, params json.RawMessage) (interface{}, *task.TaskRequestError) {
+func HandleTaskGetPushNotification(store task.TaskStore, params json.RawMessage) (any, *task.TaskRequestError) {
+	methodName := "tasks/pushNotification/get"
 	var getParams taskGetPushNotificationParams
-	if err := types.SimdUnmarshalJSON(params, &getParams); err != nil {
-		return nil, &task.TaskRequestError{
-			Code:    -32602, // Invalid params
-			Message: "Invalid params for task.getPushNotification",
-			Data:    err.Error(),
-		}
+	if taskErr := parseAndValidateParams(params, &getParams, methodName); taskErr != nil {
+		return nil, taskErr
 	}
 
-	if getParams.TaskID == "" {
-		return nil, &task.TaskRequestError{
-			Code:    -32602, // Invalid params
-			Message: "Invalid params for task.getPushNotification",
-			Data:    "Missing required parameter: task_id",
+	// Retrieve the task using helper (handles missing ID and not found)
+	// Similar issue as setPushNotification with task_id vs id. Passing TaskID from struct.
+	t, taskErr := getTaskByID(store, getParams.TaskID, methodName)
+	if taskErr != nil {
+		// Check if it's specifically a missing param error to match original logic
+		if getParams.TaskID == "" {
+			return nil, task.NewMissingParamError(methodName, "task_id") // Report the A2A expected param name
 		}
+		return nil, taskErr // Return the Task Not Found error from getTaskByID
 	}
 
-	// Retrieve the task
-	t, err := store.GetTask(getParams.TaskID)
-	if err != nil {
-		return nil, &task.TaskRequestError{
-			Code:    -32001,           // Task not found
-			Message: "Task not found", // Simplified message
-			Data:    err.Error(),
-		}
+	// Check agent capabilities using the helper
+	if capabilityErr := checkAgentCapability("PushNotifications", methodName); capabilityErr != nil {
+		return nil, capabilityErr
 	}
-
-	// TODO: Check agent capabilities here. If !srv.card.Capabilities.PushNotifications, return error -32003
 
 	// Retrieve the push notification config from the task's metadata
 	config, ok := t.Metadata["pushNotificationConfig"]
 	if !ok || config == nil {
 		// If no config is found, return null as per A2A spec
-		var result interface{} = nil
+		var result any = nil
 		return result, nil
 	}
 

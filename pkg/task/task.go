@@ -67,35 +67,34 @@ type TaskSendParams struct {
 	Metadata         map[string]any   `json:"metadata"`
 }
 
-type TaskState int
+// TaskState represents the various states a task can be in.
+type TaskState string
 
+// Constants defining the possible task states according to the A2A specification.
 const (
-	TaskStateSubmitted TaskState = iota
-	TaskStateWorking
-	TaskStateInputRequired
-	TaskStateCompleted
-	TaskStateCanceled
-	TaskStateFailed
-	TaskStateUnknown
+	TaskStateUnknown   TaskState = ""          // Default/unset state
+	TaskStatePending   TaskState = "pending"   // Task created but not yet processed
+	TaskStateWorking   TaskState = "working"   // Task is actively being processed
+	TaskStateCompleted TaskState = "completed" // Task finished successfully
+	TaskStateFailed    TaskState = "failed"    // Task execution failed
+	TaskStateCanceled  TaskState = "canceled"  // Task was canceled by request
 )
 
-func (state TaskState) String() string {
-	return []string{
-		"submitted",
-		"working",
-		"input-required",
-		"completed",
-		"canceled",
-		"failed",
-		"unknown",
-	}[state]
+// String returns the string representation of the TaskState.
+func (s TaskState) String() string {
+	return string(s)
+}
+
+// IsFinal checks if the task state is a terminal state (completed, failed, or canceled).
+func (s TaskState) IsFinal() bool {
+	return s == TaskStateCompleted || s == TaskStateFailed || s == TaskStateCanceled
 }
 
 type TaskRequest struct {
-	TaskID           string                 `json:"taskId"`
-	Artifact         Artifact               `json:"artifact"`
-	PushNotification PushNotification       `json:"pushNotification"`
-	Metadata         map[string]interface{} `json:"metadata"`
+	TaskID           string           `json:"taskId"`
+	Artifact         Artifact         `json:"artifact"`
+	PushNotification PushNotification `json:"pushNotification"`
+	Metadata         map[string]any   `json:"metadata"`
 }
 
 type TaskRequestError struct {

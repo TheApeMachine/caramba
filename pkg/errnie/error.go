@@ -211,7 +211,7 @@ type ErrnieError struct {
 	status      ErrnieStatusType
 	stack       string
 	level       sentry.Level
-	context     map[string]interface{}
+	context     map[string]any
 	breadcrumbs []sentry.Breadcrumb
 	transaction string
 	fingerprint []string
@@ -376,7 +376,7 @@ func New(options ...ErrnieErrorOption) *ErrnieError {
 		messages:    make([]string, 0),
 		status:      InternalServerErrorStatus,
 		level:       sentry.LevelError,
-		context:     make(map[string]interface{}),
+		context:     make(map[string]any),
 		breadcrumbs: make([]sentry.Breadcrumb, 0),
 		fingerprint: make([]string, 0),
 	}
@@ -595,7 +595,7 @@ Example:
 		return Wrap(err, "failed to do something: %v", err)
 	}
 */
-func Wrap(err error, msg string, args ...interface{}) *ErrnieError {
+func Wrap(err error, msg string, args ...any) *ErrnieError {
 	if err == nil {
 		return nil
 	}
@@ -619,7 +619,7 @@ func WithLevel(level sentry.Level) ErrnieErrorOption {
 /*
 WithContext adds context information to the error
 */
-func WithContext(key string, value interface{}) ErrnieErrorOption {
+func WithContext(key string, value any) ErrnieErrorOption {
 	return func(e *ErrnieError) {
 		e.context[key] = value
 	}
@@ -628,7 +628,7 @@ func WithContext(key string, value interface{}) ErrnieErrorOption {
 /*
 WithBreadcrumb adds a breadcrumb to track error history
 */
-func WithBreadcrumb(category, message string, data map[string]interface{}) ErrnieErrorOption {
+func WithBreadcrumb(category, message string, data map[string]any) ErrnieErrorOption {
 	return func(e *ErrnieError) {
 		e.breadcrumbs = append(e.breadcrumbs, sentry.Breadcrumb{
 			Category: category,
@@ -721,7 +721,7 @@ func (e *ErrnieError) Retry(operation func() error) error {
 			Category: "retry",
 			Message:  fmt.Sprintf("Retry attempt %d/%d", e.attempts, e.retryPolicy.MaxAttempts),
 			Level:    e.level,
-			Data: map[string]interface{}{
+			Data: map[string]any{
 				"delay": delay.String(),
 			},
 		})

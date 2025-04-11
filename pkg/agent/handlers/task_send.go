@@ -10,7 +10,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/service/types"
 	"github.com/theapemachine/caramba/pkg/task"
 	"github.com/theapemachine/caramba/pkg/tools"
 )
@@ -18,7 +17,7 @@ import (
 // StreamUpdateSender defines the interface required to send updates.
 // Duplicated here to avoid import cycle. Consider moving to a shared package.
 type StreamUpdateSender interface {
-	SendTaskUpdate(taskID string, update interface{})
+	SendTaskUpdate(taskID string, update any)
 }
 
 // streamProcessingResult holds the accumulated data from the LLM stream.
@@ -47,15 +46,19 @@ func HandleTaskSend(
 	toolRegistry *tools.Registry,
 	updater StreamUpdateSender, // Use the interface
 	params json.RawMessage,
-) (interface{}, *task.TaskRequestError) {
+) (any, *task.TaskRequestError) {
 
 	// --- Parameter Parsing ---
+	methodName := "tasks/send"
 	var sendParams taskSendParams
-	if err := types.SimdUnmarshalJSON(params, &sendParams); err != nil {
-		return nil, &task.TaskRequestError{Code: -32602, Message: "Invalid params for task.send", Data: err.Error()}
+	// Use the helper function for parsing
+	if taskErr := parseAndValidateParams(params, &sendParams, methodName); taskErr != nil {
+		return nil, taskErr // Returns InvalidParamsError
 	}
+
+	// Explicitly check for missing ID after parsing
 	if sendParams.ID == "" { // Check ID instead of TaskID
-		return nil, &task.TaskRequestError{Code: -32602, Message: "Invalid params for task.send", Data: "Missing required parameter: id"}
+		return nil, task.NewMissingParamError(methodName, "id")
 	}
 
 	// --- Task Retrieval & Initial Update ---
@@ -108,7 +111,7 @@ func HandleTaskSend(
 		Timestamp: t.Status.Timestamp, // Use timestamp from initial update
 		Message:   sendParams.Message,
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"status": initialConfirmationStatus,
 	}, nil
 }
@@ -145,12 +148,8 @@ func retrieveAndPrepareTask(store task.TaskStore, sendParams taskSendParams) (*t
 // prepareLLMParams sets up the parameters for the initial streaming LLM call.
 // Added historyLength argument.
 func prepareLLMParams(t *task.Task, toolRegistry *tools.Registry, historyLength *int) (provider.ProviderParams, error) {
-	// Determine history to use
-	historyForLLM := t.History
-	if historyLength != nil && *historyLength > 0 && len(t.History) > *historyLength {
-		startIndex := len(t.History) - *historyLength
-		historyForLLM = t.History[startIndex:]
-	}
+	// Determine history to use using the helper function
+	historyForLLM := getHistorySlice(t.History, historyLength)
 
 	// Convert potentially truncated history for the provider
 	providerMessages := convertA2AMessagesToProviderMessages(historyForLLM)
@@ -548,12 +547,9 @@ func updateFinalTaskStatus(store task.TaskStore, t *task.Task, finalMessage task
 		Timestamp: time.Now().Format(time.RFC3339),
 		Message:   finalMessage, // Store final message in status
 	}
-	if err := store.UpdateTask(t); err != nil {
-		errnie.Error("Failed to update task with final status", "error", err, "taskID", t.ID)
-		// Log error, but the state (potentially Failed) and message are already set.
-		// We could potentially revert the state or add another message part, but
-		// it might be confusing. The SSE update will reflect the state before the failed save.
-	}
+	// Use helper to update the task, logging any error internally
+	_ = updateTaskInStore(store, t, "task.send/updateFinalTaskStatus") // Ignoring the error here as the original code did.
+	// The helper already logs the error.
 }
 
 // updateTaskToFailed updates the task status to failed in the store.
@@ -567,9 +563,9 @@ func updateTaskToFailed(store task.TaskStore, t *task.Task, message string, err 
 	// Append or replace the status message? Replacing for clarity of final error.
 	t.Status.Message = task.Message{Role: task.MessageRoleAgent, Parts: []task.MessagePart{task.TextPart{Type: "text", Text: "ERROR: " + errorMsg}}}
 
-	if updateErr := store.UpdateTask(t); updateErr != nil {
-		errnie.Error("Failed to update task status to failed in store", "error", updateErr, "taskID", t.ID)
-	}
+	// Use helper to update the task, logging any error internally
+	_ = updateTaskInStore(store, t, "task.send/updateTaskToFailed") // Ignoring the error here as the original code did.
+	// The helper already logs the error.
 }
 
 // sendFinalStatusUpdate sends the final task status via SSE.

@@ -224,7 +224,7 @@ func (prvdr *DeepseekProvider) buildTools(
 	toolList := make([]deepseek.Tool, 0, len(tools))
 
 	for _, tool := range tools {
-		properties := make(map[string]interface{})
+		properties := make(map[string]any)
 
 		for name, prop := range tool.InputSchema.Properties {
 			properties[name] = prop

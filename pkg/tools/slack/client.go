@@ -30,10 +30,10 @@ func NewClient() *Client {
 }
 
 func (client *Client) Generate(
-	buffer chan map[string]interface{},
-	fn ...func(artifact map[string]interface{}) map[string]interface{},
-) chan map[string]interface{} {
-	out := make(chan map[string]interface{})
+	buffer chan map[string]any,
+	fn ...func(artifact map[string]any) map[string]any,
+) chan map[string]any {
+	out := make(chan map[string]any)
 
 	go func() {
 		defer close(out)

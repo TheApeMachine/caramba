@@ -157,8 +157,8 @@ func (prvdr *GoogleProvider) handleSingleRequest(
 
 		tc := mcp.CallToolRequest{
 			Params: struct {
-				Name      string                 `json:"name"`
-				Arguments map[string]interface{} `json:"arguments,omitempty"`
+				Name      string         `json:"name"`
+				Arguments map[string]any `json:"arguments,omitempty"`
 				Meta      *struct {
 					ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
 				} `json:"_meta,omitempty"`
@@ -221,8 +221,8 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 
 				tc := mcp.CallToolRequest{
 					Params: struct {
-						Name      string                 `json:"name"`
-						Arguments map[string]interface{} `json:"arguments,omitempty"`
+						Name      string         `json:"name"`
+						Arguments map[string]any `json:"arguments,omitempty"`
 						Meta      *struct {
 							ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
 						} `json:"_meta,omitempty"`
@@ -327,7 +327,7 @@ func (prvdr *GoogleProvider) buildTools(
 			}
 
 			for propName, propValue := range properties {
-				propMap, ok := propValue.(map[string]interface{})
+				propMap, ok := propValue.(map[string]any)
 				if !ok {
 					continue
 				}

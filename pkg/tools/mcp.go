@@ -74,19 +74,6 @@ func NewMCP() *MCP {
 	}
 }
 
-func (m *MCP) Generate(
-	buffer chan map[string]interface{},
-	fn ...func(artifact map[string]interface{}) map[string]interface{},
-) chan map[string]interface{} {
-	out := make(chan map[string]interface{})
-
-	go func() {
-		defer close(out)
-	}()
-
-	return out
-}
-
 /*
 CallTool calls a tool via the MCP client.
 */

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/theapemachine/caramba/pkg/service/types"
 	"github.com/theapemachine/caramba/pkg/task"
 )
 
@@ -17,43 +16,22 @@ type taskCancelParams struct {
 }
 
 // HandleTaskCancel implements the logic for the task.cancel A2A method.
-func HandleTaskCancel(store task.TaskStore, params json.RawMessage) (interface{}, *task.TaskRequestError) {
+func HandleTaskCancel(store task.TaskStore, params json.RawMessage) (any, *task.TaskRequestError) {
+	methodName := "tasks/cancel"
 	var cancelParams taskCancelParams
-	if err := types.SimdUnmarshalJSON(params, &cancelParams); err != nil {
-		return nil, &task.TaskRequestError{
-			Code:    -32602, // Invalid params
-			Message: "Invalid params for task.cancel",
-			Data:    err.Error(),
-		}
+	if taskErr := parseAndValidateParams(params, &cancelParams, methodName); taskErr != nil {
+		return nil, taskErr
 	}
 
-	if cancelParams.ID == "" { // Check ID
-		return nil, &task.TaskRequestError{
-			Code:    -32602, // Invalid params
-			Message: "Invalid params for task.cancel",
-			Data:    "Missing required parameter: id", // Use id
-		}
-	}
-
-	// Retrieve task from store
-	t, err := store.GetTask(cancelParams.ID) // Use ID
-	if err != nil {
-		// Handle potential store errors (e.g., not found)
-		// Use A2A specific error code
-		return nil, &task.TaskRequestError{
-			Code:    -32001, // Task not found
-			Message: "Task not found",
-			Data:    fmt.Sprintf("Task with ID '%s' not found or error retrieving: %s", cancelParams.ID, err.Error()),
-		}
+	// Retrieve task using helper (also handles missing ID)
+	t, taskErr := getTaskByID(store, cancelParams.ID, methodName)
+	if taskErr != nil {
+		return nil, taskErr
 	}
 
 	// Check if task is already in a final state (cannot be cancelled)
-	if t.Status.State == task.TaskStateCompleted || t.Status.State == task.TaskStateCanceled || t.Status.State == task.TaskStateFailed {
-		return nil, &task.TaskRequestError{
-			Code:    -32002, // Task cannot be cancelled
-			Message: "Task cannot be canceled",
-			Data:    fmt.Sprintf("Task '%s' is already in a final state ('%s')", cancelParams.ID, t.Status.State.String()), // Assuming TaskState has String() method
-		}
+	if t.Status.State.IsFinal() { // Use IsFinal() method
+		return nil, task.NewTaskCannotBeCanceledError(cancelParams.ID, t.Status.State)
 	}
 
 	// Update task status to Canceled
@@ -64,25 +42,22 @@ func HandleTaskCancel(store task.TaskStore, params json.RawMessage) (interface{}
 		// Message: task.Message{ Role: task.MessageRoleAgent, Parts: []task.MessagePart{task.TextPart{Type: "text", Text: "Task canceled by request"}} },
 	}
 
-	// Update the task in the store
-	if err := store.UpdateTask(t); err != nil {
-		return nil, &task.TaskRequestError{
-			Code:    -32000, // Example: Application-specific error code (Could refine later)
-			Message: "Failed to update task status to canceled in store",
-			Data:    err.Error(),
-		}
+	// Update the task in the store using helper
+	if taskErr := updateTaskInStore(store, t, methodName); taskErr != nil {
+		return nil, taskErr
 	}
 
 	// Log if metadata was provided (optional)
 	if len(cancelParams.Metadata) > 0 {
-		fmt.Printf("INFO: task.cancel called for task %s with metadata: %v\n", cancelParams.ID, cancelParams.Metadata)
+		// Consider using errnie for logging if available/preferred
+		fmt.Printf("INFO: %s called for task %s with metadata: %v\n", methodName, cancelParams.ID, cancelParams.Metadata)
 	}
 
 	// TODO: Perform actual cancellation logic (e.g., stop background processes)
 	fmt.Printf("TODO: Perform cancellation for task %s\n", cancelParams.ID)
 
 	// TODO: Send SSE update via the A2A service instance if needed
-	// Example: srv.SendTaskUpdate(cancelParams.ID, map[string]interface{}{"status": t.Status})
+	// Example: srv.SendTaskUpdate(cancelParams.ID, map[string]any{ "status": t.Status })
 
 	// Return true on successful cancellation as per A2A spec
 	return true, nil

@@ -92,7 +92,7 @@ func callBrowserTool(url string) (string, error) {
     // Prepare MCP request (simplified example)
     mcpReq := mcp.CallToolRequest{
         ToolName: toolName,
-        Parameters: map[string]interface{}{
+        Parameters: map[string]any{
             "url": url,
             // Other browser params like "javascript", etc.
         },
