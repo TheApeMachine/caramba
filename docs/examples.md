@@ -1,224 +1,372 @@
 # Examples
 
-## Basic AI Agent
+This section provides practical examples of how to interact with a running Caramba agent using the A2A protocol from a Go application. These examples assume Caramba is running and accessible at `http://localhost:8080`.
 
-Create a simple AI agent that can interact with various tools:
+**Note:** These examples focus on the client-side interaction using Go's `net/http` package to send JSON-RPC requests. They replace the previous examples that used outdated internal Caramba patterns.
+
+## Core Interaction Pattern
+
+The basic flow for interacting with a Caramba agent via A2A involves:
+
+1. **`TaskCreate`:** Send a request to the `/rpc` endpoint with method `TaskCreate` to initialize a task and get a unique `task_id`.
+2. **`TaskSend`:** Send a subsequent request to `/rpc` with method `TaskSend`, providing the `task_id` and the actual user message/prompt.
+3. **(Optional) Subscribe to Stream:** Connect to the `/task/:id/stream` endpoint using an SSE client to receive real-time updates.
+4. **Process Response:** Handle the initial JSON-RPC response from `TaskSend` (confirming acceptance) and process the events received on the stream (or wait for a final status notification if not streaming).
+
+## Example 1: Simple Question
+
+Let's ask the agent a basic question.
 
 ```go
 package main
 
 import (
-    "context"
+    "bytes"
+    "encoding/json"
     "fmt"
     "io"
-    "os"
+    "log"
+    "net/http"
+    "time"
+)
 
-    "github.com/theapemachine/caramba/pkg/ai"
-    "github.com/theapemachine/caramba/pkg/core"
-    "github.com/theapemachine/caramba/pkg/datura"
-    "github.com/theapemachine/caramba/pkg/errnie"
-    "github.com/theapemachine/caramba/pkg/provider"
-    "github.com/theapemachine/caramba/pkg/tools"
+const (
+    carambaURL = "http://localhost:8080" // Adjust if your agent runs elsewhere
+    rpcPath    = "/rpc"
+)
+
+// Define basic JSON-RPC request/response structures
+type JsonRpcRequest struct {
+    JsonRpc string      `json:"jsonrpc"`
+    Method  string      `json:"method"`
+    Params  interface{} `json:"params"`
+    ID      string      `json:"id"`
+}
+
+type JsonRpcResponse struct {
+    JsonRpc string      `json:"jsonrpc"`
+    Result  interface{} `json:"result,omitempty"`
+    Error   interface{} `json:"error,omitempty"`
+    ID      string      `json:"id"`
+}
+
+// Define A2A specific parameter structures
+type TaskCreateParams struct {
+    TaskID       string      `json:"task_id"`
+    Input        interface{} `json:"input,omitempty"` // Define detailed Input struct if needed
+    AgentCardURL string      `json:"agent_card_url,omitempty"`
+}
+
+type MessagePart struct {
+    Type string `json:"type"`
+    Text string `json:"text"`
+}
+
+type Message struct {
+    RequestID string        `json:"request_id,omitempty"`
+    Role      string        `json:"role"`
+    Parts     []MessagePart `json:"parts"`
+    Metadata  interface{}   `json:"metadata,omitempty"`
+}
+
+type TaskSendParams struct {
+    TaskID    string  `json:"task_id"`
+    Message   Message `json:"message"`
+    Subscribe bool    `json:"subscribe"`
+}
+
+// Helper to send JSON-RPC requests
+func sendRpcRequest(url, method string, params interface{}, id string) (*JsonRpcResponse, error) {
+    reqBody := JsonRpcRequest{
+        JsonRpc: "2.0",
+        Method:  method,
+        Params:  params,
+        ID:      id,
+    }
+
+    jsonData, err := json.Marshal(reqBody)
+    if err != nil {
+        return nil, fmt.Errorf("failed to marshal request: %w", err)
+    }
+
+    httpResp, err := http.Post(url+rpcPath, "application/json", bytes.NewBuffer(jsonData))
+    if err != nil {
+        return nil, fmt.Errorf("http post failed: %w", err)
+    }
+    defer httpResp.Body.Close()
+
+    if httpResp.StatusCode != http.StatusOK {
+        bodyBytes, _ := io.ReadAll(httpResp.Body)
+        return nil, fmt.Errorf("http request failed: status=%d, body=%s", httpResp.StatusCode, string(bodyBytes))
+    }
+
+    var respBody JsonRpcResponse
+    if err := json.NewDecoder(httpResp.Body).Decode(&respBody); err != nil {
+        return nil, fmt.Errorf("failed to decode response: %w", err)
+    }
+
+    if respBody.Error != nil {
+        log.Printf("RPC Error received: %+v", respBody.Error)
+        // Return the response containing the error, let caller handle it
+        return &respBody, nil
+    }
+
+    return &respBody, nil
+}
+
+func main() {
+    taskID := fmt.Sprintf("go-client-task-%d", time.Now().UnixNano())
+    requestIDBase := fmt.Sprintf("go-client-req-%d", time.Now().UnixNano())
+
+    // 1. Create the Task
+    log.Printf("Creating task: %s\n", taskID)
+    taskCreateParams := TaskCreateParams{
+        TaskID: taskID,
+        // Input can be minimal here if the main prompt is in TaskSend
+    }
+    createResp, err := sendRpcRequest(carambaURL, "TaskCreate", taskCreateParams, requestIDBase+"-create")
+    if err != nil {
+        log.Fatalf("TaskCreate failed: %v", err)
+    }
+    if createResp.Error != nil {
+        log.Fatalf("TaskCreate RPC error: %+v", createResp.Error)
+    }
+    log.Printf("TaskCreate Result: %+v\n", createResp.Result)
+
+    // --- Optional: Start SSE listener here in a goroutine ---
+    // See Example 3 for SSE handling
+
+    // 2. Send the Message
+    log.Printf("Sending message to task: %s\n", taskID)
+    userMessage := Message{
+        Role: "user",
+        Parts: []MessagePart{
+            {Type: "text", Text: "What is the population of Tokyo?"},
+        },
+        RequestID: requestIDBase + "-send-1",
+    }
+    taskSendParams := TaskSendParams{
+        TaskID:    taskID,
+        Message:   userMessage,
+        Subscribe: true, // Request streaming updates
+    }
+    sendResp, err := sendRpcRequest(carambaURL, "TaskSend", taskSendParams, requestIDBase+"-send")
+    if err != nil {
+        log.Fatalf("TaskSend failed: %v", err)
+    }
+    if sendResp.Error != nil {
+        log.Fatalf("TaskSend RPC error: %+v", sendResp.Error)
+    }
+    log.Printf("TaskSend initial result: %+v\n", sendResp.Result)
+
+    // Since we requested subscribe: true, the actual answer will arrive
+    // via the SSE stream or a final notification.
+    // Without an SSE listener, this example only shows the initial setup.
+    log.Println("Task initiated. Listen on SSE stream for the full response.")
+
+    // Keep main running for a bit if you have an SSE listener in a goroutine
+    // time.Sleep(30 * time.Second)
+}
+```
+
+## Example 2: Using a Tool (Web Research)
+
+This example asks the agent to research a topic, which likely requires the `Browser` tool.
+
+```go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "log"
+    "net/http"
+    "time"
+)
+
+const (
+    carambaURL = "http://localhost:8080"
+    rpcPath    = "/rpc"
 )
 
 func main() {
-    // Create context for cancellation
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
+    taskID := fmt.Sprintf("go-research-task-%d", time.Now().UnixNano())
+    requestIDBase := fmt.Sprintf("go-research-req-%d", time.Now().UnixNano())
 
-    // Initialize agent
-    agent := ai.NewAgentBuilder(
-        ai.WithCancel(ctx),
-        ai.WithIdentity("assistant", "helper"),
-        ai.WithProvider(provider.ProviderTypeOpenAI),
-        ai.WithParams(ai.NewParamsBuilder(
-            ai.WithModel("gpt-4o"),
-            ai.WithTemperature(0.7),
-        )),
-        ai.WithContext(ai.NewContextBuilder(
-            ai.WithMessages(
-                ai.NewMessageBuilder(
-                    ai.WithRole("user"),
-                    ai.WithContent("Hello, what can you help me with?"),
-                ),
-            ),
-        )),
-    )
+    // 1. Create Task
+    log.Printf("Creating task: %s\n", taskID)
+    taskCreateParams := TaskCreateParams{ TaskID: taskID }
+    createResp, err := sendRpcRequest(carambaURL, "TaskCreate", taskCreateParams, requestIDBase+"-create")
+    if err != nil || createResp.Error != nil {
+        log.Fatalf("TaskCreate failed. Err: %v, RPC Err: %+v", err, createResp.Error)
+    }
+    log.Printf("TaskCreate Result: %+v\n", createResp.Result)
 
-    // Create streamer to handle communication
-    streamer := core.NewStreamer(agent)
+    // 2. Send Research Request
+    log.Printf("Sending research request to task: %s\n", taskID)
+    userMessage := Message{
+        Role: "user",
+        Parts: []MessagePart{
+            {Type: "text", Text: "What are the main features of the Go programming language? Use web search if needed."},
+        },
+        RequestID: requestIDBase + "-send-1",
+    }
+    taskSendParams := TaskSendParams{
+        TaskID:    taskID,
+        Message:   userMessage,
+        Subscribe: true,
+    }
+    sendResp, err := sendRpcRequest(carambaURL, "TaskSend", taskSendParams, requestIDBase+"-send")
+    if err != nil || sendResp.Error != nil {
+        log.Fatalf("TaskSend failed. Err: %v, RPC Err: %+v", err, sendResp.Error)
+    }
+    log.Printf("TaskSend initial result: %+v\n", sendResp.Result)
 
-    // Create artifact with initial message
-    artifact := datura.New(
-        datura.WithEncryptedPayload([]byte("Hello, can you help me with a task?")),
-    )
+    log.Println("Research task initiated. Listen on SSE stream for progress and results (including potential tool calls).")
 
-    // Process through streamer and display response
-    if _, err := io.Copy(streamer, artifact); err != nil {
-        errnie.Error(err)
+    // Add SSE listener (like in Example 3) to see the full interaction
+}
+```
+
+## Example 3: Handling SSE Stream
+
+This example shows how to connect to the SSE stream for a task and process events.
+
+```go
+package main
+
+import (
+    "bufio"
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "log"
+    "net/http"
+    "strings"
+    "time"
+)
+
+const (
+    carambaURL = "http://localhost:8080"
+    rpcPath    = "/rpc"
+    streamPath = "/task/%s/stream"
+)
+
+// Function to listen to SSE stream
+func listenToSSE(taskID string) {
+    streamURL := fmt.Sprintf(carambaURL+streamPath, taskID)
+    log.Printf("Connecting to SSE stream: %s\n", streamURL)
+
+    req, err := http.NewRequest("GET", streamURL, nil)
+    if err != nil {
+        log.Printf("Error creating SSE request: %v", err)
+        return
+    }
+    req.Header.Set("Accept", "text/event-stream")
+    req.Header.Set("Cache-Control", "no-cache")
+    req.Header.Set("Connection", "keep-alive")
+
+    client := &http.Client{Timeout: 0} // No timeout for long-lived connection
+    resp, err := client.Do(req)
+    if err != nil {
+        log.Printf("Error connecting to SSE stream: %v", err)
+        return
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        log.Printf("SSE connection failed with status: %s", resp.Status)
         return
     }
 
-    // Output response
-    if _, err := io.Copy(os.Stdout, streamer); err != nil {
-        errnie.Error(err)
+    log.Println("SSE connection established. Reading events...")
+    reader := bufio.NewReader(resp.Body)
+    var eventType, eventData string
+
+    for {
+        line, err := reader.ReadString('\n')
+        if err != nil {
+            if err == io.EOF {
+                log.Println("SSE stream closed by server.")
+            } else {
+                log.Printf("Error reading SSE stream: %v", err)
+            }
+            return // Exit loop on error or EOF
+        }
+
+        line = strings.TrimSpace(line)
+
+        if strings.HasPrefix(line, "event:") {
+            eventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+        } else if strings.HasPrefix(line, "data:") {
+            // Accumulate data if it spans multiple lines (though usually not needed for simple JSON)
+            eventData += strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+        } else if line == "" {
+            // Empty line signifies end of event
+            if eventType != "" || eventData != "" {
+                log.Printf("--- SSE Event ---")
+                log.Printf("  Type: %s\n", eventType)
+                log.Printf("  Data: %s\n", eventData)
+                log.Printf("-----------------")
+                // TODO: Parse eventData JSON based on eventType for more structured handling
+            }
+            // Reset for next event
+            eventType = ""
+            eventData = ""
+        }
+        // Ignore other lines (like comments starting with ":")
     }
 }
-```
 
-## Web Research Agent
+func main() {
+    taskID := fmt.Sprintf("go-sse-task-%d", time.Now().UnixNano())
+    requestIDBase := fmt.Sprintf("go-sse-req-%d", time.Now().UnixNano())
 
-Create an agent that can browse the web and process information:
+    // 1. Create Task
+    log.Printf("Creating task: %s\n", taskID)
+    taskCreateParams := TaskCreateParams{ TaskID: taskID }
+    createResp, err := sendRpcRequest(carambaURL, "TaskCreate", taskCreateParams, requestIDBase+"-create")
+    if err != nil || createResp.Error != nil {
+        log.Fatalf("TaskCreate failed. Err: %v, RPC Err: %+v", err, createResp.Error)
+    }
+    log.Printf("TaskCreate Result: %+v\n", createResp.Result)
 
-```go
-// Initialize agent with browser tool
-agent := ai.NewAgentBuilder(
-    ai.WithCancel(ctx),
-    ai.WithIdentity("researcher", "web-explorer"),
-    ai.WithProvider(provider.ProviderTypeOpenAI),
-    ai.WithParams(ai.NewParamsBuilder(
-        ai.WithModel("gpt-4o"),
-        ai.WithTemperature(0.5),
-    )),
-    ai.WithTools(
-        tools.NewToolBuilder(tools.WithMCP(tools.NewBrowser().Schema.ToMCP())),
-    ),
-    ai.WithContext(ai.NewContextBuilder(
-        ai.WithMessages(
-            ai.NewMessageBuilder(
-                ai.WithRole("user"),
-                ai.WithContent("Research the latest developments in AI and summarize them."),
-            ),
-        ),
-    )),
-)
+    // 2. Start SSE Listener in a Goroutine
+    go listenToSSE(taskID)
+    // Give the listener a moment to connect (optional)
+    time.Sleep(500 * time.Millisecond)
 
-// Create streamer
-streamer := core.NewStreamer(agent)
+    // 3. Send the Message
+    log.Printf("Sending message to task: %s\n", taskID)
+    userMessage := Message{
+        Role: "user",
+        Parts: []MessagePart{
+            {Type: "text", Text: "Tell me a joke about computers."},
+        },
+        RequestID: requestIDBase + "-send-1",
+    }
+    taskSendParams := TaskSendParams{
+        TaskID:    taskID,
+        Message:   userMessage,
+        Subscribe: true, // Crucial for getting SSE events
+    }
+    sendResp, err := sendRpcRequest(carambaURL, "TaskSend", taskSendParams, requestIDBase+"-send")
+    if err != nil || sendResp.Error != nil {
+        // Log fatal but allow SSE listener to potentially run longer
+        log.Printf("TaskSend failed. Err: %v, RPC Err: %+v", err, sendResp.Error)
+    } else {
+        log.Printf("TaskSend initial result: %+v\n", sendResp.Result)
+    }
 
-// Process request and get response
-io.Copy(streamer, datura.New())
-io.Copy(os.Stdout, streamer)
-```
+    log.Println("Task initiated. SSE listener is active.")
 
-## Memory-Enhanced Agent
-
-Create an agent with long-term memory capabilities:
-
-```go
-// Initialize agent with memory tools
-agent := ai.NewAgentBuilder(
-    ai.WithCancel(ctx),
-    ai.WithIdentity("memory-agent", "assistant"),
-    ai.WithProvider(provider.ProviderTypeOpenAI),
-    ai.WithParams(ai.NewParamsBuilder(
-        ai.WithModel("gpt-4o"),
-        ai.WithTemperature(0.7),
-    )),
-    ai.WithTools(
-        tools.NewToolBuilder(tools.WithMCP(tools.NewMemoryTool().Schema.ToMCP())),
-    ),
-    ai.WithContext(ai.NewContextBuilder(
-        ai.WithMessages(
-            ai.NewMessageBuilder(
-                ai.WithRole("user"),
-                ai.WithContent("What do you remember about our previous conversations?"),
-            ),
-        ),
-    )),
-)
-
-// Create streamer
-streamer := core.NewStreamer(agent)
-
-// Process request and get response
-io.Copy(streamer, datura.New())
-io.Copy(os.Stdout, streamer)
-```
-
-## System Interaction Agent
-
-Create an agent that can interact with the system environment:
-
-```go
-// Initialize agent with environment tools
-agent := ai.NewAgentBuilder(
-    ai.WithCancel(ctx),
-    ai.WithIdentity("system-agent", "admin"),
-    ai.WithProvider(provider.ProviderTypeOpenAI),
-    ai.WithParams(ai.NewParamsBuilder(
-        ai.WithModel("gpt-4o"),
-        ai.WithTemperature(0.3),
-    )),
-    ai.WithTools(
-        tools.NewToolBuilder(tools.WithMCP(tools.NewEnvironment().Schema.ToMCP())),
-        tools.NewToolBuilder(tools.WithMCP(tools.NewSystemInspectTool().Schema.ToMCP())),
-        tools.NewToolBuilder(tools.WithMCP(tools.NewSystemOptimizeTool().Schema.ToMCP())),
-    ),
-    ai.WithContext(ai.NewContextBuilder(
-        ai.WithMessages(
-            ai.NewMessageBuilder(
-                ai.WithRole("user"),
-                ai.WithContent("List all running Docker containers and their status."),
-            ),
-        ),
-    )),
-)
-
-// Create streamer
-streamer := core.NewStreamer(agent)
-
-// Process request and get response
-io.Copy(streamer, datura.New())
-io.Copy(os.Stdout, streamer)
-```
-
-## Multi-Provider Example
-
-Create an example that can switch between AI providers:
-
-```go
-// Function to create an agent with specified provider
-func createAgent(providerType provider.ProviderType, model string) *ai.AgentBuilder {
-    return ai.NewAgentBuilder(
-        ai.WithCancel(ctx),
-        ai.WithIdentity("agent", "assistant"),
-        ai.WithProvider(providerType),
-        ai.WithParams(ai.NewParamsBuilder(
-            ai.WithModel(model),
-            ai.WithTemperature(0.7),
-        )),
-        ai.WithContext(ai.NewContextBuilder(
-            ai.WithMessages(
-                ai.NewMessageBuilder(
-                    ai.WithRole("user"),
-                    ai.WithContent("Compare how different models handle this prompt."),
-                ),
-            ),
-        )),
-    )
+    // Keep the main function alive to allow the SSE listener to receive events
+    // In a real application, you might use channels or wait groups
+    // to manage the lifecycle based on SSE events (e.g., wait for a final event).
+    time.Sleep(60 * time.Second) // Keep alive for 60 seconds
+    log.Println("Example finished.")
 }
-
-// Create agents with different providers
-openaiAgent := createAgent(provider.ProviderTypeOpenAI, "gpt-4o")
-anthropicAgent := createAgent(provider.ProviderTypeAnthropic, "claude-3-opus-20240229")
-googleAgent := createAgent(provider.ProviderTypeGoogle, "gemini-pro")
-
-// Create streamers
-openaiStreamer := core.NewStreamer(openaiAgent)
-anthropicStreamer := core.NewStreamer(anthropicAgent)
-googleStreamer := core.NewStreamer(googleAgent)
-
-// Process with each provider
-io.Copy(openaiStreamer, datura.New())
-io.Copy(anthropicStreamer, datura.New())
-io.Copy(googleStreamer, datura.New())
-
-// Output results
-fmt.Println("OpenAI Response:")
-io.Copy(os.Stdout, openaiStreamer)
-fmt.Println("\nAnthropic Response:")
-io.Copy(os.Stdout, anthropicStreamer)
-fmt.Println("\nGoogle Response:")
-io.Copy(os.Stdout, googleStreamer)
 ```

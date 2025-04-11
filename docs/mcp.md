@@ -1,152 +1,166 @@
-# Model Context Protocol (MCP)
+# Model Context Protocol (MCP) in Caramba
 
-The Model Context Protocol (MCP) is a powerful feature in Caramba that provides a standardized interface for AI model interactions and tool management. It allows seamless integration between different components while maintaining a unified I/O approach.
+The Model Context Protocol (MCP) is a standard defining how AI models (like Claude, or Caramba's internal LLM interactions) can discover and interact with external tools. Caramba leverages MCP in two main ways:
 
-## Overview
+1. **Internal Tool Usage:** Caramba's agents use the MCP format to understand and request the execution of available tools (like `Browser`, `Memory`, `GitHub`, etc.) when interacting with LLM providers that support it.
+2. **External MCP Server (Optional):** Caramba can optionally run as an MCP server itself, exposing its registered tools to external MCP-compatible clients (e.g., the Claude console, other AI frameworks).
 
-MCP in Caramba runs as a service that supports both standard I/O and Server-Sent Events (SSE) communication methods. It provides:
+This document focuses on the tools Caramba provides and how they are exposed via MCP when Caramba runs as an MCP server.
 
-- Tool management and execution
-- Resource capabilities
-- Prompt handling
-- Bidirectional communication
+## Overview of Caramba as an MCP Server
 
-## Available Tools
+When configured to run as an MCP server, Caramba:
 
-The MCP service comes with several built-in tools:
+- Exposes a specific API endpoint (defined in configuration) that adheres to the MCP specification.
+- Allows MCP clients to request a list of available tools and their schemas (parameters, descriptions).
+- Accepts requests from clients to execute specific tools with given parameters.
+- Executes the tool logic internally (often using the `Generate` pattern with `datura.Artifact`).
+- Returns the tool execution results (or errors) to the client in the standard MCP format.
 
-1. **Memory Tool**
+## Available Tools via MCP
 
-   - Integrates with QDrant vector store
-   - Connects to Neo4j graph database
-   - Handles persistent memory operations
+When Caramba runs as an MCP server, the following built-in tools (from `pkg/tools/`) can typically be made available:
 
-2. **AI Agent**
+1. **Memory Tool (`memory_...`)**
 
-   - Manages AI model interactions
-   - Handles tool orchestration
+    - Operations: `memory_add`, `memory_query_vector`, `memory_query_graph`, etc.
+    - Integrates with configured QDrant (vector) and/or Neo4j (graph) instances.
+    - Handles persistent memory storage and retrieval.
 
-3. **Editor Tool**
+2. **Editor Tool (`editor_...`)**
 
-   - Provides file editing capabilities
-   - Manages code modifications
+    - Operations: `editor_read_file`, `editor_write_file`, `editor_apply_diff`, etc.
+    - Provides file system interaction capabilities.
+    - Manages reading, writing, and modifying files.
 
-4. **Github Tool**
+3. **GitHub Tool (`github_...`)**
 
-   - Handles GitHub integrations
-   - Manages repository operations
+    - Operations: `github_create_pr`, `github_get_issue`, `github_list_files`, etc.
+    - Handles integrations with GitHub repositories (requires PAT).
+    - Manages repository operations like pull requests, issues, file access.
 
-5. **Azure Tool**
+4. **Azure Tool (`azure_...`)**
 
-   - Integrates with Azure services
-   - Manages Azure DevOps operations
+    - Operations: `azure_create_work_item`, `azure_get_wiki_page`, etc.
+    - Integrates with Azure DevOps (requires PAT).
+    - Manages work items and wiki pages.
 
-6. **Trengo Tool**
+5. **Browser Tool (`browser_...`)**
 
-   - Handles Trengo-specific operations
+    - Operations: `browser_get_content`, `browser_navigate`, `browser_run_javascript`, etc.
+    - Provides web interaction capabilities via headless browsing.
+    - Handles page navigation, content extraction, and script execution.
 
-7. **Browser Tool**
+6. **Environment Tool (`environment_...`)**
 
-   - Provides web interaction capabilities
-   - Handles browser automation
+    - Operations: `environment_run_command`.
+    - Manages terminal command execution within a controlled environment.
 
-8. **Environment Tool**
-   - Manages terminal interactions
-   - Handles system operations
+7. **Slack Tool (`slack_...`)**
+
+    - Operations: `slack_post_message`, `slack_search_messages`, `slack_add_reaction`, etc.
+    - Integrates with Slack workspaces (requires Bot Token).
+
+8. **Trengo Tool (`trengo_...`)**
+    - Handles Trengo-specific operations (details depend on implementation).
+
+*(Note: The exact list of available tools and their specific MCP operation names depend on which tools are registered when the MCP service is started. The `AI Agent` mentioned previously is not an MCP tool itself, but rather the entity that *uses* these tools internaly).*
 
 ## Usage
 
-### Starting the MCP Server
+### Starting Caramba as an MCP Server
+
+The exact method depends on the current command-line interface or configuration structure. It might involve:
+
+- A specific command: e.g., `./caramba mcp-serve`
+- A flag: e.g., `./caramba --mode mcp`
+- A configuration setting in `config.yml`.
+
+Consult `./caramba --help` or the main application setup (`cmd/caramba/main.go` or similar) for the precise way to start the MCP server.
+
+**Conceptual Go Snippet (Illustrative):**
 
 ```go
-service := service.NewMCP()
-err := service.Start()
-```
+// This is a conceptual example of how the MCP service might be started internally.
+// You typically wouldn't write this code yourself, but run the compiled Caramba binary.
 
-### Server Configuration
+package main
 
-The MCP server is initialized with:
+import (
+ "log"
 
-- Server name: "caramba-server"
-- Version: "1.0.0"
-- Resource capabilities enabled
-- Prompt capabilities enabled
-- Tool capabilities enabled
-
-### SSE Configuration
-
-For SSE connections:
-
-- Base URL: [http://localhost:8080](http://localhost:8080)
-- Authentication: Handled through request headers
-
-## Tool Execution
-
-Tools in MCP follow a unified execution pattern:
-
-1. Tools implement the `stream.Generator` interface
-2. Data is passed through `datura.Artifact` objects with specific roles
-3. Results are returned in a standardized format
-
-Example tool execution flow:
-
-```go
-// Create an artifact with role and metadata
-artifact := datura.New(
-    datura.WithRole(role),
-    datura.WithMeta(key, value)
+ "github.com/theapemachine/caramba/pkg/service"
+ "github.com/theapemachine/caramba/pkg/tools"
+ // ... other necessary imports like config loaders ...
 )
 
-// Create input channel
-input := make(chan *datura.Artifact, 1)
-input <- artifact
-close(input)
+func main() {
+ // 1. Load Configuration (which tools to enable, API keys, server settings)
+ // ... config loading logic ...
 
-// Generate results using the tool
-output := tool.Generate(input)
+ // 2. Create Tool Registry and Register Enabled Tools
+ registry := tools.NewRegistry()
 
-// Get the result artifact
-result := <-output
+ // Example: Registering Browser and Memory tools if enabled in config
+ if config.Tools.Browser.Enabled {
+  registry.Register(tools.NewBrowser()) // Assuming NewBrowser returns the *MCP* tool wrapper
+ }
+ if config.Tools.Memory.Enabled {
+        // MemoryTool might require db clients configured from env/config
+        qdrantClient := memory.NewQdrant(/* config */)
+        neo4jClient := memory.NewNeo4j(/* config */)
+  registry.Register(tools.NewMemoryTool(qdrantClient, neo4jClient))
+ }
+ // ... register other configured tools (GitHub, Slack, etc.) ...
 
-// Extract and process the payload
-payload, err := result.DecryptPayload()
+ // 3. Create and Start the MCP Service
+ // The service needs the registry to know which tools to expose.
+ mcpService := service.NewMCP(registry) // Pass registry to the service
+
+ log.Println("Starting Caramba MCP Service...")
+ err := mcpService.Start() // This blocks or runs in the background, listening for MCP requests
+ if err != nil {
+  log.Fatalf("Failed to start MCP service: %v", err)
+ }
+
+    // Keep the application running if Start() doesn't block
+    // select{}
+}
 ```
+
+### MCP Server Configuration
+
+Key aspects usually configured (in `config.yml` or similar):
+
+- **Host/Port:** Where the MCP server listens (e.g., `localhost:8081`).
+- **Enabled Tools:** Which of the available tools should be exposed.
+- **Authentication:** How clients authenticate to the MCP server (if required).
+- **Resource Limits:** Potential limits on tool execution.
+
+### Tool Execution Flow (External Client Perspective)
+
+1. **Client:** Connects to Caramba's MCP endpoint.
+2. **Client:** (Optional) Requests the list of available tools (`mcp_GetTools`).
+3. **Caramba (MCP Server):** Returns the list of registered tools and their schemas.
+4. **Client:** Sends a request to execute a specific tool (`mcp_CallTool`) with parameters.
+5. **Caramba (MCP Server):**
+    - Receives the request.
+    - Finds the corresponding tool in its registry.
+    - Invokes the tool's internal logic (often the `Generate` method, passing parameters via a `datura.Artifact`).
+    - Waits for the tool's result artifact.
+    - Formats the result (or error) into an MCP `CallToolResult`.
+6. **Caramba (MCP Server):** Sends the `CallToolResult` back to the client.
+
+*(The internal use of `datura.Artifact` and `Generate` is abstracted away from the external MCP client, which only sees the standard MCP request/response format.)*
 
 ## Security
 
-- Authentication is handled through request headers
-- Context-based security model
-- Secure tool execution environment
+- **Authentication:** Secure your MCP endpoint appropriately if exposing it externally.
+- **Tool Permissions:** Consider fine-grained control over which clients can use which tools (though standard MCP has limited support for this).
+- **Resource Limits:** Protect the server from resource exhaustion due to intensive tool operations.
 
-## Error Handling
+## Best Practices for Integration
 
-The MCP service includes comprehensive error handling:
-
-- Tool execution errors are captured and returned
-- System-level errors are logged and managed
-- Debug-level logging available for troubleshooting
-
-## Best Practices
-
-1. Always check tool execution results
-2. Handle authentication properly
-3. Use appropriate artifact roles for different operations
-4. Implement proper error handling
-5. Monitor tool performance and resource usage
-
-## Integration
-
-To integrate with the MCP service:
-
-1. Connect to the appropriate endpoint (stdio or SSE)
-2. Authenticate if required
-3. Use the available tools through the standardized interface
-4. Handle responses appropriately
-
-## Future Enhancements
-
-The MCP system is designed to be extensible. New tools can be added by:
-
-1. Implementing the `stream.Generator` interface
-2. Creating appropriate schemas
-3. Registering with the MCP service
+- **Use Schemas:** Rely on the tool schemas provided by `mcp_GetTools` to correctly format parameters for `mcp_CallTool`.
+- **Error Handling:** Check the `type` field in `CallToolResult` to distinguish between successful results (`text`, `json`) and errors (`error`).
+- **Timeouts:** Implement appropriate timeouts on the client-side for tool calls.
