@@ -3,9 +3,11 @@ package s3
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/theapemachine/caramba/pkg/task"
 )
 
@@ -30,24 +32,39 @@ func (s *S3TaskStore) CreateTask(t *task.Task) error {
 	return s.UpdateTask(t) // For S3, create and update are the same: PutObject
 }
 
+// mapS3Error maps S3-specific errors to appropriate task store errors
+func mapS3Error(taskID string, err error) error {
+	var noKey *types.NoSuchKey
+	if errors.As(err, &noKey) {
+		return task.NewTaskNotFoundError(taskID, err)
+	}
+
+	var noBucket *types.NoSuchBucket
+	if errors.As(err, &noBucket) {
+		return task.NewInternalError("GetTask", "S3 bucket not found", err, -32603)
+	}
+
+	// For other S3 errors, return a generic internal error
+	return task.NewInternalError("GetTask", "S3 operation failed", err, -32603)
+}
+
 // GetTask retrieves a task from S3 by its ID.
 func (s *S3TaskStore) GetTask(taskID string) (*task.Task, error) {
 	key := s.objectKey(taskID)
 	reader, err := s.repo.Get(key)
 	if err != nil {
-		// TODO: Map S3 errors (like NoSuchKey) to specific store errors if needed
-		return nil, fmt.Errorf("failed to get task '%s' from S3: %w", taskID, err)
+		return nil, mapS3Error(taskID, err)
 	}
 	defer reader.Close()
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read task data for '%s' from S3: %w", taskID, err)
+		return nil, task.NewInternalError("GetTask", "Failed to read task data", err, -32603)
 	}
 
 	t := &task.Task{}
 	if err := json.Unmarshal(data, t); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal task '%s' from S3 data: %w", taskID, err)
+		return nil, task.NewInternalError("GetTask", "Failed to unmarshal task data", err, -32603)
 	}
 
 	return t, nil

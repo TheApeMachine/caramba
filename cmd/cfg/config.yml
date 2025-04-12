@@ -53,15 +53,16 @@ settings:
       os: linux
       arch: arm64
       variant: v8
-
+  s3:
+    bucket: "caramba"
   global:
     iteration_limit: 10
 
 agents:
-  default:
+  ui:
     url: "https://alliedmastercomputer.org/.well-known/agents/default"
-    name: "Caramba Agent"
-    description: "An A2A-compatible agent powered by Caramba"
+    name: "Caramba User Interface Agent"
+    description: "An agent that interacts with a user."
     version: "1.0.0"
     provider:
       organization: "TheApeMachine"
@@ -69,9 +70,24 @@ agents:
     authentication:
       schemes: "none"
     defaultInputModes:
-      - "text"
+      - "text/plain"
     defaultOutputModes:
-      - "text"
+      - "text/plain"
     capabilities:
       streaming: true
-      pushNotifications: false
+      pushNotifications: true
+    skills:
+      - id: "themapemachine/skill/delegation"
+        name: "Delegation"
+        description: "A skill that delegates tasks to other agents."
+        tags:
+          - "delegation"
+          - "task"
+        examples:
+          - "Please research the current state-of-the-art in AI agent technology."
+          - "I want to develop a new AI agent that can help me with my business."
+          - "I need to find a new job."
+        inputModes:
+          - "text/plain"
+        outputModes:
+          - "text/plain"

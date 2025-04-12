@@ -18,40 +18,6 @@ x-init-ollama: &init-ollama
     - "sleep 3; OLLAMA_HOST=ollama:11434 ollama pull llama3.2"
 
 services:
-  hub:
-    image: caramba
-    command: /app/main serve hub
-    ports:
-      - "5555:5555" # Expose if needed externally, otherwise just internal
-    volumes:
-      - ./examples/terminal_game:/app/examples/terminal_game
-    environment:
-      - STAGE=dev
-    depends_on:
-      - redis
-      - neo4j
-      - qdrant
-      - minio
-
-  tool_system:
-    image: caramba
-    command: /app/main serve tool --name tool.system
-    depends_on:
-      - hub
-    environment:
-      - STAGE=dev
-
-  tool_environment:
-    image: caramba
-    command: /app/main serve tool --name tool.environment
-    volumes:
-      - ./examples/terminal_game:/app/examples/terminal_game
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - hub
-    environment:
-      - STAGE=dev
-
   agent_planner:
     image: caramba
     command: |
@@ -61,35 +27,10 @@ services:
         --tools tool.system \
         --initial-message example
     depends_on:
-      - hub
-      - provider_openai
-      - tool_environment
-      - tool_system
-      - agent_developer
-    environment:
-      - STAGE=dev
-
-  agent_developer:
-    image: caramba
-    command: |
-      /app/main serve agent \
-        --name agent.developer \
-        --tools tool.environment
-    depends_on:
-      - hub
-      - provider_openai
-      - tool_environment
-      - tool_system
-    environment:
-      - STAGE=dev
-
-  provider_openai:
-    image: caramba
-    command: /app/main serve provider --name provider.openai
-    depends_on:
-      - hub
-      - tool_environment
-      - tool_system
+      - redis
+      - neo4j
+      - qdrant
+      - minio
     environment:
       - STAGE=dev
 

@@ -72,13 +72,12 @@ func HandleTaskSend(
 	// Pass historyLength from params
 	llmParams, err := prepareLLMParams(t, toolRegistry, sendParams.HistoryLength)
 	if err != nil {
-		// This function currently doesn't return an error, but could in the future
-		// Update task to failed? For now, return generic error.
+		errnie.Error(err, "taskID", t.ID)
 		updateTaskToFailed(store, t, "Failed to prepare LLM parameters", err)
 		sendFinalStatusUpdate(updater, t.ID, t.Status, true)
 		return nil, &task.TaskRequestError{
-			Code:    -32004, // UnsupportedOperationError
-			Message: "This operation is not supported",
+			Code:    -32603, // Internal error
+			Message: "Internal error",
 			Data:    err.Error(),
 		}
 	}
@@ -90,8 +89,8 @@ func HandleTaskSend(
 		updateTaskToFailed(store, t, "Failed to initiate LLM generation", err)
 		sendFinalStatusUpdate(updater, t.ID, t.Status, true)
 		return nil, &task.TaskRequestError{
-			Code:    -32003, // Capability required
-			Message: "Capability required",
+			Code:    -32603, // Internal error
+			Message: "Internal error",
 			Data:    err.Error(),
 		}
 	}
@@ -148,7 +147,7 @@ func retrieveAndPrepareTask(store task.TaskStore, sendParams taskSendParams) (*t
 
 	if err := store.UpdateTask(t); err != nil {
 		errnie.Error("Failed to update task before streaming", "error", err, "taskID", t.ID)
-		return nil, &task.TaskRequestError{Code: -32000, Message: "Failed to update task initially", Data: err.Error()}
+		return nil, &task.TaskRequestError{Code: -32603, Message: "Internal error", Data: err.Error()}
 	}
 	return t, nil
 }

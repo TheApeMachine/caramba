@@ -40,8 +40,8 @@ type Middleware struct {
 /*
 NewMiddleware creates a new middleware manager for the given Fiber application.
 */
-func NewMiddleware(app *fiber.App) *Middleware {
-	return &Middleware{app: app}
+func NewMiddleware() *Middleware {
+	return &Middleware{}
 }
 
 /*
@@ -49,7 +49,8 @@ Register applies all middleware components to the Fiber application in the corre
 order. This includes request ID generation, logging, error recovery, compression,
 rate limiting, and authentication.
 */
-func (middleware *Middleware) Register() {
+func (middleware *Middleware) Register(app *fiber.App) {
+	middleware.app = app
 	middleware.app.Use(requestid.New())
 
 	middleware.app.Use(logger.New(logger.Config{

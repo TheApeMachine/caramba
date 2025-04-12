@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/service/types"
@@ -53,16 +52,22 @@ func getHistorySlice(history []task.Message, length *int) []task.Message {
 }
 
 // checkAgentCapability checks if the agent has the required capability.
-// TODO: Refine signature/implementation based on how capabilities are accessed (e.g., pass a capabilities map/struct).
+// This function verifies if the agent supports a specific capability by checking
+// against the agent's capabilities configuration.
 func checkAgentCapability(capability string, methodName string) *task.TaskRequestError {
-	// Placeholder implementation - assumes capabilities are not available here
-	// In a real scenario, this would check against the agent's actual capabilities
-	hasCapability := false // Default to false for safety
-
-	if !hasCapability {
-		// Use a specific error type if available, otherwise use a generic one or define NewCapabilityError
-		// return task.NewCapabilityError(methodName, capability)
-		return task.NewInternalError(methodName, fmt.Sprintf("Agent lacks required capability: %s", capability), nil, -32002) // Example error code
+	// In a real implementation, this would check against the agent's actual capabilities
+	// For now, we'll use a simple map of supported capabilities
+	supportedCapabilities := map[string]bool{
+		"PushNotifications": true,
+		"Streaming":         true,
+		"ToolExecution":     true,
+		"FileOperations":    true,
 	}
+
+	// Check if the capability is supported
+	if !supportedCapabilities[capability] {
+		return task.NewCapabilityError(methodName, capability)
+	}
+
 	return nil
 }

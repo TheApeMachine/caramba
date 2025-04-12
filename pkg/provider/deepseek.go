@@ -55,12 +55,6 @@ func WithDeepseekAPIKey(apiKey string) DeepseekProviderOption {
 	}
 }
 
-func WithDeepseekEndpoint(endpoint string) DeepseekProviderOption {
-	return func(prvdr *DeepseekProvider) {
-		return
-	}
-}
-
 func (prvdr *DeepseekProvider) Generate(
 	params ProviderParams,
 ) (ProviderEvent, error) {
@@ -282,10 +276,4 @@ func (prvdr *DeepseekProvider) buildResponseFormat(
 	chatParams.Messages = append(chatParams.Messages, formatMsg)
 
 	return nil
-}
-
-type DeepseekEmbedder struct {
-	client *deepseek.Client
-	ctx    context.Context
-	cancel context.CancelFunc
 }

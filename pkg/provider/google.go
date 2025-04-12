@@ -92,7 +92,7 @@ func (prvdr *GoogleProvider) Generate(
 	}
 
 	if params.MaxTokens > 1 {
-		chatConfig.MaxOutputTokens = utils.Ptr(int32(params.MaxTokens))
+		chatConfig.MaxOutputTokens = int32(params.MaxTokens)
 	}
 
 	messages, err := prvdr.buildMessages(params.Messages)
@@ -210,40 +210,22 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 			continue
 		}
 
-		for _, part := range response.Candidates[0].Content.Parts {
-			if part.Text != "" {
-				lastContent = part.Text
-			}
+		// Process the response and check for tool calls
+		toolCall, content := prvdr.processStreamingResponse(response)
+		if content != "" {
+			lastContent = content
+		}
 
-			// Handle tool calls in streaming mode
-			if part.FunctionCall != nil {
-				fc := part.FunctionCall
-
-				tc := mcp.CallToolRequest{
-					Params: struct {
-						Name      string         `json:"name"`
-						Arguments map[string]any `json:"arguments,omitempty"`
-						Meta      *struct {
-							ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-						} `json:"_meta,omitempty"`
-					}{
-						Name:      fc.Name,
-						Arguments: fc.Args,
-					},
-				}
-
-				errnie.Info("toolCall detected (streaming)", "name", fc.Name)
-
-				// Return immediately if we found a tool call
-				return ProviderEvent{
-					Message: Message{
-						Role:      "assistant",
-						Name:      model,
-						Content:   lastContent,
-						ToolCalls: []mcp.CallToolRequest{tc},
-					},
-				}, nil
-			}
+		// If a tool call was found, return immediately
+		if toolCall != nil {
+			return ProviderEvent{
+				Message: Message{
+					Role:      "assistant",
+					Name:      model,
+					Content:   lastContent,
+					ToolCalls: []mcp.CallToolRequest{*toolCall},
+				},
+			}, nil
 		}
 	}
 
@@ -255,6 +237,40 @@ func (prvdr *GoogleProvider) handleStreamingRequest(
 			Content: lastContent,
 		},
 	}, nil
+}
+
+// processStreamingResponse processes a streaming response and returns any tool call and content
+func (prvdr *GoogleProvider) processStreamingResponse(response *genai.GenerateContentResponse) (*mcp.CallToolRequest, string) {
+	var content string
+
+	for _, part := range response.Candidates[0].Content.Parts {
+		if part.Text != "" {
+			content = part.Text
+		}
+
+		// Handle tool calls in streaming mode
+		if part.FunctionCall != nil {
+			fc := part.FunctionCall
+
+			tc := mcp.CallToolRequest{
+				Params: struct {
+					Name      string         `json:"name"`
+					Arguments map[string]any `json:"arguments,omitempty"`
+					Meta      *struct {
+						ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
+					} `json:"_meta,omitempty"`
+				}{
+					Name:      fc.Name,
+					Arguments: fc.Args,
+				},
+			}
+
+			errnie.Info("toolCall detected (streaming)", "name", fc.Name)
+			return &tc, content
+		}
+	}
+
+	return nil, content
 }
 
 func (prvdr *GoogleProvider) buildMessages(

@@ -7,6 +7,7 @@ package service
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"log"
 	"sync"
@@ -15,11 +16,9 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/theapemachine/caramba/pkg/agent"
 	"github.com/theapemachine/caramba/pkg/agent/handlers"
-	"github.com/theapemachine/caramba/pkg/catalog"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/service/types"
-	"github.com/theapemachine/caramba/pkg/stores/s3"
 	"github.com/theapemachine/caramba/pkg/task"
 	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
@@ -50,18 +49,17 @@ Example:
 type A2A struct {
 	app             *fiber.App
 	certManager     *autocert.Manager
-	card            *agent.Card
+	agent           *agent.Builder
 	streams         map[string][]*taskStream
 	streamMutex     sync.RWMutex
 	notificationMgr *task.NotificationManager
 	middleware      *Middleware
-	catalog         *catalog.Catalog
 	taskStore       task.TaskStore
-	s3Repo          *s3.Repository
-	bucketName      string
 	llmProvider     provider.ProviderType
 	toolRegistry    *tools.Registry
 }
+
+type A2AOption func(*A2A)
 
 /*
 taskStream represents a single client connection for receiving task updates.
@@ -78,47 +76,17 @@ NewA2A creates a new Agent-to-Agent service with configured S3 storage,
 LLM provider, and tool registry. It initializes the Fiber application with
 appropriate middleware and settings.
 */
-func NewA2A() *A2A {
-	s3Conn := &s3.Conn{}
-	bucketName := tweaker.Value[string]("settings.s3.bucketName")
-	if bucketName == "" {
-		bucketName = "your-default-bucket"
-	}
-	s3Repo := s3.NewRepository(s3Conn, bucketName)
-	taskStore := s3.NewS3TaskStore(s3Repo)
-
-	llmProvider := provider.NewOpenAIProvider()
-
-	// Initialize Tool Registry and Register Tools
-	toolRegistry := tools.NewRegistry()
-	// Make tool registration configurable or dynamic
-	ghTool := tools.NewGithubTool()
-	for _, t := range ghTool.Tools {
-		toolRegistry.Register(t)
-	}
-	// Register other tools as needed
-	// browserTool := tools.NewBrowserTool()
-	// toolRegistry.Register(browserTool)
-	// memoryTool := tools.NewMemoryTool()
-	// toolRegistry.Register(memoryTool)
-	// ... etc
-
-	app := fiber.New(fiber.Config{
-		JSONEncoder:       types.SimdMarshalJSON,
-		JSONDecoder:       types.SimdUnmarshalJSON,
-		ServerHeader:      "Caramba",
-		AppName:           "Caramba",
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		StreamRequestBody: true,
-		StructValidator:   task.NewGenericValidator(),
-	})
-	middleware := NewMiddleware(app)
-	middleware.Register()
-
-	return &A2A{
-		app:        app,
-		middleware: middleware,
+func NewA2A(opts ...A2AOption) *A2A {
+	a2a := &A2A{
+		app: fiber.New(fiber.Config{
+			JSONEncoder:       types.SimdMarshalJSON,
+			JSONDecoder:       types.SimdUnmarshalJSON,
+			ServerHeader:      "Caramba A2A Service",
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			StreamRequestBody: true,
+			StructValidator:   task.NewGenericValidator(),
+		}),
 		certManager: &autocert.Manager{
 			Prompt: autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist(
@@ -126,16 +94,9 @@ func NewA2A() *A2A {
 			),
 			Cache: autocert.DirCache("./certs"),
 		},
-		card:            agent.FromConfig("default"),
-		streams:         make(map[string][]*taskStream),
-		notificationMgr: task.NewNotificationManager(),
-		catalog:         catalog.NewCatalog(),
-		taskStore:       taskStore,
-		s3Repo:          s3Repo,
-		bucketName:      bucketName,
-		llmProvider:     llmProvider,
-		toolRegistry:    toolRegistry,
 	}
+
+	return a2a
 }
 
 /*
@@ -143,24 +104,12 @@ RegisterRoutes sets up all HTTP endpoints for the A2A service, including
 health checks, agent catalog, JSON-RPC endpoints, and SSE streams.
 */
 func (srv *A2A) RegisterRoutes() {
-	// Root handler
-	srv.app.Get("/", func(ctx fiber.Ctx) error {
-		return ctx.SendString("OK")
-	})
+	ok := bytes.NewReader([]byte("OK"))
+	okSize := ok.Len()
 
 	// To request the agents catalog.
-	srv.app.Get("/.well-known/agents/catalog", func(ctx fiber.Ctx) error {
-		return ctx.JSON(srv.card)
-	})
-
-	// To request an agent card.
-	srv.app.Get("/.well-known/agents/:agent", func(ctx fiber.Ctx) error {
-		agentName := ctx.Params("agent")
-		agent := srv.catalog.GetAgent(agentName)
-		if agent == nil {
-			return ctx.Status(fiber.StatusNotFound).SendString("Agent not found")
-		}
-		return ctx.JSON(agent)
+	srv.app.Get("/.well-known/agent.json", func(ctx fiber.Ctx) error {
+		return ctx.JSON(srv.agent.Card)
 	})
 
 	// A2A JSON-RPC endpoint
@@ -266,6 +215,16 @@ func (srv *A2A) RegisterRoutes() {
 			}
 		})
 	})
+
+	srv.app.Use([]string{
+		"/",
+		"/ping",
+		"/health",
+		"/healthz",
+	}, func(ctx fiber.Ctx) error {
+		ctx.Set("Content-Type", "text/plain")
+		return ctx.Status(fiber.StatusOK).SendStream(ok, okSize)
+	})
 }
 
 /*
@@ -297,7 +256,7 @@ func (srv *A2A) SendTaskUpdate(taskID string, update any) {
 	// Check if the update contains a status
 	if statusUpdate, ok := update.(map[string]any); ok {
 		if status, hasStatus := statusUpdate["status"]; hasStatus {
-			if typedStatus, ok := status.(task.TaskStatus); ok && srv.card.Capabilities.PushNotifications {
+			if typedStatus, ok := status.(task.TaskStatus); ok && srv.agent.Card.Capabilities.PushNotifications {
 				srv.notificationMgr.SendTaskStatusUpdate(
 					taskID,
 					typedStatus,
@@ -336,4 +295,30 @@ func convertToJSONRPCError(err *task.TaskRequestError) *types.JSONRPCError {
 	}
 }
 
-// A2A implements StreamUpdateSender implicitly because it has the SendTaskUpdate method.
+func WithName(name string) A2AOption {
+	return func(a2a *A2A) {
+		a2a.app.Name(name)
+		a2a.agent = agent.NewBuilder(
+			agent.WithCard(agent.FromConfig(name)),
+		)
+	}
+}
+
+func WithMiddleware(middleware *Middleware) A2AOption {
+	return func(a2a *A2A) {
+		a2a.middleware = middleware
+		a2a.middleware.Register(a2a.app)
+	}
+}
+
+func WithTaskStore(taskStore task.TaskStore) A2AOption {
+	return func(a2a *A2A) {
+		a2a.taskStore = taskStore
+	}
+}
+
+func WithLLMProvider(llmProvider provider.ProviderType) A2AOption {
+	return func(a2a *A2A) {
+		a2a.llmProvider = llmProvider
+	}
+}

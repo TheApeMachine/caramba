@@ -9,6 +9,57 @@ import (
 	"github.com/google/uuid"
 )
 
+type ErrorPromptNotFound struct {
+	ID string
+}
+
+func (err ErrorPromptNotFound) Error() string {
+	return fmt.Sprintf("prompt not found: %s", err.ID)
+}
+
+type ErrorStepNotFound struct {
+	ID string
+}
+
+func (err ErrorStepNotFound) Error() string {
+	return fmt.Sprintf("step not found: %s", err.ID)
+}
+
+type ErrorNoStepsForPrompt struct {
+	ID string
+}
+
+func (err ErrorNoStepsForPrompt) Error() string {
+	return fmt.Sprintf("no steps found for prompt: %s", err.ID)
+}
+
+type ErrorInvalidPromptType struct {
+	ID   string
+	Type PromptType
+}
+
+func (err ErrorInvalidPromptType) Error() string {
+	return fmt.Sprintf("invalid prompt type for prompt %s: %s", err.ID, err.Type)
+}
+
+type ErrorDuplicateStepOrder struct {
+	PromptID string
+	Order    int
+}
+
+func (err ErrorDuplicateStepOrder) Error() string {
+	return fmt.Sprintf("duplicate step order %d found in prompt %s", err.Order, err.PromptID)
+}
+
+type ErrorInvalidStepOrder struct {
+	PromptID string
+	Order    int
+}
+
+func (err ErrorInvalidStepOrder) Error() string {
+	return fmt.Sprintf("invalid step order %d in prompt %s", err.Order, err.PromptID)
+}
+
 // DefaultManager is a basic implementation of PromptManager
 type DefaultManager struct {
 	prompts map[string]*Prompt
@@ -114,7 +165,7 @@ func (m *DefaultManager) Get(ctx context.Context, id string) (*Prompt, error) {
 
 	prompt, ok := m.prompts[id]
 	if !ok {
-		return nil, fmt.Errorf("prompt not found: %s", id)
+		return nil, ErrorPromptNotFound{ID: id}
 	}
 
 	return prompt, nil
@@ -128,18 +179,18 @@ func (m *DefaultManager) GetSteps(ctx context.Context, promptID string) ([]Promp
 	// Check if the prompt exists
 	prompt, ok := m.prompts[promptID]
 	if !ok {
-		return nil, fmt.Errorf("prompt not found: %s", promptID)
+		return nil, ErrorPromptNotFound{ID: promptID}
 	}
 
 	// Check if the prompt is a multi-step prompt
 	if prompt.Type != MultiStepPrompt {
-		return nil, fmt.Errorf("prompt is not a multi-step prompt: %s", promptID)
+		return nil, ErrorInvalidPromptType{ID: promptID, Type: prompt.Type}
 	}
 
 	// Get the steps
 	steps, ok := m.steps[promptID]
 	if !ok {
-		return nil, fmt.Errorf("no steps found for prompt: %s", promptID)
+		return nil, ErrorNoStepsForPrompt{ID: promptID}
 	}
 
 	// Convert to slice of PromptStep
@@ -184,8 +235,9 @@ func (m *DefaultManager) Update(ctx context.Context, prompt Prompt) (*Prompt, er
 
 	// Check if the prompt exists
 	existingPrompt, ok := m.prompts[prompt.ID]
+
 	if !ok {
-		return nil, fmt.Errorf("prompt not found: %s", prompt.ID)
+		return nil, ErrorPromptNotFound{ID: prompt.ID}
 	}
 
 	// Update the prompt
@@ -204,7 +256,7 @@ func (m *DefaultManager) Delete(ctx context.Context, id string) error {
 	// Check if the prompt exists
 	_, ok := m.prompts[id]
 	if !ok {
-		return fmt.Errorf("prompt not found: %s", id)
+		return ErrorPromptNotFound{ID: id}
 	}
 
 	// Delete the prompt
@@ -224,12 +276,12 @@ func (m *DefaultManager) CreateStep(ctx context.Context, step PromptStep) (*Prom
 	// Check if the prompt exists
 	prompt, ok := m.prompts[step.PromptID]
 	if !ok {
-		return nil, fmt.Errorf("prompt not found: %s", step.PromptID)
+		return nil, ErrorPromptNotFound{ID: step.PromptID}
 	}
 
 	// Check if the prompt is a multi-step prompt
 	if prompt.Type != MultiStepPrompt {
-		return nil, fmt.Errorf("prompt is not a multi-step prompt: %s", step.PromptID)
+		return nil, ErrorInvalidPromptType{ID: step.PromptID, Type: prompt.Type}
 	}
 
 	// Generate a new ID if not provided
@@ -241,6 +293,18 @@ func (m *DefaultManager) CreateStep(ctx context.Context, step PromptStep) (*Prom
 	steps, ok := m.steps[step.PromptID]
 	if !ok {
 		steps = make([]*PromptStep, 0)
+	}
+
+	// Validate step order
+	if step.Order <= 0 {
+		return nil, ErrorInvalidStepOrder{PromptID: step.PromptID, Order: step.Order}
+	}
+
+	// Check for duplicate order
+	for _, s := range steps {
+		if s.Order == step.Order {
+			return nil, ErrorDuplicateStepOrder{PromptID: step.PromptID, Order: step.Order}
+		}
 	}
 
 	// Add the new step
@@ -258,13 +322,13 @@ func (m *DefaultManager) UpdateStep(ctx context.Context, step PromptStep) (*Prom
 	// Check if the prompt exists
 	_, ok := m.prompts[step.PromptID]
 	if !ok {
-		return nil, fmt.Errorf("prompt not found: %s", step.PromptID)
+		return nil, ErrorPromptNotFound{ID: step.PromptID}
 	}
 
 	// Get the existing steps
 	steps, ok := m.steps[step.PromptID]
 	if !ok {
-		return nil, fmt.Errorf("no steps found for prompt: %s", step.PromptID)
+		return nil, ErrorNoStepsForPrompt{ID: step.PromptID}
 	}
 
 	// Find and update the step
@@ -278,7 +342,7 @@ func (m *DefaultManager) UpdateStep(ctx context.Context, step PromptStep) (*Prom
 	}
 
 	if !found {
-		return nil, fmt.Errorf("step not found: %s", step.ID)
+		return nil, ErrorStepNotFound{ID: step.ID}
 	}
 
 	return &step, nil
@@ -309,7 +373,7 @@ func (m *DefaultManager) DeleteStep(ctx context.Context, stepID string) error {
 	}
 
 	if !found {
-		return fmt.Errorf("step not found: %s", stepID)
+		return ErrorStepNotFound{ID: stepID}
 	}
 
 	// Remove the step

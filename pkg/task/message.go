@@ -13,6 +13,29 @@ type Message struct {
 	Metadata map[string]any `json:"metadata"`
 }
 
+func NewMessage(role MessageRole, parts []MessagePart) *Message {
+	return &Message{
+		Role:     role,
+		Parts:    parts,
+		Metadata: make(map[string]any),
+	}
+}
+
+func NewUserMessage(name, message string) Message {
+	return Message{
+		Role: MessageRoleUser,
+		Parts: []MessagePart{
+			&TextPart{
+				Type: "text",
+				Text: message,
+			},
+		},
+		Metadata: map[string]any{
+			"name": name,
+		},
+	}
+}
+
 type Part struct {
 	Text string `json:"text"`
 }

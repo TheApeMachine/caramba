@@ -1,4 +1,4 @@
-package tools
+package client
 
 import (
 	"context"
@@ -11,24 +11,24 @@ import (
 )
 
 /*
-MCP is a Model Context Protocol client.
+MCPClient is a Model Context Protocol client.
 
 It is used to facilitate a standardized path to integrate MCP-based tools
 into the Caramba ecosystem. It provides a streaming interface to MCP operations
 and implements io.ReadWriteCloser for streaming data processing.
 */
-type MCP struct {
+type MCPClient struct {
 	client client.MCPClient
 	ctx    context.Context
 }
 
 /*
-NewMCP creates a new MCP tool instance.
+NewMCP creates a new MCP client instance.
 
 It initializes an MCP client based on configuration and sets up a buffered stream
 for processing MCP operations. The client can be either SSE-based or stdio-based.
 */
-func NewMCP() *MCP {
+func NewMCPClient() *MCPClient {
 	// Get configuration
 	baseURL := tweaker.Get("tools.mcp.baseURL", "http://localhost:3000")
 	clientType := tweaker.Get("tools.mcp.clientType", "sse") // "sse" or "stdio"
@@ -68,7 +68,7 @@ func NewMCP() *MCP {
 		}
 	}
 
-	return &MCP{
+	return &MCPClient{
 		client: mcpClient,
 		ctx:    ctx,
 	}
@@ -77,41 +77,41 @@ func NewMCP() *MCP {
 /*
 CallTool calls a tool via the MCP client.
 */
-func (m *MCP) CallTool(request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (m *MCPClient) CallTool(request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return m.client.CallTool(m.ctx, request)
 }
 
 /*
 Complete sends a completion request to the MCP client.
 */
-func (m *MCP) Complete(request mcp.CompleteRequest) (*mcp.CompleteResult, error) {
+func (m *MCPClient) Complete(request mcp.CompleteRequest) (*mcp.CompleteResult, error) {
 	return m.client.Complete(m.ctx, request)
 }
 
 /*
 Initialize initializes the MCP client session.
 */
-func (m *MCP) Initialize(request mcp.InitializeRequest) (*mcp.InitializeResult, error) {
+func (m *MCPClient) Initialize(request mcp.InitializeRequest) (*mcp.InitializeResult, error) {
 	return m.client.Initialize(m.ctx, request)
 }
 
 /*
 ListTools requests the available tools from the MCP client.
 */
-func (m *MCP) ListTools(request mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
+func (m *MCPClient) ListTools(request mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
 	return m.client.ListTools(m.ctx, request)
 }
 
 /*
 ListPrompts requests the available prompts from the MCP client.
 */
-func (m *MCP) ListPrompts(request mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error) {
+func (m *MCPClient) ListPrompts(request mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error) {
 	return m.client.ListPrompts(m.ctx, request)
 }
 
 /*
 GetPrompt retrieves a specific prompt from the MCP client.
 */
-func (m *MCP) GetPrompt(request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+func (m *MCPClient) GetPrompt(request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	return m.client.GetPrompt(m.ctx, request)
 }

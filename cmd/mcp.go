@@ -15,7 +15,7 @@ var (
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			errnie.SetLevel(log.DebugLevel)
 
-			service := service.NewMCP()
+			service := service.NewMCPServer()
 			return service.Start()
 		},
 	}

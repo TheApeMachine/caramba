@@ -2,7 +2,6 @@ package prompts
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -54,7 +53,7 @@ func (h *MCPHandler) HandleGetPrompt(ctx context.Context, req *mcp.GetPromptRequ
 	}
 
 	if prompt == nil {
-		return nil, fmt.Errorf("prompt not found: %s", req.Params.Name)
+		return nil, ErrorPromptNotFound{ID: req.Params.Name}
 	}
 
 	// Convert prompt content to MCP format
@@ -98,11 +97,11 @@ func (h *MCPHandler) HandleGetPromptSteps(ctx context.Context, req *mcp.GetPromp
 	}
 
 	if prompt == nil {
-		return nil, fmt.Errorf("prompt not found: %s", req.Params.Name)
+		return nil, ErrorPromptNotFound{ID: req.Params.Name}
 	}
 
 	if prompt.Type != MultiStepPrompt {
-		return nil, fmt.Errorf("prompt is not a multi-step prompt: %s", req.Params.Name)
+		return nil, ErrorInvalidPromptType{ID: prompt.ID, Type: prompt.Type}
 	}
 
 	steps, err := h.manager.GetSteps(ctx, prompt.ID)
