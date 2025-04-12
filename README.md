@@ -16,6 +16,8 @@ _Unleashing AI agent collaboration across ecosystems._
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_caramba&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_caramba)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_caramba&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_caramba)
 
+![Caramba](caramba-banner.png)
+
 Caramba is a Go-based framework designed for building sophisticated AI agent applications. It facilitates seamless communication and collaboration between AI agents by implementing key industry protocols like [Google's Agent-to-Agent (A2A)](https://google.github.io/A2A/#/) and [Anthropic's Model Context Protocol (MCP)](https://www.anthropic.com/news/model-context-protocol). This allows agents built with Caramba to interact effectively across different frameworks, vendors, and systems.
 
 ---
