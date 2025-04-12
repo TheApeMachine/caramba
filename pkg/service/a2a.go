@@ -17,6 +17,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/service/types"
 	"github.com/theapemachine/caramba/pkg/task"
+	"github.com/theapemachine/caramba/pkg/task/manager"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -50,7 +51,7 @@ type A2A struct {
 	streamMutex     sync.RWMutex
 	notificationMgr *task.NotificationManager
 	middleware      *Middleware
-	taskManager     *task.Manager
+	taskManager     *manager.Manager
 }
 
 type A2AOption func(*A2A)
@@ -119,15 +120,15 @@ func (srv *A2A) RegisterRoutes() {
 			parseErr := errnie.New(errnie.WithError(err))
 
 			return ctx.Status(parseErr.Status()).JSON(
-				task.NewTaskResponse(req.Params),
+				task.NewTaskResponse(task.WithResponseTask(req.Params)),
 			)
 		}
 
 		if err := srv.taskManager.HandleTask(ctx, req); err != nil {
 			errnie.New(errnie.WithError(err))
-			
+
 			return ctx.Status(fiber.StatusInternalServerError).JSON(
-				task.NewTaskResponse(req.Params),
+				task.NewTaskResponse(task.WithResponseTask(req.Params)),
 			)
 		}
 
@@ -229,7 +230,7 @@ func WithMiddleware(middleware *Middleware) A2AOption {
 	}
 }
 
-func WithTaskManager(taskManager *task.Manager) A2AOption {
+func WithTaskManager(taskManager *manager.Manager) A2AOption {
 	return func(a2a *A2A) {
 		a2a.taskManager = taskManager
 	}

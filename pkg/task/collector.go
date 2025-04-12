@@ -19,7 +19,7 @@ func NewTaskCollector(stream io.Writer) *TaskCollector {
 	buffer := bytes.NewBuffer([]byte{})
 
 	return &TaskCollector{
-		response: NewTaskResponse(NewTask()),
+		response: NewTaskResponse(WithResponseTask(NewTask())),
 		buffer:   buffer,
 		stream:   stream,
 		decoder:  json.NewDecoder(buffer),
@@ -35,21 +35,8 @@ func (tc *TaskCollector) Write(p []byte) (n int, err error) {
 		return n, errnie.New(errnie.WithError(err))
 	}
 
-	var chunk TaskResponse
-
-	if err = tc.decoder.Decode(&chunk); err != nil {
-		return n, errnie.New(errnie.WithError(err))
-	}
-
-	for _, message := range chunk.Result.History {
-		tc.response.Result.History = append(
-			tc.response.Result.History, message,
-		)
-
-		for _, part := range message.Parts {
-			tc.stream.Write([]byte(part.Text))
-		}
-	}
+	// Clear the buffer since we've processed all complete JSON objects
+	tc.buffer.Reset()
 
 	return n, nil
 }

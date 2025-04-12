@@ -1,18 +1,17 @@
 package provider
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	cohere "github.com/cohere-ai/cohere-go/v2"
 	cohereclient "github.com/cohere-ai/cohere-go/v2/client"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/spf13/viper"
+	"github.com/gofiber/fiber/v3"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/task"
+	"github.com/theapemachine/caramba/pkg/tools"
+	"github.com/theapemachine/caramba/pkg/tweaker"
 )
 
 /*
@@ -20,33 +19,17 @@ CohereProvider implements an LLM provider that connects to Cohere's API.
 It supports regular chat completions, tool calling, and structured outputs.
 */
 type CohereProvider struct {
-	client   *cohereclient.Client
-	endpoint string
-	pctx     context.Context
-	ctx      context.Context
-	cancel   context.CancelFunc
+	client *cohereclient.Client
 }
+
+type CohereProviderOption func(*CohereProvider)
 
 /*
 NewCohereProvider creates a new Cohere provider with the given API key and endpoint.
 If apiKey is empty, it will try to read from the COHERE_API_KEY environment variable.
 */
 func NewCohereProvider(opts ...CohereProviderOption) *CohereProvider {
-	errnie.Debug("provider.NewCohereProvider")
-
-	apiKey := os.Getenv("COHERE_API_KEY")
-	endpoint := viper.GetViper().GetString("endpoints.cohere")
-	ctx, cancel := context.WithCancel(context.Background())
-
-	prvdr := &CohereProvider{
-		client: cohereclient.NewClient(
-			cohereclient.WithToken(apiKey),
-		),
-		endpoint: endpoint,
-		pctx:     ctx,
-		ctx:      ctx,
-		cancel:   cancel,
-	}
+	prvdr := &CohereProvider{}
 
 	for _, opt := range opts {
 		opt(prvdr)
@@ -55,11 +38,209 @@ func NewCohereProvider(opts ...CohereProviderOption) *CohereProvider {
 	return prvdr
 }
 
-func (prvdr *CohereProvider) ID() string {
-	return "cohere"
+func (prvdr *CohereProvider) prepare(
+	ctx fiber.Ctx, request *task.TaskRequest,
+) *cohere.ChatStreamRequest {
+	params := &cohere.ChatStreamRequest{
+		Model:            cohere.String(tweaker.GetModel(tweaker.GetProvider())),
+		Temperature:      cohere.Float64(tweaker.GetTemperature()),
+		P:                cohere.Float64(tweaker.GetTopP()),
+		FrequencyPenalty: cohere.Float64(tweaker.GetFrequencyPenalty()),
+		PresencePenalty:  cohere.Float64(tweaker.GetPresencePenalty()),
+	}
+
+	// Convert messages
+	messageList := make([]*cohere.Message, 0)
+	var systemMessage string
+
+	for _, msg := range request.Params.History {
+		switch msg.Role.String() {
+		case "system":
+			systemMessage = msg.String()
+		case "user":
+			messageList = append(messageList, &cohere.Message{
+				Role: "user",
+				User: &cohere.ChatMessage{
+					Message: msg.String(),
+				},
+			})
+		case "assistant":
+			messageList = append(messageList, &cohere.Message{
+				Role: "chatbot",
+				Chatbot: &cohere.ChatMessage{
+					Message: msg.String(),
+				},
+			})
+		case "tool":
+			messageList = append(messageList, &cohere.Message{
+				Role: "user",
+				User: &cohere.ChatMessage{
+					Message: fmt.Sprintf("[Tool Result: %s]", msg.String()),
+				},
+			})
+		}
+	}
+
+	if systemMessage != "" {
+		params.Preamble = cohere.String(systemMessage)
+	}
+
+	params.ChatHistory = messageList
+
+	// Add tools from registry
+	toolList := make([]*cohere.Tool, 0)
+	for _, toolName := range tools.NewRegistry().GetToolNames() {
+		toolList = append(toolList, &cohere.Tool{
+			Name: toolName,
+			ParameterDefinitions: map[string]*cohere.ToolParameterDefinitionsValue{
+				"arguments": {
+					Type:     "object",
+					Required: cohere.Bool(true),
+				},
+			},
+		})
+	}
+	params.Tools = toolList
+
+	return params
 }
 
-type CohereProviderOption func(*CohereProvider)
+func (prvdr *CohereProvider) Generate(
+	ctx fiber.Ctx, request *task.TaskRequest,
+) (<-chan *task.TaskResponse, error) {
+	out := make(chan *task.TaskResponse)
+
+	go func() {
+		defer close(out)
+
+		var (
+			params  = prvdr.prepare(ctx, request)
+			outTask = request.Params
+		)
+
+		// Convert stream request to regular chat request
+		chatRequest := &cohere.ChatRequest{
+			Model:       params.Model,
+			Message:     params.Message,
+			ChatHistory: params.ChatHistory,
+			Preamble:    params.Preamble,
+			Tools:       params.Tools,
+			Temperature: params.Temperature,
+		}
+
+		response, err := prvdr.client.Chat(ctx.Context(), chatRequest)
+		if err != nil {
+			outTask.Status.State = task.TaskStateFailed
+			out <- task.NewTaskResponse(task.WithResponseError(err))
+			return
+		}
+
+		outTask.AddMessage(task.NewAssistantMessage(response.Text))
+
+		// Handle tool calls
+		for i, toolCall := range response.GetToolCalls() {
+			name := toolCall.GetName()
+			id := fmt.Sprintf("tool-%d", i)
+
+			paramBytes, err := json.Marshal(toolCall.GetParameters())
+			if err != nil {
+				errnie.Error("failed to marshal tool parameters", "error", err)
+				continue
+			}
+
+			outTask.AddMessage(task.NewToolMessage(fmt.Sprintf(
+				`{"name": "%s", "id": "%s", "arguments": %s}`,
+				name,
+				id,
+				string(paramBytes),
+			)))
+		}
+
+		outTask.Status.State = task.TaskStateCompleted
+		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+	}()
+
+	return out, nil
+}
+
+func (prvdr *CohereProvider) Stream(
+	ctx fiber.Ctx, request *task.TaskRequest,
+) (<-chan *task.TaskResponse, error) {
+	out := make(chan *task.TaskResponse)
+
+	go func() {
+		defer close(out)
+
+		var (
+			params  = prvdr.prepare(ctx, request)
+			outTask = request.Params
+		)
+
+		outTask.Status.State = task.TaskStateWorking
+
+		stream, err := prvdr.client.ChatStream(ctx.Context(), params)
+		if err != nil {
+			outTask.Status.State = task.TaskStateFailed
+			out <- task.NewTaskResponse(task.WithResponseError(err))
+			return
+		}
+		defer stream.Close()
+
+		for {
+			chunk, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				errnie.Error("streaming error", "error", err)
+				continue
+			}
+
+			prvdr.handleChunk(chunk, outTask, out)
+		}
+
+		outTask.Status.State = task.TaskStateCompleted
+		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+	}()
+
+	return out, nil
+}
+
+func (prvdr *CohereProvider) handleChunk(
+	chunk cohere.StreamedChatResponse,
+	outTask task.Task,
+	out chan *task.TaskResponse,
+) {
+	if content := chunk.TextGeneration.String(); content != "" {
+		outTask.AddMessage(task.NewAssistantMessage(content))
+		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+	}
+
+	if chunk.ToolCallsGeneration == nil {
+		return
+	}
+
+	for i, toolCall := range chunk.ToolCallsGeneration.ToolCalls {
+
+		name := toolCall.Name
+		id := fmt.Sprintf("tool-%d", i)
+
+		paramBytes, err := json.Marshal(toolCall.GetParameters())
+		if err != nil {
+			errnie.Error("failed to marshal tool parameters", "error", err)
+			return
+		}
+
+		outTask.AddMessage(task.NewToolMessage(fmt.Sprintf(
+			`{"name": "%s", "id": "%s", "arguments": %s}`,
+			name,
+			id,
+			string(paramBytes),
+		)))
+
+		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+	}
+}
 
 func WithCohereAPIKey(apiKey string) CohereProviderOption {
 	return func(prvdr *CohereProvider) {
@@ -67,307 +248,4 @@ func WithCohereAPIKey(apiKey string) CohereProviderOption {
 			cohereclient.WithToken(apiKey),
 		)
 	}
-}
-
-func WithCohereEndpoint(endpoint string) CohereProviderOption {
-	return func(prvdr *CohereProvider) {
-		prvdr.endpoint = endpoint
-	}
-}
-
-func (prvdr *CohereProvider) Generate(
-	params ProviderParams,
-) (ProviderEvent, error) {
-	errnie.Info("provider.Generate", "supplier", "cohere")
-
-	composed := &cohere.ChatStreamRequest{
-		Model:            cohere.String(params.Model),
-		Temperature:      cohere.Float64(params.Temperature),
-		P:                cohere.Float64(params.TopP),
-		FrequencyPenalty: cohere.Float64(params.FrequencyPenalty),
-		PresencePenalty:  cohere.Float64(params.PresencePenalty),
-	}
-
-	if params.MaxTokens > 1 {
-		composed.MaxTokens = cohere.Int(int(params.MaxTokens))
-	}
-
-	var err error
-
-	if err = prvdr.buildMessages(composed, params.Messages); err != nil {
-		return ProviderEvent{}, err
-	}
-
-	// Get tools from the artifact metadata
-	if err = prvdr.buildTools(composed, params.Tools); err != nil {
-		return ProviderEvent{}, err
-	}
-
-	if params.ResponseFormat != (ResponseFormat{}) {
-		if err = prvdr.buildResponseFormat(composed, params.ResponseFormat); err != nil {
-			return ProviderEvent{}, err
-		}
-	}
-
-	if params.Stream {
-		return prvdr.handleStreamingRequest(composed)
-	}
-
-	return prvdr.handleSingleRequest(composed)
-}
-
-func (prvdr *CohereProvider) Name() string {
-	return "cohere"
-}
-
-func (prvdr *CohereProvider) handleSingleRequest(
-	params *cohere.ChatStreamRequest,
-) (ProviderEvent, error) {
-	errnie.Debug("provider.handleSingleRequest")
-
-	// Convert stream request to regular chat request
-	chatRequest := &cohere.ChatRequest{
-		Model:       params.Model,
-		Message:     params.Message,
-		ChatHistory: params.ChatHistory,
-		Preamble:    params.Preamble,
-		Tools:       params.Tools,
-		Temperature: params.Temperature,
-	}
-
-	response, err := prvdr.client.Chat(prvdr.ctx, chatRequest)
-	if errnie.Error(err) != nil {
-		return ProviderEvent{}, errnie.Error(err)
-	}
-
-	// Check for tool calls
-	toolCalls := response.GetToolCalls()
-
-	// Abort early if there are no tool calls
-	if len(toolCalls) == 0 {
-		return ProviderEvent{
-			Message: Message{
-				Role:    "assistant",
-				Name:    "cohere",
-				Content: response.Text,
-			},
-		}, nil
-	}
-
-	// Create tool calls list
-	var toolCallsList []mcp.CallToolRequest
-
-	for i, toolCall := range toolCalls {
-		// Cohere's ToolCall has Name, Parameters fields
-		name := toolCall.GetName()
-
-		// Generate a simple ID since Cohere doesn't provide one
-		id := fmt.Sprintf("tool-%d", i)
-
-		// Marshal parameters to JSON string for arguments
-		paramBytes, err := json.Marshal(toolCall.GetParameters())
-		if err != nil {
-			return ProviderEvent{}, errnie.Error(err)
-		}
-
-		errnie.Info("toolCall", "tool", name, "id", id)
-
-		tc := mcp.CallToolRequest{
-			Params: struct {
-				Name      string         `json:"name"`
-				Arguments map[string]any `json:"arguments,omitempty"`
-				Meta      *struct {
-					ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-				} `json:"_meta,omitempty"`
-			}{
-				Name: name,
-			},
-		}
-
-		// Parse arguments from JSON
-		var args map[string]any
-		if err := json.Unmarshal(paramBytes, &args); err == nil {
-			tc.Params.Arguments = args
-		}
-
-		toolCallsList = append(toolCallsList, tc)
-	}
-
-	// Return provider event with message and tool calls
-	return ProviderEvent{
-		Message: Message{
-			Role:      "assistant",
-			Name:      "cohere",
-			Content:   response.Text,
-			ToolCalls: toolCallsList,
-		},
-	}, nil
-}
-
-func (prvdr *CohereProvider) handleStreamingRequest(
-	params *cohere.ChatStreamRequest,
-) (ProviderEvent, error) {
-	errnie.Debug("provider.handleStreamingRequest")
-
-	stream, err := prvdr.client.ChatStream(prvdr.ctx, params)
-	if errnie.Error(err) != nil {
-		return ProviderEvent{}, errnie.Error(err)
-	}
-
-	defer stream.Close()
-
-	for {
-		chunk, err := stream.Recv()
-
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			return ProviderEvent{}, errnie.Error(err)
-		}
-
-		if content := chunk.TextGeneration.String(); content != "" {
-			return ProviderEvent{
-				Message: Message{
-					Role:    "assistant",
-					Name:    "cohere",
-					Content: content,
-				},
-			}, nil
-		}
-	}
-
-	return ProviderEvent{}, nil
-}
-
-func (prvdr *CohereProvider) buildMessages(
-	chatParams *cohere.ChatStreamRequest,
-	messages []Message,
-) (err error) {
-	errnie.Debug("provider.buildMessages")
-
-	messageList := make([]*cohere.Message, 0, len(messages))
-	var systemMessage string
-
-	for _, msg := range messages {
-		switch msg.Role {
-		case "system":
-			systemMessage = msg.Content
-		case "user":
-			messageList = append(messageList, &cohere.Message{
-				Role: "user",
-				User: &cohere.ChatMessage{
-					Message: msg.Content,
-				},
-			})
-		case "assistant":
-			messageList = append(messageList, &cohere.Message{
-				Role: "chatbot",
-				Chatbot: &cohere.ChatMessage{
-					Message: msg.Content,
-				},
-			})
-		default:
-			errnie.Error("unknown message role", "role", msg.Role)
-		}
-	}
-
-	if systemMessage != "" {
-		chatParams.Preamble = cohere.String(systemMessage)
-	}
-
-	chatParams.ChatHistory = messageList
-	return nil
-}
-
-func (prvdr *CohereProvider) buildTools(
-	chatParams *cohere.ChatStreamRequest,
-	tools []mcp.Tool,
-) (err error) {
-	errnie.Debug("provider.buildTools")
-
-	if len(tools) == 0 {
-		return nil
-	}
-
-	toolList := make([]*cohere.Tool, 0, len(tools))
-
-	for _, tool := range tools {
-		parameterDefinitions := make(
-			map[string]*cohere.ToolParameterDefinitionsValue,
-			len(tool.InputSchema.Properties),
-		)
-
-		for name, property := range tool.InputSchema.Properties {
-			propMap, ok := property.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			description, _ := propMap["description"].(string)
-			required := false
-
-			// Check if the property is required
-			for _, req := range tool.InputSchema.Required {
-				if req == name {
-					required = true
-					break
-				}
-			}
-
-			parameterDefinitions[name] = &cohere.ToolParameterDefinitionsValue{
-				Type:        propMap["type"].(string),
-				Description: cohere.String(description),
-				Required:    cohere.Bool(required),
-			}
-		}
-
-		toolList = append(toolList, &cohere.Tool{
-			Name:                 tool.Name,
-			Description:          tool.Description,
-			ParameterDefinitions: parameterDefinitions,
-		})
-	}
-
-	if len(toolList) > 0 {
-		chatParams.Tools = toolList
-	}
-
-	return nil
-}
-
-func (prvdr *CohereProvider) buildResponseFormat(
-	chatParams *cohere.ChatStreamRequest,
-	format ResponseFormat,
-) (err error) {
-	errnie.Debug("provider.buildResponseFormat")
-
-	// If no format is specified, return early
-	if format.Name == "" && format.Description == "" && format.Schema == nil {
-		return nil
-	}
-
-	var schemaMap map[string]any
-	schemaStr, ok := format.Schema.(string)
-	if ok {
-		if err = json.Unmarshal([]byte(schemaStr), &schemaMap); err != nil {
-			return errnie.Error(err)
-		}
-	} else {
-		// Try to use the schema directly if it's already a map
-		schemaMap, ok = format.Schema.(map[string]any)
-		if !ok {
-			return errnie.Error(errors.New("schema is not a string or map"))
-		}
-	}
-
-	chatParams.ResponseFormat = &cohere.ResponseFormat{
-		Type: "json_object",
-		JsonObject: &cohere.JsonResponseFormat{
-			Schema: schemaMap,
-		},
-	}
-
-	return nil
 }

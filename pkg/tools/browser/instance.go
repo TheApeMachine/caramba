@@ -4,9 +4,7 @@ import (
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/provider"
 	fs "github.com/theapemachine/caramba/pkg/stores/fs"
-	"github.com/theapemachine/caramba/pkg/utils"
 )
 
 // BrowserGenerator implements the stream.Generator interface for browser operations
@@ -72,32 +70,14 @@ func (bg *BrowserGenerator) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult 
 				},
 			},
 		}
-	default:
-		var val string
+	}
 
-		pendingCall := provider.PendingToolCall{
-			ID:      "",
-			Request: toolcall,
-		}
-
-		if val, err = NewEval(manager.GetPage(), bg.fsStore, pendingCall).Run(); errnie.Error(err) != nil {
-			return mcp.CallToolResult{
-				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
-						Text: errnie.Error(err).Error(),
-					},
-				},
-			}
-		}
-
-		return mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: utils.SummarizeText(val, 2000),
-				},
+	return mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.TextContent{
+				Type: "text",
+				Text: "Operation not found",
 			},
-		}
+		},
 	}
 }

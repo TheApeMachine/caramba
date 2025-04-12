@@ -59,12 +59,6 @@ func (example *ChatExample) Run() error {
 		if response != nil {
 			request.AddResult(response)
 		}
-
-		for _, message := range response.Result.History {
-			for _, part := range message.Parts {
-				fmt.Print(part.Text)
-			}
-		}
 	}
 
 	return nil

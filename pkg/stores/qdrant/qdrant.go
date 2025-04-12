@@ -21,14 +21,14 @@ type Qdrant struct {
 	cancel     context.CancelFunc
 	client     *sdk.Client
 	collection string
-	embedder   provider.Embedder
+	embedder   provider.EmbedderType
 }
 
 // QdrantOption defines a functional option pattern for Qdrant
 type QdrantOption func(*Qdrant)
 
 // WithEmbedder sets the embedder for the Qdrant instance
-func WithEmbedder(embedder provider.Embedder) QdrantOption {
+func WithEmbedder(embedder provider.EmbedderType) QdrantOption {
 	return func(q *Qdrant) {
 		q.embedder = embedder
 	}

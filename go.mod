@@ -57,7 +57,6 @@ require (
 	github.com/gofiber/fiber/v3 v3.0.0-beta.4
 	github.com/gofiber/utils v1.1.0
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e
-	github.com/minio/simdjson-go v0.4.5
 	github.com/slack-go/slack v0.16.0
 	golang.org/x/crypto v0.37.0
 )
@@ -149,7 +148,6 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/knqyf263/go-plugin v0.9.0 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect

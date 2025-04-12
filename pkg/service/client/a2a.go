@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"runtime"
@@ -46,9 +45,7 @@ func (client *A2AClient) SendTask(
 
 	collector := task.NewTaskCollector(out)
 
-	if _, err := io.Copy(
-		collector, bytes.NewReader(resp.Body()),
-	); err != nil {
+	if _, err = collector.Write(resp.Body()); err != nil {
 		return nil, errnie.New(errnie.WithError(err))
 	}
 

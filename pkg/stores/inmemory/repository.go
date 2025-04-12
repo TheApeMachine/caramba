@@ -37,7 +37,7 @@ func (repo *Repository) GetTask(id string) (*task.Task, error) {
 		ID:        t.ID,
 		SessionID: t.SessionID,
 		Status:    t.Status,
-		History:   make([]task.Message, len(t.History)),
+		History:   make([]*task.Message, len(t.History)),
 		Artifacts: make([]task.Artifact, len(t.Artifacts)),
 	}
 
@@ -68,7 +68,7 @@ func (repo *Repository) UpdateTask(t *task.Task) error {
 		ID:        t.ID,
 		SessionID: t.SessionID,
 		Status:    t.Status,
-		History:   make([]task.Message, len(t.History)),
+		History:   make([]*task.Message, len(t.History)),
 		Artifacts: make([]task.Artifact, len(t.Artifacts)),
 	}
 

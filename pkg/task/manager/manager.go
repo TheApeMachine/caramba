@@ -1,20 +1,19 @@
-package task
+package manager
 
 import (
 	"bufio"
 	"encoding/json"
 	"errors"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
-	"github.com/theapemachine/caramba/pkg/tweaker"
+	"github.com/theapemachine/caramba/pkg/task"
 )
 
 type Manager struct {
-	taskStore   TaskStore
+	taskStore   task.TaskStore
 	llmProvider provider.ProviderType
 }
 
@@ -32,7 +31,7 @@ func NewManager(opts ...ManagerOption) *Manager {
 	return manager
 }
 
-func (manager *Manager) HandleTask(ctx fiber.Ctx, request *TaskRequest) error {
+func (manager *Manager) HandleTask(ctx fiber.Ctx, request *task.TaskRequest) error {
 	switch request.Method {
 	case "tasks/send":
 		return manager.handleTaskSend(ctx, request)
@@ -41,52 +40,24 @@ func (manager *Manager) HandleTask(ctx fiber.Ctx, request *TaskRequest) error {
 	return errnie.New(errnie.WithError(errors.New("method not found")))
 }
 
-func (manager *Manager) handleTaskSend(ctx fiber.Ctx, request *TaskRequest) error {
+func (manager *Manager) handleTaskSend(ctx fiber.Ctx, request *task.TaskRequest) error {
 	errnie.Trace("task manager.handleTaskSend", "request", request)
 
 	if err := manager.validate(request); err != nil {
 		return errnie.New(errnie.WithError(err))
 	}
 
-	errnie.Success("request validated")
-
-	messages := make([]provider.Message, 0, len(request.Params.History))
-
-	parts := make([]string, 0)
-
-	for _, message := range request.Params.History {
-		for _, part := range message.Parts {
-			parts = append(parts, part.Text)
-		}
-
-		messages = append(messages, provider.Message{
-			Role:    message.Role.String(),
-			Content: strings.Join(parts, ""),
-		})
-
-	}
-
-	events, err := manager.llmProvider.Generate(provider.ProviderParams{
-		Model:       tweaker.GetModel(tweaker.GetProvider()),
-		Temperature: tweaker.GetTemperature(),
-		TopP:        tweaker.GetTopP(),
-		Messages:    messages,
-		Stream:      true,
-	})
+	chunks, err := manager.llmProvider.Generate(
+		ctx, request,
+	)
 
 	if err != nil {
 		return errnie.New(errnie.WithError(err))
 	}
 
 	return ctx.SendStreamWriter(func(w *bufio.Writer) {
-		for event := range events {
-			request.Params.History = append(request.Params.History, Message{
-				Role:  MessageRole(event.Message.Role),
-				Parts: []Part{{Text: event.Message.Content}},
-			})
-
-			response := NewTaskResponse(request.Params)
-			buf, err := json.Marshal(response)
+		for chunk := range chunks {
+			buf, err := json.Marshal(chunk)
 
 			if err != nil {
 				errnie.New(errnie.WithError(err))
@@ -96,15 +67,11 @@ func (manager *Manager) handleTaskSend(ctx fiber.Ctx, request *TaskRequest) erro
 			if _, err := w.Write(buf); err != nil {
 				errnie.New(errnie.WithError(err))
 			}
-
-			if err := w.Flush(); err != nil {
-				errnie.New(errnie.WithError(err))
-			}
 		}
 	})
 }
 
-func (manager *Manager) validate(request *TaskRequest) error {
+func (manager *Manager) validate(request *task.TaskRequest) error {
 	if manager == nil {
 		return errnie.New(errnie.WithError(errors.New("manager not set")))
 	}
@@ -128,7 +95,7 @@ func (manager *Manager) validate(request *TaskRequest) error {
 	return nil
 }
 
-func WithTaskStore(taskStore TaskStore) ManagerOption {
+func WithTaskStore(taskStore task.TaskStore) ManagerOption {
 	return func(manager *Manager) {
 		manager.taskStore = taskStore
 	}

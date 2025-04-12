@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/provider"
 	fs "github.com/theapemachine/caramba/pkg/stores/fs"
 )
 
@@ -15,10 +15,10 @@ type Eval struct {
 	page     *rod.Page
 	op       string
 	fsStore  *fs.Store
-	toolcall provider.PendingToolCall
+	toolcall mcp.CallToolRequest
 }
 
-func NewEval(page *rod.Page, fsStore *fs.Store, toolcall provider.PendingToolCall) *Eval {
+func NewEval(page *rod.Page, fsStore *fs.Store, toolcall mcp.CallToolRequest) *Eval {
 	op := toolcall.Request.Method
 	return &Eval{
 		page:     page,

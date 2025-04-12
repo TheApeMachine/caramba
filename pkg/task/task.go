@@ -10,7 +10,7 @@ type Task struct {
 	ID        string         `json:"id"`
 	SessionID string         `json:"sessionId"`
 	Status    TaskStatus     `json:"status"`
-	History   []Message      `json:"history"`
+	History   []*Message     `json:"history"`
 	Artifacts []Artifact     `json:"artifacts"`
 	Metadata  map[string]any `json:"metadata"`
 }
@@ -24,7 +24,7 @@ func NewTask(opts ...TaskOption) Task {
 		Status: TaskStatus{
 			State: TaskStateSubmitted,
 		},
-		History:   make([]Message, 0),
+		History:   make([]*Message, 0),
 		Artifacts: make([]Artifact, 0),
 		Metadata:  make(map[string]any),
 	}
@@ -42,7 +42,7 @@ func (task *Task) AddResult(result *TaskResponse) {
 	task.Metadata = result.Result.Metadata
 }
 
-func (task *Task) AddMessage(message Message) {
+func (task *Task) AddMessage(message *Message) {
 	task.History = append(task.History, message)
 }
 
@@ -66,7 +66,7 @@ type TaskArtifactUpdateEvent struct {
 type TaskSendParams struct {
 	ID               string           `json:"id"`
 	SessionID        string           `json:"sessionId"`
-	Message          Message          `json:"message"`
+	Message          *Message         `json:"message"`
 	HistoryLength    int              `json:"historyLength"`
 	PushNotification PushNotification `json:"pushNotification"`
 	Metadata         map[string]any   `json:"metadata"`
@@ -112,7 +112,7 @@ func NewTaskRequest(task Task) *TaskRequest {
 	}
 }
 
-func (tr *TaskRequest) AddMessage(message Message) {
+func (tr *TaskRequest) AddMessage(message *Message) {
 	tr.Params.AddMessage(message)
 }
 
@@ -144,7 +144,7 @@ type TaskIdParams struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-func WithMessages(messages ...Message) TaskOption {
+func WithMessages(messages ...*Message) TaskOption {
 	return func(task *Task) {
 		task.History = append(task.History, messages...)
 	}

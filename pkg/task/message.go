@@ -1,5 +1,7 @@
 package task
 
+import "strings"
+
 type MessageRole string
 
 const (
@@ -32,9 +34,43 @@ func NewMessage(role MessageRole, parts []Part) *Message {
 	}
 }
 
-func NewUserMessage(name, message string) Message {
-	return Message{
+func (msg *Message) String() string {
+	var parts strings.Builder
+
+	for _, part := range msg.Parts {
+		parts.WriteString(part.Text)
+	}
+
+	return parts.String()
+}
+
+func NewUserMessage(name, message string) *Message {
+	return &Message{
 		Role: MessageRoleUser,
+		Parts: []Part{
+			{
+				Type: "text",
+				Text: message,
+			},
+		},
+	}
+}
+
+func NewAssistantMessage(message string) *Message {
+	return &Message{
+		Role: MessageRoleAssistant,
+		Parts: []Part{
+			{
+				Type: "text",
+				Text: message,
+			},
+		},
+	}
+}
+
+func NewToolMessage(message string) *Message {
+	return &Message{
+		Role: MessageRoleTool,
 		Parts: []Part{
 			{
 				Type: "text",
