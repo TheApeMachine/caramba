@@ -1,4 +1,4 @@
-package memory
+package neo4j
 
 import (
 	"context"
@@ -6,18 +6,23 @@ import (
 	"os"
 	"strings"
 
+	"github.com/gofiber/fiber/v3"
 	sdk "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
+type N4jQuery struct {
+	Cypher   string
+	Keywords map[string]string
+	Params   map[string]any
+}
+
 type Neo4j struct {
-	ctx    context.Context
-	cancel context.CancelFunc
 	client sdk.DriverWithContext
 }
 
-func NewNeo4j() *Neo4j {
-	errnie.Debug("memory.NewNeo4j")
+func NewNeo4j(collection string) *Neo4j {
+	errnie.Debug("NewNeo4j")
 
 	driver, err := sdk.NewDriverWithContext(
 		os.Getenv("NEO4J_URL"),
@@ -27,69 +32,108 @@ func NewNeo4j() *Neo4j {
 			"",
 		),
 	)
-
 	if err != nil {
-		errnie.Error(err)
 		return nil
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	neo4j := &Neo4j{
-		ctx:    ctx,
-		cancel: cancel,
 		client: driver,
 	}
 
 	return neo4j
 }
 
-func (n4j *Neo4j) ID() string {
-	return "neo4j"
+func (neo4j *Neo4j) findRelationships(ctx fiber.Ctx, session sdk.SessionWithContext, keyword string) (string, error) {
+	var results strings.Builder
+
+	result, err := session.Run(
+		ctx.Context(),
+		`
+		MATCH p=(a)-[r]->(b)
+		WHERE a.name CONTAINS $term OR b.name CONTAINS $term
+		RETURN a.name as source, labels(a)[0] as sourceLabel,
+			type(r) as relationship,
+			b.name as target, labels(b)[0] as targetLabel
+		LIMIT 20
+		`,
+		map[string]any{
+			"term": keyword,
+		},
+	)
+
+	if err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+
+	for result.Next(ctx.Context()) {
+		record := result.Record()
+		asmap := record.AsMap()
+		results.WriteString(
+			fmt.Sprintf("%v:%v -[%v]-> %v:%v\n",
+				asmap["sourceLabel"],
+				asmap["source"],
+				asmap["relationship"],
+				asmap["targetLabel"],
+				asmap["target"],
+			),
+		)
+	}
+
+	if err := result.Err(); err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+
+	if results.Len() == 0 {
+		return fmt.Sprintf("No relationships found for: %s\n", keyword), nil
+	}
+
+	return results.String(), nil
 }
 
-func (n4j *Neo4j) Get(key string) (value string, err error) {
-	return "", nil
-}
+func (neo4j *Neo4j) executeQuery(ctx fiber.Ctx, query N4jQuery) (string, error) {
+	session := neo4j.client.NewSession(ctx.Context(), sdk.SessionConfig{
+		DatabaseName: "neo4j",
+		AccessMode:   sdk.AccessModeWrite,
+	})
+	defer session.Close(ctx.Context())
 
-func (n4j *Neo4j) Put(key string, value string) (err error) {
-	return nil
-}
+	var results strings.Builder
 
-// formatRelationships takes a list of records and formats them into a relationship string
-func formatRelationships(records []*sdk.Record) string {
-	var relationships []string
+	for _, keyword := range query.Keywords {
+		result, err := neo4j.findRelationships(ctx, session, keyword)
+		if err != nil {
+			return "", err
+		}
+		results.WriteString(result)
+	}
 
-	for _, record := range records {
-		// Try to extract path or relationship pattern from the record
-		for _, value := range record.Values {
-			switch v := value.(type) {
-			case sdk.Path:
-				// Handle full paths
-				var path []string
-				for i, node := range v.Nodes {
-					if i > 0 {
-						rel := v.Relationships[i-1]
-						path = append(path, fmt.Sprintf("-[%s]->", rel.Type))
-					}
-					path = append(path, fmt.Sprintf("%v", node.Props["name"]))
-				}
-				relationships = append(relationships, strings.Join(path, " "))
-			case sdk.Relationship:
-				// Handle single relationships
-				relationships = append(relationships, fmt.Sprintf("%v -[%s]-> %v",
-					v.StartElementId, v.Type, v.EndElementId))
-			case sdk.Node:
-				// Handle single nodes (just in case)
-				relationships = append(relationships, fmt.Sprintf("%v", v.Props["name"]))
-			}
+	if query.Cypher != "" {
+		result, err := session.Run(ctx.Context(), query.Cypher, query.Params)
+		if err != nil {
+			return "", errnie.New(errnie.WithError(err))
+		}
+
+		for result.Next(ctx.Context()) {
+			results.WriteString(fmt.Sprintf("%v\n", result.Record().AsMap()))
+		}
+
+		if err := result.Err(); err != nil {
+			return "", errnie.New(errnie.WithError(err))
 		}
 	}
 
-	if len(relationships) == 0 {
-		return "<relationships>\nNo relationships found\n</relationships>"
-	}
+	return results.String(), nil
+}
 
-	return fmt.Sprintf("<relationships>\n%s\n</relationships>",
-		strings.Join(relationships, "\n"))
+func (neo4j *Neo4j) Get() (err error) {
+	neo4j.client.Close(context.Background())
+	return nil
+}
+
+func (neo4j *Neo4j) Put(ctx fiber.Ctx, n4jQuery N4jQuery) (string, error) {
+	results, err := neo4j.executeQuery(ctx, n4jQuery)
+	if err != nil {
+		return "", err
+	}
+	return results, nil
 }

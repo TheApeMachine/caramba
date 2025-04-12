@@ -8,8 +8,6 @@ import (
 	"github.com/theapemachine/caramba/pkg/service"
 	"github.com/theapemachine/caramba/pkg/stores/inmemory"
 	"github.com/theapemachine/caramba/pkg/task/manager"
-
-	_ "github.com/containerd/containerd/v2/cmd/containerd/builtins"
 )
 
 var (

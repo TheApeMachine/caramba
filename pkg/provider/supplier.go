@@ -11,5 +11,5 @@ type ProviderType interface {
 }
 
 type EmbedderType interface {
-	Embed(fiber.Ctx, *task.TaskRequest) (<-chan *task.TaskResponse, error)
+	Embed(fiber.Ctx, *task.TaskRequest) ([]float64, error)
 }

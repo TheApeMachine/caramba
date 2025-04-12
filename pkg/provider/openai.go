@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/packages/param"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/task"
 	"github.com/theapemachine/caramba/pkg/tools"
@@ -187,6 +188,69 @@ func (prvdr *OpenAIProvider) handleChunk(
 
 func WithOpenAIAPIKey(apiKey string) OpenAIProviderOption {
 	return func(prvdr *OpenAIProvider) {
+		client := openai.NewClient(
+			option.WithAPIKey(apiKey),
+		)
+
+		prvdr.client = &client
+	}
+}
+
+type OpenAIEmbedder struct {
+	client *openai.Client
+}
+
+type OpenAIEmbedderOption func(*OpenAIEmbedder)
+
+func NewOpenAIEmbedder(opts ...OpenAIEmbedderOption) *OpenAIEmbedder {
+	prvdr := &OpenAIEmbedder{}
+
+	for _, opt := range opts {
+		opt(prvdr)
+	}
+
+	return prvdr
+}
+
+func (prvdr *OpenAIEmbedder) Embed(
+	ctx fiber.Ctx, request *task.TaskRequest,
+) ([]float64, error) {
+	var (
+		outTask = request.Params
+		input   string
+	)
+
+	// Get the input text from the last user message
+	for i := len(outTask.History) - 1; i >= 0; i-- {
+		if outTask.History[i].Role.String() == "user" {
+			input = outTask.History[i].String()
+			break
+		}
+	}
+
+	if input == "" {
+		outTask.Status.State = task.TaskStateFailed
+		return nil, errnie.New(errnie.WithMessage("no input text found for embedding"))
+	}
+
+	embeddings, err := prvdr.client.Embeddings.New(ctx.Context(), openai.EmbeddingNewParams{
+		Model: openai.EmbeddingModel(openai.EmbeddingModelTextEmbedding3Large),
+		Input: openai.EmbeddingNewParamsInputUnion{
+			OfString: param.Opt[string]{Value: input},
+		},
+	})
+
+	if errnie.Error(err) != nil {
+		outTask.Status.State = task.TaskStateFailed
+		return nil, errnie.New(errnie.WithError(err))
+	}
+
+	outTask.Status.State = task.TaskStateCompleted
+	return embeddings.Data[0].Embedding, nil
+}
+
+func WithOpenAIEmbedderAPIKey(apiKey string) OpenAIEmbedderOption {
+	return func(prvdr *OpenAIEmbedder) {
 		client := openai.NewClient(
 			option.WithAPIKey(apiKey),
 		)
