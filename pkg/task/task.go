@@ -1,11 +1,9 @@
 package task
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/theapemachine/caramba/pkg/service/types"
 )
 
 type Task struct {
@@ -17,32 +15,39 @@ type Task struct {
 	Metadata  map[string]any `json:"metadata"`
 }
 
-func NewTask() *Task {
-	return &Task{
+type TaskOption func(*Task)
+
+func NewTask(opts ...TaskOption) Task {
+	task := &Task{
 		ID:        uuid.New().String(),
 		SessionID: uuid.New().String(),
+		Status: TaskStatus{
+			State: TaskStateSubmitted,
+		},
+		History:   make([]Message, 0),
+		Artifacts: make([]Artifact, 0),
+		Metadata:  make(map[string]any),
 	}
-}
 
-func NewSessionTask(sessionID string) *Task {
-	return &Task{
-		ID:        uuid.New().String(),
-		SessionID: sessionID,
+	for _, opt := range opts {
+		opt(task)
 	}
+
+	return *task
 }
 
-func (task *Task) Unmarshal(data []byte) error {
-	return types.SimdUnmarshalJSON(data, task)
+func (task *Task) AddResult(result *TaskResponse) {
+	task.History = result.Result.History
+	task.Artifacts = result.Result.Artifacts
+	task.Metadata = result.Result.Metadata
 }
 
-func (task *Task) Marshal() ([]byte, error) {
-	return types.SimdMarshalJSON(task)
+func (task *Task) AddMessage(message Message) {
+	task.History = append(task.History, message)
 }
 
 type TaskStatus struct {
-	State     TaskState `json:"state"`
-	Message   Message   `json:"message"`
-	Timestamp string    `json:"timestamp"`
+	State TaskState `json:"state"`
 }
 
 type TaskStatusUpdateEvent struct {
@@ -92,10 +97,27 @@ func (s TaskState) IsFinal() bool {
 }
 
 type TaskRequest struct {
-	TaskID           string           `json:"taskId"`
-	Artifact         Artifact         `json:"artifact"`
-	PushNotification PushNotification `json:"pushNotification"`
-	Metadata         map[string]any   `json:"metadata"`
+	JSONRPC string `json:"jsonrpc"`
+	ID      string `json:"id"`
+	Method  string `json:"method"`
+	Params  Task   `json:"params"`
+}
+
+func NewTaskRequest(task Task) *TaskRequest {
+	return &TaskRequest{
+		JSONRPC: "2.0",
+		ID:      task.ID,
+		Method:  "tasks/send",
+		Params:  task,
+	}
+}
+
+func (tr *TaskRequest) AddMessage(message Message) {
+	tr.Params.AddMessage(message)
+}
+
+func (tr *TaskRequest) AddResult(result *TaskResponse) {
+	tr.Params.AddResult(result)
 }
 
 type TaskRequestError struct {
@@ -109,54 +131,21 @@ func (e *TaskRequestError) Error() string {
 	return fmt.Sprintf("A2A Error - Code: %d, Message: %s, Data: %s", e.Code, e.Message, e.Data)
 }
 
-func NewTaskRequest(msg json.RawMessage) (*TaskRequest, *TaskRequestError) {
-	request := &TaskRequest{}
-	return request.Unmarshal(msg)
-}
-
-func (request *TaskRequest) Unmarshal(
-	params json.RawMessage,
-) (*TaskRequest, *TaskRequestError) {
-	var reqParams TaskRequest
-
-	if err := json.Unmarshal(params, &reqParams); err != nil {
-		return nil, &TaskRequestError{
-			Code:    -32602,
-			Message: "Invalid params",
-			Data:    err.Error(),
-		}
-	}
-
-	if reqParams.TaskID == "" {
-		return nil, &TaskRequestError{
-			Code:    -32602,
-			Message: "Invalid params",
-			Data:    "task ID is required",
-		}
-	}
-
-	return request, nil
-}
-
-type TaskResponse struct {
-	TaskID    string         `json:"taskId"`
+type TaskResult struct {
+	ID        string         `json:"id"`
+	SessionID string         `json:"sessionId"`
 	Status    TaskStatus     `json:"status"`
-	History   []Message      `json:"history"`
 	Artifacts []Artifact     `json:"artifacts"`
 	Metadata  map[string]any `json:"metadata"`
-}
-
-func NewTaskResponse(task *Task) *TaskResponse {
-	return &TaskResponse{
-		TaskID:    task.ID,
-		Status:    task.Status,
-		History:   task.History,
-		Artifacts: task.Artifacts,
-		Metadata:  task.Metadata,
-	}
 }
 
 type TaskIdParams struct {
 	ID       string         `json:"id"`
 	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+func WithMessages(messages ...Message) TaskOption {
+	return func(task *Task) {
+		task.History = append(task.History, messages...)
+	}
 }

@@ -32,7 +32,12 @@ models:
   lmstudio: bartowski/Llama-3.1-8B-Lexi-Uncensored-V2-GGUF
 
 settings:
-  domain: "caramba.ai"
+  app:
+    name: Caramba
+    version: "1.0.0"
+  domain: "ui.alliedmastercomputer.org"
+  baseURL: "https://ui.alliedmastercomputer.org"
+  email: "info@alliedmastercomputer.org"
   sentry:
     enabled: true
     dsn: "https://sentry.io/api/1234567890/store/"

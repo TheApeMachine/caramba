@@ -8,19 +8,15 @@ package service
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/theapemachine/caramba/pkg/agent"
-	"github.com/theapemachine/caramba/pkg/agent/handlers"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/service/types"
 	"github.com/theapemachine/caramba/pkg/task"
-	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -54,9 +50,7 @@ type A2A struct {
 	streamMutex     sync.RWMutex
 	notificationMgr *task.NotificationManager
 	middleware      *Middleware
-	taskStore       task.TaskStore
-	llmProvider     provider.ProviderType
-	toolRegistry    *tools.Registry
+	taskManager     *task.Manager
 }
 
 type A2AOption func(*A2A)
@@ -89,11 +83,16 @@ func NewA2A(opts ...A2AOption) *A2A {
 		}),
 		certManager: &autocert.Manager{
 			Prompt: autocert.AcceptTOS,
+			Email:  tweaker.Value[string]("settings.email"),
 			HostPolicy: autocert.HostWhitelist(
 				tweaker.Value[string]("settings.domain"),
 			),
 			Cache: autocert.DirCache("./certs"),
 		},
+	}
+
+	for _, opt := range opts {
+		opt(a2a)
 	}
 
 	return a2a
@@ -114,92 +113,25 @@ func (srv *A2A) RegisterRoutes() {
 
 	// A2A JSON-RPC endpoint
 	srv.app.Post("/rpc", func(ctx fiber.Ctx) error {
-		var req types.JSONRPC
-		if err := ctx.Bind().Body(&req); err != nil {
-			parseErr := errnie.New(
-				errnie.WithMessage(fmt.Sprintf("Parse error: %s", err.Error())),
-				errnie.WithType(errnie.InvalidInputError),
-				errnie.WithStatus(errnie.BadRequestStatus),
-				errnie.WithError(err),
+		req := new(task.TaskRequest)
+
+		if err := ctx.Bind().Body(req); err != nil {
+			parseErr := errnie.New(errnie.WithError(err))
+
+			return ctx.Status(parseErr.Status()).JSON(
+				task.NewTaskResponse(req.Params),
 			)
-
-			return ctx.Status(parseErr.Status()).JSON(types.JSONRPCResponse{
-				Version: "2.0",
-				Error: &types.JSONRPCError{
-					Code:    -32700,
-					Message: "Parse error",
-					Data:    err.Error(),
-				},
-				ID: nil,
-			})
 		}
 
-		// Ensure it's a valid JSON-RPC 2.0 request
-		if req.Version != "2.0" {
-			validationErr := errnie.New(
-				errnie.WithMessage("Invalid Request: Expected JSON-RPC 2.0"),
-				errnie.WithType(errnie.ValidationError),
-				errnie.WithStatus(errnie.BadRequestStatus),
+		if err := srv.taskManager.HandleTask(ctx, req); err != nil {
+			errnie.New(errnie.WithError(err))
+			
+			return ctx.Status(fiber.StatusInternalServerError).JSON(
+				task.NewTaskResponse(req.Params),
 			)
-
-			return ctx.Status(validationErr.Status()).JSON(types.JSONRPCResponse{
-				Version: "2.0",
-				Error: &types.JSONRPCError{
-					Code:    -32600,
-					Message: "Invalid Request",
-					Data:    "Expected JSON-RPC 2.0",
-				},
-				ID: req.ID,
-			})
 		}
 
-		// Process the request based on method
-		var result any
-		var err *task.TaskRequestError
-
-		switch req.Method {
-		case "tasks/send":
-			result, err = handlers.HandleTaskSend(srv.taskStore, srv.llmProvider, srv.toolRegistry, srv, req.Params)
-		case "tasks/get":
-			result, err = handlers.HandleTaskGet(srv.taskStore, req.Params)
-		case "tasks/cancel":
-			result, err = handlers.HandleTaskCancel(srv.taskStore, req.Params)
-		case "tasks/pushNotification/set":
-			result, err = handlers.HandleTaskSetPushNotification(srv.taskStore, req.Params)
-		case "tasks/pushNotification/get":
-			result, err = handlers.HandleTaskGetPushNotification(srv.taskStore, req.Params)
-		case "tasks/sendSubscribe":
-			handlers.NewSendSubscriberHandler(
-				ctx, srv.taskStore, srv.llmProvider, srv.toolRegistry,
-			).HandleRequest(
-				req.Params, req.ID,
-			)
-		case "tasks/resubscribe":
-			result, err = handlers.NewTaskResubscribeHandler(
-				ctx, srv.taskStore,
-			).HandleRequest(req.Params)
-		default:
-			// Method not found error according to JSON-RPC spec
-			err = &task.TaskRequestError{
-				Code:    -32601, // Method not found
-				Message: "Method not found",
-				Data:    fmt.Sprintf("Method '%s' not supported", req.Method),
-			}
-		}
-
-		if err != nil {
-			return ctx.JSON(types.JSONRPCResponse{
-				Version: "2.0",
-				Error:   convertToJSONRPCError(err),
-				ID:      req.ID,
-			})
-		}
-
-		return ctx.JSON(types.JSONRPCResponse{
-			Version: "2.0",
-			Result:  result,
-			ID:      req.ID,
-		})
+		return nil
 	})
 
 	// SSE streaming endpoint for task updates
@@ -278,21 +210,7 @@ func (srv *A2A) Listen(addr string) error {
 	// Register routes before starting the server
 	srv.RegisterRoutes()
 
-	return srv.app.Listen(addr, fiber.ListenConfig{
-		AutoCertManager: srv.certManager,
-	})
-}
-
-/*
-convertToJSONRPCError transforms a TaskRequestError into a JSONRPCError for
-consistent error handling across the API.
-*/
-func convertToJSONRPCError(err *task.TaskRequestError) *types.JSONRPCError {
-	return &types.JSONRPCError{
-		Code:    err.Code,
-		Message: err.Message,
-		Data:    err.Data,
-	}
+	return srv.app.Listen(":"+addr, fiber.ListenConfig{})
 }
 
 func WithName(name string) A2AOption {
@@ -311,14 +229,8 @@ func WithMiddleware(middleware *Middleware) A2AOption {
 	}
 }
 
-func WithTaskStore(taskStore task.TaskStore) A2AOption {
+func WithTaskManager(taskManager *task.Manager) A2AOption {
 	return func(a2a *A2A) {
-		a2a.taskStore = taskStore
-	}
-}
-
-func WithLLMProvider(llmProvider provider.ProviderType) A2AOption {
-	return func(a2a *A2A) {
-		a2a.llmProvider = llmProvider
+		a2a.taskManager = taskManager
 	}
 }

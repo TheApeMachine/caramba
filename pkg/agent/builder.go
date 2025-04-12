@@ -11,12 +11,7 @@ type Builder struct {
 type BuilderOption func(*Builder)
 
 func NewBuilder(opts ...BuilderOption) *Builder {
-	builder := &Builder{
-		a2aClient: client.NewA2AClient(
-			"http://localhost:3000",
-		),
-		mcpClient: client.NewMCPClient(),
-	}
+	builder := &Builder{}
 
 	for _, opt := range opts {
 		opt(builder)
@@ -28,5 +23,17 @@ func NewBuilder(opts ...BuilderOption) *Builder {
 func WithCard(card *Card) BuilderOption {
 	return func(builder *Builder) {
 		builder.Card = card
+	}
+}
+
+func WithA2AClient(a2aClient *client.A2AClient) BuilderOption {
+	return func(builder *Builder) {
+		builder.a2aClient = a2aClient
+	}
+}
+
+func WithMCPClient(mcpClient *client.MCPClient) BuilderOption {
+	return func(builder *Builder) {
+		builder.mcpClient = mcpClient
 	}
 }

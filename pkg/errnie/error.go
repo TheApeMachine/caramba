@@ -758,3 +758,10 @@ func WithErrorAggregation(window time.Duration, threshold int) ErrnieErrorOption
 		errorAggregator.threshold = threshold
 	}
 }
+
+// WithStatusCode sets the HTTP status code for an ErrnieError
+func WithStatusCode(statusCode int) ErrnieErrorOption {
+	return func(e *ErrnieError) {
+		e.status = ErrnieStatusType(statusCode)
+	}
+}

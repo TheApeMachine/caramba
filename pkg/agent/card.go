@@ -38,8 +38,8 @@ func FromConfig(name string) *Card {
 		Authentication: auth.Authentication{
 			Schemes: tweaker.Value[string](settings + name + ".authentication.schemes"),
 		},
-		DefaultInputModes:  tweaker.Value[[]string](settings + name + ".defaultInputModes"),
-		DefaultOutputModes: tweaker.Value[[]string](settings + name + ".defaultOutputModes"),
+		DefaultInputModes:  tweaker.GetStringSlice(settings + name + ".defaultInputModes"),
+		DefaultOutputModes: tweaker.GetStringSlice(settings + name + ".defaultOutputModes"),
 		Capabilities: Capabilities{
 			Streaming:         tweaker.Value[bool](settings + name + ".capabilities.streaming"),
 			PushNotifications: tweaker.Value[bool](settings + name + ".capabilities.pushNotifications"),

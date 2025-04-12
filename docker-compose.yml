@@ -18,21 +18,21 @@ x-init-ollama: &init-ollama
     - "sleep 3; OLLAMA_HOST=ollama:11434 ollama pull llama3.2"
 
 services:
-  agent_planner:
+  ui:
     image: caramba
     command: |
-      /app/main serve agent \ 
-        --name agent.planner \
-        --subscriptions topic.tasks \
-        --tools tool.system \
-        --initial-message example
+      /app/main serve --name ui
     depends_on:
       - redis
       - neo4j
       - qdrant
       - minio
+    env_file:
+      - .env
     environment:
-      - STAGE=dev
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    ports:
+      - "3210:3210"
 
   minio:
     image: minio/minio

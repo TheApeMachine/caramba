@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/task"
 )
 
@@ -14,6 +15,8 @@ type Repository struct {
 }
 
 func NewRepository() *Repository {
+	errnie.Trace("inmemmory.NewRepository")
+
 	return &Repository{
 		tasks: make(map[string]*task.Task),
 	}
