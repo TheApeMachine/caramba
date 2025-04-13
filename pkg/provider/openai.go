@@ -71,6 +71,8 @@ func (prvdr *OpenAIProvider) prepare(
 func (prvdr *OpenAIProvider) Generate(
 	ctx fiber.Ctx, request *task.TaskRequest,
 ) (<-chan *task.TaskResponse, error) {
+	errnie.Trace("OpenAIProvider.Generate", "request", request)
+
 	out := make(chan *task.TaskResponse)
 	reqCtx := ctx.Context()
 
@@ -117,6 +119,8 @@ func (prvdr *OpenAIProvider) Generate(
 func (prvdr *OpenAIProvider) Stream(
 	ctx fiber.Ctx, request *task.TaskRequest,
 ) (<-chan *task.TaskResponse, error) {
+	errnie.Trace("OpenAIProvider.Stream", "request", request)
+
 	out := make(chan *task.TaskResponse)
 	reqCtx := ctx.Context()
 
@@ -157,21 +161,17 @@ func (prvdr *OpenAIProvider) handleChunk(
 	out chan *task.TaskResponse,
 ) {
 	if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-		outTask.Artifacts = []task.Artifact{
-			{
-				Parts: []task.Part{
-					{Type: "text", Text: chunk.Choices[0].Delta.Content},
-				},
-				Append: true,
-			},
-		}
-		outTask.Status.State = task.TaskStateWorking
+		errnie.Debug("Received content chunk", "content", chunk.Choices[0].Delta.Content)
+		outTask.AddMessage(task.NewAssistantMessage(chunk.Choices[0].Delta.Content))
 		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
 		return
 	}
 
-	if _, ok := acc.JustFinishedContent(); ok {
+	// Only send completion notification if we actually finished content
+	if content, ok := acc.JustFinishedContent(); ok && content != "" {
 		errnie.Debug("Accumulator detected end of content stream")
+		outTask.Status.State = task.TaskStateCompleted
+		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
 		return
 	}
 
@@ -179,7 +179,9 @@ func (prvdr *OpenAIProvider) handleChunk(
 		errnie.Warn("Assistant stream finished with refusal", "refusal", refusal)
 		outTask.AddMessage(task.NewAssistantMessage("[Refused to answer]"))
 		outTask.Status.State = task.TaskStateFailed
-		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+		out <- task.NewTaskResponse(task.WithResponseError(
+			errnie.New(errnie.WithMessage("Assistant refused to answer")),
+		))
 		return
 	}
 
@@ -216,10 +218,12 @@ func (prvdr *OpenAIProvider) handleChunk(
 				content += c.Text
 			}
 		}
-		
-		outTask.Status.State = task.TaskStateCompleted
-		outTask.AddMessage(task.NewAssistantMessage(content))
-		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+
+		if content != "" {
+			outTask.Status.State = task.TaskStateCompleted
+			outTask.AddMessage(task.NewAssistantMessage(content))
+			out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+		}
 		return
 	}
 }

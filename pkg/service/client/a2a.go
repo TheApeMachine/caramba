@@ -1,6 +1,8 @@
 package client
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"runtime"
@@ -16,8 +18,7 @@ import (
 
 // A2AClient provides methods for communicating with an A2A server
 type A2AClient struct {
-	baseURL string
-	conn    *fiberClient.Client
+	conn *fiberClient.Client
 }
 
 type A2AClientOption func(*A2AClient)
@@ -43,10 +44,27 @@ func (client *A2AClient) SendTask(
 		return nil, errnie.New(errnie.WithError(err))
 	}
 
-	collector := task.NewTaskCollector(out)
+	collector := task.NewTaskCollector(req, out)
+	reader := bufio.NewReader(bytes.NewReader(resp.Body()))
 
-	if _, err = collector.Write(resp.Body()); err != nil {
-		return nil, errnie.New(errnie.WithError(err))
+	// Read the response stream line by line
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, errnie.New(errnie.WithError(err))
+		}
+
+		// Skip empty lines
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		if _, err = collector.Write(line); err != nil {
+			return nil, errnie.New(errnie.WithError(err))
+		}
 	}
 
 	return collector.Response(), nil

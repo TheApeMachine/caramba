@@ -28,7 +28,11 @@ func (example *ChatExample) Run() error {
 	)
 
 	var (
-		request  = task.NewTaskRequest(task.NewTask())
+		request = task.NewTaskRequest(task.NewTask(
+			task.WithMessages(
+				task.NewSystemMessage("You are a helpful assistant"),
+			),
+		))
 		response = new(task.TaskResponse)
 		err      error
 	)

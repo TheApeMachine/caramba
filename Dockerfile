@@ -16,7 +16,7 @@ ENV GOFLAGS=-buildvcs=false
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download && go install github.com/air-verse/air@latest
 
 COPY . .
 
@@ -24,4 +24,4 @@ COPY . .
 # RUN --mount=type=cache,target="/root/.cache/go-build" go build -o main
 RUN go build -o main
 
-CMD ["./main"]
+CMD ["air"]

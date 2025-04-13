@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/valyala/fasthttp"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
@@ -57,7 +58,7 @@ func (manager *Manager) HandleTask(ctx fiber.Ctx, request *task.TaskRequest) err
 func (manager *Manager) handleTaskSend(ctx fiber.Ctx, request *task.TaskRequest) error {
 	errnie.Trace("task manager.handleTaskSend", "request", request)
 
-	chunks, err := manager.llmProvider.Generate(ctx, request)
+	chunks, err := manager.llmProvider.Stream(ctx, request)
 
 	if err != nil {
 		internalErr := errnie.New(errnie.WithError(err))
@@ -72,25 +73,36 @@ func (manager *Manager) handleTaskSend(ctx fiber.Ctx, request *task.TaskRequest)
 		)
 	}
 
-	return ctx.SendStreamWriter(func(w *bufio.Writer) {
-		for chunk := range chunks {
-			buf, err := json.Marshal(chunk)
-			if err != nil {
-				errnie.Error("Error marshalling stream chunk", "error", err)
-				return // Stop sending on marshalling error
-			}
+	ctx.Set("Content-Type", "text/event-stream")
+	ctx.Set("Cache-Control", "no-cache")
+	ctx.Set("Connection", "keep-alive")
+	ctx.Set("Transfer-Encoding", "chunked")
 
-			if _, err := w.Write(buf); err != nil {
-				errnie.Error("Error writing to stream", "error", err)
-				return // Stop sending on write error
-			}
+	ctx.Status(fiber.StatusOK).Request().SetBodyStreamWriter(
+		fasthttp.StreamWriter(func(w *bufio.Writer) {
+			for chunk := range chunks {
+				buf, err := json.Marshal(chunk)
+				errnie.Trace("task manager.handleTaskSend", "buf", string(buf))
 
-			if err := w.Flush(); err != nil {
-				errnie.Error("Error flushing stream writer", "error", err)
-				return // Stop sending on flush error
+				if err != nil {
+					errnie.Error("Error marshalling stream chunk", "error", err)
+					return // Stop sending on marshalling error
+				}
+
+				if _, err := w.Write(buf); err != nil {
+					errnie.Error("Error writing to stream", "error", err)
+					return // Stop sending on write error
+				}
+
+				if err := w.Flush(); err != nil {
+					errnie.Error("Error flushing stream writer", "error", err)
+					return // Stop sending on flush error
+				}
 			}
-		}
-	})
+		}),
+	)
+
+	return nil
 }
 
 // sendJSONRPCError is a helper to format and send JSON-RPC errors via Fiber.

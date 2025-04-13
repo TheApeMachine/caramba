@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	sdk "github.com/redis/go-redis/v9"
+	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stores/redis"
 )
 
@@ -16,7 +17,7 @@ func init() {
 	registryAmbient = NewGlobal(
 		WithRedisConn(
 			redis.NewConn(
-				redis.WithAddr("localhost:6379"),
+				redis.WithAddr("redis:6379"),
 			),
 		),
 	)
@@ -39,7 +40,7 @@ func NewGlobal(opts ...GlobalOption) *Global {
 	once.Do(func() {
 		registryAmbient = &Global{
 			Conn: redis.NewConn(
-				redis.WithAddr("localhost:6379"),
+				redis.WithAddr("redis:6379"),
 			),
 			store: make(map[string]interface{}),
 			tools: make(map[string]interface{}),
@@ -75,6 +76,8 @@ func (global *Global) Get(
 	key string,
 	collector any,
 ) (err error) {
+	errnie.Trace("Global.Get", "key", key)
+
 	if err = global.Client.HGetAll(ctx, key).Scan(collector); err != nil {
 		return err
 	}
@@ -85,13 +88,21 @@ func (global *Global) Get(
 func (global *Global) Put(
 	ctx context.Context, key string, value any,
 ) (err error) {
+	errnie.Trace("Global.Put", "key", key, "value", value)
+
 	var cmdrs []sdk.Cmder
 
 	if cmdrs, err = global.Client.Pipelined(ctx, func(rdb sdk.Pipeliner) error {
-		for k, v := range value.(map[string]any) {
-			rdb.HSet(ctx, key, k, v)
+		switch v := value.(type) {
+		case map[string]any:
+			for k, val := range v {
+				rdb.HSet(ctx, key, k, val)
+			}
+		case string:
+			rdb.Set(ctx, key, v, 0)
+		default:
+			return fmt.Errorf("unsupported value type: %T", value)
 		}
-
 		return nil
 	}); err != nil {
 		return err

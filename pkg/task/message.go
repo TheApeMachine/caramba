@@ -44,6 +44,15 @@ func (msg *Message) String() string {
 	return parts.String()
 }
 
+func NewSystemMessage(message string) *Message {
+	return &Message{
+		Role: MessageRoleSystem,
+		Parts: []Part{
+			{Type: "text", Text: message},
+		},
+	}
+}
+
 func NewUserMessage(name, message string) *Message {
 	return &Message{
 		Role: MessageRoleUser,

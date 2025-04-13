@@ -1,24 +1,24 @@
 package task
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 // TaskCollector streams raw data and attempts to decode the last complete TaskResponse chunk.
 type TaskCollector struct {
-	response *TaskResponse // Stores the *last* successfully decoded response
-	stream   io.Writer     // The stream to write raw data to (e.g., os.Stdout)
+	task     *TaskRequest
+	response *TaskResponse
+	stream   io.Writer
 }
 
 // NewTaskCollector creates a collector that writes raw data to stream
 // and decodes the last complete TaskResponse chunk it receives.
-func NewTaskCollector(stream io.Writer) *TaskCollector {
+func NewTaskCollector(task *TaskRequest, stream io.Writer) *TaskCollector {
 	return &TaskCollector{
+		task:     task,
 		response: nil,
 		stream:   stream,
 	}
@@ -33,32 +33,36 @@ func (tc *TaskCollector) Response() *TaskResponse {
 // to the configured stream and attempts to decode it as a TaskResponse,
 // updating the stored response if successful.
 func (tc *TaskCollector) Write(p []byte) (n int, err error) {
-	// 1. Write raw data to the underlying stream immediately
-	n, err = tc.stream.Write(p)
-	if err != nil {
-		// Log error writing to the raw stream
-		errnie.Warn("Error writing to collector's raw stream", errnie.WithError(err))
-		// Depending on desired behavior, might want to return error here
+	errnie.Trace("task collector.Write", "p", string(p))
+
+	// Skip processing if byte slice is empty
+	if len(p) == 0 {
+		errnie.Debug("Received empty byte slice, skipping")
+		return 0, nil
 	}
 
-	// 2. Attempt to decode the incoming chunk p directly
 	tempResponse := new(TaskResponse)
-	// Use a decoder for potentially better error handling / streaming json if needed in future
-	decoder := json.NewDecoder(bytes.NewReader(p))
-	if decodeErr := decoder.Decode(tempResponse); decodeErr == nil {
-		// Successfully decoded this chunk, update the stored response
-		tc.response = tempResponse
-		// Log successful decoding for debugging
-		// log.Printf("Collector successfully decoded chunk: %+v", tempResponse)
-	} else {
-		// Decoding failed. This indicates the chunk wasn't a valid TaskResponse JSON.
-		// This might be expected if other JSON structures (like errors) are sent.
-		log.Printf("Collector decode failed for chunk: %v\nChunk content: %s", decodeErr, string(p))
-		// Do not return an error here, as the raw write might have succeeded,
-		// and failure to decode might be acceptable for some message types.
+	if err = json.Unmarshal(p, tempResponse); err != nil {
+		errnie.Warn("Error decoding task response", errnie.WithError(err))
+		return 0, err
 	}
 
-	// Return the number of bytes written to the raw stream and nil error
-	// (unless the raw write itself failed critically)
-	return n, nil // Return the original write error if it was critical
+	tc.task.AddResult(tempResponse)
+
+	// Process history if we have any
+	if len(tempResponse.Result.History) > 0 {
+		for _, result := range tempResponse.Result.History {
+			for _, part := range result.Parts {
+				if n, err = tc.stream.Write([]byte(part.Text)); err != nil {
+					errnie.Warn(
+						"error writing to collector's raw stream",
+						errnie.WithError(err),
+					)
+					return n, err
+				}
+			}
+		}
+	}
+
+	return n, nil
 }
