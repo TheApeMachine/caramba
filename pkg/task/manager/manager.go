@@ -3,7 +3,8 @@ package manager
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
+	"fmt"
+	"net/http"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -11,6 +12,13 @@ import (
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/task"
 )
+
+// JSONRPCErrorResponse defines the standard structure for JSON-RPC errors.
+type JSONRPCErrorResponse struct {
+	Jsonrpc string                 `json:"jsonrpc"`
+	ID      string                 `json:"id"` // Match the request ID if possible
+	Error   *task.TaskRequestError `json:"error"`
+}
 
 type Manager struct {
 	taskStore   task.TaskStore
@@ -35,64 +43,80 @@ func (manager *Manager) HandleTask(ctx fiber.Ctx, request *task.TaskRequest) err
 	switch request.Method {
 	case "tasks/send":
 		return manager.handleTaskSend(ctx, request)
+	default:
+		return sendJSONRPCError(
+			ctx,
+			request.ID,
+			task.ErrorMethodNotFound,
+			fmt.Sprintf("method not found: %s", request.Method),
+			nil,
+		)
 	}
-
-	return errnie.New(errnie.WithError(errors.New("method not found")))
 }
 
 func (manager *Manager) handleTaskSend(ctx fiber.Ctx, request *task.TaskRequest) error {
 	errnie.Trace("task manager.handleTaskSend", "request", request)
 
-	if err := manager.validate(request); err != nil {
-		return errnie.New(errnie.WithError(err))
-	}
-
-	chunks, err := manager.llmProvider.Generate(
-		ctx, request,
-	)
+	chunks, err := manager.llmProvider.Generate(ctx, request)
 
 	if err != nil {
-		return errnie.New(errnie.WithError(err))
+		internalErr := errnie.New(errnie.WithError(err))
+		errnie.Warn("LLM generation error", "error", internalErr)
+
+		return sendJSONRPCError(
+			ctx,
+			request.ID,
+			task.ErrorInternalError,
+			"Internal server error during task processing",
+			internalErr.Error(),
+		)
 	}
 
 	return ctx.SendStreamWriter(func(w *bufio.Writer) {
 		for chunk := range chunks {
 			buf, err := json.Marshal(chunk)
-
 			if err != nil {
-				errnie.New(errnie.WithError(err))
-				return
+				errnie.Error("Error marshalling stream chunk", "error", err)
+				return // Stop sending on marshalling error
 			}
 
 			if _, err := w.Write(buf); err != nil {
-				errnie.New(errnie.WithError(err))
+				errnie.Error("Error writing to stream", "error", err)
+				return // Stop sending on write error
+			}
+
+			if err := w.Flush(); err != nil {
+				errnie.Error("Error flushing stream writer", "error", err)
+				return // Stop sending on flush error
 			}
 		}
 	})
 }
 
-func (manager *Manager) validate(request *task.TaskRequest) error {
-	if manager == nil {
-		return errnie.New(errnie.WithError(errors.New("manager not set")))
+// sendJSONRPCError is a helper to format and send JSON-RPC errors via Fiber.
+func sendJSONRPCError(ctx fiber.Ctx, requestID string, code int, message string, data any) error {
+	httpStatus := http.StatusInternalServerError // Default to 500
+	switch code {
+	case task.ErrorParseError, task.ErrorInvalidRequest, task.ErrorMethodNotFound, task.ErrorInvalidParams:
+		httpStatus = http.StatusBadRequest // 400
+	case task.ErrorTaskNotFound:
+		httpStatus = http.StatusNotFound // 404
+		// Add other mappings as needed
 	}
 
-	if manager.llmProvider == nil {
-		return errnie.New(errnie.WithError(errors.New("llm provider not set")))
+	errResponse := JSONRPCErrorResponse{
+		Jsonrpc: "2.0",
+		ID:      requestID, // Echo the request ID
+		Error: &task.TaskRequestError{
+			Code:    code,
+			Message: message,
+			Data:    fmt.Sprintf("%v", data), // Convert data to string
+		},
 	}
 
-	if manager.taskStore == nil {
-		return errnie.New(errnie.WithError(errors.New("task store not set")))
-	}
+	errnie.Warn("Sending JSON-RPC Error", "code", code, "message", message, "data", data, "httpStatus", httpStatus)
 
-	if request == nil {
-		return errnie.New(errnie.WithError(errors.New("request not set")))
-	}
-
-	if request.Params.History == nil {
-		return errnie.New(errnie.WithError(errors.New("history not set")))
-	}
-
-	return nil
+	return ctx.Status(httpStatus).JSON(errResponse)
 }
 
 func WithTaskStore(taskStore task.TaskStore) ManagerOption {

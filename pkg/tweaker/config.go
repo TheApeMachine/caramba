@@ -87,11 +87,11 @@ func GetTopK() int {
 }
 
 func GetPresencePenalty() float64 {
-	return get(defaultKey+"presence_penalty", cfg.v().GetFloat64, 0.0)
+	return cfg.v().GetFloat64("settings.defaults.presence_penalty")
 }
 
 func GetFrequencyPenalty() float64 {
-	return get(defaultKey+"frequency_penalty", cfg.v().GetFloat64, 0.0)
+	return cfg.v().GetFloat64("settings.defaults.frequency_penalty")
 }
 
 func GetMaxTokens() int {

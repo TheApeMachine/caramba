@@ -6,17 +6,17 @@ import (
 )
 
 type Card struct {
-	Name               string              `json:"name,omitempty"`
-	Description        string              `json:"description,omitempty"`
-	URL                string              `json:"url,omitempty"`
-	Provider           Provider            `json:"provider"`
-	Version            string              `json:"version,omitempty"`
-	DocumentationURL   string              `json:"documentationURL,omitempty"`
-	Authentication     auth.Authentication `json:"authentication"`
-	DefaultInputModes  []string            `json:"defaultInputModes,omitempty"`
-	DefaultOutputModes []string            `json:"defaultOutputModes,omitempty"`
-	Capabilities       Capabilities        `json:"capabilities"`
-	Skills             []Skill             `json:"skills,omitempty"`
+	Name               string              `json:"name,omitempty" redis:"name"`
+	Description        string              `json:"description,omitempty" redis:"description"`
+	URL                string              `json:"url,omitempty" redis:"url"`
+	Provider           Provider            `json:"provider" redis:"provider"`
+	Version            string              `json:"version,omitempty" redis:"version"`
+	DocumentationURL   string              `json:"documentationURL,omitempty" redis:"documentationURL"`
+	Authentication     auth.Authentication `json:"authentication" redis:"authentication"`
+	DefaultInputModes  []string            `json:"defaultInputModes,omitempty" redis:"defaultInputModes"`
+	DefaultOutputModes []string            `json:"defaultOutputModes,omitempty" redis:"defaultOutputModes"`
+	Capabilities       Capabilities        `json:"capabilities" redis:"capabilities"`
+	Skills             []Skill             `json:"skills,omitempty" redis:"skills"`
 }
 
 func NewCard() *Card {
@@ -54,17 +54,17 @@ type Provider struct {
 }
 
 type Capabilities struct {
-	Streaming              bool `json:"streaming,omitempty"`
-	PushNotifications      bool `json:"pushNotifications,omitempty"`
-	StateTransitionHistory bool `json:"stateTransitionHistory,omitempty"`
+	Streaming              bool `json:"streaming,omitempty" redis:"streaming"`
+	PushNotifications      bool `json:"pushNotifications,omitempty" redis:"pushNotifications"`
+	StateTransitionHistory bool `json:"stateTransitionHistory,omitempty" redis:"stateTransitionHistory"`
 }
 
 type Skill struct {
-	ID          string   `json:"id,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	Examples    []string `json:"examples,omitempty"`
-	InputModes  []string `json:"inputModes,omitempty"`
-	OutputModes []string `json:"outputModes,omitempty"`
+	ID          string   `json:"id,omitempty" redis:"id"`
+	Name        string   `json:"name,omitempty" redis:"name"`
+	Description string   `json:"description,omitempty" redis:"description"`
+	Tags        []string `json:"tags,omitempty" redis:"tags"`
+	Examples    []string `json:"examples,omitempty" redis:"examples"`
+	InputModes  []string `json:"inputModes,omitempty" redis:"inputModes"`
+	OutputModes []string `json:"outputModes,omitempty" redis:"outputModes"`
 }

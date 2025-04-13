@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/theapemachine/caramba/pkg/agent"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/service"
 	"github.com/theapemachine/caramba/pkg/stores/inmemory"
@@ -21,10 +22,12 @@ var (
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			return service.NewA2A(
 				service.WithName(name),
-				service.WithTaskManager(manager.NewManager(
-					manager.WithTaskStore(inmemory.NewRepository()),
-					manager.WithLLMProvider(provider.NewOpenAIProvider(
-						provider.WithOpenAIAPIKey(os.Getenv("OPENAI_API_KEY")),
+				service.WithAgent(agent.NewBuilder(
+					agent.WithTaskManager(manager.NewManager(
+						manager.WithTaskStore(inmemory.NewRepository()),
+						manager.WithLLMProvider(provider.NewOpenAIProvider(
+							provider.WithOpenAIAPIKey(os.Getenv("OPENAI_API_KEY")),
+						)),
 					)),
 				)),
 			).Listen("3210")

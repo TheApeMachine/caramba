@@ -16,14 +16,14 @@ Based on a review of the A2A specification and the current codebase, the followi
 
 **3. Response Structure Alignment:**
 
-- [x] Align `task.get` response with `TaskStatusUpdateEvent` structure (`GetTaskResponse`). (Verified: Handler returns `task.TaskStatusUpdateEvent`).
-- [x] Align `task.cancel` response with boolean `result` (`CancelTaskResponse`). (Verified: Handler returns `true`).
-- [x] Align `task.setPushNotification` response with `null` result (`SetTaskPushNotificationResponse`). (Verified: Handler returns `nil`).
-- [x] Align `task.getPushNotification` response with `null` when no config exists (`GetTaskPushNotificationResponse`). (Verified: Handler returns `nil`).
+- [ ] Align `task.get` response with `Task` structure (`GetTaskResponse`). (Needs update: Spec expects Task object).
+- [ ] Align `task.cancel` response with `Task` structure (`CancelTaskResponse`). (Needs update: Spec expects Task object).
+- [ ] Align `task.setPushNotification` response with `TaskPushNotificationConfig` structure (`SetTaskPushNotificationResponse`). (Needs update: Spec expects TaskPushNotificationConfig object).
+- [ ] Align `task.getPushNotification` response with `TaskPushNotificationConfig` or `null` when no config exists (`GetTaskPushNotificationResponse`). (Needs update: Spec expects TaskPushNotificationConfig or null).
 
 **4. Error Code Alignment:**
 
-- [ ] Replace generic `-32000` errors with specific A2A error codes (`-32001`, `-32002`, `-32003`, `-32004`, etc.). (Note: Some already updated in `task_get.go`, `task_resubscribe.go`, `task_cancel.go`)
+- [~] Replace generic `-32000` errors with specific A2A error codes (`-32001`, `-32002`, `-32003`, `-32004`, etc.). (Note: Implemented for `tasks/send` in `pkg/task/manager/manager.go`. Needs review/implementation for other handlers like get, cancel, resubscribe etc. as they are built/refactored.)
 
 **5. Data Structure Verification:**
 

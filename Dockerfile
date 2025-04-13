@@ -1,4 +1,4 @@
-FROM bitnami/minideb:latest AS builder
+FROM bitnami/minideb:latest
 
 RUN install_packages \
     ca-certificates \
@@ -23,15 +23,5 @@ COPY . .
 # ENV GOCACHE=/root/.cache/go-build
 # RUN --mount=type=cache,target="/root/.cache/go-build" go build -o main
 RUN go build -o main
-
-FROM bitnami/minideb:latest
-
-WORKDIR /etc/ssl/certs
-
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt .
-
-WORKDIR /app
-
-COPY --from=builder /app/main .
 
 CMD ["./main"]

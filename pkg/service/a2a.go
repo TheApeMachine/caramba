@@ -15,11 +15,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/theapemachine/caramba/pkg/agent"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/service/types"
 	"github.com/theapemachine/caramba/pkg/task"
-	"github.com/theapemachine/caramba/pkg/task/manager"
-	"github.com/theapemachine/caramba/pkg/tweaker"
-	"golang.org/x/crypto/acme/autocert"
 )
 
 /*
@@ -44,14 +40,11 @@ Example:
 	}
 */
 type A2A struct {
-	app             *fiber.App
-	certManager     *autocert.Manager
-	agent           *agent.Builder
-	streams         map[string][]*taskStream
-	streamMutex     sync.RWMutex
-	notificationMgr *task.NotificationManager
-	middleware      *Middleware
-	taskManager     *manager.Manager
+	app         *fiber.App
+	agent       *agent.Builder
+	streams     map[string][]*taskStream
+	streamMutex sync.RWMutex
+	middleware  *Middleware
 }
 
 type A2AOption func(*A2A)
@@ -74,22 +67,10 @@ appropriate middleware and settings.
 func NewA2A(opts ...A2AOption) *A2A {
 	a2a := &A2A{
 		app: fiber.New(fiber.Config{
-			JSONEncoder:       types.SimdMarshalJSON,
-			JSONDecoder:       types.SimdUnmarshalJSON,
-			ServerHeader:      "Caramba A2A Service",
-			ReadTimeout:       10 * time.Second,
-			WriteTimeout:      10 * time.Second,
-			StreamRequestBody: true,
-			StructValidator:   task.NewGenericValidator(),
+			ServerHeader: "Caramba A2A Service",
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
 		}),
-		certManager: &autocert.Manager{
-			Prompt: autocert.AcceptTOS,
-			Email:  tweaker.Value[string]("settings.email"),
-			HostPolicy: autocert.HostWhitelist(
-				tweaker.Value[string]("settings.domain"),
-			),
-			Cache: autocert.DirCache("./certs"),
-		},
 	}
 
 	for _, opt := range opts {
@@ -124,7 +105,7 @@ func (srv *A2A) RegisterRoutes() {
 			)
 		}
 
-		if err := srv.taskManager.HandleTask(ctx, req); err != nil {
+		if err := srv.agent.HandleTask(ctx, req); err != nil {
 			errnie.New(errnie.WithError(err))
 
 			return ctx.Status(fiber.StatusInternalServerError).JSON(
@@ -184,23 +165,6 @@ func (srv *A2A) SendTaskUpdate(taskID string, update any) {
 		}
 	}
 	srv.streamMutex.RUnlock()
-
-	// Send push notification if appropriate
-	// Check if the update contains a status
-	if statusUpdate, ok := update.(map[string]any); ok {
-		if status, hasStatus := statusUpdate["status"]; hasStatus {
-			if typedStatus, ok := status.(task.TaskStatus); ok && srv.agent.Card.Capabilities.PushNotifications {
-				srv.notificationMgr.SendTaskStatusUpdate(
-					taskID,
-					typedStatus,
-					typedStatus.State == task.TaskStateCompleted ||
-						typedStatus.State == task.TaskStateFailed ||
-						typedStatus.State == task.TaskStateCanceled,
-					nil,
-				)
-			}
-		}
-	}
 }
 
 /*
@@ -230,8 +194,8 @@ func WithMiddleware(middleware *Middleware) A2AOption {
 	}
 }
 
-func WithTaskManager(taskManager *manager.Manager) A2AOption {
+func WithAgent(agent *agent.Builder) A2AOption {
 	return func(a2a *A2A) {
-		a2a.taskManager = taskManager
+		a2a.agent = agent
 	}
 }

@@ -126,6 +126,24 @@ type TaskRequestError struct {
 	Data    string `json:"data"`
 }
 
+// Standard JSON-RPC Error Codes
+const (
+	ErrorParseError     = -32700 // Invalid JSON was received by the server.
+	ErrorInvalidRequest = -32600 // The JSON sent is not a valid Request object.
+	ErrorMethodNotFound = -32601 // The method does not exist / is not available.
+	ErrorInvalidParams  = -32602 // Invalid method parameter(s).
+	ErrorInternalError  = -32603 // Internal JSON-RPC error.
+)
+
+// A2A Specific Error Codes (-32000 to -32099)
+const (
+	ErrorTaskNotFound                  = -32001 // Task not found with the provided id.
+	ErrorTaskNotCancelable             = -32002 // Task cannot be canceled by the remote agent.
+	ErrorPushNotificationsNotSupported = -32003 // Push Notification is not supported by the agent.
+	ErrorUnsupportedOperation          = -32004 // Operation is not supported.
+	ErrorIncompatibleContentTypes      = -32005 // Incompatible content types between client and an agent.
+)
+
 // Error implements the error interface.
 func (e *TaskRequestError) Error() string {
 	return fmt.Sprintf("A2A Error - Code: %d, Message: %s, Data: %s", e.Code, e.Message, e.Data)

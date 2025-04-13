@@ -2,10 +2,12 @@ package provider
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	prvdrTools "github.com/theapemachine/caramba/pkg/provider/tools"
 	"github.com/theapemachine/caramba/pkg/task"
 	"github.com/theapemachine/caramba/pkg/tools"
 	"github.com/theapemachine/caramba/pkg/tweaker"
@@ -70,6 +72,7 @@ func (prvdr *OpenAIProvider) Generate(
 	ctx fiber.Ctx, request *task.TaskRequest,
 ) (<-chan *task.TaskResponse, error) {
 	out := make(chan *task.TaskResponse)
+	reqCtx := ctx.Context()
 
 	go func() {
 		defer close(out)
@@ -82,7 +85,8 @@ func (prvdr *OpenAIProvider) Generate(
 		)
 
 		if completion, err = prvdr.client.Chat.Completions.New(
-			ctx.Context(), params,
+			reqCtx,
+			params,
 		); errnie.Error(err) != nil {
 			outTask.Status.State = task.TaskStateFailed
 			out <- task.NewTaskResponse(task.WithResponseError(err))
@@ -114,25 +118,25 @@ func (prvdr *OpenAIProvider) Stream(
 	ctx fiber.Ctx, request *task.TaskRequest,
 ) (<-chan *task.TaskResponse, error) {
 	out := make(chan *task.TaskResponse)
+	reqCtx := ctx.Context()
 
 	go func() {
 		defer close(out)
 
 		var (
-			params     = prvdr.prepare(ctx, request)
-			outTask    = request.Params
-			completion *openai.ChatCompletion
+			params  = prvdr.prepare(ctx, request)
+			outTask = request.Params
 		)
 
 		outTask.Status.State = task.TaskStateWorking
 
-		stream := prvdr.client.Chat.Completions.NewStreaming(ctx.Context(), params)
+		stream := prvdr.client.Chat.Completions.NewStreaming(reqCtx, params)
 		acc := openai.ChatCompletionAccumulator{}
 
 		for stream.Next() {
 			chunk := stream.Current()
 			acc.AddChunk(chunk)
-			prvdr.handleChunk(ctx, acc, outTask, completion, chunk, out)
+			prvdr.handleChunk(ctx, acc, outTask, chunk, out)
 		}
 
 		if err := stream.Err(); errnie.Error(err) != nil {
@@ -149,40 +153,74 @@ func (prvdr *OpenAIProvider) handleChunk(
 	ctx fiber.Ctx,
 	acc openai.ChatCompletionAccumulator,
 	outTask task.Task,
-	completion *openai.ChatCompletion,
 	chunk openai.ChatCompletionChunk,
 	out chan *task.TaskResponse,
 ) {
-	if _, ok := acc.JustFinishedContent(); ok {
-		outTask.AddMessage(task.NewAssistantMessage(
-			completion.Choices[0].Message.Content,
-		))
-
-		outTask.Status.State = task.TaskStateCompleted
+	if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+		outTask.Artifacts = []task.Artifact{
+			{
+				Parts: []task.Part{
+					{Type: "text", Text: chunk.Choices[0].Delta.Content},
+				},
+				Append: true,
+			},
+		}
+		outTask.Status.State = task.TaskStateWorking
 		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+		return
+	}
+
+	if _, ok := acc.JustFinishedContent(); ok {
+		errnie.Debug("Accumulator detected end of content stream")
+		return
 	}
 
 	if refusal, ok := acc.JustFinishedRefusal(); ok {
-		println()
-		println("finish-event: refusal stream finished:", refusal)
-		println()
+		errnie.Warn("Assistant stream finished with refusal", "refusal", refusal)
+		outTask.AddMessage(task.NewAssistantMessage("[Refused to answer]"))
+		outTask.Status.State = task.TaskStateFailed
+		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+		return
 	}
 
 	if tool, ok := acc.JustFinishedToolCall(); ok {
-		if len(completion.Choices[0].Message.ToolCalls) == 0 {
-			out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+		errnie.Debug("Accumulator detected tool call completion")
+		handler := prvdrTools.NewToolCallHandler(&mcp.CallToolRequest{
+			Params: struct {
+				Name      string                 `json:"name"`
+				Arguments map[string]interface{} `json:"arguments,omitempty"`
+				Meta      *struct {
+					ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
+				} `json:"_meta,omitempty"`
+			}{
+				Name: tool.Name,
+				Arguments: map[string]interface{}{
+					"arguments": tool.Arguments,
+				},
+			},
+		})
+
+		result, err := handler.Handle(ctx)
+
+		if err != nil {
+			outTask.Status.State = task.TaskStateFailed
+			out <- task.NewTaskResponse(task.WithResponseError(err))
 			return
 		}
 
-		outTask.AddMessage(tools.NewRegistry().CallOpenAITool(ctx, tool))
-	}
+		var content string
 
-	if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-		outTask.AddMessage(task.NewAssistantMessage(
-			completion.Choices[0].Message.Content,
-		))
-
+		for _, c := range result.Content {
+			switch c := c.(type) {
+			case mcp.TextContent:
+				content += c.Text
+			}
+		}
+		
+		outTask.Status.State = task.TaskStateCompleted
+		outTask.AddMessage(task.NewAssistantMessage(content))
 		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+		return
 	}
 }
 
