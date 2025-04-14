@@ -12,6 +12,7 @@ import (
 
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/jsonrpc"
 	"github.com/theapemachine/caramba/pkg/task"
 )
 
@@ -37,43 +38,20 @@ func NewRPCClient(opts ...RPCClientOption) (*RPCClient, error) {
 		return nil, errnie.New(errnie.WithError(fmt.Errorf("baseURL is required")))
 	}
 
-	// Retry connection with exponential backoff
-	maxRetries := 5
-	var lastErr error
-	for i := range maxRetries {
-		if i > 0 {
-			time.Sleep(time.Duration(i*i) * time.Second)
-		}
+	conn, err := net.DialTimeout("tcp", client.baseURL, 10*time.Second)
 
-		// Establish connection
-		conn, err := net.DialTimeout("tcp", client.baseURL, 10*time.Second)
-		if err != nil {
-			lastErr = err
-			errnie.Warn(
-				"connection attempt failed",
-				"attempt", i+1,
-				"error", err,
-			)
-			continue
-		}
-
-		// Create JSON-RPC 2.0 connection
-		stream := jsonrpc2.NewBufferedStream(conn, jsonrpc2.VSCodeObjectCodec{})
-		client.conn = jsonrpc2.NewConn(
-			context.Background(),
-			stream,
-			jsonrpc2.HandlerWithError(client.handle),
-		)
-
-		// Connection successful
-		errnie.Info(
-			"Successfully connected to RPC server",
-			"baseURL", client.baseURL,
-		)
-		return client, nil
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
-	return nil, errnie.New(errnie.WithError(fmt.Errorf("failed to connect to RPC server after %d attempts: %w", maxRetries, lastErr)))
+	stream := jsonrpc2.NewBufferedStream(conn, jsonrpc2.VSCodeObjectCodec{})
+	client.conn = jsonrpc2.NewConn(
+		context.Background(),
+		stream,
+		jsonrpc2.HandlerWithError(client.handle),
+	)
+
+	return client, nil
 }
 
 // WithBaseURL sets the base URL for the RPC client
@@ -91,39 +69,29 @@ func (c *RPCClient) SendTask(req *task.TaskRequest, writer any) (*task.TaskRespo
 		return nil, errnie.New(errnie.WithError(fmt.Errorf("client not properly initialized")))
 	}
 
-	// Validate task request pointer
 	if req == nil {
 		return nil, errnie.New(errnie.WithError(fmt.Errorf("invalid task request: request is nil")))
 	}
 
-	// The method name for the RPC call
 	const method = "tasks/send"
 
-	// Context for the RPC call
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Prepare the variable to hold the result (the Task struct)
-	var resultTask task.Task
+	var response jsonrpc.Response
 
-	// Make the RPC call
-	// Pass the task parameters (req.Params) directly.
-	// Pass the address of resultTask to unmarshal the JSON-RPC result into it.
-	if err := c.conn.Call(ctx, method, req.Params, &resultTask); err != nil {
-		// Handle potential jsonrpc2.Error for structured errors
+	if err := c.conn.Call(ctx, method, req.Params, &response); err != nil {
 		if rpcErr, ok := err.(*jsonrpc2.Error); ok {
 			return nil, errnie.New(errnie.WithError(fmt.Errorf("RPC error: code %d: %s", rpcErr.Code, rpcErr.Message)))
 		}
-		// Handle other potential errors (e.g., connection issues)
 		return nil, errnie.New(errnie.WithError(fmt.Errorf("RPC call failed: %w", err)))
 	}
 
-	// If the call was successful, the resultTask should be populated.
-	// Create the TaskResponse.
-	response := task.NewTaskResponse()
-	response.Result = &resultTask
+	if out, ok := response.Result.(task.TaskResponse); ok {
+		return &out, nil
+	}
 
-	return response, nil
+	return nil, errnie.New(errnie.WithError(fmt.Errorf("invalid response type: expected TaskResponse, got %T", response.Result)))
 }
 
 // SendTaskStream sends a task to the RPC server using the A2A protocol's streaming approach via SSE
@@ -275,7 +243,7 @@ func (c *RPCClient) SendTaskStream(req *task.TaskRequest) (<-chan *task.TaskResp
 }
 
 // handle implements the client-side message handler
-func (c *RPCClient) handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (interface{}, error) {
+func (c *RPCClient) handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (any, error) {
 	// Handle any server-initiated requests or notifications here
 	return nil, nil
 }

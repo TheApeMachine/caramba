@@ -40,7 +40,7 @@ func (h *Handler) Handle(
 	ctx context.Context,
 	conn *jsonrpc2.Conn,
 	req *jsonrpc2.Request,
-) (interface{}, error) {
+) (any, error) {
 	errnie.Trace("service.Handle")
 
 	h.mu.Lock()
@@ -48,6 +48,7 @@ func (h *Handler) Handle(
 
 	if req == nil {
 		errnie.New(errnie.WithError(errors.New("request is nil")))
+
 		return nil, &jsonrpc2.Error{
 			Code:    jsonrpc2.CodeInvalidRequest,
 			Message: "request is nil",
@@ -63,46 +64,24 @@ func (h *Handler) Handle(
 
 	switch req.Method {
 	case "tasks/send", "tasks/sendSubscribe":
-		// Expect the parameters to be the Task struct itself
-		var taskParams task.Task
-
-		if err := json.Unmarshal(*req.Params, &taskParams); err != nil {
-			return nil, errnie.New(errnie.WithError(fmt.Errorf("failed to parse task params: %w", err)))
-		}
-
-		// Construct a TaskRequest using the parsed task params for the agent handler
-		// We still need TaskRequest because the agent.HandleTask expects it.
-		// Note: We are creating a new TaskRequest here based *only* on the params.
-		// The original method/id from the jsonrpc2.Request 'req' are not directly
-		// propagated into this specific TaskRequest struct unless HandleTask needs them.
-		taskReqForAgent := task.NewTaskRequest(&taskParams)
-
-		if err := h.validateTaskRequest(taskReqForAgent); err != nil {
-			// Return a jsonrpc2 error for invalid requests
-			return nil, &jsonrpc2.Error{
-				Code:    jsonrpc2.CodeInvalidParams,
-				Message: fmt.Sprintf("invalid task request: %v", err),
-			}
-		}
-
-		// Note: Creating Fiber context here might be heavy for just handling the task.
-		// Consider if agent.HandleTask truly needs a Fiber context or if relevant data
-		// can be passed directly.
 		app := fiber.New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 
-		if err := h.agent.HandleTask(c, taskReqForAgent); err != nil {
-			// Return a jsonrpc2 error if handling fails
+		taskRequest := task.NewTaskRequest(nil)
+
+		if err := json.Unmarshal(*req.Params, taskRequest); err != nil {
+			return nil, errnie.New(errnie.WithError(fmt.Errorf("failed to parse task params: %w", err)))
+		}
+
+		if err := h.agent.HandleTask(c, taskRequest); err != nil {
 			return nil, &jsonrpc2.Error{
 				Code:    jsonrpc2.CodeInternalError,
 				Message: fmt.Sprintf("failed to handle task: %v", err),
 			}
 		}
 
-		// Return the processed task data as the result
-		// The client expects the result to be unmarshalable into task.Task
-		return taskParams, nil
+		return taskRequest, nil
 	default:
 		// Return a jsonrpc2 error for unknown methods
 		return nil, &jsonrpc2.Error{

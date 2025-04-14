@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/google/uuid"
 	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/stores"
+	"github.com/theapemachine/caramba/pkg/stores/types"
 	"github.com/theapemachine/caramba/pkg/task"
 )
 
@@ -30,7 +30,7 @@ type JSONRPCErrorResponse struct {
 
 // Manager handles task operations
 type Manager struct {
-	taskStore   task.TaskStore
+	taskStore   types.Store
 	llmProvider provider.ProviderType
 }
 
@@ -68,43 +68,53 @@ func (m *Manager) HandleTask(
 	}
 }
 
+func (manager *Manager) storeTask(task *task.Task) (err error) {
+	if manager.taskStore != nil && task.ID != "" {
+		session := stores.NewSession(manager.taskStore, types.NewQuery(
+			types.WithFilter("id", task.ID),
+		))
+
+		defer func() {
+			if err := session.Close(); err != nil {
+				errnie.New(errnie.WithError(err))
+			}
+		}()
+
+		if _, err := io.Copy(session, task); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // handleTaskSend handles the tasks/send endpoint
-func (m *Manager) handleTaskSend(
+func (manager *Manager) handleTaskSend(
 	ctx fiber.Ctx, request *task.TaskRequest, writers io.Writer,
 ) error {
 	errnie.Trace("task manager.handleTaskSend", "request", request)
 
-	// Start streaming response from LLM provider
-	chunks, err := m.llmProvider.Stream(ctx, request)
-	if err != nil {
-		internalErr := errnie.New(errnie.WithError(err))
-		errnie.Warn("LLM generation error", "error", internalErr)
-
+	if err := manager.storeTask(request.Params); err != nil {
 		return sendJSONRPCError(
 			ctx,
 			request.ID,
 			-32603, // Internal error
 			"Internal server error during task processing",
-			internalErr.Error(),
+			err.Error(),
 		)
 	}
 
-	// Create initial response
-	sessionID := uuid.New().String()
-	response := task.NewTaskResponse(
-		task.WithResponseID(request.ID),
-		task.WithResponseTask(task.Task{
-			ID:        request.Params.ID,
-			SessionID: &sessionID,
-			Status: task.TaskStatus{
-				State:     task.TaskStateWorking,
-				Timestamp: time.Now(),
-			},
-			History:   request.Params.History,
-			Artifacts: make([]task.Artifact, 0),
-			Metadata:  request.Params.Metadata,
-		}),
-	)
+	chunks, err := manager.llmProvider.Stream(ctx, request)
+
+	if err != nil {
+		return sendJSONRPCError(
+			ctx,
+			request.ID,
+			-32603, // Internal error
+			"Internal server error during task processing",
+			err.Error(),
+		)
+	}
 
 	// Set up streaming response
 	ctx.Set("Content-Type", "text/event-stream")
@@ -119,46 +129,28 @@ func (m *Manager) handleTaskSend(
 			return
 		}
 
-		name := "response"
-
 		for chunk := range chunks {
-			// Debug log the chunk reception
-			// We use a custom string to avoid calling methods that might not exist
-			errnie.Debug("Received content chunk")
-
-			// Add message to result history
-			if len(chunk.Result.History) > 0 {
-				lastMsg := chunk.Result.History[len(chunk.Result.History)-1]
-				response.Result.Artifacts = append(response.Result.Artifacts, task.Artifact{
-					Name: &name,
-					Parts: []task.Part{
-						&task.TextPart{
-							Type: "text",
-							Text: lastMsg.String(),
-						},
-					},
-				})
+			for _, msg := range chunk.Result.History {
+				request.Params.AddMessage(msg)
 			}
 
-			if chunk.Result.Status.State == task.TaskStateCompleted {
-				response.Result.Status.State = task.TaskStateCompleted
+			if err := manager.storeTask(request.Params); err != nil {
+				errnie.Warn("failed to update task in store", "error", err)
+				continue
 			}
 
-			// Marshal the response to JSON
-			respData, err := json.Marshal(response)
+			respData, err := json.Marshal(chunk)
+
 			if err != nil {
 				errnie.New(errnie.WithError(err))
 				return
 			}
 
-			// Write in SSE format
-			_, err = fmt.Fprintf(writers, "data: %s\n\n", respData)
-			if err != nil {
+			if _, err = fmt.Fprintf(writers, "data: %s\n\n", respData); err != nil {
 				errnie.New(errnie.WithError(err))
 				return
 			}
 
-			// Try to flush if the writer supports it
 			if f, ok := writers.(http.Flusher); ok {
 				f.Flush()
 			}
@@ -169,7 +161,7 @@ func (m *Manager) handleTaskSend(
 }
 
 // sendJSONRPCError sends a JSON-RPC error response
-func sendJSONRPCError(ctx fiber.Ctx, id string, code int, message string, data interface{}) error {
+func sendJSONRPCError(ctx fiber.Ctx, id string, code int, message string, data any) error {
 	httpStatus := http.StatusInternalServerError
 	switch code {
 	case -32700, -32600, -32601, -32602: // Parse error, Invalid request, Method not found, Invalid params
@@ -194,7 +186,7 @@ func sendJSONRPCError(ctx fiber.Ctx, id string, code int, message string, data i
 }
 
 // WithTaskStore sets the task store
-func WithTaskStore(store task.TaskStore) ManagerOption {
+func WithTaskStore(store types.Store) ManagerOption {
 	return func(m *Manager) {
 		m.taskStore = store
 	}

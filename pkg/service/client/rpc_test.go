@@ -53,7 +53,7 @@ func (a *MockLocalAgent) HandleTask(ctx fiber.Ctx, req *task.TaskRequest) error 
 func setupTestServerClient(t *testing.T) (client *RPCClient, mockAgent *MockLocalAgent, cleanup func()) {
 	mockAgent = NewMockLocalAgent() // Use the local mock
 
-	localRPCHandler := jsonrpc2.HandlerWithError(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result interface{}, err error) {
+	localRPCHandler := jsonrpc2.HandlerWithError(func(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
 		if req.Method != "tasks/send" {
 			return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeMethodNotFound, Message: fmt.Sprintf("method not found: %s", req.Method)}
 		}
@@ -61,7 +61,7 @@ func setupTestServerClient(t *testing.T) (client *RPCClient, mockAgent *MockLoca
 			return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "params is required"}
 		}
 
-		var taskParams task.Task
+		taskParams := task.NewTask()
 		if err := json.Unmarshal(*req.Params, &taskParams); err != nil {
 			return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeParseError, Message: fmt.Sprintf("failed to parse task params: %v", err)}
 		}
@@ -200,7 +200,7 @@ func TestSendTask(t *testing.T) {
 			// Correct way to test invalid Params from client side (before sending)
 			// SendTask validation should catch this
 			// Use task.Task{} instead of nil or pointer to satisfy linter
-			taskReq := &task.TaskRequest{Params: task.Task{}} // TaskRequest with empty Task struct in Params
+			taskReq := &task.TaskRequest{Params: task.NewTask()} // TaskRequest with empty Task struct in Params
 			resp, err := client.SendTask(taskReq, nil)
 			So(err, ShouldNotBeNil)
 			// Expect server-side validation error for missing ID

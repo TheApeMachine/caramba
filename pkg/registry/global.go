@@ -29,8 +29,8 @@ func GetAmbient() *Global {
 
 type Global struct {
 	*redis.Conn
-	store   map[string]interface{}
-	tools   map[string]interface{}
+	store   map[string]any
+	tools   map[string]any
 	toolsMu sync.RWMutex
 }
 
@@ -42,8 +42,8 @@ func NewGlobal(opts ...GlobalOption) *Global {
 			Conn: redis.NewConn(
 				redis.WithAddr("redis:6379"),
 			),
-			store: make(map[string]interface{}),
-			tools: make(map[string]interface{}),
+			store: make(map[string]any),
+			tools: make(map[string]any),
 		}
 
 		for _, opt := range opts {
@@ -146,7 +146,7 @@ func (global *Global) Delete(
 	return nil
 }
 
-func (g *Global) GetTool(name string) (interface{}, error) {
+func (g *Global) GetTool(name string) (any, error) {
 	g.toolsMu.RLock()
 	defer g.toolsMu.RUnlock()
 	if tool, ok := g.tools[name]; ok {
@@ -155,7 +155,7 @@ func (g *Global) GetTool(name string) (interface{}, error) {
 	return nil, fmt.Errorf("tool %s not found", name)
 }
 
-func (g *Global) RegisterTool(name string, tool interface{}) {
+func (g *Global) RegisterTool(name string, tool any) {
 	g.toolsMu.Lock()
 	defer g.toolsMu.Unlock()
 	g.tools[name] = tool

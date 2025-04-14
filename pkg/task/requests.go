@@ -6,15 +6,15 @@ import (
 
 // TaskIdParams represents parameters for task ID-based requests
 type TaskIdParams struct {
-	ID       string                 `json:"id"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	ID       string         `json:"id"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // TaskQueryParams represents parameters for task query requests
 type TaskQueryParams struct {
-	ID            string                 `json:"id"`
-	HistoryLength *int                   `json:"historyLength,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	ID            string         `json:"id"`
+	HistoryLength *int           `json:"historyLength,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
 // TaskSendParams represents parameters for sending a task
@@ -24,7 +24,7 @@ type TaskSendParams struct {
 	Message          Message                 `json:"message"`
 	PushNotification *PushNotificationConfig `json:"pushNotification,omitempty"`
 	HistoryLength    *int                    `json:"historyLength,omitempty"`
-	Metadata         map[string]interface{}  `json:"metadata,omitempty"`
+	Metadata         map[string]any          `json:"metadata,omitempty"`
 }
 
 // SendTaskRequest represents a request to send a task
@@ -77,21 +77,21 @@ type SendTaskStreamingRequest struct {
 
 // TaskStatusUpdateEvent represents a task status update event
 type TaskStatusUpdateEvent struct {
-	ID       string                 `json:"id"`
-	Status   TaskStatus             `json:"status"`
-	Final    bool                   `json:"final"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	ID       string         `json:"id"`
+	Status   TaskStatus     `json:"status"`
+	Final    bool           `json:"final"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // TaskArtifactUpdateEvent represents a task artifact update event
 type TaskArtifactUpdateEvent struct {
-	ID       string                 `json:"id"`
-	Artifact Artifact               `json:"artifact"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	ID       string         `json:"id"`
+	Artifact Artifact       `json:"artifact"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // SendTaskStreamingResponse represents a streaming response to a send task request
 type SendTaskStreamingResponse struct {
 	jsonrpc.Response
-	Result interface{} `json:"result,omitempty"` // Can be TaskStatusUpdateEvent or TaskArtifactUpdateEvent
+	Result any `json:"result,omitempty"` // Can be TaskStatusUpdateEvent or TaskArtifactUpdateEvent
 }

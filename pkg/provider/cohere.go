@@ -208,7 +208,7 @@ func (prvdr *CohereProvider) Stream(
 
 func (prvdr *CohereProvider) handleChunk(
 	chunk cohere.StreamedChatResponse,
-	outTask task.Task,
+	outTask *task.Task,
 	out chan *task.TaskResponse,
 ) {
 	if content := chunk.TextGeneration.String(); content != "" {

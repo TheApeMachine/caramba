@@ -2,9 +2,9 @@ package errors
 
 // JSONRPCError represents a base JSON-RPC error
 type JSONRPCError struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 func (e *JSONRPCError) Error() string {

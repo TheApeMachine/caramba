@@ -79,16 +79,6 @@ func (session *Session) Read(p []byte) (n int, err error) {
 		return 0, session.Add(errnie.Validation(nil, "missing query"))
 	}
 
-	if n == 0 || err == io.EOF {
-		session.State.To(errnie.StateReady)
-		return 0, io.EOF
-	}
-
-	if err != nil {
-		session.State.To(errnie.StateFailed)
-		return 0, session.Add(errnie.IO(err, "failed to read task"))
-	}
-
 	if session.IsReady() {
 		session.State.To(errnie.StateBusy)
 		taskItem, ok := session.instance.data.Load(session.query.Filters["id"])
@@ -103,7 +93,17 @@ func (session *Session) Read(p []byte) (n int, err error) {
 		session.encoder.Encode(task)
 	}
 
-	return session.outBuffer.Read(p)
+	if n, err = session.outBuffer.Read(p); err != nil && err != io.EOF {
+		session.State.To(errnie.StateFailed)
+		return 0, session.Add(errnie.IO(err, "failed to read task"))
+	}
+
+	if n == 0 || err == io.EOF {
+		session.State.To(errnie.StateReady)
+		return 0, io.EOF
+	}
+
+	return
 }
 
 // Write implements io.WriteCloser.
@@ -117,24 +117,21 @@ func (session *Session) Write(p []byte) (n int, err error) {
 		session.inBuffer.Reset()
 	}
 
-	if len(p) == 0 && n == 0 {
-		session.State.To(errnie.StateReady)
-		task := &task.Task{}
-
-		if err = session.decoder.Decode(task); err != nil {
-			return 0, session.Add(errnie.IO(err, "failed to decode task"))
-		}
-
-		session.instance.data.Store(task.ID, task)
-
-		return
-	}
-
-	if err != nil {
+	if n, err = session.inBuffer.Write(p); err != nil && err != io.EOF {
 		return 0, session.Add(errnie.IO(err, "failed to write task"))
 	}
 
-	return session.inBuffer.Write(p)
+	session.State.To(errnie.StateReady)
+	task := &task.Task{}
+
+	if err = session.decoder.Decode(task); err != nil {
+		return 0, session.Add(errnie.IO(err, "failed to decode task"))
+	}
+
+	session.instance.data.Store(task.ID, task)
+
+	return
+
 }
 
 // Close implements io.Closer.
@@ -146,5 +143,5 @@ func (session *Session) Close() error {
 	session.decoder = nil
 	session.instance = nil
 	session.query = nil
-	return session.Error
+	return nil
 }

@@ -25,9 +25,9 @@ func (r Role) String() string {
 
 // Message represents a message in the A2A protocol
 type Message struct {
-	Role     Role                   `json:"role"`
-	Parts    []Part                 `json:"parts"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Role     Role           `json:"role"`
+	Parts    []Part         `json:"parts"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // Custom UnmarshalJSON for Message to handle polymorphic Part types
@@ -38,9 +38,9 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 
 	// 2. Unmarshal into a temporary struct that captures Parts as json.RawMessage
 	var raw struct {
-		Role     Role                   `json:"role"`
-		Parts    []json.RawMessage      `json:"parts"` // Capture Parts as raw messages
-		Metadata map[string]interface{} `json:"metadata,omitempty"`
+		Role     Role              `json:"role"`
+		Parts    []json.RawMessage `json:"parts"` // Capture Parts as raw messages
+		Metadata map[string]any    `json:"metadata,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -112,38 +112,38 @@ func (m Message) String() string {
 // Part represents a message part in the A2A protocol
 type Part interface {
 	GetType() string
-	GetMetadata() map[string]interface{}
+	GetMetadata() map[string]any
 }
 
 // TextPart represents a text message part
 type TextPart struct {
-	Type     string                 `json:"type"`
-	Text     string                 `json:"text"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Type     string         `json:"type"`
+	Text     string         `json:"text"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-func (p TextPart) GetType() string                     { return p.Type }
-func (p TextPart) GetMetadata() map[string]interface{} { return p.Metadata }
+func (p TextPart) GetType() string             { return p.Type }
+func (p TextPart) GetMetadata() map[string]any { return p.Metadata }
 
 // FilePart represents a file message part
 type FilePart struct {
-	Type     string                 `json:"type"`
-	File     FileContent            `json:"file"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Type     string         `json:"type"`
+	File     FileContent    `json:"file"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-func (p FilePart) GetType() string                     { return p.Type }
-func (p FilePart) GetMetadata() map[string]interface{} { return p.Metadata }
+func (p FilePart) GetType() string             { return p.Type }
+func (p FilePart) GetMetadata() map[string]any { return p.Metadata }
 
 // DataPart represents a data message part
 type DataPart struct {
-	Type     string                 `json:"type"`
-	Data     map[string]interface{} `json:"data"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Type     string         `json:"type"`
+	Data     map[string]any `json:"data"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-func (p DataPart) GetType() string                     { return p.Type }
-func (p DataPart) GetMetadata() map[string]interface{} { return p.Metadata }
+func (p DataPart) GetType() string             { return p.Type }
+func (p DataPart) GetMetadata() map[string]any { return p.Metadata }
 
 // FileContent represents the content of a file
 type FileContent struct {
@@ -176,7 +176,7 @@ func NewUserMessage(name, content string) Message {
 				Text: content,
 			},
 		},
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"name": name,
 		},
 	}
@@ -205,7 +205,7 @@ func NewToolMessage(content string, toolName string) Message {
 				Text: content,
 			},
 		},
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"tool_name": toolName,
 		},
 	}

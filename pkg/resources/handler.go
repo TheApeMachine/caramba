@@ -50,7 +50,7 @@ func (h *MCPHandler) HandleListResources(ctx context.Context, req *mcp.ListResou
 
 	// Add templates to the result's meta field
 	if len(mcpTemplates) > 0 {
-		result.Meta = map[string]interface{}{
+		result.Meta = map[string]any{
 			"templates": mcpTemplates,
 		}
 	}

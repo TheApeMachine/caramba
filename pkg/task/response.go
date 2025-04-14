@@ -1,6 +1,7 @@
 package task
 
 import (
+	"github.com/google/uuid"
 	"github.com/theapemachine/caramba/pkg/errors"
 	"github.com/theapemachine/caramba/pkg/jsonrpc"
 )
@@ -16,7 +17,13 @@ type TaskResponseOption func(*TaskResponse)
 
 // NewTaskResponse creates a new task response with optional configuration
 func NewTaskResponse(opts ...TaskResponseOption) *TaskResponse {
-	response := &TaskResponse{}
+	response := &TaskResponse{
+		Response: jsonrpc.Response{
+			Message: jsonrpc.Message{
+				ID: uuid.New().String(),
+			},
+		},
+	}
 
 	for _, opt := range opts {
 		opt(response)
@@ -33,9 +40,9 @@ func WithResponseID(id string) TaskResponseOption {
 }
 
 // WithResponseTask sets the response task
-func WithResponseTask(task Task) TaskResponseOption {
+func WithResponseTask(task *Task) TaskResponseOption {
 	return func(r *TaskResponse) {
-		r.Result = &task
+		r.Result = task
 	}
 }
 

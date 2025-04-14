@@ -186,7 +186,7 @@ func (prvdr *AnthropicProvider) Stream(
 func (prvdr *AnthropicProvider) handleChunk(
 	chunk anthropic.MessageStreamEventUnion,
 	accumulatedMessage *anthropic.Message,
-	outTask task.Task,
+	outTask *task.Task,
 	out chan *task.TaskResponse,
 ) {
 	if err := accumulatedMessage.Accumulate(chunk); err != nil {
@@ -222,7 +222,7 @@ func (prvdr *AnthropicProvider) handleChunk(
 
 func (prvdr *AnthropicProvider) handleToolCall(
 	toolData []byte,
-	outTask task.Task,
+	outTask *task.Task,
 	out chan *task.TaskResponse,
 ) {
 	var toolInfo struct {

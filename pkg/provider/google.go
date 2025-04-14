@@ -175,7 +175,7 @@ func (prvdr *GoogleProvider) Stream(
 func (prvdr *GoogleProvider) handleChunk(
 	ctx fiber.Ctx,
 	response *genai.GenerateContentResponse,
-	outTask task.Task,
+	outTask *task.Task,
 	out chan *task.TaskResponse,
 ) {
 	for _, part := range response.Candidates[0].Content.Parts {

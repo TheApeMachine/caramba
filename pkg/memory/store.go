@@ -127,7 +127,7 @@ func (s *Store) Store(ctx fiber.Ctx, docs []*qdrant.Document) error {
 	if s.graphStore != nil {
 		for _, doc := range docs {
 			// Convert document to graph structure if it contains relationship metadata
-			if relationships, ok := doc.Metadata["relationships"].(map[string]interface{}); ok {
+			if relationships, ok := doc.Metadata["relationships"].(map[string]any); ok {
 				cypher, params := s.buildGraphQuery(doc, relationships)
 				if cypher != "" {
 					_, err := s.graphStore.Put(ctx, neo4j.N4jQuery{
@@ -146,7 +146,7 @@ func (s *Store) Store(ctx fiber.Ctx, docs []*qdrant.Document) error {
 }
 
 // buildGraphQuery constructs a Cypher query from document metadata
-func (s *Store) buildGraphQuery(doc *qdrant.Document, relationships map[string]interface{}) (string, map[string]any) {
+func (s *Store) buildGraphQuery(doc *qdrant.Document, relationships map[string]any) (string, map[string]any) {
 	// This is a simplified example - expand based on your needs
 	params := map[string]any{
 		"docId":    doc.ID,

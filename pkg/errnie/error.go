@@ -424,9 +424,11 @@ func New(options ...ErrnieErrorOption) *ErrnieError {
 		option(err)
 	}
 
-	if len(err.errors) > 0 {
-		logError(err.errors[len(err.errors)-1])
+	if len(err.errors) == 0 {
+		return nil
 	}
+
+	logError(err.errors[len(err.errors)-1])
 
 	// Report to Sentry if enabled and should report based on aggregation
 	if sentryEnabled {

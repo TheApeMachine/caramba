@@ -102,7 +102,7 @@ func setupTestClient(t *testing.T, addr string) *jsonrpc2.Conn {
 	conn, err := net.Dial("tcp", addr)
 	So(err, ShouldBeNil)
 	stream := jsonrpc2.NewBufferedStream(conn, jsonrpc2.VSCodeObjectCodec{})
-	clientConn := jsonrpc2.NewConn(context.Background(), stream, jsonrpc2.HandlerWithError(func(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request) (interface{}, error) {
+	clientConn := jsonrpc2.NewConn(context.Background(), stream, jsonrpc2.HandlerWithError(func(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request) (any, error) {
 		return nil, nil // Dummy handler for server-to-client messages (if any)
 	}))
 	return clientConn
@@ -174,7 +174,7 @@ func TestHandle(t *testing.T) {
 
 			Convey("It should handle requests with missing task ID correctly", func() {
 				invalidTask := task.Task{ /* Missing ID */ }
-				var result interface{}
+				var result any
 				err := clientConn.Call(ctx, taskSendMethod, invalidTask, &result)
 
 				So(err, ShouldNotBeNil)
@@ -185,7 +185,7 @@ func TestHandle(t *testing.T) {
 			})
 
 			Convey("It should handle requests for unknown methods correctly", func() {
-				var result interface{}
+				var result any
 				err := clientConn.Call(ctx, "unknown/method", map[string]string{"data": "foo"}, &result)
 
 				So(err, ShouldNotBeNil)

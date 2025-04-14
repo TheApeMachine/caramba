@@ -22,12 +22,12 @@ func NewMessage() Message {
 // Request represents a JSON-RPC request
 type Request struct {
 	Message
-	Method string      `json:"method"`
-	Params interface{} `json:"params,omitempty"`
+	Method string `json:"method"`
+	Params any    `json:"params,omitempty"`
 }
 
 // NewRequest creates a new JSON-RPC request
-func NewRequest(method string, params interface{}) Request {
+func NewRequest(method string, params any) Request {
 	return Request{
 		Message: NewMessage(),
 		Method:  method,
@@ -38,12 +38,12 @@ func NewRequest(method string, params interface{}) Request {
 // Response represents a JSON-RPC response
 type Response struct {
 	Message
-	Result interface{}          `json:"result,omitempty"`
+	Result any                  `json:"result,omitempty"`
 	Error  *errors.JSONRPCError `json:"error,omitempty"`
 }
 
 // NewResponse creates a new JSON-RPC response
-func NewResponse(result interface{}, err *errors.JSONRPCError) Response {
+func NewResponse(result any, err *errors.JSONRPCError) Response {
 	return Response{
 		Message: NewMessage(),
 		Result:  result,

@@ -17,26 +17,26 @@ const (
 
 // Prompt represents a prompt that can be used for various purposes
 type Prompt struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Type        PromptType  `json:"type"`
-	Content     string      `json:"content"`
-	Version     string      `json:"version"`
-	CreatedAt   time.Time   `json:"createdAt"`
-	UpdatedAt   time.Time   `json:"updatedAt"`
-	Metadata    interface{} `json:"metadata,omitempty"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Type        PromptType `json:"type"`
+	Content     string     `json:"content"`
+	Version     string     `json:"version"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+	Metadata    any        `json:"metadata,omitempty"`
 }
 
 // PromptStep represents a step in a multi-step prompt
 type PromptStep struct {
-	ID          string      `json:"id"`
-	PromptID    string      `json:"promptId"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Content     string      `json:"content"`
-	Order       int         `json:"order"`
-	Metadata    interface{} `json:"metadata,omitempty"`
+	ID          string `json:"id"`
+	PromptID    string `json:"promptId"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Content     string `json:"content"`
+	Order       int    `json:"order"`
+	Metadata    any    `json:"metadata,omitempty"`
 }
 
 // PromptManager defines the interface for managing prompts

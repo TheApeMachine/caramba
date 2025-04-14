@@ -17,18 +17,18 @@ type ModelPreferences struct {
 
 // Message represents a message in a sampling conversation
 type Message struct {
-	ID        string      `json:"id"`
-	Role      string      `json:"role"`
-	Content   string      `json:"content"`
-	CreatedAt time.Time   `json:"createdAt"`
-	Metadata  interface{} `json:"metadata,omitempty"`
+	ID        string    `json:"id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"createdAt"`
+	Metadata  any       `json:"metadata,omitempty"`
 }
 
 // Context represents additional context for sampling
 type Context struct {
-	Messages []Message   `json:"messages"`
-	Files    []string    `json:"files,omitempty"`
-	Data     interface{} `json:"data,omitempty"`
+	Messages []Message `json:"messages"`
+	Files    []string  `json:"files,omitempty"`
+	Data     any       `json:"data,omitempty"`
 }
 
 // SamplingOptions represents options for message creation
@@ -40,10 +40,10 @@ type SamplingOptions struct {
 
 // SamplingResult represents the result of a sampling operation
 type SamplingResult struct {
-	Message  Message     `json:"message"`
-	Usage    Usage       `json:"usage"`
-	Duration float64     `json:"duration"`
-	Metadata interface{} `json:"metadata,omitempty"`
+	Message  Message `json:"message"`
+	Usage    Usage   `json:"usage"`
+	Duration float64 `json:"duration"`
+	Metadata any     `json:"metadata,omitempty"`
 }
 
 // Usage represents token usage information

@@ -200,7 +200,7 @@ func (prvdr *DeepseekProvider) Stream(
 
 func (prvdr *DeepseekProvider) handleChunk(
 	chunk *deepseek.StreamChatCompletionResponse,
-	outTask task.Task,
+	outTask *task.Task,
 	out chan *task.TaskResponse,
 ) {
 	if len(chunk.Choices) == 0 {

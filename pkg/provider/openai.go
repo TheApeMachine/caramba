@@ -156,7 +156,7 @@ func (prvdr *OpenAIProvider) Stream(
 func (prvdr *OpenAIProvider) handleChunk(
 	ctx fiber.Ctx,
 	acc openai.ChatCompletionAccumulator,
-	outTask task.Task,
+	outTask *task.Task,
 	chunk openai.ChatCompletionChunk,
 	out chan *task.TaskResponse,
 ) {
@@ -206,14 +206,14 @@ func (prvdr *OpenAIProvider) handleChunk(
 		errnie.Debug("Accumulator detected tool call completion")
 		handler := prvdrTools.NewToolCallHandler(&mcp.CallToolRequest{
 			Params: struct {
-				Name      string                 `json:"name"`
-				Arguments map[string]interface{} `json:"arguments,omitempty"`
+				Name      string         `json:"name"`
+				Arguments map[string]any `json:"arguments,omitempty"`
 				Meta      *struct {
 					ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
 				} `json:"_meta,omitempty"`
 			}{
 				Name: tool.Name,
-				Arguments: map[string]interface{}{
+				Arguments: map[string]any{
 					"arguments": tool.Arguments,
 				},
 			},

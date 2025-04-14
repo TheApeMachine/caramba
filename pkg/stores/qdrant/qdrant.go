@@ -97,19 +97,9 @@ func (qdrant *Qdrant) getEmbedding(
 	query *QdrantQuery,
 ) ([]float64, error) {
 	embedding, err := qdrant.embedder.Embed(ctx, &task.TaskRequest{
-		Params: task.Task{
-			History: []task.Message{
-				{
-					Role: task.RoleUser,
-					Parts: []task.Part{
-						&task.TextPart{
-							Type: "text",
-							Text: query.Question,
-						},
-					},
-				},
-			},
-		},
+		Params: task.NewTask(task.WithMessages(
+			task.NewAssistantMessage(query.Question),
+		)),
 	})
 
 	if err != nil {
@@ -213,19 +203,9 @@ func (qdrant *Qdrant) Put(ctx fiber.Ctx, docs []*Document) (err error) {
 
 	for _, doc := range docs {
 		embedding, err := qdrant.embedder.Embed(ctx, &task.TaskRequest{
-			Params: task.Task{
-				History: []task.Message{
-					{
-						Role: task.RoleUser,
-						Parts: []task.Part{
-							&task.TextPart{
-								Type: "text",
-								Text: doc.Content,
-							},
-						},
-					},
-				},
-			},
+			Params: task.NewTask(task.WithMessages(
+				task.NewAssistantMessage(doc.Content),
+			)),
 		})
 
 		if err != nil {
