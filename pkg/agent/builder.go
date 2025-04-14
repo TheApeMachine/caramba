@@ -2,9 +2,11 @@ package agent
 
 import (
 	"context"
+	"io"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
+	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/memory"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/registry"
@@ -12,18 +14,24 @@ import (
 	"github.com/theapemachine/caramba/pkg/stores/neo4j"
 	"github.com/theapemachine/caramba/pkg/stores/qdrant"
 	"github.com/theapemachine/caramba/pkg/task"
-	"github.com/theapemachine/caramba/pkg/task/manager"
 )
+
+type Agent interface {
+	HandleTask(ctx fiber.Ctx, req *task.TaskRequest) error
+	AddWriter(w io.Writer)
+	Card() *Card
+}
 
 type Builder struct {
 	ID          string
-	Card        *Card
-	a2aClient   *client.A2AClient
+	card        *Card
+	a2aClient   *client.RPCClient
 	mcpClient   *client.MCPClient
 	Tasks       []*task.Task
 	Provider    provider.ProviderType
 	Memory      *memory.Store
-	taskManager *manager.Manager
+	taskManager *Manager
+	writers     io.Writer
 }
 
 type BuilderOption func(*Builder)
@@ -33,11 +41,14 @@ func NewBuilder(opts ...BuilderOption) *Builder {
 		ID: uuid.New().String(),
 	}
 
-	registry.GetAmbient().Register(
+	if err := registry.GetAmbient().Register(
 		context.Background(),
 		"local_agent",
 		builder.ID,
-	)
+	); err != nil {
+		errnie.New(errnie.WithError(err))
+		return nil
+	}
 
 	for _, opt := range opts {
 		opt(builder)
@@ -46,15 +57,27 @@ func NewBuilder(opts ...BuilderOption) *Builder {
 	return builder
 }
 
+func (builder *Builder) AddWriter(w io.Writer) {
+	if builder.writers == nil {
+		builder.writers = w
+	} else {
+		builder.writers = io.MultiWriter(builder.writers, w)
+	}
+}
+
+func (builder *Builder) Card() *Card {
+	return builder.card
+}
+
 func (builder *Builder) HandleTask(
 	ctx fiber.Ctx, req *task.TaskRequest,
 ) error {
-	return builder.taskManager.HandleTask(ctx, req)
+	return builder.taskManager.HandleTask(ctx, req, builder.writers)
 }
 
 func WithCard(card *Card) BuilderOption {
 	return func(builder *Builder) {
-		builder.Card = card
+		builder.card = card
 	}
 }
 
@@ -93,7 +116,7 @@ func WithMemory(vectorStore *qdrant.Qdrant, graphStore *neo4j.Neo4j, embedder pr
 	}
 }
 
-func WithTaskManager(taskManager *manager.Manager) BuilderOption {
+func WithTaskManager(taskManager *Manager) BuilderOption {
 	return func(builder *Builder) {
 		builder.taskManager = taskManager
 	}

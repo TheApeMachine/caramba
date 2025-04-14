@@ -29,7 +29,7 @@ func NewWiki(conn *azuredevops.Connection) *Wiki {
 	wikiClient, err := wiki.NewClient(ctx, conn)
 
 	if err != nil {
-		errnie.Error(err)
+		errnie.New(errnie.WithError(err))
 		return nil
 	}
 
@@ -57,19 +57,19 @@ Returns the page response or an error.
 func (w *Wiki) CreatePage(ctx context.Context, args map[string]any) (*wiki.WikiPageResponse, error) {
 	project, err := getStringArgWiki(args, "project")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	wikiIdentifier, err := getStringArgWiki(args, "wiki_id")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	pagePath, err := getStringArgWiki(args, "path")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	content, err := getStringArgWiki(args, "content")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	pageResponse, err := w.wiki.CreateOrUpdatePage(ctx, wiki.CreateOrUpdatePageArgs{
@@ -82,7 +82,7 @@ func (w *Wiki) CreatePage(ctx context.Context, args map[string]any) (*wiki.WikiP
 	})
 
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return pageResponse, nil
@@ -97,23 +97,23 @@ Returns the page response or an error.
 func (w *Wiki) UpdatePage(ctx context.Context, args map[string]any) (*wiki.WikiPageResponse, error) {
 	project, err := getStringArgWiki(args, "project")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	wikiIdentifier, err := getStringArgWiki(args, "wiki_id")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	pagePath, err := getStringArgWiki(args, "path")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	content, err := getStringArgWiki(args, "content")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	version, err := getStringArgWiki(args, "version") // Version is typically required for updates
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	pageResponse, err := w.wiki.CreateOrUpdatePage(ctx, wiki.CreateOrUpdatePageArgs{
@@ -127,7 +127,7 @@ func (w *Wiki) UpdatePage(ctx context.Context, args map[string]any) (*wiki.WikiP
 	})
 
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return pageResponse, nil
@@ -142,15 +142,15 @@ Returns the page response or an error.
 func (w *Wiki) GetPage(ctx context.Context, args map[string]any) (*wiki.WikiPageResponse, error) {
 	project, err := getStringArgWiki(args, "project")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	wikiIdentifier, err := getStringArgWiki(args, "wiki_id")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	pagePath, err := getStringArgWiki(args, "path")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	includeContent := true // Typically want content when getting a single page
 
@@ -162,7 +162,7 @@ func (w *Wiki) GetPage(ctx context.Context, args map[string]any) (*wiki.WikiPage
 	})
 
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return pageResponse, nil
@@ -177,11 +177,11 @@ Returns the batch response value containing the list of pages or an error.
 func (w *Wiki) ListPages(ctx context.Context, args map[string]any) (*wiki.GetPagesBatchResponseValue, error) {
 	project, err := getStringArgWiki(args, "project")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	wikiIdentifier, err := getStringArgWiki(args, "wiki_id")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	pagesResponse, err := w.wiki.GetPagesBatch(ctx, wiki.GetPagesBatchArgs{
@@ -190,7 +190,7 @@ func (w *Wiki) ListPages(ctx context.Context, args map[string]any) (*wiki.GetPag
 	})
 
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return pagesResponse, nil

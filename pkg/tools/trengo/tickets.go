@@ -36,17 +36,17 @@ func NewTickets(client *Client) *Tickets {
 func (t *Tickets) ListTickets() (tickets TicketList, err error) {
 	resp, err := t.client.doRequest(http.MethodGet, "/tickets", nil)
 	if err != nil {
-		return TicketList{}, errnie.Error(err)
+		return TicketList{}, errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return TicketList{}, errnie.Error(err)
+		return TicketList{}, errnie.New(errnie.WithError(err))
 	}
 
 	if err = json.Unmarshal(body, &tickets); err != nil {
-		return TicketList{}, errnie.Error(err)
+		return TicketList{}, errnie.New(errnie.WithError(err))
 	}
 
 	return tickets, nil
@@ -55,12 +55,12 @@ func (t *Tickets) ListTickets() (tickets TicketList, err error) {
 func (t *Tickets) CreateTicket(ticket Ticket) (newTicket Ticket, err error) {
 	resp, err := t.client.doRequest(http.MethodPost, "/tickets", ticket)
 	if err != nil {
-		return Ticket{}, errnie.Error(err)
+		return Ticket{}, errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 
 	if err = json.NewDecoder(resp.Body).Decode(&newTicket); err != nil {
-		return Ticket{}, errnie.Error(err)
+		return Ticket{}, errnie.New(errnie.WithError(err))
 	}
 
 	return newTicket, nil
@@ -73,13 +73,13 @@ func (t *Tickets) AssignTicket(ticketID int, userID int) (err error) {
 		nil,
 	)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 
 	var ticket Ticket
 	if err = json.NewDecoder(resp.Body).Decode(&ticket); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	return nil
@@ -92,13 +92,13 @@ func (t *Tickets) CloseTicket(ticketID int) (err error) {
 		nil,
 	)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 
 	var ticket Ticket
 	if err = json.NewDecoder(resp.Body).Decode(&ticket); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	return nil
@@ -111,13 +111,13 @@ func (t *Tickets) ReopenTicket(ticketID int) (err error) {
 		nil,
 	)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 
 	var ticket Ticket
 	if err = json.NewDecoder(resp.Body).Decode(&ticket); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	return nil

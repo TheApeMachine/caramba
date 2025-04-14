@@ -78,6 +78,10 @@ func (global *Global) Get(
 ) (err error) {
 	errnie.Trace("Global.Get", "key", key)
 
+	if global.Conn == nil {
+		return errnie.New(errnie.WithErrorType(errnie.ResourceNotAvailableError))
+	}
+
 	if err = global.Client.HGetAll(ctx, key).Scan(collector); err != nil {
 		return err
 	}
@@ -89,6 +93,10 @@ func (global *Global) Put(
 	ctx context.Context, key string, value any,
 ) (err error) {
 	errnie.Trace("Global.Put", "key", key, "value", value)
+
+	if global.Conn == nil {
+		return errnie.New(errnie.WithErrorType(errnie.ResourceNotAvailableError))
+	}
 
 	var cmdrs []sdk.Cmder
 

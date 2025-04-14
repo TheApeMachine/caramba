@@ -30,7 +30,7 @@ func (manager *Manager) Initialize() (*Manager, error) {
 	// proxy, err := fp.GetWorkingProxy()
 
 	// if err != nil || proxy == "" {
-	// 	errnie.Error(err)
+	// 	errnie.New(errnie.WithError(err)
 	// 	errnie.Info("continuing without proxy")
 	manager.launch = launcher.New().Headless(false)
 	// } else {
@@ -40,32 +40,32 @@ func (manager *Manager) Initialize() (*Manager, error) {
 
 	url, err := manager.launch.Launch()
 
-	if errnie.Error(err) != nil {
-		return manager, errnie.Error(err)
+	if err != nil {
+		return manager, errnie.New(errnie.WithError(err))
 	}
 
 	if manager.browser = rod.New().ControlURL(url); manager.browser == nil {
-		return manager, errnie.Error(errors.New("failed to create browser"))
+		return manager, errnie.New(errnie.WithError(errors.New("failed to create browser")))
 	}
 
 	if err = manager.browser.Connect(); err != nil {
-		return manager, errnie.Error(err)
+		return manager, errnie.New(errnie.WithError(err))
 	}
 
 	if manager.page, err = stealth.Page(manager.browser); err != nil {
-		return manager, errnie.Error(err)
+		return manager, errnie.New(errnie.WithError(err))
 	}
 
 	navurl := manager.toolcall.Params.Arguments["url"].(string)
 	errnie.Debug("browser.Instance.buffer.fn", "navurl", navurl)
 
 	if err = manager.page.Navigate(navurl); err != nil {
-		return manager, errnie.Error(err)
+		return manager, errnie.New(errnie.WithError(err))
 	}
 
 	// Wait for the page to be fully loaded
 	if err = manager.page.WaitLoad(); err != nil {
-		return manager, errnie.Error(err)
+		return manager, errnie.New(errnie.WithError(err))
 	}
 
 	return manager, nil

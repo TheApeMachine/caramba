@@ -1,169 +1,106 @@
 package task
 
 import (
-	"fmt"
+	"encoding/json"
+	"io"
+	"time"
 
 	"github.com/google/uuid"
 )
 
-type Task struct {
-	ID        string         `json:"id"`
-	SessionID string         `json:"sessionId"`
-	Status    TaskStatus     `json:"status"`
-	History   []*Message     `json:"history"`
-	Artifacts []Artifact     `json:"artifacts"`
-	Metadata  map[string]any `json:"metadata"`
+// TaskStatus represents the current status of a task
+type TaskStatus struct {
+	State     TaskState `json:"state"`
+	Message   *Message  `json:"message,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
-type TaskOption func(*Task)
+// Task represents a task in the A2A protocol
+type Task struct {
+	ID        string                 `json:"id"`
+	SessionID *string                `json:"sessionId,omitempty"`
+	Status    TaskStatus             `json:"status"`
+	History   []Message              `json:"history,omitempty"`
+	Artifacts []Artifact             `json:"artifacts,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
 
-func NewTask(opts ...TaskOption) Task {
+// NewTask creates a new task with optional configuration
+func NewTask(opts ...TaskOption) *Task {
 	task := &Task{
 		ID:        uuid.New().String(),
-		SessionID: uuid.New().String(),
-		Status: TaskStatus{
-			State: TaskStateSubmitted,
-		},
-		History:   make([]*Message, 0),
+		Status:    TaskStatus{State: TaskStateSubmitted},
+		History:   make([]Message, 0),
+		Metadata:  make(map[string]interface{}),
 		Artifacts: make([]Artifact, 0),
-		Metadata:  make(map[string]any),
 	}
 
 	for _, opt := range opts {
 		opt(task)
 	}
 
-	return *task
+	return task
 }
 
-func (task *Task) AddResult(result *TaskResponse) {
-	task.History = result.Result.History
-	task.Artifacts = result.Result.Artifacts
-	task.Metadata = result.Result.Metadata
+func (task *Task) Write(p []byte) (n int, err error) {
+	if err := json.Unmarshal(p, task); err != nil {
+		return 0, err
+	}
+
+	return len(p), nil
 }
 
-func (task *Task) AddMessage(message *Message) {
-	task.History = append(task.History, message)
+func (task *Task) Read(p []byte) (n int, err error) {
+	if err := json.Unmarshal(p, task); err != nil {
+		return 0, err
+	}
+
+	return len(p), io.EOF
 }
 
-type TaskStatus struct {
-	State TaskState `json:"state"`
-}
+// TaskOption represents a task configuration option
+type TaskOption func(*Task)
 
-type TaskStatusUpdateEvent struct {
-	ID       string         `json:"id"`
-	Status   TaskStatus     `json:"status"`
-	Final    bool           `json:"final"`
-	Metadata map[string]any `json:"metadata"`
-}
-
-type TaskArtifactUpdateEvent struct {
-	ID       string         `json:"id"`
-	Artifact Artifact       `json:"artifact"`
-	Metadata map[string]any `json:"metadata"`
-}
-
-type TaskSendParams struct {
-	ID               string           `json:"id"`
-	SessionID        string           `json:"sessionId"`
-	Message          *Message         `json:"message"`
-	HistoryLength    int              `json:"historyLength"`
-	PushNotification PushNotification `json:"pushNotification"`
-	Metadata         map[string]any   `json:"metadata"`
-}
-
-// TaskState represents the various states a task can be in.
-type TaskState string
-
-// Constants defining the possible task states according to the A2A specification.
-const (
-	TaskStateUnknown       TaskState = ""               // Default/unset state
-	TaskStateSubmitted     TaskState = "submitted"      // Task has been submitted but not yet processed
-	TaskStateWorking       TaskState = "working"        // Task is actively being processed
-	TaskStateInputRequired TaskState = "input-required" // Task requires user input
-	TaskStateCompleted     TaskState = "completed"      // Task finished successfully
-	TaskStateFailed        TaskState = "failed"         // Task execution failed
-	TaskStateCanceled      TaskState = "canceled"       // Task was canceled by request
-)
-
-// String returns the string representation of the TaskState.
-func (s TaskState) String() string {
-	return string(s)
-}
-
-// IsFinal checks if the task state is a terminal state (completed, failed, or canceled).
-func (s TaskState) IsFinal() bool {
-	return s == TaskStateCompleted || s == TaskStateFailed || s == TaskStateCanceled
-}
-
-type TaskRequest struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      string `json:"id"`
-	Method  string `json:"method"`
-	Params  Task   `json:"params"`
-}
-
-func NewTaskRequest(task Task) *TaskRequest {
-	return &TaskRequest{
-		JSONRPC: "2.0",
-		ID:      task.ID,
-		Method:  "tasks/send",
-		Params:  task,
+// WithMessages adds initial messages to the task
+func WithMessages(messages ...Message) TaskOption {
+	return func(t *Task) {
+		t.History = append(t.History, messages...)
 	}
 }
 
-func (tr *TaskRequest) AddMessage(message *Message) {
-	tr.Params.AddMessage(message)
-}
-
-func (tr *TaskRequest) AddResult(result *TaskResponse) {
-	tr.Params.AddResult(result)
-}
-
-type TaskRequestError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    string `json:"data"`
-}
-
-// Standard JSON-RPC Error Codes
-const (
-	ErrorParseError     = -32700 // Invalid JSON was received by the server.
-	ErrorInvalidRequest = -32600 // The JSON sent is not a valid Request object.
-	ErrorMethodNotFound = -32601 // The method does not exist / is not available.
-	ErrorInvalidParams  = -32602 // Invalid method parameter(s).
-	ErrorInternalError  = -32603 // Internal JSON-RPC error.
-)
-
-// A2A Specific Error Codes (-32000 to -32099)
-const (
-	ErrorTaskNotFound                  = -32001 // Task not found with the provided id.
-	ErrorTaskNotCancelable             = -32002 // Task cannot be canceled by the remote agent.
-	ErrorPushNotificationsNotSupported = -32003 // Push Notification is not supported by the agent.
-	ErrorUnsupportedOperation          = -32004 // Operation is not supported.
-	ErrorIncompatibleContentTypes      = -32005 // Incompatible content types between client and an agent.
-)
-
-// Error implements the error interface.
-func (e *TaskRequestError) Error() string {
-	return fmt.Sprintf("A2A Error - Code: %d, Message: %s, Data: %s", e.Code, e.Message, e.Data)
-}
-
-type TaskResult struct {
-	ID        string         `json:"id"`
-	SessionID string         `json:"sessionId"`
-	Status    TaskStatus     `json:"status"`
-	Artifacts []Artifact     `json:"artifacts"`
-	Metadata  map[string]any `json:"metadata"`
-}
-
-type TaskIdParams struct {
-	ID       string         `json:"id"`
-	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-func WithMessages(messages ...*Message) TaskOption {
-	return func(task *Task) {
-		task.History = append(task.History, messages...)
+// WithMetadata adds metadata to the task
+func WithMetadata(metadata map[string]interface{}) TaskOption {
+	return func(t *Task) {
+		t.Metadata = metadata
 	}
+}
+
+// WithSessionID sets the session ID for the task
+func WithSessionID(sessionID string) TaskOption {
+	return func(t *Task) {
+		t.SessionID = &sessionID
+	}
+}
+
+// AddMessage adds a message to the task history
+func (t *Task) AddMessage(msg Message) {
+	t.History = append(t.History, msg)
+}
+
+// TaskFilter represents the filter criteria for querying tasks
+type TaskFilter struct {
+	ID          *string    `json:"id,omitempty"`
+	Name        *string    `json:"name,omitempty"`
+	State       *TaskState `json:"state,omitempty"`
+	CreatedFrom *time.Time `json:"createdFrom,omitempty"`
+	CreatedTo   *time.Time `json:"createdTo,omitempty"`
+	UpdatedFrom *time.Time `json:"updatedFrom,omitempty"`
+	UpdatedTo   *time.Time `json:"updatedTo,omitempty"`
+}
+
+// TaskList represents a paginated list of tasks
+type TaskList struct {
+	Items      []Task `json:"items"`
+	TotalCount int64  `json:"totalCount"`
+	HasMore    bool   `json:"hasMore"`
 }

@@ -2,7 +2,7 @@ package tools
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -75,17 +75,29 @@ func (registry *Registry) ToOpenAI() []openai.ChatCompletionToolParam {
 	return toolsOut
 }
 
-func (registry *Registry) CallOpenAI(ctx fiber.Ctx, toolCall openai.ChatCompletionMessageToolCall) *task.Message {
+func (registry *Registry) CallOpenAI(
+	ctx fiber.Ctx, toolCall openai.ChatCompletionMessageToolCall,
+) task.Message {
 	tool := registry.GetTool(toolCall.Function.Name)
 
 	if tool == nil {
-		return task.NewToolMessage(fmt.Sprintf("Tool %s not found", toolCall.Function.Name))
+		return task.NewToolMessage(
+			errnie.New(errnie.WithError(
+				errors.New(toolCall.Function.Name+" not found"),
+			)).Error(),
+			toolCall.Function.Name,
+		)
 	}
 
 	var args map[string]any
 
-	if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
-		return task.NewToolMessage(errnie.New(errnie.WithError(err)).Error())
+	if err := json.Unmarshal(
+		[]byte(toolCall.Function.Arguments), &args,
+	); err != nil {
+		return task.NewToolMessage(
+			errnie.New(errnie.WithError(err)).Error(),
+			toolCall.Function.Name,
+		)
 	}
 
 	result, err := tool.Use(ctx.Context(), mcp.CallToolRequest{
@@ -107,7 +119,10 @@ func (registry *Registry) CallOpenAI(ctx fiber.Ctx, toolCall openai.ChatCompleti
 	})
 
 	if err != nil {
-		return task.NewToolMessage(errnie.New(errnie.WithError(err)).Error())
+		return task.NewToolMessage(
+			errnie.New(errnie.WithError(err)).Error(),
+			toolCall.Function.Name,
+		)
 	}
 
 	var content string
@@ -119,20 +134,31 @@ func (registry *Registry) CallOpenAI(ctx fiber.Ctx, toolCall openai.ChatCompleti
 		}
 	}
 
-	return task.NewToolMessage(content)
+	return task.NewToolMessage(content, toolCall.Function.Name)
 }
 
-func (registry *Registry) CallOpenAITool(ctx fiber.Ctx, toolCall openai.FinishedChatCompletionToolCall) *task.Message {
+func (registry *Registry) CallOpenAITool(
+	ctx fiber.Ctx,
+	toolCall openai.FinishedChatCompletionToolCall,
+) task.Message {
 	tool := registry.GetTool(toolCall.Name)
 
 	if tool == nil {
-		return task.NewToolMessage(fmt.Sprintf("Tool %s not found", toolCall.Name))
+		return task.NewToolMessage(
+			errnie.New(errnie.WithError(
+				errors.New(toolCall.Name+" not found"),
+			)).Error(),
+			toolCall.Name,
+		)
 	}
 
 	var args map[string]any
 
 	if err := json.Unmarshal([]byte(toolCall.Arguments), &args); err != nil {
-		return task.NewToolMessage(errnie.New(errnie.WithError(err)).Error())
+		return task.NewToolMessage(
+			errnie.New(errnie.WithError(err)).Error(),
+			toolCall.Name,
+		)
 	}
 
 	result, err := tool.Use(ctx.Context(), mcp.CallToolRequest{
@@ -154,7 +180,10 @@ func (registry *Registry) CallOpenAITool(ctx fiber.Ctx, toolCall openai.Finished
 	})
 
 	if err != nil {
-		return task.NewToolMessage(errnie.New(errnie.WithError(err)).Error())
+		return task.NewToolMessage(
+			errnie.New(errnie.WithError(err)).Error(),
+			toolCall.Name,
+		)
 	}
 
 	var content string
@@ -166,5 +195,5 @@ func (registry *Registry) CallOpenAITool(ctx fiber.Ctx, toolCall openai.Finished
 		}
 	}
 
-	return task.NewToolMessage(content)
+	return task.NewToolMessage(content, toolCall.Name)
 }

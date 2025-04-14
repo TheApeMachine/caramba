@@ -21,7 +21,7 @@ services:
   ui:
     image: caramba
     command: |
-      /app/main serve --name ui
+      air serve --name ui
     depends_on:
       - redis
       - neo4j
@@ -33,6 +33,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     ports:
       - "3210:3210"
+      - "3211:3211"
 
   minio:
     image: minio/minio

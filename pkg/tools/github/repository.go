@@ -34,7 +34,7 @@ func (repository *Repository) encode(artifact map[string]any, v any) (err error)
 	payload := bytes.NewBuffer([]byte{})
 
 	if err = json.NewEncoder(payload).Encode(v); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	artifact["payload"] = payload.Bytes()
@@ -54,7 +54,7 @@ func (repository *Repository) GetRepositories(artifact map[string]any) (err erro
 	)
 
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	return repository.encode(artifact, repos)
@@ -74,7 +74,7 @@ func (repository *Repository) GetRepository(artifact map[string]any) (err error)
 	)
 
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	return repository.encode(artifact, repo)
@@ -100,7 +100,7 @@ func (repository *Repository) CreateRepository(artifact map[string]any) (err err
 		repo,
 	)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 	return repository.encode(artifact, created)
 }
@@ -119,7 +119,7 @@ func (repository *Repository) ListBranches(artifact map[string]any) (err error) 
 		nil,
 	)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 	return repository.encode(artifact, branches)
 }
@@ -139,7 +139,7 @@ func (repository *Repository) GetContents(artifact map[string]any) (err error) {
 		nil,
 	)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 	return repository.encode(artifact, content)
 }

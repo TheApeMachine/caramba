@@ -125,7 +125,7 @@ func (prvdr *AnthropicProvider) Generate(
 			case anthropic.ToolUseBlock:
 				toolJSON, err := json.Marshal(block.JSON.Input)
 				if err != nil {
-					errnie.Error("failed to marshal tool input", "error", err)
+					errnie.New(errnie.WithError(err))
 					continue
 				}
 
@@ -133,7 +133,7 @@ func (prvdr *AnthropicProvider) Generate(
 					`{"name": "%s", "arguments": %s}`,
 					block.Name,
 					string(toolJSON),
-				)))
+				), block.Name))
 			}
 		}
 
@@ -210,7 +210,7 @@ func (prvdr *AnthropicProvider) handleChunk(
 				toolData, err := json.Marshal(block)
 
 				if err != nil {
-					errnie.Error("failed to marshal tool_use block", "error", err)
+					errnie.New(errnie.WithError(err))
 					continue
 				}
 
@@ -232,13 +232,13 @@ func (prvdr *AnthropicProvider) handleToolCall(
 	}
 
 	if err := json.Unmarshal(toolData, &toolInfo); err != nil {
-		errnie.Error("failed to unmarshal tool data", "error", err)
+		errnie.New(errnie.WithError(err))
 		return
 	}
 
 	toolJSON, err := json.Marshal(toolInfo.Input)
 	if err != nil {
-		errnie.Error("failed to marshal tool input", "error", err)
+		errnie.New(errnie.WithError(err))
 		return
 	}
 
@@ -246,7 +246,7 @@ func (prvdr *AnthropicProvider) handleToolCall(
 		`{"name": "%s", "arguments": %s}`,
 		toolInfo.Name,
 		string(toolJSON),
-	)))
+	), toolInfo.Name))
 
 	out <- task.NewTaskResponse(task.WithResponseTask(outTask))
 

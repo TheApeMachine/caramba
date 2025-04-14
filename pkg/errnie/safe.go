@@ -42,7 +42,7 @@ func RunSafely(fn func()) (err error) {
 			// Check if the panic was caused by an *ErrnieError
 			if ee, ok := r.(*ErrnieError); ok {
 				// Return the ErrnieError as a standard error
-				err = Error(ee)
+				err = New(WithError(ee))
 			} else {
 				// It was a different panic, re-panic
 				panic(r)
@@ -90,7 +90,7 @@ func RunSafelyErr(fn func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if ee, ok := r.(*ErrnieError); ok {
-				err = Error(ee)
+				err = New(WithError(ee))
 			} else {
 				panic(r)
 			}

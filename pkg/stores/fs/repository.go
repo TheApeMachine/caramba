@@ -58,7 +58,7 @@ func (s *Store) Put(path string, fh afero.File) (err error) {
 	defer fh.Close() // Ensure file handle is closed
 	content, err := afero.ReadAll(fh)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 	return s.conn.Save(path, content) // Pass the content (byte slice)
 }

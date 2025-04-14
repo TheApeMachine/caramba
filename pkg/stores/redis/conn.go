@@ -9,6 +9,7 @@ import (
 
 type Conn struct {
 	*redis.Client
+	err error
 }
 
 type ConnOption func(*Conn)
@@ -24,10 +25,18 @@ func NewConn(opts ...ConnOption) *Conn {
 }
 
 func (conn *Conn) Get(ctx context.Context, key string) (string, error) {
+	if conn.err != nil {
+		return "", conn.err
+	}
+
 	return conn.Client.Get(ctx, key).Result()
 }
 
 func (conn *Conn) Set(ctx context.Context, key string, value string) error {
+	if conn.err != nil {
+		return conn.err
+	}
+
 	return conn.Client.Set(ctx, key, value, 0).Err()
 }
 
@@ -38,15 +47,14 @@ func WithAddr(addr string) ConnOption {
 				Addr: addr,
 			})
 			ctx = context.Background()
-			err error
 		)
 
-		if err = rdb.Ping(ctx).Err(); err != nil {
-			errnie.Error(errnie.WithError(err))
+		if c.err = rdb.Ping(ctx).Err(); c.err != nil {
+			c.err = errnie.New(errnie.WithError(c.err))
 		}
 
-		if err = rdb.FlushDB(ctx).Err(); err != nil {
-			errnie.Error(errnie.WithError(err))
+		if c.err = rdb.FlushDB(ctx).Err(); c.err != nil {
+			c.err = errnie.New(errnie.WithError(c.err))
 		}
 
 		c.Client = rdb

@@ -31,7 +31,7 @@ func NewWorkItem(conn *azuredevops.Connection) *WorkItem {
 	wit, err := workitemtracking.NewClient(ctx, conn)
 
 	if err != nil {
-		errnie.Error(err)
+		errnie.New(errnie.WithError(err))
 		return nil
 	}
 
@@ -74,15 +74,15 @@ Returns the created work item or an error.
 func (w *WorkItem) CreateWorkItem(ctx context.Context, args map[string]any) (*workitemtracking.WorkItem, error) {
 	project, err := getStringArg(args, "project")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	workItemType, err := getStringArg(args, "type")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	title, err := getStringArg(args, "title")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	description, err := getStringArg(args, "description")
 	if err != nil {
@@ -110,7 +110,7 @@ func (w *WorkItem) CreateWorkItem(ctx context.Context, args map[string]any) (*wo
 	})
 
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return workItem, nil
@@ -125,11 +125,11 @@ Returns the updated work item or an error.
 func (w *WorkItem) UpdateWorkItem(ctx context.Context, args map[string]any) (*workitemtracking.WorkItem, error) {
 	id, err := getIntArg(args, "id")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	title, err := getStringArg(args, "title")
 	if err != nil {
-		return nil, errnie.Error(err) // Assume title is required for update
+		return nil, errnie.New(errnie.WithError(err)) // Assume title is required for update
 	}
 	description, err := getStringArg(args, "description")
 	if err != nil {
@@ -155,7 +155,7 @@ func (w *WorkItem) UpdateWorkItem(ctx context.Context, args map[string]any) (*wo
 	})
 
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return workItem, nil
@@ -170,7 +170,7 @@ Returns the work item or an error.
 func (w *WorkItem) GetWorkItem(ctx context.Context, args map[string]any) (*workitemtracking.WorkItem, error) {
 	id, err := getIntArg(args, "id")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	workItem, err := w.wit.GetWorkItem(ctx, workitemtracking.GetWorkItemArgs{
@@ -178,7 +178,7 @@ func (w *WorkItem) GetWorkItem(ctx context.Context, args map[string]any) (*worki
 	})
 
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return workItem, nil
@@ -193,11 +193,11 @@ Returns the query result or an error.
 func (w *WorkItem) ListWorkItems(ctx context.Context, args map[string]any) (*workitemtracking.WorkItemQueryResult, error) {
 	project, err := getStringArg(args, "project")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	query, err := getStringArg(args, "query")
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	wiql := workitemtracking.Wiql{
@@ -210,7 +210,7 @@ func (w *WorkItem) ListWorkItems(ctx context.Context, args map[string]any) (*wor
 	})
 
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return workItems, nil

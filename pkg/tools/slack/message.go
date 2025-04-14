@@ -2,6 +2,7 @@ package slack
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/slack-go/slack"
 	"github.com/theapemachine/caramba/pkg/errnie"
@@ -56,7 +57,7 @@ Returns an error if the timestamp is missing or if the update fails.
 */
 func (client *Client) UpdateMessage(channel, threadTS, text string) error {
 	if threadTS == "" {
-		return errnie.Error("thread_ts is required for update_message operation")
+		return errnie.New(errnie.WithError(errors.New("thread_ts is required for update_message operation")))
 	}
 
 	_, _, _, err := client.conn.UpdateMessage(channel, threadTS, slack.MsgOptionText(text, false))
@@ -71,7 +72,7 @@ Returns an error if the timestamp is missing or if the deletion fails.
 */
 func (client *Client) DeleteMessage(channel, threadTS string) error {
 	if threadTS == "" {
-		return errnie.Error("thread_ts is required for delete_message operation")
+		return errnie.New(errnie.WithError(errors.New("thread_ts is required for delete_message operation")))
 	}
 
 	_, _, err := client.conn.DeleteMessage(channel, threadTS)
@@ -86,7 +87,7 @@ Returns an error if the search text is empty or if the search fails.
 */
 func (client *Client) SearchMessages(text string) (any, error) {
 	if text == "" {
-		return nil, errnie.Error("text is required for search_messages operation")
+		return nil, errnie.New(errnie.WithError(errors.New("text is required for search_messages operation")))
 	}
 
 	return client.conn.SearchMessages(text, slack.SearchParameters{})

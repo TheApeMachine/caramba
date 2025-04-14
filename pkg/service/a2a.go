@@ -8,6 +8,7 @@ package service
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"log"
 	"sync"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/theapemachine/caramba/pkg/agent"
 	"github.com/theapemachine/caramba/pkg/errnie"
-	"github.com/theapemachine/caramba/pkg/task"
 )
 
 /*
@@ -41,7 +41,7 @@ Example:
 */
 type A2A struct {
 	app         *fiber.App
-	agent       *agent.Builder
+	agent       agent.Agent
 	streams     map[string][]*taskStream
 	streamMutex sync.RWMutex
 	middleware  *Middleware
@@ -71,6 +71,7 @@ func NewA2A(opts ...A2AOption) *A2A {
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 10 * time.Second,
 		}),
+		streams: make(map[string][]*taskStream),
 	}
 
 	for _, opt := range opts {
@@ -82,7 +83,7 @@ func NewA2A(opts ...A2AOption) *A2A {
 
 /*
 RegisterRoutes sets up all HTTP endpoints for the A2A service, including
-health checks, agent catalog, JSON-RPC endpoints, and SSE streams.
+health checks, agent catalog, and SSE streams.
 */
 func (srv *A2A) RegisterRoutes() {
 	ok := bytes.NewReader([]byte("OK"))
@@ -90,30 +91,7 @@ func (srv *A2A) RegisterRoutes() {
 
 	// To request the agents catalog.
 	srv.app.Get("/.well-known/agent.json", func(ctx fiber.Ctx) error {
-		return ctx.JSON(srv.agent.Card)
-	})
-
-	// A2A JSON-RPC endpoint
-	srv.app.Post("/rpc", func(ctx fiber.Ctx) error {
-		req := new(task.TaskRequest)
-
-		if err := ctx.Bind().Body(req); err != nil {
-			parseErr := errnie.New(errnie.WithError(err))
-
-			return ctx.Status(parseErr.Status()).JSON(
-				task.NewTaskResponse(task.WithResponseTask(req.Params)),
-			)
-		}
-
-		if err := srv.agent.HandleTask(ctx, req); err != nil {
-			errnie.New(errnie.WithError(err))
-
-			return ctx.Status(fiber.StatusInternalServerError).JSON(
-				task.NewTaskResponse(task.WithResponseTask(req.Params)),
-			)
-		}
-
-		return nil
+		return ctx.JSON(srv.agent.Card())
 	})
 
 	// SSE streaming endpoint for task updates
@@ -172,8 +150,13 @@ Listen starts the A2A service on the specified address, registering all routes
 and configuring TLS using the certificate manager.
 */
 func (srv *A2A) Listen(addr string) error {
-	// Register routes before starting the server
 	srv.RegisterRoutes()
+
+	go func() {
+		if err := srv.StartRPCServer(context.Background(), ":3211"); err != nil {
+			errnie.New(errnie.WithError(err))
+		}
+	}()
 
 	return srv.app.Listen(":"+addr, fiber.ListenConfig{})
 }
@@ -194,7 +177,7 @@ func WithMiddleware(middleware *Middleware) A2AOption {
 	}
 }
 
-func WithAgent(agent *agent.Builder) A2AOption {
+func WithAgent(agent agent.Agent) A2AOption {
 	return func(a2a *A2A) {
 		a2a.agent = agent
 	}

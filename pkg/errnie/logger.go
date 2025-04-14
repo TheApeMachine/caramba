@@ -32,7 +32,7 @@ const (
 
 var logger = log.NewWithOptions(os.Stderr, log.Options{
 	ReportCaller:    true,
-	CallerOffset:    0,
+	CallerOffset:    1,
 	ReportTimestamp: true,
 	TimeFormat:      time.TimeOnly,
 })
@@ -157,7 +157,7 @@ func Fatal(msg any, keyvals ...any) {
 }
 
 // Error logs an error message and returns the original error
-func Error(msg any, keyvals ...any) (err error) {
+func logError(msg any, keyvals ...any) (err error) {
 	if msg == nil {
 		return nil
 	}

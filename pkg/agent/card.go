@@ -36,7 +36,7 @@ func FromConfig(name string) *Card {
 		},
 		Version: tweaker.Value[string](settings + name + ".version"),
 		Authentication: auth.Authentication{
-			Schemes: tweaker.Value[string](settings + name + ".authentication.schemes"),
+			Schemes: tweaker.GetStringSlice(settings + name + ".authentication.schemes"),
 		},
 		DefaultInputModes:  tweaker.GetStringSlice(settings + name + ".defaultInputModes"),
 		DefaultOutputModes: tweaker.GetStringSlice(settings + name + ".defaultOutputModes"),

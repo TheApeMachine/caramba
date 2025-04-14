@@ -37,7 +37,7 @@ func (pr *PR) GetPR(owner, name string, number int) (pullRequest *github.PullReq
 		number,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return pullRequest, nil
@@ -57,7 +57,7 @@ func (pr *PR) ListPRs(owner, name string) (prs []*github.PullRequest, err error)
 		nil,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return pullRequests, nil
 }
@@ -84,7 +84,7 @@ func (pr *PR) CreatePR(owner, name, title, head, base, body string) (createdPR *
 		newPR,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return createdPR, nil
 }
@@ -110,7 +110,7 @@ func (pr *PR) UpdatePR(owner, name string, number int, title, body, state string
 		update,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return updatedPR, nil
 }
@@ -134,7 +134,7 @@ func (pr *PR) CreatePRComment(owner, name string, number int, body string) (crea
 		comment,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return createdComment, nil
 }
@@ -154,7 +154,7 @@ func (pr *PR) ListPRComments(owner, name string, number int) (listedComments []*
 		nil,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return listedComments, nil
 }
@@ -180,7 +180,7 @@ func (pr *PR) CreateReviewComment(owner, name string, number int, body, path str
 		comment,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return createdComment, nil
 }
@@ -200,7 +200,7 @@ func (pr *PR) ListReviewComments(owner, name string, number int) (listedComments
 		nil,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return listedComments, nil
 }
@@ -233,7 +233,7 @@ func (pr *PR) CreatePRReview(owner, name string, number int, body, event string,
 		review,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return createdReview, nil
 }
@@ -253,7 +253,7 @@ func (pr *PR) ListPRReviews(owner, name string, number int) (listedReviews []*gi
 		nil,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return listedReviews, nil
 }
@@ -279,7 +279,7 @@ func (pr *PR) SubmitReview(owner, name string, number int, review_id int, body, 
 		review,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return submittedReview, nil
 }

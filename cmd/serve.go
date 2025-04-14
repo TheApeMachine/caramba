@@ -7,8 +7,6 @@ import (
 	"github.com/theapemachine/caramba/pkg/agent"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/service"
-	"github.com/theapemachine/caramba/pkg/stores/inmemory"
-	"github.com/theapemachine/caramba/pkg/task/manager"
 )
 
 var (
@@ -23,9 +21,8 @@ var (
 			return service.NewA2A(
 				service.WithName(name),
 				service.WithAgent(agent.NewBuilder(
-					agent.WithTaskManager(manager.NewManager(
-						manager.WithTaskStore(inmemory.NewRepository()),
-						manager.WithLLMProvider(provider.NewOpenAIProvider(
+					agent.WithTaskManager(agent.NewManager(
+						agent.WithLLMProvider(provider.NewOpenAIProvider(
 							provider.WithOpenAIAPIKey(os.Getenv("OPENAI_API_KEY")),
 						)),
 					)),
@@ -36,6 +33,8 @@ var (
 )
 
 func init() {
+	os.Setenv("USE_REDIS", "true")
+
 	serveCmd.Flags().StringVar(
 		&name,
 		"name",

@@ -32,17 +32,17 @@ func NewLabels(client *Client) *Labels {
 func (l *Labels) ListLabels() (labels LabelList, err error) {
 	resp, err := l.client.doRequest(http.MethodGet, "/labels", nil)
 	if err != nil {
-		return LabelList{}, errnie.Error(err)
+		return LabelList{}, errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return LabelList{}, errnie.Error(err)
+		return LabelList{}, errnie.New(errnie.WithError(err))
 	}
 
 	if err = json.Unmarshal(body, &labels); err != nil {
-		return LabelList{}, errnie.Error(err)
+		return LabelList{}, errnie.New(errnie.WithError(err))
 	}
 
 	return labels, nil
@@ -55,12 +55,12 @@ func (l *Labels) GetLabel(labelID int) (label Label, err error) {
 		nil,
 	)
 	if err != nil {
-		return Label{}, errnie.Error(err)
+		return Label{}, errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 
 	if err = json.NewDecoder(resp.Body).Decode(&label); err != nil {
-		return Label{}, errnie.Error(err)
+		return Label{}, errnie.New(errnie.WithError(err))
 	}
 
 	return label, nil
@@ -69,12 +69,12 @@ func (l *Labels) GetLabel(labelID int) (label Label, err error) {
 func (l *Labels) CreateLabel(label Label) (newLabel Label, err error) {
 	resp, err := l.client.doRequest(http.MethodPost, "/labels", label)
 	if err != nil {
-		return Label{}, errnie.Error(err)
+		return Label{}, errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 
 	if err = json.NewDecoder(resp.Body).Decode(&newLabel); err != nil {
-		return Label{}, errnie.Error(err)
+		return Label{}, errnie.New(errnie.WithError(err))
 	}
 
 	return newLabel, nil
@@ -87,12 +87,12 @@ func (l *Labels) UpdateLabel(labelID int, label Label) (updatedLabel Label, err 
 		label,
 	)
 	if err != nil {
-		return Label{}, errnie.Error(err)
+		return Label{}, errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 
 	if err = json.NewDecoder(resp.Body).Decode(&updatedLabel); err != nil {
-		return Label{}, errnie.Error(err)
+		return Label{}, errnie.New(errnie.WithError(err))
 	}
 
 	return updatedLabel, nil
@@ -105,7 +105,7 @@ func (l *Labels) DeleteLabel(labelID int) (err error) {
 		nil,
 	)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 	defer resp.Body.Close()
 

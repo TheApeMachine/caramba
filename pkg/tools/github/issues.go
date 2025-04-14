@@ -36,7 +36,7 @@ func (issues *Issues) GetIssue(issueID int) (issue *github.Issue, err error) {
 		issueID,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return issue, nil
 }
@@ -55,7 +55,7 @@ func (issues *Issues) ListIssues() (issueList []*github.Issue, err error) {
 		nil,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return issueList, nil
 }
@@ -81,7 +81,7 @@ func (issues *Issues) CreateIssue(title, body string) (issue *github.Issue, err 
 		issueRequest,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return issue, nil
 }
@@ -107,7 +107,7 @@ func (issues *Issues) UpdateIssue(issueID int, title, body, state string) (issue
 		update,
 	)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return issue, nil
 }

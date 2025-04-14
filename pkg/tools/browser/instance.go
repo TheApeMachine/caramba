@@ -18,12 +18,12 @@ func (bg *BrowserGenerator) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult 
 
 	manager, err := NewManager(toolcall).Initialize()
 
-	if errnie.Error(err) != nil {
+	if errnie.New(errnie.WithError(err)) != nil {
 		return mcp.CallToolResult{
 			Content: []mcp.Content{
 				mcp.TextContent{
 					Type: "text",
-					Text: errnie.Error(err).Error(),
+					Text: errnie.New(errnie.WithError(err)).Error(),
 				},
 			},
 		}
@@ -40,23 +40,23 @@ func (bg *BrowserGenerator) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult 
 			markdown string
 		)
 
-		if content, err = manager.GetPage().HTML(); errnie.Error(err) != nil {
+		if content, err = manager.GetPage().HTML(); errnie.New(errnie.WithError(err)) != nil {
 			return mcp.CallToolResult{
 				Content: []mcp.Content{
 					mcp.TextContent{
 						Type: "text",
-						Text: errnie.Error(err).Error(),
+						Text: errnie.New(errnie.WithError(err)).Error(),
 					},
 				},
 			}
 		}
 
-		if markdown, err = htmltomarkdown.ConvertString(content); errnie.Error(err) != nil {
+		if markdown, err = htmltomarkdown.ConvertString(content); errnie.New(errnie.WithError(err)) != nil {
 			return mcp.CallToolResult{
 				Content: []mcp.Content{
 					mcp.TextContent{
 						Type: "text",
-						Text: errnie.Error(err).Error(),
+						Text: errnie.New(errnie.WithError(err)).Error(),
 					},
 				},
 			}

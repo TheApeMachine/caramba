@@ -36,7 +36,7 @@ func get[T any](key string, getter func(string) T, defaultValue T) T {
 	if out := getter(key); !isEmpty(out) {
 		return out
 	}
-	errnie.Error(fmt.Errorf("%s not set", key))
+	errnie.New(errnie.WithError(fmt.Errorf("%s not set", key)))
 	return defaultValue
 }
 

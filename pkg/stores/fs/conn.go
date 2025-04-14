@@ -32,7 +32,7 @@ It walks through the embedded filesystem starting from the given root path.
 func (conn *Conn) Load(embedded embed.FS, root string) (err error) {
 	return fs.WalkDir(embedded, root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return errnie.Error(err)
+			return errnie.New(errnie.WithError(err))
 		}
 
 		errnie.Debug("fs.Conn.Load", "path", path, "is_dir", d.IsDir())
@@ -42,22 +42,22 @@ func (conn *Conn) Load(embedded embed.FS, root string) (err error) {
 		}
 
 		file, err := conn.memfs.Create(path)
-		
+
 		if err != nil {
-			return errnie.Error(err)
+			return errnie.New(errnie.WithError(err))
 		}
 
 		defer file.Close()
 
 		// Actually copy the file contents
 		content, err := embedded.ReadFile(path)
-		
+
 		if err != nil {
-			return errnie.Error(err)
+			return errnie.New(errnie.WithError(err))
 		}
 
 		_, err = file.Write(content)
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	})
 }
 
@@ -68,7 +68,7 @@ Returns a slice of filenames and any error encountered.
 func (conn *Conn) Ls(path string) (files []string, err error) {
 	dir, err := afero.ReadDir(conn.memfs, path)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	for _, file := range dir {

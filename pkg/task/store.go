@@ -1,13 +1,19 @@
 package task
 
-// TaskStore defines the interface for persisting and retrieving tasks.
+// TaskStore defines the interface for task persistence
 type TaskStore interface {
-	// CreateTask saves a new task.
-	CreateTask(task *Task) error
-	// GetTask retrieves a task by its ID.
-	GetTask(taskID string) (*Task, error)
-	// UpdateTask updates an existing task.
-	UpdateTask(task *Task) error
-	// DeleteTask removes a task by its ID (optional, implement if needed).
-	// DeleteTask(taskID string) error
+	// Get retrieves a task by ID
+	Get(id string) (*Task, error)
+
+	// Save persists a task
+	Save(task *Task) error
+
+	// Update updates an existing task
+	Update(task *Task) error
+
+	// Delete removes a task
+	Delete(id string) error
+
+	// List retrieves tasks based on a filter
+	List(filter *TaskFilter) (*TaskList, error)
 }

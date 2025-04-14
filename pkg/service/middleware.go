@@ -69,7 +69,7 @@ func (middleware *Middleware) Register(app *fiber.App) {
 				errnie.WithLevel(sentry.LevelError),
 			)
 
-			errnie.Error(err)
+			errnie.New(errnie.WithError(err))
 		},
 	}))
 

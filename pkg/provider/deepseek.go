@@ -184,7 +184,7 @@ func (prvdr *DeepseekProvider) Stream(
 					break
 				}
 
-				errnie.Error("streaming error", "error", err)
+				errnie.New(errnie.WithError(err))
 				continue
 			}
 
@@ -216,7 +216,7 @@ func (prvdr *DeepseekProvider) handleChunk(
 		toolJSON, err := json.Marshal(toolCall)
 
 		if err != nil {
-			errnie.Error("failed to marshal tool arguments", "error", err)
+			errnie.New(errnie.WithError(err))
 			return
 		}
 
@@ -224,7 +224,7 @@ func (prvdr *DeepseekProvider) handleChunk(
 			`{"name": "%s", "id": "tool-0", "arguments": %s}`,
 			toolCall.Function.Name,
 			string(toolJSON),
-		)))
+		), toolCall.Function.Name))
 
 		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
 	}

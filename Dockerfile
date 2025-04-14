@@ -10,7 +10,7 @@ RUN curl -LO https://golang.org/dl/go${GOVERSION}.linux-${TARGETARCH}.tar.gz && 
     tar -C /usr/local -xzf go${GOVERSION}.linux-${TARGETARCH}.tar.gz && \
     rm go${GOVERSION}.linux-${TARGETARCH}.tar.gz
 
-ENV PATH="/usr/local/go/bin:${PATH}"
+ENV PATH="/usr/local/go/bin:/usr/bin:/usr/local/go/bin:/root/go/bin:${PATH}"
 ENV GOFLAGS=-buildvcs=false
 
 WORKDIR /app

@@ -9,7 +9,7 @@ import (
 func ConvertToMarkdown(htmlContent string) (string, error) {
 	markdown, err := htmltomarkdown.ConvertString(htmlContent)
 	if err != nil {
-		return "", errnie.Error(err)
+		return "", errnie.New(errnie.WithError(err))
 	}
 	return markdown, nil
 }

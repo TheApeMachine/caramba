@@ -27,6 +27,39 @@ var (
 	}
 )
 
+type Error struct {
+	err *ErrnieError
+}
+
+func NewError() *Error {
+	return &Error{
+		err: New(),
+	}
+}
+
+func (e *Error) Error() string {
+	return e.err.Error()
+}
+
+func (e *Error) Add(err error) *Error {
+	if err == nil {
+		return e
+	}
+
+	logError(err)
+
+	e.err.errors = append(e.err.errors, err)
+	return e
+}
+
+func (e *Error) Is(target error) bool {
+	return e.err.Is(target)
+}
+
+func (e *Error) OK() bool {
+	return e == nil || len(e.err.errors) == 0
+}
+
 type aggregatedError struct{}
 
 type ErrorAggregator struct {
@@ -96,24 +129,25 @@ const (
 				// Handle validation error
 			}
 	*/
-	NilError              ErrnieErrorType = iota // Represents no error
-	UnknownError                                 // Error type cannot be determined
-	IOError                                      // Input/Output related errors
-	ValidationError                              // Data validation errors
-	NetworkError                                 // Network-related errors
-	DatabaseError                                // Database operation errors
-	AuthenticationError                          // Authentication failures
-	AuthorizationError                           // Authorization/permission errors
-	ConfigurationError                           // Configuration-related errors
-	ResourceNotFoundError                        // Resource not found errors
-	ResourceConflictError                        // Resource conflict errors
-	TimeoutError                                 // Timeout-related errors
-	RateLimitError                               // Rate limiting errors
-	InvalidInputError                            // Invalid input errors
-	SystemError                                  // Internal system errors
-	DependencyError                              // External dependency errors
-	ContextError                                 // Context errors
-	RenderError                                  // Render errors
+	NilError                  ErrnieErrorType = iota // Represents no error
+	UnknownError                                     // Error type cannot be determined
+	IOError                                          // Input/Output related errors
+	ValidationError                                  // Data validation errors
+	NetworkError                                     // Network-related errors
+	DatabaseError                                    // Database operation errors
+	AuthenticationError                              // Authentication failures
+	AuthorizationError                               // Authorization/permission errors
+	ConfigurationError                               // Configuration-related errors
+	ResourceNotFoundError                            // Resource not found errors
+	ResourceConflictError                            // Resource conflict errors
+	ResourceNotAvailableError                        // Resource not available errors
+	TimeoutError                                     // Timeout-related errors
+	RateLimitError                                   // Rate limiting errors
+	InvalidInputError                                // Invalid input errors
+	SystemError                                      // Internal system errors
+	DependencyError                                  // External dependency errors
+	ContextError                                     // Context errors
+	RenderError                                      // Render errors
 
 	/*
 		Status Types define the HTTP status codes that can be returned.
@@ -391,7 +425,7 @@ func New(options ...ErrnieErrorOption) *ErrnieError {
 	}
 
 	if len(err.errors) > 0 {
-		Error(err.errors[len(err.errors)-1])
+		logError(err.errors[len(err.errors)-1])
 	}
 
 	// Report to Sentry if enabled and should report based on aggregation
@@ -430,13 +464,81 @@ Example:
 
 	err := NotFound(nil, "user with ID 123 not found")
 */
+// NotFound creates a new error for resource not found scenarios.
+// It sets appropriate error type and HTTP status code.
 func NotFound(err error, msg ...string) *ErrnieError {
-	return New(
+	opts := []ErrnieErrorOption{
 		WithType(ResourceNotFoundError),
 		WithStatus(NotFoundStatus),
-		WithError(err),
-		WithMessage(strings.Join(msg, " ")),
-	)
+	}
+
+	// Add error if provided
+	if err != nil {
+		opts = append(opts, WithError(err))
+	}
+
+	// Add message if provided
+	if len(msg) > 0 {
+		opts = append(opts, WithMessage(strings.Join(msg, " ")))
+	}
+
+	return New(opts...)
+}
+
+/*
+IOError creates a new error for I/O operations.
+It sets appropriate error type and HTTP status code.
+
+Example:
+
+	err := IOError(nil, "failed to read file")
+*/
+// IOError creates a new error for I/O operations.
+// It sets appropriate error type and HTTP status code.
+func IO(err error, msg ...string) *ErrnieError {
+	opts := []ErrnieErrorOption{
+		WithType(IOError),
+		WithStatus(InternalServerErrorStatus),
+	}
+
+	// Add error if provided
+	if err != nil {
+		opts = append(opts, WithError(err))
+	}
+
+	// Add message if provided
+	if len(msg) > 0 {
+		opts = append(opts, WithMessage(strings.Join(msg, " ")))
+	}
+
+	return New(opts...)
+}
+
+/*
+Validation creates a new error for validation scenarios.
+It sets appropriate error type and HTTP status code.
+
+Example:
+
+	err := Validation(nil, "invalid user ID format")
+*/
+func Validation(err error, msg ...string) *ErrnieError {
+	opts := []ErrnieErrorOption{
+		WithType(ValidationError),
+		WithStatus(BadRequestStatus),
+	}
+
+	// Add error if provided
+	if err != nil {
+		opts = append(opts, WithError(err))
+	}
+
+	// Add message if provided
+	if len(msg) > 0 {
+		opts = append(opts, WithMessage(strings.Join(msg, " ")))
+	}
+
+	return New(opts...)
 }
 
 /*
@@ -763,5 +865,12 @@ func WithErrorAggregation(window time.Duration, threshold int) ErrnieErrorOption
 func WithStatusCode(statusCode int) ErrnieErrorOption {
 	return func(e *ErrnieError) {
 		e.status = ErrnieStatusType(statusCode)
+	}
+}
+
+// WithErrorType sets the error type for an ErrnieError
+func WithErrorType(errorType ErrnieErrorType) ErrnieErrorOption {
+	return func(e *ErrnieError) {
+		e.errorType = errorType
 	}
 }

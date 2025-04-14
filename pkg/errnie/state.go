@@ -1,9 +1,14 @@
 package errnie
 
-type State uint64
+type StateType int
+
+type State struct {
+	current StateType
+	history []StateType
+}
 
 const (
-	StateUnknown State = iota
+	StateUnknown StateType = iota
 	StateInitialized
 	StateIdle
 	StatePending
@@ -15,7 +20,26 @@ const (
 	StateError
 )
 
-func (state State) String() string {
+func NewState() *State {
+	return &State{
+		current: StateInitialized,
+		history: make([]StateType, 0),
+	}
+}
+
+func (state *State) To(s StateType) *State {
+	state.history = append(state.history, state.current)
+	state.current = s
+	return state
+}
+
+func (state *State) IsReady() bool  { return state.current == StateReady }
+func (state *State) IsBusy() bool   { return state.current == StateBusy }
+func (state *State) IsDone() bool   { return state.current == StateDone }
+func (state *State) IsFailed() bool { return state.current == StateFailed }
+func (state *State) IsError() bool  { return state.current == StateError }
+
+func (state *State) String() string {
 	return []string{
 		"unknown",
 		"initialized",
@@ -27,5 +51,5 @@ func (state State) String() string {
 		"done",
 		"failed",
 		"error",
-	}[state]
+	}[state.current]
 }

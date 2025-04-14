@@ -27,9 +27,10 @@ func (e *AuthenticationError) Error() string {
 	return e.Message
 }
 
+// Authentication represents authentication information for an agent
 type Authentication struct {
-	Schemes     string `json:"schemes,omitempty"`     // Single auth scheme according to A2A spec
-	Credentials string `json:"credentials,omitempty"` // Optional credentials
+	Schemes     []string `json:"schemes"`
+	Credentials *string  `json:"credentials,omitempty"`
 }
 
 // NewKeyAuth creates a new key authentication middleware

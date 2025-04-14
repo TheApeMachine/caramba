@@ -9,6 +9,6 @@ func main() {
 	errnie.SetLevel(errnie.TraceLevel)
 
 	if err := cmd.Execute(); err != nil {
-		errnie.Error(err)
+		errnie.New(errnie.WithError(err))
 	}
 }

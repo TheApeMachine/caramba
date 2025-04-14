@@ -57,7 +57,7 @@ func (c *Client) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult {
 
 	if len(parts) != 3 {
 		errMsg := fmt.Sprintf("invalid operation format: expected 'azure.<service>.<action>', got '%s'", toolcall.Params.Name)
-		errnie.Error(fmt.Errorf(errMsg))
+		errnie.New(errnie.WithError(fmt.Errorf(errMsg)))
 		return mcp.CallToolResult{
 			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: errMsg}},
 		}
@@ -73,7 +73,7 @@ func (c *Client) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult {
 	case "workitem":
 		if c.workitem == nil {
 			errMsg := "workitem client not initialized"
-			errnie.Error(fmt.Errorf(errMsg))
+			errnie.New(errnie.WithError(fmt.Errorf(errMsg)))
 			return mcp.CallToolResult{
 				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: errMsg}},
 			}
@@ -93,7 +93,7 @@ func (c *Client) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult {
 	case "wiki":
 		if c.wiki == nil {
 			errMsg := "wiki client not initialized"
-			errnie.Error(fmt.Errorf(errMsg))
+			errnie.New(errnie.WithError(fmt.Errorf(errMsg)))
 			return mcp.CallToolResult{
 				Content: []mcp.Content{mcp.TextContent{Type: "text", Text: errMsg}},
 			}
@@ -115,7 +115,7 @@ func (c *Client) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult {
 	}
 
 	if err != nil {
-		errnie.Error(err)
+		errnie.New(errnie.WithError(err))
 		return mcp.CallToolResult{
 			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: err.Error()}},
 		}
@@ -124,7 +124,7 @@ func (c *Client) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult {
 	// Marshal the result to JSON
 	jsonResult, marshalErr := json.MarshalIndent(result, "", "  ")
 	if marshalErr != nil {
-		errnie.Error(marshalErr)
+		errnie.New(errnie.WithError(marshalErr))
 		return mcp.CallToolResult{
 			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("failed to marshal result: %s", marshalErr.Error())}},
 		}

@@ -155,14 +155,14 @@ func (m *AgentResourceManager) NotifyUpdate(agentName string) {
 	// Get the agent from the catalog
 	agentCard := m.catalog.GetAgent(agentName)
 	if agentCard == nil {
-		errnie.Error(fmt.Errorf("agent not found for notification: %s", agentName))
+		errnie.New(errnie.WithMessage(fmt.Sprintf("agent not found for notification: %s", agentName)))
 		return
 	}
 
 	// Convert the agent card to JSON
 	cardJSON, err := json.MarshalIndent(agentCard, "", "  ")
 	if err != nil {
-		errnie.Error(fmt.Errorf("failed to serialize agent card for notification: %w", err))
+		errnie.New(errnie.WithError(err))
 		return
 	}
 

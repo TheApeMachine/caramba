@@ -72,17 +72,20 @@ func init() {
 
 	// Initialize the filesystem store and load manifests
 	if err := fs.NewStore().Initialize(manifests, "manifests"); err != nil {
-		errnie.Error(err)
+		errnie.New(errnie.WithError(err))
+		return
 	}
 
 	// Initialize the browser scripts
 	if err := fs.NewStore().Initialize(browserScripts, "scripts"); err != nil {
-		errnie.Error(err)
+		errnie.New(errnie.WithError(err))
+		return
 	}
 
 	// Initialize the browser scripts
 	if err := fs.NewStore().Initialize(browserScripts, "scripts"); err != nil {
-		errnie.Error(err)
+		errnie.New(errnie.WithError(err))
+		return
 	}
 }
 
@@ -119,7 +122,7 @@ func writeConfig() (err error) {
 
 	home, err := os.UserHomeDir()
 
-	if errnie.Error(err) != nil {
+	if errnie.New(errnie.WithError(err)) != nil {
 		return err
 	}
 

@@ -62,19 +62,19 @@ func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
 	// Read the Dockerfile content from the filesystem store
 	dockerfileFile, err := runtime.fsStore.Get(dockerfilePath)
 	if err != nil {
-		return errnie.Error(fmt.Errorf("failed to get Dockerfile '%s' from fs store: %w", dockerfilePath, err))
+		return errnie.New(errnie.WithError(fmt.Errorf("failed to get Dockerfile '%s' from fs store: %w", dockerfilePath, err)))
 	}
 	defer dockerfileFile.Close()
 	dockerfileContent, err := io.ReadAll(dockerfileFile)
 	if err != nil {
-		return errnie.Error(fmt.Errorf("failed to read Dockerfile '%s' content: %w", dockerfilePath, err))
+		return errnie.New(errnie.WithError(fmt.Errorf("failed to read Dockerfile '%s' content: %w", dockerfilePath, err)))
 	}
 
 	// Check if container already exists
 	containers, err := runtime.client.ContainerList(ctx, container.ListOptions{All: true})
 
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Look for our container
@@ -87,7 +87,7 @@ func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
 
 	// Build the image using the Dockerfile
 	if err := runtime.BuildImage(ctx, dockerfileContent, containerName); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Create container using our built image
@@ -101,7 +101,7 @@ func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
 	)
 
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	runtime.containerID = resp.ID
@@ -115,7 +115,7 @@ Returns an error if the container start operation fails.
 */
 func (runtime *dockerRuntime) StartContainer(ctx context.Context) (err error) {
 	if err = runtime.client.ContainerStart(ctx, runtime.containerID, container.StartOptions{}); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	return nil
@@ -128,7 +128,7 @@ Returns an error if the container stop operation fails.
 */
 func (runtime *dockerRuntime) StopContainer(ctx context.Context) (err error) {
 	if err = runtime.client.ContainerStop(ctx, runtime.containerID, container.StopOptions{}); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	return nil
@@ -155,7 +155,7 @@ func (runtime *dockerRuntime) AttachIO(stdin io.Reader, stdout, stderr io.Writer
 	)
 
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	var wg sync.WaitGroup
@@ -205,7 +205,7 @@ func demultiplexDockerStream(reader io.Reader, stdout, stderr io.Writer) error {
 			if err == io.EOF {
 				return nil
 			}
-			return err
+			return errnie.New(errnie.WithError(err))
 		}
 
 		// Get size of the coming message
@@ -249,19 +249,19 @@ func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string
 	)
 
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Attach to the exec instance to get the output
 	resp, err := runtime.client.ContainerExecAttach(ctx, exec.ID, container.ExecStartOptions{})
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 	defer resp.Close()
 
 	// Start the command
 	if err := runtime.client.ContainerExecStart(ctx, exec.ID, container.ExecStartOptions{}); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Create buffers to capture output
@@ -279,7 +279,7 @@ func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string
 	for {
 		inspectResp, err := runtime.client.ContainerExecInspect(ctx, exec.ID)
 		if err != nil {
-			return errnie.Error(err)
+			return errnie.New(errnie.WithError(err))
 		}
 		if !inspectResp.Running {
 			break
@@ -290,7 +290,7 @@ func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string
 	// Wait for output copying to complete
 	copyErr := <-errCh
 	if copyErr != nil && copyErr != io.EOF {
-		return errnie.Error(copyErr)
+		return errnie.New(errnie.WithError(copyErr))
 	}
 
 	// Check if this was an EOF during input read
@@ -316,14 +316,14 @@ func (runtime *dockerRuntime) PullImage(ctx context.Context, ref string) error {
 	reader, err := runtime.client.ImagePull(ctx, ref, image.PullOptions{})
 
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	defer reader.Close()
 
 	// Read the output to complete the pull
 	_, err = io.Copy(io.Discard, reader)
-	return errnie.Error(err)
+	return errnie.New(errnie.WithError(err))
 }
 
 /*
@@ -352,17 +352,17 @@ func (runtime *dockerRuntime) BuildImage(
 
 	// Write the header
 	if err := tw.WriteHeader(header); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Write the Dockerfile content
 	if _, err := tw.Write(dockerfile); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Close the tar writer
 	if err := tw.Close(); err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	opts := types.ImageBuildOptions{
@@ -376,7 +376,7 @@ func (runtime *dockerRuntime) BuildImage(
 
 	resp, err := runtime.client.ImageBuild(ctx, &buf, opts)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	defer resp.Body.Close()
@@ -404,11 +404,11 @@ func (runtime *dockerRuntime) processAndPrintBuildOutput(reader io.Reader) error
 			if err == io.EOF {
 				return nil
 			}
-			return err
+			return errnie.New(errnie.WithError(err))
 		}
 
 		if message.Error != "" {
-			return errnie.Error(fmt.Errorf("build error: %s", message.Error))
+			return errnie.New(errnie.WithError(fmt.Errorf("build error: %s", message.Error)))
 		}
 
 		if message.Stream != "" {

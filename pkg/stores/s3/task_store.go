@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/task"
 )
 
@@ -36,16 +37,16 @@ func (s *S3TaskStore) CreateTask(t *task.Task) error {
 func mapS3Error(taskID string, err error) error {
 	var noKey *types.NoSuchKey
 	if errors.As(err, &noKey) {
-		return task.NewTaskNotFoundError(taskID, err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	var noBucket *types.NoSuchBucket
 	if errors.As(err, &noBucket) {
-		return task.NewInternalError("GetTask", "S3 bucket not found", err, -32603)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// For other S3 errors, return a generic internal error
-	return task.NewInternalError("GetTask", "S3 operation failed", err, -32603)
+	return errnie.New(errnie.WithError(err))
 }
 
 // GetTask retrieves a task from S3 by its ID.
@@ -59,12 +60,12 @@ func (s *S3TaskStore) GetTask(taskID string) (*task.Task, error) {
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, task.NewInternalError("GetTask", "Failed to read task data", err, -32603)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	t := &task.Task{}
 	if err := json.Unmarshal(data, t); err != nil {
-		return nil, task.NewInternalError("GetTask", "Failed to unmarshal task data", err, -32603)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	return t, nil

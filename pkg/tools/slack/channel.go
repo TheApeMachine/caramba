@@ -1,6 +1,8 @@
 package slack
 
 import (
+	"errors"
+
 	"github.com/slack-go/slack"
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -26,7 +28,7 @@ Returns an error if the retrieval fails.
 func (client *Client) ListChannels() (any, error) {
 	channels, nextCursor, err := client.conn.GetConversations(&slack.GetConversationsParameters{})
 	if err != nil {
-		return nil, err
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return map[string]any{
 		"channels": channels,
@@ -56,7 +58,7 @@ Returns an error if the thread timestamp is missing or if retrieval fails.
 */
 func (client *Client) GetThreadReplies(channel, threadTS string) (any, error) {
 	if threadTS == "" {
-		return nil, errnie.Error("thread_ts is required for get_thread_replies operation")
+		return nil, errnie.New(errnie.WithError(errors.New("thread_ts is required for get_thread_replies operation")))
 	}
 
 	messages, hasMore, nextCursor, err := client.conn.GetConversationReplies(&slack.GetConversationRepliesParameters{
@@ -64,7 +66,7 @@ func (client *Client) GetThreadReplies(channel, threadTS string) (any, error) {
 		Timestamp: threadTS,
 	})
 	if err != nil {
-		return nil, err
+		return nil, errnie.New(errnie.WithError(err))
 	}
 	return map[string]any{
 		"messages": messages,

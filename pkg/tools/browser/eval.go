@@ -37,18 +37,18 @@ func (eval *Eval) Run() (result string, err error) {
 
 	scriptFile, err := eval.fsStore.Get(scriptPath)
 	if err != nil {
-		return "", errnie.Error(fmt.Errorf("failed to get script '%s': %w", scriptPath, err))
+		return "", errnie.New(errnie.WithError(err))
 	}
 	defer scriptFile.Close()
 
 	scriptContentBytes, err := io.ReadAll(scriptFile)
 	if err != nil {
-		return "", errnie.Error(fmt.Errorf("failed to read script '%s': %w", scriptPath, err))
+		return "", errnie.New(errnie.WithError(err))
 	}
 	scriptContent := string(scriptContentBytes)
 
 	if runtime, err = eval.page.Eval(scriptContent); err != nil {
-		return err.Error(), errnie.Error(err)
+		return "", errnie.New(errnie.WithError(err))
 	}
 
 	val := runtime.Value.Get("val").Str()

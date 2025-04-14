@@ -119,7 +119,7 @@ func (prvdr *GoogleProvider) Generate(
 				`{"name": "%s", "arguments": %v}`,
 				fc.Name,
 				fc.Args,
-			)))
+			), fc.Name))
 		}
 
 		outTask.Status.State = task.TaskStateCompleted
@@ -154,7 +154,7 @@ func (prvdr *GoogleProvider) Stream(
 				if err.Error() == "EOF" {
 					break
 				}
-				errnie.Error("streaming error", "error", err)
+				errnie.New(errnie.WithError(err))
 				continue
 			}
 
@@ -191,7 +191,7 @@ func (prvdr *GoogleProvider) handleChunk(
 				`{"name": "%s", "arguments": %v}`,
 				fc.Name,
 				fc.Args,
-			)))
+			), fc.Name))
 
 			out <- task.NewTaskResponse(task.WithResponseTask(outTask))
 		}

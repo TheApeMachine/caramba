@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -56,7 +55,7 @@ func NewRunner(runtime Runtime) *Runner {
 
 	// Attach IO
 	if err := runtime.AttachIO(runner.bufIn, runner.bufOut, runner.bufErr); err != nil {
-		errnie.Error(err)
+		errnie.New(errnie.WithError(err))
 		return nil
 	}
 
@@ -95,7 +94,7 @@ func (runner *Runner) Execute(
 					runner.muOutErr.Unlock()
 
 					if err != nil && err != io.EOF {
-						errnie.Error(err)
+						errnie.New(errnie.WithError(err))
 						outputCh <- output.Bytes()
 						close(outputCh)
 						return
@@ -130,7 +129,7 @@ func (runner *Runner) Execute(
 		artifact := <-buffer
 
 		if command == "" && input == "" {
-			errnie.Error(errors.New("no command or input"))
+			errnie.New(errnie.WithError(errors.New("no command or input")))
 			return
 		}
 
@@ -173,7 +172,7 @@ func (runner *Runner) Execute(
 		runner.muIn.Unlock()
 
 		if err := runner.runtime.ExecuteCommand(runner.ctx, command, runner.bufOut, runner.bufErr); err != nil {
-			errnie.Error(fmt.Errorf("failed to execute command: %w", err))
+			errnie.New(errnie.WithError(err))
 			return
 		}
 

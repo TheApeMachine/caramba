@@ -39,7 +39,7 @@ func NewOpenAIProvider(opts ...OpenAIProviderOption) *OpenAIProvider {
 }
 
 func (prvdr *OpenAIProvider) prepare(
-	ctx fiber.Ctx, request *task.TaskRequest,
+	request *task.TaskRequest,
 ) openai.ChatCompletionNewParams {
 	var (
 		params = openai.ChatCompletionNewParams{
@@ -80,7 +80,7 @@ func (prvdr *OpenAIProvider) Generate(
 		defer close(out)
 
 		var (
-			params     = prvdr.prepare(ctx, request)
+			params     = prvdr.prepare(request)
 			completion *openai.ChatCompletion
 			outTask    = request.Params
 			err        error
@@ -89,7 +89,7 @@ func (prvdr *OpenAIProvider) Generate(
 		if completion, err = prvdr.client.Chat.Completions.New(
 			reqCtx,
 			params,
-		); errnie.Error(err) != nil {
+		); errnie.New(errnie.WithError(err)) != nil {
 			outTask.Status.State = task.TaskStateFailed
 			out <- task.NewTaskResponse(task.WithResponseError(err))
 			return
@@ -128,7 +128,7 @@ func (prvdr *OpenAIProvider) Stream(
 		defer close(out)
 
 		var (
-			params  = prvdr.prepare(ctx, request)
+			params  = prvdr.prepare(request)
 			outTask = request.Params
 		)
 
@@ -143,7 +143,7 @@ func (prvdr *OpenAIProvider) Stream(
 			prvdr.handleChunk(ctx, acc, outTask, chunk, out)
 		}
 
-		if err := stream.Err(); errnie.Error(err) != nil {
+		if err := stream.Err(); errnie.New(errnie.WithError(err)) != nil {
 			outTask.Status.State = task.TaskStateFailed
 			out <- task.NewTaskResponse(task.WithResponseError(err))
 			return
@@ -162,8 +162,15 @@ func (prvdr *OpenAIProvider) handleChunk(
 ) {
 	if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 		errnie.Debug("Received content chunk", "content", chunk.Choices[0].Delta.Content)
-		outTask.AddMessage(task.NewAssistantMessage(chunk.Choices[0].Delta.Content))
-		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+		// Create a new message for this chunk
+		msg := task.NewAssistantMessage(chunk.Choices[0].Delta.Content)
+		outTask.AddMessage(msg)
+
+		// Create response with the current task state
+		response := task.NewTaskResponse(task.WithResponseTask(outTask))
+		response.Result.Status.State = task.TaskStateWorking
+
+		out <- response
 		return
 	}
 
@@ -171,17 +178,27 @@ func (prvdr *OpenAIProvider) handleChunk(
 	if content, ok := acc.JustFinishedContent(); ok && content != "" {
 		errnie.Debug("Accumulator detected end of content stream")
 		outTask.Status.State = task.TaskStateCompleted
-		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+
+		response := task.NewTaskResponse(task.WithResponseTask(outTask))
+		response.Result.Status.State = task.TaskStateCompleted
+
+		out <- response
 		return
 	}
 
 	if refusal, ok := acc.JustFinishedRefusal(); ok {
 		errnie.Warn("Assistant stream finished with refusal", "refusal", refusal)
-		outTask.AddMessage(task.NewAssistantMessage("[Refused to answer]"))
+		msg := task.NewAssistantMessage("[Refused to answer]")
+		outTask.AddMessage(msg)
 		outTask.Status.State = task.TaskStateFailed
-		out <- task.NewTaskResponse(task.WithResponseError(
-			errnie.New(errnie.WithMessage("Assistant refused to answer")),
-		))
+
+		response := task.NewTaskResponse(
+			task.WithResponseTask(outTask),
+			task.WithResponseError(errnie.New(errnie.WithMessage("Assistant refused to answer"))),
+		)
+		response.Result.Status.State = task.TaskStateFailed
+
+		out <- response
 		return
 	}
 
@@ -206,12 +223,17 @@ func (prvdr *OpenAIProvider) handleChunk(
 
 		if err != nil {
 			outTask.Status.State = task.TaskStateFailed
-			out <- task.NewTaskResponse(task.WithResponseError(err))
+			response := task.NewTaskResponse(
+				task.WithResponseTask(outTask),
+				task.WithResponseError(err),
+			)
+			response.Result.Status.State = task.TaskStateFailed
+
+			out <- response
 			return
 		}
 
 		var content string
-
 		for _, c := range result.Content {
 			switch c := c.(type) {
 			case mcp.TextContent:
@@ -221,8 +243,13 @@ func (prvdr *OpenAIProvider) handleChunk(
 
 		if content != "" {
 			outTask.Status.State = task.TaskStateCompleted
-			outTask.AddMessage(task.NewAssistantMessage(content))
-			out <- task.NewTaskResponse(task.WithResponseTask(outTask))
+			msg := task.NewAssistantMessage(content)
+			outTask.AddMessage(msg)
+
+			response := task.NewTaskResponse(task.WithResponseTask(outTask))
+			response.Result.Status.State = task.TaskStateCompleted
+
+			out <- response
 		}
 		return
 	}
@@ -282,7 +309,7 @@ func (prvdr *OpenAIEmbedder) Embed(
 		},
 	})
 
-	if errnie.Error(err) != nil {
+	if errnie.New(errnie.WithError(err)) != nil {
 		outTask.Status.State = task.TaskStateFailed
 		return nil, errnie.New(errnie.WithError(err))
 	}

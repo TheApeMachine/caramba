@@ -2,7 +2,6 @@ package environment
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
 )
@@ -30,19 +29,19 @@ func NewBuilder() *Builder {
 		RuntimeType: "docker", // default to Docker for now
 	})
 	if err != nil {
-		errnie.Error(fmt.Errorf("failed to create runtime: %w", err))
+		errnie.New(errnie.WithError(err))
 		return nil
 	}
 
 	// Create and start the container
 	ctx := context.Background()
 	if err := runtime.CreateContainer(ctx); err != nil {
-		errnie.Error(fmt.Errorf("failed to create container: %w", err))
+		errnie.New(errnie.WithError(err))
 		return nil
 	}
 
 	if err := runtime.StartContainer(ctx); err != nil {
-		errnie.Error(fmt.Errorf("failed to start container: %w", err))
+		errnie.New(errnie.WithError(err))
 		return nil
 	}
 

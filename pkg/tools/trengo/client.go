@@ -41,14 +41,14 @@ func (client *Client) doRequest(method, path string, body any) (*http.Response, 
 	if body != nil {
 		bodyBytes, err := json.Marshal(body)
 		if err != nil {
-			return nil, errnie.Error(err)
+			return nil, errnie.New(errnie.WithError(err))
 		}
 		bodyReader = bytes.NewReader(bodyBytes)
 	}
 
 	req, err := http.NewRequest(method, fmt.Sprintf("%s%s", client.baseURL, path), bodyReader)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", client.apiToken))
@@ -56,7 +56,7 @@ func (client *Client) doRequest(method, path string, body any) (*http.Response, 
 
 	resp, err := client.http.Do(req)
 	if err != nil {
-		return nil, errnie.Error(err)
+		return nil, errnie.New(errnie.WithError(err))
 	}
 
 	if resp.StatusCode >= 400 {

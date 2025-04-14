@@ -26,7 +26,7 @@ func (client *Client) ReadFile(artifact map[string]any) error {
 	filePath := artifact["file"].(string)
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	artifact["content"] = string(content)
@@ -42,7 +42,7 @@ func (client *Client) WriteFile(artifact map[string]any) error {
 
 	err := os.WriteFile(filePath, []byte(content), 0644)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	artifact["success"] = true
@@ -57,7 +57,7 @@ func (client *Client) DeleteFile(artifact map[string]any) error {
 
 	err := os.Remove(filePath)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	artifact["success"] = true
@@ -76,14 +76,14 @@ func (client *Client) ReplaceLines(artifact map[string]any) error {
 	// Read the entire file
 	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	lines := strings.Split(string(fileContent), "\n")
 
 	// Validate line numbers
 	if startLine < 1 || endLine > len(lines) || startLine > endLine {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Replace the specified lines
@@ -93,7 +93,7 @@ func (client *Client) ReplaceLines(artifact map[string]any) error {
 	// Write back to file
 	err = os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0644)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	artifact["success"] = true
@@ -111,14 +111,14 @@ func (client *Client) InsertLines(artifact map[string]any) error {
 	// Read the entire file
 	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	lines := strings.Split(string(fileContent), "\n")
 
 	// Validate line number
 	if lineNumber < 1 || lineNumber > len(lines)+1 {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Insert the new lines
@@ -128,7 +128,7 @@ func (client *Client) InsertLines(artifact map[string]any) error {
 	// Write back to file
 	err = os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0644)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	artifact["success"] = true
@@ -146,14 +146,14 @@ func (client *Client) DeleteLines(artifact map[string]any) error {
 	// Read the entire file
 	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	lines := strings.Split(string(fileContent), "\n")
 
 	// Validate line numbers
 	if startLine < 1 || endLine > len(lines) || startLine > endLine {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Remove the specified lines
@@ -162,7 +162,7 @@ func (client *Client) DeleteLines(artifact map[string]any) error {
 	// Write back to file
 	err = os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0644)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	artifact["success"] = true
@@ -180,14 +180,14 @@ func (client *Client) ReadLines(artifact map[string]any) error {
 	// Read the entire file
 	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	lines := strings.Split(string(fileContent), "\n")
 
 	// Validate line numbers
 	if startLine < 1 || endLine > len(lines) || startLine > endLine {
-		return errnie.Error(err)
+		return errnie.New(errnie.WithError(err))
 	}
 
 	// Extract the specified lines

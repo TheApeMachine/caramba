@@ -144,7 +144,7 @@ func (prvdr *CohereProvider) Generate(
 
 			paramBytes, err := json.Marshal(toolCall.GetParameters())
 			if err != nil {
-				errnie.Error("failed to marshal tool parameters", "error", err)
+				errnie.New(errnie.WithError(err))
 				continue
 			}
 
@@ -153,7 +153,7 @@ func (prvdr *CohereProvider) Generate(
 				name,
 				id,
 				string(paramBytes),
-			)))
+			), name))
 		}
 
 		outTask.Status.State = task.TaskStateCompleted
@@ -192,7 +192,7 @@ func (prvdr *CohereProvider) Stream(
 				if err == io.EOF {
 					break
 				}
-				errnie.Error("streaming error", "error", err)
+				errnie.New(errnie.WithError(err))
 				continue
 			}
 
@@ -227,7 +227,7 @@ func (prvdr *CohereProvider) handleChunk(
 
 		paramBytes, err := json.Marshal(toolCall.GetParameters())
 		if err != nil {
-			errnie.Error("failed to marshal tool parameters", "error", err)
+			errnie.New(errnie.WithError(err))
 			return
 		}
 
@@ -236,7 +236,7 @@ func (prvdr *CohereProvider) handleChunk(
 			name,
 			id,
 			string(paramBytes),
-		)))
+		), name))
 
 		out <- task.NewTaskResponse(task.WithResponseTask(outTask))
 	}
