@@ -94,7 +94,7 @@ func (global *Global) Put(
 ) (err error) {
 	errnie.Trace("Global.Put", "key", key, "value", value)
 
-	if global.Conn == nil {
+	if global.Conn == nil || global.Client == nil {
 		return errnie.New(errnie.WithErrorType(errnie.ResourceNotAvailableError))
 	}
 

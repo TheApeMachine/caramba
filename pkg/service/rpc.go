@@ -17,21 +17,24 @@ import (
 	"github.com/theapemachine/caramba/pkg/errnie"
 	pkgerr "github.com/theapemachine/caramba/pkg/errors"
 	"github.com/theapemachine/caramba/pkg/jsonrpc"
+	"github.com/theapemachine/caramba/pkg/registry"
 	"github.com/theapemachine/caramba/pkg/task"
 	"github.com/valyala/fasthttp"
 )
 
 // Handler implements the JSON-RPC 2.0 message handler
 type Handler struct {
-	agent agent.Agent
-	mu    sync.RWMutex
+	agent    agent.Agent
+	mu       sync.RWMutex
+	registry interface{} // TODO: Replace interface{} with registry.Registry when all usages are updated
 }
 
 // NewHandler creates a new RPC handler with the given A2A service
-func NewHandler(agent agent.Agent) *Handler {
+func NewHandler(agent agent.Agent, registry interface{}) *Handler {
 	log.Printf("Creating new RPC handler")
 	return &Handler{
-		agent: agent,
+		agent:    agent,
+		registry: registry,
 	}
 }
 
@@ -185,7 +188,7 @@ func (a2a *A2A) StartRPCServer(ctx context.Context, addr string) error {
 		listener.Close() // Close the listener to stop the Accept loop
 	}()
 
-	handler := NewHandler(a2a.agent)
+	handler := NewHandler(a2a.agent, registry.GetAmbient())
 
 	conns := make(chan *jsonrpc2.Conn)
 	defer close(conns)

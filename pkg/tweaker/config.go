@@ -177,7 +177,10 @@ func GetProtocol(key string) []string {
 
 func Value[T any](key string) T {
 	val := cfg.v().Get(key)
-
+	if val == nil {
+		var zero T
+		return zero
+	}
 	switch v := val.(type) {
 	case T:
 		return v

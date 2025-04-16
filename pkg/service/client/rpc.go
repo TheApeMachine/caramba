@@ -70,7 +70,10 @@ func (c *RPCClient) SendTask(req *task.TaskRequest, writer any) (*task.TaskRespo
 	}
 
 	if req == nil {
-		return nil, errnie.New(errnie.WithError(fmt.Errorf("invalid task request: request is nil")))
+		return nil, errnie.New(
+			errnie.WithType(errnie.ValidationError),
+			errnie.WithError(fmt.Errorf("invalid task request: request is nil")),
+		)
 	}
 
 	const method = "tasks/send"

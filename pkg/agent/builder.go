@@ -6,7 +6,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
-	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/memory"
 	"github.com/theapemachine/caramba/pkg/provider"
 	"github.com/theapemachine/caramba/pkg/registry"
@@ -41,14 +40,14 @@ func NewBuilder(opts ...BuilderOption) *Builder {
 		ID: uuid.New().String(),
 	}
 
-	if err := registry.GetAmbient().Register(
-		context.Background(),
-		"local_agent",
-		builder.ID,
-	); err != nil {
-		errnie.New(errnie.WithError(err))
-		return nil
-	}
+	// if err := registry.GetAmbient().Register(
+	// 	context.Background(),
+	// 	"local_agent",
+	// 	builder.ID,
+	// ); err != nil {
+	// 	errnie.New(errnie.WithError(err))
+	// 	return nil
+	// }
 
 	for _, opt := range opts {
 		opt(builder)

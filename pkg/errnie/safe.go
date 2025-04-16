@@ -41,8 +41,8 @@ func RunSafely(fn func()) (err error) {
 		if r := recover(); r != nil {
 			// Check if the panic was caused by an *ErrnieError
 			if ee, ok := r.(*ErrnieError); ok {
-				// Return the ErrnieError as a standard error
-				err = New(WithError(ee))
+				// Return the ErrnieError directly
+				err = ee
 			} else {
 				// It was a different panic, re-panic
 				panic(r)
@@ -90,7 +90,7 @@ func RunSafelyErr(fn func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if ee, ok := r.(*ErrnieError); ok {
-				err = New(WithError(ee))
+				err = ee
 			} else {
 				panic(r)
 			}
@@ -98,7 +98,9 @@ func RunSafelyErr(fn func() error) (err error) {
 	}()
 
 	// Execute the user's function and capture its return error
-	err = fn()
+	if e := fn(); e != nil {
+		err = toErrnieError(e)
+	}
 	return
 }
 
@@ -223,7 +225,7 @@ toErrnieError converts or wraps a standard `error` into an `*ErrnieError`.
 If the input `err` is nil, it returns nil.
 If the input `err` is already an `*ErrnieError`, it returns it directly.
 Otherwise, it wraps the standard `error` within a new `*ErrnieError`, using
-`InternalError` as the default wrapper type.
+`SystemError` as the default wrapper type.
 
 Motivation: Ensures that all errors handled by the Errnie panic flow are
 consistently of type *ErrnieError, simplifying type assertions in recovery blocks.
@@ -237,5 +239,10 @@ func toErrnieError(err error) *ErrnieError {
 		return ee
 	}
 
-	return InternalError(err, err.Error())
+	// Preserve the original error type
+	return New(
+		WithType(SystemError),
+		WithError(err),
+		WithMessage(err.Error()),
+	)
 }

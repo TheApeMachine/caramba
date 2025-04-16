@@ -38,7 +38,7 @@ func NewError() *Error {
 }
 
 func (e *Error) Error() string {
-	return e.err.Error()
+	return e.err.messages[len(e.err.messages)-1]
 }
 
 func (e *Error) Add(err error) *Error {
@@ -263,6 +263,10 @@ Example:
 	fmt.Println(err.Error()) // Prints: "[VALIDATION] invalid input"
 */
 func (e *ErrnieError) Error() string {
+	if e == nil {
+		return ""
+	}
+
 	var parts []string
 
 	if len(e.messages) > 0 {
@@ -420,15 +424,26 @@ func New(options ...ErrnieErrorOption) *ErrnieError {
 	n := runtime.Stack(buf, false)
 	err.stack = string(buf[:n])
 
+	// Apply options
 	for _, option := range options {
-		option(err)
+		if option != nil {
+			option(err)
+		}
 	}
 
-	if len(err.errors) == 0 || err.errors[0] == nil {
-		return nil
+	// Remove nil errors from err.errors
+	errFiltered := make([]error, 0, len(err.errors))
+	for _, e := range err.errors {
+		if e != nil {
+			errFiltered = append(errFiltered, e)
+		}
 	}
+	err.errors = errFiltered
 
-	logError(err.errors[len(err.errors)-1])
+	// Log the last error if any
+	if len(err.errors) > 0 {
+		logError(err.errors[len(err.errors)-1])
+	}
 
 	// Report to Sentry if enabled and should report based on aggregation
 	if sentryEnabled {
@@ -586,12 +601,21 @@ Example:
 	err := Unauthorized(nil, "invalid credentials")
 */
 func Unauthorized(err error, msg ...string) *ErrnieError {
-	return New(
+	if err == nil {
+		return nil
+	}
+
+	opts := []ErrnieErrorOption{
 		WithType(AuthenticationError),
 		WithStatus(UnauthorizedStatus),
 		WithError(err),
-		WithMessage(strings.Join(msg, " ")),
-	)
+	}
+
+	if len(msg) > 0 {
+		opts = append(opts, WithMessage(strings.Join(msg, " ")))
+	}
+
+	return New(opts...)
 }
 
 /*

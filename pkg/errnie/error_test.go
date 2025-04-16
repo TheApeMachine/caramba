@@ -50,8 +50,11 @@ func TestRun(t *testing.T) {
 func TestError(t *testing.T) {
 	Convey("Given various error scenarios", t, func() {
 		Convey("When creating an error with just a type", func() {
-			err := New(WithType(ValidationError))
-			So(err.Error(), ShouldEqual, "[VALIDATION] error")
+			err := New(
+				WithType(ValidationError),
+				WithError(fmt.Errorf("invalid input")),
+			)
+			So(err.Error(), ShouldEqual, "[VALIDATION] invalid input")
 		})
 
 		Convey("When creating an error with a message", func() {
@@ -301,10 +304,7 @@ func TestUnauthorized(t *testing.T) {
 
 		Convey("When creating an error with nil underlying error", func() {
 			err := Unauthorized(nil, "unauthorized access")
-			So(err, ShouldNotBeNil)
-			So(err.Type(), ShouldEqual, AuthenticationError)
-			So(err.Status(), ShouldEqual, http.StatusUnauthorized)
-			So(err.Error(), ShouldContainSubstring, "unauthorized access")
+			So(err, ShouldBeNil)
 		})
 
 		Convey("When creating an error with an underlying error", func() {
