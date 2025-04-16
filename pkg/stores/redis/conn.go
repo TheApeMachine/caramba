@@ -50,7 +50,14 @@ func WithAddr(addr string) ConnOption {
 		)
 
 		if c.err = rdb.Ping(ctx).Err(); c.err != nil {
-			c.err = errnie.New(errnie.WithError(c.err))
+			rdb = redis.NewClient(&redis.Options{
+				Addr: "localhost:6379",
+			})
+
+			if c.err = rdb.Ping(ctx).Err(); c.err != nil {
+				c.err = errnie.New(errnie.WithError(c.err))
+				return
+			}
 		}
 
 		if c.err = rdb.FlushDB(ctx).Err(); c.err != nil {

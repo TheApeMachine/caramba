@@ -1,8 +1,6 @@
 package inmemory
 
 import (
-	"bytes"
-	"encoding/json"
 	"io"
 	"sync"
 
@@ -13,23 +11,23 @@ import (
 
 var (
 	once     sync.Once
-	instance *Store
+	instance types.Store
 )
 
 /*
-Store is a simple in-memory implementation of task.TaskStore,
-following our common store interface.
+Store is a simple in-memory implementation of that follows
+the common store interface. It is an ambient context, so
+all sessions derive from the same underlying store instance.
 */
-type Store struct {
+type Store[T any] struct {
 	*errnie.Error
+	*errnie.State
 	data *sync.Map
 }
 
-func NewStore() *Store {
-	errnie.Trace("inmemmory.NewStore")
-
+func NewStore[T any]() types.Store {
 	once.Do(func() {
-		instance = &Store{
+		instance = &Store[T]{
 			Error: errnie.NewError(),
 			data:  new(sync.Map),
 		}
@@ -38,110 +36,44 @@ func NewStore() *Store {
 	return instance
 }
 
-type Session struct {
-	*errnie.Error
-	*errnie.State
-	instance  *Store
-	query     *types.Query
-	encoder   *json.Encoder
-	decoder   *json.Decoder
-	inBuffer  *bytes.Buffer
-	outBuffer *bytes.Buffer
+/*
+Peek a value from the in-memory store.
+*/
+func (store *Store[T]) Peek(query *types.Query) (io.Reader, error) {
+	if !store.OK() {
+		return nil, store.Error
+	}
+
+	id, ok := query.Filters["id"]
+
+	if !ok {
+		return nil, errnie.Validation(nil, "missing id in filters")
+	}
+
+	value, ok := store.data.Load(id)
+
+	if !ok {
+		return nil, errnie.Validation(nil, "missing id in filters")
+	}
+
+	return value.(*task.Task), nil
 }
 
-func NewSession(query *types.Query) *Session {
-	if instance == nil {
-		NewStore()
+/*
+Poke a value into the in-memory store.
+*/
+func (store *Store[T]) Poke(query *types.Query) (err error) {
+	if !store.OK() {
+		return store.Error
 	}
 
-	outBuffer := bytes.NewBuffer([]byte{})
-	inBuffer := bytes.NewBuffer([]byte{})
+	taskItem := task.NewTask()
 
-	return &Session{
-		Error:     errnie.NewError(),
-		State:     errnie.NewState().To(errnie.StateReady),
-		instance:  instance,
-		query:     query,
-		encoder:   json.NewEncoder(outBuffer),
-		decoder:   json.NewDecoder(inBuffer),
-		inBuffer:  inBuffer,
-		outBuffer: outBuffer,
-	}
-}
-
-// Read implements io.ReadCloser.
-func (session *Session) Read(p []byte) (n int, err error) {
-	if !session.instance.OK() {
-		return 0, session.instance.Error
+	if _, err = io.Copy(taskItem, query.Payload); err != nil {
+		return errnie.New(errnie.WithError(err))
 	}
 
-	if session.query == nil {
-		return 0, session.Add(errnie.Validation(nil, "missing query"))
-	}
+	store.data.Store(taskItem.ID, taskItem)
 
-	if session.IsReady() {
-		session.State.To(errnie.StateBusy)
-		taskItem, ok := session.instance.data.Load(session.query.Filters["id"])
-
-		if !ok {
-			session.State.To(errnie.StateFailed)
-			return 0, session.Add(errnie.IO(err, "failed to read task"))
-		}
-
-		task := taskItem.(*task.Task)
-		session.outBuffer.Reset()
-		session.encoder.Encode(task)
-	}
-
-	if n, err = session.outBuffer.Read(p); err != nil && err != io.EOF {
-		session.State.To(errnie.StateFailed)
-		return 0, session.Add(errnie.IO(err, "failed to read task"))
-	}
-
-	if n == 0 || err == io.EOF {
-		session.State.To(errnie.StateReady)
-		return 0, io.EOF
-	}
-
-	return
-}
-
-// Write implements io.WriteCloser.
-func (session *Session) Write(p []byte) (n int, err error) {
-	if !session.instance.OK() {
-		return 0, session.instance.Error
-	}
-
-	if session.IsReady() {
-		session.State.To(errnie.StateBusy)
-		session.inBuffer.Reset()
-	}
-
-	if n, err = session.inBuffer.Write(p); err != nil && err != io.EOF {
-		return 0, session.Add(errnie.IO(err, "failed to write task"))
-	}
-
-	session.State.To(errnie.StateReady)
-	task := &task.Task{}
-
-	if err = session.decoder.Decode(task); err != nil {
-		return 0, session.Add(errnie.IO(err, "failed to decode task"))
-	}
-
-	session.instance.data.Store(task.ID, task)
-
-	return
-
-}
-
-// Close implements io.Closer.
-func (session *Session) Close() error {
-	session.State.To(errnie.StateDone)
-	session.inBuffer.Reset()
-	session.outBuffer.Reset()
-	session.encoder = nil
-	session.decoder = nil
-	session.instance = nil
-	session.query = nil
 	return nil
 }

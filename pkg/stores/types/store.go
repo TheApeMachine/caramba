@@ -1,11 +1,10 @@
 package types
 
-import (
-	"io"
-)
+import "io"
 
 type Store interface {
-	io.ReadWriteCloser
+	Peek(*Query) (io.Reader, error)
+	Poke(*Query) error
 }
 
 type Query struct {
@@ -13,7 +12,7 @@ type Query struct {
 	Filters    map[string]any
 	Limit      int
 	Offset     int
-	Payload    []byte
+	Payload    io.ReadWriter
 }
 
 type QueryOption func(*Query)
@@ -53,5 +52,11 @@ func WithFilters(filters map[string]any) QueryOption {
 func WithFilter(key string, value any) QueryOption {
 	return func(query *Query) {
 		query.Filters[key] = value
+	}
+}
+
+func WithPayload(payload io.ReadWriter) QueryOption {
+	return func(query *Query) {
+		query.Payload = payload
 	}
 }

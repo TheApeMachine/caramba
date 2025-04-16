@@ -63,7 +63,7 @@ func (h *Handler) Handle(
 	}
 
 	switch req.Method {
-	case "tasks/send", "tasks/sendSubscribe":
+	case "tasks/send":
 		app := fiber.New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
@@ -82,6 +82,8 @@ func (h *Handler) Handle(
 		}
 
 		return taskRequest, nil
+	case "tasks/sendSubscribe":
+
 	default:
 		// Return a jsonrpc2 error for unknown methods
 		return nil, &jsonrpc2.Error{
@@ -89,6 +91,8 @@ func (h *Handler) Handle(
 			Message: fmt.Sprintf("method not found: %s", req.Method),
 		}
 	}
+
+	return nil, nil
 }
 
 // validateTaskRequest validates the task request

@@ -68,11 +68,14 @@ func (m *Manager) HandleTask(
 	}
 }
 
-func (manager *Manager) storeTask(task *task.Task) (err error) {
-	if manager.taskStore != nil && task.ID != "" {
-		session := stores.NewSession(manager.taskStore, types.NewQuery(
-			types.WithFilter("id", task.ID),
-		))
+func (manager *Manager) storeTask(t *task.Task) (err error) {
+	if manager.taskStore != nil && t.ID != "" {
+		session := stores.NewSession(
+			stores.WithStore[*task.Task](manager.taskStore),
+			stores.WithQuery[*task.Task](types.NewQuery(
+				types.WithFilter("id", t.ID),
+			)),
+		)
 
 		defer func() {
 			if err := session.Close(); err != nil {
@@ -80,7 +83,7 @@ func (manager *Manager) storeTask(task *task.Task) (err error) {
 			}
 		}()
 
-		if _, err := io.Copy(session, task); err != nil {
+		if _, err := io.Copy(session, t); err != nil {
 			return err
 		}
 	}
@@ -125,7 +128,7 @@ func (manager *Manager) handleTaskSend(
 	go func() {
 		// Check if writers is set
 		if writers == nil {
-			errnie.New(errnie.WithError(errors.New("Writer is nil in handleTaskSend")))
+			errnie.New(errnie.WithError(errors.New("writer is nil in handleTaskSend")))
 			return
 		}
 

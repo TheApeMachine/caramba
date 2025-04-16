@@ -97,149 +97,51 @@ func (c *RPCClient) SendTask(req *task.TaskRequest, writer any) (*task.TaskRespo
 // SendTaskStream sends a task to the RPC server using the A2A protocol's streaming approach via SSE
 // It returns a channel that delivers incremental updates as they arrive via Server-Sent Events
 func (c *RPCClient) SendTaskStream(req *task.TaskRequest) (<-chan *task.TaskResponse, error) {
-	if c == nil || c.conn == nil {
-		return nil, errnie.New(errnie.WithError(fmt.Errorf("client not properly initialized")))
+	ch := make(chan *task.TaskResponse)
+
+	// Compose the SSE endpoint URL (assume /task/:id/stream)
+	if req == nil || req.Params == nil || req.Params.ID == "" {
+		close(ch)
+		return ch, fmt.Errorf("invalid task request: missing task ID")
 	}
 
-	// Validate task request pointer
-	if req == nil {
-		return nil, errnie.New(errnie.WithError(fmt.Errorf("invalid task request: request is nil")))
+	// Derive base HTTP URL from baseURL (strip port if needed)
+	base := c.baseURL
+	if !strings.HasPrefix(base, "http") {
+		base = "http://" + base
 	}
+	url := fmt.Sprintf("%s/task/%s/stream", base, req.Params.ID)
 
-	// Create output channel for streaming responses
-	responseChan := make(chan *task.TaskResponse, 10) // Buffer of 10 to prevent blocking
-
-	// Extract the base address from the connection for making HTTP requests
-	// This assumes the baseURL is in the format "host:port" and we need to convert to "http://host:port"
-	baseURL := "http://" + c.baseURL
-
-	// Construct the SSE endpoint URL
-	sseEndpoint := fmt.Sprintf("%s/api/tasks/stream", baseURL)
-
-	// Context for the HTTP request with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-
-	// Initiate the subscription using Notify (doesn't wait for response)
+	// Marshal the task request in case the SSE endpoint expects POST body (optional)
 	go func() {
-		// Use Notify to initiate the subscription without waiting for a response
-		if err := c.conn.Notify(ctx, "tasks/sendSubscribe", req.Params); err != nil {
-			errnie.New(errnie.WithError(err))
-			errorResponse := task.NewTaskResponse(task.WithResponseError(err))
-			responseChan <- errorResponse
-			close(responseChan)
-			cancel()
-			return
-		}
-
-		// Create the HTTP request
-		httpReq, err := http.NewRequestWithContext(ctx, "GET", sseEndpoint, nil)
+		defer close(ch)
+		resp, err := http.Get(url)
 		if err != nil {
-			errorResponse := task.NewTaskResponse(task.WithResponseError(err))
-			responseChan <- errorResponse
-			close(responseChan)
-			cancel()
-			return
-		}
-
-		// Set appropriate headers
-		httpReq.Header.Set("Accept", "text/event-stream")
-		httpReq.Header.Set("Cache-Control", "no-cache")
-		httpReq.Header.Set("Connection", "keep-alive")
-		// Add task ID as a query parameter for correlation
-		q := httpReq.URL.Query()
-		q.Add("taskId", req.Params.ID)
-		httpReq.URL.RawQuery = q.Encode()
-
-		// Make the HTTP request
-		httpClient := &http.Client{}
-		resp, err := httpClient.Do(httpReq)
-		if err != nil {
-			errnie.New(errnie.WithError(err))
-			errorResponse := task.NewTaskResponse(task.WithResponseError(err))
-			responseChan <- errorResponse
-			close(responseChan)
-			cancel()
+			errnie.New(errnie.WithError(fmt.Errorf("failed to connect to SSE endpoint: %w", err)))
 			return
 		}
 		defer resp.Body.Close()
 
-		// Check if the response is successful
-		if resp.StatusCode != http.StatusOK {
-			errnie.New(errnie.WithError(fmt.Errorf("unexpected HTTP status: %s", resp.Status)))
-			errorResponse := task.NewTaskResponse(task.WithResponseError(
-				errnie.New(errnie.WithError(fmt.Errorf("unexpected HTTP status: %s", resp.Status))),
-			))
-			responseChan <- errorResponse
-			close(responseChan)
-			cancel()
-			return
-		}
-
-		errnie.Info("Started SSE stream connection")
-
-		// Create a Scanner to read the SSE stream line by line
 		scanner := bufio.NewScanner(resp.Body)
-		var messageBuffer strings.Builder
-
-		// Process the SSE stream
 		for scanner.Scan() {
 			line := scanner.Text()
-
-			// SSE messages start with "data: " and end with an empty line
-			if strings.HasPrefix(line, "data: ") {
-				// Extract the JSON payload
-				jsonData := line[6:] // Skip "data: " prefix
-				messageBuffer.WriteString(jsonData)
-			} else if line == "" && messageBuffer.Len() > 0 {
-				// Empty line indicates the end of a message
-				jsonData := messageBuffer.String()
-				messageBuffer.Reset()
-
-				// Parse the JSON payload into a TaskResponse
-				var response task.TaskResponse
-				if err := json.Unmarshal([]byte(jsonData), &response); err != nil {
-					errnie.New(errnie.WithError(err))
+			if strings.HasPrefix(line, "data:") {
+				payload := strings.TrimSpace(line[5:])
+				if payload == "" {
 					continue
 				}
-
-				// Send the response through the channel
-				responseChan <- &response
-
-				// Check if this is the final message
-				if response.Result != nil &&
-					response.Result.Status.State == task.TaskStateCompleted {
-					errnie.Debug("Received final message in stream")
-					// Final message received, we can exit
-					cancel()
-					return
+				var respObj task.TaskResponse
+				if err := json.Unmarshal([]byte(payload), &respObj); err == nil {
+					ch <- &respObj
+					if respObj.Result != nil && respObj.Result.Status.State == task.TaskStateCompleted {
+						break
+					}
 				}
 			}
-
-			// Check if the context has been canceled or timed out
-			select {
-			case <-ctx.Done():
-				errnie.Debug("Context done, stopping SSE processing", "error", ctx.Err())
-				if ctx.Err() == context.DeadlineExceeded {
-					errorResponse := task.NewTaskResponse(task.WithResponseError(
-						errnie.New(errnie.WithError(fmt.Errorf("streaming timeout exceeded"))),
-					))
-					responseChan <- errorResponse
-				}
-				return
-			default:
-				// Continue processing
-			}
-		}
-
-		// Check for scanner errors
-		if err := scanner.Err(); err != nil {
-			errnie.New(errnie.WithError(err))
-			errorResponse := task.NewTaskResponse(task.WithResponseError(err))
-			responseChan <- errorResponse
 		}
 	}()
 
-	return responseChan, nil
+	return ch, nil
 }
 
 // handle implements the client-side message handler

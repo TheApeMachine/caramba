@@ -57,7 +57,7 @@ func (e *Error) Is(target error) bool {
 }
 
 func (e *Error) OK() bool {
-	return e == nil || len(e.err.errors) == 0
+	return e == nil || e.err == nil || len(e.err.errors) == 0
 }
 
 type aggregatedError struct{}
@@ -424,7 +424,7 @@ func New(options ...ErrnieErrorOption) *ErrnieError {
 		option(err)
 	}
 
-	if len(err.errors) == 0 {
+	if len(err.errors) == 0 || err.errors[0] == nil {
 		return nil
 	}
 

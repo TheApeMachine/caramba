@@ -17,7 +17,7 @@ import (
 
 var (
 	output      = true
-	writeToFile = true
+	writeToFile = false
 	mu          sync.RWMutex
 	logFile     = "caramba.log"
 	fileHandle  *os.File

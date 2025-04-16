@@ -105,7 +105,6 @@ func WithSubAgents(subAgents []*Builder) BuilderOption {
 	}
 }
 
-// WithMemory configures the memory store for the agent with both vector and graph capabilities
 func WithMemory(vectorStore *qdrant.Qdrant, graphStore *neo4j.Neo4j, embedder provider.EmbedderType) BuilderOption {
 	return func(builder *Builder) {
 		builder.Memory = memory.NewStore(

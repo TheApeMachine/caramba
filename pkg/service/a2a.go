@@ -1,14 +1,11 @@
-/*
-Package service provides the Agent-to-Agent (A2A) communication service, enabling
-seamless interaction between AI agents through a REST API and Server-Sent Events.
-*/
-
 package service
 
 import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -96,16 +93,52 @@ func (srv *A2A) RegisterRoutes() {
 
 	// SSE streaming endpoint for task updates
 	srv.app.Get("/task/:id/stream", func(ctx fiber.Ctx) error {
-		// Use SendStreamWriter to handle the SSE
-		sseHandler := NewSSE(srv)
-		handler := sseHandler.Handler(ctx)
+		ctx.Set("Content-Type", "text/event-stream")
+		ctx.Set("Cache-Control", "no-cache")
+		ctx.Set("Connection", "keep-alive")
+		ctx.Set("Transfer-Encoding", "chunked")
 
-		return ctx.SendStreamWriter(func(w *bufio.Writer) {
-			if err := handler(w); err != nil {
-				// Log the error since we can't return it
-				log.Printf("Error in SSE stream: %v", err)
+		taskID := ctx.Params("id")
+		if taskID == "" {
+			return ctx.Status(fiber.StatusBadRequest).SendString("missing task id")
+		}
+
+		// Create a channel for this client to receive task updates
+		updateCh := make(chan any, 10)
+		stream := &taskStream{
+			taskID:   taskID,
+			messages: updateCh,
+			done:     make(chan struct{}),
+		}
+
+		// Register the stream for this task
+		srv.streamMutex.Lock()
+		srv.streams[taskID] = append(srv.streams[taskID], stream)
+		srv.streamMutex.Unlock()
+
+		defer func() {
+			// Remove the stream on exit
+			srv.streamMutex.Lock()
+			streams := srv.streams[taskID]
+			for i, s := range streams {
+				if s == stream {
+					srv.streams[taskID] = append(streams[:i], streams[i+1:]...)
+					break
+				}
+			}
+			srv.streamMutex.Unlock()
+			close(updateCh)
+		}()
+
+		ctx.Status(fiber.StatusOK).SendStreamWriter(func(w *bufio.Writer) {
+			for msg := range updateCh {
+				data, _ := json.Marshal(msg)
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				w.Flush()
 			}
 		})
+
+		return nil
 	})
 
 	srv.app.Use([]string{
