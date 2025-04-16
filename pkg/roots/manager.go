@@ -2,11 +2,11 @@ package roots
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 // DefaultManager is the default implementation of RootsManager
@@ -44,7 +44,9 @@ func (m *DefaultManager) Get(ctx context.Context, id string) (*Root, error) {
 
 	root, ok := m.roots[id]
 	if !ok {
-		return nil, fmt.Errorf("root not found: %s", id)
+		return nil, errnie.New(errnie.WithError(
+			&RootNotFoundError{RootURI: id},
+		))
 	}
 
 	return root, nil
@@ -68,7 +70,9 @@ func (m *DefaultManager) Create(ctx context.Context, root Root) (*Root, error) {
 	// Check if root with same URI already exists
 	for _, existing := range m.roots {
 		if existing.URI == root.URI {
-			return nil, fmt.Errorf("root with URI already exists: %s", root.URI)
+			return nil, errnie.New(errnie.WithError(
+				&RootAlreadyExistsError{RootURI: root.URI},
+			))
 		}
 	}
 
@@ -95,14 +99,18 @@ func (m *DefaultManager) Update(ctx context.Context, root Root) (*Root, error) {
 	// Check if the root exists
 	existingRoot, ok := m.roots[root.ID]
 	if !ok {
-		return nil, fmt.Errorf("root not found: %s", root.ID)
+		return nil, errnie.New(errnie.WithError(
+			&RootNotFoundError{RootURI: root.ID},
+		))
 	}
 
 	// Check if URI is being changed and if it conflicts with another root
 	if root.URI != existingRoot.URI {
 		for _, other := range m.roots {
 			if other.ID != root.ID && other.URI == root.URI {
-				return nil, fmt.Errorf("root with URI already exists: %s", root.URI)
+				return nil, errnie.New(errnie.WithError(
+					&RootAlreadyExistsError{RootURI: root.URI},
+				))
 			}
 		}
 	}
@@ -131,7 +139,9 @@ func (m *DefaultManager) Delete(ctx context.Context, id string) error {
 
 	// Check if the root exists
 	if _, ok := m.roots[id]; !ok {
-		return fmt.Errorf("root not found: %s", id)
+		return errnie.New(errnie.WithError(
+			&RootNotFoundError{RootURI: id},
+		))
 	}
 
 	// Delete the root
@@ -175,7 +185,9 @@ func (m *DefaultManager) Unsubscribe(ctx context.Context, id string) error {
 
 	ch, ok := m.subscribers[id]
 	if !ok {
-		return fmt.Errorf("subscription not found: %s", id)
+		return errnie.New(errnie.WithError(
+			&RootUnsubscribeError{SubscriptionID: id},
+		))
 	}
 
 	// Close the channel and remove the subscriber

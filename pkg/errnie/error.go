@@ -445,7 +445,12 @@ func New(options ...ErrnieErrorOption) *ErrnieError {
 		logError(err.errors[len(err.errors)-1])
 	}
 
-	// Report to Sentry if enabled and should report based on aggregation
+	err.reportSentry()
+
+	return err
+}
+
+func (err *ErrnieError) reportSentry() {
 	if sentryEnabled {
 		sentry.WithScope(func(scope *sentry.Scope) {
 			scope.SetTag("error_type", err.errorType.String())
@@ -470,7 +475,6 @@ func New(options ...ErrnieErrorOption) *ErrnieError {
 		})
 	}
 
-	return err
 }
 
 /*

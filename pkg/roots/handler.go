@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 // MCPHandler handles MCP requests for roots
@@ -24,7 +25,9 @@ func NewMCPHandler(manager RootsManager) *MCPHandler {
 func (h *MCPHandler) HandleListRoots(ctx context.Context, params json.RawMessage) (*mcp.ListRootsResult, error) {
 	roots, err := h.manager.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list roots: %w", err)
+		return nil, errnie.New(errnie.WithError(
+			&ListRootsError{},
+		))
 	}
 
 	// Convert roots to MCP format
@@ -49,13 +52,17 @@ func (h *MCPHandler) HandleGetRoot(ctx context.Context, params json.RawMessage) 
 		URI string `json:"uri"`
 	}
 	if err := json.Unmarshal(params, &req); err != nil {
-		return nil, fmt.Errorf("failed to parse request: %w", err)
+		return nil, errnie.New(errnie.WithError(
+			&ParseRequestError{RootURI: req.URI},
+		))
 	}
 
 	// Find the root with the matching URI
 	roots, err := h.manager.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list roots: %w", err)
+		return nil, errnie.New(errnie.WithError(
+			&ListRootsError{},
+		))
 	}
 
 	for _, root := range roots {
@@ -68,7 +75,9 @@ func (h *MCPHandler) HandleGetRoot(ctx context.Context, params json.RawMessage) 
 		}
 	}
 
-	return nil, fmt.Errorf("root not found: %s", req.URI)
+	return nil, errnie.New(errnie.WithError(
+		&RootNotFoundError{RootURI: req.URI},
+	))
 }
 
 // HandleCreateRoot handles the roots/create request
@@ -79,7 +88,9 @@ func (h *MCPHandler) HandleCreateRoot(ctx context.Context, params json.RawMessag
 		Name string `json:"name,omitempty"`
 	}
 	if err := json.Unmarshal(params, &req); err != nil {
-		return nil, fmt.Errorf("failed to parse request: %w", err)
+		return nil, errnie.New(errnie.WithError(
+			&ParseRequestError{RootURI: req.URI},
+		))
 	}
 
 	// Create the root
@@ -90,7 +101,9 @@ func (h *MCPHandler) HandleCreateRoot(ctx context.Context, params json.RawMessag
 
 	createdRoot, err := h.manager.Create(ctx, root)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create root: %w", err)
+		return nil, errnie.New(errnie.WithError(
+			&RootCreateError{RootURI: req.URI},
+		))
 	}
 
 	// Convert back to MCP format
@@ -108,13 +121,17 @@ func (h *MCPHandler) HandleUpdateRoot(ctx context.Context, params json.RawMessag
 		Name string `json:"name,omitempty"`
 	}
 	if err := json.Unmarshal(params, &req); err != nil {
-		return nil, fmt.Errorf("failed to parse request: %w", err)
+		return nil, errnie.New(errnie.WithError(
+			&ParseRequestError{RootURI: req.URI},
+		))
 	}
 
 	// Find the root with the matching URI
 	roots, err := h.manager.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list roots: %w", err)
+		return nil, errnie.New(errnie.WithError(
+			&ListRootsError{},
+		))
 	}
 
 	var existingRoot *Root
@@ -126,14 +143,18 @@ func (h *MCPHandler) HandleUpdateRoot(ctx context.Context, params json.RawMessag
 	}
 
 	if existingRoot == nil {
-		return nil, fmt.Errorf("root not found: %s", req.URI)
+		return nil, errnie.New(errnie.WithError(
+			&RootNotFoundError{RootURI: req.URI},
+		))
 	}
 
 	// Update the root
 	existingRoot.Name = req.Name
 	updatedRoot, err := h.manager.Update(ctx, *existingRoot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update root: %w", err)
+		return nil, errnie.New(errnie.WithError(
+			&RootUpdateError{RootURI: req.URI},
+		))
 	}
 
 	// Convert back to MCP format
@@ -150,13 +171,17 @@ func (h *MCPHandler) HandleDeleteRoot(ctx context.Context, params json.RawMessag
 		URI string `json:"uri"`
 	}
 	if err := json.Unmarshal(params, &req); err != nil {
-		return false, fmt.Errorf("failed to parse request: %w", err)
+		return false, errnie.New(errnie.WithError(
+			&ParseRequestError{RootURI: req.URI},
+		))
 	}
 
 	// Find the root with the matching URI
 	roots, err := h.manager.List(ctx)
 	if err != nil {
-		return false, fmt.Errorf("failed to list roots: %w", err)
+		return false, errnie.New(errnie.WithError(
+			&ListRootsError{},
+		))
 	}
 
 	var rootID string
@@ -174,7 +199,9 @@ func (h *MCPHandler) HandleDeleteRoot(ctx context.Context, params json.RawMessag
 	// Delete the root
 	err = h.manager.Delete(ctx, rootID)
 	if err != nil {
-		return false, fmt.Errorf("failed to delete root: %w", err)
+		return false, errnie.New(errnie.WithError(
+			&RootDeleteError{RootURI: req.URI},
+		))
 	}
 
 	return true, nil
@@ -185,7 +212,9 @@ func (h *MCPHandler) HandleSubscribeToRoots(ctx context.Context, params json.Raw
 	// Subscribe to root changes
 	ch, err := h.manager.Subscribe(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to subscribe to roots: %w", err)
+		return "", errnie.New(errnie.WithError(
+			&RootSubscribeError{},
+		))
 	}
 
 	// Generate a subscription ID
@@ -210,14 +239,127 @@ func (h *MCPHandler) HandleUnsubscribeFromRoots(ctx context.Context, params json
 		SubscriptionID string `json:"subscriptionId"`
 	}
 	if err := json.Unmarshal(params, &req); err != nil {
-		return false, fmt.Errorf("failed to parse request: %w", err)
+		return false, errnie.New(errnie.WithError(
+			&ParseRequestError{SubscriptionID: req.SubscriptionID},
+		))
 	}
 
 	// Unsubscribe from root changes
 	err := h.manager.Unsubscribe(ctx, req.SubscriptionID)
 	if err != nil {
-		return false, fmt.Errorf("failed to unsubscribe from roots: %w", err)
+		return false, errnie.New(errnie.WithError(
+			&RootUnsubscribeError{SubscriptionID: req.SubscriptionID},
+		))
 	}
 
 	return true, nil
+}
+
+type RootNotFoundError struct {
+	RootURI string
+}
+
+func (e *RootNotFoundError) Error() string {
+	return fmt.Sprintf("root not found: %s", e.RootURI)
+}
+
+func (e *RootNotFoundError) Is(target error) bool {
+	return target == e
+}
+
+type RootAlreadyExistsError struct {
+	RootURI string
+}
+
+func (e *RootAlreadyExistsError) Error() string {
+	return fmt.Sprintf("root already exists: %s", e.RootURI)
+}
+
+func (e *RootAlreadyExistsError) Is(target error) bool {
+	return target == e
+}
+
+type RootUpdateError struct {
+	RootURI string
+}
+
+func (e *RootUpdateError) Error() string {
+	return fmt.Sprintf("failed to update root: %s", e.RootURI)
+}
+
+func (e *RootUpdateError) Is(target error) bool {
+	return target == e
+}
+
+type RootCreateError struct {
+	RootURI string
+}
+
+func (e *RootCreateError) Error() string {
+	return fmt.Sprintf("failed to create root: %s", e.RootURI)
+}
+
+func (e *RootCreateError) Is(target error) bool {
+	return target == e
+}
+
+type RootDeleteError struct {
+	RootURI string
+}
+
+func (e *RootDeleteError) Error() string {
+	return fmt.Sprintf("failed to delete root: %s", e.RootURI)
+}
+
+func (e *RootDeleteError) Is(target error) bool {
+	return target == e
+}
+
+type RootSubscribeError struct {
+	RootURI string
+}
+
+func (e *RootSubscribeError) Error() string {
+	return fmt.Sprintf("failed to subscribe to root: %s", e.RootURI)
+}
+
+func (e *RootSubscribeError) Is(target error) bool {
+	return target == e
+}
+
+type RootUnsubscribeError struct {
+	SubscriptionID string
+}
+
+func (e *RootUnsubscribeError) Error() string {
+	return fmt.Sprintf("failed to unsubscribe from root: %s", e.SubscriptionID)
+}
+
+func (e *RootUnsubscribeError) Is(target error) bool {
+	return target == e
+}
+
+type ParseRequestError struct {
+	RootURI        string
+	SubscriptionID string
+}
+
+func (e *ParseRequestError) Error() string {
+	return fmt.Sprintf("failed to parse request: %s", e.RootURI)
+}
+
+func (e *ParseRequestError) Is(target error) bool {
+	return target == e
+}
+
+type ListRootsError struct {
+	RootURI string
+}
+
+func (e *ListRootsError) Error() string {
+	return fmt.Sprintf("failed to list roots: %s", e.RootURI)
+}
+
+func (e *ListRootsError) Is(target error) bool {
+	return target == e
 }

@@ -28,6 +28,8 @@ const (
 	TraceLevel   = log.DebugLevel - 1
 	SuccessLevel = log.InfoLevel + 1
 	OutLevel     = log.InfoLevel + 2
+	colorWhite   = lipgloss.Color("#ffffff")
+	colorBlack   = lipgloss.Color("#000000")
 )
 
 var logger = log.NewWithOptions(os.Stderr, log.Options{
@@ -60,21 +62,21 @@ func init() {
 	styles.Levels[log.DebugLevel] = lipgloss.NewStyle().
 		SetString("DBG").
 		Background(lipgloss.Color("#868e96")). // Light grey background
-		Foreground(lipgloss.Color("#ffffff")). // White text
+		Foreground(colorWhite).                // White text
 		Padding(0, 1)
 
 	// Info gets a blue label
 	styles.Levels[log.InfoLevel] = lipgloss.NewStyle().
 		SetString("INF").
 		Background(lipgloss.Color("#228be6")). // Blue background
-		Foreground(lipgloss.Color("#ffffff")). // White text
+		Foreground(colorWhite).                // White text
 		Padding(0, 1)
 
 	// Success gets a green label
 	styles.Levels[SuccessLevel] = lipgloss.NewStyle().
 		SetString("SUC").
 		Background(lipgloss.Color("#40c057")). // Green background
-		Foreground(lipgloss.Color("#ffffff")). // White text
+		Foreground(colorWhite).                // White text
 		Bold(true).
 		Padding(0, 1)
 
@@ -89,21 +91,21 @@ func init() {
 	styles.Levels[log.WarnLevel] = lipgloss.NewStyle().
 		SetString("WRN").
 		Background(lipgloss.Color("#fab005")). // Orange background
-		Foreground(lipgloss.Color("#ffffff")). // White text
+		Foreground(colorWhite).                // White text
 		Padding(0, 1)
 
 	// Error gets a red label
 	styles.Levels[log.ErrorLevel] = lipgloss.NewStyle().
 		SetString("ERR").
 		Background(lipgloss.Color("#fa5252")). // Red background
-		Foreground(lipgloss.Color("#ffffff")). // White text
+		Foreground(colorWhite).                // White text
 		Padding(0, 1)
 
 	// Fatal gets a bright red label
 	styles.Levels[log.FatalLevel] = lipgloss.NewStyle().
 		SetString("FTL").
 		Background(lipgloss.Color("#e03131")). // Darker red background
-		Foreground(lipgloss.Color("#ffffff")). // White text
+		Foreground(colorWhite).                // White text
 		Bold(true).
 		Padding(0, 1)
 

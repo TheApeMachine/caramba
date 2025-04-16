@@ -7,8 +7,13 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-var errTest = errors.New("test error")
-var errnieTest = New(WithMessage("errnie test error"))
+const (
+	errTestText      = "test error"
+	errTestPanicText = "test panic"
+	errnieTestText   = "errnie test error"
+)
+
+var errnieTest = New(WithMessage(errnieTestText))
 
 func TestRunSafely(t *testing.T) {
 	Convey("Test RunSafely", t, func() {
@@ -25,7 +30,7 @@ func TestRunSafely(t *testing.T) {
 			})
 			So(err, ShouldNotBeNil)
 			So(err, ShouldHaveSameTypeAs, &ErrnieError{})
-			So(err.Error(), ShouldEqual, errnieTest.Error())
+			So(err.Error(), ShouldEqual, errnieTestText)
 		})
 
 		Convey("When the function panics with a different value", func() {
@@ -58,21 +63,21 @@ func TestRunSafelyErr(t *testing.T) {
 		})
 
 		Convey("When the function returns a non-nil error and no panic", func() {
-			testErr := errors.New("test error")
+			testErr := errors.New(errTestText)
 			err := RunSafelyErr(func() error {
 				return testErr
 			})
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "test error")
+			So(err.Error(), ShouldContainSubstring, errTestText)
 			So(err.(*ErrnieError), ShouldNotBeNil)
 		})
 
 		Convey("When the function panics with an *ErrnieError", func() {
 			err := RunSafelyErr(func() error {
-				panic(New(WithError(errors.New("test panic")), WithMessage("test panic")))
+				panic(New(WithError(errors.New(errTestPanicText)), WithMessage(errTestPanicText)))
 			})
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "test panic")
+			So(err.Error(), ShouldContainSubstring, errTestPanicText)
 		})
 
 		Convey("When the function panics with a different value", func() {
@@ -101,14 +106,14 @@ func TestJumpReturn(t *testing.T) {
 		})
 
 		Convey("When error is a standard error", func() {
-			testErr := errors.New("test error")
+			testErr := errors.New(errTestText)
 			So(func() {
 				JumpReturn("test", testErr)
 			}, ShouldPanic)
 		})
 
 		Convey("When error is an *ErrnieError", func() {
-			errnie := New(WithMessage("test error"))
+			errnie := New(WithMessage(errTestText))
 			So(func() {
 				JumpReturn("test", errnie)
 			}, ShouldPanic)
@@ -128,7 +133,7 @@ func TestSafe(t *testing.T) {
 		Convey("When the function panics with Return (via JumpReturn)", func() {
 			So(func() {
 				Safe(func() string {
-					JumpReturn("test", errors.New("test error"))
+					JumpReturn("test", errors.New(errTestText))
 					return "unreachable"
 				})
 			}, ShouldPanic)
@@ -138,7 +143,6 @@ func TestSafe(t *testing.T) {
 			So(func() {
 				Safe(func() string {
 					panic("different panic")
-					return "unreachable"
 				})
 			}, ShouldPanic)
 		})
@@ -147,7 +151,6 @@ func TestSafe(t *testing.T) {
 			So(func() {
 				Safe(func() string {
 					panic(struct{ msg string }{"test"})
-					return "unreachable"
 				})
 			}, ShouldPanic)
 		})
@@ -166,20 +169,20 @@ func TestTry(t *testing.T) {
 
 		Convey("When the function returns a standard error", func() {
 			err := RunSafely(func() {
-				Try("test", errors.New("test error"))
+				Try("test", errors.New(errTestText))
 			})
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "test error")
+			So(err.Error(), ShouldContainSubstring, errTestText)
 			So(err.(*ErrnieError).Type(), ShouldEqual, SystemError)
 		})
 
 		Convey("When the function returns an *ErrnieError", func() {
-			errnie := New(WithMessage("test error"))
+			errnie := New(WithMessage(errTestText))
 			err := RunSafely(func() {
 				Try("test", errnie)
 			})
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "test error")
+			So(err.Error(), ShouldContainSubstring, errTestText)
 		})
 	})
 }

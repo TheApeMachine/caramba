@@ -10,6 +10,30 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
+const (
+	multipleMessage        = "When creating an error with multiple messages"
+	notFound               = "When creating an error with nil underlying error"
+	badRequest             = "When creating an error with an underlying error"
+	invalidInput           = "When creating an error with invalid input"
+	validationInvalidInput = "[VALIDATION] invalid input"
+	testError              = "test error"
+	originalError          = "original error"
+	secondError            = "second error"
+	otherError             = "other error"
+	fieldRequired          = "field required"
+	wrappedError           = "wrapped error"
+	resourceNotFound       = "resource not found"
+	testMessage            = "test message"
+	invalidRequest         = "invalid request"
+	internalServerError    = "internal server error"
+	unauthorizedAccess     = "unauthorized access"
+	accessForbidden        = "access forbidden"
+	requestTimeout         = "request timeout"
+	wrappedMessage         = "wrapped message"
+	withOtherOptions       = "When using with other options"
+	initialError           = "initial error"
+)
+
 func TestRun(t *testing.T) {
 	Convey("Given various error types", t, func() {
 		testCases := []struct {
@@ -52,31 +76,31 @@ func TestError(t *testing.T) {
 		Convey("When creating an error with just a type", func() {
 			err := New(
 				WithType(ValidationError),
-				WithError(fmt.Errorf("invalid input")),
+				WithError(errors.New(invalidInput)),
 			)
-			So(err.Error(), ShouldEqual, "[VALIDATION] invalid input")
+			So(err.Error(), ShouldEqual, validationInvalidInput)
 		})
 
 		Convey("When creating an error with a message", func() {
-			err := New(WithType(ValidationError), WithMessage("invalid input"))
-			So(err.Error(), ShouldEqual, "[VALIDATION] invalid input")
+			err := New(WithType(ValidationError), WithMessage(invalidInput))
+			So(err.Error(), ShouldEqual, validationInvalidInput)
 		})
 
-		Convey("When creating an error with multiple messages", func() {
+		Convey(multipleMessage, func() {
 			err := New(
 				WithType(ValidationError),
-				WithMessage("invalid input"),
-				WithMessage("field required"),
+				WithMessage(invalidInput),
+				WithMessage(fieldRequired),
 			)
 			So(err.Error(), ShouldEqual, "[VALIDATION] invalid input field required")
 		})
 
 		Convey("When creating an error with wrapped errors", func() {
-			originalErr := errors.New("original error")
+			originalErr := errors.New(originalError)
 			wrappedErr := New(
 				WithType(ValidationError),
 				WithError(originalErr),
-				WithMessage("wrapped error"),
+				WithMessage(wrappedError),
 			)
 			So(wrappedErr.Error(), ShouldEqual, "[VALIDATION] wrapped error: original error")
 		})
@@ -127,7 +151,7 @@ func TestType(t *testing.T) {
 
 func TestStack(t *testing.T) {
 	Convey("Given a new error", t, func() {
-		err := New(WithMessage("test error"))
+		err := New(WithMessage(testError))
 		Convey("When getting the stack trace", func() {
 			stack := err.Stack()
 			Convey("Then it should contain stack information", func() {
@@ -141,21 +165,21 @@ func TestStack(t *testing.T) {
 func TestUnwrap(t *testing.T) {
 	Convey("Given various wrapped error scenarios", t, func() {
 		Convey("When unwrapping an error with no wrapped errors", func() {
-			err := New(WithMessage("test error"))
+			err := New(WithMessage(testError))
 			unwrapped := err.Unwrap()
 			So(unwrapped, ShouldBeNil)
 		})
 
 		Convey("When unwrapping an error with a wrapped error", func() {
-			originalErr := errors.New("original error")
+			originalErr := errors.New(originalError)
 			err := New(WithError(originalErr))
 			unwrapped := err.Unwrap()
 			So(unwrapped, ShouldEqual, originalErr)
 		})
 
 		Convey("When unwrapping an error with multiple wrapped errors", func() {
-			originalErr := errors.New("original error")
-			secondErr := errors.New("second error")
+			originalErr := errors.New(originalError)
+			secondErr := errors.New(secondError)
 			err := New(WithError(originalErr), WithError(secondErr))
 			unwrapped := err.Unwrap()
 			So(unwrapped, ShouldEqual, originalErr)
@@ -165,7 +189,7 @@ func TestUnwrap(t *testing.T) {
 
 func TestIs(t *testing.T) {
 	Convey("Given various error comparison scenarios", t, func() {
-		originalErr := errors.New("original error")
+		originalErr := errors.New(originalError)
 
 		Convey("When comparing with a contained error", func() {
 			err := New(WithError(originalErr))
@@ -174,7 +198,7 @@ func TestIs(t *testing.T) {
 
 		Convey("When comparing with a different error", func() {
 			err := New(WithError(originalErr))
-			otherErr := errors.New("other error")
+			otherErr := errors.New(otherError)
 			So(err.Is(otherErr), ShouldBeFalse)
 		})
 
@@ -195,44 +219,44 @@ func TestNew(t *testing.T) {
 		})
 
 		Convey("When creating a new error with all options", func() {
-			originalErr := errors.New("original error")
+			originalErr := errors.New(originalError)
 			err := New(
 				WithType(ValidationError),
 				WithStatus(BadRequestStatus),
 				WithError(originalErr),
-				WithMessage("test message"),
+				WithMessage(testMessage),
 			)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, ValidationError)
 			So(err.Status(), ShouldEqual, http.StatusBadRequest)
-			So(err.Error(), ShouldContainSubstring, "test message")
-			So(err.Error(), ShouldContainSubstring, "original error")
+			So(err.Error(), ShouldContainSubstring, testMessage)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 	})
 }
 
 func TestNotFound(t *testing.T) {
 	Convey("Given the NotFound helper function", t, func() {
-		originalErr := errors.New("original error")
+		originalErr := errors.New(originalError)
 
-		Convey("When creating an error with nil underlying error", func() {
-			err := NotFound(nil, "resource not found")
+		Convey(notFound, func() {
+			err := NotFound(nil, resourceNotFound)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, ResourceNotFoundError)
 			So(err.Status(), ShouldEqual, http.StatusNotFound)
-			So(err.Error(), ShouldContainSubstring, "resource not found")
+			So(err.Error(), ShouldContainSubstring, resourceNotFound)
 		})
 
-		Convey("When creating an error with an underlying error", func() {
-			err := NotFound(originalErr, "resource not found")
+		Convey(badRequest, func() {
+			err := NotFound(originalErr, resourceNotFound)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, ResourceNotFoundError)
 			So(err.Status(), ShouldEqual, http.StatusNotFound)
-			So(err.Error(), ShouldContainSubstring, "resource not found")
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
+			So(err.Error(), ShouldContainSubstring, resourceNotFound)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 
-		Convey("When creating an error with multiple messages", func() {
+		Convey("multipleMessage", func() {
 			err := NotFound(originalErr, "resource", "not", "found")
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "resource not found")
@@ -242,26 +266,26 @@ func TestNotFound(t *testing.T) {
 
 func TestBadRequest(t *testing.T) {
 	Convey("Given the BadRequest helper function", t, func() {
-		originalErr := errors.New("original error")
+		originalErr := errors.New(originalError)
 
-		Convey("When creating an error with nil underlying error", func() {
-			err := BadRequest(nil, "invalid request")
+		Convey(notFound, func() {
+			err := BadRequest(nil, invalidRequest)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, InvalidInputError)
 			So(err.Status(), ShouldEqual, http.StatusBadRequest)
-			So(err.Error(), ShouldContainSubstring, "invalid request")
+			So(err.Error(), ShouldContainSubstring, invalidRequest)
 		})
 
-		Convey("When creating an error with an underlying error", func() {
-			err := BadRequest(originalErr, "invalid request")
+		Convey(badRequest, func() {
+			err := BadRequest(originalErr, invalidRequest)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, InvalidInputError)
 			So(err.Status(), ShouldEqual, http.StatusBadRequest)
-			So(err.Error(), ShouldContainSubstring, "invalid request")
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
+			So(err.Error(), ShouldContainSubstring, invalidRequest)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 
-		Convey("When creating an error with multiple messages", func() {
+		Convey("multipleMessage", func() {
 			err := BadRequest(originalErr, "invalid", "request", "format")
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "invalid request format")
@@ -271,26 +295,26 @@ func TestBadRequest(t *testing.T) {
 
 func TestInternalError(t *testing.T) {
 	Convey("Given the InternalError helper function", t, func() {
-		originalErr := errors.New("original error")
+		originalErr := errors.New(originalError)
 
-		Convey("When creating an error with nil underlying error", func() {
-			err := InternalError(nil, "internal server error")
+		Convey(notFound, func() {
+			err := InternalError(nil, internalServerError)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, SystemError)
 			So(err.Status(), ShouldEqual, http.StatusInternalServerError)
-			So(err.Error(), ShouldContainSubstring, "internal server error")
+			So(err.Error(), ShouldContainSubstring, internalServerError)
 		})
 
-		Convey("When creating an error with an underlying error", func() {
-			err := InternalError(originalErr, "internal server error")
+		Convey(badRequest, func() {
+			err := InternalError(originalErr, internalServerError)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, SystemError)
 			So(err.Status(), ShouldEqual, http.StatusInternalServerError)
-			So(err.Error(), ShouldContainSubstring, "internal server error")
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
+			So(err.Error(), ShouldContainSubstring, internalServerError)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 
-		Convey("When creating an error with multiple messages", func() {
+		Convey("multipleMessage", func() {
 			err := InternalError(originalErr, "internal", "processing", "failed")
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "internal processing failed")
@@ -300,23 +324,23 @@ func TestInternalError(t *testing.T) {
 
 func TestUnauthorized(t *testing.T) {
 	Convey("Given the Unauthorized helper function", t, func() {
-		originalErr := errors.New("original error")
+		originalErr := errors.New(originalError)
 
-		Convey("When creating an error with nil underlying error", func() {
-			err := Unauthorized(nil, "unauthorized access")
+		Convey(notFound, func() {
+			err := Unauthorized(nil, unauthorizedAccess)
 			So(err, ShouldBeNil)
 		})
 
-		Convey("When creating an error with an underlying error", func() {
-			err := Unauthorized(originalErr, "unauthorized access")
+		Convey(badRequest, func() {
+			err := Unauthorized(originalErr, unauthorizedAccess)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, AuthenticationError)
 			So(err.Status(), ShouldEqual, http.StatusUnauthorized)
-			So(err.Error(), ShouldContainSubstring, "unauthorized access")
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
+			So(err.Error(), ShouldContainSubstring, unauthorizedAccess)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 
-		Convey("When creating an error with multiple messages", func() {
+		Convey("multipleMessage", func() {
 			err := Unauthorized(originalErr, "invalid", "credentials", "provided")
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "invalid credentials provided")
@@ -326,26 +350,26 @@ func TestUnauthorized(t *testing.T) {
 
 func TestForbidden(t *testing.T) {
 	Convey("Given the Forbidden helper function", t, func() {
-		originalErr := errors.New("original error")
+		originalErr := errors.New(originalError)
 
-		Convey("When creating an error with nil underlying error", func() {
-			err := Forbidden(nil, "access forbidden")
+		Convey(notFound, func() {
+			err := Forbidden(nil, accessForbidden)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, AuthorizationError)
 			So(err.Status(), ShouldEqual, http.StatusForbidden)
-			So(err.Error(), ShouldContainSubstring, "access forbidden")
+			So(err.Error(), ShouldContainSubstring, accessForbidden)
 		})
 
-		Convey("When creating an error with an underlying error", func() {
-			err := Forbidden(originalErr, "access forbidden")
+		Convey(badRequest, func() {
+			err := Forbidden(originalErr, accessForbidden)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, AuthorizationError)
 			So(err.Status(), ShouldEqual, http.StatusForbidden)
-			So(err.Error(), ShouldContainSubstring, "access forbidden")
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
+			So(err.Error(), ShouldContainSubstring, accessForbidden)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 
-		Convey("When creating an error with multiple messages", func() {
+		Convey("multipleMessage", func() {
 			err := Forbidden(originalErr, "insufficient", "permissions", "for", "resource")
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "insufficient permissions for resource")
@@ -355,26 +379,26 @@ func TestForbidden(t *testing.T) {
 
 func TestTimeout(t *testing.T) {
 	Convey("Given the Timeout helper function", t, func() {
-		originalErr := errors.New("original error")
+		originalErr := errors.New(originalError)
 
-		Convey("When creating an error with nil underlying error", func() {
-			err := Timeout(nil, "request timeout")
+		Convey(notFound, func() {
+			err := Timeout(nil, requestTimeout)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, TimeoutError)
 			So(err.Status(), ShouldEqual, http.StatusGatewayTimeout)
-			So(err.Error(), ShouldContainSubstring, "request timeout")
+			So(err.Error(), ShouldContainSubstring, requestTimeout)
 		})
 
-		Convey("When creating an error with an underlying error", func() {
-			err := Timeout(originalErr, "request timeout")
+		Convey(badRequest, func() {
+			err := Timeout(originalErr, requestTimeout)
 			So(err, ShouldNotBeNil)
 			So(err.Type(), ShouldEqual, TimeoutError)
 			So(err.Status(), ShouldEqual, http.StatusGatewayTimeout)
-			So(err.Error(), ShouldContainSubstring, "request timeout")
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
+			So(err.Error(), ShouldContainSubstring, requestTimeout)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 
-		Convey("When creating an error with multiple messages", func() {
+		Convey("multipleMessage", func() {
 			err := Timeout(originalErr, "operation", "timed", "out")
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "operation timed out")
@@ -385,24 +409,24 @@ func TestTimeout(t *testing.T) {
 func TestWrap(t *testing.T) {
 	Convey("Given various error wrapping scenarios", t, func() {
 		Convey("When wrapping nil error", func() {
-			err := Wrap(nil, "wrapped message")
+			err := Wrap(nil, wrappedMessage)
 			So(err, ShouldBeNil)
 		})
 
 		Convey("When wrapping an error with a message", func() {
-			originalErr := errors.New("original error")
-			err := Wrap(originalErr, "wrapped message")
+			originalErr := errors.New(originalError)
+			err := Wrap(originalErr, wrappedMessage)
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "wrapped message")
-			So(err.Error(), ShouldContainSubstring, "original error")
+			So(err.Error(), ShouldContainSubstring, wrappedMessage)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 
 		Convey("When wrapping an error with a formatted message", func() {
-			originalErr := errors.New("original error")
+			originalErr := errors.New(originalError)
 			err := Wrap(originalErr, "wrapped message: %v", "detail")
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "wrapped message: detail")
-			So(err.Error(), ShouldContainSubstring, "original error")
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 	})
 }
@@ -422,20 +446,20 @@ func TestWithType(t *testing.T) {
 			So(err.Type(), ShouldEqual, DatabaseError)
 		})
 
-		Convey("When using with other options", func() {
+		Convey(withOtherOptions, func() {
 			err := New(
 				WithType(ValidationError),
-				WithMessage("test message"),
+				WithMessage(testMessage),
 			)
 			So(err.Type(), ShouldEqual, ValidationError)
-			So(err.Error(), ShouldContainSubstring, "test message")
+			So(err.Error(), ShouldContainSubstring, testMessage)
 		})
 	})
 }
 
 func TestWithError(t *testing.T) {
 	Convey("Given the WithError option function", t, func() {
-		originalErr := errors.New("original error")
+		originalErr := errors.New(originalError)
 
 		Convey("When adding a nil error", func() {
 			err := New(WithError(nil))
@@ -446,11 +470,11 @@ func TestWithError(t *testing.T) {
 			err := New(WithError(originalErr))
 			So(len(err.errors), ShouldEqual, 1)
 			So(err.errors[0], ShouldEqual, originalErr)
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 
 		Convey("When adding multiple errors", func() {
-			secondErr := errors.New("second error")
+			secondErr := errors.New(secondError)
 			err := New(
 				WithError(originalErr),
 				WithError(secondErr),
@@ -458,18 +482,18 @@ func TestWithError(t *testing.T) {
 			So(len(err.errors), ShouldEqual, 2)
 			So(err.errors[0], ShouldEqual, originalErr)
 			So(err.errors[1], ShouldEqual, secondErr)
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
-			So(err.Error(), ShouldContainSubstring, secondErr.Error())
+			So(err.Error(), ShouldContainSubstring, originalError)
+			So(err.Error(), ShouldContainSubstring, secondError)
 		})
 
-		Convey("When using with other options", func() {
+		Convey(withOtherOptions, func() {
 			err := New(
 				WithError(originalErr),
-				WithMessage("test message"),
+				WithMessage(testMessage),
 			)
 			So(len(err.errors), ShouldEqual, 1)
-			So(err.Error(), ShouldContainSubstring, "test message")
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
+			So(err.Error(), ShouldContainSubstring, testMessage)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 	})
 }
@@ -483,37 +507,33 @@ func TestWithMessage(t *testing.T) {
 		})
 
 		Convey("When adding a valid message", func() {
-			message := "test message"
-			err := New(WithMessage(message))
+			err := New(WithMessage(testMessage))
 			So(len(err.messages), ShouldEqual, 1)
-			So(err.messages[0], ShouldEqual, message)
-			So(err.Error(), ShouldContainSubstring, message)
+			So(err.messages[0], ShouldEqual, testMessage)
+			So(err.Error(), ShouldContainSubstring, testMessage)
 		})
 
 		Convey("When adding multiple messages", func() {
-			firstMsg := "first message"
-			secondMsg := "second message"
 			err := New(
-				WithMessage(firstMsg),
-				WithMessage(secondMsg),
+				WithMessage(testMessage),
+				WithMessage(secondError),
 			)
 			So(len(err.messages), ShouldEqual, 2)
-			So(err.messages[0], ShouldEqual, firstMsg)
-			So(err.messages[1], ShouldEqual, secondMsg)
-			So(err.Error(), ShouldContainSubstring, firstMsg)
-			So(err.Error(), ShouldContainSubstring, secondMsg)
+			So(err.messages[0], ShouldEqual, testMessage)
+			So(err.messages[1], ShouldEqual, secondError)
+			So(err.Error(), ShouldContainSubstring, testMessage)
+			So(err.Error(), ShouldContainSubstring, secondError)
 		})
 
-		Convey("When using with other options", func() {
-			originalErr := errors.New("original error")
-			message := "test message"
+		Convey(withOtherOptions, func() {
+			originalErr := errors.New(originalError)
 			err := New(
-				WithMessage(message),
+				WithMessage(testMessage),
 				WithError(originalErr),
 			)
 			So(len(err.messages), ShouldEqual, 1)
-			So(err.Error(), ShouldContainSubstring, message)
-			So(err.Error(), ShouldContainSubstring, originalErr.Error())
+			So(err.Error(), ShouldContainSubstring, testMessage)
+			So(err.Error(), ShouldContainSubstring, originalError)
 		})
 	})
 }
@@ -538,15 +558,15 @@ func TestWithStatus(t *testing.T) {
 			So(err.Status(), ShouldEqual, http.StatusInternalServerError)
 		})
 
-		Convey("When using with other options", func() {
+		Convey(withOtherOptions, func() {
 			err := New(
 				WithStatus(BadRequestStatus),
-				WithMessage("test message"),
+				WithMessage(testMessage),
 				WithType(ValidationError),
 			)
 			So(err.Status(), ShouldEqual, http.StatusBadRequest)
 			So(err.Type(), ShouldEqual, ValidationError)
-			So(err.Error(), ShouldContainSubstring, "test message")
+			So(err.Error(), ShouldContainSubstring, testMessage)
 		})
 
 		Convey("When using an undefined status", func() {
@@ -570,7 +590,7 @@ func TestRetryPolicy(t *testing.T) {
 
 			err := New(
 				WithDefaultRetryPolicy(),
-				WithMessage("initial error"),
+				WithMessage(initialError),
 			)
 
 			retryErr := err.Retry(operation)
@@ -588,7 +608,7 @@ func TestRetryPolicy(t *testing.T) {
 
 			err := New(
 				WithRetryPolicy(2, time.Millisecond, nil),
-				WithMessage("initial error"),
+				WithMessage(initialError),
 			)
 
 			retryErr := err.Retry(operation)
@@ -605,7 +625,7 @@ func TestRetryPolicy(t *testing.T) {
 
 			err := New(
 				WithRetryPolicy(3, time.Millisecond, customBackoff),
-				WithMessage("initial error"),
+				WithMessage(initialError),
 			)
 
 			So(err.IsRetryable(), ShouldBeTrue)
