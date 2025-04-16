@@ -2,52 +2,24 @@ package stores
 
 import (
 	"bytes"
-	"errors"
 	"io"
-	"sync"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/stores/types"
 	"github.com/theapemachine/caramba/pkg/task"
 )
 
-type MockStore struct {
-	*errnie.Error
-	*errnie.State
-	data *sync.Map
-}
-
-func NewMockstore() *MockStore {
-	return &MockStore{
-		Error: errnie.NewError(),
-		State: errnie.NewState().To(errnie.StateReady),
-		data:  new(sync.Map),
-	}
-}
-
-func (m *MockStore) Peek(query *types.Query) (io.Reader, error) {
-	if value, ok := m.data.Load(query.Filters["id"]); ok {
-		if task, ok := value.(*task.Task); ok {
-			return task, nil
-		}
-		return nil, errors.New("value is not a *task.Task")
-	}
-
-	return nil, errors.New("not ok")
-}
-
-func (m *MockStore) Poke(query *types.Query) error {
-	m.data.Store(query.Filters["id"], query.Payload)
-	return nil
-}
-
-func TestRead(t *testing.T) {
+func TestSessionRead(t *testing.T) {
 	Convey("Given a Store with data", t, func() {
-		store := NewMockstore()
+		store := NewMockStore[*task.Task]()
 		t := task.NewTask()
-		store.data.Store(t.ID, t)
+		q := types.NewQuery(
+			types.WithFilter("id", t.ID),
+			types.WithPayload(t),
+		)
+
+		store.Poke(q)
 
 		Convey("And a Query", func() {
 			query := types.NewQuery(
@@ -89,7 +61,7 @@ func TestRead(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	Convey("Given a Store", t, func() {
-		store := NewMockstore()
+		store := NewMockStore[*task.Task]()
 
 		Convey("And a Task to be stored", func() {
 			t := task.NewTask()

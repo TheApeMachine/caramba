@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/stores/subscription"
 	"github.com/theapemachine/caramba/pkg/stores/types"
 	"github.com/theapemachine/caramba/pkg/task"
 )
@@ -22,16 +23,27 @@ all sessions derive from the same underlying store instance.
 type Store[T any] struct {
 	*errnie.Error
 	*errnie.State
-	data *sync.Map
+	data          *sync.Map
+	subscriptions map[string][]*subscription.Subscription
+	mu            *sync.RWMutex
 }
 
-func NewStore[T any]() types.Store {
+type StoreOption[T any] func(*Store[T])
+
+func NewStore[T any](opts ...StoreOption[T]) types.Store {
 	once.Do(func() {
 		instance = &Store[T]{
-			Error: errnie.NewError(),
-			data:  new(sync.Map),
+			Error:         errnie.NewError(),
+			data:          new(sync.Map),
+			State:         errnie.NewState().To(errnie.StateReady),
+			subscriptions: make(map[string][]*subscription.Subscription),
+			mu:            new(sync.RWMutex),
 		}
 	})
+
+	for _, opt := range opts {
+		opt(instance.(*Store[T]))
+	}
 
 	return instance
 }
@@ -75,5 +87,34 @@ func (store *Store[T]) Poke(query *types.Query) (err error) {
 
 	store.data.Store(taskItem.ID, taskItem)
 
+	go func() {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+
+		for _, subscription := range store.subscriptions[taskItem.ID] {
+			if _, err := io.Copy(subscription, taskItem); err != nil {
+				errnie.New(errnie.WithError(err))
+			}
+		}
+	}()
+
 	return nil
+}
+
+func WithSubscription(
+	subscription *subscription.Subscription,
+) StoreOption[types.Store] {
+	return func(store *Store[types.Store]) {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+
+		if subscription == nil {
+			return
+		}
+
+		store.subscriptions[subscription.ID] = append(
+			store.subscriptions[subscription.ID],
+			subscription,
+		)
+	}
 }
