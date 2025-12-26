@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from caramba.config.paper import (
+from config.paper import (
     CitationConfig,
     PaperConfig,
     PaperSection,
     PaperType,
 )
-from caramba.paper.drafter import PaperDrafter
-from caramba.paper.tools import (
+from paper.drafter import PaperDrafter
+from paper.tools import (
     Citation,
     PaperState,
     SearchResult,

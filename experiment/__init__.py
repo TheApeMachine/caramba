@@ -10,6 +10,6 @@ This is the main entry point for running experiments end-to-end.
 """
 from __future__ import annotations
 
-from caramba.experiment.runner import ExperimentRunner
+from experiment.runner import ExperimentRunner
 
 __all__ = ["ExperimentRunner"]

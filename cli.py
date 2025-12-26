@@ -17,11 +17,11 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
-from caramba.command import Command, CompileCommand, RunCommand
-from caramba.compiler import Compiler
-from caramba.config.manifest import Manifest
-from caramba.config.mode import Mode
-from caramba.console import logger
+from command import Command, CompileCommand, RunCommand
+from compiler import Compiler
+from config.manifest import Manifest
+from config.mode import Mode
+from console import logger
 
 
 
@@ -30,6 +30,7 @@ class ExperimentCommand:
     """Command to run a full experiment with benchmarks and artifact generation."""
 
     manifest: Manifest
+    manifest_path: Path
     group: str | None
 
 
@@ -63,9 +64,21 @@ class ResearchCommand:
     max_iterations: int
 
 
+@dataclass(frozen=True, slots=True)
+class BrainstormCommand:
+    """Command to run a multi-agent research brainstorming session."""
+
+    manifest: Manifest
+    manifest_path: Path
+    output_dir: Path | None
+    topic: str | None
+    experts: list[str] | None
+    model: str
+
+
 # Type alias for all command types returned by parse_command
 AnyCommand = (
-    Command | ExperimentCommand | PaperCommand | ReviewCommand | ResearchCommand
+    Command | ExperimentCommand | PaperCommand | ReviewCommand | ResearchCommand | BrainstormCommand
 )
 
 
@@ -94,6 +107,13 @@ class _Args(argparse.Namespace):
     research_manifest: Path | None = None
     research_output_dir: Path | None = None
     research_max_iterations: int = 5
+
+    # Brainstorm command args
+    brainstorm_manifest: Path | None = None
+    brainstorm_output_dir: Path | None = None
+    brainstorm_topic: str | None = None
+    brainstorm_experts: str | None = None
+    brainstorm_model: str = "gpt-4o"
 
     entity: str | None = None
     project: str | None = None
@@ -249,6 +269,46 @@ class CLI(argparse.ArgumentParser):
             help="Maximum research loop iterations (default: 5).",
         )
 
+        # Brainstorm command (multi-agent research discussion)
+        brainstorm_parser = subparsers.add_parser(
+            "brainstorm",
+            help="Run multi-agent research brainstorming session with expert debate.",
+        )
+        _ = brainstorm_parser.add_argument(
+            "brainstorm_manifest",
+            type=Path,
+            metavar="manifest",
+            help="Manifest path (.json, .yml, or .yaml) for the experiment context.",
+        )
+        _ = brainstorm_parser.add_argument(
+            "--output-dir",
+            type=Path,
+            default=None,
+            dest="brainstorm_output_dir",
+            help="Output directory for session artifacts.",
+        )
+        _ = brainstorm_parser.add_argument(
+            "--topic",
+            type=str,
+            default=None,
+            dest="brainstorm_topic",
+            help="Research topic to discuss (default: derived from manifest).",
+        )
+        _ = brainstorm_parser.add_argument(
+            "--experts",
+            type=str,
+            default=None,
+            dest="brainstorm_experts",
+            help="Comma-separated list of experts: ml_architect,theory_expert,experimentalist,applications_expert,domain_specialist",
+        )
+        _ = brainstorm_parser.add_argument(
+            "--model",
+            type=str,
+            default="gpt-4o",
+            dest="brainstorm_model",
+            help="Model to use for agents (default: gpt-4o).",
+        )
+
         # Legacy arguments for backward compatibility
         _ = self.add_argument(
             "--entity",
@@ -392,6 +452,7 @@ class CLI(argparse.ArgumentParser):
                 manifest = self._load_and_validate_manifest(args.experiment_manifest)
                 return ExperimentCommand(
                     manifest=manifest,
+                    manifest_path=args.experiment_manifest,
                     group=args.group,
                 )
             case "paper":
@@ -441,6 +502,22 @@ class CLI(argparse.ArgumentParser):
                     output_dir=args.research_output_dir,
                     max_iterations=args.research_max_iterations,
                 )
+            case "brainstorm":
+                if args.brainstorm_manifest is None:
+                    raise ValueError("brainstorm requires a manifest path.")
+                manifest = self._load_and_validate_manifest(args.brainstorm_manifest)
+                # Parse experts list if provided
+                experts = None
+                if args.brainstorm_experts:
+                    experts = [e.strip() for e in args.brainstorm_experts.split(",")]
+                return BrainstormCommand(
+                    manifest=manifest,
+                    manifest_path=args.brainstorm_manifest,
+                    output_dir=args.brainstorm_output_dir,
+                    topic=args.brainstorm_topic,
+                    experts=experts,
+                    model=args.brainstorm_model,
+                )
             case None:
                 manifest = self._parse_run_manifest(args)
                 Compiler().validator.validate_manifest(manifest)
@@ -476,6 +553,8 @@ class CLI(argparse.ArgumentParser):
                 return c.manifest
             case ResearchCommand() as c:
                 return c.manifest
+            case BrainstormCommand() as c:
+                return c.manifest
             case CompileCommand():
                 raise ValueError(
                     "compile is not supported via CLI.parse(); use `caramba compile` "
@@ -498,14 +577,14 @@ def main(argv: list[str] | None = None) -> int:
         match command:
             case CompileCommand() as cmd:
                 if cmd.print_plan:
-                    from caramba.compiler.plan import Planner
+                    from compiler.plan import Planner
 
                     logger.log(Planner().format(cmd.manifest))
                 logger.success("Manifest compiled successfully")
                 return 0
 
             case ExperimentCommand() as cmd:
-                from caramba.experiment import ExperimentRunner
+                from experiment import ExperimentRunner
 
                 runner = ExperimentRunner(cmd.manifest)
                 artifacts = runner.run(cmd.group)
@@ -514,7 +593,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
 
             case PaperCommand() as cmd:
-                from caramba.paper import PaperDrafter
+                from paper import PaperDrafter
 
                 paper_config = cmd.manifest.paper
                 if paper_config is None:
@@ -543,7 +622,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
 
             case ReviewCommand() as cmd:
-                from caramba.paper import PaperReviewer, ReviewConfig
+                from paper import PaperReviewer, ReviewConfig
 
                 # Build review config
                 review_config = cmd.manifest.review or ReviewConfig()
@@ -574,7 +653,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
 
             case ResearchCommand() as cmd:
-                from caramba.paper import ResearchLoop, ResearchLoopConfig
+                from paper import ResearchLoop, ResearchLoopConfig
 
                 paper_config = cmd.manifest.paper
                 if paper_config is None:
@@ -619,9 +698,44 @@ def main(argv: list[str] | None = None) -> int:
 
                 return 0 if result.success else 1
 
+            case BrainstormCommand() as cmd:
+                from paper.research_team import ResearchTeam
+
+                logger.header("Research Brainstorm", "🧠 Multi-Agent Discussion")
+
+                # Determine output directory
+                if cmd.output_dir:
+                    output_dir = cmd.output_dir
+                else:
+                    output_dir = Path("artifacts") / (cmd.manifest.name or "experiment") / "brainstorm"
+
+                team = ResearchTeam(
+                    manifest_path=cmd.manifest_path,
+                    output_dir=output_dir,
+                    experts=cmd.experts,
+                    model=cmd.model,
+                )
+
+                result = team.run_sync(topic=cmd.topic)
+
+                logger.success("🎉 Brainstorming session complete!")
+                logger.key_value({
+                    "Session ID": result.session_id,
+                    "Phases completed": len(result.phases_completed),
+                    "Ideas discussed": len(result.ideas_discussed),
+                    "Consensus score": f"{result.final_proposal.consensus_score:.1f}/10" if result.final_proposal else "N/A",
+                    "Output": str(output_dir),
+                })
+
+                if result.final_proposal:
+                    logger.info(f"\n📋 Proposal: {result.final_proposal.title}")
+                    logger.log(f"\n{result.final_proposal.summary[:500]}...")
+
+                return 0
+
             case RunCommand() as cmd:
                 # Legacy run behavior
-                from caramba.experiment import ExperimentRunner
+                from experiment import ExperimentRunner
 
                 runner = ExperimentRunner(cmd.manifest)
                 runner.run()

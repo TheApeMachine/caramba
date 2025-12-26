@@ -10,7 +10,7 @@ from __future__ import annotations
 import torch
 from torch import Tensor, nn
 
-from caramba.config.topology import TopologyConfig
+from config.topology import TopologyConfig
 
 
 class Topology(nn.Module):

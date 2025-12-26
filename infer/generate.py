@@ -17,17 +17,17 @@ from typing import Callable
 import torch
 from torch import Tensor, nn
 
-from caramba.cache.decoupled import DecoupledLayerKVCache
-from caramba.cache.layer import LayerKVCache
-from caramba.config.kvcache import KVCacheKind, KVCacheTensorConfig
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from cache.decoupled import DecoupledLayerKVCache
+from cache.layer import LayerKVCache
+from config.kvcache import KVCacheKind, KVCacheTensorConfig
+from config.layer import AttentionLayerConfig, AttentionMode
 
-from caramba.infer.cache_policy import (
+from infer.cache_policy import (
     estimate_kvcache_bytes,
     needle_in_haystack_gate,
     short_context_fidelity_check,
 )
-from caramba.infer.cache_plan import (
+from infer.cache_plan import (
     cache_plan_key,
     cache_plan_payload,
     load_cached_entry,
@@ -35,8 +35,8 @@ from caramba.infer.cache_plan import (
     save_cached_kind,
     should_probe_entry,
 )
-from caramba.infer.context import InferContext
-from caramba.layer.attention import AttentionLayer
+from infer.context import InferContext
+from layer.attention import AttentionLayer
 
 
 @dataclass

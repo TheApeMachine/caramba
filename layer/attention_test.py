@@ -4,11 +4,11 @@ from __future__ import annotations
 import unittest
 import torch
 
-from caramba.config.layer import AttentionLayerConfig, AttentionMode, LayerType
-from caramba.layer.attention import AttentionLayer
-from caramba.cache.layer import LayerKVCache
-from caramba.cache.decoupled import DecoupledLayerKVCache
-from caramba.config.kvcache import KVCacheTensorConfig, KVCacheKind
+from config.layer import AttentionLayerConfig, AttentionMode, LayerType
+from layer.attention import AttentionLayer
+from cache.layer import LayerKVCache
+from cache.decoupled import DecoupledLayerKVCache
+from config.kvcache import KVCacheTensorConfig, KVCacheKind
 
 
 class TestAttentionLayerStandard(unittest.TestCase):
@@ -595,7 +595,7 @@ class TestAttentionWithCache(unittest.TestCase):
 
     def test_ctx_overrides_q_chunk_and_local_window(self) -> None:
         """InferContext can override q_chunk/local_window for long prefixes."""
-        from caramba.infer.context import InferContext
+        from infer.context import InferContext
 
         cfg = AttentionLayerConfig(d_model=self.d_model, n_heads=self.n_heads, is_causal=True)
         layer = AttentionLayer(cfg)

@@ -1,0 +1,17 @@
+torch
+numpy
+tiktoken
+datasets
+tqdm
+matplotlib
+tensorboard
+rich
+h5py
+wandb
+pydantic
+PyYAML
+huggingface_hub
+safetensors
+tensordict
+pytest
+openai-agents

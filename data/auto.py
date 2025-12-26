@@ -13,8 +13,8 @@ from pathlib import Path
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from caramba.data.npy import NpyDataset
-from caramba.data.text_tokens import TextTokensDataset
+from data.npy import NpyDataset
+from data.text_tokens import TextTokensDataset
 
 logger = logging.getLogger(__name__)
 

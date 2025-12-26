@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from caramba.config.layer import LayerConfig
-from caramba.config.manifest import Manifest
-from caramba.config.topology import NodeConfig, TopologyConfig
+from config.layer import LayerConfig
+from config.manifest import Manifest
+from config.topology import NodeConfig, TopologyConfig
 
 
 class Planner:

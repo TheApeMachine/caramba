@@ -8,15 +8,15 @@ import unittest
 import torch
 from torch import nn
 
-from caramba.benchmark.memory import (
+from benchmark.memory import (
     KVCacheAnalysis,
     MemoryBenchmark,
     MemoryMeasurement,
     MemoryResult,
 )
-from caramba.config.benchmark import MemoryBenchmarkConfig
-from caramba.config.layer import AttentionLayerConfig, AttentionMode, LayerType
-from caramba.layer.attention import AttentionLayer
+from config.benchmark import MemoryBenchmarkConfig
+from config.layer import AttentionLayerConfig, AttentionMode, LayerType
+from layer.attention import AttentionLayer
 
 
 class DummyModel(nn.Module):

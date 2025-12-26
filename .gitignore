@@ -1,2 +1,8 @@
 __pycache__/
 .DS_Store
+.venv/
+.pytest_cache/
+artifacts/
+internal/
+caramba.egg-info/
+WARP.md

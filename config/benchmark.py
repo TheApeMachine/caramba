@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from caramba.config import PositiveFloat, PositiveInt, Probability
+from config import PositiveFloat, PositiveInt, Probability
 
 
 class BenchmarkType(str, enum.Enum):

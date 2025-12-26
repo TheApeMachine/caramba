@@ -10,7 +10,7 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.embedder import EmbedderConfig, EmbedderType
+from config.embedder import EmbedderConfig, EmbedderType
 
 
 class Embedder(nn.Module):

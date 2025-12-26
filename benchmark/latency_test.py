@@ -8,12 +8,12 @@ import unittest
 import torch
 from torch import nn
 
-from caramba.benchmark.latency import (
+from benchmark.latency import (
     LatencyBenchmark,
     LatencyMeasurement,
     LatencyResult,
 )
-from caramba.config.benchmark import LatencyBenchmarkConfig
+from config.benchmark import LatencyBenchmarkConfig
 
 
 class DummyModel(nn.Module):

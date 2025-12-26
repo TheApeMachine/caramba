@@ -1,0 +1,101 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caramba"
+version = "0.1.0"
+description = "A research platform for efficient AI with Decoupled Bottleneck Attention"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "The Ape Machine"}
+]
+keywords = ["ai", "machine-learning", "attention", "transformers", "kv-cache"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch",
+    "numpy",
+    "tiktoken",
+    "datasets",
+    "tqdm",
+    "matplotlib",
+    "tensorboard",
+    "rich",
+    "h5py",
+    "wandb",
+    "pydantic",
+    "PyYAML",
+    "huggingface_hub",
+    "safetensors",
+    "tensordict",
+    "openai-agents",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+knowledge = [
+    "deeplake",
+    "docling",
+    "transformers",
+]
+all = [
+    "pytest",
+    "deeplake",
+    "docling",
+    "transformers",
+]
+
+[project.scripts]
+caramba = "caramba.__main__:main"
+
+[tool.setuptools]
+packages = [
+    "caramba",
+    "caramba.benchmark",
+    "caramba.cache",
+    "caramba.compiler",
+    "caramba.config",
+    "caramba.console",
+    "caramba.data",
+    "caramba.eval",
+    "caramba.experiment",
+    "caramba.infer",
+    "caramba.instrumentation",
+    "caramba.layer",
+    "caramba.loader",
+    "caramba.model",
+    "caramba.optimizer",
+    "caramba.orchestrator",
+    "caramba.paper",
+    "caramba.runtime",
+    "caramba.topology",
+    "caramba.trainer",
+]
+
+[tool.setuptools.package-dir]
+caramba = "."
+
+[tool.setuptools.package-data]
+caramba = ["config/presets/*.yml", "config/benchmarks/*.yml"]
+
+[tool.pyright]
+include = ["."]
+exclude = [".venv", "**/__pycache__", "*.egg-info"]
+extraPaths = ["."]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingImports = "warning"
+reportMissingTypeStubs = "none"

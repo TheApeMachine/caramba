@@ -12,13 +12,13 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
-from caramba.config import PositiveInt
-from caramba.config.defaults import Defaults
-from caramba.config.group import Group
-from caramba.config.model import ModelConfig
-from caramba.config.paper import PaperConfig
-from caramba.config.resolve import Resolver, normalize_type_names
-from caramba.paper.review import ReviewConfig
+from config import PositiveInt
+from config.defaults import Defaults
+from config.group import Group
+from config.model import ModelConfig
+from config.paper import PaperConfig
+from config.resolve import Resolver, normalize_type_names
+from paper.review import ReviewConfig
 
 
 class Manifest(BaseModel):

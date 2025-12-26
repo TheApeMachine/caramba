@@ -21,12 +21,12 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from caramba.console import logger
+from console import logger
 
 if TYPE_CHECKING:
-    from caramba.config.manifest import Manifest
-    from caramba.config.paper import PaperConfig
-    from caramba.paper.review import ReviewConfig, ReviewResult
+    from config.manifest import Manifest
+    from config.paper import PaperConfig
+    from paper.review import ReviewConfig, ReviewResult
 
 
 class LoopAction(str, Enum):
@@ -140,7 +140,7 @@ class ResearchLoop:
             loop_config: Configuration for the loop itself.
             output_dir: Base output directory.
         """
-        from caramba.paper.review import ReviewConfig
+        from paper.review import ReviewConfig
 
         self.paper_config = paper_config
         self.review_config = review_config or ReviewConfig()
@@ -346,7 +346,7 @@ class ResearchLoop:
         artifacts: dict[str, Path],
     ) -> Path:
         """Write initial draft or update existing paper."""
-        from caramba.paper.drafter import PaperDrafter
+        from paper.drafter import PaperDrafter
 
         paper_path = self.output_dir / "paper.tex"
         action = LoopAction.UPDATE_DRAFT if paper_path.exists() else LoopAction.WRITE_DRAFT
@@ -380,7 +380,7 @@ class ResearchLoop:
         experiment_results: dict[str, Any],
     ) -> "ReviewResult":
         """Review the current paper draft."""
-        from caramba.paper.reviewer import PaperReviewer
+        from paper.reviewer import PaperReviewer
 
         logger.step(2, 4, "Reviewing paper")
 
@@ -468,7 +468,7 @@ class ResearchLoop:
     ) -> tuple[dict[str, Any], dict[str, Path]]:
         """Run a single experiment from its manifest."""
         # Import here to avoid circular imports
-        from caramba.experiment.runner import run_experiment
+        from experiment.runner import run_experiment
 
         logger.info(f"Executing experiment from {manifest_path}")
 

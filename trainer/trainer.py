@@ -6,10 +6,10 @@ handles session management so runs within a group share state.
 """
 from __future__ import annotations
 
-from caramba.config.manifest import Manifest
-from caramba.config.mode import Mode
-from caramba.console import logger
-from caramba.trainer.upcycle import Upcycle
+from config.manifest import Manifest
+from config.mode import Mode
+from console import logger
+from trainer.upcycle import Upcycle
 
 
 class Trainer:

@@ -6,9 +6,9 @@ fully explicit, uniform structures.
 """
 from __future__ import annotations
 
-from caramba.config.manifest import Manifest
-from caramba.config.model import ModelConfig
-from caramba.config.topology import NodeConfig, TopologyConfig
+from config.manifest import Manifest
+from config.model import ModelConfig
+from config.topology import NodeConfig, TopologyConfig
 
 
 class Lowerer:

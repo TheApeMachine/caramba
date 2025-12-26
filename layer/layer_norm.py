@@ -9,7 +9,7 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.layer import LayerNormLayerConfig
+from config.layer import LayerNormLayerConfig
 
 
 class LayerNormLayer(nn.Module):

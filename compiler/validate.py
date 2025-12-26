@@ -13,15 +13,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from caramba.config.layer import (
+from config.layer import (
     AttentionLayerConfig,
     AttentionMode,
     DropoutLayerConfig,
     LayerConfig,
     LinearLayerConfig,
 )
-from caramba.config.manifest import Manifest
-from caramba.config.topology import NodeConfig, TopologyConfig
+from config.manifest import Manifest
+from config.topology import NodeConfig, TopologyConfig
 
 
 @dataclass(frozen=True, slots=True)

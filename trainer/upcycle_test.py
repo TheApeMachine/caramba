@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import torch
 from pydantic import BaseModel
 
-from caramba.config.train import TrainConfig, TrainPhase
-from caramba.trainer.blockwise import BlockwiseConfig
+from config.train import TrainConfig, TrainPhase
+from trainer.blockwise import BlockwiseConfig
 
 
 class MockTrainConfig:

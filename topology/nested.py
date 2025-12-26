@@ -9,8 +9,8 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.topology import NestedTopologyConfig
-from caramba.topology.utils import unwrap_output
+from config.topology import NestedTopologyConfig
+from topology.utils import unwrap_output
 
 
 class NestedTopology(nn.Module):

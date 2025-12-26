@@ -16,14 +16,14 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from caramba.benchmark.artifacts import ExperimentMetadata
-from caramba.benchmark.runner import BenchmarkRunner
-from caramba.config.benchmark import BenchmarkSuite
-from caramba.config.group import Group
-from caramba.config.manifest import Manifest
-from caramba.config.train import TrainConfig
-from caramba.console import logger
-from caramba.trainer.upcycle import Upcycle
+from benchmark.artifacts import ExperimentMetadata
+from benchmark.runner import BenchmarkRunner
+from config.benchmark import BenchmarkSuite
+from config.group import Group
+from config.manifest import Manifest
+from config.train import TrainConfig
+from console import logger
+from trainer.upcycle import Upcycle
 
 
 class ExperimentRunner:
@@ -187,7 +187,7 @@ class ExperimentRunner:
             return None
 
         try:
-            from caramba.paper import PaperDrafter
+            from paper import PaperDrafter
 
             logger.header("Paper Drafter", self.manifest.paper.title)
 
@@ -282,7 +282,7 @@ def run_experiment(
     Returns:
         Dict of generated artifact paths.
     """
-    from caramba.compiler import Compiler
+    from compiler import Compiler
 
     path = Path(manifest_path)
     manifest = Manifest.from_path(path)

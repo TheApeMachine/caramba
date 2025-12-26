@@ -5,6 +5,6 @@ This package provides low-level optimizations for inference:
 - Triton kernels: Fused decoupled attention for CUDA
 - Runtime checks: Safe fallbacks when Triton isn't available
 """
-from caramba.optimizer.quantizer import Quantizer
+from optimizer.quantizer import Quantizer
 
 __all__ = ["Quantizer"]

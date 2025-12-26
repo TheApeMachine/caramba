@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from caramba.trainer.upcycle import Upcycle
+from trainer.upcycle import Upcycle
 
 
 def test_validate_checkpoint_state_rejects_missing_keys() -> None:

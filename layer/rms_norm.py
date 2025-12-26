@@ -10,7 +10,7 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.layer import RMSNormLayerConfig
+from config.layer import RMSNormLayerConfig
 
 
 class RMSNormLayer(nn.Module):

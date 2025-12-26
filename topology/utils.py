@@ -11,7 +11,7 @@ from typing import cast
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint as _torch_checkpoint
 
-from caramba.runtime.activation import exceeds_activation_threshold
+from runtime.activation import exceeds_activation_threshold
 
 
 def unwrap_output(out: Tensor | tuple[Tensor, object]) -> Tensor:

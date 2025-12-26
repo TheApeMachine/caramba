@@ -10,8 +10,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from caramba.config.layer import LayerType, LinearLayerConfig
-from caramba.config.manifest import Manifest
+from config.layer import LayerType, LinearLayerConfig
+from config.manifest import Manifest
 
 
 class ManifestTest(unittest.TestCase):

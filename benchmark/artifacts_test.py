@@ -9,14 +9,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from caramba.benchmark.artifacts import (
+from benchmark.artifacts import (
     ArtifactGenerator,
     ComparisonSummary,
     ExperimentMetadata,
 )
-from caramba.benchmark.latency import LatencyMeasurement, LatencyResult
-from caramba.benchmark.memory import KVCacheAnalysis, MemoryMeasurement, MemoryResult
-from caramba.benchmark.perplexity import PerplexityResult
+from benchmark.latency import LatencyMeasurement, LatencyResult
+from benchmark.memory import KVCacheAnalysis, MemoryMeasurement, MemoryResult
+from benchmark.perplexity import PerplexityResult
 
 
 class TestExperimentMetadata(unittest.TestCase):

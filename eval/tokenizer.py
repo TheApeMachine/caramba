@@ -11,7 +11,7 @@ import importlib
 import importlib.util
 from collections.abc import Callable, Sequence
 
-from caramba.config.eval import TiktokenTokenizerConfig, TokenizerConfig
+from config.eval import TiktokenTokenizerConfig, TokenizerConfig
 
 
 class Tokenizer(abc.ABC):

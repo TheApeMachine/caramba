@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from caramba.config.kvcache import KVCacheKind
-from caramba.infer.cache_plan import load_cached_entry, load_cached_kind, save_cached_kind, should_probe_entry
+from config.kvcache import KVCacheKind
+from infer.cache_plan import load_cached_entry, load_cached_kind, save_cached_kind, should_probe_entry
 
 
 def test_cache_plan_roundtrip(tmp_path: Path) -> None:

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import sys
 
-from caramba.cli import main as cli_main
+from cli import main as cli_main
 
 
 def main(argv: list[str] | None = None) -> None:

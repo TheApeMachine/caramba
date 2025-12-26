@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from caramba.runtime.activation import exceeds_activation_threshold, tensor_nbytes, tensors_nbytes
+from runtime.activation import exceeds_activation_threshold, tensor_nbytes, tensors_nbytes
 
 
 def test_tensor_nbytes() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from caramba.instrumentation.live_plotter import LivePlotter
+from instrumentation.live_plotter import LivePlotter
 
 
 def test_live_plotter_best_effort_no_crash() -> None:

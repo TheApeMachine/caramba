@@ -21,49 +21,45 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 from torch.optim import Optimizer
 
-from caramba.config.defaults import Defaults
-from caramba.config.eval import EvalVerifyConfig
-from caramba.config.group import Group
-from caramba.config.kvcache import KVCachePolicyConfig, KVCachePolicyDecoupledConfig
-from caramba.config.layer import AttentionMode
-from caramba.config.manifest import Manifest
-from caramba.config.model import ModelConfig
-from caramba.config.run import Run
-from caramba.config.train import TrainConfig, TrainPhase
-from caramba.config.verify import (
-    CompareVerifyConfig,
-    FidelityVerifyConfig,
-    KVCacheVerifyConfig,
-)
-from caramba.console import logger
-from caramba.data import build_token_dataset
-from caramba.eval.suite import assert_eval_thresholds, run_eval_verify
-from caramba.instrumentation import (
+from config.defaults import Defaults
+from config.eval import EvalVerifyConfig
+from config.verify import FidelityVerifyConfig, KVCacheVerifyConfig, CompareVerifyConfig
+from config.group import Group
+from config.kvcache import KVCachePolicyConfig, KVCachePolicyDecoupledConfig
+from config.layer import AttentionMode
+from config.manifest import Manifest
+from config.model import ModelConfig
+from config.run import Run
+from config.train import TrainConfig, TrainPhase
+from console import logger
+from data import build_token_dataset
+from eval.suite import assert_eval_thresholds, run_eval_verify
+from instrumentation import (
     LivePlotter,
     RunLogger,
     TensorBoardWriter,
     WandBWriter,
     generate_analysis_png,
 )
-from caramba.layer.attention import AttentionLayer
-from caramba.loader.checkpoint import CheckpointLoader
-from caramba.loader.hf import HFLoader
-from caramba.loader.llama_upcycle import LlamaUpcycle
-from caramba.model import Model
-from caramba.runtime import RuntimePlan, load_plan, make_plan_key, save_plan
-from caramba.trainer.blockwise import BlockwiseConfig, BlockwiseTrainer
-from caramba.trainer.compare import assert_thresholds, compare_teacher_student
-from caramba.trainer.fidelity import (
+from layer.attention import AttentionLayer
+from loader.checkpoint import CheckpointLoader
+from loader.hf import HFLoader
+from loader.llama_upcycle import LlamaUpcycle
+from model import Model
+from runtime import RuntimePlan, load_plan, make_plan_key, save_plan
+from trainer.blockwise import BlockwiseConfig, BlockwiseTrainer
+from trainer.compare import assert_thresholds, compare_teacher_student
+from trainer.fidelity import (
     assert_fidelity_thresholds,
     compute_short_context_fidelity,
 )
-from caramba.trainer.distill import DistillLoss
-from caramba.trainer.distributed import (
+from trainer.distill import DistillLoss
+from trainer.distributed import (
     DistributedConfig,
     DistributedContext,
     DistributedStrategy,
 )
-from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
+from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 
 
 def _make_teacher_model_config(model_config: ModelConfig) -> ModelConfig:
@@ -229,7 +225,11 @@ class Upcycle:
             case TrainPhase.BLOCKWISE:
                 self.run_blockwise(run)
             case TrainPhase.GLOBAL:
-                self.run_global(run)
+                # Use orchestrated training if enabled
+                if getattr(run.train, "orchestrator_enabled", False):
+                    self.run_global_orchestrated(run)
+                else:
+                    self.run_global(run)
             case _:
                 raise ValueError(f"Unsupported train phase: {run.train.phase}")
 
@@ -1449,6 +1449,280 @@ class Upcycle:
             run.steps,
             optimizer=optimizer,
             scheduler=scheduler,
+            global_step=int(run.steps),
+            is_final=True,
+        )
+
+    def run_global_orchestrated(self, run: Run) -> None:
+        """Run global fine-tuning with dynamic optimizer orchestration.
+
+        This is an enhanced version of run_global that uses the orchestrator
+        to dynamically switch between training strategies based on telemetry.
+        """
+        from orchestrator import (
+            Orchestrator,
+            OrchestratorConfig,
+            TelemetryStream,
+            create_strategy,
+            DEFAULT_PORTFOLIO,
+            StrategyBundle,
+        )
+        from orchestrator.wrappers import AdaGC
+
+        train = self.require_train(run)
+        loader, val_loader = self.build_loaders(train)
+
+        # Unfreeze all params
+        self._unfreeze_all_parameters()
+        self.student.train()
+
+        has_diffusion = self._has_diffusion_head()
+        use_amp = bool(train.use_amp) and self.device.type in ("cuda", "mps", "cpu")
+        amp_dtype = self._resolve_amp_dtype(str(train.amp_dtype))
+        scaler = None
+        if use_amp and self.device.type == "cuda" and amp_dtype == torch.float16:
+            try:
+                scaler = torch.cuda.amp.GradScaler(enabled=True)
+            except Exception:
+                scaler = None
+
+        # Initialize orchestrator
+        orch_config = OrchestratorConfig(
+            decision_interval=int(getattr(train, "orchestrator_decision_interval", 500)),
+            eval_horizon=int(getattr(train, "orchestrator_eval_horizon", 100)),
+            log_dir=self.checkpoint_dir / "orchestrator",
+        )
+        orchestrator = Orchestrator(
+            model=self.student,
+            config=orch_config,
+            portfolio=DEFAULT_PORTFOLIO,
+        )
+        orchestrator.set_total_steps(run.steps, int(getattr(train, "warmup_steps", 0)))
+
+        # Initialize strategy
+        initial_name = str(getattr(train, "orchestrator_initial_strategy", "conservative_adamw"))
+        initial_bundle = next(
+            (b for b in DEFAULT_PORTFOLIO if b.name == initial_name),
+            DEFAULT_PORTFOLIO[0],
+        )
+        initial_bundle = StrategyBundle(
+            **{
+                **initial_bundle.__dict__,
+                "total_steps": run.steps,
+                "warmup_steps": int(getattr(train, "warmup_steps", 0)),
+                "lr": train.lr,
+            }
+        )
+        current_strategy = create_strategy(initial_bundle, self.student)
+
+        # Add AdaGC if configured
+        if getattr(train, "orchestrator_use_adagc", True):
+            adagc = AdaGC(self.student, warmup_steps=100)
+            current_strategy.add_wrapper(adagc)
+
+        logger.header(
+            "Global Fine-tuning (Orchestrated)",
+            f"{run.steps} steps • strategy={current_strategy.name}",
+        )
+        self.run_logger.log_event(
+            type="phase_start",
+            run_id=str(run.id),
+            phase="global_orchestrated",
+            step=0,
+            data={
+                "steps": int(run.steps),
+                "has_diffusion": bool(has_diffusion),
+                "initial_strategy": current_strategy.name,
+            },
+        )
+
+        loader_iter = iter(loader)
+        loss: Tensor | None = None
+
+        with logger.progress_bar() as progress:
+            task = progress.add_task("Training...", total=run.steps)
+
+            for step in range(run.steps):
+                (x, y), loader_iter = self.next_batch(loader, loader_iter)
+                x = x.to(device=self.device)
+                y = y.to(device=self.device)
+
+                # Zero gradients
+                current_strategy.zero_grad()
+
+                # Forward pass with AMP
+                autocast_enabled = bool(use_amp)
+                try:
+                    with torch.autocast(
+                        device_type=self.device.type,
+                        dtype=amp_dtype,
+                        enabled=autocast_enabled,
+                    ):
+                        loss, ce_loss, diff_loss = self._compute_loss(x, y, has_diffusion)
+                except TypeError:
+                    autocast_enabled = False
+                    loss, ce_loss, diff_loss = self._compute_loss(x, y, has_diffusion)
+
+                # Backward pass
+                if scaler is not None and autocast_enabled:
+                    scaler.scale(loss).backward()
+                else:
+                    loss.backward()
+
+                # Compute grad norm for telemetry
+                grad_norm = 0.0
+                for p in self.student.parameters():
+                    if p.grad is not None:
+                        grad_norm += float(p.grad.data.norm(2).item() ** 2)
+                grad_norm = grad_norm**0.5
+
+                # Strategy step
+                step_metrics = current_strategy.step(loss, scaler=scaler)
+
+                # Record telemetry
+                snapshot = orchestrator.record(
+                    loss=float(loss.item()),
+                    grad_norm=grad_norm,
+                    lr=current_strategy.current_lr,
+                )
+
+                # Check for strategy switch
+                reason = orchestrator.should_evaluate(step + 1, snapshot)
+                if reason is not None and val_loader is not None:
+                    # Create evaluation functions for orchestrator
+                    def make_train_step(strat):
+                        def fn(strategy):
+                            nonlocal loader_iter
+                            (batch_x, batch_y), loader_iter = self.next_batch(loader, loader_iter)
+                            batch_x = batch_x.to(device=self.device)
+                            batch_y = batch_y.to(device=self.device)
+                            strategy.zero_grad()
+                            with torch.autocast(
+                                device_type=self.device.type,
+                                dtype=amp_dtype,
+                                enabled=use_amp,
+                            ):
+                                logits = self.student(batch_x)
+                                batch_loss = F.cross_entropy(
+                                    logits.view(-1, logits.size(-1)),
+                                    batch_y.view(-1),
+                                )
+                            batch_loss.backward()
+                            gn = sum(
+                                p.grad.data.norm(2).item() ** 2
+                                for p in self.student.parameters()
+                                if p.grad is not None
+                            ) ** 0.5
+                            strategy.step(batch_loss, scaler=scaler)
+                            return float(batch_loss.item()), gn
+                        return fn
+
+                    def make_eval_fn():
+                        def fn(strategy):
+                            self.student.eval()
+                            total = 0.0
+                            count = 0
+                            with torch.no_grad():
+                                for vx, vy in val_loader:
+                                    vx = vx.to(self.device)
+                                    vy = vy.to(self.device)
+                                    vlogits = self.student(vx)
+                                    vloss = F.cross_entropy(
+                                        vlogits.view(-1, vlogits.size(-1)),
+                                        vy.view(-1),
+                                    )
+                                    total += float(vloss.item())
+                                    count += 1
+                                    if count >= 3:
+                                        break
+                            self.student.train()
+                            return total / max(1, count)
+                        return fn
+
+                    new_strategy = orchestrator.evaluate_and_switch(
+                        current_strategy=current_strategy,
+                        train_step_fn=make_train_step(current_strategy),
+                        eval_fn=make_eval_fn(),
+                        step=step + 1,
+                        reason=reason,
+                    )
+                    if new_strategy != current_strategy:
+                        current_strategy = new_strategy
+                        if getattr(train, "orchestrator_use_adagc", True):
+                            adagc = AdaGC(self.student, warmup_steps=50)
+                            current_strategy.add_wrapper(adagc)
+
+                # Log metrics
+                loss_val = float(loss.item())
+                metrics: dict[str, float] = {
+                    "loss": loss_val,
+                    "ce_loss": float(ce_loss),
+                    "lr": current_strategy.current_lr,
+                    "grad_norm": grad_norm,
+                    "spike_count": float(snapshot.spike_count),
+                    **step_metrics,
+                }
+                if diff_loss is not None:
+                    metrics["diff_loss"] = float(diff_loss)
+
+                self.run_logger.log_metrics(
+                    run_id=str(run.id),
+                    phase="global_orchestrated",
+                    step=int(step + 1),
+                    metrics=metrics,
+                )
+                if self.tb_writer is not None:
+                    self.tb_writer.log_scalars(
+                        prefix="train/global_orch",
+                        step=int(step + 1),
+                        scalars=metrics,
+                    )
+                if self.wandb_writer is not None and (step + 1) % 10 == 0:
+                    self.wandb_writer.log_scalars(
+                        prefix="train/global_orch",
+                        step=int(step + 1),
+                        scalars=metrics,
+                    )
+                if self.live_plotter is not None:
+                    self.live_plotter.update(step=int(step + 1), scalars=metrics)
+
+                desc = (
+                    f"Step {step + 1}/{run.steps} • loss={loss_val:.4f} "
+                    f"• strategy={current_strategy.name}"
+                )
+                progress.update(task, advance=1, description=desc)
+
+                if self.save_every > 0 and (step + 1) % self.save_every == 0:
+                    self.save_checkpoint(
+                        run.id,
+                        "global_orchestrated",
+                        step + 1,
+                        global_step=int(step + 1),
+                    )
+
+        if loss is not None:
+            if self.dist_ctx is not None:
+                loss = self.dist_ctx.all_reduce(loss.detach(), op="avg")
+            logger.success(
+                f"Orchestrated training complete • final loss={float(loss):.6f} "
+                f"• switches={orchestrator._total_switches}"
+            )
+            self.run_logger.log_event(
+                type="phase_complete",
+                run_id=str(run.id),
+                phase="global_orchestrated",
+                step=int(run.steps),
+                data={
+                    "final_loss": float(loss),
+                    "total_switches": orchestrator._total_switches,
+                    "orchestrator_stats": orchestrator.get_stats(),
+                },
+            )
+
+        self.save_checkpoint(
+            run.id,
+            "global_orchestrated",
+            run.steps,
             global_step=int(run.steps),
             is_final=True,
         )

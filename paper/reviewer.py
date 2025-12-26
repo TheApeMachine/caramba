@@ -10,16 +10,16 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from agents import Agent, Runner
-from agents.tool import Tool
+from agents import Agent, Runner, Tool
 
-from caramba.console import logger
-from caramba.paper.review import ReviewConfig, ReviewResult, ReviewActionType
-from caramba.paper.reviewer_tools import REVIEWER_TOOLS
-from caramba.paper.tools import PaperState, set_state
+from console import logger
+from paper.drafter import AgentLoggingHooks
+from paper.review import ReviewConfig, ReviewResult, ReviewActionType
+from paper.reviewer_tools import REVIEWER_TOOLS
+from paper.tools import PaperState, set_state
 
 if TYPE_CHECKING:
-    from caramba.config.manifest import Manifest
+    from config.manifest import Manifest
 
 
 # ============================================================================
@@ -222,11 +222,12 @@ class PaperReviewer:
         # Build the review task
         task = self._build_review_prompt()
 
-        # Run the agent
+        # Run the agent with logging hooks
         logger.info(f"Running review agent with {self.config.model}...")
+        hooks = AgentLoggingHooks()
 
         try:
-            result = await Runner.run(self.agent, input=task)
+            result = await Runner.run(self.agent, input=task, hooks=hooks)
             logger.success("Review complete!")
 
         except Exception as e:
@@ -329,7 +330,7 @@ Begin your review now."""
 
     def _parse_review_result(self, data: dict) -> ReviewResult:
         """Parse review data into ReviewResult model."""
-        from caramba.paper.review import ProposedExperiment
+        from paper.review import ProposedExperiment
 
         # Map recommendation string to enum
         rec_map = {

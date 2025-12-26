@@ -10,7 +10,7 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.layer import SwiGLULayerConfig
+from config.layer import SwiGLULayerConfig
 
 
 class SwiGLULayer(nn.Module):

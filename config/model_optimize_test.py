@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from caramba.config.embedder import TokenEmbedderConfig
-from caramba.config.layer import AttentionLayerConfig, LayerType, SwiGLULayerConfig
-from caramba.config.model import ModelConfig, ModelType
-from caramba.config.topology import StackedTopologyConfig
+from config.embedder import TokenEmbedderConfig
+from config.layer import AttentionLayerConfig, LayerType, SwiGLULayerConfig
+from config.model import ModelConfig, ModelType
+from config.topology import StackedTopologyConfig
 
 
 def test_model_config_optimize_scales_common_transformer() -> None:

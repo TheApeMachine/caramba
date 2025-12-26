@@ -10,14 +10,14 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.diffusion import DiffusionHeadConfig
-from caramba.config.model import ModelConfig
-from caramba.layer.diffusion_head import (
+from config.diffusion import DiffusionHeadConfig
+from config.model import ModelConfig
+from layer.diffusion_head import (
     DIFFUSERS_AVAILABLE,
     DiffusionHeadConfig as RuntimeDiffusionConfig,
     DiffusionNextTokenHead,
 )
-from caramba.model.embedder import Embedder
+from model.embedder import Embedder
 
 RuntimeDiffusionConfigType = RuntimeDiffusionConfig
 
@@ -66,7 +66,7 @@ class Model(nn.Module):
 
     def _get_embed_dim(self) -> int:
         """Extract the embedding dimension for the diffusion head."""
-        from caramba.config.embedder import TokenEmbedderConfig
+        from config.embedder import TokenEmbedderConfig
 
         if isinstance(self.config.embedder, TokenEmbedderConfig):
             return self.config.embedder.d_model

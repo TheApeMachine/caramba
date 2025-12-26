@@ -11,8 +11,8 @@ import unittest
 import torch
 from torch import Tensor, nn
 
-from caramba.config.verify import FidelityVerifyConfig
-from caramba.trainer.fidelity import (
+from config.verify import FidelityVerifyConfig
+from trainer.fidelity import (
     assert_fidelity_thresholds,
     compute_short_context_fidelity,
 )

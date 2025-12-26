@@ -14,8 +14,8 @@ import torch
 from torch import Tensor, nn
 from torch.optim import Optimizer
 
-from caramba.model.trace import Trace
-from caramba.trainer.distill import DistillLoss
+from model.trace import Trace
+from trainer.distill import DistillLoss
 
 
 @dataclass

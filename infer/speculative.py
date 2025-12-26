@@ -17,12 +17,12 @@ from typing import Callable
 import torch
 from torch import Tensor, nn
 
-from caramba.cache.decoupled import DecoupledLayerKVCache
-from caramba.cache.layer import LayerKVCache
-from caramba.config.kvcache import KVCacheKind
-from caramba.infer.cache_policy import choose_cache_kind
-from caramba.infer.context import InferContext
-from caramba.infer.generate import (
+from cache.decoupled import DecoupledLayerKVCache
+from cache.layer import LayerKVCache
+from config.kvcache import KVCacheKind
+from infer.cache_policy import choose_cache_kind
+from infer.context import InferContext
+from infer.generate import (
     GenerateConfig,
     create_caches,
     get_attention_configs,

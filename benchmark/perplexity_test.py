@@ -13,8 +13,8 @@ import numpy as np
 import torch
 from torch import nn
 
-from caramba.benchmark.perplexity import PerplexityBenchmark, PerplexityResult
-from caramba.config.benchmark import PerplexityBenchmarkConfig
+from benchmark.perplexity import PerplexityBenchmark, PerplexityResult
+from config.benchmark import PerplexityBenchmarkConfig
 
 
 class DummyLMModel(nn.Module):

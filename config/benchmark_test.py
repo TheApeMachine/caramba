@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import unittest
 
-from caramba.config.benchmark import (
+from config.benchmark import (
     AccuracyBenchmarkConfig,
     BenchmarkSpec,
     BenchmarkSuite,

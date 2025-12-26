@@ -11,19 +11,19 @@ import enum
 
 from pydantic import Field
 
-from caramba.config import Config
-from caramba.config.diffusion import DiffusionHeadConfig
-from caramba.config.embedder import EmbedderConfig, NoEmbedderConfig
-from caramba.config.embedder import TokenEmbedderConfig
-from caramba.config.layer import (
+from config import Config
+from config.diffusion import DiffusionHeadConfig
+from config.embedder import EmbedderConfig, NoEmbedderConfig
+from config.embedder import TokenEmbedderConfig
+from config.layer import (
     AttentionLayerConfig,
     LayerNormLayerConfig,
     LinearLayerConfig,
     RMSNormLayerConfig,
     SwiGLULayerConfig,
 )
-from caramba.config.topology import TopologyConfig
-from caramba.config.topology import (
+from config.topology import TopologyConfig
+from config.topology import (
     BranchingTopologyConfig,
     CyclicTopologyConfig,
     NestedTopologyConfig,
@@ -33,7 +33,7 @@ from caramba.config.topology import (
     SequentialTopologyConfig,
     StackedTopologyConfig,
 )
-from caramba.config.topology import NodeConfig
+from config.topology import NodeConfig
 
 import math
 

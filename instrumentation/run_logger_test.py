@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from caramba.instrumentation.run_logger import RunLogger
+from instrumentation.run_logger import RunLogger
 
 
 def test_run_logger_writes_jsonl(tmp_path: Path) -> None:

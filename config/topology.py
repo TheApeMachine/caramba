@@ -11,8 +11,8 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field
 
-from caramba.config import Config, PositiveInt
-from caramba.config.layer import LayerConfig
+from config import Config, PositiveInt
+from config.layer import LayerConfig
 
 
 class TopologyType(str, enum.Enum):

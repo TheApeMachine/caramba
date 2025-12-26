@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import torch
 
-from caramba.cache.tensor import SeqCacheTensor
-from caramba.config.kvcache import KVCacheTensorConfig
+from cache.tensor import SeqCacheTensor
+from config.kvcache import KVCacheTensorConfig
 
 
 class LayerKVCache:

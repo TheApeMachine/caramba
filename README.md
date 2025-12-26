@@ -1,3 +1,5 @@
+![caramba overview](assets/overview.png)
+
 # caramba 🧪
 
 *A substrate for architecture research*
@@ -13,6 +15,8 @@ manifest → parse → lower → validate → build → run → verify → bench
 ```
 
 Every experiment flows through this chain. No magic, no hidden state, no surprises.
+
+![framework anatomy](assets/framework.png)
 
 ## Self-Optimization ⚡ (auto-fit + auto-tuning)
 
@@ -36,6 +40,41 @@ caramba is built around the idea that the *config is declarative*, while the run
 
 `ModelConfig.optimize()` can derive a reasonable transformer scale from a `target_params` budget (and `block_size` as an entropy-ish signal), updating common transformer patterns (embedder d_model, attention heads/KV heads, MLP width). This is currently a **library utility** (not auto-applied by the CLI), intended for quick architecture search scripts.
 
+### Optimizer Orchestration Layer 🎛️
+
+caramba includes a **dynamic optimizer orchestration system** that performs online algorithm selection during training. Instead of committing to a single optimizer configuration, the orchestrator monitors training telemetry and can switch strategies mid-run.
+
+**Core capabilities:**
+
+- **Strategy Portfolio**: Bundles of (optimizer + scheduler + clipping + wrappers) that can be hot-swapped
+- **Telemetry-Driven Decisions**: Monitor loss, gradient norms, spikes, and training phase
+- **UCB Bandit Selection**: Balance exploration vs. exploitation when evaluating strategies
+- **Speculative Branching**: Checkpoint → fork → evaluate candidates → pick winner → rollback losers
+- **Safety Rollback**: Automatic revert on loss explosion or instability
+
+**Built-in components:**
+
+| Component | Description |
+|-----------|-------------|
+| **AdaGC** | Per-parameter adaptive gradient clipping (2025 paper) |
+| **SWATS** | Auto-switch Adam→SGD when training stabilizes |
+| **PIDAO** | PID-controller optimizer with interpretable gains |
+| **Weight Nowcasting** | Linear extrapolation to predict/skip training steps |
+| **Spike Detector** | EMA-based gradient spike detection |
+
+**Enable in manifest:**
+
+```yaml
+train:
+  phase: global
+  orchestrator_enabled: true
+  orchestrator_decision_interval: 500
+  orchestrator_initial_strategy: conservative_adamw
+  orchestrator_use_adagc: true
+```
+
+See [Optimizer Orchestration](#optimizer-orchestration-) for full documentation.
+
 ## Module Map 🗺️
 
 | Layer         | Purpose                                         |
@@ -57,6 +96,7 @@ caramba is built around the idea that the *config is declarative*, while the run
 | `instrumentation/` | JSONL/HDF5/TensorBoard/W&B/live plotting    |
 | `console/`    | Rich-based logging and progress bars            |
 | `optimizer/`  | Triton kernels, fused attention, quantization   |
+| `orchestrator/` | Dynamic optimizer switching, telemetry, SWATS, PIDAO |
 
 ## Quick Start 🚀
 
@@ -292,8 +332,8 @@ artifacts/
 ### Programmatic Usage
 
 ```python
-from caramba.config.paper import PaperConfig
-from caramba.paper import PaperDrafter
+config.paper import PaperConfig
+paper import PaperDrafter
 
 config = PaperConfig(
     title="My Research Paper",
@@ -437,7 +477,7 @@ groups:
 Configure the autonomous loop behavior:
 
 ```python
-from caramba.paper import ResearchLoop, ResearchLoopConfig
+paper import ResearchLoop, ResearchLoopConfig
 
 loop_config = ResearchLoopConfig(
     max_iterations=5,              # Maximum write-review-experiment cycles
@@ -565,8 +605,8 @@ The unified `AttentionLayer` supports three modes:
 | `DECOUPLED` | DBA with semantic/geometric split        |
 
 ```python
-from caramba.layer.attention import AttentionLayer
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
+layer.attention import AttentionLayer
+config.layer import AttentionLayerConfig, AttentionMode
 
 # DBA attention
 config = AttentionLayerConfig(
@@ -589,6 +629,8 @@ layer = AttentionLayer(config)
 caramba can transplant **Decoupled Bottleneck Attention** into a pretrained Llama checkpoint, then train via blockwise distillation and global fine-tuning.
 
 This workflow draws from [Attention Surgery](https://arxiv.org/abs/2509.24899) (Ghafoorian et al., 2025).
+
+![attention surgery](assets/attention-surgery.png)
 
 ### The DBA Advantage 📉
 
@@ -814,7 +856,7 @@ KV-Cache (bytes/tok) $\downarrow$ & 2048 & 384 & 5.33$\times$ \\
 ### Standard Generation
 
 ```python
-from caramba.infer import Generator, GenerateConfig, generate
+infer import Generator, GenerateConfig, generate
 
 config = GenerateConfig(
     max_new_tokens=128,
@@ -879,7 +921,7 @@ For long contexts you can let the generator auto-adjust attention memory behavio
 Accelerate inference by using a smaller draft model to propose tokens, then verify with the target model:
 
 ```python
-from caramba.infer import SpeculativeGenerator, SpeculativeConfig
+infer import SpeculativeGenerator, SpeculativeConfig
 
 config = SpeculativeConfig(
     spec_k=4,              # Draft 4 tokens per step
@@ -914,8 +956,8 @@ caramba includes a production-grade KV-cache implementation with:
 - **Amortized allocation**: Geometric growth to avoid O(N) allocations
 
 ```python
-from caramba.cache import LayerKVCache, DecoupledLayerKVCache
-from caramba.config.kvcache import KVCacheTensorConfig, KVCacheKind
+cache import LayerKVCache, DecoupledLayerKVCache
+config.kvcache import KVCacheTensorConfig, KVCacheKind
 
 # Standard cache
 cache = LayerKVCache(
@@ -948,7 +990,7 @@ cache = DecoupledLayerKVCache(
 Load pre-tokenized data from `.npy` files:
 
 ```python
-from caramba.data import NpyDataset, build_token_dataset
+data import NpyDataset, build_token_dataset
 
 # Load dataset with block size for next-token prediction
 dataset = NpyDataset("fineweb_100m.npy", block_size=2048)
@@ -977,8 +1019,8 @@ python3 prepare_fineweb.py --tokens 100M --output fineweb_100m.npy
 Capture intermediate outputs during forward passes:
 
 ```python
-from caramba.model.trace import Trace
-from caramba.layer.attention import AttentionLayer
+model.trace import Trace
+layer.attention import AttentionLayer
 
 # Capture all attention layer outputs
 def is_attention(name: str, module) -> bool:
@@ -999,7 +1041,7 @@ for i, attn_out in enumerate(trace.outputs):
 Scale training to multiple GPUs with built-in distributed support:
 
 ```python
-from caramba.trainer import (
+trainer import (
     DistributedContext,
     DistributedConfig,
     DistributedStrategy,
@@ -1039,7 +1081,7 @@ dist_config = DistributedConfig(
 ### Distributed Utilities
 
 ```python
-from caramba.trainer.distributed import (
+trainer.distributed import (
     is_distributed,
     get_rank,
     get_world_size,
@@ -1048,6 +1090,264 @@ from caramba.trainer.distributed import (
 
 if is_main_process():
     print(f"Training on {get_world_size()} GPUs")
+```
+
+---
+
+## Optimizer Orchestration 🎛️
+
+The orchestrator enables **online algorithm selection** during training—dynamically switching between optimization strategies based on real-time telemetry. This is inspired by research on adaptive training, including SWATS, PID-controlled optimization, and population-based training.
+
+### Why Orchestration?
+
+Traditional training commits to a single optimizer configuration upfront. But different training phases benefit from different strategies:
+
+| Phase | Challenge | Best Strategy |
+|-------|-----------|---------------|
+| Early | High gradients, unstable | Conservative AdamW + aggressive clipping |
+| Mid | Plateaus, slow progress | Momentum boost, LR warmup |
+| Late | Overfitting, oscillation | SGD for better generalization |
+| Spike | Loss explosion | Safety rollback, reduced LR |
+
+The orchestrator monitors telemetry and switches strategies automatically.
+
+### Architecture
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                    ORCHESTRATOR                            │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │  Telemetry   │───▶│   Decision   │───▶│   Strategy   │  │
+│  │   Stream     │    │   Boundary   │    │   Switch     │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘  │
+│         │                   │                    │         │
+│         ▼                   ▼                    ▼         │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │    Spike     │    │     UCB      │    │  Speculative │  │
+│  │   Detector   │    │    Bandit    │    │   Branching  │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘  │
+│                                                            │
+│  Portfolio: [AdamW, SGD, SWATS, PIDAO, ...]                │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Quick Start
+
+Enable orchestration in your manifest:
+
+```yaml
+groups:
+  - name: my_experiment
+    runs:
+      - id: global_phase
+        mode: train
+        steps: 10000
+        train:
+          phase: global
+          lr: 0.0001
+          # Enable orchestration
+          orchestrator_enabled: true
+          orchestrator_decision_interval: 500
+          orchestrator_eval_horizon: 100
+          orchestrator_initial_strategy: conservative_adamw
+          orchestrator_use_adagc: true
+          orchestrator_use_nowcasting: false
+```
+
+### Strategy Bundles
+
+A strategy is a composable bundle of:
+
+| Component | Options |
+|-----------|---------|
+| **Optimizer** | AdamW, SGD, SWATS, PIDAO |
+| **Scheduler** | Cosine, Linear, Constant, None |
+| **Clipping** | Global norm, Per-param (AdaGC), None |
+| **Wrappers** | Gradient smoothing, Noise injection |
+
+Built-in strategies:
+
+```python
+from orchestrator import DEFAULT_PORTFOLIO
+
+# Available strategies:
+# - conservative_adamw: Safe defaults, moderate LR, global clipping
+# - aggressive_adamw: Higher LR, less clipping, faster convergence
+# - sgd_escape: SGD with momentum, for escaping sharp minima
+# - spike_resistant: Low LR, aggressive clipping, for unstable phases
+```
+
+### Telemetry & Decision Boundaries
+
+The orchestrator monitors:
+
+- **Loss EMA**: Smoothed loss trajectory
+- **Gradient Norm**: Update magnitude
+- **Spike Score**: Gradient variance vs. historical EMA
+- **Training Phase**: EARLY → WARMUP → MID → LATE → CONVERGING
+
+Decisions are triggered at boundaries:
+
+| Boundary | Trigger |
+|----------|---------|
+| `PERIODIC` | Every N steps (configurable) |
+| `SPIKE` | Gradient spike detected |
+| `PLATEAU` | Loss stagnant for M steps |
+| `PHASE_CHANGE` | Training phase transition |
+
+### SWATS: Adam → SGD Switching
+
+SWATS automatically switches from Adam to SGD when training stabilizes:
+
+```python
+from orchestrator import SWATS, SWATSConfig
+
+optimizer = SWATS(
+    model.parameters(),
+    config=SWATSConfig(
+        adam_lr=1e-3,
+        switch_threshold=1e-9,  # Variance threshold
+        min_steps_before_switch=1000,
+    ),
+)
+
+# Training loop
+for step, (x, y) in enumerate(dataloader):
+    loss = model(x, y)
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+
+    if optimizer.has_switched:
+        print(f"Switched to SGD at step {optimizer.switch_step}")
+```
+
+### PIDAO: PID-Controller Optimizer
+
+Treats optimization as a control problem:
+
+- **P (Proportional)**: Current gradient
+- **I (Integral)**: Accumulated momentum
+- **D (Derivative)**: Gradient change (damping)
+
+```python
+from orchestrator import PIDAO, PIDAOConfig
+
+optimizer = PIDAO(
+    model.parameters(),
+    config=PIDAOConfig(
+        kp=1.0,   # Proportional gain
+        ki=0.1,   # Integral gain
+        kd=0.01,  # Derivative gain
+        lr=1e-3,
+    ),
+)
+```
+
+### AdaGC: Adaptive Gradient Clipping
+
+Per-parameter clipping that adapts to each parameter's gradient distribution:
+
+```python
+from orchestrator import AdaGC
+
+# Wrap any optimizer
+adagc = AdaGC(
+    model,
+    warmup_steps=100,        # Steps before clipping activates
+    threshold_factor=3.0,    # Std devs above EMA to clip
+    ema_decay=0.99,
+)
+
+# In training loop
+adagc.clip_gradients()  # Call before optimizer.step()
+```
+
+### Weight Nowcasting (Experimental)
+
+Predict future weights to skip training steps:
+
+```python
+from orchestrator import WeightNowcaster, NowcastConfig
+
+nowcaster = WeightNowcaster(
+    model,
+    config=NowcastConfig(
+        horizon=50,          # Steps to forecast
+        history_size=20,     # History for prediction
+        nowcast_interval=100,
+    ),
+)
+
+for step in range(total_steps):
+    train_step()
+    nowcaster.record(step)
+
+    if nowcaster.should_nowcast(step):
+        skipped = nowcaster.nowcast()
+        step += skipped  # Jump ahead
+```
+
+### Programmatic Usage
+
+For full control, use `OrchestratedTrainer`:
+
+```python
+from trainer.orchestrated import OrchestratedTrainer, OrchestratedConfig
+
+trainer = OrchestratedTrainer(
+    model=model,
+    config=OrchestratedConfig(
+        decision_interval=500,
+        eval_horizon=100,
+        initial_strategy="conservative_adamw",
+        use_adagc=True,
+        use_amp=True,
+    ),
+    dataloader=train_loader,
+    probe_dataloader=val_loader,
+)
+
+for step in range(10000):
+    x, y = next(data_iter)
+    metrics = trainer.step(x, y)
+    # Orchestrator handles everything:
+    # - Telemetry monitoring
+    # - Strategy evaluation
+    # - Switching and rollback
+```
+
+### Configuration Reference
+
+Full configuration options in `config/orchestrator.py`:
+
+```python
+from config.orchestrator import OrchestratorConfig, OrchestratorMode
+
+config = OrchestratorConfig(
+    mode=OrchestratorMode.ACTIVE,  # disabled|monitor|active
+
+    # Decision boundaries
+    decision_interval=500,
+    min_steps_between_switches=200,
+    eval_horizon=100,
+    max_candidates_per_eval=3,
+
+    # Safety
+    max_loss_increase=1.5,
+    max_spikes_before_switch=3,
+    safety_strategy="spike_resistant",
+
+    # Stability wrappers
+    use_adagc=True,
+    adagc_warmup=100,
+
+    # Nowcasting (experimental)
+    use_nowcasting=False,
+    nowcast_horizon=50,
+)
 ```
 
 ---
@@ -1063,8 +1363,8 @@ When running on CUDA with Triton installed, caramba automatically uses fused ker
 - Choosing launch parameters via a lightweight tuning heuristic
 
 ```python
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
-from caramba.optimizer.fused_attention import fused_decode_available
+optimizer.triton_runtime import TRITON_AVAILABLE
+optimizer.fused_attention import fused_decode_available
 
 # Check if fused decode can be used
 if TRITON_AVAILABLE and fused_decode_available(cache, "cuda"):
@@ -1079,7 +1379,7 @@ if TRITON_AVAILABLE and fused_decode_available(cache, "cuda"):
 Rich-based logging with structured, beautiful console output:
 
 ```python
-from caramba.console import logger
+console import logger
 
 # Basic logging with semantic levels
 logger.info("Starting training...")
@@ -1214,6 +1514,15 @@ caramba/
 │   ├── kernels_decoupled.py  # DBA-specific kernels
 │   ├── quantizer.py          # Quantization utilities
 │   └── triton_runtime.py     # Triton availability check
+├── orchestrator/        # Dynamic optimizer orchestration
+│   ├── __init__.py           # Package exports
+│   ├── strategy.py           # Strategy abstraction + bundles
+│   ├── telemetry.py          # Training telemetry + spike detection
+│   ├── orchestrator.py       # Core orchestration + UCB bandit
+│   ├── wrappers.py           # AdaGC, gradient smoothing, noise
+│   ├── swats.py              # SWATS (Adam→SGD auto-switch)
+│   ├── pidao.py              # PID-controller optimizer
+│   └── nowcast.py            # Weight trajectory prediction
 ├── runtime/             # Runtime planning/persistence helpers
 │   └── plan.py          # RuntimePlan caching (dtype/amp/compile/batch)
 ├── topology/            # Topology implementations
@@ -1231,6 +1540,7 @@ caramba/
     ├── distill.py       # Distillation training
     ├── distributed.py   # DDP/FSDP support
     ├── fidelity.py      # Loss-based short-context quality gate
+    ├── orchestrated.py  # Orchestrated trainer with dynamic switching
     ├── scheduler.py     # LR scheduler utilities (linear/cosine/none)
     ├── trainer.py       # Base trainer
     └── upcycle.py       # Upcycle orchestration

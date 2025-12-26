@@ -5,8 +5,8 @@ import unittest
 
 import torch
 
-from caramba.config.layer import LayerType, LinearLayerConfig
-from caramba.layer.linear import LinearLayer
+from config.layer import LayerType, LinearLayerConfig
+from layer.linear import LinearLayer
 
 
 class LinearLayerTest(unittest.TestCase):

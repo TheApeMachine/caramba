@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from optimizer.triton_runtime import TRITON_AVAILABLE
 
 __all__ = [
     "kv_decode_update_decoupled_q4q8q4",

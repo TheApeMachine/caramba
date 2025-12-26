@@ -8,9 +8,9 @@ import unittest
 
 import torch
 
-from caramba.model.transformer import TransformerModel
-from caramba.config.topology import StackedTopologyConfig, NodeConfig
-from caramba.config.layer import (
+from model.transformer import TransformerModel
+from config.topology import StackedTopologyConfig, NodeConfig
+from config.layer import (
     LinearLayerConfig,
     LayerNormLayerConfig,
     DropoutLayerConfig,

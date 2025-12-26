@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from caramba.config.manifest import Manifest
+from config.manifest import Manifest
 
 
 @dataclass(frozen=True, slots=True)

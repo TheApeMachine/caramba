@@ -11,19 +11,85 @@ based on experiment manifests and results. It handles:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
-from agents import Agent, Runner
-from agents.tool import Tool
+from agents import Agent, Runner, RunHooks, RunContextWrapper, Tool
 
-from caramba.config.paper import PaperConfig, PaperSection
-from caramba.console import logger
-from caramba.paper.tools import ALL_TOOLS, PaperState, set_state
+from config.paper import PaperConfig, PaperSection
+from console import logger
+from paper.tools import ALL_TOOLS, PaperState, set_state
 
 if TYPE_CHECKING:
-    from caramba.config.manifest import Manifest
+    from config.manifest import Manifest
+
+
+# ============================================================================
+# Agent Logging Hooks
+# ============================================================================
+
+
+class AgentLoggingHooks(RunHooks[Any]):
+    """Hooks to log agent activity using the rich console logger."""
+
+    def __init__(self) -> None:
+        self._turn_count: int = 0
+
+    @override
+    async def on_agent_start(
+        self,
+        context: RunContextWrapper[Any],
+        agent: Agent[Any],
+    ) -> None:
+        """Called when the agent starts processing."""
+        logger.subheader(f"Agent started: {agent.name}")
+
+    @override
+    async def on_agent_end(
+        self,
+        context: RunContextWrapper[Any],
+        agent: Agent[Any],
+        output: Any,
+    ) -> None:
+        """Called when the agent finishes processing."""
+        _ = output  # Unused but required by interface
+        logger.success(f"Agent completed: {agent.name}")
+
+    @override
+    async def on_tool_start(
+        self,
+        context: RunContextWrapper[Any],
+        agent: Agent[Any],
+        tool: Tool,
+    ) -> None:
+        """Called before a tool is executed."""
+        logger.info(f"[highlight]Tool call:[/highlight] {tool.name}")
+
+    @override
+    async def on_tool_end(
+        self,
+        context: RunContextWrapper[Any],
+        agent: Agent[Any],
+        tool: Tool,
+        result: Any,
+    ) -> None:
+        """Called after a tool finishes executing."""
+        self._turn_count += 1
+        # Convert result to string for display, truncating if needed
+        result_str = str(result)
+        display_result = result_str[:200] + "..." if len(result_str) > 200 else result_str
+        logger.log(f"  [muted]→ Result:[/muted] {display_result}")
+
+    @override
+    async def on_handoff(
+        self,
+        context: RunContextWrapper[Any],
+        from_agent: Agent[Any],
+        to_agent: Agent[Any],
+    ) -> None:
+        """Called when control is handed off to another agent."""
+        _ = context  # Unused but required by interface
+        logger.info(f"[highlight]Handoff:[/highlight] {from_agent.name} → {to_agent.name}")
 
 
 # ============================================================================
@@ -36,9 +102,23 @@ SYSTEM_INSTRUCTIONS = """You are an expert academic paper writer specializing in
 
 You have tools to:
 1. Read and write LaTeX files (paper.tex, references.bib)
-2. Search academic databases (arXiv, Semantic Scholar) for citations
-3. Access experiment manifests and results
-4. Include figures and artifacts from experiments
+2. Search academic databases:
+   - **search_knowledge_base**: Search your LOCAL knowledge base of previously discovered papers (FASTEST, no rate limits)
+   - **search_arxiv**: Search arXiv for papers (rate limited)
+   - **search_semantic_scholar**: Search Semantic Scholar (strictly rate limited)
+3. Manage the knowledge base:
+   - **get_knowledge_store_stats**: Check how many papers you've cached
+   - **fetch_and_parse_paper**: Download and fully parse a paper's PDF for deep analysis
+4. Access experiment manifests and results
+5. Include figures and artifacts from experiments
+
+## IMPORTANT: Search Strategy
+
+To avoid rate limiting and work efficiently:
+1. **ALWAYS search the knowledge base FIRST** using search_knowledge_base()
+2. Only use external APIs (arXiv, Semantic Scholar) if you need NEW papers not in your cache
+3. All external search results are automatically cached for future use
+4. If you need the full text of a paper, use fetch_and_parse_paper() with the arXiv ID
 
 ## Paper Writing Guidelines
 
@@ -62,7 +142,7 @@ You have tools to:
 ### Citations
 - Always cite relevant prior work
 - Use \\cite{key} for inline citations
-- Search for citations before writing sections
+- Search your knowledge base first, then external sources
 - Prefer recent, high-quality papers from top venues
 
 ### Figures
@@ -80,16 +160,18 @@ You have tools to:
 1. First, check if a paper already exists (read_tex_file)
 2. If not, get the template and customize it (get_paper_template)
 3. Read the experiment manifest and results
-4. Search for relevant citations for the topic
-5. Write each section with appropriate content
-6. Include figures from experiment artifacts
-7. Ensure proper citations are added
+4. Check knowledge store stats to see what's cached
+5. Search knowledge base for relevant citations
+6. Search arXiv/Semantic Scholar ONLY for topics not in your cache
+7. Write each section with appropriate content
+8. Include figures from experiment artifacts
+9. Ensure proper citations are added
 
 When updating an existing paper:
 1. Read the current paper
 2. Get new experiment results
-3. Update relevant sections (use update_section)
-4. Add any new citations needed
+3. Search knowledge base for any new citations needed
+4. Update relevant sections (use update_section)
 5. Include new figures
 
 Always ensure the paper compiles correctly with proper LaTeX syntax."""
@@ -187,11 +269,12 @@ class PaperDrafter:
             task = self._build_create_prompt(experiment_results, artifacts)
             logger.info("Creating new paper draft...")
 
-        # Run the agent
+        # Run the agent with logging hooks
         logger.info(f"Running paper drafting agent with {self.config.model}...")
+        hooks = AgentLoggingHooks()
 
         try:
-            result = await Runner.run(self.agent, input=task)
+            result = await Runner.run(self.agent, input=task, hooks=hooks)
             logger.success("Paper drafting complete!")
 
             # Log the result summary

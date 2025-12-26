@@ -19,12 +19,12 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
-from caramba.layer.rope import RotaryEmbedding
+from config.layer import AttentionLayerConfig, AttentionMode
+from layer.rope import RotaryEmbedding
 
 if TYPE_CHECKING:
-    from caramba.cache.decoupled import DecoupledLayerKVCache
-    from caramba.cache.layer import LayerKVCache
+    from cache.decoupled import DecoupledLayerKVCache
+    from cache.layer import LayerKVCache
 
 # Lazy-cached reference to avoid per-call import overhead
 _InferContext: type | None = None
@@ -34,7 +34,7 @@ def _get_infer_context_type() -> type:
     """Get the InferContext type, caching it on first access."""
     global _InferContext
     if _InferContext is None:
-        from caramba.infer.context import InferContext
+        from infer.context import InferContext
 
         _InferContext = InferContext
     return _InferContext
@@ -664,7 +664,7 @@ class AttentionLayer(nn.Module):
                 and x.device.type == "cuda"
             ):
                 try:
-                    from caramba.optimizer.fused_attention import (
+                    from optimizer.fused_attention import (
                         fused_decode_available,
                         fused_decode_decoupled_q4q8q4,
                         fused_decode_decoupled_q4q8q4_2pass,

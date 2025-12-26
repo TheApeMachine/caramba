@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from caramba.cache.tensor import SeqCacheTensor
+from cache.tensor import SeqCacheTensor
 
 if TYPE_CHECKING:
-    from caramba.config.kvcache import KVCacheTensorConfig
+    from config.kvcache import KVCacheTensorConfig
 
 
 class DecoupledLayerKVCache:

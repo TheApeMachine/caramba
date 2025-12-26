@@ -19,9 +19,9 @@ from pydantic import BaseModel, Field
 from agents import function_tool
 
 if TYPE_CHECKING:
-    from caramba.paper.review import ReviewConfig
+    from paper.review import ReviewConfig
 
-from caramba.paper.tools import get_state
+from paper.tools import get_state
 
 
 # ============================================================================

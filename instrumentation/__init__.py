@@ -7,12 +7,12 @@ signals we print to console, but in machine-readable formats for analysis.
 
 from __future__ import annotations
 
-from caramba.instrumentation.hdf5_store import H5Store
-from caramba.instrumentation.analysis import generate_analysis_png
-from caramba.instrumentation.live_plotter import LivePlotter
-from caramba.instrumentation.run_logger import RunLogger
-from caramba.instrumentation.tensorboard_writer import TensorBoardWriter
-from caramba.instrumentation.wandb_writer import WandBWriter
+from instrumentation.hdf5_store import H5Store
+from instrumentation.analysis import generate_analysis_png
+from instrumentation.live_plotter import LivePlotter
+from instrumentation.run_logger import RunLogger
+from instrumentation.tensorboard_writer import TensorBoardWriter
+from instrumentation.wandb_writer import WandBWriter
 
 __all__ = [
     "H5Store",

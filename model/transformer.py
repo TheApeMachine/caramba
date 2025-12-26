@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from torch import Tensor, nn
 
-from caramba.compiler import Compiler
-from caramba.config.topology import TopologyConfig
+from compiler import Compiler
+from config.topology import TopologyConfig
 
 
 class TransformerModel(nn.Module):

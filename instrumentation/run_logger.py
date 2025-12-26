@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from caramba.instrumentation.hdf5_store import H5Store
-from caramba.instrumentation.utils import coerce_jsonable, dumps_json, now_s
+from instrumentation.hdf5_store import H5Store
+from instrumentation.utils import coerce_jsonable, dumps_json, now_s
 
 
 @dataclass(frozen=True, slots=True)

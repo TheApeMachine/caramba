@@ -11,7 +11,7 @@ import enum
 
 from pydantic import BaseModel
 
-from caramba.config import (
+from config import (
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
@@ -83,3 +83,12 @@ class TrainConfig(BaseModel):
     scheduler: str = "none"  # none|linear|cosine|constant
     warmup_steps: NonNegativeInt = 0
     min_lr_ratio: Probability = 0.0
+
+    # Orchestrator settings (dynamic optimizer switching)
+    orchestrator_enabled: bool = False
+    orchestrator_mode: str = "active"  # disabled|monitor|active
+    orchestrator_decision_interval: PositiveInt = 500
+    orchestrator_eval_horizon: PositiveInt = 100
+    orchestrator_initial_strategy: str = "conservative_adamw"
+    orchestrator_use_adagc: bool = True
+    orchestrator_use_nowcasting: bool = False

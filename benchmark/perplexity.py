@@ -15,8 +15,8 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
-from caramba.config.benchmark import PerplexityBenchmarkConfig
-from caramba.data.npy import NpyDataset
+from config.benchmark import PerplexityBenchmarkConfig
+from data.npy import NpyDataset
 
 
 @dataclass

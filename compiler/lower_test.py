@@ -7,9 +7,9 @@ import unittest
 import torch
 from typing import cast
 
-from caramba.compiler import Compiler
-from caramba.config.layer import LinearLayerConfig, LayerNormLayerConfig
-from caramba.config.topology import (
+from compiler import Compiler
+from config.layer import LinearLayerConfig, LayerNormLayerConfig
+from config.topology import (
     NestedTopologyConfig,
     SequentialTopologyConfig,
     StackedTopologyConfig,
