@@ -63,13 +63,13 @@ caramba includes a **dynamic optimizer orchestration system** that performs onli
 
 **Built-in components:**
 
-| Component | Description |
-|-----------|-------------|
-| **AdaGC** | Per-parameter adaptive gradient clipping (2025 paper) |
-| **SWATS** | Auto-switch Adam→SGD when training stabilizes |
-| **PIDAO** | PID-controller optimizer with interpretable gains |
-| **Weight Nowcasting** | Linear extrapolation to predict/skip training steps |
-| **Spike Detector** | EMA-based gradient spike detection |
+| Component             | Description                                           |
+|-----------------------|-------------------------------------------------------|
+| **AdaGC**             | Per-parameter adaptive gradient clipping (2025 paper) |
+| **SWATS**             | Auto-switch Adam→SGD when training stabilizes         |
+| **PIDAO**             | PID-controller optimizer with interpretable gains     |
+| **Weight Nowcasting** | Linear extrapolation to predict/skip training steps   |
+| **Spike Detector**    | EMA-based gradient spike detection                    |
 
 **Enable in manifest:**
 
@@ -86,26 +86,26 @@ See [Optimizer Orchestration](#optimizer-orchestration-) for full documentation.
 
 ## Module Map 🗺️
 
-| Layer         | Purpose                                         |
-|---------------|-------------------------------------------------|
-| `config/`     | Typed config models, preset manifests           |
-| `topology/`   | Graph nodes—stacked, residual, parallel, cyclic |
-| `layer/`      | Thin torch modules, one concept per file        |
-| `model/`      | Model building, embedders, trace utilities      |
-| `cache/`      | KV-cache with quantization support              |
-| `infer/`      | Generation loop with cache management           |
-| `loader/`     | Checkpoint readers, Llama upcycle logic         |
-| `trainer/`    | Orchestration—upcycle, blockwise distillation   |
-| `benchmark/`  | Perplexity, latency, memory measurement         |
-| `experiment/` | Unified pipeline orchestration                  |
-| `compiler/`   | Manifest → executable plan                      |
-| `eval/`       | Behavioral evaluation for teacher/student       |
-| `data/`       | Dataset utilities (`NpyDataset`, `.tokens` support, auto-loader) |
-| `runtime/`    | Runtime planning + activation/memory helpers    |
-| `instrumentation/` | JSONL/HDF5/TensorBoard/W&B/live plotting    |
-| `console/`    | Rich-based logging and progress bars            |
-| `optimizer/`  | Triton kernels, fused attention, quantization   |
-| `orchestrator/` | Dynamic optimizer switching, telemetry, SWATS, PIDAO |
+| Layer              | Purpose                                                          |
+|--------------------|------------------------------------------------------------------|
+| `config/`          | Typed config models, preset manifests                            |
+| `topology/`        | Graph nodes—stacked, residual, parallel, cyclic                  |
+| `layer/`           | Thin torch modules, one concept per file                         |
+| `model/`           | Model building, embedders, trace utilities                       |
+| `cache/`           | KV-cache with quantization support                               |
+| `infer/`           | Generation loop with cache management                            |
+| `loader/`          | Checkpoint readers, Llama upcycle logic                          |
+| `trainer/`         | Orchestration—upcycle, blockwise distillation                    |
+| `benchmark/`       | Perplexity, latency, memory measurement                          |
+| `experiment/`      | Unified pipeline orchestration                                   |
+| `compiler/`        | Manifest → executable plan                                       |
+| `eval/`            | Behavioral evaluation for teacher/student                        |
+| `data/`            | Dataset utilities (`NpyDataset`, `.tokens` support, auto-loader) |
+| `runtime/`         | Runtime planning + activation/memory helpers                     |
+| `instrumentation/` | JSONL/HDF5/TensorBoard/W&B/live plotting                         |
+| `console/`         | Rich-based logging and progress bars                             |
+| `optimizer/`       | Triton kernels, fused attention, quantization                    |
+| `orchestrator/`    | Dynamic optimizer switching, telemetry, SWATS, PIDAO             |
 
 ## Quick Start 🚀
 
@@ -310,19 +310,19 @@ paper:
 
 The paper drafting agent has access to:
 
-| Tool | Description |
-|------|-------------|
-| `read_tex_file` | Read the current paper.tex |
-| `write_tex_file` | Write the complete paper |
-| `update_section` | Update a specific section |
-| `add_citation` | Add a BibTeX entry |
-| `search_arxiv` | Search arXiv for papers |
-| `search_semantic_scholar` | Search Semantic Scholar |
-| `get_experiment_manifest` | Read the experiment config |
-| `get_experiment_results` | Get benchmark results |
-| `list_artifacts` | List generated figures/data |
-| `include_figure` | Generate LaTeX figure code |
-| `get_paper_template` | Get a LaTeX template |
+| Tool                      | Description                 |
+|---------------------------|-----------------------------|
+| `read_tex_file`           | Read the current paper.tex  |
+| `write_tex_file`          | Write the complete paper    |
+| `update_section`          | Update a specific section   |
+| `add_citation`            | Add a BibTeX entry          |
+| `search_arxiv`            | Search arXiv for papers     |
+| `search_semantic_scholar` | Search Semantic Scholar     |
+| `get_experiment_manifest` | Read the experiment config  |
+| `get_experiment_results`  | Get benchmark results       |
+| `list_artifacts`          | List generated figures/data |
+| `include_figure`          | Generate LaTeX figure code  |
+| `get_paper_template`      | Get a LaTeX template        |
 
 ### Output Structure
 
@@ -374,7 +374,6 @@ Beyond paper drafting, caramba includes a complete autonomous research system wi
 ┌───────────────────────────────────────────────────────────┐
 │                    AUTONOMOUS RESEARCH LOOP               │
 ├───────────────────────────────────────────────────────────┤
-│                                                           │
 │    ┌──────────┐    ┌──────────┐    ┌─────────────────┐    │
 │    │  Write   │───▶│  Review  │───▶│ Style fixes OR  │    │
 │    │  Paper   │    │  Paper   │    │ New experiments │    │
@@ -436,23 +435,23 @@ review:
 
 ### Reviewer Personas
 
-| Persona | Focus |
-|---------|-------|
-| `senior_researcher` | Novelty, significance, complete evaluation, clear presentation |
-| `methodology_expert` | Experimental design, statistical rigor, reproducibility, ablations |
-| `practitioner` | Practical applicability, efficiency claims, deployment considerations |
+| Persona              | Focus                                                                 |
+|----------------------|-----------------------------------------------------------------------|
+| `senior_researcher`  | Novelty, significance, complete evaluation, clear presentation        |
+| `methodology_expert` | Experimental design, statistical rigor, reproducibility, ablations    |
+| `practitioner`       | Practical applicability, efficiency claims, deployment considerations |
 
 ### Review Actions
 
 The reviewer can recommend different actions:
 
-| Action | Description |
-|--------|-------------|
-| `approve` | Paper is ready, no changes needed |
-| `style_fix` | Stylistic changes only, can be resolved with existing data |
-| `clarification` | Needs clarification, addressable without new experiments |
-| `new_experiment` | Requires new experiments to address gaps |
-| `major_revision` | Significant restructuring needed |
+| Action           | Description                                                |
+|------------------|------------------------------------------------------------|
+| `approve`        | Paper is ready, no changes needed                          |
+| `style_fix`      | Stylistic changes only, can be resolved with existing data |
+| `clarification`  | Needs clarification, addressable without new experiments   |
+| `new_experiment` | Requires new experiments to address gaps                   |
+| `major_revision` | Significant restructuring needed                           |
 
 ### Experiment Proposal
 
@@ -491,13 +490,13 @@ Configure the autonomous loop behavior:
 paper import ResearchLoop, ResearchLoopConfig
 
 loop_config = ResearchLoopConfig(
-    max_iterations=5,              # Maximum write-review-experiment cycles
-    max_experiments_per_iteration=2,  # Experiments per iteration
-    max_total_experiments=5,       # Total experiments allowed
-    min_score_to_approve=7.5,      # Minimum score for approval
-    auto_approve_score=9.0,        # Auto-approve above this score
-    auto_run_experiments=True,     # Automatically run proposed experiments
-    save_all_versions=True,        # Keep all paper versions
+    max_iterations=5,                # Maximum write-review-experiment cycles
+    max_experiments_per_iteration=2, # Experiments per iteration
+    max_total_experiments=5,         # Total experiments allowed
+    min_score_to_approve=7.5,        # Minimum score for approval
+    auto_approve_score=9.0,          # Auto-approve above this score
+    auto_run_experiments=True,       # Automatically run proposed experiments
+    save_all_versions=True,          # Keep all paper versions
 )
 
 loop = ResearchLoop(
@@ -532,16 +531,16 @@ artifacts/
 
 The reviewer agent has access to:
 
-| Tool | Description |
-|------|-------------|
-| `analyze_paper_structure` | Get section counts, word counts, figures, tables |
-| `check_experimental_claims` | Find claims that need supporting evidence |
-| `check_citation_coverage` | Verify citations for key topics |
-| `read_paper_section` | Read specific sections in detail |
-| `get_experiment_results_summary` | Review available experiment data |
-| `propose_experiment` | Formally propose a new experiment |
-| `generate_experiment_manifest` | Create runnable YAML manifest |
-| `submit_review` | Submit final review with score and recommendation |
+| Tool                             | Description                                       |
+|----------------------------------|---------------------------------------------------|
+| `analyze_paper_structure`        | Get section counts, word counts, figures, tables  |
+| `check_experimental_claims`      | Find claims that need supporting evidence         |
+| `check_citation_coverage`        | Verify citations for key topics                   |
+| `read_paper_section`             | Read specific sections in detail                  |
+| `get_experiment_results_summary` | Review available experiment data                  |
+| `propose_experiment`             | Formally propose a new experiment                 |
+| `generate_experiment_manifest`   | Create runnable YAML manifest                     |
+| `submit_review`                  | Submit final review with score and recommendation |
 
 ---
 
@@ -553,9 +552,8 @@ The research team agents now use a "think before you speak" approach, gathering 
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                 AGENT CONTEXT PIPELINE                      │
+│                 AGENT CONTEXT PIPELINE                     │
 ├────────────────────────────────────────────────────────────┤
-│                                                            │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
 │  │  Knowledge   │    │    Web       │    │   Reasoning  │  │
 │  │   Lookup     │───▶│   Search     │───▶│    Stage     │  │
@@ -600,11 +598,11 @@ result = await team.run_session(
 
 ### Configuration Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `knowledge_store_path` | Path to DeepLake vector store | `None` |
-| `enable_web_search` | Enable arXiv and Crawl4AI search | `True` |
-| `enable_reasoning` | Enable reasoning stage | `True` |
+| Option                 | Description                      | Default |
+|------------------------|----------------------------------|---------|
+| `knowledge_store_path` | Path to DeepLake vector store    | `None`  |
+| `enable_web_search`    | Enable arXiv and Crawl4AI search | `True`  |
+| `enable_reasoning`     | Enable reasoning stage           | `True`  |
 
 ### Installing Optional Dependencies
 
@@ -656,25 +654,24 @@ Now answer: {my_question}
 For the full system described in `internal/AI_AGENTS.md`, use both vector and graph storage:
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                    HYBRID STORAGE                           │
-├────────────────────────────────────────────────────────────┤
-│                                                            │
-│  ┌──────────────┐         ┌──────────────┐                 │
-│  │   DeepLake   │         │  FalkorDB +  │                 │
-│  │   (Vector)   │◄───────►│   Graphiti   │                 │
-│  │              │         │   (Graph)    │                 │
-│  └──────────────┘         └──────────────┘                 │
-│        │                        │                          │
-│        ▼                        ▼                          │
-│  ┌──────────────┐         ┌──────────────┐                 │
-│  │    Code      │         │  Entities:   │                 │
-│  │   Snippets   │         │  - Classes   │                 │
-│  │  + Summaries │         │  - Functions │                 │
-│  │  + Metadata  │         │  - Papers    │                 │
-│  └──────────────┘         │  - Ideas     │                 │
-│                           └──────────────┘                 │
-└────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│                HYBRID STORAGE               │
+├─────────────────────────────────────────────┤
+│  ┌──────────────┐         ┌──────────────┐  │
+│  │   DeepLake   │         │  FalkorDB +  │  │
+│  │   (Vector)   │◄───────►│   Graphiti   │  │
+│  │              │         │   (Graph)    │  │
+│  └──────────────┘         └──────────────┘  │
+│        │                        │           │
+│        ▼                        ▼           │
+│  ┌──────────────┐         ┌──────────────┐  │
+│  │    Code      │         │  Entities:   │  │
+│  │   Snippets   │         │  - Classes   │  │
+│  │  + Summaries │         │  - Functions │  │
+│  │  + Metadata  │         │  - Papers    │  │
+│  └──────────────┘         │  - Ideas     │  │
+│                           └──────────────┘  │
+└─────────────────────────────────────────────┘
 ```
 
 **Setup:**
@@ -704,13 +701,13 @@ docker run -p 6379:6379 -it --rm falkordb/falkordb
 
 **Graph Memory Features:**
 
-| Feature | Description |
-|---------|-------------|
-| **Entity Tracking** | Classes, functions, ideas, decisions as graph nodes |
-| **Relationships** | CALLS, INHERITS, PROPOSES, CRITIQUES edges |
-| **Temporal Awareness** | Track when ideas were proposed and by whom |
-| **Hybrid Search** | Semantic + keyword + graph distance reranking |
-| **Discussion Memory** | Store research discussions as episodes |
+| Feature                | Description                                         |
+|------------------------|-----------------------------------------------------|
+| **Entity Tracking**    | Classes, functions, ideas, decisions as graph nodes |
+| **Relationships**      | CALLS, INHERITS, PROPOSES, CRITIQUES edges          |
+| **Temporal Awareness** | Track when ideas were proposed and by whom          |
+| **Hybrid Search**      | Semantic + keyword + graph distance reranking       |
+| **Discussion Memory**  | Store research discussions as episodes              |
 
 **Sync Codebase Changes:**
 
@@ -733,15 +730,15 @@ print(f"Relationships: {sync._state.relationships_indexed}")
 
 Topologies define how layers are composed. Each topology is a graph node that can contain other topologies or layers.
 
-| Topology           | Description                                          |
-|--------------------|------------------------------------------------------|
-| `StackedTopology`  | Sequential layer execution                           |
-| `ResidualTopology` | Skip connection: `x + f(x)`                          |
-| `NestedTopology`   | Repeat layers N times (for transformer blocks)       |
-| `ParallelTopology` | Execute layers in parallel, stack outputs            |
-| `BranchingTopology`| Execute layers in parallel, concatenate outputs      |
-| `CyclicTopology`   | Cyclic layer execution                               |
-| `RecurrentTopology`| Recurrent execution with cache passthrough           |
+| Topology           | Description                                     |
+|--------------------|-------------------------------------------------|
+| `StackedTopology`  | Sequential layer execution                      |
+| `ResidualTopology` | Skip connection: `x + f(x)`                     |
+| `NestedTopology`   | Repeat layers N times (for transformer blocks)  |
+| `ParallelTopology` | Execute layers in parallel, stack outputs       |
+| `BranchingTopology`| Execute layers in parallel, concatenate outputs |
+| `CyclicTopology`   | Cyclic layer execution                          |
+| `RecurrentTopology`| Recurrent execution with cache passthrough      |
 
 ### Example: Transformer Block
 
@@ -779,15 +776,15 @@ topology:
 
 All layers are thin PyTorch modules, one concept per file.
 
-| Layer            | Description                                  |
-|------------------|----------------------------------------------|
-| `AttentionLayer` | Multi-head attention (standard, GQA, DBA)    |
-| `RMSNormLayer`   | Root Mean Square normalization               |
-| `LayerNormLayer` | Standard layer normalization                 |
-| `SwiGLULayer`    | SwiGLU feed-forward network                  |
-| `LinearLayer`    | Linear projection                            |
-| `DropoutLayer`   | Dropout regularization                       |
-| `RoPE`           | Rotary Position Embeddings                   |
+| Layer            | Description                               |
+|------------------|-------------------------------------------|
+| `AttentionLayer` | Multi-head attention (standard, GQA, DBA) |
+| `RMSNormLayer`   | Root Mean Square normalization            |
+| `LayerNormLayer` | Standard layer normalization              |
+| `SwiGLULayer`    | SwiGLU feed-forward network               |
+| `LinearLayer`    | Linear projection                         |
+| `DropoutLayer`   | Dropout regularization                    |
+| `RoPE`           | Rotary Position Embeddings                |
 
 ### Attention Modes
 
@@ -1297,12 +1294,12 @@ The orchestrator enables **online algorithm selection** during training—dynami
 
 Traditional training commits to a single optimizer configuration upfront. But different training phases benefit from different strategies:
 
-| Phase | Challenge | Best Strategy |
-|-------|-----------|---------------|
+| Phase | Challenge                | Best Strategy                            |
+|-------|--------------------------|------------------------------------------|
 | Early | High gradients, unstable | Conservative AdamW + aggressive clipping |
-| Mid | Plateaus, slow progress | Momentum boost, LR warmup |
-| Late | Overfitting, oscillation | SGD for better generalization |
-| Spike | Loss explosion | Safety rollback, reduced LR |
+| Mid   | Plateaus, slow progress  | Momentum boost, LR warmup                |
+| Late  | Overfitting, oscillation | SGD for better generalization            |
+| Spike | Loss explosion           | Safety rollback, reduced LR              |
 
 The orchestrator monitors telemetry and switches strategies automatically.
 
@@ -1312,7 +1309,6 @@ The orchestrator monitors telemetry and switches strategies automatically.
 ┌────────────────────────────────────────────────────────────┐
 │                    ORCHESTRATOR                            │
 ├────────────────────────────────────────────────────────────┤
-│                                                            │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
 │  │  Telemetry   │───▶│   Decision   │───▶│   Strategy   │  │
 │  │   Stream     │    │   Boundary   │    │   Switch     │  │
@@ -1355,12 +1351,12 @@ groups:
 
 A strategy is a composable bundle of:
 
-| Component | Options |
-|-----------|---------|
-| **Optimizer** | AdamW, SGD, SWATS, PIDAO |
-| **Scheduler** | Cosine, Linear, Constant, None |
-| **Clipping** | Global norm, Per-param (AdaGC), None |
-| **Wrappers** | Gradient smoothing, Noise injection |
+| Component     | Options                              |
+|---------------|--------------------------------------|
+| **Optimizer** | AdamW, SGD, SWATS, PIDAO             |
+| **Scheduler** | Cosine, Linear, Constant, None       |
+| **Clipping**  | Global norm, Per-param (AdaGC), None |
+| **Wrappers**  | Gradient smoothing, Noise injection  |
 
 Built-in strategies:
 
@@ -1385,12 +1381,12 @@ The orchestrator monitors:
 
 Decisions are triggered at boundaries:
 
-| Boundary | Trigger |
-|----------|---------|
-| `PERIODIC` | Every N steps (configurable) |
-| `SPIKE` | Gradient spike detected |
-| `PLATEAU` | Loss stagnant for M steps |
-| `PHASE_CHANGE` | Training phase transition |
+| Boundary       | Trigger                      |
+|----------------|------------------------------|
+| `PERIODIC`     | Every N steps (configurable) |
+| `SPIKE`        | Gradient spike detected      |
+| `PLATEAU`      | Loss stagnant for M steps    |
+| `PHASE_CHANGE` | Training phase transition    |
 
 ### SWATS: Adam → SGD Switching
 
@@ -1613,10 +1609,10 @@ logger.artifacts_summary({"model.pt": "/path/to/model.pt", "config.json": "/path
 
 <div align="center">
 
-| | |
-|:---:|:---:|
-| [High-level overview](caramba/high-level.png) | [Detailed architecture](caramba/architecture.png) |
-| [Llama-specific](caramba/llama-architecture.png) | [Preset manifests](caramba/config/presets/) |
+|                                                 |                                                  |
+|:-----------------------------------------------:|:------------------------------------------------:|
+| [High-level overview](assets/high-level.png)    | [Detailed architecture](assets/architecture.png) |
+| [Llama-specific](assets/llama-architecture.png) | [Preset manifests](assets/config/presets/)       |
 
 </div>
 
