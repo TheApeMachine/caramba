@@ -45,9 +45,24 @@ def coerce_jsonable(value: Any) -> Any:
             return None
         return float(value)
 
-    # Avoid importing torch/numpy: rely on duck-typing.
+    # Tensor-like objects: avoid `.item()` because it may trigger device sync (CUDA).
+    # We still keep numpy scalar support below, since numpy scalars don't have `.device`.
     try:
-        # numpy scalar: has item()
+        dev = getattr(value, "device", None)
+        if dev is not None:
+            shape = getattr(value, "shape", None)
+            dtype = getattr(value, "dtype", None)
+            return {
+                "_type": type(value).__name__,
+                "shape": list(shape) if shape is not None else None,
+                "device": str(dev),
+                "dtype": None if dtype is None else str(dtype),
+            }
+    except Exception:
+        pass
+
+    # Avoid importing torch/numpy: rely on duck-typing for numpy scalars.
+    try:
         item = getattr(value, "item", None)
         if callable(item):
             out = item()

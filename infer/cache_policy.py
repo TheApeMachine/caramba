@@ -102,8 +102,13 @@ def estimate_kvcache_bytes(
             sem_dim = int(cfg.sem_dim if cfg.sem_dim is not None else cfg.d_model)
             geo_dim = int(cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model)
             v_dim = int(cfg.v_dim)
+            sem_kind = kind
+            geo_kind = kind
+            v_kind = kind
+            if kind in (KVCacheKind.Q4_0, KVCacheKind.NF4):
+                geo_kind = KVCacheKind.Q8_0
             total += _bytes_per_cache_tensor(
-                kind=kind,
+                kind=sem_kind,
                 batch_size=batch_size,
                 max_seq_len=max_seq_len,
                 dim=sem_dim,
@@ -111,7 +116,7 @@ def estimate_kvcache_bytes(
                 residual_len=residual_len,
             )
             total += _bytes_per_cache_tensor(
-                kind=kind,
+                kind=geo_kind,
                 batch_size=batch_size,
                 max_seq_len=max_seq_len,
                 dim=geo_dim,
@@ -119,7 +124,7 @@ def estimate_kvcache_bytes(
                 residual_len=residual_len,
             )
             total += _bytes_per_cache_tensor(
-                kind=kind,
+                kind=v_kind,
                 batch_size=batch_size,
                 max_seq_len=max_seq_len,
                 dim=v_dim,
@@ -170,6 +175,15 @@ def _create_caches_for_kind(
             sem_dim = int(cfg.sem_dim if cfg.sem_dim is not None else cfg.d_model)
             geo_dim = int(cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model)
             v_dim = int(cfg.v_dim)
+            sem_cfg = tensor_cfg
+            geo_cfg = tensor_cfg
+            v_cfg = tensor_cfg
+            if kind in (KVCacheKind.Q4_0, KVCacheKind.NF4):
+                geo_cfg = KVCacheTensorConfig(
+                    kind=KVCacheKind.Q8_0,
+                    qblock=int(qblock),
+                    residual_len=int(residual_len),
+                )
             caches.append(
                 DecoupledLayerKVCache(
                     batch_size=batch_size,
@@ -177,9 +191,9 @@ def _create_caches_for_kind(
                     k_sem_dim=sem_dim,
                     k_geo_dim=geo_dim,
                     v_dim=v_dim,
-                    k_sem_cfg=tensor_cfg,
-                    k_geo_cfg=tensor_cfg,
-                    v_cfg=tensor_cfg,
+                    k_sem_cfg=sem_cfg,
+                    k_geo_cfg=geo_cfg,
+                    v_cfg=v_cfg,
                     device=device,
                 )
             )

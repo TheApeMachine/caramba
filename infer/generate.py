@@ -348,8 +348,26 @@ def create_caches(
             geo_dim = cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model
             v_dim = cfg.v_dim
 
-            tensor_cfg_i = KVCacheTensorConfig(
-                kind=kind_i,
+            # DBA supports heterogeneous storage: semantic/V can be more aggressively
+            # quantized than RoPE-heavy geometric keys.
+            sem_kind = kind_i
+            geo_kind = kind_i
+            v_kind = kind_i
+            if kind_i in (KVCacheKind.Q4_0, KVCacheKind.NF4):
+                geo_kind = KVCacheKind.Q8_0
+
+            k_sem_cfg_i = KVCacheTensorConfig(
+                kind=sem_kind,
+                qblock=cache_qblock,
+                residual_len=cache_residual_len,
+            )
+            k_geo_cfg_i = KVCacheTensorConfig(
+                kind=geo_kind,
+                qblock=cache_qblock,
+                residual_len=cache_residual_len,
+            )
+            v_cfg_i = KVCacheTensorConfig(
+                kind=v_kind,
                 qblock=cache_qblock,
                 residual_len=cache_residual_len,
             )
@@ -359,9 +377,9 @@ def create_caches(
                 k_sem_dim=sem_dim,
                 k_geo_dim=geo_dim,
                 v_dim=v_dim,
-                k_sem_cfg=tensor_cfg_i,
-                k_geo_cfg=tensor_cfg_i,
-                v_cfg=tensor_cfg_i,
+                k_sem_cfg=k_sem_cfg_i,
+                k_geo_cfg=k_geo_cfg_i,
+                v_cfg=v_cfg_i,
                 device=device,
             )
         else:

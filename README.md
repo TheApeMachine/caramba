@@ -2,11 +2,20 @@
 
 # caramba 🧪
 
-*A substrate for architecture research*
+*A generic substrate for architecture research and ML experimentation*
 
 > Architectures are graphs. Graphs are manifests. Running experiments should require nothing more than a YAML file.
 
-caramba delivers a frictionless research environment without compromise—explicit building blocks, strict validation, optimized execution. You don't need to care about the low-level details. Unless you want to.
+caramba delivers a frictionless research environment without compromise—explicit building blocks, strict validation, optimized execution. It is designed to be a widely usable platform for machine learning experimentation, moving beyond its initial focus on attention surgery to support a broad range of modern architectures.
+
+## Key Features 🚀
+
+- **Generic Layer Library**: Built-in support for Attention (Standard, GQA, DBA), Mixture of Experts (MoE), State Space Models (SSM/Mamba), GLU variants, and LoRA.
+- **Composable Topologies**: Define complex model structures (Residual, Parallel, Cyclic, Branching) via manifest files.
+- **Multi-Modal Foundation**: Flexible embedders for text (token-based) and vision (patch-based).
+- **Dual-Mode Training**: Support for both standard end-to-end training and advanced architecture upcycling (distillation-based conversion).
+- **Self-Optimization ⚡**: Automated runtime planning for batch sizes, mixed precision, and torch.compile.
+- **Autonomous Research Loop**: (Optional) AI-assisted paper drafting and automated iteration cycles.
 
 ## The Pipeline 🔄
 
@@ -209,9 +218,11 @@ Presets live in `caramba/config/presets/`:
 | Preset                      | Description                              |
 |-----------------------------|------------------------------------------|
 | `llama32_1b_dba.yml`        | Full Llama 3.2 1B → DBA upcycle          |
-| `llama32_1b_dba_paper.yml`  | DBA upcycle with AI paper drafting       |
-| `llama32_1b_dba_compare.yml`| Comparison experiment with verification  |
-| `llama32_1b_dba_eval.yml`   | Evaluation-focused experiment            |
+| `moe_transformer.yml`       | Transformer with Mixture of Experts (MoE)|
+| `mamba_ssm.yml`             | Mamba-style State Space Model (SSM)      |
+| `vit.yml`                   | Vision Transformer (ViT) for images      |
+| `lora_finetune.yml`         | Efficient fine-tuning with LoRA          |
+| `standard_transformer.yml`  | Baseline GPT-style transformer           |
 | `llama_block.yml`           | Single Llama block for testing           |
 | `dba.yml`                   | Minimal DBA configuration                |
 
@@ -531,6 +542,190 @@ The reviewer agent has access to:
 | `propose_experiment` | Formally propose a new experiment |
 | `generate_experiment_manifest` | Create runnable YAML manifest |
 | `submit_review` | Submit final review with score and recommendation |
+
+---
+
+## AI Research Team with Context Gathering 🧠
+
+The research team agents now use a "think before you speak" approach, gathering context from multiple sources before formulating their responses.
+
+### Architecture
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                 AGENT CONTEXT PIPELINE                      │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │  Knowledge   │    │    Web       │    │   Reasoning  │  │
+│  │   Lookup     │───▶│   Search     │───▶│    Stage     │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘  │
+│         │                   │                    │         │
+│         ▼                   ▼                    ▼         │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │  DeepLake +  │    │   Crawl4AI   │    │   Extended   │  │
+│  │   FalkorDB   │    │   + arXiv    │    │   Thinking   │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘  │
+│                                                            │
+│  Result: Enriched Context for Agent Response               │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Context Gathering Steps
+
+Before each expert response, the agent:
+
+1. **Knowledge Lookup** - Queries DeepLake vector store and/or FalkorDB graph for relevant codebase/research context
+2. **Web Search** - Searches arXiv for academic papers and optionally uses Crawl4AI for broader web content
+3. **Reasoning Stage** - Uses OpenAI's reasoning feature to synthesize gathered context
+4. **Response Generation** - Formulates response with full context awareness
+
+### Usage
+
+```python
+from paper import ResearchTeam
+
+team = ResearchTeam(
+    manifest_path="config/presets/my_experiment.yml",
+    # Enable context gathering
+    knowledge_store_path="./knowledge_store",  # Optional DeepLake path
+    enable_web_search=True,
+    enable_reasoning=True,
+)
+
+result = await team.run_session(
+    topic="How can we improve attention efficiency?"
+)
+```
+
+### Configuration Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `knowledge_store_path` | Path to DeepLake vector store | `None` |
+| `enable_web_search` | Enable arXiv and Crawl4AI search | `True` |
+| `enable_reasoning` | Enable reasoning stage | `True` |
+
+### Installing Optional Dependencies
+
+```bash
+# For web crawling (Crawl4AI)
+pip install crawl4ai
+
+# For knowledge graph (FalkorDB + Graphiti)
+pip install graphiti-core falkordb
+
+# For knowledge store (DeepLake)
+pip install deeplake docling transformers
+
+# Or install all agent dependencies
+pip install -e ".[agents]"
+```
+
+### Standalone Context Gatherer
+
+You can also use the context gatherer independently:
+
+```python
+from paper import ContextGatherer, create_context_gatherer
+
+# Create gatherer
+gatherer = create_context_gatherer(
+    knowledge_store_path="./my_store",
+    enable_web_search=True,
+    enable_reasoning=True,
+)
+
+# Gather context for a query
+context = await gatherer.gather(
+    query="How do transformers handle long sequences?",
+    agent_expertise=["attention", "efficiency"],
+    discussion_context="Recent discussion about KV-cache...",
+)
+
+# Use in your own prompts
+prompt = f"""
+{context.to_prompt()}
+
+Now answer: {my_question}
+"""
+```
+
+### Hybrid Storage: DeepLake + FalkorDB
+
+For the full system described in `internal/AI_AGENTS.md`, use both vector and graph storage:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                    HYBRID STORAGE                           │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│  ┌──────────────┐         ┌──────────────┐                 │
+│  │   DeepLake   │         │  FalkorDB +  │                 │
+│  │   (Vector)   │◄───────►│   Graphiti   │                 │
+│  │              │         │   (Graph)    │                 │
+│  └──────────────┘         └──────────────┘                 │
+│        │                        │                          │
+│        ▼                        ▼                          │
+│  ┌──────────────┐         ┌──────────────┐                 │
+│  │    Code      │         │  Entities:   │                 │
+│  │   Snippets   │         │  - Classes   │                 │
+│  │  + Summaries │         │  - Functions │                 │
+│  │  + Metadata  │         │  - Papers    │                 │
+│  └──────────────┘         │  - Ideas     │                 │
+│                           └──────────────┘                 │
+└────────────────────────────────────────────────────────────┘
+```
+
+**Setup:**
+
+```python
+from paper import create_full_context_system, GraphMemory, CodebaseSync
+
+# Create full context system (vector + graph)
+gatherer, graph_memory = await create_full_context_system(
+    knowledge_store_path="./knowledge_store",
+    falkordb_host="localhost",
+    falkordb_port=6379,
+)
+
+# Sync codebase to graph (Janitor Agent pattern)
+from paper import create_codebase_sync
+sync = create_codebase_sync(graph_memory)
+await sync.sync_directory("./src")
+```
+
+**FalkorDB Setup:**
+
+```bash
+# Run FalkorDB locally with Docker
+docker run -p 6379:6379 -it --rm falkordb/falkordb
+```
+
+**Graph Memory Features:**
+
+| Feature | Description |
+|---------|-------------|
+| **Entity Tracking** | Classes, functions, ideas, decisions as graph nodes |
+| **Relationships** | CALLS, INHERITS, PROPOSES, CRITIQUES edges |
+| **Temporal Awareness** | Track when ideas were proposed and by whom |
+| **Hybrid Search** | Semantic + keyword + graph distance reranking |
+| **Discussion Memory** | Store research discussions as episodes |
+
+**Sync Codebase Changes:**
+
+```python
+# Incremental sync (only changed files)
+await sync.sync_directory(
+    "./src",
+    include_patterns=["**/*.py"],
+    exclude_patterns=["**/__pycache__/**"],
+)
+
+# Check sync state
+print(f"Indexed: {sync._state.symbols_indexed} symbols")
+print(f"Relationships: {sync._state.relationships_indexed}")
+```
 
 ---
 
@@ -1267,27 +1462,25 @@ adagc.clip_gradients()  # Call before optimizer.step()
 
 ### Weight Nowcasting (Experimental)
 
-Predict future weights to skip training steps:
+Predict future weights to skip training steps (call `record()` *after* the real optimizer update and *before* gradients are cleared):
 
 ```python
 from orchestrator import WeightNowcaster, NowcastConfig
 
-nowcaster = WeightNowcaster(
-    model,
-    config=NowcastConfig(
-        horizon=50,          # Steps to forecast
-        history_size=20,     # History for prediction
-        nowcast_interval=100,
-    ),
-)
+opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
+nowcaster = WeightNowcaster(model, optimizer=opt, config=NowcastConfig())
 
 for step in range(total_steps):
-    train_step()
-    nowcaster.record(step)
+    opt.zero_grad(set_to_none=True)
+    loss = forward(...)
+    loss.backward()
+    opt.step()
+
+    nowcaster.record(step)  # after opt.step, before grads cleared
 
     if nowcaster.should_nowcast(step):
-        skipped = nowcaster.nowcast()
-        step += skipped  # Jump ahead
+        skipped = nowcaster.nowcast(step)
+        step += skipped
 ```
 
 ### Programmatic Usage
@@ -1523,6 +1716,16 @@ caramba/
 │   ├── swats.py              # SWATS (Adam→SGD auto-switch)
 │   ├── pidao.py              # PID-controller optimizer
 │   └── nowcast.py            # Weight trajectory prediction
+├── paper/               # AI-assisted paper drafting + research team
+│   ├── __init__.py           # Package exports
+│   ├── drafter.py            # Paper drafting agent
+│   ├── reviewer.py           # Paper review agent
+│   ├── research_loop.py      # Autonomous research loop
+│   ├── research_team.py      # Multi-agent research discussions
+│   ├── agent_context.py      # Context gathering pipeline
+│   ├── graph_memory.py       # FalkorDB + Graphiti integration
+│   ├── knowledge.py          # DeepLake knowledge store
+│   └── tools.py              # Agent tools (search, cite, etc.)
 ├── runtime/             # Runtime planning/persistence helpers
 │   └── plan.py          # RuntimePlan caching (dtype/amp/compile/batch)
 ├── topology/            # Topology implementations

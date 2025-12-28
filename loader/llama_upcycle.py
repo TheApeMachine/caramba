@@ -11,6 +11,7 @@ import torch
 from torch import Tensor, nn
 
 from config.layer import AttentionMode
+from carmath import randomized_svd
 from layer.attention import AttentionLayer
 from layer.linear import LinearLayer
 from layer.rms_norm import RMSNormLayer
@@ -149,7 +150,7 @@ class LlamaUpcycle:
         o_weight = self.state.get(self.state.key(attn_prefix, "o_proj", "weight"))
 
         if layer.mode == AttentionMode.DECOUPLED:
-            self._load_attention_dba(layer, q_weight, k_weight, v_weight, o_weight)
+            self._load_attention_dba(layer, attn_prefix, q_weight, k_weight, v_weight, o_weight)
         else:
             self._load_attention_standard(layer, q_weight, k_weight, v_weight, o_weight)
 
@@ -173,6 +174,7 @@ class LlamaUpcycle:
     def _load_attention_dba(
         self,
         layer: AttentionLayer,
+        attn_prefix: str,
         q_weight: Tensor,
         k_weight: Tensor,
         v_weight: Tensor,
@@ -219,6 +221,7 @@ class LlamaUpcycle:
             q_weight,
             sem_dim,
             geo_dim,
+            seed=f"{attn_prefix}.q",
         )
 
         # SVD decomposition for K
@@ -228,6 +231,7 @@ class LlamaUpcycle:
             k_weight,
             sem_dim,
             geo_dim,
+            seed=f"{attn_prefix}.k",
         )
 
         # Initialize gate to balanced (sigmoid(0) = 0.5)
@@ -241,6 +245,8 @@ class LlamaUpcycle:
         teacher_weight: Tensor,
         sem_dim: int,
         geo_dim: int,
+        *,
+        seed: str | None = None,
     ) -> None:
         """Split teacher projection into semantic and geometric using SVD.
 
@@ -248,59 +254,89 @@ class LlamaUpcycle:
         singular vectors (semantic) capture content routing patterns; the
         remaining vectors (geometric) capture positional structure.
         """
+        # We only need the leading sem_dim+geo_dim singular components (DBA bottleneck),
+        # and we only need the first sem_dim/geo_dim rows of the reconstructions.
+        # Use a randomized truncated SVD on the model device for speed.
+        dev = sem_weight.device
+        A = teacher_weight.to(device=dev, dtype=torch.float32)
+
+        target_rank = int(sem_dim) + int(geo_dim)
+        if target_rank <= 0:
+            return
+
+        # If the target rank is close to full rank, fall back to exact SVD.
+        full_rank = min(int(A.shape[0]), int(A.shape[1]))
+        use_exact = target_rank >= full_rank
+
         try:
-            U, S, Vh = torch.linalg.svd(teacher_weight.float(), full_matrices=False)
+            if use_exact:
+                U, S, Vh = torch.linalg.svd(A, full_matrices=False)
+            else:
+                U, S, Vh = randomized_svd(A, rank=target_rank, n_iter=2, oversample=8, seed=seed)
         except Exception as e:
             # Fallback to simple truncation if SVD fails
             if "CUDA out of memory" in str(e) or "OutOfMemoryError" in type(e).__name__:
-                torch.cuda.empty_cache()
-            sem_weight.data.copy_(teacher_weight[:sem_dim, :].to(sem_weight.dtype))
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            sem_weight.data.copy_(teacher_weight[:sem_dim, :].to(device=dev, dtype=sem_weight.dtype))
             geo_weight.data.copy_(
-                teacher_weight[sem_dim : sem_dim + geo_dim, :].to(geo_weight.dtype)
+                teacher_weight[sem_dim : sem_dim + geo_dim, :].to(device=dev, dtype=geo_weight.dtype)
             )
             return
 
-        rank = min(S.size(0), sem_dim + geo_dim)
-        sem_rank = min(sem_dim, rank)
-        geo_rank = min(geo_dim, max(0, rank - sem_dim))
+        rank = min(int(S.size(0)), target_rank)
+        sem_rank = min(int(sem_dim), rank)
+        geo_rank = min(int(geo_dim), max(0, rank - int(sem_dim)))
 
-        # Semantic: reconstruct from top singular vectors
+        # Semantic: first sem_rank components, but only first sem_dim rows.
         if sem_rank > 0:
-            sem_proj = U[:, :sem_rank] @ torch.diag(S[:sem_rank]) @ Vh[:sem_rank, :]
-            copy_rows = min(sem_dim, sem_proj.size(0))
-            sem_weight.data[:copy_rows, :].copy_(
-                sem_proj[:copy_rows, :].to(sem_weight.dtype)
-            )
+            u_rows = U[: int(sem_dim), :sem_rank]
+            sem = (u_rows * S[:sem_rank].view(1, -1)) @ Vh[:sem_rank, :]
+            sem_weight.data.copy_(sem.to(dtype=sem_weight.dtype))
 
-        # Geometric: reconstruct from next set of singular vectors
+        # Geometric: next geo_rank components, only first geo_dim rows.
         if geo_rank > 0:
             geo_start = sem_rank
             geo_end = sem_rank + geo_rank
-            geo_proj = (
-                U[:, geo_start:geo_end]
-                @ torch.diag(S[geo_start:geo_end])
-                @ Vh[geo_start:geo_end, :]
-            )
-            copy_rows = min(geo_dim, geo_proj.size(0))
-            geo_weight.data[:copy_rows, :].copy_(
-                geo_proj[:copy_rows, :].to(geo_weight.dtype)
-            )
+            u_rows = U[: int(geo_dim), geo_start:geo_end]
+            geo = (u_rows * S[geo_start:geo_end].view(1, -1)) @ Vh[geo_start:geo_end, :]
+            geo_weight.data.copy_(geo.to(dtype=geo_weight.dtype))
 
     def load_mlp(self, layer: nn.Module, layer_prefix: str) -> None:
-        """Load SwiGLU MLP weights (gate, up, down projections)."""
+        """Load SwiGLU MLP weights (gate, up, down projections).
+
+        Fuses the teacher's gate and up projections into the caramba model's
+        fused w_gate_up layer.
+        """
         if not isinstance(layer, SwiGLULayer):
             return
 
         mlp_prefix = self.state.key(layer_prefix, "mlp")
-        layer.w_gate.weight.data.copy_(
-            self.state.get(self.state.key(mlp_prefix, "gate_proj", "weight"))
-        )
-        layer.w_up.weight.data.copy_(
-            self.state.get(self.state.key(mlp_prefix, "up_proj", "weight"))
-        )
+
+        # Load gate and up projections from teacher
+        gate_weight = self.state.get(self.state.key(mlp_prefix, "gate_proj", "weight"))
+        up_weight = self.state.get(self.state.key(mlp_prefix, "up_proj", "weight"))
+
+        # Fuse them into w_gate_up
+        # gate_up weight is (2 * d_ff, d_model)
+        # We concatenate along the output dimension (dim 0 for linear weight)
+        fused_weight = torch.cat([gate_weight, up_weight], dim=0)
+        layer.w_gate_up.weight.data.copy_(fused_weight)
+
+        if layer.w_gate_up.bias is not None:
+            gate_bias = self.state.get(self.state.key(mlp_prefix, "gate_proj", "bias"))
+            up_bias = self.state.get(self.state.key(mlp_prefix, "up_proj", "bias"))
+            fused_bias = torch.cat([gate_bias, up_bias], dim=0)
+            layer.w_gate_up.bias.data.copy_(fused_bias)
+
+        # Load down projection
         layer.w_down.weight.data.copy_(
             self.state.get(self.state.key(mlp_prefix, "down_proj", "weight"))
         )
+        if layer.w_down.bias is not None:
+            layer.w_down.bias.data.copy_(
+                self.state.get(self.state.key(mlp_prefix, "down_proj", "bias"))
+            )
 
     def find_embedder(self) -> Embedder | None:
         """Find the model's embedder module."""

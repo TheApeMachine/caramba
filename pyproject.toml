@@ -24,38 +24,32 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "torch",
-    "numpy",
-    "tiktoken",
-    "datasets",
-    "tqdm",
-    "matplotlib",
-    "tensorboard",
-    "rich",
-    "h5py",
-    "wandb",
-    "pydantic",
-    "PyYAML",
-    "huggingface_hub",
-    "safetensors",
-    "tensordict",
-    "openai-agents",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest",
-]
-knowledge = [
-    "deeplake",
-    "docling",
-    "transformers",
-]
-all = [
-    "pytest",
-    "deeplake",
-    "docling",
-    "transformers",
+    "torch==2.9.1",
+    "numpy==2.4.0",
+    "tiktoken==0.12.0",
+    "datasets==4.4.2",
+    "tqdm==4.67.1",
+    "matplotlib==3.10.8",
+    "tensorboard==2.20.0",
+    "rich==14.2.0",
+    "h5py==3.15.1",
+    "wandb==0.23.1",
+    "pydantic==2.12.5",
+    "PyYAML==6.0.3",
+    "huggingface_hub>=0.25.0,<1.0",
+    "safetensors==0.7.0",
+    "tensordict==0.10.0",
+    "openai-agents==0.6.4",
+    "colbert-ai==0.2.22",
+    "deeplake==4.4.4",
+    "docling==2.66.0",
+    "transformers==4.57.3",
+    "graphiti-core==0.25.0",
+    "falkordb==1.4.0",
+    "crawl4ai==0.7.8",
+    "mcp[cli]==1.25.0",
+    "pytest==9.0.2",
+    "click==8.3.1"
 ]
 
 [project.scripts]
@@ -64,6 +58,7 @@ caramba = "caramba.__main__:main"
 [tool.setuptools]
 packages = [
     "caramba",
+    "caramba.agent",
     "caramba.benchmark",
     "caramba.cache",
     "caramba.compiler",
@@ -77,6 +72,7 @@ packages = [
     "caramba.layer",
     "caramba.loader",
     "caramba.model",
+    "carmath",
     "caramba.optimizer",
     "caramba.orchestrator",
     "caramba.paper",

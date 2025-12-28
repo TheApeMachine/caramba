@@ -37,9 +37,13 @@ class LayerType(str, enum.Enum):
     LAYER_NORM = "LayerNormLayer"
     RMS_NORM = "RMSNormLayer"
     LINEAR = "LinearLayer"
+    LORA_LINEAR = "LoRALinearLayer"
     DROPOUT = "DropoutLayer"
     ATTENTION = "AttentionLayer"
     SWIGLU = "SwiGLULayer"
+    GLU = "GLULayer"
+    MOE = "MoELayer"
+    SSM = "SSMLayer"
 
     @classmethod
     def from_str(cls, s: str) -> "LayerType":
@@ -49,7 +53,9 @@ class LayerType(str, enum.Enum):
     @staticmethod
     def module_name() -> str:
         """Return the Python module containing layer implementations."""
-        return "caramba.layer"
+        # Use top-level modules (e.g. `layer.attention`) to avoid importing the same
+        # files under both `caramba.layer.*` and `layer.*` in -m package execution.
+        return "layer"
 
 
 class LinearLayerConfig(Config):
@@ -58,6 +64,18 @@ class LinearLayerConfig(Config):
     type: Literal[LayerType.LINEAR] = LayerType.LINEAR
     d_in: PositiveInt
     d_out: PositiveInt
+    bias: bool = True
+
+
+class LoRALinearLayerConfig(Config):
+    """Configuration for a LoRA-enabled linear projection."""
+
+    type: Literal[LayerType.LORA_LINEAR] = LayerType.LORA_LINEAR
+    d_in: PositiveInt
+    d_out: PositiveInt
+    r: PositiveInt = 8
+    alpha: PositiveFloat = 16.0
+    dropout: Probability = 0.0
     bias: bool = True
 
 
@@ -181,13 +199,65 @@ class SwiGLULayerConfig(Config):
     bias: bool = True
 
 
+class GLULayerConfig(Config):
+    """Configuration for generic Gated Linear Unit (GLU)."""
+
+    type: Literal[LayerType.GLU] = LayerType.GLU
+    d_model: PositiveInt
+    d_ff: PositiveInt
+    activation: str = "silu"
+    bias: bool = True
+
+
+class MoELayerConfig(Config):
+    """Configuration for Mixture of Experts (MoE) layer."""
+
+    type: Literal[LayerType.MOE] = LayerType.MOE
+    d_model: PositiveInt
+    num_experts: PositiveInt = 8
+    top_k: PositiveInt = 2
+    d_ff: PositiveInt
+    bias: bool = True
+    gate_requires_grad: bool = True
+    up_requires_grad: bool = True
+    down_requires_grad: bool = True
+    load_balancing: bool = False
+    load_balancing_loss_weight: PositiveFloat = 1.0
+    load_balancing_loss_type: Literal["kl", "mse"] = "kl"
+    load_balancing_loss_temperature: PositiveFloat = 1.0
+    load_balancing_loss_temperature_schedule: Literal["linear", "cosine"] = "linear"
+    load_balancing_loss_temperature_schedule_params: dict[str, float] = Field(default_factory=dict)
+
+
+class SSMLayerConfig(Config):
+    """Configuration for State Space Model (SSM) layer."""
+
+    type: Literal[LayerType.SSM] = LayerType.SSM
+    d_model: PositiveInt
+    d_state: PositiveInt = 16
+    d_conv: PositiveInt = 4
+    expand: PositiveInt = 2
+    dt_rank: str | int = "auto"
+    dt_min: float = 0.001
+    dt_max: float = 0.1
+    dt_init: str = "random"
+    dt_scale: float = 1.0
+    dt_init_floor: float = 1e-4
+    bias: bool = False
+    conv_bias: bool = True
+
+
 # Union type for any layer config, with automatic deserialization
 LayerConfig: TypeAlias = Annotated[
     LinearLayerConfig
+    | LoRALinearLayerConfig
     | LayerNormLayerConfig
     | RMSNormLayerConfig
     | DropoutLayerConfig
     | AttentionLayerConfig
-    | SwiGLULayerConfig,
+    | SwiGLULayerConfig
+    | GLULayerConfig
+    | MoELayerConfig
+    | SSMLayerConfig,
     Field(discriminator="type"),
 ]

@@ -13,6 +13,10 @@ from torch import Tensor, nn
 from torch.utils.hooks import RemovableHandle
 
 
+class TraceStop(RuntimeError):
+    """Internal control-flow exception to stop a forward early during tracing."""
+
+
 class Trace:
     """Captures outputs from selected modules during forward passes.
 
@@ -38,6 +42,8 @@ class Trace:
         self._predicate = predicate
         self._handles: list[RemovableHandle] = []
         self.outputs: list[Tensor] = []
+        # If set, stop the forward after capturing this many outputs.
+        self.max_outputs: int | None = None
 
     def attach(self) -> None:
         """Register forward hooks on all matching modules.
@@ -94,6 +100,8 @@ class Trace:
                 first = output[0]
                 if isinstance(first, Tensor):
                     self.outputs.append(first)
+                    if self.max_outputs is not None and len(self.outputs) >= int(self.max_outputs):
+                        raise TraceStop(f"TraceStop after {self.max_outputs} outputs")
                     return
                 raise ValueError(
                     f"Trace expected Tensor as first tuple element from {name}, "
@@ -105,6 +113,8 @@ class Trace:
                     f"Trace expected Tensor output from {name}, got {type(output)!r}"
                 )
             self.outputs.append(output)
+            if self.max_outputs is not None and len(self.outputs) >= int(self.max_outputs):
+                raise TraceStop(f"TraceStop after {self.max_outputs} outputs")
 
         return _capture
 

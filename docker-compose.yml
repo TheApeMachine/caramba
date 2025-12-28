@@ -1,0 +1,70 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:latest
+    ports:
+      - "6379:6379"
+      - "3000:3000"
+    environment:
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - BROWSER=${BROWSER:-1}
+    volumes:
+      - falkordb_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  graphiti-mcp:
+    image: zepai/knowledge-graph-mcp:standalone
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    environment:
+      - FALKORDB_URI=${FALKORDB_URI:-redis://falkordb:6379}
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - FALKORDB_DATABASE=${FALKORDB_DATABASE:-main}
+      - GRAPHITI_GROUP_ID=${GRAPHITI_GROUP_ID:-main}
+      - SEMAPHORE_LIMIT=${SEMAPHORE_LIMIT:-10}
+      - CONFIG_PATH=/app/mcp/config/config.yaml
+      - PATH=/root/.local/bin:${PATH}
+      - MAX_REFLEXION_ITERATIONS=0
+    volumes:
+      - ./falkordb-config.yml:/app/mcp/config/config.yaml:ro
+    ports:
+      - "8000:8000"
+    command: ["uv", "run", "main.py"]
+
+  sympy-mcp:
+    image: ghcr.io/sdiehl/sympy-mcp:main
+    ports:
+      - "8081:8081"
+
+  paper-tool:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.paper-tool
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PAPER_PATH=${PAPER_PATH:-/app/artifacts}
+      - PATH=/root/.local/bin:${PATH}
+    volumes:
+      - ./artifacts:/app/artifacts
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  falkordb_data:
+    driver: local

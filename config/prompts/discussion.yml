@@ -1,0 +1,109 @@
+discussion:
+  name: "Discussion"
+  description: "A discussion process where agents take turns responding."
+
+  initial_prompt: |
+    You are facilitating a research discussion on the following topic:
+
+    **Topic:** {topic}
+
+    **Participants:** {participants}
+
+    Your role is to:
+    1. Introduce the topic and frame the discussion
+    2. Decide which participant should contribute next based on relevance
+    3. Ensure all perspectives are heard
+    4. Synthesize insights as the discussion progresses
+    5. Conclude when the discussion has reached a natural endpoint
+
+    Begin by introducing the topic and inviting the most relevant participant to share their initial thoughts.
+    You can hand off to any participant by mentioning their name or expertise.
+
+    Format your response as a message to the group, and indicate who should speak next
+    (or conclude if the discussion is complete).
+
+  instructions: |
+    Lead the discussion on the given topic. Take notes to keep track of points discussed,
+    and any other relevant information you need to keep track of so you can synthesize the discussion
+    later into a report.
+
+    <topic>
+    {topic}
+    </topic>
+
+    <notes>
+    {notes}
+    </notes>
+
+    <participants>
+    {participants}
+    </participants>
+
+  handoff_prompt: |
+    You are participating in a research discussion on:
+
+    **Topic:** {topic}
+
+    **Discussion So Far:**
+    {history}
+
+    **Team Leader's Message:**
+    {leader_message}
+
+    Please contribute your thoughts, expertise, or perspective on this topic.
+    Reference what others have said and build on the discussion.
+    Be specific and substantive in your response.
+
+  next_agent_prompt: |
+    Based on the discussion so far, decide which participant should contribute next.
+
+    **Topic:** {topic}
+
+    **Recent Discussion:**
+    {history}
+
+    **Available Participants:** {participants}
+
+    **Your Last Message:** {last_response}
+
+    Who should speak next? Respond with just the participant's name, or "conclude" if the discussion should end. Consider:
+    - Who hasn't spoken yet or needs to respond
+    - Which expertise is most relevant to the current point
+    - Whether we need to explore a different angle
+    - If the discussion has reached a natural conclusion
+
+  leader_followup_prompt: |
+    A participant has responded in the discussion:
+
+    **Topic:** {topic}
+
+    **Recent Discussion:**
+    {history}
+
+    **Participant's Response:**
+    {participant_response}
+
+    As the team leader, respond to this contribution. You can:
+    - Acknowledge the point and ask follow-up questions
+    - Invite another participant to respond or add perspective
+    - Synthesize what's been discussed so far
+    - Conclude if the discussion has reached a natural endpoint
+
+    Decide who should speak next (or conclude the discussion).
+
+  synthesis_prompt: |
+    Synthesize and conclude the discussion on:
+
+    **Topic:** {topic}
+
+    **Full Discussion:**
+    {history}
+
+    Provide a comprehensive summary that:
+    1. Highlights key insights and perspectives shared
+    2. Identifies areas of consensus and disagreement
+    3. Notes important questions or concerns raised
+    4. Suggests next steps or conclusions
+    5. Acknowledges all contributors
+
+    This will serve as the final record of the discussion.

@@ -38,6 +38,7 @@ from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
 from console import logger
+from carmath import autocast_dtype, global_grad_norm_l2
 from orchestrator import (
     DecisionBoundary,
     Orchestrator,
@@ -172,18 +173,7 @@ class OrchestratedTrainer:
 
     def _resolve_amp_dtype(self, amp_dtype: str) -> torch.dtype:
         """Resolve AMP dtype string."""
-        if amp_dtype == "auto":
-            if self.device.type == "cuda":
-                try:
-                    if hasattr(torch.cuda, "is_bf16_supported") and torch.cuda.is_bf16_supported():
-                        return torch.bfloat16
-                except Exception:
-                    pass
-                return torch.float16
-            return torch.bfloat16
-        elif amp_dtype == "bfloat16":
-            return torch.bfloat16
-        return torch.float16
+        return autocast_dtype(self.device, str(amp_dtype))
 
     def step(
         self,
@@ -265,12 +255,8 @@ class OrchestratedTrainer:
         return metrics
 
     def _compute_grad_norm(self) -> float:
-        """Compute global gradient norm."""
-        total_norm = 0.0
-        for p in self.model.parameters():
-            if p.grad is not None:
-                total_norm += p.grad.data.norm(2).item() ** 2
-        return total_norm ** 0.5
+        """Compute global gradient norm (low-sync)."""
+        return global_grad_norm_l2(self.model)
 
     def _handle_strategy_evaluation(self, reason: DecisionBoundary) -> None:
         """Handle strategy evaluation at decision boundary."""

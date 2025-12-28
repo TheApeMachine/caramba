@@ -19,6 +19,7 @@ class EmbedderType(str, enum.Enum):
 
     NONE = "none"
     TOKEN = "token"
+    PATCH = "patch"
 
 
 class _EmbedderConfigBase(BaseModel):
@@ -45,8 +46,22 @@ class TokenEmbedderConfig(_EmbedderConfigBase):
     d_model: PositiveInt
 
 
+class PatchEmbedderConfig(_EmbedderConfigBase):
+    """Config for image patch embedding (ViT-style).
+
+    Divides an image into non-overlapping patches and projects them
+    to d_model-dimensional vectors via a 2D convolution.
+    """
+
+    type: Literal[EmbedderType.PATCH] = EmbedderType.PATCH
+    img_size: PositiveInt = 224
+    patch_size: PositiveInt = 16
+    in_channels: PositiveInt = 3
+    d_model: PositiveInt
+
+
 # Union type for any embedder config
 EmbedderConfig: TypeAlias = Annotated[
-    NoEmbedderConfig | TokenEmbedderConfig,
+    NoEmbedderConfig | TokenEmbedderConfig | PatchEmbedderConfig,
     Field(discriminator="type"),
 ]

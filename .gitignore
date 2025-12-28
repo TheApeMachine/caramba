@@ -6,3 +6,12 @@ artifacts/
 internal/
 caramba.egg-info/
 WARP.md
+.env
+wandb/
+runs/
+.caramba/
+train.h5
+x.jsonl
+fineweb_100m.npy
+fineweb_100m.npy.meta
+train.h5

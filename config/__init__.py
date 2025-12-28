@@ -57,9 +57,26 @@ class Config(BaseModel):
         t = cast(_BuildType, getattr(self, "type"))
         class_name = t.value
         module_name = t.name.lower()
+        # Optional override: allow enums to define the backing Python module name.
+        # This keeps config values stable even if the implementation filename
+        # doesn't match the enum member name (e.g. JSONL -> run_logger).
+        py_module = getattr(t, "py_module", None)
+        if callable(py_module):
+            try:
+                module_name = str(py_module())
+            except Exception:
+                module_name = t.name.lower()
         mod = importlib.import_module(f"{t.module_name()}.{module_name}")
         cls = getattr(mod, class_name)
-        return cls(self)
+        # Two construction styles are supported across the codebase:
+        #  1) nn.Module(config): layers/topologies commonly accept the config object.
+        #  2) dataclass-style kwargs: instrumentation backends take concrete kwargs.
+        try:
+            return cls(self)
+        except TypeError:
+            payload = self.model_dump()
+            payload.pop("type", None)
+            return cls(**payload)
 
     @staticmethod
     def check(left: T, validation_type: ValidationType, right: T | None = None) -> T:

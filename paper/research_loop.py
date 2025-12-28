@@ -24,9 +24,29 @@ from typing import TYPE_CHECKING, Any
 from console import logger
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from config.manifest import Manifest
     from config.paper import PaperConfig
-    from paper.review import ReviewConfig, ReviewResult
+    from paper.review import ReviewConfig
+
+    class _RecommendationLike(Protocol):
+        value: str
+
+    class _ProposedExperimentLike(Protocol):
+        name: str
+        rationale: str
+
+    class ReviewResult(Protocol):
+        """Structural type for the reviewer output consumed by the loop."""
+
+        overall_score: float
+        recommendation: _RecommendationLike
+        summary: str
+        strengths: list[str]
+        weaknesses: list[str]
+        proposed_experiments: list[_ProposedExperimentLike]
+        style_fixes_only: bool
 
 
 class LoopAction(str, Enum):
@@ -243,42 +263,6 @@ class ResearchLoop:
                         message=f"Paper approved after style fixes (score {review.overall_score:.1f}/10)",
                     )
 
-                # Step 4: Handle needed changes
-                if review.needs_new_experiments:
-                    if self.total_experiments_run >= self.loop_config.max_total_experiments:
-                        logger.warning(
-                            f"Max experiments reached ({self.loop_config.max_total_experiments}). "
-                            "Stopping loop."
-                        )
-                        break
-
-                    # Run proposed experiments
-                    new_results, new_artifacts = await self._run_proposed_experiments(
-                        iteration=iteration,
-                        review=review,
-                        base_manifest=manifest,
-                    )
-
-                    # Merge results
-                    current_results = {**current_results, **new_results}
-                    current_artifacts = {**current_artifacts, **new_artifacts}
-
-                    self._record_iteration(
-                        iteration,
-                        LoopAction.RUN_EXPERIMENT,
-                        review_score=review.overall_score,
-                        experiments_proposed=len(review.proposed_experiments),
-                        experiments_run=len(new_results),
-                    )
-                else:
-                    # Just style fixes needed
-                    await self._prepare_style_fixes(iteration, review, paper_path)
-                    self._record_iteration(
-                        iteration,
-                        LoopAction.STYLE_FIX,
-                        review_score=review.overall_score,
-                    )
-
             except Exception as e:
                 logger.error(f"Error in iteration {iteration}: {e}")
                 self._record_iteration(
@@ -418,84 +402,6 @@ class ResearchLoop:
         )
 
         return review
-
-    async def _run_proposed_experiments(
-        self,
-        iteration: int,
-        review: "ReviewResult",
-        base_manifest: "Manifest | None",
-    ) -> tuple[dict[str, Any], dict[str, Path]]:
-        """Run experiments proposed by the reviewer."""
-        logger.step(3, 4, f"Running {len(review.proposed_experiments)} proposed experiments")
-
-        all_results: dict[str, Any] = {}
-        all_artifacts: dict[str, Path] = {}
-
-        # Limit experiments per iteration
-        experiments_to_run = review.proposed_experiments[
-            : self.loop_config.max_experiments_per_iteration
-        ]
-
-        for i, experiment in enumerate(experiments_to_run):
-            if self.total_experiments_run >= self.loop_config.max_total_experiments:
-                logger.warning("Max total experiments reached, skipping remaining")
-                break
-
-            logger.info(f"Running experiment {i+1}/{len(experiments_to_run)}: {experiment.name}")
-
-            # Check if manifest was generated
-            manifest_path = self.output_dir / f"proposed_{experiment.name.lower().replace(' ', '_')}.yml"
-
-            if manifest_path.exists():
-                try:
-                    results, artifacts = await self._run_single_experiment(
-                        manifest_path, experiment.name
-                    )
-                    all_results[experiment.name] = results
-                    all_artifacts.update(artifacts)
-                    self.total_experiments_run += 1
-                except Exception as e:
-                    logger.error(f"Experiment '{experiment.name}' failed: {e}")
-            else:
-                logger.warning(f"Manifest not found for '{experiment.name}', skipping")
-
-        return all_results, all_artifacts
-
-    async def _run_single_experiment(
-        self,
-        manifest_path: Path,
-        experiment_name: str,
-    ) -> tuple[dict[str, Any], dict[str, Path]]:
-        """Run a single experiment from its manifest."""
-        # Import here to avoid circular imports
-        from experiment.runner import run_experiment
-
-        logger.info(f"Executing experiment from {manifest_path}")
-
-        # Run the experiment in a thread to avoid blocking the event loop.
-        try:
-            artifacts = await asyncio.to_thread(run_experiment, manifest_path)
-
-            # Build results summary
-            results: dict[str, Any] = {
-                "experiment_name": experiment_name,
-                "manifest_path": str(manifest_path),
-                "artifacts": {name: str(path) for name, path in artifacts.items()},
-                "completed": True,
-            }
-
-            # Try to load report.json for metrics
-            for name, path in artifacts.items():
-                if name == "report.json" and path.exists():
-                    with open(path, encoding="utf-8") as f:
-                        report = json.load(f)
-                        results["metrics"] = report.get("summary", {})
-
-            return results, artifacts
-
-        except Exception as e:
-            logger.error(f"Experiment execution failed: {e}")
-            return {"error": str(e), "completed": False}, {}
 
     async def _prepare_style_fixes(
         self,

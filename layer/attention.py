@@ -13,7 +13,7 @@ enabling significant KV-cache compression.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 import torch.nn.functional as F
@@ -207,24 +207,36 @@ class AttentionLayer(nn.Module):
             k_remote = k_f
             v_remote = v_f
 
-        # Pool remote into blocks.
-        k_blocks: list[Tensor] = []
-        v_blocks: list[Tensor] = []
-        pos_blocks: list[int] = []
-        for i0 in range(0, remote_len, mb):
-            i1 = min(remote_len, i0 + mb)
-            k_b = k_remote[:, :, i0:i1, :].mean(dim=2, keepdim=False)
-            v_b = v_remote[:, :, i0:i1, :].mean(dim=2, keepdim=False)
-            if kind == "linear" and self.mem_k_proj is not None and self.mem_v_proj is not None:
-                k_b = cast(nn.Linear, self.mem_k_proj)(k_b)
-                v_b = cast(nn.Linear, self.mem_v_proj)(v_b)
-            k_blocks.append(k_b)
-            v_blocks.append(v_b)
-            pos_blocks.append(int(pos_remote[i1 - 1].item()))
+        # Pool remote into blocks (vectorized; avoid Python loops and `.item()` syncs).
+        B0, H0, _Tr, D0 = k_remote.shape
+        n_full = remote_len // mb
+        rem = remote_len - n_full * mb
 
-        k_mem = torch.stack(k_blocks, dim=2)  # (B,H,M,D)
-        v_mem = torch.stack(v_blocks, dim=2)
-        pos_mem = torch.tensor(pos_blocks, device=k.device, dtype=pos_remote.dtype)
+        if n_full > 0:
+            k_full = k_remote[:, :, : n_full * mb, :].reshape(B0, H0, n_full, mb, D0).mean(dim=3)
+            v_full = v_remote[:, :, : n_full * mb, :].reshape(B0, H0, n_full, mb, D0).mean(dim=3)
+            pos_full = pos_remote[(mb - 1) : (n_full * mb) : mb]
+        else:
+            # Construct empty tensors without calling `mean` on an empty dimension.
+            k_full = k_remote.new_empty((B0, H0, 0, D0))
+            v_full = v_remote.new_empty((B0, H0, 0, D0))
+            pos_full = pos_remote[:0]
+
+        if rem > 0:
+            k_tail = k_remote[:, :, n_full * mb : remote_len, :].mean(dim=2, keepdim=True)  # (B,H,1,D)
+            v_tail = v_remote[:, :, n_full * mb : remote_len, :].mean(dim=2, keepdim=True)
+            pos_tail = pos_remote[remote_len - 1 : remote_len]  # (1,)
+            k_mem = torch.cat([k_full, k_tail], dim=2)
+            v_mem = torch.cat([v_full, v_tail], dim=2)
+            pos_mem = torch.cat([pos_full, pos_tail], dim=0)
+        else:
+            k_mem = k_full
+            v_mem = v_full
+            pos_mem = pos_full
+
+        if kind == "linear" and self.mem_k_proj is not None and self.mem_v_proj is not None:
+            k_mem = cast(nn.Linear, self.mem_k_proj)(k_mem)
+            v_mem = cast(nn.Linear, self.mem_v_proj)(v_mem)
 
         k2 = torch.cat([k_mem, k_local], dim=2)
         v2 = torch.cat([v_mem, v_local], dim=2)
@@ -391,13 +403,15 @@ class AttentionLayer(nn.Module):
         local_window_override: int | None = None
         decode_block_override: int | None = None
         if ctx is not None and isinstance(ctx, InferContextType):
-            cache = ctx.next_cache()  # type: ignore[union-attr]
-            pos_offset = ctx.pos_offset  # type: ignore[union-attr]
-            if ctx.attn_mask is not None:  # type: ignore[union-attr]
-                mask = ctx.attn_mask  # type: ignore[union-attr]
-            q_chunk_override = getattr(ctx, "q_chunk", None)  # type: ignore[assignment]
-            local_window_override = getattr(ctx, "local_window", None)  # type: ignore[assignment]
-            decode_block_override = getattr(ctx, "decode_block", None)  # type: ignore[assignment]
+            # The linter can't refine `object` via isinstance() against a runtime-loaded type.
+            ictx = cast(Any, ctx)
+            cache = ictx.next_cache()
+            pos_offset = ictx.pos_offset
+            if ictx.attn_mask is not None:
+                mask = ictx.attn_mask
+            q_chunk_override = getattr(ictx, "q_chunk", None)
+            local_window_override = getattr(ictx, "local_window", None)
+            decode_block_override = getattr(ictx, "decode_block", None)
 
         if self.mode == AttentionMode.DECOUPLED:
             decoupled_cache = cast("DecoupledLayerKVCache | None", cache)
@@ -522,8 +536,9 @@ class AttentionLayer(nn.Module):
             q_pos_full = base_q + torch.arange(T, device=qh.device)
             k_pos_full = torch.arange(kT, device=qh.device)
         else:
-            q_pos_full = pos_offset + torch.arange(T, device=qh.device)
-            k_pos_full = pos_offset + torch.arange(kT, device=qh.device)
+            base_q = int(pos_offset)
+            q_pos_full = base_q + torch.arange(T, device=qh.device)
+            k_pos_full = int(pos_offset) + torch.arange(kT, device=qh.device)
 
         outs: list[Tensor] = []
         q_chunk = max(1, int(q_chunk))
@@ -538,8 +553,10 @@ class AttentionLayer(nn.Module):
             if local_window is not None:
                 w = int(local_window)
                 if w > 0:
-                    q_min = int(q_pos.min().item())
-                    q_max = int(q_pos.max().item())
+                    # q_pos is always a contiguous range derived from base_q, so we can avoid
+                    # device reductions + `.item()` syncs here.
+                    q_min = int(base_q + i0)
+                    q_max = int(base_q + i1 - 1)
                     if self.config.is_causal:
                         k0 = max(0, q_min - w + 1)
                         k1 = min(kT, q_max + 1)
@@ -803,6 +820,7 @@ class AttentionLayer(nn.Module):
             q_pos_full = base_q + torch.arange(T, device=qsh.device)
             k_pos_full = torch.arange(kT, device=qsh.device)
         else:
+            base_q = 0
             q_pos_full = torch.arange(T, device=qsh.device)
             k_pos_full = torch.arange(kT, device=qsh.device)
 
@@ -820,8 +838,9 @@ class AttentionLayer(nn.Module):
             if local_window is not None:
                 w = int(local_window)
                 if w > 0:
-                    q_min = int(q_pos.min().item())
-                    q_max = int(q_pos.max().item())
+                    # q_pos is a contiguous slice derived from base_q, so avoid reductions + `.item()`.
+                    q_min = int(base_q + i0)
+                    q_max = int(base_q + i1 - 1)
                     if self.config.is_causal:
                         k0 = max(0, q_min - w + 1)
                         k1 = min(kT, q_max + 1)
@@ -856,17 +875,21 @@ class AttentionLayer(nn.Module):
                 if lw > 0 and lw < Tgeo and mem_block_val is not None:
                     remote_len = max(0, Tgeo - lw)
                     mb = int(mem_block_val)
-                    blocks: list[Tensor] = []
-                    for j0 in range(0, remote_len, mb):
-                        j1 = min(remote_len, j0 + mb)
-                        blocks.append(k_slice_geo[:, :, j0:j1, :].mean(dim=2))
-                    if blocks:
-                        k_mem_geo = torch.stack(blocks, dim=2)
-                        k_local_geo = k_slice_geo[:, :, remote_len:, :]
-                        k_slice_geo = torch.cat([k_mem_geo, k_local_geo], dim=2)
+                    remote = k_slice_geo[:, :, :remote_len, :]
+                    local = k_slice_geo[:, :, remote_len:, :]
+                    B0, H0, _Tr, D0 = remote.shape
+                    n_full = remote_len // mb
+                    rem = remote_len - n_full * mb
+                    if n_full > 0:
+                        k_full = remote[:, :, : n_full * mb, :].reshape(B0, H0, n_full, mb, D0).mean(dim=3)
                     else:
-                        # No blocks to stack; use local portion only.
-                        k_slice_geo = k_slice_geo[:, :, remote_len:, :]
+                        k_full = remote.new_empty((B0, H0, 0, D0))
+                    if rem > 0:
+                        k_tail = remote[:, :, n_full * mb : remote_len, :].mean(dim=2, keepdim=True)
+                        k_mem_geo = torch.cat([k_full, k_tail], dim=2)
+                    else:
+                        k_mem_geo = k_full
+                    k_slice_geo = torch.cat([k_mem_geo, local], dim=2)
 
             sem_scores = torch.matmul(q_slice_sem, k_slice_sem.transpose(-2, -1)) * sem_scale
             geo_scores = torch.matmul(q_slice_geo, k_slice_geo.transpose(-2, -1)) * geo_scale

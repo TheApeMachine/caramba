@@ -54,7 +54,9 @@ class ModelType(str, enum.Enum):
     @staticmethod
     def module_name() -> str:
         """Return the Python module containing model implementations."""
-        return "caramba.model"
+        # Use top-level modules (e.g. `model.transformer`) to avoid duplicate imports
+        # under both `caramba.model.*` and `model.*`.
+        return "model"
 
 
 class ModelConfig(Config):

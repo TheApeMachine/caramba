@@ -60,6 +60,7 @@ class LatencyBenchmarkConfig(BaseModel):
     warmup_runs: PositiveInt = 3
     timed_runs: PositiveInt = 10
     use_cache: bool = True
+    cache_kind: str = "fp16"
 
 
 class MemoryBenchmarkConfig(BaseModel):

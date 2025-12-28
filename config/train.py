@@ -21,14 +21,16 @@ from config import (
 
 
 class TrainPhase(str, enum.Enum):
-    """Which phase of upcycling training to run.
+    """Which phase of training to run.
 
     BLOCKWISE trains each attention layer individually to match the teacher.
-    GLOBAL fine-tunes the whole model on next-token prediction.
+    GLOBAL fine-tune/train the whole model.
+    STANDARD standard end-to-end training (non-upcycling).
     """
 
     BLOCKWISE = "blockwise"
     GLOBAL = "global"
+    STANDARD = "standard"
 
 
 class TrainConfig(BaseModel):

@@ -239,6 +239,7 @@ class LatencyBenchmark:
             max_new_tokens=gen_len,
             temperature=0.0,
             max_seq_len=prompt_len + gen_len + 1,
+            cache_kind=str(getattr(self.config, "cache_kind", "fp16")),
         )
 
         # Warmup

@@ -14,7 +14,7 @@ import torch
 from torch import Tensor, nn
 from torch.optim import Optimizer
 
-from model.trace import Trace
+from model.trace import Trace, TraceStop
 from trainer.distill import DistillLoss
 
 
@@ -76,7 +76,7 @@ class TeacherOutputCache:
         )
         return hash(key_parts)
 
-    def get(self, x: Tensor) -> list[Tensor] | None:
+    def get(self, x: Tensor, *, upto: int | None = None) -> list[Tensor] | None:
         """Retrieve cached outputs for an input tensor.
 
         Returns None on cache miss. On hit, updates the LRU order.
@@ -85,7 +85,15 @@ class TeacherOutputCache:
         if key in self._cache:
             self._access_order.remove(key)
             self._access_order.append(key)
-            return self._cache[key]
+            outs = self._cache[key]
+            if upto is None:
+                return outs
+            u = int(upto)
+            if u <= 0:
+                return []
+            if len(outs) >= u:
+                return outs[:u]
+            return None
         return None
 
     def put(self, x: Tensor, outputs: list[Tensor]) -> None:
@@ -100,7 +108,10 @@ class TeacherOutputCache:
             oldest_key = self._access_order.pop(0)
             del self._cache[oldest_key]
 
-        self._cache[key] = [o.detach().clone() for o in outputs]
+        existing = self._cache.get(key)
+        if existing is None or len(outputs) > len(existing):
+            # Store the most complete prefix we have for this input.
+            self._cache[key] = [o.detach().clone() for o in outputs]
         if key not in self._access_order:
             self._access_order.append(key)
 
@@ -169,6 +180,7 @@ class BlockwiseTrainer:
 
         self._accumulation_count = 0
         self._device_type = self._detect_device_type()
+        self._active_block_index: int | None = None
 
     def _detect_device_type(self) -> str:
         """Determine which device the model is on for autocast compatibility.
@@ -209,8 +221,9 @@ class BlockwiseTrainer:
         """
         self._set_block_trainable(block_index)
 
-        t_outputs = self._get_teacher_outputs(x)
-        s_outputs = self._get_student_outputs(x)
+        upto = int(block_index) + 1 if bool(self.config.use_truncated_forward) else None
+        t_outputs = self._get_teacher_outputs(x, upto=upto)
+        s_outputs = self._get_student_outputs(x, upto=upto)
 
         t_out = self._select_output(t_outputs, block_index, kind="teacher")
         s_out = self._select_output(s_outputs, block_index, kind="student")
@@ -245,35 +258,41 @@ class BlockwiseTrainer:
 
         return (loss * self.config.accumulation_steps).detach()
 
-    def _get_teacher_outputs(self, x: Tensor) -> list[Tensor]:
+    def _get_teacher_outputs(self, x: Tensor, *, upto: int | None) -> list[Tensor]:
         """Get teacher block outputs, using cache when possible.
 
         Since the teacher is frozen, caching avoids redundant forward passes
         when training multiple blocks on the same batch.
         """
         if self._teacher_cache is not None:
-            cached = self._teacher_cache.get(x)
+            cached = self._teacher_cache.get(x, upto=upto)
             if cached is not None:
                 return cached
 
         self._teacher_trace.clear()
-        with torch.no_grad():
+        self._teacher_trace.max_outputs = upto
+        with torch.inference_mode():
             with self._teacher_trace:
-                _ = self.teacher(x)
+                try:
+                    _ = self.teacher(x)
+                except TraceStop:
+                    pass
 
         outputs = list(self._teacher_trace.outputs)
+        self._teacher_trace.max_outputs = None
 
         if self._teacher_cache is not None:
             self._teacher_cache.put(x, outputs)
 
         return outputs
 
-    def _get_student_outputs(self, x: Tensor) -> list[Tensor]:
+    def _get_student_outputs(self, x: Tensor, *, upto: int | None) -> list[Tensor]:
         """Get student block outputs with gradient tracking.
 
         Unlike teacher outputs, these need gradients for backpropagation.
         """
         self._student_trace.clear()
+        self._student_trace.max_outputs = upto
 
         if self.config.use_amp and self._device_type in ("cuda", "mps"):
             with torch.autocast(
@@ -281,12 +300,20 @@ class BlockwiseTrainer:
                 dtype=self.config.amp_dtype,
             ):
                 with self._student_trace:
-                    _ = self.student(x)
+                    try:
+                        _ = self.student(x)
+                    except TraceStop:
+                        pass
         else:
             with self._student_trace:
-                _ = self.student(x)
+                try:
+                    _ = self.student(x)
+                except TraceStop:
+                    pass
 
-        return list(self._student_trace.outputs)
+        outputs = list(self._student_trace.outputs)
+        self._student_trace.max_outputs = None
+        return outputs
 
     def _collect_blocks(self, model: nn.Module) -> list[nn.Module]:
         """Find all modules in the model that match the predicate.
@@ -311,12 +338,17 @@ class BlockwiseTrainer:
                 f"0..{len(self._student_blocks) - 1}"
             )
 
+        if self._active_block_index == int(block_index):
+            return
+
         for param in self.student.parameters():
             param.requires_grad = False
 
         block = self._student_blocks[block_index]
         for param in block.parameters():
             param.requires_grad = True
+
+        self._active_block_index = int(block_index)
 
     def _select_output(
         self,

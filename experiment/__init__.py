@@ -11,5 +11,13 @@ This is the main entry point for running experiments end-to-end.
 from __future__ import annotations
 
 from experiment.runner import ExperimentRunner
+from experiment.group import ExperimentGroup
+from experiment.benchmarks import ExperimentBenchmarks
+from experiment.results import ExperimentResults
 
-__all__ = ["ExperimentRunner"]
+__all__ = [
+    "ExperimentRunner",
+    "ExperimentGroup",
+    "ExperimentBenchmarks",
+    "ExperimentResults",
+]

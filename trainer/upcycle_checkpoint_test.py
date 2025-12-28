@@ -2,28 +2,25 @@ from __future__ import annotations
 
 import pytest
 
-from trainer.upcycle import Upcycle
+from trainer.checkpointers.default import DefaultCheckPointer
 
 
 def test_validate_checkpoint_state_rejects_missing_keys() -> None:
     bad: dict[str, object] = {"run_id": "r", "phase": "global", "step": 1}
     with pytest.raises(ValueError):
-        Upcycle._validate_checkpoint_state(bad)
+        DefaultCheckPointer._validate(bad)
 
 
 def test_validate_checkpoint_state_accepts_valid_state() -> None:
     """Test that a complete, valid checkpoint state dict is accepted."""
-    # Construct a dict with all required keys expected by the validator.
-    # The validator expects "student_state_dict" (not "model_state_dict").
     valid_state: dict[str, object] = {
         "run_id": "test_run",
         "phase": "global",
         "step": 100,
         "student_state_dict": {},
     }
-    # Should not raise; if it does, the test fails.
     try:
-        Upcycle._validate_checkpoint_state(valid_state)
+        DefaultCheckPointer._validate(valid_state)
     except ValueError as e:
         pytest.fail(f"Valid state should be accepted, but got ValueError: {e}")
 

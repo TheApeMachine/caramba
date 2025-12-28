@@ -9,7 +9,11 @@ from __future__ import annotations
 import importlib.util
 from typing import TYPE_CHECKING
 
-__all__ = ["TRITON_AVAILABLE", "triton_decoupled_q4q8q4_available"]
+__all__ = [
+    "TRITON_AVAILABLE",
+    "triton_decoupled_q4q8q4_available",
+    "triton_ssm_available",
+]
 
 
 # At type-check time, force this off so Triton-only code stays behind guards
@@ -27,4 +31,9 @@ TRITON_AVAILABLE: bool = (
 
 def triton_decoupled_q4q8q4_available() -> bool:
     """Check if fused decoupled q4/q8/q4 decode kernels can be used."""
+    return bool(TRITON_AVAILABLE)
+
+
+def triton_ssm_available() -> bool:
+    """Check if fused SSM kernels can be used."""
     return bool(TRITON_AVAILABLE)

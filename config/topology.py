@@ -36,7 +36,9 @@ class TopologyType(str, enum.Enum):
     @staticmethod
     def module_name() -> str:
         """Return the Python module containing topology implementations."""
-        return "caramba.topology"
+        # Use top-level modules (e.g. `topology.stacked`) to avoid duplicate imports
+        # under both `caramba.topology.*` and `topology.*`.
+        return "topology"
 
 
 class NestedTopologyConfig(Config):

@@ -80,12 +80,15 @@ class Model(nn.Module):
         self,
         x: Tensor,
         *,
+        ctx: object | None = None,
         return_features: bool = False,
     ) -> Tensor | tuple[Tensor, Tensor]:
         """Run the full model: embed → transform → project to vocab.
 
         Args:
             x: Token IDs, shape (B, T)
+            ctx: Optional inference context (e.g. KV-cache) passed through
+                 to topology/layers during generation.
             return_features: If True, also return pre-logit hidden states
                             (needed for diffusion head training)
 
@@ -93,7 +96,7 @@ class Model(nn.Module):
             Logits (B, T, vocab_size), or (features, logits) if return_features=True
         """
         x = self.embedder(x)
-        features = self.topology(x)
+        features = self.topology(x, ctx=ctx)  # type: ignore[call-arg]
 
         if return_features:
             logits = self._features_to_logits(features)
