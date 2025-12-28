@@ -11,6 +11,11 @@ install-all:
 test:
 	. .venv/bin/activate && python3.12 -m pytest -q
 
+coverage:
+	. .venv/bin/activate \
+	&& coverage run --source=. -m pytest \
+	&& coverage report -m --ignore-errors
+
 paper:
 	. .venv/bin/activate \
 	&& python3.12 -m caramba run config/presets/llama32_1b_dba_paper.yml

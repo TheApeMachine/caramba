@@ -100,3 +100,18 @@ pythonVersion = "3.12"
 typeCheckingMode = "basic"
 reportMissingImports = "warning"
 reportMissingTypeStubs = "none"
+
+[tool.coverage.run]
+# Torch / dynamo / compile can create ephemeral Python modules in temp dirs that
+# disappear before reporting. Those should not fail coverage reporting.
+omit = [
+    "/private/var/folders/*",
+    "/var/folders/*",
+    "/tmp/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+ignore_errors = true
+show_missing = true
+skip_covered = false
