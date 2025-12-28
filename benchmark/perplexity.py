@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import torch
 import torch.nn.functional as F
@@ -17,6 +18,7 @@ from torch.utils.data import DataLoader
 
 from config.benchmark import PerplexityBenchmarkConfig
 from data.npy import NpyDataset
+from runtime.tensordict_utils import TensorDictBase, collate_tensordict
 
 
 @dataclass
@@ -45,9 +47,9 @@ class PerplexityBenchmark:
         self.config = config
         self.device = device
         self._dataset: NpyDataset | None = None
-        self._loader: DataLoader[tuple[Tensor, Tensor]] | None = None
+        self._loader: DataLoader[TensorDictBase] | None = None
 
-    def _get_loader(self) -> DataLoader[tuple[Tensor, Tensor]]:
+    def _get_loader(self) -> DataLoader[TensorDictBase]:
         """Lazily initialize and cache the dataset and dataloader."""
         if self._dataset is None:
             self._dataset = NpyDataset(
@@ -59,6 +61,7 @@ class PerplexityBenchmark:
                 batch_size=self.config.batch_size,
                 shuffle=False,
                 drop_last=True,
+                collate_fn=collate_tensordict,
             )
         return self._loader
 
@@ -76,9 +79,9 @@ class PerplexityBenchmark:
         num_batches = 0
 
         with torch.no_grad():
-            for x, y in loader:
-                x = x.to(self.device)
-                y = y.to(self.device)
+            for batch in loader:
+                x = cast(Tensor, batch["input_ids"]).to(self.device)
+                y = cast(Tensor, batch["target_ids"]).to(self.device)
 
                 logits = model(x)
 

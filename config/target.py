@@ -46,14 +46,19 @@ class ExperimentTargetConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_known_components(self) -> "ExperimentTargetConfig":
         # Validate built-in system types early for good errors.
-        if self.system.ref == "system.language_model":
+        if self.system.ref in ("system.language_model", "system.generic"):
             model_payload = self.system.config.get("model", None)
             if not isinstance(model_payload, dict):
                 raise ValueError(
-                    "system.language_model requires system.config.model to be a dict"
+                    f"{self.system.ref} requires system.config.model to be a dict"
                 )
             # Strict parse: will raise ValidationError for unknown/extra fields.
             _ = ModelConfig.model_validate(model_payload)
+
+        if self.system.ref == "system.graph":
+            topo_payload = self.system.config.get("topology", None)
+            if not isinstance(topo_payload, dict):
+                raise ValueError("system.graph requires system.config.topology to be a dict")
 
         # Validate built-in dataset type shape.
         if self.data.ref == "dataset.tokens":

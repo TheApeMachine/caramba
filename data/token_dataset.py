@@ -8,10 +8,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from torch import Tensor
 from torch.utils.data import Dataset
 
 from data.auto import build_token_dataset
+from runtime.tensordict_utils import TensorDictBase
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +26,6 @@ class TokenDataset:
     path: str
     block_size: int
 
-    def build(self) -> Dataset[tuple[Tensor, Tensor]]:
+    def build(self) -> Dataset[TensorDictBase]:
         return build_token_dataset(path=Path(self.path), block_size=int(self.block_size))
 

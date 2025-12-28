@@ -17,6 +17,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from typing_extensions import override
 
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 _INT32_MAX = 2**31 - 1
 
@@ -67,7 +68,7 @@ def _np_call(np_mod: object, name: str, *args: object, **kwargs: object) -> obje
     return fn(*args, **kwargs)
 
 
-class NpyDataset(Dataset[tuple[Tensor, Tensor]]):
+class NpyDataset(Dataset[TensorDictBase]):
     """Dataset that loads preprocessed tokens from a .npy file.
 
     The file should contain a 1D array of token IDs. The dataset serves
@@ -130,7 +131,7 @@ class NpyDataset(Dataset[tuple[Tensor, Tensor]]):
         return len(self.tokens) - self.block_size
 
     @override
-    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
+    def __getitem__(self, idx: int) -> TensorDictBase:
         """Get a (input, target) pair for language modeling.
 
         Returns x[0:block_size] and y[1:block_size+1] where y is the
@@ -139,4 +140,4 @@ class NpyDataset(Dataset[tuple[Tensor, Tensor]]):
         block = self.tokens[idx : idx + self.block_size + 1]
         x = block[:-1]
         y = block[1:]
-        return x, y
+        return as_tensordict({"input_ids": x, "target_ids": y})

@@ -80,6 +80,26 @@ class EvaluationResult:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class SwitchReason:
+    """Machine-readable explanation for why a switch was considered."""
+
+    trigger_metric: str
+    current_value: float | int | str
+    threshold: float | int | str
+    window: int | None = None
+    horizon: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "trigger_metric": self.trigger_metric,
+            "current_value": self.current_value,
+            "threshold": self.threshold,
+            "window": self.window,
+            "horizon": self.horizon,
+        }
+
+
 @dataclass
 class SwitchDecision:
     """Record of a strategy switch decision."""
@@ -90,6 +110,7 @@ class SwitchDecision:
     reason: DecisionBoundary
     telemetry: dict[str, Any]
     evaluation_results: list[dict[str, Any]]
+    switch_reason: SwitchReason | None = None
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
     def to_dict(self) -> dict[str, Any]:
@@ -98,6 +119,7 @@ class SwitchDecision:
             "from": self.from_strategy,
             "to": self.to_strategy,
             "reason": self.reason.value,
+            "switch_reason": self.switch_reason.to_dict() if self.switch_reason else None,
             "telemetry": self.telemetry,
             "evaluations": self.evaluation_results,
             "timestamp": self.timestamp,
@@ -127,6 +149,12 @@ class OrchestratorConfig:
 
     # Logging
     log_dir: Path | None = None
+    health_log_interval: int = 100  # Steps between health ticker prints (<=0 disables)
+
+    # Metric subscription keys (metric-agnostic orchestration).
+    loss_key: str = "loss"
+    grad_norm_key: str = "grad_norm"
+    lr_key: str = "lr"
 
 
 class Orchestrator:
@@ -210,22 +238,48 @@ class Orchestrator:
     def record(
         self,
         *,
-        loss: float,
-        grad_norm: float,
-        lr: float,
+        loss: float | None = None,
+        grad_norm: float | None = None,
+        lr: float | None = None,
         update_norm: float | None = None,
+        metrics: dict[str, float] | None = None,
     ) -> TelemetrySnapshot:
         """Record training step metrics.
 
         Returns the current telemetry snapshot.
         """
-        return self.telemetry.record(
-            loss=loss,
-            grad_norm=grad_norm,
-            lr=lr,
+        if metrics is not None:
+            # Populate primary channels from metrics using configured keys.
+            if loss is None:
+                loss = float(metrics.get(self.config.loss_key, metrics.get("loss", 0.0)))
+            if grad_norm is None:
+                grad_norm = float(metrics.get(self.config.grad_norm_key, metrics.get("grad_norm", 0.0)))
+            if lr is None:
+                lr = float(metrics.get(self.config.lr_key, metrics.get("lr", 0.0)))
+
+        if loss is None or grad_norm is None or lr is None:
+            raise ValueError("Orchestrator.record requires either (loss, grad_norm, lr) or metrics dict")
+
+        snapshot = self.telemetry.record(
+            loss=float(loss),
+            grad_norm=float(grad_norm),
+            lr=float(lr),
             model=self.model,
             update_norm=update_norm,
+            metrics=metrics,
         )
+        interval = int(getattr(self.config, "health_log_interval", 0) or 0)
+        if interval > 0 and snapshot.step % interval == 0:
+            logger.info(
+                "[Orchestrator] health "
+                f"step={snapshot.step} "
+                f"phase={snapshot.phase.value} "
+                f"loss_ema={snapshot.loss_ema:.4f} "
+                f"loss_slope={snapshot.loss_slope:.6f} "
+                f"grad_norm_ema={snapshot.grad_norm_ema:.4f} "
+                f"spike_count={snapshot.spike_count}"
+            )
+        return snapshot
 
     def should_evaluate(self, step: int, snapshot: TelemetrySnapshot) -> DecisionBoundary | None:
         """Check if we should evaluate strategy switches.
@@ -258,6 +312,7 @@ class Orchestrator:
         current_strategy: Strategy,
         train_step_fn: Any,  # Callable that runs one training step
         eval_fn: Any,  # Callable that evaluates on probe set
+        snapshot: TelemetrySnapshot,
         step: int,
         reason: DecisionBoundary,
     ) -> Strategy:
@@ -280,10 +335,51 @@ class Orchestrator:
         Returns:
             The winning strategy (may be same as current).
         """
+        prev_eval_step = self._last_eval_step
         self._last_eval_step = step
-        snapshot = self.telemetry.record(
-            loss=0.0, grad_norm=0.0, lr=current_strategy.current_lr  # Dummy, just for state
-        )
+
+        window = int(getattr(self.telemetry, "window_size", 0) or 0) or None
+        horizon = int(getattr(self.config, "eval_horizon", 0) or 0) or None
+        if reason == DecisionBoundary.SPIKE:
+            reason_detail = SwitchReason(
+                trigger_metric="spike_count",
+                current_value=int(snapshot.spike_count),
+                threshold=int(self.config.max_spikes_before_switch),
+                window=window,
+                horizon=horizon,
+            )
+        elif reason == DecisionBoundary.PERIODIC:
+            reason_detail = SwitchReason(
+                trigger_metric="decision_interval",
+                current_value=int(step - prev_eval_step),
+                threshold=int(self.config.decision_interval),
+                window=window,
+                horizon=horizon,
+            )
+        elif reason == DecisionBoundary.PLATEAU:
+            reason_detail = SwitchReason(
+                trigger_metric="phase",
+                current_value=str(snapshot.phase.value),
+                threshold="plateau",
+                window=window,
+                horizon=horizon,
+            )
+        elif reason == DecisionBoundary.PHASE_CHANGE:
+            reason_detail = SwitchReason(
+                trigger_metric="phase",
+                current_value=str(snapshot.phase.value),
+                threshold="phase_change",
+                window=window,
+                horizon=horizon,
+            )
+        else:
+            reason_detail = SwitchReason(
+                trigger_metric=str(reason.value),
+                current_value=str(snapshot.phase.value),
+                threshold="n/a",
+                window=window,
+                horizon=horizon,
+            )
 
         logger.info(
             f"[Orchestrator] Evaluating strategies at step {step} "
@@ -325,6 +421,7 @@ class Orchestrator:
             from_strategy=current_strategy.name,
             to_strategy=winner_bundle.name,
             reason=reason,
+            switch_reason=reason_detail,
             telemetry=snapshot.to_dict(),
             evaluation_results=[r.to_dict() for r in results],
         )
@@ -337,6 +434,7 @@ class Orchestrator:
 
         # Switch if winner is different
         if winner_bundle.name != current_strategy.name:
+            logger.log_decision(current_strategy.name, winner_bundle.name, reason_detail)
             logger.success(
                 f"[Orchestrator] Switching: {current_strategy.name} → {winner_bundle.name} "
                 f"(score: {winner_result.score:.4f})"

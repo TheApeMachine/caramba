@@ -76,6 +76,21 @@ class TrainConfig(BaseModel):
     compile_model: bool | str = False
     compile_mode: str = "reduce-overhead"
 
+    # Optimizer configuration (standard training loops).
+    optimizer: str = "adamw"  # adamw|sgd|lion
+    weight_decay: NonNegativeFloat = 0.0
+    fused_optimizer: bool = False
+    offload_optimizer: bool = False
+
+    # Distributed training (cluster promotion; optional).
+    distributed_strategy: str = "none"  # none|ddp|fsdp
+    distributed_backend: str = "nccl"  # nccl|gloo
+
+    # Telemetry/profiling (best-effort; should not crash training).
+    telemetry_interval: PositiveInt = 10
+    profile_every: NonNegativeInt = 0
+    profile_record_shapes: bool = False
+
     # Activation checkpointing: controls when we recompute activations instead
     # of storing them to reduce peak memory usage on long sequences.
     activation_checkpointing: bool = False

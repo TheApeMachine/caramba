@@ -161,6 +161,53 @@ targets:
     - teacher
     - student
     repeats: 1
+- type: process
+  name: code_graph_sync
+  description: Index model topology into Graphiti memory for structural audits.
+  team:
+    leader: research_lead
+  process:
+    type: code_graph_sync
+    name: code_graph_sync
+    agent: leader
+    index_namespace: main
+- type: process
+  name: paper_write
+  description: Draft/update a LaTeX paper artifact (paper.tex).
+  team:
+    writer: writer
+  process:
+    type: paper_write
+    name: paper_write
+    writer: writer
+    output_dir: paper
+- type: process
+  name: paper_review
+  description: Review the LaTeX paper artifact and propose next steps.
+  team:
+    reviewer: reviewer
+  process:
+    type: paper_review
+    name: paper_review
+    reviewer: reviewer
+    strictness: conference
+    max_proposed_experiments: 3
+    output_dir: paper
+- type: process
+  name: paper_loop
+  description: Write → review → structural-audit loop (agent process).
+  team:
+    leader: research_lead
+    writer: writer
+    reviewer: reviewer
+  process:
+    type: research_loop
+    name: paper_loop
+    leader: leader
+    writer: writer
+    reviewer: reviewer
+    max_iterations: 3
+    output_dir: paper
 vars:
   d_model: 2048
   n_heads: 32
@@ -179,81 +226,10 @@ vars:
   global_steps: 2000
   blockwise_lr: 0.0001
   global_lr: 5.0e-05
-paper:
-  enabled: true
-  title: 'Decoupled Bottleneck Attention: Efficient KV-Cache Compression via Attention
-    Surgery'
-  authors:
-  - Daniel Owen van Dommelen
-  paper_type: paper
-  sections:
-  - abstract
-  - introduction
-  - related_work
-  - methodology
-  - experiments
-  - results
-  - discussion
-  - conclusion
-  citations:
-    enabled: true
-    max_citations: 25
-    sources:
-    - arxiv
-    - semantic_scholar
-    prefer_recent: true
-    recent_years: 3
-  keywords:
-  - attention mechanism
-  - KV-cache compression
-  - transformer efficiency
-  - model distillation
-  - grouped query attention
-  - multi-query attention
-  - long context modeling
-  - memory efficient transformers
-  model: gpt-5.2
-  temperature: 0.7
-  auto_version: true
-  max_versions: 5
-  custom_instructions: 'Focus on the following key contributions:
-
-    1. The "attention surgery" approach for converting trained models
-
-    2. The decoupled semantic/geometric bottleneck design
-
-    3. The significant KV-cache memory reduction with minimal quality loss
-
-    4. The distillation training procedure for recovering accuracy
-
-
-    Use proper mathematical notation for attention mechanisms.
-
-    Include comparisons to GQA, MQA, and standard multi-head attention.
-
-    '
-review:
-  enabled: true
-  strictness: conference
-  check_methodology: true
-  check_experiments: true
-  check_results: true
-  check_writing: true
-  check_citations: true
-  min_score_to_approve: 7.0
-  auto_generate_experiments: true
-  max_proposed_experiments: 3
-  reviewer_persona: senior_researcher
-  model: gpt-5.2
-  temperature: 0.3
-  custom_instructions: 'Pay special attention to:
-
-    - Comparisons with GQA/MQA baselines
-
-    - Memory vs quality trade-off analysis
-
-    - Scalability to longer contexts
-
-    - Ablation of semantic vs geometric bottleneck dimensions
-
-    '
+entrypoints:
+  default: "target:paper"
+  train: "target:paper"
+  graph_sync: "process:code_graph_sync"
+  write: "process:paper_write"
+  review: "process:paper_review"
+  loop: "process:paper_loop"

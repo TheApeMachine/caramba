@@ -76,7 +76,6 @@ packages = [
     "caramba.optimizer",
     "caramba.optimizer.metal",
     "caramba.orchestrator",
-    "caramba.paper",
     "caramba.runtime",
     "caramba.topology",
     "caramba.trainer",

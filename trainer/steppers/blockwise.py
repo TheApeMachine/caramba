@@ -18,6 +18,7 @@ from trainer.distill import DistillLoss
 from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from trainer.upcycle_context import UpcycleContext
 from carmath import autocast_dtype
+from runtime.tensordict_utils import TensorDictBase
 
 
 def _int_or(value: object, default: int = 0) -> int:
@@ -141,8 +142,8 @@ class BlockwiseStepper:
         *,
         run_id: str,
         trainer: BlockwiseTrainer,
-        loader: DataLoader[tuple[Tensor, Tensor]],
-        loader_iter: Iterator[tuple[Tensor, Tensor]],
+        loader: DataLoader[TensorDictBase],
+        loader_iter: Iterator[TensorDictBase],
         n_blocks: int,
         steps_per_block: int,
         lr_scheduler: torch.optim.lr_scheduler.LambdaLR | None,
@@ -163,8 +164,8 @@ class BlockwiseStepper:
                 loss = None
                 step0 = int(start_block_step) if block_index == int(start_block_index) else 0
                 for step in range(step0, steps_per_block):
-                    (x, _), loader_iter = collector.next_batch(loader, loader_iter)
-                    x = x.to(device=ctx.device)
+                    batch, loader_iter = collector.next_batch(loader, loader_iter)
+                    x = batch["input_ids"].to(device=ctx.device)
                     loss = trainer.step(x, block_index=block_index)
                     global_step += 1
 
@@ -218,8 +219,8 @@ class BlockwiseStepper:
         *,
         run_id: str,
         trainer: BlockwiseTrainer,
-        loader: DataLoader[tuple[Tensor, Tensor]],
-        loader_iter: Iterator[tuple[Tensor, Tensor]],
+        loader: DataLoader[TensorDictBase],
+        loader_iter: Iterator[TensorDictBase],
         n_blocks: int,
         target_loss: float,
         patience: int,
@@ -237,8 +238,8 @@ class BlockwiseStepper:
             step = 0
 
             while step < max_steps:
-                (x, _), loader_iter = collector.next_batch(loader, loader_iter)
-                x = x.to(device=ctx.device)
+                batch, loader_iter = collector.next_batch(loader, loader_iter)
+                x = batch["input_ids"].to(device=ctx.device)
                 loss = trainer.step(x, block_index=block_index)
                 loss_val = float(loss)
                 step += 1

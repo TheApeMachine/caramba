@@ -6,7 +6,6 @@ from collections.abc import Iterator, Sized
 from pathlib import Path
 from typing import cast
 
-from torch import Tensor
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 
@@ -15,6 +14,7 @@ from config.train import TrainConfig
 from data import build_token_dataset
 from carmath import train_val_counts
 from trainer.upcycle_context import UpcycleContext
+from runtime.tensordict_utils import TensorDictBase, collate_tensordict
 
 
 def _resolve_data_path(spec: str) -> Path:
@@ -50,7 +50,7 @@ class DefaultCollector:
 
     def build_loaders(
         self, train: TrainConfig, ctx: UpcycleContext
-    ) -> tuple[DataLoader[tuple[Tensor, Tensor]], DataLoader[tuple[Tensor, Tensor]] | None]:
+    ) -> tuple[DataLoader[TensorDictBase], DataLoader[TensorDictBase] | None]:
         path = _resolve_data_path(str(ctx.group.data))
         if not path.exists():
             tried = [
@@ -99,9 +99,9 @@ class DefaultCollector:
             )
             return train_loader, val_loader
 
-        train_loader = DataLoader(train_ds, shuffle=True, **loader_kwargs)  # type: ignore[arg-type]
+        train_loader = DataLoader(train_ds, shuffle=True, collate_fn=collate_tensordict, **loader_kwargs)  # type: ignore[arg-type]
         val_loader = (
-            DataLoader(val_ds, shuffle=False, **loader_kwargs)  # type: ignore[arg-type]
+            DataLoader(val_ds, shuffle=False, collate_fn=collate_tensordict, **loader_kwargs)  # type: ignore[arg-type]
             if val_ds is not None
             else None
         )
@@ -109,9 +109,9 @@ class DefaultCollector:
 
     def next_batch(
         self,
-        loader: DataLoader[tuple[Tensor, Tensor]],
-        iterator: Iterator[tuple[Tensor, Tensor]],
-    ) -> tuple[tuple[Tensor, Tensor], Iterator[tuple[Tensor, Tensor]]]:
+        loader: DataLoader[TensorDictBase],
+        iterator: Iterator[TensorDictBase],
+    ) -> tuple[TensorDictBase, Iterator[TensorDictBase]]:
         it = iterator
         try:
             return next(it), it

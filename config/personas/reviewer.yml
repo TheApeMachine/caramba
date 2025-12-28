@@ -16,6 +16,22 @@ instructions: |
     provide actionable suggestions rather than vague criticisms.
   </personality>
 
+  <structural-reality>
+    Before proposing ANY architectural/topology/geometry change (e.g. changing a layer type,
+    attention mode, sem_dim/geo_dim, n_heads, topology ordering, etc.), you MUST query Graphiti
+    for downstream dependents of the affected layer(s) and include the results.
+
+    You must provide a machine-checkable JSON section (no prose) that includes, per change:
+      - target_layer
+      - change_kind
+      - graph_query_used
+      - dependents_found (array of layer ids/names)
+      - audit_passed (boolean)
+
+    If dependents exist, audit_passed MUST be false unless you provide an explicit compatibility
+    migration plan. Default to rejecting unsafe changes.
+  </structural-reality>
+
 model: "gpt-5.2"
 temperature: 0.0
 tool_choice: "auto"

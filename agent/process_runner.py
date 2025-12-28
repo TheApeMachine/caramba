@@ -11,9 +11,16 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from console.logger import get_logger
+from config.agents import (
+    CodeGraphSyncProcessConfig,
+    DiscussionProcessConfig,
+    PaperReviewProcessConfig,
+    PaperWriteProcessConfig,
+    ResearchLoopProcessConfig,
+)
 from config.manifest import Manifest
 from config.target import ProcessTargetConfig
 from config.mcp_registry import load_mcp_servers
@@ -62,7 +69,7 @@ def dry_run_process_target(
     _preflight_personas_and_tools(team_mapping)
 
     # Process-specific checks
-    if getattr(proc, "type", None) == "discussion":
+    if isinstance(proc, DiscussionProcessConfig):
         prompts_dir = Path(proc.prompts_dir)
         prompts_file = prompts_dir / "discussion.yml"
         if not prompts_file.exists():
@@ -70,6 +77,30 @@ def dry_run_process_target(
         if proc.leader not in team:
             raise ValueError(
                 f"Discussion leader key '{proc.leader}' not present in agents.team."
+            )
+    elif isinstance(proc, PaperWriteProcessConfig):
+        if proc.writer not in team:
+            raise ValueError(
+                f"paper_write writer key '{proc.writer}' not present in agents.team."
+            )
+    elif isinstance(proc, PaperReviewProcessConfig):
+        if proc.reviewer not in team:
+            raise ValueError(
+                f"paper_review reviewer key '{proc.reviewer}' not present in agents.team."
+            )
+    elif isinstance(proc, ResearchLoopProcessConfig):
+        missing: list[str] = []
+        for k in (proc.leader, proc.writer, proc.reviewer):
+            if k not in team:
+                missing.append(str(k))
+        if missing:
+            raise ValueError(
+                "research_loop missing agent keys in agents.team: " + ", ".join(missing)
+            )
+    elif isinstance(proc, CodeGraphSyncProcessConfig):
+        if proc.agent not in team:
+            raise ValueError(
+                f"code_graph_sync agent key '{proc.agent}' not present in agents.team."
             )
 
     mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
@@ -88,7 +119,7 @@ async def _run_discussion(
     target: ProcessTargetConfig,
     manifest_path: Path | None,
 ) -> dict[str, Any]:
-    proc = target.process
+    proc = cast(DiscussionProcessConfig, target.process)
     team_mapping = dict(target.team.root)
     team, _ = _build_team(team_mapping)
     _preflight_personas_and_tools(team_mapping)
@@ -131,12 +162,147 @@ async def _run_discussion(
     return {"artifacts": {out_path.name: out_path}, "result": result}
 
 
+async def _run_paper_write(
+    manifest: Manifest,
+    *,
+    target: ProcessTargetConfig,
+    manifest_path: Path | None,
+) -> dict[str, Any]:
+    # Local import so `caramba` can import without the process module present during refactors.
+    from agent.process.paper_write import PaperWrite  # type: ignore[import-not-found]
+
+    proc = cast(PaperWriteProcessConfig, target.process)
+    team_mapping = dict(target.team.root)
+    team, _ = _build_team(team_mapping)
+    _preflight_personas_and_tools(team_mapping)
+
+    p = PaperWrite(agents=team, writer_key=proc.writer, output_dir=proc.output_dir)
+    result = await p.run(manifest=manifest, manifest_path=manifest_path, goal=str(proc.goal))
+
+    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
+    out_dir = _manifest_artifacts_dir(manifest, mp)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    out_path = out_dir / f"{proc.name}_{timestamp}.json"
+    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    logger.success(f"Agent process complete • wrote {out_path}")
+    return {"artifacts": {out_path.name: out_path}, "result": result}
+
+
+async def _run_paper_review(
+    manifest: Manifest,
+    *,
+    target: ProcessTargetConfig,
+    manifest_path: Path | None,
+) -> dict[str, Any]:
+    from agent.process.paper_review import PaperReview  # type: ignore[import-not-found]
+
+    proc = cast(PaperReviewProcessConfig, target.process)
+    team_mapping = dict(target.team.root)
+    team, _ = _build_team(team_mapping)
+    _preflight_personas_and_tools(team_mapping)
+
+    p = PaperReview(
+        agents=team,
+        reviewer_key=proc.reviewer,
+        strictness=str(proc.strictness),
+        max_proposed_experiments=int(proc.max_proposed_experiments),
+        output_dir=str(getattr(proc, "output_dir", "paper")),
+    )
+    result = await p.run(manifest=manifest, manifest_path=manifest_path, goal=str(proc.goal))
+
+    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
+    out_dir = _manifest_artifacts_dir(manifest, mp)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    out_path = out_dir / f"{proc.name}_{timestamp}.json"
+    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    logger.success(f"Agent process complete • wrote {out_path}")
+    return {"artifacts": {out_path.name: out_path}, "result": result}
+
+
+async def _run_research_loop(
+    manifest: Manifest,
+    *,
+    target: ProcessTargetConfig,
+    manifest_path: Path | None,
+) -> dict[str, Any]:
+    from agent.process.research_loop import ResearchLoopProcess  # type: ignore[import-not-found]
+
+    proc = cast(ResearchLoopProcessConfig, target.process)
+    team_mapping = dict(target.team.root)
+    team, _ = _build_team(team_mapping)
+    _preflight_personas_and_tools(team_mapping)
+
+    loop = ResearchLoopProcess(
+        agents=team,
+        leader_key=proc.leader,
+        writer_key=proc.writer,
+        reviewer_key=proc.reviewer,
+        max_iterations=int(proc.max_iterations),
+        auto_run_experiments=bool(proc.auto_run_experiments),
+        output_dir=str(proc.output_dir),
+    )
+    result = await loop.run(manifest=manifest, manifest_path=manifest_path)
+
+    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
+    out_dir = _manifest_artifacts_dir(manifest, mp)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    out_path = out_dir / f"{proc.name}_{timestamp}.json"
+    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    logger.success(f"Agent process complete • wrote {out_path}")
+    return {"artifacts": {out_path.name: out_path}, "result": result}
+
+
+async def _run_code_graph_sync(
+    manifest: Manifest,
+    *,
+    target: ProcessTargetConfig,
+    manifest_path: Path | None,
+) -> dict[str, Any]:
+    from agent.process.code_graph_sync import CodeGraphSync  # type: ignore[import-not-found]
+
+    proc = cast(CodeGraphSyncProcessConfig, target.process)
+    team_mapping = dict(target.team.root)
+    team, _ = _build_team(team_mapping)
+    _preflight_personas_and_tools(team_mapping)
+
+    sync = CodeGraphSync(
+        agents=team,
+        agent_key=proc.agent,
+        index_namespace=str(proc.index_namespace),
+    )
+    result = await sync.run(manifest=manifest, manifest_path=manifest_path)
+
+    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
+    out_dir = _manifest_artifacts_dir(manifest, mp)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    out_path = out_dir / f"{proc.name}_{timestamp}.json"
+    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    logger.success(f"Agent process complete • wrote {out_path}")
+    return {"artifacts": {out_path.name: out_path}, "result": result}
+
+
 def run_process_target(
     *, manifest: Manifest, target: ProcessTargetConfig, manifest_path: Path | None
 ) -> dict[str, Any]:
     """Run a process target."""
     proc = target.process
-    if proc.type == "discussion":
+    if isinstance(proc, DiscussionProcessConfig):
         return asyncio.run(_run_discussion(manifest, target=target, manifest_path=manifest_path))
+    if isinstance(proc, PaperWriteProcessConfig):
+        return asyncio.run(_run_paper_write(manifest, target=target, manifest_path=manifest_path))
+    if isinstance(proc, PaperReviewProcessConfig):
+        return asyncio.run(_run_paper_review(manifest, target=target, manifest_path=manifest_path))
+    if isinstance(proc, ResearchLoopProcessConfig):
+        return asyncio.run(_run_research_loop(manifest, target=target, manifest_path=manifest_path))
+    if isinstance(proc, CodeGraphSyncProcessConfig):
+        return asyncio.run(_run_code_graph_sync(manifest, target=target, manifest_path=manifest_path))
     raise ValueError(f"Unsupported agent process type: {proc.type!r}")
 

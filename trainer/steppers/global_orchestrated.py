@@ -14,6 +14,7 @@ from trainer.collectors import Collector
 from trainer.checkpointers import CheckPointer
 from trainer.upcycle_context import UpcycleContext
 from trainer.steppers.global_stepper import _compute_loss, _has_diffusion_head
+from runtime.tensordict_utils import TensorDictBase
 
 
 class GlobalOrchestratedStepper:
@@ -75,15 +76,15 @@ class GlobalOrchestratedStepper:
             current_strategy.add_wrapper(AdaGC(ctx.student, warmup_steps=100))
 
         logger.header("Global Fine-tuning (Orchestrated)", f"{run.steps} steps • strategy={current_strategy.name}")
-        loader_iter = cast(Iterator[tuple[Tensor, Tensor]], iter(loader))
+        loader_iter = cast(Iterator[TensorDictBase], iter(loader))
         loss: Tensor | None = None
 
         with logger.progress_bar() as progress:
             task = progress.add_task("Training...", total=int(run.steps))
             for step in range(int(run.steps)):
-                (x, y), loader_iter = collector.next_batch(loader, loader_iter)
-                x = x.to(device=ctx.device)
-                y = y.to(device=ctx.device)
+                batch, loader_iter = collector.next_batch(loader, loader_iter)
+                x = batch["input_ids"].to(device=ctx.device)
+                y = batch["target_ids"].to(device=ctx.device)
 
                 current_strategy.zero_grad()
                 autocast_enabled = bool(use_amp)
@@ -109,9 +110,9 @@ class GlobalOrchestratedStepper:
                     def make_train_step():
                         def fn(strategy):
                             nonlocal loader_iter
-                            (bx, by), loader_iter = collector.next_batch(loader, loader_iter)
-                            bx = bx.to(device=ctx.device)
-                            by = by.to(device=ctx.device)
+                            b, loader_iter = collector.next_batch(loader, loader_iter)
+                            bx = b["input_ids"].to(device=ctx.device)
+                            by = b["target_ids"].to(device=ctx.device)
                             strategy.zero_grad()
                             with torch.autocast(device_type=ctx.device.type, dtype=amp_dtype, enabled=use_amp):
                                 logits = ctx.student(bx)
@@ -128,9 +129,9 @@ class GlobalOrchestratedStepper:
                             total = 0.0
                             count = 0
                             with torch.no_grad():
-                                for vx, vy in val_loader:
-                                    vx = vx.to(ctx.device)
-                                    vy = vy.to(ctx.device)
+                                for vb in val_loader:
+                                    vx = vb["input_ids"].to(ctx.device)
+                                    vy = vb["target_ids"].to(ctx.device)
                                     vlogits = ctx.student(vx)
                                     vloss = F.cross_entropy(vlogits.view(-1, vlogits.size(-1)), vy.view(-1))
                                     total += float(vloss.item())
@@ -145,6 +146,7 @@ class GlobalOrchestratedStepper:
                         current_strategy=current_strategy,
                         train_step_fn=make_train_step(),
                         eval_fn=make_eval_fn(),
+                        snapshot=snapshot,
                         step=step + 1,
                         reason=reason,
                     )

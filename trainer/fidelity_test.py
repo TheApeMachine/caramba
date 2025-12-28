@@ -16,6 +16,7 @@ from trainer.fidelity import (
     assert_fidelity_thresholds,
     compute_short_context_fidelity,
 )
+from runtime.tensordict_utils import as_tensordict
 
 
 class _UniformLM(nn.Module):
@@ -71,7 +72,7 @@ class FidelityMathTest(unittest.TestCase):
         result = compute_short_context_fidelity(
             teacher=teacher,
             student=student,
-            batches=[(x, y)],
+            batches=[as_tensordict({"input_ids": x, "target_ids": y})],
         )
 
         self.assertAlmostEqual(result.delta_nll, 0.0, places=6)
@@ -89,7 +90,7 @@ class FidelityMathTest(unittest.TestCase):
         result = compute_short_context_fidelity(
             teacher=teacher,
             student=student,
-            batches=[(x, y)],
+            batches=[as_tensordict({"input_ids": x, "target_ids": y})],
         )
 
         self.assertGreater(result.delta_nll, 0.0)
@@ -110,7 +111,7 @@ class FidelityThresholdsTest(unittest.TestCase):
         result = compute_short_context_fidelity(
             teacher=teacher,
             student=student,
-            batches=[(x, y)],
+            batches=[as_tensordict({"input_ids": x, "target_ids": y})],
         )
 
         with self.assertRaises(ValueError):
@@ -132,7 +133,7 @@ class FidelityThresholdsTest(unittest.TestCase):
         result = compute_short_context_fidelity(
             teacher=teacher,
             student=student,
-            batches=[(x, y)],
+            batches=[as_tensordict({"input_ids": x, "target_ids": y})],
         )
 
         violations = assert_fidelity_thresholds(

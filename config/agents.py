@@ -33,8 +33,60 @@ class DiscussionProcessConfig(BaseModel):
     max_rounds: int = Field(default=12, ge=1)
 
 
+class PaperWriteProcessConfig(BaseModel):
+    """Draft/update a paper artifact using a writer persona."""
+
+    type: Literal["paper_write"] = "paper_write"
+    name: str
+    writer: str
+    # Optional: high-level goal/instructions for the writer.
+    goal: str = ""
+    # Where to read/write paper artifacts (usually under artifacts/).
+    output_dir: str = "paper"
+
+
+class PaperReviewProcessConfig(BaseModel):
+    """Review a paper artifact using a reviewer persona."""
+
+    type: Literal["paper_review"] = "paper_review"
+    name: str
+    reviewer: str
+    strictness: str = "conference"
+    max_proposed_experiments: int = Field(default=3, ge=0)
+    # Optional reviewer-specific instructions to append.
+    goal: str = ""
+
+
+class ResearchLoopProcessConfig(BaseModel):
+    """Orchestrate write → review → structural audit → (optionally) experiments."""
+
+    type: Literal["research_loop"] = "research_loop"
+    name: str
+    leader: str
+    writer: str
+    reviewer: str
+    max_iterations: int = Field(default=5, ge=1)
+    # If true, allow the loop to run experiments automatically (Phase 2 readiness applies).
+    auto_run_experiments: bool = False
+    output_dir: str = "paper"
+
+
+class CodeGraphSyncProcessConfig(BaseModel):
+    """Ingest manifest/model topology into Graphiti graph memory."""
+
+    type: Literal["code_graph_sync"] = "code_graph_sync"
+    name: str
+    agent: str
+    # Prefix/namespace to avoid collisions across manifests/runs.
+    index_namespace: str = "main"
+
+
 AgentProcessConfig: TypeAlias = Annotated[
-    DiscussionProcessConfig,
+    DiscussionProcessConfig
+    | PaperWriteProcessConfig
+    | PaperReviewProcessConfig
+    | ResearchLoopProcessConfig
+    | CodeGraphSyncProcessConfig,
     Field(discriminator="type"),
 ]
 

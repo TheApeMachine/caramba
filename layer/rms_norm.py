@@ -56,6 +56,15 @@ class RMSNormLayer(nn.Module):
         if int(x.shape[-1]) != int(self.d_model):
             raise ValueError(f"Expected x last dim {int(self.d_model)}, got {x.shape}")
 
+        # Fast path via HAL (Metal / Triton / fallback).
+        try:
+            from optimizer.kernels import rmsnorm
+
+            return rmsnorm(x=x, weight=self.weight, eps=float(self.eps))
+        except Exception:
+            # Best-effort: fall back to PyTorch implementation.
+            pass
+
         x_f = x.float()
         inv_rms = torch.rsqrt(x_f.pow(2).mean(dim=-1, keepdim=True) + float(self.eps))
         y = (x_f * inv_rms).to(dtype=x.dtype)

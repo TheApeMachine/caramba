@@ -16,6 +16,7 @@ from config.diffusion import DiffusionHeadConfig
 from config.embedder import EmbedderConfig, NoEmbedderConfig
 from config.embedder import TokenEmbedderConfig
 from config.layer import (
+    AttentionMode,
     AttentionLayerConfig,
     LayerNormLayerConfig,
     LinearLayerConfig,
@@ -74,6 +75,13 @@ class ModelConfig(Config):
 
     # Optional self-optimization target: approximate parameter budget.
     target_params: int | None = None
+    # Alias for `target_params` (preferred, clearer naming). If both are set,
+    # `target_params` wins.
+    target_param_budget: int | None = None
+
+    # High-level geometry constraint for DBA: target KV-cache reduction ratio.
+    # Used to solve missing sem_dim/geo_dim for decoupled attention.
+    target_kv_reduction: float | None = None
     block_size: int | None = None
 
     def optimize(self) -> "ModelConfig":
@@ -83,10 +91,11 @@ class ModelConfig(Config):
         patterns (stacked/residual topologies with attention + MLP blocks).
         """
 
-        if self.target_params is None:
+        budget = self.target_params if self.target_params is not None else self.target_param_budget
+        if budget is None:
             return self
 
-        target = int(self.target_params)
+        target = int(budget)
         if target <= 0:
             return self
 
@@ -128,6 +137,7 @@ class ModelConfig(Config):
         # Apply to a deep copy of the config.
         cfg = self.model_copy(deep=True)
         cfg.target_params = int(target)
+        cfg.target_param_budget = int(target)
 
         if isinstance(cfg.embedder, TokenEmbedderConfig):
             cfg.embedder.d_model = int(d_model)
@@ -171,4 +181,101 @@ class ModelConfig(Config):
             return node
 
         cfg.topology = scale_node(cfg.topology)  # type: ignore[assignment]
+        return cfg
+
+    def resolve_geometry(self) -> "ModelConfig":
+        """Fill missing DBA geometry from high-level constraints.
+
+        If `target_kv_reduction` is set and an attention layer is in
+        `mode=decoupled` but missing `sem_dim`/`geo_dim`, solve for a reasonable
+        split such that:
+
+            sem_dim + geo_dim ≈ d_model / target_kv_reduction
+
+        Constraints:
+        - sem_dim and geo_dim must be divisible by n_heads
+        - if RoPE is enabled, geo_head_dim must be even
+        """
+        if self.target_kv_reduction is None:
+            return self
+        try:
+            target = float(self.target_kv_reduction)
+        except Exception:
+            return self
+        if not (target > 0.0):
+            return self
+
+        cfg = self.model_copy(deep=True)
+
+        def solve_dims(attn: AttentionLayerConfig) -> tuple[int, int] | None:
+            if attn.mode != AttentionMode.DECOUPLED:
+                return None
+            if attn.sem_dim is not None and attn.geo_dim is not None:
+                return None
+
+            d_model = int(attn.d_model)
+            n_heads = int(attn.n_heads)
+            if n_heads <= 0:
+                return None
+
+            desired_total = float(d_model) / float(target)
+            # Round to a multiple of n_heads (so per-head dims are integers).
+            total = int(round(desired_total / float(n_heads))) * n_heads
+            total = max(n_heads, total)
+            per_head_total = max(1, total // n_heads)
+
+            # Deterministic split heuristic: geo:sem = 2:1.
+            sem_head = max(1, int(round(per_head_total / 3.0)))
+            geo_head = max(1, per_head_total - sem_head)
+
+            # RoPE requires even geometric head dim.
+            if bool(attn.rope_enabled):
+                if geo_head % 2:
+                    # Prefer shifting 1 from sem -> geo (keeps total fixed).
+                    if sem_head > 1:
+                        sem_head -= 1
+                        geo_head += 1
+                    else:
+                        # Otherwise shift from geo -> sem if possible.
+                        if geo_head > 1:
+                            geo_head -= 1
+                            sem_head += 1
+                        # If geo_head is still odd (e.g. geo_head==1), bump total.
+                        if geo_head % 2:
+                            per_head_total = max(per_head_total, 3)
+                            sem_head = 1
+                            geo_head = 2
+
+            sem_dim = int(sem_head * n_heads)
+            geo_dim = int(geo_head * n_heads)
+            return sem_dim, geo_dim
+
+        def walk(node: NodeConfig) -> NodeConfig:
+            if isinstance(node, AttentionLayerConfig):
+                solved = solve_dims(node)
+                if solved is not None:
+                    sd, gd = solved
+                    node.sem_dim = int(sd)
+                    node.geo_dim = int(gd)
+                return node
+
+            if isinstance(
+                node,
+                (
+                    NestedTopologyConfig,
+                    StackedTopologyConfig,
+                    ResidualTopologyConfig,
+                    SequentialTopologyConfig,
+                    ParallelTopologyConfig,
+                    BranchingTopologyConfig,
+                    CyclicTopologyConfig,
+                    RecurrentTopologyConfig,
+                ),
+            ):
+                node.layers = [walk(x) for x in list(node.layers)]  # type: ignore[assignment]
+                return node
+
+            return node
+
+        cfg.topology = walk(cfg.topology)  # type: ignore[assignment]
         return cfg

@@ -22,39 +22,51 @@ _CACHED_ERR: Exception | None = None
 
 
 def _compile_metallib(*, out_dir: Path, verbose: bool) -> Path:
-    """Compile `dba_decode.metal` -> `dba_decode.metallib` in `out_dir`."""
-    src = _this_dir() / "dba_decode.metal"
-    air = out_dir / "dba_decode.air"
-    metallib = out_dir / "dba_decode.metallib"
+    """Compile Metal shaders -> `caramba_ops.metallib` in `out_dir`."""
 
-    # Rebuild only when missing or source is newer.
-    if metallib.exists() and metallib.stat().st_mtime >= src.stat().st_mtime:
-        return metallib
+    sources = [
+        _this_dir() / "dba_decode.metal",
+        _this_dir() / "rmsnorm.metal",
+        _this_dir() / "rope.metal",
+        _this_dir() / "lion.metal",
+    ]
+    airs = [out_dir / f"{src.stem}.air" for src in sources]
+    metallib = out_dir / "caramba_ops.metallib"
+
+    # Rebuild only when missing or any source is newer.
+    if metallib.exists():
+        mt = metallib.stat().st_mtime
+        if all(mt >= src.stat().st_mtime for src in sources):
+            return metallib
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd1 = [
-        "xcrun",
-        "-sdk",
-        "macosx",
-        "metal",
-        "-c",
-        str(src),
-        "-o",
-        str(air),
-    ]
+    # Compile each .metal source to .air.
+    for src, air in zip(sources, airs, strict=True):
+        cmd = [
+            "xcrun",
+            "-sdk",
+            "macosx",
+            "metal",
+            "-c",
+            str(src),
+            "-o",
+            str(air),
+        ]
+        if verbose:
+            print("[caramba] compiling Metal shader:", " ".join(cmd))
+        subprocess.check_call(cmd)
+
+    # Link all .air files into a single metallib.
     cmd2 = [
         "xcrun",
         "-sdk",
         "macosx",
         "metallib",
-        str(air),
+        *[str(air) for air in airs],
         "-o",
         str(metallib),
     ]
-    if verbose:
-        print("[caramba] compiling Metal shader:", " ".join(cmd1))
-    subprocess.check_call(cmd1)
     if verbose:
         print("[caramba] linking Metal metallib:", " ".join(cmd2))
     subprocess.check_call(cmd2)

@@ -11,6 +11,7 @@ components.
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from typing import Any, Protocol, Sized, cast
 
 import torch
@@ -32,7 +33,7 @@ from config.train import TrainConfig, TrainPhase
 from console import logger
 from instrumentation import RunLogger
 from runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
-from trainer.objectives import LossBundle
+from runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
 
 
 class _Engine(Protocol):
@@ -65,6 +66,7 @@ class StandardTrainer:
             else Path("runs") / target.name
         )
         ckpt_dir.mkdir(parents=True, exist_ok=True)
+        # Note: when running distributed, only rank0 should write logs.
         run_logger = RunLogger(ckpt_dir, filename="train.jsonl", enabled=True)
 
         last_device: torch.device | None = None
@@ -106,6 +108,27 @@ class StandardTrainer:
         torch.manual_seed(run.seed)
         device = torch.device(train.device)
 
+        dist_ctx = None
+        dist_strategy = str(getattr(train, "distributed_strategy", "none")).lower()
+        if dist_strategy != "none":
+            try:
+                from trainer.distributed import DistributedConfig, DistributedContext, DistributedStrategy
+
+                cfg = DistributedConfig(
+                    strategy=DistributedStrategy(dist_strategy),
+                    backend=str(getattr(train, "distributed_backend", "nccl")),
+                )
+                dist_ctx = DistributedContext.init(cfg)
+                device = dist_ctx.device
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize distributed training: {e}") from e
+            # Only rank0 writes JSONL/HDF5 logs.
+            try:
+                if hasattr(dist_ctx, "is_main") and not bool(getattr(dist_ctx, "is_main")):
+                    run_logger.enabled = False
+            except Exception:
+                pass
+
         runtime_plan = self._load_or_create_runtime_plan(
             checkpoint_dir=checkpoint_dir,
             device=device,
@@ -117,74 +140,321 @@ class StandardTrainer:
         if hasattr(system, "to"):
             system.to(device=device, dtype=dtype)  # type: ignore[attr-defined]
 
+        # Wrap system module for DDP/FSDP if requested.
+        if dist_ctx is not None:
+            try:
+                import torch.nn as nn
+
+                m = getattr(system, "module", None)
+                if isinstance(m, nn.Module):
+                    system.module = dist_ctx.wrap_model(m)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+        compiled = False
+        if bool(getattr(runtime_plan, "compile", False)):
+            # Best-effort torch.compile: only apply when a module is exposed.
+            try:
+                import torch.nn as nn
+
+                m = getattr(system, "module", None)
+                if isinstance(m, nn.Module):
+                    system.module = torch.compile(m, mode=str(runtime_plan.compile_mode))  # type: ignore[attr-defined]
+                    compiled = True
+            except Exception:
+                compiled = False
+
         loader = self._build_loader(
             dataset_comp=dataset_comp,
             defaults=defaults,
             train=train,
             device=device,
             batch_size=int(runtime_plan.batch_size),
+            dist_ctx=dist_ctx,
         )
 
         if not hasattr(system, "parameters"):
             raise TypeError("System component does not expose parameters()")
-        optimizer = torch.optim.AdamW(system.parameters(), lr=train.lr)  # type: ignore[arg-type]
+        opt_name = str(getattr(train, "optimizer", "adamw")).lower()
+        weight_decay = float(getattr(train, "weight_decay", 0.0))
+        fused_opt = bool(getattr(train, "fused_optimizer", False))
+        if opt_name in ("adamw", "adam"):
+            optimizer = torch.optim.AdamW(
+                system.parameters(),  # type: ignore[arg-type]
+                lr=float(train.lr),
+                weight_decay=float(weight_decay),
+            )
+        elif opt_name == "sgd":
+            optimizer = torch.optim.SGD(
+                system.parameters(),  # type: ignore[arg-type]
+                lr=float(train.lr),
+                weight_decay=float(weight_decay),
+            )
+        elif opt_name == "lion":
+            from optimizer.lion import Lion
+
+            optimizer = Lion(
+                system.parameters(),  # type: ignore[arg-type]
+                lr=float(train.lr),
+                weight_decay=float(weight_decay),
+                fused=bool(fused_opt),
+            )
+        else:
+            raise ValueError(f"Unknown optimizer {opt_name!r}")
+
+        from trainer.swap_manager import SwapManager
+
+        swap = SwapManager(
+            offload_optimizer=bool(getattr(train, "offload_optimizer", False)),
+            offload_device="cpu",
+        )
 
         use_amp = bool(train.use_amp)
         amp_dtype = autocast_dtype(device, str(train.amp_dtype))
 
+        telemetry_interval = int(getattr(train, "telemetry_interval", 10)) or 10
+        profile_every = int(getattr(train, "profile_every", 0)) or 0
+        profile_record_shapes = bool(getattr(train, "profile_record_shapes", False))
+
+        def bytes_to_mb(n: int) -> float:
+            return float(n) / (1024.0 * 1024.0)
+
+        def param_bytes() -> int:
+            total = 0
+            for p in system.parameters():  # type: ignore[attr-defined]
+                if isinstance(p, Tensor):
+                    total += int(p.numel()) * int(p.element_size())
+            return total
+
+        def grad_bytes() -> int:
+            total = 0
+            for p in system.parameters():  # type: ignore[attr-defined]
+                g = getattr(p, "grad", None)
+                if isinstance(g, Tensor):
+                    total += int(g.numel()) * int(g.element_size())
+            return total
+
+        def optim_state_bytes() -> int:
+            total = 0
+            try:
+                for _param, state in optimizer.state.items():
+                    if isinstance(state, dict):
+                        for v in state.values():
+                            if isinstance(v, Tensor):
+                                total += int(v.numel()) * int(v.element_size())
+            except Exception:
+                return 0
+            return total
+
+        # Emit static-ish run metadata once (best-effort).
+        try:
+            run_logger.log_event(
+                type="telemetry",
+                run_id=str(run.id),
+                phase="standard",
+                step=0,
+                data={
+                    "device": str(device),
+                    "dtype": str(dtype),
+                    "amp": bool(use_amp),
+                    "amp_dtype": str(amp_dtype),
+                    "compiled": bool(compiled),
+                    "compile_mode": str(getattr(runtime_plan, "compile_mode", "")),
+                    "param_mb": bytes_to_mb(param_bytes()),
+                },
+            )
+        except Exception:
+            pass
+
+        # Export a reproducibility artifact (lowered plan + io shapes).
+        try:
+            from compiler.plan import Planner
+
+            plan_txt = Planner().format_target(target, indent=0, path=f"targets[{target.name}]")
+            (checkpoint_dir / "compiled_plan.txt").write_text("\n".join(plan_txt) + "\n", encoding="utf-8")
+        except Exception:
+            pass
+        try:
+            # Capture one batch IO signature (best-effort).
+            it = iter(loader)
+            b0 = next(it)
+            b0 = b0 if isinstance(b0, TensorDictBase) else as_tensordict(b0)  # type: ignore[arg-type]
+            b0 = cast(TensorDictBase, to_device(b0, device=device))
+            if hasattr(system, "forward"):
+                o0 = system.forward(b0)  # type: ignore[attr-defined]
+            else:
+                o0 = {}
+            def shape_sig(td: object) -> dict[str, object]:
+                out: dict[str, object] = {}
+                if isinstance(td, dict):
+                    items = td.items()
+                else:
+                    try:
+                        items = dict(td).items()  # type: ignore[arg-type]
+                    except Exception:
+                        return out
+                for k, v in items:
+                    if isinstance(v, Tensor):
+                        out[str(k)] = {"shape": list(v.shape), "dtype": str(v.dtype), "device": str(v.device)}
+                return out
+            import json
+            (checkpoint_dir / "io_shapes.json").write_text(
+                json.dumps({"batch": shape_sig(b0), "outputs": shape_sig(o0)}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
         logger.header("Training", f"{target.name}:{run.id} • {run.steps} steps")
         loader_iter = iter(loader)
-
-        def to_device(obj: Any) -> Any:
-            if isinstance(obj, Tensor):
-                return obj.to(device=device)
-            if isinstance(obj, dict):
-                return {k: to_device(v) for k, v in obj.items()}
-            if isinstance(obj, list):
-                return [to_device(v) for v in obj]
-            if isinstance(obj, tuple):
-                return tuple(to_device(v) for v in obj)
-            return obj
 
         with logger.progress_bar() as progress:
             task = progress.add_task("Training...", total=int(run.steps))
             for step in range(int(run.steps)):
+                t0 = time.perf_counter()
                 try:
                     item = next(loader_iter)
                 except StopIteration:
                     loader_iter = iter(loader)
                     item = next(loader_iter)
 
-                # Back-compat: datasets may yield (x, y) for LM.
-                if isinstance(item, tuple) and len(item) == 2:
-                    x, y = item
-                    batch: dict[str, Any] = {"input_ids": x, "target_ids": y}
+                if isinstance(item, TensorDictBase):
+                    batch_td = item
                 elif isinstance(item, dict):
-                    batch = dict(item)
+                    batch_td = as_tensordict(item)
                 else:
-                    batch = {"inputs": item}
-
-                batch = cast(dict[str, Any], to_device(batch))
-                optimizer.zero_grad(set_to_none=True)
-                with torch.autocast(
-                    device_type=device.type,
-                    dtype=amp_dtype,
-                    enabled=use_amp,
-                ):
-                    if not hasattr(system, "forward"):
-                        raise TypeError("System component does not expose forward()")
-                    outputs = system.forward(batch)  # type: ignore[attr-defined]
-                    if not hasattr(objective, "loss"):
-                        raise TypeError("Objective component does not expose loss()")
-                    loss_bundle: LossBundle = objective.loss(  # type: ignore[attr-defined]
-                        outputs=outputs, batch=batch
+                    raise TypeError(
+                        "StandardTrainer expects batch items to be dict/TensorDict. "
+                        f"Got {type(item).__name__}."
                     )
 
-                loss_bundle.total.backward()
-                optimizer.step()
+                batch_td = cast(TensorDictBase, to_device(batch_td, device=device))
+                t_data = time.perf_counter()
+                optimizer.zero_grad(set_to_none=True)
+                kernel_launches: int | None = None
 
-                if (step + 1) % 10 == 0:
-                    metrics = {"loss": float(loss_bundle.total), **loss_bundle.parts}
+                # Optional profiling (best-effort; primarily useful on CUDA).
+                if profile_every > 0 and ((step + 1) % profile_every == 0):
+                    try:
+                        from torch.profiler import ProfilerActivity, profile
+
+                        acts = [ProfilerActivity.CPU]
+                        if device.type == "cuda":
+                            acts.append(ProfilerActivity.CUDA)
+                        with profile(
+                            activities=acts,
+                            record_shapes=bool(profile_record_shapes),
+                            profile_memory=True,
+                        ) as prof:
+                            with torch.autocast(
+                                device_type=device.type,
+                                dtype=amp_dtype,
+                                enabled=use_amp,
+                            ):
+                                if not hasattr(system, "forward"):
+                                    raise TypeError("System component does not expose forward()")
+                                outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                                if not hasattr(objective, "loss"):
+                                    raise TypeError("Objective component does not expose loss()")
+                                loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
+                                if not isinstance(loss, Tensor):
+                                    raise TypeError(
+                                        f"Objective.loss must return a Tensor, got {type(loss).__name__}"
+                                    )
+                            loss.backward()
+                        # Heuristic: count device-side events as “launch-ish”.
+                        if device.type == "cuda":
+                            try:
+                                evs = prof.events() or []
+                                # We intentionally keep this a heuristic; different builds expose
+                                # different event metadata. The main goal is “fewer events over time”.
+                                kernel_launches = int(len(evs))
+                            except Exception:
+                                kernel_launches = None
+                    except Exception:
+                        kernel_launches = None
+                        with torch.autocast(
+                            device_type=device.type,
+                            dtype=amp_dtype,
+                            enabled=use_amp,
+                        ):
+                            if not hasattr(system, "forward"):
+                                raise TypeError("System component does not expose forward()")
+                            outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                            if not hasattr(objective, "loss"):
+                                raise TypeError("Objective component does not expose loss()")
+                            loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
+                            if not isinstance(loss, Tensor):
+                                raise TypeError(
+                                    f"Objective.loss must return a Tensor, got {type(loss).__name__}"
+                                )
+                        loss.backward()
+                else:
+                    with torch.autocast(
+                        device_type=device.type,
+                        dtype=amp_dtype,
+                        enabled=use_amp,
+                    ):
+                        if not hasattr(system, "forward"):
+                            raise TypeError("System component does not expose forward()")
+                        outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                        if not hasattr(objective, "loss"):
+                            raise TypeError("Objective component does not expose loss()")
+                        loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
+                        if not isinstance(loss, Tensor):
+                            raise TypeError(
+                                f"Objective.loss must return a Tensor, got {type(loss).__name__}"
+                            )
+
+                t_fwd = time.perf_counter()
+                # If we profiled, backward already happened.
+                if not (profile_every > 0 and ((step + 1) % profile_every == 0)):
+                    loss.backward()
+                t_bwd = time.perf_counter()
+                swap.before_optimizer_step(optimizer, device=device)
+                optimizer.step()
+                swap.after_optimizer_step(optimizer)
+                if bool(getattr(train, "offload_optimizer", False)):
+                    # After offloading, grads should be freed aggressively.
+                    optimizer.zero_grad(set_to_none=True)
+                t_optim = time.perf_counter()
+
+                if (step + 1) % telemetry_interval == 0:
+                    metrics: dict[str, float] = {"loss": float(loss.detach())}
+                    if hasattr(objective, "metrics"):
+                        try:
+                            extra = objective.metrics(  # type: ignore[attr-defined]
+                                outputs=outputs, batch=batch_td, loss=loss
+                            )
+                            if isinstance(extra, dict):
+                                metrics.update({str(k): float(v) for k, v in extra.items()})
+                        except Exception:
+                            # Metrics are best-effort; don't fail training.
+                            pass
+                    # Timing breakdown (seconds).
+                    metrics.update(
+                        {
+                            "time_data_s": float(t_data - t0),
+                            "time_fwd_s": float(t_fwd - t_data),
+                            "time_bwd_s": float(t_bwd - t_fwd),
+                            "time_optim_s": float(t_optim - t_bwd),
+                            "time_step_s": float(t_optim - t0),
+                        }
+                    )
+                    # Memory footprint estimates (MiB).
+                    try:
+                        metrics.update(
+                            {
+                                "mem_params_mb": bytes_to_mb(param_bytes()),
+                                "mem_grads_mb": bytes_to_mb(grad_bytes()),
+                                "mem_optim_mb": bytes_to_mb(optim_state_bytes()),
+                            }
+                        )
+                    except Exception:
+                        pass
+                    if kernel_launches is not None:
+                        metrics["kernel_events_estimate"] = float(kernel_launches)
+                    metrics["compiled"] = 1.0 if compiled else 0.0
                     run_logger.log_metrics(
                         run_id=str(run.id),
                         phase="standard",
@@ -195,7 +465,7 @@ class StandardTrainer:
                 progress.update(
                     task,
                     advance=1,
-                    description=f"Step {step+1}/{run.steps} • loss={float(loss_bundle.total):.4f}",
+                    description=f"Step {step+1}/{run.steps} • loss={float(loss.detach()):.4f}",
                 )
 
         self._save_checkpoint(
@@ -214,6 +484,7 @@ class StandardTrainer:
         train: TrainConfig,
         device: torch.device,
         batch_size: int,
+        dist_ctx: object | None = None,
     ) -> DataLoader:
         if not hasattr(dataset_comp, "build"):
             raise TypeError("Dataset component does not expose build()")
@@ -224,12 +495,18 @@ class StandardTrainer:
         n_train, _n_val = train_val_counts(n, float(val_frac))
         train_ds = Subset(dataset, range(0, n_train))
 
+        def collate_to_tensordict(items: list[Any]) -> TensorDictBase:
+            return collate_tensordict(items)
+
         loader_kwargs = {
             "batch_size": int(batch_size),
             "num_workers": int(train.num_workers),
             "pin_memory": bool(train.pin_memory) and device.type == "cuda",
             "drop_last": True,
+            "collate_fn": collate_to_tensordict,
         }
+        if dist_ctx is not None and hasattr(dist_ctx, "wrap_dataloader"):
+            return dist_ctx.wrap_dataloader(train_ds, shuffle=True, **loader_kwargs)  # type: ignore[no-any-return, attr-defined]
         return DataLoader(train_ds, shuffle=True, **loader_kwargs)
 
     def _save_checkpoint(

@@ -46,6 +46,11 @@ class TorchEngine:
             ref="trainer.standard",
             python="trainer.standard:StandardTrainer",
         )
+        self.registry.register(
+            backend="torch",
+            ref="trainer.gradient_isolation",
+            python="trainer.gradient_isolation:GradientIsolationTrainer",
+        )
 
         # Datasets
         self.registry.register(
@@ -68,12 +73,22 @@ class TorchEngine:
             ref="dataset.diffusion_vector",
             python="data.diffusion_vector:DiffusionVectorDataset",
         )
+        self.registry.register(
+            backend="torch",
+            ref="dataset.tensors",
+            python="data.tensors:TensorFilesDataset",
+        )
 
         # Systems
         self.registry.register(
             backend="torch",
             ref="system.language_model",
             python="model.language_model_system:LanguageModelSystem",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="system.generic",
+            python="model.generic_system:GenericSystem",
         )
         self.registry.register(
             backend="torch",
@@ -89,6 +104,11 @@ class TorchEngine:
             backend="torch",
             ref="system.diffusion_denoiser",
             python="model.diffusion_denoiser_system:DiffusionDenoiserSystem",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="system.graph",
+            python="model.graph_system:GraphSystem",
         )
 
         # Objectives

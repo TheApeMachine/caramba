@@ -15,6 +15,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from runtime.tensordict_utils import TensorDictBase
 
 @dataclass
 class FidelityResult:
@@ -58,7 +59,7 @@ def compute_short_context_fidelity(
     *,
     teacher: nn.Module,
     student: nn.Module,
-    batches: list[tuple[Tensor, Tensor]],
+    batches: list[TensorDictBase],
 ) -> FidelityResult:
     """Compute teacher/student delta NLL and PPL ratio on fixed batches.
 
@@ -79,7 +80,9 @@ def compute_short_context_fidelity(
     total_tokens = 0
 
     with torch.no_grad():
-        for x, y in batches:
+        for batch in batches:
+            x = batch["input_ids"]
+            y = batch["target_ids"]
             if x.ndim != 2 or y.ndim != 2:
                 raise ValueError("Expected x and y to be rank-2 (batch, seq)")
             if x.shape != y.shape:

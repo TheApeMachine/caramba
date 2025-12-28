@@ -1,56 +1,68 @@
 """Objective implementations.
 
-Objectives compute loss from (batch, outputs) without baking dataset semantics
-into trainers. This is one of the key seams that makes the platform generic.
+Objectives compute a *scalar* loss tensor from (batch, outputs) using a strict,
+dictionary-based protocol:
+
+- batch:   dict[str, Tensor]
+- outputs: dict[str, Tensor]
+
+The particular tensor keys are configured via the manifest so trainers stay
+completely model/task agnostic.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor
 
+from runtime.tensordict_utils import TensorDictBase
 
-@dataclass(frozen=True, slots=True)
-class LossBundle:
-    total: Tensor
-    parts: dict[str, float]
+TensorDict = TensorDictBase
+MetricDict = dict[str, float]
+
+
+def _require_tensor(d: Mapping[str, Any], key: str, *, where: str) -> Tensor:
+    if key not in d:
+        raise KeyError(f"Missing key {key!r} in {where}.")
+    v = d[key]
+    if not isinstance(v, Tensor):
+        raise TypeError(f"Expected {where}[{key!r}] to be a Tensor, got {type(v).__name__}")
+    return v
 
 
 class NextTokenCrossEntropyObjective:
-    """Language modeling next-token objective (+ optional diffusion head loss)."""
+    """Legacy name for a keyed cross entropy objective (LM next-token by default)."""
 
-    def __init__(self, *, diffusion_weight: float | None = None) -> None:
-        self.diffusion_weight = diffusion_weight
+    def __init__(
+        self,
+        *,
+        logits_key: str = "logits",
+        target_key: str = "target_ids",
+        ignore_index: int = -100,
+        label_smoothing: float = 0.0,
+    ) -> None:
+        self.logits_key = str(logits_key)
+        self.target_key = str(target_key)
+        self.ignore_index = int(ignore_index)
+        self.label_smoothing = float(label_smoothing)
 
-    def loss(self, *, outputs: dict[str, Any], batch: dict[str, Any]) -> LossBundle:
-        logits: Tensor = outputs["logits"]
-        target_ids: Tensor = batch["target_ids"]
+    def loss(self, *, outputs: TensorDict, batch: TensorDict) -> Tensor:
+        logits = _require_tensor(outputs, self.logits_key, where="outputs")
+        target_ids = _require_tensor(batch, self.target_key, where="batch").long()
+        return F.cross_entropy(
+            logits.view(-1, logits.shape[-1]),
+            target_ids.reshape(-1),
+            ignore_index=int(self.ignore_index),
+            label_smoothing=float(self.label_smoothing),
+        )
 
-        ce = F.cross_entropy(logits.view(-1, logits.shape[-1]), target_ids.reshape(-1))
-        total = ce
-        parts: dict[str, float] = {"ce_loss": float(ce)}
-
-        # Optional: diffusion head objective if the system exposes it.
-        features = outputs.get("features", None)
-        system = outputs.get("_system", None)
-        if features is not None and system is not None and hasattr(system, "diffusion_loss"):
-            try:
-                diff = system.diffusion_loss(features, target_ids)  # type: ignore[attr-defined]
-                w = float(self.diffusion_weight) if self.diffusion_weight is not None else float(
-                    getattr(system, "diffusion_weight", 0.10)
-                )
-                total = total + w * diff
-                parts["diff_loss"] = float(diff)
-                parts["diff_weight"] = float(w)
-            except Exception:
-                # If diffusion isn't actually configured, keep CE-only behavior.
-                pass
-
-        return LossBundle(total=total, parts=parts)
+    def metrics(self, *, outputs: TensorDict, batch: TensorDict, loss: Tensor) -> MetricDict:
+        _ = outputs
+        _ = batch
+        return {"ce_loss": float(loss.detach())}
 
 
 class KeyedMSEObjective:
@@ -60,11 +72,15 @@ class KeyedMSEObjective:
         self.pred_key = str(pred_key)
         self.target_key = str(target_key)
 
-    def loss(self, *, outputs: dict[str, Any], batch: dict[str, Any]) -> LossBundle:
-        pred: Tensor = outputs[self.pred_key]
-        tgt: Tensor = batch[self.target_key]
-        mse = torch.mean((pred - tgt) ** 2)
-        return LossBundle(total=mse, parts={"mse": float(mse)})
+    def loss(self, *, outputs: TensorDict, batch: TensorDict) -> Tensor:
+        pred = _require_tensor(outputs, self.pred_key, where="outputs")
+        tgt = _require_tensor(batch, self.target_key, where="batch")
+        return torch.mean((pred - tgt) ** 2)
+
+    def metrics(self, *, outputs: TensorDict, batch: TensorDict, loss: Tensor) -> MetricDict:
+        _ = outputs
+        _ = batch
+        return {"mse": float(loss.detach())}
 
 
 class KeyedCrossEntropyObjective:
@@ -75,13 +91,31 @@ class KeyedCrossEntropyObjective:
     - batch[labels_key] shape (B,) or (B, ...)
     """
 
-    def __init__(self, *, logits_key: str = "logits", labels_key: str = "labels") -> None:
+    def __init__(
+        self,
+        *,
+        logits_key: str = "logits",
+        labels_key: str = "labels",
+        ignore_index: int = -100,
+        label_smoothing: float = 0.0,
+    ) -> None:
         self.logits_key = str(logits_key)
         self.labels_key = str(labels_key)
+        self.ignore_index = int(ignore_index)
+        self.label_smoothing = float(label_smoothing)
 
-    def loss(self, *, outputs: dict[str, Any], batch: dict[str, Any]) -> LossBundle:
-        logits: Tensor = outputs[self.logits_key]
-        labels: Tensor = batch[self.labels_key].long()
-        ce = F.cross_entropy(logits.view(-1, logits.shape[-1]), labels.view(-1))
-        return LossBundle(total=ce, parts={"ce_loss": float(ce)})
+    def loss(self, *, outputs: TensorDict, batch: TensorDict) -> Tensor:
+        logits = _require_tensor(outputs, self.logits_key, where="outputs")
+        labels = _require_tensor(batch, self.labels_key, where="batch").long()
+        return F.cross_entropy(
+            logits.view(-1, logits.shape[-1]),
+            labels.view(-1),
+            ignore_index=int(self.ignore_index),
+            label_smoothing=float(self.label_smoothing),
+        )
+
+    def metrics(self, *, outputs: TensorDict, batch: TensorDict, loss: Tensor) -> MetricDict:
+        _ = outputs
+        _ = batch
+        return {"ce_loss": float(loss.detach())}
 

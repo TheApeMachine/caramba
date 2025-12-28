@@ -107,6 +107,50 @@ class Logger:
         """Display content in a bordered panel."""
         self.console.print(Panel(content, title=title, border_style=style))
 
+    def fallback_warning(
+        self,
+        message: str,
+        *,
+        title: str = "PERFORMANCE FALLBACK",
+    ) -> None:
+        """High-visibility warning for unoptimized runtime fallbacks."""
+        self.console.print(
+            Panel(
+                Text(message, style="warning"),
+                title=title,
+                title_align="left",
+                border_style="warning",
+            )
+        )
+
+    def log_decision(self, from_strat: str, to_strat: str, reason: Any) -> None:
+        """Render an orchestrator switch decision as a Rich panel."""
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        table.add_column("Key", style="muted")
+        table.add_column("Value", style="metric")
+        table.add_row("from", str(from_strat))
+        table.add_row("to", str(to_strat))
+
+        if reason is not None:
+            table.add_row("trigger_metric", str(getattr(reason, "trigger_metric", "")))
+            table.add_row("current_value", str(getattr(reason, "current_value", "")))
+            table.add_row("threshold", str(getattr(reason, "threshold", "")))
+            window = getattr(reason, "window", None)
+            horizon = getattr(reason, "horizon", None)
+            if window is not None:
+                table.add_row("window", str(window))
+            if horizon is not None:
+                table.add_row("horizon", str(horizon))
+
+        self.console.print(
+            Panel(
+                table,
+                title="ORCHESTRATOR SWITCH",
+                title_align="left",
+                border_style="highlight",
+            )
+        )
+
     def table(
         self,
         title: str | None = None,

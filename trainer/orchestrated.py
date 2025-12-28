@@ -52,6 +52,7 @@ from orchestrator.strategy import (
     create_strategy,
 )
 from orchestrator.wrappers import AdaGC
+from runtime.tensordict_utils import TensorDictBase
 
 if TYPE_CHECKING:
     pass
@@ -103,8 +104,8 @@ class OrchestratedTrainer:
         self,
         model: nn.Module,
         config: OrchestratedConfig,
-        dataloader: DataLoader[tuple[Tensor, Tensor]] | None = None,
-        probe_dataloader: DataLoader[tuple[Tensor, Tensor]] | None = None,
+        dataloader: DataLoader[TensorDictBase] | None = None,
+        probe_dataloader: DataLoader[TensorDictBase] | None = None,
         device: torch.device | None = None,
     ) -> None:
         """Initialize orchestrated trainer.
@@ -177,8 +178,7 @@ class OrchestratedTrainer:
 
     def step(
         self,
-        x: Tensor,
-        y: Tensor,
+        batch: TensorDictBase,
         *,
         loss_fn: Callable[[Tensor, Tensor], Tensor] | None = None,
     ) -> dict[str, float]:
@@ -195,8 +195,8 @@ class OrchestratedTrainer:
         self._step += 1
         self.model.train()
 
-        x = x.to(self.device)
-        y = y.to(self.device)
+        x = batch["input_ids"].to(self.device)
+        y = batch["target_ids"].to(self.device)
 
         # Zero gradients
         self.current_strategy.zero_grad()
@@ -276,13 +276,13 @@ class OrchestratedTrainer:
                 self._data_iter = iter(dataloader)
 
             try:
-                x, y = next(self._data_iter)
+                b = next(self._data_iter)
             except StopIteration:
                 self._data_iter = iter(dataloader)
-                x, y = next(self._data_iter)
+                b = next(self._data_iter)
 
-            x = x.to(self.device)
-            y = y.to(self.device)
+            x = b["input_ids"].to(self.device)
+            y = b["target_ids"].to(self.device)
 
             strategy.zero_grad()
 
@@ -307,9 +307,9 @@ class OrchestratedTrainer:
             count = 0
 
             with torch.no_grad():
-                for x, y in probe_loader:
-                    x = x.to(self.device)
-                    y = y.to(self.device)
+                for b in probe_loader:
+                    x = b["input_ids"].to(self.device)
+                    y = b["target_ids"].to(self.device)
 
                     logits = self.model(x)
                     loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
@@ -323,10 +323,14 @@ class OrchestratedTrainer:
             return total_loss / max(1, count)
 
         # Run evaluation
+        if self._last_snapshot is None:
+            logger.warning("[OrchestratedTrainer] Missing telemetry snapshot; skipping evaluation")
+            return
         new_strategy = self.orchestrator.evaluate_and_switch(
             current_strategy=self.current_strategy,
             train_step_fn=train_step_fn,
             eval_fn=eval_fn,
+            snapshot=self._last_snapshot,
             step=self._step,
             reason=reason,
         )

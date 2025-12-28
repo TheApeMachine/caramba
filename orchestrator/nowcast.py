@@ -61,6 +61,8 @@ class NowcastConfig:
     use_module_edges: bool = True
     use_parent_edges: bool = True
     max_edges_per_group: int = 32
+    use_block_chain_edges: bool = True
+    block_chain_edge_weight: float = 0.25
 
     # Block nodes (optional, off the hot path by default)
     block_node_mode: BlockNodeMode = "tensor"
@@ -243,6 +245,26 @@ class WeightGraphBuilder:
                 for r in reps[1 : 1 + int(self.cfg.max_edges_per_group)]:
                     add_edge(hub, r, 0.5)
                     add_edge(r, hub, 0.5)
+
+        if self.cfg.use_block_chain_edges:
+            # Add locality edges between consecutive blocks for the same parameter.
+            # This helps conv/embedding-style tensors where dim0 has meaningful adjacency.
+            by_base: dict[str, list[tuple[int, int]]] = {}
+            for i, nm in enumerate(node_names):
+                if "#b" not in nm:
+                    continue
+                base, suffix = nm.split("#b", 1)
+                try:
+                    lo = int(suffix.split(":")[0])
+                except Exception:
+                    lo = i
+                by_base.setdefault(base, []).append((lo, i))
+
+            for _, blocks in by_base.items():
+                blocks.sort(key=lambda t: t[0])
+                for (_lo0, i0), (_lo1, i1) in zip(blocks, blocks[1:]):
+                    add_edge(i0, i1, float(self.cfg.block_chain_edge_weight))
+                    add_edge(i1, i0, float(self.cfg.block_chain_edge_weight))
 
         if not edges:
             for i in range(n - 1):

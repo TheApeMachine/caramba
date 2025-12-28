@@ -16,6 +16,7 @@ from config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetCon
 from console import logger
 
 from runtime.engine import TorchEngine
+from runtime.readiness import check_target_readiness, format_readiness_report
 
 
 def _resolve_target(manifest: Manifest, target: str | None) -> str:
@@ -103,6 +104,20 @@ class ExperimentRunner:
             return {}
 
         assert isinstance(target, ExperimentTargetConfig)
+        best_effort = bool(getattr(getattr(self.manifest.defaults, "runtime", object()), "best_effort", False))
+        readiness = check_target_readiness(self.manifest, target, best_effort=best_effort)
+        if readiness.errors:
+            raise RuntimeError(
+                "Runtime readiness check failed:\n" + format_readiness_report(readiness)
+            )
+        for w in readiness.warnings:
+            # Best-effort mode: warn loudly when performance backends are missing.
+            if best_effort and w.code in {"metal_build_tools_missing", "triton_missing"}:
+                logger.fallback_warning(
+                    "WARNING: Running unoptimized PyTorch fallback for DBA Decode. Performance will be degraded."
+                )
+            logger.warning(w.message)
+
         engine = TorchEngine()
         logger.header("Target", f"{target.name} ({target.type})")
         return cast(dict[str, Path], engine.run_experiment(self.manifest, target))

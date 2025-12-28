@@ -13,6 +13,7 @@ from config.layer import LayerConfig
 from config.manifest import Manifest
 from config.model import ModelConfig
 from config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
+from config.topology_graph import GraphTopologyConfig
 from config.topology import NodeConfig, TopologyConfig
 
 
@@ -55,8 +56,8 @@ class Planner:
         )
         out.append(f"{pad}runs.count={len(target.runs)} benchmarks.count={len(target.benchmarks or [])}")
 
-        # If it's a language-model system, render the topology for debugging.
-        if target.system.ref == "system.language_model":
+        # If it's a ModelConfig-driven system, render the topology for debugging.
+        if target.system.ref in ("system.language_model", "system.generic"):
             model_payload = target.system.config.get("model", None)
             if isinstance(model_payload, dict):
                 try:
@@ -68,6 +69,24 @@ class Planner:
                     out.append(f"{pad}model=<invalid>")
             else:
                 out.append(f"{pad}model=<missing>")
+
+        if target.system.ref == "system.graph":
+            topo_payload = target.system.config.get("topology", None)
+            if isinstance(topo_payload, dict):
+                try:
+                    topo = GraphTopologyConfig.model_validate(topo_payload)
+                    out.append(f"{pad}graph.type={topo.type}")
+                    out.append(f"{pad}graph.nodes:")
+                    for i, n in enumerate(topo.nodes):
+                        ins = n.in_keys if isinstance(n.in_keys, str) else list(n.in_keys)
+                        outs = n.out_keys if isinstance(n.out_keys, str) else list(n.out_keys)
+                        out.append(
+                            f"{pad}  - node[{i}].id={n.id} op={n.op} in={ins} out={outs} repeat={getattr(n,'repeat',1)}"
+                        )
+                except Exception:
+                    out.append(f"{pad}graph=<invalid>")
+            else:
+                out.append(f"{pad}graph=<missing>")
 
         return out
 

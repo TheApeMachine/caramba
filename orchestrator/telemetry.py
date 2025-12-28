@@ -87,6 +87,9 @@ class TelemetrySnapshot:
     # Optional curvature proxy (expensive to compute)
     sharpness: float | None = None
 
+    # Arbitrary user-provided metrics (for metric-agnostic orchestrator use).
+    metrics: dict[str, float] = field(default_factory=dict)
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for logging."""
         return {
@@ -102,6 +105,7 @@ class TelemetrySnapshot:
             "spike_score": self.spike_score,
             "phase": self.phase.value,
             "lr": self.lr,
+            "metrics": dict(self.metrics),
         }
 
     def is_healthy(self) -> bool:
@@ -296,6 +300,7 @@ class TelemetryStream:
         lr: float,
         model: nn.Module | None = None,
         update_norm: float | None = None,
+        metrics: dict[str, float] | None = None,
     ) -> TelemetrySnapshot:
         """Record one training step and return a snapshot.
 
@@ -382,6 +387,7 @@ class TelemetryStream:
             lr=lr,
             phase=phase,
             phase_confidence=confidence,
+            metrics={} if metrics is None else {str(k): float(v) for k, v in metrics.items()},
         )
 
         return snapshot

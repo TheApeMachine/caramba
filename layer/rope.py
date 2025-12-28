@@ -105,8 +105,20 @@ class RotaryEmbedding(nn.Module):
             raise ValueError(f"rot_dim {rot} > head_dim {D}")
 
         cos, sin = self._cos_sin(pos_offset + T, x.device, x.dtype)
-        cos = cos[pos_offset : pos_offset + T].unsqueeze(0).unsqueeze(0)
-        sin = sin[pos_offset : pos_offset + T].unsqueeze(0).unsqueeze(0)
+        cos = cos[pos_offset : pos_offset + T]
+        sin = sin[pos_offset : pos_offset + T]
+
+        # Fast path via HAL (Metal / Triton / fallback).
+        try:
+            from optimizer.kernels import rope_apply
+
+            return rope_apply(x=x, cos=cos, sin=sin, rot_dim=int(self.rot_dim))
+        except Exception:
+            # Best-effort: fall back to PyTorch implementation.
+            pass
+
+        cos = cos.unsqueeze(0).unsqueeze(0)
+        sin = sin.unsqueeze(0).unsqueeze(0)
 
         x_rot = x[..., :rot]
         x_pass = x[..., rot:]

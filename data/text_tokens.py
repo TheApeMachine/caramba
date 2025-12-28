@@ -15,6 +15,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from typing_extensions import override
 
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 def _require_numpy() -> object:
     if importlib.util.find_spec("numpy") is None:
@@ -33,7 +34,7 @@ def _np_call(np_mod: object, name: str, *args: object, **kwargs: object) -> obje
     return fn(*args, **kwargs)
 
 
-class TextTokensDataset(Dataset[tuple[Tensor, Tensor]]):
+class TextTokensDataset(Dataset[TensorDictBase]):
     """Dataset that loads whitespace-separated token IDs from a text file.
 
     Why this exists:
@@ -64,9 +65,9 @@ class TextTokensDataset(Dataset[tuple[Tensor, Tensor]]):
         return len(self.tokens) - self.block_size
 
     @override
-    def __getitem__(self, idx: int) -> tuple[Tensor, Tensor]:
+    def __getitem__(self, idx: int) -> TensorDictBase:
         block = self.tokens[idx : idx + self.block_size + 1]
         x = block[:-1]
         y = block[1:]
-        return x, y
+        return as_tensordict({"input_ids": x, "target_ids": y})
 

@@ -14,6 +14,7 @@ from trainer.collectors import Collector
 from trainer.checkpointers import CheckPointer
 from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from trainer.upcycle_context import UpcycleContext
+from runtime.tensordict_utils import TensorDictBase
 
 
 def _has_diffusion_head(student: nn.Module) -> bool:
@@ -48,7 +49,7 @@ def _eval_global_loss(
     student: nn.Module,
     device: torch.device,
     dist_ctx: object | None,
-    loader: DataLoader[tuple[Tensor, Tensor]],
+    loader: DataLoader[TensorDictBase],
     max_batches: int = 2,
 ) -> dict[str, float]:
     was_training = student.training
@@ -63,9 +64,9 @@ def _eval_global_loss(
     n = 0
 
     with torch.no_grad():
-        for x, y in loader:
-            x = x.to(device=device)
-            y = y.to(device=device)
+        for batch in loader:
+            x = batch["input_ids"].to(device=device)
+            y = batch["target_ids"].to(device=device)
             if has_diffusion:
                 result = student.forward(x, return_features=True)  # type: ignore[call-arg]
                 features: Tensor = result[0]  # type: ignore[index]
@@ -172,9 +173,9 @@ class GlobalStepper:
         with logger.progress_bar() as progress:
             task = progress.add_task("Training...", total=run.steps)
             for step in range(int(start_step), int(run.steps)):
-                (x, y), loader_iter = collector.next_batch(loader, loader_iter)
-                x = x.to(device=ctx.device)
-                y = y.to(device=ctx.device)
+                batch, loader_iter = collector.next_batch(loader, loader_iter)
+                x = batch["input_ids"].to(device=ctx.device)
+                y = batch["target_ids"].to(device=ctx.device)
 
                 optimizer.zero_grad(set_to_none=True)
                 autocast_enabled = bool(use_amp)

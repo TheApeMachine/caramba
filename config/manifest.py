@@ -17,10 +17,8 @@ from pydantic import BaseModel, Field
 
 from config import PositiveInt
 from config.defaults import Defaults
-from config.paper import PaperConfig
 from config.resolve import Resolver, normalize_type_names
 from config.target import TargetConfig
-from paper.review import ReviewConfig
 
 
 class Manifest(BaseModel):
@@ -33,10 +31,6 @@ class Manifest(BaseModel):
 
     # Runnable units.
     targets: list[TargetConfig] = Field(default_factory=list)
-
-    # Optional paper/review (can be used by targets that generate artifacts).
-    paper: PaperConfig | None = None
-    review: ReviewConfig | None = None
 
     # Optional named targets. If present, entrypoints["default"] is used when
     # the CLI doesn't specify --target. Values can be either a bare target name

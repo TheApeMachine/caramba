@@ -1,0 +1,545 @@
+# 🤖 Agent Workflows
+
+caramba includes AI-assisted research automation through agent processes. These agents can draft papers, review experiments, and run autonomous research loops.
+
+---
+
+## 📋 Table of Contents
+
+- [Overview](#overview)
+- [Process Types](#process-types)
+- [Paper Writing](#paper-writing)
+- [Paper Review](#paper-review)
+- [Research Loop](#research-loop)
+- [Knowledge Integration](#knowledge-integration)
+- [Configuration](#configuration)
+
+---
+
+## Overview
+
+Agent workflows are implemented as **process targets** in manifests:
+
+```yaml
+targets:
+  - type: process
+    name: paper_write
+    team:
+      writer: writer
+    process:
+      type: paper_write
+      writer: writer
+      output_dir: paper
+```
+
+These processes coordinate AI agents to:
+- 📝 Draft academic papers from experiment results
+- 🔍 Review papers and suggest improvements
+- 🔄 Run write → review → experiment loops
+- 🧠 Integrate knowledge from codebase and research
+
+---
+
+## Process Types
+
+### Available Processes
+
+| Process | Purpose | Key Agents |
+|---------|---------|------------|
+| `paper_write` | Generate LaTeX paper from experiments | writer |
+| `paper_review` | Review paper and propose experiments | reviewer |
+| `research_loop` | Write → Review → Audit loop | leader, writer, reviewer |
+| `discussion` | Multi-agent research discussion | multiple researchers |
+| `code_graph_sync` | Index codebase into knowledge graph | - |
+
+### Process Target Structure
+
+```yaml
+- type: process
+  name: my_process
+  team:
+    role_name: persona_name
+  process:
+    type: process_type
+    # Process-specific configuration
+```
+
+---
+
+## Paper Writing
+
+Generate a complete LaTeX paper from experiment results.
+
+### Basic Configuration
+
+```yaml
+targets:
+  - type: process
+    name: paper_write
+    team:
+      writer: writer
+    process:
+      type: paper_write
+      name: paper_write
+      writer: writer
+      output_dir: paper
+```
+
+### What the Agent Does
+
+1. **Reads experiment manifest** — Understands what was run
+2. **Collects results** — Gathers benchmark data and artifacts
+3. **Generates LaTeX** — Creates structured paper sections
+4. **Includes figures** — References generated charts
+5. **Manages bibliography** — Creates `references.bib`
+
+### Output Structure
+
+```
+artifacts/
+└── experiment_name/
+    └── paper/
+        ├── paper.tex          # Main LaTeX document
+        ├── references.bib     # Bibliography
+        └── figures/           # Included figures
+            ├── summary.png
+            ├── latency_vs_context.png
+            └── ...
+```
+
+### Paper Sections
+
+The writer generates standard academic sections:
+
+| Section | Content |
+|---------|---------|
+| Abstract | Summary of contributions |
+| Introduction | Problem statement, motivation |
+| Related Work | Prior research context |
+| Methodology | Technical approach |
+| Experiments | Setup, datasets, baselines |
+| Results | Quantitative findings |
+| Discussion | Analysis and limitations |
+| Conclusion | Summary and future work |
+
+### Running Paper Writing
+
+```bash
+# Configure in manifest
+python3 -m caramba manifest.yml
+
+# Or run paper target specifically
+python3 -m caramba manifest.yml --target paper_write
+```
+
+---
+
+## Paper Review
+
+Review an existing paper and propose improvements or new experiments.
+
+### Configuration
+
+```yaml
+targets:
+  - type: process
+    name: paper_review
+    team:
+      reviewer: reviewer
+    process:
+      type: paper_review
+      name: paper_review
+      reviewer: reviewer
+      strictness: conference
+      max_proposed_experiments: 3
+      output_dir: paper
+```
+
+### Strictness Levels
+
+| Level | Focus |
+|-------|-------|
+| `workshop` | Novel ideas, early-stage work |
+| `conference` | Complete evaluation, clear presentation |
+| `journal` | Comprehensive coverage, reproducibility |
+| `top_venue` | State-of-the-art, significant impact |
+
+### Reviewer Actions
+
+| Action | Description |
+|--------|-------------|
+| `approve` | Paper is ready |
+| `style_fix` | Minor stylistic changes |
+| `clarification` | Needs clarification |
+| `new_experiment` | Requires additional experiments |
+| `major_revision` | Significant restructuring |
+
+### Reviewer Personas
+
+| Persona | Focus |
+|---------|-------|
+| `senior_researcher` | Novelty, significance, presentation |
+| `methodology_expert` | Experimental design, statistics |
+| `practitioner` | Practical applicability, efficiency |
+
+### Review Output
+
+```json
+{
+  "overall_score": 7.5,
+  "recommendation": "new_experiment",
+  "strengths": [
+    "Novel approach to attention compression",
+    "Comprehensive benchmarks"
+  ],
+  "weaknesses": [
+    "Missing ablation on bottleneck dimensions",
+    "Limited baselines"
+  ],
+  "proposed_experiments": [
+    {
+      "name": "ablation_bottleneck",
+      "hypothesis": "Larger bottleneck improves quality",
+      "priority": "high"
+    }
+  ]
+}
+```
+
+---
+
+## Research Loop
+
+Autonomous write → review → structural audit loop.
+
+### Architecture
+
+```
+┌───────────────────────────────────────────────────────────┐
+│                    RESEARCH LOOP                           │
+├───────────────────────────────────────────────────────────┤
+│    ┌──────────┐    ┌──────────┐    ┌─────────────────┐    │
+│    │  Write   │───▶│  Review  │───▶│ Structural      │    │
+│    │  Paper   │    │  Paper   │    │ Audit           │    │
+│    └────▲─────┘    └──────────┘    └────────┬────────┘    │
+│         │                                    │             │
+│         │          ┌──────────────┐         │             │
+│         │          │   Address    │         │             │
+│         └──────────│  Weaknesses  │◀────────┘             │
+│                    └──────────────┘                       │
+│                                                           │
+│    Repeat until: approved OR max iterations reached       │
+└───────────────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+```yaml
+targets:
+  - type: process
+    name: research_loop
+    team:
+      leader: research_lead
+      writer: writer
+      reviewer: reviewer
+    process:
+      type: research_loop
+      name: research_loop
+      leader: leader
+      writer: writer
+      reviewer: reviewer
+      max_iterations: 5
+      auto_run_experiments: false
+      output_dir: paper
+```
+
+### Loop Behavior
+
+1. **Write** — Generate/update paper based on feedback
+2. **Review** — Evaluate paper, identify weaknesses
+3. **Structural Audit** — Query knowledge graph for safety
+4. **Check Approval** — Stop if score ≥ threshold
+5. **Address Weaknesses** — Incorporate feedback
+6. **Repeat** — Until approved or max iterations
+
+### Output
+
+```
+artifacts/
+└── experiment_name/
+    └── agents/
+        └── research_loop/
+            ├── iteration_1_*.json
+            ├── iteration_2_*.json
+            └── ...
+```
+
+---
+
+## Knowledge Integration
+
+Agents can access knowledge from multiple sources:
+
+### Context Pipeline
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                 AGENT CONTEXT PIPELINE                     │
+├────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │  Knowledge   │    │    Web       │    │   Reasoning  │  │
+│  │   Lookup     │───▶│   Search     │───▶│    Stage     │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘  │
+│         │                   │                    │         │
+│         ▼                   ▼                    ▼         │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │  DeepLake +  │    │   arXiv +    │    │   Extended   │  │
+│  │   Graphiti   │    │   Semantic   │    │   Thinking   │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘  │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Codebase Indexing
+
+Sync your codebase into the knowledge graph:
+
+```yaml
+targets:
+  - type: process
+    name: code_sync
+    process:
+      type: code_graph_sync
+      index_namespace: main
+```
+
+This enables agents to:
+- Understand model topology
+- Query layer dependencies
+- Check impact of proposed changes
+
+### Hybrid Storage
+
+```
+┌─────────────────────────────────────────────┐
+│                HYBRID STORAGE               │
+├─────────────────────────────────────────────┤
+│  ┌──────────────┐         ┌──────────────┐  │
+│  │   DeepLake   │         │  FalkorDB +  │  │
+│  │   (Vector)   │◄───────►│   Graphiti   │  │
+│  └──────────────┘         └──────────────┘  │
+│        │                        │           │
+│        ▼                        ▼           │
+│  ┌──────────────┐         ┌──────────────┐  │
+│  │    Code      │         │  Entities:   │  │
+│  │   Snippets   │         │  - Layers    │  │
+│  │  + Summaries │         │  - Functions │  │
+│  └──────────────┘         │  - Papers    │  │
+│                           └──────────────┘  │
+└─────────────────────────────────────────────┘
+```
+
+### Setup
+
+```bash
+# Start graph services
+docker compose up -d falkordb graphiti-mcp
+
+# Run FalkorDB standalone (if not using compose)
+docker run -p 6379:6379 -it --rm falkordb/falkordb
+```
+
+---
+
+## Configuration
+
+### Team Configuration
+
+Teams map role names to persona configurations:
+
+```yaml
+team:
+  writer: writer           # Role -> Persona
+  reviewer: reviewer
+  leader: research_lead
+```
+
+Personas are defined in `config/personas/`:
+
+| Persona | File | Role |
+|---------|------|------|
+| `writer` | `writer.yml` | Paper drafting |
+| `reviewer` | `reviewer.yml` | Paper review |
+| `research_lead` | `research_lead.yml` | Loop coordination |
+| `developer` | `developer.yml` | Code analysis |
+| `ml_expert` | `ml_expert.yml` | ML insights |
+| `mathematician` | `mathematician.yml` | Formal proofs |
+
+### Persona Configuration
+
+```yaml
+# config/personas/writer.yml
+name: writer
+description: Academic paper writer
+
+model: gpt-4o
+temperature: 0.7
+
+system_prompt: |
+  You are an expert academic writer specializing in machine learning.
+  Write clear, precise, and well-structured content.
+  Use proper mathematical notation where appropriate.
+
+tools:
+  - read_tex_file
+  - write_tex_file
+  - update_section
+  - add_citation
+  - search_arxiv
+  - get_experiment_results
+```
+
+### Process Configuration
+
+| Process | Key Options |
+|---------|-------------|
+| `paper_write` | `output_dir`, `writer` |
+| `paper_review` | `strictness`, `max_proposed_experiments`, `output_dir` |
+| `research_loop` | `max_iterations`, `auto_run_experiments`, `output_dir` |
+| `code_graph_sync` | `index_namespace` |
+
+---
+
+## Agent Tools
+
+Agents have access to specialized tools:
+
+### Paper Tools
+
+| Tool | Description |
+|------|-------------|
+| `read_tex_file` | Read current paper.tex |
+| `write_tex_file` | Write complete paper |
+| `update_section` | Update specific section |
+| `add_citation` | Add BibTeX entry |
+| `search_arxiv` | Search arXiv for papers |
+| `search_semantic_scholar` | Search Semantic Scholar |
+
+### Experiment Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_experiment_manifest` | Read experiment config |
+| `get_experiment_results` | Get benchmark results |
+| `list_artifacts` | List generated files |
+| `include_figure` | Generate LaTeX figure code |
+
+### Knowledge Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_nodes` | Query entity graph |
+| `search_memory_facts` | Search relationships |
+| `add_memory` | Add knowledge to graph |
+
+---
+
+## Running Agent Workflows
+
+### From Manifest
+
+```bash
+# Run paper writing process
+python3 -m caramba manifest.yml --target paper_write
+
+# Run full research loop
+python3 -m caramba manifest.yml --target research_loop
+```
+
+### Example Manifest
+
+```yaml
+version: 2
+name: research_automation
+
+targets:
+  # Experiment target
+  - type: experiment
+    name: train
+    # ... experiment config ...
+
+  # Paper writing
+  - type: process
+    name: write_paper
+    team:
+      writer: writer
+    process:
+      type: paper_write
+      writer: writer
+      output_dir: paper
+
+  # Paper review
+  - type: process
+    name: review_paper
+    team:
+      reviewer: reviewer
+    process:
+      type: paper_review
+      reviewer: reviewer
+      strictness: conference
+
+  # Full research loop
+  - type: process
+    name: full_loop
+    team:
+      leader: research_lead
+      writer: writer
+      reviewer: reviewer
+    process:
+      type: research_loop
+      leader: leader
+      writer: writer
+      reviewer: reviewer
+      max_iterations: 3
+
+entrypoints:
+  default: train
+  paper: write_paper
+  review: review_paper
+  loop: full_loop
+```
+
+### Installing Dependencies
+
+```bash
+# All agent dependencies
+pip install -e ".[agents]"
+
+# Or individual packages
+pip install deeplake docling transformers  # Knowledge store
+pip install crawl4ai                        # Web crawling
+```
+
+---
+
+## Summary
+
+| Process | Input | Output |
+|---------|-------|--------|
+| `paper_write` | Experiment results | LaTeX paper |
+| `paper_review` | paper.tex | Review JSON |
+| `research_loop` | Manifest | Iterated paper + reviews |
+| `code_graph_sync` | Codebase | Knowledge graph |
+
+Agent workflows enable:
+- 📝 Automated paper generation from experiments
+- 🔍 AI-powered review and feedback
+- 🔄 Autonomous research iteration
+- 🧠 Knowledge-grounded reasoning
+
+---
+
+<div align="center">
+
+**[← Benchmarking](benchmarking.md)** · **[Optimization →](optimization.md)**
+
+</div>

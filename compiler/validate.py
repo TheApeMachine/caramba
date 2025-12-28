@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable, TypeGuard
 
 from config.model import ModelConfig
+from config.topology_graph import GraphTopologyConfig
 from config.layer import (
     AttentionLayerConfig,
     AttentionMode,
@@ -45,6 +46,73 @@ class Validator:
         return manifest
 
     validate = validate_manifest
+
+    # -----------------------------
+    # Graph topology validation (TensorDict DAGs)
+    # -----------------------------
+
+    def validate_graph_topology(self, topo: GraphTopologyConfig, *, path: str = "system.topology") -> None:
+        ids: set[str] = set()
+        produced: dict[str, str] = {}
+        for i, n in enumerate(list(topo.nodes)):
+            p = f"{path}.nodes[{i}]"
+            nid = str(n.id)
+            if not nid:
+                raise ValueError(f"{p}.id: must be non-empty")
+            if nid in ids:
+                raise ValueError(f"{p}.id: duplicate node id {nid!r}")
+            ids.add(nid)
+
+            outs = [str(n.out_keys)] if isinstance(n.out_keys, str) else [str(x) for x in n.out_keys]
+            if not outs:
+                raise ValueError(f"{p}.out: must be non-empty")
+            for k in outs:
+                if k in produced:
+                    raise ValueError(f"{p}.out: key {k!r} already produced by node {produced[k]!r}")
+                produced[k] = nid
+
+        # Acyclicity and ordering are validated by toposort_graph().
+        _ = self.toposort_graph(topo)
+
+    def toposort_graph(self, topo: GraphTopologyConfig) -> list[str]:
+        nodes = list(topo.nodes)
+        ids = [str(n.id) for n in nodes]
+        produced: dict[str, str] = {}
+        for n in nodes:
+            outs = [str(n.out_keys)] if isinstance(n.out_keys, str) else [str(x) for x in n.out_keys]
+            for k in outs:
+                produced[k] = str(n.id)
+
+        # Build adjacency using key dependencies.
+        edges: dict[str, set[str]] = {nid: set() for nid in ids}
+        indeg: dict[str, int] = {nid: 0 for nid in ids}
+        for n in nodes:
+            nid = str(n.id)
+            ins = [str(n.in_keys)] if isinstance(n.in_keys, str) else [str(x) for x in n.in_keys]
+            for k in ins:
+                src = produced.get(k)
+                if src is None or src == nid:
+                    continue
+                if nid not in edges[src]:
+                    edges[src].add(nid)
+                    indeg[nid] += 1
+
+        # Kahn's algorithm.
+        q = [nid for nid in ids if indeg[nid] == 0]
+        out: list[str] = []
+        while q:
+            nid = q.pop()
+            out.append(nid)
+            for dst in edges.get(nid, ()):
+                indeg[dst] -= 1
+                if indeg[dst] == 0:
+                    q.append(dst)
+
+        if len(out) != len(ids):
+            # Find a small witness set (nodes still with indeg>0).
+            stuck = [nid for nid in ids if indeg[nid] > 0][:8]
+            raise ValueError(f"Graph topology contains a cycle or unresolved deps (stuck={stuck})")
+        return out
 
     def validate_topology(self, config: TopologyConfig, *, path: str = "model.topology") -> None:
         self.infer_topology_io(config, path=path)

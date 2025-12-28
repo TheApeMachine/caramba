@@ -10,16 +10,16 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from torch import Tensor
 from torch.utils.data import Dataset
 
 from data.npy import NpyDataset
 from data.text_tokens import TextTokensDataset
+from runtime.tensordict_utils import TensorDictBase
 
 logger = logging.getLogger(__name__)
 
 
-def build_token_dataset(*, path: str | Path, block_size: int) -> Dataset[tuple[Tensor, Tensor]]:
+def build_token_dataset(*, path: str | Path, block_size: int) -> Dataset[TensorDictBase]:
     """Build a dataset appropriate for the given path."""
     p = Path(path)
     suf = p.suffix.lower()

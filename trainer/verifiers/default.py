@@ -26,6 +26,7 @@ from trainer.verifiers.kvcache import (
     estimate_model_kvcache_bytes,
     estimate_model_kvcache_bytes_decoupled,
 )
+from runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict
 
 
 class DefaultVerifier:
@@ -247,11 +248,17 @@ class DefaultVerifier:
     ) -> list[Tensor]:
         path = Path(group_data)
         dataset = build_token_dataset(path=path, block_size=int(block_size))
-        loader = DataLoader(dataset, batch_size=int(batch_size), shuffle=False, drop_last=True)
+        loader = DataLoader(
+            dataset,
+            batch_size=int(batch_size),
+            shuffle=False,
+            drop_last=True,
+            collate_fn=collate_tensordict,
+        )
 
         batches: list[Tensor] = []
-        for x, _ in loader:
-            batches.append(x.to(device=device))
+        for batch in loader:
+            batches.append(batch["input_ids"].to(device=device))
             if len(batches) >= int(count):
                 break
         return batches
@@ -266,7 +273,7 @@ class DefaultVerifier:
         block_size: int,
         count: int,
         split: str,
-    ) -> list[tuple[Tensor, Tensor]]:
+    ) -> list[TensorDictBase]:
         path = Path(group_data)
         dataset = build_token_dataset(path=path, block_size=int(block_size))
 
@@ -287,10 +294,18 @@ class DefaultVerifier:
         else:
             ds = dataset
 
-        loader = DataLoader(ds, batch_size=int(batch_size), shuffle=False, drop_last=True)
-        batches: list[tuple[Tensor, Tensor]] = []
-        for x, y in loader:
-            batches.append((x.to(device=device), y.to(device=device)))
+        loader = DataLoader(
+            ds,
+            batch_size=int(batch_size),
+            shuffle=False,
+            drop_last=True,
+            collate_fn=collate_tensordict,
+        )
+        batches: list[TensorDictBase] = []
+        for batch in loader:
+            td = as_tensordict(batch)
+            td = td.to(device=device)
+            batches.append(td)
             if len(batches) >= int(count):
                 break
         return batches
