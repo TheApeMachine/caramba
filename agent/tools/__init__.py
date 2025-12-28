@@ -1,43 +1,33 @@
 """Agent tools via MCP servers.
 
-Tools are provided via MCP servers - the agent SDK handles discovery and execution.
+The agent system should prefer **remote MCP servers** (typically Docker-managed,
+see `docker-compose.yml`) and fall back to spawning local stdio servers only when
+explicitly configured.
 
-Available MCP servers:
-- graphiti-mcp (external): Graph memory at http://localhost:8000/mcp
-- paper-tools (local): Paper writing tools, run via `python -m agent.tools.paper`
-
-Usage:
-    from agent.tools import PaperTool, GraphTool
-
-    paper = PaperTool()
-    graph = GraphTool()
-
-    async with paper.get_server() as paper_server, graph.get_server() as graph_server:
-        agent = Agent(
-            name="Research Assistant",
-            mcp_servers=[paper_server, graph_server],
-        )
+Tool wiring is manifest-driven via `config/mcp_servers.yml`.
 """
 from __future__ import annotations
 
-from agents.mcp import MCPServerStdio
+from typing import Any, cast
 
-from agent.tools.paper import PaperTool
-from agent.tools.deeplake import DeepLakeTool
+from agents.mcp import (
+    MCPServer,
+    MCPServerSse,
+    MCPServerStdio,
+    MCPServerStdioParams,
+    MCPServerStreamableHttp,
+)
 
-TOOLS = {
-    "paper": PaperTool(),
-    "deeplake": DeepLakeTool(),
-}
+from config.mcp_registry import load_mcp_servers
 
 
 class Tool:
     """Generic tool class."""
 
     def __init__(self, name: str):
-        self.mcp = TOOLS[name]
+        self.name = name
 
-    def __call__(self) -> MCPServerStdio:
+    def __call__(self) -> MCPServer:
         """Get the MCP client for the tool.
 
         Returns:
@@ -45,17 +35,64 @@ class Tool:
         """
         return self.mcp_client()
 
-    def mcp_client(self) -> MCPServerStdio:
-        """Create an MCP stdio client for this tool.
+    def mcp_client(self) -> MCPServer:
+        """Create an MCP client for this tool based on the registry manifest."""
+        registry = load_mcp_servers()
+        if self.name not in registry:
+            available = ", ".join(sorted(registry.keys()))
+            raise KeyError(
+                f"Unknown MCP server '{self.name}'. "
+                f"Define it in config/mcp_servers.yml. Available: [{available}]"
+            )
 
-        The tool instance must provide:
-        - get_command() -> str
-        - get_args() -> list[str]
-        """
-        return MCPServerStdio(
-            cache_tools_list=True,
-            params={
-                "command": self.mcp.get_command(),
-                "args": self.mcp.get_args(),
-            },
-        )
+        cfg = registry[self.name]
+
+        if cfg.transport == "streamable-http":
+            if not cfg.url:
+                raise ValueError(f"MCP server '{self.name}' missing 'url' for streamable-http.")
+            return MCPServerStreamableHttp(
+                cache_tools_list=True,
+                name=cfg.name or self.name,
+                params={
+                    "url": cfg.url,
+                    "headers": cfg.headers or {},
+                },
+            )
+
+        if cfg.transport == "sse":
+            if not cfg.url:
+                raise ValueError(f"MCP server '{self.name}' missing 'url' for sse.")
+            return MCPServerSse(
+                cache_tools_list=True,
+                name=cfg.name or self.name,
+                params={
+                    "url": cfg.url,
+                    "headers": cfg.headers or {},
+                },
+            )
+
+        if cfg.transport == "stdio":
+            if not cfg.command:
+                raise ValueError(f"MCP server '{self.name}' missing 'command' for stdio.")
+            params = cast(
+                MCPServerStdioParams,
+                {
+                    "command": cfg.command,
+                    "args": cfg.args or [],
+                    "env": cfg.env or {},
+                },
+            )
+            if cfg.cwd is not None:
+                params["cwd"] = cfg.cwd
+            if cfg.encoding is not None:
+                params["encoding"] = cfg.encoding
+            return MCPServerStdio(
+                cache_tools_list=True,
+                name=cfg.name or self.name,
+                params=params,
+            )
+
+        raise ValueError(f"Unknown transport '{cfg.transport}' for MCP server '{self.name}'.")
+
+
+__all__ = ["Tool"]

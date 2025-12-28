@@ -114,13 +114,13 @@ See [Optimizer Orchestration](#optimizer-orchestration-) for full documentation.
 pip install -r requirements.txt
 
 # Run full experiment (upcycle + benchmarks + artifacts)
-python3 -m caramba run caramba/config/presets/llama32_1b_dba.yml --group paper
+python3 -m caramba config/presets/llama32_1b_dba.yml --target group:paper
 
 # Quick validation run
-python3 -m caramba run caramba/config/presets/llama32_1b_dba.yml --group quick
+python3 -m caramba config/presets/llama32_1b_dba.yml --target group:quick
 
-# Compile only (with optional plan output)
-python3 -m caramba compile caramba/config/presets/llama32_1b_dba.yml --print-plan
+# Dry-run (parse → lower → validate, print plan; no execution)
+python3 -m caramba config/presets/llama32_1b_dba.yml --dry-run
 ```
 
 > **Note:** MPS works out of the box on Apple Silicon. For CUDA, install a CUDA-enabled torch build separately.
@@ -129,33 +129,9 @@ python3 -m caramba compile caramba/config/presets/llama32_1b_dba.yml --print-pla
 
 ## CLI Reference
 
-### Commands
-
 ```bash
-# Compile manifest (parse → lower → validate)
-caramba compile <manifest> [--print-plan]
-
-# Run full experiment pipeline
-caramba run <manifest> [--group <name>]
-
-# AI-assisted paper drafting
-caramba paper <manifest> [--output-dir <path>] [--update]
-```
-
-### Legacy Mode
-
-When no subcommand is provided, caramba runs in legacy mode with these options:
-
-```bash
-caramba --manifest <path>         # Path to manifest file
-        --mode train|sample|chat  # Run mode
-        --exp baseline|gqa|bottleneck|decoupled  # Experiment preset
-        --data <path>             # Dataset path (train mode)
-        --ckpt <path>             # Checkpoint path (sample/chat modes)
-        --resume <path>           # Resume from checkpoint (train mode)
-        --seed <int>              # Random seed (default: 1337)
-        --entity <name>           # W&B entity label
-        --project <name>          # W&B project label
+# Run what a manifest declares (training groups or agent processes)
+caramba <manifest.yml> [--target group:<name>|process:<name>] [--dry-run]
 ```
 
 ---
@@ -176,6 +152,8 @@ A manifest declares the complete experiment configuration.
 | **verify**     | Post-run comparison tests (per run)                |
 | **benchmarks** | Perplexity, latency, memory benchmarks (per group) |
 | **paper**      | AI-assisted paper drafting configuration (optional)|
+| **agents**     | Agent team + processes (optional)                  |
+| **entrypoints**| Named targets + default run target (optional)      |
 
 ### Manifest Variables
 
@@ -237,11 +215,8 @@ Caramba includes an AI agent that can draft and update academic papers based on 
 ### Quick Start
 
 ```bash
-# Draft a paper from a manifest with paper configuration
-caramba paper caramba/config/presets/llama32_1b_dba_paper.yml
-
-# Or run experiments with automatic paper drafting
-caramba run caramba/config/presets/llama32_1b_dba_paper.yml --group paper
+# Run a manifest configured for paper drafting
+caramba config/presets/llama32_1b_dba_paper.yml --target group:paper
 ```
 
 ### Paper Configuration
@@ -845,7 +820,7 @@ python3 prepare_fineweb.py --tokens 100M --output fineweb_100m.npy
 huggingface-cli login
 
 # 3. Run full experiment with benchmarks
-python3 -m caramba run caramba/config/presets/llama32_1b_dba.yml --group paper
+python3 -m caramba config/presets/llama32_1b_dba.yml --target group:paper
 ```
 
 The preset targets `mps` with `float32`. Edit the manifest to change device or dtype.

@@ -20,6 +20,9 @@ class Lowerer:
 
     def lower_manifest(self, manifest: Manifest) -> Manifest:
         """Lower a manifest into canonical form."""
+        # Agent-only manifests may omit a model entirely.
+        if manifest.model is None:
+            return manifest
         lowered_model = self.lower_model(manifest.model)
         return manifest.model_copy(update={"model": lowered_model})
 

@@ -77,6 +77,11 @@ class StandardTrainer:
         self.group = group
         self.defaults = defaults
         self.train_cfg = train
+        if self.manifest.model is None:
+            raise ValueError(
+                "Standard training requires a manifest with a 'model' section, but manifest.model is None."
+            )
+        self.model_cfg = self.manifest.model
 
         self.save_every = defaults.save_every if defaults else 500
         self.checkpoint_dir = (
@@ -98,8 +103,8 @@ class StandardTrainer:
         self.dtype = self._parse_dtype(self.runtime_plan.dtype)
 
         # Build model
-        logger.info(f"Building model: {self.manifest.model.type}")
-        self.model = Model(self.manifest.model).to(device=self.device, dtype=self.dtype)
+        logger.info(f"Building model: {self.model_cfg.type}")
+        self.model = Model(self.model_cfg).to(device=self.device, dtype=self.dtype)
 
         if self.dist_ctx is not None:
             self.model = self.dist_ctx.wrap_model(self.model)
@@ -248,7 +253,7 @@ class StandardTrainer:
         payload: dict[str, Any] = {
             "device": str(self.device),
             "torch": torch.__version__,
-            "model": self.manifest.model.model_dump(),
+            "model": self.model_cfg.model_dump(),
             "train": train_payload,
         }
         key = make_plan_key(payload)

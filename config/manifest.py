@@ -10,9 +10,10 @@ import json
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from config import PositiveInt
+from config.agents import AgentsConfig  # pyright: ignore[reportMissingImports]
 from config.defaults import Defaults
 from config.group import Group
 from config.model import ModelConfig
@@ -34,10 +35,16 @@ class Manifest(BaseModel):
     name: str | None = None
     notes: str
     defaults: Defaults
-    model: ModelConfig
-    groups: list[Group]
+    # Training/experiment pipeline (optional when running agent-only manifests).
+    model: ModelConfig | None = None
+    groups: list[Group] = Field(default_factory=list)
     paper: PaperConfig | None = None
     review: ReviewConfig | None = None
+    # Agent workflows (optional).
+    agents: AgentsConfig | None = None
+    # Optional named targets. If present, entrypoints["default"] is used when
+    # the CLI doesn't specify --target.
+    entrypoints: dict[str, str] | None = None
 
     @classmethod
     def from_path(cls, path: Path) -> "Manifest":

@@ -60,7 +60,46 @@ class ManifestTest(unittest.TestCase):
             )
 
             m = Manifest.from_path(path)
+            assert m.model is not None
             self.assertEqual(m.model.topology.layers[0].type, LayerType.LINEAR)
+
+    def test_load_yaml_manifest_with_agents(self) -> None:
+        """test loading a YAML manifest with an agents/process section."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.yml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "version: 1",
+                        "name: test",
+                        'notes: "x"',
+                        "defaults:",
+                        "  wandb: false",
+                        "  wandb_project: \"\"",
+                        "  wandb_entity: \"\"",
+                        "agents:",
+                        "  team:",
+                        "    research_team_leader: research_lead",
+                        "    developer: developer",
+                        "  processes:",
+                        "    - name: platform_optimizations",
+                        "      type: discussion",
+                        "      leader: research_team_leader",
+                        "      topic: \"Optimizations for caramba\"",
+                        "entrypoints:",
+                        "  default: \"process:platform_optimizations\"",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            m = Manifest.from_path(path)
+            self.assertIsNotNone(m.agents)
+            assert m.entrypoints is not None
+            self.assertEqual(
+                m.entrypoints["default"],
+                "process:platform_optimizations",
+            )
 
     def test_load_yaml_manifest_with_compare_verify(self) -> None:
         """
@@ -327,6 +366,7 @@ class ManifestTest(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
 
             m = Manifest.from_path(path)
+            assert m.model is not None
             self.assertEqual(m.model.topology.type.value, "StackedTopology")
 
     def test_resolves_vars(self) -> None:
@@ -363,6 +403,7 @@ class ManifestTest(unittest.TestCase):
             )
 
             m = Manifest.from_path(path)
+            assert m.model is not None
             layer = m.model.topology.layers[0]
             self.assertEqual(layer.type, LayerType.LINEAR)
             assert isinstance(layer, LinearLayerConfig)

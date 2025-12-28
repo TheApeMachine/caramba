@@ -13,9 +13,8 @@ class AgentContext:
     Contains information from various sources that help the agent
     formulate a more informed response.
     """
-    def __init__(self):
-        self.history: list[Message] = []
-        self.knowledge: list[Knowledge] = []
+    history: list[Message] = field(default_factory=list)
+    knowledge: list[Knowledge] = field(default_factory=list)
 
     def add_message(self, message: Message) -> None:
         """Add a message to the context."""
@@ -23,18 +22,16 @@ class AgentContext:
 
     def to_prompt(self) -> str:
         """Convert the context to a prompt."""
-        out: list[str] = []
+        sections: list[str] = []
 
-        out += "".join([
-            "<history>",
-            "\n\n".join([f"**{item.name}** ({item.role}):\n{item.content}" for item in self.history]),
-            "</history>"
-        ])
+        history = "\n\n".join(
+            [f"**{item.name}** ({item.role}):\n{item.content}" for item in self.history]
+        )
+        sections.append(f"<history>\n{history}\n</history>")
 
-        out += "".join([
-            "<knowledge>"
-            "\n\n".join([f"**{item.name}** ({item.source}):\n{item.content}" for item in self.knowledge]),
-            "</knowledge>"
-        ])
+        knowledge = "\n\n".join(
+            [f"**{item.name}** ({item.source}):\n{item.content}" for item in self.knowledge]
+        )
+        sections.append(f"<knowledge>\n{knowledge}\n</knowledge>")
 
-        return "\n\n".join(out)
+        return "\n\n".join(sections)

@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import yaml
 
-from agent import Researcher
 from agent.process import Process
 from agent.context import AgentContext
+
+if TYPE_CHECKING:
+    from agent import Researcher
 
 
 class Discussion(Process):

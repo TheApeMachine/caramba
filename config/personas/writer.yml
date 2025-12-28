@@ -1,3 +1,4 @@
+type: writer
 name: "Writer"
 description: "A scientific paper writer."
 

@@ -5,11 +5,13 @@ A Process is a reusable workflow pattern that an agent can execute.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Callable, Optional
+from typing import Callable, Optional, TYPE_CHECKING
 
 from agents import HandoffInputData, handoff
-from agent import Researcher
 from agent.context import AgentContext
+
+if TYPE_CHECKING:
+    from agent import Researcher
 
 
 class Process(ABC):

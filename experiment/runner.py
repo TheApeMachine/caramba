@@ -6,15 +6,15 @@ The ExperimentRunner coordinates all phases of an experiment:
 3. Run benchmarks comparing teacher and student
 4. Generate artifacts for analysis and publication
 5. (Optional) Draft/update paper with AI agent
+
+This module also provides a manifest-driven *dispatcher* so the CLI can remain
+a single entrypoint: run what the manifest declares (groups or agent processes).
 """
 from __future__ import annotations
 
-import json
-from datetime import datetime
 from pathlib import Path
-import sys
+from typing import Any
 
-import torch
 from torch import nn
 
 from compiler import Compiler
@@ -25,6 +25,92 @@ from trainer.upcycle import Upcycle
 from experiment.group import ExperimentGroup
 from experiment.benchmarks import ExperimentBenchmarks
 from experiment.results import ExperimentResults
+
+
+def _resolve_target(manifest: Manifest, target: str | None) -> str:
+    """Resolve an execution target.
+
+    Resolution order:
+    - explicit CLI target, optionally via entrypoints alias
+    - entrypoints['default']
+    - first group
+    - first agent process
+    """
+    if target:
+        if ":" in target:
+            return target
+        if manifest.entrypoints and target in manifest.entrypoints:
+            return manifest.entrypoints[target]
+        return target
+
+    if manifest.entrypoints and "default" in manifest.entrypoints:
+        return manifest.entrypoints["default"]
+
+    if manifest.groups:
+        return f"group:{manifest.groups[0].name}"
+
+    if manifest.agents and manifest.agents.processes:
+        return f"process:{manifest.agents.processes[0].name}"
+
+    raise ValueError("Manifest has no runnable targets (no groups and no agent processes).")
+
+
+def _parse_target(target: str) -> tuple[str, str]:
+    if ":" not in target:
+        raise ValueError(
+            f"Invalid target '{target}'. Expected 'group:<name>' or 'process:<name>'."
+        )
+    kind, name = target.split(":", 1)
+    kind = kind.strip().lower()
+    name = name.strip()
+    if kind not in {"group", "process"}:
+        raise ValueError(
+            f"Invalid target kind '{kind}' for '{target}'. Expected 'group' or 'process'."
+        )
+    if not name:
+        raise ValueError(f"Invalid target '{target}': missing name after ':'.")
+    return kind, name
+
+
+def run_from_manifest_path(
+    manifest_path: Path,
+    *,
+    target: str | None = None,
+    dry_run: bool = False,
+) -> Any:
+    """Single manifest-driven entrypoint for the whole platform."""
+    manifest = Manifest.from_path(manifest_path)
+    resolved = _resolve_target(manifest, target)
+    kind, name = _parse_target(resolved)
+
+    if kind == "group":
+        if manifest.model is None:
+            raise ValueError("Target is a group but manifest has no 'model' section.")
+        if not manifest.groups:
+            raise ValueError("Target is a group but manifest has no 'groups' section.")
+
+        compiler = Compiler()
+        lowered = compiler.lowerer.lower_manifest(manifest)
+        compiler.validator.validate_manifest(lowered, print_plan=True)
+        if dry_run:
+            return {}
+        return ExperimentRunner(lowered).run(group_name=name)
+
+    # kind == "process"
+    if manifest.agents is None:
+        raise ValueError("Target is a process but manifest has no 'agents' section.")
+    if dry_run:
+        # Process-specific preflight is performed by the process runner.
+        from agent.process_runner import (  # pyright: ignore[reportMissingImports]
+            dry_run_process,
+        )  # local import
+
+        return dry_run_process(manifest, process_name=name, manifest_path=manifest_path)
+
+    from agent.process_runner import run_process  # pyright: ignore[reportMissingImports]  # local import
+
+    return run_process(manifest, process_name=name, manifest_path=manifest_path)
+
 
 class ExperimentRunner:
     """Unified experiment runner for the complete pipeline.
@@ -62,21 +148,7 @@ class ExperimentRunner:
         Returns:
             Dict mapping artifact names to their file paths.
         """
-        path = Path(f"./config/presets/{self.manifest.name}.yml")
-        manifest = Manifest.from_path(path)
-
-        # Lower and validate
-        compiler = Compiler()
-        manifest = compiler.lowerer.lower_manifest(manifest)
-        compiler.validator.validate_manifest(manifest)
-
-        runner = ExperimentRunner(manifest)
-
-        try:
-            group = ExperimentGroup(self.manifest, group_name)
-        except ValueError as e:
-            logger.error(f"Error finding group: {e} - ending experiment")
-            sys.exit(1)
+        group = ExperimentGroup(self.manifest, group_name)
 
         logger.header("Experiment", group.name)
         logger.info(group.description)

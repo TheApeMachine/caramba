@@ -1,3 +1,4 @@
+type: reviewer
 name: "Reviewer"
 description: "A critical reviewer who provides constructive feedback on papers."
 

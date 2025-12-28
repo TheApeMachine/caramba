@@ -25,6 +25,11 @@ class IO:
 
 class Validator:
     def validate_manifest(self, manifest: Manifest, *, print_plan: bool = False) -> Manifest:
+        if manifest.model is None:
+            raise ValueError(
+                "Manifest has no model; cannot validate topology. "
+                "Fix: add a 'model' section or run an agent process target instead."
+            )
         topo = manifest.model.topology
         self.infer_topology_io(topo, path="model.topology")
         for layer, path in self.iter_layers(topo, path="model.topology"):

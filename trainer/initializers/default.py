@@ -54,6 +54,10 @@ class DefaultInitializer:
     def init_models(self, train: TrainConfig, ctx: UpcycleInitContext) -> tuple[nn.Module, nn.Module]:
         if train.teacher_ckpt is None:
             raise ValueError("train.teacher_ckpt is required for upcycle.")
+        if ctx.manifest.model is None:
+            raise ValueError(
+                "Upcycle requires a manifest with a 'model' section, but manifest.model is None."
+            )
 
         logger.header("Model Initialization")
         logger.info(f"Loading teacher checkpoint: {train.teacher_ckpt}")
@@ -62,12 +66,13 @@ class DefaultInitializer:
         logger.success(f"Loaded checkpoint with {len(state_dict)} keys")
 
         logger.info("Building teacher model (standard attention)...")
-        teacher_cfg = _make_teacher_model_config(ctx.manifest.model)
+        model_cfg = ctx.manifest.model
+        teacher_cfg = _make_teacher_model_config(model_cfg)
         teacher = Model(teacher_cfg).to(device=ctx.device, dtype=ctx.dtype)
         logger.success("Teacher model ready")
 
         logger.info("Building student model (manifest attention)...")
-        student = Model(ctx.manifest.model).to(device=ctx.device, dtype=ctx.dtype)
+        student = Model(model_cfg).to(device=ctx.device, dtype=ctx.dtype)
         logger.success("Student model ready")
 
         logger.info("Applying weights to teacher...")

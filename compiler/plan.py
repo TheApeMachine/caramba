@@ -25,11 +25,20 @@ class Planner:
         """Render a human-readable plan for a lowered manifest."""
         out: list[str] = []
         out.append(f"manifest.version={manifest.version}")
+        if manifest.model is None:
+            out.append("model=<none>")
+            if manifest.agents is not None:
+                out.append("agents.team:")
+                for k, v in sorted(manifest.agents.team.root.items()):
+                    out.append(f"  - {k}: {v}")
+                out.append("agents.processes:")
+                for p in manifest.agents.processes:
+                    out.append(f"  - {p.type}:{p.name}")
+            return "\n".join(out)
+
         out.append(f"model.type={manifest.model.type.value}")
         out.append("model.topology:")
-        out.extend(
-            self.format_topology(manifest.model.topology, indent=2, path="model")
-        )
+        out.extend(self.format_topology(manifest.model.topology, indent=2, path="model"))
         return "\n".join(out)
 
     def is_topology(self, node: NodeConfig) -> bool:

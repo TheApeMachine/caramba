@@ -1,3 +1,4 @@
+type: catalyst
 name: "Catalyst"
 description: "A catalyst who helps the team progress by daring to think outside the box."
 
@@ -24,3 +25,4 @@ temperature: 1.0
 tool_choice: "auto"
 
 mcp_servers:
+  - graphiti

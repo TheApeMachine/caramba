@@ -14,7 +14,7 @@ def main(argv: list[str] | None = None) -> None:
     """Entrypoint for the `caramba` console script.
 
     Routes everything through the unified CLI to ensure consistent behavior
-    for all command types (compile, run, experiment).
+    for the single manifest-driven entrypoint.
     """
     exit_code = cli_main(argv)
     sys.exit(exit_code)
