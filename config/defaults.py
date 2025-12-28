@@ -1,8 +1,9 @@
 """Default settings that apply across all runs in a manifest.
 
-These are convenience settings that would otherwise need to be repeated
-in every run configuration. Things like tokenizer choice, wandb settings,
-and checkpoint frequency.
+Core philosophy alignment:
+- Manifests should express intent at the right level of abstraction.
+- Defaults are grouped by concern (data/logging/runtime) to reduce noise and
+  make it clearer which knobs matter for which layer of the system.
 """
 from __future__ import annotations
 
@@ -11,19 +12,33 @@ from pydantic import BaseModel
 from config import PositiveInt, Probability
 
 
-class Defaults(BaseModel):
-    """Global defaults shared across all runs in a manifest.
-
-    Override these per-run when needed, but having sensible defaults
-    reduces boilerplate in experiment configs.
-    """
+class DefaultsData(BaseModel):
+    """Defaults for dataset/tokenizer related behavior."""
 
     tokenizer: str = "tiktoken"
     val_frac: Probability = 0.1
+
+
+class DefaultsLogging(BaseModel):
+    """Defaults for logging/instrumentation backends."""
+
     instrument: str = "rich"
     wandb: bool = True
-    wandb_project: str
-    wandb_entity: str
+    wandb_project: str = ""
+    wandb_entity: str = ""
     wandb_mode: str = "online"
     eval_iters: PositiveInt = 50
+
+
+class DefaultsRuntime(BaseModel):
+    """Defaults for runtime/execution behaviors."""
+
     save_every: PositiveInt = 100
+
+
+class Defaults(BaseModel):
+    """Global defaults shared across all runs in a manifest."""
+
+    data: DefaultsData = DefaultsData()
+    logging: DefaultsLogging = DefaultsLogging()
+    runtime: DefaultsRuntime = DefaultsRuntime()

@@ -1,5 +1,7 @@
-"""
-manifest_test provides tests for JSON/YAML manifest loading.
+"""Tests for manifest loading and typed config parsing.
+
+The manifest schema is target-based: experiments and agent processes are both
+targets.
 """
 from __future__ import annotations
 
@@ -8,9 +10,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from typing import Any, cast
+
 from pydantic import ValidationError
 
-from config.layer import LayerType, LinearLayerConfig
 from config.manifest import Manifest
 
 
@@ -27,26 +30,42 @@ class ManifestTest(unittest.TestCase):
             path.write_text(
                 "\n".join(
                     [
-                        "version: 1",
+                        "version: 2",
                         "name: test",
                         'notes: "x"',
                         "defaults:",
-                        "  wandb: false",
-                        "  wandb_project: \"\"",
-                        "  wandb_entity: \"\"",
-                        "model:",
-                        "  type: TransformerModel",
-                        "  topology:",
-                        "    type: StackedTopology",
-                        "    layers:",
-                        "      - type: LinearLayer",
-                        "        d_in: 128",
-                        "        d_out: 128",
-                        "        bias: true",
-                        "groups:",
-                        "  - name: g",
+                        "  logging:",
+                        "    wandb: false",
+                        "    wandb_project: \"\"",
+                        "    wandb_entity: \"\"",
+                        "  data:",
+                        "    tokenizer: tiktoken",
+                        "    val_frac: 0.1",
+                        "  runtime:",
+                        "    save_every: 100",
+                        "targets:",
+                        "  - type: experiment",
+                        "    name: exp",
                         "    description: d",
-                        "    data: ''",
+                        "    backend: torch",
+                        "    task: task.language_modeling",
+                        "    data:",
+                        "      ref: dataset.tokens",
+                        "      config: { path: 'x.tokens', block_size: 4 }",
+                        "    system:",
+                        "      ref: system.language_model",
+                        "      config:",
+                        "        model:",
+                        "          type: TransformerModel",
+                        "          topology:",
+                        "            type: StackedTopology",
+                        "            layers:",
+                        "              - type: LinearLayer",
+                        "                d_in: 128",
+                        "                d_out: 128",
+                        "                bias: true",
+                        "    objective: objective.next_token_ce",
+                        "    trainer: trainer.standard",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -54,51 +73,68 @@ class ManifestTest(unittest.TestCase):
                         "        seed: 1",
                         "        steps: 2",
                         "        expected: {}",
+                        "        train:",
+                        "          phase: standard",
+                        "          batch_size: 1",
+                        "          block_size: 4",
+                        "          lr: 0.001",
+                        "          device: cpu",
+                        "          dtype: float32",
                     ]
                 ),
                 encoding="utf-8",
             )
 
             m = Manifest.from_path(path)
-            assert m.model is not None
-            self.assertEqual(m.model.topology.layers[0].type, LayerType.LINEAR)
+            self.assertEqual(m.version, 2)
+            self.assertEqual(len(m.targets), 1)
+            t0 = m.targets[0]
+            assert t0.type == "experiment"
+            self.assertEqual(t0.system.ref, "system.language_model")
+            model_payload = t0.system.config["model"]
+            # Vars already resolved at manifest load time, so payload is concrete.
+            self.assertEqual(model_payload["topology"]["layers"][0]["type"], "LinearLayer")
 
     def test_load_yaml_manifest_with_agents(self) -> None:
-        """test loading a YAML manifest with an agents/process section."""
+        """test loading a YAML manifest with a process target."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "m.yml"
             path.write_text(
                 "\n".join(
                     [
-                        "version: 1",
+                        "version: 2",
                         "name: test",
                         'notes: "x"',
                         "defaults:",
-                        "  wandb: false",
-                        "  wandb_project: \"\"",
-                        "  wandb_entity: \"\"",
-                        "agents:",
-                        "  team:",
-                        "    research_team_leader: research_lead",
-                        "    developer: developer",
-                        "  processes:",
-                        "    - name: platform_optimizations",
+                        "  logging:",
+                        "    wandb: false",
+                        "    wandb_project: \"\"",
+                        "    wandb_entity: \"\"",
+                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
+                        "  runtime: { save_every: 100 }",
+                        "targets:",
+                        "  - type: process",
+                        "    name: platform_optimizations",
+                        "    team:",
+                        "      research_team_leader: research_lead",
+                        "      developer: developer",
+                        "    process:",
+                        "      name: platform_optimizations",
                         "      type: discussion",
                         "      leader: research_team_leader",
                         "      topic: \"Optimizations for caramba\"",
                         "entrypoints:",
-                        "  default: \"process:platform_optimizations\"",
+                        "  default: \"platform_optimizations\"",
                     ]
                 ),
                 encoding="utf-8",
             )
 
             m = Manifest.from_path(path)
-            self.assertIsNotNone(m.agents)
             assert m.entrypoints is not None
             self.assertEqual(
                 m.entrypoints["default"],
-                "process:platform_optimizations",
+                "platform_optimizations",
             )
 
     def test_load_yaml_manifest_with_compare_verify(self) -> None:
@@ -110,26 +146,33 @@ class ManifestTest(unittest.TestCase):
             path.write_text(
                 "\n".join(
                     [
-                        "version: 1",
+                        "version: 2",
                         "name: test",
                         'notes: "x"',
                         "defaults:",
-                        "  wandb: false",
-                        "  wandb_project: \"\"",
-                        "  wandb_entity: \"\"",
-                        "model:",
-                        "  type: TransformerModel",
-                        "  topology:",
-                        "    type: StackedTopology",
-                        "    layers:",
-                        "      - type: LinearLayer",
-                        "        d_in: 128",
-                        "        d_out: 128",
-                        "        bias: true",
-                        "groups:",
-                        "  - name: g",
-                        "    description: d",
-                        "    data: ''",
+                        "  logging: { wandb: false, wandb_project: \"\", wandb_entity: \"\", eval_iters: 50 }",
+                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
+                        "  runtime: { save_every: 100 }",
+                        "targets:",
+                        "  - type: experiment",
+                        "    name: exp",
+                        "    backend: torch",
+                        "    task: task.language_modeling",
+                        "    data: { ref: dataset.tokens, config: { path: 'x.tokens', block_size: 4 } }",
+                        "    system:",
+                        "      ref: system.language_model",
+                        "      config:",
+                        "        model:",
+                        "          type: TransformerModel",
+                        "          topology:",
+                        "            type: StackedTopology",
+                        "            layers:",
+                        "              - type: LinearLayer",
+                        "                d_in: 128",
+                        "                d_out: 128",
+                        "                bias: true",
+                        "    objective: objective.next_token_ce",
+                        "    trainer: trainer.standard",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -137,6 +180,13 @@ class ManifestTest(unittest.TestCase):
                         "        seed: 1",
                         "        steps: 2",
                         "        expected: {}",
+                        "        train:",
+                        "          phase: standard",
+                        "          batch_size: 1",
+                        "          block_size: 4",
+                        "          lr: 0.001",
+                        "          device: cpu",
+                        "          dtype: float32",
                         "        verify:",
                         "          type: compare",
                         "          batches: 1",
@@ -149,7 +199,7 @@ class ManifestTest(unittest.TestCase):
             )
 
             m = Manifest.from_path(path)
-            run = m.groups[0].runs[0]
+            run = cast(Any, m.targets[0]).runs[0]
             self.assertIsNotNone(run.verify)
 
     def test_rejects_compare_verify_without_metrics(self) -> None:
@@ -161,26 +211,33 @@ class ManifestTest(unittest.TestCase):
             path.write_text(
                 "\n".join(
                     [
-                        "version: 1",
+                        "version: 2",
                         "name: test",
                         'notes: "x"',
                         "defaults:",
-                        "  wandb: false",
-                        "  wandb_project: \"\"",
-                        "  wandb_entity: \"\"",
-                        "model:",
-                        "  type: TransformerModel",
-                        "  topology:",
-                        "    type: StackedTopology",
-                        "    layers:",
-                        "      - type: LinearLayer",
-                        "        d_in: 128",
-                        "        d_out: 128",
-                        "        bias: true",
-                        "groups:",
-                        "  - name: g",
-                        "    description: d",
-                        "    data: ''",
+                        "  logging: { wandb: false, wandb_project: \"\", wandb_entity: \"\", eval_iters: 50 }",
+                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
+                        "  runtime: { save_every: 100 }",
+                        "targets:",
+                        "  - type: experiment",
+                        "    name: exp",
+                        "    backend: torch",
+                        "    task: task.language_modeling",
+                        "    data: { ref: dataset.tokens, config: { path: 'x.tokens', block_size: 4 } }",
+                        "    system:",
+                        "      ref: system.language_model",
+                        "      config:",
+                        "        model:",
+                        "          type: TransformerModel",
+                        "          topology:",
+                        "            type: StackedTopology",
+                        "            layers:",
+                        "              - type: LinearLayer",
+                        "                d_in: 128",
+                        "                d_out: 128",
+                        "                bias: true",
+                        "    objective: objective.next_token_ce",
+                        "    trainer: trainer.standard",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -188,6 +245,13 @@ class ManifestTest(unittest.TestCase):
                         "        seed: 1",
                         "        steps: 2",
                         "        expected: {}",
+                        "        train:",
+                        "          phase: standard",
+                        "          batch_size: 1",
+                        "          block_size: 4",
+                        "          lr: 0.001",
+                        "          device: cpu",
+                        "          dtype: float32",
                         "        verify:",
                         "          type: compare",
                         "          batches: 1",
@@ -208,26 +272,33 @@ class ManifestTest(unittest.TestCase):
             path.write_text(
                 "\n".join(
                     [
-                        "version: 1",
+                        "version: 2",
                         "name: test",
                         'notes: \"x\"',
                         "defaults:",
-                        "  wandb: false",
-                        "  wandb_project: \"\"",
-                        "  wandb_entity: \"\"",
-                        "model:",
-                        "  type: TransformerModel",
-                        "  topology:",
-                        "    type: StackedTopology",
-                        "    layers:",
-                        "      - type: LinearLayer",
-                        "        d_in: 128",
-                        "        d_out: 128",
-                        "        bias: true",
-                        "groups:",
-                        "  - name: g",
-                        "    description: d",
-                        "    data: ''",
+                        "  logging: { wandb: false, wandb_project: \"\", wandb_entity: \"\", eval_iters: 50 }",
+                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
+                        "  runtime: { save_every: 100 }",
+                        "targets:",
+                        "  - type: experiment",
+                        "    name: exp",
+                        "    backend: torch",
+                        "    task: task.language_modeling",
+                        "    data: { ref: dataset.tokens, config: { path: 'x.tokens', block_size: 4 } }",
+                        "    system:",
+                        "      ref: system.language_model",
+                        "      config:",
+                        "        model:",
+                        "          type: TransformerModel",
+                        "          topology:",
+                        "            type: StackedTopology",
+                        "            layers:",
+                        "              - type: LinearLayer",
+                        "                d_in: 128",
+                        "                d_out: 128",
+                        "                bias: true",
+                        "    objective: objective.next_token_ce",
+                        "    trainer: trainer.standard",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -235,6 +306,13 @@ class ManifestTest(unittest.TestCase):
                         "        seed: 1",
                         "        steps: 2",
                         "        expected: {}",
+                        "        train:",
+                        "          phase: standard",
+                        "          batch_size: 1",
+                        "          block_size: 4",
+                        "          lr: 0.001",
+                        "          device: cpu",
+                        "          dtype: float32",
                         "        verify:",
                         "          type: eval",
                         "          tokenizer:",
@@ -256,7 +334,7 @@ class ManifestTest(unittest.TestCase):
             )
 
             m = Manifest.from_path(path)
-            run = m.groups[0].runs[0]
+            run = cast(Any, m.targets[0]).runs[0]
             self.assertIsNotNone(run.verify)
 
     def test_load_yaml_manifest_with_kvcache_verify(self) -> None:
@@ -268,26 +346,33 @@ class ManifestTest(unittest.TestCase):
             path.write_text(
                 "\n".join(
                     [
-                        "version: 1",
+                        "version: 2",
                         "name: test",
                         'notes: "x"',
                         "defaults:",
-                        "  wandb: false",
-                        "  wandb_project: \"\"",
-                        "  wandb_entity: \"\"",
-                        "model:",
-                        "  type: TransformerModel",
-                        "  topology:",
-                        "    type: StackedTopology",
-                        "    layers:",
-                        "      - type: LinearLayer",
-                        "        d_in: 128",
-                        "        d_out: 128",
-                        "        bias: true",
-                        "groups:",
-                        "  - name: g",
-                        "    description: d",
-                        "    data: ''",
+                        "  logging: { wandb: false, wandb_project: \"\", wandb_entity: \"\", eval_iters: 50 }",
+                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
+                        "  runtime: { save_every: 100 }",
+                        "targets:",
+                        "  - type: experiment",
+                        "    name: exp",
+                        "    backend: torch",
+                        "    task: task.language_modeling",
+                        "    data: { ref: dataset.tokens, config: { path: 'x.tokens', block_size: 4 } }",
+                        "    system:",
+                        "      ref: system.language_model",
+                        "      config:",
+                        "        model:",
+                        "          type: TransformerModel",
+                        "          topology:",
+                        "            type: StackedTopology",
+                        "            layers:",
+                        "              - type: LinearLayer",
+                        "                d_in: 128",
+                        "                d_out: 128",
+                        "                bias: true",
+                        "    objective: objective.next_token_ce",
+                        "    trainer: trainer.standard",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -295,6 +380,13 @@ class ManifestTest(unittest.TestCase):
                         "        seed: 1",
                         "        steps: 2",
                         "        expected: {}",
+                        "        train:",
+                        "          phase: standard",
+                        "          batch_size: 1",
+                        "          block_size: 4",
+                        "          lr: 0.001",
+                        "          device: cpu",
+                        "          dtype: float32",
                         "        verify:",
                         "          type: kvcache",
                         "          n_layers: 1",
@@ -313,7 +405,7 @@ class ManifestTest(unittest.TestCase):
             )
 
             m = Manifest.from_path(path)
-            run = m.groups[0].runs[0]
+            run = cast(Any, m.targets[0]).runs[0]
             self.assertIsNotNone(run.verify)
 
     def test_load_json_manifest(self) -> None:
@@ -323,51 +415,45 @@ class ManifestTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "m.json"
             payload = {
-                "version": 1,
+                "version": 2,
                 "name": "test",
                 "notes": "x",
                 "defaults": {
-                    "wandb": False,
-                    "wandb_project": "",
-                    "wandb_entity": "",
+                    "data": {"tokenizer": "tiktoken", "val_frac": 0.1},
+                    "logging": {"wandb": False, "wandb_project": "", "wandb_entity": "", "eval_iters": 50},
+                    "runtime": {"save_every": 100},
                 },
-                "model": {
-                    "type": "TransformerModel",
-                    "topology": {
-                        "type": "StackedTopology",
-                        "layers": [
-                            {
-                                "type": "LinearLayer",
-                                "d_in": 128,
-                                "d_out": 128,
-                                "bias": True,
-                            }
-                        ],
-                    },
-                },
-                "groups": [
+                "targets": [
                     {
-                        "name": "g",
-                        "description": "d",
-                        "data": "",
-                        "runs": [
-                            {
-                                "id": "r",
-                                "mode": "train",
-                                "exp": "e",
-                                "seed": 1,
-                                "steps": 2,
-                                "expected": {},
-                            }
-                        ],
+                        "type": "experiment",
+                        "name": "exp",
+                        "backend": "torch",
+                        "task": "task.language_modeling",
+                        "data": {"ref": "dataset.tokens", "config": {"path": "x.tokens", "block_size": 4}},
+                        "system": {
+                            "ref": "system.language_model",
+                            "config": {
+                                "model": {
+                                    "type": "TransformerModel",
+                                    "topology": {
+                                        "type": "StackedTopology",
+                                        "layers": [
+                                            {"type": "LinearLayer", "d_in": 128, "d_out": 128, "bias": True}
+                                        ],
+                                    },
+                                }
+                            },
+                        },
+                        "objective": "objective.next_token_ce",
+                        "trainer": "trainer.standard",
+                        "runs": [{"id": "r", "mode": "train", "exp": "e", "seed": 1, "steps": 2, "expected": {}}],
                     }
                 ],
             }
             path.write_text(json.dumps(payload), encoding="utf-8")
 
             m = Manifest.from_path(path)
-            assert m.model is not None
-            self.assertEqual(m.model.topology.type.value, "StackedTopology")
+            self.assertEqual(m.targets[0].type, "experiment")
 
     def test_resolves_vars(self) -> None:
         """
@@ -378,37 +464,49 @@ class ManifestTest(unittest.TestCase):
             path.write_text(
                 "\n".join(
                     [
-                        "version: 1",
+                        "version: 2",
                         "name: test",
                         'notes: "x"',
                         "vars:",
                         "  d_in: 16",
                         "  d_out: 32",
                         "defaults:",
-                        "  wandb: false",
-                        "  wandb_project: \"\"",
-                        "  wandb_entity: \"\"",
-                        "model:",
-                        "  type: TransformerModel",
-                        "  topology:",
-                        "    type: StackedTopology",
-                        "    layers:",
-                        "      - type: LinearLayer",
-                        "        d_in: \"${d_in}\"",
-                        "        d_out: \"${d_out}\"",
-                        "groups: []",
+                        "  logging: { wandb: false, wandb_project: \"\", wandb_entity: \"\", eval_iters: 50 }",
+                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
+                        "  runtime: { save_every: 100 }",
+                        "targets:",
+                        "  - type: experiment",
+                        "    name: exp",
+                        "    backend: torch",
+                        "    task: task.language_modeling",
+                        "    data: { ref: dataset.tokens, config: { path: 'x.tokens', block_size: 4 } }",
+                        "    system:",
+                        "      ref: system.language_model",
+                        "      config:",
+                        "        model:",
+                        "          type: TransformerModel",
+                        "          topology:",
+                        "            type: StackedTopology",
+                        "            layers:",
+                        "              - type: LinearLayer",
+                        "                d_in: \"${d_in}\"",
+                        "                d_out: \"${d_out}\"",
+                        "                bias: true",
+                        "    objective: objective.next_token_ce",
+                        "    trainer: trainer.standard",
+                        "    runs: []",
                     ]
                 ),
                 encoding="utf-8",
             )
 
             m = Manifest.from_path(path)
-            assert m.model is not None
-            layer = m.model.topology.layers[0]
-            self.assertEqual(layer.type, LayerType.LINEAR)
-            assert isinstance(layer, LinearLayerConfig)
-            self.assertEqual(layer.d_in, 16)
-            self.assertEqual(layer.d_out, 32)
+            target = cast(Any, m.targets[0])
+            model_payload = target.system.config["model"]
+            layer = model_payload["topology"]["layers"][0]
+            self.assertEqual(layer["type"], "LinearLayer")
+            self.assertEqual(layer["d_in"], 16)
+            self.assertEqual(layer["d_out"], 32)
 
     def test_rejects_invalid_layer_shape(self) -> None:
         """
@@ -420,22 +518,31 @@ class ManifestTest(unittest.TestCase):
             path.write_text(
                 "\n".join(
                     [
-                        "version: 1",
+                        "version: 2",
                         "notes: x",
                         "defaults:",
-                        "  wandb: false",
-                        "  wandb_project: \"\"",
-                        "  wandb_entity: \"\"",
-                        "model:",
-                        "  type: TransformerModel",
-                        "  topology:",
-                        "    type: StackedTopology",
-                        "    layers:",
-                        "      - type: LinearLayer",
-                        "        config:",
-                        "          d_in: 128",
-                        "          d_out: 128",
-                        "groups: []",
+                        "  logging: { wandb: false, wandb_project: \"\", wandb_entity: \"\", eval_iters: 50 }",
+                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
+                        "  runtime: { save_every: 100 }",
+                        "targets:",
+                        "  - type: experiment",
+                        "    name: exp",
+                        "    backend: torch",
+                        "    task: task.language_modeling",
+                        "    data: { ref: dataset.tokens, config: { path: 'x.tokens', block_size: 4 } }",
+                        "    system:",
+                        "      ref: system.language_model",
+                        "      config:",
+                        "        model:",
+                        "          type: TransformerModel",
+                        "          topology:",
+                        "            type: StackedTopology",
+                        "            layers:",
+                        "              - type: LinearLayer",
+                        "                config: { d_in: 128, d_out: 128 }",
+                        "    objective: objective.next_token_ce",
+                        "    trainer: trainer.standard",
+                        "    runs: []",
                     ]
                 ),
                 encoding="utf-8",

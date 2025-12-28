@@ -1,0 +1,53 @@
+version: 2
+name: diffusion_vector
+notes: "Diffusion example: predict noise on vector data (toy DDPM-style training)."
+
+defaults:
+  data: { tokenizer: tiktoken, val_frac: 0.0 }
+  logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 50 }
+  runtime: { save_every: 200 }
+
+targets:
+  - type: experiment
+    name: diffusion_demo
+    description: "Train a denoiser to predict eps from (x_t, t)."
+    backend: torch
+    task: task.diffusion_denoising
+
+    data:
+      ref: dataset.diffusion_vector
+      config:
+        x_path: "path/to/x0.npy"
+        timesteps: 1000
+
+    system:
+      ref: system.diffusion_denoiser
+      config:
+        d_in: 128
+        d_hidden: 256
+        time_dim: 64
+        n_layers: 2
+
+    objective:
+      ref: objective.mse
+      config:
+        pred_key: pred_eps
+        target_key: eps
+
+    trainer: trainer.standard
+
+    runs:
+      - id: train
+        mode: train
+        exp: diffusion
+        seed: 1
+        steps: 2000
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 256
+          block_size: 1
+          lr: 0.0005
+          device: cpu
+          dtype: float32
+

@@ -9,14 +9,14 @@ import torch
 
 from config.defaults import Defaults
 from config.group import Group
-from config.manifest import Manifest
 from runtime import RuntimePlan
 from trainer.distributed import DistributedContext
 
 
 @dataclass(frozen=True, slots=True)
 class UpcycleInitContext:
-    manifest: Manifest
+    # Kept intentionally loose: upcycling can be driven by different manifest schemas.
+    manifest: object
     group: Group
     defaults: Defaults | None
 

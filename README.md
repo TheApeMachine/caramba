@@ -43,6 +43,7 @@ caramba is built around the idea that the *config is declarative*, while the run
 - **Decode-plan bucketing (long context)**: generation can dynamically adjust `q_chunk` / `local_window` by prefix length (`decode_plan="auto"` + bucket params) to reduce peak memory and improve throughput on long sequences.
 - **Speculative decoding adapts itself**: `SpeculativeConfig.spec_k_adaptive` adjusts `spec_k` based on acceptance rate and can fall back to non-speculative decode below a threshold.
 - **CUDA/Triton fast paths**: for decoupled attention decode on quantized caches, caramba can use fused Triton kernels (including split-K for very long prefixes) with launch-parameter tuning.
+- **Apple Silicon/Metal fast path**: for DBA decode on `mps` with fp16 KV caches, caramba can JIT-build and use a custom Metal fused decode kernel (see **Metal fused DBA decode** below).
 - **Training speed knobs (manifest-driven)**: teacher-output caching, AMP, gradient accumulation, dataloader parallelism, activation checkpointing, scheduler choices, and convergence-based blockwise distillation.
 
 ### Auto-fit (programmatic)
@@ -104,7 +105,7 @@ See [Optimizer Orchestration](#optimizer-orchestration-) for full documentation.
 | `runtime/`         | Runtime planning + activation/memory helpers                     |
 | `instrumentation/` | JSONL/HDF5/TensorBoard/W&B/live plotting                         |
 | `console/`         | Rich-based logging and progress bars                             |
-| `optimizer/`       | Triton kernels, fused attention, quantization                    |
+| `optimizer/`       | Triton (CUDA) + Metal (MPS) fused kernels, quantization          |
 | `orchestrator/`    | Dynamic optimizer switching, telemetry, SWATS, PIDAO             |
 
 ## Quick Start 🚀
@@ -114,13 +115,18 @@ See [Optimizer Orchestration](#optimizer-orchestration-) for full documentation.
 pip install -r requirements.txt
 
 # Run full experiment (upcycle + benchmarks + artifacts)
-python3 -m caramba config/presets/llama32_1b_dba.yml --target group:paper
+python3 -m caramba config/presets/llama32_1b_dba.yml --target paper
 
 # Quick validation run
-python3 -m caramba config/presets/llama32_1b_dba.yml --target group:quick
+python3 -m caramba config/presets/llama32_1b_dba.yml --target quick
 
 # Dry-run (parse → lower → validate, print plan; no execution)
 python3 -m caramba config/presets/llama32_1b_dba.yml --dry-run
+
+# Non-LM examples (dry-run)
+python3 -m caramba config/presets/mlp_classifier.yml --dry-run
+python3 -m caramba config/presets/diffusion_vector.yml --dry-run
+python3 -m caramba config/presets/graph_node_classification.yml --dry-run
 ```
 
 > **Note:** MPS works out of the box on Apple Silicon. For CUDA, install a CUDA-enabled torch build separately.
@@ -130,8 +136,9 @@ python3 -m caramba config/presets/llama32_1b_dba.yml --dry-run
 ## CLI Reference
 
 ```bash
-# Run what a manifest declares (training groups or agent processes)
-caramba <manifest.yml> [--target group:<name>|process:<name>] [--dry-run]
+# Run what a manifest declares (targets)
+caramba <manifest.yml> [--target <target_name>] [--dry-run]
+
 ```
 
 ---
@@ -145,14 +152,12 @@ A manifest declares the complete experiment configuration.
 | **version**    | Manifest schema version                            |
 | **name**       | Experiment name                                    |
 | **vars**       | Template variables for reuse (e.g., `${d_model}`)  |
-| **defaults**   | Common settings (tokenizer, wandb, eval_iters)     |
-| **model**      | Embedder + topology (the layer graph)              |
-| **groups**     | Collections of runs (e.g., upcycle → finetune)     |
-| **runs**       | Mode, seed, steps, training config                 |
+| **defaults**   | Common settings (nested by concern)                |
+| **targets**    | Runnable units (experiments and agent processes)   |
+| **runs**       | Mode, seed, steps, training config (per target)    |
 | **verify**     | Post-run comparison tests (per run)                |
-| **benchmarks** | Perplexity, latency, memory benchmarks (per group) |
+| **benchmarks** | Perplexity, latency, memory benchmarks (per target) |
 | **paper**      | AI-assisted paper drafting configuration (optional)|
-| **agents**     | Agent team + processes (optional)                  |
 | **entrypoints**| Named targets + default run target (optional)      |
 
 ### Manifest Variables
@@ -165,13 +170,26 @@ vars:
   n_heads: 32
   n_layers: 16
 
-model:
-  topology:
-    type: StackedTopology
-    layers:
-      - type: AttentionLayer
-        d_model: "${d_model}"
-        n_heads: "${n_heads}"
+targets:
+  - type: experiment
+    name: demo
+    backend: torch
+    task: task.language_modeling
+    data: { ref: dataset.tokens, config: { path: fineweb_100m.npy, block_size: 2048 } }
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          topology:
+            type: StackedTopology
+            layers:
+              - type: AttentionLayer
+                d_model: "${d_model}"
+                n_heads: "${n_heads}"
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs: []
 ```
 
 ### Defaults
@@ -180,13 +198,16 @@ Set common experiment-wide settings:
 
 ```yaml
 defaults:
-  tokenizer: llama
-  val_frac: 0.05
-  instrument: rich
-  wandb: true
-  wandb_project: "my-project"
-  eval_iters: 50
-  save_every: 500
+  data:
+    tokenizer: llama
+    val_frac: 0.05
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: "my-project"
+    eval_iters: 50
+  runtime:
+    save_every: 500
 ```
 
 ### Available Presets
@@ -216,7 +237,7 @@ Caramba includes an AI agent that can draft and update academic papers based on 
 
 ```bash
 # Run a manifest configured for paper drafting
-caramba config/presets/llama32_1b_dba_paper.yml --target group:paper
+caramba config/presets/llama32_1b_dba_paper.yml --target paper
 ```
 
 ### Paper Configuration
@@ -441,20 +462,38 @@ Example proposed experiment manifest:
 
 ```yaml
 # Generated by reviewer
-version: 1
+version: 2
 name: ablation_bottleneck_dim
 notes: "Test impact of varying bottleneck dimensions"
 
-groups:
-  - name: ablation_study
+targets:
+  - type: experiment
+    name: ablation_study
     description: "Ablate semantic vs geometric bottleneck ratio"
-    data: "fineweb_100m.npy"
+    backend: torch
+    task: task.language_modeling
+    data: { ref: dataset.tokens, config: { path: fineweb_100m.npy, block_size: 2048 } }
+    system:
+      ref: system.language_model
+      config:
+        model:
+          # ... model/topology config here ...
+          type: TransformerModel
+          topology: { type: StackedTopology, layers: [] }
+    objective: objective.next_token_ce
+    trainer: trainer.upcycle
     runs:
       - id: sem64_geo320
-        # ... configuration
+        # ... configuration ...
+        mode: train
+        exp: ablation
+        seed: 1
+        steps: 200
+        expected: {}
+        train: { phase: global, batch_size: 1, block_size: 2048, lr: 0.0001, device: cuda, dtype: auto }
     benchmarks:
       - id: perplexity
-        # ... benchmark config
+        # ... benchmark config ...
 ```
 
 ### Research Loop Configuration
@@ -820,10 +859,10 @@ python3 prepare_fineweb.py --tokens 100M --output fineweb_100m.npy
 huggingface-cli login
 
 # 3. Run full experiment with benchmarks
-python3 -m caramba config/presets/llama32_1b_dba.yml --target group:paper
+python3 -m caramba config/presets/llama32_1b_dba.yml --target paper
 ```
 
-The preset targets `mps` with `float32`. Edit the manifest to change device or dtype.
+The preset targets `mps` with `float32` for training stability. The included latency benchmarks use `cache_kind: fp16` so (when Metal build tools are available) DBA decode runs through the fused Metal kernel automatically.
 
 ### What happens
 
@@ -922,11 +961,12 @@ Eval case kinds:
 
 ## Benchmarks 📊
 
-Groups can declare benchmark suites that run after all training completes and generate paper-ready artifacts.
+Experiment targets can declare benchmark suites that run after training completes and generate paper-ready artifacts.
 
 ```yaml
-groups:
-  - name: paper
+targets:
+  - type: experiment
+    name: paper
     runs: [...]
     benchmarks:
       # Perplexity benchmark
@@ -1123,8 +1163,8 @@ caramba includes a production-grade KV-cache implementation with:
 - **Amortized allocation**: Geometric growth to avoid O(N) allocations
 
 ```python
-cache import LayerKVCache, DecoupledLayerKVCache
-config.kvcache import KVCacheTensorConfig, KVCacheKind
+from cache import LayerKVCache, DecoupledLayerKVCache
+from config.kvcache import KVCacheTensorConfig, KVCacheKind
 
 # Standard cache
 cache = LayerKVCache(
@@ -1144,6 +1184,9 @@ cache = DecoupledLayerKVCache(
     k_sem_dim=128,  # Semantic keys
     k_geo_dim=256,  # Geometric keys
     v_dim=256,
+    k_sem_cfg=KVCacheTensorConfig(kind=KVCacheKind.FP16),
+    k_geo_cfg=KVCacheTensorConfig(kind=KVCacheKind.FP16),
+    v_cfg=KVCacheTensorConfig(kind=KVCacheKind.FP16),
     device=torch.device("mps"),
 )
 ```
@@ -1304,8 +1347,10 @@ The orchestrator monitors telemetry and switches strategies automatically.
 Enable orchestration in your manifest:
 
 ```yaml
-groups:
-  - name: my_experiment
+targets:
+  - type: experiment
+    name: my_experiment
+    # ... task/data/system/objective/trainer ...
     runs:
       - id: global_phase
         mode: train
@@ -1538,6 +1583,37 @@ if TRITON_AVAILABLE and fused_decode_available(cache, "cuda"):
 
 ---
 
+## Metal fused DBA decode (Apple Silicon / MPS) 🍎
+
+On Apple Silicon, the “decoupled” (DBA) attention decode path can be dominated by framework overhead if you materialize score tensors and run separate softmax / matmuls. To make latency benchmarks meaningful on `mps`, caramba includes a **real fused Metal implementation** for DBA *decode* (single-token queries).
+
+**What it is**
+- A custom **Metal Shading Language** kernel (`optimizer/metal/dba_decode.metal`) implementing a **numerically-stable online softmax** fused with the V-weighted reduction for DBA scores \(Q_sK_s^T + Q_gK_g^T\)
+- An **Objective‑C++** PyTorch extension (`optimizer/metal/ops.mm`) that runs the kernel on the **current MPS stream**
+- A small **JIT loader** that compiles `dba_decode.metal → dba_decode.metallib` via `xcrun` and builds the extension on first use (`optimizer/metal/jit.py`)
+
+**Requirements**
+- macOS + PyTorch with MPS enabled (`torch.backends.mps.is_available()`)
+- Xcode Command Line Tools (must have `xcrun` available)
+
+**How it’s activated (automatic)**
+- Model uses `AttentionMode.DECOUPLED`
+- Inference decode step (`T == 1`), no extra masking/windowing/chunking
+- Device is `mps`
+- Decoupled KV caches are **fp16** (i.e. generation/latency `cache_kind: fp16`)
+
+If Metal isn’t supported, the toolchain isn’t present, or the build fails, caramba **silently falls back** to the safe PyTorch path.
+
+**Optional: force-build the extension**
+
+```python
+from optimizer.metal.jit import load_caramba_metal_ops
+
+load_caramba_metal_ops(verbose=True)
+```
+
+---
+
 ## Console Logging
 
 Rich-based logging with structured, beautiful console output:
@@ -1584,10 +1660,9 @@ logger.artifacts_summary({"model.pt": "/path/to/model.pt", "config.json": "/path
 
 <div align="center">
 
-|                                                 |                                                  |
-|:-----------------------------------------------:|:------------------------------------------------:|
-| [High-level overview](assets/high-level.png)    | [Detailed architecture](assets/architecture.png) |
-| [Llama-specific](assets/llama-architecture.png) | [Preset manifests](assets/config/presets/)       |
+|:------------------------------------------------:|:-------------------------------------------------:|
+| ![High-level overview](assets/high-level.png)    | ![Detailed architecture](assets/architecture.png) |
+| ![Llama-specific](assets/llama-architecture.png) | ![Preset manifests](assets/config/presets/)       |
 
 </div>
 
@@ -1676,8 +1751,10 @@ caramba/
 ├── optimizer/           # Optimization utilities
 │   ├── fused_attention.py    # Fused attention kernels
 │   ├── kernels_decoupled.py  # DBA-specific kernels
+│   ├── metal/               # Metal fused DBA decode (MPS)
 │   ├── quantizer.py          # Quantization utilities
-│   └── triton_runtime.py     # Triton availability check
+│   ├── runtime.py            # Backend availability (Triton + Metal)
+│   └── triton_runtime.py     # Back-compat shim (use optimizer.runtime instead)
 ├── orchestrator/        # Dynamic optimizer orchestration
 │   ├── __init__.py           # Package exports
 │   ├── strategy.py           # Strategy abstraction + bundles

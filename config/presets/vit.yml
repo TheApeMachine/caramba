@@ -1,15 +1,84 @@
-# ============================================================================
-# Vision Transformer (ViT)
-# ============================================================================
-# This manifest defines a classic ViT architecture for image processing.
-# It uses patch embeddings to convert image regions into "tokens" that
-# a standard transformer can then process.
-# ============================================================================
-
-version: 1
+version: 2
 name: vision_transformer
-notes: "ViT-Base style architecture for image classification."
-
+notes: ViT-Base style architecture for image classification.
+defaults:
+  data:
+    tokenizer: none
+    val_frac: 0.1
+  logging:
+    instrument: rich
+    wandb: false
+    wandb_project: vision-research
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    save_every: 500
+targets:
+- type: experiment
+  name: image_train
+  description: Training a ViT on image data.
+  backend: torch
+  task: task.language_modeling
+  data:
+    ref: dataset.tokens
+    config:
+      path: path/to/your/images.npy
+      block_size: 196
+  system:
+    ref: system.language_model
+    config:
+      model:
+        type: TransformerModel
+        embedder:
+          type: patch
+          img_size: ${img_size}
+          patch_size: ${patch_size}
+          in_channels: 3
+          d_model: ${d_model}
+        topology:
+          type: StackedTopology
+          layers:
+          - type: NestedTopology
+            repeat: ${n_layers}
+            layers:
+            - type: ResidualTopology
+              layers:
+              - type: LayerNormLayer
+                d_model: ${d_model}
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                mode: standard
+                is_causal: false
+            - type: ResidualTopology
+              layers:
+              - type: LayerNormLayer
+                d_model: ${d_model}
+              - type: SwiGLULayer
+                d_model: ${d_model}
+                d_ff: ${d_ff}
+          - type: LayerNormLayer
+            d_model: ${d_model}
+          - type: LinearLayer
+            d_in: ${d_model}
+            d_out: ${num_classes}
+  objective: objective.next_token_ce
+  trainer: trainer.standard
+  runs:
+  - id: train_vit
+    mode: train
+    exp: vit_base
+    seed: 1337
+    steps: 5000
+    expected: {}
+    train:
+      phase: standard
+      batch_size: 128
+      block_size: 196
+      lr: 0.0001
+      device: cpu
+      dtype: float32
 vars:
   d_model: 768
   n_heads: 12
@@ -18,69 +87,3 @@ vars:
   img_size: 224
   patch_size: 16
   num_classes: 1000
-
-defaults:
-  tokenizer: none  # Images are pre-processed
-  val_frac: 0.1
-  instrument: rich
-  wandb: false
-  wandb_project: "vision-research"
-  save_every: 500
-
-model:
-  type: TransformerModel
-  embedder:
-    type: patch
-    img_size: "${img_size}"
-    patch_size: "${patch_size}"
-    in_channels: 3
-    d_model: "${d_model}"
-  topology:
-    type: StackedTopology
-    layers:
-      - type: NestedTopology
-        repeat: "${n_layers}"
-        layers:
-          # Attention block
-          - type: ResidualTopology
-            layers:
-              - type: LayerNormLayer
-                d_model: "${d_model}"
-              - type: AttentionLayer
-                d_model: "${d_model}"
-                n_heads: "${n_heads}"
-                mode: standard
-                is_causal: false  # Vision is non-causal
-          # MLP block
-          - type: ResidualTopology
-            layers:
-              - type: LayerNormLayer
-                d_model: "${d_model}"
-              - type: SwiGLULayer
-                d_model: "${d_model}"
-                d_ff: "${d_ff}"
-      # Output (Classification Head)
-      - type: LayerNormLayer
-        d_model: "${d_model}"
-      - type: LinearLayer
-        d_in: "${d_model}"
-        d_out: "${num_classes}"
-
-groups:
-  - name: image_train
-    description: "Training a ViT on image data."
-    data: "path/to/your/images.npy"
-    runs:
-      - id: train_vit
-        mode: train
-        exp: vit_base
-        seed: 1337
-        steps: 5000
-        expected: {}
-        train:
-          phase: standard
-          batch_size: 128
-          block_size: 196 # (224/16)^2 patches
-          lr: 0.0001
-          device: cpu
-          dtype: float32

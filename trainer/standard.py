@@ -1,281 +1,299 @@
-"""Standard training loop for generic ML experiments.
+"""Standard trainer (target-based).
 
-Unlike upcycling (which uses a teacher/student setup), the Standard trainer
-performs regular end-to-end training on a single model. This is the foundation
-for training new architectures from scratch.
+This trainer is objective-driven:
+- dataset provides batches
+- system produces outputs
+- objective computes loss from (batch, outputs)
+
+No assumptions about "tokens" are baked into the trainer beyond the chosen
+components.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, Sized, cast
 
 import torch
-import torch.nn.functional as F
-from torch import Tensor, nn
-from typing import Sized
-
+from torch import Tensor
 from torch.utils.data import DataLoader, Subset
 
-from carmath import token_budget_batch_size
+from carmath import (
+    autocast_dtype,
+    autocast_dtype_str,
+    token_budget_batch_size,
+    train_val_counts,
+    weight_dtype_str,
+)
 from config.defaults import Defaults
-from config.group import Group
 from config.manifest import Manifest
 from config.run import Run
-from config.train import TrainConfig
+from config.target import ExperimentTargetConfig
+from config.train import TrainConfig, TrainPhase
 from console import logger
-from data import build_token_dataset
-from carmath import train_val_counts
-from instrumentation import (
-    LivePlotter,
-    RunLogger,
-    TensorBoardWriter,
-    WandBWriter,
-    generate_analysis_png,
-)
-from carmath import autocast_dtype, autocast_dtype_str, weight_dtype_str
-from model import Model
-from runtime import RuntimePlan, make_plan_key, save_plan, load_plan
-from trainer.distributed import (
-    DistributedConfig,
-    DistributedContext,
-    DistributedStrategy,
-)
-from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
+from instrumentation import RunLogger
+from runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
+from trainer.objectives import LossBundle
+
+
+class _Engine(Protocol):
+    registry: Any
 
 
 class StandardTrainer:
-    """Orchestrates standard end-to-end model training.
+    def __init__(self, *, checkpoint_dir: str | None = None) -> None:
+        self._checkpoint_dir_override = checkpoint_dir
 
-    Handles data loading, optimization, logging, and checkpointing for
-    a single model architecture.
-    """
-
-    def __init__(
+    def run(
         self,
-        manifest: Manifest,
-        group: Group,
-        train: TrainConfig,
         *,
-        dist_config: DistributedConfig | None = None,
-        defaults: Defaults | None = None,
-        checkpoint_dir: Path | str | None = None,
-        resume_from: Path | str | None = None,
-    ) -> None:
-        """Initialize the trainer and build the model.
+        manifest: Manifest,
+        target: ExperimentTargetConfig,
+        engine: _Engine,
+        dry_run: bool = False,
+    ) -> dict[str, Any] | None:
+        if dry_run:
+            return None
 
-        Args:
-            manifest: Model architecture specification
-            group: Experiment group with data paths and settings
-            train: Training hyperparameters
-            dist_config: Optional distributed training settings
-            defaults: Optional global defaults
-            checkpoint_dir: Where to save checkpoints
-            resume_from: Path to resume training from a checkpoint
-        """
-        self.manifest = manifest
-        self.group = group
-        self.defaults = defaults
-        self.train_cfg = train
-        if self.manifest.model is None:
-            raise ValueError(
-                "Standard training requires a manifest with a 'model' section, but manifest.model is None."
+        # Build components once per target.
+        dataset_comp = engine.registry.build(target.data, backend=str(target.backend))
+        system = engine.registry.build(target.system, backend=str(target.backend))
+        objective = engine.registry.build(target.objective, backend=str(target.backend))
+
+        ckpt_dir = (
+            Path(self._checkpoint_dir_override)
+            if self._checkpoint_dir_override
+            else Path("runs") / target.name
+        )
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        run_logger = RunLogger(ckpt_dir, filename="train.jsonl", enabled=True)
+
+        last_device: torch.device | None = None
+        for run in target.runs:
+            if run.train is None:
+                raise ValueError(f"Run {run.id} has no train config.")
+            if run.train.phase != TrainPhase.STANDARD:
+                raise ValueError(
+                    f"trainer.standard only supports phase=standard, got {run.train.phase}"
+                )
+            self._run_single(
+                defaults=manifest.defaults,
+                target=target,
+                run=run,
+                train=run.train,
+                dataset_comp=dataset_comp,
+                system=system,
+                objective=objective,
+                checkpoint_dir=ckpt_dir,
+                run_logger=run_logger,
             )
-        self.model_cfg = self.manifest.model
+            last_device = torch.device(run.train.device)
 
-        self.save_every = defaults.save_every if defaults else 500
-        self.checkpoint_dir = (
-            Path(checkpoint_dir) if checkpoint_dir else Path("runs") / group.name
-        )
-        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        self.run_logger = RunLogger(self.checkpoint_dir, filename="train.jsonl", enabled=True)
+        return {"system": system, "device": last_device, "checkpoint_dir": ckpt_dir}
 
-        # Set up device and distribution
-        self.dist_config = dist_config
-        self.dist_ctx: DistributedContext | None = None
-        if dist_config is not None and dist_config.strategy != DistributedStrategy.NONE:
-            self.dist_ctx = DistributedContext.init(dist_config)
-            self.device = self.dist_ctx.device
-        else:
-            self.device = torch.device(train.device)
-
-        self.runtime_plan = self._load_or_create_runtime_plan(train)
-        self.dtype = self._parse_dtype(self.runtime_plan.dtype)
-
-        # Build model
-        logger.info(f"Building model: {self.model_cfg.type}")
-        self.model = Model(self.model_cfg).to(device=self.device, dtype=self.dtype)
-
-        if self.dist_ctx is not None:
-            self.model = self.dist_ctx.wrap_model(self.model)
-
-        if bool(self.runtime_plan.compile) and hasattr(torch, "compile"):
-            if self.device.type == "cuda":
-                logger.info(f"Compiling model (mode={self.runtime_plan.compile_mode})...")
-                self.model = torch.compile(self.model, mode=self.runtime_plan.compile_mode)
-            else:
-                logger.warning(f"torch.compile not supported on {self.device.type}")
-
-        if resume_from is not None:
-            self.load_checkpoint(Path(resume_from))
-
-    def run(self, run: Run) -> None:
-        """Execute the training run."""
+    def _run_single(
+        self,
+        *,
+        defaults: Defaults,
+        target: ExperimentTargetConfig,
+        run: Run,
+        train: TrainConfig,
+        dataset_comp: object,
+        system: object,
+        objective: object,
+        checkpoint_dir: Path,
+        run_logger: RunLogger,
+    ) -> None:
         torch.manual_seed(run.seed)
+        device = torch.device(train.device)
 
-        # Build data loaders
-        loader, val_loader = self.build_loaders(self.train_cfg)
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.train_cfg.lr)
+        runtime_plan = self._load_or_create_runtime_plan(
+            checkpoint_dir=checkpoint_dir,
+            device=device,
+            train=train,
+            system_cfg=dict(target.system.config),
+        )
+        dtype = self._parse_dtype(runtime_plan.dtype)
 
-        scheduler = build_lr_scheduler(
-            optimizer,
-            LRSchedulerConfig(
-                kind=self.train_cfg.scheduler,
-                total_steps=run.steps,
-                warmup_steps=self.train_cfg.warmup_steps,
-                min_lr_ratio=self.train_cfg.min_lr_ratio,
-            ),
+        if hasattr(system, "to"):
+            system.to(device=device, dtype=dtype)  # type: ignore[attr-defined]
+
+        loader = self._build_loader(
+            dataset_comp=dataset_comp,
+            defaults=defaults,
+            train=train,
+            device=device,
+            batch_size=int(runtime_plan.batch_size),
         )
 
-        logger.header("Training", f"{run.steps} steps")
-        self.model.train()
+        if not hasattr(system, "parameters"):
+            raise TypeError("System component does not expose parameters()")
+        optimizer = torch.optim.AdamW(system.parameters(), lr=train.lr)  # type: ignore[arg-type]
 
+        use_amp = bool(train.use_amp)
+        amp_dtype = autocast_dtype(device, str(train.amp_dtype))
+
+        logger.header("Training", f"{target.name}:{run.id} • {run.steps} steps")
         loader_iter = iter(loader)
-        use_amp = bool(self.train_cfg.use_amp)
-        amp_dtype = autocast_dtype(self.device, str(self.train_cfg.amp_dtype))
+
+        def to_device(obj: Any) -> Any:
+            if isinstance(obj, Tensor):
+                return obj.to(device=device)
+            if isinstance(obj, dict):
+                return {k: to_device(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [to_device(v) for v in obj]
+            if isinstance(obj, tuple):
+                return tuple(to_device(v) for v in obj)
+            return obj
 
         with logger.progress_bar() as progress:
-            task = progress.add_task("Training...", total=run.steps)
+            task = progress.add_task("Training...", total=int(run.steps))
+            for step in range(int(run.steps)):
+                try:
+                    item = next(loader_iter)
+                except StopIteration:
+                    loader_iter = iter(loader)
+                    item = next(loader_iter)
 
-            for step in range(run.steps):
-                (x, y), loader_iter = self._next_batch(loader, loader_iter)
-                x, y = x.to(self.device), y.to(self.device)
+                # Back-compat: datasets may yield (x, y) for LM.
+                if isinstance(item, tuple) and len(item) == 2:
+                    x, y = item
+                    batch: dict[str, Any] = {"input_ids": x, "target_ids": y}
+                elif isinstance(item, dict):
+                    batch = dict(item)
+                else:
+                    batch = {"inputs": item}
 
+                batch = cast(dict[str, Any], to_device(batch))
                 optimizer.zero_grad(set_to_none=True)
-
                 with torch.autocast(
-                    device_type=self.device.type,
+                    device_type=device.type,
                     dtype=amp_dtype,
                     enabled=use_amp,
                 ):
-                    # Basic next-token prediction loss
-                    logits = self.model(x)
-                    loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
-
-                loss.backward()
-                optimizer.step()
-                if scheduler:
-                    scheduler.step()
-
-                # Logging
-                if (step + 1) % 10 == 0:
-                    self.run_logger.log_metrics(
-                        run_id=run.id,
-                        phase="standard",
-                        step=step + 1,
-                        metrics={"loss": float(loss), "lr": optimizer.param_groups[0]["lr"]},
+                    if not hasattr(system, "forward"):
+                        raise TypeError("System component does not expose forward()")
+                    outputs = system.forward(batch)  # type: ignore[attr-defined]
+                    if not hasattr(objective, "loss"):
+                        raise TypeError("Objective component does not expose loss()")
+                    loss_bundle: LossBundle = objective.loss(  # type: ignore[attr-defined]
+                        outputs=outputs, batch=batch
                     )
 
-                progress.update(task, advance=1, description=f"Step {step+1}/{run.steps} • loss={float(loss):.4f}")
+                loss_bundle.total.backward()
+                optimizer.step()
 
-                if self.save_every > 0 and (step + 1) % self.save_every == 0:
-                    self.save_checkpoint(run.id, "standard", step + 1)
+                if (step + 1) % 10 == 0:
+                    metrics = {"loss": float(loss_bundle.total), **loss_bundle.parts}
+                    run_logger.log_metrics(
+                        run_id=str(run.id),
+                        phase="standard",
+                        step=step + 1,
+                        metrics=metrics,
+                    )
 
-        logger.success(f"Training complete • final loss={float(loss):.4f}")
-        self.save_checkpoint(run.id, "standard", run.steps, is_final=True)
+                progress.update(
+                    task,
+                    advance=1,
+                    description=f"Step {step+1}/{run.steps} • loss={float(loss_bundle.total):.4f}",
+                )
 
-    def build_loaders(self, train: TrainConfig) -> tuple[DataLoader, DataLoader | None]:
-        """Build train and validation data loaders."""
-        path = Path(self.group.data)
-        dataset = build_token_dataset(path=path, block_size=train.block_size)
+        self._save_checkpoint(
+            checkpoint_dir=checkpoint_dir,
+            run_id=str(run.id),
+            phase="standard",
+            step=int(run.steps),
+            system=system,
+        )
 
-        val_frac = self.defaults.val_frac if self.defaults else 0.0
+    def _build_loader(
+        self,
+        *,
+        dataset_comp: object,
+        defaults: Defaults,
+        train: TrainConfig,
+        device: torch.device,
+        batch_size: int,
+    ) -> DataLoader:
+        if not hasattr(dataset_comp, "build"):
+            raise TypeError("Dataset component does not expose build()")
+        dataset = dataset_comp.build()  # type: ignore[attr-defined]
+
+        val_frac = float(defaults.data.val_frac)
         n = len(cast(Sized, dataset))
-        n_train, n_val = train_val_counts(n, float(val_frac))
-
+        n_train, _n_val = train_val_counts(n, float(val_frac))
         train_ds = Subset(dataset, range(0, n_train))
-        val_ds = Subset(dataset, range(n_train, n)) if n_val > 0 else None
 
         loader_kwargs = {
-            "batch_size": self.runtime_plan.batch_size,
-            "num_workers": train.num_workers,
-            "pin_memory": train.pin_memory and self.device.type == "cuda",
+            "batch_size": int(batch_size),
+            "num_workers": int(train.num_workers),
+            "pin_memory": bool(train.pin_memory) and device.type == "cuda",
             "drop_last": True,
         }
+        return DataLoader(train_ds, shuffle=True, **loader_kwargs)
 
-        train_loader = DataLoader(train_ds, shuffle=True, **loader_kwargs)
-        val_loader = DataLoader(val_ds, shuffle=False, **loader_kwargs) if val_ds else None
-
-        return train_loader, val_loader
-
-    def _next_batch(self, loader: DataLoader, iterator: Any) -> tuple[Any, Any]:
-        try:
-            return next(iterator), iterator
-        except StopIteration:
-            new_iter = iter(loader)
-            return next(new_iter), new_iter
-
-    def save_checkpoint(self, run_id: str, phase: str, step: int, is_final: bool = False) -> Path:
-        filename = f"{run_id}_{phase}_{'final' if is_final else f'step{step}'}.pt"
-        path = self.checkpoint_dir / filename
+    def _save_checkpoint(
+        self,
+        *,
+        checkpoint_dir: Path,
+        run_id: str,
+        phase: str,
+        step: int,
+        system: object,
+    ) -> Path:
+        filename = f"{run_id}_{phase}_final.pt"
+        path = checkpoint_dir / filename
+        if not hasattr(system, "state_dict"):
+            raise TypeError("System component does not expose state_dict()")
         state = {
-            "model_state_dict": self.model.state_dict(),
+            "system_state_dict": system.state_dict(),  # type: ignore[attr-defined]
             "run_id": run_id,
             "step": step,
         }
         torch.save(state, path)
         return path
 
-    def load_checkpoint(self, path: Path) -> None:
-        state = torch.load(path, map_location=self.device)
-        self.model.load_state_dict(state["model_state_dict"])
-        logger.info(f"Loaded checkpoint from {path}")
-
     def _parse_dtype(self, dtype: str) -> torch.dtype:
         dt = dtype.lower()
-        if dt == "float32": return torch.float32
-        if dt == "float16": return torch.float16
-        if dt == "bfloat16": return torch.bfloat16
+        if dt == "float32":
+            return torch.float32
+        if dt == "float16":
+            return torch.float16
+        if dt == "bfloat16":
+            return torch.bfloat16
         return torch.float32
 
-    def _resolve_amp_dtype(self, amp_dtype: str) -> torch.dtype:
-        return autocast_dtype(self.device, str(amp_dtype))
-
-    def _load_or_create_runtime_plan(self, train: TrainConfig) -> RuntimePlan:
-        """Derive a runtime plan with automatic dtype/batch/compile decisions.
-
-        The plan is persisted to disk so subsequent runs with the same
-        configuration reuse the same decisions.
-        """
-        # Build a stable payload that excludes volatile fields
+    def _load_or_create_runtime_plan(
+        self,
+        *,
+        checkpoint_dir: Path,
+        device: torch.device,
+        train: TrainConfig,
+        system_cfg: dict[str, Any],
+    ) -> RuntimePlan:
         train_payload = train.model_dump()
         train_payload.pop("teacher_ckpt", None)
         payload: dict[str, Any] = {
-            "device": str(self.device),
+            "device": str(device),
             "torch": torch.__version__,
-            "model": self.model_cfg.model_dump(),
+            "system": system_cfg,
             "train": train_payload,
         }
         key = make_plan_key(payload)
-        plan_path = self.checkpoint_dir / "plans" / f"{key}.json"
+        plan_path = checkpoint_dir / "plans" / f"{key}.json"
 
-        # Check for existing plan
         existing = load_plan(plan_path)
         if existing is not None and existing.key == key:
-            logger.info(f"Reusing cached runtime plan: {key}")
             return existing
 
-        # Resolve dtype: auto-detect best precision for device
         dtype_str = str(train.dtype).lower()
         if dtype_str == "auto":
-            dtype_str = weight_dtype_str(self.device)
+            dtype_str = weight_dtype_str(device)
 
-        # Resolve AMP dtype
         amp_dtype_str = str(train.amp_dtype).lower()
         if amp_dtype_str == "auto":
-            amp_dtype_str = autocast_dtype_str(self.device)
+            amp_dtype_str = autocast_dtype_str(device)
 
-        # Batch size tuning: scale based on block size ratio
         batch_size = int(train.batch_size)
         if bool(getattr(train, "auto_batch_size", False)):
             ref_block = int(getattr(train, "auto_batch_ref_block_size", 512))
@@ -287,112 +305,19 @@ class StandardTrainer:
                 min_batch_size=int(min_bs),
             )
 
-            # Memory-aware batch size search
-            batch_size = self._find_max_batch_size(train, batch_size, dtype_str)
-
-        # Compile decision
-        compile_setting = getattr(train, "compile_model", False)
-        compile_mode = str(getattr(train, "compile_mode", "reduce-overhead"))
-        should_compile = self._resolve_compile_setting(compile_setting)
-
         plan = RuntimePlan(
             key=key,
-            device=str(self.device),
+            device=str(device),
             torch_version=torch.__version__,
             dtype=dtype_str,
             use_amp=bool(train.use_amp),
             amp_dtype=amp_dtype_str,
-            batch_size=batch_size,
-            compile=should_compile,
-            compile_mode=compile_mode,
+            batch_size=int(batch_size),
+            compile=bool(getattr(train, "compile_model", False)),
+            compile_mode=str(getattr(train, "compile_mode", "reduce-overhead")),
         )
-
-        # Persist plan
         try:
             save_plan(plan_path, plan, payload=payload)
-            logger.info(f"Created runtime plan: {key}")
-        except Exception as e:
-            logger.warning(f"Failed to save runtime plan: {e}")
-
+        except Exception:
+            pass
         return plan
-
-    # dtype/amp auto selection moved into carmath.precision
-
-    def _resolve_compile_setting(self, compile_setting: object) -> bool:
-        """Resolve compile setting to boolean."""
-        if isinstance(compile_setting, bool):
-            return compile_setting
-        s = str(compile_setting).strip().lower()
-        if s == "auto":
-            return self.device.type == "cuda"
-        return s in ("1", "true", "yes", "on")
-
-    def _find_max_batch_size(self, train: TrainConfig, initial_bs: int, dtype_str: str) -> int:
-        """Binary search for maximum batch size that fits in memory.
-
-        Performs a quick forward pass with increasing batch sizes to find
-        the largest that doesn't OOM.
-        """
-        if self.device.type != "cuda":
-            return initial_bs
-
-        # Get available GPU memory
-        try:
-            props = torch.cuda.get_device_properties(self.device)
-            total_mem = props.total_memory
-            reserved_mem = torch.cuda.memory_reserved(self.device)
-            available = total_mem - reserved_mem
-        except Exception:
-            return initial_bs
-
-        # Estimate bytes per sample based on model size and sequence length
-        # This is a heuristic based on typical transformer memory usage
-        try:
-            model_params = sum(p.numel() for p in self.model.parameters())
-        except Exception:
-            return initial_bs
-
-        bytes_per_param = 2 if dtype_str in ("float16", "bfloat16") else 4
-
-        # Rough estimate: activations + gradients ≈ 4x model size per sample
-        # This varies by architecture but provides a reasonable starting point
-        seq_len = train.block_size
-        hidden_dim = getattr(self.manifest.model, "d_model", 512)
-        activation_mem_per_sample = seq_len * hidden_dim * bytes_per_param * 4
-
-        # Leave 20% headroom for fragmentation and other allocations
-        usable_mem = available * 0.8
-
-        # Calculate max batch size
-        max_bs = max(1, int(usable_mem / activation_mem_per_sample))
-
-        # Bound by initial and do binary search if there's significant headroom
-        if max_bs <= initial_bs:
-            return initial_bs
-
-        # Binary search between initial and estimated max
-        low, high = initial_bs, min(max_bs, initial_bs * 8)
-        best_bs = initial_bs
-
-        # Quick validation: try to allocate test tensors
-        test_input_shape = (1, seq_len)
-
-        while low <= high:
-            mid = (low + high) // 2
-            try:
-                # Try allocating tensors of this batch size
-                test_tensor = torch.empty(
-                    mid, seq_len, hidden_dim,
-                    device=self.device,
-                    dtype=self._parse_dtype(dtype_str),
-                )
-                del test_tensor
-                torch.cuda.empty_cache()
-                best_bs = mid
-                low = mid + 1
-            except (RuntimeError, torch.cuda.OutOfMemoryError):
-                torch.cuda.empty_cache()
-                high = mid - 1
-
-        logger.info(f"Auto batch size: {initial_bs} -> {best_bs}")
-        return best_bs

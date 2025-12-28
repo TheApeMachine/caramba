@@ -1,0 +1,55 @@
+version: 2
+name: graph_node_classification
+notes: "Graph example: minimal GCN on a single graph loaded from NumPy."
+
+defaults:
+  data: { tokenizer: tiktoken, val_frac: 0.0 }
+  logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 50 }
+  runtime: { save_every: 200 }
+
+targets:
+  - type: experiment
+    name: gcn_demo
+    description: "Train a 2-layer GCN for node classification."
+    backend: torch
+    task: task.graph_node_classification
+
+    data:
+      ref: dataset.graph_npy
+      config:
+        x_path: "path/to/x.npy"
+        adj_path: "path/to/adj.npy"
+        labels_path: "path/to/labels.npy"
+        add_self_loops: true
+
+    system:
+      ref: system.gcn
+      config:
+        d_in: 32
+        d_hidden: 64
+        n_classes: 7
+        dropout: 0.1
+
+    objective:
+      ref: objective.classification_ce
+      config:
+        logits_key: logits
+        labels_key: labels
+
+    trainer: trainer.standard
+
+    runs:
+      - id: train
+        mode: train
+        exp: gcn
+        seed: 1
+        steps: 500
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 1
+          block_size: 1
+          lr: 0.01
+          device: cpu
+          dtype: float32
+

@@ -1,17 +1,83 @@
-# ============================================================================
-# Mixture of Experts (MoE) Transformer
-# ============================================================================
-# This manifest defines a transformer architecture where the standard MLP
-# layers are replaced with sparse-gated Mixture of Experts (MoE).
-#
-# MoE allows the model to have a very large number of parameters while
-# only using a fraction of them for each token, keeping compute constant.
-# ============================================================================
-
-version: 1
+version: 2
 name: moe_transformer
-notes: "MoE-based transformer for efficient scaling."
-
+notes: MoE-based transformer for efficient scaling.
+defaults:
+  data:
+    tokenizer: tiktoken
+    val_frac: 0.1
+  logging:
+    instrument: rich
+    wandb: false
+    wandb_project: moe-research
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    save_every: 100
+targets:
+- type: experiment
+  name: scratch_train
+  description: Training an MoE model from scratch.
+  backend: torch
+  task: task.language_modeling
+  data:
+    ref: dataset.tokens
+    config:
+      path: path/to/your/data.tokens
+      block_size: 512
+  system:
+    ref: system.language_model
+    config:
+      model:
+        type: TransformerModel
+        embedder:
+          type: token
+          vocab_size: ${vocab_size}
+          d_model: ${d_model}
+        topology:
+          type: StackedTopology
+          layers:
+          - type: NestedTopology
+            repeat: ${n_layers}
+            layers:
+            - type: ResidualTopology
+              layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                mode: standard
+            - type: ResidualTopology
+              layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: MoELayer
+                d_model: ${d_model}
+                num_experts: ${num_experts}
+                top_k: ${top_k}
+                d_ff: ${d_ff}
+          - type: RMSNormLayer
+            d_model: ${d_model}
+          - type: LinearLayer
+            d_in: ${d_model}
+            d_out: ${vocab_size}
+  objective: objective.next_token_ce
+  trainer: trainer.standard
+  runs:
+  - id: train_moe
+    mode: train
+    exp: moe_scratch
+    seed: 1337
+    steps: 1000
+    expected: {}
+    train:
+      phase: standard
+      batch_size: 32
+      block_size: 512
+      lr: 0.0003
+      device: cpu
+      dtype: float32
 vars:
   d_model: 512
   n_heads: 8
@@ -20,68 +86,3 @@ vars:
   vocab_size: 50257
   num_experts: 8
   top_k: 2
-
-defaults:
-  tokenizer: tiktoken
-  val_frac: 0.1
-  instrument: rich
-  wandb: false
-  wandb_project: "moe-research"
-  save_every: 100
-
-model:
-  type: TransformerModel
-  embedder:
-    type: token
-    vocab_size: "${vocab_size}"
-    d_model: "${d_model}"
-  topology:
-    type: StackedTopology
-    layers:
-      - type: NestedTopology
-        repeat: "${n_layers}"
-        layers:
-          # Attention Block
-          - type: ResidualTopology
-            layers:
-              - type: RMSNormLayer
-                d_model: "${d_model}"
-              - type: AttentionLayer
-                d_model: "${d_model}"
-                n_heads: "${n_heads}"
-                mode: standard
-          # MoE Block (replacing standard MLP)
-          - type: ResidualTopology
-            layers:
-              - type: RMSNormLayer
-                d_model: "${d_model}"
-              - type: MoELayer
-                d_model: "${d_model}"
-                num_experts: "${num_experts}"
-                top_k: "${top_k}"
-                d_ff: "${d_ff}"
-      # Output
-      - type: RMSNormLayer
-        d_model: "${d_model}"
-      - type: LinearLayer
-        d_in: "${d_model}"
-        d_out: "${vocab_size}"
-
-groups:
-  - name: scratch_train
-    description: "Training an MoE model from scratch."
-    data: "path/to/your/data.tokens"
-    runs:
-      - id: train_moe
-        mode: train
-        exp: moe_scratch
-        seed: 1337
-        steps: 1000
-        expected: {}
-        train:
-          phase: standard
-          batch_size: 32
-          block_size: 512
-          lr: 0.0003
-          device: cpu
-          dtype: float32

@@ -1,83 +1,84 @@
-# ============================================================================
-# Standard Transformer Training
-# ============================================================================
-# This manifest defines a classic GPT-style decoder-only transformer.
-# It uses standard Attention and SwiGLU MLP layers.
-#
-# Use this as a baseline for comparing more exotic architectures like
-# MoE, SSM, or DBA.
-# ============================================================================
-
-version: 1
+version: 2
 name: standard_transformer
-notes: "Standard GPT-style transformer for baseline research."
-
+notes: Standard GPT-style transformer for baseline research.
+defaults:
+  data:
+    tokenizer: tiktoken
+    val_frac: 0.1
+  logging:
+    instrument: rich
+    wandb: false
+    wandb_project: transformer-baseline
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    save_every: 100
+targets:
+- type: experiment
+  name: baseline_train
+  description: Training a baseline transformer from scratch.
+  backend: torch
+  task: task.language_modeling
+  data:
+    ref: dataset.tokens
+    config:
+      path: path/to/your/data.tokens
+      block_size: 512
+  system:
+    ref: system.language_model
+    config:
+      model:
+        type: TransformerModel
+        embedder:
+          type: token
+          vocab_size: ${vocab_size}
+          d_model: ${d_model}
+        topology:
+          type: StackedTopology
+          layers:
+          - type: NestedTopology
+            repeat: ${n_layers}
+            layers:
+            - type: ResidualTopology
+              layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                mode: standard
+            - type: ResidualTopology
+              layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: SwiGLULayer
+                d_model: ${d_model}
+                d_ff: ${d_ff}
+          - type: RMSNormLayer
+            d_model: ${d_model}
+          - type: LinearLayer
+            d_in: ${d_model}
+            d_out: ${vocab_size}
+  objective: objective.next_token_ce
+  trainer: trainer.standard
+  runs:
+  - id: train_baseline
+    mode: train
+    exp: transformer_scratch
+    seed: 1337
+    steps: 2000
+    expected: {}
+    train:
+      phase: standard
+      batch_size: 32
+      block_size: 512
+      lr: 0.0003
+      device: cpu
+      dtype: float32
 vars:
   d_model: 512
   n_heads: 8
   n_layers: 6
   d_ff: 2048
   vocab_size: 50257
-
-defaults:
-  tokenizer: tiktoken
-  val_frac: 0.1
-  instrument: rich
-  wandb: false
-  wandb_project: "transformer-baseline"
-  save_every: 100
-
-model:
-  type: TransformerModel
-  embedder:
-    type: token
-    vocab_size: "${vocab_size}"
-    d_model: "${d_model}"
-  topology:
-    type: StackedTopology
-    layers:
-      - type: NestedTopology
-        repeat: "${n_layers}"
-        layers:
-          # Attention Block
-          - type: ResidualTopology
-            layers:
-              - type: RMSNormLayer
-                d_model: "${d_model}"
-              - type: AttentionLayer
-                d_model: "${d_model}"
-                n_heads: "${n_heads}"
-                mode: standard
-          # MLP Block
-          - type: ResidualTopology
-            layers:
-              - type: RMSNormLayer
-                d_model: "${d_model}"
-              - type: SwiGLULayer
-                d_model: "${d_model}"
-                d_ff: "${d_ff}"
-      # Output
-      - type: RMSNormLayer
-        d_model: "${d_model}"
-      - type: LinearLayer
-        d_in: "${d_model}"
-        d_out: "${vocab_size}"
-
-groups:
-  - name: baseline_train
-    description: "Training a baseline transformer from scratch."
-    data: "path/to/your/data.tokens"
-    runs:
-      - id: train_baseline
-        mode: train
-        exp: transformer_scratch
-        seed: 1337
-        steps: 2000
-        expected: {}
-        train:
-          phase: standard
-          batch_size: 32
-          block_size: 512
-          lr: 0.0003
-          device: cpu
-          dtype: float32

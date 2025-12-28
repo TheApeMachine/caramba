@@ -22,6 +22,12 @@ def _try_import_pyplot() -> Any | None:
     try:
         if importlib.util.find_spec("matplotlib") is None:
             return None
+        # Force a non-interactive backend so tests/CI don't require a GUI.
+        mpl = importlib.import_module("matplotlib")
+        try:
+            mpl.use("Agg")  # type: ignore[attr-defined]
+        except Exception:
+            pass
         return importlib.import_module("matplotlib.pyplot")
     except (ImportError, ModuleNotFoundError):
         return None

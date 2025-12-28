@@ -15,3 +15,4 @@ x.jsonl
 fineweb_100m.npy
 fineweb_100m.npy.meta
 train.h5
+.gitignore

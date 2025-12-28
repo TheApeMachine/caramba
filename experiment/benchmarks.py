@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from benchmark.artifacts import ExperimentMetadata
 from benchmark.runner import BenchmarkRunner
@@ -16,14 +16,13 @@ from console import logger
 if TYPE_CHECKING:
     from experiment.group import ExperimentGroup
     from config.manifest import Manifest
-    from trainer.upcycle import Upcycle
 
 class ExperimentBenchmarks:
     """Orchestrates benchmarks for an experiment."""
     def __init__(self, manifest: Manifest) -> None:
         self.manifest = manifest
 
-    def run(self, group: ExperimentGroup, upcycle: Upcycle) -> dict[str, Path]:
+    def run(self, group: ExperimentGroup, upcycle: Any) -> dict[str, Path]:
         """Run benchmarks and generate artifacts."""
         if not group.benchmarks:
             return {}

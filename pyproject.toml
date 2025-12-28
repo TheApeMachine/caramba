@@ -74,6 +74,7 @@ packages = [
     "caramba.model",
     "carmath",
     "caramba.optimizer",
+    "caramba.optimizer.metal",
     "caramba.orchestrator",
     "caramba.paper",
     "caramba.runtime",
@@ -85,7 +86,12 @@ packages = [
 caramba = "."
 
 [tool.setuptools.package-data]
-caramba = ["config/presets/*.yml", "config/benchmarks/*.yml"]
+caramba = [
+    "config/presets/*.yml",
+    "config/benchmarks/*.yml",
+    "optimizer/metal/*.metal",
+    "optimizer/metal/*.mm",
+]
 
 [tool.pyright]
 include = ["."]

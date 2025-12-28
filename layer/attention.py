@@ -669,7 +669,7 @@ class AttentionLayer(nn.Module):
             old_len = cache.pos
             _ = cache.append(self._merge(ksh), self._merge(kgh), self._merge(vh))
 
-            # Fast-path: fused decode for quantized decoupled caches on CUDA.
+            # Fast-path: fused decode for decoupled caches.
             # We only use this for single-token decode with no extra masking/windowing.
             if (
                 (not self.training)
@@ -678,38 +678,53 @@ class AttentionLayer(nn.Module):
                 and mask is None
                 and (local_window_override is None and self.config.local_window is None)
                 and (q_chunk_override is None and self.config.q_chunk is None)
-                and x.device.type == "cuda"
+                and x.device.type in ("cuda", "mps")
             ):
-                try:
-                    from optimizer.fused_attention import (
-                        fused_decode_available,
-                        fused_decode_decoupled_q4q8q4,
-                        fused_decode_decoupled_q4q8q4_2pass,
-                    )
-
-                    if fused_decode_available(cache, x.device.type):
-                        decode_block = (
-                            int(decode_block_override)
-                            if decode_block_override is not None
-                            else 1024
+                if x.device.type == "cuda":
+                    # CUDA: Triton fused decode for quantized caches.
+                    try:
+                        from optimizer.fused_attention import (
+                            fused_decode_available,
+                            fused_decode_decoupled_q4q8q4,
+                            fused_decode_decoupled_q4q8q4_2pass,
                         )
-                        # Heuristic: for very long prefixes, prefer split-K 2-pass decode.
-                        cache_len = int(cache.pos)
-                        if cache_len > 4 * int(decode_block):
-                            try:
-                                out_fused = fused_decode_decoupled_q4q8q4_2pass(
-                                    q_sem=qsh,
-                                    q_geo=qgh,
-                                    cache=cache,
-                                    n_heads=int(self.n_heads),
-                                    sem_head_dim=int(sem_head_dim),
-                                    geo_head_dim=int(geo_head_dim),
-                                    v_head_dim=int(v_head_dim),
-                                    decode_block=int(decode_block),
-                                    sem_scale=float(self._sem_scale),
-                                    geo_scale=float(self._geo_scale),
-                                )
-                            except Exception:
+
+                        if fused_decode_available(cache, x.device.type):
+                            decode_block = (
+                                int(decode_block_override)
+                                if decode_block_override is not None
+                                else 1024
+                            )
+                            # Heuristic: for very long prefixes, prefer split-K 2-pass decode.
+                            cache_len = int(cache.pos)
+                            if cache_len > 4 * int(decode_block):
+                                try:
+                                    out_fused = fused_decode_decoupled_q4q8q4_2pass(
+                                        q_sem=qsh,
+                                        q_geo=qgh,
+                                        cache=cache,
+                                        n_heads=int(self.n_heads),
+                                        sem_head_dim=int(sem_head_dim),
+                                        geo_head_dim=int(geo_head_dim),
+                                        v_head_dim=int(v_head_dim),
+                                        decode_block=int(decode_block),
+                                        sem_scale=float(self._sem_scale),
+                                        geo_scale=float(self._geo_scale),
+                                    )
+                                except Exception:
+                                    out_fused = fused_decode_decoupled_q4q8q4(
+                                        q_sem=qsh,
+                                        q_geo=qgh,
+                                        cache=cache,
+                                        n_heads=int(self.n_heads),
+                                        sem_head_dim=int(sem_head_dim),
+                                        geo_head_dim=int(geo_head_dim),
+                                        v_head_dim=int(v_head_dim),
+                                        decode_block=int(decode_block),
+                                        sem_scale=float(self._sem_scale),
+                                        geo_scale=float(self._geo_scale),
+                                    )
+                            else:
                                 out_fused = fused_decode_decoupled_q4q8q4(
                                     q_sem=qsh,
                                     q_geo=qgh,
@@ -722,25 +737,48 @@ class AttentionLayer(nn.Module):
                                     sem_scale=float(self._sem_scale),
                                     geo_scale=float(self._geo_scale),
                                 )
-                        else:
-                            out_fused = fused_decode_decoupled_q4q8q4(
+                            y = self.out_proj(self._merge(out_fused.to(dtype=x.dtype)))
+                            return y, cache
+                    except Exception:
+                        # Any failure in optional fused kernels should silently fall back
+                        # to the safe PyTorch implementation.
+                        pass
+
+                if x.device.type == "mps":
+                    # MPS: custom Metal fused decode for fp16 caches (no quantization).
+                    try:
+                        from optimizer.metal import dba_decode_fp16, metal_dba_decode_available
+
+                        # Only attempt when the underlying KV caches are fp16 buffers.
+                        k_sem_buf = getattr(cache.k_sem, "buf", None)
+                        k_geo_buf = getattr(cache.k_geo, "buf", None)
+                        v_buf = getattr(cache.v, "buf", None)
+                        if (
+                            metal_dba_decode_available()
+                            and getattr(cache.k_sem, "kind", None) == "fp16"
+                            and getattr(cache.k_geo, "kind", None) == "fp16"
+                            and getattr(cache.v, "kind", None) == "fp16"
+                            and k_sem_buf is not None
+                            and k_geo_buf is not None
+                            and v_buf is not None
+                        ):
+                            S = int(cache.pos)
+                            k_sem_view = k_sem_buf.narrow(1, 0, S)
+                            k_geo_view = k_geo_buf.narrow(1, 0, S)
+                            v_view = v_buf.narrow(1, 0, S)
+                            out_fused = dba_decode_fp16(
                                 q_sem=qsh,
                                 q_geo=qgh,
-                                cache=cache,
-                                n_heads=int(self.n_heads),
-                                sem_head_dim=int(sem_head_dim),
-                                geo_head_dim=int(geo_head_dim),
-                                v_head_dim=int(v_head_dim),
-                                decode_block=int(decode_block),
+                                k_sem=k_sem_view,
+                                k_geo=k_geo_view,
+                                v=v_view,
                                 sem_scale=float(self._sem_scale),
                                 geo_scale=float(self._geo_scale),
                             )
-                        y = self.out_proj(self._merge(out_fused.to(dtype=x.dtype)))
-                        return y, cache
-                except Exception:
-                    # Any failure in optional fused kernels should silently fall back
-                    # to the safe PyTorch implementation.
-                    pass
+                            y = self.out_proj(self._merge(out_fused.to(dtype=x.dtype)))
+                            return y, cache
+                    except Exception:
+                        pass
 
             if old_len > 0:
                 k_sem_all, k_geo_all, v_all = cache.get(dtype=qsh.dtype)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, TypeGuard
 
+from config.model import ModelConfig
 from config.layer import (
     AttentionLayerConfig,
     AttentionMode,
@@ -10,7 +11,6 @@ from config.layer import (
     LayerConfig,
     LinearLayerConfig,
 )
-from config.manifest import Manifest
 from config.topology import NodeConfig, TopologyConfig
 from console import logger
 
@@ -24,21 +24,24 @@ class IO:
 
 
 class Validator:
-    def validate_manifest(self, manifest: Manifest, *, print_plan: bool = False) -> Manifest:
-        if manifest.model is None:
-            raise ValueError(
-                "Manifest has no model; cannot validate topology. "
-                "Fix: add a 'model' section or run an agent process target instead."
-            )
-        topo = manifest.model.topology
+    def validate_model_config(self, model: ModelConfig, *, print_plan: bool = False) -> ModelConfig:
+        """Validate a model config's topology/layer invariants."""
+        topo = model.topology
         self.infer_topology_io(topo, path="model.topology")
         for layer, path in self.iter_layers(topo, path="model.topology"):
             if isinstance(layer, AttentionLayerConfig):
                 self.validate_attention(layer, path=path)
 
-        if print_plan:
-            logger.log(Planner().format(manifest))
+        # Planner currently only formats legacy manifests; keep flag for parity.
+        _ = print_plan
+        return model
 
+    def validate_manifest(self, manifest: object, *, print_plan: bool = False) -> object:
+        """Legacy shim: validators are now component-specific.
+
+        Manifest v2 is validated by the target runner/engine based on referenced components.
+        """
+        _ = print_plan
         return manifest
 
     validate = validate_manifest

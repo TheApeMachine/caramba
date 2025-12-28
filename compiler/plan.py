@@ -11,6 +11,8 @@ from typing import Iterable
 
 from config.layer import LayerConfig
 from config.manifest import Manifest
+from config.model import ModelConfig
+from config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
 from config.topology import NodeConfig, TopologyConfig
 
 
@@ -25,21 +27,49 @@ class Planner:
         """Render a human-readable plan for a lowered manifest."""
         out: list[str] = []
         out.append(f"manifest.version={manifest.version}")
-        if manifest.model is None:
-            out.append("model=<none>")
-            if manifest.agents is not None:
-                out.append("agents.team:")
-                for k, v in sorted(manifest.agents.team.root.items()):
-                    out.append(f"  - {k}: {v}")
-                out.append("agents.processes:")
-                for p in manifest.agents.processes:
-                    out.append(f"  - {p.type}:{p.name}")
-            return "\n".join(out)
-
-        out.append(f"model.type={manifest.model.type.value}")
-        out.append("model.topology:")
-        out.extend(self.format_topology(manifest.model.topology, indent=2, path="model"))
+        out.append(f"targets.count={len(manifest.targets)}")
+        for i, t in enumerate(manifest.targets):
+            out.extend(self.format_target(t, indent=0, path=f"targets[{i}]"))
         return "\n".join(out)
+
+    def format_target(self, target: TargetConfig, *, indent: int, path: str) -> list[str]:
+        pad = " " * indent
+        out: list[str] = []
+        out.append(f"{pad}target.name={target.name} type={target.type} path={path}")
+
+        if isinstance(target, ProcessTargetConfig):
+            out.append(f"{pad}process.type={target.process.type} name={target.process.name}")
+            out.append(f"{pad}process.leader={getattr(target.process, 'leader', '')}")
+            out.append(f"{pad}process.topic={getattr(target.process, 'topic', '')}")
+            out.append(f"{pad}team:")
+            for k, v in sorted(target.team.root.items()):
+                out.append(f"{pad}  - {k}: {v}")
+            return out
+
+        if not isinstance(target, ExperimentTargetConfig):
+            return out
+
+        out.append(
+            f"{pad}components: task={target.task.ref} data={target.data.ref} "
+            f"system={target.system.ref} objective={target.objective.ref} trainer={target.trainer.ref}"
+        )
+        out.append(f"{pad}runs.count={len(target.runs)} benchmarks.count={len(target.benchmarks or [])}")
+
+        # If it's a language-model system, render the topology for debugging.
+        if target.system.ref == "system.language_model":
+            model_payload = target.system.config.get("model", None)
+            if isinstance(model_payload, dict):
+                try:
+                    cfg = ModelConfig.model_validate(model_payload)
+                    out.append(f"{pad}model.type={cfg.type.value}")
+                    out.append(f"{pad}model.topology:")
+                    out.extend(self.format_topology(cfg.topology, indent=indent + 2, path=f"{path}.system.model"))
+                except Exception:
+                    out.append(f"{pad}model=<invalid>")
+            else:
+                out.append(f"{pad}model=<missing>")
+
+        return out
 
     def is_topology(self, node: NodeConfig) -> bool:
         """Check if node is a topology (has layers attribute)."""

@@ -1,28 +1,167 @@
-# ============================================================================
-# Llama 3.2 1B → DBA Upcycle (Efficiency-targeted variant)
-# ============================================================================
-# Goal: reduce *actual KV-cache footprint* (including V) while keeping
-# the quality gains from DBA.
-#
-# Key differences vs `llama32_1b_dba_paper.yml`:
-# - Smaller DBA key bottleneck (sem/geo)
-# - Smaller DBA value bottleneck via `attn_dim` (student-only; teacher ignores)
-# - Latency benchmark runs cached decoding with quantized caches
-#
-# Note:
-# The suggested split "48/96" from the paper isn't directly representable with
-# n_heads=32 + RoPE because:
-# - sem_dim and geo_dim must be divisible by n_heads (for reshaping)
-# - geo_head_dim must be even when RoPE is enabled
-# This preset uses a close, valid ratio: sem_dim=64, geo_dim=128.
-# ============================================================================
-
-version: 1
+version: 2
 name: llama32_1b_dba_paper_efficiency
-notes: "Efficiency-targeted DBA: smaller sem/geo + bottlenecked V + quantized KV caches."
-
+notes: 'Efficiency-targeted DBA: smaller sem/geo + bottlenecked V. Cached-latency uses fp16 on MPS (Metal fused decode). For CUDA/Triton quantized decode, set latency.cache_kind: q4_0.'
+defaults:
+  data:
+    tokenizer: llama
+    val_frac: 0.05
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-upcycle
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    save_every: 500
+targets:
+- type: experiment
+  name: paper
+  description: Efficiency-targeted DBA upcycle pipeline with paper drafting.
+  backend: torch
+  task: task.language_modeling
+  data:
+    ref: dataset.tokens
+    config:
+      path: fineweb_100m.npy
+      block_size: ${block_size}
+  system:
+    ref: system.language_model
+    config:
+      model:
+        type: TransformerModel
+        tied_embeddings: false
+        embedder:
+          type: token
+          vocab_size: ${vocab_size}
+          d_model: ${d_model}
+        topology:
+          type: StackedTopology
+          layers:
+          - type: NestedTopology
+            repeat: ${n_layers}
+            layers:
+            - type: ResidualTopology
+              layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                n_kv_heads: ${n_kv_heads}
+                mode: decoupled
+                attn_dim: ${attn_dim}
+                sem_dim: ${sem_dim}
+                geo_dim: ${geo_dim}
+                rope_enabled: true
+                rope_base: ${rope_theta}
+                is_causal: true
+                dropout_p: 0.0
+                decoupled_gate: true
+            - type: ResidualTopology
+              layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: SwiGLULayer
+                d_model: ${d_model}
+                d_ff: ${d_ff}
+                bias: false
+          - type: RMSNormLayer
+            d_model: ${d_model}
+            eps: 1e-5
+          - type: LinearLayer
+            d_in: ${d_model}
+            d_out: ${vocab_size}
+            bias: false
+  objective: objective.next_token_ce
+  trainer: trainer.upcycle
+  runs:
+  - id: blockwise
+    mode: train
+    exp: dba_blockwise
+    seed: 42
+    steps: ${blockwise_steps}
+    expected:
+      phase: blockwise
+    train:
+      phase: blockwise
+      batch_size: ${batch_size}
+      block_size: ${block_size}
+      lr: ${blockwise_lr}
+      device: mps
+      dtype: float32
+      teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+  - id: finetune
+    mode: train
+    exp: dba_finetune
+    seed: 42
+    steps: ${global_steps}
+    expected:
+      phase: global
+    train:
+      phase: global
+      batch_size: ${batch_size}
+      block_size: ${block_size}
+      lr: ${global_lr}
+      device: mps
+      dtype: float32
+  benchmarks:
+  - id: perplexity
+    config:
+      type: perplexity
+      dataset: fineweb_100m.npy
+      block_size: 2048
+      batch_size: 1
+      num_batches: 100
+    models:
+    - teacher
+    - student
+    repeats: 1
+  - id: latency
+    config:
+      type: latency
+      prompt_lengths:
+      - 128
+      - 512
+      - 1024
+      - 2048
+      generation_lengths:
+      - 64
+      - 128
+      - 256
+      batch_sizes:
+      - 1
+      warmup_runs: 3
+      timed_runs: 10
+      use_cache: true
+      cache_kind: fp16  # enables Metal fused DBA decode on MPS
+    models:
+    - teacher
+    - student
+    repeats: 1
+  - id: memory
+    config:
+      type: memory
+      sequence_lengths:
+      - 512
+      - 1024
+      - 2048
+      - 4096
+      batch_sizes:
+      - 1
+      measure_peak: true
+      measure_kvcache: true
+      quantization_modes:
+      - fp16
+      - q8
+      - q4
+    models:
+    - teacher
+    - student
+    repeats: 1
 vars:
-  # Model architecture (matches Llama 3.2 1B)
   d_model: 2048
   n_heads: 32
   n_kv_heads: 8
@@ -31,85 +170,68 @@ vars:
   d_ff: 8192
   vocab_size: 128256
   rope_theta: 500000.0
-
-  # DBA configuration (valid for n_heads=32 + RoPE)
   sem_dim: 64
   geo_dim: 128
-
-  # Student-only value bottleneck (V cache + out_proj in_features).
-  # Teacher ignores this (see trainer/initializers/default.py).
   attn_dim: 512
-
-  # Training parameters
   batch_size: 1
   block_size: 2048
   blockwise_steps: 500
   global_steps: 2000
   blockwise_lr: 0.0001
-  global_lr: 0.00005
-
-defaults:
-  tokenizer: llama
-  val_frac: 0.05
-  instrument: rich
-  wandb: true
-  wandb_project: "dba-upcycle"
-  wandb_entity: ""
-  wandb_mode: online
-  eval_iters: 50
-  save_every: 500
-
+  global_lr: 5.0e-05
 paper:
   enabled: true
-  title: "Decoupled Bottleneck Attention: Efficient KV-Cache Compression via Attention Surgery"
+  title: 'Decoupled Bottleneck Attention: Efficient KV-Cache Compression via Attention
+    Surgery'
   authors:
-    - "Daniel Owen van Dommelen"
+  - Daniel Owen van Dommelen
   paper_type: paper
-
   sections:
-    - abstract
-    - introduction
-    - related_work
-    - methodology
-    - experiments
-    - results
-    - discussion
-    - conclusion
-
+  - abstract
+  - introduction
+  - related_work
+  - methodology
+  - experiments
+  - results
+  - discussion
+  - conclusion
   citations:
     enabled: true
     max_citations: 25
     sources:
-      - arxiv
-      - semantic_scholar
+    - arxiv
+    - semantic_scholar
     prefer_recent: true
     recent_years: 3
-
   keywords:
-    - attention mechanism
-    - KV-cache compression
-    - transformer efficiency
-    - model distillation
-    - grouped query attention
-    - multi-query attention
-    - long context modeling
-    - memory efficient transformers
-
+  - attention mechanism
+  - KV-cache compression
+  - transformer efficiency
+  - model distillation
+  - grouped query attention
+  - multi-query attention
+  - long context modeling
+  - memory efficient transformers
   model: gpt-5.2
   temperature: 0.7
   auto_version: true
   max_versions: 5
+  custom_instructions: 'Focus on the following key contributions:
 
-  custom_instructions: |
-    Focus on the following key contributions:
     1. The "attention surgery" approach for converting trained models
+
     2. The decoupled semantic/geometric bottleneck design
+
     3. The significant KV-cache memory reduction with minimal quality loss
+
     4. The distillation training procedure for recovering accuracy
 
+
     Use proper mathematical notation for attention mechanisms.
+
     Include comparisons to GQA, MQA, and standard multi-head attention.
 
+    '
 review:
   enabled: true
   strictness: conference
@@ -124,129 +246,14 @@ review:
   reviewer_persona: senior_researcher
   model: gpt-5.2
   temperature: 0.3
-  custom_instructions: |
-    Pay special attention to:
+  custom_instructions: 'Pay special attention to:
+
     - Comparisons with GQA/MQA baselines
+
     - Memory vs quality trade-off analysis
+
     - Scalability to longer contexts
+
     - Ablation of semantic vs geometric bottleneck dimensions
 
-model:
-  type: TransformerModel
-  tied_embeddings: false
-  embedder:
-    type: token
-    vocab_size: "${vocab_size}"
-    d_model: "${d_model}"
-  topology:
-    type: StackedTopology
-    layers:
-      - type: NestedTopology
-        repeat: "${n_layers}"
-        layers:
-          - type: ResidualTopology
-            layers:
-              - type: RMSNormLayer
-                d_model: "${d_model}"
-                eps: 1e-5
-              - type: AttentionLayer
-                d_model: "${d_model}"
-                n_heads: "${n_heads}"
-                n_kv_heads: "${n_kv_heads}"
-                mode: decoupled
-                attn_dim: "${attn_dim}"
-                sem_dim: "${sem_dim}"
-                geo_dim: "${geo_dim}"
-                rope_enabled: true
-                rope_base: "${rope_theta}"
-                is_causal: true
-                dropout_p: 0.0
-                decoupled_gate: true
-          - type: ResidualTopology
-            layers:
-              - type: RMSNormLayer
-                d_model: "${d_model}"
-                eps: 1e-5
-              - type: SwiGLULayer
-                d_model: "${d_model}"
-                d_ff: "${d_ff}"
-                bias: false
-      - type: RMSNormLayer
-        d_model: "${d_model}"
-        eps: 1e-5
-      - type: LinearLayer
-        d_in: "${d_model}"
-        d_out: "${vocab_size}"
-        bias: false
-
-groups:
-  - name: paper
-    description: "Efficiency-targeted DBA upcycle pipeline with paper drafting."
-    data: "fineweb_100m.npy"
-    runs:
-      - id: blockwise
-        mode: train
-        exp: dba_blockwise
-        seed: 42
-        steps: "${blockwise_steps}"
-        expected:
-          phase: blockwise
-        train:
-          phase: blockwise
-          batch_size: "${batch_size}"
-          block_size: "${block_size}"
-          lr: "${blockwise_lr}"
-          device: mps
-          dtype: float32
-          teacher_ckpt: "hf://meta-llama/Llama-3.2-1B"
-
-      - id: finetune
-        mode: train
-        exp: dba_finetune
-        seed: 42
-        steps: "${global_steps}"
-        expected:
-          phase: global
-        train:
-          phase: global
-          batch_size: "${batch_size}"
-          block_size: "${block_size}"
-          lr: "${global_lr}"
-          device: mps
-          dtype: float32
-
-    benchmarks:
-      - id: perplexity
-        config:
-          type: perplexity
-          dataset: "fineweb_100m.npy"
-          block_size: 2048
-          batch_size: 1
-          num_batches: 100
-        models: ["teacher", "student"]
-        repeats: 1
-
-      - id: latency
-        config:
-          type: latency
-          prompt_lengths: [128, 512, 1024, 2048]
-          generation_lengths: [64, 128, 256]
-          batch_sizes: [1]
-          warmup_runs: 3
-          timed_runs: 10
-          use_cache: true
-          cache_kind: "q4_0"
-        models: ["teacher", "student"]
-        repeats: 1
-
-      - id: memory
-        config:
-          type: memory
-          sequence_lengths: [512, 1024, 2048, 4096]
-          batch_sizes: [1]
-          measure_peak: true
-          measure_kvcache: true
-          quantization_modes: ["fp16", "q8", "q4"]
-        models: ["teacher", "student"]
-        repeats: 1
-
+    '

@@ -11,7 +11,7 @@ import enum
 import importlib
 from typing import Annotated, Protocol, TypeVar, cast
 
-from pydantic import AfterValidator, BaseModel
+from pydantic import AfterValidator, BaseModel, ConfigDict
 from torch import nn
 
 
@@ -36,6 +36,8 @@ class Config(BaseModel):
     corresponding to this config, and validation helpers for enforcing
     constraints on config values.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)

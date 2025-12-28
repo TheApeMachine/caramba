@@ -1,8 +1,11 @@
-"""Manifest: the top-level experiment configuration file.
+"""Manifest: the top-level configuration file.
 
-A manifest defines everything needed for an experiment: model architecture,
-training settings, data paths, and benchmarks. It's loaded from YAML and
-supports variable substitution for reusable templates.
+Manifest v2 is *target-based* and intentionally model-agnostic:
+- A manifest is a collection of runnable targets (experiments or agent processes).
+- Targets reference components by semantic ids (task/data/system/trainer/metrics).
+
+This keeps intent (manifest) separate from implementation (registry/engine),
+aligning with `internal/CORE_PHILOSOPHY.md`.
 """
 from __future__ import annotations
 
@@ -13,37 +16,31 @@ import yaml
 from pydantic import BaseModel, Field
 
 from config import PositiveInt
-from config.agents import AgentsConfig  # pyright: ignore[reportMissingImports]
 from config.defaults import Defaults
-from config.group import Group
-from config.model import ModelConfig
 from config.paper import PaperConfig
 from config.resolve import Resolver, normalize_type_names
+from config.target import TargetConfig
 from paper.review import ReviewConfig
 
 
 class Manifest(BaseModel):
-    """The complete experiment specification loaded from YAML.
-
-    Contains model architecture, training runs, and benchmark definitions.
-    Variable substitution allows reusing common values throughout the config.
-
-    Optionally includes paper configuration for AI-assisted paper drafting.
-    """
+    """The complete manifest specification loaded from YAML/JSON."""
 
     version: PositiveInt
     name: str | None = None
-    notes: str
+    notes: str = ""
     defaults: Defaults
-    # Training/experiment pipeline (optional when running agent-only manifests).
-    model: ModelConfig | None = None
-    groups: list[Group] = Field(default_factory=list)
+
+    # Runnable units.
+    targets: list[TargetConfig] = Field(default_factory=list)
+
+    # Optional paper/review (can be used by targets that generate artifacts).
     paper: PaperConfig | None = None
     review: ReviewConfig | None = None
-    # Agent workflows (optional).
-    agents: AgentsConfig | None = None
+
     # Optional named targets. If present, entrypoints["default"] is used when
-    # the CLI doesn't specify --target.
+    # the CLI doesn't specify --target. Values can be either a bare target name
+    # or an explicit `target:<name>` string.
     entrypoints: dict[str, str] | None = None
 
     @classmethod

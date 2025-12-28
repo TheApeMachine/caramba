@@ -1,58 +1,74 @@
-version: 1
+version: 2
 name: llama_block
-notes: "Minimal Llama block expressed as Residual([Norm, Attention]) + Residual([Norm, SwiGLU])."
+notes: Minimal Llama block expressed as Residual([Norm, Attention]) + Residual([Norm,
+  SwiGLU]).
+defaults:
+  data:
+    tokenizer: tiktoken
+    val_frac: 0.1
+  logging:
+    instrument: rich
+    wandb: false
+    wandb_project: ''
+    wandb_entity: ''
+    wandb_mode: offline
+    eval_iters: 20
+  runtime:
+    save_every: 0
+targets:
+- type: experiment
+  name: default
+  description: Default group
+  backend: torch
+  task: task.language_modeling
+  data:
+    ref: dataset.tokens
+    config:
+      path: ''
+      block_size: 2048
+  system:
+    ref: system.language_model
+    config:
+      model:
+        type: transformer
+        topology:
+          type: nested
+          repeat: ${n_blocks}
+          layers:
+          - type: residual
+            layers:
+            - type: rms_norm
+              d_model: ${d_model}
+              eps: 1e-5
+            - type: attention
+              d_model: ${d_model}
+              n_q_heads: ${n_heads}
+              n_kv_heads: ${n_kv_heads}
+              head_dim: ${head_dim}
+              is_causal: true
+              dropout_p: 0.0
+          - type: residual
+            layers:
+            - type: rms_norm
+              d_model: ${d_model}
+              eps: 1e-5
+            - type: swiglu
+              d_model: ${d_model}
+              d_ff: ${d_ff}
+              bias: false
+  objective: objective.next_token_ce
+  trainer: trainer.standard
+  runs:
+  - id: default
+    mode: train
+    exp: llama_block
+    seed: 1337
+    steps: 1000
+    expected: {}
 vars:
   d_model: 128
   n_heads: 4
   n_kv_heads: 4
-  head_dim: 32  # d_model / n_heads
+  head_dim: 32
   d_ff: 256
   n_blocks: 2
-defaults:
-  tokenizer: tiktoken
-  val_frac: 0.1
-  instrument: rich
-  wandb: false
-  wandb_project: ""
-  wandb_entity: ""
-  wandb_mode: offline
-  eval_iters: 20
-  save_every: 0
-model:
-  type: transformer
-  topology:
-    type: nested
-    repeat: "${n_blocks}"
-    layers:
-      - type: residual
-        layers:
-          - type: rms_norm
-            d_model: "${d_model}"
-            eps: 1e-5
-          - type: attention
-            d_model: "${d_model}"
-            n_q_heads: "${n_heads}"
-            n_kv_heads: "${n_kv_heads}"
-            head_dim: "${head_dim}"
-            is_causal: true
-            dropout_p: 0.0
-      - type: residual
-        layers:
-          - type: rms_norm
-            d_model: "${d_model}"
-            eps: 1e-5
-          - type: swiglu
-            d_model: "${d_model}"
-            d_ff: "${d_ff}"
-            bias: false
-groups:
-  - name: default
-    description: Default group
-    data: ""
-    runs:
-      - id: default
-        mode: train
-        exp: llama_block
-        seed: 1337
-        steps: 1000
-        expected: {}

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from config.manifest import Manifest
 from config.model import ModelConfig
+from config.target import ExperimentTargetConfig
 from config.topology import NodeConfig, TopologyConfig
 
 
@@ -19,12 +20,25 @@ class Lowerer:
     """
 
     def lower_manifest(self, manifest: Manifest) -> Manifest:
-        """Lower a manifest into canonical form."""
-        # Agent-only manifests may omit a model entirely.
-        if manifest.model is None:
-            return manifest
-        lowered_model = self.lower_model(manifest.model)
-        return manifest.model_copy(update={"model": lowered_model})
+        """Lower a manifest into canonical form.
+
+        In manifest v2 we lower component configs where we recognize canonical
+        structures. Currently:
+        - `system.language_model` with `config.model` (a ModelConfig payload)
+        """
+        lowered_targets = []
+        for t in list(getattr(manifest, "targets", [])):
+            if isinstance(t, ExperimentTargetConfig) and t.system.ref == "system.language_model":
+                model_payload = t.system.config.get("model", None)
+                if isinstance(model_payload, dict):
+                    cfg = ModelConfig.model_validate(model_payload)
+                    lowered = self.lower_model(cfg)
+                    t2 = t.model_copy(deep=True)
+                    t2.system.config["model"] = lowered.model_dump()
+                    lowered_targets.append(t2)
+                    continue
+            lowered_targets.append(t)
+        return manifest.model_copy(update={"targets": lowered_targets})
 
     def lower_model(self, model: ModelConfig) -> ModelConfig:
         """Lower a model config into canonical form."""

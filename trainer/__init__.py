@@ -24,14 +24,14 @@ from trainer.distributed import (
     is_distributed,
     is_main_process,
 )
-from trainer.trainer import Trainer
-from trainer.upcycle import Upcycle
+from trainer.standard import StandardTrainer
+from trainer.upcycle import UpcycleTrainer
 
 __all__ = [
     "BlockwiseTrainer",
     "DistillLoss",
-    "Trainer",
-    "Upcycle",
+    "StandardTrainer",
+    "UpcycleTrainer",
     "DistributedStrategy",
     "DistributedConfig",
     "DistributedContext",
