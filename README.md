@@ -1636,68 +1636,68 @@ coverage report -m
 
 ## Project Structure
 
-```
+```sh
 caramba/
 ├── __main__.py          # Entry point
 ├── cli.py               # Command-line interface
 ├── command.py           # Command types
 ├── benchmark/           # Benchmark runners and artifacts
-│   ├── artifacts.py     # Artifact generation (CSV, PNG, LaTeX)
-│   ├── latency.py       # Latency benchmarking
-│   ├── memory.py        # Memory benchmarking
-│   ├── perplexity.py    # Perplexity benchmarking
-│   └── runner.py        # Benchmark orchestration
+│   ├── artifacts.py          # Artifact generation (CSV, PNG, LaTeX)
+│   ├── latency.py            # Latency benchmarking
+│   ├── memory.py             # Memory benchmarking
+│   ├── perplexity.py         # Perplexity benchmarking
+│   └── runner.py             # Benchmark orchestration
 ├── cache/               # KV-cache implementations
-│   ├── decoupled.py     # Decoupled cache for DBA
-│   ├── layer.py         # Standard layer cache
-│   └── tensor.py        # Quantized tensor storage
+│   ├── decoupled.py          # Decoupled cache for DBA
+│   ├── layer.py              # Standard layer cache
+│   └── tensor.py             # Quantized tensor storage
 ├── compiler/            # Manifest compilation
-│   ├── lower.py         # Manifest lowering (variable substitution)
-│   ├── plan.py          # Execution plan formatting
-│   └── validate.py      # Manifest validation
+│   ├── lower.py              # Manifest lowering (variable substitution)
+│   ├── plan.py               # Execution plan formatting
+│   └── validate.py           # Manifest validation
 ├── config/              # Configuration models
-│   ├── benchmark.py     # Benchmark config
-│   ├── eval.py          # Eval suite config
-│   ├── layer.py         # Layer configs
-│   ├── manifest.py      # Manifest schema
-│   ├── topology.py      # Topology configs
-│   └── presets/         # Ready-to-use manifests
+│   ├── benchmark.py          # Benchmark config
+│   ├── eval.py               # Eval suite config
+│   ├── layer.py              # Layer configs
+│   ├── manifest.py           # Manifest schema
+│   ├── topology.py           # Topology configs
+│   └── presets/              # Ready-to-use manifests
 ├── console/             # Logging utilities
-│   └── logger.py        # Rich-based logger
+│   └── logger.py             # Rich-based logger
 ├── data/                # Dataset utilities
-│   ├── auto.py          # build_token_dataset() (.npy or .tokens)
-│   ├── npy.py           # NpyDataset for .npy files (mmap)
-│   └── text_tokens.py   # TextTokensDataset for legacy .tokens files
+│   ├── auto.py               # build_token_dataset() (.npy or .tokens)
+│   ├── npy.py                # NpyDataset for .npy files (mmap)
+│   └── text_tokens.py        # TextTokensDataset for legacy .tokens files
 ├── eval/                # Behavioral evaluation
-│   ├── suite.py         # Eval runner
-│   └── tokenizer.py     # Tokenizer abstraction
+│   ├── suite.py              # Eval runner
+│   └── tokenizer.py          # Tokenizer abstraction
 ├── experiment/          # Experiment orchestration
-│   └── runner.py        # ExperimentRunner
+│   └── runner.py             # ExperimentRunner
 ├── instrumentation/     # RunLogger, HDF5, TensorBoard, W&B, live plots
 ├── infer/               # Inference utilities
-│   ├── context.py       # InferContext for KV cache
-│   ├── cache_plan.py    # Persist/reuse cache_kind auto decisions
-│   ├── generate.py      # Standard generation
-│   ├── speculative.py   # Speculative decoding (adaptive spec_k)
-│   └── token_view.py    # Thread-safe token buffer abstraction
+│   ├── context.py            # InferContext for KV cache
+│   ├── cache_plan.py         # Persist/reuse cache_kind auto decisions
+│   ├── generate.py           # Standard generation
+│   ├── speculative.py        # Speculative decoding (adaptive spec_k)
+│   └── token_view.py         # Thread-safe token buffer abstraction
 ├── layer/               # Layer implementations
-│   ├── attention.py     # Multi-head attention
-│   ├── dropout.py       # Dropout
-│   ├── layer_norm.py    # Layer normalization
-│   ├── linear.py        # Linear projection
-│   ├── rms_norm.py      # RMS normalization
-│   ├── rope.py          # Rotary embeddings
-│   └── swiglu.py        # SwiGLU FFN
+│   ├── attention.py          # Multi-head attention
+│   ├── dropout.py            # Dropout
+│   ├── layer_norm.py         # Layer normalization
+│   ├── linear.py             # Linear projection
+│   ├── rms_norm.py           # RMS normalization
+│   ├── rope.py               # Rotary embeddings
+│   └── swiglu.py             # SwiGLU FFN
 ├── loader/              # Checkpoint loading
-│   ├── checkpoint.py    # Generic checkpoint loading
-│   ├── hf.py            # HuggingFace loading
-│   ├── llama_upcycle.py # Llama → DBA surgery
-│   └── state_reader.py  # State dict utilities
+│   ├── checkpoint.py         # Generic checkpoint loading
+│   ├── hf.py                 # HuggingFace loading
+│   ├── llama_upcycle.py      # Llama → DBA surgery
+│   └── state_reader.py       # State dict utilities
 ├── model/               # Model building
-│   ├── embedder.py      # Token/position embeddings
-│   ├── model.py         # Model wrapper
-│   ├── trace.py         # Output tracing
-│   └── transformer.py   # Transformer model
+│   ├── embedder.py           # Token/position embeddings
+│   ├── model.py              # Model wrapper
+│   ├── trace.py              # Output tracing
+│   └── transformer.py        # Transformer model
 ├── optimizer/           # Optimization utilities
 │   ├── fused_attention.py    # Fused attention kernels
 │   ├── kernels_decoupled.py  # DBA-specific kernels
@@ -1723,24 +1723,24 @@ caramba/
 │   ├── knowledge.py          # DeepLake knowledge store
 │   └── tools.py              # Agent tools (search, cite, etc.)
 ├── runtime/             # Runtime planning/persistence helpers
-│   └── plan.py          # RuntimePlan caching (dtype/amp/compile/batch)
+│   └── plan.py               # RuntimePlan caching (dtype/amp/compile/batch)
 ├── topology/            # Topology implementations
-│   ├── branching.py     # Branching topology
-│   ├── cyclic.py        # Cyclic topology
-│   ├── nested.py        # Nested (repeat) topology
-│   ├── parallel.py      # Parallel topology
-│   ├── recurrent.py     # Recurrent topology
-│   ├── residual.py      # Residual (skip) topology
-│   ├── sequential.py    # Sequential topology
-│   └── stacked.py       # Stacked topology
+│   ├── branching.py          # Branching topology
+│   ├── cyclic.py             # Cyclic topology
+│   ├── nested.py             # Nested (repeat) topology
+│   ├── parallel.py           # Parallel topology
+│   ├── recurrent.py          # Recurrent topology
+│   ├── residual.py           # Residual (skip) topology
+│   ├── sequential.py         # Sequential topology
+│   └── stacked.py            # Stacked topology
 └── trainer/             # Training utilities
-    ├── blockwise.py     # Blockwise distillation
-    ├── compare.py       # Model comparison
-    ├── distill.py       # Distillation training
-    ├── distributed.py   # DDP/FSDP support
-    ├── fidelity.py      # Loss-based short-context quality gate
-    ├── orchestrated.py  # Orchestrated trainer with dynamic switching
-    ├── scheduler.py     # LR scheduler utilities (linear/cosine/none)
-    ├── trainer.py       # Base trainer
-    └── upcycle.py       # Upcycle orchestration
+    ├── blockwise.py          # Blockwise distillation
+    ├── compare.py            # Model comparison
+    ├── distill.py            # Distillation training
+    ├── distributed.py        # DDP/FSDP support
+    ├── fidelity.py           # Loss-based short-context quality gate
+    ├── orchestrated.py       # Orchestrated trainer with dynamic switching
+    ├── scheduler.py          # LR scheduler utilities (linear/cosine/none)
+    ├── trainer.py            # Base trainer
+    └── upcycle.py            # Upcycle orchestration
 ```
