@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from typing import Iterable, TypeGuard
 
@@ -85,7 +86,7 @@ class Validator:
 
         # Build adjacency using key dependencies.
         edges: dict[str, set[str]] = {nid: set() for nid in ids}
-        indeg: dict[str, int] = {nid: 0 for nid in ids}
+        indeg: dict[str, int] = dict.fromkeys(ids, 0)
         for n in nodes:
             nid = str(n.id)
             ins = [str(n.in_keys)] if isinstance(n.in_keys, str) else [str(x) for x in n.in_keys]
@@ -98,10 +99,10 @@ class Validator:
                     indeg[nid] += 1
 
         # Kahn's algorithm.
-        q = [nid for nid in ids if indeg[nid] == 0]
+        q = deque([nid for nid in ids if indeg[nid] == 0])
         out: list[str] = []
         while q:
-            nid = q.pop()
+            nid = q.popleft()
             out.append(nid)
             for dst in edges.get(nid, ()):
                 indeg[dst] -= 1

@@ -11,9 +11,11 @@ Design goals:
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import deque
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any, Callable, Literal
 
 import torch
@@ -21,6 +23,8 @@ from torch import Tensor, nn
 
 from carmath.sketch import sketch_dot5, stride_sketch_indices
 from optimizer.triton_runtime import TRITON_AVAILABLE
+
+log = logging.getLogger(__name__)
 
 # ---------------------------
 # Configuration
@@ -256,13 +260,14 @@ class WeightGraphBuilder:
                 base, suffix = nm.split("#b", 1)
                 try:
                     lo = int(suffix.split(":")[0])
-                except Exception:
-                    lo = i
+                except (ValueError, IndexError):
+                    log.warning("WeightNowcaster: skipping malformed block suffix %r in node %r", suffix, nm)
+                    continue
                 by_base.setdefault(base, []).append((lo, i))
 
             for _, blocks in by_base.items():
                 blocks.sort(key=lambda t: t[0])
-                for (_lo0, i0), (_lo1, i1) in zip(blocks, blocks[1:]):
+                for (_lo0, i0), (_lo1, i1) in pairwise(blocks):
                     add_edge(i0, i1, float(self.cfg.block_chain_edge_weight))
                     add_edge(i1, i0, float(self.cfg.block_chain_edge_weight))
 

@@ -53,7 +53,7 @@ class GenericSystem:
         self.config = cfg
         self.module: nn.Module = Model(cfg)
 
-    def to(self, *, device: torch.device, dtype: torch.dtype) -> "GenericSystem":
+    def to(self, *, device: torch.device, dtype: torch.dtype) -> GenericSystem:
         self.module = self.module.to(device=device, dtype=dtype)
         return self
 
@@ -73,7 +73,7 @@ class GenericSystem:
             )
 
         outputs: dict[str, Any] = {}
-        if bool(self.return_features):
+        if self.return_features:
             result = self.module(x, ctx=ctx, return_features=True)  # type: ignore[call-arg]
             if not (isinstance(result, tuple) and len(result) == 2):
                 raise TypeError("Expected Model(return_features=True) to return (features, out)")
@@ -84,7 +84,7 @@ class GenericSystem:
             out = self.module(x, ctx=ctx)  # type: ignore[call-arg]
             outputs[str(self.output_key)] = out
 
-        if bool(self.include_system):
+        if self.include_system:
             outputs["_system"] = self.module
         return outputs
 

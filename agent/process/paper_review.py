@@ -6,13 +6,12 @@ manifest-driven agent *process* target.
 
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from agent.process import Process
+from agent.process.utils import _extract_json, _manifest_root_dir
 from console import logger
 from config.manifest import Manifest
 
@@ -20,28 +19,7 @@ if TYPE_CHECKING:
     from agent import Researcher
 
 
-def _manifest_root_dir(*, manifest: Manifest, manifest_path: Path | None) -> Path:
-    name = str(manifest.name or (manifest_path.stem if manifest_path else "manifest"))
-    return Path("artifacts") / name
-
-
-def _extract_json(text: str) -> dict[str, Any] | None:
-    s = text.strip()
-    if not s:
-        return None
-    try:
-        obj = json.loads(s)
-        return obj if isinstance(obj, dict) else None
-    except Exception:
-        pass
-    m = re.search(r"\{[\s\S]*\}", s)
-    if not m:
-        return None
-    try:
-        obj2 = json.loads(m.group(0))
-        return obj2 if isinstance(obj2, dict) else None
-    except Exception:
-        return None
+MAX_PREVIEW_CHARS = 16_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +59,9 @@ class PaperReview(Process):
             raise ValueError(f"paper_review: missing paper at {paper_tex}")
 
         text = paper_tex.read_text(encoding="utf-8")
-        preview = text if len(text) <= 16_000 else text[:16_000] + "\n% ... truncated ...\n"
+        preview = (
+            text if len(text) <= MAX_PREVIEW_CHARS else text[:MAX_PREVIEW_CHARS] + "\n% ... truncated ...\n"
+        )
 
         manifest_notes = str(getattr(manifest, "notes", "") or "")
         manifest_name = str(getattr(manifest, "name", "") or (manifest_path.stem if manifest_path else "manifest"))

@@ -192,7 +192,7 @@ For upcycle experiments, both models are available. For standard training, only 
 
 Benchmarks generate artifacts in the experiment directory:
 
-```
+```text
 artifacts/experiment_name_YYYYMMDD_HHMMSS/
 ├── report.json              # Complete experiment metadata
 ├── perplexity.csv           # Raw perplexity data

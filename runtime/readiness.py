@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import importlib.util
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
+
+from pydantic import ValidationError
 
 from config.benchmark import LatencyBenchmarkConfig, MemoryBenchmarkConfig
 from config.layer import AttentionLayerConfig, AttentionMode
@@ -72,7 +75,7 @@ def _collect_models(target: ExperimentTargetConfig) -> list[ModelConfig]:
         return []
     try:
         return [ModelConfig.model_validate(model_payload)]
-    except Exception:
+    except ValidationError:
         return []
 
 

@@ -12,7 +12,8 @@ completely model/task agnostic.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -31,38 +32,6 @@ def _require_tensor(d: Mapping[str, Any], key: str, *, where: str) -> Tensor:
     if not isinstance(v, Tensor):
         raise TypeError(f"Expected {where}[{key!r}] to be a Tensor, got {type(v).__name__}")
     return v
-
-
-class NextTokenCrossEntropyObjective:
-    """Legacy name for a keyed cross entropy objective (LM next-token by default)."""
-
-    def __init__(
-        self,
-        *,
-        logits_key: str = "logits",
-        target_key: str = "target_ids",
-        ignore_index: int = -100,
-        label_smoothing: float = 0.0,
-    ) -> None:
-        self.logits_key = str(logits_key)
-        self.target_key = str(target_key)
-        self.ignore_index = int(ignore_index)
-        self.label_smoothing = float(label_smoothing)
-
-    def loss(self, *, outputs: TensorDict, batch: TensorDict) -> Tensor:
-        logits = _require_tensor(outputs, self.logits_key, where="outputs")
-        target_ids = _require_tensor(batch, self.target_key, where="batch").long()
-        return F.cross_entropy(
-            logits.view(-1, logits.shape[-1]),
-            target_ids.reshape(-1),
-            ignore_index=int(self.ignore_index),
-            label_smoothing=float(self.label_smoothing),
-        )
-
-    def metrics(self, *, outputs: TensorDict, batch: TensorDict, loss: Tensor) -> MetricDict:
-        _ = outputs
-        _ = batch
-        return {"ce_loss": float(loss.detach())}
 
 
 class KeyedMSEObjective:
@@ -110,12 +79,33 @@ class KeyedCrossEntropyObjective:
         return F.cross_entropy(
             logits.view(-1, logits.shape[-1]),
             labels.view(-1),
-            ignore_index=int(self.ignore_index),
-            label_smoothing=float(self.label_smoothing),
+            ignore_index=self.ignore_index,
+            label_smoothing=self.label_smoothing,
         )
 
     def metrics(self, *, outputs: TensorDict, batch: TensorDict, loss: Tensor) -> MetricDict:
         _ = outputs
         _ = batch
         return {"ce_loss": float(loss.detach())}
+
+
+class NextTokenCrossEntropyObjective(KeyedCrossEntropyObjective):
+    """Legacy name for a keyed cross entropy objective (LM next-token by default)."""
+
+    def __init__(
+        self,
+        *,
+        logits_key: str = "logits",
+        target_key: str = "target_ids",
+        ignore_index: int = -100,
+        label_smoothing: float = 0.0,
+    ) -> None:
+        super().__init__(
+            logits_key=logits_key,
+            labels_key=target_key,
+            ignore_index=ignore_index,
+            label_smoothing=label_smoothing,
+        )
+        # Backwards-compatible alias.
+        self.target_key = self.labels_key
 

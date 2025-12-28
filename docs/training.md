@@ -141,7 +141,7 @@ Architecture surgery that converts a pretrained model to a new architecture whil
 
 ### The Upcycle Pipeline
 
-```
+```text
 ┌──────────────────────────────────────────────────────────┐
 │                    UPCYCLE PIPELINE                       │
 ├──────────────────────────────────────────────────────────┤
@@ -398,7 +398,7 @@ train:
 
 ### Architecture
 
-```
+```text
 ┌────────────────────────────────────────────────────────────┐
 │                    ORCHESTRATOR                            │
 ├────────────────────────────────────────────────────────────┤

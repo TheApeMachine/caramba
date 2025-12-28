@@ -365,7 +365,7 @@ class GradientIsolationTrainer:
         val_frac = float(defaults.data.val_frac)
         n = len(cast(Sized, dataset))
         n_train, _n_val = train_val_counts(n, float(val_frac))
-        train_ds = Subset(dataset, range(0, n_train))
+        train_ds = Subset(dataset, range(n_train))
 
         loader_kwargs = {
             "batch_size": int(batch_size),

@@ -40,7 +40,7 @@ caramba caches optimization decisions based on a signature of your configuration
 
 ### What Gets Cached
 
-```
+```text
 Signature = (device + manifest + train_config)
            ↓
 RuntimePlan:
@@ -123,7 +123,7 @@ caramba includes optimized Metal kernels for Apple Silicon (M1/M2/M3/M4).
 
 The flagship optimization for DBA inference:
 
-```
+```text
 Standard Path:
   Q_sem·K_sem^T → store → Q_geo·K_geo^T → store → add → softmax → V
 

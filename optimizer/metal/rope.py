@@ -21,12 +21,12 @@ def metal_rope_available() -> bool:
 
 def rope_fp16(
     *,
-    x: "Tensor",
-    cos: "Tensor",
-    sin: "Tensor",
+    x: Tensor,
+    cos: Tensor,
+    sin: Tensor,
     rot_dim: int,
     verbose_build: bool = False,
-) -> "Tensor":
+) -> Tensor:
     """Apply RoPE using the Metal extension (fp16).
 
     Expects the same layout as `layer/rope.py`:
@@ -43,5 +43,5 @@ def rope_fp16(
     sin2 = sin.to(device=x.device).to(torch.float16).contiguous()
 
     ops = load_caramba_metal_ops(verbose=bool(verbose_build))
-    return ops.rope(x2, cos2, sin2, int(rot_dim))
+    return ops.rope(x2, cos2, sin2, rot_dim)
 

@@ -200,7 +200,7 @@ class ModelConfig(Config):
             return self
         try:
             target = float(self.target_kv_reduction)
-        except Exception:
+        except (ValueError, TypeError):
             return self
         if not (target > 0.0):
             return self

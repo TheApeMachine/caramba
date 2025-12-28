@@ -53,7 +53,7 @@ class RenameKeys:
         d = dict(td)
         for src, dst in self.mapping.items():
             if src in d:
-                d[str(dst)] = d.pop(src)
+                d[dst] = d.pop(src)
         return as_tensordict(d)
 
 
@@ -81,7 +81,7 @@ class AddMask:
         src = d.get(self.src_key, None)
         if not isinstance(src, Tensor):
             return as_tensordict(d)
-        d[self.mask_key] = (src != int(self.ignore_index))
+        d[self.mask_key] = (src != self.ignore_index)
         return as_tensordict(d)
 
 
@@ -114,7 +114,7 @@ class GaussianNoise:
         x = d.get(self.src_key, None)
         if not isinstance(x, Tensor):
             return as_tensordict(d)
-        noise = torch.randn_like(x) * float(self.sigma)
+        noise = torch.randn_like(x) * self.sigma
         d[self.out_key] = x + noise
         return as_tensordict(d)
 
@@ -140,26 +140,26 @@ class Compose:
 
 def build_transform(cfg: TransformConfig) -> Transform:
     if isinstance(cfg, RenameKeysTransformConfig):
-        return RenameKeys(mapping=dict(cfg.mapping))
+        return RenameKeys(mapping=cfg.mapping)
     if isinstance(cfg, CastDtypeTransformConfig):
-        return CastDtype(dtypes={k: _dtype_from_str(v) for k, v in dict(cfg.dtypes).items()})
+        return CastDtype(dtypes={k: _dtype_from_str(v) for k, v in cfg.dtypes.items()})
     if isinstance(cfg, AddMaskTransformConfig):
         return AddMask(
-            src_key=str(cfg.src_key),
-            mask_key=str(cfg.mask_key),
-            ignore_index=int(cfg.ignore_index),
+            src_key=cfg.src_key,
+            mask_key=cfg.mask_key,
+            ignore_index=cfg.ignore_index,
         )
     if isinstance(cfg, TokenShiftTransformConfig):
         return TokenShift(
-            src_key=str(cfg.src_key),
-            input_key=str(cfg.input_key),
-            target_key=str(cfg.target_key),
+            src_key=cfg.src_key,
+            input_key=cfg.input_key,
+            target_key=cfg.target_key,
         )
     if isinstance(cfg, GaussianNoiseTransformConfig):
         return GaussianNoise(
-            src_key=str(cfg.src_key),
-            out_key=str(cfg.out_key),
-            sigma=float(cfg.sigma),
+            src_key=cfg.src_key,
+            out_key=cfg.out_key,
+            sigma=cfg.sigma,
         )
     if isinstance(cfg, GraphBatchTransformConfig):
         return GraphBatch()

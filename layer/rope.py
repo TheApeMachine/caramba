@@ -7,8 +7,11 @@ than training. The rotation is applied in pairs of dimensions.
 """
 from __future__ import annotations
 
+import logging
 import torch
 from torch import nn
+
+log = logging.getLogger(__name__)
 
 
 class RotaryEmbedding(nn.Module):
@@ -115,6 +118,8 @@ class RotaryEmbedding(nn.Module):
             return rope_apply(x=x, cos=cos, sin=sin, rot_dim=int(self.rot_dim))
         except Exception:
             # Best-effort: fall back to PyTorch implementation.
+            if log.isEnabledFor(logging.DEBUG):
+                log.debug("HAL rope_apply failed; falling back to PyTorch", exc_info=True)
             pass
 
         cos = cos.unsqueeze(0).unsqueeze(0)

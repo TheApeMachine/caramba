@@ -38,6 +38,24 @@ def _manifest_artifacts_dir(manifest: Manifest, manifest_path: Path) -> Path:
     return Path("artifacts") / name / "agents"
 
 
+def _persist_process_artifact(
+    *,
+    manifest: Manifest,
+    manifest_path: Path | None,
+    proc_name: str,
+    result: dict[str, Any],
+) -> Path:
+    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
+    out_dir = _manifest_artifacts_dir(manifest, mp)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    out_path = out_dir / f"{str(proc_name)}_{timestamp}.json"
+    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    logger.success(f"Agent process complete • wrote {out_path}")
+    return out_path
+
+
 def _build_team(team_mapping: dict[str, str]) -> tuple[dict[str, Researcher], dict[str, str]]:
     team: dict[str, Researcher] = {}
     for key, persona_name in team_mapping.items():
@@ -132,13 +150,7 @@ async def _run_discussion(
     )
     result = await discussion.run(proc.topic, context=None)
 
-    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
-    out_dir = _manifest_artifacts_dir(manifest, mp)
-    out_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc)
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"{proc.name}_{timestamp}.json"
-
     payload: dict[str, Any] = {
         "created_at": now.isoformat(),
         "manifest": {
@@ -157,8 +169,9 @@ async def _run_discussion(
         "team": team_mapping,
         "result": result,
     }
-    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    logger.success(f"Agent process complete • wrote {out_path}")
+    out_path = _persist_process_artifact(
+        manifest=manifest, manifest_path=manifest_path, proc_name=proc.name, result=payload
+    )
     return {"artifacts": {out_path.name: out_path}, "result": result}
 
 
@@ -179,14 +192,9 @@ async def _run_paper_write(
     p = PaperWrite(agents=team, writer_key=proc.writer, output_dir=proc.output_dir)
     result = await p.run(manifest=manifest, manifest_path=manifest_path, goal=str(proc.goal))
 
-    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
-    out_dir = _manifest_artifacts_dir(manifest, mp)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc)
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"{proc.name}_{timestamp}.json"
-    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    logger.success(f"Agent process complete • wrote {out_path}")
+    out_path = _persist_process_artifact(
+        manifest=manifest, manifest_path=manifest_path, proc_name=proc.name, result=result
+    )
     return {"artifacts": {out_path.name: out_path}, "result": result}
 
 
@@ -212,14 +220,9 @@ async def _run_paper_review(
     )
     result = await p.run(manifest=manifest, manifest_path=manifest_path, goal=str(proc.goal))
 
-    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
-    out_dir = _manifest_artifacts_dir(manifest, mp)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc)
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"{proc.name}_{timestamp}.json"
-    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    logger.success(f"Agent process complete • wrote {out_path}")
+    out_path = _persist_process_artifact(
+        manifest=manifest, manifest_path=manifest_path, proc_name=proc.name, result=result
+    )
     return {"artifacts": {out_path.name: out_path}, "result": result}
 
 
@@ -247,14 +250,9 @@ async def _run_research_loop(
     )
     result = await loop.run(manifest=manifest, manifest_path=manifest_path)
 
-    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
-    out_dir = _manifest_artifacts_dir(manifest, mp)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc)
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"{proc.name}_{timestamp}.json"
-    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    logger.success(f"Agent process complete • wrote {out_path}")
+    out_path = _persist_process_artifact(
+        manifest=manifest, manifest_path=manifest_path, proc_name=proc.name, result=result
+    )
     return {"artifacts": {out_path.name: out_path}, "result": result}
 
 
@@ -278,14 +276,9 @@ async def _run_code_graph_sync(
     )
     result = await sync.run(manifest=manifest, manifest_path=manifest_path)
 
-    mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
-    out_dir = _manifest_artifacts_dir(manifest, mp)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc)
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"{proc.name}_{timestamp}.json"
-    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    logger.success(f"Agent process complete • wrote {out_path}")
+    out_path = _persist_process_artifact(
+        manifest=manifest, manifest_path=manifest_path, proc_name=proc.name, result=result
+    )
     return {"artifacts": {out_path.name: out_path}, "result": result}
 
 

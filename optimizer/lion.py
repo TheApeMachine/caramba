@@ -8,8 +8,11 @@ for MPS/Metal fused update experiments.
 
 from __future__ import annotations
 
+import logging
 import torch
 from torch import Tensor
+
+log = logging.getLogger(__name__)
 
 
 class Lion(torch.optim.Optimizer):
@@ -22,7 +25,12 @@ class Lion(torch.optim.Optimizer):
         weight_decay: float = 0.0,
         fused: bool = False,
     ) -> None:
-        defaults = dict(lr=float(lr), betas=tuple(float(x) for x in betas), weight_decay=float(weight_decay), fused=bool(fused))
+        defaults = {
+            "lr": float(lr),
+            "betas": tuple(float(x) for x in betas),
+            "weight_decay": float(weight_decay),
+            "fused": bool(fused),
+        }
         super().__init__(params, defaults)
 
     @torch.no_grad()
@@ -59,8 +67,11 @@ class Lion(torch.optim.Optimizer):
                             # Secondary momentum update
                             m.mul_(beta2).add_(g, alpha=1.0 - beta2)
                             continue
-                    except Exception:
-                        pass
+                    except (ImportError, AttributeError, RuntimeError, OSError):
+                        log.warning(
+                            "Metal Lion fused path failed; falling back to eager PyTorch update",
+                            exc_info=True,
+                        )
 
                 # Reference update (eager PyTorch).
                 # m = beta1*m + (1-beta1)*g

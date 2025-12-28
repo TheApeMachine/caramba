@@ -95,7 +95,7 @@ targets:
 
 ### Output Structure
 
-```
+```text
 artifacts/
 └── experiment_name/
     └── paper/
@@ -214,7 +214,7 @@ Autonomous write → review → structural audit loop.
 
 ### Architecture
 
-```
+```text
 ┌───────────────────────────────────────────────────────────┐
 │                    RESEARCH LOOP                           │
 ├───────────────────────────────────────────────────────────┤
@@ -264,7 +264,7 @@ targets:
 
 ### Output
 
-```
+```text
 artifacts/
 └── experiment_name/
     └── agents/
@@ -282,7 +282,7 @@ Agents can access knowledge from multiple sources:
 
 ### Context Pipeline
 
-```
+```text
 ┌────────────────────────────────────────────────────────────┐
 │                 AGENT CONTEXT PIPELINE                     │
 ├────────────────────────────────────────────────────────────┤
@@ -319,7 +319,7 @@ This enables agents to:
 
 ### Hybrid Storage
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │                HYBRID STORAGE               │
 ├─────────────────────────────────────────────┤

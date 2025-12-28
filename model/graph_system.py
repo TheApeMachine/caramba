@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import torch
@@ -64,6 +64,10 @@ class GraphSystem:
     topology: dict[str, Any]
     output_keys: list[str] | None = None
 
+    _nodes: list[GraphNodeConfig] = field(init=False, repr=False)
+    _order: list[str] = field(init=False, repr=False)
+    _node_by_id: dict[str, GraphNodeConfig] = field(init=False, repr=False, default_factory=dict)
+
     def __post_init__(self) -> None:
         topo = GraphTopologyConfig.model_validate(self.topology)
         # Expand simple repeats (compiler lowering can also do this).
@@ -98,9 +102,10 @@ class GraphSystem:
 
         self._nodes = topo.nodes
         self._order = Validator().toposort_graph(topo)
+        self._node_by_id = {n.id: n for n in self._nodes}
         self.modules = nn.ModuleDict({n.id: _build_op(n.op, dict(n.config)) for n in self._nodes})
 
-    def to(self, *, device: torch.device, dtype: torch.dtype) -> "GraphSystem":
+    def to(self, *, device: torch.device, dtype: torch.dtype) -> GraphSystem:
         self.modules = self.modules.to(device=device, dtype=dtype)
         return self
 
@@ -110,7 +115,9 @@ class GraphSystem:
         streams: dict[str, Any] = dict(batch)
 
         for node_id in self._order:
-            n = next(x for x in self._nodes if x.id == node_id)
+            n = self._node_by_id.get(node_id)
+            if n is None:
+                raise KeyError(f"GraphSystem: missing node id {node_id!r} in topology")
             ins = _as_list(n.in_keys)
             outs = _as_list(n.out_keys)
             args: list[Tensor] = []
@@ -128,7 +135,7 @@ class GraphSystem:
             else:
                 if not isinstance(out, (tuple, list)) or len(out) != len(outs):
                     raise TypeError(f"Node {n.id!r} expected {len(outs)} outputs")
-                for k, v in zip(outs, out):
+                for k, v in zip(outs, out, strict=True):
                     if not isinstance(v, Tensor):
                         raise TypeError(f"Node {n.id!r} output {k!r} is not a Tensor")
                     streams[k] = v

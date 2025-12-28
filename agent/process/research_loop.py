@@ -7,13 +7,13 @@ This is the replacement for the legacy `paper/` package. The loop coordinates:
 from __future__ import annotations
 
 import json
-import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from agent.process import Process
+from agent.process.utils import _extract_json, _manifest_root_dir
 from console import logger
 from config.manifest import Manifest
 
@@ -22,30 +22,6 @@ from agent.process.paper_write import PaperWrite
 
 if TYPE_CHECKING:
     from agent import Researcher
-
-
-def _manifest_root_dir(*, manifest: Manifest, manifest_path: Path | None) -> Path:
-    name = str(manifest.name or (manifest_path.stem if manifest_path else "manifest"))
-    return Path("artifacts") / name
-
-
-def _extract_json(text: str) -> dict[str, Any] | None:
-    s = text.strip()
-    if not s:
-        return None
-    try:
-        obj = json.loads(s)
-        return obj if isinstance(obj, dict) else None
-    except Exception:
-        pass
-    m = re.search(r"\{[\s\S]*\}", s)
-    if not m:
-        return None
-    try:
-        obj2 = json.loads(m.group(0))
-        return obj2 if isinstance(obj2, dict) else None
-    except Exception:
-        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +38,7 @@ class ResearchLoopProcess(Process):
 
     def __init__(
         self,
-        agents: dict[str, "Researcher"],
+        agents: dict[str, Researcher],
         *,
         leader_key: str,
         writer_key: str,
@@ -117,6 +93,24 @@ class ResearchLoopProcess(Process):
         obj = _extract_json(raw)
         if obj is None:
             return {"overall_passed": False, "error": "unparsed_audit_output", "raw": raw}
+
+        # Normalize findings into the typed AuditFinding shape (and back to JSON-safe dicts).
+        raw_findings = obj.get("findings", [])
+        typed: list[AuditFinding] = []
+        if isinstance(raw_findings, list):
+            for f in raw_findings:
+                if not isinstance(f, dict):
+                    continue
+                typed.append(
+                    AuditFinding(
+                        target_layer=str(f.get("target_layer", "") or ""),
+                        change_kind=str(f.get("change_kind", "") or ""),
+                        graph_query_used=str(f.get("graph_query_used", "") or ""),
+                        dependents_found=[str(x) for x in (f.get("dependents_found", []) or []) if isinstance(x, (str, int, float))],
+                        audit_passed=bool(f.get("audit_passed", False)),
+                    )
+                )
+        obj["findings"] = [asdict(x) for x in typed]
         return obj
 
     async def run(self, *, manifest: Manifest, manifest_path: Path | None) -> dict[str, Any]:

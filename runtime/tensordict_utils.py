@@ -97,6 +97,12 @@ def collate_tensordict(items: list[Any]) -> TensorDictBase:
         raise ValueError("collate_tensordict: empty batch")
     first = items[0]
     if isinstance(first, TensorDictBase):  # type: ignore[arg-type]
+        if not all(isinstance(it, TensorDictBase) for it in items):  # type: ignore[arg-type]
+            types = ", ".join(sorted({type(it).__name__ for it in items}))
+            raise TypeError(
+                "collate_tensordict: mixed batch types; expected all items to be TensorDictBase "
+                f"when the first item is TensorDictBase (got: {types})"
+            )
         # `TensorDict.stack` handles nested tensordicts as well.
         return TensorDict.stack(items, 0)  # type: ignore[arg-type]
     from torch.utils.data._utils.collate import default_collate

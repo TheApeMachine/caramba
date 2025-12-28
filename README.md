@@ -151,7 +151,7 @@ python3 -m caramba config/presets/graph_node_classification.yml --dry-run
 
 Every experiment flows through this chain:
 
-```
+```text
 manifest → parse → lower → validate → build → run → verify → benchmark → artifacts
 ```
 
@@ -234,7 +234,7 @@ Fallback for development and testing:
 
 ## 🏗️ Architecture Overview
 
-```
+```text
 caramba/
 ├── config/          # Typed config models, presets, manifests
 ├── compiler/        # Manifest → executable plan

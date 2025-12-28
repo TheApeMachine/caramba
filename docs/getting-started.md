@@ -202,7 +202,7 @@ python3 -m caramba my_experiment.yml --dry-run
 
 This shows the execution plan without running anything:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │ Execution Plan                                          │
 ├─────────────────────────────────────────────────────────┤
@@ -221,7 +221,7 @@ python3 -m caramba my_experiment.yml
 
 You'll see:
 
-```
+```text
 ╭─ Training Phase: standard ─╮
 │ Step    100/500  loss=5.234 │
 │ Step    200/500  loss=4.102 │

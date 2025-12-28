@@ -10,9 +10,10 @@ Supported formats:
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import torch
@@ -31,7 +32,7 @@ def _is_safetensors(path: Path) -> bool:
     return path.suffix.lower() == ".safetensors"
 
 
-class _TensorSource:
+class _TensorSource(Protocol):
     def __len__(self) -> int: ...
     def get(self, idx: int) -> Tensor: ...
 
@@ -49,23 +50,51 @@ class _NpySource(_TensorSource):
 
 
 class _SafeTensorsSource(_TensorSource):
+    """Lazy safetensors-backed tensor source.
+
+    Notes:
+    - We cache the length after the first read (to avoid reopening the file on every __len__()).
+    - We lazily load and cache the tensor on first get() to avoid repeated safe_open calls.
+    - This is guarded by a lock for basic thread-safety. For extremely large tensors you may
+      prefer a workflow that relies on safetensors' mmap behavior instead of loading into RAM.
+    """
+
     def __init__(self, *, path: Path, tensor_name: str) -> None:
         self.path = path
         self.tensor_name = tensor_name
+        self._length: int | None = None
+        self._tensor: Tensor | None = None
+        self._lock = threading.Lock()
 
     def __len__(self) -> int:
-        from safetensors import safe_open
+        cached = self._length
+        if cached is not None:
+            return int(cached)
+        with self._lock:
+            cached2 = self._length
+            if cached2 is not None:
+                return int(cached2)
+            from safetensors import safe_open
 
-        with safe_open(str(self.path), framework="pt", device="cpu") as f:
-            t = f.get_tensor(self.tensor_name)
-            return int(t.shape[0])
+            with safe_open(str(self.path), framework="pt", device="cpu") as f:
+                t = f.get_tensor(self.tensor_name)
+                self._length = int(t.shape[0])
+                return int(self._length)
 
     def get(self, idx: int) -> Tensor:
-        from safetensors import safe_open
+        t = self._tensor
+        if t is None:
+            with self._lock:
+                t = self._tensor
+                if t is None:
+                    from safetensors import safe_open
 
-        with safe_open(str(self.path), framework="pt", device="cpu") as f:
-            t = f.get_tensor(self.tensor_name)
-            return t[idx]
+                    with safe_open(str(self.path), framework="pt", device="cpu") as f:
+                        t = f.get_tensor(self.tensor_name)
+                    self._tensor = t
+                    if self._length is None:
+                        self._length = int(t.shape[0])
+        return t[int(idx)]
 
 
 class _TensorFilesDataset(Dataset[TensorDictBase]):

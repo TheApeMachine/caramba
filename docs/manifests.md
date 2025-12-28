@@ -36,7 +36,7 @@ entrypoints: { ... } # Named entry points (optional)
 
 The pipeline processes manifests as:
 
-```
+```text
 parse → lower → validate → build → run → verify → benchmark → artifacts
 ```
 

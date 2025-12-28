@@ -8,6 +8,8 @@ proposing architecture changes.
 from __future__ import annotations
 
 import json
+import re
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, Iterable
@@ -43,7 +45,14 @@ def _collect_models(manifest: Manifest) -> list[tuple[str, ModelConfig]]:
             continue
         try:
             cfg = ModelConfig.model_validate(model_payload)
-        except Exception:
+        except Exception as e:
+            logger.error(
+                f"code_graph_sync: ModelConfig validation failed for target={getattr(t, 'name', None)!r}: {e}"
+            )
+            logger.error(
+                f"code_graph_sync: model_payload for target={getattr(t, 'name', None)!r}: {model_payload!r}"
+            )
+            logger.error(traceback.format_exc())
             continue
         out.append((str(t.name), cfg))
     return out
@@ -179,13 +188,52 @@ class CodeGraphSync(Process):
             f"Requested Graphiti ingestion for {len(payloads)} target(s): {', '.join(indexed_targets)}"
         )
 
+        ingested = 0
+        ok = False
+        err: str | None = None
+        parsed: dict[str, Any] | None = None
+        try:
+            s = raw.strip()
+            try:
+                obj = json.loads(s)
+                parsed = obj if isinstance(obj, dict) else None
+            except Exception:
+                m = re.search(r"\{[\s\S]*\}", s)
+                if m:
+                    obj2 = json.loads(m.group(0))
+                    parsed = obj2 if isinstance(obj2, dict) else None
+
+            if parsed is None:
+                err = "invalid_agent_response_json"
+            else:
+                ok = bool(parsed.get("ok", False))
+                try:
+                    ingested = int(parsed.get("ingested", 0) or 0)
+                except (TypeError, ValueError):
+                    ingested = 0
+                if not ok:
+                    err = str(parsed.get("error", "") or "agent_reported_failure")
+            if err or not ok:
+                logger.error(
+                    f"code_graph_sync: agent ingestion failed (ok={ok}, ingested={ingested}, error={err})"
+                )
+                logger.error(f"code_graph_sync: raw agent_response: {raw}")
+        except Exception:
+            ok = False
+            ingested = 0
+            err = "failed_to_parse_agent_response"
+            logger.error("code_graph_sync: failed to parse agent response JSON")
+            logger.error(traceback.format_exc())
+
         return {
-            "ok": True,
+            "ok": bool(ok),
             "process": "code_graph_sync",
             "manifest": manifest_name,
             "index_namespace": self.index_namespace,
             "targets": indexed_targets,
             "payload_count": len(payloads),
+            "ingested": int(ingested),
+            "error": err,
             "agent_response": raw,
         }
 

@@ -53,6 +53,7 @@ class StandardTrainer:
         dry_run: bool = False,
     ) -> dict[str, Any] | None:
         if dry_run:
+            logger.info("Dry run requested, skipping training")
             return None
 
         # Build components once per target.
@@ -127,7 +128,7 @@ class StandardTrainer:
                 if hasattr(dist_ctx, "is_main") and not bool(getattr(dist_ctx, "is_main")):
                     run_logger.enabled = False
             except Exception:
-                pass
+                logger.warning("Failed to check if this is the main process (ignoring)")
 
         runtime_plan = self._load_or_create_runtime_plan(
             checkpoint_dir=checkpoint_dir,
@@ -149,7 +150,7 @@ class StandardTrainer:
                 if isinstance(m, nn.Module):
                     system.module = dist_ctx.wrap_model(m)  # type: ignore[attr-defined]
             except Exception:
-                pass
+                logger.warning("Failed to wrap system module for DDP/FSDP (ignoring)")
 
         compiled = False
         if bool(getattr(runtime_plan, "compile", False)):
@@ -162,6 +163,7 @@ class StandardTrainer:
                     system.module = torch.compile(m, mode=str(runtime_plan.compile_mode))  # type: ignore[attr-defined]
                     compiled = True
             except Exception:
+                logger.warning("Failed to compile model (ignoring)")
                 compiled = False
 
         loader = self._build_loader(
@@ -264,7 +266,7 @@ class StandardTrainer:
                 },
             )
         except Exception:
-            pass
+            logger.warning("Failed to emit telemetry (ignoring)")
 
         # Export a reproducibility artifact (lowered plan + io shapes).
         try:
@@ -273,7 +275,7 @@ class StandardTrainer:
             plan_txt = Planner().format_target(target, indent=0, path=f"targets[{target.name}]")
             (checkpoint_dir / "compiled_plan.txt").write_text("\n".join(plan_txt) + "\n", encoding="utf-8")
         except Exception:
-            pass
+            logger.warning("Failed to export compiled plan (ignoring)")
         try:
             # Capture one batch IO signature (best-effort).
             it = iter(loader)
@@ -303,10 +305,28 @@ class StandardTrainer:
                 encoding="utf-8",
             )
         except Exception:
-            pass
+            logger.warning("Failed to export IO shapes (ignoring)")
 
         logger.header("Training", f"{target.name}:{run.id} • {run.steps} steps")
         loader_iter = iter(loader)
+
+        def _forward_loss(batch_td: TensorDictBase) -> tuple[object, Tensor]:
+            with torch.autocast(
+                device_type=device.type,
+                dtype=amp_dtype,
+                enabled=use_amp,
+            ):
+                if not hasattr(system, "forward"):
+                    raise TypeError("System component does not expose forward()")
+                outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                if not hasattr(objective, "loss"):
+                    raise TypeError("Objective component does not expose loss()")
+                loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
+                if not isinstance(loss, Tensor):
+                    raise TypeError(
+                        f"Objective.loss must return a Tensor, got {type(loss).__name__}"
+                    )
+            return outputs, loss
 
         with logger.progress_bar() as progress:
             task = progress.add_task("Training...", total=int(run.steps))
@@ -315,6 +335,7 @@ class StandardTrainer:
                 try:
                     item = next(loader_iter)
                 except StopIteration:
+                    logger.warning("Reached end of loader, resetting")
                     loader_iter = iter(loader)
                     item = next(loader_iter)
 
@@ -346,21 +367,7 @@ class StandardTrainer:
                             record_shapes=bool(profile_record_shapes),
                             profile_memory=True,
                         ) as prof:
-                            with torch.autocast(
-                                device_type=device.type,
-                                dtype=amp_dtype,
-                                enabled=use_amp,
-                            ):
-                                if not hasattr(system, "forward"):
-                                    raise TypeError("System component does not expose forward()")
-                                outputs = system.forward(batch_td)  # type: ignore[attr-defined]
-                                if not hasattr(objective, "loss"):
-                                    raise TypeError("Objective component does not expose loss()")
-                                loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
-                                if not isinstance(loss, Tensor):
-                                    raise TypeError(
-                                        f"Objective.loss must return a Tensor, got {type(loss).__name__}"
-                                    )
+                            outputs, loss = _forward_loss(batch_td)
                             loss.backward()
                         # Heuristic: count device-side events as “launch-ish”.
                         if device.type == "cuda":
@@ -370,41 +377,15 @@ class StandardTrainer:
                                 # different event metadata. The main goal is “fewer events over time”.
                                 kernel_launches = int(len(evs))
                             except Exception:
+                                logger.warning("Failed to count kernel launches (ignoring)")
                                 kernel_launches = None
                     except Exception:
+                        logger.warning("Failed to profile (ignoring)")
                         kernel_launches = None
-                        with torch.autocast(
-                            device_type=device.type,
-                            dtype=amp_dtype,
-                            enabled=use_amp,
-                        ):
-                            if not hasattr(system, "forward"):
-                                raise TypeError("System component does not expose forward()")
-                            outputs = system.forward(batch_td)  # type: ignore[attr-defined]
-                            if not hasattr(objective, "loss"):
-                                raise TypeError("Objective component does not expose loss()")
-                            loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
-                            if not isinstance(loss, Tensor):
-                                raise TypeError(
-                                    f"Objective.loss must return a Tensor, got {type(loss).__name__}"
-                                )
+                        outputs, loss = _forward_loss(batch_td)
                         loss.backward()
                 else:
-                    with torch.autocast(
-                        device_type=device.type,
-                        dtype=amp_dtype,
-                        enabled=use_amp,
-                    ):
-                        if not hasattr(system, "forward"):
-                            raise TypeError("System component does not expose forward()")
-                        outputs = system.forward(batch_td)  # type: ignore[attr-defined]
-                        if not hasattr(objective, "loss"):
-                            raise TypeError("Objective component does not expose loss()")
-                        loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
-                        if not isinstance(loss, Tensor):
-                            raise TypeError(
-                                f"Objective.loss must return a Tensor, got {type(loss).__name__}"
-                            )
+                    outputs, loss = _forward_loss(batch_td)
 
                 t_fwd = time.perf_counter()
                 # If we profiled, backward already happened.
@@ -430,7 +411,7 @@ class StandardTrainer:
                                 metrics.update({str(k): float(v) for k, v in extra.items()})
                         except Exception:
                             # Metrics are best-effort; don't fail training.
-                            pass
+                            logger.warning("Failed to compute objective metrics (ignoring)")
                     # Timing breakdown (seconds).
                     metrics.update(
                         {
@@ -451,7 +432,7 @@ class StandardTrainer:
                             }
                         )
                     except Exception:
-                        pass
+                        logger.warning("Failed to compute memory metrics (ignoring)")
                     if kernel_launches is not None:
                         metrics["kernel_events_estimate"] = float(kernel_launches)
                     metrics["compiled"] = 1.0 if compiled else 0.0
@@ -596,5 +577,5 @@ class StandardTrainer:
         try:
             save_plan(plan_path, plan, payload=payload)
         except Exception:
-            pass
+            logger.warning("Failed to save runtime plan (ignoring)")
         return plan
