@@ -18,6 +18,20 @@ from console.logger import get_logger
 class Researcher:
     """A researcher with a persona and MCP tool servers."""
 
+    @staticmethod
+    def _prepare_message_and_ctx(
+        context: dict[str, Any] | AgentContext | None,
+        message: str,
+    ) -> tuple[str, dict[str, Any]]:
+        """Normalize Runner context and optionally fold AgentContext into the prompt.
+
+        Runner expects a dict-like context. When an AgentContext is provided, we fold
+        its prompt representation into the message and pass an empty dict context.
+        """
+        if isinstance(context, AgentContext):
+            return f"{context.to_prompt()}\n\n{message}", {}
+        return message, (context or {})
+
     def __init__(
         self,
         persona: PersonaConfig,
@@ -56,13 +70,7 @@ class Researcher:
         Returns:
             The agent's response.
         """
-        # If an AgentContext is passed, fold it into the prompt (Runner context expects dict-like).
-        ctx: dict[str, Any]
-        if isinstance(context, AgentContext):
-            message = f"{context.to_prompt()}\n\n{message}"
-            ctx = {}
-        else:
-            ctx = context or {}
+        message, ctx = self._prepare_message_and_ctx(context, message)
         return await Runner.run(
             self.agent,
             input=message,
@@ -78,12 +86,7 @@ class Researcher:
         show_output: bool = True,
     ) -> Any:
         """Run the agent and stream deltas to the rich console logger."""
-        ctx: dict[str, Any]
-        if isinstance(context, AgentContext):
-            message = f"{context.to_prompt()}\n\n{message}"
-            ctx = {}
-        else:
-            ctx = context or {}
+        message, ctx = self._prepare_message_and_ctx(context, message)
 
         result = Runner.run_streamed(self.agent, input=message, context=ctx)
 

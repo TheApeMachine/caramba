@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+import warnings
 import yaml
 from pydantic import BaseModel, Field
 
@@ -44,7 +45,7 @@ def load_mcp_servers(path: Path = Path("config/mcp_servers.yml")) -> dict[str, M
     if not path.exists():
         return {}
 
-    with open(path, "r") as f:
+    with open(path) as f:
         raw = yaml.safe_load(f) or {}
 
     if not isinstance(raw, dict):
@@ -53,9 +54,16 @@ def load_mcp_servers(path: Path = Path("config/mcp_servers.yml")) -> dict[str, M
     out: dict[str, MCPServerConfig] = {}
     for key, cfg in raw.items():
         if not isinstance(key, str):
+            warnings.warn(
+                f"Ignoring non-string MCP server key {key!r} in {path}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
             continue
         if not isinstance(cfg, dict):
             raise TypeError(f"Expected mapping for '{key}' in {path}, got {type(cfg).__name__}")
-        out[key] = MCPServerConfig(**cfg, name=str(cfg.get("name") or key))
+        cfg_dict = dict(cfg)
+        explicit_name = cfg_dict.pop("name", None)
+        out[key] = MCPServerConfig(**cfg_dict, name=str(explicit_name or key))
     return out
 

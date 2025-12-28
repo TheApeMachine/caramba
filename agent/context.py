@@ -27,11 +27,13 @@ class AgentContext:
         history = "\n\n".join(
             [f"**{item.name}** ({item.role}):\n{item.content}" for item in self.history]
         )
-        sections.append(f"<history>\n{history}\n</history>")
+        if history:
+            sections.append(f"<history>\n{history}\n</history>")
 
         knowledge = "\n\n".join(
             [f"**{item.name}** ({item.source}):\n{item.content}" for item in self.knowledge]
         )
-        sections.append(f"<knowledge>\n{knowledge}\n</knowledge>")
+        if knowledge:
+            sections.append(f"<knowledge>\n{knowledge}\n</knowledge>")
 
         return "\n\n".join(sections)

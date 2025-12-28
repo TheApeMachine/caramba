@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -109,11 +109,12 @@ async def _run_discussion(
 
     out_dir = _manifest_artifacts_dir(manifest, manifest_path)
     out_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
     out_path = out_dir / f"{proc.name}_{timestamp}.json"
 
     payload: dict[str, Any] = {
-        "created_at": datetime.now().isoformat(),
+        "created_at": now.isoformat(),
         "manifest": {
             "name": manifest.name,
             "path": str(manifest_path),
@@ -132,7 +133,7 @@ async def _run_discussion(
     }
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     logger.success(f"Agent process complete • wrote {out_path}")
-    return {"artifacts": {"agents_transcript.json": out_path}, "result": result}
+    return {"artifacts": {out_path.name: out_path}, "result": result}
 
 
 def run_process(manifest: Manifest, *, process_name: str, manifest_path: Path) -> dict[str, Any]:

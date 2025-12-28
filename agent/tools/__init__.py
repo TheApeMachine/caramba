@@ -18,7 +18,17 @@ from agents.mcp import (
     MCPServerStreamableHttp,
 )
 
-from config.mcp_registry import load_mcp_servers
+from config.mcp_registry import MCPServerConfig, load_mcp_servers
+
+
+_MCP_REGISTRY_CACHE: dict[str, MCPServerConfig] | None = None
+
+
+def _get_mcp_registry(*, reload: bool = False) -> dict[str, MCPServerConfig]:
+    global _MCP_REGISTRY_CACHE
+    if reload or _MCP_REGISTRY_CACHE is None:
+        _MCP_REGISTRY_CACHE = load_mcp_servers()
+    return _MCP_REGISTRY_CACHE
 
 
 class Tool:
@@ -37,7 +47,7 @@ class Tool:
 
     def mcp_client(self) -> MCPServer:
         """Create an MCP client for this tool based on the registry manifest."""
-        registry = load_mcp_servers()
+        registry = _get_mcp_registry()
         if self.name not in registry:
             available = ", ".join(sorted(registry.keys()))
             raise KeyError(
