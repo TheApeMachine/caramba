@@ -76,12 +76,15 @@ class Planner:
                 try:
                     topo = GraphTopologyConfig.model_validate(topo_payload)
                     out.append(f"{pad}graph.type={topo.type}")
-                    out.append(f"{pad}graph.nodes:")
-                    for i, n in enumerate(topo.nodes):
+                    out.append(f"{pad}graph.layers:")
+                    for i, n in enumerate(topo.layers):
                         ins = n.in_keys if isinstance(n.in_keys, str) else list(n.in_keys)
                         outs = n.out_keys if isinstance(n.out_keys, str) else list(n.out_keys)
+                        kind = (
+                            f"layer={n.layer.type.value}" if n.layer is not None else f"op={n.op}"
+                        )
                         out.append(
-                            f"{pad}  - node[{i}].id={n.id} op={n.op} in={ins} out={outs} repeat={getattr(n,'repeat',1)}"
+                            f"{pad}  - layer[{i}].id={n.id} {kind} in={ins} out={outs} repeat={getattr(n,'repeat',1)}"
                         )
                 except Exception:
                     out.append(f"{pad}graph=<invalid>")

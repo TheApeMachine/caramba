@@ -57,7 +57,7 @@ def test_lower_manifest_lowers_graph_topology_payload() -> None:
             ref="system.graph",
             config={
                 "topology": {
-                    "type": "graph",
+                    "type": "GraphTopology",
                     "nodes": [{"id": "n", "op": "mlp", "in": "x", "out": "y", "repeat": 1, "config": {}}],
                 }
             },
@@ -72,6 +72,6 @@ def test_lower_manifest_lowers_graph_topology_payload() -> None:
     assert isinstance(t2, ExperimentTargetConfig)
     topo = t2.system.config["topology"]
     # Ensure aliasing kept keys as "in"/"out" in the dumped payload.
-    assert topo["nodes"][0]["in"] == "x"
-    assert topo["nodes"][0]["out"] == "y"
-
+    assert topo["type"] == "GraphTopology"
+    assert topo["layers"][0]["in"] == "x"
+    assert topo["layers"][0]["out"] == "y"

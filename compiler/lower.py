@@ -72,7 +72,7 @@ class Lowerer:
     def lower_graph_topology(self, topo: GraphTopologyConfig) -> GraphTopologyConfig:
         """Expand simple per-node repeat for graph topologies."""
         out: list[GraphNodeConfig] = []
-        for n in topo.nodes:
+        for n in topo.layers:
             r = int(getattr(n, "repeat", 1) or 1)
             if r <= 1:
                 out.append(n)
@@ -86,17 +86,20 @@ class Lowerer:
             prev = src
             for i in range(r):
                 cur_out = dst if i == (r - 1) else f"{dst}__{i}"
+                layer_cfg = n.layer.model_copy(deep=True) if n.layer is not None else None
                 out.append(
                     GraphNodeConfig(
                         id=f"{n.id}__{i}",
+                        in_keys=prev,
+                        out_keys=cur_out,
+                        layer=layer_cfg,
                         op=n.op,
-                        **{"in": prev, "out": cur_out},
                         config=dict(n.config),
                         repeat=1,
                     )
                 )
                 prev = cur_out
-        return GraphTopologyConfig(type=topo.type, nodes=out)
+        return GraphTopologyConfig(type=topo.type, layers=out)
 
     def lower_nodes(self, nodes: list[NodeConfig]) -> list[NodeConfig]:
         """Lower nested topology nodes recursively."""

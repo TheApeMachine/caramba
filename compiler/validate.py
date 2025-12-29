@@ -55,8 +55,8 @@ class Validator:
     def validate_graph_topology(self, topo: GraphTopologyConfig, *, path: str = "system.topology") -> None:
         ids: set[str] = set()
         produced: dict[str, str] = {}
-        for i, n in enumerate(list(topo.nodes)):
-            p = f"{path}.nodes[{i}]"
+        for i, n in enumerate(list(topo.layers)):
+            p = f"{path}.layers[{i}]"
             nid = str(n.id)
             if not nid:
                 raise ValueError(f"{p}.id: must be non-empty")
@@ -76,7 +76,7 @@ class Validator:
         _ = self.toposort_graph(topo)
 
     def toposort_graph(self, topo: GraphTopologyConfig) -> list[str]:
-        nodes = list(topo.nodes)
+        nodes = list(topo.layers)
         ids = [str(n.id) for n in nodes]
         produced: dict[str, str] = {}
         for n in nodes:

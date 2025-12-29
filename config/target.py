@@ -15,6 +15,7 @@ from config.benchmark import BenchmarkSpec
 from config.component import ComponentSpec
 from config.model import ModelConfig
 from config.run import Run
+from config.topology_graph import GraphTopologyConfig
 
 
 class ExperimentTargetConfig(BaseModel):
@@ -59,6 +60,8 @@ class ExperimentTargetConfig(BaseModel):
             topo_payload = self.system.config.get("topology", None)
             if not isinstance(topo_payload, dict):
                 raise ValueError("system.graph requires system.config.topology to be a dict")
+            # Strict parse for good errors (unknown fields, invalid node specs, etc.)
+            _ = GraphTopologyConfig.model_validate(topo_payload)
 
         # Validate built-in dataset type shape.
         if self.data.ref == "dataset.tokens":
@@ -87,4 +90,3 @@ TargetConfig: TypeAlias = Annotated[
     ExperimentTargetConfig | ProcessTargetConfig,
     Field(discriminator="type"),
 ]
-

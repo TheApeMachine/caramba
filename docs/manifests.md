@@ -215,6 +215,40 @@ system:
       type: TransformerModel
       embedder: { ... }
       topology: { ... }
+
+#### Graph System (`system.graph`)
+
+`system.graph` runs a named-port DAG over a TensorDict. Unlike the single-stream
+topologies used by language models, GraphTopology nodes read from one or more
+input keys and write one or more output keys.
+
+The graph topology is declared as a `GraphTopology` with `layers`. In graph
+terminology, these layers are often called *nodes*; manifests may use `nodes` as
+an alias for `layers`.
+
+```yaml
+system:
+  ref: system.graph
+  config:
+    topology:
+      type: GraphTopology
+      layers:
+        # Layer-backed node (inline LayerConfig payload)
+        - id: proj
+          in: inputs
+          out: h
+          type: LinearLayer
+          d_in: 4
+          d_out: 8
+          bias: true
+
+        # Op-backed node (torch.nn.* or python:module:Symbol)
+        - id: act
+          in: h
+          out: h2
+          op: ReLU
+          config: {}
+```
 ```
 
 ### Process Targets (Agent Workflows)

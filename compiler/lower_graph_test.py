@@ -8,8 +8,8 @@ from config.topology_graph import GraphNodeConfig, GraphTopologyConfig
 
 def test_lower_graph_topology_expands_repeat_with_chained_keys() -> None:
     topo = GraphTopologyConfig(
-        type="graph",
-        nodes=[
+        type="GraphTopology",
+        layers=[
             GraphNodeConfig(
                 id="n",
                 op="mlp",
@@ -20,20 +20,20 @@ def test_lower_graph_topology_expands_repeat_with_chained_keys() -> None:
         ],
     )
     lowered = Lowerer().lower_graph_topology(topo)
-    assert len(lowered.nodes) == 3
-    assert lowered.nodes[0].id == "n__0"
-    assert lowered.nodes[0].in_keys == "x"
-    assert lowered.nodes[0].out_keys == "y__0"
-    assert lowered.nodes[1].in_keys == "y__0"
-    assert lowered.nodes[1].out_keys == "y__1"
-    assert lowered.nodes[2].in_keys == "y__1"
-    assert lowered.nodes[2].out_keys == "y"
+    assert len(lowered.layers) == 3
+    assert lowered.layers[0].id == "n__0"
+    assert lowered.layers[0].in_keys == "x"
+    assert lowered.layers[0].out_keys == "y__0"
+    assert lowered.layers[1].in_keys == "y__0"
+    assert lowered.layers[1].out_keys == "y__1"
+    assert lowered.layers[2].in_keys == "y__1"
+    assert lowered.layers[2].out_keys == "y"
 
 
 def test_lower_graph_topology_repeat_requires_single_in_out_keys() -> None:
     topo = GraphTopologyConfig(
-        type="graph",
-        nodes=[
+        type="GraphTopology",
+        layers=[
             GraphNodeConfig(
                 id="n",
                 op="mlp",
@@ -45,4 +45,3 @@ def test_lower_graph_topology_repeat_requires_single_in_out_keys() -> None:
     )
     with pytest.raises(ValueError, match="single in/out keys"):
         Lowerer().lower_graph_topology(topo)
-

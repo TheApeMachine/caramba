@@ -52,6 +52,14 @@ def _build_op(op: str, cfg: dict[str, Any]) -> nn.Module:
     raise KeyError(f"Unknown op {op!r}. Use torch.nn.<OpName> or python:module:Symbol")
 
 
+def _build_node(node: GraphNodeConfig) -> nn.Module:
+    if node.layer is not None:
+        return node.layer.build()
+    if node.op is None:
+        raise ValueError(f"Graph node {node.id!r} did not specify 'layer' or 'op'")
+    return _build_op(node.op, dict(node.config))
+
+
 @dataclass
 class GraphSystem:
     """Execute a named-port DAG over a TensorDict.
@@ -72,7 +80,7 @@ class GraphSystem:
         topo = GraphTopologyConfig.model_validate(self.topology)
         # Expand simple repeats (compiler lowering can also do this).
         nodes: list[GraphNodeConfig] = []
-        for n in topo.nodes:
+        for n in topo.layers:
             r = int(getattr(n, "repeat", 1) or 1)
             if r <= 1:
                 nodes.append(n)
@@ -86,24 +94,27 @@ class GraphSystem:
             prev = src
             for i in range(r):
                 cur_out = dst if i == (r - 1) else f"{dst}__{i}"
+                layer_cfg = n.layer.model_copy(deep=True) if n.layer is not None else None
                 nodes.append(
                     GraphNodeConfig(
                         id=f"{n.id}__{i}",
+                        in_keys=prev,
+                        out_keys=cur_out,
+                        layer=layer_cfg,
                         op=n.op,
-                        **{"in": prev, "out": cur_out},
                         config=dict(n.config),
                         repeat=1,
                     )
                 )
                 prev = cur_out
-        topo = GraphTopologyConfig(type=topo.type, nodes=nodes)
+        topo = GraphTopologyConfig(type=topo.type, layers=nodes)
 
         Validator().validate_graph_topology(topo, path="system.topology")
 
-        self._nodes = topo.nodes
+        self._nodes = topo.layers
         self._order = Validator().toposort_graph(topo)
         self._node_by_id = {n.id: n for n in self._nodes}
-        self.modules = nn.ModuleDict({n.id: _build_op(n.op, dict(n.config)) for n in self._nodes})
+        self.modules = nn.ModuleDict({n.id: _build_node(n) for n in self._nodes})
 
     def to(self, *, device: torch.device, dtype: torch.dtype) -> GraphSystem:
         self.modules = self.modules.to(device=device, dtype=dtype)
@@ -127,7 +138,7 @@ class GraphSystem:
                     raise KeyError(f"GraphSystem: missing tensor input key {k!r} for node {n.id!r}")
                 args.append(v)
             mod = self.modules[n.id]
-            out = mod(*args) if len(args) != 1 else mod(args[0])
+            out = mod(*args)
             if len(outs) == 1:
                 if not isinstance(out, Tensor):
                     raise TypeError(f"Node {n.id!r} expected Tensor output, got {type(out).__name__}")
@@ -152,4 +163,3 @@ class GraphSystem:
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         self.modules.load_state_dict(state)
-

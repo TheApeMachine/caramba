@@ -29,7 +29,7 @@ def test_graph_system_repeat_expands_single_stream() -> None:
     sys = GraphSystem(
         topology={
             "type": "GraphTopology",
-            "nodes": [
+            "layers": [
                 {"id": "proj", "op": "Linear", "in": "inputs", "out": "h", "repeat": 3, "config": {"in_features": 4, "out_features": 4}},
             ],
         },
@@ -39,3 +39,18 @@ def test_graph_system_repeat_expands_single_stream() -> None:
     out = sys.forward(batch)
     assert tuple(out["h"].shape) == (5, 4)
 
+
+def test_graph_system_builds_layer_backed_nodes_inline() -> None:
+    sys = GraphSystem(
+        topology={
+            "type": "GraphTopology",
+            "layers": [
+                {"id": "proj", "in": "inputs", "out": "h", "type": "LinearLayer", "d_in": 4, "d_out": 8, "bias": True},
+                {"id": "act", "op": "ReLU", "in": "h", "out": "h2", "config": {}},
+            ],
+        },
+        output_keys=["h2"],
+    )
+    batch = as_tensordict({"inputs": torch.randn(2, 4)})
+    out = sys.forward(batch)
+    assert tuple(out["h2"].shape) == (2, 8)

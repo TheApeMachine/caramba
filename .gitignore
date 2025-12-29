@@ -2,6 +2,13 @@ __pycache__/
 .DS_Store
 .venv/
 .pytest_cache/
+.cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+dist/
+build/
+*.log
 artifacts/
 internal/
 caramba.egg-info/
@@ -17,3 +24,4 @@ fineweb_100m.npy.meta
 train.h5
 .gitignore
 .coverage
+coverage.xml

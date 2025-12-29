@@ -37,6 +37,33 @@ Key principles:
 - **Topologies are composable** — Nest them arbitrarily
 - **Topologies are declarative** — No procedural code needed
 
+### GraphTopology (Named-Port DAG)
+
+In addition to the single-stream topologies in this document (Stacked/Residual/
+Nested/etc.), caramba also supports **GraphTopology**, a named-port DAG that
+operates over a TensorDict.
+
+GraphTopology is useful when your model is not naturally represented as a single
+tensor stream (multi-modal fusion, U-Nets, Siamese networks, keyed losses, etc.).
+
+```yaml
+topology:
+  type: GraphTopology
+  layers:  # `nodes:` is accepted as an alias
+    - id: proj
+      in: inputs
+      out: h
+      type: LinearLayer
+      d_in: 4
+      d_out: 8
+      bias: true
+    - id: act
+      in: h
+      out: h2
+      op: ReLU
+      config: {}
+```
+
 ---
 
 ## Topology Types
