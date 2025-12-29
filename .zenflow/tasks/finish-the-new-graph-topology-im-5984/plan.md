@@ -18,7 +18,8 @@ Do not make assumptions on important decisions — get clarification first.
 
 ## Workflow Steps
 
-### [ ] Step: Technical Specification
+### [x] Step: Technical Specification
+<!-- chat-id: 121f3c07-9607-4a82-bfbc-d9ef0d3934d7 -->
 
 Assess the task's difficulty, as underestimating it leads to poor outcomes.
 - easy: Straightforward implementation, trivial bug fix or feature
@@ -50,15 +51,50 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Implementation
+### [ ] Step: Update Graph Topology Schema
 
-Implement the task according to the technical specification and general engineering best practices.
+- Implement `system.graph` topology compatibility with `layers` (keep `nodes` as backward-compatible input).
+- Add support for layer-backed graph nodes (reuse `LayerConfig`).
 
-1. Break the task into steps where possible.
-2. Implement the required changes in the codebase.
-3. Add and run relevant tests and linters.
-4. Perform basic manual verification if applicable.
-5. After completion, write a report to `{@artifacts_path}/report.md` describing:
-   - What was implemented
-   - How the solution was tested
-   - The biggest issues or challenges encountered
+Verification:
+- `pytest -q compiler/lower_graph_test.py`
+
+---
+
+### [ ] Step: Integrate Layer Nodes Into GraphSystem
+
+- Teach `model/graph_system.py` to build node modules from either `layer.build()` or `op` strings.
+- Ensure repeat expansion deep-copies embedded layer configs.
+
+Verification:
+- `pytest -q model/graph_system_test.py`
+
+---
+
+### [ ] Step: Update Lowering, Validation, and Planning
+
+- Update `compiler/lower.py`, `compiler/validate.py`, and `compiler/plan.py` to use the canonical `layers` graph topology schema.
+- Add early validation in `config/target.py` for `system.graph` targets.
+
+Verification:
+- `pytest -q compiler/lower_manifest_test.py`
+
+---
+
+### [ ] Step: Update Manifests and Documentation
+
+- Update docs to describe `system.graph` and the new graph topology schema.
+- If needed, add graph type normalization (`graph` → `GraphTopology`) in `config/resolve.py`.
+
+Verification:
+- Manually inspect `docs/manifests.md` and `docs/topologies.md` examples for consistency.
+
+---
+
+### [ ] Step: Run Full Test Suite and Write Report
+
+- Run `pytest -q` (or the closest available equivalent).
+- Write `{@artifacts_path}/report.md`:
+  - What was implemented
+  - How the solution was tested
+  - Biggest issues or challenges
