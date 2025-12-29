@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from torch import nn
 
+from console import logger
+
 
 def get_model_vocab_size(model: nn.Module, default: int = 32000) -> int:
     """Extract vocabulary size from a model.
@@ -29,10 +31,28 @@ def get_model_vocab_size(model: nn.Module, default: int = 32000) -> int:
         vocab_size = getattr(model, "vocab_size")
         if isinstance(vocab_size, int) and vocab_size > 0:
             return vocab_size
+        # Some models expose vocab_size as an optional int property.
+        if vocab_size is not None:
+            try:
+                v = int(vocab_size)
+                if v > 0:
+                    return v
+            except Exception as e:
+                logger.error(f"Failed to get vocab size, continuing: {e}")
 
     # HuggingFace-style config
     if hasattr(model, "config") and hasattr(model.config, "vocab_size"):  # type: ignore[union-attr]
         return int(model.config.vocab_size)  # type: ignore[union-attr]
+
+    # Caramba Model: embedder token embedding
+    if hasattr(model, "embedder"):
+        try:
+            emb = getattr(model, "embedder")
+            tok_emb = getattr(emb, "token_embedding", None)
+            if tok_emb is not None and hasattr(tok_emb, "num_embeddings"):
+                return int(tok_emb.num_embeddings)
+        except Exception as e:
+            logger.error(f"Failed to get vocab size, continuing: {e}")
 
     # Embedding layer
     if hasattr(model, "get_input_embeddings"):

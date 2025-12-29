@@ -6,14 +6,12 @@ Llama and many modern models use RMSNorm instead of LayerNorm.
 """
 from __future__ import annotations
 
-import logging
 import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
 from config.layer import RMSNormLayerConfig
-
-log = logging.getLogger(__name__)
+from console import logger
 
 
 class RMSNormLayer(nn.Module):
@@ -64,11 +62,8 @@ class RMSNormLayer(nn.Module):
             from optimizer.kernels import rmsnorm
 
             return rmsnorm(x=x, weight=self.weight, eps=float(self.eps))
-        except Exception:
-            # Best-effort: fall back to PyTorch implementation.
-            if log.isEnabledFor(logging.DEBUG):
-                log.debug("HAL rmsnorm failed; falling back to PyTorch", exc_info=True)
-            pass
+        except Exception as e:
+            logger.error(f"HAL rmsnorm failed; falling back to PyTorch: {e}: {x.shape}")
 
         x_f = x.float()
         inv_rms = torch.rsqrt(x_f.pow(2).mean(dim=-1, keepdim=True) + float(self.eps))

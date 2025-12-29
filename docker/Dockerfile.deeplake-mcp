@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+# DeepLake Tools MCP Server Image
+
+FROM python:3.11-slim-bookworm
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for Python package management
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+
+# Add uv to PATH
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Configure uv for optimal Docker usage
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    MCP_SERVER_HOST="0.0.0.0" \
+    MCP_SERVER_PORT="8002" \
+    PYTHONUNBUFFERED=1
+
+# Set up working directory
+WORKDIR /app
+
+# Copy project files for dependency installation
+COPY pyproject.toml ./
+
+# Install Python dependencies (exclude dev dependency group)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-group dev
+
+# Copy application code
+COPY agent/ ./agent/
+COPY config/ ./config/
+
+# Create persistent directories (will be mounted as volumes)
+RUN mkdir -p /app/.caramba /app/experiments
+
+# Expose MCP server port
+EXPOSE 8002
+
+# Health check - verify MCP server is responding
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8002/health || exit 1
+
+# Run the MCP server
+CMD ["uv", "run", "--no-sync", "-m", "agent.tools.deeplake"]
+

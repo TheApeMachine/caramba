@@ -60,6 +60,14 @@ class TrainConfig(BaseModel):
     teacher_rope_base: PositiveFloat | None = None
     teacher_rope_dim: PositiveInt | None = None
 
+    # Teacher sanity checks (upcycling safety).
+    # These run once per target, immediately after loading the teacher checkpoint,
+    # using a few batches from the configured token dataset.
+    teacher_sanity_check: bool = True
+    teacher_sanity_batches: PositiveInt = 2
+    teacher_sanity_batch_size: PositiveInt = 1
+    teacher_sanity_max_nll: PositiveFloat = 20.0
+
     # Convergence-based blockwise training: instead of fixed steps per block,
     # train each block until loss drops below target or patience runs out.
     convergence_target: PositiveFloat | None = None

@@ -12,6 +12,8 @@ import math
 import time
 from typing import Any
 
+from console import logger
+
 
 def now_s() -> float:
     """Return current wall-clock time as seconds since epoch.
@@ -58,8 +60,8 @@ def coerce_jsonable(value: Any) -> Any:
                 "device": str(dev),
                 "dtype": None if dtype is None else str(dtype),
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Failed to coerce tensor-like object, continuing: {value}: {e}")
 
     # Avoid importing torch/numpy: rely on duck-typing for numpy scalars.
     try:
@@ -67,16 +69,16 @@ def coerce_jsonable(value: Any) -> Any:
         if callable(item):
             out = item()
             return coerce_jsonable(out)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Failed to coerce item, continuing: {value}: {e}")
 
     # Tensors / arrays: refuse by default (too big). Caller can summarize first.
     try:
         shape = getattr(value, "shape", None)
         if shape is not None and not isinstance(value, (list, tuple, dict)):
             return {"_type": type(value).__name__, "shape": list(shape)}  # type: ignore[arg-type]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Failed to coerce shape, continuing: {value}: {e}")
 
     # Containers: recursively coerce.
     if isinstance(value, dict):

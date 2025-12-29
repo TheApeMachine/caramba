@@ -18,6 +18,8 @@ from typing import Any
 import torch
 from torch import Tensor
 
+from console import logger
+
 
 def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     """RMSNorm: y = x * rsqrt(mean(x^2) + eps) * weight."""
@@ -27,8 +29,8 @@ def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
 
             if metal_rmsnorm_available():
                 return rmsnorm_fp16(x=x, weight=weight, eps=float(eps))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to use Metal rmsnorm, continuing: {e}")
 
     x_f = x.float()
     inv_rms = torch.rsqrt(x_f.pow(2).mean(dim=-1, keepdim=True) + float(eps))
@@ -51,8 +53,8 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
 
             if metal_rope_available():
                 return rope_fp16(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to use Metal rope, continuing: {e}")
 
     T = int(x.shape[2])
     cos2 = cos[:T].unsqueeze(0).unsqueeze(0).to(dtype=x.dtype, device=x.device)

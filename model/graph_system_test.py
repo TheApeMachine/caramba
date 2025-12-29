@@ -24,7 +24,7 @@ def test_generic_system_executes_graph_topology_over_tensordict() -> None:
     )
 
     batch = as_tensordict({"inputs": torch.randn(2, 4)})
-    out = sys.forward(batch)
+    out = sys.forward(dict(batch))
     assert "logits" in out
     assert tuple(out["logits"].shape) == (2, 3)
 
@@ -44,6 +44,6 @@ def test_generic_system_graph_topology_repeat_expands_single_stream() -> None:
         output_keys=["h"],
     )
     batch = as_tensordict({"inputs": torch.randn(5, 4)})
-    out = sys.forward(batch)
+    out = sys.forward(dict(batch))
     assert tuple(out["h"].shape) == (5, 4)
 

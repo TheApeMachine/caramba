@@ -14,6 +14,7 @@ import time
 from typing import Any
 
 from config.kvcache import KVCacheKind
+from console import logger
 from runtime.plan import make_plan_key
 
 
@@ -75,22 +76,28 @@ def load_cached_kind(path: Path, *, key: str) -> KVCacheKind | None:
     """Load a cached cache kind from disk."""
     try:
         blob = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to load cached kind, continuing: {e}")
         return None
     if not isinstance(blob, dict):
+        logger.error("Failed to load cached kind, continuing")
         return None
     plans = blob.get("plans", None)
     if not isinstance(plans, dict):
+        logger.error("Failed to load cached kind, continuing")
         return None
     entry = plans.get(str(key), None)
     if not isinstance(entry, dict):
+        logger.error("Failed to load cached kind, continuing")
         return None
     kind = entry.get("cache_kind", None)
     if not isinstance(kind, str):
+        logger.error("Failed to load cached kind, continuing")
         return None
     try:
         return KVCacheKind(kind)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to load cached kind, continuing: {e}")
         return None
 
 
@@ -98,15 +105,19 @@ def load_cached_entry(path: Path, *, key: str) -> dict[str, Any] | None:
     """Load a cached plan entry (kind + metadata) from disk."""
     try:
         blob = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to load cached entry, continuing: {e}")
         return None
     if not isinstance(blob, dict):
+        logger.error("Failed to load cached entry, continuing")
         return None
     plans = blob.get("plans", None)
     if not isinstance(plans, dict):
+        logger.error("Failed to load cached entry, continuing")
         return None
     entry = plans.get(str(key), None)
     if not isinstance(entry, dict):
+        logger.error("Failed to load cached entry, continuing")
         return None
     return entry
 
@@ -121,7 +132,8 @@ def should_probe_entry(entry: dict[str, Any], *, interval_sec: int) -> bool:
         return True
     try:
         ts_f = float(ts)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to parse timestamp, continuing: {e}")
         return True
     now = float(time.time())
     return (now - ts_f) >= float(interval)
@@ -145,7 +157,8 @@ def save_cached_kind(
         blob = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(blob, dict):
             blob = {}
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to load cached kind, continuing: {e}")
         blob = {}
     plans = blob.get("plans", None)
     if not isinstance(plans, dict):
@@ -154,8 +167,8 @@ def save_cached_kind(
     if tps is not None:
         try:
             entry["tps"] = float(tps)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to save tps, continuing: {e}")
     if source is not None:
         entry["source"] = str(source)
     plans[str(key)] = entry

@@ -17,6 +17,7 @@ from typing import Callable
 import torch
 from torch import Tensor, nn
 
+from console import logger
 from cache.decoupled import DecoupledLayerKVCache
 from cache.layer import LayerKVCache
 from config.kvcache import KVCacheKind, KVCacheTensorConfig
@@ -290,8 +291,8 @@ def _resolve_cache_kind(
                 tps=float(best_tps) if best_tps >= 0 else None,
                 source="bench",
             )  # type: ignore[arg-type]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to save cached kind, continuing: {e}")
     return best_kind
 
 

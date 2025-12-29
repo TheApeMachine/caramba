@@ -50,6 +50,10 @@ from trainer.collectors import Collector
 from trainer.verifiers import Verifier
 from trainer.checkpointers import CheckPointer
 from trainer.steppers import Stepper
+from data import build_token_dataset
+from runtime.tensordict_utils import TensorDictBase, collate_tensordict
+from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +188,8 @@ class _UpcycleSession:
             ),
         )
 
+        self._teacher_sanity_check(train)
+
         self.verifier: Verifier = cast(Verifier, DefaultVerifierConfig().build())
         self.collector: Collector = cast(Collector, DefaultCollectorConfig().build())
         self.checkpointer: CheckPointer = cast(CheckPointer, DefaultCheckPointerConfig().build())
@@ -193,7 +199,85 @@ class _UpcycleSession:
             try:
                 self._resume_state = self.checkpointer.load_resume(ctx=self._ctx(), path=Path(resume_from))
             except Exception:
+                logger.warning("Failed to load resume state, continuing without resume")
                 self._resume_state = None
+
+    def _teacher_sanity_check(self, train: TrainConfig) -> None:
+        """Fail fast if the teacher or dataset is obviously broken."""
+        if train.teacher_ckpt is None:
+            logger.error("Teacher sanity check skipped: teacher_ckpt is required")
+            return
+        if not bool(getattr(train, "teacher_sanity_check", True)):
+            logger.error("Teacher sanity check skipped: teacher_sanity_check is disabled")
+            return
+
+        # Use the target's configured dataset path (groups[].data).
+        data_path = str(self.group.data)
+        try:
+            dataset = build_token_dataset(path=data_path, block_size=int(train.block_size))
+        except Exception as e:
+            logger.error(f"Teacher sanity check skipped: failed to load dataset {data_path!r}: {e}")
+            return
+
+        loader: DataLoader[TensorDictBase] = DataLoader(
+            dataset,
+            batch_size=int(getattr(train, "teacher_sanity_batch_size", 1)),
+            shuffle=False,
+            drop_last=True,
+            collate_fn=collate_tensordict,
+        )
+
+        # Resolve vocab size from teacher embeddings (tied or untied).
+        try:
+            from benchmark.utils import get_model_vocab_size
+
+            vocab_size = int(get_model_vocab_size(self.teacher, default=32000))
+        except Exception:
+            logger.error("Teacher sanity check skipped: failed to get model vocab size, setting to default 32000")
+            vocab_size = 32000
+
+        max_batches = int(getattr(train, "teacher_sanity_batches", 2))
+        max_nll = float(getattr(train, "teacher_sanity_max_nll", 20.0))
+
+        self.teacher.eval()
+        total_loss = 0.0
+        total_tokens = 0
+        n = 0
+        with torch.no_grad():
+            for batch in loader:
+                x = batch["input_ids"].to(self.device)
+                y = batch["target_ids"].to(self.device)
+
+                # Token/vocab compatibility check.
+                mx = int(torch.maximum(x.max(), y.max()).item())
+                if mx >= int(vocab_size):
+                    raise ValueError(
+                        f"Teacher sanity check failed: dataset token IDs exceed teacher vocab "
+                        f"(max_id={mx}, vocab_size={vocab_size}). "
+                        "This usually means the dataset was tokenized with a different tokenizer than the teacher."
+                    )
+
+                logits = self.teacher(x)
+                loss = F.cross_entropy(
+                    logits.view(-1, logits.size(-1)),
+                    y.view(-1),
+                    reduction="sum",
+                )
+                total_loss += float(loss)
+                total_tokens += int(y.numel())
+                n += 1
+                if n >= max_batches:
+                    break
+
+        denom = max(1, int(total_tokens))
+        nll = float(total_loss) / float(denom)
+        logger.key_value({"teacher_sanity_nll": f"{nll:.6f}", "teacher_sanity_tokens": str(total_tokens)})
+
+        if nll > max_nll:
+            raise ValueError(
+                f"Teacher sanity check failed: teacher NLL={nll:.6f} exceeds max_nll={max_nll:.6f}. "
+                "This commonly indicates a bad checkpoint load or tokenizer/dataset mismatch."
+            )
 
     def run_all(self) -> None:
         logger.header("Experiment", str(self.group.name))
@@ -234,7 +318,7 @@ class _UpcycleSession:
                 self.checkpoint_dir / f"{run.id}_analysis.png",
             )
         except Exception:
-            pass
+            logger.error("Failed to generate analysis PNG, continuing")
 
     def _ctx(self) -> UpcycleContext:
         return UpcycleContext(
@@ -323,6 +407,6 @@ class _UpcycleSession:
         try:
             save_plan(plan_path, plan, payload=payload)
         except Exception:
-            pass
+            logger.error("Failed to save runtime plan, continuing")
         return plan
 

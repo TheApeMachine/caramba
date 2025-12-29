@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from console import logger
+
 
 @runtime_checkable
 class _H5Group(Protocol):
@@ -65,7 +67,7 @@ def _to_numpy(x: object) -> object:
                 if callable(numpy_fn):
                     return numpy_fn()
     except Exception:
-        pass
+        logger.error(f"Failed to convert to numpy, continuing: {x}")
 
     # numpy arrays are already fine.
     return x
@@ -100,13 +102,15 @@ class H5Store:
         self._h5py = h5py_mod
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to create parent directory, continuing: {e}")
             self.enabled = False
             return
 
         try:
             self._fh = self._h5py.File(str(self.path), "a")
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to open HDF5 file, continuing: {e}")
             self.enabled = False
             self._fh = None
 
@@ -129,8 +133,8 @@ class H5Store:
                     existing = getattr(g_step, "get", None)
                     if callable(existing) and existing(key) is not None:
                         continue
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Failed to get existing dataset, continuing: {key}: {e}")
 
                 data = _to_numpy(value)
                 kwargs: dict[str, Any] = {}
@@ -142,15 +146,15 @@ class H5Store:
 
             try:
                 self._fh.flush()
-            except Exception:
-                pass
-        except Exception:
+            except Exception as e:
+                logger.error(f"Failed to flush HDF5 file, continuing: {e}")
+        except Exception as e:
             # Disable after failure so training doesn't keep throwing.
             self.enabled = False
             try:
                 self.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to close HDF5 file, continuing: {e}")
 
     def close(self) -> None:
         """Close the underlying HDF5 file."""
@@ -159,11 +163,11 @@ class H5Store:
             return
         try:
             self._fh.flush()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to flush HDF5 file, continuing: {e}")
         try:
             self._fh.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to close HDF5 file, continuing: {e}")
         self._fh = None
 

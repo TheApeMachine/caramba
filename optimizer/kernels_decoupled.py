@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from optimizer.triton_runtime import TRITON_AVAILABLE
+from console import logger
 
 __all__ = [
     "kv_decode_update_decoupled_q4q8q4",
@@ -38,8 +39,8 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
     try:  # pyright: ignore[reportUnreachable]
         import triton
         import triton.language as tl
-    except (ImportError, ModuleNotFoundError):
-        pass
+    except (ImportError, ModuleNotFoundError) as e:
+        logger.error(f"Failed to import Triton, continuing: {e}")
     else:
         @triton.jit
         def kv_decode_update_decoupled_q4q8q4(

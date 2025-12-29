@@ -16,8 +16,10 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
+from console import logger
 from config.benchmark import PerplexityBenchmarkConfig
 from data.npy import NpyDataset
+from benchmark.utils import get_model_vocab_size
 from runtime.tensordict_utils import TensorDictBase, collate_tensordict
 
 
@@ -73,6 +75,7 @@ class PerplexityBenchmark:
         """
         model.eval()
         loader = self._get_loader()
+        vocab_size = get_model_vocab_size(model, default=32000)
 
         total_loss = 0.0
         total_tokens = 0
@@ -82,6 +85,20 @@ class PerplexityBenchmark:
             for batch in loader:
                 x = cast(Tensor, batch["input_ids"]).to(self.device)
                 y = cast(Tensor, batch["target_ids"]).to(self.device)
+
+                # Fail fast if the dataset token IDs exceed the model vocab.
+                # This frequently indicates a tokenizer mismatch (e.g. GPT-family tokens
+                # evaluated with a Llama-family model), which makes perplexity meaningless.
+                try:
+                    mx = int(torch.maximum(x.max(), y.max()).item())
+                    if mx >= int(vocab_size):
+                        raise ValueError(
+                            f"Dataset token IDs exceed model vocab: max_id={mx}, vocab_size={vocab_size}. "
+                            "This usually means the dataset was tokenized with a different tokenizer than the model."
+                        )
+                except Exception:
+                    # If max() fails for some reason, continue and let cross_entropy raise.
+                    logger.warning("Max() failed, continuing and letting cross_entropy raise")
 
                 logits = model(x)
 

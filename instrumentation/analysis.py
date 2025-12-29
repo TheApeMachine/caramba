@@ -17,6 +17,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from console import logger
+
 
 def _try_import_pyplot() -> Any | None:
     try:
@@ -27,7 +29,7 @@ def _try_import_pyplot() -> Any | None:
         try:
             mpl.use("Agg")  # type: ignore[attr-defined]
         except Exception:
-            pass
+            logger.error("Failed to use Agg backend, continuing")
         return importlib.import_module("matplotlib.pyplot")
     except (ImportError, ModuleNotFoundError):
         return None
@@ -45,8 +47,10 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
                 if isinstance(obj, dict):
                     events.append(obj)
             except json.JSONDecodeError:
+                logger.error(f"Failed to decode JSON line, continuing: {line}")
                 continue
     except OSError:
+        logger.error(f"Failed to read JSONL file, continuing: {path}")
         return []
     return events
 
@@ -86,9 +90,11 @@ def generate_analysis_png(train_jsonl_path: str | Path, out_png: str | Path) -> 
         step = ev.get("step", None)
         data = ev.get("data", {})
         if not isinstance(data, dict):
+            logger.error(f"Failed to parse metrics, continuing: {data}")
             continue
         metrics = data.get("metrics", {})
         if not isinstance(metrics, dict):
+            logger.error(f"Failed to parse metrics, continuing: {metrics}")
             continue
         loss = metrics.get("loss", None)
 
@@ -112,7 +118,7 @@ def generate_analysis_png(train_jsonl_path: str | Path, out_png: str | Path) -> 
                     try:
                         verify[f"{phase}/{k}"] = float(v)
                     except ValueError:
-                        pass
+                        logger.error(f"Failed to parse verify metric, continuing: {v}")
 
     # Plot.
     fig, ax = plt.subplots(1, 1, figsize=(10, 4))
@@ -146,17 +152,17 @@ def generate_analysis_png(train_jsonl_path: str | Path, out_png: str | Path) -> 
     try:
         dst.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
-        pass
+        logger.error(f"Failed to create parent directory, continuing: {dst.parent}")
     try:
         fig.tight_layout()
     except Exception:
-        pass
+        logger.error(f"Failed to save figure, continuing: {dst}")
     try:
         fig.savefig(str(dst), dpi=150)
     except Exception:
-        pass
+        logger.error(f"Failed to save figure, continuing: {dst}")
     try:
         plt.close(fig)
     except Exception:
-        pass
+        logger.error(f"Failed to close figure, continuing: {dst}")
 

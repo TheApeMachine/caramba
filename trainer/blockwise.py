@@ -15,6 +15,7 @@ import torch
 from torch import Tensor, nn
 from torch.optim import Optimizer
 
+from console import logger
 from model.trace import Trace, TraceStop
 from trainer.distill import DistillLoss
 
@@ -92,7 +93,7 @@ class TeacherOutputCache:
             try:
                 self._access_order.remove(key)
             except ValueError:
-                pass
+                logger.error("Failed to remove key from access order, continuing")
 
         self._refs[key] = weakref.ref(x, _on_collect)
 
@@ -108,7 +109,7 @@ class TeacherOutputCache:
                 self._access_order.remove(key)
             except ValueError:
                 # Could happen if the access list got out of sync (best-effort LRU).
-                pass
+                logger.error(f"Failed to remove key from access order, continuing: {key}")
             self._access_order.append(key)
             outs = self._cache[key]
             if upto is None:
@@ -341,6 +342,7 @@ class BlockwiseTrainer:
                 try:
                     _ = self.teacher(x)
                 except TraceStop:
+                    # logger.warning("Teacher trace stopped, continuing")
                     pass
 
         outputs = list(self._teacher_trace.outputs)
@@ -368,12 +370,14 @@ class BlockwiseTrainer:
                     try:
                         _ = self.student(x)
                     except TraceStop:
+                        # logger.warning("Student trace stopped, continuing")
                         pass
         else:
             with self._student_trace:
                 try:
                     _ = self.student(x)
                 except TraceStop:
+                    # logger.warning("Student trace stopped, continuing")
                     pass
 
         outputs = list(self._student_trace.outputs)

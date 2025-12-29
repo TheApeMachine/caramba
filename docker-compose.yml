@@ -65,6 +65,36 @@ services:
       start_period: 15s
       retries: 3
 
+  deeplake-mcp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.deeplake-mcp
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - MCP_SERVER_HOST=0.0.0.0
+      - MCP_SERVER_PORT=8002
+      # Persist DeepLake dataset inside the mounted volume.
+      - DEEPLAKE_DATASET_DIR=/app/.caramba/deeplake_colbert
+      # Optional overrides:
+      # - DEEPLAKE_DATASET_URI=file:///app/.caramba/deeplake_colbert
+      # - DEEPLAKE_MODEL_NAME=colbert-ir/colbertv2.0
+      # - DEEPLAKE_COLBERT_ROOT=/app/experiments
+      # - DEEPLAKE_CREATE_IF_MISSING=1
+      - PATH=/root/.local/bin:${PATH}
+    volumes:
+      - ./.caramba:/app/.caramba
+      - ./experiments:/app/experiments
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
 volumes:
   falkordb_data:
     driver: local

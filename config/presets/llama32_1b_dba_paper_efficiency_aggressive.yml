@@ -91,8 +91,13 @@ targets:
       block_size: ${block_size}
       lr: ${blockwise_lr}
       device: mps
-      dtype: float32
+      # Enable fp16 weights on MPS so Metal kernels can be used.
+      dtype: auto
       teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+      optimizer: lion
+      fused_optimizer: true
+      use_amp: true
+      amp_dtype: auto
       blockwise_autotune_enabled: true
       blockwise_autotune_mode: active
       blockwise_autotune_log_every: 50
@@ -109,7 +114,11 @@ targets:
       block_size: ${block_size}
       lr: ${global_lr}
       device: mps
-      dtype: float32
+      dtype: auto
+      optimizer: lion
+      fused_optimizer: true
+      use_amp: true
+      amp_dtype: auto
   benchmarks:
   - id: perplexity
     config:

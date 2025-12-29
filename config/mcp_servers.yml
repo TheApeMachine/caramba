@@ -11,3 +11,7 @@ paper-tools:
   transport: streamable-http
   url: "http://localhost:8001/mcp"
 
+deeplake:
+  transport: streamable-http
+  url: "http://localhost:8002/mcp"
+

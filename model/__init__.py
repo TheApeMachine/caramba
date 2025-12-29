@@ -10,6 +10,7 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
+from console import logger
 from config.diffusion import DiffusionHeadConfig
 from config.model import ModelConfig
 from layer.diffusion_head import (
@@ -162,3 +163,26 @@ class Model(nn.Module):
             temperature=temperature,
             guidance_scale=guidance_scale,
         )
+
+    # HuggingFace-style helpers (used by benchmarks/introspection)
+    def get_input_embeddings(self) -> nn.Module | None:
+        """Return the token embedding module if present.
+
+        Why this exists:
+        - Some generic utilities (benchmarks, exports) expect the HF-style
+          `get_input_embeddings()` API to determine vocab size.
+        """
+        return self.embedder.token_embedding
+
+    @property
+    def vocab_size(self) -> int | None:
+        """Best-effort vocabulary size for token models."""
+        emb = self.embedder.token_embedding
+        if emb is None:
+            logger.error("Failed to get vocab size, continuing: embedder.token_embedding is None")
+            return None
+        try:
+            return int(emb.num_embeddings)
+        except Exception as e:
+            logger.error(f"Failed to get vocab size, continuing: {e}")
+            return None

@@ -33,8 +33,11 @@ class LowerTest(unittest.TestCase):
         topo = StackedTopologyConfig(layers=[linear], repeat=3)
         lowered = self.compiler.lowerer.lower_topology(topo)
 
-        self.assertEqual(lowered.repeat, 1)
-        self.assertEqual(len(lowered.layers), 3)
+        # `TopologyConfig` now includes GraphTopology, so narrow the type here.
+        self.assertIsInstance(lowered, StackedTopologyConfig)
+        lowered_stacked = cast(StackedTopologyConfig, lowered)
+        self.assertEqual(lowered_stacked.repeat, 1)
+        self.assertEqual(len(lowered_stacked.layers), 3)
 
     def test_expands_repeat_through_nested(self) -> None:
         """
@@ -48,8 +51,8 @@ class LowerTest(unittest.TestCase):
         self.assertIsInstance(lowered, NestedTopologyConfig)
         lowered_nested = cast(NestedTopologyConfig, lowered)
 
-        self.assertEqual(lowered.repeat, 1)
-        self.assertEqual(len(lowered.layers), 3)
+        self.assertEqual(lowered_nested.repeat, 1)
+        self.assertEqual(len(lowered_nested.layers), 3)
         for child in lowered_nested.layers:
             self.assertIsInstance(child, StackedTopologyConfig)
             child_stacked = cast(StackedTopologyConfig, child)

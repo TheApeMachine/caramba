@@ -20,6 +20,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from config.layer import AttentionLayerConfig, AttentionMode
+from console import logger
 from layer.rope import RotaryEmbedding
 
 if TYPE_CHECKING:
@@ -28,6 +29,9 @@ if TYPE_CHECKING:
 
 # Lazy-cached reference to avoid per-call import overhead
 _InferContext: type | None = None
+
+# Debug aid: avoid spamming logs on every decode step.
+_LOGGED_METAL_FUSED_DECODE = False
 
 
 def _get_infer_context_type() -> type:
@@ -680,7 +684,6 @@ class AttentionLayer(nn.Module):
                 # Note: q_chunk does not affect correctness for single-token decode,
                 # so we still allow the fused decode fast-path even if a training
                 # config sets q_chunk for long-sequence chunking.
-                and (q_chunk_override is None)
                 and x.device.type in ("cuda", "mps")
             ):
                 if x.device.type == "cuda":
@@ -745,7 +748,7 @@ class AttentionLayer(nn.Module):
                     except Exception:
                         # Any failure in optional fused kernels should silently fall back
                         # to the safe PyTorch implementation.
-                        pass
+                        logger.warning("Fused decode failed, falling back to PyTorch implementation")
 
                 if x.device.type == "mps":
                     # MPS: custom Metal fused decode for fp16 caches (no quantization).
@@ -765,6 +768,10 @@ class AttentionLayer(nn.Module):
                             and k_geo_buf is not None
                             and v_buf is not None
                         ):
+                            global _LOGGED_METAL_FUSED_DECODE
+                            if not _LOGGED_METAL_FUSED_DECODE:
+                                logger.info("Using Metal fused decode")
+                                _LOGGED_METAL_FUSED_DECODE = True
                             S = int(cache.pos)
                             k_sem_view = k_sem_buf.narrow(1, 0, S)
                             k_geo_view = k_geo_buf.narrow(1, 0, S)
@@ -780,8 +787,10 @@ class AttentionLayer(nn.Module):
                             )
                             y = self.out_proj(self._merge(out_fused.to(dtype=x.dtype)))
                             return y, cache
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(
+                            f"Metal fused decode failed, falling back to PyTorch implementation: {e}"
+                        )
 
             if old_len > 0:
                 k_sem_all, k_geo_all, v_all = cache.get(dtype=qsh.dtype)
@@ -932,33 +941,63 @@ class AttentionLayer(nn.Module):
                         k_mem_geo = k_full
                     k_slice_geo = torch.cat([k_mem_geo, local], dim=2)
 
-            sem_scores = torch.matmul(q_slice_sem, k_slice_sem.transpose(-2, -1)) * sem_scale
-            geo_scores = torch.matmul(q_slice_geo, k_slice_geo.transpose(-2, -1)) * geo_scale
-            scores = sem_scores + geo_scores
+            # Fast-path: use PyTorch scaled_dot_product_attention on a composite
+            # (q_cat, k_cat) representation to reduce kernel launches.
+            #
+            # This is particularly important on MPS where Python-driven chunking
+            # can dominate runtime for moderate prompt lengths (e.g. 512+).
+            #
+            # Score equivalence (scale must be 1.0 to avoid SDPA's default 1/sqrt(d)):
+            #   q_cat = [q_sem * sem_scale, q_geo * geo_scale]
+            #   k_cat = [k_sem, k_geo]
+            #   (q_cat @ k_cat^T) == (q_sem @ k_sem^T)*sem_scale + (q_geo @ k_geo^T)*geo_scale
+            dropout_p = float(self.config.dropout_p) if self.training else 0.0
 
-            # Build keep mask (True = attend) and apply.
-            if mask is not None:
-                # Fall back to provided mask semantics (True=keep).
+            if mask is None:
+                attn_mask = None
+                if self.config.is_causal or local_window is not None:
+                    keep = torch.ones(
+                        (q_pos.numel(), k_pos.numel()),
+                        device=qsh.device,
+                        dtype=torch.bool,
+                    )
+                    if self.config.is_causal:
+                        keep &= k_pos.view(1, -1) <= q_pos.view(-1, 1)
+                    if local_window is not None:
+                        w = int(local_window)
+                        if w > 0:
+                            keep &= k_pos.view(1, -1) >= (q_pos.view(-1, 1) - w + 1)
+                            if not self.config.is_causal:
+                                keep &= k_pos.view(1, -1) <= (q_pos.view(-1, 1) + w - 1)
+                    attn_mask = keep  # True = allowed (SDPA boolean semantics)
+
+                q_cat = torch.cat(
+                    [q_slice_sem * float(sem_scale), q_slice_geo * float(geo_scale)],
+                    dim=-1,
+                )
+                k_cat = torch.cat([k_slice_sem, k_slice_geo], dim=-1)
+                out = F.scaled_dot_product_attention(
+                    q_cat,
+                    k_cat,
+                    v_slice,
+                    attn_mask=attn_mask,
+                    dropout_p=dropout_p,
+                    is_causal=False,
+                    scale=1.0,
+                )
+            else:
+                # Fallback: preserve existing mask slicing semantics (True=keep).
+                sem_scores = torch.matmul(q_slice_sem, k_slice_sem.transpose(-2, -1)) * sem_scale
+                geo_scores = torch.matmul(q_slice_geo, k_slice_geo.transpose(-2, -1)) * geo_scale
+                scores = sem_scores + geo_scores
                 try:
                     m = mask[..., i0:i1, k0:k1]
                     scores = scores.masked_fill(~m, ninfty)
                 except Exception:
-                    pass
-            else:
-                keep = torch.ones((q_pos.numel(), k_pos.numel()), device=qsh.device, dtype=torch.bool)
-                if self.config.is_causal:
-                    keep &= k_pos.view(1, -1) <= q_pos.view(-1, 1)
-                if local_window is not None:
-                    w = int(local_window)
-                    if w > 0:
-                        keep &= k_pos.view(1, -1) >= (q_pos.view(-1, 1) - w + 1)
-                        if not self.config.is_causal:
-                            keep &= k_pos.view(1, -1) <= (q_pos.view(-1, 1) + w - 1)
-                scores = scores.masked_fill(~keep.view(1, 1, q_pos.numel(), k_pos.numel()), ninfty)
-
-            attn = F.softmax(scores.float(), dim=-1).to(qsh.dtype)
-            attn = self.dropout(attn)
-            out = torch.matmul(attn, v_slice)
+                    logger.warning("Mask slice/masked_fill failed; continuing without extra mask")
+                attn = F.softmax(scores.float(), dim=-1).to(qsh.dtype)
+                attn = self.dropout(attn)
+                out = torch.matmul(attn, v_slice)
             outs.append(out)
 
         return torch.cat(outs, dim=2)

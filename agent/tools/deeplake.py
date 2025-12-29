@@ -10,12 +10,20 @@ Reference:
 from __future__ import annotations
 
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Sequence
 import deeplake
 from deeplake import types
 from colbert.infra import ColBERTConfig
 from colbert.modeling.checkpoint import Checkpoint
+
+from mcp.server.fastmcp import FastMCP
+
+
+# Initialize FastMCP server (Docker-friendly HTTP transport)
+mcp = FastMCP("DeepLake Tools", json_response=True)
 
 
 class DeepLakeTool():
@@ -49,8 +57,6 @@ class DeepLakeTool():
         self.ds = self.open_or_create(create_if_missing=create_if_missing)
 
     def get_command(self) -> str:
-        import sys
-
         return sys.executable
 
     def get_args(self) -> list[str]:
@@ -180,3 +186,81 @@ class DeepLakeTool():
         for row in matrix:
             rows.append("ARRAY[" + ",".join(str(float(x)) for x in row) + "]")
         return "ARRAY[" + ",".join(rows) + "]"
+
+
+_DEEPLAKE_TOOL: DeepLakeTool | None = None
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def _get_tool() -> DeepLakeTool:
+    """Lazy singleton DeepLakeTool for MCP requests.
+
+    Environment variables:
+      - DEEPLAKE_DATASET_URI: explicit dataset URI (e.g. "file:///app/.caramba/deeplake_colbert")
+      - DEEPLAKE_DATASET_DIR: local directory for file:// datasets (defaults to ".caramba/deeplake_colbert")
+      - DEEPLAKE_MODEL_NAME: ColBERT model id (default: "colbert-ir/colbertv2.0")
+      - DEEPLAKE_COLBERT_ROOT: ColBERT experiments root (default: "experiments")
+      - DEEPLAKE_CREATE_IF_MISSING: create dataset if missing (default: true)
+    """
+    global _DEEPLAKE_TOOL
+    if _DEEPLAKE_TOOL is not None:
+        return _DEEPLAKE_TOOL
+
+    dataset_uri = os.getenv("DEEPLAKE_DATASET_URI") or None
+    dataset_dir = os.getenv("DEEPLAKE_DATASET_DIR") or None
+    model_name = os.getenv("DEEPLAKE_MODEL_NAME", "colbert-ir/colbertv2.0")
+    colbert_root = os.getenv("DEEPLAKE_COLBERT_ROOT", "experiments")
+    create_if_missing = _env_bool("DEEPLAKE_CREATE_IF_MISSING", True)
+
+    _DEEPLAKE_TOOL = DeepLakeTool(
+        dataset_uri=dataset_uri,
+        dataset_dir=dataset_dir,
+        model_name=model_name,
+        colbert_root=colbert_root,
+        create_if_missing=create_if_missing,
+    )
+    return _DEEPLAKE_TOOL
+
+
+@mcp.tool()
+def deeplake_store(data: dict) -> str:
+    """Store one or many items in DeepLake.
+
+    Expected shape:
+      - {"id": "...", "text": "...", "metadata": {...}}
+    Or:
+      - {"items": [ {id,text,metadata}, ... ]}
+    """
+    return _get_tool().store(data)
+
+
+@mcp.tool()
+def deeplake_search(query: str) -> list[dict]:
+    """Semantic search over stored items (top-10)."""
+    return _get_tool().search(query)
+
+
+# Backward compatibility wrapper for stdio transport / tool spawning
+class DeepLakeMCP:
+    """DeepLake MCP server (backward compatibility wrapper)."""
+
+    def __init__(self, **kwargs: object):
+        # Present for compatibility with older codepaths; runtime config is via env vars.
+        pass
+
+    def get_command(self) -> str:
+        return sys.executable
+
+    def get_args(self) -> list[str]:
+        return ["-m", "agent.tools.deeplake"]
+
+
+if __name__ == "__main__":
+    # Host/port are controlled via MCP_SERVER_HOST / MCP_SERVER_PORT env vars.
+    mcp.run(transport="streamable-http")

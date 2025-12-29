@@ -12,6 +12,7 @@ from typing import Any
 
 import torch
 from torch import Tensor, nn
+from console import logger
 
 from compiler.lower import Lowerer
 from compiler.validate import Validator
@@ -55,7 +56,7 @@ class LanguageModelSystem:
                 features, logits = result
                 return {"features": features, "logits": logits, "_system": self.module}
         except TypeError:
-            pass
+            logger.error("Failed to forward, continuing")
         logits = self.module(input_ids, ctx=ctx)  # type: ignore[call-arg]
         return {"logits": logits, "_system": self.module}
 

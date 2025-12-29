@@ -13,6 +13,7 @@ configured model.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -73,7 +74,9 @@ class GenericSystem:
     def eval(self) -> None:
         self.module.eval()
 
-    def forward(self, batch: dict[str, Any], *, ctx: object | None = None) -> dict[str, Any]:
+    def forward(
+        self, batch: Mapping[str, Any] | TensorDictBase, *, ctx: object | None = None
+    ) -> dict[str, Any]:
         outputs: dict[str, Any] = {}
 
         if getattr(self, "_graph_mode", False):

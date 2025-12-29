@@ -3,7 +3,7 @@ from __future__ import annotations
 from config.embedder import TokenEmbedderConfig
 from config.layer import AttentionLayerConfig, LayerType, SwiGLULayerConfig
 from config.model import ModelConfig, ModelType
-from config.topology import StackedTopologyConfig
+from config.topology import GraphTopologyConfig, StackedTopologyConfig
 
 
 def test_model_config_optimize_scales_common_transformer() -> None:
@@ -23,6 +23,7 @@ def test_model_config_optimize_scales_common_transformer() -> None:
     assert opt is not cfg
     assert isinstance(opt.embedder, TokenEmbedderConfig)
     assert opt.embedder.d_model % 64 == 0
+    assert not isinstance(opt.topology, GraphTopologyConfig)
     assert opt.topology.repeat >= 4
     # Verify the optimized config's total parameter count is close to target
     param_count_fn = getattr(opt, "parameter_count", None)
