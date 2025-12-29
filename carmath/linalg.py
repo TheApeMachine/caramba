@@ -71,12 +71,34 @@ def randomized_svd(
         Y = A @ (A.transpose(0, 1) @ Y)
 
     # Orthonormal basis for the range of A.
-    Q, _R = torch.linalg.qr(Y, mode="reduced")  # (m, k)
+    #
+    # NOTE: `torch.linalg.qr` and `torch.linalg.svd` currently fall back to CPU on MPS.
+    # We explicitly move the calculation to CPU to silence the runtime warning and
+    # make the host-device sync explicit.
+    if Y.device.type == "mps":
+        # Optimization: Transfer fp16 to CPU first, then cast to float32.
+        # This reduces PCIe/bus bandwidth by 2x compared to casting on GPU then transferring.
+        Uy, _Sy, _Vhy = torch.linalg.svd(Y.cpu().float(), full_matrices=False)
+        Uy = Uy.to(device=Y.device)
+    else:
+        Uy, _Sy, _Vhy = torch.linalg.svd(Y.float(), full_matrices=False)
+
+    Q = Uy.to(dtype=Y.dtype)  # (m, k)
 
     # Small SVD on projected matrix.
     B = Q.transpose(0, 1) @ A  # (k, n)
-    U_hat, S, Vh = torch.linalg.svd(B, full_matrices=False)
-    U = Q @ U_hat  # (m, k)
+
+    if B.device.type == "mps":
+        U_hat, S, Vh = torch.linalg.svd(B.cpu().float(), full_matrices=False)
+        U_hat = U_hat.to(device=B.device)
+        S = S.to(device=B.device)
+        Vh = Vh.to(device=B.device)
+    else:
+        U_hat, S, Vh = torch.linalg.svd(B.float(), full_matrices=False)
+
+    U = Q @ U_hat.to(dtype=Q.dtype)  # (m, k)
+    Vh = Vh.to(dtype=Q.dtype)
+    S = S.to(dtype=torch.float32)
 
     return U[:, :r], S[:r], Vh[:r, :]
 

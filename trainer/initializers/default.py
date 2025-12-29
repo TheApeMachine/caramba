@@ -32,6 +32,10 @@ def _make_teacher_model_config(model_config: ModelConfig) -> ModelConfig:
             node_dict.pop("geo_dim", None)
             node_dict.pop("decoupled_gate", None)
             node_dict.pop("decoupled_gate_dynamic", None)
+            # Teacher should prefer the largest fused kernels available; training-time
+            # chunk/window settings are primarily for student memory control.
+            node_dict.pop("q_chunk", None)
+            node_dict.pop("local_window", None)
             return node_dict
 
         if "layers" in node_dict and isinstance(node_dict["layers"], list):
@@ -92,7 +96,7 @@ class DefaultInitializer:
             student = ctx.dist_ctx.wrap_model(student)
 
         if bool(ctx.runtime_plan.compile) and hasattr(torch, "compile"):
-            if ctx.device.type == "cuda":
+            if ctx.device.type in ("cuda", "mps"):
                 logger.info(
                     f"Compiling student with torch.compile (mode={ctx.runtime_plan.compile_mode})..."
                 )

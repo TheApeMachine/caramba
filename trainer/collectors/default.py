@@ -64,7 +64,7 @@ class DefaultCollector:
             )
         dataset = build_token_dataset(path=path, block_size=int(train.block_size))
 
-        val_frac = float(getattr(ctx.defaults, "val_frac", 0.0)) if ctx.defaults else 0.0
+        val_frac = float(ctx.defaults.data.val_frac) if ctx.defaults else 0.0
         n = len(cast(Sized, dataset))
         n_train, n_val = train_val_counts(n, val_frac)
 

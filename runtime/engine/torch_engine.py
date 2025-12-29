@@ -105,11 +105,6 @@ class TorchEngine:
             ref="system.diffusion_denoiser",
             python="model.diffusion_denoiser_system:DiffusionDenoiserSystem",
         )
-        self.registry.register(
-            backend="torch",
-            ref="system.graph",
-            python="model.graph_system:GraphSystem",
-        )
 
         # Objectives
         self.registry.register(

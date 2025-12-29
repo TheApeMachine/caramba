@@ -10,6 +10,7 @@ components.
 """
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 import time
 from typing import Any, Protocol, Sized, cast
@@ -310,6 +311,76 @@ class StandardTrainer:
         logger.header("Training", f"{target.name}:{run.id} • {run.steps} steps")
         loader_iter = iter(loader)
 
+        def _call_objective_loss(*, outputs: object, batch_td: TensorDictBase) -> Tensor:
+            if not hasattr(objective, "loss"):
+                raise TypeError("Objective component does not expose loss()")
+            loss_fn = objective.loss  # type: ignore[attr-defined]
+            try:
+                sig = inspect.signature(loss_fn)
+                params = sig.parameters
+            except Exception:
+                # If we can't introspect (e.g. some builtins), fall back to the canonical API.
+                return loss_fn(outputs=outputs, batch=batch_td)
+
+            kwargs: dict[str, object] = {}
+            if "outputs" in params:
+                kwargs["outputs"] = outputs
+            else:
+                # All current objectives use `outputs=...`; keep this strict.
+                raise TypeError("Objective.loss must accept keyword argument 'outputs'")
+
+            if "batch" in params:
+                kwargs["batch"] = batch_td
+            elif "_batch" in params:
+                kwargs["_batch"] = batch_td
+            elif "batch_td" in params:
+                kwargs["batch_td"] = batch_td
+            elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                # Best-effort: prefer the canonical name if **kwargs is accepted.
+                kwargs["batch"] = batch_td
+            else:
+                raise TypeError("Objective.loss must accept a batch keyword (e.g. 'batch' or '_batch')")
+
+            loss = loss_fn(**kwargs)
+            if not isinstance(loss, Tensor):
+                raise TypeError(f"Objective.loss must return a Tensor, got {type(loss).__name__}")
+            return loss
+
+        def _call_objective_metrics(
+            *, outputs: object, batch_td: TensorDictBase, loss: Tensor
+        ) -> dict[str, float] | None:
+            if not hasattr(objective, "metrics"):
+                return None
+            metrics_fn = objective.metrics  # type: ignore[attr-defined]
+            try:
+                sig = inspect.signature(metrics_fn)
+                params = sig.parameters
+            except Exception:
+                extra = metrics_fn(outputs=outputs, batch=batch_td, loss=loss)
+                return cast(dict[str, float] | None, extra) if isinstance(extra, dict) else None
+
+            kwargs: dict[str, object] = {}
+            if "outputs" in params:
+                kwargs["outputs"] = outputs
+            if "batch" in params:
+                kwargs["batch"] = batch_td
+            elif "_batch" in params:
+                kwargs["_batch"] = batch_td
+            elif "batch_td" in params:
+                kwargs["batch_td"] = batch_td
+            elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                kwargs["batch"] = batch_td
+
+            if "loss" in params:
+                kwargs["loss"] = loss
+            elif "_loss" in params:
+                kwargs["_loss"] = loss
+            elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                kwargs["loss"] = loss
+
+            extra = metrics_fn(**kwargs)
+            return cast(dict[str, float] | None, extra) if isinstance(extra, dict) else None
+
         def _forward_loss(batch_td: TensorDictBase) -> tuple[object, Tensor]:
             with torch.autocast(
                 device_type=device.type,
@@ -319,13 +390,7 @@ class StandardTrainer:
                 if not hasattr(system, "forward"):
                     raise TypeError("System component does not expose forward()")
                 outputs = system.forward(batch_td)  # type: ignore[attr-defined]
-                if not hasattr(objective, "loss"):
-                    raise TypeError("Objective component does not expose loss()")
-                loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
-                if not isinstance(loss, Tensor):
-                    raise TypeError(
-                        f"Objective.loss must return a Tensor, got {type(loss).__name__}"
-                    )
+                loss = _call_objective_loss(outputs=outputs, batch_td=batch_td)
             return outputs, loss
 
         with logger.progress_bar() as progress:
@@ -402,16 +467,13 @@ class StandardTrainer:
 
                 if (step + 1) % telemetry_interval == 0:
                     metrics: dict[str, float] = {"loss": float(loss.detach())}
-                    if hasattr(objective, "metrics"):
-                        try:
-                            extra = objective.metrics(  # type: ignore[attr-defined]
-                                outputs=outputs, batch=batch_td, loss=loss
-                            )
-                            if isinstance(extra, dict):
-                                metrics.update({str(k): float(v) for k, v in extra.items()})
-                        except Exception:
-                            # Metrics are best-effort; don't fail training.
-                            logger.warning("Failed to compute objective metrics (ignoring)")
+                    try:
+                        extra = _call_objective_metrics(outputs=outputs, batch_td=batch_td, loss=loss)
+                        if isinstance(extra, dict):
+                            metrics.update({str(k): float(v) for k, v in extra.items()})
+                    except Exception:
+                        # Metrics are best-effort; don't fail training.
+                        logger.warning("Failed to compute objective metrics (ignoring)")
                     # Timing breakdown (seconds).
                     metrics.update(
                         {

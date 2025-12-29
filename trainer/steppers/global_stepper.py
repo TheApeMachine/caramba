@@ -5,6 +5,7 @@ from collections.abc import Iterator
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 from config.run import Run
@@ -111,6 +112,22 @@ def _int_or(value: object, default: int = 0) -> int:
         return int(default)
 
 
+def _build_optimizer(train, params) -> Optimizer:
+    """Build optimizer for upcycle steppers (blockwise/global)."""
+    opt_name = str(getattr(train, "optimizer", "adamw")).lower()
+    weight_decay = float(getattr(train, "weight_decay", 0.0))
+    fused_opt = bool(getattr(train, "fused_optimizer", False))
+    if opt_name in ("adamw", "adam"):
+        return torch.optim.AdamW(params, lr=float(train.lr), weight_decay=float(weight_decay))
+    if opt_name == "sgd":
+        return torch.optim.SGD(params, lr=float(train.lr), weight_decay=float(weight_decay))
+    if opt_name == "lion":
+        from optimizer.lion import Lion
+
+        return Lion(params, lr=float(train.lr), weight_decay=float(weight_decay), fused=bool(fused_opt))
+    raise ValueError(f"Unknown optimizer {opt_name!r}")
+
+
 class GlobalStepper:
     def run(
         self,
@@ -130,7 +147,7 @@ class GlobalStepper:
         for p in ctx.student.parameters():
             p.requires_grad = True
 
-        optimizer = torch.optim.AdamW(ctx.student.parameters(), lr=train.lr)
+        optimizer = _build_optimizer(train, ctx.student.parameters())
         ctx.student.train()
 
         has_diffusion = _has_diffusion_head(ctx.student)
@@ -200,11 +217,11 @@ class GlobalStepper:
                 if scheduler is not None:
                     scheduler.step()
 
-                loss_val = float(loss) if loss is not None else 0.0
+                loss_val = float(loss.detach()) if loss is not None else 0.0
                 lr = float(optimizer.param_groups[0].get("lr", train.lr))
-                metrics: dict[str, float] = {"loss": loss_val, "ce_loss": float(ce_loss), "lr": lr}
+                metrics: dict[str, float] = {"loss": loss_val, "ce_loss": float(ce_loss.detach()), "lr": lr}
                 if diff_loss is not None:
-                    metrics["diff_loss"] = float(diff_loss)
+                    metrics["diff_loss"] = float(diff_loss.detach())
                 if ctx.inst:
                     ctx.inst.log_scalars(step=step + 1, prefix="train/global", scalars=metrics)
 

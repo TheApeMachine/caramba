@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Iterable, TypeGuard
 
 from config.model import ModelConfig
-from config.topology_graph import GraphTopologyConfig
 from config.layer import (
     AttentionLayerConfig,
     AttentionMode,
@@ -13,7 +12,7 @@ from config.layer import (
     LayerConfig,
     LinearLayerConfig,
 )
-from config.topology import NodeConfig, TopologyConfig
+from config.topology import GraphTopologyConfig, NodeConfig, TopologyConfig
 from console import logger
 
 from compiler.plan import Planner
@@ -29,6 +28,12 @@ class Validator:
     def validate_model_config(self, model: ModelConfig, *, print_plan: bool = False) -> ModelConfig:
         """Validate a model config's topology/layer invariants."""
         topo = model.topology
+        if isinstance(topo, GraphTopologyConfig):
+            # Graph topologies operate over named ports; single-stream IO inference
+            # does not apply. Validate DAG invariants instead.
+            self.validate_graph_topology(topo, path="model.topology")
+            _ = print_plan
+            return model
         self.infer_topology_io(topo, path="model.topology")
         for layer, path in self.iter_layers(topo, path="model.topology"):
             if isinstance(layer, AttentionLayerConfig):
@@ -64,13 +69,45 @@ class Validator:
                 raise ValueError(f"{p}.id: duplicate node id {nid!r}")
             ids.add(nid)
 
+            op = str(getattr(n, "op", "") or "")
+            if not op:
+                raise ValueError(f"{p}.op: must be non-empty")
+
+            ins = [str(n.in_keys)] if isinstance(n.in_keys, str) else [str(x) for x in n.in_keys]
+            if not ins:
+                raise ValueError(f"{p}.in: must be non-empty")
+            for k in ins:
+                if not str(k):
+                    raise ValueError(f"{p}.in: keys must be non-empty")
+
             outs = [str(n.out_keys)] if isinstance(n.out_keys, str) else [str(x) for x in n.out_keys]
             if not outs:
                 raise ValueError(f"{p}.out: must be non-empty")
             for k in outs:
+                if not str(k):
+                    raise ValueError(f"{p}.out: keys must be non-empty")
                 if k in produced:
                     raise ValueError(f"{p}.out: key {k!r} already produced by node {produced[k]!r}")
                 produced[k] = nid
+
+        # Optional: validate declared inputs cover all external reads.
+        declared_inputs = getattr(topo, "inputs", None)
+        if declared_inputs is not None:
+            allowed = {str(k) for k in list(declared_inputs)}
+            if "" in allowed:
+                raise ValueError(f"{path}.inputs: keys must be non-empty")
+            external_reads: set[str] = set()
+            for n in list(topo.nodes):
+                ins = [str(n.in_keys)] if isinstance(n.in_keys, str) else [str(x) for x in n.in_keys]
+                for k in ins:
+                    if k not in produced:
+                        external_reads.add(k)
+            missing = sorted(external_reads - allowed)
+            if missing:
+                raise ValueError(
+                    f"{path}.inputs: missing required input keys {missing}. "
+                    "Fix: add them to GraphTopology.inputs or produce them in the graph."
+                )
 
         # Acyclicity and ordering are validated by toposort_graph().
         _ = self.toposort_graph(topo)
@@ -119,7 +156,7 @@ class Validator:
         self.infer_topology_io(config, path=path)
 
     def is_topology(self, node: NodeConfig) -> TypeGuard[TopologyConfig]:
-        return hasattr(node, "layers")
+        return isinstance(node, GraphTopologyConfig) or hasattr(node, "layers")
 
     def infer_node_io(self, node: NodeConfig, *, path: str) -> IO:
         return self.infer_topology_io(
@@ -140,6 +177,9 @@ class Validator:
         raise ValueError(f"Unsupported layer config: {type(layer)!r}")
 
     def infer_topology_io(self, topo: TopologyConfig, *, path: str) -> IO:
+        if isinstance(topo, GraphTopologyConfig):
+            # Named-port DAGs do not have a single d_in/d_out.
+            return IO()
         t = topo.type.value
         nodes = list(topo.layers)
 
@@ -197,6 +237,8 @@ class Validator:
 
     def iter_layers(self, node: NodeConfig, *, path: str) -> Iterable[tuple[LayerConfig, str]]:
         if self.is_topology(node):
+            if isinstance(node, GraphTopologyConfig):
+                return
             for i, child in enumerate(node.layers):
                 yield from self.iter_layers(child, path=f"{path}.layers[{i}]")
         else:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict
 
 import pytest
 import torch
@@ -24,7 +25,7 @@ class TinyDataset(Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         # Return dict to exercise as_tensordict/collate_tensordict path.
         x = torch.tensor([float(idx), float(idx + 1)], dtype=torch.float32)
         return {"x": x}
@@ -51,11 +52,11 @@ class DummySystem(nn.Module):
 
 
 class DummyObjective:
-    def loss(self, *, outputs, batch):
+    def loss(self, *, outputs, _batch):
         y = outputs["y"]
         return (y.float().pow(2).mean())
 
-    def metrics(self, *, outputs, batch, loss):
+    def metrics(self, *, outputs, _batch, _loss):
         return {"y_mean": float(outputs["y"].detach().mean())}
 
 
@@ -205,7 +206,10 @@ def test_run_single_distributed_init_failure_is_wrapped(tmp_path: Path, monkeypa
 
     import trainer.distributed as dist
 
-    monkeypatch.setattr(dist.DistributedContext, "init", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("boom")))
+    def raise_boom(*_a, **_k) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(dist.DistributedContext, "init", raise_boom)
 
     from instrumentation.run_logger import RunLogger
 

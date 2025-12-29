@@ -163,8 +163,16 @@ def check_target_readiness(
                 kind="warning" if best_effort else "error",
                 code="metal_build_tools_missing",
                 message=(
-                    "Metal build tools (xcrun) are not available; fused DBA decode cannot be built "
-                    "and the run would fall back to unoptimized PyTorch."
+                    "Metal build tools are not available (missing `metal`/`metallib` in the active Xcode toolchain); "
+                    "fused DBA decode cannot be built and the run would fall back to unoptimized PyTorch.\n"
+                    "Install/select Xcode Command Line Tools:\n"
+                    "  - `xcode-select --install`\n"
+                    "Or, if you have Xcode.app:\n"
+                    "  - `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`\n"
+                    "  - `sudo xcodebuild -license accept`\n"
+                    "Verify:\n"
+                    "  - `xcrun -sdk macosx --find metal`\n"
+                    "  - `xcrun -sdk macosx --find metallib`"
                 ),
             )
             (report.warnings if best_effort else report.errors).append(issue)

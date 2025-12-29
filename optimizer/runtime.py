@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import platform
 import shutil
+import subprocess
 from typing import TYPE_CHECKING
 
 __all__ = [
@@ -72,10 +73,25 @@ def metal_supported() -> bool:
 
 
 def metal_build_tools_available() -> bool:
-    """Whether the host has the build tools to compile Metal shaders (xcrun)."""
+    """Whether the host can compile Metal shaders via Xcode toolchain.
+
+    Notes:
+    - Having `xcrun` in PATH is not sufficient; the active developer directory
+      must contain the `metal` and `metallib` tools.
+    - This function is intentionally conservative: if we can't *prove* the tools
+      exist, we return False so training can surface a clear, actionable error.
+    """
     if not metal_supported():
         return False
-    return shutil.which("xcrun") is not None
+    if shutil.which("xcrun") is None:
+        return False
+    # Ensure the actual Metal tools exist in the selected toolchain.
+    try:
+        subprocess.check_output(["xcrun", "-sdk", "macosx", "--find", "metal"], stderr=subprocess.STDOUT)
+        subprocess.check_output(["xcrun", "-sdk", "macosx", "--find", "metallib"], stderr=subprocess.STDOUT)
+    except Exception:
+        return False
+    return True
 
 
 METAL_SUPPORTED: bool = bool(metal_supported()) if not TYPE_CHECKING else False

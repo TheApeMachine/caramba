@@ -66,6 +66,29 @@ class TrainConfig(BaseModel):
     convergence_patience: PositiveInt = 50
     convergence_max_steps: PositiveInt = 5000
 
+    # Blockwise "autopilot" (lightweight self-tuning)
+    # This is intentionally simpler than the global orchestrator: it operates
+    # within each block to adapt LR on spikes/plateaus and to log decisions.
+    blockwise_autotune_enabled: bool = False
+    blockwise_autotune_mode: str = "monitor"  # off|monitor|active
+    blockwise_autotune_min_lr: PositiveFloat = 1e-6
+    blockwise_autotune_lr_decay: PositiveFloat = 0.5  # multiply LR by this
+    blockwise_autotune_plateau_patience: PositiveInt = 100
+    blockwise_autotune_ema_decay: PositiveFloat = 0.99
+    blockwise_autotune_spike_std: PositiveFloat = 3.0
+    blockwise_autotune_window_size: PositiveInt = 50
+    blockwise_autotune_log_every: PositiveInt = 50
+
+    # Blockwise distillation details
+    # - distill_target: "attention" matches raw AttentionLayer outputs (default behavior),
+    #   "residual" matches the *post-residual* output of the attention ResidualTopology
+    #   (often more stable for deeper layers).
+    blockwise_distill_target: str = "attention"  # attention|residual
+    blockwise_truncated_forward: bool = True
+    blockwise_teacher_cache_max_size: PositiveInt = 100
+    blockwise_grad_clip_norm: NonNegativeFloat = 0.0
+    blockwise_reset_lr_each_block: bool = False
+
     # Performance optimizations
     cache_teacher_outputs: bool = True
     use_amp: bool = False
@@ -108,4 +131,12 @@ class TrainConfig(BaseModel):
     orchestrator_eval_horizon: PositiveInt = 100
     orchestrator_initial_strategy: str = "conservative_adamw"
     orchestrator_use_adagc: bool = True
+    orchestrator_adagc_warmup: NonNegativeInt = 100
     orchestrator_use_nowcasting: bool = False
+
+    # Safety (used by GlobalOrchestratedStepper)
+    orchestrator_max_loss_increase: PositiveFloat = 1.5
+    orchestrator_max_spikes_before_switch: PositiveInt = 3
+    orchestrator_safety_strategy: str = "spike_resistant"
+    orchestrator_fail_fast: bool = True
+    orchestrator_portfolio_base_lr: PositiveFloat = 1e-4

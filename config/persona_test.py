@@ -7,6 +7,7 @@ from config.persona import PersonaType, load_persona
 
 def test_persona_type_from_str_roundtrip() -> None:
     assert PersonaType.from_str("developer") == PersonaType.DEVELOPER
+    assert PersonaType.DEVELOPER.value == "developer"
 
 
 def test_load_persona_loads_and_validates(tmp_path: Path) -> None:

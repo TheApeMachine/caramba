@@ -84,8 +84,10 @@ static void ensure_library_locked(id<MTLDevice> device) {
   TORCH_CHECK(!lib_path.empty(), "caramba_metal_ops: failed to locate extension path via dladdr()");
 
   NSString* ns_path = [NSString stringWithUTF8String:lib_path.c_str()];
+  NSURL* url = [NSURL fileURLWithPath:ns_path];
   NSError* err = nil;
-  g_lib = [device newLibraryWithFile:ns_path error:&err];
+  // newLibraryWithFile:error: is deprecated; use URL variant on newer macOS.
+  g_lib = [device newLibraryWithURL:url error:&err];
   if (g_lib == nil) {
     const char* msg = err ? [[err localizedDescription] UTF8String] : "unknown error";
     TORCH_CHECK(false, "caramba_metal_ops: failed to load metallib at ", lib_path, ": ", msg);
@@ -94,7 +96,9 @@ static void ensure_library_locked(id<MTLDevice> device) {
 
 static id<MTLComputePipelineState> ensure_pipeline(
     id<MTLDevice> device,
-    id<MTLComputePipelineState>* pipeline,
+    // Important: this is a STRONG out-parameter. If left un-annotated under ARC,
+    // Clang treats it as __autoreleasing and rejects passing addresses of globals.
+    id<MTLComputePipelineState> __strong* pipeline,
     const char* fn_name) {
   std::lock_guard<std::mutex> lock(g_pipeline_mutex);
   ensure_library_locked(device);
@@ -133,10 +137,12 @@ static inline id<MTLBuffer> storage_as_mtlbuffer(const at::Tensor& t) {
   // NOTE: This is intentionally low-level to avoid CPU staging/copies.
   const auto& dp = t.storage().data_ptr();
   void* ctx = dp.get_context();
-  if (ctx == nullptr) {
-    ctx = dp.get();
-  }
-  return (id<MTLBuffer>)ctx;
+  TORCH_CHECK(
+      ctx != nullptr,
+      "caramba_metal_ops: expected MPS storage to provide an MTLBuffer context (got null). "
+      "This usually indicates a non-standard tensor storage backend.");
+  // Under ARC we must use a bridged cast from void* to ObjC object.
+  return (__bridge id<MTLBuffer>)ctx;
 }
 
 static inline NSUInteger storage_offset_bytes(const at::Tensor& t) {

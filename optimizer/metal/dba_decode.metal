@@ -49,7 +49,10 @@ kernel void dba_decode_fp16(
     device const half* v     [[ buffer(4) ]],
     device half* out         [[ buffer(5) ]],
     constant DBAParams& p    [[ buffer(6) ]],
-    uint tid                [[ thread_position_in_threadgroup ]],
+    // Use a scalar thread index for a 1D threadgroup.
+    // (thread_position_in_threadgroup is uint3; mixing uint + uint3 in inputs is rejected
+    // by newer Metal toolchains.)
+    uint tid                [[ thread_index_in_threadgroup ]],
     uint3 tgid              [[ threadgroup_position_in_grid ]]
 ) {
     constexpr uint TG = 256;

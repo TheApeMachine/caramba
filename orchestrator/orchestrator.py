@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -52,6 +53,7 @@ class DecisionBoundary(str, Enum):
     SPIKE = "spike"  # Spike detected
     PLATEAU = "plateau"  # Loss plateaued
     PHASE_CHANGE = "phase_change"  # Training phase changed
+    SAFETY = "safety"  # Hard safety threshold exceeded (loss/NaN/etc)
     MANUAL = "manual"  # Explicit request
 
 
@@ -217,6 +219,7 @@ class Orchestrator:
         # Safety tracking
         self._consecutive_failures: int = 0
         self._total_switches: int = 0
+        self._loss_baseline: float | None = None
 
         # Bandit state for strategy selection
         self._strategy_rewards: dict[str, list[float]] = {
@@ -234,6 +237,21 @@ class Orchestrator:
             total_steps=total,
             warmup_steps=warmup,
         )
+
+    def set_loss_baseline(self, baseline_loss: float | None) -> None:
+        """Seed a loss baseline for cold-start safety checks.
+
+        This exists to handle phase boundaries where the first few steps may
+        start at an already-bad loss. EMA-based spike detection cannot detect
+        that case because the EMA initializes to the first observation.
+        """
+        if baseline_loss is None:
+            self._loss_baseline = None
+            return
+        v = float(baseline_loss)
+        if not math.isfinite(v) or v <= 0:
+            raise ValueError(f"baseline_loss must be finite and > 0, got {baseline_loss!r}")
+        self._loss_baseline = v
 
     def record(
         self,
@@ -286,6 +304,14 @@ class Orchestrator:
 
         Returns the decision boundary type, or None if no evaluation needed.
         """
+        # Hard safety checks always win, even under hysteresis.
+        if not math.isfinite(float(snapshot.loss)):
+            return DecisionBoundary.SAFETY
+        if self._loss_baseline is not None:
+            ceiling = float(self._loss_baseline) * float(self.config.max_loss_increase)
+            if float(snapshot.loss) > ceiling:
+                return DecisionBoundary.SAFETY
+
         # Respect hysteresis
         if step - self._last_switch_step < self.config.min_steps_between_switches:
             return None
@@ -361,6 +387,19 @@ class Orchestrator:
                 trigger_metric="phase",
                 current_value=str(snapshot.phase.value),
                 threshold="plateau",
+                window=window,
+                horizon=horizon,
+            )
+        elif reason == DecisionBoundary.SAFETY:
+            ceiling = (
+                float(self._loss_baseline) * float(self.config.max_loss_increase)
+                if self._loss_baseline is not None
+                else float("nan")
+            )
+            reason_detail = SwitchReason(
+                trigger_metric="loss",
+                current_value=float(snapshot.loss),
+                threshold=float(ceiling),
                 window=window,
                 horizon=horizon,
             )

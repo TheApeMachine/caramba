@@ -10,7 +10,7 @@ def test_lion_step_updates_parameter_and_supports_closure() -> None:
     p = torch.nn.Parameter(torch.tensor([1.0, -2.0]))
     opt = Lion([p], lr=0.1, betas=(0.0, 0.0), weight_decay=0.0, fused=False)
 
-    def closure():
+    def closure() -> torch.Tensor:
         # Fake loss: set gradient deterministically.
         if p.grad is not None:
             p.grad.zero_()

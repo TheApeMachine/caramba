@@ -54,12 +54,15 @@ def test_lower_manifest_lowers_graph_topology_payload() -> None:
         task=ComponentSpec(ref="task.graph"),
         data=ComponentSpec(ref="dataset.graph_npy", config={"path": "x.npy"}),
         system=ComponentSpec(
-            ref="system.graph",
+            ref="system.generic",
             config={
-                "topology": {
-                    "type": "graph",
-                    "nodes": [{"id": "n", "op": "mlp", "in": "x", "out": "y", "repeat": 1, "config": {}}],
-                }
+                "model": {
+                    "type": "MLPModel",
+                    "topology": {
+                        "type": "GraphTopology",
+                        "nodes": [{"id": "n", "op": "mlp", "in": "x", "out": "y", "repeat": 1, "config": {}}],
+                    },
+                },
             },
         ),
         objective=ComponentSpec(ref="objective.mse"),
@@ -70,7 +73,7 @@ def test_lower_manifest_lowers_graph_topology_payload() -> None:
     lowered = Lowerer().lower_manifest(m)
     t2 = lowered.targets[0]
     assert isinstance(t2, ExperimentTargetConfig)
-    topo = t2.system.config["topology"]
+    topo = t2.system.config["model"]["topology"]
     # Ensure aliasing kept keys as "in"/"out" in the dumped payload.
     assert topo["nodes"][0]["in"] == "x"
     assert topo["nodes"][0]["out"] == "y"

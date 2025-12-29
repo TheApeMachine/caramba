@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from console import logger
 from typing import TYPE_CHECKING
 
 import torch
@@ -12,6 +13,9 @@ from .jit import load_caramba_metal_ops
 
 if TYPE_CHECKING:
     from torch import Tensor
+
+
+_LOGGED = False
 
 
 def metal_rmsnorm_available() -> bool:
@@ -40,6 +44,12 @@ def rmsnorm_fp16(
 
     x2 = x.contiguous()
     ops = load_caramba_metal_ops(verbose=bool(verbose_build))
+
+    global _LOGGED
+    if not _LOGGED:
+        logger.success("Using custom Metal kernel: RMSNorm (fp16)")
+        _LOGGED = True
+
     if weight is None:
         return ops.rmsnorm_noweight(x2, float(eps))
 

@@ -29,6 +29,7 @@ class GlobalOrchestratedStepper:
         resume_state: dict[str, object] | None,
     ) -> None:
         from orchestrator import (
+            DecisionBoundary,
             Orchestrator,
             OrchestratorConfig,
             create_strategy,
@@ -47,6 +48,7 @@ class GlobalOrchestratedStepper:
         ctx.student.train()
 
         has_diffusion = _has_diffusion_head(ctx.student)
+        has_diffusion_teacher = _has_diffusion_head(ctx.teacher)
         use_amp = bool(train.use_amp) and ctx.device.type in ("cuda", "mps", "cpu")
         amp_dtype = autocast_dtype(ctx.device, str(train.amp_dtype))
 
@@ -57,32 +59,100 @@ class GlobalOrchestratedStepper:
             except Exception:
                 scaler = None
 
+        mode = str(getattr(train, "orchestrator_mode", "active")).lower()
+        max_loss_increase = float(getattr(train, "orchestrator_max_loss_increase", 1.5))
+        max_spikes = int(getattr(train, "orchestrator_max_spikes_before_switch", 3))
+        safety_name = str(getattr(train, "orchestrator_safety_strategy", "spike_resistant"))
+        fail_fast = bool(getattr(train, "orchestrator_fail_fast", True))
+
         orch_config = OrchestratorConfig(
             decision_interval=int(getattr(train, "orchestrator_decision_interval", 500)),
             eval_horizon=int(getattr(train, "orchestrator_eval_horizon", 100)),
+            max_loss_increase=float(max_loss_increase),
+            max_spikes_before_switch=int(max_spikes),
+            safety_strategy_name=str(safety_name),
             log_dir=ctx.checkpoint_dir / "orchestrator",
         )
-        orchestrator = Orchestrator(model=ctx.student, config=orch_config, portfolio=DEFAULT_PORTFOLIO)
+
+        # Scale the strategy portfolio around the run-configured base LR.
+        # The built-in portfolio bundles are defined around a nominal 1e-4.
+        base_lr = float(getattr(train, "orchestrator_portfolio_base_lr", 1e-4))
+        run_lr = float(train.lr)
+        warmup_steps = int(getattr(train, "warmup_steps", 0))
+        total_steps = int(run.steps)
+
+        portfolio: list[StrategyBundle] = []
+        for b in DEFAULT_PORTFOLIO:
+            lr_mult = float(b.lr) / float(base_lr) if float(base_lr) > 0 else 1.0
+            portfolio.append(
+                StrategyBundle(
+                    **{
+                        **b.__dict__,
+                        "lr": float(run_lr * lr_mult),
+                        "total_steps": total_steps,
+                        "warmup_steps": warmup_steps,
+                        "use_nowcasting": bool(getattr(train, "orchestrator_use_nowcasting", False)),
+                    }
+                )
+            )
+
+        orchestrator = Orchestrator(model=ctx.student, config=orch_config, portfolio=portfolio)
         orchestrator.set_total_steps(int(run.steps), int(getattr(train, "warmup_steps", 0)))
 
         initial_name = str(getattr(train, "orchestrator_initial_strategy", "conservative_adamw"))
-        initial_bundle = next((b for b in DEFAULT_PORTFOLIO if b.name == initial_name), DEFAULT_PORTFOLIO[0])
-        initial_bundle = StrategyBundle(
-            **{**initial_bundle.__dict__, "total_steps": int(run.steps), "warmup_steps": int(getattr(train, "warmup_steps", 0)), "lr": float(train.lr)}
-        )
+        initial_bundle = next((b for b in portfolio if b.name == initial_name), portfolio[0])
         current_strategy = create_strategy(initial_bundle, ctx.student)
 
         if getattr(train, "orchestrator_use_adagc", True):
-            current_strategy.add_wrapper(AdaGC(ctx.student, warmup_steps=100))
+            current_strategy.add_wrapper(
+                AdaGC(ctx.student, warmup_steps=int(getattr(train, "orchestrator_adagc_warmup", 100)))
+            )
 
-        logger.header("Global Fine-tuning (Orchestrated)", f"{run.steps} steps • strategy={current_strategy.name}")
+        logger.header(
+            "Global Fine-tuning (Orchestrated)",
+            f"{run.steps} steps • mode={mode} • strategy={current_strategy.name}",
+        )
         loader_iter = cast(Iterator[TensorDictBase], iter(loader))
         loss: Tensor | None = None
+
+        # Cold-start baseline: compare student against teacher CE on the same batch.
+        first_batch, loader_iter = collector.next_batch(loader, loader_iter)
+        x0 = first_batch["input_ids"].to(device=ctx.device)
+        y0 = first_batch["target_ids"].to(device=ctx.device)
+        ctx.teacher.eval()
+        ctx.student.eval()
+        with torch.no_grad():
+            try:
+                with torch.autocast(device_type=ctx.device.type, dtype=amp_dtype, enabled=bool(use_amp)):
+                    t_loss0, _t_ce0, _t_diff0 = _compute_loss(ctx.teacher, x0, y0, has_diffusion_teacher)
+                    s_loss0, _s_ce0, _s_diff0 = _compute_loss(ctx.student, x0, y0, has_diffusion)
+            except TypeError:
+                t_loss0, _t_ce0, _t_diff0 = _compute_loss(ctx.teacher, x0, y0, has_diffusion_teacher)
+                s_loss0, _s_ce0, _s_diff0 = _compute_loss(ctx.student, x0, y0, has_diffusion)
+
+        teacher_loss0 = float(t_loss0.item())
+        student_loss0 = float(s_loss0.item())
+        orchestrator.set_loss_baseline(teacher_loss0)
+        ceiling = teacher_loss0 * float(max_loss_increase)
+
+        if fail_fast and student_loss0 > ceiling:
+            raise RuntimeError(
+                "Global orchestrator abort: student loss is far above teacher baseline. "
+                f"student_loss={student_loss0:.6f}, teacher_loss={teacher_loss0:.6f}, "
+                f"ceiling={ceiling:.6f}. "
+                "This typically indicates a broken upcycle handoff (covariate shift / logits mismatch). "
+                "Fix verification mismatch before global fine-tuning (or relax orchestrator_max_loss_increase / disable orchestrator_fail_fast)."
+            )
+
+        ctx.student.train()
 
         with logger.progress_bar() as progress:
             task = progress.add_task("Training...", total=int(run.steps))
             for step in range(int(run.steps)):
-                batch, loader_iter = collector.next_batch(loader, loader_iter)
+                if step == 0:
+                    batch = first_batch
+                else:
+                    batch, loader_iter = collector.next_batch(loader, loader_iter)
                 x = batch["input_ids"].to(device=ctx.device)
                 y = batch["target_ids"].to(device=ctx.device)
 
@@ -106,7 +176,19 @@ class GlobalOrchestratedStepper:
                 snapshot = orchestrator.record(loss=float(loss.item()), grad_norm=grad_norm, lr=current_strategy.current_lr)
 
                 reason = orchestrator.should_evaluate(step + 1, snapshot)
-                if reason is not None and val_loader is not None:
+                if reason == DecisionBoundary.SAFETY:
+                    if mode == "monitor":
+                        raise RuntimeError(
+                            "Orchestrator monitor: safety threshold exceeded "
+                            f"(loss={float(snapshot.loss):.6f}, baseline={teacher_loss0:.6f}, ceiling={ceiling:.6f})."
+                        )
+                    if mode == "active":
+                        current_strategy = orchestrator.force_safety_switch(current_strategy)
+                        if getattr(train, "orchestrator_use_adagc", True):
+                            current_strategy.add_wrapper(AdaGC(ctx.student, warmup_steps=50))
+                    reason = None  # handled inline; do not run speculative eval this step
+
+                if mode == "active" and reason is not None and val_loader is not None:
                     def make_train_step():
                         def fn(strategy):
                             nonlocal loader_iter

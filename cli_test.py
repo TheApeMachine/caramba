@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import NoReturn
 
 import click
 from click.testing import CliRunner
@@ -86,7 +87,7 @@ def test_cli_main_returns_zero_on_help() -> None:
 
 
 def test_cli_main_returns_one_on_click_abort(monkeypatch) -> None:
-    def boom(*_args, **_kwargs):
+    def boom(*_args, **_kwargs) -> NoReturn:
         raise click.Abort()
 
     monkeypatch.setattr(cli_mod.cli, "main", boom)

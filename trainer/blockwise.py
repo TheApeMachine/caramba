@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import weakref
 
 import torch
 from torch import Tensor, nn
@@ -44,13 +45,25 @@ class BlockwiseConfig:
     # start of the model. Experimental—requires model architecture support.
     use_truncated_forward: bool = False
 
+    # Gradient clipping: if > 0, clip grad norm before optimizer step.
+    grad_clip_norm: float = 0.0
+
 
 class TeacherOutputCache:
     """LRU cache for teacher model outputs.
 
     The teacher model never changes during distillation, so running it twice
     on the same input produces identical outputs. This cache stores those
-    outputs, keyed by input tensor identity, to skip redundant computation.
+    outputs to skip redundant computation.
+
+    IMPORTANT:
+    We key the cache by the *Python Tensor object identity* (using `id(x)` plus
+    a weakref finalizer), not by data pointers / shapes. Tensor allocators
+    (CUDA/MPS) aggressively reuse storage; pointer-based keys can collide across
+    different batches and silently return incorrect teacher outputs.
+
+    This cache will hit when the *same Tensor object* is reused (e.g. training
+    multiple blocks on the same batch). It is intentionally conservative.
     """
 
     def __init__(self, max_size: int = 100) -> None:
@@ -59,31 +72,43 @@ class TeacherOutputCache:
         When the cache is full, the least-recently-used entry is evicted.
         """
         self._cache: dict[int, list[Tensor]] = {}
+        self._refs: dict[int, weakref.ref[Tensor]] = {}
         self._access_order: list[int] = []
         self._max_size = max_size
 
-    def _compute_key(self, x: Tensor) -> int:
-        """Generate a hash key from tensor metadata.
+    def _key(self, x: Tensor) -> int:
+        """Return a stable identity key for the lifetime of `x`."""
+        return int(id(x))
 
-        We use data pointer, shape, dtype, and device—not the actual values.
-        This is fast and collision-resistant enough for our use case.
-        """
-        key_parts = (
-            x.data_ptr(),
-            x.shape,
-            x.dtype,
-            x.device.type,
-        )
-        return hash(key_parts)
+    def _attach_finalizer(self, x: Tensor, key: int) -> None:
+        """Ensure this cache entry is removed when `x` is freed."""
+
+        if key in self._refs:
+            return
+
+        def _on_collect(_: weakref.ref[Tensor]) -> None:
+            self._cache.pop(key, None)
+            self._refs.pop(key, None)
+            try:
+                self._access_order.remove(key)
+            except ValueError:
+                pass
+
+        self._refs[key] = weakref.ref(x, _on_collect)
 
     def get(self, x: Tensor, *, upto: int | None = None) -> list[Tensor] | None:
         """Retrieve cached outputs for an input tensor.
 
         Returns None on cache miss. On hit, updates the LRU order.
         """
-        key = self._compute_key(x)
+        key = self._key(x)
         if key in self._cache:
-            self._access_order.remove(key)
+            # Move key to the end (most-recently-used).
+            try:
+                self._access_order.remove(key)
+            except ValueError:
+                # Could happen if the access list got out of sync (best-effort LRU).
+                pass
             self._access_order.append(key)
             outs = self._cache[key]
             if upto is None:
@@ -102,11 +127,17 @@ class TeacherOutputCache:
         Outputs are cloned and detached so they don't hold onto the
         computation graph or get modified by later operations.
         """
-        key = self._compute_key(x)
+        key = self._key(x)
+        self._attach_finalizer(x, key)
 
         if len(self._cache) >= self._max_size and key not in self._cache:
-            oldest_key = self._access_order.pop(0)
-            del self._cache[oldest_key]
+            # Evict least-recently-used key; tolerate keys already removed via GC callback.
+            while self._access_order and len(self._cache) >= self._max_size:
+                oldest_key = self._access_order.pop(0)
+                if oldest_key in self._cache:
+                    del self._cache[oldest_key]
+                    self._refs.pop(oldest_key, None)
+                    break
 
         existing = self._cache.get(key)
         if existing is None or len(outputs) > len(existing):
@@ -118,6 +149,7 @@ class TeacherOutputCache:
     def clear(self) -> None:
         """Remove all cached entries."""
         self._cache.clear()
+        self._refs.clear()
         self._access_order.clear()
 
     def __len__(self) -> int:
@@ -141,6 +173,7 @@ class BlockwiseTrainer:
         optimizer: Optimizer,
         loss: DistillLoss,
         predicate: Callable[[str, nn.Module], bool],
+        trace_predicate: Callable[[str, nn.Module], bool] | None = None,
         config: BlockwiseConfig | None = None,
     ) -> None:
         """Set up blockwise training between a teacher and student model.
@@ -154,6 +187,7 @@ class BlockwiseTrainer:
         self.optimizer = optimizer
         self.loss = loss
         self._predicate = predicate
+        self._trace_predicate = trace_predicate or predicate
         self._teacher_blocks = self._collect_blocks(teacher)
         self._student_blocks = self._collect_blocks(student)
 
@@ -165,9 +199,32 @@ class BlockwiseTrainer:
                 f"{len(self._teacher_blocks)} and {len(self._student_blocks)}"
             )
 
+        teacher_trace_points = [
+            module
+            for name, module in teacher.named_modules()
+            if self._trace_predicate(name, module)
+        ]
+        student_trace_points = [
+            module
+            for name, module in student.named_modules()
+            if self._trace_predicate(name, module)
+        ]
+        if not teacher_trace_points:
+            raise ValueError("Teacher has no trace points matching trace_predicate.")
+        if len(teacher_trace_points) != len(student_trace_points):
+            raise ValueError(
+                "Teacher/student trace point counts must match, got "
+                f"{len(teacher_trace_points)} and {len(student_trace_points)}"
+            )
+        if len(student_trace_points) != len(self._student_blocks):
+            raise ValueError(
+                "Trace point count must match block count for blockwise distillation, "
+                f"got trace_points={len(student_trace_points)} blocks={len(self._student_blocks)}"
+            )
+
         # Trace objects hook into the model to capture intermediate outputs
-        self._teacher_trace = Trace(teacher, predicate=predicate)
-        self._student_trace = Trace(student, predicate=predicate)
+        self._teacher_trace = Trace(teacher, predicate=self._trace_predicate)
+        self._student_trace = Trace(student, predicate=self._trace_predicate)
 
         self.config = config or BlockwiseConfig()
 
@@ -252,6 +309,14 @@ class BlockwiseTrainer:
         )
 
         if should_step:
+            # Optional gradient clipping for stability (esp. at block boundaries).
+            clip = float(getattr(self.config, "grad_clip_norm", 0.0))
+            if clip > 0.0:
+                try:
+                    block = self._student_blocks[int(block_index)]
+                    torch.nn.utils.clip_grad_norm_(block.parameters(), max_norm=clip)
+                except Exception:
+                    torch.nn.utils.clip_grad_norm_(self.student.parameters(), max_norm=clip)
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=True)
             self._accumulation_count = 0
@@ -383,6 +448,9 @@ class BlockwiseTrainer:
         Use this at the end of training to ensure no gradients are lost.
         """
         if self._accumulation_count > 0:
+            clip = float(getattr(self.config, "grad_clip_norm", 0.0))
+            if clip > 0.0:
+                torch.nn.utils.clip_grad_norm_(self.student.parameters(), max_norm=clip)
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=True)
             self._accumulation_count = 0

@@ -54,9 +54,10 @@ def test_make_teacher_model_config_rewrites_attention_to_standard() -> None:
     assert "decoupled_gate_dynamic" not in attn
 
 
-def test_default_initializer_resolve_teacher_ckpt() -> None:
-    p = DefaultInitializer._resolve_teacher_ckpt("/tmp/x.pt")
-    assert str(p).endswith("/tmp/x.pt")
+def test_default_initializer_resolve_teacher_ckpt(tmp_path: Path) -> None:
+    p_in = tmp_path / "x.pt"
+    p = DefaultInitializer._resolve_teacher_ckpt(str(p_in))
+    assert str(p).endswith(str(p_in))
 
 
 def test_default_initializer_init_models_is_testable_with_monkeypatch(tmp_path: Path, monkeypatch) -> None:
@@ -65,7 +66,7 @@ def test_default_initializer_init_models_is_testable_with_monkeypatch(tmp_path: 
     monkeypatch.setattr(init, "LlamaUpcycle", lambda _m, _sd: type("U", (), {"apply": lambda _self: None})())
 
     class FakeModel(nn.Module):
-        def __init__(self, cfg):
+        def __init__(self, cfg) -> None:
             super().__init__()
             self.cfg = cfg
             self.p = nn.Parameter(torch.tensor(1.0))

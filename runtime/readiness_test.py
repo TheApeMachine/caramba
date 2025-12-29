@@ -15,6 +15,12 @@ from config.target import ExperimentTargetConfig
 from config.train import TrainConfig, TrainPhase
 
 
+def _default_manifest() -> Manifest:
+    return Manifest.model_validate(
+        {"version": 2, "defaults": Defaults().model_dump(), "targets": []}
+    )
+
+
 def _manifest_with_instrument(instrument: str) -> Manifest:
     # Build via model_validate to keep it close to real manifests.
     return Manifest.model_validate(
@@ -98,7 +104,14 @@ def _non_decoupled_target(*, device: str) -> ExperimentTargetConfig:
 
 
 def test_plotting_requested_warns_when_matplotlib_missing(monkeypatch) -> None:
-    monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
+    real_find_spec = importlib.util.find_spec
+
+    def fake_find_spec(name: str, package: str | None = None):
+        if name == "matplotlib" or name.startswith("matplotlib."):
+            return None
+        return real_find_spec(name, package)
+
+    monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
     m = _manifest_with_instrument("rich,liveplot")
     t = _non_decoupled_target(device="cpu")
 
@@ -112,7 +125,7 @@ def test_no_decoupled_attention_skips_perf_backend_checks(monkeypatch) -> None:
     monkeypatch.setattr(readiness, "METAL_SUPPORTED", False)
     monkeypatch.setattr(readiness, "TRITON_AVAILABLE", False)
 
-    m = Manifest.model_validate({"version": 2, "defaults": Defaults().model_dump(), "targets": []})
+    m = _default_manifest()
     t = _non_decoupled_target(device="mps")
     rep = readiness.check_target_readiness(m, t, best_effort=False)
     assert rep.errors == []
@@ -124,7 +137,7 @@ def test_mps_unavailable_is_error_when_decoupled_and_fp16_cache(monkeypatch) -> 
 
     b = BenchmarkSpec(id="lat", config=LatencyBenchmarkConfig(cache_kind="fp16"))
     t = _decoupled_target(device="mps", benchmarks=[b])
-    m = Manifest.model_validate({"version": 2, "defaults": Defaults().model_dump(), "targets": []})
+    m = _default_manifest()
 
     rep = readiness.check_target_readiness(m, t, best_effort=False)
     assert any(i.code == "mps_unavailable" for i in rep.errors)
@@ -136,7 +149,7 @@ def test_metal_build_tools_missing_is_error_or_warning_based_on_best_effort(monk
 
     b = BenchmarkSpec(id="lat", config=LatencyBenchmarkConfig(cache_kind="auto"))
     t = _decoupled_target(device="mps", benchmarks=[b])
-    m = Manifest.model_validate({"version": 2, "defaults": Defaults().model_dump(), "targets": []})
+    m = _default_manifest()
 
     rep_err = readiness.check_target_readiness(m, t, best_effort=False)
     assert any(i.code == "metal_build_tools_missing" for i in rep_err.errors)
@@ -150,7 +163,7 @@ def test_triton_missing_for_cuda_q4_is_error_or_warning(monkeypatch) -> None:
 
     b = BenchmarkSpec(id="mem", config=MemoryBenchmarkConfig(quantization_modes=["q4_0"]))
     t = _decoupled_target(device="cuda", benchmarks=[b])
-    m = Manifest.model_validate({"version": 2, "defaults": Defaults().model_dump(), "targets": []})
+    m = _default_manifest()
 
     rep_err = readiness.check_target_readiness(m, t, best_effort=False)
     assert any(i.code == "triton_missing" for i in rep_err.errors)

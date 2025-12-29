@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from console import logger
 from typing import TYPE_CHECKING
 
 import torch
@@ -12,6 +13,9 @@ from .jit import load_caramba_metal_ops
 
 if TYPE_CHECKING:
     from torch import Tensor
+
+
+_LOGGED = False
 
 
 def metal_rope_available() -> bool:
@@ -43,5 +47,11 @@ def rope_fp16(
     sin2 = sin.to(device=x.device).to(torch.float16).contiguous()
 
     ops = load_caramba_metal_ops(verbose=bool(verbose_build))
+
+    global _LOGGED
+    if not _LOGGED:
+        logger.success("Using custom Metal kernel: RoPE (fp16)")
+        _LOGGED = True
+
     return ops.rope(x2, cos2, sin2, rot_dim)
 

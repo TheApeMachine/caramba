@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from console import logger
 from typing import TYPE_CHECKING
 
 import torch
@@ -13,6 +14,9 @@ from .jit import load_caramba_metal_ops
 
 if TYPE_CHECKING:
     from torch import Tensor
+
+
+_LOGGED = False
 
 
 def metal_dba_decode_available() -> bool:
@@ -107,6 +111,12 @@ def dba_decode_fp16(
         geo_scale = 1.0 / math.sqrt(float(geo_hd))
 
     ops = load_caramba_metal_ops(verbose=bool(verbose_build))
+
+    global _LOGGED
+    if not _LOGGED:
+        logger.success("Using custom Metal kernel: DBA Decode (fp16)")
+        _LOGGED = True
+
     out = ops.dba_decode(
         q_sem2,
         k_sem2,

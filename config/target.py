@@ -55,11 +55,6 @@ class ExperimentTargetConfig(BaseModel):
             # Strict parse: will raise ValidationError for unknown/extra fields.
             _ = ModelConfig.model_validate(model_payload)
 
-        if self.system.ref == "system.graph":
-            topo_payload = self.system.config.get("topology", None)
-            if not isinstance(topo_payload, dict):
-                raise ValueError("system.graph requires system.config.topology to be a dict")
-
         # Validate built-in dataset type shape.
         if self.data.ref == "dataset.tokens":
             p = self.data.config.get("path", None)

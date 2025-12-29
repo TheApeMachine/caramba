@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any, Optional
+
 import pytest
 
 from config.component import ComponentSpec
@@ -7,13 +10,13 @@ from runtime.registry import ComponentRegistry, _construct, _import_symbol
 
 
 class Dummy:
-    def __init__(self, config=None, **kwargs):
+    def __init__(self, config: Optional[Mapping[str, Any]] = None, **kwargs: Any) -> None:
         # Accept either dict-style config or kwargs; store both for assertions.
         self.config = config
         self.kwargs = dict(kwargs)
 
 
-def dummy_factory(**kwargs):
+def dummy_factory(**kwargs: Any) -> Dummy:
     return Dummy(**kwargs)
 
 
@@ -25,10 +28,16 @@ def test_import_symbol_imports_and_validates_path() -> None:
     assert getattr(sym, "__name__", None) == "Dummy"
     assert str(getattr(sym, "__module__", "")).endswith("runtime.registry_test")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError,
+        match=r"Invalid python symbol path .*Expected 'module:Symbol'\.",
+    ):
         _import_symbol("no_colon_here")
 
-    with pytest.raises(ImportError):
+    with pytest.raises(
+        ImportError,
+        match=r"Symbol 'DoesNotExist' not found in module 'runtime\.registry_test'",
+    ):
         _import_symbol("runtime.registry_test:DoesNotExist")
 
 

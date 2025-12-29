@@ -10,7 +10,7 @@ from config.manifest import Manifest
 from config.model import ModelConfig
 from config.target import ExperimentTargetConfig
 from config.topology import NodeConfig, TopologyConfig
-from config.topology_graph import GraphTopologyConfig, GraphNodeConfig
+from config.topology import GraphNodeConfig, GraphTopologyConfig
 
 
 class Lowerer:
@@ -39,16 +39,7 @@ class Lowerer:
                     cfg = cfg.resolve_geometry()
                     lowered = self.lower_model(cfg)
                     t2 = t.model_copy(deep=True)
-                    t2.system.config["model"] = lowered.model_dump()
-                    lowered_targets.append(t2)
-                    continue
-            if isinstance(t, ExperimentTargetConfig) and t.system.ref == "system.graph":
-                topo_payload = t.system.config.get("topology", None)
-                if isinstance(topo_payload, dict):
-                    topo = GraphTopologyConfig.model_validate(topo_payload)
-                    lowered_topo = self.lower_graph_topology(topo)
-                    t2 = t.model_copy(deep=True)
-                    t2.system.config["topology"] = lowered_topo.model_dump(by_alias=True)
+                    t2.system.config["model"] = lowered.model_dump(by_alias=True)
                     lowered_targets.append(t2)
                     continue
             lowered_targets.append(t)
@@ -65,6 +56,8 @@ class Lowerer:
         Recursively lowers child nodes, then replicates the result
         according to the repeat count.
         """
+        if isinstance(config, GraphTopologyConfig):
+            return self.lower_graph_topology(config)
         lowered = self.lower_nodes(list(config.layers))
         layers = self.repeat_nodes(lowered, repeat=int(config.repeat))
         return config.model_copy(update={"layers": layers, "repeat": 1})
@@ -96,7 +89,7 @@ class Lowerer:
                     )
                 )
                 prev = cur_out
-        return GraphTopologyConfig(type=topo.type, nodes=out)
+        return GraphTopologyConfig(type=topo.type, nodes=out, inputs=getattr(topo, "inputs", None))
 
     def lower_nodes(self, nodes: list[NodeConfig]) -> list[NodeConfig]:
         """Lower nested topology nodes recursively."""
@@ -114,6 +107,8 @@ class Lowerer:
 
     def is_topology(self, node: NodeConfig) -> bool:
         """Check if node is a topology (has layers list attribute)."""
+        if isinstance(node, GraphTopologyConfig):
+            return True
         if not hasattr(node, "layers"):
             return False
         layers = getattr(node, "layers")

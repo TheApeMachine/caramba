@@ -35,7 +35,7 @@ def test_as_module_accepts_module_and_wrapper_and_rejects_other() -> None:
         TorchEngine._as_module(object())
 
 
-def test_first_train_returns_first_run_with_train_or_object() -> None:
+def test_first_train_returns_first_train_config() -> None:
     tcfg = TrainConfig(phase=TrainPhase.STANDARD, batch_size=1, block_size=4, lr=1e-3, device="cpu")
     r1 = Run(id="a", mode=Mode.TRAIN, exp="e", seed=0, steps=1, expected={}, train=None)
     r2 = Run(id="b", mode=Mode.TRAIN, exp="e", seed=0, steps=1, expected={}, train=tcfg)
@@ -51,4 +51,29 @@ def test_first_train_returns_first_run_with_train_or_object() -> None:
     )
     got = TorchEngine._first_train(target)
     assert got is tcfg
+
+
+def test_first_train_returns_object_when_no_train_configs() -> None:
+    r1 = Run(id="a", mode=Mode.TRAIN, exp="e", seed=0, steps=1, expected={}, train=None)
+    r2 = Run(id="b", mode=Mode.TRAIN, exp="e", seed=0, steps=1, expected={}, train=None)
+    target = ExperimentTargetConfig(
+        name="exp",
+        backend="torch",
+        task=ComponentSpec(ref="task.language_modeling"),
+        data=ComponentSpec(ref="dataset.tokens", config={"path": "x.tokens", "block_size": 4}),
+        system=ComponentSpec(
+            ref="system.generic",
+            config={
+                "model": {
+                    "type": "TransformerModel",
+                    "topology": {"type": "StackedTopology", "layers": []},
+                }
+            },
+        ),
+        objective=ComponentSpec(ref="objective.mse"),
+        trainer=ComponentSpec(ref="trainer.standard"),
+        runs=[r1, r2],
+    )
+    got = TorchEngine._first_train(target)
+    assert type(got) is object
 

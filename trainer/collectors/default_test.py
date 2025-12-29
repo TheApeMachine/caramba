@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict
 
 import pytest
 import torch
@@ -26,7 +27,7 @@ class TinyTokenDataset(Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         return {"token_ids": torch.tensor([idx, idx + 1], dtype=torch.long)}
 
 
@@ -60,9 +61,6 @@ def test_default_collector_build_loaders_uses_monkeypatched_dataset(tmp_path: Pa
         compile_mode="reduce-overhead",
     )
     defaults = Defaults(data=DefaultsData(val_frac=0.1))
-    # The collector code accesses defaults.val_frac directly (via getattr), so add it as an attribute
-    # Use object.__setattr__ to bypass Pydantic's attribute assignment restrictions
-    object.__setattr__(defaults, "val_frac", 0.1)
     ctx = UpcycleContext(
         manifest=object(),
         group=group,
@@ -84,7 +82,7 @@ def test_default_collector_build_loaders_uses_monkeypatched_dataset(tmp_path: Pa
     assert val_loader is not None
 
 
-def test_default_collector_next_batch_resets_on_stop_iteration(tmp_path: Path) -> None:
+def test_default_collector_next_batch_resets_on_stop_iteration() -> None:
     # Minimal loader/iterator pair for next_batch.
     ds = TinyTokenDataset(8)
     loader = torch.utils.data.DataLoader(ds, batch_size=2, drop_last=True, collate_fn=dc.collate_tensordict)
@@ -92,11 +90,7 @@ def test_default_collector_next_batch_resets_on_stop_iteration(tmp_path: Path) -
     c = DefaultCollector(DefaultCollectorConfig())
     _b1, it = c.next_batch(loader, it)
     # Exhaust iterator.
-    for _ in range(10):
-        try:
-            next(it)
-        except StopIteration:
-            break
-    b2, _it2 = c.next_batch(loader, iter(()))  # force StopIteration path immediately
+    list(it)
+    b2, _it2 = c.next_batch(loader, iter([]))  # force StopIteration path immediately
     assert "token_ids" in dict(b2)
 

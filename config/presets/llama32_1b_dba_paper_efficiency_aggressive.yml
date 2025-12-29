@@ -93,6 +93,9 @@ targets:
       device: mps
       dtype: float32
       teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+      blockwise_autotune_enabled: true
+      blockwise_autotune_mode: active
+      blockwise_autotune_log_every: 50
   - id: finetune
     mode: train
     exp: dba_finetune

@@ -26,10 +26,13 @@ def test_caramba_python_m_executes_dunder_main(monkeypatch) -> None:
     monkeypatch.setattr(cli_mod, "main", lambda _argv=None: 5)
 
     # Ensure sys.exit propagates a SystemExit we can assert on.
+    def raise_system_exit(code=0) -> None:
+        raise SystemExit(code)
+
     monkeypatch.setattr(
         sys,
         "exit",
-        lambda code=0: (_ for _ in ()).throw(SystemExit(code)),
+        raise_system_exit,
     )
     # Avoid runpy warning about pre-imported module.
     sys.modules.pop("caramba.__main__", None)

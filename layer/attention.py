@@ -677,7 +677,10 @@ class AttentionLayer(nn.Module):
                 and int(T) == 1
                 and mask is None
                 and (local_window_override is None and self.config.local_window is None)
-                and (q_chunk_override is None and self.config.q_chunk is None)
+                # Note: q_chunk does not affect correctness for single-token decode,
+                # so we still allow the fused decode fast-path even if a training
+                # config sets q_chunk for long-sequence chunking.
+                and (q_chunk_override is None)
                 and x.device.type in ("cuda", "mps")
             ):
                 if x.device.type == "cuda":

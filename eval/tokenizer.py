@@ -2,7 +2,9 @@
 
 Evaluation prompts need to be converted to token IDs. This module provides
 a pluggable tokenizer interface with implementations for different backends.
-Currently supports tiktoken (used by GPT models).
+Currently supports:
+- tiktoken (used by GPT models)
+- Hugging Face tokenizers (used by Llama-family models)
 """
 from __future__ import annotations
 
@@ -11,7 +13,7 @@ import importlib
 import importlib.util
 from collections.abc import Callable, Sequence
 
-from config.eval import TiktokenTokenizerConfig, TokenizerConfig
+from config.eval import LlamaTokenizerConfig, TiktokenTokenizerConfig, TokenizerConfig
 
 
 class Tokenizer(abc.ABC):
@@ -77,6 +79,39 @@ class _TiktokenTokenizer(Tokenizer):
         return str(self._decode_fn(list(ids)))
 
 
+class _HFTokenizer(Tokenizer):
+    """HuggingFace tokenizer implementation (e.g. LlamaTokenizerFast).
+
+    We rely on `transformers`' AutoTokenizer so config only needs a model_id.
+    """
+
+    def __init__(self, *, model_id: str) -> None:
+        if not model_id:
+            raise ValueError("model_id must be non-empty")
+        try:
+            mod = importlib.import_module("transformers")
+        except Exception as e:
+            raise ImportError("transformers is required for tokenizer=llama") from e
+        auto = getattr(mod, "AutoTokenizer", None)
+        if auto is None or not hasattr(auto, "from_pretrained"):
+            raise ImportError("transformers.AutoTokenizer.from_pretrained is not available")
+
+        # Keep defaults conservative: do not rely on remote code.
+        self._tok = auto.from_pretrained(str(model_id), use_fast=True, trust_remote_code=False)
+
+        encode = getattr(self._tok, "encode", None)
+        decode = getattr(self._tok, "decode", None)
+        if not callable(encode) or not callable(decode):
+            raise ValueError("HuggingFace tokenizer must support encode(...) and decode(...)")
+
+    def encode(self, text: str) -> list[int]:
+        # For evaluation, we do not want BOS/EOS inserted implicitly.
+        return list(self._tok.encode(str(text), add_special_tokens=False))
+
+    def decode(self, ids: Sequence[int]) -> str:
+        return str(self._tok.decode(list(ids), skip_special_tokens=True))
+
+
 def build_tokenizer(cfg: TokenizerConfig) -> Tokenizer:
     """Build a Tokenizer from config.
 
@@ -85,4 +120,6 @@ def build_tokenizer(cfg: TokenizerConfig) -> Tokenizer:
     """
     if isinstance(cfg, TiktokenTokenizerConfig):
         return _TiktokenTokenizer(encoding=str(cfg.encoding))
+    if isinstance(cfg, LlamaTokenizerConfig):
+        return _HFTokenizer(model_id=str(cfg.model_id))
     raise ValueError(f"Unsupported tokenizer config: {type(cfg)!r}")

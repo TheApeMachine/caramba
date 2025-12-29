@@ -13,7 +13,7 @@ test:
 
 coverage:
 	. .venv/bin/activate \
-	&& coverage run --source=. -m pytest \
+	&& coverage run --source=caramba -m pytest \
 	&& coverage report -m --ignore-errors
 
 paper:

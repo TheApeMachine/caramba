@@ -3,12 +3,12 @@ from __future__ import annotations
 import pytest
 
 from compiler.lower import Lowerer
-from config.topology_graph import GraphNodeConfig, GraphTopologyConfig
+from config.topology import GraphNodeConfig, GraphTopologyConfig, TopologyType
 
 
 def test_lower_graph_topology_expands_repeat_with_chained_keys() -> None:
     topo = GraphTopologyConfig(
-        type="graph",
+        type=TopologyType.GRAPH,
         nodes=[
             GraphNodeConfig(
                 id="n",
@@ -32,7 +32,7 @@ def test_lower_graph_topology_expands_repeat_with_chained_keys() -> None:
 
 def test_lower_graph_topology_repeat_requires_single_in_out_keys() -> None:
     topo = GraphTopologyConfig(
-        type="graph",
+        type=TopologyType.GRAPH,
         nodes=[
             GraphNodeConfig(
                 id="n",

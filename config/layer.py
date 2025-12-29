@@ -44,6 +44,10 @@ class LayerType(str, enum.Enum):
     GLU = "GLULayer"
     MOE = "MoELayer"
     SSM = "SSMLayer"
+    CONV2D = "Conv2dLayer"
+    RNN = "RNNLayer"
+    GRAPH_CONV = "GraphConvLayer"
+    DENSE = "DenseLayer"
 
     @classmethod
     def from_str(cls, s: str) -> "LayerType":
@@ -247,6 +251,72 @@ class SSMLayerConfig(Config):
     conv_bias: bool = True
 
 
+class Conv2dLayerConfig(Config):
+    """Configuration for 2D Convolution layer."""
+
+    type: Literal[LayerType.CONV2D] = LayerType.CONV2D
+    in_channels: PositiveInt
+    out_channels: PositiveInt
+    kernel_size: PositiveInt | tuple[PositiveInt, PositiveInt]
+    stride: PositiveInt | tuple[PositiveInt, PositiveInt] = 1
+    padding: int | tuple[int, int] | str = 0
+    dilation: PositiveInt | tuple[PositiveInt, PositiveInt] = 1
+    groups: PositiveInt = 1
+    bias: bool = True
+    padding_mode: Literal["zeros", "reflect", "replicate", "circular"] = "zeros"
+
+
+class RNNLayerConfig(Config):
+    """Configuration for Recurrent Neural Network layer.
+
+    Supports standard LSTM/GRU and optimized variants.
+    """
+
+    type: Literal[LayerType.RNN] = LayerType.RNN
+    cell_type: Literal["lstm", "gru", "rnn_tanh", "rnn_relu"] = "lstm"
+    input_size: PositiveInt
+    hidden_size: PositiveInt
+    num_layers: PositiveInt = 1
+    bias: bool = True
+    batch_first: bool = True
+    dropout: Probability = 0.0
+    bidirectional: bool = False
+    proj_size: PositiveInt = 0  # LSTM only
+
+
+class GraphConvLayerConfig(Config):
+    """Configuration for Graph Convolution layer.
+
+    Supports GCN and GAT variants.
+    """
+
+    type: Literal[LayerType.GRAPH_CONV] = LayerType.GRAPH_CONV
+    kind: Literal["gcn", "gat"] = "gcn"
+    in_features: PositiveInt
+    out_features: PositiveInt
+    bias: bool = True
+    # GAT specific
+    heads: PositiveInt = 1
+    concat: bool = True
+    negative_slope: PositiveFloat = 0.2
+    dropout: Probability = 0.0
+
+
+class DenseLayerConfig(Config):
+    """Configuration for Dense (MLP) layer.
+
+    Includes optional normalization, activation, and dropout.
+    """
+
+    type: Literal[LayerType.DENSE] = LayerType.DENSE
+    d_in: PositiveInt
+    d_out: PositiveInt
+    bias: bool = True
+    activation: str | None = None  # e.g. "relu", "gelu", "silu"
+    normalization: Literal["layer_norm", "rms_norm"] | None = None
+    dropout: Probability = 0.0
+
+
 # Union type for any layer config, with automatic deserialization
 LayerConfig: TypeAlias = Annotated[
     LinearLayerConfig
@@ -258,6 +328,10 @@ LayerConfig: TypeAlias = Annotated[
     | SwiGLULayerConfig
     | GLULayerConfig
     | MoELayerConfig
-    | SSMLayerConfig,
+    | SSMLayerConfig
+    | Conv2dLayerConfig
+    | RNNLayerConfig
+    | GraphConvLayerConfig
+    | DenseLayerConfig,
     Field(discriminator="type"),
 ]

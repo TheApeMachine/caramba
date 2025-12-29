@@ -22,7 +22,9 @@ from torch import Tensor, nn
 from compiler.lower import Lowerer
 from compiler.validate import Validator
 from config.model import ModelConfig
+from config.topology import GraphTopologyConfig
 from model import Model
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 
 @dataclass
@@ -33,6 +35,7 @@ class GenericSystem:
     - model: ModelConfig payload (required)
     - input_key: batch key holding the model input tensor (default: "inputs")
     - output_key: outputs key to store the primary tensor (default: "logits")
+    - output_keys: (graph mode) optional list of output keys to return (default: all)
     - return_features: if True, also return intermediate features (default: False)
     - features_key: outputs key for features when return_features=True (default: "features")
     - include_system: if True, include `_system` pointing at the underlying nn.Module
@@ -42,6 +45,7 @@ class GenericSystem:
     model: dict[str, Any]
     input_key: str = "inputs"
     output_key: str = "logits"
+    output_keys: list[str] | None = None
     return_features: bool = False
     features_key: str = "features"
     include_system: bool = False
@@ -51,7 +55,13 @@ class GenericSystem:
         cfg = Lowerer().lower_model(cfg)
         Validator().validate_model_config(cfg)
         self.config = cfg
-        self.module: nn.Module = Model(cfg)
+        # If topology is a graph, execute it directly over TensorDict batches.
+        if isinstance(cfg.topology, GraphTopologyConfig):
+            self._graph_mode = True
+            self.module = cfg.topology.build()
+        else:
+            self._graph_mode = False
+            self.module = Model(cfg)
 
     def to(self, *, device: torch.device, dtype: torch.dtype) -> GenericSystem:
         self.module = self.module.to(device=device, dtype=dtype)
@@ -64,25 +74,36 @@ class GenericSystem:
         self.module.eval()
 
     def forward(self, batch: dict[str, Any], *, ctx: object | None = None) -> dict[str, Any]:
-        if self.input_key not in batch:
-            raise KeyError(f"Missing batch key {self.input_key!r}")
-        x = batch[self.input_key]
-        if not isinstance(x, Tensor):
-            raise TypeError(
-                f"Expected batch[{self.input_key!r}] to be a Tensor, got {type(x).__name__}"
-            )
-
         outputs: dict[str, Any] = {}
-        if self.return_features:
-            result = self.module(x, ctx=ctx, return_features=True)  # type: ignore[call-arg]
-            if not (isinstance(result, tuple) and len(result) == 2):
-                raise TypeError("Expected Model(return_features=True) to return (features, out)")
-            features, out = result
-            outputs[str(self.features_key)] = features
-            outputs[str(self.output_key)] = out
+
+        if getattr(self, "_graph_mode", False):
+            td = as_tensordict(batch)
+            out_td = self.module(td, ctx=ctx)  # type: ignore[call-arg]
+            if not isinstance(out_td, TensorDictBase):  # type: ignore[arg-type]
+                out_td = as_tensordict(out_td)
+            if self.output_keys is None:
+                outputs.update(dict(out_td))
+            else:
+                outputs.update({k: out_td[k] for k in self.output_keys if k in out_td})
         else:
-            out = self.module(x, ctx=ctx)  # type: ignore[call-arg]
-            outputs[str(self.output_key)] = out
+            if self.input_key not in batch:
+                raise KeyError(f"Missing batch key {self.input_key!r}")
+            x = batch[self.input_key]
+            if not isinstance(x, Tensor):
+                raise TypeError(
+                    f"Expected batch[{self.input_key!r}] to be a Tensor, got {type(x).__name__}"
+                )
+
+            if self.return_features:
+                result = self.module(x, ctx=ctx, return_features=True)  # type: ignore[call-arg]
+                if not (isinstance(result, tuple) and len(result) == 2):
+                    raise TypeError("Expected Model(return_features=True) to return (features, out)")
+                features, out = result
+                outputs[str(self.features_key)] = features
+                outputs[str(self.output_key)] = out
+            else:
+                out = self.module(x, ctx=ctx)  # type: ignore[call-arg]
+                outputs[str(self.output_key)] = out
 
         if self.include_system:
             outputs["_system"] = self.module

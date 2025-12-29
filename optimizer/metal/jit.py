@@ -21,6 +21,39 @@ _CACHED_MOD: Any | None = None
 _CACHED_ERR: Exception | None = None
 
 
+def _xcrun_find(tool: str) -> str:
+    """Resolve a tool path from the active Xcode toolchain via xcrun."""
+    try:
+        out = subprocess.check_output(
+            ["xcrun", "-sdk", "macosx", "--find", str(tool)],
+            stderr=subprocess.STDOUT,
+        )
+        p = out.decode("utf-8", errors="replace").strip()
+        if not p:
+            raise RuntimeError(f"xcrun returned empty path for tool {tool!r}")
+        return p
+    except Exception as e:
+        # Make this actionable: most failures are missing SDK/toolchain selection.
+        try:
+            devdir = subprocess.check_output(["xcode-select", "-p"], stderr=subprocess.STDOUT).decode(
+                "utf-8", errors="replace"
+            ).strip()
+        except Exception:
+            devdir = "<unknown>"
+        raise RuntimeError(
+            f"Unable to locate required Xcode tool {tool!r} via xcrun.\n"
+            f"Active developer dir: {devdir}\n\n"
+            "Fix:\n"
+            "  - Install Xcode Command Line Tools: `xcode-select --install`\n"
+            "  - OR select Xcode.app:\n"
+            "      `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`\n"
+            "      `sudo xcodebuild -license accept`\n\n"
+            "Verify:\n"
+            "  `xcrun -sdk macosx --find metal`\n"
+            "  `xcrun -sdk macosx --find metallib`\n"
+        ) from e
+
+
 def _compile_metallib(*, out_dir: Path, verbose: bool) -> Path:
     """Compile Metal shaders -> `caramba_ops.metallib` in `out_dir`."""
 
@@ -33,6 +66,9 @@ def _compile_metallib(*, out_dir: Path, verbose: bool) -> Path:
     airs = [out_dir / f"{src.stem}.air" for src in sources]
     metallib = out_dir / "caramba_ops.metallib"
 
+    metal = _xcrun_find("metal")
+    metallib_tool = _xcrun_find("metallib")
+
     # Rebuild only when missing or any source is newer.
     if metallib.exists():
         mt = metallib.stat().st_mtime
@@ -44,10 +80,7 @@ def _compile_metallib(*, out_dir: Path, verbose: bool) -> Path:
     # Compile each .metal source to .air.
     for src, air in zip(sources, airs, strict=True):
         cmd = [
-            "xcrun",
-            "-sdk",
-            "macosx",
-            "metal",
+            metal,
             "-c",
             str(src),
             "-o",
@@ -55,21 +88,36 @@ def _compile_metallib(*, out_dir: Path, verbose: bool) -> Path:
         ]
         if verbose:
             print("[caramba] compiling Metal shader:", " ".join(cmd))
-        subprocess.check_call(cmd)
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                "Failed to compile Metal shaders with the active toolchain.\n\n"
+                f"Command:\n  {' '.join(cmd)}\n\n"
+                f"stdout:\n{proc.stdout}\n\n"
+                f"stderr:\n{proc.stderr}\n\n"
+                "If the error mentions SDKs, verify:\n"
+                "  `xcrun --sdk macosx --show-sdk-path`\n"
+                "If the error mentions missing tools, verify:\n"
+                "  `xcrun -sdk macosx --find metallib`\n"
+            )
 
     # Link all .air files into a single metallib.
     cmd2 = [
-        "xcrun",
-        "-sdk",
-        "macosx",
-        "metallib",
+        metallib_tool,
         *[str(air) for air in airs],
         "-o",
         str(metallib),
     ]
     if verbose:
         print("[caramba] linking Metal metallib:", " ".join(cmd2))
-    subprocess.check_call(cmd2)
+    proc2 = subprocess.run(cmd2, capture_output=True, text=True)
+    if proc2.returncode != 0:
+        raise RuntimeError(
+            "Failed to link Metal metallib (`metallib`).\n\n"
+            f"Command:\n  {' '.join(cmd2)}\n\n"
+            f"stdout:\n{proc2.stdout}\n\n"
+            f"stderr:\n{proc2.stderr}\n"
+        )
     return metallib
 
 
@@ -90,7 +138,16 @@ def load_caramba_metal_ops(*, verbose: bool = False) -> Any:
         raise err
     if not METAL_BUILD_TOOLS_AVAILABLE:
         err = RuntimeError(
-            "Metal build tools unavailable (need Xcode command-line tools: `xcrun`)."
+            "Metal build tools unavailable.\n\n"
+            "caramba's fused Metal kernels require Xcode's Metal toolchain (`metal`, `metallib`).\n"
+            "Install/select it:\n"
+            "  - `xcode-select --install`\n"
+            "  - or install Xcode.app then:\n"
+            "      `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`\n"
+            "      `sudo xcodebuild -license accept`\n\n"
+            "Verify:\n"
+            "  `xcrun -sdk macosx --find metal`\n"
+            "  `xcrun -sdk macosx --find metallib`\n"
         )
         _CACHED_ERR = err
         raise err

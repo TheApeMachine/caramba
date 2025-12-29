@@ -128,6 +128,7 @@ class WandBWriter:
         self.out_dir = Path(self.out_dir)
         self.run: _WandbRun | None = None
         self._consecutive_failures: int = 0
+        self._last_step: int | None = None
 
         if not self.enabled:
             return
@@ -185,7 +186,15 @@ class WandBWriter:
             return
         try:
             payload = {f"{prefix}/{k}": float(v) for k, v in scalars.items()}
-            self.run.log(payload, step=int(step))
+            # W&B requires monotonically increasing steps within a run.
+            # Some components (e.g. verifiers) log "summary-ish" metrics at step=0
+            # after training has already logged many steps. Clamp to a monotonic
+            # sequence to avoid W&B dropping data.
+            s = int(step)
+            if self._last_step is not None and s <= self._last_step:
+                s = self._last_step + 1
+            self.run.log(payload, step=int(s))
+            self._last_step = int(s)
             # Reset failure counter on success.
             self._consecutive_failures = 0
         except Exception as e:
@@ -209,4 +218,5 @@ class WandBWriter:
         except Exception:
             pass
         self.run = None
+        self._last_step = None
 

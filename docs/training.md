@@ -207,6 +207,28 @@ train:
   cache_teacher_outputs: true   # Cache for speed
 ```
 
+##### Blockwise autopilot (self-tuning)
+
+By default, blockwise uses a fixed LR and (optionally) convergence-based early stopping.
+If you want it to *self-tune* and to surface those decisions in console logs, enable the
+lightweight blockwise autotuner:
+
+```yaml
+train:
+  phase: blockwise
+  blockwise_autotune_enabled: true
+  blockwise_autotune_mode: monitor  # monitor|active
+
+  # Tuning knobs (optional)
+  blockwise_autotune_plateau_patience: 100
+  blockwise_autotune_lr_decay: 0.5
+  blockwise_autotune_min_lr: 1e-6
+  blockwise_autotune_log_every: 50
+```
+
+- **monitor**: logs spikes/plateaus and what it *would* do (no LR changes)
+- **active**: reduces LR on spikes/plateaus within each block
+
 The blockwise phase:
 1. Iterates through each transformer block
 2. Runs teacher forward to get target outputs

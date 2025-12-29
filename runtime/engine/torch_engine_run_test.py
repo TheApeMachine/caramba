@@ -28,7 +28,7 @@ def test_torch_engine_run_experiment_dry_run_short_circuits() -> None:
         runs=[],
     )
     r = e.run_experiment(m, t, dry_run=True)
-    assert r is None or isinstance(r, object)
+    assert r is None
 
 
 def test_torch_engine_run_experiment_runs_metrics_best_effort(monkeypatch) -> None:

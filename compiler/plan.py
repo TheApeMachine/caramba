@@ -13,8 +13,7 @@ from config.layer import LayerConfig
 from config.manifest import Manifest
 from config.model import ModelConfig
 from config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
-from config.topology_graph import GraphTopologyConfig
-from config.topology import NodeConfig, TopologyConfig
+from config.topology import GraphTopologyConfig, NodeConfig, TopologyConfig
 
 
 class Planner:
@@ -70,29 +69,11 @@ class Planner:
             else:
                 out.append(f"{pad}model=<missing>")
 
-        if target.system.ref == "system.graph":
-            topo_payload = target.system.config.get("topology", None)
-            if isinstance(topo_payload, dict):
-                try:
-                    topo = GraphTopologyConfig.model_validate(topo_payload)
-                    out.append(f"{pad}graph.type={topo.type}")
-                    out.append(f"{pad}graph.nodes:")
-                    for i, n in enumerate(topo.nodes):
-                        ins = n.in_keys if isinstance(n.in_keys, str) else list(n.in_keys)
-                        outs = n.out_keys if isinstance(n.out_keys, str) else list(n.out_keys)
-                        out.append(
-                            f"{pad}  - node[{i}].id={n.id} op={n.op} in={ins} out={outs} repeat={getattr(n,'repeat',1)}"
-                        )
-                except Exception:
-                    out.append(f"{pad}graph=<invalid>")
-            else:
-                out.append(f"{pad}graph=<missing>")
-
         return out
 
     def is_topology(self, node: NodeConfig) -> bool:
         """Check if node is a topology (has layers attribute)."""
-        return hasattr(node, "layers")
+        return isinstance(node, GraphTopologyConfig) or hasattr(node, "layers")
 
     def format_topology(
         self, config: TopologyConfig, *, indent: int, path: str
@@ -105,10 +86,18 @@ class Planner:
             f"path={path}.topology"
         )
 
+        if isinstance(config, GraphTopologyConfig):
+            for i, n in enumerate(config.nodes):
+                ins = n.in_keys if isinstance(n.in_keys, str) else list(n.in_keys)
+                outs = n.out_keys if isinstance(n.out_keys, str) else list(n.out_keys)
+                yield (
+                    f"{pad}  - node[{i}].id={n.id} op={n.op} in={ins} out={outs} "
+                    f"repeat={getattr(n, 'repeat', 1)}"
+                )
+            return
+
         for i, node in enumerate(config.layers):
-            yield from self.format_node(
-                node, indent=indent + 2, path=f"{path}.topology.layers[{i}]"
-            )
+            yield from self.format_node(node, indent=indent + 2, path=f"{path}.topology.layers[{i}]")
 
     def format_node(
         self, config: NodeConfig, *, indent: int, path: str

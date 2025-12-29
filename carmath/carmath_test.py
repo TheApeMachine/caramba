@@ -55,7 +55,7 @@ def test_bytes_per_kind_known_and_unknown() -> None:
     assert bytes_per_kind("FP16") == 2.0
     assert bytes_per_kind("q8_0") == 1.0
     assert bytes_per_kind("q4_0") == 0.625
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"Unknown kind: int8"):
         bytes_per_kind("int8")
 
 
@@ -146,9 +146,9 @@ def test_randomized_svd_shapes_determinism_and_reconstruction() -> None:
 
 def test_randomized_svd_validates_inputs() -> None:
     A = torch.randn(3, 3)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"randomized_svd expects a 2D matrix"):
         randomized_svd(A.unsqueeze(0), rank=1)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"Invalid shapes/rank for randomized_svd"):
         randomized_svd(A, rank=0)
 
 

@@ -49,3 +49,12 @@ def test_next_token_ce_objective_aliases_target_key() -> None:
     assert obj.labels_key == "targets"
     assert obj.target_key == "targets"
 
+    logits = torch.zeros(2, 3)  # uniform => loss = log(C)
+    targets = torch.tensor([0, 2])
+    outputs = as_tensordict({"l": logits})
+    batch = as_tensordict({"targets": targets})
+    loss = obj.loss(outputs=outputs, batch=batch)
+    assert loss.shape == ()
+    assert torch.isfinite(loss)
+    assert float(loss) == pytest.approx(float(torch.log(torch.tensor(3.0))), rel=1e-6)
+

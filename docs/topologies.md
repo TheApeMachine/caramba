@@ -307,6 +307,168 @@ topology:
 
 ---
 
+### GraphTopology
+
+Named-port DAG execution over a `TensorDict` / `dict[str, Tensor]`.
+
+Instead of a single tensor stream (`x → layer → layer → ...`), a GraphTopology reads and writes **named keys**. Each node declares:
+
+- `id`: unique node id
+- `op`: a Caramba `LayerType` (e.g. `Conv2dLayer`, `DenseLayer`), a `torch.nn` module name (e.g. `ReLU`, `MaxPool2d`), or a Python symbol via `python:module:Symbol`
+- `in` / `out`: input/output keys (string or list of strings)
+- `config`: kwargs passed to the op constructor
+- `repeat` (optional): repeats a single-in/single-out node with chained keys
+
+GraphTopology can also declare an optional input contract:
+
+- `inputs`: list of keys that must be present in the input batch (compile-time validation)
+
+**Data flow:** keys, not positions. Example: `batch["x"] → node(conv1) → batch["h1"] → ...`.
+
+#### Example — Vision CNN (Conv2d → Pool → Dense)
+
+```yaml
+system:
+  ref: system.generic
+  config:
+    model:
+      type: MLPModel
+      topology:
+        type: GraphTopology
+        inputs: [x]
+        nodes:
+          - id: conv1
+            op: Conv2dLayer
+            in: x
+            out: h1
+            config:
+              in_channels: 3
+              out_channels: 16
+              kernel_size: 3
+              padding: 1
+
+          - id: relu1
+            op: ReLU
+            in: h1
+            out: h2
+            config: {}
+
+          - id: pool1
+            op: MaxPool2d
+            in: h2
+            out: h3
+            config:
+              kernel_size: 2
+              stride: 2
+
+          - id: flatten
+            op: Flatten
+            in: h3
+            out: h4
+            config:
+              start_dim: 1
+
+          - id: head
+            op: DenseLayer
+            in: h4
+            out: logits
+            config:
+              d_in: 3136      # 16 * 14 * 14 (if input is 28x28)
+              d_out: 10
+              activation: null
+              normalization: null
+              dropout: 0.0
+```
+
+#### Example — Graph node classification (GCN)
+
+```yaml
+system:
+  ref: system.generic
+  config:
+    model:
+      type: MLPModel
+      topology:
+        type: GraphTopology
+        inputs: [x, adj]
+        nodes:
+          - id: gcn1
+            op: GraphConvLayer
+            in: [x, adj]
+            out: h
+            config:
+              kind: gcn
+              in_features: 16
+              out_features: 32
+              bias: true
+
+          - id: relu
+            op: ReLU
+            in: h
+            out: h2
+            config: {}
+
+          - id: head
+            op: DenseLayer
+            in: h2
+            out: logits
+            config:
+              d_in: 32
+              d_out: 7
+              activation: null
+              normalization: null
+              dropout: 0.0
+```
+
+#### Example — Hybrid (two encoders + concat + head)
+
+```yaml
+system:
+  ref: system.generic
+  config:
+    model:
+      type: MLPModel
+      topology:
+        type: GraphTopology
+        inputs: [text_emb, image_emb]
+        nodes:
+          - id: text_enc
+            op: DenseLayer
+            in: text_emb
+            out: t
+            config:
+              d_in: 768
+              d_out: 256
+              activation: gelu
+
+          - id: image_enc
+            op: DenseLayer
+            in: image_emb
+            out: v
+            config:
+              d_in: 1024
+              d_out: 256
+              activation: gelu
+
+          - id: fuse
+            op: python:topology.ops:Concat
+            in: [t, v]
+            out: fused
+            config:
+              dim: -1
+
+          - id: head
+            op: DenseLayer
+            in: fused
+            out: logits
+            config:
+              d_in: 512
+              d_out: 5
+              activation: null
+```
+
+---
+
 ## Composition Patterns
 
 ### Pattern 1: Standard Transformer Block

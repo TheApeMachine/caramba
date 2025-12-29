@@ -58,6 +58,7 @@ targets:
                 is_causal: true
                 dropout_p: 0.0
                 decoupled_gate: true
+                q_chunk: ${q_chunk}
             - type: ResidualTopology
               layers:
               - type: RMSNormLayer
@@ -100,7 +101,7 @@ targets:
       block_size: ${block_size}
       lr: ${blockwise_lr}
       device: mps
-      dtype: float32
+      dtype: ${dtype}
       teacher_ckpt: hf://meta-llama/Llama-3.2-1B
       convergence_target: ${convergence_target}
       convergence_patience: ${convergence_patience}
@@ -108,6 +109,9 @@ targets:
       cache_teacher_outputs: ${cache_teacher}
       use_amp: ${use_amp}
       amp_dtype: ${amp_dtype}
+      optimizer: ${optimizer}
+      weight_decay: ${weight_decay}
+      fused_optimizer: ${fused_optimizer}
       gradient_accumulation_steps: ${grad_accum_steps}
       num_workers: ${num_workers}
       pin_memory: ${pin_memory}
@@ -148,7 +152,12 @@ targets:
       block_size: ${block_size}
       lr: ${global_lr}
       device: mps
-      dtype: float32
+      dtype: ${dtype}
+      use_amp: ${use_amp}
+      amp_dtype: ${amp_dtype}
+      optimizer: ${optimizer}
+      weight_decay: ${weight_decay}
+      fused_optimizer: ${fused_optimizer}
   benchmarks:
   - id: perplexity
     config:
@@ -233,8 +242,14 @@ targets:
       block_size: 512
       lr: 0.0001
       device: mps
-      dtype: float32
+      dtype: ${dtype}
       teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+      cache_teacher_outputs: false
+      use_amp: ${use_amp}
+      amp_dtype: ${amp_dtype}
+      optimizer: ${optimizer}
+      weight_decay: ${weight_decay}
+      fused_optimizer: ${fused_optimizer}
   - id: finetune_quick
     mode: train
     exp: dba_finetune_quick
@@ -248,7 +263,12 @@ targets:
       block_size: 512
       lr: 5.0e-05
       device: mps
-      dtype: float32
+      dtype: ${dtype}
+      use_amp: ${use_amp}
+      amp_dtype: ${amp_dtype}
+      optimizer: ${optimizer}
+      weight_decay: ${weight_decay}
+      fused_optimizer: ${fused_optimizer}
   benchmarks:
   - id: perplexity_quick
     config:
@@ -281,9 +301,14 @@ vars:
   convergence_target: 0.02
   convergence_patience: 100
   convergence_max_steps: 2000
-  cache_teacher: true
-  use_amp: false
-  amp_dtype: float16
+  optimizer: lion
+  fused_optimizer: true
+  weight_decay: 0.0
+  q_chunk: 1024
+  dtype: auto
+  cache_teacher: false
+  use_amp: true
+  amp_dtype: auto
   grad_accum_steps: 1
   num_workers: 0
   pin_memory: false

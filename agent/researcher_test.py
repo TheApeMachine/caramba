@@ -1,24 +1,59 @@
 from __future__ import annotations
 
+import asyncio
+import types
+
+import agent as agent_mod
 from agent import Researcher
 from agent.context import AgentContext
+from config.persona import DeveloperConfig
 
 
-def test_prepare_message_and_ctx_passthrough_dict() -> None:
-    msg, ctx = Researcher._prepare_message_and_ctx({"x": 1}, "hello")
-    assert msg == "hello"
-    assert ctx == {"x": 1}
+def _make_researcher(monkeypatch) -> Researcher:
+    class FakeAgent:
+        def __init__(self, *args, **kwargs) -> None:
+            _ = args
+            _ = kwargs
+
+    class FakeRunner:
+        @staticmethod
+        async def run(_agent, *, input: str, context: dict):
+            return types.SimpleNamespace(input=input, context=context)
+
+    monkeypatch.setattr(agent_mod, "Agent", FakeAgent)
+    monkeypatch.setattr(agent_mod, "Runner", FakeRunner)
+    monkeypatch.setattr(agent_mod, "ModelSettings", lambda **kwargs: kwargs)
+
+    persona = DeveloperConfig(
+        name="Dev",
+        description="dev",
+        instructions="do stuff",
+        model="gpt-4.1-mini",
+        temperature=0.0,
+        tool_choice="auto",
+        mcp_servers=[],
+    )
+    return Researcher(persona)
 
 
-def test_prepare_message_and_ctx_folds_agent_context_into_message() -> None:
+def test_prepare_message_and_ctx_passthrough_dict(monkeypatch) -> None:
+    r = _make_researcher(monkeypatch)
+    res = asyncio.run(r.run("hello", {"x": 1}))
+    assert res.input == "hello"
+    assert res.context == {"x": 1}
+
+
+def test_prepare_message_and_ctx_folds_agent_context_into_message(monkeypatch) -> None:
+    r = _make_researcher(monkeypatch)
     ac = AgentContext()
-    msg, ctx = Researcher._prepare_message_and_ctx(ac, "hello")
-    assert "hello" in msg
-    assert ctx == {}
+    res = asyncio.run(r.run("hello", ac))
+    assert "hello" in res.input
+    assert res.context == {}
 
 
-def test_prepare_message_and_ctx_handles_none_context() -> None:
-    msg, ctx = Researcher._prepare_message_and_ctx(None, "hello")
-    assert msg == "hello"
-    assert ctx == {}
+def test_prepare_message_and_ctx_handles_none_context(monkeypatch) -> None:
+    r = _make_researcher(monkeypatch)
+    res = asyncio.run(r.run("hello", None))
+    assert res.input == "hello"
+    assert res.context == {}
 
