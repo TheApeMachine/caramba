@@ -15,6 +15,10 @@ inline void layernorm_impl(
     device const half* bias,
     device half* out,
     constant LayerNormParams& p,
+    threadgroup float* tg_sum,
+    threadgroup float* tg_sumsq,
+    threadgroup float* shared_mean,
+    threadgroup float* shared_inv,
     uint tid,
     uint tg_id
 ) {
@@ -27,11 +31,6 @@ inline void layernorm_impl(
     const uint row = tg_id;
     device const half* xr = x + row * p.stride_row;
     device half* yr = out + row * p.stride_row;
-
-    threadgroup float tg_sum[NSIMD];
-    threadgroup float tg_sumsq[NSIMD];
-    threadgroup float shared_mean;
-    threadgroup float shared_inv;
 
     float sum = 0.0f;
     float sumsq = 0.0f;
@@ -61,13 +60,13 @@ inline void layernorm_impl(
         const float inv_n = 1.0f / float(p.d_model);
         const float mean = total * inv_n;
         const float var = max(total2 * inv_n - mean * mean, 0.0f);
-        shared_mean = mean;
-        shared_inv = rsqrt(var + p.eps);
+        *shared_mean = mean;
+        *shared_inv = rsqrt(var + p.eps);
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    const float mean = shared_mean;
-    const float inv = shared_inv;
+    const float mean = *shared_mean;
+    const float inv = *shared_inv;
     for (uint i = tid; i < p.d_model; i += TG) {
         const float v = float(xr[i]);
         float y = (v - mean) * inv;
@@ -90,7 +89,16 @@ kernel void layernorm_fp16(
     uint tid                  [[ thread_position_in_threadgroup ]],
     uint tg_id                [[ threadgroup_position_in_grid ]]
 ) {
-    layernorm_impl<true, true>(x, weight, bias, out, p, tid, tg_id);
+    constexpr uint TG = 256;
+    constexpr uint SIMD = 32;
+    constexpr uint NSIMD = TG / SIMD;
+
+    threadgroup float tg_sum[NSIMD];
+    threadgroup float tg_sumsq[NSIMD];
+    threadgroup float tg_mean;
+    threadgroup float tg_inv;
+
+    layernorm_impl<true, true>(x, weight, bias, out, p, tg_sum, tg_sumsq, &tg_mean, &tg_inv, tid, tg_id);
 }
 
 kernel void layernorm_weight_fp16(
@@ -101,7 +109,17 @@ kernel void layernorm_weight_fp16(
     uint tid                  [[ thread_position_in_threadgroup ]],
     uint tg_id                [[ threadgroup_position_in_grid ]]
 ) {
-    layernorm_impl<true, false>(x, weight, (device const half*)nullptr, out, p, tid, tg_id);
+    constexpr uint TG = 256;
+    constexpr uint SIMD = 32;
+    constexpr uint NSIMD = TG / SIMD;
+
+    threadgroup float tg_sum[NSIMD];
+    threadgroup float tg_sumsq[NSIMD];
+    threadgroup float tg_mean;
+    threadgroup float tg_inv;
+
+    layernorm_impl<true, false>(
+        x, weight, (device const half*)nullptr, out, p, tg_sum, tg_sumsq, &tg_mean, &tg_inv, tid, tg_id);
 }
 
 kernel void layernorm_noweight_fp16(
@@ -111,6 +129,16 @@ kernel void layernorm_noweight_fp16(
     uint tid                  [[ thread_position_in_threadgroup ]],
     uint tg_id                [[ threadgroup_position_in_grid ]]
 ) {
-    layernorm_impl<false, false>(x, (device const half*)nullptr, (device const half*)nullptr, out, p, tid, tg_id);
+    constexpr uint TG = 256;
+    constexpr uint SIMD = 32;
+    constexpr uint NSIMD = TG / SIMD;
+
+    threadgroup float tg_sum[NSIMD];
+    threadgroup float tg_sumsq[NSIMD];
+    threadgroup float tg_mean;
+    threadgroup float tg_inv;
+
+    layernorm_impl<false, false>(
+        x, (device const half*)nullptr, (device const half*)nullptr, out, p, tg_sum, tg_sumsq, &tg_mean, &tg_inv, tid, tg_id);
 }
 

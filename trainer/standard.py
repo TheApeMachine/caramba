@@ -33,6 +33,7 @@ from config.target import ExperimentTargetConfig
 from config.train import TrainConfig, TrainPhase
 from console import logger
 from instrumentation import RunLogger
+from instrumentation.wandb_writer import WandBWriter
 from runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
 from runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
 
@@ -130,6 +131,38 @@ class StandardTrainer:
                     run_logger.enabled = False
             except Exception:
                 logger.warning("Failed to check if this is the main process (ignoring)")
+
+        # Optional W&B writer (standard trainer previously only emitted JSONL).
+        # This is best-effort and will never crash training.
+        wandb_writer: WandBWriter | None = None
+        if bool(getattr(defaults.logging, "wandb", False)):
+            is_main = True
+            if dist_ctx is not None:
+                try:
+                    if hasattr(dist_ctx, "is_main"):
+                        is_main = bool(getattr(dist_ctx, "is_main"))
+                except Exception:
+                    is_main = True
+            if is_main:
+                try:
+                    wandb_writer = WandBWriter(
+                        out_dir=checkpoint_dir / "wandb" / str(run.id),
+                        enabled=True,
+                        project=str(getattr(defaults.logging, "wandb_project", "")),
+                        entity=str(getattr(defaults.logging, "wandb_entity", "") or "") or None,
+                        mode=str(getattr(defaults.logging, "wandb_mode", "online")),
+                        run_name=f"{target.name}:{run.id}",
+                        group=str(target.name),
+                        tags=["standard"],
+                        config={
+                            "trainer": "standard",
+                            "target": str(target.name),
+                            "run_id": str(run.id),
+                            "device": str(device),
+                        },
+                    )
+                except Exception:
+                    wandb_writer = None
 
         runtime_plan = self._load_or_create_runtime_plan(
             checkpoint_dir=checkpoint_dir,
@@ -393,123 +426,129 @@ class StandardTrainer:
                 loss = _call_objective_loss(outputs=outputs, batch_td=batch_td)
             return outputs, loss
 
-        with logger.progress_bar() as progress:
-            task = progress.add_task("Training...", total=int(run.steps))
-            for step in range(int(run.steps)):
-                t0 = time.perf_counter()
-                try:
-                    item = next(loader_iter)
-                except StopIteration:
-                    logger.warning("Reached end of loader, resetting")
-                    loader_iter = iter(loader)
-                    item = next(loader_iter)
-
-                if isinstance(item, TensorDictBase):
-                    batch_td = item
-                elif isinstance(item, dict):
-                    batch_td = as_tensordict(item)
-                else:
-                    raise TypeError(
-                        "StandardTrainer expects batch items to be dict/TensorDict. "
-                        f"Got {type(item).__name__}."
-                    )
-
-                batch_td = cast(TensorDictBase, to_device(batch_td, device=device))
-                t_data = time.perf_counter()
-                optimizer.zero_grad(set_to_none=True)
-                kernel_launches: int | None = None
-
-                # Optional profiling (best-effort; primarily useful on CUDA).
-                if profile_every > 0 and ((step + 1) % profile_every == 0):
+        try:
+            with logger.progress_bar() as progress:
+                task = progress.add_task("Training...", total=int(run.steps))
+                for step in range(int(run.steps)):
+                    t0 = time.perf_counter()
                     try:
-                        from torch.profiler import ProfilerActivity, profile
+                        item = next(loader_iter)
+                    except StopIteration:
+                        logger.warning("Reached end of loader, resetting")
+                        loader_iter = iter(loader)
+                        item = next(loader_iter)
 
-                        acts = [ProfilerActivity.CPU]
-                        if device.type == "cuda":
-                            acts.append(ProfilerActivity.CUDA)
-                        with profile(
-                            activities=acts,
-                            record_shapes=bool(profile_record_shapes),
-                            profile_memory=True,
-                        ) as prof:
+                    if isinstance(item, TensorDictBase):
+                        batch_td = item
+                    elif isinstance(item, dict):
+                        batch_td = as_tensordict(item)
+                    else:
+                        raise TypeError(
+                            "StandardTrainer expects batch items to be dict/TensorDict. "
+                            f"Got {type(item).__name__}."
+                        )
+
+                    batch_td = cast(TensorDictBase, to_device(batch_td, device=device))
+                    t_data = time.perf_counter()
+                    optimizer.zero_grad(set_to_none=True)
+                    kernel_launches: int | None = None
+
+                    # Optional profiling (best-effort; primarily useful on CUDA).
+                    if profile_every > 0 and ((step + 1) % profile_every == 0):
+                        try:
+                            from torch.profiler import ProfilerActivity, profile
+
+                            acts = [ProfilerActivity.CPU]
+                            if device.type == "cuda":
+                                acts.append(ProfilerActivity.CUDA)
+                            with profile(
+                                activities=acts,
+                                record_shapes=bool(profile_record_shapes),
+                                profile_memory=True,
+                            ) as prof:
+                                outputs, loss = _forward_loss(batch_td)
+                                loss.backward()
+                            # Heuristic: count device-side events as “launch-ish”.
+                            if device.type == "cuda":
+                                try:
+                                    evs = prof.events() or []
+                                    # We intentionally keep this a heuristic; different builds expose
+                                    # different event metadata. The main goal is “fewer events over time”.
+                                    kernel_launches = int(len(evs))
+                                except Exception:
+                                    logger.warning("Failed to count kernel launches (ignoring)")
+                                    kernel_launches = None
+                        except Exception:
+                            logger.warning("Failed to profile (ignoring)")
+                            kernel_launches = None
                             outputs, loss = _forward_loss(batch_td)
                             loss.backward()
-                        # Heuristic: count device-side events as “launch-ish”.
-                        if device.type == "cuda":
-                            try:
-                                evs = prof.events() or []
-                                # We intentionally keep this a heuristic; different builds expose
-                                # different event metadata. The main goal is “fewer events over time”.
-                                kernel_launches = int(len(evs))
-                            except Exception:
-                                logger.warning("Failed to count kernel launches (ignoring)")
-                                kernel_launches = None
-                    except Exception:
-                        logger.warning("Failed to profile (ignoring)")
-                        kernel_launches = None
+                    else:
                         outputs, loss = _forward_loss(batch_td)
+
+                    t_fwd = time.perf_counter()
+                    # If we profiled, backward already happened.
+                    if not (profile_every > 0 and ((step + 1) % profile_every == 0)):
                         loss.backward()
-                else:
-                    outputs, loss = _forward_loss(batch_td)
+                    t_bwd = time.perf_counter()
+                    swap.before_optimizer_step(optimizer, device=device)
+                    optimizer.step()
+                    swap.after_optimizer_step(optimizer)
+                    if bool(getattr(train, "offload_optimizer", False)):
+                        # After offloading, grads should be freed aggressively.
+                        optimizer.zero_grad(set_to_none=True)
+                    t_optim = time.perf_counter()
 
-                t_fwd = time.perf_counter()
-                # If we profiled, backward already happened.
-                if not (profile_every > 0 and ((step + 1) % profile_every == 0)):
-                    loss.backward()
-                t_bwd = time.perf_counter()
-                swap.before_optimizer_step(optimizer, device=device)
-                optimizer.step()
-                swap.after_optimizer_step(optimizer)
-                if bool(getattr(train, "offload_optimizer", False)):
-                    # After offloading, grads should be freed aggressively.
-                    optimizer.zero_grad(set_to_none=True)
-                t_optim = time.perf_counter()
-
-                if (step + 1) % telemetry_interval == 0:
-                    metrics: dict[str, float] = {"loss": float(loss.detach())}
-                    try:
-                        extra = _call_objective_metrics(outputs=outputs, batch_td=batch_td, loss=loss)
-                        if isinstance(extra, dict):
-                            metrics.update({str(k): float(v) for k, v in extra.items()})
-                    except Exception:
-                        # Metrics are best-effort; don't fail training.
-                        logger.warning("Failed to compute objective metrics (ignoring)")
-                    # Timing breakdown (seconds).
-                    metrics.update(
-                        {
-                            "time_data_s": float(t_data - t0),
-                            "time_fwd_s": float(t_fwd - t_data),
-                            "time_bwd_s": float(t_bwd - t_fwd),
-                            "time_optim_s": float(t_optim - t_bwd),
-                            "time_step_s": float(t_optim - t0),
-                        }
-                    )
-                    # Memory footprint estimates (MiB).
-                    try:
+                    if (step + 1) % telemetry_interval == 0:
+                        metrics: dict[str, float] = {"loss": float(loss.detach())}
+                        try:
+                            extra = _call_objective_metrics(outputs=outputs, batch_td=batch_td, loss=loss)
+                            if isinstance(extra, dict):
+                                metrics.update({str(k): float(v) for k, v in extra.items()})
+                        except Exception:
+                            # Metrics are best-effort; don't fail training.
+                            logger.warning("Failed to compute objective metrics (ignoring)")
+                        # Timing breakdown (seconds).
                         metrics.update(
                             {
-                                "mem_params_mb": bytes_to_mb(param_bytes()),
-                                "mem_grads_mb": bytes_to_mb(grad_bytes()),
-                                "mem_optim_mb": bytes_to_mb(optim_state_bytes()),
+                                "time_data_s": float(t_data - t0),
+                                "time_fwd_s": float(t_fwd - t_data),
+                                "time_bwd_s": float(t_bwd - t_fwd),
+                                "time_optim_s": float(t_optim - t_bwd),
+                                "time_step_s": float(t_optim - t0),
                             }
                         )
-                    except Exception:
-                        logger.warning("Failed to compute memory metrics (ignoring)")
-                    if kernel_launches is not None:
-                        metrics["kernel_events_estimate"] = float(kernel_launches)
-                    metrics["compiled"] = 1.0 if compiled else 0.0
-                    run_logger.log_metrics(
-                        run_id=str(run.id),
-                        phase="standard",
-                        step=step + 1,
-                        metrics=metrics,
-                    )
+                        # Memory footprint estimates (MiB).
+                        try:
+                            metrics.update(
+                                {
+                                    "mem_params_mb": bytes_to_mb(param_bytes()),
+                                    "mem_grads_mb": bytes_to_mb(grad_bytes()),
+                                    "mem_optim_mb": bytes_to_mb(optim_state_bytes()),
+                                }
+                            )
+                        except Exception:
+                            logger.warning("Failed to compute memory metrics (ignoring)")
+                        if kernel_launches is not None:
+                            metrics["kernel_events_estimate"] = float(kernel_launches)
+                        metrics["compiled"] = 1.0 if compiled else 0.0
+                        run_logger.log_metrics(
+                            run_id=str(run.id),
+                            phase="standard",
+                            step=step + 1,
+                            metrics=metrics,
+                        )
+                        if wandb_writer is not None:
+                            wandb_writer.log_scalars(prefix="train", step=step + 1, scalars=metrics)
 
-                progress.update(
-                    task,
-                    advance=1,
-                    description=f"Step {step+1}/{run.steps} • loss={float(loss.detach()):.4f}",
-                )
+                    progress.update(
+                        task,
+                        advance=1,
+                        description=f"Step {step+1}/{run.steps} • loss={float(loss.detach()):.4f}",
+                    )
+        finally:
+            if wandb_writer is not None:
+                wandb_writer.close()
 
         self._save_checkpoint(
             checkpoint_dir=checkpoint_dir,

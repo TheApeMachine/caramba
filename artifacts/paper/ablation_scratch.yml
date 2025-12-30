@@ -18,7 +18,7 @@ defaults:
     wandb: true
     wandb_project: dba-paper-ablations
     wandb_entity: ''
-    wandb_mode: offline
+    wandb_mode: online
     eval_iters: 50
   runtime:
     save_every: 1000
@@ -151,6 +151,7 @@ targets:
         train: &train_common
           phase: standard
           batch_size: ${batch_size}
+          gradient_accumulation_steps: 16
           block_size: ${block_size}
           lr: ${lr}
           device: mps

@@ -55,17 +55,11 @@ def _try_import_wandb() -> _WandbModule | None:
 
 
 def _auto_wandb_mode() -> str:
-    """Choose a sensible W&B mode based on environment.
+    """Choose a sensible W&B mode without consulting environment variables.
 
     This only applies when the manifest explicitly sets wandb_mode: auto.
     """
-
-    # If a user has a key, default to online; otherwise offline avoids prompts/network.
-    if str(os.environ.get("WANDB_API_KEY", "")).strip():
-        return "online"
-    # Common CI env var patterns: default to offline.
-    if str(os.environ.get("CI", "")).strip():
-        return "offline"
+    # Manifest-driven system: "auto" should not peek at env vars (shadow config).
     return "offline"
 
 
@@ -135,6 +129,10 @@ class WandBWriter:
 
         wandb = _try_import_wandb()
         if wandb is None:
+            try:
+                print("[wandb] disabled: python package `wandb` is not installed", file=sys.stderr)
+            except Exception:
+                pass
             self.enabled = False
             return
 
@@ -150,12 +148,25 @@ class WandBWriter:
                 name = self.out_dir.name or None
             mode = str(self.mode or "online").strip().lower()
             if mode in ("disabled", "off", "false", "0", "none"):
+                try:
+                    print(f"[wandb] disabled: mode={mode!r}", file=sys.stderr)
+                except Exception:
+                    pass
                 self.enabled = False
                 self.run = None
                 return
             if mode == "auto":
                 mode = _auto_wandb_mode()
             cfg = _serialize_cfg(self.config)
+            # W&B is quite chatty by default and can corrupt rich progress output.
+            # Best-effort: disable W&B console logging if supported.
+            settings = None
+            try:
+                Settings = getattr(wandb, "Settings", None)
+                if callable(Settings):
+                    settings = Settings(console="off")
+            except Exception:
+                settings = None
             self.run = wandb.init(
                 project=str(self.project or ""),
                 entity=(str(self.entity) if self.entity else None),
@@ -165,8 +176,13 @@ class WandBWriter:
                 dir=str(self.out_dir),
                 config=cfg,
                 tags=self.tags,
+                settings=settings,
             )
-        except Exception:
+        except Exception as e:
+            try:
+                print(f"[wandb] disabled: wandb.init failed: {e}", file=sys.stderr)
+            except Exception:
+                pass
             self.enabled = False
             self.run = None
             return

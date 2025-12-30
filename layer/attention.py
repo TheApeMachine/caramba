@@ -340,7 +340,9 @@ class AttentionLayer(nn.Module):
             self.rotary_geo = None
 
         # Optional RoPE on semantic path (ablation).
-        if bool(getattr(config, "rope_semantic", False)):
+        # Keep behavior consistent with `rope_enabled`: if RoPE is globally disabled,
+        # semantic RoPE should not be constructed even if the ablation flag is set.
+        if config.rope_enabled and bool(getattr(config, "rope_semantic", False)):
             if sem_head_dim % 2 != 0:
                 raise ValueError(SEM_ROPE_EVEN_DIM_ERROR)
             self.rotary_sem = RotaryEmbedding(
