@@ -45,6 +45,20 @@ def layernorm_fp16(
     if x.dim() < 1:
         raise RuntimeError("Metal LayerNorm expects x.dim() >= 1")
 
+    d_model = int(x.shape[-1])
+    if weight is not None:
+        if weight.shape[0] != d_model:
+            raise ValueError(
+                f"layernorm weight size mismatch: weight.shape[0]={int(weight.shape[0])} "
+                f"but x.shape[-1]={d_model}"
+            )
+    if bias is not None:
+        if bias.shape[0] != d_model:
+            raise ValueError(
+                f"layernorm bias size mismatch: bias.shape[0]={int(bias.shape[0])} "
+                f"but x.shape[-1]={d_model}"
+            )
+
     x2 = x.contiguous()
     ops = load_caramba_metal_ops(verbose=bool(verbose_build))
 
@@ -60,11 +74,11 @@ def layernorm_fp16(
         raise RuntimeError("Metal LayerNorm does not support bias without weight")
 
     assert weight is not None
-    w2 = weight.to(device=x.device).to(torch.float16).contiguous()
+    w2 = weight.to(device=x.device, dtype=torch.float16).contiguous()
 
     if bias is None:
         return ops.layernorm_weight(x2, w2, float(eps))
 
-    b2 = bias.to(device=x.device).to(torch.float16).contiguous()
+    b2 = bias.to(device=x.device, dtype=torch.float16).contiguous()
     return ops.layernorm(x2, w2, b2, float(eps))
 

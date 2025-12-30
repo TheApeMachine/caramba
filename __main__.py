@@ -16,7 +16,7 @@ _PKG_DIR = str(Path(__file__).resolve().parent)
 if _PKG_DIR not in sys.path:
     sys.path.insert(0, _PKG_DIR)
 
-from cli import main as cli_main  # noqa: E402
+from cli import main as cli_main
 
 
 def main(argv: list[str] | None = None) -> None:

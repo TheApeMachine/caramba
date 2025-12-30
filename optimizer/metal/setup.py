@@ -19,6 +19,9 @@ def compile_metal(out_dir: Path) -> None:
         HERE / "rope.metal",
         HERE / "lion.metal",
     ]
+    for src in sources:
+        if not src.is_file():
+            raise FileNotFoundError(f"Missing Metal source: {src}")
     airs = [out_dir / f"{src.stem}.air" for src in sources]
     metallib = out_dir / "caramba_ops.metallib"
 

@@ -14,6 +14,7 @@ Note: When running from the parent directory (where the `caramba/` folder is on
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from cli import main
 
 # Compatibility: some code paths import `caramba.<submodule>` (package-style).
@@ -22,7 +23,7 @@ from cli import main
 # like a package rooted at this directory, so `import caramba.trainer` works.
 #
 # This is safe because our real "package" layout is effectively the repo root.
-__path__ = [__file__.rsplit("/", 1)[0]]  # type: ignore[name-defined]
+__path__ = [str(Path(__file__).resolve().parent)]  # type: ignore[name-defined]
 if __path__[0] not in sys.path:
     sys.path.insert(0, __path__[0])
 

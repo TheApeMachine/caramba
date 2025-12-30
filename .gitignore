@@ -16,8 +16,7 @@ x.jsonl
 fineweb_100m.npy
 fineweb_100m.npy.meta
 train.h5
-.gitignore
 .coverage
 fineweb_edu_v29_100m.npy
-.gitignore
 NOTES.md
+*.fdb_latexmk

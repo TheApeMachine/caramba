@@ -6,12 +6,15 @@ These are manifest-referenced datasets that can be built into torch Datasets.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 
 from torch.utils.data import Dataset
 
 from data.auto import build_token_dataset
 from runtime.tensordict_utils import TensorDictBase
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +49,15 @@ class TokenDataset:
         p = Path(self.path)
         try:
             return build_token_dataset(path=p, block_size=int(self.block_size))
-        except Exception:
+        except (FileNotFoundError, EOFError, ValueError) as e:
+            _log.warning(
+                "Failed to build/load token dataset; will try prepare if configured "
+                "(path=%s, block_size=%s): %s",
+                p,
+                self.block_size,
+                e,
+                exc_info=True,
+            )
             # If the dataset is missing or malformed, and a prepare config is present,
             # build it now and retry.
             if not isinstance(self.prepare, dict):
@@ -93,7 +104,17 @@ class TokenDataset:
         )
         try:
             return build_token_dataset(path=p, block_size=int(self.block_size))
-        except Exception:
+        except Exception as e:
+            _log.warning(
+                "Token dataset build failed after prepare (overwrite=False); "
+                "will retry with overwrite=True if allowed "
+                "(path=%s, block_size=%s, rebuild_on_failure=%s): %s",
+                p,
+                self.block_size,
+                rebuild_on_failure,
+                e,
+                exc_info=True,
+            )
             if not rebuild_on_failure:
                 raise
 

@@ -408,6 +408,17 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
         self.assertIsNotNone(layer.k_sem_null)
         self.assertIsNotNone(layer.k_geo_null)
         self.assertIsNotNone(layer.v_null)
+        assert cfg.sem_dim is not None and cfg.geo_dim is not None
+        assert cfg.attn_dim is not None
+        sem_head_dim = cfg.sem_dim // cfg.n_heads
+        geo_head_dim = cfg.geo_dim // cfg.n_heads
+        attn_head_dim = cfg.attn_dim // cfg.n_heads
+        assert layer.k_sem_null is not None
+        assert layer.k_geo_null is not None
+        assert layer.v_null is not None
+        self.assertEqual(layer.k_sem_null.shape, (cfg.n_heads, sem_head_dim))
+        self.assertEqual(layer.k_geo_null.shape, (cfg.n_heads, geo_head_dim))
+        self.assertEqual(layer.v_null.shape, (cfg.n_heads, attn_head_dim))
 
         x = torch.randn(self.batch_size, self.seq_len, self.d_model)
         y, _ = layer(x)

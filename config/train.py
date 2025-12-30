@@ -87,7 +87,7 @@ class TrainConfig(BaseModel):
     # This avoids hardcoding an absolute ppl threshold that depends on dataset mix.
     # If enabled, we compute teacher NLL on the same batch in HF and require our
     # teacher to match within a small tolerance.
-    teacher_sanity_reference: Literal["none", "hf"] = "none"  # none|hf
+    teacher_sanity_reference: Literal["none", "hf"] = "none"
     teacher_sanity_ref_batches: PositiveInt = 1
     teacher_sanity_max_ppl_ratio_vs_ref: PositiveFloat = 1.25
     teacher_sanity_max_nll_delta_vs_ref: PositiveFloat = 0.25

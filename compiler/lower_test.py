@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import unittest
 import tempfile
+import textwrap
 import torch
 from pathlib import Path
 from typing import cast
@@ -105,51 +106,51 @@ class LowerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "m.yml"
             path.write_text(
-                "\n".join(
-                    [
-                        "version: 2",
-                        "name: test",
-                        "defaults:",
-                        "  logging: { wandb: false, wandb_project: '', wandb_entity: '' }",
-                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
-                        "  runtime: { save_every: 100 }",
-                        "targets:",
-                        "  - type: experiment",
-                        "    name: exp",
-                        "    backend: torch",
-                        "    task: task.language_modeling",
-                        "    data:",
-                        "      ref: dataset.tokens",
-                        "      config: { path: 'x.tokens', block_size: 4 }",
-                        "    system:",
-                        "      ref: system.language_model",
-                        "      config:",
-                        "        model:",
-                        "          type: TransformerModel",
-                        "          topology:",
-                        "            type: StackedTopology",
-                        "            layers:",
-                        "              - type: LinearLayer",
-                        "                d_in: 128",
-                        "                d_out: 128",
-                        "                bias: true",
-                        "    objective: objective.next_token_ce",
-                        "    trainer: trainer.standard",
-                        "    runs:",
-                        "      - id: r",
-                        "        mode: train",
-                        "        exp: e",
-                        "        seed: [1, 2, 7]",
-                        "        steps: 2",
-                        "        expected: {}",
-                        "        train:",
-                        "          phase: standard",
-                        "          batch_size: 1",
-                        "          block_size: 4",
-                        "          lr: 0.001",
-                        "          device: cpu",
-                        "          dtype: float32",
-                    ]
+                textwrap.dedent(
+                    """\
+                    version: 2
+                    name: test
+                    defaults:
+                      logging: { wandb: false, wandb_project: '', wandb_entity: '' }
+                      data: { tokenizer: tiktoken, val_frac: 0.1 }
+                      runtime: { save_every: 100 }
+                    targets:
+                      - type: experiment
+                        name: exp
+                        backend: torch
+                        task: task.language_modeling
+                        data:
+                          ref: dataset.tokens
+                          config: { path: 'x.tokens', block_size: 4 }
+                        system:
+                          ref: system.language_model
+                          config:
+                            model:
+                              type: TransformerModel
+                              topology:
+                                type: StackedTopology
+                                layers:
+                                  - type: LinearLayer
+                                    d_in: 128
+                                    d_out: 128
+                                    bias: true
+                        objective: objective.next_token_ce
+                        trainer: trainer.standard
+                        runs:
+                          - id: r
+                            mode: train
+                            exp: e
+                            seed: [1, 2, 7]
+                            steps: 2
+                            expected: {}
+                            train:
+                              phase: standard
+                              batch_size: 1
+                              block_size: 4
+                              lr: 0.001
+                              device: cpu
+                              dtype: float32
+                    """
                 ),
                 encoding="utf-8",
             )

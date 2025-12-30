@@ -28,7 +28,7 @@ def metal_dba_decode_available() -> bool:
     return bool(METAL_SUPPORTED and torch.backends.mps.is_available())
 
 
-def _squeeze_q(q: "Tensor") -> "Tensor":
+def _squeeze_q(q: Tensor) -> Tensor:
     if q.dim() == 4:
         if q.size(2) != 1:
             raise ValueError("decode expects q.shape[2] == 1")
@@ -40,18 +40,18 @@ def _squeeze_q(q: "Tensor") -> "Tensor":
 
 def dba_decode_fp16(
     *,
-    q_sem: "Tensor",
-    q_geo: "Tensor",
-    k_sem: "Tensor",
-    k_geo: "Tensor",
-    v: "Tensor",
-    k_sem_null: "Tensor | None" = None,
-    k_geo_null: "Tensor | None" = None,
-    v_null: "Tensor | None" = None,
+    q_sem: Tensor,
+    q_geo: Tensor,
+    k_sem: Tensor,
+    k_geo: Tensor,
+    v: Tensor,
+    k_sem_null: Tensor | None = None,
+    k_geo_null: Tensor | None = None,
+    v_null: Tensor | None = None,
     sem_scale: float | None = None,
     geo_scale: float | None = None,
     verbose_build: bool = False,
-) -> "Tensor":
+) -> Tensor:
     """Fused DBA decode (MPS/Metal) for fp16 KV caches.
 
     Shapes (contiguous required):
@@ -132,7 +132,9 @@ def dba_decode_fp16(
         _LOGGED = True
 
     if use_null:
-        assert ksn is not None and kgn is not None and vn is not None
+        assert ksn is not None, "ksn is None"
+        assert kgn is not None, "kgn is None"
+        assert vn is not None, "vn is None"
         if ksn.shape != (B, H, sem_hd):
             raise ValueError(f"k_sem_null must be (B,H,sem_hd) == {(B, H, sem_hd)}, got {tuple(ksn.shape)}")
         if kgn.shape != (B, H, geo_hd):

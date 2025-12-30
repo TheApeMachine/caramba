@@ -415,7 +415,7 @@ class PlatformImprove(Process):
                 # If changes requested, reset back one commit and iterate.
                 try:
                     show = _run(["git", "show", "--stat", "--patch", "HEAD"], cwd=repo_root)
-                except Exception:
+                except RuntimeError:
                     show = ""
                     _log.debug("Failed to capture git patch before reset", exc_info=True)
                 if show.strip():

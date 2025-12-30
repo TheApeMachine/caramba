@@ -27,6 +27,9 @@ if TYPE_CHECKING:
     from cache.decoupled import DecoupledLayerKVCache
     from cache.layer import LayerKVCache
 
+# Error message constants (keep exact wording for tests/log searchability).
+SEM_ROPE_EVEN_DIM_ERROR = "Decoupled mode with semantic RoPE requires even sem_head_dim"
+
 # Lazy-cached reference to avoid per-call import overhead
 _InferContext: type | None = None
 
@@ -339,7 +342,7 @@ class AttentionLayer(nn.Module):
         # Optional RoPE on semantic path (ablation).
         if bool(getattr(config, "rope_semantic", False)):
             if sem_head_dim % 2 != 0:
-                raise ValueError("Decoupled mode with semantic RoPE requires even sem_head_dim")
+                raise ValueError(SEM_ROPE_EVEN_DIM_ERROR)
             self.rotary_sem = RotaryEmbedding(
                 sem_head_dim, base=config.rope_base, rope_scaling=getattr(config, "rope_scaling", None)
             )
@@ -354,9 +357,10 @@ class AttentionLayer(nn.Module):
         if bool(getattr(config, "null_attn", False)):
             H = int(self.n_heads)
             v_head_dim = int(self._v_head_dim)
-            self.k_sem_null = nn.Parameter(torch.zeros((1, H, 1, int(sem_head_dim))))
-            self.k_geo_null = nn.Parameter(torch.zeros((1, H, 1, int(geo_head_dim))))
-            self.v_null = nn.Parameter(torch.zeros((1, H, 1, int(v_head_dim))))
+            # Store per-head null vectors (broadcasted over batch/sequence at runtime).
+            self.k_sem_null = nn.Parameter(torch.zeros((H, int(sem_head_dim))))
+            self.k_geo_null = nn.Parameter(torch.zeros((H, int(geo_head_dim))))
+            self.v_null = nn.Parameter(torch.zeros((H, int(v_head_dim))))
             nn.init.normal_(self.k_sem_null, mean=0.0, std=0.02)
             nn.init.normal_(self.k_geo_null, mean=0.0, std=0.02)
             nn.init.normal_(self.v_null, mean=0.0, std=0.02)
@@ -432,9 +436,10 @@ class AttentionLayer(nn.Module):
         """Return expanded (k_sem_null, k_geo_null, v_null) for null attention."""
         if self.k_sem_null is None or self.k_geo_null is None or self.v_null is None:
             raise RuntimeError("null_attn enabled but null parameters are missing")
-        ksn = self.k_sem_null.expand(B, -1, -1, -1).to(device=device, dtype=dtype)
-        kgn = self.k_geo_null.expand(B, -1, -1, -1).to(device=device, dtype=dtype)
-        vn = self.v_null.expand(B, -1, -1, -1).to(device=device, dtype=dtype)
+        # Expected shape for decode paths: (B, H, 1, head_dim)
+        ksn = self.k_sem_null.unsqueeze(0).unsqueeze(2).expand(B, -1, 1, -1).to(device=device, dtype=dtype)
+        kgn = self.k_geo_null.unsqueeze(0).unsqueeze(2).expand(B, -1, 1, -1).to(device=device, dtype=dtype)
+        vn = self.v_null.unsqueeze(0).unsqueeze(2).expand(B, -1, 1, -1).to(device=device, dtype=dtype)
         return ksn, kgn, vn
 
     def forward(

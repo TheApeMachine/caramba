@@ -11,6 +11,7 @@ and student, loads weights, and returns them so the engine can run benchmarks.
 from __future__ import annotations
 
 import os
+import pickle
 from pathlib import Path
 from typing import Any, cast
 
@@ -106,7 +107,8 @@ class UpcycleEvalTrainer:
         # Only load pickle-based checkpoints (weights_only=False) if you FULLY trust the source.
         try:
             obj = torch.load(p, map_location="cpu", weights_only=True)
-        except RuntimeError as e:
+        except (RuntimeError, pickle.UnpicklingError, ValueError, EOFError) as e:
+            # Only the literal "1" enables unsafe pickle loading.
             trust = os.getenv("CARAMBA_TRUST_CHECKPOINTS", "").strip() == "1"
             logger.warning(
                 "Secure checkpoint load failed with weights_only=True. "

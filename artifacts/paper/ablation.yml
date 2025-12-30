@@ -268,7 +268,7 @@ targets:
       - id: global
         mode: train
         exp: ablation_with_null
-        seed: 42
+        seed: [42, 1337, 70]
         steps: ${global_steps}
         expected: {phase: global}
         train:
@@ -395,7 +395,7 @@ targets:
       - id: global
         mode: train
         exp: ablation_tied_qk
-        seed: 42
+        seed: [42, 1337, 70]
         steps: ${global_steps}
         expected: {phase: global}
         train:
@@ -522,7 +522,7 @@ targets:
       - id: global
         mode: train
         exp: ablation_rope_on_sem
-        seed: 42
+        seed: [42, 1337, 70]
         steps: ${global_steps}
         expected: {phase: global}
         train:

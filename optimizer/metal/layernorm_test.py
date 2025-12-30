@@ -6,19 +6,22 @@ import torch
 from optimizer.runtime import METAL_SUPPORTED
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
-def test_metal_layernorm_matches_reference() -> None:
+@pytest.fixture(scope="session")
+def metal_ops() -> object:
+    """Build/load the Metal extension or skip the suite."""
     if not torch.backends.mps.is_available():
         pytest.skip("torch.backends.mps is not available")
-
-    # Build/load the extension; if the toolchain isn't present, skip rather than fail.
     try:
         from optimizer.metal.jit import load_caramba_metal_ops
 
-        _ = load_caramba_metal_ops(verbose=False)
+        return load_caramba_metal_ops(verbose=False)
     except Exception as e:
         pytest.skip(f"caramba metal extension unavailable: {e}")
 
+
+@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+def test_metal_layernorm_matches_reference(metal_ops: object) -> None:
+    _ = metal_ops
     from optimizer.metal import layernorm_fp16
 
     device = torch.device("mps")
@@ -47,17 +50,8 @@ def test_metal_layernorm_matches_reference() -> None:
 
 
 @pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
-def test_metal_layernorm_weight_matches_reference() -> None:
-    if not torch.backends.mps.is_available():
-        pytest.skip("torch.backends.mps is not available")
-
-    try:
-        from optimizer.metal.jit import load_caramba_metal_ops
-
-        _ = load_caramba_metal_ops(verbose=False)
-    except Exception as e:
-        pytest.skip(f"caramba metal extension unavailable: {e}")
-
+def test_metal_layernorm_weight_matches_reference(metal_ops: object) -> None:
+    _ = metal_ops
     from optimizer.metal import layernorm_fp16
 
     device = torch.device("mps")
@@ -84,17 +78,8 @@ def test_metal_layernorm_weight_matches_reference() -> None:
 
 
 @pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
-def test_metal_layernorm_noweight_matches_reference() -> None:
-    if not torch.backends.mps.is_available():
-        pytest.skip("torch.backends.mps is not available")
-
-    try:
-        from optimizer.metal.jit import load_caramba_metal_ops
-
-        _ = load_caramba_metal_ops(verbose=False)
-    except Exception as e:
-        pytest.skip(f"caramba metal extension unavailable: {e}")
-
+def test_metal_layernorm_noweight_matches_reference(metal_ops: object) -> None:
+    _ = metal_ops
     from optimizer.metal import layernorm_fp16
 
     device = torch.device("mps")

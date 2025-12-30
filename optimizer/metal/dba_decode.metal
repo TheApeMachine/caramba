@@ -265,6 +265,9 @@ kernel void dba_decode_fp16_null(
     if (compute_out) {
         out_acc = float(vn[tid]);
     }
+    // `out_acc` is thread-local and does not depend on `shared_m/shared_d`.
+    // This barrier ensures `shared_m/shared_d` (written by tid==0) are visible
+    // to all threads before the subsequent loop reads them.
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
     for (uint block = 0; block < S; block += TG) {
