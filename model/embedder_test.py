@@ -41,3 +41,25 @@ class EmbedderTest(unittest.TestCase):
         embedder = Embedder(NoEmbedderConfig(type=EmbedderType.NONE))
         x: torch.Tensor = torch.randn(1, 10, 16)
         self.assertIs(embedder(x), x)
+
+    def test_token_ids_not_corrupted_by_fp16_weights(self) -> None:
+        """
+        Token IDs must remain integer indices even if embedding weights are fp16.
+
+        Regression test: casting token IDs to fp16 and back to long silently
+        corrupts IDs above ~2048 (float16 mantissa limit), breaking Llama parity.
+        """
+        torch.manual_seed(0)
+        embedder = Embedder(
+            TokenEmbedderConfig(
+                type=EmbedderType.TOKEN,
+                vocab_size=10000,
+                d_model=8,
+            )
+        ).to(dtype=torch.float16)
+
+        # Include IDs above the fp16 exact-integer range.
+        x = torch.tensor([[0, 1, 2047, 2048, 4097, 5000, 9999]], dtype=torch.long)
+        y = embedder(x)
+        expected = embedder.token_embedding(x)  # type: ignore[arg-type]
+        self.assertTrue(torch.allclose(y, expected))

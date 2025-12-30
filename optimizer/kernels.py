@@ -15,15 +15,30 @@ from __future__ import annotations
 
 from typing import Any
 
+import os
 import torch
 from torch import Tensor
 
 from console import logger
 
 
+def _metal_disabled(kind: str) -> bool:
+    """Best-effort runtime kill-switch for Metal kernels.
+
+    This is used to keep *correctness* (e.g. teacher parity sanity checks) independent
+    from the availability of fast-path kernels.
+    """
+    # Global kill-switch
+    if os.getenv("CARAMBA_DISABLE_METAL_KERNELS", "").strip() == "1":
+        return True
+    # Per-kernel kill-switch
+    env = f"CARAMBA_DISABLE_METAL_{kind.upper()}"
+    return os.getenv(env, "").strip() == "1"
+
+
 def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     """RMSNorm: y = x * rsqrt(mean(x^2) + eps) * weight."""
-    if x.device.type == "mps" and x.dtype == torch.float16:
+    if (not _metal_disabled("rmsnorm")) and x.device.type == "mps" and x.dtype == torch.float16:
         try:
             from optimizer.metal import metal_rmsnorm_available, rmsnorm_fp16
 
@@ -47,7 +62,7 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     - x: (B, H, T, D)
     - cos/sin: (T, rot_dim/2)
     """
-    if x.device.type == "mps" and x.dtype == torch.float16:
+    if (not _metal_disabled("rope")) and x.device.type == "mps" and x.dtype == torch.float16:
         try:
             from optimizer.metal import metal_rope_available, rope_fp16
 
@@ -62,6 +77,9 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     rot = int(rot_dim)
     x_rot = x[..., :rot]
     x_pass = x[..., rot:]
+    # HF Llama applies rotate_half on a half-split representation:
+    # y1 = x1*cos - x2*sin
+    # y2 = x1*sin + x2*cos
     x1 = x_rot[..., : rot // 2]
     x2 = x_rot[..., rot // 2 : rot]
     y1 = x1 * cos2 - x2 * sin2

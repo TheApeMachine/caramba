@@ -96,6 +96,8 @@ targets:
       dtype: auto
       teacher_ckpt: hf://meta-llama/Llama-3.2-1B
       gradient_accumulation_steps: 16
+      orchestrator_enabled: true
+      orchestrator_max_loss_increase: 2.0
       optimizer: lion
       fused_optimizer: true
       use_amp: true
@@ -103,6 +105,13 @@ targets:
       blockwise_autotune_enabled: true
       blockwise_autotune_mode: active
       blockwise_autotune_log_every: 50
+      blockwise_reset_lr_each_block: true
+      blockwise_autotune_min_lr: 2.5e-5
+      blockwise_autotune_lr_decay: 0.7
+      blockwise_autotune_spike_std: 4.0
+      blockwise_autotune_plateau_patience: 200
+      # More optimizer updates per block (faster, stronger distillation).
+      gradient_accumulation_steps: 4
   - id: finetune
     mode: train
     exp: dba_finetune
@@ -118,6 +127,9 @@ targets:
       device: mps
       # Keep finetune consistent with blockwise for kernel dispatch.
       dtype: auto
+      gradient_accumulation_steps: 16
+      orchestrator_enabled: true
+      orchestrator_max_loss_increase: 2.0
       optimizer: lion
       fused_optimizer: true
       use_amp: true

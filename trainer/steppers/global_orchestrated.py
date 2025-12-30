@@ -6,6 +6,7 @@ from typing import cast
 import torch
 import torch.nn.functional as F
 from torch import Tensor
+from torch.amp.grad_scaler import GradScaler
 
 from config.run import Run
 from console import logger
@@ -55,9 +56,35 @@ class GlobalOrchestratedStepper:
         scaler = None
         if use_amp and ctx.device.type == "cuda" and amp_dtype == torch.float16:
             try:
-                scaler = torch.cuda.amp.GradScaler(enabled=True)
+                scaler = GradScaler(device="cuda", enabled=True)
             except Exception:
+                logger.warning("Failed to create GradScaler; disabling autocast.")
                 scaler = None
+        # MPS has no GradScaler; fp16 autocast is prone to overflow -> NaNs.
+        # Prefer bf16 autocast for stability.
+        if use_amp and ctx.device.type == "mps" and scaler is None and amp_dtype == torch.float16:
+            logger.warning("Switching MPS autocast from fp16 -> bf16 (no GradScaler).")
+            amp_dtype = torch.bfloat16
+
+        # MPS: fp16 *weights* + AdamW-style updates is a common source of NaNs (no fp32 master weights).
+        # Upcast weights to bf16 for stable optimization while keeping model structure unchanged.
+        if ctx.device.type == "mps":
+            try:
+                if any(p.dtype == torch.float16 for p in ctx.student.parameters()):
+                    logger.warning("Upcasting student weights to bfloat16 for MPS training stability.")
+                    ctx.student.to(dtype=torch.bfloat16)
+            except Exception as e:
+                logger.warning(f"Failed to upcast student to bfloat16 on MPS: {e}")
+
+        def _first_nonfinite_param() -> str | None:
+            for name, p in ctx.student.named_parameters():
+                if p is None:
+                    continue
+                t = p.detach()
+                if not torch.isfinite(t).all():
+                    # Avoid expensive stats; just report the first offending parameter.
+                    return f"{name} dtype={t.dtype} shape={tuple(t.shape)}"
+            return None
 
         mode = str(getattr(train, "orchestrator_mode", "active")).lower()
         max_loss_increase = float(getattr(train, "orchestrator_max_loss_increase", 1.5))
@@ -114,6 +141,8 @@ class GlobalOrchestratedStepper:
         )
         loader_iter = cast(Iterator[TensorDictBase], iter(loader))
         loss: Tensor | None = None
+        accum_steps = int(getattr(train, "gradient_accumulation_steps", 1))
+        accum_steps = max(1, accum_steps)
 
         # Cold-start baseline: compare student against teacher CE on the same batch.
         first_batch, loader_iter = collector.next_batch(loader, loader_iter)
@@ -153,27 +182,55 @@ class GlobalOrchestratedStepper:
                     batch = first_batch
                 else:
                     batch, loader_iter = collector.next_batch(loader, loader_iter)
-                x = batch["input_ids"].to(device=ctx.device)
-                y = batch["target_ids"].to(device=ctx.device)
-
                 current_strategy.zero_grad()
-                autocast_enabled = bool(use_amp)
-                try:
-                    with torch.autocast(device_type=ctx.device.type, dtype=amp_dtype, enabled=autocast_enabled):
-                        loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
-                except TypeError:
-                    autocast_enabled = False
-                    loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                loss_sum = 0.0
+                ce_sum = 0.0
+                diff_sum = 0.0
+                diff_seen = False
 
-                if scaler is not None and autocast_enabled:
-                    scaler.scale(loss).backward()
-                else:
-                    loss.backward()
+                autocast_enabled = bool(use_amp)
+                # First micro-batch uses `batch` already fetched above.
+                micro_batches: list[TensorDictBase] = [batch]
+                for _ in range(int(accum_steps) - 1):
+                    b, loader_iter = collector.next_batch(loader, loader_iter)
+                    micro_batches.append(b)
+
+                for b in micro_batches:
+                    x = b["input_ids"].to(device=ctx.device)
+                    y = b["target_ids"].to(device=ctx.device)
+                    try:
+                        with torch.autocast(device_type=ctx.device.type, dtype=amp_dtype, enabled=autocast_enabled):
+                            loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                    except TypeError:
+                        autocast_enabled = False
+                        loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+
+                    loss_sum += float(loss.detach().item())
+                    # Avoid autograd->float warnings in logs.
+                    ce_sum += float(ce_loss.detach().item()) if hasattr(ce_loss, "detach") else float(ce_loss)
+                    if diff_loss is not None:
+                        diff_sum += float(diff_loss.detach().item()) if hasattr(diff_loss, "detach") else float(diff_loss)
+                        diff_seen = True
+
+                    scaled = loss / float(accum_steps)
+                    if scaler is not None and autocast_enabled:
+                        scaler.scale(scaled).backward()
+                    else:
+                        scaled.backward()
 
                 grad_norm = global_grad_norm_l2(ctx.student)
 
-                step_metrics = current_strategy.step(loss, scaler=scaler)
-                snapshot = orchestrator.record(loss=float(loss.item()), grad_norm=grad_norm, lr=current_strategy.current_lr)
+                loss_for_step = torch.tensor(loss_sum / float(accum_steps), device=ctx.device)
+                step_metrics = current_strategy.step(loss_for_step, scaler=scaler)
+                bad = _first_nonfinite_param()
+                if bad is not None:
+                    raise RuntimeError(
+                        "Non-finite parameter detected immediately after optimizer step. "
+                        f"First offending param: {bad}"
+                    )
+                # Use the aggregated (post-accumulation) loss for orchestration decisions.
+                loss_val = float(loss_for_step.detach().item())
+                snapshot = orchestrator.record(loss=loss_val, grad_norm=grad_norm, lr=current_strategy.current_lr)
 
                 reason = orchestrator.should_evaluate(step + 1, snapshot)
                 if reason == DecisionBoundary.SAFETY:
@@ -197,7 +254,7 @@ class GlobalOrchestratedStepper:
                             by = b["target_ids"].to(device=ctx.device)
                             strategy.zero_grad()
                             with torch.autocast(device_type=ctx.device.type, dtype=amp_dtype, enabled=use_amp):
-                                logits = ctx.student(bx)
+                                logits = ctx.student(bx).float()
                                 batch_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), by.view(-1))
                             batch_loss.backward()
                             gn = global_grad_norm_l2(ctx.student)
@@ -214,7 +271,7 @@ class GlobalOrchestratedStepper:
                                 for vb in val_loader:
                                     vx = vb["input_ids"].to(ctx.device)
                                     vy = vb["target_ids"].to(ctx.device)
-                                    vlogits = ctx.student(vx)
+                                    vlogits = ctx.student(vx).float()
                                     vloss = F.cross_entropy(vlogits.view(-1, vlogits.size(-1)), vy.view(-1))
                                     total += float(vloss.item())
                                     count += 1
@@ -237,17 +294,16 @@ class GlobalOrchestratedStepper:
                         if getattr(train, "orchestrator_use_adagc", True):
                             current_strategy.add_wrapper(AdaGC(ctx.student, warmup_steps=50))
 
-                loss_val = float(loss.item())
                 metrics: dict[str, float] = {
                     "loss": loss_val,
-                    "ce_loss": float(ce_loss),
+                    "ce_loss": float(ce_sum) / float(accum_steps),
                     "lr": float(current_strategy.current_lr),
                     "grad_norm": grad_norm,
                     "spike_count": float(snapshot.spike_count),
                     **step_metrics,
                 }
-                if diff_loss is not None:
-                    metrics["diff_loss"] = float(diff_loss)
+                if diff_seen:
+                    metrics["diff_loss"] = float(diff_sum) / float(accum_steps)
                 if ctx.inst:
                     ctx.inst.log_scalars(step=step + 1, prefix="train/global_orch", scalars=metrics)
 

@@ -65,8 +65,17 @@ def run_from_manifest_path(
 ) -> Any:
     """Single manifest-driven entrypoint for the whole platform."""
     manifest = Manifest.from_path(manifest_path)
+    # If no target is specified, "run the manifest" means run every target in order.
+    # The CLI should stay out of the way: no default entrypoints, no first-target guess.
+    if target is None:
+        if dry_run:
+            return {"targets": [t.name for t in manifest.targets]}
+        compiler = Compiler()
+        lowered = compiler.lowerer.lower_manifest(manifest)
+        compiler.validator.validate_manifest(lowered, print_plan=True)
+        return ExperimentRunner(lowered).run_all(manifest_path=manifest_path)
+
     resolved = _resolve_target(manifest, target)
-    # Accept bare names or explicit kind prefixes.
     name = resolved
 
     compiler = Compiler()
@@ -121,6 +130,19 @@ class ExperimentRunner:
         engine = TorchEngine()
         logger.header("Target", f"{target.name} ({target.type})")
         return cast(dict[str, Path], engine.run_experiment(self.manifest, target))
+
+    def run_all(self, *, manifest_path: Path | None = None) -> dict[str, dict[str, Path]]:
+        """Run every target in the manifest in declaration order."""
+        results: dict[str, dict[str, Path]] = {}
+        for t in self.manifest.targets:
+            name = str(t.name)
+            try:
+                artifacts = self.run(target_name=name, manifest_path=manifest_path)
+            except Exception:
+                # Fail fast: manifests should be declarative pipelines.
+                raise
+            results[name] = dict(artifacts or {})
+        return results
 
     def _find_target(self, name: str) -> TargetConfig:
         for t in self.manifest.targets:

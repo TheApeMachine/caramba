@@ -88,7 +88,8 @@ class DefaultInitializer:
         LlamaUpcycle(teacher, state_dict).apply()
 
         logger.info("Applying upcycle surgery to student...")
-        LlamaUpcycle(student, state_dict).apply()
+        dba_init = str(getattr(train, "dba_init", "svd"))
+        LlamaUpcycle(student, state_dict, dba_init=dba_init).apply()
         logger.success("Weight transfer complete")
 
         if ctx.dist_ctx is not None:

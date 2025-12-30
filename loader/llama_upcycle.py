@@ -34,6 +34,8 @@ class LlamaUpcycle:
         state_dict: dict[str, Tensor],
         prefix: str = "model",
         head_key: str = "lm_head.weight",
+        *,
+        dba_init: str = "svd",
     ) -> None:
         """Set up the loader with a target model and source weights.
 
@@ -47,6 +49,9 @@ class LlamaUpcycle:
         self.state = StateReader(state_dict)
         self.prefix = prefix
         self.head_key = head_key
+        self.dba_init = str(dba_init).lower().strip()
+        if self.dba_init not in {"svd", "random"}:
+            raise ValueError(f"Unsupported dba_init={dba_init!r} (expected 'svd' or 'random')")
 
     def apply(self) -> None:
         """Load all weights from the Llama checkpoint into the model.
@@ -215,24 +220,26 @@ class LlamaUpcycle:
             layer.out_proj.weight.data[:, :copy_dim].copy_(o_weight[:, :copy_dim])
 
         # SVD decomposition for Q
-        self._init_dba_projection_from_svd(
-            layer.q_sem.weight,
-            layer.q_geo.weight,
-            q_weight,
-            sem_dim,
-            geo_dim,
-            seed=f"{attn_prefix}.q",
-        )
+        if self.dba_init == "svd":
+            self._init_dba_projection_from_svd(
+                layer.q_sem.weight,
+                layer.q_geo.weight,
+                q_weight,
+                sem_dim,
+                geo_dim,
+                seed=f"{attn_prefix}.q",
+            )
 
         # SVD decomposition for K
-        self._init_dba_projection_from_svd(
-            layer.k_sem.weight,
-            layer.k_geo.weight,
-            k_weight,
-            sem_dim,
-            geo_dim,
-            seed=f"{attn_prefix}.k",
-        )
+        if self.dba_init == "svd":
+            self._init_dba_projection_from_svd(
+                layer.k_sem.weight,
+                layer.k_geo.weight,
+                k_weight,
+                sem_dim,
+                geo_dim,
+                seed=f"{attn_prefix}.k",
+            )
 
         # Initialize gate to balanced (sigmoid(0) = 0.5)
         if layer.decoupled_gate_logit is not None:

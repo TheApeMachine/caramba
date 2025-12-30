@@ -33,7 +33,7 @@ def rope_fp16(
 ) -> Tensor:
     """Apply RoPE using the Metal extension (fp16).
 
-    Expects the same layout as `layer/rope.py`:
+    Uses the "half split" layout from `layer/rope.py`:
     - x: (B, H, T, D)
     - cos/sin: (T, rot_dim/2)
     """

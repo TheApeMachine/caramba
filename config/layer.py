@@ -139,6 +139,10 @@ class AttentionLayerConfig(Config):
     # RoPE settings
     rope_enabled: bool = True
     rope_base: float = 10000.0
+    # Optional RoPE scaling config (for Llama 3 style RoPE).
+    # This is a direct, manifest-driven escape hatch: it should match the HF config's
+    # `rope_scaling` dict when present.
+    rope_scaling: dict[str, object] | None = None
 
     # DBA gating (learned per-head semantic/geometric mixing)
     decoupled_gate: bool = False

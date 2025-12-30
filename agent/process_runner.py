@@ -19,6 +19,7 @@ from config.agents import (
     DiscussionProcessConfig,
     PaperReviewProcessConfig,
     PaperWriteProcessConfig,
+    PlatformImproveProcessConfig,
     ResearchLoopProcessConfig,
 )
 from config.manifest import Manifest
@@ -282,6 +283,49 @@ async def _run_code_graph_sync(
     return {"artifacts": {out_path.name: out_path}, "result": result}
 
 
+async def _run_platform_improve(
+    manifest: Manifest,
+    *,
+    target: ProcessTargetConfig,
+    manifest_path: Path | None,
+) -> dict[str, Any]:
+    # Local import so the runner stays resilient to optional process modules.
+    from agent.process.platform_improve import PlatformImprove  # type: ignore[import-not-found]
+
+    proc = cast(PlatformImproveProcessConfig, target.process)
+    team_mapping = dict(target.team.root)
+    team, _ = _build_team(team_mapping)
+    _preflight_personas_and_tools(team_mapping)
+
+    p = PlatformImprove(
+        agents=team,
+        ingest_agent=str(proc.ingest_agent),
+        index_namespace=str(proc.index_namespace),
+        ingest_repo=bool(proc.ingest_repo),
+        ingest_models=bool(proc.ingest_models),
+        max_files=int(proc.max_files),
+        max_chars_per_file=int(proc.max_chars_per_file),
+        leader_key=str(proc.leader),
+        ideator_keys=[str(x) for x in list(proc.ideators)],
+        developer_key=str(proc.developer),
+        reviewer_key=str(proc.reviewer),
+        repo_root=str(proc.repo_root),
+        base_branch=str(proc.base_branch),
+        branch_prefix=str(proc.branch_prefix),
+        tests=[str(x) for x in list(proc.tests)],
+        max_review_rounds=int(proc.max_review_rounds),
+        open_pr=bool(proc.open_pr),
+        pr_title_prefix=str(proc.pr_title_prefix),
+        topic=str(proc.topic),
+    )
+    result = await p.run(manifest=manifest, manifest_path=manifest_path)
+
+    out_path = _persist_process_artifact(
+        manifest=manifest, manifest_path=manifest_path, proc_name=proc.name, result=result
+    )
+    return {"artifacts": {out_path.name: out_path}, "result": result}
+
+
 def run_process_target(
     *, manifest: Manifest, target: ProcessTargetConfig, manifest_path: Path | None
 ) -> dict[str, Any]:
@@ -297,5 +341,7 @@ def run_process_target(
         return asyncio.run(_run_research_loop(manifest, target=target, manifest_path=manifest_path))
     if isinstance(proc, CodeGraphSyncProcessConfig):
         return asyncio.run(_run_code_graph_sync(manifest, target=target, manifest_path=manifest_path))
+    if isinstance(proc, PlatformImproveProcessConfig):
+        return asyncio.run(_run_platform_improve(manifest, target=target, manifest_path=manifest_path))
     raise ValueError(f"Unsupported agent process type: {proc.type!r}")
 

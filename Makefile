@@ -56,6 +56,10 @@ brainstorm-full:
 	--falkordb-host localhost \
 	--falkordb-port 6379
 
+platform:
+	. .venv/bin/activate \
+	&& python3.12 -m caramba run config/presets/platform_improve.yml
+
 # Ingest the caramba codebase into FalkorDB graph (requires: make falkordb first)
 # Note: .gitignore patterns are automatically respected
 ingest:

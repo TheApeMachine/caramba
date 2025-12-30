@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from config import PositiveFloat, PositiveInt, Probability
+from config.kvcache import KVCacheConfig
 
 
 class BenchmarkType(str, enum.Enum):
@@ -61,6 +62,9 @@ class LatencyBenchmarkConfig(BaseModel):
     timed_runs: PositiveInt = 10
     use_cache: bool = True
     cache_kind: str = "fp16"
+    # Optional explicit KV-cache policy (enables heterogeneous DBA caching).
+    # If provided, it overrides cache_kind/qblock/residual_len behavior in the generator.
+    cache_policy: KVCacheConfig | None = None
 
 
 class MemoryBenchmarkConfig(BaseModel):

@@ -44,13 +44,14 @@ These processes coordinate AI agents to:
 
 ### Available Processes
 
-| Process | Purpose | Key Agents |
-|---------|---------|------------|
-| `paper_write` | Generate LaTeX paper from experiments | writer |
-| `paper_review` | Review paper and propose experiments | reviewer |
-| `research_loop` | Write → Review → Audit loop | leader, writer, reviewer |
-| `discussion` | Multi-agent research discussion | multiple researchers |
-| `code_graph_sync` | Index codebase into knowledge graph | - |
+| Process           | Purpose                               | Key Agents               |
+|-------------------|---------------------------------------|--------------------------|
+| `paper_write`     | Generate LaTeX paper from experiments | writer                   |
+| `paper_review`    | Review paper and propose experiments  | reviewer                 |
+| `research_loop`   | Write → Review → Audit loop           | leader, writer, reviewer |
+| `discussion`      | Multi-agent research discussion       | multiple researchers     |
+| `code_graph_sync` | Index codebase into knowledge graph   | -                        |
+| `platform_improve`| Ingest → ideate → implement → review → PR | leader, architect, developer, reviewer |
 
 ### Process Target Structure
 
@@ -111,16 +112,16 @@ artifacts/
 
 The writer generates standard academic sections:
 
-| Section | Content |
-|---------|---------|
-| Abstract | Summary of contributions |
+| Section      | Content                       |
+|--------------|-------------------------------|
+| Abstract     | Summary of contributions      |
 | Introduction | Problem statement, motivation |
-| Related Work | Prior research context |
-| Methodology | Technical approach |
-| Experiments | Setup, datasets, baselines |
-| Results | Quantitative findings |
-| Discussion | Analysis and limitations |
-| Conclusion | Summary and future work |
+| Related Work | Prior research context        |
+| Methodology  | Technical approach            |
+| Experiments  | Setup, datasets, baselines    |
+| Results      | Quantitative findings         |
+| Discussion   | Analysis and limitations      |
+| Conclusion   | Summary and future work       |
 
 ### Running Paper Writing
 
@@ -157,30 +158,31 @@ targets:
 
 ### Strictness Levels
 
-| Level | Focus |
-|-------|-------|
-| `workshop` | Novel ideas, early-stage work |
+| Level        | Focus                                   |
+|--------------|-----------------------------------------|
+| `workshop`   | Novel ideas, early-stage work           |
 | `conference` | Complete evaluation, clear presentation |
-| `journal` | Comprehensive coverage, reproducibility |
-| `top_venue` | State-of-the-art, significant impact |
+| `journal`    | Comprehensive coverage, reproducibility |
+| `top_venue`  | State-of-the-art, significant impact    |
 
 ### Reviewer Actions
 
-| Action | Description |
-|--------|-------------|
-| `approve` | Paper is ready |
-| `style_fix` | Minor stylistic changes |
-| `clarification` | Needs clarification |
+| Action           | Description                     |
+|------------------|---------------------------------|
+| `approve`        | Paper is ready                  |
+| `style_fix`      | Minor stylistic changes         |
+| `clarification`  | Needs clarification             |
 | `new_experiment` | Requires additional experiments |
-| `major_revision` | Significant restructuring |
+| `major_revision` | Significant restructuring       |
 
 ### Reviewer Personas
 
-| Persona | Focus |
-|---------|-------|
-| `senior_researcher` | Novelty, significance, presentation |
-| `methodology_expert` | Experimental design, statistics |
-| `practitioner` | Practical applicability, efficiency |
+| Persona         | Focus                                                     |
+|-----------------|-----------------------------------------------------------|
+| `reviewer`      | Critical, actionable review + Graphiti-based safety audit |
+| `ml_expert`     | ML feasibility + eval/benchmark rigor                     |
+| `mathematician` | Correctness, proofs, edge cases                           |
+| `architect`     | Platform design + migration safety                         |
 
 ### Review Output
 
@@ -215,21 +217,20 @@ Autonomous write → review → structural audit loop.
 ### Architecture
 
 ```text
-┌───────────────────────────────────────────────────────────┐
-│                    RESEARCH LOOP                           │
-├───────────────────────────────────────────────────────────┤
-│    ┌──────────┐    ┌──────────┐    ┌─────────────────┐    │
-│    │  Write   │───▶│  Review  │───▶│ Structural      │    │
-│    │  Paper   │    │  Paper   │    │ Audit           │    │
-│    └────▲─────┘    └──────────┘    └────────┬────────┘    │
-│         │                                    │             │
-│         │          ┌──────────────┐         │             │
-│         │          │   Address    │         │             │
-│         └──────────│  Weaknesses  │◀────────┘             │
-│                    └──────────────┘                       │
-│                                                           │
-│    Repeat until: approved OR max iterations reached       │
-└───────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│                 RESEARCH LOOP                       │
+├─────────────────────────────────────────────────────┤
+│ ┌──────────┐    ┌──────────┐    ┌─────────────────┐ │
+│ │  Write   │───▶│  Review  │───▶│ Structural      │ │
+│ │  Paper   │    │  Paper   │    │ Audit           │ │
+│ └────▲─────┘    └──────────┘    └────────┬────────┘ │
+│      │                                   │          │
+│      │          ┌──────────────┐         │          │
+│      │          │   Address    │         │          │
+│      └──────────│  Weaknesses  │◀────────┘          │
+│                 └──────────────┘                    │
+│ Repeat until: approved OR max iterations reached    │
+└─────────────────────────────────────────────────────┘
 ```
 
 ### Configuration
@@ -365,14 +366,14 @@ team:
 
 Personas are defined in `config/personas/`:
 
-| Persona | File | Role |
-|---------|------|------|
-| `writer` | `writer.yml` | Paper drafting |
-| `reviewer` | `reviewer.yml` | Paper review |
+| Persona         | File                | Role              |
+|-----------------|---------------------|-------------------|
+| `writer`        | `writer.yml`        | Paper drafting    |
+| `reviewer`      | `reviewer.yml`      | Paper review      |
 | `research_lead` | `research_lead.yml` | Loop coordination |
-| `developer` | `developer.yml` | Code analysis |
-| `ml_expert` | `ml_expert.yml` | ML insights |
-| `mathematician` | `mathematician.yml` | Formal proofs |
+| `developer`     | `developer.yml`     | Code analysis     |
+| `ml_expert`     | `ml_expert.yml`     | ML insights       |
+| `mathematician` | `mathematician.yml` | Formal proofs     |
 
 ### Persona Configuration
 
@@ -400,12 +401,12 @@ tools:
 
 ### Process Configuration
 
-| Process | Key Options |
-|---------|-------------|
-| `paper_write` | `output_dir`, `writer` |
-| `paper_review` | `strictness`, `max_proposed_experiments`, `output_dir` |
-| `research_loop` | `max_iterations`, `auto_run_experiments`, `output_dir` |
-| `code_graph_sync` | `index_namespace` |
+| Process           | Key Options                                            |
+|-------------------|--------------------------------------------------------|
+| `paper_write`     | `output_dir`, `writer`                                 |
+| `paper_review`    | `strictness`, `max_proposed_experiments`, `output_dir` |
+| `research_loop`   | `max_iterations`, `auto_run_experiments`, `output_dir` |
+| `code_graph_sync` | `index_namespace`                                      |
 
 ---
 
@@ -415,31 +416,31 @@ Agents have access to specialized tools:
 
 ### Paper Tools
 
-| Tool | Description |
-|------|-------------|
-| `read_tex_file` | Read current paper.tex |
-| `write_tex_file` | Write complete paper |
-| `update_section` | Update specific section |
-| `add_citation` | Add BibTeX entry |
-| `search_arxiv` | Search arXiv for papers |
+| Tool                      | Description             |
+|---------------------------|-------------------------|
+| `read_tex_file`           | Read current paper.tex  |
+| `write_tex_file`          | Write complete paper    |
+| `update_section`          | Update specific section |
+| `add_citation`            | Add BibTeX entry        |
+| `search_arxiv`            | Search arXiv for papers |
 | `search_semantic_scholar` | Search Semantic Scholar |
 
 ### Experiment Tools
 
-| Tool | Description |
-|------|-------------|
-| `get_experiment_manifest` | Read experiment config |
-| `get_experiment_results` | Get benchmark results |
-| `list_artifacts` | List generated files |
-| `include_figure` | Generate LaTeX figure code |
+| Tool                      | Description                |
+|---------------------------|----------------------------|
+| `get_experiment_manifest` | Read experiment config     |
+| `get_experiment_results`  | Get benchmark results      |
+| `list_artifacts`          | List generated files       |
+| `include_figure`          | Generate LaTeX figure code |
 
 ### Knowledge Tools
 
-| Tool | Description |
-|------|-------------|
-| `search_nodes` | Query entity graph |
-| `search_memory_facts` | Search relationships |
-| `add_memory` | Add knowledge to graph |
+| Tool                  | Description            |
+|-----------------------|------------------------|
+| `search_nodes`        | Query entity graph     |
+| `search_memory_facts` | Search relationships   |
+| `add_memory`          | Add knowledge to graph |
 
 ---
 
@@ -523,12 +524,12 @@ pip install crawl4ai                        # Web crawling
 
 ## Summary
 
-| Process | Input | Output |
-|---------|-------|--------|
-| `paper_write` | Experiment results | LaTeX paper |
-| `paper_review` | paper.tex | Review JSON |
-| `research_loop` | Manifest | Iterated paper + reviews |
-| `code_graph_sync` | Codebase | Knowledge graph |
+| Process           | Input              | Output                   |
+|-------------------|--------------------|--------------------------|
+| `paper_write`     | Experiment results | LaTeX paper              |
+| `paper_review`    | paper.tex          | Review JSON              |
+| `research_loop`   | Manifest           | Iterated paper + reviews |
+| `code_graph_sync` | Codebase           | Knowledge graph          |
 
 Agent workflows enable:
 - 📝 Automated paper generation from experiments

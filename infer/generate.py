@@ -20,7 +20,13 @@ from torch import Tensor, nn
 from console import logger
 from cache.decoupled import DecoupledLayerKVCache
 from cache.layer import LayerKVCache
-from config.kvcache import KVCacheKind, KVCacheTensorConfig
+from config.kvcache import (
+    KVCacheKind,
+    KVCacheTensorConfig,
+    KVCacheConfig,
+    KVCachePolicyConfig,
+    KVCachePolicyDecoupledConfig,
+)
 from config.layer import AttentionLayerConfig, AttentionMode
 
 from infer.cache_policy import (
@@ -58,6 +64,10 @@ class GenerateConfig:
     cache_kind: KVCacheKind | str = KVCacheKind.FP16
     cache_qblock: int = 32
     cache_residual_len: int = 0
+    # Optional explicit cache policy (standard or DBA-decoupled). When provided,
+    # it overrides cache_kind/qblock/residual_len and enables heterogeneous configs
+    # (e.g. k_sem=q4_0, k_geo=q8_0, v=q4_0).
+    cache_policy: KVCacheConfig | None = None
     cache_budget_mb: float | None = None
     cache_auto_benchmark: bool = False
     cache_auto_bench_steps: int = 8
@@ -92,6 +102,9 @@ def _resolve_cache_kind(
     max_seq_len: int,
     config: GenerateConfig,
 ) -> KVCacheKind:
+    # Explicit policy overrides implicit kind selection.
+    if getattr(config, "cache_policy", None) is not None:
+        return KVCacheKind.FP16
     ck = config.cache_kind
     if isinstance(ck, KVCacheKind):
         return ck
@@ -328,6 +341,7 @@ def create_caches(
     cache_kind: KVCacheKind = KVCacheKind.FP16,
     cache_qblock: int = 32,
     cache_residual_len: int = 0,
+    cache_policy: KVCacheConfig | None = None,
     fp16_prefix_layers: int = 0,
 ) -> list[LayerKVCache | DecoupledLayerKVCache]:
     """Create KV caches for all attention layers.
@@ -349,29 +363,52 @@ def create_caches(
             geo_dim = cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model
             v_dim = cfg.v_dim
 
-            # DBA supports heterogeneous storage: semantic/V can be more aggressively
-            # quantized than RoPE-heavy geometric keys.
-            sem_kind = kind_i
-            geo_kind = kind_i
-            v_kind = kind_i
-            if kind_i in (KVCacheKind.Q4_0, KVCacheKind.NF4):
-                geo_kind = KVCacheKind.Q8_0
+            if isinstance(cache_policy, KVCachePolicyDecoupledConfig):
+                k_sem_cfg_i = cache_policy.k_sem
+                k_geo_cfg_i = cache_policy.k_geo
+                v_cfg_i = cache_policy.v
+                if kind_i == KVCacheKind.FP16:
+                    # Keep fp16_prefix_layers behavior: force fp16 for early layers.
+                    k_sem_cfg_i = KVCacheTensorConfig(
+                        kind=KVCacheKind.FP16,
+                        qblock=int(k_sem_cfg_i.qblock),
+                        residual_len=int(k_sem_cfg_i.residual_len),
+                    )
+                    k_geo_cfg_i = KVCacheTensorConfig(
+                        kind=KVCacheKind.FP16,
+                        qblock=int(k_geo_cfg_i.qblock),
+                        residual_len=int(k_geo_cfg_i.residual_len),
+                    )
+                    v_cfg_i = KVCacheTensorConfig(
+                        kind=KVCacheKind.FP16,
+                        qblock=int(v_cfg_i.qblock),
+                        residual_len=int(v_cfg_i.residual_len),
+                    )
+            else:
+                # DBA supports heterogeneous storage: semantic/V can be more aggressively
+                # quantized than RoPE-heavy geometric keys. The default heuristic preserves
+                # geometry when using 4-bit caches.
+                sem_kind = kind_i
+                geo_kind = kind_i
+                v_kind = kind_i
+                if kind_i in (KVCacheKind.Q4_0, KVCacheKind.NF4):
+                    geo_kind = KVCacheKind.Q8_0
 
-            k_sem_cfg_i = KVCacheTensorConfig(
-                kind=sem_kind,
-                qblock=cache_qblock,
-                residual_len=cache_residual_len,
-            )
-            k_geo_cfg_i = KVCacheTensorConfig(
-                kind=geo_kind,
-                qblock=cache_qblock,
-                residual_len=cache_residual_len,
-            )
-            v_cfg_i = KVCacheTensorConfig(
-                kind=v_kind,
-                qblock=cache_qblock,
-                residual_len=cache_residual_len,
-            )
+                k_sem_cfg_i = KVCacheTensorConfig(
+                    kind=sem_kind,
+                    qblock=cache_qblock,
+                    residual_len=cache_residual_len,
+                )
+                k_geo_cfg_i = KVCacheTensorConfig(
+                    kind=geo_kind,
+                    qblock=cache_qblock,
+                    residual_len=cache_residual_len,
+                )
+                v_cfg_i = KVCacheTensorConfig(
+                    kind=v_kind,
+                    qblock=cache_qblock,
+                    residual_len=cache_residual_len,
+                )
             cache = DecoupledLayerKVCache(
                 batch_size=batch_size,
                 max_seq_len=max_seq_len,
@@ -386,6 +423,32 @@ def create_caches(
         else:
             k_dim = cfg.kv_heads * cfg.head_dim
             v_dim = cfg.kv_heads * cfg.head_dim
+
+            if isinstance(cache_policy, KVCachePolicyConfig):
+                k_cfg = cache_policy.k
+                v_cfg = cache_policy.v
+                if kind_i == KVCacheKind.FP16:
+                    k_cfg = KVCacheTensorConfig(
+                        kind=KVCacheKind.FP16,
+                        qblock=int(k_cfg.qblock),
+                        residual_len=int(k_cfg.residual_len),
+                    )
+                    v_cfg = KVCacheTensorConfig(
+                        kind=KVCacheKind.FP16,
+                        qblock=int(v_cfg.qblock),
+                        residual_len=int(v_cfg.residual_len),
+                    )
+                cache = LayerKVCache(
+                    batch_size=batch_size,
+                    max_seq_len=max_seq_len,
+                    k_dim=k_dim,
+                    v_dim=v_dim,
+                    k_cfg=k_cfg,
+                    v_cfg=v_cfg,
+                    device=device,
+                )
+                caches.append(cache)
+                continue
 
             tensor_cfg_i = KVCacheTensorConfig(
                 kind=kind_i,
@@ -474,6 +537,7 @@ def generate(
         ),
         cache_qblock=config.cache_qblock,
         cache_residual_len=config.cache_residual_len,
+        cache_policy=config.cache_policy,
         fp16_prefix_layers=int(config.cache_fp16_prefix_layers),
     )
 
@@ -576,6 +640,7 @@ class Generator:
             cache_kind=kind,
             cache_qblock=self.config.cache_qblock,
             cache_residual_len=self.config.cache_residual_len,
+            cache_policy=self.config.cache_policy,
             fp16_prefix_layers=int(self.config.cache_fp16_prefix_layers),
         )
         self._ctx = InferContext(caches=self._caches)

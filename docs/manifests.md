@@ -46,20 +46,20 @@ parse → lower → validate → build → run → verify → benchmark → arti
 
 ### Required Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `version` | `int` | Schema version (always `2`) |
+| Field      | Type     | Description                                 |
+|------------|----------|---------------------------------------------|
+| `version`  | `int`    | Schema version (always `2`)                 |
 | `defaults` | `object` | Default settings for data, logging, runtime |
-| `targets` | `list` | One or more experiment/process targets |
+| `targets`  | `list`   | One or more experiment/process targets      |
 
 ### Optional Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | `string` | Experiment name (used for artifact directories) |
-| `notes` | `string` | Human-readable description |
-| `vars` | `object` | Variables for `${substitution}` |
-| `entrypoints` | `object` | Named targets for `--target` selection |
+| Field         | Type     | Description                                     |
+|---------------|----------|-------------------------------------------------|
+| `name`        | `string` | Experiment name (used for artifact directories) |
+| `notes`       | `string` | Human-readable description                      |
+| `vars`        | `object` | Variables for `${substitution}`                 |
+| `entrypoints` | `object` | Named targets for `--target` selection          |
 
 ---
 
@@ -172,28 +172,28 @@ targets:
 
 #### Experiment Fields
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `type` | ✅ | Always `experiment` |
-| `name` | ✅ | Unique identifier for this target |
-| `description` | ❌ | Human-readable description |
-| `backend` | ✅ | Execution backend (`torch`) |
-| `task` | ✅ | Task type (see below) |
-| `data` | ✅ | Data configuration (ref + config) |
-| `system` | ✅ | Model system configuration |
-| `objective` | ✅ | Loss function reference |
-| `trainer` | ✅ | Trainer reference |
-| `runs` | ✅ | List of training runs |
-| `benchmarks` | ❌ | List of benchmarks to run |
+| Field         | Required | Description                       |
+|---------------|----------|-----------------------------------|
+| `type`        | yes      | Always `experiment`               |
+| `name`        | yes      | Unique identifier for this target |
+| `description` | no       | Human-readable description        |
+| `backend`     | yes      | Execution backend (`torch`)       |
+| `task`        | yes      | Task type (see below)             |
+| `data`        | yes      | Data configuration (ref + config) |
+| `system`      | yes      | Model system configuration        |
+| `objective`   | yes      | Loss function reference           |
+| `trainer`     | yes      | Trainer reference                 |
+| `runs`        | yes      | List of training runs             |
+| `benchmarks`  | no       | List of benchmarks to run         |
 
 #### Task Types
 
-| Task | Use Case |
-|------|----------|
-| `task.language_modeling` | Next-token prediction (transformers) |
-| `task.classification` | Classification (MLP, CNN) |
-| `task.node_classification` | Graph node classification |
-| `task.denoising` | Diffusion denoising |
+| Task                       | Use Case                             |
+|----------------------------|--------------------------------------|
+| `task.language_modeling`   | Next-token prediction (transformers) |
+| `task.classification`      | Classification (MLP, CNN)            |
+| `task.node_classification` | Graph node classification            |
+| `task.denoising`           | Diffusion denoising                  |
 
 #### Data Configuration
 
@@ -262,16 +262,16 @@ runs:
 
 ### Run Fields
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | ✅ | Unique run identifier |
-| `mode` | ✅ | Run mode (`train`) |
-| `exp` | ❌ | Experiment name for logging |
-| `seed` | ❌ | Random seed |
-| `steps` | ✅ | Number of training steps |
-| `expected` | ❌ | Expected values for validation |
-| `verify` | ❌ | Verification configuration |
-| `train` | ✅ | Training configuration |
+| Field      | Required | Description                    |
+|------------|----------|--------------------------------|
+| `id`       | yes      | Unique run identifier          |
+| `mode`     | yes      | Run mode (`train`)             |
+| `exp`      | no       | Experiment name for logging    |
+| `seed`     | no       | Random seed                    |
+| `steps`    | yes      | Number of training steps       |
+| `expected` | no       | Expected values for validation |
+| `verify`   | no       | Verification configuration     |
+| `train`    | yes      | Training configuration         |
 
 ### Training Configuration
 
@@ -422,11 +422,11 @@ benchmarks:
 
 ### Benchmark Types
 
-| Type | Measures | Artifacts |
-|------|----------|-----------|
-| `perplexity` | Cross-entropy loss, PPL | perplexity.csv |
-| `latency` | Tokens/sec, prefill/decode time | latency.csv, latency_vs_context.png |
-| `memory` | KV-cache size, peak memory | memory.csv, memory_scaling.png |
+| Type         | Measures                        | Artifacts                           |
+|--------------|---------------------------------|-------------------------------------|
+| `perplexity` | Cross-entropy loss, PPL         | perplexity.csv                      |
+| `latency`    | Tokens/sec, prefill/decode time | latency.csv, latency_vs_context.png |
+| `memory`     | KV-cache size, peak memory      | memory.csv, memory_scaling.png      |
 
 Benchmarks generate:
 - **CSV files** — Raw measurements
@@ -464,27 +464,27 @@ caramba includes ready-to-use presets in `config/presets/`:
 
 ### Language Modeling
 
-| Preset | Architecture | Description |
-|--------|--------------|-------------|
-| `llama32_1b_dba.yml` | Llama 3.2 1B → DBA | Full upcycle with benchmarks |
-| `standard_transformer.yml` | GPT-style | Baseline transformer training |
-| `moe_transformer.yml` | Transformer + MoE | Mixture of Experts |
-| `mamba_ssm.yml` | Mamba | State Space Model |
-| `lora_finetune.yml` | LoRA | Efficient fine-tuning |
+| Preset                     | Architecture       | Description                   |
+|----------------------------|--------------------|-------------------------------|
+| `llama32_1b_dba.yml`       | Llama 3.2 1B → DBA | Full upcycle with benchmarks  |
+| `standard_transformer.yml` | GPT-style          | Baseline transformer training |
+| `moe_transformer.yml`      | Transformer + MoE  | Mixture of Experts            |
+| `mamba_ssm.yml`            | Mamba              | State Space Model             |
+| `lora_finetune.yml`        | LoRA               | Efficient fine-tuning         |
 
 ### Vision
 
-| Preset | Architecture | Description |
-|--------|--------------|-------------|
+| Preset    | Architecture       | Description          |
+|-----------|--------------------|----------------------|
 | `vit.yml` | Vision Transformer | Image classification |
 
 ### Other
 
-| Preset | Architecture | Description |
-|--------|--------------|-------------|
-| `mlp_classifier.yml` | MLP | Simple classification |
-| `diffusion_vector.yml` | Diffusion | Denoising model |
-| `graph_node_classification.yml` | GCN | Graph neural network |
+| Preset                          | Architecture | Description           |
+|---------------------------------|--------------|-----------------------|
+| `mlp_classifier.yml`            | MLP          | Simple classification |
+| `diffusion_vector.yml`          | Diffusion    | Denoising model       |
+| `graph_node_classification.yml` | GCN          | Graph neural network  |
 
 ### Using Presets
 

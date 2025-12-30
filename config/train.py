@@ -55,10 +55,21 @@ class TrainConfig(BaseModel):
     auto_batch_ref_block_size: PositiveInt = 512
     auto_batch_min: PositiveInt = 1
 
+    # Resume/skip controls (manifest-driven).
+    # If true, automatically resume from the latest checkpoint for the run/phase if present.
+    auto_resume: bool = True
+    # If true, skip running a phase when a corresponding *_final.pt checkpoint exists.
+    skip_if_final: bool = True
+
     # Teacher model settings
     teacher_ckpt: str | None = None
     teacher_rope_base: PositiveFloat | None = None
     teacher_rope_dim: PositiveInt | None = None
+
+    # Upcycle initialization knobs (student only).
+    # - "svd": initialize DBA Q/K projections via (randomized) SVD of teacher Q/K.
+    # - "random": keep student's randomly-initialized DBA Q/K projections (control for Experiment 1).
+    dba_init: str = "svd"
 
     # Teacher sanity checks (upcycling safety).
     # These run once per target, immediately after loading the teacher checkpoint,
@@ -67,6 +78,19 @@ class TrainConfig(BaseModel):
     teacher_sanity_batches: PositiveInt = 2
     teacher_sanity_batch_size: PositiveInt = 1
     teacher_sanity_max_nll: PositiveFloat = 20.0
+    # Optional stricter cap expressed in perplexity units. This is the guard that
+    # catches "teacher is garbage but still finite" failures (e.g. wrong tokenizer
+    # producing plausible-but-awful NLL like ~9 => ppl ~7k).
+    teacher_sanity_max_ppl: PositiveFloat = 200.0
+    # Optional reference check against HuggingFace transformers (gold baseline).
+    # This avoids hardcoding an absolute ppl threshold that depends on dataset mix.
+    # If enabled, we compute teacher NLL on the same batch in HF and require our
+    # teacher to match within a small tolerance.
+    teacher_sanity_reference: str = "none"  # none|hf
+    teacher_sanity_ref_batches: PositiveInt = 1
+    teacher_sanity_max_ppl_ratio_vs_ref: PositiveFloat = 1.25
+    teacher_sanity_max_nll_delta_vs_ref: PositiveFloat = 0.25
+    teacher_sanity_reference_fail_fast: bool = True
 
     # Convergence-based blockwise training: instead of fixed steps per block,
     # train each block until loss drops below target or patience runs out.

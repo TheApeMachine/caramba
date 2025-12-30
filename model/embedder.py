@@ -7,6 +7,7 @@ vectors after training.
 """
 from __future__ import annotations
 
+import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
@@ -67,9 +68,14 @@ class Embedder(nn.Module):
             case EmbedderType.TOKEN:
                 if self.token_embedding is None:
                     raise RuntimeError("Token embedder is not initialized.")
-                return self.token_embedding(
-                    x.to(dtype=self.token_embedding.weight.dtype).long(),
-                )
+                # IMPORTANT: embedding indices must stay integer. Do NOT cast token IDs
+                # to the embedding weight dtype (e.g. fp16) before `.long()`—that will
+                # silently corrupt IDs above ~2048 due to float16 mantissa limits,
+                # breaking teacher parity and training.
+                idx = x
+                if idx.dtype != torch.long:
+                    idx = idx.long()
+                return self.token_embedding(idx)
             case EmbedderType.PATCH:
                 if self.patch_embedding is None:
                     raise RuntimeError("Patch embedder is not initialized.")

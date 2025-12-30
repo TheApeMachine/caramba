@@ -1,0 +1,48 @@
+version: 2
+name: platform_improve
+notes: >
+  Process-only manifest: ingest latest code into Graphiti/FalkorDB,
+  have agents propose improvements, converge on one, implement it on a branch,
+  review it, and open a PR.
+
+defaults:
+  data:
+    tokenizer: llama
+  logging:
+    instrument: rich
+  runtime:
+    save_every: 500
+
+targets:
+  - type: process
+    name: improve_platform
+    description: "Autonomous platform improvement pipeline (ingest → ideate → implement → review → PR)."
+    team:
+      research_team_leader: research_lead
+      ideator_architect: architect
+      ideator_catalyst: catalyst
+      ideator_ml: ml_expert
+      developer: developer
+      reviewer: reviewer
+    process:
+      type: platform_improve
+      name: improve_platform
+      topic: "Come up with ONE high-impact Caramba platform improvement and implement it safely."
+      ingest_agent: research_team_leader
+      index_namespace: main
+      ingest_repo: true
+      ingest_models: false
+      max_files: 250
+      max_chars_per_file: 4000
+      leader: research_team_leader
+      ideators: [ideator_architect, ideator_catalyst, ideator_ml]
+      developer: developer
+      reviewer: reviewer
+      repo_root: .
+      base_branch: main
+      branch_prefix: agent/platform-improve
+      tests: ["python -m pytest -q"]
+      max_review_rounds: 2
+      open_pr: true
+      pr_title_prefix: "[caramba] "
+

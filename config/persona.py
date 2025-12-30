@@ -21,6 +21,7 @@ class PersonaType(str, enum.Enum):
     MATHEMATICIAN = "mathematician"
     DEVELOPER = "developer"
     CATALYST = "catalyst"
+    ARCHITECT = "architect"
 
     @classmethod
     def from_str(cls, s: str) -> "PersonaType":
@@ -78,6 +79,11 @@ class CatalystConfig(SharedPersonaConfig):
     type: Literal[PersonaType.CATALYST] = PersonaType.CATALYST
 
 
+class ArchitectConfig(SharedPersonaConfig):
+    """Architect configuration (platform design + technical planning)."""
+    type: Literal[PersonaType.ARCHITECT] = PersonaType.ARCHITECT
+
+
 # Union type for any persona config, with automatic deserialization
 PersonaConfig: TypeAlias = Annotated[
     ResearchLeadConfig
@@ -86,7 +92,8 @@ PersonaConfig: TypeAlias = Annotated[
     | MachineLearningExpertConfig
     | MathematicianConfig
     | DeveloperConfig
-    | CatalystConfig,
+    | CatalystConfig
+    | ArchitectConfig,
     Field(discriminator="type"),
 ]
 

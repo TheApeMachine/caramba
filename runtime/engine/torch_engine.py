@@ -43,6 +43,11 @@ class TorchEngine:
         )
         self.registry.register(
             backend="torch",
+            ref="trainer.upcycle_eval",
+            python="trainer.upcycle_eval:UpcycleEvalTrainer",
+        )
+        self.registry.register(
+            backend="torch",
             ref="trainer.standard",
             python="trainer.standard:StandardTrainer",
         )

@@ -259,7 +259,9 @@ class AttentionLayer(nn.Module):
         self.out_proj = nn.Linear(attn_dim, d_model, bias=config.bias)
 
         if config.rope_enabled:
-            self.rotary = RotaryEmbedding(self.head_dim, base=config.rope_base)
+            self.rotary = RotaryEmbedding(
+                self.head_dim, base=config.rope_base, rope_scaling=getattr(config, "rope_scaling", None)
+            )
         else:
             self.rotary = None
 
@@ -316,7 +318,9 @@ class AttentionLayer(nn.Module):
         if config.rope_enabled:
             if geo_head_dim % 2 != 0:
                 raise ValueError("Decoupled mode with RoPE requires even geo_head_dim")
-            self.rotary_geo = RotaryEmbedding(geo_head_dim, base=config.rope_base)
+            self.rotary_geo = RotaryEmbedding(
+                geo_head_dim, base=config.rope_base, rope_scaling=getattr(config, "rope_scaling", None)
+            )
         else:
             self.rotary_geo = None
 
@@ -503,15 +507,30 @@ class AttentionLayer(nn.Module):
             )
         else:
             is_causal = self.config.is_causal and mask is None and T > 1 and cache is None
-            out = F.scaled_dot_product_attention(
-                qh,
-                kh,
-                vh,
-                attn_mask=mask,
-                dropout_p=dropout_p,
-                is_causal=is_causal,
-                scale=self._scale,
-            )
+            # MPS has historically had subtle issues with SDPA's `is_causal=True` fast-path.
+            # To keep teacher parity stable (especially for Llama-family models), prefer an
+            # explicit causal mask path on MPS.
+            if is_causal and qh.device.type == "mps":
+                out = self._sdp_attention_chunked(
+                    qh,
+                    kh,
+                    vh,
+                    pos_offset=pos_offset,
+                    cache=cache,
+                    q_chunk=T,
+                    local_window=None,
+                    dropout_p=float(dropout_p),
+                )
+            else:
+                out = F.scaled_dot_product_attention(
+                    qh,
+                    kh,
+                    vh,
+                    attn_mask=mask,
+                    dropout_p=dropout_p,
+                    is_causal=is_causal,
+                    scale=self._scale,
+                )
 
         y = self.out_proj(self._merge(out))
         return y, cache

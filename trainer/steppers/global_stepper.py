@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+import os
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
@@ -26,22 +27,91 @@ def _get_diffusion_loss_weight(student: nn.Module) -> float:
     try:
         return float(student.config.diffusion_head.loss_weight)  # type: ignore[union-attr]
     except Exception:
+        logger.warning("Failed to get diffusion loss weight; using default 0.10.")
         return 0.10
 
 
 def _compute_loss(
     student: nn.Module, x: Tensor, y: Tensor, has_diffusion: bool
 ) -> tuple[Tensor, Tensor, Tensor | None]:
+    def _tensor_stats(name: str, t: Tensor) -> str:
+        try:
+            t_f = t.detach().float()
+            finite = torch.isfinite(t_f)
+            n = int(t_f.numel())
+            nf = int((~finite).sum().item())
+            if n == 0:
+                return f"{name}: empty"
+            if nf == n:
+                return f"{name}: all_nonfinite n={n} dtype={t.dtype} device={t.device}"
+            tf = t_f[finite]
+            return (
+                f"{name}: dtype={t.dtype} device={t.device} shape={tuple(t.shape)} "
+                f"nonfinite={nf}/{n} min={float(tf.min().item()):.5g} max={float(tf.max().item()):.5g} "
+                f"mean={float(tf.mean().item()):.5g} std={float(tf.std(unbiased=False).item()):.5g}"
+            )
+        except Exception as e:
+            return f"{name}: <stats_failed {e}>"
+
     if has_diffusion:
         result = student.forward(x, return_features=True)  # type: ignore[call-arg]
         features: Tensor = result[0]  # type: ignore[index]
         logits: Tensor = result[1]  # type: ignore[index]
-        ce_loss = F.cross_entropy(logits.view(-1, logits.shape[-1]), y.reshape(-1))
+        if not torch.isfinite(logits.detach()).all():
+            # Diagnostic: try once with Metal kernels disabled to isolate kernel issues.
+            old = os.getenv("CARAMBA_DISABLE_METAL_KERNELS")
+            os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = "1"
+            try:
+                logits2 = student.forward(x, return_features=True)[1]  # type: ignore[index]
+            finally:
+                if old is None:
+                    os.environ.pop("CARAMBA_DISABLE_METAL_KERNELS", None)
+                else:
+                    os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = old
+            raise RuntimeError(
+                "Non-finite logits detected.\n"
+                f"- {_tensor_stats('logits', logits)}\n"
+                f"- {_tensor_stats('logits_no_metal', logits2)}\n"
+                "If logits_no_metal is finite, a Metal kernel is the likely cause."
+            )
+        # IMPORTANT: compute CE in fp32 for numerical stability (esp. MPS + 128k vocab).
+        logits_f = logits.float()
+        ce_loss = F.cross_entropy(logits_f.view(-1, logits_f.shape[-1]), y.reshape(-1))
         diff_loss_val: Tensor = student.diffusion_loss(features, y)  # type: ignore[attr-defined]
         loss = ce_loss + _get_diffusion_loss_weight(student) * diff_loss_val
+        if not torch.isfinite(loss.detach()).all():
+            raise RuntimeError(
+                "Non-finite loss detected.\n"
+                f"- {_tensor_stats('ce_loss', ce_loss)}\n"
+                f"- {_tensor_stats('diff_loss', diff_loss_val)}\n"
+                f"- {_tensor_stats('loss', loss)}"
+            )
         return loss, ce_loss, diff_loss_val
     logits = student.forward(x)
-    ce_loss = F.cross_entropy(logits.view(-1, logits.shape[-1]), y.reshape(-1))
+    if not torch.isfinite(logits.detach()).all():
+        old = os.getenv("CARAMBA_DISABLE_METAL_KERNELS")
+        os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = "1"
+        try:
+            logits2 = student.forward(x)
+        finally:
+            if old is None:
+                os.environ.pop("CARAMBA_DISABLE_METAL_KERNELS", None)
+            else:
+                os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = old
+        raise RuntimeError(
+            "Non-finite logits detected.\n"
+            f"- {_tensor_stats('logits', logits)}\n"
+            f"- {_tensor_stats('logits_no_metal', logits2)}\n"
+            "If logits_no_metal is finite, a Metal kernel is the likely cause."
+        )
+    logits_f = logits.float()
+    ce_loss = F.cross_entropy(logits_f.view(-1, logits_f.shape[-1]), y.reshape(-1))
+    if not torch.isfinite(ce_loss.detach()).all():
+        raise RuntimeError(
+            "Non-finite CE loss detected.\n"
+            f"- {_tensor_stats('logits_f', logits_f)}\n"
+            f"- {_tensor_stats('ce_loss', ce_loss)}"
+        )
     return ce_loss, ce_loss, None
 
 
@@ -72,13 +142,15 @@ def _eval_global_loss(
                 result = student.forward(x, return_features=True)  # type: ignore[call-arg]
                 features: Tensor = result[0]  # type: ignore[index]
                 logits: Tensor = result[1]  # type: ignore[index]
-                ce = F.cross_entropy(logits.view(-1, logits.shape[-1]), y.reshape(-1))
+                logits_f = logits.float()
+                ce = F.cross_entropy(logits_f.view(-1, logits_f.shape[-1]), y.reshape(-1))
                 diff = student.diffusion_loss(features, y)  # type: ignore[attr-defined]
                 loss = ce + float(diff_weight) * diff
                 total_diff += float(diff)
             else:
                 logits = student.forward(x)
-                ce = F.cross_entropy(logits.view(-1, logits.shape[-1]), y.reshape(-1))
+                logits_f = logits.float()
+                ce = F.cross_entropy(logits_f.view(-1, logits_f.shape[-1]), y.reshape(-1))
                 loss = ce
             total_loss += float(loss)
             total_ce += float(ce)
@@ -109,6 +181,7 @@ def _int_or(value: object, default: int = 0) -> int:
     try:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
+        logger.warning(f"Failed to convert {value} to int; using default {default}.")
         return int(default)
 
 
@@ -159,7 +232,11 @@ class GlobalStepper:
             try:
                 scaler = torch.cuda.amp.GradScaler(enabled=True)
             except Exception:
+                logger.warning("Failed to create GradScaler; disabling autocast.")
                 scaler = None
+        if use_amp and ctx.device.type == "mps" and scaler is None and amp_dtype == torch.float16:
+            logger.warning("Disabling fp16 autocast on MPS (no GradScaler); using fp32 math for stability.")
+            use_amp = False
 
         scheduler = build_lr_scheduler(
             optimizer,
@@ -181,47 +258,71 @@ class GlobalStepper:
                     if scheduler is not None and "scheduler_state_dict" in resume_state:
                         scheduler.load_state_dict(resume_state["scheduler_state_dict"])  # type: ignore[arg-type]
                 except Exception:
+                    logger.warning("Failed to load optimizer/scheduler state dict; continuing with defaults.")
                     pass
 
         logger.header("Global Fine-tuning", f"{run.steps} steps")
         loader_iter = iter(loader)
         loss: Tensor | None = None
+        accum_steps = int(getattr(train, "gradient_accumulation_steps", 1))
+        accum_steps = max(1, accum_steps)
 
         with logger.progress_bar() as progress:
             task = progress.add_task("Training...", total=run.steps)
             for step in range(int(start_step), int(run.steps)):
-                batch, loader_iter = collector.next_batch(loader, loader_iter)
-                x = batch["input_ids"].to(device=ctx.device)
-                y = batch["target_ids"].to(device=ctx.device)
-
                 optimizer.zero_grad(set_to_none=True)
+                loss_sum = 0.0
+                ce_sum = 0.0
+                diff_sum = 0.0
+                diff_seen = False
+
                 autocast_enabled = bool(use_amp)
-                try:
-                    with torch.autocast(
-                        device_type=ctx.device.type,
-                        dtype=amp_dtype,
-                        enabled=autocast_enabled,
-                    ):
+                for _micro in range(int(accum_steps)):
+                    batch, loader_iter = collector.next_batch(loader, loader_iter)
+                    x = batch["input_ids"].to(device=ctx.device)
+                    y = batch["target_ids"].to(device=ctx.device)
+                    try:
+                        with torch.autocast(
+                            device_type=ctx.device.type,
+                            dtype=amp_dtype,
+                            enabled=autocast_enabled,
+                        ):
+                            loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                    except TypeError:
+                        logger.warning("Failed to autocast loss computation; disabling autocast.")
+                        autocast_enabled = False
                         loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
-                except TypeError:
-                    autocast_enabled = False
-                    loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+
+                    # Accumulate gradients on scaled loss, but log unscaled averages.
+                    loss_sum += float(loss.detach())
+                    ce_sum += float(ce_loss.detach())
+                    if diff_loss is not None:
+                        diff_sum += float(diff_loss.detach())
+                        diff_seen = True
+
+                    scaled = loss / float(accum_steps)
+                    if scaler is not None and autocast_enabled:
+                        scaler.scale(scaled).backward()
+                    else:
+                        scaled.backward()
 
                 if scaler is not None and autocast_enabled:
-                    scaler.scale(loss).backward()
                     scaler.step(optimizer)
                     scaler.update()
                 else:
-                    loss.backward()
                     optimizer.step()
                 if scheduler is not None:
                     scheduler.step()
 
-                loss_val = float(loss.detach()) if loss is not None else 0.0
+                loss_val = float(loss_sum) / float(accum_steps)
                 lr = float(optimizer.param_groups[0].get("lr", train.lr))
-                metrics: dict[str, float] = {"loss": loss_val, "ce_loss": float(ce_loss.detach()), "lr": lr}
-                if diff_loss is not None:
-                    metrics["diff_loss"] = float(diff_loss.detach())
+                metrics: dict[str, float] = {
+                    "loss": loss_val,
+                    "ce_loss": float(ce_sum) / float(accum_steps),
+                    "lr": lr,
+                }
+                if diff_seen:
+                    metrics["diff_loss"] = float(diff_sum) / float(accum_steps)
                 if ctx.inst:
                     ctx.inst.log_scalars(step=step + 1, prefix="train/global", scalars=metrics)
 

@@ -86,7 +86,16 @@ def _devices_used(target: ExperimentTargetConfig) -> set[str]:
             continue
         devices.add(str(r.train.device).lower())
     if not devices:
-        devices.add("cpu")
+        # Some experiment targets are benchmark-only (checkpoint reuse) and may not
+        # include runs. In that case, honor an explicit trainer config device if present.
+        try:
+            dev = target.trainer.config.get("device", None)  # type: ignore[union-attr]
+        except Exception:
+            dev = None
+        if isinstance(dev, str) and dev.strip():
+            devices.add(dev.strip().lower())
+        else:
+            devices.add("cpu")
     return devices
 
 
@@ -99,6 +108,15 @@ def _cache_kinds_requested(target: ExperimentTargetConfig) -> set[str]:
         if isinstance(cfg, LatencyBenchmarkConfig):
             if bool(getattr(cfg, "use_cache", True)):
                 kinds.add(str(getattr(cfg, "cache_kind", "auto")).lower())
+                pol = getattr(cfg, "cache_policy", None)
+                if pol is not None:
+                    # Collect all explicit tensor kinds referenced by the policy.
+                    for k in ("k", "k_sem", "k_geo", "v"):
+                        t = getattr(pol, k, None)
+                        if t is not None:
+                            kind = getattr(t, "kind", None)
+                            if kind is not None:
+                                kinds.add(str(kind).lower())
         if isinstance(cfg, MemoryBenchmarkConfig):
             for q in getattr(cfg, "quantization_modes", []) or []:
                 kinds.add(str(q).lower())

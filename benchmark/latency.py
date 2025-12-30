@@ -240,6 +240,7 @@ class LatencyBenchmark:
             temperature=0.0,
             max_seq_len=prompt_len + gen_len + 1,
             cache_kind=str(getattr(self.config, "cache_kind", "fp16")),
+            cache_policy=getattr(self.config, "cache_policy", None),
         )
 
         # Warmup

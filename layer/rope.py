@@ -8,6 +8,7 @@ than training. The rotation is applied in pairs of dimensions.
 from __future__ import annotations
 
 import logging
+import math
 import torch
 from torch import nn
 
@@ -25,7 +26,13 @@ class RotaryEmbedding(nn.Module):
     inv_freq: torch.Tensor
     rot_dim: int
 
-    def __init__(self, rot_dim: int, base: float = 10000.0) -> None:
+    def __init__(
+        self,
+        rot_dim: int,
+        base: float = 10000.0,
+        *,
+        rope_scaling: dict[str, object] | None = None,
+    ) -> None:
         """Initialize RoPE with the given rotation dimension.
 
         Args:
@@ -43,6 +50,50 @@ class RotaryEmbedding(nn.Module):
                 / float(self.rot_dim)
             )
         )
+        # Optional scaling for Llama 3 ("llama3" RoPE) to match HF reference.
+        # Implements the piecewise adjustment from transformers' modeling_rope_utils:
+        # - long wavelengths (> low_freq_wavelen) are scaled by 1/factor (lower freq)
+        # - short wavelengths (< high_freq_wavelen) are unchanged
+        # - mid band is linearly interpolated between the two
+        if rope_scaling:
+            rt = str(rope_scaling.get("rope_type", rope_scaling.get("type", "")) or "").lower().strip()
+            if rt == "llama3":
+                try:
+                    def _to_f(v: object, default: float) -> float:
+                        try:
+                            return float(v)  # type: ignore[arg-type]
+                        except Exception:
+                            return float(default)
+
+                    def _to_i(v: object, default: int) -> int:
+                        try:
+                            return int(v)  # type: ignore[arg-type]
+                        except Exception:
+                            return int(default)
+
+                    factor = _to_f(rope_scaling.get("factor", 8.0), 8.0)  # typical for llama3
+                    low_f = _to_f(rope_scaling.get("low_freq_factor", 1.0), 1.0)
+                    high_f = _to_f(rope_scaling.get("high_freq_factor", 4.0), 4.0)
+                    old_ctx = _to_i(rope_scaling.get("original_max_position_embeddings", 8192), 8192)
+                    if factor > 0 and low_f > 0 and high_f > 0 and old_ctx > 0:
+                        low_wavelen = float(old_ctx) / float(low_f)
+                        high_wavelen = float(old_ctx) / float(high_f)
+                        # wavelen = 2*pi / inv_freq
+                        wavelen = (2.0 * math.pi) / inv_freq
+                        inv_scaled = inv_freq / float(factor)
+                        # Smooth interpolation in the mid band.
+                        denom = max(1e-12, (low_wavelen - high_wavelen))
+                        smooth = (wavelen - high_wavelen) / float(denom)
+                        smooth = smooth.clamp(0.0, 1.0)
+                        inv_mid = (1.0 - smooth) * inv_freq + smooth * inv_scaled
+                        inv_freq = torch.where(
+                            wavelen > low_wavelen,
+                            inv_scaled,
+                            torch.where(wavelen < high_wavelen, inv_freq, inv_mid),
+                        )
+                except Exception:
+                    # Best-effort: if malformed, keep vanilla RoPE.
+                    pass
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self._cos_sin_cache: dict[tuple[str, str], tuple[torch.Tensor, torch.Tensor]] = (
             {}
@@ -128,6 +179,7 @@ class RotaryEmbedding(nn.Module):
         x_rot = x[..., :rot]
         x_pass = x[..., rot:]
 
+        # Half-split rotation (HF Llama rotate_half equivalent).
         x1 = x_rot[..., : rot // 2]
         x2 = x_rot[..., rot // 2 : rot]
         y1 = x1 * cos - x2 * sin

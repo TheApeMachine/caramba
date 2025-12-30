@@ -442,7 +442,11 @@ class TelemetryStream:
 
         vals = list(self._layer_grad_norms.values())
         max_norm = max(vals)
-        min_norm = min(v for v in vals if v > 1e-10)
+        # If all grads are ~0 (can happen early with fp16 / small losses), avoid crashing.
+        positives = [v for v in vals if v > 1e-10]
+        if not positives:
+            return 1.0
+        min_norm = min(positives)
 
         if min_norm < 1e-10:
             return 1.0

@@ -268,10 +268,11 @@ class Strategy(ABC):
             metrics.update(wrapper_metrics)
 
         # Gradient clipping (if not handled by wrapper)
-        if (
-            self.bundle.clipping_mode == ClippingMode.GLOBAL_NORM
-            and not any(isinstance(w, GradientWrapper) for w in self._wrappers)
-        ):
+        # IMPORTANT: Always apply GLOBAL_NORM clipping when requested.
+        # Wrappers (e.g. AdaGC) may add additional clipping behavior, but skipping
+        # global norm entirely can lead to catastrophic fp16 overflows early in training
+        # (especially on MPS where GradScaler is unavailable).
+        if self.bundle.clipping_mode == ClippingMode.GLOBAL_NORM:
             grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(),
                 self.bundle.max_grad_norm,
@@ -361,6 +362,22 @@ class AdamWStrategy(Strategy):
     """AdamW optimizer strategy."""
 
     def _create_optimizer(self) -> Optimizer:
+        # MPS + fp16 weights + AdamW can poison weights without fp32 master params.
+        # Use a master-weight AdamW implementation on MPS when the model has fp16 params.
+        try:
+            has_fp16 = any(p.dtype == torch.float16 for p in self.model.parameters())
+        except Exception:
+            has_fp16 = False
+        if has_fp16 and next(self.model.parameters()).device.type == "mps":
+            from optimizer.adamw_master import AdamWMaster
+
+            return AdamWMaster(
+                self.model.parameters(),
+                lr=self.bundle.lr,
+                betas=self.bundle.betas,
+                eps=self.bundle.eps,
+                weight_decay=self.bundle.weight_decay,
+            )
         return torch.optim.AdamW(
             self.model.parameters(),
             lr=self.bundle.lr,
@@ -413,6 +430,49 @@ class SGDStrategy(Strategy):
         )
 
 
+class LionStrategy(Strategy):
+    """Lion optimizer strategy (optionally using fused MPS path)."""
+
+    def _create_optimizer(self) -> Optimizer:
+        from optimizer.lion import Lion
+
+        # Use fused path when it can actually run (MPS fp16).
+        fused = False
+        try:
+            p0 = next(self.model.parameters())
+            fused = p0.device.type == "mps" and p0.dtype == torch.float16
+        except Exception:
+            fused = False
+        return Lion(
+            self.model.parameters(),
+            lr=self.bundle.lr,
+            betas=self.bundle.betas,
+            weight_decay=self.bundle.weight_decay,
+            fused=bool(fused),
+        )
+
+    def _create_scheduler(self) -> "LRScheduler":
+        # Reuse AdamW scheduler choices (LR scheduler is independent of optimizer family).
+        from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR
+
+        match self.bundle.scheduler_kind:
+            case SchedulerKind.COSINE | SchedulerKind.WARMUP_COSINE:
+                return CosineAnnealingLR(
+                    self.optimizer,
+                    T_max=self.bundle.total_steps,
+                    eta_min=self.bundle.lr * self.bundle.min_lr_ratio,
+                )
+            case SchedulerKind.LINEAR:
+                return LinearLR(
+                    self.optimizer,
+                    start_factor=1.0,
+                    end_factor=self.bundle.min_lr_ratio,
+                    total_iters=self.bundle.total_steps,
+                )
+            case _:
+                return CosineAnnealingLR(self.optimizer, T_max=1, eta_min=self.bundle.lr)
+
+
 def create_strategy(bundle: StrategyBundle, model: nn.Module) -> Strategy:
     """Factory function to create a strategy from a bundle."""
     match bundle.optimizer_family:
@@ -420,6 +480,8 @@ def create_strategy(bundle: StrategyBundle, model: nn.Module) -> Strategy:
             return AdamWStrategy(bundle, model)
         case OptimizerFamily.SGD | OptimizerFamily.SGDM:
             return SGDStrategy(bundle, model)
+        case OptimizerFamily.LION:
+            return LionStrategy(bundle, model)
         case _:
             # Default to AdamW for unimplemented families
             return AdamWStrategy(bundle, model)
@@ -489,9 +551,26 @@ def spike_resistant() -> StrategyBundle:
     )
 
 
+def lion_conservative() -> StrategyBundle:
+    """Conservative Lion - stable default for fp16 MPS training."""
+    return StrategyBundle(
+        name="lion_conservative",
+        description="Stable Lion with conservative LR and strong clipping",
+        optimizer_family=OptimizerFamily.LION,
+        lr=1e-4,
+        betas=(0.9, 0.99),
+        weight_decay=0.01,
+        clipping_mode=ClippingMode.GLOBAL_NORM,
+        max_grad_norm=0.5,
+        scheduler_kind=SchedulerKind.WARMUP_COSINE,
+        warmup_steps=200,
+    )
+
+
 DEFAULT_PORTFOLIO: list[StrategyBundle] = [
     conservative_adamw(),
     aggressive_adamw(),
     sgd_escape(),
     spike_resistant(),
+    lion_conservative(),
 ]
