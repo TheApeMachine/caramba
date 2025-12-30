@@ -356,8 +356,62 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
         # Should have rotary_geo but not rotary
         self.assertIsNotNone(layer.rotary_geo)
         self.assertIsNone(layer.rotary)
+        self.assertIsNone(layer.rotary_sem)
         assert layer.rotary_geo is not None  # type guard for pyright
         self.assertEqual(layer.rotary_geo.rot_dim, cfg.geo_head_dim)
+
+    def test_rope_semantic_ablation(self) -> None:
+        """Semantic RoPE can be enabled as an ablation."""
+        cfg = AttentionLayerConfig(
+            d_model=self.d_model,
+            n_heads=self.n_heads,
+            mode=AttentionMode.DECOUPLED,
+            sem_dim=self.sem_dim,
+            geo_dim=self.geo_dim,
+            attn_dim=self.attn_dim,
+            rope_enabled=True,
+            rope_semantic=True,
+        )
+        layer = AttentionLayer(cfg)
+        self.assertIsNotNone(layer.rotary_sem)
+
+    def test_tie_qk_semantic_ablation(self) -> None:
+        """Semantic Q/K projections can be tied as an ablation."""
+        cfg = AttentionLayerConfig(
+            d_model=self.d_model,
+            n_heads=self.n_heads,
+            mode=AttentionMode.DECOUPLED,
+            sem_dim=self.sem_dim,
+            geo_dim=self.geo_dim,
+            attn_dim=self.attn_dim,
+            tie_qk=True,
+        )
+        layer = AttentionLayer(cfg)
+        self.assertIsNotNone(layer.q_sem)
+        self.assertIsNotNone(layer.k_sem)
+        self.assertIs(layer.q_sem, layer.k_sem)
+
+    def test_null_attn_ablation_forward(self) -> None:
+        """Null attention adds learnable null KV and remains shape-safe."""
+        cfg = AttentionLayerConfig(
+            d_model=self.d_model,
+            n_heads=self.n_heads,
+            mode=AttentionMode.DECOUPLED,
+            sem_dim=self.sem_dim,
+            geo_dim=self.geo_dim,
+            attn_dim=self.attn_dim,
+            null_attn=True,
+            dropout_p=0.0,
+            is_causal=True,
+        )
+        layer = AttentionLayer(cfg).eval()
+        self.assertIsNotNone(layer.k_sem_null)
+        self.assertIsNotNone(layer.k_geo_null)
+        self.assertIsNotNone(layer.v_null)
+
+        x = torch.randn(self.batch_size, self.seq_len, self.d_model)
+        y, _ = layer(x)
+        self.assertEqual(y.shape, x.shape)
 
     def test_no_standard_projections(self) -> None:
         """Decoupled mode doesn't use standard Q/K projections."""

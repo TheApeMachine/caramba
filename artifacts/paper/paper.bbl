@@ -1,0 +1,141 @@
+\begin{thebibliography}{10}
+
+\bibitem{aghajanyan2021intrinsic}
+Armen Aghajanyan, Sonal Gupta, and Luke Zettlemoyer.
+\newblock Intrinsic dimensionality explains the effectiveness of language model fine-tuning.
+\newblock {\em ACL}, 2021.
+
+\bibitem{ainslie2023gqa}
+Joshua Ainslie, James Lee-Thorp, Michiel de~Jong, Yury Zemlyanskiy, Federico Lebr\'{o}n, and Sumit Sanghai.
+\newblock Gqa: Training generalized multi-query transformer models from multi-head checkpoints.
+\newblock {\em EMNLP}, 2023.
+
+\bibitem{amsel2025qualityheads}
+Noah Amsel, Gilad Yehudai, and Joan Bruna.
+\newblock Quality over quantity in attention layers: When adding more heads hurts.
+\newblock In {\em ICLR}, 2025.
+\newblock OpenReview: \url{https://openreview.net/forum?id=y9Xp9NozPR}.
+
+\bibitem{beltagy2020longformer}
+Iz~Beltagy, Matthew~E. Peters, and Arman Cohan.
+\newblock Longformer: The long-document transformer.
+\newblock {\em arXiv preprint arXiv:2004.05150}, 2020.
+
+\bibitem{bhojanapalli2020lowrank}
+Srinadh Bhojanapalli et~al.
+\newblock Low-rank bottleneck in multi-head attention models.
+\newblock {\em ICML}, 2020.
+
+\bibitem{chiang2025rope}
+David Chiang and Dani Yogatama.
+\newblock The rotary position embedding may cause dimension inefficiency in attention heads for long-distance retrieval.
+\newblock {\em arXiv preprint}, 2025.
+
+\bibitem{choromanski2021performer}
+Krzysztof Choromanski, Valerii Likhosherstov, David Dohan, Xingyou Song, Andreea Gane, Tamas Sarlos, Peter Hawkins, Jared Davis, Afroz Mohiuddin, {\L}ukasz Kaiser, David Belanger, Lucy Colwell, and Adrian Weller.
+\newblock Rethinking attention with performers.
+\newblock In {\em ICLR}, 2021.
+\newblock arXiv:2009.14794.
+
+\bibitem{deepseek2024v2}
+DeepSeek-AI.
+\newblock Deepseek-v2: A strong, economical, and efficient mixture-of-experts language model.
+\newblock {\em arXiv preprint arXiv:2405.04434}, 2024.
+
+\bibitem{llamacpp2024kvcache}
+Georgi Gerganov et~al.
+\newblock 4-bit kv cache implementation.
+\newblock \url{https://github.com/ggml-org/llama.cpp/pull/7412}, 2024.
+\newblock llama.cpp PR\#7412: Production Q4\_0/Q8\_0 KV cache support.
+
+\bibitem{he2020deberta}
+Pengcheng He, Xiaodong Liu, Jianfeng Gao, and Weizhu Chen.
+\newblock Deberta: Decoding-enhanced bert with disentangled attention.
+\newblock {\em ICLR}, 2021.
+
+\bibitem{hooper2024kvquant}
+Coleman Hooper et~al.
+\newblock Kvquant: Towards 10 million context length llm inference with kv cache quantization.
+\newblock {\em arXiv preprint arXiv:2401.18079}, 2024.
+
+\bibitem{hu2021lora}
+Edward~J Hu et~al.
+\newblock Lora: Low-rank adaptation of large language models.
+\newblock {\em arXiv preprint arXiv:2106.09685}, 2021.
+
+\bibitem{huang2023longcontextsurvey}
+Yunpeng Huang, Jingwei Xu, Junyu Lai, Zixu Jiang, Taolue Chen, Zenan Li, Yuan Yao, Xiaoxing Ma, Lijuan Yang, Hao Chen, Shupeng Li, and Penghao Zhao.
+\newblock Advancing transformer architecture in long-context large language models: A comprehensive survey.
+\newblock {\em arXiv preprint arXiv:2311.12351}, 2023.
+
+\bibitem{kitaev2020reformer}
+Nikita Kitaev, {\L}ukasz Kaiser, and Anselm Levskaya.
+\newblock Reformer: The efficient transformer.
+\newblock In {\em ICLR}, 2020.
+\newblock arXiv:2001.04451.
+
+\bibitem{kobayashi2024weightdecay}
+Seijin Kobayashi, Johannes von Oswald, and Jo\~{a}o Sacramento.
+\newblock Weight decay induces low-rank attention layers.
+\newblock {\em NeurIPS}, 2024.
+
+\bibitem{kuang2025structuredmatrices}
+Yilun Kuang, Noah Amsel, Sanae Lotfi, Shikai Qiu, Andre Potapczynski, and Andrew~Gordon Wilson.
+\newblock Customizing the inductive biases of softmax attention using structured matrices.
+\newblock In {\em ICML}, 2025.
+\newblock OpenReview: \url{https://openreview.net/forum?id=Roc5O1ECEt}.
+
+\bibitem{li2025commvq}
+Junyan Li, Yang Zhang, Muhammad~Yusuf Hasan, Talha Chafekar, Tianle Cai, Zhile Ren, Pengsheng Guo, Foroozan Karimzadeh, Colorado Reed, Chong Wang, and Chuang Gan.
+\newblock Commvq: Commutative vector quantization for kv cache compression.
+\newblock {\em arXiv preprint arXiv:2506.18879}, 2025.
+\newblock ICML 2025 poster.
+
+\bibitem{park2018bam}
+Jongchan Park et~al.
+\newblock Bam: Bottleneck attention module.
+\newblock {\em BMVC}, 2018.
+
+\bibitem{refael2024adarankgrad}
+Yehonathan Refael, Jonathan Svirsky, Boris Shustin, Wasim Huleihel, and Ofir Lindenbaum.
+\newblock Adarankgrad: Adaptive gradient-rank and moments for memory-efficient llms training and fine-tuning.
+\newblock {\em arXiv preprint arXiv:2410.17881}, 2024.
+
+\bibitem{shazeer2019mqa}
+Noam Shazeer.
+\newblock Fast transformer decoding: One write-head is all you need.
+\newblock {\em arXiv preprint arXiv:1911.02150}, 2019.
+
+\bibitem{su2021roformer}
+Jianlin Su et~al.
+\newblock Roformer: Enhanced transformer with rotary position embedding.
+\newblock {\em arXiv preprint arXiv:2104.09864}, 2021.
+
+\bibitem{turboderp2024qcache}
+Turboderp.
+\newblock Quantized kv cache evaluation.
+\newblock \url{https://github.com/turboderp/exllamav2/blob/master/doc/qcache_eval.md}, 2024.
+\newblock ExLlamaV2 implementation showing Q4 cache matches FP16 quality.
+
+\bibitem{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan~N Gomez, {\L}ukasz Kaiser, and Illia Polosukhin.
+\newblock Attention is all you need.
+\newblock {\em NeurIPS}, 2017.
+
+\bibitem{wang2020linformer}
+Sinong Wang, Belinda~Z Li, Madian Khabsa, Han Fang, and Hao Ma.
+\newblock Linformer: Self-attention with linear complexity.
+\newblock {\em arXiv preprint arXiv:2006.04768}, 2020.
+
+\bibitem{wang2025lowdim}
+Yizhou Wang et~al.
+\newblock Attention layers add into low-dimensional residual subspaces.
+\newblock {\em arXiv preprint}, 2025.
+\newblock Shows attention outputs are approximately 60\% low-dimensional.
+
+\bibitem{zaheer2020bigbird}
+Manzil Zaheer, Guru Guruganesh, Avinava Dubey, Joshua Ainslie, Chris Alberti, Santiago Ontanon, Philip Pham, Anirudh Ravula, Qifan Wang, Li~Yang, and Amr Ahmed.
+\newblock Big bird: Transformers for longer sequences.
+\newblock {\em arXiv preprint arXiv:2007.14062}, 2020.
+
+\end{thebibliography}

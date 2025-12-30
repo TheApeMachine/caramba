@@ -136,11 +136,7 @@ class ExperimentRunner:
         results: dict[str, dict[str, Path]] = {}
         for t in self.manifest.targets:
             name = str(t.name)
-            try:
-                artifacts = self.run(target_name=name, manifest_path=manifest_path)
-            except Exception:
-                # Fail fast: manifests should be declarative pipelines.
-                raise
+            artifacts = self.run(target_name=name, manifest_path=manifest_path)
             results[name] = dict(artifacts or {})
         return results
 

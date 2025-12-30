@@ -39,6 +39,13 @@ struct RMSNormParams {
   uint32_t stride_row;
 };
 
+// Must match `LayerNormParams` in `layernorm.metal` (layout + types).
+struct LayerNormParams {
+  uint32_t d_model;
+  float eps;
+  uint32_t stride_row;
+};
+
 // Must match `RoPEParams` in `rope.metal` (layout + types).
 struct RoPEParams {
   uint32_t d_model;
@@ -59,8 +66,12 @@ constexpr NSUInteger kThreadsPerThreadgroup = 256;
 
 static id<MTLLibrary> g_lib = nil;
 static id<MTLComputePipelineState> g_pipeline_dba_decode = nil;
+static id<MTLComputePipelineState> g_pipeline_dba_decode_null = nil;
 static id<MTLComputePipelineState> g_pipeline_rmsnorm = nil;
 static id<MTLComputePipelineState> g_pipeline_rmsnorm_noweight = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_weight = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_noweight = nil;
 static id<MTLComputePipelineState> g_pipeline_rope = nil;
 static id<MTLComputePipelineState> g_pipeline_lion = nil;
 static std::mutex g_pipeline_mutex;
@@ -257,6 +268,134 @@ torch::Tensor dba_decode(
   return out;
 }
 
+torch::Tensor dba_decode_null(
+    at::Tensor q_sem,      // (B,H,sem_hd) fp16 MPS
+    at::Tensor k_sem,      // (B,S,H*sem_hd) fp16 MPS
+    at::Tensor q_geo,      // (B,H,geo_hd) fp16 MPS
+    at::Tensor k_geo,      // (B,S,H*geo_hd) fp16 MPS
+    at::Tensor v,          // (B,S,H*v_hd) fp16 MPS
+    at::Tensor k_sem_null, // (B,H,sem_hd) fp16 MPS
+    at::Tensor k_geo_null, // (B,H,geo_hd) fp16 MPS
+    at::Tensor v_null,     // (B,H,v_hd) fp16 MPS
+    double sem_scale,
+    double geo_scale) {
+  TORCH_CHECK(q_sem.device().is_mps(), "dba_decode_null: q_sem must be on MPS");
+  TORCH_CHECK(q_geo.device().is_mps(), "dba_decode_null: q_geo must be on MPS");
+  TORCH_CHECK(k_sem.device().is_mps(), "dba_decode_null: k_sem must be on MPS");
+  TORCH_CHECK(k_geo.device().is_mps(), "dba_decode_null: k_geo must be on MPS");
+  TORCH_CHECK(v.device().is_mps(), "dba_decode_null: v must be on MPS");
+  TORCH_CHECK(k_sem_null.device().is_mps(), "dba_decode_null: k_sem_null must be on MPS");
+  TORCH_CHECK(k_geo_null.device().is_mps(), "dba_decode_null: k_geo_null must be on MPS");
+  TORCH_CHECK(v_null.device().is_mps(), "dba_decode_null: v_null must be on MPS");
+
+  TORCH_CHECK(q_sem.dtype() == at::kHalf, "dba_decode_null: q_sem must be fp16");
+  TORCH_CHECK(q_geo.dtype() == at::kHalf, "dba_decode_null: q_geo must be fp16");
+  TORCH_CHECK(k_sem.dtype() == at::kHalf, "dba_decode_null: k_sem must be fp16");
+  TORCH_CHECK(k_geo.dtype() == at::kHalf, "dba_decode_null: k_geo must be fp16");
+  TORCH_CHECK(v.dtype() == at::kHalf, "dba_decode_null: v must be fp16");
+  TORCH_CHECK(k_sem_null.dtype() == at::kHalf, "dba_decode_null: k_sem_null must be fp16");
+  TORCH_CHECK(k_geo_null.dtype() == at::kHalf, "dba_decode_null: k_geo_null must be fp16");
+  TORCH_CHECK(v_null.dtype() == at::kHalf, "dba_decode_null: v_null must be fp16");
+
+  TORCH_CHECK(q_sem.is_contiguous(), "dba_decode_null: q_sem must be contiguous");
+  TORCH_CHECK(q_geo.is_contiguous(), "dba_decode_null: q_geo must be contiguous");
+  TORCH_CHECK(k_sem_null.is_contiguous(), "dba_decode_null: k_sem_null must be contiguous");
+  TORCH_CHECK(k_geo_null.is_contiguous(), "dba_decode_null: k_geo_null must be contiguous");
+  TORCH_CHECK(v_null.is_contiguous(), "dba_decode_null: v_null must be contiguous");
+  TORCH_CHECK(k_sem.stride(2) == 1, "dba_decode_null: k_sem last dim must be contiguous (stride==1)");
+  TORCH_CHECK(k_geo.stride(2) == 1, "dba_decode_null: k_geo last dim must be contiguous (stride==1)");
+  TORCH_CHECK(v.stride(2) == 1, "dba_decode_null: v last dim must be contiguous (stride==1)");
+
+  TORCH_CHECK(q_sem.dim() == 3, "dba_decode_null: q_sem must be (B,H,D)");
+  TORCH_CHECK(q_geo.dim() == 3, "dba_decode_null: q_geo must be (B,H,D)");
+  TORCH_CHECK(k_sem.dim() == 3, "dba_decode_null: k_sem must be (B,S,D)");
+  TORCH_CHECK(k_geo.dim() == 3, "dba_decode_null: k_geo must be (B,S,D)");
+  TORCH_CHECK(v.dim() == 3, "dba_decode_null: v must be (B,S,D)");
+  TORCH_CHECK(k_sem_null.dim() == 3, "dba_decode_null: k_sem_null must be (B,H,D)");
+  TORCH_CHECK(k_geo_null.dim() == 3, "dba_decode_null: k_geo_null must be (B,H,D)");
+  TORCH_CHECK(v_null.dim() == 3, "dba_decode_null: v_null must be (B,H,D)");
+
+  const int64_t B = q_sem.size(0);
+  const int64_t H = q_sem.size(1);
+  const int64_t sem_hd = q_sem.size(2);
+  const int64_t geo_hd = q_geo.size(2);
+
+  TORCH_CHECK(q_geo.size(0) == B && q_geo.size(1) == H, "dba_decode_null: q_geo shape mismatch");
+  TORCH_CHECK(k_sem.size(0) == B, "dba_decode_null: k_sem batch mismatch");
+  TORCH_CHECK(k_geo.size(0) == B, "dba_decode_null: k_geo batch mismatch");
+  TORCH_CHECK(v.size(0) == B, "dba_decode_null: v batch mismatch");
+  TORCH_CHECK(k_sem_null.size(0) == B && k_sem_null.size(1) == H, "dba_decode_null: k_sem_null shape mismatch");
+  TORCH_CHECK(k_geo_null.size(0) == B && k_geo_null.size(1) == H, "dba_decode_null: k_geo_null shape mismatch");
+  TORCH_CHECK(v_null.size(0) == B && v_null.size(1) == H, "dba_decode_null: v_null shape mismatch");
+
+  const int64_t S = k_sem.size(1);
+  TORCH_CHECK(k_geo.size(1) == S, "dba_decode_null: k_geo seq mismatch");
+  TORCH_CHECK(v.size(1) == S, "dba_decode_null: v seq mismatch");
+
+  TORCH_CHECK(k_sem.size(2) == H * sem_hd, "dba_decode_null: k_sem last dim must be H*sem_hd");
+  TORCH_CHECK(k_geo.size(2) == H * geo_hd, "dba_decode_null: k_geo last dim must be H*geo_hd");
+  TORCH_CHECK(v.size(2) % H == 0, "dba_decode_null: v last dim must be divisible by H");
+
+  TORCH_CHECK(k_sem_null.size(2) == sem_hd, "dba_decode_null: k_sem_null last dim must be sem_hd");
+  TORCH_CHECK(k_geo_null.size(2) == geo_hd, "dba_decode_null: k_geo_null last dim must be geo_hd");
+
+  const int64_t v_hd = v.size(2) / H;
+  TORCH_CHECK(v_null.size(2) == v_hd, "dba_decode_null: v_null last dim must be v_hd");
+
+  auto out = torch::empty({B, H, v_hd}, q_sem.options());
+
+  id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
+  id<MTLComputePipelineState> pipeline =
+      ensure_pipeline(device, &g_pipeline_dba_decode_null, "dba_decode_fp16_null");
+
+  at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
+  TORCH_CHECK(stream != nullptr, "dba_decode_null: failed to get current MPS stream");
+  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+  TORCH_CHECK(encoder != nil, "dba_decode_null: failed to get MTLComputeCommandEncoder from MPS stream");
+
+  [encoder setComputePipelineState:pipeline];
+
+  auto set_tensor = [&](const at::Tensor& t, int idx) {
+    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+    TORCH_CHECK(buf != nil, "dba_decode_null: tensor has null MTLBuffer");
+    const NSUInteger off = storage_offset_bytes(t);
+    [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
+  };
+
+  set_tensor(q_sem, 0);
+  set_tensor(k_sem, 1);
+  set_tensor(q_geo, 2);
+  set_tensor(k_geo, 3);
+  set_tensor(v, 4);
+  set_tensor(k_sem_null, 5);
+  set_tensor(k_geo_null, 6);
+  set_tensor(v_null, 7);
+  set_tensor(out, 8);
+
+  DBAParams params;
+  params.sem_head_dim = (uint32_t)sem_hd;
+  params.geo_head_dim = (uint32_t)geo_hd;
+  params.v_head_dim = (uint32_t)v_hd;
+  params.n_heads = (uint32_t)H;
+  params.seq_len = (uint32_t)S;
+  params.sem_scale = (float)sem_scale;
+  params.geo_scale = (float)geo_scale;
+  params.ksem_stride_b = (uint32_t)k_sem.stride(0);
+  params.ksem_stride_t = (uint32_t)k_sem.stride(1);
+  params.kgeo_stride_b = (uint32_t)k_geo.stride(0);
+  params.kgeo_stride_t = (uint32_t)k_geo.stride(1);
+  params.v_stride_b = (uint32_t)v.stride(0);
+  params.v_stride_t = (uint32_t)v.stride(1);
+
+  [encoder setBytes:&params length:sizeof(DBAParams) atIndex:9];
+
+  const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+  const MTLSize grid = MTLSizeMake(1, (NSUInteger)H, (NSUInteger)B);
+  [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  return out;
+}
+
 torch::Tensor rmsnorm(
     at::Tensor x,      // (..., D) fp16 MPS contiguous
     at::Tensor weight, // (D,) fp16 MPS contiguous
@@ -353,6 +492,171 @@ torch::Tensor rmsnorm_noweight(
   params.eps = (float)eps;
   params.stride_row = (uint32_t)D;
   [encoder setBytes:&params length:sizeof(RMSNormParams) atIndex:2];
+
+  const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+  const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
+  [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  return out;
+}
+
+torch::Tensor layernorm(
+    at::Tensor x,      // (..., D) fp16 MPS contiguous
+    at::Tensor weight, // (D,) fp16 MPS contiguous
+    at::Tensor bias,   // (D,) fp16 MPS contiguous
+    double eps) {
+  TORCH_CHECK(x.device().is_mps(), "layernorm: x must be on MPS");
+  TORCH_CHECK(weight.device().is_mps(), "layernorm: weight must be on MPS");
+  TORCH_CHECK(bias.device().is_mps(), "layernorm: bias must be on MPS");
+  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm: x must be fp16");
+  TORCH_CHECK(weight.dtype() == at::kHalf, "layernorm: weight must be fp16");
+  TORCH_CHECK(bias.dtype() == at::kHalf, "layernorm: bias must be fp16");
+  TORCH_CHECK(x.is_contiguous(), "layernorm: x must be contiguous");
+  TORCH_CHECK(weight.is_contiguous(), "layernorm: weight must be contiguous");
+  TORCH_CHECK(bias.is_contiguous(), "layernorm: bias must be contiguous");
+  TORCH_CHECK(x.dim() >= 1, "layernorm: x must have dim >= 1");
+
+  const int64_t D = x.size(-1);
+  TORCH_CHECK(D > 0, "layernorm: invalid last dim");
+  TORCH_CHECK(weight.numel() == D, "layernorm: weight must have numel == x.size(-1)");
+  TORCH_CHECK(bias.numel() == D, "layernorm: bias must have numel == x.size(-1)");
+
+  auto out = torch::empty_like(x);
+  const int64_t rows = x.numel() / D;
+  TORCH_CHECK(rows * D == x.numel(), "layernorm: x.numel must be divisible by D");
+
+  id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
+  id<MTLComputePipelineState> pipeline =
+      ensure_pipeline(device, &g_pipeline_layernorm, "layernorm_fp16");
+
+  at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
+  TORCH_CHECK(stream != nullptr, "layernorm: failed to get current MPS stream");
+  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+  TORCH_CHECK(encoder != nil, "layernorm: failed to get MTLComputeCommandEncoder from MPS stream");
+
+  [encoder setComputePipelineState:pipeline];
+
+  auto set_tensor = [&](const at::Tensor& t, int idx) {
+    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+    TORCH_CHECK(buf != nil, "layernorm: tensor has null MTLBuffer");
+    const NSUInteger off = storage_offset_bytes(t);
+    [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
+  };
+
+  set_tensor(x, 0);
+  set_tensor(weight, 1);
+  set_tensor(bias, 2);
+  set_tensor(out, 3);
+
+  LayerNormParams params;
+  params.d_model = (uint32_t)D;
+  params.eps = (float)eps;
+  params.stride_row = (uint32_t)D;
+  [encoder setBytes:&params length:sizeof(LayerNormParams) atIndex:4];
+
+  const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+  const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
+  [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  return out;
+}
+
+torch::Tensor layernorm_weight(
+    at::Tensor x,      // (..., D) fp16 MPS contiguous
+    at::Tensor weight, // (D,) fp16 MPS contiguous
+    double eps) {
+  TORCH_CHECK(x.device().is_mps(), "layernorm_weight: x must be on MPS");
+  TORCH_CHECK(weight.device().is_mps(), "layernorm_weight: weight must be on MPS");
+  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_weight: x must be fp16");
+  TORCH_CHECK(weight.dtype() == at::kHalf, "layernorm_weight: weight must be fp16");
+  TORCH_CHECK(x.is_contiguous(), "layernorm_weight: x must be contiguous");
+  TORCH_CHECK(weight.is_contiguous(), "layernorm_weight: weight must be contiguous");
+  TORCH_CHECK(x.dim() >= 1, "layernorm_weight: x must have dim >= 1");
+
+  const int64_t D = x.size(-1);
+  TORCH_CHECK(D > 0, "layernorm_weight: invalid last dim");
+  TORCH_CHECK(weight.numel() == D, "layernorm_weight: weight must have numel == x.size(-1)");
+
+  auto out = torch::empty_like(x);
+  const int64_t rows = x.numel() / D;
+  TORCH_CHECK(rows * D == x.numel(), "layernorm_weight: x.numel must be divisible by D");
+
+  id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
+  id<MTLComputePipelineState> pipeline =
+      ensure_pipeline(device, &g_pipeline_layernorm_weight, "layernorm_weight_fp16");
+
+  at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
+  TORCH_CHECK(stream != nullptr, "layernorm_weight: failed to get current MPS stream");
+  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+  TORCH_CHECK(encoder != nil, "layernorm_weight: failed to get MTLComputeCommandEncoder from MPS stream");
+
+  [encoder setComputePipelineState:pipeline];
+
+  auto set_tensor = [&](const at::Tensor& t, int idx) {
+    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+    TORCH_CHECK(buf != nil, "layernorm_weight: tensor has null MTLBuffer");
+    const NSUInteger off = storage_offset_bytes(t);
+    [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
+  };
+
+  set_tensor(x, 0);
+  set_tensor(weight, 1);
+  set_tensor(out, 2);
+
+  LayerNormParams params;
+  params.d_model = (uint32_t)D;
+  params.eps = (float)eps;
+  params.stride_row = (uint32_t)D;
+  [encoder setBytes:&params length:sizeof(LayerNormParams) atIndex:3];
+
+  const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+  const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
+  [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  return out;
+}
+
+torch::Tensor layernorm_noweight(
+    at::Tensor x, // (..., D) fp16 MPS contiguous
+    double eps) {
+  TORCH_CHECK(x.device().is_mps(), "layernorm_noweight: x must be on MPS");
+  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_noweight: x must be fp16");
+  TORCH_CHECK(x.is_contiguous(), "layernorm_noweight: x must be contiguous");
+  TORCH_CHECK(x.dim() >= 1, "layernorm_noweight: x must have dim >= 1");
+
+  const int64_t D = x.size(-1);
+  TORCH_CHECK(D > 0, "layernorm_noweight: invalid last dim");
+
+  auto out = torch::empty_like(x);
+  const int64_t rows = x.numel() / D;
+  TORCH_CHECK(rows * D == x.numel(), "layernorm_noweight: x.numel must be divisible by D");
+
+  id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
+  id<MTLComputePipelineState> pipeline =
+      ensure_pipeline(device, &g_pipeline_layernorm_noweight, "layernorm_noweight_fp16");
+
+  at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
+  TORCH_CHECK(stream != nullptr, "layernorm_noweight: failed to get current MPS stream");
+  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+  TORCH_CHECK(encoder != nil, "layernorm_noweight: failed to get MTLComputeCommandEncoder from MPS stream");
+
+  [encoder setComputePipelineState:pipeline];
+
+  auto set_tensor = [&](const at::Tensor& t, int idx) {
+    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+    TORCH_CHECK(buf != nil, "layernorm_noweight: tensor has null MTLBuffer");
+    const NSUInteger off = storage_offset_bytes(t);
+    [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
+  };
+
+  set_tensor(x, 0);
+  set_tensor(out, 1);
+
+  LayerNormParams params;
+  params.d_model = (uint32_t)D;
+  params.eps = (float)eps;
+  params.stride_row = (uint32_t)D;
+  [encoder setBytes:&params length:sizeof(LayerNormParams) atIndex:2];
 
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
@@ -498,8 +802,12 @@ torch::Tensor lion_step(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("dba_decode", &dba_decode, "DBA Decode Forward (Metal/MPS, fp16)");
+  m.def("dba_decode_null", &dba_decode_null, "DBA Decode Forward with null KV (Metal/MPS, fp16)");
   m.def("rmsnorm", &rmsnorm, "RMSNorm Forward (Metal/MPS, fp16)");
   m.def("rmsnorm_noweight", &rmsnorm_noweight, "RMSNorm Forward (no weight, Metal/MPS, fp16)");
+  m.def("layernorm", &layernorm, "LayerNorm Forward (Metal/MPS, fp16)");
+  m.def("layernorm_weight", &layernorm_weight, "LayerNorm Forward (weight only, Metal/MPS, fp16)");
+  m.def("layernorm_noweight", &layernorm_noweight, "LayerNorm Forward (no weight/bias, Metal/MPS, fp16)");
   m.def("rope", &rope, "RoPE Apply (Metal/MPS, fp16)");
   m.def("lion_step", &lion_step, "Lion step update (Metal/MPS, fp16)");
 }

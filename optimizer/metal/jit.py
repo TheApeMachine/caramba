@@ -60,6 +60,7 @@ def _compile_metallib(*, out_dir: Path, verbose: bool) -> Path:
     sources = [
         _this_dir() / "dba_decode.metal",
         _this_dir() / "rmsnorm.metal",
+        _this_dir() / "layernorm.metal",
         _this_dir() / "rope.metal",
         _this_dir() / "lion.metal",
     ]

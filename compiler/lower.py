@@ -9,6 +9,7 @@ from __future__ import annotations
 from config.manifest import Manifest
 from config.model import ModelConfig
 from config.target import ExperimentTargetConfig
+from config.run import Run
 from config.topology import NodeConfig, TopologyConfig
 from config.topology import GraphNodeConfig, GraphTopologyConfig
 
@@ -29,21 +30,58 @@ class Lowerer:
         """
         lowered_targets = []
         for t in list(getattr(manifest, "targets", [])):
-            if isinstance(t, ExperimentTargetConfig) and t.system.ref in (
-                "system.language_model",
-                "system.generic",
-            ):
-                model_payload = t.system.config.get("model", None)
-                if isinstance(model_payload, dict):
-                    cfg = ModelConfig.model_validate(model_payload)
-                    cfg = cfg.resolve_geometry()
-                    lowered = self.lower_model(cfg)
-                    t2 = t.model_copy(deep=True)
-                    t2.system.config["model"] = lowered.model_dump(by_alias=True)
-                    lowered_targets.append(t2)
-                    continue
+            # Only experiment targets have runs to lower.
+            if isinstance(t, ExperimentTargetConfig):
+                t2 = t.model_copy(deep=True)
+
+                # Lower multi-seed runs to concrete runs.
+                t2.runs = self.lower_runs(list(t2.runs))
+
+                # Lower model topology/geometry where applicable.
+                if t2.system.ref in ("system.language_model", "system.generic"):
+                    model_payload = t2.system.config.get("model", None)
+                    if isinstance(model_payload, dict):
+                        cfg = ModelConfig.model_validate(model_payload)
+                        cfg = cfg.resolve_geometry()
+                        lowered = self.lower_model(cfg)
+                        t2.system.config["model"] = lowered.model_dump(by_alias=True)
+
+                lowered_targets.append(t2)
+                continue
+
             lowered_targets.append(t)
+
         return manifest.model_copy(update={"targets": lowered_targets})
+
+    def lower_runs(self, runs: list[Run]) -> list[Run]:
+        """Expand multi-seed runs into concrete runs.
+
+        Allows YAML like:
+          seed: [1, 2, 3]
+
+        to expand into three runs with stable ids and experiment names:
+          id: <id>__s1, exp: <exp>__s1, seed: 1
+          id: <id>__s2, exp: <exp>__s2, seed: 2
+          id: <id>__s3, exp: <exp>__s3, seed: 3
+        """
+        out: list[Run] = []
+        for r in runs:
+            seed = getattr(r, "seed", 0)
+            if isinstance(seed, list):
+                if not seed:
+                    raise ValueError(f"run {r.id!r} provided empty seed list")
+                for s in seed:
+                    si = int(s)
+                    rr = r.model_copy(deep=True)
+                    rr.seed = si
+                    rr.id = f"{r.id}__s{si}"
+                    rr.exp = f"{r.exp}__s{si}"
+                    out.append(rr)
+            else:
+                rr = r.model_copy(deep=True)
+                rr.seed = int(seed)
+                out.append(rr)
+        return out
 
     def lower_model(self, model: ModelConfig) -> ModelConfig:
         """Lower a model config into canonical form."""

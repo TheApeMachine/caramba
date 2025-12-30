@@ -1,0 +1,551 @@
+version: 2
+name: dba_ablation_suite_scratch_local
+notes: >
+  From-scratch ablation suite for Appendix B (6k-step runs) on a laptop.
+  Targets: control, with_null, tied_qk, rope_on_sem.
+
+  Apples-to-apples policy:
+  - Same dataset, seed, steps, optimizer, dtype, and device for all runs.
+  - Disable dynamic behaviors (auto_batch_size, compile).
+  - Latency is included and uses fp16 KV caches on MPS (Metal fused decode).
+
+defaults:
+  data:
+    tokenizer: llama
+    val_frac: 0.05
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-paper-ablations
+    wandb_entity: ''
+    wandb_mode: offline
+    eval_iters: 50
+  runtime:
+    save_every: 1000
+    best_effort: true
+
+vars:
+  # --- Data (FineWeb-Edu "v29" suite) ---
+  dataset_path: fineweb_edu_v29_100m.npy
+  dataset_id: HuggingFaceFW/fineweb-edu
+  dataset_subset: null
+  dataset_split: train
+  dataset_text_field: text
+  dataset_tokens: 100M
+  dataset_max_chars: 50000
+
+  # --- Llama 3.2 1B-ish topology ---
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+
+  # --- DBA geometry (paper default) ---
+  rope_theta: 500000.0
+  sem_dim: 64
+  geo_dim: 128
+  attn_dim: 512
+
+  # --- Training (scratch) ---
+  block_size: 2048
+  batch_size: 1
+  steps: 6000
+  lr: 0.0001
+
+  # --- Latency benchmark knobs ---
+  prompt_lengths: [512, 2048]
+  generation_lengths: [128]
+
+targets:
+  - type: experiment
+    name: control
+    description: "Scratch control: default DBA (no null token, untied Q/K, RoPE geo-only)."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+        prepare:
+          type: fineweb
+          tokens: ${dataset_tokens}
+          tokenizer: llama
+          model_id: meta-llama/Llama-3.2-1B
+          dataset: ${dataset_id}
+          subset: ${dataset_subset}
+          split: ${dataset_split}
+          text_field: ${dataset_text_field}
+          max_chars: ${dataset_max_chars}
+          append_eos: true
+          append_bos: false
+          rebuild_on_failure: true
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_semantic: false
+                        tie_qk: false
+                        null_attn: false
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: scratch_control
+        seed: 42
+        steps: ${steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: mps
+          dtype: auto
+          auto_batch_size: false
+          compile_model: false
+          optimizer: lion
+          fused_optimizer: true
+          use_amp: false
+          scheduler: none
+    benchmarks:
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: ${dataset_path}
+          block_size: ${block_size}
+          batch_size: 1
+          num_batches: 100
+        models: [student]
+        repeats: 1
+      - id: latency
+        config:
+          type: latency
+          prompt_lengths: ${prompt_lengths}
+          generation_lengths: ${generation_lengths}
+          batch_sizes: [1]
+          warmup_runs: 2
+          timed_runs: 5
+          use_cache: true
+          cache_kind: fp16
+        models: [student]
+        repeats: 1
+
+  - type: experiment
+    name: with_null
+    description: "Scratch ablation: enable a learned null (sink) KV token."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+        prepare:
+          type: fineweb
+          tokens: ${dataset_tokens}
+          tokenizer: llama
+          model_id: meta-llama/Llama-3.2-1B
+          dataset: ${dataset_id}
+          subset: ${dataset_subset}
+          split: ${dataset_split}
+          text_field: ${dataset_text_field}
+          max_chars: ${dataset_max_chars}
+          append_eos: true
+          append_bos: false
+          rebuild_on_failure: true
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_semantic: false
+                        tie_qk: false
+                        null_attn: true
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: scratch_with_null
+        seed: 42
+        steps: ${steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: mps
+          dtype: auto
+          auto_batch_size: false
+          compile_model: false
+          optimizer: lion
+          fused_optimizer: true
+          use_amp: false
+          scheduler: none
+    benchmarks:
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: ${dataset_path}
+          block_size: ${block_size}
+          batch_size: 1
+          num_batches: 100
+        models: [student]
+        repeats: 1
+      - id: latency
+        config:
+          type: latency
+          prompt_lengths: ${prompt_lengths}
+          generation_lengths: ${generation_lengths}
+          batch_sizes: [1]
+          warmup_runs: 2
+          timed_runs: 5
+          use_cache: true
+          cache_kind: fp16
+        models: [student]
+        repeats: 1
+
+  - type: experiment
+    name: tied_qk
+    description: "Scratch ablation: tie semantic W_Q == W_K."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+        prepare:
+          type: fineweb
+          tokens: ${dataset_tokens}
+          tokenizer: llama
+          model_id: meta-llama/Llama-3.2-1B
+          dataset: ${dataset_id}
+          subset: ${dataset_subset}
+          split: ${dataset_split}
+          text_field: ${dataset_text_field}
+          max_chars: ${dataset_max_chars}
+          append_eos: true
+          append_bos: false
+          rebuild_on_failure: true
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_semantic: false
+                        tie_qk: true
+                        null_attn: false
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: scratch_tied_qk
+        seed: 42
+        steps: ${steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: mps
+          dtype: auto
+          auto_batch_size: false
+          compile_model: false
+          optimizer: lion
+          fused_optimizer: true
+          use_amp: false
+          scheduler: none
+    benchmarks:
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: ${dataset_path}
+          block_size: ${block_size}
+          batch_size: 1
+          num_batches: 100
+        models: [student]
+        repeats: 1
+      - id: latency
+        config:
+          type: latency
+          prompt_lengths: ${prompt_lengths}
+          generation_lengths: ${generation_lengths}
+          batch_sizes: [1]
+          warmup_runs: 2
+          timed_runs: 5
+          use_cache: true
+          cache_kind: fp16
+        models: [student]
+        repeats: 1
+
+  - type: experiment
+    name: rope_on_sem
+    description: "Scratch ablation: apply RoPE to semantic Q/K too (RoPE on everything)."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+        prepare:
+          type: fineweb
+          tokens: ${dataset_tokens}
+          tokenizer: llama
+          model_id: meta-llama/Llama-3.2-1B
+          dataset: ${dataset_id}
+          subset: ${dataset_subset}
+          split: ${dataset_split}
+          text_field: ${dataset_text_field}
+          max_chars: ${dataset_max_chars}
+          append_eos: true
+          append_bos: false
+          rebuild_on_failure: true
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_semantic: true
+                        tie_qk: false
+                        null_attn: false
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: scratch_rope_on_sem
+        seed: 42
+        steps: ${steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: mps
+          dtype: auto
+          auto_batch_size: false
+          compile_model: false
+          optimizer: lion
+          fused_optimizer: true
+          use_amp: false
+          scheduler: none
+    benchmarks:
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: ${dataset_path}
+          block_size: ${block_size}
+          batch_size: 1
+          num_batches: 100
+        models: [student]
+        repeats: 1
+      - id: latency
+        config:
+          type: latency
+          prompt_lengths: ${prompt_lengths}
+          generation_lengths: ${generation_lengths}
+          batch_sizes: [1]
+          warmup_runs: 2
+          timed_runs: 5
+          use_cache: true
+          cache_kind: fp16
+        models: [student]
+        repeats: 1
+
+entrypoints:
+  # Note: omitting --target runs all targets in order.
+  control: "target:control"
+  with_null: "target:with_null"
+  tied_qk: "target:tied_qk"
+  rope_on_sem: "target:rope_on_sem"

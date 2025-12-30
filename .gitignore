@@ -2,7 +2,8 @@ __pycache__/
 .DS_Store
 .venv/
 .pytest_cache/
-artifacts/
+artifacts/llama32_1b_dba_paper_efficiency/
+artifacts/platform_improve/
 internal/
 caramba.egg-info/
 WARP.md
@@ -17,3 +18,6 @@ fineweb_100m.npy.meta
 train.h5
 .gitignore
 .coverage
+fineweb_edu_v29_100m.npy
+.gitignore
+NOTES.md

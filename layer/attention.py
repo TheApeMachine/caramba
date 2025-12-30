@@ -76,6 +76,7 @@ class AttentionLayer(nn.Module):
     q_geo: nn.Linear | None
     k_geo: nn.Linear | None
     rotary: RotaryEmbedding | None
+    rotary_sem: RotaryEmbedding | None
     rotary_geo: RotaryEmbedding | None
     decoupled_gate_logit: nn.Parameter | None
     decoupled_gate_proj: nn.Linear | None
@@ -86,6 +87,9 @@ class AttentionLayer(nn.Module):
     _v_head_dim: int
     mem_k_proj: nn.Module | None
     mem_v_proj: nn.Module | None
+    k_sem_null: nn.Parameter | None
+    k_geo_null: nn.Parameter | None
+    v_null: nn.Parameter | None
 
     def __init__(self, config: AttentionLayerConfig) -> None:
         """Initialize attention based on the configured mode.
@@ -264,6 +268,7 @@ class AttentionLayer(nn.Module):
             )
         else:
             self.rotary = None
+        self.rotary_sem = None
 
         self._scale = 1.0 / math.sqrt(float(self.head_dim))
 
@@ -278,6 +283,9 @@ class AttentionLayer(nn.Module):
         self._v_head_dim = self.head_dim
         self.decoupled_gate_logit = None
         self.decoupled_gate_proj = None
+        self.k_sem_null = None
+        self.k_geo_null = None
+        self.v_null = None
 
     def _init_decoupled(self, config: AttentionLayerConfig) -> None:
         """Set up projections for DBA attention.
@@ -304,9 +312,13 @@ class AttentionLayer(nn.Module):
         if sem_head_dim is None or geo_head_dim is None:
             raise ValueError("Could not compute sem/geo head dims")
 
-        # Semantic projections (content similarity, no position encoding)
+        # Semantic projections (content similarity; RoPE optional via config).
         self.q_sem = nn.Linear(d_model, sem_dim, bias=config.bias)
-        self.k_sem = nn.Linear(d_model, sem_dim, bias=config.bias)
+        if bool(getattr(config, "tie_qk", False)):
+            # Tie semantic Q/K to test symmetric semantics ablations.
+            self.k_sem = self.q_sem
+        else:
+            self.k_sem = nn.Linear(d_model, sem_dim, bias=config.bias)
 
         # Geometric projections (position patterns, RoPE applied)
         self.q_geo = nn.Linear(d_model, geo_dim, bias=config.bias)
@@ -324,9 +336,34 @@ class AttentionLayer(nn.Module):
         else:
             self.rotary_geo = None
 
+        # Optional RoPE on semantic path (ablation).
+        if bool(getattr(config, "rope_semantic", False)):
+            if sem_head_dim % 2 != 0:
+                raise ValueError("Decoupled mode with semantic RoPE requires even sem_head_dim")
+            self.rotary_sem = RotaryEmbedding(
+                sem_head_dim, base=config.rope_base, rope_scaling=getattr(config, "rope_scaling", None)
+            )
+        else:
+            self.rotary_sem = None
+
         self._sem_scale = 1.0 / math.sqrt(float(sem_head_dim))
         self._geo_scale = 1.0 / math.sqrt(float(geo_head_dim))
         self._v_head_dim = v_dim // self.n_heads
+
+        # Optional learned null token (sink token) for DBA (ablation).
+        if bool(getattr(config, "null_attn", False)):
+            H = int(self.n_heads)
+            v_head_dim = int(self._v_head_dim)
+            self.k_sem_null = nn.Parameter(torch.zeros((1, H, 1, int(sem_head_dim))))
+            self.k_geo_null = nn.Parameter(torch.zeros((1, H, 1, int(geo_head_dim))))
+            self.v_null = nn.Parameter(torch.zeros((1, H, 1, int(v_head_dim))))
+            nn.init.normal_(self.k_sem_null, mean=0.0, std=0.02)
+            nn.init.normal_(self.k_geo_null, mean=0.0, std=0.02)
+            nn.init.normal_(self.v_null, mean=0.0, std=0.02)
+        else:
+            self.k_sem_null = None
+            self.k_geo_null = None
+            self.v_null = None
 
         # Optional learned gate between semantic and geometric paths
         if config.decoupled_gate:
@@ -384,6 +421,21 @@ class AttentionLayer(nn.Module):
             )
             gate_logit = gate_bias + dyn
         return torch.sigmoid(gate_logit).to(dtype=x.dtype)
+
+    def _null_kv_tensors(
+        self,
+        *,
+        B: int,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Return expanded (k_sem_null, k_geo_null, v_null) for null attention."""
+        if self.k_sem_null is None or self.k_geo_null is None or self.v_null is None:
+            raise RuntimeError("null_attn enabled but null parameters are missing")
+        ksn = self.k_sem_null.expand(B, -1, -1, -1).to(device=device, dtype=dtype)
+        kgn = self.k_geo_null.expand(B, -1, -1, -1).to(device=device, dtype=dtype)
+        vn = self.v_null.expand(B, -1, -1, -1).to(device=device, dtype=dtype)
+        return ksn, kgn, vn
 
     def forward(
         self,
@@ -666,6 +718,10 @@ class AttentionLayer(nn.Module):
         qsh = self._shape(q_sem, sem_head_dim)
         ksh = self._shape(k_sem, sem_head_dim)
 
+        if self.rotary_sem is not None:
+            qsh = self.rotary_sem.rotate(qsh, pos_offset)
+            ksh = self.rotary_sem.rotate(ksh, pos_offset)
+
         # Geometric path (with RoPE—position patterns)
         q_geo = self.q_geo(x)
         k_geo = self.k_geo(x)
@@ -720,6 +776,9 @@ class AttentionLayer(nn.Module):
                                 if decode_block_override is not None
                                 else 1024
                             )
+                            ksn = kgn = vn = None
+                            if bool(getattr(self.config, "null_attn", False)):
+                                ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=qsh.dtype, device=x.device)
                             # Heuristic: for very long prefixes, prefer split-K 2-pass decode.
                             cache_len = int(cache.pos)
                             if cache_len > 4 * int(decode_block):
@@ -735,6 +794,9 @@ class AttentionLayer(nn.Module):
                                         decode_block=int(decode_block),
                                         sem_scale=float(self._sem_scale),
                                         geo_scale=float(self._geo_scale),
+                                        k_sem_null=ksn,
+                                        k_geo_null=kgn,
+                                        v_null=vn,
                                     )
                                 except Exception:
                                     out_fused = fused_decode_decoupled_q4q8q4(
@@ -748,6 +810,9 @@ class AttentionLayer(nn.Module):
                                         decode_block=int(decode_block),
                                         sem_scale=float(self._sem_scale),
                                         geo_scale=float(self._geo_scale),
+                                        k_sem_null=ksn,
+                                        k_geo_null=kgn,
+                                        v_null=vn,
                                     )
                             else:
                                 out_fused = fused_decode_decoupled_q4q8q4(
@@ -761,6 +826,9 @@ class AttentionLayer(nn.Module):
                                     decode_block=int(decode_block),
                                     sem_scale=float(self._sem_scale),
                                     geo_scale=float(self._geo_scale),
+                                    k_sem_null=ksn,
+                                    k_geo_null=kgn,
+                                    v_null=vn,
                                 )
                             y = self.out_proj(self._merge(out_fused.to(dtype=x.dtype)))
                             return y, cache
@@ -795,6 +863,9 @@ class AttentionLayer(nn.Module):
                             k_sem_view = k_sem_buf.narrow(1, 0, S)
                             k_geo_view = k_geo_buf.narrow(1, 0, S)
                             v_view = v_buf.narrow(1, 0, S)
+                            ksn = kgn = vn = None
+                            if bool(getattr(self.config, "null_attn", False)):
+                                ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=qsh.dtype, device=x.device)
                             out_fused = dba_decode_fp16(
                                 q_sem=qsh,
                                 q_geo=qgh,
@@ -803,6 +874,9 @@ class AttentionLayer(nn.Module):
                                 v=v_view,
                                 sem_scale=float(self._sem_scale),
                                 geo_scale=float(self._geo_scale),
+                                k_sem_null=ksn,
+                                k_geo_null=kgn,
+                                v_null=vn,
                             )
                             y = self.out_proj(self._merge(out_fused.to(dtype=x.dtype)))
                             return y, cache
@@ -830,17 +904,38 @@ class AttentionLayer(nn.Module):
             geo_scores = torch.matmul(qgh, kgh.transpose(-2, -1)) * self._geo_scale
             scores = sem_scores + geo_scores
 
+            if bool(getattr(self.config, "null_attn", False)):
+                ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=x.dtype, device=x.device)
+                # score_null: (B,H,T,1)
+                score_null = (
+                    (qsh * ksn).sum(dim=-1, keepdim=True) * float(self._sem_scale)
+                    + (qgh * kgn).sum(dim=-1, keepdim=True) * float(self._geo_scale)
+                )
+                scores = torch.cat([score_null.to(dtype=scores.dtype), scores], dim=-1)
+                vh = torch.cat([vn.to(dtype=vh.dtype), vh], dim=2)
+                if mask is not None:
+                    keep_null = torch.ones((*mask.shape[:-1], 1), device=mask.device, dtype=torch.bool)
+                    mask = torch.cat([keep_null, mask], dim=-1)
+
             # Apply masking (mask semantics: True = keep)
             if mask is not None:
                 scores = scores.masked_fill(~mask, ninfty)
             elif self.config.is_causal and T > 1 and cache is None:
                 causal = torch.tril(torch.ones(T, T, device=x.device, dtype=torch.bool))
-                scores = scores.masked_fill(~causal.view(1, 1, T, T), ninfty)
+                if bool(getattr(self.config, "null_attn", False)):
+                    causal = torch.cat(
+                        [torch.ones((T, 1), device=x.device, dtype=torch.bool), causal],
+                        dim=1,
+                    )
+                scores = scores.masked_fill(~causal.view(1, 1, T, -1), ninfty)
             elif self.config.is_causal and cache is not None:
                 cache_len = ksh.size(2)
                 key_pos = torch.arange(cache_len, device=x.device).view(1, 1, 1, cache_len)
                 q_pos = (cache.pos - T + torch.arange(T, device=x.device)).view(1, 1, T, 1)
                 keep = key_pos <= q_pos
+                if bool(getattr(self.config, "null_attn", False)):
+                    keep_null = torch.ones((1, 1, T, 1), device=x.device, dtype=torch.bool)
+                    keep = torch.cat([keep_null, keep], dim=-1)
                 scores = scores.masked_fill(~keep, ninfty)
 
             attn = F.softmax(scores.float(), dim=-1).to(x.dtype)
@@ -960,6 +1055,13 @@ class AttentionLayer(nn.Module):
                         k_mem_geo = k_full
                     k_slice_geo = torch.cat([k_mem_geo, local], dim=2)
 
+            null_enabled = bool(getattr(self.config, "null_attn", False))
+            if null_enabled:
+                ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=qsh.dtype, device=qsh.device)
+                k_slice_sem = torch.cat([ksn, k_slice_sem], dim=2)
+                k_slice_geo = torch.cat([kgn, k_slice_geo], dim=2)
+                v_slice = torch.cat([vn.to(dtype=v_slice.dtype), v_slice], dim=2)
+
             # Fast-path: use PyTorch scaled_dot_product_attention on a composite
             # (q_cat, k_cat) representation to reduce kernel launches.
             #
@@ -975,19 +1077,25 @@ class AttentionLayer(nn.Module):
             if mask is None:
                 attn_mask = None
                 if self.config.is_causal or local_window is not None:
-                    keep = torch.ones(
+                    keep_tokens = torch.ones(
                         (q_pos.numel(), k_pos.numel()),
                         device=qsh.device,
                         dtype=torch.bool,
                     )
                     if self.config.is_causal:
-                        keep &= k_pos.view(1, -1) <= q_pos.view(-1, 1)
+                        keep_tokens &= k_pos.view(1, -1) <= q_pos.view(-1, 1)
                     if local_window is not None:
                         w = int(local_window)
                         if w > 0:
-                            keep &= k_pos.view(1, -1) >= (q_pos.view(-1, 1) - w + 1)
+                            keep_tokens &= k_pos.view(1, -1) >= (q_pos.view(-1, 1) - w + 1)
                             if not self.config.is_causal:
-                                keep &= k_pos.view(1, -1) <= (q_pos.view(-1, 1) + w - 1)
+                                keep_tokens &= k_pos.view(1, -1) <= (q_pos.view(-1, 1) + w - 1)
+
+                    if null_enabled:
+                        keep_null = torch.ones((q_pos.numel(), 1), device=qsh.device, dtype=torch.bool)
+                        keep = torch.cat([keep_null, keep_tokens], dim=1)
+                    else:
+                        keep = keep_tokens
                     attn_mask = keep  # True = allowed (SDPA boolean semantics)
 
                 q_cat = torch.cat(
@@ -1011,6 +1119,9 @@ class AttentionLayer(nn.Module):
                 scores = sem_scores + geo_scores
                 try:
                     m = mask[..., i0:i1, k0:k1]
+                    if null_enabled:
+                        keep_null = torch.ones((*m.shape[:-1], 1), device=m.device, dtype=torch.bool)
+                        m = torch.cat([keep_null, m], dim=-1)
                     scores = scores.masked_fill(~m, ninfty)
                 except Exception:
                     logger.warning("Mask slice/masked_fill failed; continuing without extra mask")

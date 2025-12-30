@@ -115,8 +115,9 @@ class AttentionLayerConfig(Config):
     - gqa: Multiple Q heads share K/V heads
     - decoupled: Separate semantic (content) and geometric (position) paths
 
-    For DBA (decoupled), set sem_dim and geo_dim. RoPE is only applied
-    to the geometric path; the semantic path is position-invariant.
+    For DBA (decoupled), set sem_dim and geo_dim. By default RoPE is only applied
+    to the geometric path; the semantic path is position-invariant. Ablations
+    can enable RoPE on the semantic path as well.
     """
 
     type: Literal[LayerType.ATTENTION] = LayerType.ATTENTION
@@ -143,6 +144,14 @@ class AttentionLayerConfig(Config):
     # This is a direct, manifest-driven escape hatch: it should match the HF config's
     # `rope_scaling` dict when present.
     rope_scaling: dict[str, object] | None = None
+
+    # DBA ablation toggles (only meaningful when mode=decoupled)
+    # - rope_semantic: apply RoPE to the semantic Q/K projections too
+    # - tie_qk: tie semantic W_Q and W_K (W_Q,sem == W_K,sem)
+    # - null_attn: add a learned "null" KV token (sink/skip token) always available
+    rope_semantic: bool = False
+    tie_qk: bool = False
+    null_attn: bool = False
 
     # DBA gating (learned per-head semantic/geometric mixing)
     decoupled_gate: bool = False

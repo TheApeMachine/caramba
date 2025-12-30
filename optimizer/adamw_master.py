@@ -14,7 +14,7 @@ but maintains AdamW state + updates in fp32.
 from __future__ import annotations
 
 import math
-from typing import Iterable
+from collections.abc import Iterable
 
 import torch
 from torch import Tensor
@@ -41,11 +41,10 @@ class AdamWMaster(torch.optim.Optimizer):
         super().__init__(params, defaults)
 
     @torch.no_grad()
-    def step(self, closure=None):  # type: ignore[override]
-        loss = None
+    def step(self, closure=None) -> None:  # type: ignore[override]
         if closure is not None:
             with torch.enable_grad():
-                loss = closure()
+                _ = closure()
 
         for group in self.param_groups:
             lr = float(group["lr"])
@@ -98,6 +97,5 @@ class AdamWMaster(torch.optim.Optimizer):
 
                 # Copy back to model dtype
                 p.copy_(master.to(dtype=p.dtype))
-
-        return loss
+        return None
 

@@ -441,14 +441,14 @@ class LionStrategy(Strategy):
         try:
             p0 = next(self.model.parameters())
             fused = p0.device.type == "mps" and p0.dtype == torch.float16
-        except Exception:
+        except (StopIteration, AttributeError):
             fused = False
         return Lion(
             self.model.parameters(),
             lr=self.bundle.lr,
             betas=self.bundle.betas,
             weight_decay=self.bundle.weight_decay,
-            fused=bool(fused),
+            fused=fused,
         )
 
     def _create_scheduler(self) -> "LRScheduler":

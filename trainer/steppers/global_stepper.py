@@ -259,7 +259,6 @@ class GlobalStepper:
                         scheduler.load_state_dict(resume_state["scheduler_state_dict"])  # type: ignore[arg-type]
                 except Exception:
                     logger.warning("Failed to load optimizer/scheduler state dict; continuing with defaults.")
-                    pass
 
         logger.header("Global Fine-tuning", f"{run.steps} steps")
         loader_iter = iter(loader)

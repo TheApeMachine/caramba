@@ -26,18 +26,26 @@ def _import_symbol(path: str) -> object:
 
 
 def _construct(factory: object, config: dict[str, Any]) -> object:
-    """Best-effort constructor used across the codebase."""
-    if callable(factory) and not isinstance(factory, type):
-        try:
-            return factory(**config)  # type: ignore[misc]
-        except TypeError:
-            return factory(config)  # type: ignore[misc]
-    if isinstance(factory, type):
-        try:
-            return factory(config)  # type: ignore[call-arg]
-        except TypeError:
-            return factory(**config)  # type: ignore[call-arg]
-    raise TypeError(f"Cannot construct component from {type(factory).__name__}")
+    """Strict constructor: all components must accept keyword arguments.
+
+    Rationale:
+    - Avoid hidden fallbacks that can double-nest configs (e.g. {"model": {...}})
+      or silently select an unintended construction path.
+    - Keep manifests + components "one way": config keys map directly to init kwargs.
+    """
+    if not callable(factory):
+        raise TypeError(f"Cannot construct component from {type(factory).__name__}")
+    try:
+        return factory(**config)  # type: ignore[misc]
+    except TypeError as e:
+        # Provide an actionable error message showing what we tried.
+        raise TypeError(
+            "Component construction failed. All components must accept keyword arguments "
+            "(Component(**config)).\n\n"
+            f"Factory: {factory!r}\n"
+            f"Config keys: {sorted(map(str, config.keys()))}\n"
+            f"Error: {e}"
+        ) from e
 
 
 @dataclass(frozen=True, slots=True)

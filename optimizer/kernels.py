@@ -18,8 +18,17 @@ from typing import Any
 import os
 import torch
 from torch import Tensor
+import torch.nn.functional as F
 
 from console import logger
+
+
+_DISABLE_METAL_ALL = os.getenv("CARAMBA_DISABLE_METAL_KERNELS", "").strip() == "1"
+_DISABLE_METAL_KIND: dict[str, bool] = {
+    k.removeprefix("CARAMBA_DISABLE_METAL_").strip().upper(): (str(v).strip() == "1")
+    for k, v in os.environ.items()
+    if k.startswith("CARAMBA_DISABLE_METAL_")
+}
 
 
 def _metal_disabled(kind: str) -> bool:
@@ -27,13 +36,14 @@ def _metal_disabled(kind: str) -> bool:
 
     This is used to keep *correctness* (e.g. teacher parity sanity checks) independent
     from the availability of fast-path kernels.
+
+    IMPORTANT: only the literal string "1" disables kernels. Values like "true"/"yes"
+    do NOT disable anything.
     """
-    # Global kill-switch
-    if os.getenv("CARAMBA_DISABLE_METAL_KERNELS", "").strip() == "1":
+    if _DISABLE_METAL_ALL:
         return True
-    # Per-kernel kill-switch
-    env = f"CARAMBA_DISABLE_METAL_{kind.upper()}"
-    return os.getenv(env, "").strip() == "1"
+    k = str(kind).strip().upper()
+    return bool(_DISABLE_METAL_KIND.get(k, False))
 
 
 def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
@@ -85,6 +95,24 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     y1 = x1 * cos2 - x2 * sin2
     y2 = x1 * sin2 + x2 * cos2
     return torch.cat([y1, y2, x_pass], dim=-1)
+
+
+def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: float) -> Tensor:
+    """LayerNorm over the last dimension.
+
+    This matches PyTorch's `F.layer_norm(x, normalized_shape=(D,))` behavior.
+    """
+    if (not _metal_disabled("layernorm")) and x.device.type == "mps" and x.dtype == torch.float16:
+        try:
+            from optimizer.metal import layernorm_fp16, metal_layernorm_available
+
+            if metal_layernorm_available():
+                return layernorm_fp16(x=x, weight=weight, bias=bias, eps=float(eps))
+        except Exception as e:
+            logger.error(f"Failed to use Metal layernorm, continuing: {e}")
+
+    D = int(x.shape[-1])
+    return F.layer_norm(x, normalized_shape=(D,), weight=weight, bias=bias, eps=float(eps))
 
 
 def attention_decode(*args: Any, **kwargs: Any) -> Tensor:

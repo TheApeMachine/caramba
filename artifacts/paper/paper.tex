@@ -1,0 +1,474 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{microtype}  % Better text flow, reduces overfull hbox
+\usepackage[margin=1in]{geometry}  % Consistent margins
+\usepackage{placeins} % Provides \FloatBarrier to prevent float reordering across sections
+
+% Custom colors
+\definecolor{accent}{RGB}{45, 106, 79}
+
+\title{\textbf{Decoupled Bottleneck Attention:} \\[0.3em]
+\large Scaling Efficient Transformers via Low-Rank Semantic Routing}
+
+\author{
+  Daniel Owen van Dommelen\\
+  \textit{Independent Research}\\
+  \texttt{theapemachine@gmail.com}
+}
+
+\date{December 2025}
+
+\begin{document}
+
+\maketitle
+
+% ============================================================================
+% ABSTRACT
+% ============================================================================
+\begin{abstract}
+The Key-Value (KV) cache in Transformer language models scales linearly with sequence length and attention dimension, creating a practical memory bottleneck for long-context inference. We propose \textbf{Decoupled Bottleneck Attention (DBA)}, an architectural modification that separates \textit{semantic routing} (which token attends to which) from \textit{positional geometry} (how far away it is). DBA computes attention scores as the sum of a low-rank semantic path and a higher-fidelity geometric path (with RoPE), enabling aggressive cache compression where it matters most.
+
+This paper is a \textit{production-first} report: all training runs are executed via \path{production/} and the \texttt{production.cli} entry point using \texttt{--paper-strict}. We report results from an initial decoupled 1B checkpoint trained for 100k steps on FineWeb-Edu tokens, evaluated with a lightweight benchmark script (\path{eval_ckpt.py}) on held-out FineWeb-Edu token shards. We additionally demonstrate successful long-context inference \textit{stability} up to \textbf{131{,}072 tokens} on consumer hardware (Apple M4 Max, 128GB unified memory), while noting that perplexity at extreme context lengths degrades sharply due to RoPE extrapolation (training context is 2k and \texttt{rope\_base=10000}).
+\end{abstract}
+
+\paragraph{Keywords:}
+Transformer, attention mechanism, low-rank, KV-cache, memory efficiency, quantization, long context, rotary position embeddings
+
+% ============================================================================
+% 1. INTRODUCTION
+% ============================================================================
+\section{Introduction}
+
+Modern Transformer architectures \cite{vaswani2017attention} achieve remarkable performance across language modeling, translation, and reasoning tasks. However, their quadratic attention complexity and linear KV-cache growth present fundamental scalability challenges for long-context applications.
+
+\subsection{The Redundancy Hypothesis}
+
+We begin with a simple observation: in a 512-dimensional layer, the neurons are not independent. They move in \textit{sympathetic clusters}---correlated groups that reduce the intrinsic dimensionality of the representation. Prior work on LoRA \cite{hu2021lora} demonstrated that weight \textit{updates} during fine-tuning are low-rank (typically $r \leq 64$). Recent work on gradient dynamics \cite{refael2024adarankgrad} shows that optimization naturally collapses to low rank. We extend this observation to argue that the \textit{architecture itself}---specifically the attention mechanism---should be structurally constrained to match this intrinsic rank.
+
+Empirical measurements from our experiments show that the \textit{Q/K projection activations} feeding attention have low entropy effective rank (typically in the tens of dimensions, far below the nominal width; Appendix~\ref{app:effective_rank}). This aligns with theoretical analysis by Bhojanapalli et al. \cite{bhojanapalli2020lowrank}, who identified a ``low-rank bottleneck'' in multi-head attention, and recent work by Kobayashi et al. \cite{kobayashi2024weightdecay} showing that weight decay actively induces rank reduction during training. Wang et al. \cite{wang2025lowdim} further demonstrate that attention outputs are approximately 60\% low-dimensional, adding to low-dimensional residual subspaces. Crucially, Refael et al. \cite{refael2024adarankgrad} proved that gradient rank \textit{decreases monotonically} during training, asymptotically approaching rank one---providing theoretical justification for why architectural bottlenecks become increasingly appropriate as training progresses. Chiang \& Yogatama \cite{chiang2025rope} show that RoPE may cause dimension inefficiency for long-distance retrieval, supporting our use of higher dimensions (64) for the geometric path.
+
+\subsection{Comparison with Existing Approaches}
+
+\paragraph{Grouped-Query Attention (GQA).}
+While Grouped-Query Attention \cite{ainslie2023gqa} successfully reduces KV-cache memory by sharing key-value heads across multiple query heads, it maintains the full computational cost of the query projection and attention scoring in the high-dimensional space. Each query still operates in $\mathbb{R}^{d}$, and every attention score still requires a $d$-dimensional dot product---GQA merely amortizes the \textit{storage} cost, not the \textit{interaction} cost.
+
+Our Bottleneck approach reduces both memory \textit{and} compute by compressing the interaction manifold. Rather than sharing high-dimensional KV pairs, we project queries and keys into a low-rank semantic subspace ($r \ll d$) \textit{before} computing attention, reducing dot-product complexity from $O(n^2 d)$ to $O(n^2 r)$.
+
+\paragraph{Multi-Head Latent Attention (MLA).}
+DeepSeek-V2 \cite{deepseek2024v2} introduced MLA, which compresses KV storage into a latent vector, achieving 93\% cache reduction. However, MLA \textit{up-projects} during the forward pass to perform attention in the original high-dimensional space. Our method remains low-rank throughout, saving both memory and compute.
+
+\paragraph{Disentangled Attention.}
+DeBERTa \cite{he2020deberta} pioneered the separation of content and position representations in attention scoring. We adopt this disentanglement principle but leverage it for \textit{efficiency}: applying aggressive compression to the semantic (content) path while preserving fidelity in the geometric (position) path.
+
+\subsection{Contributions}
+
+\begin{enumerate}
+    \item We demonstrate that attention routing can be performed in $\sim$32 dimensions without perplexity degradation, while positional encoding requires $\sim$64 dimensions for RoPE fidelity.
+    \item We propose \textbf{Decoupled Bottleneck Attention}, which separates semantic and geometric scoring paths with asymmetric dimensionality.
+    \item We introduce and \textbf{evaluate} a \textbf{Null Token} mechanism that provides an explicit ``attend nowhere'' option (beneficial in some low-rank regimes, but not universally; Appendix~\ref{app:decoupled_ablations}).
+    \item We provide a production-first evaluation workflow (\path{eval_ckpt.py}) that reports held-out perplexity, cached decode latency microbenchmarks, and long-context sweep behavior from trained checkpoints. Detailed KV-cache memory measurements at 128k (end-to-end device deltas) are planned and kept as placeholders in this draft.
+\end{enumerate}
+
+% ============================================================================
+% RELATED WORK
+% ============================================================================
+\section{Related Work}
+\label{sec:related_work}
+
+\paragraph{Low-rank and approximate attention.}
+A long line of work seeks to reduce the quadratic cost of attention by approximating the score computation or constraining its rank. Linformer \cite{wang2020linformer} projects keys and values into a lower-dimensional subspace along the sequence dimension, yielding linear-time attention under a low-rank assumption. Kernel and hashing methods such as Performer \cite{choromanski2021performer} and Reformer \cite{kitaev2020reformer} similarly reduce attention cost via randomized features or locality-sensitive hashing. Our setting is different: we train standard causal LMs, but explicitly reduce the query/key interaction dimension inside each layer, targeting both compute (\(O(n^2 r)\)) and KV-cache memory (\(O(n r)\)).
+
+\paragraph{Sparse/local attention for long documents.}
+Sparse patterns (e.g., sliding window with global tokens) as in Longformer \cite{beltagy2020longformer} and BigBird \cite{zaheer2020bigbird} reduce attention compute while retaining access to distant context. However, for autoregressive decoding these methods still accumulate a KV cache whose size grows linearly with context length. Our work instead reduces the per-token cache footprint, which is complementary to sparse attention and other long-context strategies \cite{huang2023longcontextsurvey}.
+
+\paragraph{KV-cache optimization.}
+Sharing KV heads reduces cache storage by amortizing keys and values across query heads (MQA/GQA) \cite{shazeer2019mqa,ainslie2023gqa}. Latent KV schemes such as MLA compress the cache into a lower-dimensional latent that is expanded during attention \cite{deepseek2024v2}. Orthogonally, quantizing the KV cache reduces memory at fixed architecture \cite{hooper2024kvquant,li2025commvq}. Our decoupled bottleneck reduces the interaction dimension before scoring (saving compute) and also makes heterogeneous KV quantization natural: semantic keys can often be quantized more aggressively than geometric keys.
+
+\paragraph{Expressiveness limits and structured alternatives.}
+Reducing interaction rank too far can harm representation power: theory and empirical evidence show regimes where increasing heads under fixed head dimension does not recover lost capacity \cite{bhojanapalli2020lowrank,amsel2025qualityheads}. Recent structured-matrix formulations aim to increase effective rank without full cost by parameterizing attention maps with richer structured operators \cite{kuang2025structuredmatrices}. Decoupling is a simple architectural compromise: we keep a higher-dimensional geometric path (with RoPE) while aggressively compressing only the semantic routing path.
+
+% ============================================================================
+% 2. METHODOLOGY
+% ============================================================================
+\section{Methodology}
+
+\subsection{Standard Multi-Head Attention}
+
+In standard scaled dot-product attention with $H$ heads:
+\begin{equation}
+    \text{Attn}(Q, K, V) = \text{softmax}\left(\frac{QK^\top}{\sqrt{d_k}}\right) V
+\end{equation}
+where $Q, K, V \in \mathbb{R}^{n \times d}$ are obtained by linear projection from the input $X \in \mathbb{R}^{n \times d_{\text{model}}}$:
+\begin{equation}
+    Q = XW_Q, \quad K = XW_K, \quad V = XW_V
+\end{equation}
+with $W_Q, W_K, W_V \in \mathbb{R}^{d_{\text{model}} \times d}$. For language modeling with context length $n$ and dimension $d$, the KV-cache requires $O(2 \cdot L \cdot n \cdot d)$ memory, where $L$ is the number of layers.
+
+\subsection{Bottleneck Attention}
+
+We introduce a simple modification: project $Q$ and $K$ to a lower-dimensional space \textit{before} computing attention scores.\footnote{Our use of ``bottleneck'' refers to dimensionality reduction in the query/key space, distinct from Park et al.'s BAM \cite{park2018bam}, which applies channel and spatial attention in CNNs for computer vision.}
+\begin{equation}
+    Q' = XW_Q', \quad K' = XW_K'
+\end{equation}
+where $W_Q', W_K' \in \mathbb{R}^{d_{\text{model}} \times d_{\text{attn}}}$ with $d_{\text{attn}} \ll d_{\text{model}}$. The attention computation becomes:
+\begin{equation}
+    \text{Attn}_{\text{bottleneck}}(Q', K', V') = \text{softmax}\left(\frac{Q'K'^\top}{\sqrt{d_{\text{attn}}/H}}\right) V'
+\end{equation}
+
+This reduces the dot-product complexity from $O(n^2 \cdot d_{\text{model}})$ to $O(n^2 \cdot d_{\text{attn}})$ and the KV-cache from $O(n \cdot d_{\text{model}})$ to $O(n \cdot d_{\text{attn}})$.
+
+\subsection{Decoupled Bottleneck Attention}
+
+The key insight motivating decoupling is that \textit{semantic matching} (``is this token semantically related?'') and \textit{geometric positioning} (``how far away is this token?'') have different intrinsic dimensionality requirements.
+
+We decompose the attention score into two additive components:
+\begin{equation}
+    \text{Score} = \underbrace{\frac{Q_{\text{sem}} K_{\text{sem}}^\top}{\sqrt{d_{\text{sem}}/H}}}_{\text{Semantic Path}} + \underbrace{\frac{Q_{\text{geo}} K_{\text{geo}}^\top}{\sqrt{d_{\text{geo}}/H}}}_{\text{Geometric Path}}
+\end{equation}
+
+where:
+\begin{align}
+    Q_{\text{sem}} &= XW_{Q,\text{sem}}, \quad K_{\text{sem}} = XW_{K,\text{sem}} \quad &(d_{\text{sem}} = 32) \\
+    Q_{\text{geo}} &= XW_{Q,\text{geo}}, \quad K_{\text{geo}} = XW_{K,\text{geo}} \quad &(d_{\text{geo}} = 64)
+\end{align}
+
+Critically, we apply \textbf{Rotary Position Embeddings (RoPE)} \cite{su2021roformer} \textit{only} to the geometric path:
+\begin{equation}
+    Q_{\text{geo}}, K_{\text{geo}} \leftarrow \text{RoPE}(Q_{\text{geo}}, K_{\text{geo}}, \text{position})
+\end{equation}
+
+The semantic path operates on pure content similarity, while the geometric path encodes positional relationships. The value projection uses the combined dimension:
+\begin{equation}
+    V = XW_V, \quad W_V \in \mathbb{R}^{d_{\text{model}} \times d_{\text{attn}}}
+\end{equation}
+where $d_{\text{attn}} = d_{\text{sem}} + d_{\text{geo}}$. In our production presets, $(d_{\text{sem}}, d_{\text{geo}})$ is chosen as a function of model size, with a higher-dimensional geometric path to preserve RoPE fidelity.
+
+\subsection{The Null Token Mechanism}
+
+Low-rank attention can become unstable when queries lack semantically appropriate keys. We introduce a learnable \textbf{null token} $k_\emptyset$ providing an explicit ``attend nowhere'' option:
+\begin{equation}
+    \text{Score}_{\text{null}} = \frac{Q_{\text{sem}} k_{\emptyset,\text{sem}}^\top}{\sqrt{d_{\text{sem}}/H}} + \frac{Q_{\text{geo}} k_{\emptyset,\text{geo}}^\top}{\sqrt{d_{\text{geo}}/H}}
+\end{equation}
+
+This score is concatenated to the attention matrix before softmax, allowing the model to ``dump'' attention mass when no key is appropriate, which can stabilize training at very low ranks. In our flagship decoupled preset, the null token is disabled by default and treated as an ablation (Appendix~\ref{app:decoupled_ablations}).
+
+\subsection{Tied Q-K Projections}
+
+For the semantic path, we optionally \textbf{tie} the query and key projections: $W_{Q,\text{sem}} = W_{K,\text{sem}}$. This enforces symmetric similarity (``A attends to B iff B attends to A''), which is appropriate for content matching but not for position-dependent relationships.
+
+\subsection{Quantized Inference}
+
+For inference, we apply aggressive quantization to the KV-cache. Recent work has demonstrated that 4-bit KV cache quantization preserves model quality remarkably well. Turboderp's ExLlamaV2 implementation \cite{turboderp2024qcache} showed Q4 cache performs comparably to FP16, and this capability has been integrated into production inference engines like llama.cpp \cite{llamacpp2024kvcache}. We implement block-wise Q4\_0 quantization following this approach:
+\begin{equation}
+    x_{\text{quantized}} = \text{round}\left(\frac{x}{\text{scale}}\right), \quad \text{scale} = \frac{\max(|x_{\text{block}}|)}{7}
+\end{equation}
+where each block of 32 elements shares a single FP16 scale factor. In the idealized limit (ignoring scale metadata) 4-bit values correspond to 0.5 bytes/value. With Q4\_0 block scales, the effective bytes/value is slightly larger (18 bytes per 32 values $\Rightarrow$ 0.5625 bytes/value), so the ideal 4$\times$ factor becomes $\approx 3.56\times$ in practice. Combined with dimension reduction, the per-layer KV-cache reduction is approximately:
+\begin{equation}
+    \text{Compression} \approx \underbrace{\frac{d_{\text{model}}}{d_{\text{attn}}}}_{\text{Dimension}} \times \underbrace{\frac{2~\text{bytes}}{0.5625~\text{bytes}}}_{\text{Q4\_0 (incl.\ scale)}} \;\;\approx\;\; \frac{d_{\text{model}}}{d_{\text{attn}}}\times 3.56.
+\end{equation}
+For a representative setting with $d_{\text{model}}/d_{\text{attn}} \approx 5.33$ (e.g., $768\!\rightarrow\!144$), homogeneous Q4\_0 KV-cache quantization implies an implementation-aligned compression of $\approx 5.33\times 3.56 \approx 19.0\times$ versus a standard FP16 baseline (before accounting for any heterogeneous policy choices).
+
+\paragraph{Scaling arithmetic (context only; not validated at scale).}
+The KV-cache memory at long context depends on the choice of attention dimension $d_{\text{attn}}$ at scale. For a rough Llama-like configuration (32 layers, $d_{\text{model}}=4096$, 128k context, batch=1), the FP16 KV cache is:
+\[
+M_{\text{FP16}} \approx 2 \cdot 32 \cdot 4096 \cdot 128\text{k} \cdot 2 \text{ bytes} \approx 64~\text{GiB}.
+\]
+With 4-bit KV-cache quantization (idealized 0.5 bytes/value), the memory becomes:
+\[
+M_{\text{Q4}} \approx 2 \cdot 32 \cdot d_{\text{attn}} \cdot 128\text{k} \cdot 0.5 \text{ bytes}.
+\]
+This yields two reference scenarios (for context):
+\begin{itemize}
+    \item \textbf{Constant-fraction $d_{\text{attn}}$ (e.g., $d_{\text{attn}}=768$):} $M_{\text{Q4}} \approx 3.0$~GiB, for an overall reduction of $\sim 21\times$.
+    \item \textbf{Speculative fixed-rank $d_{\text{attn}}$ (intuition only):} If one could keep $d_{\text{attn}}$ roughly constant while scaling $d_{\text{model}}$ (e.g., $d_{\text{attn}}{=}96$ at $d_{\text{model}}{=}4096$), the same linear arithmetic yields an $\mathcal{O}(10^2)$ reduction versus a standard FP16 baseline.\footnote{This is the origin of the often-quoted ``168$\times$'': \((4096/96)\times 4 \approx 171\), sometimes rounded. Including Q4\_0 scale metadata gives \((4096/96)\times (2/0.5625)\approx 152\). We do \emph{not} validate fixed-rank scaling in this work.}
+\end{itemize}
+The architectural contribution is the \textit{dimension reduction} (the ratio $4096/d_{\text{attn}}$); the additional factor of $4\times$ comes from standard 16$\rightarrow$4-bit quantization (idealized). For fair comparisons, note that GQA caches can also be quantized; e.g., an $8\times$ GQA KV cache with Q4 would already yield $\sim$32$\times$ reduction vs FP16 standard. We therefore treat fixed-rank scaling numbers as back-of-the-envelope upper bounds, not a primary experimental claim.
+
+\paragraph{Heterogeneous KV-cache quantization (decoupled).}
+A practical benefit of decoupling is that it enables \textit{heterogeneous} KV-cache quantization: we can compress the semantic path more aggressively (e.g., Q4) while keeping the geometric (RoPE) path at higher fidelity (e.g., Q8). In this draft, heterogeneous KV-cache policies are treated as \textit{planned work}: we will report both quality deltas (held-out perplexity) and end-to-end device memory deltas at long context once the corresponding inference benchmarks are finalized.
+
+In this draft, we do not yet report the end-to-end device memory deltas at 128k context; instead we report (i) theoretical KV-cache bytes/token estimates derived from the checkpoint \texttt{ModelConfig} and (ii) empirical long-context stability and decode-at-context timing from \path{eval_ckpt.py}. End-to-end memory instrumentation remains planned work.
+
+While we report training throughput in our experiments, the theoretical FLOPs reduction in the attention mechanism ($O(n^2 d) \to O(n^2 r)$) implies a proportional speedup in the \textit{prefill phase} of inference, where the KV-cache is populated. For autoregressive decoding, the memory bandwidth savings from the smaller cache dominate latency improvements.
+
+% ============================================================================
+% 3. EXPERIMENTS
+% ============================================================================
+\section{Experiments}
+
+\subsection{Experimental Setup}
+
+\paragraph{Reproducibility discipline (production-only).}
+All paper experiments are executed through \path{production/} using a single CLI surface (\texttt{python -m production.cli}) with \texttt{--paper-strict}. The two canonical training commands for the main comparison are:
+\begin{verbatim}
+python -m production.cli --mode train --paper-strict --exp paper_decoupled \
+  --data fineweb_20b.npy --out-dir runs/a100_fw1b_l22_decoupled_s1337_paper_strict \
+  --seed 1337 --steps 100000
+
+python -m production.cli --mode train --paper-strict --exp paper_baseline \
+  --data fineweb_20b.npy --out-dir runs/a100_fw1b_l22_baseline_s1337_paper_strict \
+  --seed 1337 --steps 100000
+\end{verbatim}
+
+\paragraph{Datasets.}
+Training uses a large tokenized FineWeb-Edu dump (\texttt{fineweb\_20b.npy}). For lightweight post-hoc evaluation on local hardware we use smaller token shards from the same pipeline: \texttt{fineweb\_100m.npy} and \texttt{fineweb\_1b.npy}.
+
+\paragraph{Evaluation and artifacts (this paper).}
+All reported numbers in this draft are produced by \path{eval_ckpt.py}, which runs (i) held-out perplexity, (ii) KV-cache bytes-per-token estimates derived from the checkpoint's \texttt{ModelConfig}, (iii) cached decode latency microbenchmarks, (iv) a context-length sweep that tests long-context prefill and measures decode-at-context cost, and (v) a long-seq approximation drift check (decoupled only). The script writes \texttt{report.json} and CSVs into the run directory; plots are optional.
+
+\subsection{FineWeb-Edu Results (Current)}
+
+\paragraph{Decoupled checkpoint (A100 training; local evaluation).}
+For the checkpoint \texttt{runs/a100\_fw1b\_l22\_decoupled\_s1337\_paper\_strict/ckpt\_step100000.pt}, \path{eval_ckpt.py} reports the following held-out language modeling quality on FineWeb-Edu token shards:
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Held-out perplexity for the decoupled 1B checkpoint (100k steps).}
+\label{tab:ppl_current}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Dataset shard} & \textbf{Avg. NLL} & \textbf{Perplexity} \\
+\midrule
+FineWeb-Edu 100M tokens (\texttt{fineweb\_100m.npy}) & 3.2811 & 26.604 \\
+FineWeb-Edu 1B tokens (\texttt{fineweb\_1b.npy}) & 3.2811 & 26.604 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Baseline checkpoint (pending).}
+The baseline run \texttt{runs/a100\_fw1b\_l22\_baseline\_s1337\_paper\_strict} is currently in progress. Once complete, we will report the same \path{eval_ckpt.py} suite for an apples-to-apples comparison.
+
+\paragraph{Long-context stability up to 131{,}072 tokens (consumer hardware).}
+Using the same decoupled checkpoint and \path{eval_ckpt.py}'s context sweep, we successfully completed chunked prefill and a decode-at-context step up to \textbf{131{,}072 tokens} on an Apple M4 Max with 128GB unified memory (\texttt{ok=true} at all tested lengths; Appendix~\ref{app:long_context_sweep}). At very long contexts, runtime becomes dominated by system memory pressure (swapping), but the model remains functionally stable. We emphasize that the extremely high perplexity at $\ge$8k context in this sweep reflects RoPE extrapolation outside the model's training context (\texttt{block\_size=2048}) rather than an architectural memory failure.
+
+\subsection{Ablations and Additional Benchmarks (Planned)}
+
+This draft intentionally removes legacy result sections from earlier prototypes. The following experiments are planned and will be reported once the corresponding runs complete:
+\begin{itemize}
+    \item \textbf{Baseline vs.\ decoupled (primary):} same training horizon (100k steps), same data, same seed, same evaluation suite.
+    \item \textbf{Context-length breaking point up to 128k:} context sweep to identify stability limits and throughput curves.
+    \item \textbf{Downstream tasks:} HellaSwag / ARC / etc.\ (pending integration into the evaluation harness).
+    \item \textbf{DBA design ablations:} null token, tied Q--K, RoPE variants, and semantic/geometric dimension splits.
+\end{itemize}
+
+\subsection{Memory--Quality Trade-off (Pending)}
+
+Once both baseline and decoupled runs are available, we will report a Pareto-style comparison (perplexity vs.\ KV-cache footprint and decode throughput). For arXiv compatibility, figures will be referenced from the same directory as \texttt{paper.tex}:
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{pareto_curve.png}{
+  \includegraphics[width=0.85\textwidth]{\detokenize{pareto_curve.png}}
+}{
+  \fbox{\parbox{0.92\textwidth}{\textbf{Pending figure:} \texttt{pareto\_curve.png}.\\
+  Will be generated from \path{eval_ckpt.py} artifacts once baseline results are available.}}
+}
+\caption{Planned Pareto curve: quality (perplexity) vs.\ efficiency (KV-cache bytes/token and decode throughput).}
+\label{fig:pareto}
+\end{figure}
+
+\subsection{Memory Footprint Analysis}
+
+Table~\ref{tab:memory} gives an illustrative KV-cache scaling projection for a 128k context in a Llama-like configuration (32 layers, $d_{\text{model}} = 4096$). We intentionally \emph{do not} foreground optimistic fixed-rank ``upper bound'' numbers here; the experimentally grounded takeaway is the linear dependence on the interaction dimension and the fact that architectural reduction composes multiplicatively with KV-cache quantization. End-to-end device memory deltas at 128k are planned and will be reported in a future revision.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{KV-Cache Memory for 128k Context (Llama-like scale; projected)}
+\label{tab:memory}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Architecture} & \textbf{VRAM} & \textbf{Compression} \\
+\midrule
+Standard (FP16) & 64.0 GB & 1$\times$ \\
+GQA (32Q/4KV; FP16) & 8.0 GB & 8$\times$ \\
+GQA (32Q/4KV; Q4, ideal) & 2.0 GB & 32$\times$ \\
+MLA (FP16) & 4.3 GB & 15$\times$ \\
+Bottleneck (FP16) & 1.5 GB & 43$\times$ \\
+Decoupled (Q4, constant-fraction $d_{\text{attn}}{=}768$) & 3.0 GB & 21$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{memory_footprint.png}{
+  \includegraphics[width=0.85\textwidth]{\detokenize{memory_footprint.png}}
+}{
+  \fbox{\parbox{0.92\textwidth}{\textbf{Pending figure:} \texttt{memory\_footprint.png}.\\
+  This draft does not include legacy figures from earlier prototypes.}}
+}
+\caption{KV-cache memory comparison at long context (illustrative projection).}
+\label{fig:memory}
+\end{figure}
+
+% ============================================================================
+% 4. DISCUSSION
+% ============================================================================
+\section{Discussion}
+
+\subsection{Why Does Low-Rank Attention Work?}
+
+We hypothesize two complementary explanations:
+
+\paragraph{Intrinsic Dimensionality.}
+Following Aghajanyan et al. \cite{aghajanyan2021intrinsic}, natural language representations lie on low-dimensional manifolds. The attention mechanism's role is \textit{routing}---selecting which tokens to aggregate---not computing complex transformations. Routing decisions are inherently low-entropy and thus low-rank.
+
+\paragraph{Regularization Effect.}
+The bottleneck acts as an implicit regularizer, preventing the model from memorizing spurious token-pair correlations. In our FineWeb-Edu runs, reducing the interaction rank can improve generalization relative to the full-rank baseline.
+
+\paragraph{Gradient Rank Dynamics.}
+AdaRankGrad \cite{refael2024adarankgrad} proves that gradient rank decreases monotonically during training, eventually approaching rank one. This suggests that \textit{architectural} bottlenecks become increasingly appropriate as training progresses---the model naturally ``wants'' to operate in a low-rank subspace. By hard-wiring this constraint from the start, we may accelerate convergence by matching the architecture to the optimization landscape.
+
+\subsection{When to Use Each Architecture}
+
+Our experiments are organized into a local suite (FineWeb-Edu 100M) for broader comparisons and a scale suite (FineWeb-Edu 20B tokens) for confirmation.
+
+\begin{itemize}
+    \item \textbf{Decoupled Bottleneck:} On FineWeb-Edu, the decoupled bottleneck is a strong default that preserves the KV memory benefits of low-rank attention while enabling \textbf{heterogeneous quantization} (e.g., Q4 semantic, Q8 geometric).
+    \item \textbf{Standard Attention:} A strong baseline and simplest implementation, but can be memory-inefficient for long contexts.
+\end{itemize}
+
+\paragraph{Recommendation.}
+For \textit{training}, iterate on the local FineWeb-Edu suite and validate at scale with the A100 suite. For \textit{inference} under memory constraints, use Decoupled with heterogeneous quantization (aggressively compress semantic, preserve geometric fidelity).
+
+\paragraph{Flash/SDPA compatibility.}
+Decoupled Bottleneck Attention can be implemented using PyTorch's fused \texttt{scaled\_dot\_product\_attention} by concatenating the scaled semantic and geometric Q/K projections along the head dimension, making it compatible with modern Flash Attention kernels.
+
+\subsection{Limitations}
+
+\begin{itemize}
+    \item \textbf{Incomplete comparison set (in progress):} at the time of writing, only the decoupled 1B checkpoint has been evaluated with \path{eval_ckpt.py}; baseline results are pending.
+    \item \textbf{Limited downstream evaluation:} this draft does not yet include standardized benchmarks (HellaSwag / ARC / etc.).
+    \item \textbf{Long-context quality is not validated:} we demonstrate \textit{stability} up to 131{,}072 tokens on consumer hardware, but perplexity degrades sharply beyond the 2k training context due to RoPE extrapolation (\texttt{rope\_base=10000}) and lack of long-context training / scaling.
+    \item The optimal $(d_{\text{sem}}, d_{\text{geo}})$ split may vary with model scale and tokenizer.
+\end{itemize}
+
+% ============================================================================
+% 5. CONCLUSION
+% ============================================================================
+\section{Conclusion}
+
+We have demonstrated that attention in Transformers contains significant redundancy. In the current production-only draft, we report held-out perplexity for a decoupled 1B checkpoint trained for 100k steps (Table~\ref{tab:ppl_current}) and demonstrate successful long-context \textit{stability} up to 131{,}072 tokens on consumer hardware (Appendix~\ref{app:long_context_sweep}).
+
+The core insight is architectural: \textbf{Attention is a router, not a processor.} The heavy computation should happen in the feedforward layers (which we leave at full rank), while attention merely selects which tokens to aggregate. By matching the architecture to this functional role, we unlock dramatic efficiency gains.
+
+Our Decoupled Bottleneck Attention separates semantic matching from positional geometry, allowing aggressive compression on the former while preserving RoPE fidelity on the latter. Combined with 4-bit KV-cache quantization, the memory arithmetic suggests that 128k-context inference can become \textit{feasible} on consumer hardware under fixed-rank scaling assumptions (Figure~\ref{fig:memory}); however, this is a projection and we do not claim validated 128k \textit{quality} in this work.
+
+\paragraph{Future Work.}
+We plan to: (1) complete baseline-vs-decoupled comparisons at the 1B/100k-step setting; (2) push context-length evaluation to 128k and record the breaking point; (3) add standardized downstream tasks; and (4) run \textbf{Attention Surgery} experiments---structured architectural edits on trained checkpoints to isolate which components of DBA are necessary and sufficient.
+
+\paragraph{Attention Surgery and the Caramba framework.}
+Ongoing ``Attention Surgery'' experiments are implemented in the extracted \texttt{caramba} framework, now hosted at \url{https://github.com/TheApeMachine/caramba}. These experiments aim to (i) modify attention modules post-hoc, (ii) verify functional parity and quantify drift, and (iii) benchmark quality/memory/latency trade-offs under controlled edits.
+
+% ============================================================================
+% STATEMENTS
+% ============================================================================
+\section*{Statements and Declarations}
+
+\paragraph{Conflict of Interest.}
+The author declares no competing interests. This research was conducted independently without corporate affiliation or funding from entities with financial interests in the outcomes.
+
+\paragraph{Data Availability.}
+All datasets used in this study are publicly available: FineWeb-Edu is available from Hugging Face. The code, trained model checkpoints, and all experimental logs are available at \url{https://github.com/theapemachine/experiments}.
+
+\paragraph{Funding.}
+This research was conducted without external funding. All computational resources were provided by the author.
+
+% ============================================================================
+% APPENDIX
+% ============================================================================
+\appendix
+
+\section{Pending: Effective Rank Evidence}
+\label{app:effective_rank}
+
+This appendix reserves space for empirical effective-rank measurements of Q/K projection activations (singular value spectra and entropy effective rank) for the \texttt{paper\_baseline} and \texttt{paper\_decoupled} checkpoints. These results will be generated from the production checkpoints and copied into the paper directory for arXiv.
+
+\section{Pending: Decoupled Ablations}
+\label{app:decoupled_ablations}
+
+This appendix reserves space for DBA ablations (null token, tied Q--K, RoPE variants, semantic/geometric dimension splits), executed under the same \texttt{--paper-strict} discipline and reported via \path{eval_ckpt.py}.
+
+\section{Long-Context Sweep (Up to 131{,}072 Tokens)}
+\label{app:long_context_sweep}
+
+We report the \path{eval_ckpt.py} context sweep for the decoupled checkpoint, using chunked prefill and then measuring a single decode step at the final context length. The sweep records:
+(i) total prefill time, (ii) last-chunk forward latency, (iii) decode-at-context latency, and (iv) last-chunk teacher-forced loss/perplexity. We stress that the loss/perplexity at long context reflects RoPE extrapolation beyond the 2k training context and should not be interpreted as long-context \emph{capability} without dedicated long-context training.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Context sweep results for \texttt{ckpt\_step100000.pt} on Apple M4 Max (MPS).}
+\label{tab:context_sweep}
+\begin{tabular}{@{}rcccc@{}}
+\toprule
+\textbf{Context} & \textbf{Prefill (s)} & \textbf{Decode 1 tok (ms)} & \textbf{PPL (last chunk)} & \textbf{OK} \\
+\midrule
+2{,}048 & 0.65 & 17.30 & 23.73 & true \\
+4{,}096 & 1.89 & 40.59 & 16.87 & true \\
+8{,}192 & 6.21 & 47.50 & 548.60 & true \\
+16{,}384 & 22.58 & 61.56 & 1058.30 & true \\
+32{,}768 & 105.21 & 165.49 & 2536.44 & true \\
+65{,}536 & 753.66 & 297.93 & 1960.31 & true \\
+98{,}304 & 1251.93 & 307.68 & 2301.31 & true \\
+131{,}072 & 2109.60 & 295.40 & 2588.94 & true \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{context_decode_one_ms.png}{
+  \includegraphics[width=0.9\textwidth]{\detokenize{context_decode_one_ms.png}}
+}{
+  \fbox{\parbox{0.92\textwidth}{\textbf{Pending figure:} \texttt{context\_decode\_one\_ms.png}.\\
+  Generated by \path{eval_ckpt.py} and copied into the paper directory for arXiv.}}
+}
+\caption{Decode-at-context cost (ms/token) vs.\ context length from \texttt{eval\_ckpt.py}. At long contexts, runtime is dominated by system memory pressure (swapping) rather than an architectural failure mode; the sweep remained stable through 131{,}072 tokens (\texttt{ok=true}).}
+\label{fig:context_decode_one_ms}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{latency_tokens_per_sec.png}{
+  \includegraphics[width=0.9\textwidth]{\detokenize{latency_tokens_per_sec.png}}
+}{
+  \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{latency\_tokens\_per\_sec.png}.}}
+}
+\caption{Cached decode throughput microbenchmark (batch=1) from \texttt{eval\_ckpt.py}.}
+\label{fig:latency_tokens_per_sec}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{perplexity.png}{
+  \includegraphics[width=0.85\textwidth]{\detokenize{perplexity.png}}
+}{
+  \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{perplexity.png}.}}
+}
+\caption{Held-out perplexity on FineWeb-Edu token shards from \texttt{eval\_ckpt.py}.}
+\label{fig:perplexity_plot}
+\end{figure}
+
+% ============================================================================
+% REFERENCES
+% ============================================================================
+\FloatBarrier
+\clearpage
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

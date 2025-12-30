@@ -23,7 +23,9 @@ class Run(BaseModel):
     id: str
     mode: Mode
     exp: str
-    seed: int
+    # A run can optionally expand into multiple runs by providing multiple seeds.
+    # Lowering will expand this to concrete runs where seed is an int.
+    seed: int | list[int]
     steps: PositiveInt
     expected: dict[str, object]
     verify: VerifyConfig | None = None

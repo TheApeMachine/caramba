@@ -357,7 +357,8 @@ class _UpcycleSession:
         nll = float(total_loss) / float(denom)
         try:
             ppl = float(torch.exp(torch.tensor(nll)).item())
-        except Exception:
+        except (OverflowError, RuntimeError) as e:
+            logger.warning(f"Failed to compute perplexity from nll={nll:.6f}: {type(e).__name__}: {e}")
             ppl = float("inf")
         logger.key_value(
             {

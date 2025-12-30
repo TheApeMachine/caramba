@@ -12,10 +12,11 @@ This is a process-only workflow that:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
@@ -30,6 +31,9 @@ from agent.process.code_graph_sync import CodeGraphSync
 
 if TYPE_CHECKING:
     from agent import Researcher
+
+
+_log = logging.getLogger(__name__)
 
 
 def _run(cmd: list[str], *, cwd: Path) -> str:
@@ -244,7 +248,7 @@ class PlatformImprove(Process):
                 team[k] = self.agents[k]
 
         discussion = Discussion(agents=team, team_leader_key=self.leader_key, prompts_dir=Path("config/prompts"))
-        ideas_json = json.dumps([x.__dict__ for x in ideas], ensure_ascii=False, indent=2)
+        ideas_json = json.dumps([asdict(x) for x in ideas], ensure_ascii=False, indent=2)
         topic = (
             f"{self.topic}\n\n"
             "Use the following candidate ideas and converge on ONE improvement.\n"
@@ -409,6 +413,25 @@ class PlatformImprove(Process):
                     break
 
                 # If changes requested, reset back one commit and iterate.
+                try:
+                    show = _run(["git", "show", "--stat", "--patch", "HEAD"], cwd=repo_root)
+                except Exception:
+                    show = ""
+                    _log.debug("Failed to capture git patch before reset", exc_info=True)
+                if show.strip():
+                    logger.info("About to reset, current diff/patch (git show HEAD):")
+                    try:
+                        logger.panel(show[-20000:], title="About to reset: git show HEAD", style="warning")
+                    except Exception:
+                        # Best-effort: never crash because we failed to render the patch.
+                        _log.debug("Failed to render git patch panel", exc_info=True)
+                try:
+                    ts2 = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                    patch_path = out_dir / f"about_to_reset_round_{r}_{ts2}.patch"
+                    patch_path.write_text(show, encoding="utf-8")
+                    logger.info(f"Saved pre-reset patch to: {patch_path}")
+                except Exception:
+                    _log.debug("Failed to write pre-reset patch file", exc_info=True)
                 _ = _run(["git", "reset", "--hard", "HEAD~1"], cwd=repo_root)
 
             if accepted and self.open_pr:
@@ -424,8 +447,8 @@ class PlatformImprove(Process):
             try:
                 if not accepted and _git_current_branch(repo_root) != start_branch:
                     _ = _run(["git", "checkout", start_branch], cwd=repo_root)
-            except Exception:
-                pass
+            except Exception as e:
+                _log.debug(f"Failed to restore git branch ({start_branch}): {e}", exc_info=True)
 
         payload = {
             "ok": bool(accepted),
@@ -433,7 +456,7 @@ class PlatformImprove(Process):
             "topic": self.topic,
             "index_namespace": self.index_namespace,
             "ingest": ingest,
-            "ideas": [x.__dict__ for x in ideas],
+            "ideas": [asdict(x) for x in ideas],
             "plan": plan,
             "branch": branch,
             "rounds": rounds,

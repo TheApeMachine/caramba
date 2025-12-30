@@ -116,6 +116,7 @@ caramba includes optimized Metal kernels for Apple Silicon (M1/M2/M3/M4).
 |--------|-----------|---------|
 | `dba_decode.metal` | Fused DBA attention decode | 2-5× |
 | `rmsnorm.metal` | RMS normalization | 1.5-2× |
+| `layernorm.metal` | Layer normalization | 1.5× |
 | `rope.metal` | Rotary embeddings | 1.5× |
 | `lion.metal` | Lion optimizer | 1.5× |
 

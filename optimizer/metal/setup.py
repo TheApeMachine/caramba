@@ -12,15 +12,22 @@ HERE = Path(__file__).resolve().parent
 
 def compile_metal(out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
-    src = HERE / "dba_decode.metal"
-    air = out_dir / "dba_decode.air"
-    metallib = out_dir / "dba_decode.metallib"
+    sources = [
+        HERE / "dba_decode.metal",
+        HERE / "rmsnorm.metal",
+        HERE / "layernorm.metal",
+        HERE / "rope.metal",
+        HERE / "lion.metal",
+    ]
+    airs = [out_dir / f"{src.stem}.air" for src in sources]
+    metallib = out_dir / "caramba_ops.metallib"
 
+    for src, air in zip(sources, airs, strict=True):
+        subprocess.check_call(
+            ["xcrun", "-sdk", "macosx", "metal", "-c", str(src), "-o", str(air)]
+        )
     subprocess.check_call(
-        ["xcrun", "-sdk", "macosx", "metal", "-c", str(src), "-o", str(air)]
-    )
-    subprocess.check_call(
-        ["xcrun", "-sdk", "macosx", "metallib", str(air), "-o", str(metallib)]
+        ["xcrun", "-sdk", "macosx", "metallib", *[str(a) for a in airs], "-o", str(metallib)]
     )
 
 

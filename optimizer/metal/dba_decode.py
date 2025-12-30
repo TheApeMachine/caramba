@@ -45,6 +45,9 @@ def dba_decode_fp16(
     k_sem: "Tensor",
     k_geo: "Tensor",
     v: "Tensor",
+    k_sem_null: "Tensor | None" = None,
+    k_geo_null: "Tensor | None" = None,
+    v_null: "Tensor | None" = None,
     sem_scale: float | None = None,
     geo_scale: float | None = None,
     verbose_build: bool = False,
@@ -79,6 +82,17 @@ def dba_decode_fp16(
         k_geo2 = k_geo2.contiguous()
     if v2.stride(-1) != 1:
         v2 = v2.contiguous()
+
+    use_null = k_sem_null is not None or k_geo_null is not None or v_null is not None
+    if use_null:
+        if k_sem_null is None or k_geo_null is None or v_null is None:
+            raise ValueError("k_sem_null, k_geo_null, and v_null must be provided together")
+
+        ksn = _squeeze_q(k_sem_null).contiguous().to(torch.float16)  # type: ignore[arg-type]
+        kgn = _squeeze_q(k_geo_null).contiguous().to(torch.float16)  # type: ignore[arg-type]
+        vn = _squeeze_q(v_null).contiguous().to(torch.float16)  # type: ignore[arg-type]
+    else:
+        ksn = kgn = vn = None
 
     if q_sem2.dim() != 3 or q_geo2.dim() != 3:
         raise RuntimeError("q tensors must be (B,H,D)")
@@ -117,15 +131,36 @@ def dba_decode_fp16(
         logger.success("Using custom Metal kernel: DBA Decode (fp16)")
         _LOGGED = True
 
-    out = ops.dba_decode(
-        q_sem2,
-        k_sem2,
-        q_geo2,
-        k_geo2,
-        v2,
-        float(sem_scale),
-        float(geo_scale),
-    )
+    if use_null:
+        assert ksn is not None and kgn is not None and vn is not None
+        if ksn.shape != (B, H, sem_hd):
+            raise ValueError(f"k_sem_null must be (B,H,sem_hd) == {(B, H, sem_hd)}, got {tuple(ksn.shape)}")
+        if kgn.shape != (B, H, geo_hd):
+            raise ValueError(f"k_geo_null must be (B,H,geo_hd) == {(B, H, geo_hd)}, got {tuple(kgn.shape)}")
+        if vn.shape != (B, H, v_hd):
+            raise ValueError(f"v_null must be (B,H,v_hd) == {(B, H, v_hd)}, got {tuple(vn.shape)}")
+        out = ops.dba_decode_null(
+            q_sem2,
+            k_sem2,
+            q_geo2,
+            k_geo2,
+            v2,
+            ksn,
+            kgn,
+            vn,
+            float(sem_scale),
+            float(geo_scale),
+        )
+    else:
+        out = ops.dba_decode(
+            q_sem2,
+            k_sem2,
+            q_geo2,
+            k_geo2,
+            v2,
+            float(sem_scale),
+            float(geo_scale),
+        )
     # Extension returns (B,H,v_hd).
     if out.shape != (B, H, v_hd):
         raise RuntimeError(f"unexpected output shape {tuple(out.shape)}")

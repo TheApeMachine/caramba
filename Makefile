@@ -1,4 +1,4 @@
-.PHONY: install install-all test paper discussion brainstorm brainstorm-full ingest
+.PHONY: install install-all test paper discussion brainstorm brainstorm-full ingest platform
 
 install:
 	python3.12 -m venv .venv

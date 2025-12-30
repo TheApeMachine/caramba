@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Iterable
 
 
 def _parse_tokens(s: str) -> int:
@@ -31,16 +30,6 @@ def _parse_tokens(s: str) -> int:
     if n <= 0:
         raise ValueError("tokens must be > 0")
     return n
-
-
-def _iter_text(ds) -> Iterable[str]:
-    # FineWeb-like datasets commonly use "text". Allow overrides via --text-field.
-    for ex in ds:
-        if not isinstance(ex, dict):
-            continue
-        txt = ex.get("text", None)
-        if isinstance(txt, str) and txt:
-            yield txt
 
 
 def prepare_fineweb_npy(

@@ -1,0 +1,137 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{vaswani2017attention}
+\citation{hu2021lora}
+\citation{refael2024adarankgrad}
+\citation{bhojanapalli2020lowrank}
+\citation{kobayashi2024weightdecay}
+\citation{wang2025lowdim}
+\citation{refael2024adarankgrad}
+\citation{chiang2025rope}
+\@writefile{toc}{\contentsline {paragraph}{Keywords:}{1}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}The Redundancy Hypothesis}{1}{subsection.1.1}\protected@file@percent }
+\citation{ainslie2023gqa}
+\citation{deepseek2024v2}
+\citation{he2020deberta}
+\citation{wang2020linformer}
+\citation{choromanski2021performer}
+\citation{kitaev2020reformer}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Comparison with Existing Approaches}{2}{subsection.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Grouped-Query Attention (GQA).}{2}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Multi-Head Latent Attention (MLA).}{2}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Disentangled Attention.}{2}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Contributions}{2}{subsection.1.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{2}{section.2}\protected@file@percent }
+\newlabel{sec:related_work}{{2}{2}{Related Work}{section.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{Low-rank and approximate attention.}{2}{section*.5}\protected@file@percent }
+\citation{beltagy2020longformer}
+\citation{zaheer2020bigbird}
+\citation{huang2023longcontextsurvey}
+\citation{shazeer2019mqa}
+\citation{ainslie2023gqa}
+\citation{deepseek2024v2}
+\citation{hooper2024kvquant}
+\citation{li2025commvq}
+\citation{bhojanapalli2020lowrank}
+\citation{amsel2025qualityheads}
+\citation{kuang2025structuredmatrices}
+\citation{park2018bam}
+\@writefile{toc}{\contentsline {paragraph}{Sparse/local attention for long documents.}{3}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{KV-cache optimization.}{3}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Expressiveness limits and structured alternatives.}{3}{section*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Methodology}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Standard Multi-Head Attention}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Bottleneck Attention}{3}{subsection.3.2}\protected@file@percent }
+\citation{su2021roformer}
+\citation{turboderp2024qcache}
+\citation{llamacpp2024kvcache}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Decoupled Bottleneck Attention}{4}{subsection.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}The Null Token Mechanism}{4}{subsection.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Tied Q-K Projections}{4}{subsection.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}Quantized Inference}{5}{subsection.3.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Scaling arithmetic (context only; not validated at scale).}{5}{section*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Heterogeneous KV-cache quantization (decoupled).}{6}{section*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{6}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Experimental Setup}{6}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Reproducibility discipline (production-only).}{6}{section*.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Datasets.}{6}{section*.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Evaluation and artifacts (this paper).}{6}{section*.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}FineWeb-Edu Results (Current)}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Decoupled checkpoint (A100 training; local evaluation).}{6}{section*.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Baseline checkpoint (pending).}{6}{section*.16}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Held-out perplexity for the decoupled 1B checkpoint (100k steps).}}{7}{table.caption.15}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:ppl_current}{{1}{7}{Held-out perplexity for the decoupled 1B checkpoint (100k steps)}{table.caption.15}{}}
+\@writefile{toc}{\contentsline {paragraph}{Long-context stability up to 131{,}072 tokens (consumer hardware).}{7}{section*.17}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Ablations and Additional Benchmarks (Planned)}{7}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Memory--Quality Trade-off (Pending)}{7}{subsection.4.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Planned Pareto curve: quality (perplexity) vs.\ efficiency (KV-cache bytes/token and decode throughput).}}{7}{figure.caption.18}\protected@file@percent }
+\newlabel{fig:pareto}{{1}{7}{Planned Pareto curve: quality (perplexity) vs.\ efficiency (KV-cache bytes/token and decode throughput)}{figure.caption.18}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Memory Footprint Analysis}{7}{subsection.4.5}\protected@file@percent }
+\citation{aghajanyan2021intrinsic}
+\citation{refael2024adarankgrad}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces KV-Cache Memory for 128k Context (Llama-like scale; projected)}}{8}{table.caption.19}\protected@file@percent }
+\newlabel{tab:memory}{{2}{8}{KV-Cache Memory for 128k Context (Llama-like scale; projected)}{table.caption.19}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces KV-cache memory comparison at long context (illustrative projection).}}{8}{figure.caption.20}\protected@file@percent }
+\newlabel{fig:memory}{{2}{8}{KV-cache memory comparison at long context (illustrative projection)}{figure.caption.20}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion}{8}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Why Does Low-Rank Attention Work?}{8}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Intrinsic Dimensionality.}{8}{section*.21}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Regularization Effect.}{8}{section*.22}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Gradient Rank Dynamics.}{8}{section*.23}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}When to Use Each Architecture}{8}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Recommendation.}{8}{section*.24}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Flash/SDPA compatibility.}{9}{section*.25}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Limitations}{9}{subsection.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{9}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Future Work.}{9}{section*.26}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Attention Surgery and the Caramba framework.}{9}{section*.27}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Conflict of Interest.}{9}{section*.29}\protected@file@percent }
+\bibstyle{plain}
+\bibdata{references}
+\bibcite{aghajanyan2021intrinsic}{1}
+\bibcite{ainslie2023gqa}{2}
+\bibcite{amsel2025qualityheads}{3}
+\@writefile{toc}{\contentsline {paragraph}{Data Availability.}{10}{section*.30}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Funding.}{10}{section*.31}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Pending: Effective Rank Evidence}{10}{appendix.A}\protected@file@percent }
+\newlabel{app:effective_rank}{{A}{10}{Pending: Effective Rank Evidence}{appendix.A}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {B}Pending: Decoupled Ablations}{10}{appendix.B}\protected@file@percent }
+\newlabel{app:decoupled_ablations}{{B}{10}{Pending: Decoupled Ablations}{appendix.B}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {C}Long-Context Sweep (Up to 131{,}072 Tokens)}{10}{appendix.C}\protected@file@percent }
+\newlabel{app:long_context_sweep}{{C}{10}{Long-Context Sweep (Up to 131{,}072 Tokens)}{appendix.C}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Context sweep results for \texttt  {ckpt\_step100000.pt} on Apple M4 Max (MPS).}}{10}{table.caption.32}\protected@file@percent }
+\newlabel{tab:context_sweep}{{3}{10}{Context sweep results for \texttt {ckpt\_step100000.pt} on Apple M4 Max (MPS)}{table.caption.32}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Decode-at-context cost (ms/token) vs.\ context length from \texttt  {eval\_ckpt.py}. At long contexts, runtime is dominated by system memory pressure (swapping) rather than an architectural failure mode; the sweep remained stable through 131{,}072 tokens (\texttt  {ok=true}).}}{11}{figure.caption.33}\protected@file@percent }
+\newlabel{fig:context_decode_one_ms}{{3}{11}{Decode-at-context cost (ms/token) vs.\ context length from \texttt {eval\_ckpt.py}. At long contexts, runtime is dominated by system memory pressure (swapping) rather than an architectural failure mode; the sweep remained stable through 131{,}072 tokens (\texttt {ok=true})}{figure.caption.33}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Cached decode throughput microbenchmark (batch=1) from \texttt  {eval\_ckpt.py}.}}{11}{figure.caption.34}\protected@file@percent }
+\newlabel{fig:latency_tokens_per_sec}{{4}{11}{Cached decode throughput microbenchmark (batch=1) from \texttt {eval\_ckpt.py}}{figure.caption.34}{}}
+\bibcite{beltagy2020longformer}{4}
+\bibcite{bhojanapalli2020lowrank}{5}
+\bibcite{chiang2025rope}{6}
+\bibcite{choromanski2021performer}{7}
+\bibcite{deepseek2024v2}{8}
+\bibcite{llamacpp2024kvcache}{9}
+\bibcite{he2020deberta}{10}
+\bibcite{hooper2024kvquant}{11}
+\bibcite{hu2021lora}{12}
+\bibcite{huang2023longcontextsurvey}{13}
+\bibcite{kitaev2020reformer}{14}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Held-out perplexity on FineWeb-Edu token shards from \texttt  {eval\_ckpt.py}.}}{12}{figure.caption.35}\protected@file@percent }
+\newlabel{fig:perplexity_plot}{{5}{12}{Held-out perplexity on FineWeb-Edu token shards from \texttt {eval\_ckpt.py}}{figure.caption.35}{}}
+\bibcite{kobayashi2024weightdecay}{15}
+\bibcite{kuang2025structuredmatrices}{16}
+\bibcite{li2025commvq}{17}
+\bibcite{park2018bam}{18}
+\bibcite{refael2024adarankgrad}{19}
+\bibcite{shazeer2019mqa}{20}
+\bibcite{su2021roformer}{21}
+\bibcite{turboderp2024qcache}{22}
+\bibcite{vaswani2017attention}{23}
+\bibcite{wang2020linformer}{24}
+\bibcite{wang2025lowdim}{25}
+\bibcite{zaheer2020bigbird}{26}
+\gdef \@abspage@last{13}

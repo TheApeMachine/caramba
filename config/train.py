@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import enum
 
+from typing import Literal
 from pydantic import BaseModel
 
 from config import (
@@ -69,7 +70,7 @@ class TrainConfig(BaseModel):
     # Upcycle initialization knobs (student only).
     # - "svd": initialize DBA Q/K projections via (randomized) SVD of teacher Q/K.
     # - "random": keep student's randomly-initialized DBA Q/K projections (control for Experiment 1).
-    dba_init: str = "svd"
+    dba_init: Literal["svd", "random"] = "svd"
 
     # Teacher sanity checks (upcycling safety).
     # These run once per target, immediately after loading the teacher checkpoint,
@@ -86,7 +87,7 @@ class TrainConfig(BaseModel):
     # This avoids hardcoding an absolute ppl threshold that depends on dataset mix.
     # If enabled, we compute teacher NLL on the same batch in HF and require our
     # teacher to match within a small tolerance.
-    teacher_sanity_reference: str = "none"  # none|hf
+    teacher_sanity_reference: Literal["none", "hf"] = "none"  # none|hf
     teacher_sanity_ref_batches: PositiveInt = 1
     teacher_sanity_max_ppl_ratio_vs_ref: PositiveFloat = 1.25
     teacher_sanity_max_nll_delta_vs_ref: PositiveFloat = 0.25

@@ -168,10 +168,19 @@ class TorchEngine:
 
         artifacts: dict[str, Path] = {}
 
-        # Legacy benchmark suite (teacher/student).
-        if target.benchmarks and isinstance(result, dict) and "teacher" in result and "student" in result:
-            teacher = self._as_module(result["teacher"])
-            student = self._as_module(result["student"])
+        # Legacy benchmark suite.
+        #
+        # - Upcycle targets return {"teacher", "student"}.
+        # - Standard scratch targets return {"system"}; treat that as "student" for benchmarks.
+        if target.benchmarks and isinstance(result, dict) and (
+            ("teacher" in result and "student" in result) or ("system" in result)
+        ):
+            teacher = self._as_module(result["teacher"]) if "teacher" in result else None
+            student = (
+                self._as_module(result["student"])
+                if "student" in result
+                else self._as_module(result["system"])
+            )
             device = result.get("device", torch.device("cpu"))
             if not isinstance(device, torch.device):
                 device = torch.device(str(device))

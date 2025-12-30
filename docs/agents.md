@@ -372,6 +372,7 @@ Personas are defined in `config/personas/`:
 | `reviewer`      | `reviewer.yml`      | Paper review      |
 | `research_lead` | `research_lead.yml` | Loop coordination |
 | `developer`     | `developer.yml`     | Code analysis     |
+| `architect`     | `architect.yml`     | System architecture |
 | `ml_expert`     | `ml_expert.yml`     | ML insights       |
 | `mathematician` | `mathematician.yml` | Formal proofs     |
 
@@ -407,6 +408,7 @@ tools:
 | `paper_review`    | `strictness`, `max_proposed_experiments`, `output_dir` |
 | `research_loop`   | `max_iterations`, `auto_run_experiments`, `output_dir` |
 | `code_graph_sync` | `index_namespace`                                      |
+| `platform_improve`| `ingest_agent`, `index_namespace`, `ingest_repo`, `ingest_models`, `max_files`, `max_chars_per_file`, `leader_key`, `ideator_keys`, `developer_key`, `reviewer_key`, `repo_root`, `base_branch`, `branch_prefix`, `tests`, `max_review_rounds`, `open_pr`, `pr_title_prefix`, `topic` |
 
 ---
 
@@ -530,6 +532,7 @@ pip install crawl4ai                        # Web crawling
 | `paper_review`    | paper.tex          | Review JSON              |
 | `research_loop`   | Manifest           | Iterated paper + reviews |
 | `code_graph_sync` | Codebase           | Knowledge graph          |
+| `platform_improve`| Telemetry / user feedback | Platform improvements / updated models |
 
 Agent workflows enable:
 - 📝 Automated paper generation from experiments

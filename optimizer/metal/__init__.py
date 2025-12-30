@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from .dba_decode import dba_decode_fp16, metal_dba_decode_available
 from .rmsnorm import metal_rmsnorm_available, rmsnorm_fp16
+from .layernorm import layernorm_fp16, metal_layernorm_available
 from .rope import metal_rope_available, rope_fp16
 from .lion import lion_fp16, metal_lion_available
 
@@ -23,6 +24,8 @@ __all__ = [
     "metal_dba_decode_available",
     "rmsnorm_fp16",
     "metal_rmsnorm_available",
+    "layernorm_fp16",
+    "metal_layernorm_available",
     "rope_fp16",
     "metal_rope_available",
     "lion_fp16",

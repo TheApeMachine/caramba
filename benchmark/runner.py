@@ -41,8 +41,8 @@ class BenchmarkRunner:
 
     def run(
         self,
-        teacher: nn.Module,
-        student: nn.Module,
+        teacher: nn.Module | None,
+        student: nn.Module | None,
     ) -> dict[str, Path]:
         """Run all benchmarks and generate artifacts.
 
@@ -67,68 +67,86 @@ class BenchmarkRunner:
                         benchmark = PerplexityBenchmark(spec.config, self.device)
 
                         if "teacher" in spec.models:
-                            result = benchmark.run(teacher, "teacher")
-                            if (
-                                teacher_perplexity is None
-                                or result.perplexity < teacher_perplexity.perplexity
-                            ):
-                                teacher_perplexity = result
-                            logger.metric("teacher", result.perplexity, " ppl")
+                            if teacher is None:
+                                logger.warning("Benchmark requested teacher model, but none is available (skipping).")
+                            else:
+                                result = benchmark.run(teacher, "teacher")
+                                if (
+                                    teacher_perplexity is None
+                                    or result.perplexity < teacher_perplexity.perplexity
+                                ):
+                                    teacher_perplexity = result
+                                logger.metric("teacher", result.perplexity, " ppl")
 
                         if "student" in spec.models:
-                            result = benchmark.run(student, "student")
-                            if (
-                                student_perplexity is None
-                                or result.perplexity < student_perplexity.perplexity
-                            ):
-                                student_perplexity = result
-                            logger.metric("student", result.perplexity, " ppl")
+                            if student is None:
+                                logger.warning("Benchmark requested student model, but none is available (skipping).")
+                            else:
+                                result = benchmark.run(student, "student")
+                                if (
+                                    student_perplexity is None
+                                    or result.perplexity < student_perplexity.perplexity
+                                ):
+                                    student_perplexity = result
+                                logger.metric("student", result.perplexity, " ppl")
 
                     case BenchmarkType.LATENCY:
                         assert isinstance(spec.config, LatencyBenchmarkConfig)
                         benchmark = LatencyBenchmark(spec.config, self.device)
 
                         if "teacher" in spec.models:
-                            result = benchmark.run(teacher, "teacher")
-                            if teacher_latency is None:
-                                teacher_latency = result
-                            logger.metric(
-                                "teacher", result.avg_tokens_per_second, " tok/s"
-                            )
+                            if teacher is None:
+                                logger.warning("Benchmark requested teacher model, but none is available (skipping).")
+                            else:
+                                result = benchmark.run(teacher, "teacher")
+                                if teacher_latency is None:
+                                    teacher_latency = result
+                                logger.metric(
+                                    "teacher", result.avg_tokens_per_second, " tok/s"
+                                )
 
                         if "student" in spec.models:
-                            result = benchmark.run(student, "student")
-                            if student_latency is None:
-                                student_latency = result
-                            logger.metric(
-                                "student", result.avg_tokens_per_second, " tok/s"
-                            )
+                            if student is None:
+                                logger.warning("Benchmark requested student model, but none is available (skipping).")
+                            else:
+                                result = benchmark.run(student, "student")
+                                if student_latency is None:
+                                    student_latency = result
+                                logger.metric(
+                                    "student", result.avg_tokens_per_second, " tok/s"
+                                )
 
                     case BenchmarkType.MEMORY:
                         assert isinstance(spec.config, MemoryBenchmarkConfig)
                         benchmark = MemoryBenchmark(spec.config, self.device)
 
                         if "teacher" in spec.models:
-                            result = benchmark.run(teacher, "teacher")
-                            if teacher_memory is None:
-                                teacher_memory = result
-                            if result.kvcache_analysis:
-                                logger.metric(
-                                    "teacher",
-                                    result.kvcache_analysis.bytes_per_token_fp16,
-                                    " bytes/tok",
-                                )
+                            if teacher is None:
+                                logger.warning("Benchmark requested teacher model, but none is available (skipping).")
+                            else:
+                                result = benchmark.run(teacher, "teacher")
+                                if teacher_memory is None:
+                                    teacher_memory = result
+                                if result.kvcache_analysis:
+                                    logger.metric(
+                                        "teacher",
+                                        result.kvcache_analysis.bytes_per_token_fp16,
+                                        " bytes/tok",
+                                    )
 
                         if "student" in spec.models:
-                            result = benchmark.run(student, "student")
-                            if student_memory is None:
-                                student_memory = result
-                            if result.kvcache_analysis:
-                                kv_bytes = (
-                                    result.kvcache_analysis.bytes_per_token_dba_fp16
-                                    or result.kvcache_analysis.bytes_per_token_fp16
-                                )
-                                logger.metric("student", kv_bytes, " bytes/tok")
+                            if student is None:
+                                logger.warning("Benchmark requested student model, but none is available (skipping).")
+                            else:
+                                result = benchmark.run(student, "student")
+                                if student_memory is None:
+                                    student_memory = result
+                                if result.kvcache_analysis:
+                                    kv_bytes = (
+                                        result.kvcache_analysis.bytes_per_token_dba_fp16
+                                        or result.kvcache_analysis.bytes_per_token_fp16
+                                    )
+                                    logger.metric("student", kv_bytes, " bytes/tok")
 
                     case _:
                         logger.warning(

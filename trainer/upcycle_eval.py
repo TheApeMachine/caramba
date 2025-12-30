@@ -10,6 +10,7 @@ and student, loads weights, and returns them so the engine can run benchmarks.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, cast
 
@@ -101,7 +102,26 @@ class UpcycleEvalTrainer:
         if not p.exists():
             raise FileNotFoundError(f"Student checkpoint not found: {p}")
         logger.info(f"Loading student checkpoint: {p}")
-        obj = torch.load(p, map_location="cpu", weights_only=False)
+        # SECURITY: prefer weights_only=True to avoid executing arbitrary code via pickle.
+        # Only load pickle-based checkpoints (weights_only=False) if you FULLY trust the source.
+        try:
+            obj = torch.load(p, map_location="cpu", weights_only=True)
+        except RuntimeError as e:
+            trust = os.getenv("CARAMBA_TRUST_CHECKPOINTS", "").strip() == "1"
+            logger.warning(
+                "Secure checkpoint load failed with weights_only=True. "
+                "This checkpoint likely contains pickled objects and requires an unsafe load.\n"
+                "Only proceed if you FULLY trust this checkpoint file.\n"
+                f"Error: {e}\n"
+                "To opt in, set CARAMBA_TRUST_CHECKPOINTS=1 and retry."
+            )
+            if trust:
+                logger.warning(
+                    "CARAMBA_TRUST_CHECKPOINTS=1 is set; reloading with weights_only=False (UNSAFE)."
+                )
+                obj = torch.load(p, map_location="cpu", weights_only=False)
+            else:
+                raise
         if not isinstance(obj, dict) or "student_state_dict" not in obj:
             raise TypeError("Student checkpoint must be a dict with key 'student_state_dict'")
         sd = obj["student_state_dict"]

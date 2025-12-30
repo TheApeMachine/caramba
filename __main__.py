@@ -6,8 +6,17 @@ All commands are routed through the unified CLI.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
-from cli import main as cli_main
+# Support running as an installed package (`python -m caramba`) while keeping the
+# codebase's "flat" import style (e.g. `from cli import ...`, `from layer import ...`).
+# When executed as a package, those modules live under this directory, so we
+# ensure the package directory itself is on sys.path.
+_PKG_DIR = str(Path(__file__).resolve().parent)
+if _PKG_DIR not in sys.path:
+    sys.path.insert(0, _PKG_DIR)
+
+from cli import main as cli_main  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> None:
