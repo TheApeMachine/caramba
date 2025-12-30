@@ -72,7 +72,9 @@ class TensorBoardWriter:
 
         try:
             for k, v in scalars.items():
-                self._writer.add_scalar(f"{prefix}/{k}", float(v), int(step))
+                pfx = str(prefix or "")
+                tag = f"{pfx}/{k}" if pfx else str(k)
+                self._writer.add_scalar(tag, float(v), int(step))
         except Exception:
             self.enabled = False
 

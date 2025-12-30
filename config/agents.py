@@ -123,13 +123,33 @@ class PlatformImproveProcessConfig(BaseModel):
     pr_title_prefix: str = "[caramba] "
 
 
+class PaperCollectArtifactsProcessConfig(BaseModel):
+    """Collect benchmark artifacts into paper-ready tables/figures.
+
+    This is a non-LLM utility process: it does not require agents or MCP tools.
+    It exists so paper workflows remain manifest-driven end-to-end.
+    """
+
+    type: Literal["paper_collect_artifacts"] = "paper_collect_artifacts"
+    name: str
+    # Where the platform writes per-target artifacts (default: ./artifacts).
+    artifact_root: str = "artifacts"
+    # Where to write paper-ready outputs (default: ./artifacts/paper).
+    out_dir: str = "artifacts/paper"
+    # Caption/title prefix used in generated LaTeX and figures.
+    title: str = "DBA Ablations"
+    # Optional explicit target list (defaults to all experiment targets in the manifest).
+    targets: list[str] | None = None
+
+
 AgentProcessConfig: TypeAlias = Annotated[
     DiscussionProcessConfig
     | PaperWriteProcessConfig
     | PaperReviewProcessConfig
     | ResearchLoopProcessConfig
     | CodeGraphSyncProcessConfig
-    | PlatformImproveProcessConfig,
+    | PlatformImproveProcessConfig
+    | PaperCollectArtifactsProcessConfig,
     Field(discriminator="type"),
 ]
 

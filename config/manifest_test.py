@@ -137,6 +137,40 @@ class ManifestTest(unittest.TestCase):
                 "platform_optimizations",
             )
 
+    def test_load_yaml_manifest_with_paper_collect_artifacts(self) -> None:
+        """Process targets can run non-agent utility workflows (paper artifact collection)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "m.yml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "version: 2",
+                        "name: test_collect",
+                        "notes: \"\"",
+                        "defaults:",
+                        "  logging:",
+                        "    wandb: false",
+                        "    wandb_project: \"\"",
+                        "    wandb_entity: \"\"",
+                        "  data: { tokenizer: llama, val_frac: 0.0 }",
+                        "  runtime: { save_every: 1 }",
+                        "targets:",
+                        "  - type: process",
+                        "    name: collect_paper_artifacts",
+                        "    team: {}",
+                        "    process:",
+                        "      type: paper_collect_artifacts",
+                        "      name: collect_paper_artifacts",
+                        "      out_dir: artifacts/paper",
+                        "      title: \"DBA Ablations\"",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            m = Manifest.from_path(path)
+            self.assertEqual(len(m.targets), 1)
+            self.assertEqual(m.targets[0].type, "process")
+
     def test_load_yaml_manifest_with_compare_verify(self) -> None:
         """
         test loading a YAML manifest with a typed compare verify block.

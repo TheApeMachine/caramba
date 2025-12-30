@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import os
+import math
+import time
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
@@ -18,6 +20,28 @@ from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from trainer.upcycle_context import UpcycleContext
 from runtime.tensordict_utils import TensorDictBase
 
+
+def _sync_device(device: torch.device) -> None:
+    """Best-effort synchronize for more accurate wall timings."""
+    try:
+        if device.type == "cuda":
+            torch.cuda.synchronize(device=device)
+        elif device.type == "mps" and hasattr(torch, "mps"):
+            torch.mps.synchronize()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+def _safe_ppl(loss: float) -> float:
+    """Convert NLL to perplexity with overflow guards."""
+    try:
+        if not math.isfinite(loss):
+            return float("inf")
+        if loss > 20.0:
+            return float("inf")
+        return float(math.exp(loss))
+    except Exception:
+        return float("inf")
 
 def _has_diffusion_head(student: nn.Module) -> bool:
     return hasattr(student, "diffusion_head") and getattr(student, "diffusion_head", None) is not None
@@ -265,6 +289,8 @@ class GlobalStepper:
         loss: Tensor | None = None
         accum_steps = int(getattr(train, "gradient_accumulation_steps", 1))
         accum_steps = max(1, accum_steps)
+        best_val_loss = float("inf")
+        best_val_ppl = float("inf")
 
         with logger.progress_bar() as progress:
             task = progress.add_task("Training...", total=run.steps)
@@ -274,23 +300,32 @@ class GlobalStepper:
                 ce_sum = 0.0
                 diff_sum = 0.0
                 diff_seen = False
+                tokens_seen = 0
+                fwd_s = 0.0
+                bwd_s = 0.0
+                t0 = time.perf_counter()
 
                 autocast_enabled = bool(use_amp)
                 for _micro in range(int(accum_steps)):
                     batch, loader_iter = collector.next_batch(loader, loader_iter)
                     x = batch["input_ids"].to(device=ctx.device)
                     y = batch["target_ids"].to(device=ctx.device)
+                    tokens_seen += int(y.numel())
                     try:
                         with torch.autocast(
                             device_type=ctx.device.type,
                             dtype=amp_dtype,
                             enabled=autocast_enabled,
                         ):
+                            tf0 = time.perf_counter()
                             loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                            tf1 = time.perf_counter()
                     except TypeError:
                         logger.warning("Failed to autocast loss computation; disabling autocast.")
                         autocast_enabled = False
+                        tf0 = time.perf_counter()
                         loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                        tf1 = time.perf_counter()
 
                     # Accumulate gradients on scaled loss, but log unscaled averages.
                     loss_sum += float(loss.detach())
@@ -300,11 +335,24 @@ class GlobalStepper:
                         diff_seen = True
 
                     scaled = loss / float(accum_steps)
+                    tb0 = time.perf_counter()
                     if scaler is not None and autocast_enabled:
                         scaler.scale(scaled).backward()
                     else:
                         scaled.backward()
+                    tb1 = time.perf_counter()
+                    fwd_s += float(tf1 - tf0)
+                    bwd_s += float(tb1 - tb0)
 
+                grad_norm = 0.0
+                try:
+                    from carmath import global_grad_norm_l2
+
+                    grad_norm = float(global_grad_norm_l2(ctx.student))
+                except Exception:
+                    grad_norm = 0.0
+
+                topt0 = time.perf_counter()
                 if scaler is not None and autocast_enabled:
                     scaler.step(optimizer)
                     scaler.update()
@@ -312,9 +360,22 @@ class GlobalStepper:
                     optimizer.step()
                 if scheduler is not None:
                     scheduler.step()
+                _sync_device(ctx.device)
+                topt1 = time.perf_counter()
 
                 loss_val = float(loss_sum) / float(accum_steps)
                 lr = float(optimizer.param_groups[0].get("lr", train.lr))
+                lr_base = float(getattr(train, "lr", lr))
+                lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
+                t1 = time.perf_counter()
+                step_s = float(t1 - t0)
+                tok_s = float(tokens_seen) / step_s if step_s > 0 else 0.0
+                # Heuristic "gbs" throughput proxy to match legacy dashboards.
+                d_model = float(getattr(getattr(ctx.student, "config", object()), "d_model", 0.0) or 0.0)
+                if d_model <= 0.0:
+                    d_model = float(getattr(train, "block_size", 0) or 0)
+                gbs = (float(tokens_seen) * float(d_model) * 2.0) / (1e9 * step_s) if step_s > 0 else 0.0
+
                 metrics: dict[str, float] = {
                     "loss": loss_val,
                     "ce_loss": float(ce_sum) / float(accum_steps),
@@ -324,6 +385,33 @@ class GlobalStepper:
                     metrics["diff_loss"] = float(diff_sum) / float(accum_steps)
                 if ctx.inst:
                     ctx.inst.log_scalars(step=step + 1, prefix="train/global", scalars=metrics)
+                    # Legacy W&B keys (flat) to match the original project dashboards.
+                    legacy: dict[str, float] = {
+                        "loss": float(loss_val),
+                        "train_loss": float(loss_val),
+                        "ppl": _safe_ppl(float(loss_val)),
+                        "train_ppl": _safe_ppl(float(loss_val)),
+                        "lr": float(lr),
+                        "lr_base": float(lr_base),
+                        "lr_mult": float(lr_mult),
+                        "grad_norm": float(grad_norm),
+                        "grad_accum": float(accum_steps),
+                        "batch_size": float(getattr(train, "batch_size", 0)),
+                        "seq_len": float(getattr(train, "block_size", 0)),
+                        "tok_s": float(tok_s),
+                        "gbs": float(gbs),
+                        "ms_fwd": float(fwd_s * 1000.0),
+                        "ms_bwd": float(bwd_s * 1000.0),
+                        "ms_opt": float((topt1 - topt0) * 1000.0),
+                        "ms_step": float(step_s * 1000.0),
+                    }
+                    if ctx.device.type == "cuda":
+                        try:
+                            legacy["cuda_mem_alloc_bytes"] = float(torch.cuda.memory_allocated(ctx.device))
+                            legacy["cuda_mem_reserved_bytes"] = float(torch.cuda.memory_reserved(ctx.device))
+                        except Exception:
+                            pass
+                    ctx.inst.log_scalars(step=step + 1, prefix="", scalars=legacy)
 
                 if (
                     val_loader is not None
@@ -340,6 +428,22 @@ class GlobalStepper:
                     )
                     if ctx.inst:
                         ctx.inst.log_scalars(step=step + 1, prefix="eval/global", scalars=val_metrics)
+                        vloss = float(val_metrics.get("val_loss", 0.0))
+                        vppl = _safe_ppl(vloss)
+                        if vloss > 0.0 and vloss < best_val_loss:
+                            best_val_loss = vloss
+                        if vppl < best_val_ppl:
+                            best_val_ppl = vppl
+                        ctx.inst.log_scalars(
+                            step=step + 1,
+                            prefix="",
+                            scalars={
+                                "val_loss": float(vloss),
+                                "val_ppl": float(vppl),
+                                "best_val_loss": float(best_val_loss if math.isfinite(best_val_loss) else 0.0),
+                                "best_val_ppl": float(best_val_ppl if math.isfinite(best_val_ppl) else 0.0),
+                            },
+                        )
 
                 desc = f"Step {step + 1}/{run.steps} • loss={loss_val:.4f}"
                 progress.update(task, advance=1, description=desc)

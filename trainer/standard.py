@@ -13,6 +13,7 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 import time
+import math
 from typing import Any, Protocol, Sized, cast
 
 import torch
@@ -34,6 +35,7 @@ from config.train import TrainConfig, TrainPhase
 from console import logger
 from instrumentation import RunLogger
 from instrumentation.wandb_writer import WandBWriter
+from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
 from runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
 
@@ -237,6 +239,17 @@ class StandardTrainer:
             )
         else:
             raise ValueError(f"Unknown optimizer {opt_name!r}")
+
+        # Optional LR scheduler (manifest-driven).
+        lr_scheduler = build_lr_scheduler(
+            optimizer,
+            LRSchedulerConfig(
+                kind=str(getattr(train, "scheduler", "none")),
+                total_steps=int(run.steps),
+                warmup_steps=int(getattr(train, "warmup_steps", 0)),
+                min_lr_ratio=float(getattr(train, "min_lr_ratio", 0.0)),
+            ),
+        )
 
         from trainer.swap_manager import SwapManager
 
@@ -493,6 +506,8 @@ class StandardTrainer:
                     t_bwd = time.perf_counter()
                     swap.before_optimizer_step(optimizer, device=device)
                     optimizer.step()
+                    if lr_scheduler is not None:
+                        lr_scheduler.step()
                     swap.after_optimizer_step(optimizer)
                     if bool(getattr(train, "offload_optimizer", False)):
                         # After offloading, grads should be freed aggressively.
@@ -500,7 +515,40 @@ class StandardTrainer:
                     t_optim = time.perf_counter()
 
                     if (step + 1) % telemetry_interval == 0:
-                        metrics: dict[str, float] = {"loss": float(loss.detach())}
+                        loss_val = float(loss.detach())
+                        # Perplexity guardrails (avoid overflow in exp()).
+                        ppl = float("inf")
+                        try:
+                            if math.isfinite(loss_val) and loss_val <= 20.0:
+                                ppl = float(math.exp(loss_val))
+                        except Exception:
+                            ppl = float("inf")
+
+                        lr = float(optimizer.param_groups[0].get("lr", float(train.lr)))
+                        lr_base = float(getattr(train, "lr", lr))
+                        lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
+                        grad_norm = 0.0
+                        try:
+                            from carmath import global_grad_norm_l2
+
+                            grad_norm = float(global_grad_norm_l2(system))  # type: ignore[arg-type]
+                        except Exception:
+                            grad_norm = 0.0
+
+                        # Start with legacy-friendly keys so old dashboards work.
+                        metrics: dict[str, float] = {
+                            "loss": float(loss_val),
+                            "train_loss": float(loss_val),
+                            "ppl": float(ppl),
+                            "train_ppl": float(ppl),
+                            "lr": float(lr),
+                            "lr_base": float(lr_base),
+                            "lr_mult": float(lr_mult),
+                            "grad_norm": float(grad_norm),
+                            "grad_accum": float(getattr(train, "gradient_accumulation_steps", 1)),
+                            "batch_size": float(getattr(train, "batch_size", 0)),
+                            "seq_len": float(getattr(train, "block_size", 0)),
+                        }
                         try:
                             extra = _call_objective_metrics(outputs=outputs, batch_td=batch_td, loss=loss)
                             if isinstance(extra, dict):
@@ -516,8 +564,21 @@ class StandardTrainer:
                                 "time_bwd_s": float(t_bwd - t_fwd),
                                 "time_optim_s": float(t_optim - t_bwd),
                                 "time_step_s": float(t_optim - t0),
+                                # Legacy-friendly ms fields.
+                                "ms_fwd": float((t_fwd - t_data) * 1000.0),
+                                "ms_bwd": float((t_bwd - t_fwd) * 1000.0),
+                                "ms_opt": float((t_optim - t_bwd) * 1000.0),
+                                "ms_step": float((t_optim - t0) * 1000.0),
                             }
                         )
+                        # Token throughput (best-effort for token LM datasets).
+                        try:
+                            y = batch_td.get("target_ids", None)  # type: ignore[attr-defined]
+                            if isinstance(y, Tensor):
+                                step_s = float(max(1e-9, t_optim - t0))
+                                metrics["tok_s"] = float(y.numel()) / step_s
+                        except Exception:
+                            pass
                         # Memory footprint estimates (MiB).
                         try:
                             metrics.update(
@@ -539,7 +600,9 @@ class StandardTrainer:
                             metrics=metrics,
                         )
                         if wandb_writer is not None:
+                            # Log both: current platform namespace + legacy flat keys.
                             wandb_writer.log_scalars(prefix="train", step=step + 1, scalars=metrics)
+                            wandb_writer.log_scalars(prefix="", step=step + 1, scalars=metrics)
 
                     progress.update(
                         task,

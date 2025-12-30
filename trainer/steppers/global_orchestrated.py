@@ -5,6 +5,8 @@ from typing import cast
 
 import torch
 import torch.nn.functional as F
+import math
+import time
 from torch import Tensor
 from torch.amp.grad_scaler import GradScaler
 
@@ -16,6 +18,17 @@ from trainer.checkpointers import CheckPointer
 from trainer.upcycle_context import UpcycleContext
 from trainer.steppers.global_stepper import _compute_loss, _has_diffusion_head
 from runtime.tensordict_utils import TensorDictBase
+
+
+def _safe_ppl(loss: float) -> float:
+    try:
+        if not math.isfinite(loss):
+            return float("inf")
+        if loss > 20.0:
+            return float("inf")
+        return float(math.exp(loss))
+    except Exception:
+        return float("inf")
 
 
 class GlobalOrchestratedStepper:
@@ -187,6 +200,10 @@ class GlobalOrchestratedStepper:
                 ce_sum = 0.0
                 diff_sum = 0.0
                 diff_seen = False
+                tokens_seen = 0
+                fwd_s = 0.0
+                bwd_s = 0.0
+                t0 = time.perf_counter()
 
                 autocast_enabled = bool(use_amp)
                 # First micro-batch uses `batch` already fetched above.
@@ -198,12 +215,17 @@ class GlobalOrchestratedStepper:
                 for b in micro_batches:
                     x = b["input_ids"].to(device=ctx.device)
                     y = b["target_ids"].to(device=ctx.device)
+                    tokens_seen += int(y.numel())
                     try:
                         with torch.autocast(device_type=ctx.device.type, dtype=amp_dtype, enabled=autocast_enabled):
+                            tf0 = time.perf_counter()
                             loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                            tf1 = time.perf_counter()
                     except TypeError:
                         autocast_enabled = False
+                        tf0 = time.perf_counter()
                         loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                        tf1 = time.perf_counter()
 
                     loss_sum += float(loss.detach().item())
                     # Avoid autograd->float warnings in logs.
@@ -213,15 +235,21 @@ class GlobalOrchestratedStepper:
                         diff_seen = True
 
                     scaled = loss / float(accum_steps)
+                    tb0 = time.perf_counter()
                     if scaler is not None and autocast_enabled:
                         scaler.scale(scaled).backward()
                     else:
                         scaled.backward()
+                    tb1 = time.perf_counter()
+                    fwd_s += float(tf1 - tf0)
+                    bwd_s += float(tb1 - tb0)
 
                 grad_norm = global_grad_norm_l2(ctx.student)
 
                 loss_for_step = torch.tensor(loss_sum / float(accum_steps), device=ctx.device)
+                topt0 = time.perf_counter()
                 step_metrics = current_strategy.step(loss_for_step, scaler=scaler)
+                topt1 = time.perf_counter()
                 bad = _first_nonfinite_param()
                 if bad is not None:
                     raise RuntimeError(
@@ -230,6 +258,16 @@ class GlobalOrchestratedStepper:
                     )
                 # Use the aggregated (post-accumulation) loss for orchestration decisions.
                 loss_val = float(loss_for_step.detach().item())
+                lr = float(current_strategy.current_lr)
+                lr_base = float(getattr(train, "lr", lr))
+                lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
+                t1 = time.perf_counter()
+                step_s = float(t1 - t0)
+                tok_s = float(tokens_seen) / step_s if step_s > 0 else 0.0
+                d_model = float(getattr(getattr(ctx.student, "config", object()), "d_model", 0.0) or 0.0)
+                if d_model <= 0.0:
+                    d_model = float(getattr(train, "block_size", 0) or 0)
+                gbs = (float(tokens_seen) * float(d_model) * 2.0) / (1e9 * step_s) if step_s > 0 else 0.0
                 snapshot = orchestrator.record(loss=loss_val, grad_norm=grad_norm, lr=current_strategy.current_lr)
 
                 reason = orchestrator.should_evaluate(step + 1, snapshot)
@@ -297,7 +335,7 @@ class GlobalOrchestratedStepper:
                 metrics: dict[str, float] = {
                     "loss": loss_val,
                     "ce_loss": float(ce_sum) / float(accum_steps),
-                    "lr": float(current_strategy.current_lr),
+                    "lr": float(lr),
                     "grad_norm": grad_norm,
                     "spike_count": float(snapshot.spike_count),
                     **step_metrics,
@@ -306,6 +344,30 @@ class GlobalOrchestratedStepper:
                     metrics["diff_loss"] = float(diff_sum) / float(accum_steps)
                 if ctx.inst:
                     ctx.inst.log_scalars(step=step + 1, prefix="train/global_orch", scalars=metrics)
+                    # Legacy W&B keys (flat) to match the original project dashboards.
+                    ctx.inst.log_scalars(
+                        step=step + 1,
+                        prefix="",
+                        scalars={
+                            "loss": float(loss_val),
+                            "train_loss": float(loss_val),
+                            "ppl": _safe_ppl(float(loss_val)),
+                            "train_ppl": _safe_ppl(float(loss_val)),
+                            "lr": float(lr),
+                            "lr_base": float(lr_base),
+                            "lr_mult": float(lr_mult),
+                            "grad_norm": float(grad_norm),
+                            "grad_accum": float(accum_steps),
+                            "batch_size": float(getattr(train, "batch_size", 0)),
+                            "seq_len": float(getattr(train, "block_size", 0)),
+                            "tok_s": float(tok_s),
+                            "gbs": float(gbs),
+                            "ms_fwd": float(fwd_s * 1000.0),
+                            "ms_bwd": float(bwd_s * 1000.0),
+                            "ms_opt": float((topt1 - topt0) * 1000.0),
+                            "ms_step": float(step_s * 1000.0),
+                        },
+                    )
 
                 progress.update(task, advance=1, description=f"Step {step + 1}/{run.steps} • loss={loss_val:.4f} • strategy={current_strategy.name}")
 

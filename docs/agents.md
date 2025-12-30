@@ -51,6 +51,7 @@ These processes coordinate AI agents to:
 | `research_loop`   | Write → Review → Audit loop           | leader, writer, reviewer |
 | `discussion`      | Multi-agent research discussion       | multiple researchers     |
 | `code_graph_sync` | Index codebase into knowledge graph   | -                        |
+| `paper_collect_artifacts` | Collect benchmark artifacts into paper-ready tables/figures | - |
 | `platform_improve`| Ingest → ideate → implement → review → PR | leader, architect, developer, reviewer |
 
 ### Process Target Structure

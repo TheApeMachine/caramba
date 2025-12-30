@@ -161,7 +161,9 @@ targets:
           fused_optimizer: true
           # MPS autocast is disabled automatically (no GradScaler). Make it explicit here.
           use_amp: false
-          scheduler: none
+          scheduler: cosine
+          warmup_steps: 200
+          min_lr_ratio: 0.0
     benchmarks:
       - id: perplexity
         config:
@@ -288,7 +290,9 @@ targets:
           optimizer: lion
           fused_optimizer: true
           use_amp: false
-          scheduler: none
+          scheduler: cosine
+          warmup_steps: 200
+          min_lr_ratio: 0.0
     benchmarks:
       - id: perplexity
         config:
@@ -415,7 +419,9 @@ targets:
           optimizer: lion
           fused_optimizer: true
           use_amp: false
-          scheduler: none
+          scheduler: cosine
+          warmup_steps: 200
+          min_lr_ratio: 0.0
     benchmarks:
       - id: perplexity
         config:
@@ -542,7 +548,9 @@ targets:
           optimizer: lion
           fused_optimizer: true
           use_amp: false
-          scheduler: none
+          scheduler: cosine
+          warmup_steps: 200
+          min_lr_ratio: 0.0
     benchmarks:
       - id: perplexity
         config:
@@ -567,9 +575,20 @@ targets:
         models: [teacher, student]
         repeats: 1
 
+  - type: process
+    name: collect_paper_artifacts
+    description: "Collect latest ablation artifacts into artifacts/paper for paper.tex inclusion."
+    team: {}
+    process:
+      type: paper_collect_artifacts
+      name: collect_paper_artifacts
+      out_dir: artifacts/paper
+      title: "DBA Ablations (local suite)"
+
 entrypoints:
   # Note: omitting --target runs all targets in order.
   control: "target:control"
   with_null: "target:with_null"
   tied_qk: "target:tied_qk"
   rope_on_sem: "target:rope_on_sem"
+  collect_paper_artifacts: "process:collect_paper_artifacts"

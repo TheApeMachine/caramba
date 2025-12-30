@@ -105,11 +105,16 @@ class ExperimentRunner:
         if isinstance(target, ProcessTargetConfig):
             from agent.process_runner import run_process_target  # local import
 
-            run_process_target(
+            result = run_process_target(
                 manifest=self.manifest,
                 target=target,
                 manifest_path=manifest_path,
             )
+            if isinstance(result, dict):
+                artifacts = result.get("artifacts", None)
+                if isinstance(artifacts, dict):
+                    # Normalize to dict[str, Path] for caller parity.
+                    return cast(dict[str, Path], artifacts)
             return {}
 
         assert isinstance(target, ExperimentTargetConfig)

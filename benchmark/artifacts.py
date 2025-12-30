@@ -319,6 +319,18 @@ class ArtifactGenerator:
         except ImportError:
             return paths
 
+        # ---------------------------------------------------------------------
+        # Paper-compat filenames
+        #
+        # The LaTeX draft in `artifacts/paper/paper.tex` expects:
+        # - perplexity.png
+        # - latency_tokens_per_sec.png
+        #
+        # Keep our richer artifact set (summary.png, latency_vs_context.png, ...)
+        # but also emit these compatibility names so runs can be dropped into the
+        # paper folder without manual renaming.
+        # ---------------------------------------------------------------------
+
         # Summary bar chart
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
@@ -353,6 +365,21 @@ class ArtifactGenerator:
         plt.savefig(path, dpi=150, bbox_inches="tight")
         plt.close()
         paths["summary.png"] = path
+
+        # Compatibility: perplexity.png (single-panel).
+        if summary.teacher_perplexity > 0.0 or summary.student_perplexity > 0.0:
+            fig, ax = plt.subplots(figsize=(6, 4))
+            vals = [summary.teacher_perplexity, summary.student_perplexity]
+            bars = ax.bar(models, vals, color=colors)
+            ax.set_ylabel("Perplexity ↓")
+            ax.set_title("Held-out Perplexity")
+            ax.bar_label(bars, fmt="%.2f")
+            ax.grid(True, axis="y", alpha=0.2)
+            plt.tight_layout()
+            p2 = self.output_dir / "perplexity.png"
+            plt.savefig(p2, dpi=200, bbox_inches="tight")
+            plt.close()
+            paths["perplexity.png"] = p2
 
         # Latency vs context length chart
         if teacher_latency and student_latency:
@@ -407,6 +434,14 @@ class ArtifactGenerator:
                     path = self.output_dir / "latency_vs_context.png"
                     plt.savefig(path, dpi=150, bbox_inches="tight")
                     paths["latency_vs_context.png"] = path
+                    # Compatibility name used by the paper draft.
+                    p2 = self.output_dir / "latency_tokens_per_sec.png"
+                    try:
+                        p2.write_bytes(path.read_bytes())
+                        paths["latency_tokens_per_sec.png"] = p2
+                    except Exception:
+                        # Best-effort only; keep primary chart.
+                        pass
 
             plt.close()
 

@@ -17,6 +17,7 @@ from console.logger import get_logger
 from config.agents import (
     CodeGraphSyncProcessConfig,
     DiscussionProcessConfig,
+    PaperCollectArtifactsProcessConfig,
     PaperReviewProcessConfig,
     PaperWriteProcessConfig,
     PlatformImproveProcessConfig,
@@ -83,6 +84,18 @@ def dry_run_process_target(
 ) -> dict[str, Any]:
     """Validate process config and return a summary without executing."""
     proc = target.process
+    # Some utility processes do not require agents or MCP servers.
+    if isinstance(proc, PaperCollectArtifactsProcessConfig):
+        mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
+        out_dir = _manifest_artifacts_dir(manifest, mp)
+        return {
+            "ok": True,
+            "process": {"name": proc.name, "type": proc.type},
+            "team": {},
+            "artifacts_dir": str(out_dir),
+            "paper_out_dir": str(proc.out_dir),
+        }
+
     team_mapping = dict(target.team.root)
     team, _ = _build_team(team_mapping)
     _preflight_personas_and_tools(team_mapping)
@@ -121,6 +134,9 @@ def dry_run_process_target(
             raise ValueError(
                 f"code_graph_sync agent key '{proc.agent}' not present in agents.team."
             )
+    elif isinstance(proc, PaperCollectArtifactsProcessConfig):
+        # Handled above (no-agent utility).
+        pass
 
     mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
     out_dir = _manifest_artifacts_dir(manifest, mp)
@@ -326,6 +342,36 @@ async def _run_platform_improve(
     return {"artifacts": {out_path.name: out_path}, "result": result}
 
 
+def _run_paper_collect_artifacts(
+    manifest: Manifest,
+    *,
+    target: ProcessTargetConfig,
+    manifest_path: Path | None,
+) -> dict[str, Any]:
+    """Collect benchmark artifacts into `proc.out_dir` (non-agent utility)."""
+    proc = cast(PaperCollectArtifactsProcessConfig, target.process)
+    from experiment.paper_artifacts import collect_ablation_artifacts
+
+    written = collect_ablation_artifacts(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        artifact_root=Path(str(proc.artifact_root)),
+        out_dir=Path(str(proc.out_dir)),
+        title=str(proc.title),
+        targets=[str(x) for x in proc.targets] if proc.targets else None,
+    )
+    payload: dict[str, Any] = {
+        "ok": True,
+        "process": {"name": proc.name, "type": proc.type},
+        "manifest": {"name": manifest.name, "path": str(manifest_path)},
+        "written": {k: str(v) for k, v in written.items()},
+    }
+    out_path = _persist_process_artifact(
+        manifest=manifest, manifest_path=manifest_path, proc_name=proc.name, result=payload
+    )
+    return {"artifacts": {out_path.name: out_path, **written}, "result": payload}
+
+
 def run_process_target(
     *, manifest: Manifest, target: ProcessTargetConfig, manifest_path: Path | None
 ) -> dict[str, Any]:
@@ -343,5 +389,7 @@ def run_process_target(
         return asyncio.run(_run_code_graph_sync(manifest, target=target, manifest_path=manifest_path))
     if isinstance(proc, PlatformImproveProcessConfig):
         return asyncio.run(_run_platform_improve(manifest, target=target, manifest_path=manifest_path))
+    if isinstance(proc, PaperCollectArtifactsProcessConfig):
+        return _run_paper_collect_artifacts(manifest, target=target, manifest_path=manifest_path)
     raise ValueError(f"Unsupported agent process type: {proc.type!r}")
 

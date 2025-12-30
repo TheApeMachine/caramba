@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "process": {
+    "name": "collect_paper_artifacts",
+    "type": "paper_collect_artifacts"
+  },
+  "manifest": {
+    "name": "dba_ablation_suite_scratch_local",
+    "path": "artifacts/paper/ablation_scratch.yml"
+  },
+  "written": {
+    "ablation_results.json": "artifacts/paper/ablation_results.json",
+    "ablation_tables.tex": "artifacts/paper/ablation_tables.tex"
+  }
+}
