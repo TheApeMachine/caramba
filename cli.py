@@ -13,6 +13,10 @@ from caramba.console import logger
 from caramba.experiment.runner import run_from_manifest_path
 
 
+class UvicornMissingError(click.ClickException):
+    pass
+
+
 class CarambaCLI(click.Group):
     """A click Group that treats unknown commands as `run <manifest_path>`."""
 
@@ -84,6 +88,28 @@ def run(ctx: click.Context, manifest_path: Path, target: str | None, dry_run: bo
     except Exception as e:
         logger.error(f"Error: {e}")
         raise click.Abort()
+
+
+@cli.command("serve")
+@click.option("--host", type=str, default="127.0.0.1", show_default=True)
+@click.option("--port", type=int, default=8765, show_default=True)
+def serve_cmd(host: str, port: int) -> None:
+    """Start the local dev API server (UI control-plane).
+
+    This is a lightweight bridge for the frontend demos:
+    - POST /api/runs to spawn `caramba run ...`
+    - GET  /api/runs/<id>/events to stream `train.jsonl` as SSE
+    """
+    try:
+        import uvicorn
+    except Exception as e:
+        raise UvicornMissingError(
+            "uvicorn is required for `caramba serve`. Install dependencies and retry."
+        ) from e
+
+    from caramba_api import app
+
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def main(argv: list[str] | None = None) -> int:

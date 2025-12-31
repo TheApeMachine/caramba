@@ -18,7 +18,7 @@ from caramba.console import logger
 from caramba.data import build_token_dataset
 from caramba.eval.suite import assert_eval_thresholds, run_eval_verify
 from caramba.layer.attention import AttentionLayer
-from carmath import train_val_counts
+from caramba.carmath import train_val_counts
 from caramba.trainer.compare import assert_thresholds, compare_teacher_student
 from caramba.trainer.fidelity import assert_fidelity_thresholds, compute_short_context_fidelity
 from caramba.trainer.upcycle_context import UpcycleContext

@@ -17,7 +17,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Subset
 
-from carmath import (
+from caramba.carmath import (
     autocast_dtype,
     autocast_dtype_str,
     token_budget_batch_size,

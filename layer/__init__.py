@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from caramba.carmath import neg_inf
 from caramba.config.layer import LayerConfig
 
 
@@ -48,7 +49,7 @@ class Layer(nn.Module):
         scores = torch.matmul(Q, K.transpose(-2, -1)) / scale
 
         if mask is not None:
-            scores = scores.masked_fill(mask == 0, float("-inf"))
+            scores = scores.masked_fill(mask == 0, neg_inf(scores.dtype))
 
         attention_weights = F.softmax(scores, dim=-1)
         output = torch.matmul(attention_weights, V)

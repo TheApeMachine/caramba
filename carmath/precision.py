@@ -5,6 +5,19 @@ from __future__ import annotations
 import torch
 
 
+def neg_inf(dtype: torch.dtype) -> float:
+    """Return a large negative value safe for the given dtype.
+
+    Notes:
+    - For fp16 we avoid values outside representable range (e.g. -1e9), which
+      can overflow to -inf and sometimes interact poorly with fused kernels.
+    - For other dtypes we use a conventional large negative mask value.
+    """
+    if dtype == torch.float16:
+        return -65504.0
+    return -1e9
+
+
 def autocast_dtype(device: torch.device, spec: str) -> torch.dtype:
     """Resolve autocast dtype from a user spec (including 'auto')."""
     s = str(spec).lower()

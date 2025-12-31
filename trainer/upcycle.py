@@ -20,7 +20,7 @@ import copy
 import re
 import torch
 
-from carmath import autocast_dtype_str, weight_dtype, weight_dtype_str, token_budget_batch_size
+from caramba.carmath import autocast_dtype_str, weight_dtype, weight_dtype_str, token_budget_batch_size, safe_perplexity_from_nll
 from caramba.config.defaults import Defaults
 from caramba.config.group import Group
 from caramba.config.manifest import Manifest
@@ -362,8 +362,8 @@ class _UpcycleSession:
         denom = max(1, int(total_tokens))
         nll = float(total_loss) / float(denom)
         try:
-            ppl = float(torch.exp(torch.tensor(nll)).item())
-        except (OverflowError, RuntimeError) as e:
+            ppl = float(safe_perplexity_from_nll(float(nll)))
+        except Exception as e:
             logger.warning(f"Failed to compute perplexity from nll={nll:.6f}: {type(e).__name__}: {e}")
             ppl = float("inf")
         logger.key_value(
