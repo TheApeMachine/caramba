@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from optimizer.lion import Lion
+from caramba.optimizer.lion import Lion
 
 
 def test_lion_step_updates_parameter_and_supports_closure() -> None:

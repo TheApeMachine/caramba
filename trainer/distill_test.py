@@ -7,7 +7,7 @@ import unittest
 
 import torch
 
-from trainer.distill import DistillLoss
+from caramba.trainer.distill import DistillLoss
 
 
 class DistillLossTest(unittest.TestCase):

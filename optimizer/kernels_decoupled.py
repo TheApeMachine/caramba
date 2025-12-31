@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from optimizer.triton_runtime import TRITON_AVAILABLE
-from console import logger
+from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.console import logger
 
 __all__ = [
     "kv_decode_update_decoupled_q4q8q4",

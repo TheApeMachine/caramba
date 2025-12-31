@@ -15,7 +15,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from typing_extensions import override
 
-from runtime.tensordict_utils import TensorDictBase, as_tensordict
+from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 def _require_numpy() -> object:
     if importlib.util.find_spec("numpy") is None:

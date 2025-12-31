@@ -14,7 +14,7 @@ from typing import Any, cast
 
 from pydantic import ValidationError
 
-from config.manifest import Manifest
+from caramba.config.manifest import Manifest
 
 
 class ManifestTest(unittest.TestCase):

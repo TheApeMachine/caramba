@@ -16,8 +16,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from config.manifest import Manifest
-from config.target import ExperimentTargetConfig, ProcessTargetConfig
+from caramba.config.manifest import Manifest
+from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig
 
 
 @dataclass(frozen=True)

@@ -11,11 +11,11 @@ import enum
 
 from pydantic import Field
 
-from config import Config
-from config.diffusion import DiffusionHeadConfig
-from config.embedder import EmbedderConfig, NoEmbedderConfig
-from config.embedder import TokenEmbedderConfig
-from config.layer import (
+from caramba.config import Config
+from caramba.config.diffusion import DiffusionHeadConfig
+from caramba.config.embedder import EmbedderConfig, NoEmbedderConfig
+from caramba.config.embedder import TokenEmbedderConfig
+from caramba.config.layer import (
     AttentionMode,
     AttentionLayerConfig,
     LayerNormLayerConfig,
@@ -23,8 +23,8 @@ from config.layer import (
     RMSNormLayerConfig,
     SwiGLULayerConfig,
 )
-from config.topology import TopologyConfig
-from config.topology import (
+from caramba.config.topology import TopologyConfig
+from caramba.config.topology import (
     BranchingTopologyConfig,
     CyclicTopologyConfig,
     NestedTopologyConfig,
@@ -34,7 +34,7 @@ from config.topology import (
     SequentialTopologyConfig,
     StackedTopologyConfig,
 )
-from config.topology import NodeConfig
+from caramba.config.topology import NodeConfig
 
 import math
 
@@ -55,9 +55,7 @@ class ModelType(str, enum.Enum):
     @staticmethod
     def module_name() -> str:
         """Return the Python module containing model implementations."""
-        # Use top-level modules (e.g. `model.transformer`) to avoid duplicate imports
-        # under both `caramba.model.*` and `model.*`.
-        return "model"
+        return "caramba.model"
 
 
 class ModelConfig(Config):

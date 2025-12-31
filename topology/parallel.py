@@ -10,8 +10,8 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.topology import ParallelTopologyConfig
-from topology.utils import unwrap_output
+from caramba.config.topology import ParallelTopologyConfig
+from caramba.topology.utils import unwrap_output
 
 
 class ParallelTopology(nn.Module):

@@ -60,7 +60,7 @@ class Lion(torch.optim.Optimizer):
                 # Metal fused path (fp16 on MPS).
                 if fused and p.device.type == "mps" and p.dtype == torch.float16 and g.dtype == torch.float16:
                     try:
-                        from optimizer.metal import lion_fp16, metal_lion_available
+                        from caramba.optimizer.metal import lion_fp16, metal_lion_available
 
                         if metal_lion_available() and m.device.type == "mps" and m.dtype == torch.float16:
                             lion_fp16(p=p, grad=g, m=m, lr=lr, beta1=beta1, weight_decay=wd)

@@ -6,8 +6,8 @@ from __future__ import annotations
 import unittest
 import torch
 
-from config.layer import LayerType, RMSNormLayerConfig
-from layer.rms_norm import RMSNormLayer
+from caramba.config.layer import LayerType, RMSNormLayerConfig
+from caramba.layer.rms_norm import RMSNormLayer
 
 
 class RMSNormTest(unittest.TestCase):

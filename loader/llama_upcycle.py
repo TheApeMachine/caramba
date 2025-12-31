@@ -10,14 +10,14 @@ from __future__ import annotations
 import torch
 from torch import Tensor, nn
 
-from config.layer import AttentionMode
+from caramba.config.layer import AttentionMode
 from carmath import randomized_svd
-from layer.attention import AttentionLayer
-from layer.linear import LinearLayer
-from layer.rms_norm import RMSNormLayer
-from layer.swiglu import SwiGLULayer
-from loader.state_reader import StateReader
-from model.embedder import Embedder
+from caramba.layer.attention import AttentionLayer
+from caramba.layer.linear import LinearLayer
+from caramba.layer.rms_norm import RMSNormLayer
+from caramba.layer.swiglu import SwiGLULayer
+from caramba.loader.state_reader import StateReader
+from caramba.model.embedder import Embedder
 
 
 class LlamaUpcycle:

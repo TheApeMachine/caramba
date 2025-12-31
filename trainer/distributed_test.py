@@ -10,7 +10,7 @@ from unittest.mock import patch, MagicMock
 import torch
 from torch import nn
 
-from trainer.distributed import (
+from caramba.trainer.distributed import (
     DistributedContext,
     DistributedConfig,
     DistributedStrategy,
@@ -88,13 +88,13 @@ class TestDistributedContextSingleProcess(unittest.TestCase):
         """Single process local rank is 0."""
         self.assertEqual(self.ctx.local_rank, 0)
 
-    @patch("trainer.distributed.console_logger")
+    @patch("caramba.trainer.distributed.console_logger")
     def test_log_prints_on_main(self, mock_logger: MagicMock) -> None:
         """log() prints on main process."""
         self.ctx.log("Test message")
         mock_logger.info.assert_called_once_with("Test message")
 
-    @patch("trainer.distributed.console_logger")
+    @patch("caramba.trainer.distributed.console_logger")
     def test_print_calls_logger(self, mock_logger: MagicMock) -> None:
         """print() calls logger on main process."""
         self.ctx.print("Hello", "world")

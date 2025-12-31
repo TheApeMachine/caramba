@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from console import logger
+from caramba.console import logger
 from typing import TYPE_CHECKING
 
 import torch
 
-from optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import METAL_SUPPORTED
 
 from .jit import load_caramba_metal_ops
 

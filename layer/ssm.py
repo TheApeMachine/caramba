@@ -16,7 +16,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from config.layer import SSMLayerConfig
+from caramba.config.layer import SSMLayerConfig
 
 
 class SSMLayer(nn.Module):
@@ -108,7 +108,7 @@ class SSMLayer(nn.Module):
 
         # Selective Scan Path
         # Check for fused Triton kernel availability
-        from optimizer.fused_ssm import fused_selective_scan, fused_ssm_available
+        from caramba.optimizer.fused_ssm import fused_selective_scan, fused_ssm_available
         if fused_ssm_available(x.device.type):
             y = fused_selective_scan(x, dt, A, B_vals, C, self.D)
         else:

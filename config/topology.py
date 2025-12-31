@@ -14,8 +14,8 @@ from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import Field
 
-from config import Config, PositiveInt
-from config.layer import LayerConfig
+from caramba.config import Config, PositiveInt
+from caramba.config.layer import LayerConfig
 
 
 class TopologyType(str, enum.Enum):
@@ -40,9 +40,7 @@ class TopologyType(str, enum.Enum):
     @staticmethod
     def module_name() -> str:
         """Return the Python module containing topology implementations."""
-        # Use top-level modules (e.g. `topology.stacked`) to avoid duplicate imports
-        # under both `caramba.topology.*` and `topology.*`.
-        return "topology"
+        return "caramba.topology"
 
 
 class NestedTopologyConfig(Config):

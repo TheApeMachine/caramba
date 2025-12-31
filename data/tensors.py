@@ -20,8 +20,8 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from runtime.tensordict_utils import TensorDictBase, as_tensordict
-from data.transforms import Compose, build_pipeline
+from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
+from caramba.data.transforms import Compose, build_pipeline
 
 
 def _is_npy(path: Path) -> bool:

@@ -26,7 +26,7 @@ class SwapManager:
         if not self.offload_optimizer:
             return
         try:
-            from optimizer.offload import load_optimizer_state
+            from caramba.optimizer.offload import load_optimizer_state
 
             load_optimizer_state(optimizer, device=device)
         except Exception:
@@ -36,7 +36,7 @@ class SwapManager:
         if not self.offload_optimizer:
             return
         try:
-            from optimizer.offload import offload_optimizer_state
+            from caramba.optimizer.offload import offload_optimizer_state
 
             offload_optimizer_state(optimizer, device=torch.device(self.offload_device))
         except Exception:

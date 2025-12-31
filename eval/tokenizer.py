@@ -13,7 +13,7 @@ import importlib
 import importlib.util
 from collections.abc import Callable, Sequence
 
-from config.eval import LlamaTokenizerConfig, TiktokenTokenizerConfig, TokenizerConfig
+from caramba.config.eval import LlamaTokenizerConfig, TiktokenTokenizerConfig, TokenizerConfig
 
 
 class Tokenizer(abc.ABC):

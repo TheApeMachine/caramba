@@ -9,12 +9,12 @@ from typing import cast
 import torch
 from torch import nn
 
-from trainer.blockwise import (
+from caramba.trainer.blockwise import (
     BlockwiseTrainer,
     BlockwiseConfig,
     TeacherOutputCache,
 )
-from trainer.distill import DistillLoss
+from caramba.trainer.distill import DistillLoss
 
 
 def _make_simple_models() -> tuple[nn.Sequential, nn.Sequential]:

@@ -17,15 +17,15 @@ from typing import TYPE_CHECKING, cast, Callable, Protocol
 import torch
 import torch.nn.functional as F
 
-from optimizer.triton_runtime import TRITON_AVAILABLE
-from optimizer.kernels_decoupled import (
+from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.kernels_decoupled import (
     kv_decode_update_decoupled_q4q8q4,
     kv_decode_partition_stats_decoupled_q4q8q4,
     kv_decode_reduce_partitions,
 )
 
 if TYPE_CHECKING:
-    from cache.decoupled import DecoupledLayerKVCache
+    from caramba.cache.decoupled import DecoupledLayerKVCache
 
 
 __all__ = [

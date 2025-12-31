@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from agent import Researcher
-from agent.context import AgentContext
-from agent.process import Process
+from caramba.agent import Researcher
+from caramba.agent.context import AgentContext
+from caramba.agent.process import Process
 
 
 @dataclass
@@ -55,7 +55,7 @@ def test_process_handoff_appends_handoff_entry(monkeypatch) -> None:
     p = DummyProcess(agents_dict)
 
     # The Process module imports `handoff` directly, so patch that symbol too.
-    import agent.process as proc_mod
+    import caramba.agent.process as proc_mod
 
     monkeypatch.setattr(proc_mod, "handoff", lambda target, input_filter=None: {"to": target, "filter": input_filter})
 

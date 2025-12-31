@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from config import PositiveInt, Probability
+from caramba.config import PositiveInt, Probability
 
 
 class TiktokenTokenizerConfig(BaseModel):

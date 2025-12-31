@@ -32,15 +32,15 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import Tensor, nn
 
-from console import logger
-from orchestrator.strategy import (
+from caramba.console import logger
+from caramba.orchestrator.strategy import (
     DEFAULT_PORTFOLIO,
     Strategy,
     StrategyBundle,
     StrategyState,
     create_strategy,
 )
-from orchestrator.telemetry import TelemetrySnapshot, TelemetryStream, TrainingPhase
+from caramba.orchestrator.telemetry import TelemetrySnapshot, TelemetryStream, TrainingPhase
 
 if TYPE_CHECKING:
     pass

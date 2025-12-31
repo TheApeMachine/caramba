@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from config import PositiveInt, Probability
+from caramba.config import PositiveInt, Probability
 
 
 class DefaultsData(BaseModel):

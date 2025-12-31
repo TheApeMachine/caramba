@@ -11,7 +11,7 @@ The orchestrated trainer wraps the standard training loop and:
 
 Usage:
 
-    from trainer.orchestrated import OrchestratedTrainer
+    from caramba.trainer.orchestrated import OrchestratedTrainer
 
     trainer = OrchestratedTrainer(
         model=model,
@@ -37,22 +37,22 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
-from console import logger
+from caramba.console import logger
 from carmath import autocast_dtype, global_grad_norm_l2
-from orchestrator import (
+from caramba.orchestrator import (
     DecisionBoundary,
     Orchestrator,
     OrchestratorConfig,
     TelemetrySnapshot,
 )
-from orchestrator.strategy import (
+from caramba.orchestrator.strategy import (
     DEFAULT_PORTFOLIO,
     Strategy,
     StrategyBundle,
     create_strategy,
 )
-from orchestrator.wrappers import AdaGC
-from runtime.tensordict_utils import TensorDictBase
+from caramba.orchestrator.wrappers import AdaGC
+from caramba.runtime.tensordict_utils import TensorDictBase
 
 if TYPE_CHECKING:
     pass

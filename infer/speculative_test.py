@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import torch
 
-from config.kvcache import KVCacheKind
-from config.layer import AttentionLayerConfig, AttentionMode, LayerType
-from infer.speculative import SpeculativeConfig, SpeculativeGenerator
-from layer.attention import AttentionLayer
+from caramba.config.kvcache import KVCacheKind
+from caramba.config.layer import AttentionLayerConfig, AttentionMode, LayerType
+from caramba.infer.speculative import SpeculativeConfig, SpeculativeGenerator
+from caramba.layer.attention import AttentionLayer
 
 
 class _ConstLogitsModel(torch.nn.Module):

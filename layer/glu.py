@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.layer import GLULayerConfig
+from caramba.config.layer import GLULayerConfig
 
 
 class GLULayer(nn.Module):

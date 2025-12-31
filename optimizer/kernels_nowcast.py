@@ -8,7 +8,7 @@ Includes fused operations for:
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
-from optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
 
 __all__ = [
     "fused_weight_encode",

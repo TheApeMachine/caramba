@@ -10,7 +10,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field
 
-from config import Config
+from caramba.config import Config
 
 
 class CheckPointerType(str, enum.Enum):

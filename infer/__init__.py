@@ -6,15 +6,15 @@ Inference is where all the training pays off. This package provides:
 - Speculative decoding for faster inference with a draft model
 - Support for both standard attention and DBA caches
 """
-from infer.context import InferContext, causal_mask
-from infer.generate import (
+from caramba.infer.context import InferContext, causal_mask
+from caramba.infer.generate import (
     GenerateConfig,
     Generator,
     create_caches,
     generate,
     sample_next_token,
 )
-from infer.speculative import (
+from caramba.infer.speculative import (
     SpeculativeConfig,
     SpeculativeGenerator,
     speculative_generate,

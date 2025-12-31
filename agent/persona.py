@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from config.persona import PersonaConfig, PersonaType, SharedPersonaConfig
+from caramba.config.persona import PersonaConfig, PersonaType, SharedPersonaConfig
 
 
 class Persona:

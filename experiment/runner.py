@@ -10,13 +10,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
-from compiler import Compiler
-from config.manifest import Manifest
-from config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
-from console import logger
+from caramba.compiler import Compiler
+from caramba.config.manifest import Manifest
+from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
+from caramba.console import logger
 
-from runtime.engine import TorchEngine
-from runtime.readiness import check_target_readiness, format_readiness_report
+from caramba.runtime.engine import TorchEngine
+from caramba.runtime.readiness import check_target_readiness, format_readiness_report
 
 
 def _resolve_target(manifest: Manifest, target: str | None) -> str:
@@ -103,7 +103,7 @@ class ExperimentRunner:
     ) -> dict[str, Path]:
         target = self._find_target(target_name)
         if isinstance(target, ProcessTargetConfig):
-            from agent.process_runner import run_process_target  # local import
+            from caramba.agent.process_runner import run_process_target  # local import
 
             result = run_process_target(
                 manifest=self.manifest,

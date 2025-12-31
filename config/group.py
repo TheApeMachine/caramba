@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from config.benchmark import BenchmarkSpec
-from config.run import Run
+from caramba.config.benchmark import BenchmarkSpec
+from caramba.config.run import Run
 
 
 class Group(BaseModel):

@@ -19,13 +19,13 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from config.layer import AttentionLayerConfig, AttentionMode
-from console import logger
-from layer.rope import RotaryEmbedding
+from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from caramba.console import logger
+from caramba.layer.rope import RotaryEmbedding
 
 if TYPE_CHECKING:
-    from cache.decoupled import DecoupledLayerKVCache
-    from cache.layer import LayerKVCache
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+    from caramba.cache.layer import LayerKVCache
 
 # Error message constants (keep exact wording for tests/log searchability).
 SEM_ROPE_EVEN_DIM_ERROR = "Decoupled mode with semantic RoPE requires even sem_head_dim"
@@ -41,7 +41,7 @@ def _get_infer_context_type() -> type:
     """Get the InferContext type, caching it on first access."""
     global _InferContext
     if _InferContext is None:
-        from infer.context import InferContext
+        from caramba.infer.context import InferContext
 
         _InferContext = InferContext
     return _InferContext
@@ -771,7 +771,7 @@ class AttentionLayer(nn.Module):
                 if x.device.type == "cuda":
                     # CUDA: Triton fused decode for quantized caches.
                     try:
-                        from optimizer.fused_attention import (
+                        from caramba.optimizer.fused_attention import (
                             fused_decode_available,
                             fused_decode_decoupled_q4q8q4,
                             fused_decode_decoupled_q4q8q4_2pass,
@@ -847,7 +847,7 @@ class AttentionLayer(nn.Module):
                 if x.device.type == "mps":
                     # MPS: custom Metal fused decode for fp16 caches (no quantization).
                     try:
-                        from optimizer.metal import dba_decode_fp16, metal_dba_decode_available
+                        from caramba.optimizer.metal import dba_decode_fp16, metal_dba_decode_available
 
                         # Only attempt when the underlying KV caches are fp16 buffers.
                         k_sem_buf = getattr(cache.k_sem, "buf", None)
