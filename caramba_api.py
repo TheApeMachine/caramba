@@ -133,9 +133,44 @@ def _resolve_model_config(manifest: Manifest, target: str) -> tuple[str, ModelCo
     return str(sys_ref), cfg
 
 
+def _target_info(manifest: Manifest, target: object) -> dict[str, object]:
+    """Best-effort metadata for a manifest target.
+
+    This is used by the UI to avoid calling model-only endpoints for process-only targets.
+    """
+
+    name = getattr(target, "name", None)
+    type_ = getattr(target, "type", None)
+    system = getattr(target, "system", None)
+    sys_ref = getattr(system, "ref", None)
+    sys_cfg = getattr(system, "config", None)
+
+    model_capable = False
+    if sys_ref in ("system.language_model", "system.generic") and isinstance(sys_cfg, dict):
+        model_payload = sys_cfg.get("model", None)
+        model_capable = isinstance(model_payload, dict)
+
+    if type_ is None:
+        type_s = None
+    else:
+        type_s = getattr(type_, "value", None)
+        if not isinstance(type_s, str):
+            type_s = str(type_)
+
+    return {
+        "name": str(name) if name is not None else None,
+        "type": type_s,
+        "system_ref": str(sys_ref) if sys_ref is not None else None,
+        "model_capable": bool(model_capable),
+    }
+
+
 def _walk_model_topology(node: object) -> list[object]:
     """Recursively walk a model topology configuration to extract all layer nodes."""
-    from config.topology import GraphTopologyConfig
+    # Important: use the same module path as ModelConfig's parsing types.
+    # `config.*` and `caramba.config.*` can be distinct modules at runtime, which
+    # breaks isinstance checks and causes the UI to think there is only 1 layer.
+    from caramba.config.topology import GraphTopologyConfig
 
     if isinstance(node, GraphTopologyConfig):
         return []
@@ -212,6 +247,9 @@ async def _spawn_run(*, manifest_path: Path, target_arg: str | None) -> RunRecor
             stdout=log_fh.fileno(),
             stderr=log_fh.fileno(),
             env=os.environ.copy(),
+            # Ensure the run has its own process group so "Stop" can reliably
+            # terminate the whole job (and any children).
+            start_new_session=True,
         )
     except Exception:
         await loop.run_in_executor(None, log_fh.close)
@@ -242,10 +280,11 @@ async def _spawn_run(*, manifest_path: Path, target_arg: str | None) -> RunRecor
 
 async def _stop_run(rec: RunRecord, *, timeout_s: float = 5.0) -> bool:
     proc = rec.proc
+    pid = int(rec.pid)
     if proc is None:
         # best-effort by pid
         try:
-            os.kill(int(rec.pid), signal.SIGTERM)
+            os.kill(pid, signal.SIGTERM)
         except ProcessLookupError:
             return True
         except Exception:
@@ -254,20 +293,28 @@ async def _stop_run(rec: RunRecord, *, timeout_s: float = 5.0) -> bool:
 
     if proc.returncode is not None:
         return True
+    # Prefer killing the whole process group when possible (macOS/Linux).
     try:
-        proc.terminate()
-    except ProcessLookupError:
-        logger.error("Process not found")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to terminate process: {e}")
+        os.killpg(pid, signal.SIGTERM)
+    except Exception:
+        # Fall back to terminating just the parent process.
+        try:
+            proc.terminate()
+        except ProcessLookupError:
+            logger.error("Process not found")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to terminate process: {e}")
     try:
         await asyncio.wait_for(proc.wait(), timeout=float(timeout_s))
         return True
     except asyncio.TimeoutError:
         pass
     try:
-        proc.kill()
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except Exception:
+            proc.kill()
         return True
     except Exception as e:
         logger.error(f"Failed to kill process: {e}")
@@ -414,14 +461,32 @@ def create_app() -> FastAPI:
     @app.get("/api/manifests/targets")
     async def manifest_targets(path: str, manifest: Manifest = Depends(get_manifest)) -> dict[str, object]:
         mp = _resolve_manifest_path(path)
-        return {"manifest_path": str(mp), "targets": [t.name for t in manifest.targets]}
+        entries = [_target_info(manifest, t) for t in manifest.targets]
+        targets_all = [e["name"] for e in entries if isinstance(e.get("name"), str)]
+        model_targets = [
+            e["name"]
+            for e in entries
+            if isinstance(e.get("name"), str) and bool(e.get("model_capable"))
+        ]
+        process_targets = [
+            e["name"]
+            for e in entries
+            if isinstance(e.get("name"), str) and e.get("type") == "process"
+        ]
+        return {
+            "manifest_path": str(mp),
+            "targets": targets_all,
+            "model_targets": model_targets,
+            "process_targets": process_targets,
+            "entries": entries,
+        }
 
     @app.get("/api/manifests/model_summary")
     async def model_summary(path: str, target: str, manifest: Manifest = Depends(get_manifest)) -> dict[str, object]:
         mp = _resolve_manifest_path(path)
         sys_ref, cfg = _resolve_model_config(manifest, target)
 
-        from config.layer import AttentionLayerConfig
+        from caramba.config.layer import AttentionLayerConfig
 
         nodes = _walk_model_topology(cfg.topology)
         attn_layers = [n for n in nodes if isinstance(n, AttentionLayerConfig)]
@@ -457,7 +522,7 @@ def create_app() -> FastAPI:
         mp = _resolve_manifest_path(path)
         sys_ref, cfg = _resolve_model_config(manifest, target)
 
-        from config.layer import AttentionLayerConfig
+        from caramba.config.layer import AttentionLayerConfig
 
         nodes = _walk_model_topology(cfg.topology)
         attn_cfgs = [n for n in nodes if isinstance(n, AttentionLayerConfig)]

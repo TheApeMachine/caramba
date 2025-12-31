@@ -333,6 +333,7 @@ class DecoupledAttentionLayer(AttentionBase):
         mask: Tensor | None,
         cache: "DecoupledLayerKVCache | None",
         pos_offset: int,
+        ctx: object | None = None,
         q_chunk_override: int | None = None,
         local_window_override: int | None = None,
         decode_block_override: int | None = None,
@@ -514,6 +515,41 @@ class DecoupledAttentionLayer(AttentionBase):
             geo_scores = torch.matmul(qgh, kgh.transpose(-2, -1)) * float(self._geo_scale)
             scores = sem_scores + geo_scores
 
+            # --- Training viz: record a small attention heatmap (best-effort) ---
+            try:
+                from caramba.instrumentation.viz import TrainingVizContext
+
+                if ctx is not None and isinstance(ctx, TrainingVizContext) and ctx.enabled:
+                    idx = int(getattr(self, "_viz_index", -1))
+                    name = str(getattr(self, "_viz_name", ""))
+                    mode = str(getattr(getattr(self, "mode", None), "value", getattr(self, "mode", "")))
+                    if idx >= 0:
+                        tq = int(min(int(ctx.max_tokens), int(scores.size(-2))))
+                        tk = int(min(int(ctx.max_tokens), int(scores.size(-1))))
+                        hh = int(min(int(ctx.max_heads), int(scores.size(1))))
+                        if tq > 0 and tk > 0 and hh > 0:
+                            logits = scores[:, :hh, :tq, :tk].float()
+                            if bool(self.config.is_causal):
+                                causal = torch.tril(
+                                    torch.ones((tq, tk), device=logits.device, dtype=torch.bool)
+                                )
+                                logits = logits.masked_fill(~causal.view(1, 1, tq, tk), float("-inf"))
+                            probs = torch.softmax(logits, dim=-1)
+                            eps = 1e-9
+                            ent = -(probs * (probs + eps).log()).sum(dim=-1).mean(dim=-1)  # (B,H)
+                            ent_list = [float(x) for x in ent[0].detach().cpu().tolist()]
+                            mats = [probs[0, h, :, :].detach() for h in range(int(hh))]
+                            ctx.record_attention_matrix(
+                                idx=idx,
+                                name=name,
+                                mode=mode,
+                                n_heads=int(getattr(self, "n_heads", hh)),
+                                matrices=mats,
+                                entropies=ent_list,
+                            )
+            except Exception:
+                pass
+
             if bool(getattr(self.config, "null_attn", False)):
                 ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=x.dtype, device=x.device)
                 score_null = (
@@ -565,6 +601,24 @@ class DecoupledAttentionLayer(AttentionBase):
             )
 
         y = self.out_proj(self._merge(out))
+        # Training viz: record a small activation slice from the output.
+        try:
+            from caramba.instrumentation.viz import TrainingVizContext
+
+            if ctx is not None and isinstance(ctx, TrainingVizContext) and ctx.enabled:
+                idx = int(getattr(self, "_viz_index", -1))
+                name = str(getattr(self, "_viz_name", ""))
+                mode = str(getattr(getattr(self, "mode", None), "value", getattr(self, "mode", "")))
+                if idx >= 0:
+                    ctx.record_activation_sample(
+                        idx=idx,
+                        name=name,
+                        mode=mode,
+                        n_heads=int(getattr(self, "n_heads", 0) or 0) or None,
+                        y=y,
+                    )
+        except Exception:
+            pass
         return y, cache
 
     def _decoupled_attention_chunked(
