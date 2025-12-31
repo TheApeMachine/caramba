@@ -448,10 +448,14 @@ class DecoupledAttentionLayer(AttentionBase):
                                 )
                             y = self.out_proj(self._merge(out_fused))
                             return y, cache
-                    except Exception as e:
+                    except (ImportError, ModuleNotFoundError, RuntimeError, OSError) as e:
                         if (not _LOGGED_FUSED_DECODE_FAILURE) and bool(getattr(self.config, "debug_fused_decode", False)):
                             logger.warning(f"Fused DBA decode unavailable; falling back: {type(e).__name__}: {e}")
                             _LOGGED_FUSED_DECODE_FAILURE = True
+                    except Exception as e:
+                        if bool(getattr(self.config, "debug_fused_decode", False)):
+                            logger.error(f"Unexpected fused DBA decode error: {type(e).__name__}: {e}")
+                        raise
                 elif x.device.type == "mps":
                     global _LOGGED_METAL_FUSED_DECODE
                     try:
@@ -484,10 +488,14 @@ class DecoupledAttentionLayer(AttentionBase):
                             )
                             y = self.out_proj(self._merge(out_fused))
                             return y, cache
-                    except Exception as e:
+                    except (ImportError, ModuleNotFoundError, RuntimeError, OSError) as e:
                         if (not _LOGGED_FUSED_DECODE_FAILURE) and bool(getattr(self.config, "debug_fused_decode", False)):
                             logger.warning(f"Fused DBA decode unavailable; falling back: {type(e).__name__}: {e}")
                             _LOGGED_FUSED_DECODE_FAILURE = True
+                    except Exception as e:
+                        if bool(getattr(self.config, "debug_fused_decode", False)):
+                            logger.error(f"Unexpected fused DBA decode error: {type(e).__name__}: {e}")
+                        raise
 
             if old_len > 0:
                 k_sem_all, k_geo_all, v_all = cache.get(dtype=qsh.dtype)

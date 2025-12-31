@@ -35,7 +35,7 @@ class _RandomTokensTorchDataset(Dataset[TensorDictBase]):
         if self.length <= 0:
             raise ValueError(f"length must be > 0, got {self.length}")
 
-    def __len__(self) -> int:  # noqa: D401 - obvious
+    def __len__(self) -> int:
         return int(self.length)
 
     def __getitem__(self, idx: int) -> dict[str, Tensor]:

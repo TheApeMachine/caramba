@@ -22,7 +22,8 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, Literal
+from collections.abc import AsyncIterator
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -111,7 +112,25 @@ async def get_manifest(path: str) -> Manifest:
     try:
         return Manifest.from_path(mp)
     except Exception as e:
-        raise HTTPException(status_code=400, detail={"error": "manifest_invalid", "detail": str(e)})
+        raise HTTPException(status_code=400, detail={"error": "manifest_invalid", "detail": str(e)}) from e
+
+
+def _resolve_model_config(manifest: Manifest, target: str) -> tuple[str, ModelConfig]:
+    tgt = next((t for t in manifest.targets if getattr(t, "name", None) == target), None)
+    if tgt is None:
+        raise HTTPException(status_code=404, detail={"error": "target_not_found", "target": target})
+
+    system = getattr(tgt, "system", None)
+    sys_ref = getattr(system, "ref", "")
+    sys_cfg = getattr(system, "config", {}) or {}
+    if sys_ref not in ("system.language_model", "system.generic"):
+        raise HTTPException(status_code=400, detail={"error": "unsupported_system", "system_ref": str(sys_ref)})
+    model_payload = sys_cfg.get("model", None) if isinstance(sys_cfg, dict) else None
+    if not isinstance(model_payload, dict):
+        raise HTTPException(status_code=400, detail={"error": "missing_model_payload"})
+
+    cfg = ModelConfig.model_validate(model_payload)
+    return str(sys_ref), cfg
 
 
 def _walk_model_topology(node: object) -> list[object]:
@@ -148,12 +167,14 @@ async def _watch_proc(run_id: str) -> None:
             return
         r.returncode = int(rc)
         r.ended_at_s = float(time.time())
+        fh = r.log_fh
+        r.log_fh = None
+
+    if fh is not None:
         try:
-            if r.log_fh is not None:
-                r.log_fh.close()
+            await asyncio.get_running_loop().run_in_executor(None, fh.close)
         except Exception as e:
             logger.error(f"Failed to close log file: {e}")
-        r.log_fh = None
 
 
 async def _spawn_run(*, manifest_path: Path, target_arg: str | None) -> RunRecord:
@@ -166,7 +187,11 @@ async def _spawn_run(*, manifest_path: Path, target_arg: str | None) -> RunRecor
 
     jsonl_path = run_dir / "train.jsonl"
     log_path = run_dir / f"server_{run_id}.log"
-    log_fh = open(log_path, "a", encoding="utf-8", buffering=1)
+    loop = asyncio.get_running_loop()
+    log_fh = await loop.run_in_executor(
+        None,
+        lambda: open(str(log_path), "a", encoding="utf-8", buffering=1),
+    )
 
     cmd = [
         sys.executable,
@@ -189,7 +214,7 @@ async def _spawn_run(*, manifest_path: Path, target_arg: str | None) -> RunRecor
             env=os.environ.copy(),
         )
     except Exception:
-        log_fh.close()
+        await loop.run_in_executor(None, log_fh.close)
         raise
 
     rec = RunRecord(
@@ -334,7 +359,7 @@ def create_app() -> FastAPI:
         try:
             rec = await _spawn_run(manifest_path=mp, target_arg=req.target)
         except Exception as e:
-            raise HTTPException(status_code=500, detail={"error": "spawn_failed", "detail": str(e)})
+            raise HTTPException(status_code=500, detail={"error": "spawn_failed", "detail": str(e)}) from e
         return JSONResponse({"run": rec.public().model_dump()})
 
     @app.get("/api/runs/{run_id}")
@@ -394,20 +419,7 @@ def create_app() -> FastAPI:
     @app.get("/api/manifests/model_summary")
     async def model_summary(path: str, target: str, manifest: Manifest = Depends(get_manifest)) -> dict[str, object]:
         mp = _resolve_manifest_path(path)
-        tgt = next((t for t in manifest.targets if getattr(t, "name", None) == target), None)
-        if tgt is None:
-            raise HTTPException(status_code=404, detail={"error": "target_not_found", "target": target})
-
-        system = getattr(tgt, "system", None)
-        sys_ref = getattr(system, "ref", "")
-        sys_cfg = getattr(system, "config", {}) or {}
-        if sys_ref not in ("system.language_model", "system.generic"):
-            raise HTTPException(status_code=400, detail={"error": "unsupported_system", "system_ref": str(sys_ref)})
-        model_payload = sys_cfg.get("model", None) if isinstance(sys_cfg, dict) else None
-        if not isinstance(model_payload, dict):
-            raise HTTPException(status_code=400, detail={"error": "missing_model_payload"})
-
-        cfg = ModelConfig.model_validate(model_payload)
+        sys_ref, cfg = _resolve_model_config(manifest, target)
 
         from config.layer import AttentionLayerConfig
 
@@ -443,20 +455,7 @@ def create_app() -> FastAPI:
     @app.get("/api/manifests/attention_layers")
     async def attention_layers(path: str, target: str, manifest: Manifest = Depends(get_manifest)) -> dict[str, object]:
         mp = _resolve_manifest_path(path)
-        tgt = next((t for t in manifest.targets if getattr(t, "name", None) == target), None)
-        if tgt is None:
-            raise HTTPException(status_code=404, detail={"error": "target_not_found", "target": target})
-
-        system = getattr(tgt, "system", None)
-        sys_ref = getattr(system, "ref", "")
-        sys_cfg = getattr(system, "config", {}) or {}
-        if sys_ref not in ("system.language_model", "system.generic"):
-            raise HTTPException(status_code=400, detail={"error": "unsupported_system", "system_ref": str(sys_ref)})
-        model_payload = sys_cfg.get("model", None) if isinstance(sys_cfg, dict) else None
-        if not isinstance(model_payload, dict):
-            raise HTTPException(status_code=400, detail={"error": "missing_model_payload"})
-
-        cfg = ModelConfig.model_validate(model_payload)
+        sys_ref, cfg = _resolve_model_config(manifest, target)
 
         from config.layer import AttentionLayerConfig
 
@@ -487,7 +486,7 @@ def create_app() -> FastAPI:
             "manifest_path": str(mp),
             "target": str(target),
             "system_ref": str(sys_ref),
-            "count": int(len(out_layers)),
+            "count": len(out_layers),
             "layers": out_layers,
         }
 
