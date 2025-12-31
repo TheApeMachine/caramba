@@ -19,7 +19,7 @@ from caramba.trainer.checkpointers import CheckPointer
 from caramba.trainer.distill import DistillLoss
 from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from caramba.trainer.upcycle_context import UpcycleContext
-from carmath import autocast_dtype
+from caramba.carmath import autocast_dtype
 from caramba.runtime.tensordict_utils import TensorDictBase
 from caramba.topology.residual import ResidualTopology
 

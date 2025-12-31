@@ -65,6 +65,11 @@ class TorchEngine:
         )
         self.registry.register(
             backend="torch",
+            ref="dataset.random_tokens",
+            python="data.random_tokens:RandomTokenDataset",
+        )
+        self.registry.register(
+            backend="torch",
             ref="dataset.npy_supervised",
             python="caramba.data.npy_supervised:NpySupervisedDataset",
         )

@@ -11,7 +11,7 @@ import torch
 from torch import Tensor, nn
 
 from caramba.config.layer import AttentionMode
-from carmath import randomized_svd
+from caramba.carmath import randomized_svd
 from caramba.layer.attention import AttentionLayer
 from caramba.layer.linear import LinearLayer
 from caramba.layer.rms_norm import RMSNormLayer

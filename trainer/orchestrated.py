@@ -38,7 +38,7 @@ from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
 from caramba.console import logger
-from carmath import autocast_dtype, global_grad_norm_l2
+from caramba.carmath import autocast_dtype, global_grad_norm_l2
 from caramba.orchestrator import (
     DecisionBoundary,
     Orchestrator,

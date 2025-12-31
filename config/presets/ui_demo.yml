@@ -1,0 +1,103 @@
+version: 2
+name: ui_demo
+notes: >
+  Tiny, file-free training target for UI/backend integration demos.
+  Uses dataset.random_tokens to generate synthetic next-token batches so a frontend
+  can start a real run and stream train.jsonl metrics immediately.
+
+defaults:
+  data:
+    tokenizer: tiktoken
+    val_frac: 0.0
+  logging:
+    instrument: rich
+    wandb: false
+    wandb_project: caramba-ui-demo
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 10
+  runtime:
+    save_every: 100
+
+targets:
+- type: experiment
+  name: ui_demo_train
+  description: Synthetic LM training run for UI streaming demos.
+  backend: torch
+  task: task.language_modeling
+
+  data:
+    ref: dataset.random_tokens
+    config:
+      vocab_size: ${vocab_size}
+      block_size: ${block_size}
+      length: ${dataset_length}
+      seed: 0
+
+  system:
+    ref: system.language_model
+    config:
+      model:
+        type: TransformerModel
+        embedder:
+          type: token
+          vocab_size: ${vocab_size}
+          d_model: ${d_model}
+        topology:
+          type: StackedTopology
+          layers:
+          - type: NestedTopology
+            repeat: ${n_layers}
+            layers:
+            - type: ResidualTopology
+              layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                mode: standard
+            - type: ResidualTopology
+              layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: SwiGLULayer
+                d_model: ${d_model}
+                d_ff: ${d_ff}
+          - type: RMSNormLayer
+            d_model: ${d_model}
+          - type: LinearLayer
+            d_in: ${d_model}
+            d_out: ${vocab_size}
+
+  objective: objective.next_token_ce
+  trainer: trainer.standard
+
+  runs:
+  - id: ui_demo
+    mode: train
+    exp: ui_demo
+    seed: 1337
+    steps: ${steps}
+    expected: {}
+    train:
+      phase: standard
+      device: cpu
+      dtype: float32
+      batch_size: ${batch_size}
+      block_size: ${block_size}
+      lr: 0.001
+      num_workers: 0
+      pin_memory: false
+      telemetry_interval: 1
+
+vars:
+  vocab_size: 512
+  d_model: 64
+  n_heads: 4
+  n_layers: 2
+  d_ff: 256
+  block_size: 64
+  batch_size: 8
+  steps: 50
+  dataset_length: 2048

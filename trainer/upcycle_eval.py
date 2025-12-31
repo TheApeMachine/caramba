@@ -18,7 +18,7 @@ from typing import Any, cast
 import torch
 from torch import nn
 
-from carmath import weight_dtype
+from caramba.carmath import weight_dtype
 from caramba.config.model import ModelConfig
 from caramba.console import logger
 from caramba.loader.checkpoint import CheckpointLoader

@@ -20,9 +20,10 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Subset
 
-from carmath import (
+from caramba.carmath import (
     autocast_dtype,
     autocast_dtype_str,
+    safe_perplexity_from_nll,
     token_budget_batch_size,
     train_val_counts,
     weight_dtype_str,
@@ -539,19 +540,14 @@ class StandardTrainer:
                         # Log averaged loss per optimizer step (matches grad accumulation semantics).
                         loss_val = float(loss_sum) / float(accum_steps)
                         # Perplexity guardrails (avoid overflow in exp()).
-                        ppl = float("inf")
-                        try:
-                            if math.isfinite(loss_val) and loss_val <= 20.0:
-                                ppl = float(math.exp(loss_val))
-                        except Exception:
-                            ppl = float("inf")
+                        ppl = float(safe_perplexity_from_nll(float(loss_val)))
 
                         lr = float(optimizer.param_groups[0].get("lr", float(train.lr)))
                         lr_base = float(getattr(train, "lr", lr))
                         lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
                         grad_norm = 0.0
                         try:
-                            from carmath import global_grad_norm_l2
+                            from caramba.carmath import global_grad_norm_l2
 
                             grad_norm = float(global_grad_norm_l2(system))  # type: ignore[arg-type]
                         except Exception:

@@ -6,7 +6,7 @@ from torch import nn
 
 from caramba.config.kvcache import KVCachePolicyConfig, KVCachePolicyDecoupledConfig
 from caramba.config.layer import AttentionMode
-from carmath import bytes_per_kind
+from caramba.carmath import bytes_per_kind
 from caramba.layer.attention import AttentionLayer
 
 

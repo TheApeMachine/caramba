@@ -12,23 +12,12 @@ from torch.amp.grad_scaler import GradScaler
 
 from caramba.config.run import Run
 from caramba.console import logger
-from carmath import global_grad_norm_l2, autocast_dtype
+from caramba.carmath import global_grad_norm_l2, autocast_dtype, safe_perplexity_from_nll
 from caramba.trainer.collectors import Collector
 from caramba.trainer.checkpointers import CheckPointer
 from caramba.trainer.upcycle_context import UpcycleContext
 from caramba.trainer.steppers.global_stepper import _compute_loss, _has_diffusion_head
 from caramba.runtime.tensordict_utils import TensorDictBase
-
-
-def _safe_ppl(loss: float) -> float:
-    try:
-        if not math.isfinite(loss):
-            return float("inf")
-        if loss > 20.0:
-            return float("inf")
-        return float(math.exp(loss))
-    except Exception:
-        return float("inf")
 
 
 class GlobalOrchestratedStepper:
@@ -351,8 +340,8 @@ class GlobalOrchestratedStepper:
                         scalars={
                             "loss": float(loss_val),
                             "train_loss": float(loss_val),
-                            "ppl": _safe_ppl(float(loss_val)),
-                            "train_ppl": _safe_ppl(float(loss_val)),
+                            "ppl": safe_perplexity_from_nll(float(loss_val)),
+                            "train_ppl": safe_perplexity_from_nll(float(loss_val)),
                             "lr": float(lr),
                             "lr_base": float(lr_base),
                             "lr_mult": float(lr_mult),
