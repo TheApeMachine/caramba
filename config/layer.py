@@ -176,6 +176,10 @@ class AttentionLayerConfig(Config):
     mem_summarize: Literal["mean", "linear", "conv"] = "mean"
     mem_activation_threshold: PositiveInt | None = None
 
+    # Debug / introspection (manifest-driven).
+    # If enabled, logs when DBA fused-decode kernels fail and we fall back.
+    debug_fused_decode: bool = False
+
     @property
     def head_dim(self) -> int:
         """Compute head dimension from total attention dimension."""

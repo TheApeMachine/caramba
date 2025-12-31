@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import unittest
 import torch
+ 
 
 from config.layer import AttentionLayerConfig, AttentionMode, LayerType
 from layer.attention import AttentionLayer
@@ -38,6 +39,7 @@ class TestAttentionLayerStandard(unittest.TestCase):
         layer = AttentionLayer(cfg)
 
         self.assertIsNotNone(layer.out_proj)
+        assert isinstance(layer.out_proj, torch.nn.Linear)  # type guard for pyright
         self.assertEqual(layer.out_proj.in_features, self.d_model)
         self.assertEqual(layer.out_proj.out_features, self.d_model)
 

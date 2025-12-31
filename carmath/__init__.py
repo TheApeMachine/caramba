@@ -9,7 +9,8 @@ from __future__ import annotations
 from .splits import train_val_counts
 from .precision import autocast_dtype
 from .precision import autocast_dtype_str, weight_dtype, weight_dtype_str
-from .optim import global_grad_norm_l2
+from .precision import neg_inf
+from .optim import global_grad_norm_l2, safe_perplexity_from_nll
 from .bytes import bytes_per_kind
 from .batching import token_budget_batch_size
 from .sketch import stable_int_hash, stride_sketch_indices, sketch_dot5
@@ -19,9 +20,11 @@ __all__ = [
     "train_val_counts",
     "autocast_dtype",
     "autocast_dtype_str",
+    "neg_inf",
     "weight_dtype",
     "weight_dtype_str",
     "global_grad_norm_l2",
+    "safe_perplexity_from_nll",
     "bytes_per_kind",
     "token_budget_batch_size",
     "stable_int_hash",

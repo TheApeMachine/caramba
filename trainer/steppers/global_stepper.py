@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 
 from config.run import Run
 from console import logger
-from carmath import autocast_dtype
+from carmath import autocast_dtype, safe_perplexity_from_nll
 from trainer.collectors import Collector
 from trainer.checkpointers import CheckPointer
 from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
@@ -31,17 +31,6 @@ def _sync_device(device: torch.device) -> None:
     except Exception:
         pass
 
-
-def _safe_ppl(loss: float) -> float:
-    """Convert NLL to perplexity with overflow guards."""
-    try:
-        if not math.isfinite(loss):
-            return float("inf")
-        if loss > 20.0:
-            return float("inf")
-        return float(math.exp(loss))
-    except Exception:
-        return float("inf")
 
 def _has_diffusion_head(student: nn.Module) -> bool:
     return hasattr(student, "diffusion_head") and getattr(student, "diffusion_head", None) is not None
@@ -389,8 +378,8 @@ class GlobalStepper:
                     legacy: dict[str, float] = {
                         "loss": float(loss_val),
                         "train_loss": float(loss_val),
-                        "ppl": _safe_ppl(float(loss_val)),
-                        "train_ppl": _safe_ppl(float(loss_val)),
+                        "ppl": safe_perplexity_from_nll(float(loss_val)),
+                        "train_ppl": safe_perplexity_from_nll(float(loss_val)),
                         "lr": float(lr),
                         "lr_base": float(lr_base),
                         "lr_mult": float(lr_mult),
@@ -429,7 +418,7 @@ class GlobalStepper:
                     if ctx.inst:
                         ctx.inst.log_scalars(step=step + 1, prefix="eval/global", scalars=val_metrics)
                         vloss = float(val_metrics.get("val_loss", 0.0))
-                        vppl = _safe_ppl(vloss)
+                        vppl = safe_perplexity_from_nll(vloss)
                         if vloss > 0.0 and vloss < best_val_loss:
                             best_val_loss = vloss
                         if vppl < best_val_ppl:

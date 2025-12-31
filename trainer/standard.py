@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader, Subset
 from carmath import (
     autocast_dtype,
     autocast_dtype_str,
+    safe_perplexity_from_nll,
     token_budget_batch_size,
     train_val_counts,
     weight_dtype_str,
@@ -517,12 +518,7 @@ class StandardTrainer:
                     if (step + 1) % telemetry_interval == 0:
                         loss_val = float(loss.detach())
                         # Perplexity guardrails (avoid overflow in exp()).
-                        ppl = float("inf")
-                        try:
-                            if math.isfinite(loss_val) and loss_val <= 20.0:
-                                ppl = float(math.exp(loss_val))
-                        except Exception:
-                            ppl = float("inf")
+                        ppl = float(safe_perplexity_from_nll(float(loss_val)))
 
                         lr = float(optimizer.param_groups[0].get("lr", float(train.lr)))
                         lr_base = float(getattr(train, "lr", lr))

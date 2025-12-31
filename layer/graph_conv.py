@@ -15,6 +15,7 @@ from torch import Tensor, nn
 from torch.nn import Parameter
 from typing_extensions import override
 
+from carmath import neg_inf
 from config.layer import GraphConvLayerConfig
 
 if TYPE_CHECKING:
@@ -149,7 +150,7 @@ class _GATImpl(nn.Module):
         if adj.dim() == 2:
             # Broadcast adj to heads: (heads, N, N)
             mask = adj.unsqueeze(0)
-            scores = scores.masked_fill(mask == 0, -1e9)
+            scores = scores.masked_fill(mask == 0, neg_inf(scores.dtype))
 
         attn = F.softmax(scores, dim=-1)
         attn = F.dropout(attn, p=self.dropout_p, training=self.training)
