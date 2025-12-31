@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from config.run import Run
+from caramba.config.run import Run
 
-from trainer.collectors import Collector
-from trainer.checkpointers import CheckPointer
-from trainer.upcycle_context import UpcycleContext
+from caramba.trainer.collectors import Collector
+from caramba.trainer.checkpointers import CheckPointer
+from caramba.trainer.upcycle_context import UpcycleContext
 
 
 class Stepper(Protocol):

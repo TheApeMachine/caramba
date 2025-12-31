@@ -9,10 +9,10 @@ from typing import Any
 from agents import Agent, Runner, ModelSettings
 from rich.text import Text
 
-from agent.context import AgentContext
-from config.persona import PersonaConfig
-from agent.tools import Tool
-from console.logger import get_logger
+from caramba.agent.context import AgentContext
+from caramba.config.persona import PersonaConfig
+from caramba.agent.tools import Tool
+from caramba.console.logger import get_logger
 
 
 class Researcher:

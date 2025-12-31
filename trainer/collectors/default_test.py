@@ -8,16 +8,16 @@ import pytest
 import torch
 from torch.utils.data import Dataset
 
-import trainer.collectors.default as dc
-from config.collector import DefaultCollectorConfig
-from config.defaults import Defaults, DefaultsData
-from config.group import Group
-from config.mode import Mode
-from config.run import Run
-from config.train import TrainConfig, TrainPhase
-from runtime.plan import RuntimePlan
-from trainer.collectors.default import DefaultCollector, _resolve_data_path
-from trainer.upcycle_context import UpcycleContext
+import caramba.trainer.collectors.default as dc
+from caramba.config.collector import DefaultCollectorConfig
+from caramba.config.defaults import Defaults, DefaultsData
+from caramba.config.group import Group
+from caramba.config.mode import Mode
+from caramba.config.run import Run
+from caramba.config.train import TrainConfig, TrainPhase
+from caramba.runtime.plan import RuntimePlan
+from caramba.trainer.collectors.default import DefaultCollector, _resolve_data_path
+from caramba.trainer.upcycle_context import UpcycleContext
 
 
 class TinyTokenDataset(Dataset):

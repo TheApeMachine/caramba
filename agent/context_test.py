@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from agent.context import AgentContext
-from agent.knowledge import Knowledge
-from agent.message import Message
+from caramba.agent.context import AgentContext
+from caramba.agent.knowledge import Knowledge
+from caramba.agent.message import Message
 
 
 def test_agent_context_to_prompt_empty() -> None:

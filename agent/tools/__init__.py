@@ -18,7 +18,7 @@ from agents.mcp import (
     MCPServerStreamableHttp,
 )
 
-from config.mcp_registry import MCPServerConfig, load_mcp_servers
+from caramba.config.mcp_registry import MCPServerConfig, load_mcp_servers
 
 
 _MCP_REGISTRY_CACHE: dict[str, MCPServerConfig] | None = None

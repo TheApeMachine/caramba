@@ -8,7 +8,7 @@ import pytest
 import torch
 from torch import Tensor
 
-from layer.diffusion_head import (
+from caramba.layer.diffusion_head import (
     DIFFUSERS_AVAILABLE,
     DiffusionHeadConfig,
     DiffusionNextTokenHead,

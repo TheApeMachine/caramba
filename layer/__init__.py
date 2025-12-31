@@ -13,7 +13,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from config.layer import LayerConfig
+from caramba.config.layer import LayerConfig
 
 
 class Layer(nn.Module):

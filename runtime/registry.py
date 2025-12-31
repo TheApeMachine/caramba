@@ -6,11 +6,12 @@ registry maps these ids to concrete Python implementations for a given backend.
 
 from __future__ import annotations
 
+import copy
 import importlib
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from config.component import ComponentSpec
+from caramba.config.component import ComponentSpec
 
 
 def _import_symbol(path: str) -> object:
@@ -81,5 +82,9 @@ class ComponentRegistry:
 
     def build(self, spec: ComponentSpec, *, backend: str) -> object:
         resolved = self.resolve(spec, backend=backend)
-        return _construct(resolved.factory, dict(spec.config))
+        # IMPORTANT: manifest-derived config may contain shared nested objects
+        # (e.g., YAML anchors/aliases). Deep-copy to avoid cross-target mutation
+        # and keep component construction isolated.
+        cfg: dict[str, Any] = copy.deepcopy(spec.config)
+        return _construct(resolved.factory, cfg)
 

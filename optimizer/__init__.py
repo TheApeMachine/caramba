@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from optimizer.quantizer import Quantizer as Quantizer
+    from caramba.optimizer.quantizer import Quantizer as Quantizer
 
 __all__ = ["Quantizer"]
 
@@ -18,7 +18,7 @@ __all__ = ["Quantizer"]
 def __getattr__(name: str) -> Any:
     # Lazy import to avoid circular imports (e.g. optimizer <-> cache).
     if name == "Quantizer":
-        from optimizer.quantizer import Quantizer
+        from caramba.optimizer.quantizer import Quantizer
 
         return Quantizer
     raise AttributeError(name)

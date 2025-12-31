@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from typing import Any
 
-from data.tensors import TensorFilesDataset
+from caramba.data.tensors import TensorFilesDataset
 
 
 def test_dataset_tensors_npy_mmap_basic(tmp_path) -> None:

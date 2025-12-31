@@ -8,7 +8,7 @@ import unittest
 import torch
 from torch import nn
 
-from model.trace import Trace
+from caramba.model.trace import Trace
 
 
 class TraceTest(unittest.TestCase):

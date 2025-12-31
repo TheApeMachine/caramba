@@ -6,14 +6,14 @@ import pytest
 import torch
 from torch import nn
 
-import trainer.initializers.default as init
-from config.group import Group
-from config.initializer import DefaultInitializerConfig
-from config.model import ModelConfig
-from config.train import TrainConfig, TrainPhase
-from runtime.plan import RuntimePlan
-from trainer.initializers.default import DefaultInitializer, _make_teacher_model_config
-from trainer.upcycle_init_context import UpcycleInitContext
+import caramba.trainer.initializers.default as init
+from caramba.config.group import Group
+from caramba.config.initializer import DefaultInitializerConfig
+from caramba.config.model import ModelConfig
+from caramba.config.train import TrainConfig, TrainPhase
+from caramba.runtime.plan import RuntimePlan
+from caramba.trainer.initializers.default import DefaultInitializer, _make_teacher_model_config
+from caramba.trainer.upcycle_init_context import UpcycleInitContext
 
 
 def test_make_teacher_model_config_rewrites_attention_to_standard() -> None:

@@ -9,8 +9,8 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.topology import CyclicTopologyConfig
-from topology.utils import unwrap_output
+from caramba.config.topology import CyclicTopologyConfig
+from caramba.topology.utils import unwrap_output
 
 
 class CyclicTopology(nn.Module):

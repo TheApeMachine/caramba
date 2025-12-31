@@ -5,7 +5,7 @@ errors, and results. This module provides beautiful, consistent terminal
 output using Rich, with semantic log levels and structured data display.
 
 Usage:
-    from console import logger
+    from caramba.console import logger
 
     logger.info("Starting training...")
     logger.success("Training complete!")
@@ -21,7 +21,7 @@ Usage:
     for i in logger.progress(100, "Processing"):
         do_work(i)
 """
-from console.logger import Logger, get_logger
+from caramba.console.logger import Logger, get_logger
 
 # Module-level singleton for convenient import
 logger = get_logger()

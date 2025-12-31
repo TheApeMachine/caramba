@@ -15,7 +15,7 @@ from torch import Tensor, nn
 from torch.nn import Parameter
 from typing_extensions import override
 
-from config.layer import GraphConvLayerConfig
+from caramba.config.layer import GraphConvLayerConfig
 
 if TYPE_CHECKING:
     from tensordict import TensorDictBase

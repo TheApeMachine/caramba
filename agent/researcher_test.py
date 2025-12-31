@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 import types
 
-import agent as agent_mod
-from agent import Researcher
-from agent.context import AgentContext
-from config.persona import DeveloperConfig
+import caramba.agent as agent_mod
+from caramba.agent import Researcher
+from caramba.agent.context import AgentContext
+from caramba.config.persona import DeveloperConfig
 
 
 def _make_researcher(monkeypatch) -> Researcher:

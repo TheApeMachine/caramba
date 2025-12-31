@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from trainer.checkpointers.default import DefaultCheckPointer
+from caramba.trainer.checkpointers.default import DefaultCheckPointer
 
 
 def test_validate_checkpoint_state_rejects_missing_keys() -> None:

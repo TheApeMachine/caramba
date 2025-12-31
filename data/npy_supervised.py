@@ -15,7 +15,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from runtime.tensordict_utils import TensorDictBase, as_tensordict
+from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 class _NpyPairDataset(Dataset[TensorDictBase]):
     def __init__(self, *, x: np.ndarray, y: np.ndarray) -> None:

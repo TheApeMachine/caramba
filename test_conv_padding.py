@@ -1,6 +1,6 @@
 
-from config.layer import Conv2dLayerConfig
-from layer.conv2d import Conv2dLayer
+from caramba.config.layer import Conv2dLayerConfig
+from caramba.layer.conv2d import Conv2dLayer
 
 def test_conv2d_padding_mode():
     print("Testing Conv2d padding_mode...")

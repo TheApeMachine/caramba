@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.layer import LinearLayerConfig
+from caramba.config.layer import LinearLayerConfig
 
 try:
     from tensordict import TensorDictBase as _TensorDictBase  # type: ignore[import-not-found]

@@ -10,8 +10,8 @@ import argparse
 import json
 from pathlib import Path
 
-from config.manifest import Manifest
-from experiment.paper_artifacts import collect_ablation_artifacts
+from caramba.config.manifest import Manifest
+from caramba.experiment.paper_artifacts import collect_ablation_artifacts
 
 
 def main() -> int:

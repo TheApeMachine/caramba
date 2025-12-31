@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from config.manifest import Manifest
+from caramba.config.manifest import Manifest
 
 
 def _manifest_root_dir(*, manifest: Manifest, manifest_path: Path | None) -> Path:

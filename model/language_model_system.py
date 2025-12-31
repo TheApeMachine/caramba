@@ -12,12 +12,12 @@ from typing import Any
 
 import torch
 from torch import Tensor, nn
-from console import logger
+from caramba.console import logger
 
-from compiler.lower import Lowerer
-from compiler.validate import Validator
-from config.model import ModelConfig
-from model import Model
+from caramba.compiler.lower import Lowerer
+from caramba.compiler.validate import Validator
+from caramba.config.model import ModelConfig
+from caramba.model import Model
 
 
 @dataclass

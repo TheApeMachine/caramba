@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from data.npy import NpyDataset
+from caramba.data.npy import NpyDataset
 
 
 @pytest.mark.skipif(importlib.util.find_spec("numpy") is None, reason="numpy not installed")

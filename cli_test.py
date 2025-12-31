@@ -6,7 +6,7 @@ from typing import NoReturn
 import click
 from click.testing import CliRunner
 
-import cli as cli_mod
+import caramba.cli as cli_mod
 
 
 def test_cli_run_invokes_manifest_runner(monkeypatch) -> None:

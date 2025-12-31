@@ -6,8 +6,8 @@ from __future__ import annotations
 import unittest
 import torch
 
-from config.layer import LayerType, SwiGLULayerConfig
-from layer.swiglu import SwiGLULayer
+from caramba.config.layer import LayerType, SwiGLULayerConfig
+from caramba.layer.swiglu import SwiGLULayer
 
 
 class SwiGLULayerTest(unittest.TestCase):

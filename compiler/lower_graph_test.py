@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from compiler.lower import Lowerer
-from config.topology import GraphNodeConfig, GraphTopologyConfig, TopologyType
+from caramba.compiler.lower import Lowerer
+from caramba.config.topology import GraphNodeConfig, GraphTopologyConfig, TopologyType
 
 
 def test_lower_graph_topology_expands_repeat_with_chained_keys() -> None:

@@ -95,7 +95,10 @@ caramba = [
 [tool.pyright]
 include = ["."]
 exclude = [".venv", "**/__pycache__", "*.egg-info"]
-extraPaths = ["."]
+# The `caramba` package in this repo is the *repository directory* itself, so
+# type checkers need the parent directory on the import path to resolve
+# `import caramba.*` correctly.
+extraPaths = [".."]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 reportMissingImports = "warning"

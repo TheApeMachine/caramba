@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Tuple, Union
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.layer import Conv2dLayerConfig
+from caramba.config.layer import Conv2dLayerConfig
 
 if TYPE_CHECKING:
     from tensordict import TensorDictBase

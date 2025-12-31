@@ -11,12 +11,12 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from benchmark.artifacts import ArtifactGenerator, ExperimentMetadata
-from benchmark.latency import LatencyBenchmark, LatencyResult
-from benchmark.memory import MemoryBenchmark, MemoryResult
-from benchmark.perplexity import PerplexityBenchmark, PerplexityResult
-from config.benchmark import BenchmarkSuite, BenchmarkType, LatencyBenchmarkConfig, MemoryBenchmarkConfig, PerplexityBenchmarkConfig
-from console import logger
+from caramba.benchmark.artifacts import ArtifactGenerator, ExperimentMetadata
+from caramba.benchmark.latency import LatencyBenchmark, LatencyResult
+from caramba.benchmark.memory import MemoryBenchmark, MemoryResult
+from caramba.benchmark.perplexity import PerplexityBenchmark, PerplexityResult
+from caramba.config.benchmark import BenchmarkSuite, BenchmarkType, LatencyBenchmarkConfig, MemoryBenchmarkConfig, PerplexityBenchmarkConfig
+from caramba.console import logger
 
 
 class BenchmarkRunner:

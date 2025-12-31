@@ -7,9 +7,9 @@ from typing import Protocol
 
 from torch.utils.data import DataLoader
 
-from config.train import TrainConfig
-from trainer.upcycle_context import UpcycleContext
-from runtime.tensordict_utils import TensorDictBase
+from caramba.config.train import TrainConfig
+from caramba.trainer.upcycle_context import UpcycleContext
+from caramba.runtime.tensordict_utils import TensorDictBase
 
 
 class Collector(Protocol):

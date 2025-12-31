@@ -6,7 +6,7 @@ from typing import Any
 import torch
 from torch import nn
 
-import benchmark.evaluators as ev
+import caramba.benchmark.evaluators as ev
 
 
 def test_latency_evaluator_builds_config_and_returns_expected_keys(monkeypatch) -> None:
