@@ -6,18 +6,18 @@ import pytest
 import torch
 from torch import nn
 
-from carmath.batching import token_budget_batch_size
-from carmath.bytes import bytes_per_kind
-from carmath.linalg import randomized_svd
-from carmath.optim import global_grad_norm_l2
-from carmath.precision import (
+from caramba.carmath.batching import token_budget_batch_size
+from caramba.carmath.bytes import bytes_per_kind
+from caramba.carmath.linalg import randomized_svd
+from caramba.carmath.optim import global_grad_norm_l2
+from caramba.carmath.precision import (
     autocast_dtype,
     autocast_dtype_str,
     weight_dtype,
     weight_dtype_str,
 )
-from carmath.sketch import sketch_dot5, stable_int_hash, stride_sketch_indices
-from carmath.splits import train_val_counts
+from caramba.carmath.sketch import sketch_dot5, stable_int_hash, stride_sketch_indices
+from caramba.carmath.splits import train_val_counts
 
 
 def test_token_budget_batch_size_scales_and_clamps() -> None:

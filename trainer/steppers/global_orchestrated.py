@@ -10,14 +10,14 @@ import time
 from torch import Tensor
 from torch.amp.grad_scaler import GradScaler
 
-from config.run import Run
-from console import logger
-from carmath import global_grad_norm_l2, autocast_dtype, safe_perplexity_from_nll
-from trainer.collectors import Collector
-from trainer.checkpointers import CheckPointer
-from trainer.upcycle_context import UpcycleContext
-from trainer.steppers.global_stepper import _compute_loss, _has_diffusion_head
-from runtime.tensordict_utils import TensorDictBase
+from caramba.config.run import Run
+from caramba.console import logger
+from caramba.carmath import global_grad_norm_l2, autocast_dtype, safe_perplexity_from_nll
+from caramba.trainer.collectors import Collector
+from caramba.trainer.checkpointers import CheckPointer
+from caramba.trainer.upcycle_context import UpcycleContext
+from caramba.trainer.steppers.global_stepper import _compute_loss, _has_diffusion_head
+from caramba.runtime.tensordict_utils import TensorDictBase
 
 
 class GlobalOrchestratedStepper:
@@ -31,7 +31,7 @@ class GlobalOrchestratedStepper:
         save_every: int,
         resume_state: dict[str, object] | None,
     ) -> None:
-        from orchestrator import (
+        from caramba.orchestrator import (
             DecisionBoundary,
             Orchestrator,
             OrchestratorConfig,
@@ -39,7 +39,7 @@ class GlobalOrchestratedStepper:
             DEFAULT_PORTFOLIO,
             StrategyBundle,
         )
-        from orchestrator.wrappers import AdaGC
+        from caramba.orchestrator.wrappers import AdaGC
 
         if run.train is None:
             raise ValueError(f"Run {run.id} has no train config.")

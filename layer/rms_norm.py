@@ -10,8 +10,8 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.layer import RMSNormLayerConfig
-from console import logger
+from caramba.config.layer import RMSNormLayerConfig
+from caramba.console import logger
 
 
 class RMSNormLayer(nn.Module):
@@ -59,7 +59,7 @@ class RMSNormLayer(nn.Module):
 
         # Fast path via HAL (Metal / Triton / fallback).
         try:
-            from optimizer.kernels import rmsnorm
+            from caramba.optimizer.kernels import rmsnorm
 
             return rmsnorm(x=x, weight=self.weight, eps=float(self.eps))
         except Exception as e:

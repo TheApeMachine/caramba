@@ -63,6 +63,11 @@ def as_tensordict(obj: Any) -> "TensorDictBase":
 
 def tree_map(fn: Callable[[Any], Any], obj: Any) -> Any:
     """Apply `fn` to all leaves of a nested container."""
+    # NOTE: TensorDict implements Mapping, so handle it before the Mapping case
+    # to preserve TensorDict types (and allow callers like `to_device()` to
+    # dispatch via TensorDictBase.to()).
+    if isinstance(obj, TensorDictBase):  # type: ignore[arg-type]
+        return fn(obj)
     if isinstance(obj, Tensor):
         return fn(obj)
     if isinstance(obj, Mapping):

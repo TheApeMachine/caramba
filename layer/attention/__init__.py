@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 from torch import nn
 
-from config.layer import AttentionLayerConfig, AttentionMode
+from caramba.config.layer import AttentionLayerConfig, AttentionMode
 
 if TYPE_CHECKING:
     from cache.decoupled import DecoupledLayerKVCache

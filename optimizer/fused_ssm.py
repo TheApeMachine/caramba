@@ -8,8 +8,8 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from optimizer.triton_runtime import TRITON_AVAILABLE
-from optimizer.kernels_ssm import selective_scan_triton
+from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.kernels_ssm import selective_scan_triton
 
 __all__ = ["fused_selective_scan", "fused_ssm_available"]
 

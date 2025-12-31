@@ -6,7 +6,7 @@ import pytest
 
 import torch
 
-from instrumentation.hdf5_store import H5Store
+from caramba.instrumentation.hdf5_store import H5Store
 
 
 def test_h5store_writes_step(tmp_path: Path) -> None:

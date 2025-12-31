@@ -1,8 +1,8 @@
 
 import unittest
 import torch
-from layer.dense import DenseLayer
-from config.layer import DenseLayerConfig
+from caramba.layer.dense import DenseLayer
+from caramba.config.layer import DenseLayerConfig
 
 class TestDenseLayer(unittest.TestCase):
     def test_basic(self):

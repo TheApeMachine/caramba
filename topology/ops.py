@@ -2,7 +2,7 @@
 
 GraphTopology nodes can reference these via:
 
-  op: python:topology.ops:Concat
+  op: python:caramba.topology.ops:Concat
 
 This keeps common graph wiring (concat/add/etc.) declarative in manifests.
 """

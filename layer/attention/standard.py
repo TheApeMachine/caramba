@@ -9,12 +9,12 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from config.layer import AttentionLayerConfig, AttentionMode
-from layer.attention.base import AttentionBase
-from layer.rope import RotaryEmbedding
+from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from caramba.layer.attention.base import AttentionBase
+from caramba.layer.rope import RotaryEmbedding
 
 if TYPE_CHECKING:
-    from cache.layer import LayerKVCache
+    from caramba.cache.layer import LayerKVCache
 
 
 class StandardAttentionLayer(AttentionBase):

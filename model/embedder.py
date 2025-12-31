@@ -11,7 +11,7 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.embedder import EmbedderConfig, EmbedderType
+from caramba.config.embedder import EmbedderConfig, EmbedderType
 
 
 class Embedder(nn.Module):

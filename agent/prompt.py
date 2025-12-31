@@ -1,8 +1,8 @@
 """Prompt building for agents."""
 from __future__ import annotations
 
-from agent.context import AgentContext
-from config.persona import SharedPersonaConfig
+from caramba.agent.context import AgentContext
+from caramba.config.persona import SharedPersonaConfig
 
 
 class PromptBuilder:

@@ -13,6 +13,9 @@ This module is intentionally conservative: every op must have a correct fallback
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 import os
@@ -20,7 +23,7 @@ import torch
 from torch import Tensor
 import torch.nn.functional as F
 
-from console import logger
+from caramba.console import logger
 
 
 _DISABLE_METAL_ALL = os.getenv("CARAMBA_DISABLE_METAL_KERNELS", "").strip() == "1"
@@ -30,19 +33,65 @@ _DISABLE_METAL_KIND: dict[str, bool] = {
     if k.startswith("CARAMBA_DISABLE_METAL_")
 }
 
+_METAL_DISABLE_ALL: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "caramba_metal_disable_all", default=False
+)
+_METAL_DISABLE_KINDS: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar(
+    "caramba_metal_disable_kinds", default=frozenset()
+)
+
+
+@contextlib.contextmanager
+def metal_kernels_disabled(*, kinds: Iterable[str] | None = None) -> Iterator[None]:
+    """Temporarily disable Metal fast-path kernels.
+
+    Prefer this over mutating `os.environ` at runtime. Environment variables are
+    read at import time for performance/stability, while this context manager
+    provides a reliable runtime override for correctness checks and debugging.
+    """
+
+    token_all: contextvars.Token[bool] | None = None
+    token_kinds: contextvars.Token[frozenset[str]] | None = None
+
+    if kinds is None:
+        token_all = _METAL_DISABLE_ALL.set(True)
+    else:
+        ks = frozenset(str(k).strip().upper() for k in kinds if str(k).strip())
+        if ks:
+            token_kinds = _METAL_DISABLE_KINDS.set(_METAL_DISABLE_KINDS.get() | ks)
+
+    try:
+        yield
+    finally:
+        if token_kinds is not None:
+            _METAL_DISABLE_KINDS.reset(token_kinds)
+        if token_all is not None:
+            _METAL_DISABLE_ALL.reset(token_all)
+
 
 def _metal_disabled(kind: str) -> bool:
-    """Best-effort runtime kill-switch for Metal kernels.
+    """Best-effort kill-switch for Metal kernels.
 
     This is used to keep *correctness* (e.g. teacher parity sanity checks) independent
     from the availability of fast-path kernels.
 
+    Runtime override:
+    - Prefer `metal_kernels_disabled()` for temporary disabling inside the current context.
+
+    Startup-only env override:
+    - `CARAMBA_DISABLE_METAL_KERNELS=1` disables all Metal kernels.
+    - `CARAMBA_DISABLE_METAL_<KIND>=1` disables a specific kernel kind.
+
     IMPORTANT: only the literal string "1" disables kernels. Values like "true"/"yes"
     do NOT disable anything.
     """
+    if _METAL_DISABLE_ALL.get():
+        return True
     if _DISABLE_METAL_ALL:
         return True
     k = str(kind).strip().upper()
+    if k and (k in _METAL_DISABLE_KINDS.get()):
+        return True
     return bool(_DISABLE_METAL_KIND.get(k, False))
 
 
@@ -50,7 +99,7 @@ def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     """RMSNorm: y = x * rsqrt(mean(x^2) + eps) * weight."""
     if (not _metal_disabled("rmsnorm")) and x.device.type == "mps" and x.dtype == torch.float16:
         try:
-            from optimizer.metal import metal_rmsnorm_available, rmsnorm_fp16
+            from caramba.optimizer.metal import metal_rmsnorm_available, rmsnorm_fp16
 
             if metal_rmsnorm_available():
                 return rmsnorm_fp16(x=x, weight=weight, eps=float(eps))
@@ -74,7 +123,7 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     """
     if (not _metal_disabled("rope")) and x.device.type == "mps" and x.dtype == torch.float16:
         try:
-            from optimizer.metal import metal_rope_available, rope_fp16
+            from caramba.optimizer.metal import metal_rope_available, rope_fp16
 
             if metal_rope_available():
                 return rope_fp16(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
@@ -104,7 +153,7 @@ def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: flo
     """
     if (not _metal_disabled("layernorm")) and x.device.type == "mps" and x.dtype == torch.float16:
         try:
-            from optimizer.metal import layernorm_fp16, metal_layernorm_available
+            from caramba.optimizer.metal import layernorm_fp16, metal_layernorm_available
 
             if metal_layernorm_available():
                 return layernorm_fp16(x=x, weight=weight, bias=bias, eps=float(eps))

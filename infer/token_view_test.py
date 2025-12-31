@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from infer.token_view import TokenView
+from caramba.infer.token_view import TokenView
 
 
 def test_token_view_append_slice_and_rollback() -> None:

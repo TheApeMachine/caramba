@@ -3,16 +3,16 @@ from __future__ import annotations
 import pytest
 import torch
 
-from config.kvcache import KVCacheKind
-from config.layer import AttentionLayerConfig, AttentionMode, LayerType
-from infer.cache_policy import (
+from caramba.config.kvcache import KVCacheKind
+from caramba.config.layer import AttentionLayerConfig, AttentionMode, LayerType
+from caramba.infer.cache_policy import (
     choose_cache_kind,
     estimate_kvcache_bytes,
     long_context_fidelity_check,
     needle_in_haystack_gate,
     short_context_fidelity_check,
 )
-from layer.attention import AttentionLayer
+from caramba.layer.attention import AttentionLayer
 
 
 class _TinyAttnModel(torch.nn.Module):

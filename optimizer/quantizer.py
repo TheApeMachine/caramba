@@ -16,7 +16,7 @@ import math
 import torch
 import torch.nn.functional as F
 
-from cache import QuantSpec
+from caramba.cache import QuantSpec
 
 
 # NormalFloat4 levels from QLoRA paper

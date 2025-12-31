@@ -6,7 +6,7 @@ from typing import Any
 import torch
 from torch import nn
 
-import benchmark.metrics as metrics
+import caramba.benchmark.metrics as metrics
 
 
 def test_perplexity_metric_wraps_benchmark_result(monkeypatch) -> None:

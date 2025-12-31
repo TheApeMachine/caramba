@@ -14,14 +14,14 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
-from cache import make_quantspec
-from cache.decoupled import DecoupledLayerKVCache
-from cache.layer import LayerKVCache
-from config.kvcache import KVCacheKind
-from config.kvcache import KVCacheTensorConfig
-from config.layer import AttentionLayerConfig, AttentionMode
-from infer.context import InferContext
-from layer.attention import AttentionLayer
+from caramba.cache import make_quantspec
+from caramba.cache.decoupled import DecoupledLayerKVCache
+from caramba.cache.layer import LayerKVCache
+from caramba.config.kvcache import KVCacheKind
+from caramba.config.kvcache import KVCacheTensorConfig
+from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from caramba.infer.context import InferContext
+from caramba.layer.attention import AttentionLayer
 
 
 @dataclass(frozen=True)

@@ -20,7 +20,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Subset
 
-from carmath import (
+from caramba.carmath import (
     autocast_dtype,
     autocast_dtype_str,
     safe_perplexity_from_nll,
@@ -28,17 +28,17 @@ from carmath import (
     train_val_counts,
     weight_dtype_str,
 )
-from config.defaults import Defaults
-from config.manifest import Manifest
-from config.run import Run
-from config.target import ExperimentTargetConfig
-from config.train import TrainConfig, TrainPhase
-from console import logger
-from instrumentation import RunLogger
-from instrumentation.wandb_writer import WandBWriter
-from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
-from runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
-from runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
+from caramba.config.defaults import Defaults
+from caramba.config.manifest import Manifest
+from caramba.config.run import Run
+from caramba.config.target import ExperimentTargetConfig
+from caramba.config.train import TrainConfig, TrainPhase
+from caramba.console import logger
+from caramba.instrumentation import RunLogger
+from caramba.instrumentation.wandb_writer import WandBWriter
+from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
+from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
+from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
 
 
 class _Engine(Protocol):
@@ -118,7 +118,7 @@ class StandardTrainer:
         dist_strategy = str(getattr(train, "distributed_strategy", "none")).lower()
         if dist_strategy != "none":
             try:
-                from trainer.distributed import DistributedConfig, DistributedContext, DistributedStrategy
+                from caramba.trainer.distributed import DistributedConfig, DistributedContext, DistributedStrategy
 
                 cfg = DistributedConfig(
                     strategy=DistributedStrategy(dist_strategy),
@@ -230,7 +230,7 @@ class StandardTrainer:
                 weight_decay=float(weight_decay),
             )
         elif opt_name == "lion":
-            from optimizer.lion import Lion
+            from caramba.optimizer.lion import Lion
 
             optimizer = Lion(
                 system.parameters(),  # type: ignore[arg-type]
@@ -252,7 +252,7 @@ class StandardTrainer:
             ),
         )
 
-        from trainer.swap_manager import SwapManager
+        from caramba.trainer.swap_manager import SwapManager
 
         swap = SwapManager(
             offload_optimizer=bool(getattr(train, "offload_optimizer", False)),
@@ -318,7 +318,7 @@ class StandardTrainer:
 
         # Export a reproducibility artifact (lowered plan + io shapes).
         try:
-            from compiler.plan import Planner
+            from caramba.compiler.plan import Planner
 
             plan_txt = Planner().format_target(target, indent=0, path=f"targets[{target.name}]")
             (checkpoint_dir / "compiled_plan.txt").write_text("\n".join(plan_txt) + "\n", encoding="utf-8")
@@ -445,27 +445,37 @@ class StandardTrainer:
                 task = progress.add_task("Training...", total=int(run.steps))
                 for step in range(int(run.steps)):
                     t0 = time.perf_counter()
-                    try:
-                        item = next(loader_iter)
-                    except StopIteration:
-                        logger.warning("Reached end of loader, resetting")
-                        loader_iter = iter(loader)
-                        item = next(loader_iter)
-
-                    if isinstance(item, TensorDictBase):
-                        batch_td = item
-                    elif isinstance(item, dict):
-                        batch_td = as_tensordict(item)
-                    else:
-                        raise TypeError(
-                            "StandardTrainer expects batch items to be dict/TensorDict. "
-                            f"Got {type(item).__name__}."
-                        )
-
-                    batch_td = cast(TensorDictBase, to_device(batch_td, device=device))
-                    t_data = time.perf_counter()
+                    accum_steps = int(getattr(train, "gradient_accumulation_steps", 1))
+                    accum_steps = max(1, accum_steps)
                     optimizer.zero_grad(set_to_none=True)
                     kernel_launches: int | None = None
+                    loss_sum = 0.0
+                    outputs: object | None = None
+                    last_batch_td: TensorDictBase | None = None
+
+                    # Fetch/prepare microbatches for this optimizer step.
+                    micro_batches: list[TensorDictBase] = []
+                    t_data0 = time.perf_counter()
+                    for _micro in range(int(accum_steps)):
+                        try:
+                            item = next(loader_iter)
+                        except StopIteration:
+                            logger.warning("Reached end of loader, resetting")
+                            loader_iter = iter(loader)
+                            item = next(loader_iter)
+
+                        if isinstance(item, TensorDictBase):
+                            batch_td = item
+                        elif isinstance(item, dict):
+                            batch_td = as_tensordict(item)
+                        else:
+                            raise TypeError(
+                                "StandardTrainer expects batch items to be dict/TensorDict. "
+                                f"Got {type(item).__name__}."
+                            )
+                        batch_td = cast(TensorDictBase, to_device(batch_td, device=device))
+                        micro_batches.append(batch_td)
+                    t_data = time.perf_counter()
 
                     # Optional profiling (best-effort; primarily useful on CUDA).
                     if profile_every > 0 and ((step + 1) % profile_every == 0):
@@ -480,8 +490,10 @@ class StandardTrainer:
                                 record_shapes=bool(profile_record_shapes),
                                 profile_memory=True,
                             ) as prof:
-                                outputs, loss = _forward_loss(batch_td)
-                                loss.backward()
+                                # Profile only the first microbatch to keep overhead bounded.
+                                outputs, loss = _forward_loss(micro_batches[0])
+                                loss_sum += float(loss.detach())
+                                (loss / float(accum_steps)).backward()
                             # Heuristic: count device-side events as “launch-ish”.
                             if device.type == "cuda":
                                 try:
@@ -495,15 +507,24 @@ class StandardTrainer:
                         except Exception:
                             logger.warning("Failed to profile (ignoring)")
                             kernel_launches = None
-                            outputs, loss = _forward_loss(batch_td)
-                            loss.backward()
+                            outputs, loss = _forward_loss(micro_batches[0])
+                            loss_sum += float(loss.detach())
+                            (loss / float(accum_steps)).backward()
                     else:
-                        outputs, loss = _forward_loss(batch_td)
+                        # No profiling path.
+                        pass
 
                     t_fwd = time.perf_counter()
-                    # If we profiled, backward already happened.
-                    if not (profile_every > 0 and ((step + 1) % profile_every == 0)):
-                        loss.backward()
+                    # Backward over remaining microbatches (and the first when not profiled).
+                    did_profile_first = bool(profile_every > 0 and ((step + 1) % profile_every == 0))
+                    start_idx = 1 if did_profile_first else 0
+                    for mb in micro_batches[start_idx:]:
+                        outputs, loss = _forward_loss(mb)
+                        loss_sum += float(loss.detach())
+                        (loss / float(accum_steps)).backward()
+                        last_batch_td = mb
+                    if last_batch_td is None:
+                        last_batch_td = micro_batches[-1]
                     t_bwd = time.perf_counter()
                     swap.before_optimizer_step(optimizer, device=device)
                     optimizer.step()
@@ -516,7 +537,8 @@ class StandardTrainer:
                     t_optim = time.perf_counter()
 
                     if (step + 1) % telemetry_interval == 0:
-                        loss_val = float(loss.detach())
+                        # Log averaged loss per optimizer step (matches grad accumulation semantics).
+                        loss_val = float(loss_sum) / float(accum_steps)
                         # Perplexity guardrails (avoid overflow in exp()).
                         ppl = float(safe_perplexity_from_nll(float(loss_val)))
 
@@ -525,7 +547,7 @@ class StandardTrainer:
                         lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
                         grad_norm = 0.0
                         try:
-                            from carmath import global_grad_norm_l2
+                            from caramba.carmath import global_grad_norm_l2
 
                             grad_norm = float(global_grad_norm_l2(system))  # type: ignore[arg-type]
                         except Exception:
@@ -546,7 +568,11 @@ class StandardTrainer:
                             "seq_len": float(getattr(train, "block_size", 0)),
                         }
                         try:
-                            extra = _call_objective_metrics(outputs=outputs, batch_td=batch_td, loss=loss)
+                            # Best-effort: compute extra metrics on the last microbatch.
+                            if outputs is not None and last_batch_td is not None:
+                                extra = _call_objective_metrics(outputs=outputs, batch_td=last_batch_td, loss=loss)
+                            else:
+                                extra = None
                             if isinstance(extra, dict):
                                 metrics.update({str(k): float(v) for k, v in extra.items()})
                         except Exception:
@@ -555,7 +581,7 @@ class StandardTrainer:
                         # Timing breakdown (seconds).
                         metrics.update(
                             {
-                                "time_data_s": float(t_data - t0),
+                                "time_data_s": float(t_data - t_data0),
                                 "time_fwd_s": float(t_fwd - t_data),
                                 "time_bwd_s": float(t_bwd - t_fwd),
                                 "time_optim_s": float(t_optim - t_bwd),
@@ -569,10 +595,10 @@ class StandardTrainer:
                         )
                         # Token throughput (best-effort for token LM datasets).
                         try:
-                            y = batch_td.get("target_ids", None)  # type: ignore[attr-defined]
+                            y = last_batch_td.get("target_ids", None) if last_batch_td is not None else None  # type: ignore[attr-defined]
                             if isinstance(y, Tensor):
                                 step_s = float(max(1e-9, t_optim - t0))
-                                metrics["tok_s"] = float(y.numel()) / step_s
+                                metrics["tok_s"] = float(y.numel() * int(accum_steps)) / step_s
                         except Exception:
                             pass
                         # Memory footprint estimates (MiB).

@@ -10,8 +10,8 @@ from typing import Any
 
 import torch
 
-from benchmark.perplexity import PerplexityBenchmark
-from config.benchmark import PerplexityBenchmarkConfig
+from caramba.benchmark.perplexity import PerplexityBenchmark
+from caramba.config.benchmark import PerplexityBenchmarkConfig
 
 
 @dataclass(frozen=True, slots=True)

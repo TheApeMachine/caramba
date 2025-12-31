@@ -9,11 +9,11 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from carmath import neg_inf
-from config.layer import AttentionLayerConfig, AttentionMode
-from console import logger
-from layer.attention import AttentionLayer
-from layer.rope import RotaryEmbedding
+from caramba.carmath import neg_inf
+from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from caramba.console import logger
+from caramba.layer.attention import AttentionLayer
+from caramba.layer.rope import RotaryEmbedding
 
 if TYPE_CHECKING:
     from cache.decoupled import DecoupledLayerKVCache
@@ -31,7 +31,10 @@ def _get_infer_context_type() -> type:
     """Get the InferContext type, caching it on first access."""
     global _InferContext
     if _InferContext is None:
-        from infer.context import InferContext
+        # Import from the `caramba` package namespace. Importing `infer.context`
+        # would create/resolve a different module, causing `isinstance(ctx, InferContext)`
+        # checks to fail and KV caches to never be consumed.
+        from caramba.infer.context import InferContext
 
         _InferContext = InferContext
     return _InferContext

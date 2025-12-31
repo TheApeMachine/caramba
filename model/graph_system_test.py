@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import torch
 
-from model.generic_system import GenericSystem
-from runtime.tensordict_utils import as_tensordict
+from caramba.model.generic_system import GenericSystem
+from caramba.runtime.tensordict_utils import as_tensordict
 
 
 def test_generic_system_executes_graph_topology_over_tensordict() -> None:

@@ -6,7 +6,7 @@ from __future__ import annotations
 import unittest
 from typing import Any, cast
 
-from config.resolve import (
+from caramba.config.resolve import (
     Resolver,
     TYPE_ALIASES,
     normalize_type_names,

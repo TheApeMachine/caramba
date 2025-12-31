@@ -11,7 +11,7 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.layer import RNNLayerConfig
+from caramba.config.layer import RNNLayerConfig
 
 if TYPE_CHECKING:
     from tensordict import TensorDictBase

@@ -8,9 +8,9 @@ from __future__ import annotations
 import click
 from pathlib import Path
 
-from console import logger
+from caramba.console import logger
 
-from experiment.runner import run_from_manifest_path
+from caramba.experiment.runner import run_from_manifest_path
 
 
 class CarambaCLI(click.Group):

@@ -17,7 +17,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from typing_extensions import override
 
-from runtime.tensordict_utils import TensorDictBase, as_tensordict
+from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 _INT32_MAX = 2**31 - 1
 

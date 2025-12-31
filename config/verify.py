@@ -10,9 +10,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from config import NonNegativeFloat, PositiveFloat, PositiveInt
-from config.eval import EvalVerifyConfig
-from config.kvcache import KVCachePolicyConfig, KVCachePolicyDecoupledConfig
+from caramba.config import NonNegativeFloat, PositiveFloat, PositiveInt
+from caramba.config.eval import EvalVerifyConfig
+from caramba.config.kvcache import KVCachePolicyConfig, KVCachePolicyDecoupledConfig
 
 
 class CompareThreshold(BaseModel):

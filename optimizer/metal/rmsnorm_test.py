@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import METAL_SUPPORTED
 
 
 @pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
@@ -13,13 +13,13 @@ def test_metal_rmsnorm_matches_reference() -> None:
 
     # Build/load the extension; if the toolchain isn't present, skip rather than fail.
     try:
-        from optimizer.metal.jit import load_caramba_metal_ops
+        from caramba.optimizer.metal.jit import load_caramba_metal_ops
 
         _ = load_caramba_metal_ops(verbose=False)
     except Exception as e:
         pytest.skip(f"caramba metal extension unavailable: {e}")
 
-    from optimizer.metal import rmsnorm_fp16
+    from caramba.optimizer.metal import rmsnorm_fp16
 
     device = torch.device("mps")
     dtype = torch.float16
@@ -47,13 +47,13 @@ def test_metal_rmsnorm_noweight_matches_reference() -> None:
         pytest.skip("torch.backends.mps is not available")
 
     try:
-        from optimizer.metal.jit import load_caramba_metal_ops
+        from caramba.optimizer.metal.jit import load_caramba_metal_ops
 
         _ = load_caramba_metal_ops(verbose=False)
     except Exception as e:
         pytest.skip(f"caramba metal extension unavailable: {e}")
 
-    from optimizer.metal import rmsnorm_fp16
+    from caramba.optimizer.metal import rmsnorm_fp16
 
     device = torch.device("mps")
     dtype = torch.float16

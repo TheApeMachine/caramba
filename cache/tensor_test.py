@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from cache.tensor import SeqCacheTensor
-from config.kvcache import KVCacheKind, KVCacheTensorConfig
+from caramba.cache.tensor import SeqCacheTensor
+from caramba.config.kvcache import KVCacheKind, KVCacheTensorConfig
 
 
 def test_seq_cache_tensor_fp16_append_get_and_truncate() -> None:

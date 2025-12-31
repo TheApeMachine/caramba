@@ -12,9 +12,9 @@ from pathlib import Path
 
 from torch.utils.data import Dataset
 
-from data.npy import NpyDataset
-from data.text_tokens import TextTokensDataset
-from runtime.tensordict_utils import TensorDictBase
+from caramba.data.npy import NpyDataset
+from caramba.data.text_tokens import TextTokensDataset
+from caramba.runtime.tensordict_utils import TensorDictBase
 
 logger = logging.getLogger(__name__)
 

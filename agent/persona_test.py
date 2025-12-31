@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from agent.persona import Persona
-from config.persona import DeveloperConfig, PersonaType
+from caramba.agent.persona import Persona
+from caramba.config.persona import DeveloperConfig, PersonaType
 
 
 def test_persona_wraps_config_fields() -> None:

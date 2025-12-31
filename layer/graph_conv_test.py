@@ -1,8 +1,8 @@
 
 import unittest
 import torch
-from layer.graph_conv import GraphConvLayer
-from config.layer import GraphConvLayerConfig
+from caramba.layer.graph_conv import GraphConvLayer
+from caramba.config.layer import GraphConvLayerConfig
 
 class TestGraphConvLayer(unittest.TestCase):
     def test_gcn_forward(self):

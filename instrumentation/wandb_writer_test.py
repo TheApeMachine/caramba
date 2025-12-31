@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from instrumentation.wandb_writer import WandBWriter
+from caramba.instrumentation.wandb_writer import WandBWriter
 
 
 def test_wandb_writer_best_effort_no_crash(tmp_path: Path) -> None:

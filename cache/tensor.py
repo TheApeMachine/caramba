@@ -13,9 +13,9 @@ from collections.abc import Callable
 
 import torch
 
-from cache import QuantSpec, make_quantspec
-from config.kvcache import KVCacheKind, KVCacheTensorConfig
-from optimizer.quantizer import Quantizer
+from caramba.cache import QuantSpec, make_quantspec
+from caramba.config.kvcache import KVCacheKind, KVCacheTensorConfig
+from caramba.optimizer.quantizer import Quantizer
 
 
 class SeqCacheTensor:

@@ -164,7 +164,7 @@ class RotaryEmbedding(nn.Module):
 
         # Fast path via HAL (Metal / Triton / fallback).
         try:
-            from optimizer.kernels import rope_apply
+            from caramba.optimizer.kernels import rope_apply
 
             return rope_apply(x=x, cos=cos, sin=sin, rot_dim=int(self.rot_dim))
         except Exception:

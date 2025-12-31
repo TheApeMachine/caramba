@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from compiler.plan import Planner
-from config.manifest import Manifest
+from caramba.compiler.plan import Planner
+from caramba.config.manifest import Manifest
 
 
 def test_planner_formats_experiment_target_with_topology(tmp_path: Path) -> None:

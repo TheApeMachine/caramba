@@ -14,8 +14,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from config import PositiveFloat, PositiveInt, Probability
-from config.kvcache import KVCacheConfig
+from caramba.config import PositiveFloat, PositiveInt, Probability
+from caramba.config.kvcache import KVCacheConfig
 
 
 class BenchmarkType(str, enum.Enum):

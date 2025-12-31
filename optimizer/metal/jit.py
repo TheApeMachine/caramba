@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from optimizer.runtime import METAL_BUILD_TOOLS_AVAILABLE, METAL_SUPPORTED
+from caramba.optimizer.runtime import METAL_BUILD_TOOLS_AVAILABLE, METAL_SUPPORTED
 
 
 def _this_dir() -> Path:

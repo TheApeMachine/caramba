@@ -10,11 +10,11 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, Field, model_validator
 
-from config.agents import AgentProcessConfig, AgentTeamConfig
-from config.benchmark import BenchmarkSpec
-from config.component import ComponentSpec
-from config.model import ModelConfig
-from config.run import Run
+from caramba.config.agents import AgentProcessConfig, AgentTeamConfig
+from caramba.config.benchmark import BenchmarkSpec
+from caramba.config.component import ComponentSpec
+from caramba.config.model import ModelConfig
+from caramba.config.run import Run
 
 
 class ExperimentTargetConfig(BaseModel):
