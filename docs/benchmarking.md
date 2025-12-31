@@ -286,7 +286,7 @@ targets:
 ### Programmatic Usage
 
 ```python
-from benchmark import PerplexityBenchmark, LatencyBenchmark, MemoryBenchmark
+from caramba.benchmark import PerplexityBenchmark, LatencyBenchmark, MemoryBenchmark
 
 # Perplexity
 perp_bench = PerplexityBenchmark(
@@ -386,7 +386,7 @@ benchmark:
 ### Extending Benchmark Classes
 
 ```python
-from benchmark import BaseBenchmark, BenchmarkResult
+from caramba.benchmark import BaseBenchmark, BenchmarkResult
 
 class CustomBenchmark(BaseBenchmark):
     def __init__(self, custom_param: int):

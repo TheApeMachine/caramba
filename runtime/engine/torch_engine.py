@@ -11,13 +11,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from config.manifest import Manifest
-from config.target import ExperimentTargetConfig
-from runtime.registry import ComponentRegistry
-from benchmark.artifacts import ExperimentMetadata
-from benchmark.runner import BenchmarkRunner
-from config.benchmark import BenchmarkSuite
-from console import logger
+from caramba.config.manifest import Manifest
+from caramba.config.target import ExperimentTargetConfig
+from caramba.runtime.registry import ComponentRegistry
+from caramba.benchmark.artifacts import ExperimentMetadata
+from caramba.benchmark.runner import BenchmarkRunner
+from caramba.config.benchmark import BenchmarkSuite
+from caramba.console import logger
 import torch
 from torch import nn
 
@@ -39,110 +39,110 @@ class TorchEngine:
         self.registry.register(
             backend="torch",
             ref="trainer.upcycle",
-            python="trainer.upcycle:UpcycleTrainer",
+            python="caramba.trainer.upcycle:UpcycleTrainer",
         )
         self.registry.register(
             backend="torch",
             ref="trainer.upcycle_eval",
-            python="trainer.upcycle_eval:UpcycleEvalTrainer",
+            python="caramba.trainer.upcycle_eval:UpcycleEvalTrainer",
         )
         self.registry.register(
             backend="torch",
             ref="trainer.standard",
-            python="trainer.standard:StandardTrainer",
+            python="caramba.trainer.standard:StandardTrainer",
         )
         self.registry.register(
             backend="torch",
             ref="trainer.gradient_isolation",
-            python="trainer.gradient_isolation:GradientIsolationTrainer",
+            python="caramba.trainer.gradient_isolation:GradientIsolationTrainer",
         )
 
         # Datasets
         self.registry.register(
             backend="torch",
             ref="dataset.tokens",
-            python="data.token_dataset:TokenDataset",
+            python="caramba.data.token_dataset:TokenDataset",
         )
         self.registry.register(
             backend="torch",
             ref="dataset.npy_supervised",
-            python="data.npy_supervised:NpySupervisedDataset",
+            python="caramba.data.npy_supervised:NpySupervisedDataset",
         )
         self.registry.register(
             backend="torch",
             ref="dataset.graph_npy",
-            python="data.graph_npy:GraphNpyDataset",
+            python="caramba.data.graph_npy:GraphNpyDataset",
         )
         self.registry.register(
             backend="torch",
             ref="dataset.diffusion_vector",
-            python="data.diffusion_vector:DiffusionVectorDataset",
+            python="caramba.data.diffusion_vector:DiffusionVectorDataset",
         )
         self.registry.register(
             backend="torch",
             ref="dataset.tensors",
-            python="data.tensors:TensorFilesDataset",
+            python="caramba.data.tensors:TensorFilesDataset",
         )
 
         # Systems
         self.registry.register(
             backend="torch",
             ref="system.language_model",
-            python="model.language_model_system:LanguageModelSystem",
+            python="caramba.model.language_model_system:LanguageModelSystem",
         )
         self.registry.register(
             backend="torch",
             ref="system.generic",
-            python="model.generic_system:GenericSystem",
+            python="caramba.model.generic_system:GenericSystem",
         )
         self.registry.register(
             backend="torch",
             ref="system.mlp_classifier",
-            python="model.mlp_classifier_system:MLPClassifierSystem",
+            python="caramba.model.mlp_classifier_system:MLPClassifierSystem",
         )
         self.registry.register(
             backend="torch",
             ref="system.gcn",
-            python="model.gcn_system:GCNSystem",
+            python="caramba.model.gcn_system:GCNSystem",
         )
         self.registry.register(
             backend="torch",
             ref="system.diffusion_denoiser",
-            python="model.diffusion_denoiser_system:DiffusionDenoiserSystem",
+            python="caramba.model.diffusion_denoiser_system:DiffusionDenoiserSystem",
         )
 
         # Objectives
         self.registry.register(
             backend="torch",
             ref="objective.next_token_ce",
-            python="trainer.objectives:NextTokenCrossEntropyObjective",
+            python="caramba.trainer.objectives:NextTokenCrossEntropyObjective",
         )
         self.registry.register(
             backend="torch",
             ref="objective.mse",
-            python="trainer.objectives:KeyedMSEObjective",
+            python="caramba.trainer.objectives:KeyedMSEObjective",
         )
         self.registry.register(
             backend="torch",
             ref="objective.classification_ce",
-            python="trainer.objectives:KeyedCrossEntropyObjective",
+            python="caramba.trainer.objectives:KeyedCrossEntropyObjective",
         )
 
         # Metrics/evaluators
         self.registry.register(
             backend="torch",
             ref="metric.perplexity",
-            python="benchmark.metrics:PerplexityMetric",
+            python="caramba.benchmark.metrics:PerplexityMetric",
         )
         self.registry.register(
             backend="torch",
             ref="evaluator.latency",
-            python="benchmark.evaluators:LatencyEvaluator",
+            python="caramba.benchmark.evaluators:LatencyEvaluator",
         )
         self.registry.register(
             backend="torch",
             ref="evaluator.memory",
-            python="benchmark.evaluators:MemoryEvaluator",
+            python="caramba.benchmark.evaluators:MemoryEvaluator",
         )
 
     def run_experiment(

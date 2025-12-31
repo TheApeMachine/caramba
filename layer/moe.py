@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from config.layer import MoELayerConfig
+from caramba.config.layer import MoELayerConfig
 
 
 class MoELayer(nn.Module):

@@ -11,7 +11,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field
 
-from config import Config, PositiveFloat, PositiveInt, Probability
+from caramba.config import Config, PositiveFloat, PositiveInt, Probability
 
 
 class AttentionMode(str, enum.Enum):
@@ -57,9 +57,7 @@ class LayerType(str, enum.Enum):
     @staticmethod
     def module_name() -> str:
         """Return the Python module containing layer implementations."""
-        # Use top-level modules (e.g. `layer.attention`) to avoid importing the same
-        # files under both `caramba.layer.*` and `layer.*` in -m package execution.
-        return "layer"
+        return "caramba.layer"
 
 
 class LinearLayerConfig(Config):

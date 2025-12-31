@@ -24,15 +24,15 @@ from carmath import (
     train_val_counts,
     weight_dtype_str,
 )
-from config.defaults import Defaults
-from config.manifest import Manifest
-from config.run import Run
-from config.target import ExperimentTargetConfig
-from config.train import TrainConfig, TrainPhase
-from console import logger
-from instrumentation import RunLogger
-from runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
-from runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
+from caramba.config.defaults import Defaults
+from caramba.config.manifest import Manifest
+from caramba.config.run import Run
+from caramba.config.target import ExperimentTargetConfig
+from caramba.config.train import TrainConfig, TrainPhase
+from caramba.console import logger
+from caramba.instrumentation import RunLogger
+from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
+from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
 
 
 class _Engine(Protocol):
@@ -159,7 +159,7 @@ class GradientIsolationTrainer:
         dist_strategy = str(getattr(train, "distributed_strategy", "none")).lower()
         if dist_strategy != "none":
             try:
-                from trainer.distributed import DistributedConfig, DistributedContext, DistributedStrategy
+                from caramba.trainer.distributed import DistributedConfig, DistributedContext, DistributedStrategy
 
                 cfg = DistributedConfig(
                     strategy=DistributedStrategy(dist_strategy),
@@ -233,7 +233,7 @@ class GradientIsolationTrainer:
                 weight_decay=float(weight_decay),
             )
         elif opt_name == "lion":
-            from optimizer.lion import Lion
+            from caramba.optimizer.lion import Lion
 
             optimizer = Lion(
                 system.parameters(),  # type: ignore[arg-type]
@@ -244,7 +244,7 @@ class GradientIsolationTrainer:
         else:
             raise ValueError(f"Unknown optimizer {opt_name!r}")
 
-        from trainer.swap_manager import SwapManager
+        from caramba.trainer.swap_manager import SwapManager
 
         swap = SwapManager(
             offload_optimizer=bool(getattr(train, "offload_optimizer", False)),

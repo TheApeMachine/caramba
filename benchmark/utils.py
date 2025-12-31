@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from torch import nn
 
-from console import logger
+from caramba.console import logger
 
 
 def get_model_vocab_size(model: nn.Module, default: int = 32000) -> int:

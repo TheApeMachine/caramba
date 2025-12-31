@@ -11,12 +11,12 @@ import unittest
 import torch
 from torch import Tensor, nn
 
-from config.verify import FidelityVerifyConfig
-from trainer.fidelity import (
+from caramba.config.verify import FidelityVerifyConfig
+from caramba.trainer.fidelity import (
     assert_fidelity_thresholds,
     compute_short_context_fidelity,
 )
-from runtime.tensordict_utils import as_tensordict
+from caramba.runtime.tensordict_utils import as_tensordict
 
 
 class _UniformLM(nn.Module):

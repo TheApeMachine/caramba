@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from config import Config, PositiveFloat, PositiveInt, Probability
+from caramba.config import Config, PositiveFloat, PositiveInt, Probability
 
 
 class DiffusionScheduler(str, enum.Enum):
@@ -52,7 +52,7 @@ class DiffusionHeadConfig(Config):
         The layer module uses a frozen dataclass for performance;
         this method bridges from the Pydantic config.
         """
-        from layer.diffusion_head import DiffusionHeadConfig as RuntimeConfig
+        from caramba.layer.diffusion_head import DiffusionHeadConfig as RuntimeConfig
 
         return RuntimeConfig(
             enabled=self.enabled,

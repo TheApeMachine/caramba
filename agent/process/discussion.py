@@ -6,11 +6,11 @@ from typing import Any, TYPE_CHECKING
 
 import yaml
 
-from agent.process import Process
-from agent.context import AgentContext
+from caramba.agent.process import Process
+from caramba.agent.context import AgentContext
 
 if TYPE_CHECKING:
-    from agent import Researcher
+    from caramba.agent import Researcher
 
 
 class Discussion(Process):

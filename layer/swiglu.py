@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.layer import SwiGLULayerConfig
+from caramba.config.layer import SwiGLULayerConfig
 
 
 class SwiGLULayer(nn.Module):

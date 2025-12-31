@@ -9,7 +9,7 @@ import unittest
 import torch
 from torch import nn
 
-from orchestrator.nowcast import NowcastConfig, WeightNowcaster
+from caramba.orchestrator.nowcast import NowcastConfig, WeightNowcaster
 
 
 class TestWeightNowcaster(unittest.TestCase):

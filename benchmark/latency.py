@@ -16,9 +16,9 @@ from dataclasses import dataclass, field
 import torch
 from torch import nn
 
-from benchmark.utils import get_model_vocab_size
-from config.benchmark import LatencyBenchmarkConfig
-from infer.generate import GenerateConfig, Generator, sample_next_token
+from caramba.benchmark.utils import get_model_vocab_size
+from caramba.config.benchmark import LatencyBenchmarkConfig
+from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
 
 
 @dataclass

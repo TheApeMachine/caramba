@@ -21,7 +21,7 @@ def test_caramba_module_main_exits_with_cli_exit_code(monkeypatch) -> None:
 
 def test_caramba_python_m_executes_dunder_main(monkeypatch) -> None:
     # Covers the `if __name__ == "__main__": main()` branch.
-    import cli as cli_mod
+    import caramba.cli as cli_mod
 
     monkeypatch.setattr(cli_mod, "main", lambda _argv=None: 5)
 

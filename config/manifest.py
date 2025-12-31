@@ -15,10 +15,10 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-from config import PositiveInt
-from config.defaults import Defaults
-from config.resolve import Resolver, normalize_type_names
-from config.target import TargetConfig
+from caramba.config import PositiveInt
+from caramba.config.defaults import Defaults
+from caramba.config.resolve import Resolver, normalize_type_names
+from caramba.config.target import TargetConfig
 
 
 class Manifest(BaseModel):
@@ -42,7 +42,7 @@ class Manifest(BaseModel):
         """Load and validate a manifest from a JSON or YAML file.
 
         Supports variable substitution via a `vars` section at the top level.
-        Variables can be referenced as `$var_name` throughout the config.
+        Variables can be referenced as `${var_name}` throughout the config.
         """
         text = path.read_text(encoding="utf-8")
         match path.suffix.lower():

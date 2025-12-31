@@ -8,11 +8,11 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from console import logger
+from caramba.console import logger
 
 if TYPE_CHECKING:
-    from experiment.group import ExperimentGroup
-    from config.manifest import Manifest
+    from caramba.experiment.group import ExperimentGroup
+    from caramba.config.manifest import Manifest
 
 class ExperimentResults:
     """Builds summaries of experiment results."""

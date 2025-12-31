@@ -4,8 +4,8 @@ from __future__ import annotations
 import unittest
 import torch
 
-from config.layer import DropoutLayerConfig, LayerType
-from layer.dropout import DropoutLayer
+from caramba.config.layer import DropoutLayerConfig, LayerType
+from caramba.layer.dropout import DropoutLayer
 
 class DropoutLayerTest(unittest.TestCase):
     """Test the dropout layer."""

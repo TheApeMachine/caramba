@@ -2,8 +2,8 @@
 import unittest
 import torch
 from torch import Tensor
-from layer.conv2d import Conv2dLayer
-from config.layer import Conv2dLayerConfig
+from caramba.layer.conv2d import Conv2dLayer
+from caramba.config.layer import Conv2dLayerConfig
 
 class TestConv2dLayer(unittest.TestCase):
     def test_basic_forward(self):

@@ -22,7 +22,7 @@ import torch
 from torch import Tensor, nn
 
 from carmath.sketch import sketch_dot5, stride_sketch_indices
-from optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
 
 log = logging.getLogger(__name__)
 

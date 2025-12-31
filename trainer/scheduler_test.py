@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
+from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 
 
 def test_linear_scheduler_decays() -> None:

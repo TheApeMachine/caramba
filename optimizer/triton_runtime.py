@@ -9,7 +9,7 @@ Keep this module to avoid breaking imports.
 
 from __future__ import annotations
 
-from optimizer.runtime import (
+from caramba.optimizer.runtime import (
     TRITON_AVAILABLE,
     triton_decoupled_q4q8q4_available,
     triton_ssm_available,

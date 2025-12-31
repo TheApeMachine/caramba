@@ -12,7 +12,7 @@ from typing import Any, Protocol
 import torch
 from torch import Tensor
 
-from config.transforms import (
+from caramba.config.transforms import (
     AddMaskTransformConfig,
     CastDtypeTransformConfig,
     GaussianNoiseTransformConfig,
@@ -21,7 +21,7 @@ from config.transforms import (
     TokenShiftTransformConfig,
     TransformConfig,
 )
-from runtime.tensordict_utils import TensorDictBase, as_tensordict
+from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 
 class Transform(Protocol):

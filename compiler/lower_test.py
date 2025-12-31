@@ -10,10 +10,10 @@ import torch
 from pathlib import Path
 from typing import cast
 
-from compiler import Compiler
-from config.layer import LinearLayerConfig, LayerNormLayerConfig
-from config.manifest import Manifest
-from config.topology import (
+from caramba.compiler import Compiler
+from caramba.config.layer import LinearLayerConfig, LayerNormLayerConfig
+from caramba.config.manifest import Manifest
+from caramba.config.topology import (
     NestedTopologyConfig,
     SequentialTopologyConfig,
     StackedTopologyConfig,

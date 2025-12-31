@@ -12,7 +12,7 @@ import math
 import time
 from typing import Any
 
-from console import logger
+from caramba.console import logger
 
 
 def now_s() -> float:

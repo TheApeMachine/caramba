@@ -16,11 +16,11 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
-from console import logger
-from config.benchmark import PerplexityBenchmarkConfig
-from data.npy import NpyDataset
-from benchmark.utils import get_model_vocab_size
-from runtime.tensordict_utils import TensorDictBase, collate_tensordict
+from caramba.console import logger
+from caramba.config.benchmark import PerplexityBenchmarkConfig
+from caramba.data.npy import NpyDataset
+from caramba.benchmark.utils import get_model_vocab_size
+from caramba.runtime.tensordict_utils import TensorDictBase, collate_tensordict
 
 
 @dataclass

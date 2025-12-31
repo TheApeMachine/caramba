@@ -11,13 +11,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from agent.process import Process
-from agent.process.utils import _extract_json, _manifest_root_dir
-from console import logger
-from config.manifest import Manifest
+from caramba.agent.process import Process
+from caramba.agent.process.utils import _extract_json, _manifest_root_dir
+from caramba.console import logger
+from caramba.config.manifest import Manifest
 
 if TYPE_CHECKING:
-    from agent import Researcher
+    from caramba.agent import Researcher
 
 
 @dataclass(frozen=True, slots=True)

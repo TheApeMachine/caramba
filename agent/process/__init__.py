@@ -9,10 +9,10 @@ from collections.abc import Callable
 from typing import Optional, TYPE_CHECKING
 
 from agents import HandoffInputData, handoff
-from agent.context import AgentContext
+from caramba.agent.context import AgentContext
 
 if TYPE_CHECKING:
-    from agent import Researcher
+    from caramba.agent import Researcher
 
 
 class Process(ABC):

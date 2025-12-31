@@ -16,8 +16,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from config.eval import EvalCase, EvalThresholds, EvalVerifyConfig
-from eval.tokenizer import Tokenizer, build_tokenizer
+from caramba.config.eval import EvalCase, EvalThresholds, EvalVerifyConfig
+from caramba.eval.tokenizer import Tokenizer, build_tokenizer
 
 
 class EvalCaseResult:

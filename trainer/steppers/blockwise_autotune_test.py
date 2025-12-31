@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import torch
 
-from orchestrator.telemetry import SpikeDetector
-from trainer.steppers.blockwise import _scale_lr
+from caramba.orchestrator.telemetry import SpikeDetector
+from caramba.trainer.steppers.blockwise import _scale_lr
 
 
 def test_scale_lr_updates_optimizer_groups() -> None:

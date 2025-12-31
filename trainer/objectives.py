@@ -19,7 +19,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from runtime.tensordict_utils import TensorDictBase
+from caramba.runtime.tensordict_utils import TensorDictBase
 
 TensorDict = TensorDictBase
 MetricDict = dict[str, float]

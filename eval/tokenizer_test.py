@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from config.eval import LlamaTokenizerConfig, TiktokenTokenizerConfig
-from eval.tokenizer import build_tokenizer
+from caramba.config.eval import LlamaTokenizerConfig, TiktokenTokenizerConfig
+from caramba.eval.tokenizer import build_tokenizer
 
 
 def test_build_tokenizer_tiktoken() -> None:

@@ -7,15 +7,15 @@ import unittest
 
 import torch
 
-from config.embedder import (
+from caramba.config.embedder import (
     EmbedderType,
     NoEmbedderConfig,
     TokenEmbedderConfig,
 )
-from config.layer import LayerType, LinearLayerConfig
-from config.model import ModelConfig, ModelType
-from config.topology import StackedTopologyConfig
-from model import Model
+from caramba.config.layer import LayerType, LinearLayerConfig
+from caramba.config.model import ModelConfig, ModelType
+from caramba.config.topology import StackedTopologyConfig
+from caramba.model import Model
 
 
 class ModelTest(unittest.TestCase):

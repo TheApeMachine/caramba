@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from agent.message import Message
-from agent.knowledge import Knowledge
+from caramba.agent.message import Message
+from caramba.agent.knowledge import Knowledge
 
 
 @dataclass

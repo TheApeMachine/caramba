@@ -11,8 +11,8 @@ from pathlib import Path
 
 from torch.utils.data import Dataset
 
-from data.auto import build_token_dataset
-from runtime.tensordict_utils import TensorDictBase
+from caramba.data.auto import build_token_dataset
+from caramba.runtime.tensordict_utils import TensorDictBase
 
 _log = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class TokenDataset:
             raise ValueError(f"Unsupported data.config.prepare.type={kind!r}")
 
         # Import locally so training can run without dataset deps unless requested.
-        from prepare_fineweb import prepare_fineweb_npy
+        from caramba.prepare_fineweb import prepare_fineweb_npy
 
         tok = str(cfg.get("tokenizer", "llama"))
         model_id = str(cfg.get("model_id", "meta-llama/Llama-3.2-1B"))

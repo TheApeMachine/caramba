@@ -5,8 +5,8 @@ import unittest
 
 import torch
 
-from config.layer import LayerNormLayerConfig, LayerType
-from layer.layer_norm import LayerNormLayer
+from caramba.config.layer import LayerNormLayerConfig, LayerType
+from caramba.layer.layer_norm import LayerNormLayer
 
 
 class LayerNormLayerTest(unittest.TestCase):
