@@ -157,6 +157,17 @@ class TrainConfig(BaseModel):
     warmup_steps: NonNegativeInt = 0
     min_lr_ratio: Probability = 0.0
 
+    # -----------------------------
+    # MOSAIC curriculum controls (Stage D2 scheduled sampling)
+    # -----------------------------
+    # Teacher mixing probability for memory actions (when teacher signals are present in batch).
+    # The trainer computes a per-step p_t and passes it through ctx.
+    mosaic_teacher_p_start: Probability = 1.0
+    mosaic_teacher_p_end: Probability = 0.0
+    mosaic_teacher_p_schedule: Literal["linear", "cosine", "constant"] = "linear"
+    mosaic_teacher_p_warmup_steps: NonNegativeInt = 0
+    mosaic_teacher_p_cooldown_steps: NonNegativeInt = 0
+
     # Orchestrator settings (dynamic optimizer switching)
     orchestrator_enabled: bool = False
     orchestrator_mode: str = "active"  # disabled|monitor|active

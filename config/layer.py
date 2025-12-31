@@ -48,6 +48,8 @@ class LayerType(str, enum.Enum):
     RNN = "RNNLayer"
     GRAPH_CONV = "GraphConvLayer"
     DENSE = "DenseLayer"
+    MOSAIC_BLOCK = "MosaicBlockLayer"
+    MOSAIC_NGRAM_CACHE = "MosaicNGramCacheLogitsLayer"
 
     @classmethod
     def from_str(cls, s: str) -> "LayerType":
@@ -332,6 +334,84 @@ class DenseLayerConfig(Config):
     dropout: Probability = 0.0
 
 
+# -----------------------------
+# MOSAIC (no-attention, no-KV) layers
+# -----------------------------
+
+class MosaicBlockLayerConfig(Config):
+    """Configuration for a MOSAIC block (local mixer + multiscale state + hash memory).
+
+    This is a shape-preserving streaming layer intended to be stacked repeatedly.
+    """
+
+    type: Literal[LayerType.MOSAIC_BLOCK] = LayerType.MOSAIC_BLOCK
+
+    # Residual stream width.
+    d_model: PositiveInt
+
+    # Local mixer: depthwise causal convolution + gated MLP.
+    conv_kernel: PositiveInt = 7
+    mlp_mult: PositiveFloat = 2.0
+    dropout_p: Probability = 0.0
+
+    # Multiscale continuous state bank (K leaky integrators).
+    state_k: PositiveInt = 16
+    state_decay_min: Probability = 0.90
+    state_decay_max: Probability = 0.999
+
+    # Hard-addressed memory (fixed-size, sublinear, no scanning).
+    # Router can be:
+    # - "bits": learned SimHash-style sign bits (default; very cheap)
+    # - "vq": product-quantized VQ routing (learned discrete router; more stable/fuzzy)
+    mem_router: Literal["bits", "vq"] = "bits"
+    # VQ router parameters (used when mem_router="vq").
+    mem_vq_groups: PositiveInt = 2          # G
+    mem_vq_codebook_size: PositiveInt = 256 # K
+    mem_vq_group_dim: PositiveInt = 16      # dim per group
+    mem_vq_beam: PositiveInt = 1            # neighbor reads: top-k codes per group (beam^G buckets)
+    # When enabled, write to more than one candidate bucket (constant factor).
+    mem_write_multi: bool = False
+
+    mem_buckets: PositiveInt = 16384
+    mem_dim: PositiveInt = 256
+    mem_hashes: PositiveInt = 2
+    # Set-associative buckets: number of slots per bucket (constant-time within-bucket routing).
+    mem_assoc: PositiveInt = 4
+    # Key dimension for within-bucket routing (fuzzy match under drift/collisions).
+    mem_key_dim: PositiveInt = 32
+    # Soft read temperature for within-bucket routing.
+    mem_read_temp: PositiveFloat = 1.0
+    # If best similarity is below this, replace LRU slot (instead of updating best-matching slot).
+    mem_match_threshold: float = 0.0
+    mem_write_threshold: Probability = 0.5
+    mem_write_eta: Probability = 0.1
+
+    # Training dynamics hooks (Stage D).
+    # When set >0 during training, randomly drop the local mixer contribution to force dependence
+    # on state bank + memory reads.
+    forced_read_dropout_p: Probability = 0.0
+    # Contrastive auxiliary (InfoNCE-like) that makes memory reads predictive of future hidden state.
+    aux_contrastive_delta: PositiveInt = 1
+
+    # Fusion gates: scale contributions from long state / memory read.
+    gate_long_init: float = 0.0
+    gate_mem_init: float = 0.0
+
+
+class MosaicNGramCacheLogitsLayerConfig(Config):
+    """Optional n-gram continuation cache mixed into logits.
+
+    This layer is intended for inference-time experiments; set weight=0 to disable.
+    """
+
+    type: Literal[LayerType.MOSAIC_NGRAM_CACHE] = LayerType.MOSAIC_NGRAM_CACHE
+    vocab_size: PositiveInt
+    n: PositiveInt = 6
+    table_size: PositiveInt = 1048576  # 2^20
+    top_m: PositiveInt = 16
+    weight: float = 0.0
+
+
 # Union type for any layer config, with automatic deserialization
 LayerConfig: TypeAlias = Annotated[
     LinearLayerConfig
@@ -347,6 +427,8 @@ LayerConfig: TypeAlias = Annotated[
     | Conv2dLayerConfig
     | RNNLayerConfig
     | GraphConvLayerConfig
-    | DenseLayerConfig,
+    | DenseLayerConfig
+    | MosaicBlockLayerConfig
+    | MosaicNGramCacheLogitsLayerConfig,
     Field(discriminator="type"),
 ]

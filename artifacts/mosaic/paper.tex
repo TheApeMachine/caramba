@@ -1,0 +1,300 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{microtype}  % Better text flow, reduces overfull hbox
+\usepackage[margin=1in]{geometry}  % Consistent margins
+\usepackage{placeins} % Provides \FloatBarrier to prevent float reordering across sections
+
+% Custom colors
+\definecolor{accent}{RGB}{45, 106, 79}
+
+\title{\textbf{MOSAIC:} \\[0.3em]
+\large Multiscale Oscillator State + Associative Indexed Cache for No-Attention Language Modeling}
+
+\author{
+  Daniel Owen van Dommelen\\
+  \textit{Independent Research}\\
+  \texttt{theapemachine@gmail.com}
+}
+
+\date{December 2025}
+
+\begin{document}
+
+\maketitle
+
+% ============================================================================
+% ABSTRACT
+% ============================================================================
+\begin{abstract}
+Attention with a per-token KV cache implements one extremely general trick: \emph{store a vector for every past token, then do content-based lookup over all of them}. This yields perfect copying, avoids lossy compression of long contexts, and provides a substrate for in-context learning---but it also incurs \(O(T)\) memory growth and pairwise interactions.
+
+We propose \textbf{MOSAIC} (\textbf{M}ultiscale \textbf{O}scillator \textbf{S}tate + \textbf{A}ssociative \textbf{I}ndexed \textbf{C}ache), a streaming causal language model that is genuinely \textit{no attention, no KV cache}. MOSAIC decomposes ``memory'' into fixed-size explicit data structures controlled by a small neural controller: (i) a cheap local causal mixer for syntax/short patterns, (ii) a multiscale continuous state bank that preserves long-range intent at constant memory, and (iii) a hard-addressed associative cache that enables fast exact-ish recall without scanning the past. An optional n-gram continuation cache provides verbatim copying/continuation behavior with \(O(1)\) table access.
+
+This paper is a \textit{production-first} report: MOSAIC is implemented as first-class manifest-addressable components in Caramba (\path{config/presets/mosaic.yml}), enabling systematic ablations (cache sizes, timescales, write sparsity) on consumer hardware. We focus on the architectural spec, its streaming inference loop, and the evaluation plan for measuring copying fidelity, long-range dependency retention, and laptop-feasible latency/memory.
+\end{abstract}
+
+\paragraph{Keywords:}
+language modeling, no-attention, external memory, associative cache, n-gram cache, state space, long context, streaming inference, continual learning
+
+% ============================================================================
+% 1. INTRODUCTION
+% ============================================================================
+\section{Introduction}
+
+Transformer attention \cite{vaswani2017attention} is often described as a token-mixing operator, but in practice it is also a memory system: it stores a vector per past token and performs content-based lookup against the entire history. The KV cache makes this explicit by persisting those vectors across decode steps.
+
+\subsection{Attention as a ``store everything'' memory}
+
+The attention+KV-cache pattern provides three high-value capabilities:
+\begin{enumerate}
+    \item \textbf{Copying from context:} verbatim continuation and exact recall (names, brackets, numbers).
+    \item \textbf{Long-range dependencies without forced compression:} past tokens remain individually addressable.
+    \item \textbf{A substrate for in-context learning:} rapid pattern acquisition via retrieval-like behavior.
+\end{enumerate}
+However, it also brings two costs that dominate on consumer hardware: memory that grows as \(O(T)\) with context length and dense interactions that scale with history.
+
+\subsection{The MOSAIC hypothesis}
+
+MOSAIC starts from a different decomposition: \emph{stop trying to make the network itself be the memory}. Instead, make the network a controller for a small number of explicit, fixed-size data structures. The network decides what to keep, how to compress it, and how to retrieve it; the memory is sublinear, lossy, and constant-size.
+
+This paper focuses on a concrete, implementable design that is streaming causal, attention-free, and laptop-feasible.
+
+\subsection{Contributions}
+
+\begin{enumerate}
+    \item We specify \textbf{MOSAIC}, a no-attention/no-KV-cache streaming LM with constant memory w.r.t.\ context length.
+    \item We introduce a \textbf{multiscale continuous state bank} (leaky integrators) that preserves long-range intent at \(O(Kd)\) memory/compute.
+    \item We introduce a \textbf{hard-addressed associative cache} (fixed hash table) that provides \(O(1)\) lookup/update as a replacement for ``store all KV pairs''.
+    \item We implement MOSAIC as \textbf{manifest-addressable components} in Caramba (\path{config/presets/mosaic.yml}) to enable systematic ablations and laptop experiments.
+\end{enumerate}
+
+% ============================================================================
+% RELATED WORK
+% ============================================================================
+\section{Related Work}
+\label{sec:related_work}
+
+\paragraph{Attention reductions.}
+Most ``attention-efficient'' work retains the core primitive (softmax over past tokens) while changing how it is computed. Low-rank or projected variants reduce interaction cost (e.g., Linformer \cite{wang2020linformer}); kernel and hashing methods approximate attention without enumerating all pairs (e.g., Performer \cite{choromanski2021performer}, Reformer \cite{kitaev2020reformer}); sparse/local patterns reduce compute while preserving some long-range access (e.g., Longformer \cite{beltagy2020longformer}, BigBird \cite{zaheer2020bigbird}). These methods can reduce compute, but autoregressive decoding typically still benefits from (or requires) history-dependent state that grows with context length.
+
+\paragraph{KV-cache optimization.}
+Orthogonal work reduces the \emph{storage format} of KV caches via head sharing (MQA/GQA) \cite{shazeer2019mqa,ainslie2023gqa}, latent caching \cite{deepseek2024v2}, or quantization \cite{hooper2024kvquant,li2025commvq}. MOSAIC targets a different axis: removing the ``store one vector per token'' mechanism entirely, replacing it with fixed-size explicit memory structures.
+
+\paragraph{Explicit memory and cache language models.}
+Classical compression/prediction schemes and cache language models motivate the idea that exact copying and repetition can be handled by algorithmic structures at constant-time access, while a neural model provides generalization. MOSAIC adopts this hybrid view: continuous state for general context plus discrete cache structures for fast recall/continuation.
+
+\paragraph{State-space models and external memory.}
+Modern recurrent/state-space designs can provide strong long-range \emph{influence} with constant memory, but they are not designed for precise retrieval of discrete facts. Conversely, explicit read/write memories have long promised algorithmic recall, but training stable addressing policies is historically challenging. MOSAIC treats these as complementary: continuous state for ``vibe/intent'' and explicit data structures for copying and discrete recall.
+
+% ============================================================================
+% 2. METHODOLOGY
+% ============================================================================
+\section{Methodology}
+
+\subsection{Overview}
+MOSAIC is a streaming causal language model that replaces attention+KV-cache with explicit constant-size state:
+\begin{enumerate}
+    \item \textbf{Local mixer}: short-range token interactions (depthwise causal conv + gated MLP).
+    \item \textbf{Multiscale continuous state}: long-range intent via a bank of leaky integrators.
+    \item \textbf{Associative indexed cache}: hard-addressed fixed-size hash memory for fast recall.
+\end{enumerate}
+An optional n-gram continuation cache provides cheap verbatim continuation.
+
+\subsection{Local mixer: causal convolutional mixer}
+Let \(x_t\in\mathbb{R}^d\) be the residual stream and \(u_t=\mathrm{RMSNorm}(x_t)\).
+The local mixer applies a depthwise causal convolution over a window of \(k\) activations:
+\[
+\tilde{u}_t=\mathrm{DWConv}_k(u_{\le t}), \qquad
+m_t=\sigma(W_g\tilde{u}_t)\odot \tilde{u}_t, \qquad
+\Delta^{\text{local}}_t=W_2\,\phi(W_1 m_t).
+\]
+We update \(x_t\leftarrow x_t+\Delta^{\text{local}}_t\).
+
+\subsection{Multiscale continuous state}
+Maintain \(K\) state vectors \(s_{k,t}\in\mathbb{R}^d\) with learnable decays \(\lambda_k\in(0,1)\):
+\[
+s_{k,t+1}=\lambda_k\odot s_{k,t}+W^{\text{in}}_k u_t,
+\qquad
+g_t=W^{\text{out}}\,[s_{1,t};\dots;s_{K,t}].
+\]
+
+\subsection{Associative indexed cache (hard-addressed)}
+Maintain a fixed table \(M\in\mathbb{R}^{B\times D_m}\) (optionally \(H\) independent routes).
+At each step, route to one (or a small constant number of) bucket indices \(b_t\) and read:
+\[
+r_t=W_r\,M[b_t].
+\]
+With a saliency gate \(p_t=\sigma(w^\top u_t)\), write sparsely:
+\[
+M[b_t]\leftarrow(1-\eta p_t)\,M[b_t]+(\eta p_t)\,W_v u_t.
+\]
+This replaces ``store one KV per past token'' with \(O(1)\) lookup/update into fixed memory.
+
+\subsection{The hidden bottleneck: addressing}
+The most failure-prone part of MOSAIC is not the memory size; it is the \emph{addressing problem}. Attention performs content-based retrieval by directly comparing \(Q\) against all \(K\). A hard-addressed table requires the controller to generate the correct address from the current state. If relevant information has decayed from the continuous state, the model may be unable to produce the address that would allow it to retrieve the missing information.
+
+\paragraph{Mitigation: learnable discretized routing (product-quantized VQ).}
+Instead of fixed hashing, we use a learned router that remains \(O(1)\) at inference. A practical choice is product-quantized VQ routing: project \(u_t\) to a small vector, split into \(G\) groups, and assign each group to one of \(K\) codes via nearest-neighbor lookup. The resulting tuple defines a bucket address in a \(K^G\) space (e.g., \(K{=}128, G{=}2 \Rightarrow 16{,}384\) buckets). Straight-through estimators allow end-to-end training while preserving discrete routing.
+
+\paragraph{Neighbor reads for drift tolerance (constant factor).}
+To improve recall when embeddings shift, we read a small constant neighborhood: top-2 codes per group yields at most \(2^G\) candidate buckets (e.g., \(4\) when \(G=2\)). This preserves constant-time access while significantly improving robustness under drift.
+
+\paragraph{Mitigation: set-associative buckets (tags + slots).}
+A fixed table can be made more robust by storing multiple entries per bucket (small associativity) and attaching a lightweight tag/key to each entry. Reads then compare only within the bucket. This preserves \(O(1)\) access while reducing destructive overwrites.
+
+\subsection{Training: making the memory get used}
+Hard addressing and sparse writes create an optimization hazard: the model can learn to rely only on smooth-gradient paths (local mixer + state bank) and ignore the associative cache.
+Practical training therefore benefits from a curriculum and auxiliary objectives:
+\begin{itemize}
+    \item \textbf{Write curriculum:} begin with heuristic writes (e.g., punctuation, rare tokens, entity-like tokens) and gradually hand control to a learned saliency gate.
+    \item \textbf{Write sparsity:} regularize expected write rate to keep memory efficient and avoid thrashing.
+    \item \textbf{Utility prediction:} train a head to predict whether a write will be useful \(k\) steps later (self-supervised credit assignment).
+    \item \textbf{Collision pressure:} discourage mapping dissimilar contexts to the same bucket (contrastive loss on address codes).
+\end{itemize}
+
+\paragraph{Forced-read dropout.}
+To prevent the model from ignoring memory, we explicitly drop the local mixer contribution on a small fraction of tokens/spans during training, forcing prediction to depend on the state bank and retrieved memory.
+
+\paragraph{Utility prediction and contrastive recall.}
+We add a utility head that predicts whether a write will be queried in the near future, and an InfoNCE-style auxiliary that makes retrieved vectors predictive of future hidden state. These losses provide direct gradients to make the memory pathway carry useful information.
+
+\paragraph{Stage D2: scheduled sampling for student-controlled memory.}
+After teacher-forced memory (D1), we transition to student-controlled routing and gating using scheduled sampling: with probability \(p_t\) we apply teacher actions (write gate/address, read address), otherwise we use the model's own router outputs. We anneal \(p_t\) from 1.0 to 0.0 over training. For discretized routers (e.g., VQ routing), we additionally supervise router decisions with per-group cross-entropy over code assignments.
+\end{itemize}
+
+\subsection{Fusion}
+We combine streams with learned gates:
+\[
+x_t \leftarrow x_t + \Delta^{\text{local}}_t + \sigma(a^\top u_t)\,g_t + \sigma(b^\top u_t)\,r_t.
+\]
+
+\subsection{Optional n-gram continuation cache}
+We maintain a fixed-size \(N\)-gram table over token IDs that yields a sparse next-token distribution
+and add it as a logit bias:
+\[
+\ell_t \leftarrow \ell_t + \alpha\log(p_{\text{ng}}+\varepsilon).
+\]
+
+\subsection{Streaming inference}
+Per token, MOSAIC updates only fixed-size buffers and tables:
+\begin{algorithm}[htbp]
+\caption{MOSAIC decode step (no attention, no KV cache)}
+\begin{algorithmic}[1]
+\STATE Input \(x_t\), states \(\{s_k\}\), conv buffer, memory \(M\)
+\STATE \(u_t\leftarrow\mathrm{RMSNorm}(x_t)\)
+\STATE \(\Delta^{\text{local}}_t\leftarrow\mathrm{LocalMixer}(u_t,\text{buf})\)
+\STATE \(g_t\leftarrow\mathrm{StateBank}(u_t,\{s_k\})\)
+\STATE \(r_t\leftarrow\mathrm{HashRead}(u_t,M)\)
+\STATE \(\ell_t\leftarrow\mathrm{LMHead}(x_t+\Delta^{\text{local}}_t+\mathrm{gate}(g_t,r_t))\)
+\STATE \(\ell_t\leftarrow\ell_t+\mathrm{NGramBias}(\cdot)\) \textbf{(optional)}
+\STATE Update \(M\) on sparse write events
+\STATE Sample \(x_{t+1}\sim\mathrm{softmax}(\ell_t)\)
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Implementation (Caramba)}
+MOSAIC is implemented as manifest-addressable layers:
+\texttt{MosaicBlockLayer} (\path{layer/mosaic_block.py}) and
+\texttt{MosaicNGramCacheLogitsLayer} (\path{layer/mosaic_ngram_cache.py}).
+
+% ============================================================================
+% 3. EXPERIMENTS
+% ============================================================================
+\section{Experiments}
+\subsection{Setup}
+We define a laptop-feasible MOSAIC baseline in \path{config/presets/mosaic.yml} and evaluate:
+\begin{itemize}
+    \item \textbf{Language modeling quality}: held-out perplexity on token shards.
+    \item \textbf{Copying}: targeted synthetic tests (repeated spans, bracket closure, identifier reuse).
+    \item \textbf{Long-range constraints}: instruction retention with long distractor spans.
+    \item \textbf{Efficiency}: tokens/sec and peak resident memory during streaming decode.
+\end{itemize}
+
+\subsection{Stress tests (what should break first)}
+To make MOSAIC falsifiable, we include targeted adversarial evaluations:
+\begin{itemize}
+    \item \textbf{Hash collision stress:} long contexts with many distinct entities/facts to quantify interference.
+    \item \textbf{Few-shot in-context learning probes:} measure whether MOSAIC can acquire and apply a new pattern from a handful of examples without gradient updates.
+    \item \textbf{Non-verbatim manipulation:} tasks like ``repeat this list sorted'' to distinguish mere copying from compositional reuse.
+\end{itemize}
+
+\subsection{Ablations}
+We ablate memory mechanisms to attribute behaviors:
+\begin{itemize}
+    \item \textbf{-hash memory}: disable associative cache reads/writes.
+    \item \textbf{-state bank}: disable multiscale long state.
+    \item \textbf{+n-gram cache}: enable continuation cache logit bias.
+\end{itemize}
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Planned MOSAIC results (placeholders).}
+\label{tab:mosaic_results}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Variant} & \textbf{PPL} & \textbf{Copy score} & \textbf{tok/s} & \textbf{Peak MB} \\
+\midrule
+MOSAIC & -- & -- & -- & -- \\
+MOSAIC (-hash) & -- & -- & -- & -- \\
+MOSAIC (-state) & -- & -- & -- & -- \\
+MOSAIC (+n-gram) & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+\subsection{Trade-offs}
+Hash memories offer \(O(1)\) access but introduce collisions and interference. Multiscale state provides stable long-range influence but cannot perform exact recall. The n-gram cache provides near-perfect continuation for repeated strings but is not a substitute for semantic retrieval.
+
+\subsection{Why the n-gram cache is disproportionately high-yield}
+Many ``hard'' failures in small on-device models are not deep reasoning errors; they are failures of verbatim continuation (identifiers, brackets, repeated substrings). A classical n-gram cache can supply this cheaply as an additive logit bias, freeing neural capacity for generalization.
+
+\subsection{Continual learning as a first-class design axis}
+MOSAIC naturally separates learning timescales:
+\begin{itemize}
+    \item \textbf{Fast (no gradients):} memory writes during inference (session adaptation).
+    \item \textbf{Medium (tiny gradients):} consolidate frequently retrieved behaviors into small adapters (e.g., low-rank side modules), using replay buffers and regularization toward the base model.
+    \item \textbf{Slow (offline):} full training runs informed by logged memory misses, useful writes, and tool traces.
+\end{itemize}
+
+\subsection{Structured internal control (a controller DSL)}
+If the model is a controller over memory and tools, internal reasoning need not be natural language. A small typed action DSL (memory ops, tool calls, state updates) can reduce failure modes and enable constrained decoding and verification. Natural language becomes a rendering layer rather than the core compute substrate.
+
+\section{Conclusion}
+MOSAIC operationalizes a simple principle: dense learned computation is expensive; explicit algorithmic memory is cheap. By turning attention's implicit memory into explicit fixed-size data structures, we obtain a streaming LM architecture whose memory does not grow with context length.
+
+\section*{Statements and Declarations}
+\paragraph{Conflict of Interest.}
+The author declares no competing interests.
+\paragraph{Data Availability.}
+All datasets used in this study are publicly available.
+\paragraph{Funding.}
+This research was conducted without external funding.
+
+\appendix
+\section{Manifest snippet}
+The reference preset for this paper is \path{config/presets/mosaic.yml}.
+\section{Implementation notes}
+Core implementation: \path{layer/mosaic_block.py} and \path{layer/mosaic_ngram_cache.py}.
+
+% ============================================================================
+% REFERENCES
+% ============================================================================
+\FloatBarrier
+\clearpage
+\bibliographystyle{plain}
+\bibliography{../paper/references}
+
+\end{document}

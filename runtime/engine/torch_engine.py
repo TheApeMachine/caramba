@@ -65,6 +65,11 @@ class TorchEngine:
         )
         self.registry.register(
             backend="torch",
+            ref="dataset.mosaic_memory_curriculum",
+            python="caramba.data.mosaic_synth:MosaicMemoryCurriculumDataset",
+        )
+        self.registry.register(
+            backend="torch",
             ref="dataset.random_tokens",
             python="data.random_tokens:RandomTokenDataset",
         )
@@ -121,6 +126,11 @@ class TorchEngine:
             backend="torch",
             ref="objective.next_token_ce",
             python="caramba.trainer.objectives:NextTokenCrossEntropyObjective",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="objective.mosaic_next_token_aux",
+            python="caramba.trainer.objectives:MosaicNextTokenWithAuxObjective",
         )
         self.registry.register(
             backend="torch",

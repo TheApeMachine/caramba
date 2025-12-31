@@ -54,11 +54,24 @@ class LanguageModelSystem:
             result = self.module(input_ids, ctx=ctx, return_features=True)  # type: ignore[call-arg]
             if isinstance(result, tuple) and len(result) == 2:
                 features, logits = result
-                return {"features": features, "logits": logits, "_system": self.module}
+                out = {"features": features, "logits": logits, "_system": self.module}
+                # Best-effort: attach MOSAIC aux outputs when present on ctx.
+                aux = getattr(ctx, "mosaic_aux_out", None) if ctx is not None else None
+                if isinstance(aux, dict):
+                    for k, v in aux.items():
+                        if isinstance(k, str) and isinstance(v, Tensor):
+                            out[k] = v
+                return out
         except TypeError:
             logger.error("Failed to forward, continuing")
         logits = self.module(input_ids, ctx=ctx)  # type: ignore[call-arg]
-        return {"logits": logits, "_system": self.module}
+        out2 = {"logits": logits, "_system": self.module}
+        aux2 = getattr(ctx, "mosaic_aux_out", None) if ctx is not None else None
+        if isinstance(aux2, dict):
+            for k, v in aux2.items():
+                if isinstance(k, str) and isinstance(v, Tensor):
+                    out2[k] = v
+        return out2
 
     def parameters(self):
         return self.module.parameters()

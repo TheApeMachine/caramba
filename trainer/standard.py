@@ -35,6 +35,7 @@ from caramba.config.target import ExperimentTargetConfig
 from caramba.config.train import TrainConfig, TrainPhase
 from caramba.console import logger
 from caramba.instrumentation import RunLogger, TrainingVizContext
+from caramba.instrumentation.viz import TrainingVizMosaicContext
 from caramba.instrumentation.wandb_writer import WandBWriter
 from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
@@ -560,6 +561,32 @@ class StandardTrainer:
                 if not hasattr(system, "forward"):
                     raise TypeError("System component does not expose forward()")
                 try:
+                    # Attach MOSAIC-friendly fields onto the ctx (best-effort).
+                    # Note: TrainingVizContext uses slots, so we use a subclass that adds fields.
+                    if isinstance(viz_ctx, TrainingVizMosaicContext):
+                        try:
+                            inp = batch_td.get("input_ids", None)  # type: ignore[attr-defined]
+                        except Exception:
+                            inp = None
+                        if isinstance(inp, Tensor):
+                            viz_ctx.input_ids = inp
+                        try:
+                            dl = batch_td.get("mosaic_drop_local", None)  # type: ignore[attr-defined]
+                        except Exception:
+                            dl = None
+                        if isinstance(dl, Tensor):
+                            viz_ctx.mosaic_drop_local = dl
+                        # Teacher signals are optional; presence enables aux collection.
+                        teacher: dict[str, Tensor] = {}
+                        for k in ("read_bucket", "write_bucket", "write_gate"):
+                            try:
+                                v = batch_td.get(f"mosaic_teacher_{k}", None)  # type: ignore[attr-defined]
+                            except Exception:
+                                v = None
+                            if isinstance(v, Tensor):
+                                teacher[k] = v
+                        viz_ctx.mosaic_teacher = teacher or None
+                        viz_ctx.mosaic_collect_aux = bool(teacher)
                     outputs = system.forward(batch_td, ctx=viz_ctx)  # type: ignore[attr-defined]
                 except TypeError:
                     # Some non-standard systems may not accept ctx; keep best-effort.
@@ -578,7 +605,7 @@ class StandardTrainer:
                     viz_interval = int(getattr(train, "viz_interval", 1) or 1)
                     viz_interval = max(1, int(viz_interval))
                     viz_enabled = ((step + 1) % viz_interval) == 0
-                    viz_ctx = TrainingVizContext(
+                    viz_ctx = TrainingVizMosaicContext(
                         enabled=bool(viz_enabled),
                         step=int(step + 1),
                         max_tokens=int(getattr(train, "viz_tokens", 16) or 16),
@@ -586,6 +613,37 @@ class StandardTrainer:
                         max_heads=int(getattr(train, "viz_heads", 4) or 4),
                         topk=int(getattr(train, "viz_topk", 8) or 8),
                     )
+                    # MOSAIC scheduled sampling: compute teacher mixing probability.
+                    try:
+                        total = int(run.steps)
+                        s = int(step + 1)
+                        warm = int(getattr(train, "mosaic_teacher_p_warmup_steps", 0) or 0)
+                        cool = int(getattr(train, "mosaic_teacher_p_cooldown_steps", 0) or 0)
+                        p0 = float(getattr(train, "mosaic_teacher_p_start", 1.0))
+                        p1 = float(getattr(train, "mosaic_teacher_p_end", 0.0))
+                        sched = str(getattr(train, "mosaic_teacher_p_schedule", "linear")).lower()
+                        # Clamp phases.
+                        s_eff = max(0, min(total, s))
+                        # Linear interpolation over the "middle" region.
+                        denom = max(1, total - warm - cool)
+                        if s_eff <= warm:
+                            alpha = 0.0
+                        elif s_eff >= total - cool:
+                            alpha = 1.0
+                        else:
+                            alpha = float(s_eff - warm) / float(denom)
+                        if sched == "cosine":
+                            import math as _math
+
+                            alpha2 = 0.5 - 0.5 * _math.cos(_math.pi * float(alpha))
+                        elif sched == "constant":
+                            alpha2 = 0.0
+                        else:
+                            alpha2 = float(alpha)
+                        p_t = float(p0 + (p1 - p0) * float(alpha2))
+                        viz_ctx.mosaic_teacher_p = float(max(0.0, min(1.0, p_t)))
+                    except Exception:
+                        viz_ctx.mosaic_teacher_p = 1.0
                     accum_steps = int(getattr(train, "gradient_accumulation_steps", 1))
                     accum_steps = max(1, accum_steps)
                     optimizer.zero_grad(set_to_none=True)
