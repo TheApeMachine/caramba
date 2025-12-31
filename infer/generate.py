@@ -561,6 +561,12 @@ def generate(
             pos_offset = gen_len - 1
 
         ctx.begin(pos_offset=pos_offset)
+        # Provide token ids to optional MOSAIC n-gram cache layer(s).
+        # InferContext is a dataclass but supports dynamic attributes.
+        try:
+            setattr(ctx, "input_ids", tokens)
+        except Exception:
+            pass
         hidden = model(tokens, ctx=ctx)  # type: ignore[call-arg]
         ctx.ensure_consumed()
 
@@ -701,6 +707,10 @@ class Generator:
 
         q_chunk, local_window = self._plan_for_pos(0)
         self._ctx.begin(pos_offset=0, q_chunk=q_chunk, local_window=local_window)
+        try:
+            setattr(self._ctx, "input_ids", input_ids)
+        except Exception:
+            pass
 
         use_diffusion = self.config.use_diffusion and self._has_diffusion
         hidden, self._last_features = self._forward_with_features(
@@ -746,6 +756,10 @@ class Generator:
 
         q_chunk, local_window = self._plan_for_pos(self._pos)
         self._ctx.begin(pos_offset=self._pos, q_chunk=q_chunk, local_window=local_window)
+        try:
+            setattr(self._ctx, "input_ids", token_ids)
+        except Exception:
+            pass
 
         use_diffusion = self.config.use_diffusion and self._has_diffusion
         hidden, self._last_features = self._forward_with_features(

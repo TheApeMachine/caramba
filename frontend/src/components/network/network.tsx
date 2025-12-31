@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
@@ -53,13 +54,9 @@ const RealisticMLVisualization = () => {
 	const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 	const composerRef = useRef<EffectComposer | null>(null);
 	const bloomPassRef = useRef<UnrealBloomPass | null>(null);
+	const controlsRef = useRef<OrbitControls | null>(null);
 	const frameRef = useRef<number | null>(null);
 	const objectsRef = useRef<Array<THREE.Object3D>>([]);
-	const ambientParticlesRef = useRef<THREE.Points | null>(null);
-	const energyWavesRef = useRef<Array<THREE.Mesh>>([]);
-	const particleTrailsRef = useRef<Map<number, Array<THREE.Vector3>>>(
-		new Map(),
-	);
 	const timeRef = useRef(0);
 
 	useEffect(() => {
@@ -79,16 +76,6 @@ const RealisticMLVisualization = () => {
 			}
 		}
 	}, [metrics, lastEvent.step, runStatus]);
-
-	// Camera control state
-	const cameraStateRef = useRef({
-		radius: 25,
-		theta: 0, // horizontal angle
-		phi: Math.PI / 4, // vertical angle (from top)
-		target: new THREE.Vector3(0, 0, 0),
-		isDragging: false,
-		lastMouse: { x: 0, y: 0 },
-	});
 
 	const layerStatByIndex = useMemo(() => {
 		const m = new Map<
@@ -358,27 +345,7 @@ const RealisticMLVisualization = () => {
 		cold: "#2d3748",
 	};
 
-	// Update camera position from spherical coordinates
-	const updateCameraPosition = useCallback(() => {
-		if (!cameraRef.current) return;
-		const state = cameraStateRef.current;
-		const camera = cameraRef.current;
-
-		// Clamp phi to avoid gimbal lock
-		state.phi = Math.max(0.1, Math.min(Math.PI - 0.1, state.phi));
-		state.radius = Math.max(5, Math.min(60, state.radius));
-
-		camera.position.x =
-			state.target.x +
-			state.radius * Math.sin(state.phi) * Math.sin(state.theta);
-		camera.position.y = state.target.y + state.radius * Math.cos(state.phi);
-		camera.position.z =
-			state.target.z +
-			state.radius * Math.sin(state.phi) * Math.cos(state.theta);
-		camera.lookAt(state.target);
-	}, []);
-
-	// Initialize Three.js
+	// Initialize Three.js with OrbitControls for smooth natural camera movement
 	useEffect(() => {
 		if (!canvasRef.current) return;
 
@@ -393,8 +360,10 @@ const RealisticMLVisualization = () => {
 			0.1,
 			1000,
 		);
+		// Set initial camera position
+		camera.position.set(0, 15, 25);
+		camera.lookAt(0, 0, 0);
 		cameraRef.current = camera;
-		updateCameraPosition();
 
 		const renderer = new THREE.WebGLRenderer({
 			canvas: canvasRef.current,
@@ -409,6 +378,28 @@ const RealisticMLVisualization = () => {
 		renderer.toneMapping = THREE.ACESFilmicToneMapping;
 		renderer.toneMappingExposure = 1.2;
 		rendererRef.current = renderer;
+
+		// OrbitControls with smooth damping for natural feeling
+		const controls = new OrbitControls(camera, renderer.domElement);
+		controls.enableDamping = true;
+		controls.dampingFactor = 0.05;
+		controls.rotateSpeed = 0.8;
+		controls.zoomSpeed = 1.0;
+		controls.panSpeed = 0.8;
+		controls.minDistance = 5;
+		controls.maxDistance = 60;
+		controls.maxPolarAngle = Math.PI * 0.85; // Prevent going below the ground
+		controls.target.set(0, 0, 0);
+		controls.autoRotate = true;
+		controls.autoRotateSpeed = 0.5;
+		controlsRef.current = controls;
+
+		// Stop auto-rotate when user interacts
+		const onControlStart = () => {
+			controls.autoRotate = false;
+			setIsRotating(false);
+		};
+		controls.addEventListener("start", onControlStart);
 
 		// Post-processing with bloom
 		const composer = new EffectComposer(renderer);
@@ -494,85 +485,6 @@ const RealisticMLVisualization = () => {
 		gridMesh.userData = { isAnimatedGrid: true, material: gridMaterial };
 		scene.add(gridMesh);
 
-		// Ambient floating particles
-		const particleCount = 500;
-		const particlePositions = new Float32Array(particleCount * 3);
-		const particleSizes = new Float32Array(particleCount);
-		const particleColors = new Float32Array(particleCount * 3);
-
-		for (let i = 0; i < particleCount; i++) {
-			particlePositions[i * 3] = (Math.random() - 0.5) * 80;
-			particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 40 + 5;
-			particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
-			particleSizes[i] = Math.random() * 3 + 1;
-			// Vary colors between cyan, blue, and purple
-			const hue = 0.5 + Math.random() * 0.2;
-			const color = new THREE.Color().setHSL(hue, 0.8, 0.6);
-			particleColors[i * 3] = color.r;
-			particleColors[i * 3 + 1] = color.g;
-			particleColors[i * 3 + 2] = color.b;
-		}
-
-		const particleGeometry = new THREE.BufferGeometry();
-		particleGeometry.setAttribute(
-			"position",
-			new THREE.BufferAttribute(particlePositions, 3),
-		);
-		particleGeometry.setAttribute(
-			"size",
-			new THREE.BufferAttribute(particleSizes, 1),
-		);
-		particleGeometry.setAttribute(
-			"color",
-			new THREE.BufferAttribute(particleColors, 3),
-		);
-
-		const particleMaterial = new THREE.ShaderMaterial({
-			uniforms: {
-				uTime: { value: 0 },
-				uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
-			},
-			vertexShader: `
-				attribute float size;
-				attribute vec3 color;
-				varying vec3 vColor;
-				varying float vAlpha;
-				uniform float uTime;
-				uniform float uPixelRatio;
-				void main() {
-					vColor = color;
-					vec3 pos = position;
-					pos.y += sin(uTime * 0.3 + position.x * 0.1) * 0.5;
-					pos.x += cos(uTime * 0.2 + position.z * 0.1) * 0.3;
-					vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-					gl_PointSize = size * uPixelRatio * (80.0 / -mvPosition.z);
-					gl_Position = projectionMatrix * mvPosition;
-					vAlpha = 0.3 + 0.7 * (1.0 - smoothstep(0.0, 50.0, length(pos.xz)));
-				}
-			`,
-			fragmentShader: `
-				varying vec3 vColor;
-				varying float vAlpha;
-				void main() {
-					float dist = length(gl_PointCoord - vec2(0.5));
-					if (dist > 0.5) discard;
-					float glow = 1.0 - smoothstep(0.0, 0.5, dist);
-					gl_FragColor = vec4(vColor, glow * vAlpha * 0.6);
-				}
-			`,
-			transparent: true,
-			blending: THREE.AdditiveBlending,
-			depthWrite: false,
-		});
-
-		const particles = new THREE.Points(particleGeometry, particleMaterial);
-		particles.userData = {
-			isAmbientParticles: true,
-			material: particleMaterial,
-		};
-		scene.add(particles);
-		ambientParticlesRef.current = particles;
-
 		// Resize handler
 		const handleResize = () => {
 			if (!canvasRef.current) return;
@@ -586,95 +498,56 @@ const RealisticMLVisualization = () => {
 		};
 		window.addEventListener("resize", handleResize);
 
-		// Mouse controls
-		const handleMouseDown = (e: MouseEvent) => {
-			cameraStateRef.current.isDragging = true;
-			cameraStateRef.current.lastMouse = { x: e.clientX, y: e.clientY };
-		};
-
-		const handleMouseUp = () => {
-			cameraStateRef.current.isDragging = false;
-		};
-
-		const handleMouseMove = (e: MouseEvent) => {
-			if (!cameraStateRef.current.isDragging) return;
-
-			const dx = e.clientX - cameraStateRef.current.lastMouse.x;
-			const dy = e.clientY - cameraStateRef.current.lastMouse.y;
-
-			cameraStateRef.current.theta -= dx * 0.01;
-			cameraStateRef.current.phi += dy * 0.01;
-			cameraStateRef.current.lastMouse = { x: e.clientX, y: e.clientY };
-
-			setIsRotating(false); // Stop auto-rotation when user drags
-			updateCameraPosition();
-		};
-
-		const handleWheel = (e: WheelEvent) => {
+		// Prevent context menu on right-click (allows right-drag for panning)
+		const handleContextMenu = (e: MouseEvent) => {
 			e.preventDefault();
-			cameraStateRef.current.radius += e.deltaY * 0.03;
-			updateCameraPosition();
 		};
-
-		const canvas = canvasRef.current;
-		canvas.addEventListener("mousedown", handleMouseDown);
-		canvas.addEventListener("mouseup", handleMouseUp);
-		canvas.addEventListener("mouseleave", handleMouseUp);
-		canvas.addEventListener("mousemove", handleMouseMove);
-		canvas.addEventListener("wheel", handleWheel, { passive: false });
+		renderer.domElement.addEventListener("contextmenu", handleContextMenu);
 
 		return () => {
 			window.removeEventListener("resize", handleResize);
-			canvas.removeEventListener("mousedown", handleMouseDown);
-			canvas.removeEventListener("mouseup", handleMouseUp);
-			canvas.removeEventListener("mouseleave", handleMouseUp);
-			canvas.removeEventListener("mousemove", handleMouseMove);
-			canvas.removeEventListener("wheel", handleWheel);
+			renderer.domElement.removeEventListener("contextmenu", handleContextMenu);
+			controls.removeEventListener("start", onControlStart);
+			controls.dispose();
 			if (frameRef.current !== null) {
 				cancelAnimationFrame(frameRef.current);
 			}
 			composer.dispose();
 			renderer.dispose();
-			ambientParticlesRef.current = null;
-			energyWavesRef.current = [];
-			particleTrailsRef.current.clear();
 		};
-	}, [updateCameraPosition]);
+	}, []);
 
 	// Click handler for layer selection
-	const handleCanvasClick = useCallback(
-		(e: MouseEvent) => {
-			if (!canvasRef.current || !cameraRef.current || !sceneRef.current) return;
-			if (cameraStateRef.current.isDragging) return;
+	const handleCanvasClick = useCallback((e: MouseEvent) => {
+		if (!canvasRef.current || !cameraRef.current || !sceneRef.current) return;
 
-			const rect = canvasRef.current.getBoundingClientRect();
-			const mouse = new THREE.Vector2(
-				((e.clientX - rect.left) / rect.width) * 2 - 1,
-				-((e.clientY - rect.top) / rect.height) * 2 + 1,
-			);
+		const rect = canvasRef.current.getBoundingClientRect();
+		const mouse = new THREE.Vector2(
+			((e.clientX - rect.left) / rect.width) * 2 - 1,
+			-((e.clientY - rect.top) / rect.height) * 2 + 1,
+		);
 
-			const raycaster = new THREE.Raycaster();
-			raycaster.setFromCamera(mouse, cameraRef.current);
+		const raycaster = new THREE.Raycaster();
+		raycaster.setFromCamera(mouse, cameraRef.current);
 
-			const clickableObjects = objectsRef.current.filter(
-				(obj) => obj.userData.clickable,
-			);
-			const intersects = raycaster.intersectObjects(clickableObjects, false);
+		const clickableObjects = objectsRef.current.filter(
+			(obj) => obj.userData.clickable,
+		);
+		const intersects = raycaster.intersectObjects(clickableObjects, false);
 
-			if (intersects.length > 0) {
-				const obj = intersects[0].object;
-				if (obj.userData.layerData) {
-					setSelectedLayer(obj.userData.layerData);
-					setZoomLevel("layer");
-					// Reset camera for new view
-					cameraStateRef.current.radius = 15;
-					cameraStateRef.current.phi = Math.PI / 3;
-					updateCameraPosition();
+		if (intersects.length > 0) {
+			const obj = intersects[0].object;
+			if (obj.userData.layerData) {
+				setSelectedLayer(obj.userData.layerData);
+				setZoomLevel("layer");
+				// Smoothly move camera to focus on selected layer
+				if (controlsRef.current && cameraRef.current) {
+					const targetPos = obj.position.clone();
+					controlsRef.current.target.copy(targetPos);
 				}
 			}
-		},
-		[updateCameraPosition],
-	);
+		}
+	}, []);
 
 	useEffect(() => {
 		if (!canvasRef.current) return;
@@ -743,9 +616,6 @@ const RealisticMLVisualization = () => {
 		const spacing = 3;
 		const startX = (-(visualBlocks.length - 1) * spacing) / 2;
 
-		// Create energy wave rings that will pulse outward from active blocks
-		energyWavesRef.current = [];
-
 		visualBlocks.forEach((block, i) => {
 			// Determine geometry based on block type
 			let geometry: THREE.BufferGeometry | undefined;
@@ -799,41 +669,6 @@ const RealisticMLVisualization = () => {
 
 			scene.add(mesh);
 			objectsRef.current.push(mesh);
-
-			// Add wireframe overlay for tech aesthetic
-			const wireframeMat = new THREE.MeshBasicMaterial({
-				color: new THREE.Color(color).multiplyScalar(1.5),
-				wireframe: true,
-				transparent: true,
-				opacity: 0.15,
-			});
-			const wireframe = new THREE.Mesh(geometry.clone(), wireframeMat);
-			wireframe.position.copy(mesh.position);
-			wireframe.scale.setScalar(1.02);
-			wireframe.userData = { isWireframe: true, parentIndex: i };
-			scene.add(wireframe);
-			objectsRef.current.push(wireframe);
-
-			// Add energy wave ring for each block (initially invisible, will pulse)
-			const waveGeom = new THREE.RingGeometry(0.5, 0.6, 32);
-			const waveMat = new THREE.MeshBasicMaterial({
-				color: new THREE.Color(color),
-				transparent: true,
-				opacity: 0,
-				side: THREE.DoubleSide,
-			});
-			const waveRing = new THREE.Mesh(waveGeom, waveMat);
-			waveRing.position.set(startX + i * spacing, -height / 2 - 0.1, 0);
-			waveRing.rotation.x = -Math.PI / 2;
-			waveRing.userData = {
-				isEnergyWave: true,
-				blockIndex: i,
-				phase: 0,
-				baseColor: color,
-			};
-			scene.add(waveRing);
-			objectsRef.current.push(waveRing);
-			energyWavesRef.current.push(waveRing);
 
 			// --- DBA-specific decorations for transformer blocks ---
 			if (
@@ -992,58 +827,34 @@ const RealisticMLVisualization = () => {
 				scene.add(tube);
 				objectsRef.current.push(tube);
 
-				// Animated particles along connection with trails
-				for (let p = 0; p < 5; p++) {
-					// Main particle (brighter, larger)
-					const particleGeom = new THREE.SphereGeometry(0.1);
+				// Animated particles along connection
+				for (let p = 0; p < 3; p++) {
+					const particleGeom = new THREE.SphereGeometry(0.08);
 					const particleMat = new THREE.MeshBasicMaterial({
-						color: 0x00ffff,
+						color: 0x60a5fa,
 						transparent: true,
-						opacity: 0.95,
+						opacity: 0.8,
 					});
 					const particle = new THREE.Mesh(particleGeom, particleMat);
-					const baseSpeed = 0.25 + Math.random() * 0.15;
-					const particleId = i * 100 + p;
+					const baseSpeed = 0.3 + Math.random() * 0.2;
 					particle.userData = {
 						curve,
-						offset: p / 5,
+						offset: p / 3,
 						speed: baseSpeed,
 						baseSpeed,
 						isParticle: true,
-						particleId,
 						connectionIndex: i,
 					};
 					scene.add(particle);
 					objectsRef.current.push(particle);
-
-					// Initialize trail history for this particle
-					particleTrailsRef.current.set(particleId, []);
-
-					// Add trail segments (rendered as small spheres that follow)
-					for (let t = 0; t < 6; t++) {
-						const trailGeom = new THREE.SphereGeometry(0.06 - t * 0.008);
-						const trailMat = new THREE.MeshBasicMaterial({
-							color: 0x4fc3f7,
-							transparent: true,
-							opacity: 0.6 - t * 0.08,
-						});
-						const trail = new THREE.Mesh(trailGeom, trailMat);
-						trail.userData = {
-							isTrail: true,
-							parentId: particleId,
-							trailIndex: t,
-						};
-						trail.visible = false;
-						scene.add(trail);
-						objectsRef.current.push(trail);
-					}
 				}
 			}
 		});
 
 		// Reset camera for model view
-		cameraStateRef.current.target.set(0, 0, 0);
-		cameraStateRef.current.radius = 25;
+		if (controlsRef.current) {
+			controlsRef.current.target.set(0, 0, 0);
+		}
 	}, [modelConfig, showActivations, attentionLayers, layerStatByIndex]);
 
 	// Build layer-level view
@@ -1248,12 +1059,13 @@ const RealisticMLVisualization = () => {
 			}
 		}
 
-		cameraStateRef.current.target.set(
-			layer.type === "transformer" ? 2 : 0,
-			0,
-			0,
-		);
-		cameraStateRef.current.radius = 15;
+		if (controlsRef.current) {
+			controlsRef.current.target.set(
+				layer.type === "transformer" ? 2 : 0,
+				0,
+				0,
+			);
+		}
 	}, [selectedLayer, showActivations, activations, inputToken]);
 
 	// Build attention view
@@ -1382,9 +1194,9 @@ const RealisticMLVisualization = () => {
 			objectsRef.current.push(orbitRing);
 		}
 
-		cameraStateRef.current.target.set(0, 0, 0);
-		cameraStateRef.current.radius = Math.max(18, Math.min(50, 10 + rows * 6));
-		cameraStateRef.current.phi = Math.PI / 3;
+		if (controlsRef.current) {
+			controlsRef.current.target.set(0, 0, 0);
+		}
 		// IMPORTANT: don't depend on vizByIndex; animation loop reads refs.
 	}, []);
 
@@ -1451,8 +1263,9 @@ const RealisticMLVisualization = () => {
 			}
 		}
 
-		cameraStateRef.current.target.set(0, 0, 0);
-		cameraStateRef.current.radius = 22;
+		if (controlsRef.current) {
+			controlsRef.current.target.set(0, 0, 0);
+		}
 		// IMPORTANT: don't depend on vizByIndex; animation loop reads refs.
 	}, [modelConfig.num_layers, activations]);
 
@@ -1506,18 +1319,9 @@ const RealisticMLVisualization = () => {
 
 			// Dynamic bloom intensity based on activity
 			if (bloomPassRef.current) {
-				const targetStrength = 0.6 + pulse * 0.8;
+				const targetStrength = 0.5 + pulse * 0.6;
 				bloomPassRef.current.strength +=
 					(targetStrength - bloomPassRef.current.strength) * 0.1;
-			}
-
-			// Animate ambient particles
-			if (ambientParticlesRef.current) {
-				const mat = ambientParticlesRef.current.userData.material;
-				if (mat?.uniforms?.uTime) {
-					mat.uniforms.uTime.value = timeRef.current;
-				}
-				ambientParticlesRef.current.rotation.y += 0.0003;
 			}
 
 			// Animate grid shader
@@ -1530,10 +1334,11 @@ const RealisticMLVisualization = () => {
 				}
 			});
 
-			// Auto-rotation
-			if (isRotating && !cameraStateRef.current.isDragging) {
-				cameraStateRef.current.theta += 0.002;
-				updateCameraPosition();
+			// Update OrbitControls (enables smooth damping)
+			if (controlsRef.current) {
+				// Sync auto-rotate state with isRotating
+				controlsRef.current.autoRotate = isRotating;
+				controlsRef.current.update();
 			}
 
 			// Animate objects
@@ -1573,15 +1378,28 @@ const RealisticMLVisualization = () => {
 					obj.position.y = baseY + next / 2;
 
 					const mat = obj.material;
-					if (mat && !Array.isArray(mat) && "color" in mat) {
+					if (mat && !Array.isArray(mat)) {
 						try {
-							if (isActive && hasData) {
-								// Active head: colorful.
-								mat.color.setHSL(0.6 - v * 0.5, 0.85, 0.35 + v * 0.35);
-							} else {
-								// Inactive head: greyscale (saturation=0).
-								const l = 0.18 + Math.min(0.75, v * 0.9);
-								mat.color.setHSL(0.0, 0.0, l);
+							if ("color" in mat) {
+								if (isActive && hasData) {
+									// Active head: colorful with glow based on value
+									mat.color.setHSL(0.55 - v * 0.45, 0.9, 0.35 + v * 0.4);
+								} else {
+									// Inactive head: greyscale
+									const l = 0.15 + Math.min(0.5, v * 0.6);
+									mat.color.setHSL(0.0, 0.0, l);
+								}
+							}
+							if ("opacity" in mat) {
+								// Active: nearly opaque, inactive: more transparent
+								const targetOpacity = isActive ? 0.92 : 0.4;
+								mat.opacity += (targetOpacity - mat.opacity) * 0.15;
+							}
+							if ("emissiveIntensity" in mat) {
+								// Glow based on value for active heads
+								const targetGlow = isActive ? v * 0.6 : 0;
+								mat.emissiveIntensity +=
+									(targetGlow - mat.emissiveIntensity) * 0.15;
 							}
 						} catch {
 							// ignore
@@ -1589,7 +1407,7 @@ const RealisticMLVisualization = () => {
 					}
 				}
 
-				// Head indicator: bright for active head, grey for others.
+				// Head indicator: colored for active, greyscale for inactive
 				if (
 					obj.userData.isHeadIndicator &&
 					activeViewRef.current === "attention"
@@ -1600,37 +1418,38 @@ const RealisticMLVisualization = () => {
 					const h = obj.userData.head as number;
 					const isActive = h === activeHead;
 					const mat = obj.material;
-					
-					// Spin the indicator
-					obj.rotation.y += isActive ? 0.05 : 0.01;
-					obj.rotation.x = Math.sin(timeRef.current * 2) * 0.2;
-					
-					// Scale pulse for active
-					const targetScale = isActive ? 1.3 + Math.sin(timeRef.current * 3) * 0.15 : 0.7;
-					obj.scale.setScalar(obj.scale.x + (targetScale - obj.scale.x) * 0.1);
-					
+
+					// Gentle rotation
+					obj.rotation.y += isActive ? 0.03 : 0.005;
+
 					if (mat && !Array.isArray(mat)) {
-						if ("opacity" in mat) {
-							const targetOpacity = isActive ? 1.0 : 0.2;
-							mat.opacity += (targetOpacity - mat.opacity) * 0.15;
-						}
 						try {
 							if ("color" in mat) {
 								if (isActive) {
-									mat.color.setHSL(0.12 + Math.sin(timeRef.current) * 0.03, 0.95, 0.6);
+									// Colored for active
+									mat.color.setHSL(0.12, 0.9, 0.55);
 								} else {
-									mat.color.setHSL(0, 0, 0.25);
+									// Greyscale for inactive
+									mat.color.setHSL(0, 0, 0.3);
 								}
 							}
+							if ("opacity" in mat) {
+								// Active: less transparent, inactive: more transparent
+								const targetOpacity = isActive ? 0.95 : 0.35;
+								mat.opacity += (targetOpacity - mat.opacity) * 0.12;
+							}
 							if ("emissiveIntensity" in mat) {
-								mat.emissiveIntensity = isActive ? 0.8 : 0.1;
+								// Glow for active
+								const targetGlow = isActive ? 0.6 + pulse * 0.3 : 0;
+								mat.emissiveIntensity +=
+									(targetGlow - mat.emissiveIntensity) * 0.15;
 							}
 						} catch {
 							// ignore
 						}
 					}
 				}
-				
+
 				// Animate orbit rings around head indicators
 				if (obj.userData.isOrbitRing && activeViewRef.current === "attention") {
 					const headCount = Math.max(1, Math.floor(headCountRef.current || 1));
@@ -1638,28 +1457,25 @@ const RealisticMLVisualization = () => {
 					const activeHead = headCount > 0 ? step % headCount : 0;
 					const h = obj.userData.head as number;
 					const isActive = h === activeHead;
-					
-					obj.rotation.x = Math.PI / 2 + Math.sin(timeRef.current * 2) * 0.3;
-					obj.rotation.z += isActive ? 0.04 : 0.005;
-					
+
+					obj.rotation.x = Math.PI / 2;
+					obj.rotation.z += isActive ? 0.02 : 0.003;
+
 					const mat = obj.material;
 					if (mat && !Array.isArray(mat) && "opacity" in mat) {
-						const targetOpacity = isActive ? 0.8 : 0.1;
+						// Active: visible + colored, inactive: nearly invisible + grey
+						const targetOpacity = isActive ? 0.7 : 0.1;
 						mat.opacity += (targetOpacity - mat.opacity) * 0.1;
 						if ("color" in mat) {
 							if (isActive) {
-								mat.color.setHSL(0.12, 0.9, 0.55);
+								mat.color.setHSL(0.12, 0.85, 0.5);
 							} else {
-								mat.color.setHSL(0, 0, 0.2);
+								mat.color.setHSL(0, 0, 0.25);
 							}
 						}
 					}
-					
-					// Scale based on activity
-					const targetScale = isActive ? 1.0 + Math.sin(timeRef.current * 4) * 0.1 : 0.5;
-					obj.scale.setScalar(obj.scale.x + (targetScale - obj.scale.x) * 0.1);
 				}
-				
+
 				// Animate base plates (subtle pulse for active heads)
 				if (obj.userData.isBasePlate && activeViewRef.current === "attention") {
 					const headCount = Math.max(1, Math.floor(headCountRef.current || 1));
@@ -1667,7 +1483,7 @@ const RealisticMLVisualization = () => {
 					const activeHead = headCount > 0 ? step % headCount : 0;
 					const h = obj.userData.head as number;
 					const isActive = h === activeHead;
-					
+
 					const mat = obj.material;
 					if (mat && !Array.isArray(mat) && "opacity" in mat) {
 						const targetOpacity = isActive ? 0.4 : 0.15;
@@ -1713,158 +1529,103 @@ const RealisticMLVisualization = () => {
 					}
 				}
 
-				// Animate block nodes with enhanced effects
-				if (
-					obj.userData.blockIndex !== undefined &&
-					!obj.userData.isWireframe &&
-					!obj.userData.isEnergyWave
-				) {
+				// Animate block nodes: active = colored + slight transparency + glow, inactive = greyscale + more transparent
+				if (obj.userData.blockIndex !== undefined) {
 					const i = obj.userData.blockIndex;
 					const isActive = i === activeBlock;
 					const mat = obj.material;
 					const baseColor = obj.userData.baseColor;
 
+					// Get strength value for glow intensity (RMS from layer stats)
+					const rmsRaw = obj.userData.layerMetricRms;
+					const strength =
+						typeof rmsRaw === "number" && Number.isFinite(rmsRaw)
+							? Math.min(1, Math.log10(1 + rmsRaw) * 0.5)
+							: 0.3; // default strength if no data
+
 					if (mat && !Array.isArray(mat)) {
-						if ("emissiveIntensity" in mat) {
-							const rmsRaw = obj.userData.layerMetricRms;
-							const rms =
-								typeof rmsRaw === "number" && Number.isFinite(rmsRaw)
-									? rmsRaw
-									: null;
-							const rmsBoost =
-								rms === null ? 0 : Math.min(0.35, Math.log10(1 + rms) * 0.25);
-
-							// More dramatic active/inactive difference
-							const targetIntensity = isActive
-								? 0.7 + pulse * 1.0 + rmsBoost
-								: 0.05 + rmsBoost * 0.3;
-							mat.emissiveIntensity +=
-								(targetIntensity - mat.emissiveIntensity) * 0.15;
-						}
-
-						// Active blocks get full color, inactive go greyscale
 						try {
 							if ("color" in mat && mat.color && baseColor) {
 								if (isActive) {
+									// Active: full color
 									const targetColor = new THREE.Color(baseColor);
-									mat.color.lerp(targetColor, 0.15);
-									if ("emissive" in mat && mat.emissive) {
-										mat.emissive.setHSL(0.35 - heat * 0.35, 1, 0.5);
-									}
+									mat.color.lerp(targetColor, 0.2);
 								} else {
-									// Greyscale with slight blue tint for inactive
-									const grey = new THREE.Color(0x1a1a2e);
-									mat.color.lerp(grey, 0.08);
-									if ("emissive" in mat && mat.emissive) {
-										mat.emissive.lerp(new THREE.Color(0x0a0a15), 0.1);
-									}
+									// Inactive: complete greyscale (desaturated)
+									// Convert base color to greyscale
+									const baseC = new THREE.Color(baseColor);
+									const grey =
+										baseC.r * 0.299 + baseC.g * 0.587 + baseC.b * 0.114;
+									const greyColor = new THREE.Color(grey, grey, grey);
+									mat.color.lerp(greyColor, 0.15);
 								}
 							}
+
+							// Emissive glow - active gets glow based on strength, inactive gets none
+							if ("emissive" in mat && mat.emissive && baseColor) {
+								if (isActive) {
+									const emissiveColor = new THREE.Color(baseColor);
+									mat.emissive.lerp(emissiveColor, 0.2);
+								} else {
+									mat.emissive.lerp(new THREE.Color(0x000000), 0.15);
+								}
+							}
+
+							if ("emissiveIntensity" in mat) {
+								// Active: glow intensity based on strength value
+								// Inactive: no glow
+								const targetIntensity = isActive
+									? 0.3 + strength * 0.7 + pulse * 0.5
+									: 0;
+								mat.emissiveIntensity +=
+									(targetIntensity - mat.emissiveIntensity) * 0.15;
+							}
+
 							if ("opacity" in mat) {
-								const targetOpacity = isActive ? 0.95 : 0.4;
-								mat.opacity += (targetOpacity - mat.opacity) * 0.1;
+								// Active: slightly transparent (0.92), Inactive: more transparent (0.45)
+								const targetOpacity = isActive ? 0.92 : 0.45;
+								mat.opacity += (targetOpacity - mat.opacity) * 0.12;
 							}
 						} catch {
 							// ignore
 						}
 					}
 
-					// More dynamic rotation for active blocks
-					const rotSpeed = isActive ? 0.03 : 0.005;
-					obj.rotation.y += rotSpeed;
+					// Gentle rotation
+					obj.rotation.y += isActive ? 0.015 : 0.003;
 					obj.rotation.x =
-						Math.sin(timeRef.current * 0.8 + i * 0.5) * (isActive ? 0.1 : 0.02);
+						Math.sin(timeRef.current * 0.5 + i * 0.5) *
+						(isActive ? 0.08 : 0.02);
 
-					// Floating animation
-					const floatAmplitude = isActive ? 0.25 : 0.05;
+					// Subtle floating animation
+					const floatAmplitude = isActive ? 0.15 : 0.03;
 					obj.position.y =
-						Math.sin(timeRef.current * 1.2 + i * 0.4) * floatAmplitude;
+						Math.sin(timeRef.current * 1.0 + i * 0.4) * floatAmplitude;
 
-					// Scale pulse on active
-					const targetScale = isActive ? 1.0 + pulse * 0.15 : 0.85;
-					obj.scale.setScalar(obj.scale.x + (targetScale - obj.scale.x) * 0.1);
+					// Keep scale consistent (no shrinking of inactive)
+					obj.scale.setScalar(1.0);
 				}
 
-				// Animate wireframe overlays
-				if (obj.userData.isWireframe) {
-					const parentIndex = obj.userData.parentIndex;
-					const isActive = parentIndex === activeBlock;
-					const mat = obj.material;
-					if (mat && !Array.isArray(mat) && "opacity" in mat) {
-						const targetOpacity = isActive ? 0.35 : 0.05;
-						mat.opacity += (targetOpacity - mat.opacity) * 0.1;
-					}
-					obj.rotation.y -= 0.002;
-					obj.rotation.x =
-						Math.sin(timeRef.current * 0.6 + parentIndex * 0.3) * 0.05;
-				}
-
-				// Animate energy waves
-				if (obj.userData.isEnergyWave) {
-					const blockIdx = obj.userData.blockIndex;
-					const isActive = blockIdx === activeBlock;
-					const mat = obj.material;
-
-					if (isActive) {
-						obj.userData.phase += 0.04;
-						const phase = obj.userData.phase;
-						const scale = 1 + phase * 2;
-						const opacity = Math.max(0, 0.8 - phase * 0.3);
-
-						obj.scale.setScalar(scale);
-						if (mat && !Array.isArray(mat) && "opacity" in mat) {
-							mat.opacity = opacity;
-							if ("color" in mat && obj.userData.baseColor) {
-								mat.color.set(obj.userData.baseColor);
-							}
-						}
-
-						// Reset wave when it expands too far
-						if (phase > 2.5) {
-							obj.userData.phase = 0;
-							obj.scale.setScalar(1);
-						}
-					} else {
-						// Fade out inactive waves
-						if (mat && !Array.isArray(mat) && "opacity" in mat) {
-							mat.opacity *= 0.9;
-						}
-						obj.userData.phase = 0;
-						obj.scale.setScalar(1);
-					}
-				}
-				// Glow rings beneath blocks - enhanced with pulsing
+				// Glow rings beneath blocks - active = colored, inactive = greyscale
 				if (obj.userData.isGlowRing) {
 					const i = obj.userData.blockIndex;
 					const isActive = i === activeBlock;
 					const mat = obj.material;
 
-					// Rotate glow rings
-					obj.rotation.z += isActive ? 0.02 : 0.002;
-
-					// Scale pulse
-					const pulseScale = isActive
-						? 1.0 + Math.sin(timeRef.current * 4) * 0.15
-						: 0.8;
-					obj.scale.setScalar(pulseScale);
-
 					if (mat && !Array.isArray(mat)) {
 						if ("opacity" in mat) {
-							const targetOpacity = isActive ? 0.85 + pulse * 0.15 : 0.1;
-							mat.opacity += (targetOpacity - mat.opacity) * 0.15;
+							// Active: visible, inactive: barely visible
+							const targetOpacity = isActive ? 0.7 + pulse * 0.2 : 0.08;
+							mat.opacity += (targetOpacity - mat.opacity) * 0.12;
 						}
 						try {
 							if ("color" in mat && mat.color?.setHSL) {
 								if (isActive) {
-									// Vibrant color cycling for active
-									mat.color.setHSL(
-										0.35 - heat * 0.35 + Math.sin(timeRef.current) * 0.05,
-										1,
-										0.55 + pulse * 0.2,
-									);
+									// Colored for active
+									mat.color.setHSL(0.35 - heat * 0.3, 0.9, 0.5);
 								} else {
 									// Greyscale for inactive
-									mat.color.setHSL(0, 0, 0.15);
+									mat.color.setHSL(0, 0, 0.2);
 								}
 							}
 						} catch {
@@ -1872,65 +1633,36 @@ const RealisticMLVisualization = () => {
 						}
 					}
 				}
-				// Animate particles along curves with trails
+				// Animate particles along curves
 				if (obj.userData.isParticle && obj.userData.curve) {
 					const baseSpeed = obj.userData.baseSpeed ?? obj.userData.speed ?? 0.3;
 					obj.userData.speed =
-						baseSpeed * (0.6 + 0.5 * tokFactor) * (1 + pulse * 0.3);
+						baseSpeed * (0.6 + 0.4 * tokFactor) * (1 + pulse * 0.2);
 					const t =
 						(timeRef.current * obj.userData.speed + obj.userData.offset) % 1;
 					const point = obj.userData.curve.getPoint(t);
-
-					// Store position history for trails
-					const particleId = obj.userData.particleId;
-					if (particleId !== undefined) {
-						const trail = particleTrailsRef.current.get(particleId);
-						if (trail) {
-							trail.unshift(point.clone());
-							if (trail.length > 8) trail.pop();
-						}
-					}
-
 					obj.position.copy(point);
 
-					// Enhanced particle glow based on connection activity
+					// Particle color/opacity based on connection activity
 					const connectionIdx = obj.userData.connectionIndex ?? 0;
 					const isActiveConnection =
 						connectionIdx === activeBlock || connectionIdx === activeBlock - 1;
 
 					if (obj.material && !Array.isArray(obj.material)) {
 						if ("opacity" in obj.material) {
-							const baseOpacity = isActiveConnection ? 0.95 : 0.4;
+							// Active connections: bright, inactive: dim
+							const baseOpacity = isActiveConnection ? 0.9 : 0.25;
 							obj.material.opacity = Math.sin(t * Math.PI) * baseOpacity;
 						}
 						if ("color" in obj.material) {
 							if (isActiveConnection) {
-								obj.material.color.setHSL(
-									0.5 + Math.sin(timeRef.current * 2) * 0.05,
-									1,
-									0.7,
-								);
+								// Colored for active
+								obj.material.color.set(0x60a5fa);
 							} else {
-								obj.material.color.set(0x3a3a5a);
+								// Greyscale for inactive
+								obj.material.color.set(0x555555);
 							}
 						}
-					}
-
-					// Scale particle based on activity
-					const targetScale = isActiveConnection ? 1.2 + pulse * 0.3 : 0.6;
-					obj.scale.setScalar(obj.scale.x + (targetScale - obj.scale.x) * 0.15);
-				}
-
-				// Update trail positions
-				if (obj.userData.isTrail) {
-					const parentId = obj.userData.parentId;
-					const trailIndex = obj.userData.trailIndex;
-					const trail = particleTrailsRef.current.get(parentId);
-					if (trail && trail[trailIndex + 1]) {
-						obj.position.copy(trail[trailIndex + 1]);
-						obj.visible = true;
-					} else {
-						obj.visible = false;
 					}
 				}
 				// Animate attention heads
@@ -1969,13 +1701,15 @@ const RealisticMLVisualization = () => {
 				cancelAnimationFrame(frameRef.current);
 			}
 		};
-	}, [isRotating, updateCameraPosition, modelConfig]);
+	}, [isRotating, modelConfig]);
 
 	const handleBackToModel = () => {
 		setZoomLevel("model");
 		setSelectedLayer(null);
-		cameraStateRef.current.radius = 25;
-		cameraStateRef.current.phi = Math.PI / 4;
+		// Reset camera target to center
+		if (controlsRef.current) {
+			controlsRef.current.target.set(0, 0, 0);
+		}
 	};
 
 	return (
@@ -2063,8 +1797,10 @@ const RealisticMLVisualization = () => {
 										setActiveView(view.id);
 										setZoomLevel("model");
 										setSelectedLayer(null);
-										cameraStateRef.current.radius =
-											view.id === "graph" ? 25 : 18;
+										// Reset camera target to center
+										if (controlsRef.current) {
+											controlsRef.current.target.set(0, 0, 0);
+										}
 									}}
 									className={`flex items-center gap-2 px-2 py-1.5 rounded text-left text-sm transition-colors ${
 										activeView === view.id

@@ -164,10 +164,18 @@ class Validator:
         ) if self.is_topology(node) else self.infer_layer_io(node)  # type: ignore[arg-type]
 
     def infer_layer_io(self, layer: LayerConfig) -> IO:
-        from caramba.config.layer import LinearLayerConfig, LoRALinearLayerConfig, DropoutLayerConfig
+        from caramba.config.layer import (
+            LinearLayerConfig,
+            LoRALinearLayerConfig,
+            DropoutLayerConfig,
+            MosaicNGramCacheLogitsLayerConfig,
+        )
 
         if isinstance(layer, (LinearLayerConfig, LoRALinearLayerConfig)):
             return IO(int(layer.d_in), int(layer.d_out))
+        if isinstance(layer, MosaicNGramCacheLogitsLayerConfig):
+            v = int(layer.vocab_size)
+            return IO(v, v)
         if isinstance(layer, DropoutLayerConfig):
             return IO()
         d_model = getattr(layer, "d_model", None)

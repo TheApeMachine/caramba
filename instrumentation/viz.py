@@ -97,3 +97,33 @@ class TrainingVizContext:
         """Return JSONL-serializable event payload."""
         return {"layers": [self.layers[k] for k in sorted(self.layers.keys())]}
 
+
+@dataclass(slots=True)
+class TrainingVizMosaicContext(TrainingVizContext):
+    """Training context that also carries MOSAIC control signals.
+
+    This exists so we can pass one ctx object through the model that:
+    - remains `isinstance(ctx, TrainingVizContext)` for attention viz hooks
+    - carries extra fields needed for MOSAIC curriculum training (teacher actions, input_ids)
+    """
+
+    # For n-gram cache and other token-aware layers.
+    input_ids: Tensor | None = None
+
+    # Teacher-forced memory controls (Stage D1/D2).
+    # Expected keys are implementation-defined (e.g., read_bucket/write_bucket/write_gate).
+    mosaic_teacher: dict[str, Tensor] | None = None
+
+    # If true, MOSAIC layers may record aux tensors for curriculum losses.
+    mosaic_collect_aux: bool = False
+
+    # Scheduled sampling probability: probability of using teacher controls when present.
+    mosaic_teacher_p: float = 1.0
+
+    # Best-effort: filled by MOSAIC layers during forward.
+    mosaic_aux_out: dict[str, Tensor] | None = None
+
+    # Optional mask to drop local mixer contribution (forced-read dropout).
+    # Expected shape: (B,T) or (T,) with values in {0,1}.
+    mosaic_drop_local: Tensor | None = None
+

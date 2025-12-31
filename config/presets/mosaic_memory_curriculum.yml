@@ -1,0 +1,111 @@
+version: 2
+name: mosaic_memory_curriculum
+notes: |
+  MOSAIC Stage D1-style curriculum: teacher-forced memory addressing/gating.
+  Uses a synthetic dataset that requires recalling key/value bindings across long gaps.
+
+vars:
+  d_model: 256
+  n_layers: 6
+  vocab_size: 8192
+  block_size: 512
+  mem_buckets: 4096
+  mem_hashes: 2
+
+targets:
+  - type: experiment
+    name: mosaic_d1_memory
+    description: Train MOSAIC with teacher-forced memory signals (D1).
+    backend: torch
+    task: task.language_modeling
+
+    data:
+      ref: dataset.mosaic_memory_curriculum
+      config:
+        block_size: ${block_size}
+        vocab_size: ${vocab_size}
+        mem_buckets: ${mem_buckets}
+        mem_hashes: ${mem_hashes}
+        n_pairs: 6
+        distractor_len: 256
+        n_items: 200000
+        seed: 1337
+
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 8
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+                    mem_router: vq
+                    mem_vq_groups: 2
+                    mem_vq_codebook_size: 64    # 64^2=4096 buckets
+                    mem_vq_group_dim: 16
+                    mem_vq_beam: 2
+                    mem_write_multi: true
+                    mem_buckets: ${mem_buckets}
+                    mem_dim: 128
+                    mem_hashes: ${mem_hashes}
+                    mem_assoc: 4
+                    mem_key_dim: 32
+                    mem_read_temp: 1.0
+                    mem_match_threshold: 0.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.2
+                    forced_read_dropout_p: 0.0
+                    aux_contrastive_delta: 1
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+
+    objective:
+      ref: objective.mosaic_next_token_aux
+      config:
+        logits_key: logits
+        target_key: target_ids
+        aux_gate_weight: 0.2
+        aux_bits_weight: 0.2
+        aux_utility_weight: 0.2
+        aux_contrastive_weight: 0.2
+
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_d1
+        seed: 1337
+        steps: 2000
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 16
+          block_size: ${block_size}
+          lr: 0.0003
+          device: cpu
+          dtype: float32
+          # Stage D2: scheduled sampling from teacher -> student memory control.
+          mosaic_teacher_p_start: 1.0
+          mosaic_teacher_p_end: 0.0
+          mosaic_teacher_p_schedule: linear
+          mosaic_teacher_p_warmup_steps: 200
+          mosaic_teacher_p_cooldown_steps: 200
+

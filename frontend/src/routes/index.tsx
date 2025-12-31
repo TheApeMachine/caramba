@@ -23,6 +23,9 @@ function App() {
 					<Link to="/stepped" className={cn(buttonVariants({ variant: "outline" }))}>
 						Stepped demo
 					</Link>
+					<Link to="/agents" className={cn(buttonVariants({ variant: "outline" }))}>
+						🤖 Agents
+					</Link>
 				</div>
 
 				<div className="text-sm text-muted-foreground">

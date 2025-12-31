@@ -1,0 +1,97 @@
+version: 2
+name: mosaic
+notes: |
+  MOSAIC baseline: no attention, no KV cache.
+  Local causal diffusion-style mixer + multiscale state + fixed hash memory.
+
+vars:
+  d_model: 512
+  n_layers: 12
+  vocab_size: 50257
+  block_size: 512
+
+targets:
+  - type: experiment
+    name: mosaic_train
+    description: Train a MOSAIC LM (no attention/no KV cache).
+    backend: torch
+    task: task.language_modeling
+
+    data:
+      ref: dataset.tokens
+      config:
+        path: path/to/your/data.tokens
+        block_size: ${block_size}
+
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 16
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+                    mem_router: vq
+                    mem_vq_groups: 2
+                    mem_vq_codebook_size: 128   # 128^2=16384 buckets
+                    mem_vq_group_dim: 16
+                    mem_vq_beam: 2
+                    mem_write_multi: true
+                    mem_buckets: 16384
+                    mem_dim: 256
+                    mem_hashes: 2
+                    mem_assoc: 4
+                    mem_key_dim: 32
+                    mem_read_temp: 1.0
+                    mem_match_threshold: 0.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.1
+                    forced_read_dropout_p: 0.0
+                    aux_contrastive_delta: 1
+
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+              # Optional inference-time n-gram cache (disabled by default via weight=0).
+              - type: MosaicNGramCacheLogitsLayer
+                vocab_size: ${vocab_size}
+                n: 6
+                # Keep this modest by default; it's a fixed-size structure.
+                table_size: 262144
+                top_m: 8
+                weight: 0.0
+
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_scratch
+        seed: 1337
+        steps: 2000
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 32
+          block_size: ${block_size}
+          lr: 0.0003
+          device: cpu
+          dtype: float32
+

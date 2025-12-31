@@ -109,3 +109,177 @@ class NextTokenCrossEntropyObjective(KeyedCrossEntropyObjective):
         # Backwards-compatible alias.
         self.target_key = self.labels_key
 
+
+class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
+    """Next-token CE + auxiliary curriculum losses for MOSAIC memory control.
+
+    Expected (optional) batch keys:
+    - mosaic_teacher_write_gate: (B,T) float in {0,1} or -1 to ignore
+    - mosaic_teacher_read_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
+    - mosaic_teacher_write_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
+
+    Expected (optional) output keys (provided by MOSAIC layers via ctx):
+    - mosaic_write_gate_logits: (B,T) logits
+    - mosaic_read_bit_logits: (B,T,H,BITS) logits (before sign)
+    - mosaic_write_bit_logits: (B,T,H,BITS) logits (before sign)
+    """
+
+    def __init__(
+        self,
+        *,
+        logits_key: str = "logits",
+        target_key: str = "target_ids",
+        ignore_index: int = -100,
+        label_smoothing: float = 0.0,
+        aux_gate_weight: float = 0.1,
+        aux_bits_weight: float = 0.1,
+        aux_utility_weight: float = 0.1,
+        aux_contrastive_weight: float = 0.1,
+    ) -> None:
+        super().__init__(
+            logits_key=logits_key,
+            target_key=target_key,
+            ignore_index=ignore_index,
+            label_smoothing=label_smoothing,
+        )
+        self.aux_gate_weight = float(aux_gate_weight)
+        self.aux_bits_weight = float(aux_bits_weight)
+        self.aux_utility_weight = float(aux_utility_weight)
+        self.aux_contrastive_weight = float(aux_contrastive_weight)
+
+    @staticmethod
+    def _bucket_to_bits(bucket: Tensor, *, n_bits: int) -> Tensor:
+        """Convert bucket indices to {0,1} bits along a last dimension."""
+        # bucket: (...,) int64
+        b = bucket.long().clamp_min(0)
+        shifts = torch.arange(int(n_bits), device=b.device, dtype=torch.long)
+        bits = ((b.unsqueeze(-1) >> shifts) & 1).to(dtype=torch.float32)
+        return bits
+
+    def loss(self, *, outputs: TensorDict, batch: TensorDict) -> Tensor:
+        base = super().loss(outputs=outputs, batch=batch)
+        loss = base
+
+        # Gate imitation (optional).
+        tg = batch.get("mosaic_teacher_write_gate", None) if isinstance(batch, dict) else None
+        pg = outputs.get("mosaic_write_gate_logits", None) if isinstance(outputs, dict) else None
+        if (
+            self.aux_gate_weight > 0.0
+            and isinstance(tg, Tensor)
+            and isinstance(pg, Tensor)
+            and tg.shape == pg.shape
+        ):
+            # Mask ignored entries.
+            mask = tg >= 0
+            if bool(mask.any().item()):
+                gate_loss = F.binary_cross_entropy_with_logits(
+                    pg[mask].float(),
+                    tg[mask].float(),
+                )
+                loss = loss + float(self.aux_gate_weight) * gate_loss
+
+        # Address imitation via bit logits (optional).
+        # We supervise bits rather than bucket softmax to avoid O(B) outputs.
+        tr = batch.get("mosaic_teacher_read_bucket", None) if isinstance(batch, dict) else None
+        tw = batch.get("mosaic_teacher_write_bucket", None) if isinstance(batch, dict) else None
+        pr = outputs.get("mosaic_read_bit_logits", None) if isinstance(outputs, dict) else None
+        pw = outputs.get("mosaic_write_bit_logits", None) if isinstance(outputs, dict) else None
+
+        def _bits_loss(t_bucket: Tensor, p_bits: Tensor) -> Tensor | None:
+            # t_bucket: (B,T) or (B,T,H)
+            # p_bits: (B,T,H,BITS)
+            if p_bits.ndim != 4:
+                return None
+            B, T, H, n_bits = p_bits.shape
+            tb = t_bucket
+            if tb.ndim == 2:
+                tb = tb.unsqueeze(-1).expand(B, T, H)
+            if tb.ndim != 3 or tb.shape[:3] != (B, T, H):
+                return None
+            mask = tb >= 0
+            if not bool(mask.any().item()):
+                return None
+            tgt_bits = self._bucket_to_bits(tb, n_bits=int(n_bits))
+            # Apply mask to bits.
+            m = mask.unsqueeze(-1).expand_as(tgt_bits)
+            return F.binary_cross_entropy_with_logits(
+                p_bits[m].float(),
+                tgt_bits[m].float(),
+            )
+
+        if self.aux_bits_weight > 0.0 and isinstance(pr, Tensor) and isinstance(tr, Tensor):
+            bl = _bits_loss(tr, pr)
+            if bl is not None:
+                loss = loss + float(self.aux_bits_weight) * bl
+        if self.aux_bits_weight > 0.0 and isinstance(pw, Tensor) and isinstance(tw, Tensor):
+            bl2 = _bits_loss(tw, pw)
+            if bl2 is not None:
+                loss = loss + float(self.aux_bits_weight) * bl2
+
+        # VQ router imitation (optional): CE over per-group code logits.
+        vqr = outputs.get("mosaic_vq_read_logits", None) if isinstance(outputs, dict) else None
+        vqw = outputs.get("mosaic_vq_write_logits", None) if isinstance(outputs, dict) else None
+
+        def _decode_codes(bucket: Tensor, *, K: int, G: int) -> Tensor:
+            # bucket: (B,T,H)
+            b = bucket.long().clamp_min(0)
+            codes = []
+            for g in range(int(G)):
+                codes.append(((b // (K**g)) % K).unsqueeze(-1))
+            return torch.cat(codes, dim=-1)  # (B,T,H,G)
+
+        def _vq_ce(t_bucket: Tensor, p_logits: Tensor) -> Tensor | None:
+            # t_bucket: (B,T) or (B,T,H)
+            # p_logits: (B,T,H,G,K)
+            if p_logits.ndim != 5:
+                return None
+            B, T, H, G, K = p_logits.shape
+            tb = t_bucket
+            if tb.ndim == 2:
+                tb = tb.unsqueeze(-1).expand(B, T, H)
+            if tb.ndim != 3 or tb.shape != (B, T, H):
+                return None
+            mask = tb >= 0
+            if not bool(mask.any().item()):
+                return None
+            tgt_codes = _decode_codes(tb, K=int(K), G=int(G))  # (B,T,H,G)
+            # Flatten.
+            p = p_logits.reshape(B * T * H * G, K)
+            tgt = tgt_codes.reshape(B * T * H * G)
+            m = mask.unsqueeze(-1).expand(B, T, H, G).reshape(B * T * H * G)
+            if not bool(m.any().item()):
+                return None
+            return F.cross_entropy(p[m], tgt[m])
+
+        if self.aux_bits_weight > 0.0 and isinstance(vqr, Tensor) and isinstance(tr, Tensor):
+            vql = _vq_ce(tr, vqr)
+            if vql is not None:
+                loss = loss + float(self.aux_bits_weight) * vql
+        if self.aux_bits_weight > 0.0 and isinstance(vqw, Tensor) and isinstance(tw, Tensor):
+            vql2 = _vq_ce(tw, vqw)
+            if vql2 is not None:
+                loss = loss + float(self.aux_bits_weight) * vql2
+
+        # Utility prediction imitation (optional).
+        tu = batch.get("mosaic_teacher_write_utility", None) if isinstance(batch, dict) else None
+        pu = outputs.get("mosaic_write_utility_logits", None) if isinstance(outputs, dict) else None
+        if (
+            self.aux_utility_weight > 0.0
+            and isinstance(tu, Tensor)
+            and isinstance(pu, Tensor)
+            and tu.shape == pu.shape
+        ):
+            mask = tu >= 0
+            if bool(mask.any().item()):
+                ul = F.binary_cross_entropy_with_logits(pu[mask].float(), tu[mask].float())
+                loss = loss + float(self.aux_utility_weight) * ul
+
+        # Contrastive auxiliary from the model (optional scalar).
+        cl = outputs.get("mosaic_contrastive_loss", None) if isinstance(outputs, dict) else None
+        if self.aux_contrastive_weight > 0.0 and isinstance(cl, Tensor):
+            # Expect scalar tensor; if not, reduce.
+            cval = cl.float().mean()
+            loss = loss + float(self.aux_contrastive_weight) * cval
+
+        return loss
+

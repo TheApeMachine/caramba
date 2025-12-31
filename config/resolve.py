@@ -31,6 +31,8 @@ TYPE_ALIASES: dict[str, str] = {
     "dropout": "DropoutLayer",
     "attention": "AttentionLayer",
     "swiglu": "SwiGLULayer",
+    "mosaic_block": "MosaicBlockLayer",
+    "mosaic_ngram_cache": "MosaicNGramCacheLogitsLayer",
 }
 
 
