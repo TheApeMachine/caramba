@@ -256,6 +256,7 @@ class AttentionBase(AttentionLayer):
                 mask=mask,
                 cache=decoupled_cache,
                 pos_offset=pos_offset,
+                ctx=ctx,
                 q_chunk_override=q_chunk_override,
                 local_window_override=local_window_override,
                 decode_block_override=decode_block_override,
@@ -268,6 +269,7 @@ class AttentionBase(AttentionLayer):
             mask=mask,
             cache=standard_cache,
             pos_offset=pos_offset,
+            ctx=ctx,
             q_chunk_override=q_chunk_override,
             local_window_override=local_window_override,
         )

@@ -34,7 +34,7 @@ from caramba.config.run import Run
 from caramba.config.target import ExperimentTargetConfig
 from caramba.config.train import TrainConfig, TrainPhase
 from caramba.console import logger
-from caramba.instrumentation import RunLogger
+from caramba.instrumentation import RunLogger, TrainingVizContext
 from caramba.instrumentation.wandb_writer import WandBWriter
 from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
@@ -266,6 +266,129 @@ class StandardTrainer:
         profile_every = int(getattr(train, "profile_every", 0)) or 0
         profile_record_shapes = bool(getattr(train, "profile_record_shapes", False))
 
+        # --- Lightweight per-layer telemetry (best-effort) ---
+        #
+        # We attach forward hooks to attention layers to compute cheap scalar summaries.
+        # This powers the frontend "network" view without trying to stream full tensors.
+        from torch.utils.hooks import RemovableHandle
+
+        layer_stats_enabled = False
+        layer_telemetry_interval = int(telemetry_interval)
+        _hook_handles: list[RemovableHandle] = []
+        attn_modules: list[tuple[int, str, torch.nn.Module]] = []
+
+        class _LayerStatsCollector:
+            enabled: bool
+
+            def __init__(self) -> None:
+                self.enabled = False
+                self.reset()
+
+            def reset(self) -> None:
+                self.counts: dict[int, int] = {}
+                self.sum_ms: dict[int, float] = {}
+                self.sum_ma: dict[int, float] = {}
+                self.max_abs: dict[int, float] = {}
+                self.shapes: dict[int, list[int]] = {}
+
+            def observe(self, idx: int, y: Tensor) -> None:
+                # Keep overhead bounded; this is best-effort.
+                try:
+                    z = y.detach()
+                    z = z.float()
+                    ms = float((z * z).mean().item())
+                    ma = float(z.abs().mean().item())
+                    mx = float(z.abs().max().item())
+                    self.counts[idx] = int(self.counts.get(idx, 0)) + 1
+                    self.sum_ms[idx] = float(self.sum_ms.get(idx, 0.0) + ms)
+                    self.sum_ma[idx] = float(self.sum_ma.get(idx, 0.0) + ma)
+                    self.max_abs[idx] = float(max(self.max_abs.get(idx, 0.0), mx))
+                    if idx not in self.shapes:
+                        self.shapes[idx] = [int(x) for x in list(z.shape)]
+                except Exception:
+                    return
+
+            def finalize(self) -> list[dict[str, object]]:
+                out: list[dict[str, object]] = []
+                for idx, name, mod in attn_modules:
+                    n = int(self.counts.get(idx, 0))
+                    if n <= 0:
+                        continue
+                    ms = float(self.sum_ms.get(idx, 0.0)) / float(n)
+                    ma = float(self.sum_ma.get(idx, 0.0)) / float(n)
+                    mx = float(self.max_abs.get(idx, 0.0))
+                    rms = float(math.sqrt(max(0.0, ms)))
+                    cfg = getattr(mod, "config", None)
+                    out.append(
+                        {
+                            "index": int(idx),
+                            "name": str(name),
+                            "type": "attention",
+                            "shape": self.shapes.get(idx, None),
+                            "mean_abs": float(ma),
+                            "rms": float(rms),
+                            "max_abs": float(mx),
+                            "mode": str(
+                                getattr(
+                                    getattr(mod, "mode", None),
+                                    "value",
+                                    getattr(mod, "mode", ""),
+                                )
+                            ),
+                            "null_attn": bool(getattr(cfg, "null_attn", False)) if cfg is not None else False,
+                            "tie_qk": bool(getattr(cfg, "tie_qk", False)) if cfg is not None else False,
+                            "rope_semantic": bool(getattr(cfg, "rope_semantic", False)) if cfg is not None else False,
+                            "decoupled_gate": bool(getattr(cfg, "decoupled_gate", False)) if cfg is not None else False,
+                        }
+                    )
+                return out
+
+        _collector = _LayerStatsCollector()
+
+        try:
+            import torch.nn as nn
+            from caramba.layer.attention import AttentionLayer
+
+            raw = getattr(train, "layer_telemetry_interval", None)
+            # Default to every step (metrics telemetry can remain slower).
+            layer_telemetry_interval = int(raw) if raw is not None else 1
+            layer_telemetry_interval = max(1, int(layer_telemetry_interval))
+
+            root_mod = getattr(system, "module", None)
+            if isinstance(root_mod, nn.Module):
+                for name, mod in root_mod.named_modules():
+                    if isinstance(mod, AttentionLayer):
+                        # Give the module a stable viz id/name so it can emit per-layer samples.
+                        try:
+                            setattr(mod, "_viz_index", int(len(attn_modules)))
+                            setattr(mod, "_viz_name", str(name))
+                        except Exception:
+                            pass
+                        attn_modules.append((len(attn_modules), str(name), mod))
+
+                def _make_hook(i: int):
+                    def _hook(_m: nn.Module, _inp: tuple[object, ...], out: object) -> None:
+                        if not _collector.enabled:
+                            return
+                        y = (
+                            out[0]
+                            if isinstance(out, tuple)
+                            and len(out) > 0
+                            and isinstance(out[0], Tensor)
+                            else out
+                        )
+                        if isinstance(y, Tensor):
+                            _collector.observe(i, y)
+
+                    return _hook
+
+                for idx, _name, mod in attn_modules:
+                    _hook_handles.append(mod.register_forward_hook(_make_hook(idx)))
+
+                layer_stats_enabled = len(attn_modules) > 0
+        except Exception:
+            layer_stats_enabled = False
+
         def bytes_to_mb(n: int) -> float:
             return float(n) / (1024.0 * 1024.0)
 
@@ -436,7 +559,11 @@ class StandardTrainer:
             ):
                 if not hasattr(system, "forward"):
                     raise TypeError("System component does not expose forward()")
-                outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                try:
+                    outputs = system.forward(batch_td, ctx=viz_ctx)  # type: ignore[attr-defined]
+                except TypeError:
+                    # Some non-standard systems may not accept ctx; keep best-effort.
+                    outputs = system.forward(batch_td)  # type: ignore[attr-defined]
                 loss = _call_objective_loss(outputs=outputs, batch_td=batch_td)
             return outputs, loss
 
@@ -445,6 +572,20 @@ class StandardTrainer:
                 task = progress.add_task("Training...", total=int(run.steps))
                 for step in range(int(run.steps)):
                     t0 = time.perf_counter()
+                    # Training viz: emit small attention/activation samples periodically.
+                    # Default to every step; this is small (downsampled) and users
+                    # often want responsive visuals even when steps are slow.
+                    viz_interval = int(getattr(train, "viz_interval", 1) or 1)
+                    viz_interval = max(1, int(viz_interval))
+                    viz_enabled = ((step + 1) % viz_interval) == 0
+                    viz_ctx = TrainingVizContext(
+                        enabled=bool(viz_enabled),
+                        step=int(step + 1),
+                        max_tokens=int(getattr(train, "viz_tokens", 16) or 16),
+                        max_channels=int(getattr(train, "viz_channels", 32) or 32),
+                        max_heads=int(getattr(train, "viz_heads", 4) or 4),
+                        topk=int(getattr(train, "viz_topk", 8) or 8),
+                    )
                     accum_steps = int(getattr(train, "gradient_accumulation_steps", 1))
                     accum_steps = max(1, accum_steps)
                     optimizer.zero_grad(set_to_none=True)
@@ -476,6 +617,10 @@ class StandardTrainer:
                         batch_td = cast(TensorDictBase, to_device(batch_td, device=device))
                         micro_batches.append(batch_td)
                     t_data = time.perf_counter()
+
+                    if layer_stats_enabled:
+                        _collector.reset()
+                        _collector.enabled = bool(((step + 1) % layer_telemetry_interval) == 0)
 
                     # Optional profiling (best-effort; primarily useful on CUDA).
                     if profile_every > 0 and ((step + 1) % profile_every == 0):
@@ -523,6 +668,8 @@ class StandardTrainer:
                         loss_sum += float(loss.detach())
                         (loss / float(accum_steps)).backward()
                         last_batch_td = mb
+                    if layer_stats_enabled:
+                        _collector.enabled = False
                     if last_batch_td is None:
                         last_batch_td = micro_batches[-1]
                     t_bwd = time.perf_counter()
@@ -535,6 +682,32 @@ class StandardTrainer:
                         # After offloading, grads should be freed aggressively.
                         optimizer.zero_grad(set_to_none=True)
                     t_optim = time.perf_counter()
+
+                    # Emit layer-level telemetry independent of `telemetry_interval`.
+                    if layer_stats_enabled and ((step + 1) % layer_telemetry_interval == 0):
+                        try:
+                            run_logger.log_event(
+                                type="layer_stats",
+                                run_id=str(run.id),
+                                phase="standard",
+                                step=step + 1,
+                                data={"layers": _collector.finalize()},
+                            )
+                        except Exception:
+                            pass
+
+                    # Emit viz payload independent of `telemetry_interval`.
+                    if viz_ctx.enabled:
+                        try:
+                            run_logger.log_event(
+                                type="viz",
+                                run_id=str(run.id),
+                                phase="standard",
+                                step=step + 1,
+                                data=viz_ctx.to_event(),
+                            )
+                        except Exception:
+                            pass
 
                     if (step + 1) % telemetry_interval == 0:
                         # Log averaged loss per optimizer step (matches grad accumulation semantics).
@@ -634,6 +807,16 @@ class StandardTrainer:
         finally:
             if wandb_writer is not None:
                 wandb_writer.close()
+            # Cleanup hooks (best-effort).
+            try:
+                if "layer_stats_enabled" in locals() and layer_stats_enabled:
+                    for h in _hook_handles:
+                        try:
+                            h.remove()
+                        except Exception:
+                            pass
+            except Exception:
+                pass
 
         self._save_checkpoint(
             checkpoint_dir=checkpoint_dir,

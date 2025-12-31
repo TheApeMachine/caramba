@@ -77,6 +77,7 @@ class StandardAttentionLayer(AttentionBase):
         mask: Tensor | None,
         cache: "LayerKVCache | None",
         pos_offset: int,
+        ctx: object | None = None,
         q_chunk_override: int | None = None,
         local_window_override: int | None = None,
     ) -> tuple[Tensor, "LayerKVCache | None"]:
@@ -111,6 +112,48 @@ class StandardAttentionLayer(AttentionBase):
         if self.group_size > 1:
             kh = kh.repeat_interleave(self.group_size, dim=1)
             vh = vh.repeat_interleave(self.group_size, dim=1)
+
+        # --- Training viz: compute small attention heatmaps (best-effort) ---
+        #
+        # SDPA does not return attention weights, so we recompute a tiny attention
+        # matrix for a few heads/tokens only (cheap).
+        try:
+            from caramba.instrumentation.viz import TrainingVizContext
+
+            if ctx is not None and isinstance(ctx, TrainingVizContext) and ctx.enabled:
+                idx = int(getattr(self, "_viz_index", -1))
+                name = str(getattr(self, "_viz_name", ""))
+                mode = str(getattr(getattr(self, "mode", None), "value", getattr(self, "mode", "")))
+                if idx >= 0:
+                    tq = int(min(int(ctx.max_tokens), int(qh.size(2))))
+                    tk = int(min(int(ctx.max_tokens), int(kh.size(2))))
+                    hh = int(min(int(ctx.max_heads), int(qh.size(1))))
+                    if tq > 0 and tk > 0 and hh > 0:
+                        qs = qh[:, :hh, :tq, :].float()
+                        ks = kh[:, :hh, :tk, :].float()
+                        # (B, H, tq, tk)
+                        logits = torch.matmul(qs, ks.transpose(-2, -1)) * float(self._scale or 1.0)
+                        # Apply causal mask in training (pos_offset is typically 0).
+                        if bool(self.config.is_causal):
+                            causal = torch.tril(
+                                torch.ones((tq, tk), device=logits.device, dtype=torch.bool)
+                            )
+                            logits = logits.masked_fill(~causal.view(1, 1, tq, tk), float("-inf"))
+                        probs = torch.softmax(logits, dim=-1)
+                        eps = 1e-9
+                        ent = -(probs * (probs + eps).log()).sum(dim=-1).mean(dim=-1)  # (B,H)
+                        ent_list = [float(x) for x in ent[0].detach().cpu().tolist()]
+                        mats = [probs[0, h, :, :].detach() for h in range(int(hh))]
+                        ctx.record_attention_matrix(
+                            idx=idx,
+                            name=name,
+                            mode=mode,
+                            n_heads=int(getattr(self, "n_heads", hh)),
+                            matrices=mats,
+                            entropies=ent_list,
+                        )
+        except Exception:
+            pass
 
         q_chunk = q_chunk_override if q_chunk_override is not None else self.config.q_chunk
         local_window = (
@@ -158,6 +201,24 @@ class StandardAttentionLayer(AttentionBase):
                 )
 
         y = self.out_proj(self._merge(out))
+        # Training viz: record a small activation slice from the output.
+        try:
+            from caramba.instrumentation.viz import TrainingVizContext
+
+            if ctx is not None and isinstance(ctx, TrainingVizContext) and ctx.enabled:
+                idx = int(getattr(self, "_viz_index", -1))
+                name = str(getattr(self, "_viz_name", ""))
+                mode = str(getattr(getattr(self, "mode", None), "value", getattr(self, "mode", "")))
+                if idx >= 0:
+                    ctx.record_activation_sample(
+                        idx=idx,
+                        name=name,
+                        mode=mode,
+                        n_heads=int(getattr(self, "n_heads", 0) or 0) or None,
+                        y=y,
+                    )
+        except Exception:
+            pass
         return y, cache
 
     def _sdp_attention_chunked(

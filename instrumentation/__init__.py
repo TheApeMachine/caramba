@@ -13,6 +13,7 @@ from caramba.instrumentation.hdf5_store import H5Store
 from caramba.instrumentation.analysis import generate_analysis_png
 from caramba.instrumentation.live_plotter import LivePlotter
 from caramba.instrumentation.run_logger import RunLogger
+from caramba.instrumentation.viz import TrainingVizContext
 from caramba.instrumentation.tensorboard_writer import TensorBoardWriter
 from caramba.instrumentation.wandb_writer import WandBWriter
 
@@ -21,6 +22,7 @@ __all__ = [
     "H5Store",
     "LivePlotter",
     "RunLogger",
+    "TrainingVizContext",
     "TensorBoardWriter",
     "WandBWriter",
     "generate_analysis_png",
