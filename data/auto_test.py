@@ -4,8 +4,8 @@ from pathlib import Path
 
 import torch
 
-from data.auto import build_token_dataset
-from data.text_tokens import TextTokensDataset
+from caramba.data.auto import build_token_dataset
+from caramba.data.text_tokens import TextTokensDataset
 
 
 def test_build_token_dataset_tokens_file(tmp_path: Path) -> None:

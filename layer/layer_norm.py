@@ -9,7 +9,7 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.layer import LayerNormLayerConfig
+from caramba.config.layer import LayerNormLayerConfig
 
 
 class LayerNormLayer(nn.Module):
@@ -43,7 +43,7 @@ class LayerNormLayer(nn.Module):
         """Apply layer normalization."""
         # Fast path via HAL (Metal / Triton / fallback).
         try:
-            from optimizer.kernels import layernorm
+            from caramba.optimizer.kernels import layernorm
 
             return layernorm(
                 x=x,

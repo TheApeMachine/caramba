@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import torch
 
-from config.kvcache import KVCacheTensorConfig
+from caramba.config.kvcache import KVCacheTensorConfig
 
 
 @dataclass(frozen=True)
@@ -67,8 +67,8 @@ def make_quantspec(kind: str, dim: int, qblock: int) -> QuantSpec:
 
 
 # Import after types are defined to avoid circular imports
-from cache.decoupled import DecoupledLayerKVCache
-from cache.layer import LayerKVCache
+from caramba.cache.decoupled import DecoupledLayerKVCache
+from caramba.cache.layer import LayerKVCache
 
 
 class Cache:

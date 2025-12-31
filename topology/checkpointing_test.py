@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import torch
 
-from config.layer import LinearLayerConfig
-from config.topology import StackedTopologyConfig
+from caramba.config.layer import LinearLayerConfig
+from caramba.config.topology import StackedTopologyConfig
 
 
 def test_activation_checkpointing_forward_backward() -> None:

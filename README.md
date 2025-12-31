@@ -61,25 +61,25 @@ Built-in support for modern neural network components:
 
 Define complex model structures declaratively:
 
-| Topology | Use Case | Example |
-|----------|----------|---------|
-| `StackedTopology` | Sequential layer execution | Transformer blocks |
-| `ResidualTopology` | Skip connections (`x + f(x)`) | Pre-norm blocks |
-| `NestedTopology` | Repeat layers N times | N transformer layers |
-| `ParallelTopology` | Execute and stack outputs | Multi-head attention |
-| `BranchingTopology` | Execute and concatenate | Feature fusion |
-| `CyclicTopology` | Cyclic connections | Graph networks |
-| `RecurrentTopology` | Recurrent with cache | Sequence models |
+| Topology            | Use Case                      | Example              |
+|---------------------|-------------------------------|----------------------|
+| `StackedTopology`   | Sequential layer execution    | Transformer blocks   |
+| `ResidualTopology`  | Skip connections (`x + f(x)`) | Pre-norm blocks      |
+| `NestedTopology`    | Repeat layers N times         | N transformer layers |
+| `ParallelTopology`  | Execute and stack outputs     | Multi-head attention |
+| `BranchingTopology` | Execute and concatenate       | Feature fusion       |
+| `CyclicTopology`    | Cyclic connections            | Graph networks       |
+| `RecurrentTopology` | Recurrent with cache          | Sequence models      |
 
 [→ Full Topology Guide](docs/topologies.md)
 
 ### 🎓 Multiple Training Modes
 
-| Mode | Description | When to Use |
-|------|-------------|-------------|
-| **Standard** | End-to-end training from scratch | Baseline experiments |
-| **Upcycle** | Architecture surgery + distillation | Converting pretrained models |
-| **Orchestrated** | Dynamic optimizer switching | Adaptive training research |
+| Mode             | Description                         | When to Use                  |
+|------------------|-------------------------------------|------------------------------|
+| **Standard**     | End-to-end training from scratch    | Baseline experiments         |
+| **Upcycle**      | Architecture surgery + distillation | Converting pretrained models |
+| **Orchestrated** | Dynamic optimizer switching         | Adaptive training research   |
 
 [→ Training Guide](docs/training.md)
 
@@ -155,32 +155,32 @@ Every experiment flows through this chain:
 manifest → parse → lower → validate → build → run → verify → benchmark → artifacts
 ```
 
-| Stage | What Happens |
-|-------|--------------|
-| **parse** | Load YAML/JSON, substitute `${variables}` |
-| **lower** | Normalize type names, resolve references |
-| **validate** | Check schema, verify dimensions |
-| **build** | Construct PyTorch modules from topology |
-| **run** | Execute training runs with checkpointing |
-| **verify** | Compare outputs against thresholds |
-| **benchmark** | Measure perplexity, latency, memory |
-| **artifacts** | Generate CSV, PNG, LaTeX outputs |
+| Stage         | What Happens                              |
+|---------------|-------------------------------------------|
+| **parse**     | Load YAML/JSON, substitute `${variables}` |
+| **lower**     | Normalize type names, resolve references  |
+| **validate**  | Check schema, verify dimensions           |
+| **build**     | Construct PyTorch modules from topology   |
+| **run**       | Execute training runs with checkpointing  |
+| **verify**    | Compare outputs against thresholds        |
+| **benchmark** | Measure perplexity, latency, memory       |
+| **artifacts** | Generate CSV, PNG, LaTeX outputs          |
 
 ---
 
 ## 📚 Documentation
 
-| Guide | Description |
-|-------|-------------|
+| Guide                                         | Description                                    |
+|-----------------------------------------------|------------------------------------------------|
 | [🚀 Getting Started](docs/getting-started.md) | Installation, first experiment, basic concepts |
-| [📄 Manifest Reference](docs/manifests.md) | Complete YAML schema with examples |
-| [🧱 Layer Reference](docs/layers.md) | All layer types and their configurations |
-| [🔗 Topology Guide](docs/topologies.md) | Composing complex architectures |
-| [🎓 Training Guide](docs/training.md) | Standard, upcycle, and orchestrated training |
-| [🔮 Inference Guide](docs/inference.md) | Generation, caching, speculative decoding |
-| [📊 Benchmarking](docs/benchmarking.md) | Running benchmarks and generating artifacts |
-| [🤖 Agent Workflows](docs/agents.md) | AI-assisted paper drafting and review |
-| [⚡ Optimization](docs/optimization.md) | Metal/Triton kernels, runtime planning |
+| [📄 Manifest Reference](docs/manifests.md)    | Complete YAML schema with examples             |
+| [🧱 Layer Reference](docs/layers.md)          | All layer types and their configurations       |
+| [🔗 Topology Guide](docs/topologies.md)       | Composing complex architectures                |
+| [🎓 Training Guide](docs/training.md)         | Standard, upcycle, and orchestrated training   |
+| [🔮 Inference Guide](docs/inference.md)       | Generation, caching, speculative decoding      |
+| [📊 Benchmarking](docs/benchmarking.md)       | Running benchmarks and generating artifacts    |
+| [🤖 Agent Workflows](docs/agents.md)          | AI-assisted paper drafting and review          |
+| [⚡ Optimization](docs/optimization.md)       | Metal/Triton kernels, runtime planning          |
 
 ---
 

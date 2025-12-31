@@ -9,14 +9,14 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from carmath import neg_inf
-from config.layer import AttentionLayerConfig, AttentionMode
-from console import logger
-from layer.attention.base import AttentionBase, SEM_ROPE_EVEN_DIM_ERROR
-from layer.rope import RotaryEmbedding
+from caramba.carmath import neg_inf
+from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from caramba.console import logger
+from caramba.layer.attention.base import AttentionBase, SEM_ROPE_EVEN_DIM_ERROR
+from caramba.layer.rope import RotaryEmbedding
 
 if TYPE_CHECKING:
-    from cache.decoupled import DecoupledLayerKVCache
+    from caramba.cache.decoupled import DecoupledLayerKVCache
 
 
 # Debug aid: avoid spamming logs on every decode step.

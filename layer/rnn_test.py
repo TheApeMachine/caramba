@@ -1,8 +1,8 @@
 
 import unittest
 import torch
-from layer.rnn import RNNLayer
-from config.layer import RNNLayerConfig
+from caramba.layer.rnn import RNNLayer
+from caramba.config.layer import RNNLayerConfig
 
 class TestRNNLayer(unittest.TestCase):
     def test_lstm_forward(self):

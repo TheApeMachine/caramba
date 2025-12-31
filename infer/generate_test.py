@@ -10,10 +10,10 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from config.kvcache import KVCacheKind
-from config.layer import AttentionLayerConfig, AttentionMode, LayerType
-from infer.cache_plan import cache_plan_key, cache_plan_payload, save_cached_kind
-from infer.generate import (
+from caramba.config.kvcache import KVCacheKind
+from caramba.config.layer import AttentionLayerConfig, AttentionMode, LayerType
+from caramba.infer.cache_plan import cache_plan_key, cache_plan_payload, save_cached_kind
+from caramba.infer.generate import (
     GenerateConfig,
     Generator,
     count_attention_layers,
@@ -22,7 +22,7 @@ from infer.generate import (
     _resolve_cache_kind,
     sample_next_token,
 )
-from layer.attention import AttentionLayer
+from caramba.layer.attention import AttentionLayer
 
 
 class DummyModel(nn.Module):
@@ -244,7 +244,7 @@ class TestCreateCaches(unittest.TestCase):
             device=torch.device("cpu"),
         )
         self.assertEqual(len(caches), 2)
-        from cache.layer import LayerKVCache
+        from caramba.cache.layer import LayerKVCache
         for cache in caches:
             self.assertIsInstance(cache, LayerKVCache)
 
@@ -276,7 +276,7 @@ class TestCreateCaches(unittest.TestCase):
             device=torch.device("cpu"),
         )
         self.assertEqual(len(caches), 2)
-        from cache.decoupled import DecoupledLayerKVCache
+        from caramba.cache.decoupled import DecoupledLayerKVCache
         for cache in caches:
             self.assertIsInstance(cache, DecoupledLayerKVCache)
 

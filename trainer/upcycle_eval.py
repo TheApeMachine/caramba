@@ -18,14 +18,14 @@ from typing import Any, cast
 import torch
 from torch import nn
 
-from carmath import weight_dtype
-from config.model import ModelConfig
-from console import logger
-from loader.checkpoint import CheckpointLoader
-from loader.hf import HFLoader
-from loader.llama_upcycle import LlamaUpcycle
-from model import Model
-from trainer.initializers.default import _make_teacher_model_config
+from caramba.carmath import weight_dtype
+from caramba.config.model import ModelConfig
+from caramba.console import logger
+from caramba.loader.checkpoint import CheckpointLoader
+from caramba.loader.hf import HFLoader
+from caramba.loader.llama_upcycle import LlamaUpcycle
+from caramba.model import Model
+from caramba.trainer.initializers.default import _make_teacher_model_config
 
 
 class UpcycleEvalTrainer:

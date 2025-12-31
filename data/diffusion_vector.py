@@ -15,7 +15,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from runtime.tensordict_utils import TensorDictBase, as_tensordict
+from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 def _linear_beta_schedule(timesteps: int, beta_start: float = 1e-4, beta_end: float = 2e-2) -> Tensor:
     return torch.linspace(beta_start, beta_end, timesteps)

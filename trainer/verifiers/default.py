@@ -11,22 +11,22 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 
-from config.eval import EvalVerifyConfig
-from config.verifier import DefaultVerifierConfig
-from config.verify import CompareVerifyConfig, FidelityVerifyConfig, KVCacheVerifyConfig
-from console import logger
-from data import build_token_dataset
-from eval.suite import assert_eval_thresholds, run_eval_verify
-from layer.attention import AttentionLayer
-from carmath import train_val_counts
-from trainer.compare import assert_thresholds, compare_teacher_student
-from trainer.fidelity import assert_fidelity_thresholds, compute_short_context_fidelity
-from trainer.upcycle_context import UpcycleContext
-from trainer.verifiers.kvcache import (
+from caramba.config.eval import EvalVerifyConfig
+from caramba.config.verifier import DefaultVerifierConfig
+from caramba.config.verify import CompareVerifyConfig, FidelityVerifyConfig, KVCacheVerifyConfig
+from caramba.console import logger
+from caramba.data import build_token_dataset
+from caramba.eval.suite import assert_eval_thresholds, run_eval_verify
+from caramba.layer.attention import AttentionLayer
+from caramba.carmath import train_val_counts
+from caramba.trainer.compare import assert_thresholds, compare_teacher_student
+from caramba.trainer.fidelity import assert_fidelity_thresholds, compute_short_context_fidelity
+from caramba.trainer.upcycle_context import UpcycleContext
+from caramba.trainer.verifiers.kvcache import (
     estimate_model_kvcache_bytes,
     estimate_model_kvcache_bytes_decoupled,
 )
-from runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict
+from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict
 
 
 class DefaultVerifier:

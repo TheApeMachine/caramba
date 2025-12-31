@@ -14,15 +14,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, Iterable
 
-from agent.process import Process
-from console import logger
-from config.manifest import Manifest
-from config.model import ModelConfig
-from config.target import ExperimentTargetConfig
+from caramba.agent.process import Process
+from caramba.console import logger
+from caramba.config.manifest import Manifest
+from caramba.config.model import ModelConfig
+from caramba.config.target import ExperimentTargetConfig
 
 if TYPE_CHECKING:
-    from agent import Researcher
-    from config.topology import NodeConfig
+    from caramba.agent import Researcher
+    from caramba.config.topology import NodeConfig
 
 
 @dataclass(frozen=True, slots=True)

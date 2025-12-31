@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
+from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
 
 
 def test_plan_roundtrip(tmp_path: Path) -> None:

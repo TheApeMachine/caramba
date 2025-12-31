@@ -15,9 +15,9 @@ from dataclasses import dataclass, field
 import torch
 from torch import nn
 
-from benchmark.utils import get_model_vocab_size
-from config.benchmark import MemoryBenchmarkConfig
-from layer.attention import AttentionLayer, AttentionMode
+from caramba.benchmark.utils import get_model_vocab_size
+from caramba.config.benchmark import MemoryBenchmarkConfig
+from caramba.layer.attention import AttentionLayer, AttentionMode
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-import os
 import math
 import time
 import torch
@@ -11,14 +10,14 @@ from torch import Tensor, nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from config.run import Run
-from console import logger
-from carmath import autocast_dtype, safe_perplexity_from_nll
-from trainer.collectors import Collector
-from trainer.checkpointers import CheckPointer
-from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
-from trainer.upcycle_context import UpcycleContext
-from runtime.tensordict_utils import TensorDictBase
+from caramba.config.run import Run
+from caramba.console import logger
+from caramba.carmath import autocast_dtype, safe_perplexity_from_nll
+from caramba.trainer.collectors import Collector
+from caramba.trainer.checkpointers import CheckPointer
+from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
+from caramba.trainer.upcycle_context import UpcycleContext
+from caramba.runtime.tensordict_utils import TensorDictBase
 
 
 def _sync_device(device: torch.device) -> None:
@@ -72,15 +71,10 @@ def _compute_loss(
         logits: Tensor = result[1]  # type: ignore[index]
         if not torch.isfinite(logits.detach()).all():
             # Diagnostic: try once with Metal kernels disabled to isolate kernel issues.
-            old = os.getenv("CARAMBA_DISABLE_METAL_KERNELS")
-            os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = "1"
-            try:
+            from caramba.optimizer.kernels import metal_kernels_disabled
+
+            with metal_kernels_disabled():
                 logits2 = student.forward(x, return_features=True)[1]  # type: ignore[index]
-            finally:
-                if old is None:
-                    os.environ.pop("CARAMBA_DISABLE_METAL_KERNELS", None)
-                else:
-                    os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = old
             raise RuntimeError(
                 "Non-finite logits detected.\n"
                 f"- {_tensor_stats('logits', logits)}\n"
@@ -102,15 +96,10 @@ def _compute_loss(
         return loss, ce_loss, diff_loss_val
     logits = student.forward(x)
     if not torch.isfinite(logits.detach()).all():
-        old = os.getenv("CARAMBA_DISABLE_METAL_KERNELS")
-        os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = "1"
-        try:
+        from caramba.optimizer.kernels import metal_kernels_disabled
+
+        with metal_kernels_disabled():
             logits2 = student.forward(x)
-        finally:
-            if old is None:
-                os.environ.pop("CARAMBA_DISABLE_METAL_KERNELS", None)
-            else:
-                os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = old
         raise RuntimeError(
             "Non-finite logits detected.\n"
             f"- {_tensor_stats('logits', logits)}\n"
@@ -208,7 +197,7 @@ def _build_optimizer(train, params) -> Optimizer:
     if opt_name == "sgd":
         return torch.optim.SGD(params, lr=float(train.lr), weight_decay=float(weight_decay))
     if opt_name == "lion":
-        from optimizer.lion import Lion
+        from caramba.optimizer.lion import Lion
 
         return Lion(params, lr=float(train.lr), weight_decay=float(weight_decay), fused=bool(fused_opt))
     raise ValueError(f"Unknown optimizer {opt_name!r}")
@@ -335,7 +324,7 @@ class GlobalStepper:
 
                 grad_norm = 0.0
                 try:
-                    from carmath import global_grad_norm_l2
+                    from caramba.carmath import global_grad_norm_l2
 
                     grad_norm = float(global_grad_norm_l2(ctx.student))
                 except Exception:

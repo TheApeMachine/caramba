@@ -11,7 +11,7 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from config.layer import LoRALinearLayerConfig
+from caramba.config.layer import LoRALinearLayerConfig
 
 
 class LoRALinearLayer(nn.Module):

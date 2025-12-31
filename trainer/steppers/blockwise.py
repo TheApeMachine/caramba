@@ -8,20 +8,20 @@ from torch import Tensor
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from config.run import Run
-from config.train import TrainConfig
-from console import logger
-from layer.attention import AttentionLayer
-from orchestrator.telemetry import SpikeDetector
-from trainer.blockwise import BlockwiseConfig, BlockwiseTrainer
-from trainer.collectors import Collector
-from trainer.checkpointers import CheckPointer
-from trainer.distill import DistillLoss
-from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
-from trainer.upcycle_context import UpcycleContext
-from carmath import autocast_dtype
-from runtime.tensordict_utils import TensorDictBase
-from topology.residual import ResidualTopology
+from caramba.config.run import Run
+from caramba.config.train import TrainConfig
+from caramba.console import logger
+from caramba.layer.attention import AttentionLayer
+from caramba.orchestrator.telemetry import SpikeDetector
+from caramba.trainer.blockwise import BlockwiseConfig, BlockwiseTrainer
+from caramba.trainer.collectors import Collector
+from caramba.trainer.checkpointers import CheckPointer
+from caramba.trainer.distill import DistillLoss
+from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
+from caramba.trainer.upcycle_context import UpcycleContext
+from caramba.carmath import autocast_dtype
+from caramba.runtime.tensordict_utils import TensorDictBase
+from caramba.topology.residual import ResidualTopology
 
 
 def _int_or(value: object, default: int = 0) -> int:
@@ -61,7 +61,7 @@ def _build_optimizer(train: TrainConfig, params) -> Optimizer:
             weight_decay=float(weight_decay),
         )
     if opt_name == "lion":
-        from optimizer.lion import Lion
+        from caramba.optimizer.lion import Lion
 
         return Lion(
             params,

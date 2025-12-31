@@ -38,7 +38,7 @@ import torch.distributed as dist
 from torch import nn, Tensor
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 
-from console import logger as console_logger
+from caramba.console import logger as console_logger
 
 if TYPE_CHECKING:
     from torch.nn.parallel import DistributedDataParallel

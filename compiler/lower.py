@@ -6,12 +6,12 @@ fully explicit, uniform structures.
 """
 from __future__ import annotations
 
-from config.manifest import Manifest
-from config.model import ModelConfig
-from config.target import ExperimentTargetConfig
-from config.run import Run
-from config.topology import NodeConfig, TopologyConfig
-from config.topology import GraphNodeConfig, GraphTopologyConfig
+from caramba.config.manifest import Manifest
+from caramba.config.model import ModelConfig
+from caramba.config.target import ExperimentTargetConfig
+from caramba.config.run import Run
+from caramba.config.topology import NodeConfig, TopologyConfig
+from caramba.config.topology import GraphNodeConfig, GraphTopologyConfig
 
 
 class Lowerer:

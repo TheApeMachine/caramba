@@ -9,13 +9,13 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset
 
-from config.component import ComponentSpec
-from config.defaults import Defaults, DefaultsLogging
-from config.mode import Mode
-from config.run import Run
-from config.target import ExperimentTargetConfig
-from config.train import TrainConfig, TrainPhase
-from trainer.standard import StandardTrainer
+from caramba.config.component import ComponentSpec
+from caramba.config.defaults import Defaults, DefaultsLogging
+from caramba.config.mode import Mode
+from caramba.config.run import Run
+from caramba.config.target import ExperimentTargetConfig
+from caramba.config.train import TrainConfig, TrainPhase
+from caramba.trainer.standard import StandardTrainer
 
 
 class TinyDataset(Dataset):
@@ -133,7 +133,7 @@ def test_run_single_minimal_executes_training_loop_and_writes_checkpoint(tmp_pat
     target, run = _target_and_run(steps=2, train=train)
 
     # Run directly to avoid registry wiring; this still covers almost all trainer logic.
-    from instrumentation.run_logger import RunLogger
+    from caramba.instrumentation.run_logger import RunLogger
 
     rl = RunLogger(tmp_path, filename="train.jsonl", enabled=True)
     tr._run_single(
@@ -169,7 +169,7 @@ def test_run_single_unknown_optimizer_raises(tmp_path: Path) -> None:
         optimizer="nope",
     )
     target, run = _target_and_run(steps=1, train=train)
-    from instrumentation.run_logger import RunLogger
+    from caramba.instrumentation.run_logger import RunLogger
 
     rl = RunLogger(tmp_path, filename="train.jsonl", enabled=True)
     with pytest.raises(ValueError, match="Unknown optimizer"):
@@ -204,14 +204,14 @@ def test_run_single_distributed_init_failure_is_wrapped(tmp_path: Path, monkeypa
     )
     target, run = _target_and_run(steps=1, train=train)
 
-    import trainer.distributed as dist
+    import caramba.trainer.distributed as dist
 
     def raise_boom(*_a, **_k) -> None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(dist.DistributedContext, "init", raise_boom)
 
-    from instrumentation.run_logger import RunLogger
+    from caramba.instrumentation.run_logger import RunLogger
 
     rl = RunLogger(tmp_path, filename="train.jsonl", enabled=True)
     with pytest.raises(RuntimeError, match="Failed to initialize distributed training"):

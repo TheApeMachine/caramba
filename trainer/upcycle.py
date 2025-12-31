@@ -13,64 +13,66 @@ exposes `model` for the initializer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+import copy
 import re
-import os
 import torch
 
-from carmath import (
-    autocast_dtype_str,
-    safe_perplexity_from_nll,
-    token_budget_batch_size,
-    weight_dtype,
-    weight_dtype_str,
-)
-from config.defaults import Defaults
-from config.group import Group
-from config.manifest import Manifest
-from config.model import ModelConfig
-from config.run import Run
-from config.target import ExperimentTargetConfig
-from config.train import TrainConfig, TrainPhase
-from config.collector import DefaultCollectorConfig
-from config.checkpointer import DefaultCheckPointerConfig
-from config.initializer import DefaultInitializerConfig
-from config.verifier import DefaultVerifierConfig
-from config.stepper import DefaultStepperConfig
-from console import logger
-from instrumentation import Instrumentation, generate_analysis_png
-from config.instrumentation import (
+from caramba.carmath import autocast_dtype_str, weight_dtype, weight_dtype_str, token_budget_batch_size, safe_perplexity_from_nll
+from caramba.config.defaults import Defaults
+from caramba.config.group import Group
+from caramba.config.manifest import Manifest
+from caramba.config.model import ModelConfig
+from caramba.config.run import Run
+from caramba.config.target import ExperimentTargetConfig
+from caramba.config.train import TrainConfig, TrainPhase
+from caramba.config.collector import DefaultCollectorConfig
+from caramba.config.checkpointer import DefaultCheckPointerConfig
+from caramba.config.initializer import DefaultInitializerConfig
+from caramba.config.verifier import DefaultVerifierConfig
+from caramba.config.stepper import DefaultStepperConfig
+from caramba.console import logger
+from caramba.instrumentation import Instrumentation, generate_analysis_png
+from caramba.config.instrumentation import (
     InstrumentationConfig,
     TensorBoardConfig,
     WandBConfig,
     LivePlotConfig,
     JSONLConfig,
 )
-from runtime import RuntimePlan, load_plan, make_plan_key, save_plan
-from trainer.upcycle_init_context import UpcycleInitContext
-from trainer.upcycle_context import UpcycleContext
-from trainer.initializers import Initializer
-from trainer.collectors import Collector
-from trainer.verifiers import Verifier
-from trainer.checkpointers import CheckPointer
-from trainer.steppers import Stepper
-from data import build_token_dataset
-from runtime.tensordict_utils import TensorDictBase, collate_tensordict
+from caramba.runtime import RuntimePlan, load_plan, make_plan_key, save_plan
+from caramba.trainer.upcycle_init_context import UpcycleInitContext
+from caramba.trainer.upcycle_context import UpcycleContext
+from caramba.trainer.initializers import Initializer
+from caramba.trainer.collectors import Collector
+from caramba.trainer.verifiers import Verifier
+from caramba.trainer.checkpointers import CheckPointer
+from caramba.trainer.steppers import Stepper
+from caramba.data import build_token_dataset
+from caramba.runtime.tensordict_utils import TensorDictBase, collate_tensordict
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 
-@dataclass(frozen=True, slots=True)
 class _ManifestShim:
     """Minimal shape expected by legacy upcycling components."""
 
-    name: str | None
-    notes: str
-    defaults: Defaults
-    model: ModelConfig
+    __slots__ = ("name", "notes", "defaults", "model")
+
+    def __init__(
+        self,
+        *,
+        name: str | None,
+        notes: str,
+        defaults: Defaults,
+        model: ModelConfig,
+    ) -> None:
+        self.name = name
+        self.notes = notes
+        self.defaults = defaults
+        self.model = model
 
 
 class UpcycleTrainer:
@@ -169,7 +171,10 @@ class _UpcycleSession:
     ) -> None:
         self.manifest = shim_manifest
         self.group = group
-        self.data_config = dict(data_config)
+        # IMPORTANT: manifest-derived config may include shared nested objects
+        # (e.g. YAML anchors/aliases). Treat as immutable and deep-copy once per
+        # session to avoid cross-run/target side effects.
+        self.data_config = copy.deepcopy(data_config)
         self.defaults = shim_manifest.defaults
         self.model_cfg = shim_manifest.model
 
@@ -218,7 +223,7 @@ class _UpcycleSession:
                 logger.warning("Failed to load resume state, continuing without resume")
                 self._resume_state = None
 
-    def _teacher_sanity_check(self, train: TrainConfig) -> None:
+    def _teacher_sanity_check(self, train: TrainConfig, *, _allow_rebuild: bool = True) -> None:
         """Fail fast if the teacher or dataset is obviously broken."""
         if train.teacher_ckpt is None:
             logger.error("Teacher sanity check skipped: teacher_ckpt is required")
@@ -240,7 +245,7 @@ class _UpcycleSession:
             if kind not in {"fineweb", "fineweb_npy"}:
                 raise ValueError(f"Unsupported data.config.prepare.type={kind!r}")
             # Import locally so training can run without dataset deps unless requested.
-            from prepare_fineweb import prepare_fineweb_npy
+            from caramba.prepare_fineweb import prepare_fineweb_npy
 
             # Manifest-driven defaults: fall back to manifest defaults.data.tokenizer.
             tok = str(prepare_cfg.get("tokenizer", getattr(self.defaults.data, "tokenizer", "llama")))
@@ -295,7 +300,7 @@ class _UpcycleSession:
 
         # Resolve vocab size from teacher embeddings (tied or untied).
         try:
-            from benchmark.utils import get_model_vocab_size
+            from caramba.benchmark.utils import get_model_vocab_size
 
             vocab_size = int(get_model_vocab_size(self.teacher, default=32000))
         except Exception:
@@ -318,9 +323,9 @@ class _UpcycleSession:
         # Teacher parity should be a *correctness* check, not a kernel benchmark.
         # Metal fast-path kernels are great for speed, but if they have a bug we want
         # to detect it. For the sanity check, force pure PyTorch paths even on MPS.
-        old_disable_all = os.environ.get("CARAMBA_DISABLE_METAL_KERNELS")
-        os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = "1"
-        try:
+        from caramba.optimizer.kernels import metal_kernels_disabled
+
+        with metal_kernels_disabled():
             with torch.no_grad():
                 for batch in loader:
                     x = batch["input_ids"].to(self.device)
@@ -353,11 +358,6 @@ class _UpcycleSession:
                     n += 1
                     if n >= max_batches:
                         break
-        finally:
-            if old_disable_all is None:
-                os.environ.pop("CARAMBA_DISABLE_METAL_KERNELS", None)
-            else:
-                os.environ["CARAMBA_DISABLE_METAL_KERNELS"] = old_disable_all
 
         denom = max(1, int(total_tokens))
         nll = float(total_loss) / float(denom)
@@ -448,14 +448,13 @@ class _UpcycleSession:
             # Optional self-healing: if a manifest prepare config is present, regenerate the dataset
             # once (overwrite) and retry the sanity check. This keeps the workflow fully
             # manifest-driven: users run one command and the manifest declares how to produce data.
-            if prepare_cfg is not None and bool(prepare_cfg.get("rebuild_on_failure", True)):
+            if prepare_cfg is not None and _allow_rebuild and bool(prepare_cfg.get("rebuild_on_failure", True)):
                 logger.warning(
                     f"Teacher sanity failed (ppl={ppl:.3f} > {max_ppl:.3f}); rebuilding dataset per manifest and retrying once..."
                 )
                 _maybe_prepare(overwrite=True)
                 # Re-run once with rebuild disabled to avoid loops.
-                prepare_cfg["rebuild_on_failure"] = False
-                return self._teacher_sanity_check(train)
+                return self._teacher_sanity_check(train, _allow_rebuild=False)
 
             raise ValueError(
                 f"Teacher sanity check failed: teacher perplexity={ppl:.3f} exceeds max_ppl={max_ppl:.3f}. "

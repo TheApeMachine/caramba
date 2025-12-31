@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from config.run import Run
+from caramba.config.run import Run
 
-from trainer.upcycle_context import UpcycleContext
+from caramba.trainer.upcycle_context import UpcycleContext
 
 
 class Verifier(Protocol):

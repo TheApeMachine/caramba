@@ -14,9 +14,9 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-from benchmark.latency import LatencyResult
-from benchmark.memory import MemoryResult
-from benchmark.perplexity import PerplexityResult
+from caramba.benchmark.latency import LatencyResult
+from caramba.benchmark.memory import MemoryResult
+from caramba.benchmark.perplexity import PerplexityResult
 
 
 @dataclass

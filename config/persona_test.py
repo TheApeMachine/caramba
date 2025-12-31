@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from config.persona import PersonaType, load_persona
+from caramba.config.persona import PersonaType, load_persona
 
 
 def test_persona_type_from_str_roundtrip() -> None:

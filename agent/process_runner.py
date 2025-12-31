@@ -13,8 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
-from console.logger import get_logger
-from config.agents import (
+from caramba.console.logger import get_logger
+from caramba.config.agents import (
     CodeGraphSyncProcessConfig,
     DiscussionProcessConfig,
     PaperCollectArtifactsProcessConfig,
@@ -23,13 +23,13 @@ from config.agents import (
     PlatformImproveProcessConfig,
     ResearchLoopProcessConfig,
 )
-from config.manifest import Manifest
-from config.target import ProcessTargetConfig
-from config.mcp_registry import load_mcp_servers
-from config.persona import load_persona
+from caramba.config.manifest import Manifest
+from caramba.config.target import ProcessTargetConfig
+from caramba.config.mcp_registry import load_mcp_servers
+from caramba.config.persona import load_persona
 
-from agent import Researcher
-from agent.process.discussion import Discussion
+from caramba.agent import Researcher
+from caramba.agent.process.discussion import Discussion
 
 
 logger = get_logger()
@@ -199,7 +199,7 @@ async def _run_paper_write(
     manifest_path: Path | None,
 ) -> dict[str, Any]:
     # Local import so `caramba` can import without the process module present during refactors.
-    from agent.process.paper_write import PaperWrite  # type: ignore[import-not-found]
+    from caramba.agent.process.paper_write import PaperWrite  # type: ignore[import-not-found]
 
     proc = cast(PaperWriteProcessConfig, target.process)
     team_mapping = dict(target.team.root)
@@ -221,7 +221,7 @@ async def _run_paper_review(
     target: ProcessTargetConfig,
     manifest_path: Path | None,
 ) -> dict[str, Any]:
-    from agent.process.paper_review import PaperReview  # type: ignore[import-not-found]
+    from caramba.agent.process.paper_review import PaperReview  # type: ignore[import-not-found]
 
     proc = cast(PaperReviewProcessConfig, target.process)
     team_mapping = dict(target.team.root)
@@ -249,7 +249,7 @@ async def _run_research_loop(
     target: ProcessTargetConfig,
     manifest_path: Path | None,
 ) -> dict[str, Any]:
-    from agent.process.research_loop import ResearchLoopProcess  # type: ignore[import-not-found]
+    from caramba.agent.process.research_loop import ResearchLoopProcess  # type: ignore[import-not-found]
 
     proc = cast(ResearchLoopProcessConfig, target.process)
     team_mapping = dict(target.team.root)
@@ -279,7 +279,7 @@ async def _run_code_graph_sync(
     target: ProcessTargetConfig,
     manifest_path: Path | None,
 ) -> dict[str, Any]:
-    from agent.process.code_graph_sync import CodeGraphSync  # type: ignore[import-not-found]
+    from caramba.agent.process.code_graph_sync import CodeGraphSync  # type: ignore[import-not-found]
 
     proc = cast(CodeGraphSyncProcessConfig, target.process)
     team_mapping = dict(target.team.root)
@@ -306,7 +306,7 @@ async def _run_platform_improve(
     manifest_path: Path | None,
 ) -> dict[str, Any]:
     # Local import so the runner stays resilient to optional process modules.
-    from agent.process.platform_improve import PlatformImprove  # type: ignore[import-not-found]
+    from caramba.agent.process.platform_improve import PlatformImprove  # type: ignore[import-not-found]
 
     proc = cast(PlatformImproveProcessConfig, target.process)
     team_mapping = dict(target.team.root)
@@ -350,7 +350,7 @@ def _run_paper_collect_artifacts(
 ) -> dict[str, Any]:
     """Collect benchmark artifacts into `proc.out_dir` (non-agent utility)."""
     proc = cast(PaperCollectArtifactsProcessConfig, target.process)
-    from experiment.paper_artifacts import collect_ablation_artifacts
+    from caramba.experiment.paper_artifacts import collect_ablation_artifacts
 
     written = collect_ablation_artifacts(
         manifest=manifest,

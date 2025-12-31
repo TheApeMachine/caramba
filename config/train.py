@@ -12,7 +12,7 @@ import enum
 from typing import Literal
 from pydantic import BaseModel
 
-from config import (
+from caramba.config import (
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,

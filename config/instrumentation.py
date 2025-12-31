@@ -10,7 +10,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field
 
-from config import Config
+from caramba.config import Config
 
 
 class InstrumentationType(str, enum.Enum):
@@ -23,9 +23,7 @@ class InstrumentationType(str, enum.Enum):
 
     @staticmethod
     def module_name() -> str:
-        # Use top-level `instrumentation.*` to avoid duplicate imports under both
-        # `caramba.instrumentation.*` and `instrumentation.*`.
-        return "instrumentation"
+        return "caramba.instrumentation"
 
     def py_module(self) -> str:
         # Map config enum members to implementation filenames.

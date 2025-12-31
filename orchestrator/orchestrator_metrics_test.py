@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from torch import nn
 
-from orchestrator.orchestrator import Orchestrator, OrchestratorConfig
+from caramba.orchestrator.orchestrator import Orchestrator, OrchestratorConfig
 
 
 def test_orchestrator_record_metrics_uses_config_keys() -> None:
