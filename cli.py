@@ -13,6 +13,10 @@ from caramba.console import logger
 from caramba.experiment.runner import run_from_manifest_path
 
 
+class UvicornMissingError(click.ClickException):
+    pass
+
+
 class CarambaCLI(click.Group):
     """A click Group that treats unknown commands as `run <manifest_path>`."""
 
@@ -99,13 +103,13 @@ def serve_cmd(host: str, port: int) -> None:
     try:
         import uvicorn
     except Exception as e:
-        raise click.ClickException(
+        raise UvicornMissingError(
             "uvicorn is required for `caramba serve`. Install dependencies and retry."
         ) from e
 
     from caramba_api import app
 
-    uvicorn.run(app, host=str(host), port=int(port), log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -101,4 +101,3 @@ vars:
   batch_size: 8
   steps: 50
   dataset_length: 2048
-
