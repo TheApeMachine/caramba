@@ -10,7 +10,6 @@ from __future__ import annotations
 import torch
 from torch import Tensor, nn
  
-
 from config.layer import AttentionMode
 from carmath import randomized_svd
 from layer.attention import AttentionLayer

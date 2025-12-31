@@ -675,8 +675,8 @@ class DecoupledAttentionLayer(AttentionBase):
                         keep_null = torch.ones((*m.shape[:-1], 1), device=m.device, dtype=torch.bool)
                         m = torch.cat([keep_null, m], dim=-1)
                     scores = scores.masked_fill(~m, ninfty)
-                except Exception:
-                    logger.warning("Mask slice/masked_fill failed; continuing without extra mask")
+                except (IndexError, RuntimeError) as e:
+                    logger.warning(f"Mask slice/masked_fill failed; continuing without extra mask: {type(e).__name__}: {e}")
                 attn = F.softmax(scores.float(), dim=-1).to(qsh.dtype)
                 attn = self.dropout(attn)
                 out = torch.matmul(attn, v_slice)

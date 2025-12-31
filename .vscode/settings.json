@@ -6,11 +6,6 @@
         "source.organizeImports.biome": "explicit",
         "source.fixAll.biome": "explicit"
     },
-    "sonarlint.connectedMode.project": {
-        "connectionId": "fanfactory",
-        "projectKey": "fanfactory_fanapp"
-    },
-    "kiroAgent.configureMCP": "Enabled",
     "makefile.configureOnOpen": false,
     "typescript.autoClosingTags": false
 }

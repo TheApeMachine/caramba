@@ -7,6 +7,8 @@ import math
 import torch
 from torch import nn
 
+from console import logger
+
 
 def global_grad_norm_l2(model: nn.Module) -> float:
     """Compute global L2 norm of gradients across all parameters.
@@ -39,6 +41,7 @@ def safe_perplexity_from_nll(nll: float, *, max_nll: float = 20.0) -> float:
         if x > float(max_nll):
             return float("inf")
         return float(math.exp(x))
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to convert NLL to perplexity: {e}")
         return float("inf")
 

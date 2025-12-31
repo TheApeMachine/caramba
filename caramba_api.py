@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from config.manifest import Manifest
 from config.model import ModelConfig
 from experiment.runner import _resolve_target as _resolve_target_name
+from console import logger
 
 _REPO_ROOT = Path(__file__).resolve().parent
 
@@ -92,6 +93,7 @@ class RunRecord:
 
 _RUNS: dict[str, RunRecord] = {}
 _RUNS_LOCK = asyncio.Lock()
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 
 def _resolve_manifest_path(s: str) -> Path:
@@ -101,6 +103,35 @@ def _resolve_manifest_path(s: str) -> Path:
     return p
 
 
+async def get_manifest(path: str) -> Manifest:
+    """FastAPI dependency to load and validate a manifest from a path."""
+    mp = _resolve_manifest_path(path)
+    if not mp.exists():
+        raise HTTPException(status_code=400, detail={"error": "manifest_not_found", "path": str(mp)})
+    try:
+        return Manifest.from_path(mp)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail={"error": "manifest_invalid", "detail": str(e)})
+
+
+def _walk_model_topology(node: object) -> list[object]:
+    """Recursively walk a model topology configuration to extract all layer nodes."""
+    from config.topology import GraphTopologyConfig
+
+    if isinstance(node, GraphTopologyConfig):
+        return []
+    layers = getattr(node, "layers", None)
+    if isinstance(layers, list):
+        repeat = int(getattr(node, "repeat", 1) or 1)
+        repeat = max(1, repeat)
+        out: list[object] = []
+        for _ in range(repeat):
+            for child in layers:
+                out.extend(_walk_model_topology(child))
+        return out
+    return [node]
+
+
 async def _watch_proc(run_id: str) -> None:
     async with _RUNS_LOCK:
         rec = _RUNS.get(run_id)
@@ -108,7 +139,8 @@ async def _watch_proc(run_id: str) -> None:
         return
     try:
         rc = await rec.proc.wait()
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to wait for process: {e}")
         rc = -1
     async with _RUNS_LOCK:
         r = _RUNS.get(run_id)
@@ -119,8 +151,8 @@ async def _watch_proc(run_id: str) -> None:
         try:
             if r.log_fh is not None:
                 r.log_fh.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to close log file: {e}")
         r.log_fh = None
 
 
@@ -148,13 +180,17 @@ async def _spawn_run(*, manifest_path: Path, target_arg: str | None) -> RunRecor
 
     # Create subprocess with stdout/stderr redirected to the log file.
     # asyncio only supports file descriptors for stdout/stderr redirection.
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        cwd=str(_REPO_ROOT),
-        stdout=log_fh.fileno(),
-        stderr=log_fh.fileno(),
-        env=os.environ.copy(),
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(_REPO_ROOT),
+            stdout=log_fh.fileno(),
+            stderr=log_fh.fileno(),
+            env=os.environ.copy(),
+        )
+    except Exception:
+        log_fh.close()
+        raise
 
     rec = RunRecord(
         id=str(run_id),
@@ -173,7 +209,9 @@ async def _spawn_run(*, manifest_path: Path, target_arg: str | None) -> RunRecor
 
     async with _RUNS_LOCK:
         _RUNS[rec.id] = rec
-    asyncio.create_task(_watch_proc(rec.id))
+    task = asyncio.create_task(_watch_proc(rec.id))
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
     return rec
 
 
@@ -194,9 +232,10 @@ async def _stop_run(rec: RunRecord, *, timeout_s: float = 5.0) -> bool:
     try:
         proc.terminate()
     except ProcessLookupError:
+        logger.error("Process not found")
         return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Failed to terminate process: {e}")
     try:
         await asyncio.wait_for(proc.wait(), timeout=float(timeout_s))
         return True
@@ -205,7 +244,8 @@ async def _stop_run(rec: RunRecord, *, timeout_s: float = 5.0) -> bool:
     try:
         proc.kill()
         return True
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to kill process: {e}")
         return False
 
 
@@ -347,26 +387,13 @@ def create_app() -> FastAPI:
         return StreamingResponse(gen, media_type="text/event-stream")
 
     @app.get("/api/manifests/targets")
-    async def manifest_targets(path: str) -> dict[str, object]:
+    async def manifest_targets(path: str, manifest: Manifest = Depends(get_manifest)) -> dict[str, object]:
         mp = _resolve_manifest_path(path)
-        if not mp.exists():
-            raise HTTPException(status_code=400, detail={"error": "manifest_not_found", "path": str(mp)})
-        try:
-            manifest = Manifest.from_path(mp)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail={"error": "manifest_invalid", "detail": str(e)})
         return {"manifest_path": str(mp), "targets": [t.name for t in manifest.targets]}
 
     @app.get("/api/manifests/model_summary")
-    async def model_summary(path: str, target: str) -> dict[str, object]:
+    async def model_summary(path: str, target: str, manifest: Manifest = Depends(get_manifest)) -> dict[str, object]:
         mp = _resolve_manifest_path(path)
-        if not mp.exists():
-            raise HTTPException(status_code=400, detail={"error": "manifest_not_found", "path": str(mp)})
-        try:
-            manifest = Manifest.from_path(mp)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail={"error": "manifest_invalid", "detail": str(e)})
-
         tgt = next((t for t in manifest.targets if getattr(t, "name", None) == target), None)
         if tgt is None:
             raise HTTPException(status_code=404, detail={"error": "target_not_found", "target": target})
@@ -383,23 +410,8 @@ def create_app() -> FastAPI:
         cfg = ModelConfig.model_validate(model_payload)
 
         from config.layer import AttentionLayerConfig
-        from config.topology import GraphTopologyConfig
 
-        def walk(node: object) -> list[object]:
-            if isinstance(node, GraphTopologyConfig):
-                return []
-            layers = getattr(node, "layers", None)
-            if isinstance(layers, list):
-                repeat = int(getattr(node, "repeat", 1) or 1)
-                repeat = max(1, repeat)
-                out: list[object] = []
-                for _ in range(repeat):
-                    for child in layers:
-                        out.extend(walk(child))
-                return out
-            return [node]
-
-        nodes = walk(cfg.topology)
+        nodes = _walk_model_topology(cfg.topology)
         attn_layers = [n for n in nodes if isinstance(n, AttentionLayerConfig)]
         n_layers = len(attn_layers)
         d_model = int(attn_layers[0].d_model) if attn_layers else None
@@ -429,11 +441,8 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/manifests/attention_layers")
-    async def attention_layers(path: str, target: str) -> dict[str, object]:
+    async def attention_layers(path: str, target: str, manifest: Manifest = Depends(get_manifest)) -> dict[str, object]:
         mp = _resolve_manifest_path(path)
-        if not mp.exists():
-            raise HTTPException(status_code=400, detail={"error": "manifest_not_found", "path": str(mp)})
-        manifest = Manifest.from_path(mp)
         tgt = next((t for t in manifest.targets if getattr(t, "name", None) == target), None)
         if tgt is None:
             raise HTTPException(status_code=404, detail={"error": "target_not_found", "target": target})
@@ -450,23 +459,8 @@ def create_app() -> FastAPI:
         cfg = ModelConfig.model_validate(model_payload)
 
         from config.layer import AttentionLayerConfig
-        from config.topology import GraphTopologyConfig
 
-        def walk(node: object) -> list[object]:
-            if isinstance(node, GraphTopologyConfig):
-                return []
-            layers = getattr(node, "layers", None)
-            if isinstance(layers, list):
-                repeat = int(getattr(node, "repeat", 1) or 1)
-                repeat = max(1, repeat)
-                out: list[object] = []
-                for _ in range(repeat):
-                    for child in layers:
-                        out.extend(walk(child))
-                return out
-            return [node]
-
-        nodes = walk(cfg.topology)
+        nodes = _walk_model_topology(cfg.topology)
         attn_cfgs = [n for n in nodes if isinstance(n, AttentionLayerConfig)]
         out_layers: list[dict[str, object]] = []
         for i, a in enumerate(attn_cfgs):

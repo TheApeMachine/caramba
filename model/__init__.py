@@ -123,16 +123,17 @@ class Model(nn.Module):
         # In that case, `features` are already logits and should not be projected again.
         try:
             vocab_size, d_model = emb.weight.shape
-            last_dim = int(features.shape[-1])
-        except Exception:
+            last_dim = features.shape[-1]
+        except (AttributeError, IndexError, TypeError):
+            logger.warning("Failed to get vocab size, continuing")
             return features
 
-        if last_dim == int(vocab_size):
+        if last_dim == vocab_size:
             return features
-        if last_dim != int(d_model):
+        if last_dim != d_model:
             raise ValueError(
                 "Model output dimension mismatch for tied embeddings: "
-                f"features.shape[-1]={last_dim} but token_embedding.weight.shape={(int(vocab_size), int(d_model))}. "
+                f"features.shape[-1]={last_dim} but token_embedding.weight.shape={(vocab_size, d_model)}. "
                 "Either set tied_embeddings=false or adjust the topology output dimension."
             )
 
