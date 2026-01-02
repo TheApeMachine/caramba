@@ -1,13 +1,13 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 # Best-effort: never block pushes.
-if [[ -n "${CARAMBA_SKIP_CODEGRAPH_SYNC:-}" ]]; then
+if [ -n "${CARAMBA_SKIP_CODEGRAPH_SYNC:-}" ]; then
   exit 0
 fi
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-if [[ -z "${ROOT}" ]]; then
+if [ -z "${ROOT}" ]; then
   exit 0
 fi
 
@@ -17,37 +17,46 @@ mkdir -p "${LOG_DIR}" >/dev/null 2>&1 || true
 LOG_FILE="${LOG_DIR}/hook.log"
 
 PY="${ROOT}/.venv/bin/python"
-if [[ ! -x "${PY}" ]]; then
+if [ ! -x "${PY}" ]; then
   PY="python3"
 fi
 
 # stdin lines: <local ref> <local sha> <remote ref> <remote sha>
-FILES=()
-while read -r local_ref local_sha remote_ref remote_sha; do
-  # initial push (remote sha is all zeros): do a full scan
-  if [[ "${remote_sha}" =~ ^0{40}$ ]]; then
-    FILES=()
-    break
-  fi
-  mapfile -t changed < <(git diff --name-only "${remote_sha}" "${local_sha}" -- '*.py' 2>/dev/null || true)
-  for f in "${changed[@]}"; do
-    [[ -n "${f}" ]] && FILES+=("${f}")
-  done
-done
-
-ARGS=()
-if [[ ${#FILES[@]} -gt 0 ]]; then
-  # uniq
-  mapfile -t uniq_files < <(printf "%s\n" "${FILES[@]}" | awk '!seen[$0]++')
-  for f in "${uniq_files[@]}"; do
-    ARGS+=(--file "${f}")
-  done
-fi
-
 FALKOR_URI="${CARAMBA_FALKORDB_URI:-redis://localhost:6379}"
 
-set +e
-"${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort --falkordb-uri "${FALKOR_URI}" "${ARGS[@]}" \
-  >>"${LOG_FILE}" 2>&1
+{
+  echo ""
+  echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] pre-push: syncing code graph"
+  echo "repo=${ROOT}"
+  echo "falkor_uri=${FALKOR_URI}"
+
+  # Collect py files touched in the push range(s). If we can't determine, fall back to full sync.
+  tmp="${LOG_DIR}/.prepush_files.$$"
+  : > "${tmp}" || true
+  full=0
+  while read -r local_ref local_sha remote_ref remote_sha; do
+    # initial push (remote sha is all zeros): do a full scan
+    case "${remote_sha}" in
+      0000000000000000000000000000000000000000) full=1 ;;
+    esac
+    if [ "${full}" -eq 1 ]; then
+      continue
+    fi
+    git diff --name-only "${remote_sha}" "${local_sha}" -- '*.py' 2>/dev/null >> "${tmp}" || true
+  done
+
+  if [ "${full}" -eq 1 ] || [ ! -s "${tmp}" ]; then
+    echo "mode=full"
+    "${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort --falkordb-uri "${FALKOR_URI}"
+  else
+    echo "mode=incremental"
+    # uniq
+    awk '!seen[$0]++' "${tmp}" | while IFS= read -r f; do
+      [ -z "${f}" ] && continue
+      "${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort --falkordb-uri "${FALKOR_URI}" --file "${f}"
+    done
+  fi
+  rm -f "${tmp}" >/dev/null 2>&1 || true
+} >>"${LOG_FILE}" 2>&1 || true
 exit 0
 
