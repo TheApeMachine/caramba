@@ -467,6 +467,14 @@ Enable them once:
 git config core.hooksPath .githooks
 ```
 
+Note: if you run FalkorDB via Docker Compose, your container URI is often `redis://falkordb:6379`,
+but git hooks run on the host, so they should usually use `redis://localhost:6379`.
+You can override the hook target with:
+
+```bash
+export CARAMBA_FALKORDB_URI=redis://localhost:6379
+```
+
 To temporarily disable syncing:
 
 ```bash
