@@ -11,6 +11,11 @@ if [[ -z "${ROOT}" ]]; then
   exit 0
 fi
 
+# Log hook activity for debugging.
+LOG_DIR="${ROOT}/artifacts/codegraph"
+mkdir -p "${LOG_DIR}" >/dev/null 2>&1 || true
+LOG_FILE="${LOG_DIR}/hook.log"
+
 # Only sync python files changed in this commit.
 mapfile -t FILES < <(git diff-tree --no-commit-id --name-only -r HEAD -- '*.py' 2>/dev/null || true)
 if [[ ${#FILES[@]} -eq 0 ]]; then
@@ -27,7 +32,10 @@ for f in "${FILES[@]}"; do
   [[ -n "${f}" ]] && ARGS+=(--file "${f}")
 done
 
+FALKOR_URI="${CARAMBA_FALKORDB_URI:-redis://localhost:6379}"
+
 set +e
-"${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort "${ARGS[@]}" >/dev/null 2>&1
+"${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort --falkordb-uri "${FALKOR_URI}" "${ARGS[@]}" \
+  >>"${LOG_FILE}" 2>&1
 exit 0
 
