@@ -61,6 +61,14 @@ class LayerType(str, enum.Enum):
         """Return the Python module containing layer implementations."""
         return "caramba.layer"
 
+    def py_module(self) -> str:
+        """Return the submodule name for this layer type."""
+        if self == LayerType.MOSAIC_BLOCK:
+            return "mosaic.block"
+        if self == LayerType.MOSAIC_NGRAM_CACHE:
+            return "mosaic.ngram_cache"
+        return self.name.lower()
+
 
 class LinearLayerConfig(Config):
     """Configuration for a simple linear projection."""

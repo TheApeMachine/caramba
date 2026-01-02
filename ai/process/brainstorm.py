@@ -4,17 +4,20 @@ You will basically function as a team.
 """
 
 from __future__ import annotations
+import asyncio
 import contextlib
 import io
 import json
 import os
 from pathlib import Path
 import random
+import subprocess
 import sys
 import time
 
 from caramba.ai.process import Process
 from caramba.ai.agent import Agent
+from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
 from rich.console import Group
 from rich.live import Live
 from rich.markdown import Markdown
@@ -106,9 +109,7 @@ class Brainstorm(Process):
         self.append_history(event)
         self._persist_event(event)
 
-    def _render_transcript_markdown(self) -> str:
-        """Render the last N transcript items as compact markdown."""
-        items = self.history[-self.max_context_items :]
+    def _render_items(self, items: list[dict[str, object]]) -> str:
         lines: list[str] = []
         for msg in items:
             mtype = str(msg.get("type", ""))
@@ -133,6 +134,24 @@ class Brainstorm(Process):
             else:
                 lines.append(f"- **{author}** ({mtype}): {content}")
         return "\n".join(lines).strip()
+
+    def _render_transcript_markdown(self) -> str:
+        """Render the last N transcript items as compact markdown."""
+        items = self.history[-self.max_context_items :]
+        return self._render_items(items)
+
+    def _copy_to_clipboard(self, text: str) -> None:
+        """Copy text to the system clipboard."""
+        if not text:
+            return
+        try:
+            if sys.platform == "darwin":
+                process = subprocess.Popen(
+                    "pbcopy", env={"LANG": "en_US.UTF-8"}, stdin=subprocess.PIPE
+                )
+                process.communicate(text.encode("utf-8"))
+        except Exception as e:
+            self.logger.warning(f"Failed to copy to clipboard: {e}")
 
     def _compact_json(self, obj: object, *, max_chars: int = 500) -> str:
         """Compact JSON-ish objects for display."""
@@ -182,7 +201,7 @@ class Brainstorm(Process):
         try:
             while True:
                 await self.handle_user_input(self.get_user_input().strip())
-        except (EOFError, KeyboardInterrupt):
+        except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
             self.logger.info("Exiting.")
             return
 
@@ -198,10 +217,19 @@ class Brainstorm(Process):
         if not user_input:
             return
 
+        # Check for /wipe command
+        if user_input.strip() == "/wipe":
+            await self._handle_wipe_command()
+            return
+
         self._ensure_history_loaded()
 
         # New user turn: make it explicit in the shared transcript.
         self._append(type="user", author=self.name, content=user_input)
+
+        # Start capturing generated content (everything AFTER the user message)
+        start_index = len(self.history)
+
         # Ensure each agent's private ADK session doesn't drift from the shared transcript.
         for a in self.agents.values():
             a.reset_session()
@@ -210,9 +238,13 @@ class Brainstorm(Process):
         if route is not None:
             key, message = route
             await self.next_agent(message, agent=self.agents[key])
-            return
+        else:
+            await self.broadcast(user_input)
 
-        await self.broadcast(user_input)
+        # Copy generated content to clipboard
+        new_items = self.history[start_index:]
+        if new_items:
+            self._copy_to_clipboard(self._render_items(new_items))
 
     async def next_agent(self, user_input: str, agent: Agent | None = None) -> None:
         """Next agent"""
@@ -238,59 +270,84 @@ class Brainstorm(Process):
         err_buf = io.StringIO()
         with contextlib.redirect_stderr(err_buf):
             with Live(self._live_view(answer_md="", tool_md=""), console=self.logger.console, refresh_per_second=12) as live:
-                async for ev in agent.stream_chat_events_async(
-                    prompt,
-                    streaming_mode="sse",
-                    temperature=turn_temperature,
-                ):
-                    et = ev.get("type")
-                    if et == "text":
-                        chunk = ev.get("text") or ""
-                        if chunk:
-                            streamed += str(chunk)
-                            live.update(self._live_view(answer_md=streamed, tool_md="\n".join(tool_events[-max_tool_events:])))
-                    elif et == "tool_call":
-                        saw_tool_event = True
-                        name = ev.get("name")
-                        args = ev.get("args")
-                        self._append(
-                            type="tool_call",
-                            author=agent.persona.name,
-                            content={"name": name, "args": args, "id": ev.get("id")},
+                # Make generator shutdown explicit to avoid:
+                # - RuntimeError: aclose(): asynchronous generator is already running
+                # - anyio cancel scope exit mismatches from generator finalizers
+                try:
+                    async with contextlib.aclosing(
+                        agent.stream_chat_events_async(
+                            prompt,
+                            streaming_mode="sse",
+                            temperature=turn_temperature,
                         )
-                        tool_events.append(
-                            "\n".join(
-                                [
-                                    f"- **call** `{name}`",
-                                    "```json",
-                                    self._compact_json(args, max_chars=900),
-                                    "```",
-                                ]
-                            )
-                        )
-                        live.update(self._live_view(answer_md=streamed, tool_md="\n".join(tool_events[-max_tool_events:])))
-                    elif et == "tool_result":
-                        saw_tool_event = True
-                        name = ev.get("name")
-                        resp = ev.get("response")
-                        summary = self._summarize_tool_result(resp)
-                        self._append(
-                            type="tool_result",
-                            author=agent.persona.name,
-                            # Keep the shared transcript compact (summary only).
-                            content={"name": name, "summary": summary, "id": ev.get("id")},
-                        )
-                        tool_events.append(
-                            "\n".join(
-                                [
-                                    f"- **result** `{name}`",
-                                    "```json",
-                                    self._compact_json(summary, max_chars=900),
-                                    "```",
-                                ]
-                            )
-                        )
-                        live.update(self._live_view(answer_md=streamed, tool_md="\n".join(tool_events[-max_tool_events:])))
+                    ) as stream:
+                        async for ev in stream:
+                            et = ev.get("type")
+                            if et == "text":
+                                chunk = ev.get("text") or ""
+                                if chunk:
+                                    streamed += str(chunk)
+                                    live.update(
+                                        self._live_view(
+                                            answer_md=streamed,
+                                            tool_md="\n".join(tool_events[-max_tool_events:]),
+                                        )
+                                    )
+                            elif et == "tool_call":
+                                saw_tool_event = True
+                                name = ev.get("name")
+                                args = ev.get("args")
+                                self._append(
+                                    type="tool_call",
+                                    author=agent.persona.name,
+                                    content={"name": name, "args": args, "id": ev.get("id")},
+                                )
+                                tool_events.append(
+                                    "\n".join(
+                                        [
+                                            f"- **call** `{name}`",
+                                            "```json",
+                                            self._compact_json(args, max_chars=900),
+                                            "```",
+                                        ]
+                                    )
+                                )
+                                live.update(
+                                    self._live_view(
+                                        answer_md=streamed,
+                                        tool_md="\n".join(tool_events[-max_tool_events:]),
+                                    )
+                                )
+                            elif et == "tool_result":
+                                saw_tool_event = True
+                                name = ev.get("name")
+                                resp = ev.get("response")
+                                summary = self._summarize_tool_result(resp)
+                                self._append(
+                                    type="tool_result",
+                                    author=agent.persona.name,
+                                    # Keep the shared transcript compact (summary only).
+                                    content={"name": name, "summary": summary, "id": ev.get("id")},
+                                )
+                                tool_events.append(
+                                    "\n".join(
+                                        [
+                                            f"- **result** `{name}`",
+                                            "```json",
+                                            self._compact_json(summary, max_chars=900),
+                                            "```",
+                                        ]
+                                    )
+                                )
+                                live.update(
+                                    self._live_view(
+                                        answer_md=streamed,
+                                        tool_md="\n".join(tool_events[-max_tool_events:]),
+                                    )
+                                )
+                except asyncio.CancelledError:
+                    # Treat cancellation (Ctrl-C / task cancellation) as a clean exit.
+                    return
 
         # Re-emit any unexpected stderr, but drop known noisy lines.
         stderr_text = err_buf.getvalue()
@@ -300,6 +357,13 @@ class Brainstorm(Process):
                 if "non-text parts in the response" in line:
                     continue
                 if "BaseAuthenticatedTool" in line and "[EXPERIMENTAL]" in line:
+                    continue
+                # MCP shutdown/auth noise shouldn't break the REPL.
+                if "Session termination failed:" in line:
+                    continue
+                if "Attempted to exit cancel scope in a different task" in line:
+                    continue
+                if "aclose(): asynchronous generator is already running" in line:
                     continue
                 filtered.append(line)
             if filtered:
@@ -320,14 +384,25 @@ class Brainstorm(Process):
                     console=self.logger.console,
                     refresh_per_second=12,
                 ) as live:
-                    async for chunk in agent.stream_text_async(
-                        followup,
-                        streaming_mode="sse",
-                        temperature=turn_temperature,
-                    ):
-                        if chunk:
-                            response += str(chunk)
-                            live.update(self._live_view(answer_md=response, tool_md="\n".join(tool_events[-max_tool_events:])))
+                    try:
+                        async with contextlib.aclosing(
+                            agent.stream_text_async(
+                                followup,
+                                streaming_mode="sse",
+                                temperature=turn_temperature,
+                            )
+                        ) as stream2:
+                            async for chunk in stream2:
+                                if chunk:
+                                    response += str(chunk)
+                                    live.update(
+                                        self._live_view(
+                                            answer_md=response,
+                                            tool_md="\n".join(tool_events[-max_tool_events:]),
+                                        )
+                                    )
+                    except asyncio.CancelledError:
+                        return
             response = response.strip()
             if not response:
                 self.logger.warning(f"{agent.persona.name} produced no output.")
@@ -340,3 +415,38 @@ class Brainstorm(Process):
         """Broadcast the user input to all agents"""
         for agent in random.sample(list(self.agents.values()), len(self.agents)):
             await self.next_agent(user_input, agent)
+
+    def _clear_history(self) -> None:
+        """Clear in-memory history and file-based log."""
+        # Clear in-memory history
+        self.history.clear()
+        self._history_loaded = False
+
+        # Clear file-based log
+        if self.history_path.exists():
+            try:
+                self.history_path.unlink()
+                self.logger.info(f"Cleared history file: {self.history_path}")
+            except Exception as e:
+                self.logger.warning(f"Failed to delete history file: {e}")
+
+    async def _handle_wipe_command(self) -> None:
+        """Handle the /wipe command: extract knowledge, store it, then clear history."""
+        # Ensure history is loaded before extraction
+        self._ensure_history_loaded()
+
+        # Run knowledge extraction task
+        task = KnowledgeExtractionTask(
+            conversation_history=self.history,
+            graph_name="caramba_knowledge_base",
+        )
+        result = await task.run_async()
+
+        # Clear history
+        self.logger.info("Clearing conversation history...")
+        self._clear_history()
+
+        if result.get("knowledge_extracted"):
+            self.logger.success("History wiped. Knowledge has been preserved in caramba_knowledge_base graph.")
+        else:
+            self.logger.success("History wiped.")

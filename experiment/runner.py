@@ -7,6 +7,7 @@ Manifest v2 is target-based:
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -130,12 +131,22 @@ class ExperimentRunner:
             personas_dir = Path("config/personas")
             agents: dict[str, Agent] = {}
             for role_key, persona_name in target.team.root.items():
-                persona = Persona.from_yaml(personas_dir / f"{persona_name}.yml")
+                persona_path = personas_dir / f"{persona_name}.yml"
+                if not persona_path.exists():
+                    raise FileNotFoundError(
+                        f"Persona file not found for role '{role_key}': {persona_path} "
+                        f"(persona_name='{persona_name}')"
+                    )
+                try:
+                    persona = Persona.from_yaml(persona_path)
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to load persona '{persona_name}' from {persona_path}: {e}"
+                    ) from e
                 agents[role_key] = Agent(persona=persona)
 
             process = PROCESSMAP[process_type](agents=agents)
 
-            import asyncio
             asyncio.run(process.run())
             return {}
 

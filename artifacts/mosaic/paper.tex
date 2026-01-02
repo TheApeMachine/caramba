@@ -171,7 +171,6 @@ We add a utility head that predicts whether a write will be queried in the near 
 
 \paragraph{Stage D2: scheduled sampling for student-controlled memory.}
 After teacher-forced memory (D1), we transition to student-controlled routing and gating using scheduled sampling: with probability \(p_t\) we apply teacher actions (write gate/address, read address), otherwise we use the model's own router outputs. We anneal \(p_t\) from 1.0 to 0.0 over training. For discretized routers (e.g., VQ routing), we additionally supervise router decisions with per-group cross-entropy over code assignments.
-\end{itemize}
 
 \subsection{Fusion}
 We combine streams with learned gates:
@@ -205,8 +204,8 @@ Per token, MOSAIC updates only fixed-size buffers and tables:
 
 \subsection{Implementation (Caramba)}
 MOSAIC is implemented as manifest-addressable layers:
-\texttt{MosaicBlockLayer} (\path{layer/mosaic_block.py}) and
-\texttt{MosaicNGramCacheLogitsLayer} (\path{layer/mosaic_ngram_cache.py}).
+\texttt{MosaicBlockLayer} (\path{layer/mosaic/block.py}) and
+\texttt{MosaicNGramCacheLogitsLayer} (\path{layer/mosaic/ngram_cache.py}).
 
 % ============================================================================
 % 3. EXPERIMENTS
@@ -287,7 +286,7 @@ This research was conducted without external funding.
 \section{Manifest snippet}
 The reference preset for this paper is \path{config/presets/mosaic.yml}.
 \section{Implementation notes}
-Core implementation: \path{layer/mosaic_block.py} and \path{layer/mosaic_ngram_cache.py}.
+Core implementation: \path{layer/mosaic/block.py} and \path{layer/mosaic/ngram_cache.py}.
 
 % ============================================================================
 % REFERENCES

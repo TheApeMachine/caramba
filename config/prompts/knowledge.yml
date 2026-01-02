@@ -1,0 +1,28 @@
+knowledge_extraction:
+  name: "Knowledge Extraction"
+  description: "Extract structured knowledge from conversation history"
+
+  extraction_prompt: |
+    You are tasked with extracting structured knowledge from a conversation history.
+
+    Analyze the following conversation and extract:
+    - Key facts, insights, and learnings
+    - Important decisions and conclusions
+    - Technical details, solutions, and approaches
+    - Relationships between concepts, people, or entities
+    - Important context and background information
+
+    For entities:
+    - Use types: Concept, Person, Decision, Fact, or Insight
+    - Use temp_id field with simple identifiers like "entity1", "concept_a", "person_bob", etc.
+    - The temp_id is just for referencing entities in relationships, not a real database ID
+
+    For relationships:
+    - Use types: RELATES_TO, DEPENDS_ON, LEADS_TO, or SIMILAR_TO
+    - Use the temp_id values from entities to reference source and target
+
+    ## Conversation History
+
+    {conversation_history}
+
+    Extract and structure the knowledge from the conversation above.

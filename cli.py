@@ -2,13 +2,14 @@
 
 The CLI is intentionally minimal: one entrypoint that runs a manifest.
 """
-
 from __future__ import annotations
 
 import os
 import click
 from pathlib import Path
+import uvicorn
 
+from caramba_api import app
 from caramba.console import logger
 
 from caramba.experiment.runner import run_from_manifest_path
@@ -16,13 +17,8 @@ from caramba.codegraph.parser import parse_repo
 from caramba.codegraph.sync import sync_files_to_falkordb
 
 
-class UvicornMissingError(click.ClickException):
-    pass
-
-
 class CarambaCLI(click.Group):
     """A click Group that treats unknown commands as `run <manifest_path>`."""
-
     def resolve_command(
         self, ctx: click.Context, args: list[str]
     ) -> tuple[str | None, click.Command | None, list[str]]:
@@ -103,15 +99,6 @@ def serve_cmd(host: str, port: int) -> None:
     - POST /api/runs to spawn `caramba run ...`
     - GET  /api/runs/<id>/events to stream `train.jsonl` as SSE
     """
-    try:
-        import uvicorn
-    except Exception as e:
-        raise UvicornMissingError(
-            "uvicorn is required for `caramba serve`. Install dependencies and retry."
-        ) from e
-
-    from caramba_api import app
-
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
@@ -154,31 +141,32 @@ def codegraph_sync_cmd(
 ) -> None:
     """Parse Python code and sync a structural graph into FalkorDB."""
     # Allow users to disable this (useful for hooks).
-    if (os.getenv("CARAMBA_SKIP_CODEGRAPH_SYNC") or "").strip():
-        logger.warning("codegraph-sync skipped (CARAMBA_SKIP_CODEGRAPH_SYNC is set).")
-        return
-
-    file_list = [str(x) for x in files if str(x).strip()] or None
-    nodes, edges = parse_repo(str(repo_root), files=file_list)
-    result = sync_files_to_falkordb(
-        repo_root=str(repo_root),
-        nodes=nodes,
-        edges=edges,
-        files=file_list,
-        graph=str(graph),
-        uri=falkordb_uri,
-        host=falkordb_host,
-        port=falkordb_port,
-        password=falkordb_password,
-        reset=bool(reset),
-        best_effort=bool(best_effort),
-    )
-    if result.get("ok"):
-        logger.success(
-            f"codegraph-sync ok • graph={result.get('graph')} nodes={result.get('nodes')} edges={result.get('edges')}"
+    try:
+        file_list = [str(x) for x in files if str(x).strip()] or None
+        nodes, edges = parse_repo(str(repo_root), files=file_list)
+        result = sync_files_to_falkordb(
+            repo_root=str(repo_root),
+            nodes=nodes,
+            edges=edges,
+            files=file_list,
+            graph=str(graph),
+            uri=falkordb_uri,
+            host=falkordb_host,
+            port=falkordb_port,
+            password=falkordb_password,
+            reset=bool(reset),
+            best_effort=bool(best_effort),
         )
-    else:
-        logger.warning(f"codegraph-sync failed: {result.get('error')}")
+
+        if result.get("ok"):
+            logger.success(
+                f"codegraph-sync ok • graph={result.get('graph')} nodes={result.get('nodes')} edges={result.get('edges')}"
+            )
+        else:
+            logger.error(f"codegraph-sync failed: {result.get('error')}")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        raise click.Abort()
 
 
 def main(argv: list[str] | None = None) -> int:

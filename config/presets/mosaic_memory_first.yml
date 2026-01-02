@@ -43,8 +43,8 @@ targets:
         vocab_size: ${vocab_size}
         mem_buckets: ${mem_buckets}
         mem_hashes: ${mem_hashes}
-        n_pairs: 6
-        distractor_len: 256
+        n_pairs: 1
+        distractor_len: 64
         n_items: 200000
         seed: 1337
 

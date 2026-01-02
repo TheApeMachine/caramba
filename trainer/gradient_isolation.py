@@ -8,6 +8,7 @@ It reuses the StandardTrainer loop but freezes parameters outside the scope.
 
 from __future__ import annotations
 
+import inspect
 import re
 import time
 from pathlib import Path
@@ -262,6 +263,15 @@ class GradientIsolationTrainer:
         )
         loader_iter = iter(loader)
 
+        # Avoid silent failures: warn once per category to prevent log spam.
+        _warned: set[str] = set()
+
+        def _warn_once(key: str, msg: str) -> None:
+            if key in _warned:
+                return
+            _warned.add(key)
+            logger.warning(msg)
+
         with logger.progress_bar() as progress:
             task = progress.add_task("Training...", total=int(run.steps))
             for step in range(int(run.steps)):
@@ -335,18 +345,32 @@ class GradientIsolationTrainer:
                         if isinstance(objective, MosaicNextTokenWithAuxObjective):
                             collect_aux = True
                     except Exception:
-                        try:
-                            if objective.__class__.__name__ == "MosaicNextTokenWithAuxObjective":
-                                collect_aux = True
-                        except Exception:
-                            pass
+                        pass
                     viz_ctx.mosaic_collect_aux = bool(collect_aux)
 
+                    # Call system.forward without hiding real errors.
+                    forward_fn = system.forward  # type: ignore[attr-defined]
                     try:
-                        outputs = system.forward(batch_td, ctx=viz_ctx)  # type: ignore[attr-defined]
-                    except TypeError:
-                        # Some systems may not accept ctx; keep best-effort but warn via metrics.
-                        outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                        sig = inspect.signature(forward_fn)
+                        params = sig.parameters
+                        accepts_ctx = ("ctx" in params) or any(
+                            p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+                        )
+                    except Exception as e:
+                        _warn_once("system_forward_signature", f"Failed to introspect system.forward (ignoring): {e!r}")
+                        accepts_ctx = True  # best-effort default
+                    if accepts_ctx:
+                        try:
+                            outputs = forward_fn(batch_td, ctx=viz_ctx)
+                        except TypeError as e:
+                            _warn_once(
+                                "system_forward_ctx_typeerror",
+                                f"system.forward(..., ctx=...) raised TypeError; falling back to no-ctx call: {e!r}",
+                            )
+                            outputs = forward_fn(batch_td)
+                    else:
+                        outputs = forward_fn(batch_td)
+
                     # Best-effort: merge MOSAIC aux outputs from ctx into outputs so
                     # objectives can see them even when the system doesn't attach them.
                     try:
@@ -360,8 +384,8 @@ class GradientIsolationTrainer:
                                     and k not in outputs
                                 ):
                                     outputs[k] = v
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        _warn_once("mosaic_aux_merge", f"Failed to merge ctx.mosaic_aux_out into outputs (ignoring): {e!r}")
                     if not hasattr(objective, "loss"):
                         raise TypeError("Objective component does not expose loss()")
                     loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
@@ -392,14 +416,14 @@ class GradientIsolationTrainer:
                     if hasattr(objective, "metrics"):
                         try:
                             extra = objective.metrics(  # type: ignore[attr-defined]
-                                outputs=cast(TensorDictBase, outputs),
+                                outputs=as_tensordict(outputs) if isinstance(outputs, dict) else outputs,
                                 batch=batch_td,
                                 loss=loss,
                             )
                             if isinstance(extra, dict):
                                 metrics.update({str(k): float(v) for k, v in extra.items()})
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            _warn_once("objective_metrics", f"Objective.metrics failed (ignoring): {e!r}")
                     metrics.update(
                         {
                             "time_data_s": float(t_data - t0),
