@@ -31,6 +31,7 @@ from caramba.config.target import ExperimentTargetConfig
 from caramba.config.train import TrainConfig, TrainPhase
 from caramba.console import logger
 from caramba.instrumentation import RunLogger
+from caramba.instrumentation.viz import TrainingVizMosaicContext
 from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
 from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
 
@@ -282,6 +283,17 @@ class GradientIsolationTrainer:
                 t_data = time.perf_counter()
 
                 optimizer.zero_grad(set_to_none=True)
+                # MOSAIC aux collection requires a ctx with `mosaic_collect_aux=True`.
+                # We keep this lightweight (no viz payloads) but still enable aux keys
+                # when the selected objective expects them.
+                viz_ctx = TrainingVizMosaicContext(
+                    enabled=False,
+                    step=int(step + 1),
+                    max_tokens=0,
+                    max_channels=0,
+                    max_heads=0,
+                    topk=0,
+                )
                 with torch.autocast(
                     device_type=device.type,
                     dtype=amp_dtype,
@@ -289,7 +301,67 @@ class GradientIsolationTrainer:
                 ):
                     if not hasattr(system, "forward"):
                         raise TypeError("System component does not expose forward()")
-                    outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                    # Best-effort: attach MOSAIC-friendly fields onto ctx when present in batch.
+                    try:
+                        inp = batch_td.get("input_ids", None)  # type: ignore[attr-defined]
+                    except Exception:
+                        inp = None
+                    if isinstance(inp, Tensor):
+                        viz_ctx.input_ids = inp
+                    try:
+                        dl = batch_td.get("mosaic_drop_local", None)  # type: ignore[attr-defined]
+                    except Exception:
+                        dl = None
+                    if isinstance(dl, Tensor):
+                        viz_ctx.mosaic_drop_local = dl
+
+                    # Teacher signals (optional).
+                    teacher: dict[str, Tensor] = {}
+                    for k in ("read_bucket", "write_bucket", "write_gate", "clear", "write_utility"):
+                        try:
+                            v = batch_td.get(f"mosaic_teacher_{k}", None)  # type: ignore[attr-defined]
+                        except Exception:
+                            v = None
+                        if isinstance(v, Tensor):
+                            teacher[k] = v
+                    viz_ctx.mosaic_teacher = teacher or None
+
+                    collect_aux = bool(teacher)
+                    # Enable aux outputs even without teacher signals when the objective
+                    # expects MOSAIC aux keys (e.g. contrastive/self-supervised aux).
+                    try:
+                        from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
+
+                        if isinstance(objective, MosaicNextTokenWithAuxObjective):
+                            collect_aux = True
+                    except Exception:
+                        try:
+                            if objective.__class__.__name__ == "MosaicNextTokenWithAuxObjective":
+                                collect_aux = True
+                        except Exception:
+                            pass
+                    viz_ctx.mosaic_collect_aux = bool(collect_aux)
+
+                    try:
+                        outputs = system.forward(batch_td, ctx=viz_ctx)  # type: ignore[attr-defined]
+                    except TypeError:
+                        # Some systems may not accept ctx; keep best-effort but warn via metrics.
+                        outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                    # Best-effort: merge MOSAIC aux outputs from ctx into outputs so
+                    # objectives can see them even when the system doesn't attach them.
+                    try:
+                        aux_out = getattr(viz_ctx, "mosaic_aux_out", None)
+                        if isinstance(outputs, dict) and isinstance(aux_out, dict):
+                            for k, v in aux_out.items():
+                                if (
+                                    isinstance(k, str)
+                                    and k.startswith("mosaic_")
+                                    and isinstance(v, Tensor)
+                                    and k not in outputs
+                                ):
+                                    outputs[k] = v
+                    except Exception:
+                        pass
                     if not hasattr(objective, "loss"):
                         raise TypeError("Objective component does not expose loss()")
                     loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
@@ -309,10 +381,20 @@ class GradientIsolationTrainer:
 
                 if (step + 1) % telemetry_interval == 0:
                     metrics: dict[str, float] = {"loss": float(loss.detach())}
+                    # Quick sanity: aux outputs should show up as keys in outputs when enabled.
+                    try:
+                        if isinstance(outputs, dict):
+                            metrics["mosaic_aux_keys"] = float(
+                                sum(1 for k in outputs.keys() if isinstance(k, str) and k.startswith("mosaic_"))
+                            )
+                    except Exception:
+                        pass
                     if hasattr(objective, "metrics"):
                         try:
                             extra = objective.metrics(  # type: ignore[attr-defined]
-                                outputs=outputs, batch=batch_td, loss=loss
+                                outputs=cast(TensorDictBase, outputs),
+                                batch=batch_td,
+                                loss=loss,
                             )
                             if isinstance(extra, dict):
                                 metrics.update({str(k): float(v) for k, v in extra.items()})
