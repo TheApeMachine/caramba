@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Best-effort: never block pushes.
+if [[ -n "${CARAMBA_SKIP_CODEGRAPH_SYNC:-}" ]]; then
+  exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "${ROOT}" ]]; then
+  exit 0
+fi
+
+PY="${ROOT}/.venv/bin/python"
+if [[ ! -x "${PY}" ]]; then
+  PY="python3"
+fi
+
+# stdin lines: <local ref> <local sha> <remote ref> <remote sha>
+FILES=()
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # initial push (remote sha is all zeros): do a full scan
+  if [[ "${remote_sha}" =~ ^0{40}$ ]]; then
+    FILES=()
+    break
+  fi
+  mapfile -t changed < <(git diff --name-only "${remote_sha}" "${local_sha}" -- '*.py' 2>/dev/null || true)
+  for f in "${changed[@]}"; do
+    [[ -n "${f}" ]] && FILES+=("${f}")
+  done
+done
+
+ARGS=()
+if [[ ${#FILES[@]} -gt 0 ]]; then
+  # uniq
+  mapfile -t uniq_files < <(printf "%s\n" "${FILES[@]}" | awk '!seen[$0]++')
+  for f in "${uniq_files[@]}"; do
+    ARGS+=(--file "${f}")
+  done
+fi
+
+set +e
+"${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort "${ARGS[@]}" >/dev/null 2>&1
+exit 0
+

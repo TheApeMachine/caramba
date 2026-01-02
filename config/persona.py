@@ -7,7 +7,7 @@ from typing import Annotated, Literal, TypeAlias
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from caramba.config import Config
 
@@ -29,7 +29,8 @@ class PersonaType(str, enum.Enum):
 
     @classmethod
     def module_name(cls) -> str:
-        return "caramba.agent.persona"
+        # The agent system is being migrated to `caramba.ai`.
+        return "caramba.ai.persona"
 
 
 class SharedPersonaConfig(Config):
@@ -39,8 +40,26 @@ class SharedPersonaConfig(Config):
     instructions: str
     model: str
     temperature: float
-    tool_choice: str
-    mcp_servers: list[str]
+    # `tool_choice` existed in the older OpenAI Agents SDK wiring; keep it optional.
+    tool_choice: str = "auto"
+
+    # Tool server names.
+    #
+    # Historical configs used `mcp_servers: [...]`.
+    # Newer configs (e.g. chatgpt/claude/gemini) used `tools: [...]`.
+    #
+    # We support BOTH and normalize them to stay compatible while the repo migrates.
+    mcp_servers: list[str] = Field(default_factory=list)
+    tools: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _normalize_tool_fields(self) -> "SharedPersonaConfig":
+        # If only one of the two lists is provided, mirror it into the other.
+        if not self.mcp_servers and self.tools:
+            self.mcp_servers = list(self.tools)
+        if not self.tools and self.mcp_servers:
+            self.tools = list(self.mcp_servers)
+        return self
 
 
 class ResearchLeadConfig(SharedPersonaConfig):

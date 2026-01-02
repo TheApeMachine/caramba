@@ -17,6 +17,8 @@ from caramba.console.logger import get_logger
 from caramba.config.agents import (
     CodeGraphSyncProcessConfig,
     DiscussionProcessConfig,
+    IdleProcessConfig,
+    MultiplexChatProcessConfig,
     PaperCollectArtifactsProcessConfig,
     PaperReviewProcessConfig,
     PaperWriteProcessConfig,
@@ -129,6 +131,17 @@ def dry_run_process_target(
             raise ValueError(
                 "research_loop missing agent keys in agents.team: " + ", ".join(missing)
             )
+    elif isinstance(proc, IdleProcessConfig):
+        # Validate referenced agent keys exist (only for enabled steps).
+        missing2: list[str] = []
+        if bool(getattr(proc, "run_code_graph_sync", True)) and proc.code_graph_sync_agent not in team:
+            missing2.append(str(proc.code_graph_sync_agent))
+        if bool(getattr(proc, "run_research_loop", True)):
+            for k in (proc.leader, proc.writer, proc.reviewer):
+                if k not in team:
+                    missing2.append(str(k))
+        if missing2:
+            raise ValueError("idle missing agent keys in agents.team: " + ", ".join(sorted(set(missing2))))
     elif isinstance(proc, CodeGraphSyncProcessConfig):
         if proc.agent not in team:
             raise ValueError(
@@ -137,6 +150,16 @@ def dry_run_process_target(
     elif isinstance(proc, PaperCollectArtifactsProcessConfig):
         # Handled above (no-agent utility).
         pass
+    elif isinstance(proc, MultiplexChatProcessConfig):
+        # Validate referenced agent keys exist (all routes must exist).
+        missing3: list[str] = []
+        for _, agent_key in dict(proc.routes).items():
+            if agent_key not in team:
+                missing3.append(str(agent_key))
+        if missing3:
+            raise ValueError(
+                "multiplex_chat missing agent keys in agents.team: " + ", ".join(sorted(set(missing3)))
+            )
 
     mp = manifest_path or Path(f"{manifest.name or 'manifest'}.yml")
     out_dir = _manifest_artifacts_dir(manifest, mp)
@@ -182,6 +205,48 @@ async def _run_discussion(
             "topic": proc.topic,
             "prompts_dir": proc.prompts_dir,
             "max_rounds": getattr(proc, "max_rounds", None),
+        },
+        "team": team_mapping,
+        "result": result,
+    }
+    out_path = _persist_process_artifact(
+        manifest=manifest, manifest_path=manifest_path, proc_name=proc.name, result=payload
+    )
+    return {"artifacts": {out_path.name: out_path}, "result": result}
+
+
+async def _run_multiplex_chat(
+    manifest: Manifest,
+    *,
+    target: ProcessTargetConfig,
+    manifest_path: Path | None,
+) -> dict[str, Any]:
+    from caramba.agent.process.multiplex_chat import MultiplexChat  # type: ignore[import-not-found]
+
+    proc = cast(MultiplexChatProcessConfig, target.process)
+    team_mapping = dict(target.team.root)
+    team, _ = _build_team(team_mapping)
+    _preflight_personas_and_tools(team_mapping)
+
+    chat = MultiplexChat(
+        agents=team,
+    )
+    result = await chat.run()
+
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "created_at": now.isoformat(),
+        "manifest": {
+            "name": manifest.name,
+            "path": str(manifest_path),
+            "notes": manifest.notes,
+        },
+        "process": {
+            "name": proc.name,
+            "type": proc.type,
+            "routes": dict(proc.routes),
+            "initial_route": str(proc.initial_route),
+            "stream": bool(proc.stream),
         },
         "team": team_mapping,
         "result": result,
@@ -299,6 +364,45 @@ async def _run_code_graph_sync(
     return {"artifacts": {out_path.name: out_path}, "result": result}
 
 
+async def _run_idle(
+    manifest: Manifest,
+    *,
+    target: ProcessTargetConfig,
+    manifest_path: Path | None,
+) -> dict[str, Any]:
+    from caramba.agent.process.idle import IdleProcess  # type: ignore[import-not-found]
+
+    proc = cast(IdleProcessConfig, target.process)
+    team_mapping = dict(target.team.root)
+    team, _ = _build_team(team_mapping)
+    _preflight_personas_and_tools(team_mapping)
+
+    idle = IdleProcess(
+        agents=team,
+        max_wall_time_sec=int(proc.max_wall_time_sec),
+        run_code_graph_sync=bool(proc.run_code_graph_sync),
+        code_graph_sync_agent=str(proc.code_graph_sync_agent),
+        index_namespace=str(proc.index_namespace),
+        run_eval=bool(proc.run_eval),
+        eval_cmds=[str(x) for x in list(proc.eval_cmds)],
+        eval_timeout_sec=int(proc.eval_timeout_sec),
+        eval_cwd=str(proc.eval_cwd),
+        run_research_loop=bool(proc.run_research_loop),
+        leader_key=str(proc.leader),
+        writer_key=str(proc.writer),
+        reviewer_key=str(proc.reviewer),
+        research_max_iterations=int(proc.research_max_iterations),
+        research_auto_run_experiments=bool(proc.research_auto_run_experiments),
+        output_dir=str(proc.output_dir),
+    )
+    result = await idle.run(manifest=manifest, manifest_path=manifest_path)
+
+    out_path = _persist_process_artifact(
+        manifest=manifest, manifest_path=manifest_path, proc_name=proc.name, result=result
+    )
+    return {"artifacts": {out_path.name: out_path}, "result": result}
+
+
 async def _run_platform_improve(
     manifest: Manifest,
     *,
@@ -379,6 +483,8 @@ def run_process_target(
     proc = target.process
     if isinstance(proc, DiscussionProcessConfig):
         return asyncio.run(_run_discussion(manifest, target=target, manifest_path=manifest_path))
+    if isinstance(proc, MultiplexChatProcessConfig):
+        return asyncio.run(_run_multiplex_chat(manifest, target=target, manifest_path=manifest_path))
     if isinstance(proc, PaperWriteProcessConfig):
         return asyncio.run(_run_paper_write(manifest, target=target, manifest_path=manifest_path))
     if isinstance(proc, PaperReviewProcessConfig):
@@ -387,6 +493,8 @@ def run_process_target(
         return asyncio.run(_run_research_loop(manifest, target=target, manifest_path=manifest_path))
     if isinstance(proc, CodeGraphSyncProcessConfig):
         return asyncio.run(_run_code_graph_sync(manifest, target=target, manifest_path=manifest_path))
+    if isinstance(proc, IdleProcessConfig):
+        return asyncio.run(_run_idle(manifest, target=target, manifest_path=manifest_path))
     if isinstance(proc, PlatformImproveProcessConfig):
         return asyncio.run(_run_platform_improve(manifest, target=target, manifest_path=manifest_path))
     if isinstance(proc, PaperCollectArtifactsProcessConfig):

@@ -15,6 +15,8 @@ from .bytes import bytes_per_kind
 from .batching import token_budget_batch_size
 from .sketch import stable_int_hash, stride_sketch_indices, sketch_dot5
 from .linalg import randomized_svd
+from .scan import leaky_integrator_scan
+from .grouping import last_write_wins
 
 __all__ = [
     "train_val_counts",
@@ -31,5 +33,7 @@ __all__ = [
     "stride_sketch_indices",
     "sketch_dot5",
     "randomized_svd",
+    "leaky_integrator_scan",
+    "last_write_wins",
 ]
 

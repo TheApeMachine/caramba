@@ -283,3 +283,146 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
 
         return loss
 
+    def metrics(self, *, outputs: TensorDict, batch: TensorDict, loss: Tensor) -> MetricDict:
+        """Expose per-component losses for debugging new memory behaviors."""
+        m: MetricDict = {
+            "loss_total": float(loss.detach()),
+        }
+        try:
+            base = super().loss(outputs=outputs, batch=batch)
+            m["lm_ce"] = float(base.detach())
+        except Exception:
+            m["lm_ce"] = float("nan")
+
+        tg = batch.get("mosaic_teacher_write_gate", None) if isinstance(batch, dict) else None
+        pg = outputs.get("mosaic_write_gate_logits", None) if isinstance(outputs, dict) else None
+        tr = batch.get("mosaic_teacher_read_bucket", None) if isinstance(batch, dict) else None
+        tw = batch.get("mosaic_teacher_write_bucket", None) if isinstance(batch, dict) else None
+        pr = outputs.get("mosaic_read_bit_logits", None) if isinstance(outputs, dict) else None
+        pw = outputs.get("mosaic_write_bit_logits", None) if isinstance(outputs, dict) else None
+        vqr = outputs.get("mosaic_vq_read_logits", None) if isinstance(outputs, dict) else None
+        vqw = outputs.get("mosaic_vq_write_logits", None) if isinstance(outputs, dict) else None
+        tu = batch.get("mosaic_teacher_write_utility", None) if isinstance(batch, dict) else None
+        pu = outputs.get("mosaic_write_utility_logits", None) if isinstance(outputs, dict) else None
+        cl = outputs.get("mosaic_contrastive_loss", None) if isinstance(outputs, dict) else None
+
+        # Gate imitation (BCE).
+        gate_loss = None
+        if isinstance(tg, Tensor) and isinstance(pg, Tensor) and tg.shape == pg.shape:
+            mask = tg >= 0
+            if bool(mask.any().item()):
+                try:
+                    gate_loss = F.binary_cross_entropy_with_logits(pg[mask].float(), tg[mask].float())
+                except Exception:
+                    gate_loss = None
+        if gate_loss is not None:
+            m["aux_gate_bce"] = float(gate_loss.detach())
+            m["aux_gate_weighted"] = float((gate_loss * float(self.aux_gate_weight)).detach())
+
+        def _bits_loss(t_bucket: Tensor, p_bits: Tensor) -> Tensor | None:
+            if p_bits.ndim != 4:
+                return None
+            B, T, H, n_bits = p_bits.shape
+            tb = t_bucket
+            if tb.ndim == 2:
+                tb = tb.unsqueeze(-1).expand(B, T, H)
+            if tb.ndim != 3 or tb.shape[:3] != (B, T, H):
+                return None
+            mask = tb >= 0
+            if not bool(mask.any().item()):
+                return None
+            tgt_bits = self._bucket_to_bits(tb, n_bits=int(n_bits))
+            msk = mask.unsqueeze(-1).expand_as(tgt_bits)
+            return F.binary_cross_entropy_with_logits(p_bits[msk].float(), tgt_bits[msk].float())
+
+        bits_r = None
+        bits_w = None
+        if isinstance(tr, Tensor) and isinstance(pr, Tensor):
+            try:
+                bits_r = _bits_loss(tr, pr)
+            except Exception:
+                bits_r = None
+        if isinstance(tw, Tensor) and isinstance(pw, Tensor):
+            try:
+                bits_w = _bits_loss(tw, pw)
+            except Exception:
+                bits_w = None
+        if bits_r is not None:
+            m["aux_bits_bce_read"] = float(bits_r.detach())
+        if bits_w is not None:
+            m["aux_bits_bce_write"] = float(bits_w.detach())
+        if bits_r is not None or bits_w is not None:
+            val = (bits_r if bits_r is not None else 0.0) + (bits_w if bits_w is not None else 0.0)
+            if isinstance(val, Tensor):
+                m["aux_bits_weighted"] = float((val * float(self.aux_bits_weight)).detach())
+
+        def _decode_codes(bucket: Tensor, *, K: int, G: int) -> Tensor:
+            b = bucket.long().clamp_min(0)
+            codes = []
+            for g in range(int(G)):
+                codes.append(((b // (K**g)) % K).unsqueeze(-1))
+            return torch.cat(codes, dim=-1)
+
+        def _vq_ce(t_bucket: Tensor, p_logits: Tensor) -> Tensor | None:
+            if p_logits.ndim != 5:
+                return None
+            B, T, H, G, K = p_logits.shape
+            tb = t_bucket
+            if tb.ndim == 2:
+                tb = tb.unsqueeze(-1).expand(B, T, H)
+            if tb.ndim != 3 or tb.shape != (B, T, H):
+                return None
+            mask = tb >= 0
+            if not bool(mask.any().item()):
+                return None
+            tgt_codes = _decode_codes(tb, K=int(K), G=int(G))  # (B,T,H,G)
+            p = p_logits.reshape(B * T * H * G, K)
+            tgt = tgt_codes.reshape(B * T * H * G)
+            mm = mask.unsqueeze(-1).expand(B, T, H, G).reshape(B * T * H * G)
+            if not bool(mm.any().item()):
+                return None
+            return F.cross_entropy(p[mm], tgt[mm])
+
+        vq_r = None
+        vq_w = None
+        if isinstance(tr, Tensor) and isinstance(vqr, Tensor):
+            try:
+                vq_r = _vq_ce(tr, vqr)
+            except Exception:
+                vq_r = None
+        if isinstance(tw, Tensor) and isinstance(vqw, Tensor):
+            try:
+                vq_w = _vq_ce(tw, vqw)
+            except Exception:
+                vq_w = None
+        if vq_r is not None:
+            m["aux_vq_ce_read"] = float(vq_r.detach())
+        if vq_w is not None:
+            m["aux_vq_ce_write"] = float(vq_w.detach())
+        if vq_r is not None or vq_w is not None:
+            vv = (vq_r if vq_r is not None else 0.0) + (vq_w if vq_w is not None else 0.0)
+            if isinstance(vv, Tensor):
+                m["aux_vq_weighted"] = float((vv * float(self.aux_bits_weight)).detach())
+
+        util_loss = None
+        if isinstance(tu, Tensor) and isinstance(pu, Tensor) and tu.shape == pu.shape:
+            mask = tu >= 0
+            if bool(mask.any().item()):
+                try:
+                    util_loss = F.binary_cross_entropy_with_logits(pu[mask].float(), tu[mask].float())
+                except Exception:
+                    util_loss = None
+        if util_loss is not None:
+            m["aux_utility_bce"] = float(util_loss.detach())
+            m["aux_utility_weighted"] = float((util_loss * float(self.aux_utility_weight)).detach())
+
+        if isinstance(cl, Tensor):
+            try:
+                cval = cl.float().mean()
+                m["aux_contrastive"] = float(cval.detach())
+                m["aux_contrastive_weighted"] = float((cval * float(self.aux_contrastive_weight)).detach())
+            except Exception:
+                pass
+
+        return m
+

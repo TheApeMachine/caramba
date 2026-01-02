@@ -8,8 +8,10 @@ Manifest v2 is target-based:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
+from caramba.ai.agent import Agent
+from caramba.ai.persona import Persona
 from caramba.compiler import Compiler
 from caramba.config.manifest import Manifest
 from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
@@ -17,6 +19,21 @@ from caramba.console import logger
 
 from caramba.runtime.engine import TorchEngine
 from caramba.runtime.readiness import check_target_readiness, format_readiness_report
+from caramba.ai.process.brainstorm import Brainstorm
+from caramba.ai.process import Process
+
+
+class ProcessFactory(Protocol):
+    """Protocol for process constructors that take only agents dict."""
+    def __call__(self, agents: dict[str, Agent]) -> Process: ...
+
+
+PROCESSMAP: dict[str, ProcessFactory] = {
+    "brainstorm": Brainstorm,
+    # Keep backwards-compatible manifest process naming.
+    # The new implementation lives at `caramba.ai.process.brainstorm.Brainstorm`.
+    "multiplex_chat": Brainstorm,
+}
 
 
 def _resolve_target(manifest: Manifest, target: str | None) -> str:
@@ -40,21 +57,21 @@ def _resolve_target(manifest: Manifest, target: str | None) -> str:
     raise ValueError("Manifest has no runnable targets.")
 
 
-def _parse_target(target: str) -> tuple[str, str]:
-    if ":" not in target:
-        raise ValueError(
-            f"Invalid target '{target}'. Expected 'target:<name>' or a bare target name."
-        )
-    kind, name = target.split(":", 1)
-    kind = kind.strip().lower()
-    name = name.strip()
-    if kind not in {"target", "experiment", "process"}:
-        raise ValueError(
-            f"Invalid target kind '{kind}' for '{target}'. Expected 'target', 'experiment', or 'process'."
-        )
-    if not name:
-        raise ValueError(f"Invalid target '{target}': missing name after ':'.")
-    return kind, name
+# def _parse_target(target: str) -> tuple[str, str]:
+#     if ":" not in target:
+#         raise ValueError(
+#             f"Invalid target '{target}'. Expected 'target:<name>' or a bare target name."
+#         )
+#     kind, name = target.split(":", 1)
+#     kind = kind.strip().lower()
+#     name = name.strip()
+#     if kind not in {"target", "experiment", "process"}:
+#         raise ValueError(
+#             f"Invalid target kind '{kind}' for '{target}'. Expected 'target', 'experiment', or 'process'."
+#         )
+#     if not name:
+#         raise ValueError(f"Invalid target '{target}': missing name after ':'.")
+#     return kind, name
 
 
 def run_from_manifest_path(
@@ -103,18 +120,23 @@ class ExperimentRunner:
     ) -> dict[str, Path]:
         target = self._find_target(target_name)
         if isinstance(target, ProcessTargetConfig):
-            from caramba.agent.process_runner import run_process_target  # local import
+            process_type = target.process.type
+            if process_type not in PROCESSMAP:
+                raise ValueError(
+                    f"Unknown process type '{process_type}'. Available: {', '.join(sorted(PROCESSMAP))}"
+                )
 
-            result = run_process_target(
-                manifest=self.manifest,
-                target=target,
-                manifest_path=manifest_path,
-            )
-            if isinstance(result, dict):
-                artifacts = result.get("artifacts", None)
-                if isinstance(artifacts, dict):
-                    # Normalize to dict[str, Path] for caller parity.
-                    return cast(dict[str, Path], artifacts)
+            # Build agents from the declared team mapping (role_key -> persona yaml name).
+            personas_dir = Path("config/personas")
+            agents: dict[str, Agent] = {}
+            for role_key, persona_name in target.team.root.items():
+                persona = Persona.from_yaml(personas_dir / f"{persona_name}.yml")
+                agents[role_key] = Agent(persona=persona)
+
+            process = PROCESSMAP[process_type](agents=agents)
+
+            import asyncio
+            asyncio.run(process.run())
             return {}
 
         assert isinstance(target, ExperimentTargetConfig)

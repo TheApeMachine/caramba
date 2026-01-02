@@ -277,6 +277,7 @@ class StandardTrainer:
         layer_telemetry_interval = int(telemetry_interval)
         _hook_handles: list[RemovableHandle] = []
         attn_modules: list[tuple[int, str, torch.nn.Module]] = []
+        mosaic_modules: list[tuple[int, str, torch.nn.Module]] = []
 
         class _LayerStatsCollector:
             enabled: bool
@@ -349,6 +350,7 @@ class StandardTrainer:
         try:
             import torch.nn as nn
             from caramba.layer.attention import AttentionLayer
+            from caramba.layer.mosaic_block import MosaicBlockLayer
 
             raw = getattr(train, "layer_telemetry_interval", None)
             # Default to every step (metrics telemetry can remain slower).
@@ -366,6 +368,13 @@ class StandardTrainer:
                         except Exception:
                             pass
                         attn_modules.append((len(attn_modules), str(name), mod))
+                    if isinstance(mod, MosaicBlockLayer):
+                        try:
+                            setattr(mod, "_mosaic_index", int(len(mosaic_modules)))
+                            setattr(mod, "_mosaic_name", str(name))
+                        except Exception:
+                            pass
+                        mosaic_modules.append((len(mosaic_modules), str(name), mod))
 
                 def _make_hook(i: int):
                     def _hook(_m: nn.Module, _inp: tuple[object, ...], out: object) -> None:
@@ -578,7 +587,7 @@ class StandardTrainer:
                             viz_ctx.mosaic_drop_local = dl
                         # Teacher signals are optional; presence enables aux collection.
                         teacher: dict[str, Tensor] = {}
-                        for k in ("read_bucket", "write_bucket", "write_gate"):
+                        for k in ("read_bucket", "write_bucket", "write_gate", "clear"):
                             try:
                                 v = batch_td.get(f"mosaic_teacher_{k}", None)  # type: ignore[attr-defined]
                             except Exception:
@@ -644,6 +653,12 @@ class StandardTrainer:
                         viz_ctx.mosaic_teacher_p = float(max(0.0, min(1.0, p_t)))
                     except Exception:
                         viz_ctx.mosaic_teacher_p = 1.0
+
+                    # MOSAIC scalar stats: compute only on metric logging steps.
+                    try:
+                        viz_ctx.mosaic_stats_enabled = bool(((step + 1) % int(telemetry_interval)) == 0)
+                    except Exception:
+                        viz_ctx.mosaic_stats_enabled = False
                     accum_steps = int(getattr(train, "gradient_accumulation_steps", 1))
                     accum_steps = max(1, accum_steps)
                     optimizer.zero_grad(set_to_none=True)
@@ -846,6 +861,55 @@ class StandardTrainer:
                         if kernel_launches is not None:
                             metrics["kernel_events_estimate"] = float(kernel_launches)
                         metrics["compiled"] = 1.0 if compiled else 0.0
+
+                        # MOSAIC memory stats (best-effort): include in JSONL + W&B.
+                        try:
+                            if isinstance(viz_ctx, TrainingVizMosaicContext) and viz_ctx.mosaic_mem_stats:
+                                for k, v in viz_ctx.mosaic_mem_stats.items():
+                                    if isinstance(v, (int, float)):
+                                        metrics[str(k)] = float(v)
+                                metrics["mosaic_teacher_p"] = float(getattr(viz_ctx, "mosaic_teacher_p", 1.0))
+
+                                def _avg(suffix: str) -> float | None:
+                                    vals = [
+                                        float(v)
+                                        for kk, v in viz_ctx.mosaic_mem_stats.items()
+                                        if str(kk).endswith(suffix) and isinstance(v, (int, float))
+                                    ]
+                                    if not vals:
+                                        return None
+                                    return float(sum(vals) / float(len(vals)))
+
+                                summary = {"teacher_p": float(getattr(viz_ctx, "mosaic_teacher_p", 1.0))}
+                                for suf, key in [
+                                    ("/read_hit_rate", "read_hit"),
+                                    ("/read_hit_rate@req", "read_hit@req"),
+                                    ("/read_conf@req", "read_conf@req"),
+                                    ("/read_best_sim", "read_best_sim"),
+                                    ("/read_conf", "read_conf"),
+                                    ("/read_slot_entropy", "read_slot_ent"),
+                                    ("/read_bucket_change_rate", "read_jitter"),
+                                    ("/write_rate", "write_rate"),
+                                    ("/write_update_frac", "write_update"),
+                                    ("/write_insert_empty_frac", "write_insert_empty"),
+                                    ("/write_evict_frac", "write_evict"),
+                                    ("/write_bucket_full_frac", "write_full"),
+                                    ("/write_gate_p_mean", "gate_p"),
+                                    ("/write_gate_fire_frac", "gate_fire"),
+                                    ("/write_bucket_entropy_norm", "write_ent"),
+                                    ("/write_bucket_change_rate", "write_jitter"),
+                                    ("/cand_buckets", "cand_buckets"),
+                                    ("/drop_local_frac", "drop_local"),
+                                    ("/rms_mem", "rms_mem"),
+                                    ("/fuse_gate_mem_mean", "fuse_mem"),
+                                    ("/rms_mem_contrib", "mem_contrib"),
+                                ]:
+                                    av = _avg(suf)
+                                    if av is not None:
+                                        summary[key] = av
+                                logger.key_value(summary, title="MOSAIC memory stats (avg across layers)")
+                        except Exception:
+                            pass
                         run_logger.log_metrics(
                             run_id=str(run.id),
                             phase="standard",

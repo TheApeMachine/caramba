@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,20 +17,30 @@ function App() {
 				</div>
 
 				<div className="flex flex-wrap gap-2">
-					<Link to="/network" className={cn(buttonVariants({ variant: "default" }))}>
+					<Link
+						to="/network"
+						className={cn(buttonVariants({ variant: "default" }))}
+					>
 						Network demo
 					</Link>
-					<Link to="/stepped" className={cn(buttonVariants({ variant: "outline" }))}>
+					<Link
+						to="/stepped"
+						className={cn(buttonVariants({ variant: "outline" }))}
+					>
 						Stepped demo
 					</Link>
-					<Link to="/agents" className={cn(buttonVariants({ variant: "outline" }))}>
+					<Link
+						to="/agents"
+						className={cn(buttonVariants({ variant: "outline" }))}
+					>
 						🤖 Agents
 					</Link>
 				</div>
 
 				<div className="text-sm text-muted-foreground">
-					Start the backend with <code className="font-mono">caramba serve</code> and
-					then click a demo.
+					Start the backend with{" "}
+					<code className="font-mono">caramba serve</code> and then click a
+					demo.
 				</div>
 			</div>
 		</div>

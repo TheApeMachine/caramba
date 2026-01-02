@@ -30,9 +30,9 @@ WORKDIR /app
 # Copy project files for dependency installation
 COPY pyproject.toml ./
 
-# Install Python dependencies (exclude dev dependency group)
+# Install Python dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-group dev
+    uv sync
 
 # Copy application code
 COPY agent/ ./agent/

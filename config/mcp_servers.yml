@@ -1,6 +1,6 @@
 graphiti:
   transport: streamable-http
-  url: "http://localhost:8000/mcp"
+  url: "http://localhost:8002/mcp"
 
 paper:
   transport: streamable-http
@@ -13,5 +13,5 @@ paper-tools:
 
 deeplake:
   transport: streamable-http
-  url: "http://localhost:8002/mcp"
+  url: "http://localhost:8004/mcp"
 

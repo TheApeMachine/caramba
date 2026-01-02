@@ -120,10 +120,17 @@ class TrainingVizMosaicContext(TrainingVizContext):
     # Scheduled sampling probability: probability of using teacher controls when present.
     mosaic_teacher_p: float = 1.0
 
+    # If true, MOSAIC layers may compute cheap scalar stats for logging.
+    # This is independent of `enabled` (which controls heavy viz payloads).
+    mosaic_stats_enabled: bool = False
+
     # Best-effort: filled by MOSAIC layers during forward.
     mosaic_aux_out: dict[str, Tensor] | None = None
 
     # Optional mask to drop local mixer contribution (forced-read dropout).
     # Expected shape: (B,T) or (T,) with values in {0,1}.
     mosaic_drop_local: Tensor | None = None
+
+    # Accumulated MOSAIC memory stats for logging (filled by MOSAIC layers).
+    mosaic_mem_stats: dict[str, float] = field(default_factory=dict)
 

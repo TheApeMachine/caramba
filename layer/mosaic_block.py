@@ -18,8 +18,9 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from caramba.carmath import last_write_wins, leaky_integrator_scan
 from caramba.config.layer import MosaicBlockLayerConfig
-
+from caramba.console import logger
 
 def _is_power_of_two(n: int) -> bool:
     return n > 0 and (n & (n - 1)) == 0
@@ -36,6 +37,8 @@ class _State:
     conv_buf: Tensor
     # multiscale state bank: (B, K, d_model)
     s: Tensor
+    # non-decaying register file (optional): (B, R, d_model)
+    regs: Tensor | None
     # global step counter (for LRU replacement via per-slot timestamps)
     step: int
     # set-associative hash memory:
@@ -202,6 +205,31 @@ class MosaicBlockLayer(nn.Module):
         self.mem_write_gate = nn.Linear(d, 1, bias=True)
         # Predict "will this write be useful soon?" (curriculum aux).
         self.mem_utility_head = nn.Linear(d, 1, bias=True)
+
+        # Optional dVM register file (non-decaying scratchpad).
+        reg_slots = getattr(config, "reg_slots", None)
+        self.reg_slots = int(reg_slots) if reg_slots is not None else 0
+        self.reg_write_gate: nn.Linear | None = None
+        self.reg_sel: nn.Linear | None = None
+        self.reg_value: nn.Linear | None = None
+        self.gate_reg: nn.Linear | None = None
+        if self.reg_slots > 0:
+            self.reg_write_gate = nn.Linear(d, 1, bias=True)
+            self.reg_sel = nn.Linear(d, self.reg_slots, bias=True)
+            self.reg_value = nn.Linear(d, d, bias=True)
+            self.gate_reg = nn.Linear(d, 1, bias=True)
+            with torch.no_grad():
+                self.gate_reg.bias.fill_(float(getattr(config, "gate_reg_init", 0.0)))
+
+        # Optional opcode head (logging / supervision). Convention:
+        # 0=Nop, 1=Read, 2=Write, 3=Clear.
+        self.opcodes_enabled = bool(getattr(config, "opcodes_enabled", False))
+        self.opcode_vocab = int(getattr(config, "opcode_vocab", 4))
+        self.opcode_head: nn.Linear | None = None
+        if self.opcodes_enabled:
+            if self.opcode_vocab < 2:
+                raise ValueError(f"opcode_vocab must be >= 2, got {self.opcode_vocab}")
+            self.opcode_head = nn.Linear(d, self.opcode_vocab, bias=True)
 
         # Fusion gates.
         self.gate_long = nn.Linear(d, 1, bias=True)
@@ -372,13 +400,15 @@ class MosaicBlockLayer(nn.Module):
         st = _get_state(ctx, self._ctx_key)
         if st is not None:
             # Re-init if batch size changes.
-            if st.conv_buf.size(0) != B or st.s.size(0) != B or st.mem_k.size(0) != B:
+            bad_regs = bool(isinstance(st.regs, Tensor) and st.regs.size(0) != B)
+            if st.conv_buf.size(0) != B or st.s.size(0) != B or st.mem_k.size(0) != B or bad_regs:
                 st = None
 
         if st is None:
             k = int(self.config.conv_kernel)
             conv_buf = x.new_zeros((B, max(0, k - 1), D))
             s = x.new_zeros((B, self.state_k, D))
+            regs = x.new_zeros((B, self.reg_slots, D)) if self.reg_slots > 0 else None
             step = 0
             mem_k = x.new_zeros((B, self.mem_hashes, self.mem_buckets, self.mem_assoc, self.mem_key_dim))
             mem_v = x.new_zeros((B, self.mem_hashes, self.mem_buckets, self.mem_assoc, self.mem_dim))
@@ -388,7 +418,7 @@ class MosaicBlockLayer(nn.Module):
                 device=x.device,
                 dtype=torch.long,
             )
-            st = _State(conv_buf=conv_buf, s=s, step=step, mem_k=mem_k, mem_v=mem_v, mem_last=mem_last)
+            st = _State(conv_buf=conv_buf, s=s, regs=regs, step=step, mem_k=mem_k, mem_v=mem_v, mem_last=mem_last)
 
         # Pre-norm.
         u = _rms_norm(x)
@@ -400,7 +430,7 @@ class MosaicBlockLayer(nn.Module):
         teacher: dict[str, Tensor] | None = None
         if ctx is not None:
             t = getattr(ctx, "mosaic_teacher", None)
-            if isinstance(t, dict):
+            if isinstance(t, dict) and len(t) > 0:
                 teacher = t
         teacher_p = 1.0
         if ctx is not None:
@@ -437,11 +467,16 @@ class MosaicBlockLayer(nn.Module):
 
         g_seq = x.new_empty((B, T, D))
         r_seq = x.new_empty((B, T, D))
+        z_seq = x.new_zeros((B, T, D)) if self.reg_slots > 0 else None
 
         s = st.s
-        mem_k = st.mem_k
-        mem_v = st.mem_v
-        mem_last = st.mem_last
+        regs = st.regs
+        # Persistent hash memory is *not* part of the differentiable computation graph.
+        # Treat it as a mutable cache/state. Keeping it detached avoids autograd
+        # versioning errors when we update it in-place (especially on MPS).
+        mem_k = st.mem_k.detach()
+        mem_v = st.mem_v.detach()
+        mem_last = st.mem_last.detach()
 
         batch_idx = torch.arange(B, device=x.device, dtype=torch.long)
         hash_idx = torch.arange(self.mem_hashes, device=x.device, dtype=torch.long).view(1, -1).expand(B, -1)
@@ -461,6 +496,9 @@ class MosaicBlockLayer(nn.Module):
         if collect_aux:
             gate_logits_seq = x.new_empty((B, T))
             util_logits_seq = x.new_empty((B, T))
+            opcode_logits_seq = x.new_empty((B, T, self.opcode_vocab), dtype=torch.float32) if self.opcodes_enabled else None
+            reg_write_gate_logits_seq = x.new_empty((B, T)) if self.reg_slots > 0 else None
+            reg_sel_logits_seq = x.new_empty((B, T, self.reg_slots), dtype=torch.float32) if self.reg_slots > 0 else None
             # Router aux depends on router kind.
             if self.mem_router == "bits":
                 read_bit_logits_seq = x.new_empty((B, T, self.mem_hashes, self.mem_bits))
@@ -482,6 +520,450 @@ class MosaicBlockLayer(nn.Module):
                     (B, T, self.mem_hashes, int(self.mem_vq_groups), int(self.mem_vq_codebook_size)),
                     dtype=torch.float32,
                 )
+
+        def _finalize() -> Tensor:
+            # Contrastive auxiliary: make memory reads predictive of future hidden state.
+            contrastive_loss: Tensor | None = None
+            if collect_aux:
+                try:
+                    delta = int(getattr(self.config, "aux_contrastive_delta", 1))
+                except Exception:
+                    delta = 1
+                if delta > 0 and delta < int(T):
+                    # Prefer supervising only where a teacher read was requested.
+                    mask_pos: Tensor | None = None
+                    if teacher is not None and "read_bucket" in teacher and isinstance(teacher["read_bucket"], Tensor):
+                        tb = teacher["read_bucket"]
+                        try:
+                            if tb.dim() == 2 and tb.size(0) == B and tb.size(1) == T:
+                                mask_pos = tb >= 0
+                            elif tb.dim() == 3 and tb.size(0) == B and tb.size(1) == T:
+                                mask_pos = (tb >= 0).any(dim=-1)
+                        except Exception:
+                            mask_pos = None
+                    if mask_pos is None:
+                        mask_pos = torch.ones((B, T), device=x.device, dtype=torch.bool)
+
+                    # Only positions where t+delta exists.
+                    mask_pos = mask_pos[:, : T - delta]
+                    idx = torch.nonzero(mask_pos, as_tuple=False)
+                    if idx.numel() > 0:
+                        # Subsample to keep cost bounded.
+                        max_n = 256
+                        if idx.size(0) > max_n:
+                            perm = torch.randperm(idx.size(0), device=idx.device)[:max_n]
+                            idx = idx[perm]
+                        b_idx = idx[:, 0]
+                        t_idx = idx[:, 1]
+                        r_sel = r_seq[b_idx, t_idx, :].float()
+                        p_sel = u[b_idx, t_idx + delta, :].float()
+                        # InfoNCE within this minibatch: positives are aligned pairs.
+                        logits = (r_sel @ p_sel.t()) * (1.0 / math.sqrt(float(r_sel.size(-1))))
+                        targets = torch.arange(logits.size(0), device=logits.device, dtype=torch.long)
+                        contrastive_loss = F.cross_entropy(logits, targets)
+
+            # Fusion gates (token-wise).
+            gate_long = torch.sigmoid(self.gate_long(u))  # (B,T,1)
+            gate_mem = torch.sigmoid(self.gate_mem(u))    # (B,T,1)
+            gate_reg = torch.sigmoid(self.gate_reg(u)) if (self.gate_reg is not None and z_seq is not None) else None
+
+            y = x + local + gate_long * g_seq + gate_mem * r_seq
+            if gate_reg is not None and z_seq is not None:
+                y = y + gate_reg * z_seq
+
+            # Persist updated state.
+            st.s = s.detach()
+            if self.reg_slots > 0 and isinstance(regs, Tensor):
+                st.regs = regs.detach()
+            st.mem_k = mem_k.detach()
+            st.mem_v = mem_v.detach()
+            st.mem_last = mem_last.detach()
+            if new_buf is not None:
+                st.conv_buf = new_buf
+            # Emit aux outputs (best-effort) for curriculum objectives.
+            if collect_aux and ctx is not None:
+                try:
+                    setattr(
+                        ctx,
+                        "mosaic_aux_out",
+                        {
+                            "mosaic_write_gate_logits": gate_logits_seq.detach(),
+                            "mosaic_write_utility_logits": util_logits_seq.detach(),
+                            **(
+                                {"mosaic_opcode_logits": opcode_logits_seq.detach()}
+                                if isinstance(opcode_logits_seq, Tensor)
+                                else {}
+                            ),
+                            **(
+                                {"mosaic_reg_write_gate_logits": reg_write_gate_logits_seq.detach()}
+                                if isinstance(reg_write_gate_logits_seq, Tensor)
+                                else {}
+                            ),
+                            **(
+                                {"mosaic_reg_sel_logits": reg_sel_logits_seq.detach()}
+                                if isinstance(reg_sel_logits_seq, Tensor)
+                                else {}
+                            ),
+                            **(
+                                {"mosaic_regs_last": regs.detach()}
+                                if isinstance(regs, Tensor)
+                                else {}
+                            ),
+                            **(
+                                {"mosaic_contrastive_loss": contrastive_loss.detach()}
+                                if isinstance(contrastive_loss, Tensor)
+                                else {}
+                            ),
+                            **(
+                                {
+                                    "mosaic_read_bit_logits": read_bit_logits_seq.detach(),
+                                    "mosaic_write_bit_logits": write_bit_logits_seq.detach(),
+                                }
+                                if isinstance(read_bit_logits_seq, Tensor) and isinstance(write_bit_logits_seq, Tensor)
+                                else {}
+                            ),
+                            **(
+                                {
+                                    "mosaic_vq_read_logits": read_vq_logits_seq.detach(),
+                                    "mosaic_vq_write_logits": write_vq_logits_seq.detach(),
+                                }
+                                if isinstance(read_vq_logits_seq, Tensor) and isinstance(write_vq_logits_seq, Tensor)
+                                else {}
+                            ),
+                            **(
+                                {
+                                    "mosaic_read_codes": read_codes_seq.detach(),
+                                    "mosaic_write_codes": write_codes_seq.detach(),
+                                }
+                                if isinstance(read_codes_seq, Tensor) and isinstance(write_codes_seq, Tensor)
+                                else {}
+                            ),
+                        },
+                    )
+                except Exception:
+                    pass
+            _set_state(ctx, self._ctx_key, st)
+            return y
+
+        # ---------------------------------------------------------------------
+        # Fast training path (chunked; avoids Python per-token loop)
+        # ---------------------------------------------------------------------
+        stats_enabled = bool(ctx is not None and bool(getattr(ctx, "mosaic_stats_enabled", False)))
+        has_clear = bool(isinstance(teacher, dict) and ("clear" in teacher))
+        # Registers currently require strict sequential semantics; disable the chunked path.
+        use_fast_train = (
+            bool(self.training)
+            and int(T) > 1
+            and (not stats_enabled)
+            and (not has_clear)
+            and (self.reg_slots <= 0)
+        )
+        if use_fast_train:
+            Hh = int(self.mem_hashes)
+            A = int(self.mem_assoc)
+            key_dim = int(self.mem_key_dim)
+            mem_dim = int(self.mem_dim)
+
+            # Best-effort debug marker.
+            if ctx is not None:
+                try:
+                    setattr(ctx, "mosaic_fast_train_used", True)
+                    setattr(ctx, "mosaic_fast_train_steps", int(getattr(ctx, "mosaic_fast_train_steps", 0)) + 1)
+                except Exception:
+                    pass
+
+            # Router results for the whole sequence.
+            idx_r_all: Tensor
+            idx_w_all: Tensor
+            cand_r_idx_all: Tensor | None = None
+            cand_r_w_all: Tensor | None = None
+            cand_w_idx_all: Tensor | None = None
+            cand_w_w_all: Tensor | None = None
+
+            if self.mem_router == "bits":
+                assert self.mem_read_bits is not None and self.mem_write_bits is not None
+                z_read_all = self.mem_read_bits(u).view(B, T, Hh, int(self.mem_bits))
+                z_write_all = self.mem_write_bits(u).view(B, T, Hh, int(self.mem_bits))
+                if collect_aux and read_bit_logits_seq is not None and write_bit_logits_seq is not None:
+                    read_bit_logits_seq[:, :, :, :] = z_read_all
+                    write_bit_logits_seq[:, :, :, :] = z_write_all
+                idx_r_all = self._route_bits(z_read_all.reshape(B * T, Hh, int(self.mem_bits))).view(B, T, Hh)
+                idx_w_all = self._route_bits(z_write_all.reshape(B * T, Hh, int(self.mem_bits))).view(B, T, Hh)
+            else:
+                # VQ router (vectorized across the whole sequence).
+                assert self.mem_vq_proj_r is not None and self.mem_vq_proj_w is not None
+                assert self.mem_vq_codebook_r is not None and self.mem_vq_codebook_w is not None
+                G = int(self.mem_vq_groups)
+                gd = int(self.mem_vq_group_dim)
+                route_dim = int(G * gd)
+
+                yr_all = self.mem_vq_proj_r(u).view(B, T, Hh, route_dim).view(B * T, Hh, G, gd)
+                yw_all = self.mem_vq_proj_w(u).view(B, T, Hh, route_dim).view(B * T, Hh, G, gd)
+
+                idx_r_flat, cand_r_idx, cand_r_w, gl_r = self._route_vq(
+                    yr_all,
+                    codebook=self.mem_vq_codebook_r,
+                    return_group_logits=bool(collect_aux),
+                )
+                idx_w_flat, cand_w_idx, cand_w_w, gl_w = self._route_vq(
+                    yw_all,
+                    codebook=self.mem_vq_codebook_w,
+                    return_group_logits=bool(collect_aux),
+                )
+                idx_r_all = idx_r_flat.view(B, T, Hh)
+                idx_w_all = idx_w_flat.view(B, T, Hh)
+                if isinstance(cand_r_idx, Tensor) and isinstance(cand_r_w, Tensor):
+                    cand_r_idx_all = cand_r_idx.view(B, T, Hh, -1)
+                    cand_r_w_all = cand_r_w.view(B, T, Hh, -1)
+                if isinstance(cand_w_idx, Tensor) and isinstance(cand_w_w, Tensor):
+                    cand_w_idx_all = cand_w_idx.view(B, T, Hh, -1)
+                    cand_w_w_all = cand_w_w.view(B, T, Hh, -1)
+
+                if collect_aux and isinstance(read_vq_logits_seq, Tensor) and isinstance(write_vq_logits_seq, Tensor):
+                    if isinstance(gl_r, Tensor):
+                        read_vq_logits_seq[:, :, :, :, :] = gl_r.view(B, T, Hh, G, int(self.mem_vq_codebook_size))
+                    if isinstance(gl_w, Tensor):
+                        write_vq_logits_seq[:, :, :, :, :] = gl_w.view(B, T, Hh, G, int(self.mem_vq_codebook_size))
+
+                if collect_aux and isinstance(read_codes_seq, Tensor) and isinstance(write_codes_seq, Tensor):
+                    # Store top-1 VQ codes per group for introspection.
+                    try:
+                        e_r = self.mem_vq_codebook_r  # (H,G,K,gd)
+                        y2 = (yr_all * yr_all).sum(dim=-1, keepdim=True)  # (BT,H,G,1)
+                        e2 = (e_r * e_r).sum(dim=-1).view(1, Hh, G, int(self.mem_vq_codebook_size))
+                        dot = torch.einsum("bhgd,hgkd->bhgk", yr_all, e_r)
+                        dist = y2 + e2 - 2.0 * dot
+                        read_codes_seq[:, :, :, :] = dist.argmin(dim=-1).view(B, T, Hh, G)
+
+                        e_w = self.mem_vq_codebook_w
+                        y2w = (yw_all * yw_all).sum(dim=-1, keepdim=True)
+                        e2w = (e_w * e_w).sum(dim=-1).view(1, Hh, G, int(self.mem_vq_codebook_size))
+                        dotw = torch.einsum("bhgd,hgkd->bhgk", yw_all, e_w)
+                        distw = y2w + e2w - 2.0 * dotw
+                        write_codes_seq[:, :, :, :] = distw.argmin(dim=-1).view(B, T, Hh, G)
+                    except Exception:
+                        pass
+
+            # Chunk size (training-only).
+            chunk_size = int(getattr(self.config, "mem_train_chunk_size", 128))
+            chunk_size = max(1, chunk_size)
+
+            step0 = int(st.step)
+            big = int(step0 + int(T) + 1)
+
+            def _teacher_use_mask(*, B: int, C: int) -> Tensor | None:
+                if teacher is None:
+                    return None
+                if teacher_p <= 0.0:
+                    return torch.zeros((B, C), device=x.device, dtype=torch.bool)
+                if teacher_p >= 1.0:
+                    return torch.ones((B, C), device=x.device, dtype=torch.bool)
+                return (torch.rand((B, C), device=x.device) < float(teacher_p))
+
+            for t0 in range(0, int(T), int(chunk_size)):
+                t1 = min(int(T), t0 + int(chunk_size))
+                C = int(t1 - t0)
+                u_c = u[:, t0:t1, :]  # (B,C,D)
+
+                # --- State bank (vectorized scan) ---
+                inp = self.state_in(u_c).view(B, C, self.state_k, D).permute(0, 2, 1, 3)  # (B,K,C,D)
+                s_seq_c, s_last = leaky_integrator_scan(inp, s, decay)
+                s = s_last.to(dtype=x.dtype)
+                g_seq[:, t0:t1, :] = self.state_out(
+                    s_seq_c.permute(0, 2, 1, 3).to(dtype=x.dtype).reshape(B, C, self.state_k * D)
+                )
+
+                # Utility head.
+                util_logit_c = self.mem_utility_head(u_c).squeeze(-1)
+                if collect_aux:
+                    util_logits_seq[:, t0:t1] = util_logit_c
+
+                # --- Memory read ---
+                idx_r_c = idx_r_all[:, t0:t1, :]  # (B,C,H)
+                use_teacher = _teacher_use_mask(B=B, C=C)
+                if teacher is not None and "read_bucket" in teacher and isinstance(teacher["read_bucket"], Tensor):
+                    tb = teacher["read_bucket"]
+                    try:
+                        if tb.dim() == 2 and tb.size(0) == B and tb.size(1) == T:
+                            tb_c = tb[:, t0:t1].view(B, C, 1).expand(B, C, Hh)
+                        elif tb.dim() == 3 and tb.size(0) == B and tb.size(1) == T and tb.size(2) == Hh:
+                            tb_c = tb[:, t0:t1, :].view(B, C, Hh)
+                        else:
+                            tb_c = None
+                        if tb_c is not None:
+                            m = tb_c >= 0
+                            if isinstance(use_teacher, Tensor):
+                                m = m & use_teacher.unsqueeze(-1)
+                            idx_r_c = torch.where(m, tb_c.to(dtype=idx_r_c.dtype, device=idx_r_c.device), idx_r_c)
+                    except Exception:
+                        pass
+
+                qk_c = self.mem_qkey(u_c)  # (B,C,key_dim)
+                if self.mem_router == "vq" and isinstance(cand_r_idx_all, Tensor) and isinstance(cand_r_w_all, Tensor):
+                    cand_idx_c = cand_r_idx_all[:, t0:t1, :, :]  # (B,C,H,Nc)
+                    cand_w_c = cand_r_w_all[:, t0:t1, :, :]      # (B,C,H,Nc)
+                    ww = cand_w_c / cand_w_c.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+                    read_h = u_c.new_zeros((B, Hh, C, mem_dim))
+                    Nc = int(cand_idx_c.size(-1))
+                    for ci in range(Nc):
+                        idx_ci = cand_idx_c[:, :, :, ci]  # (B,C,H)
+                        idx_g = idx_ci.permute(0, 2, 1).to(dtype=torch.long).unsqueeze(-1).unsqueeze(-1)  # (B,H,C,1,1)
+                        bk = mem_k.gather(dim=2, index=idx_g.expand(B, Hh, C, A, key_dim))
+                        bv = mem_v.gather(dim=2, index=idx_g.expand(B, Hh, C, A, mem_dim))
+                        bl = mem_last.gather(dim=2, index=idx_g[..., 0].expand(B, Hh, C, A))
+                        valid = bl >= 0
+                        sim = (bk * qk_c.view(B, 1, C, 1, key_dim)).sum(dim=-1) * float(key_scale)
+                        sim = sim.masked_fill(~valid, float("-inf"))
+                        any_valid = valid.any(dim=-1, keepdim=True)
+                        wslot = torch.softmax(sim / float(temp), dim=-1)
+                        wslot = torch.where(any_valid, wslot, torch.zeros_like(wslot))
+                        rh_ci = (wslot.unsqueeze(-1) * bv).sum(dim=3)  # (B,H,C,mem_dim)
+                        read_h = read_h + rh_ci * ww[:, :, :, ci].permute(0, 2, 1).unsqueeze(-1)
+                    r_seq[:, t0:t1, :] = self.mem_out(read_h.sum(dim=1))
+                else:
+                    idx_g = idx_r_c.permute(0, 2, 1).to(dtype=torch.long).unsqueeze(-1).unsqueeze(-1)  # (B,H,C,1,1)
+                    bk = mem_k.gather(dim=2, index=idx_g.expand(B, Hh, C, A, key_dim))
+                    bv = mem_v.gather(dim=2, index=idx_g.expand(B, Hh, C, A, mem_dim))
+                    bl = mem_last.gather(dim=2, index=idx_g[..., 0].expand(B, Hh, C, A))
+                    valid = bl >= 0
+                    sim = (bk * qk_c.view(B, 1, C, 1, key_dim)).sum(dim=-1) * float(key_scale)
+                    sim = sim.masked_fill(~valid, float("-inf"))
+                    any_valid = valid.any(dim=-1, keepdim=True)
+                    w = torch.softmax(sim / float(temp), dim=-1)
+                    w = torch.where(any_valid, w, torch.zeros_like(w))
+                    read_h = (w.unsqueeze(-1) * bv).sum(dim=3)  # (B,H,C,mem_dim)
+                    r_seq[:, t0:t1, :] = self.mem_out(read_h.sum(dim=1))
+
+                # --- Memory write (aggregated per slot; last-write-wins) ---
+                gate_logit_c = self.mem_write_gate(u_c).squeeze(-1)  # (B,C)
+                if collect_aux:
+                    gate_logits_seq[:, t0:t1] = gate_logit_c
+                p_c = torch.sigmoid(gate_logit_c)  # (B,C)
+                mask_c = (p_c > float(thr)).to(dtype=u_c.dtype)
+                if teacher is not None and "write_gate" in teacher and isinstance(teacher["write_gate"], Tensor):
+                    tg = teacher["write_gate"]
+                    try:
+                        if tg.dim() == 2 and tg.size(0) == B and tg.size(1) == T:
+                            tg_c = tg[:, t0:t1].view(B, C)
+                        else:
+                            tg_c = None
+                        if tg_c is not None:
+                            use = tg_c >= 0
+                            if isinstance(use_teacher, Tensor):
+                                use = use & use_teacher
+                            mask_c = torch.where(use, (tg_c > 0).to(dtype=mask_c.dtype, device=mask_c.device), mask_c)
+                    except Exception:
+                        pass
+                w_eta_c = (float(eta) * p_c).to(dtype=u_c.dtype) * mask_c  # (B,C)
+
+                do = w_eta_c > 0
+                pos = torch.nonzero(do, as_tuple=False)
+                if pos.numel() > 0:
+                    b_ev_all = pos[:, 0]
+                    t_ev_all = pos[:, 1]
+
+                    idx_w_c = idx_w_all[:, t0:t1, :]  # (B,C,H)
+                    if teacher is not None and "write_bucket" in teacher and isinstance(teacher["write_bucket"], Tensor):
+                        tbw = teacher["write_bucket"]
+                        try:
+                            if tbw.dim() == 2 and tbw.size(0) == B and tbw.size(1) == T:
+                                tbw_c = tbw[:, t0:t1].view(B, C, 1).expand(B, C, Hh)
+                            elif tbw.dim() == 3 and tbw.size(0) == B and tbw.size(1) == T and tbw.size(2) == Hh:
+                                tbw_c = tbw[:, t0:t1, :].view(B, C, Hh)
+                            else:
+                                tbw_c = None
+                            if tbw_c is not None:
+                                m = tbw_c >= 0
+                                if isinstance(use_teacher, Tensor):
+                                    m = m & use_teacher.unsqueeze(-1)
+                                idx_w_c = torch.where(m, tbw_c.to(dtype=idx_w_c.dtype, device=idx_w_c.device), idx_w_c)
+                        except Exception:
+                            pass
+
+                    wk_c = self.mem_wkey(u_c)     # (B,C,key_dim)
+                    v_c = self.mem_value(u_c)     # (B,C,mem_dim)
+
+                    for h in range(Hh):
+                        write_buckets_h: list[Tensor] = [idx_w_c[:, :, h].to(dtype=torch.long)]
+                        if (
+                            self.mem_router == "vq"
+                            and bool(getattr(self, "mem_write_multi", False))
+                            and isinstance(cand_w_idx_all, Tensor)
+                            and isinstance(cand_w_w_all, Tensor)
+                        ):
+                            try:
+                                cw = cand_w_w_all[:, t0:t1, h, :]  # (B,C,Nc)
+                                ci = cand_w_idx_all[:, t0:t1, h, :]  # (B,C,Nc)
+                                k2 = min(2, int(cw.size(-1)))
+                                if k2 >= 2:
+                                    top2 = torch.topk(cw, k=int(k2), dim=-1).indices  # (B,C,2)
+                                    b1 = torch.gather(ci, dim=-1, index=top2[:, :, 1:2]).squeeze(-1)  # (B,C)
+                                    write_buckets_h.append(b1.to(dtype=torch.long))
+                            except Exception:
+                                pass
+
+                        for bidx in write_buckets_h:
+                            mk = mem_k[:, h, :, :, :]   # (B,buckets,A,key_dim)
+                            mv = mem_v[:, h, :, :, :]   # (B,buckets,A,mem_dim)
+                            ml = mem_last[:, h, :, :]   # (B,buckets,A)
+
+                            # Gather along bucket dim=1; index tensor must be 4D like the output:
+                            #   mk: (B, buckets, A, key_dim) -> (B, C, A, key_dim)
+                            # so create indices shaped (B, C, A, key_dim).
+                            idxk = bidx.unsqueeze(-1).unsqueeze(-1).expand(B, C, A, key_dim)
+                            idxv = bidx.unsqueeze(-1).unsqueeze(-1).expand(B, C, A, mem_dim)
+                            # ml: (B, buckets, A) -> (B, C, A) so index must be 3D (B,C,A)
+                            idxl = bidx.unsqueeze(-1).expand(B, C, A)
+                            bk_w = mk.gather(dim=1, index=idxk)
+                            bv_w = mv.gather(dim=1, index=idxv)
+                            bl_w = ml.gather(dim=1, index=idxl)
+
+                            valid_w = bl_w >= 0
+                            sim_w = (bk_w * wk_c.unsqueeze(2)).sum(dim=-1) * float(key_scale)
+                            sim_w = sim_w.masked_fill(~valid_w, float("-inf"))
+                            best_slot = sim_w.argmax(dim=-1)
+                            best_sim = sim_w.max(dim=-1).values
+                            has_empty = (~valid_w).any(dim=-1)
+                            first_empty = (~valid_w).to(torch.int64).argmax(dim=-1)
+                            lru_slot = bl_w.argmin(dim=-1)
+                            repl_slot = torch.where(has_empty, first_empty, lru_slot)
+                            use_update = torch.isfinite(best_sim) & (best_sim >= float(match_thr)) & has_empty.logical_not()
+                            slot = torch.where(use_update, best_slot, repl_slot).to(dtype=torch.long)
+
+                            bucket_ev = bidx[b_ev_all, t_ev_all]
+                            slot_ev = slot[b_ev_all, t_ev_all]
+                            eta_ev = w_eta_c[b_ev_all, t_ev_all].to(dtype=x.dtype)
+                            wk_ev = wk_c[b_ev_all, t_ev_all, :].to(dtype=x.dtype)
+                            v_ev = v_c[b_ev_all, t_ev_all, :].to(dtype=x.dtype)
+                            upd_ev = use_update[b_ev_all, t_ev_all]
+                            time_ev = (step0 + t0) + t_ev_all.to(torch.long)
+
+                            key_ev = (((b_ev_all.to(torch.long) * Hh + int(h)) * int(self.mem_buckets) + bucket_ev) * A + slot_ev)
+                            winner = last_write_wins(key_ev, time_ev, big=big)
+
+                            bw = b_ev_all[winner]
+                            buckw = bucket_ev[winner]
+                            slotw = slot_ev[winner]
+                            etaw = eta_ev[winner].view(-1, 1)
+                            wkw = wk_ev[winner]
+                            vw = v_ev[winner]
+                            updw = upd_ev[winner].view(-1, 1)
+                            timew = time_ev[winner]
+
+                            curk = mem_k[bw, h, buckw, slotw, :]
+                            curv = mem_v[bw, h, buckw, slotw, :]
+                            # Writes are state updates, not part of the grad graph.
+                            with torch.no_grad():
+                                mem_k[bw, h, buckw, slotw, :] = torch.where(
+                                    updw, (1.0 - etaw) * curk + etaw * wkw, wkw
+                                )
+                                mem_v[bw, h, buckw, slotw, :] = torch.where(
+                                    updw, (1.0 - etaw) * curv + etaw * vw, vw
+                                )
+                                mem_last[bw, h, buckw, slotw] = timew
+
+            st.step = int(step0 + int(T))
+            return _finalize()
 
         for t in range(int(T)):
             ut = u[:, t, :]  # (B, D)
@@ -505,6 +987,46 @@ class MosaicBlockLayer(nn.Module):
             util_logit = self.mem_utility_head(ut).squeeze(-1)
             if collect_aux:
                 util_logits_seq[:, t] = util_logit
+
+            # Opcode head (logging only; semantics are layered later).
+            if self.opcodes_enabled and self.opcode_head is not None and collect_aux and opcode_logits_seq is not None:
+                opcode_logits_seq[:, t, :] = self.opcode_head(ut).to(dtype=torch.float32)
+
+            # --- Register read/write (optional, strict sequential) ---
+            if self.reg_slots > 0 and isinstance(regs, Tensor):
+                assert self.reg_write_gate is not None and self.reg_sel is not None and self.reg_value is not None
+                # Read: soft slot selection (constant-time; slots are small).
+                sim_r = torch.einsum("brd,bd->br", regs, ut) * (1.0 / math.sqrt(float(D)))
+                w_r = torch.softmax(sim_r.float(), dim=-1).to(dtype=ut.dtype)
+                z_t = (w_r.unsqueeze(-1) * regs).sum(dim=1)
+                if z_seq is not None:
+                    z_seq[:, t, :] = z_t
+
+                # Write: gated, top-1 slot select + overwrite/blend.
+                reg_gate_logit = self.reg_write_gate(ut).squeeze(-1)  # (B,)
+                sel_logits = self.reg_sel(ut)  # (B,R)
+                if collect_aux:
+                    if reg_write_gate_logits_seq is not None:
+                        reg_write_gate_logits_seq[:, t] = reg_gate_logit
+                    if reg_sel_logits_seq is not None:
+                        reg_sel_logits_seq[:, t, :] = sel_logits.to(dtype=torch.float32)
+                p_wr = torch.sigmoid(reg_gate_logit)
+                thr_r = float(getattr(self.config, "reg_write_threshold", 0.5))
+                eta_r = float(getattr(self.config, "reg_write_eta", 1.0))
+                do_wr = p_wr > float(thr_r)
+                if bool(do_wr.any().item()):
+                    slot = sel_logits.argmax(dim=-1)  # (B,)
+                    val = self.reg_value(ut)  # (B,D)
+                    b = batch_idx[do_wr]
+                    s_idx = slot[do_wr].to(dtype=torch.long)
+                    v_wr = val[do_wr]
+                    if eta_r >= 1.0 - 1e-9:
+                        regs = regs.clone()
+                        regs[b, s_idx, :] = v_wr
+                    else:
+                        regs = regs.clone()
+                        cur = regs[b, s_idx, :]
+                        regs[b, s_idx, :] = (1.0 - float(eta_r)) * cur + float(eta_r) * v_wr
 
             # Router + address selection (bits or VQ).
             cand_r_idx = cand_r_w = None
@@ -684,8 +1206,8 @@ class MosaicBlockLayer(nn.Module):
                             top2 = torch.topk(cand_w_w, k=int(k2), dim=-1).indices  # (B,H,2)
                             b1 = torch.gather(cand_w_idx, dim=-1, index=top2[:, :, 1:2]).squeeze(-1)
                             write_buckets.append(b1)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Error in write_buckets: {e}")
 
                 for idx_w_use in write_buckets:
                     wk_b = wk.view(B, 1, 1, self.mem_key_dim)
@@ -723,116 +1245,22 @@ class MosaicBlockLayer(nn.Module):
                             aa = a[do_u]
                             curk = mem_k[bu, bkh, bb, ss, :]
                             curv = mem_v[bu, bkh, bb, ss, :]
-                            mem_k[bu, bkh, bb, ss, :] = (1.0 - aa) * curk + aa * wk[do_u]
-                            mem_v[bu, bkh, bb, ss, :] = (1.0 - aa) * curv + aa * v[do_u]
-                            mem_last[bu, bkh, bb, ss] = int(st.step)
+                            with torch.no_grad():
+                                mem_k[bu, bkh, bb, ss, :] = (1.0 - aa) * curk + aa * wk[do_u]
+                                mem_v[bu, bkh, bb, ss, :] = (1.0 - aa) * curv + aa * v[do_u]
+                                mem_last[bu, bkh, bb, ss] = int(st.step)
 
                         if bool(do_r.any().item()):
                             br = b[do_r]
                             bkh = bh[do_r]
                             bb = bucket[do_r]
                             ss = slot_r[do_r]
-                            mem_k[br, bkh, bb, ss, :] = wk[do_r]
-                            mem_v[br, bkh, bb, ss, :] = v[do_r]
-                            mem_last[br, bkh, bb, ss] = int(st.step)
+                            with torch.no_grad():
+                                mem_k[br, bkh, bb, ss, :] = wk[do_r]
+                                mem_v[br, bkh, bb, ss, :] = v[do_r]
+                                mem_last[br, bkh, bb, ss] = int(st.step)
 
             st.step += 1
 
-        # Contrastive auxiliary: make memory reads predictive of future hidden state.
-        contrastive_loss: Tensor | None = None
-        if collect_aux:
-            try:
-                delta = int(getattr(self.config, "aux_contrastive_delta", 1))
-            except Exception:
-                delta = 1
-            if delta > 0 and delta < int(T):
-                # Prefer supervising only where a teacher read was requested.
-                mask_pos: Tensor | None = None
-                if teacher is not None and "read_bucket" in teacher and isinstance(teacher["read_bucket"], Tensor):
-                    tb = teacher["read_bucket"]
-                    try:
-                        if tb.dim() == 2 and tb.size(0) == B and tb.size(1) == T:
-                            mask_pos = tb >= 0
-                        elif tb.dim() == 3 and tb.size(0) == B and tb.size(1) == T:
-                            mask_pos = (tb >= 0).any(dim=-1)
-                    except Exception:
-                        mask_pos = None
-                if mask_pos is None:
-                    mask_pos = torch.ones((B, T), device=x.device, dtype=torch.bool)
-
-                # Only positions where t+delta exists.
-                mask_pos = mask_pos[:, : T - delta]
-                idx = torch.nonzero(mask_pos, as_tuple=False)
-                if idx.numel() > 0:
-                    # Subsample to keep cost bounded.
-                    max_n = 256
-                    if idx.size(0) > max_n:
-                        perm = torch.randperm(idx.size(0), device=idx.device)[:max_n]
-                        idx = idx[perm]
-                    b_idx = idx[:, 0]
-                    t_idx = idx[:, 1]
-                    r_sel = r_seq[b_idx, t_idx, :].float()
-                    p_sel = u[b_idx, t_idx + delta, :].float()
-                    # InfoNCE within this minibatch: positives are aligned pairs.
-                    logits = (r_sel @ p_sel.t()) * (1.0 / math.sqrt(float(r_sel.size(-1))))
-                    targets = torch.arange(logits.size(0), device=logits.device, dtype=torch.long)
-                    contrastive_loss = F.cross_entropy(logits, targets)
-
-        # Fusion gates (token-wise).
-        gate_long = torch.sigmoid(self.gate_long(u))  # (B,T,1)
-        gate_mem = torch.sigmoid(self.gate_mem(u))    # (B,T,1)
-
-        y = x + local + gate_long * g_seq + gate_mem * r_seq
-
-        # Persist updated state.
-        st.s = s.detach()
-        st.mem_k = mem_k.detach()
-        st.mem_v = mem_v.detach()
-        st.mem_last = mem_last.detach()
-        if new_buf is not None:
-            st.conv_buf = new_buf
-        # Emit aux outputs (best-effort) for curriculum objectives.
-        if collect_aux and ctx is not None:
-            try:
-                setattr(
-                    ctx,
-                    "mosaic_aux_out",
-                    {
-                        "mosaic_write_gate_logits": gate_logits_seq.detach(),
-                        "mosaic_write_utility_logits": util_logits_seq.detach(),
-                        **(
-                            {"mosaic_contrastive_loss": contrastive_loss.detach()}
-                            if isinstance(contrastive_loss, Tensor)
-                            else {}
-                        ),
-                        **(
-                            {
-                                "mosaic_read_bit_logits": read_bit_logits_seq.detach(),
-                                "mosaic_write_bit_logits": write_bit_logits_seq.detach(),
-                            }
-                            if isinstance(read_bit_logits_seq, Tensor) and isinstance(write_bit_logits_seq, Tensor)
-                            else {}
-                        ),
-                        **(
-                            {
-                                "mosaic_vq_read_logits": read_vq_logits_seq.detach(),
-                                "mosaic_vq_write_logits": write_vq_logits_seq.detach(),
-                            }
-                            if isinstance(read_vq_logits_seq, Tensor) and isinstance(write_vq_logits_seq, Tensor)
-                            else {}
-                        ),
-                        **(
-                            {
-                                "mosaic_read_codes": read_codes_seq.detach(),
-                                "mosaic_write_codes": write_codes_seq.detach(),
-                            }
-                            if isinstance(read_codes_seq, Tensor) and isinstance(write_codes_seq, Tensor)
-                            else {}
-                        ),
-                    },
-                )
-            except Exception:
-                pass
-        _set_state(ctx, self._ctx_key, st)
-        return y
+        return _finalize()
 

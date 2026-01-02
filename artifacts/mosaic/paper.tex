@@ -95,7 +95,7 @@ Orthogonal work reduces the \emph{storage format} of KV caches via head sharing 
 Classical compression/prediction schemes and cache language models motivate the idea that exact copying and repetition can be handled by algorithmic structures at constant-time access, while a neural model provides generalization. MOSAIC adopts this hybrid view: continuous state for general context plus discrete cache structures for fast recall/continuation.
 
 \paragraph{State-space models and external memory.}
-Modern recurrent/state-space designs can provide strong long-range \emph{influence} with constant memory, but they are not designed for precise retrieval of discrete facts. Conversely, explicit read/write memories have long promised algorithmic recall, but training stable addressing policies is historically challenging. MOSAIC treats these as complementary: continuous state for ``vibe/intent'' and explicit data structures for copying and discrete recall.
+Modern recurrent/state-space designs can provide strong long-range \emph{influence} with constant memory (e.g., Mamba \cite{gu2023mamba}, RWKV \cite{peng2023rwkv}, Griffin \cite{de2024griffin}), but they are not designed for precise retrieval of discrete facts. Conversely, explicit read/write memories have long promised algorithmic recall, but training stable addressing policies is historically challenging. MOSAIC treats these as complementary: continuous state for ``vibe/intent'' and explicit data structures for copying and discrete recall.
 
 % ============================================================================
 % 2. METHODOLOGY
@@ -295,6 +295,6 @@ Core implementation: \path{layer/mosaic_block.py} and \path{layer/mosaic_ngram_c
 \FloatBarrier
 \clearpage
 \bibliographystyle{plain}
-\bibliography{../paper/references}
+\bibliography{../paper/references,references}
 
 \end{document}
