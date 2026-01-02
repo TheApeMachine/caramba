@@ -595,7 +595,22 @@ class StandardTrainer:
                             if isinstance(v, Tensor):
                                 teacher[k] = v
                         viz_ctx.mosaic_teacher = teacher or None
-                        viz_ctx.mosaic_collect_aux = bool(teacher)
+                        # Collect MOSAIC aux outputs when teacher signals exist *or*
+                        # when the selected objective expects MOSAIC aux keys (e.g. for
+                        # contrastive/self-supervised aux).
+                        collect_aux = bool(teacher)
+                        try:
+                            from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
+
+                            if isinstance(objective, MosaicNextTokenWithAuxObjective):
+                                collect_aux = True
+                        except Exception:
+                            try:
+                                if objective.__class__.__name__ == "MosaicNextTokenWithAuxObjective":
+                                    collect_aux = True
+                            except Exception:
+                                pass
+                        viz_ctx.mosaic_collect_aux = bool(collect_aux)
                     outputs = system.forward(batch_td, ctx=viz_ctx)  # type: ignore[attr-defined]
                 except TypeError:
                     # Some non-standard systems may not accept ctx; keep best-effort.

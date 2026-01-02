@@ -225,6 +225,9 @@ class Brainstorm(Process):
         self.logger.subheader(agent.persona.name)
 
         prompt = self._compose_agent_prompt(user_input)
+        # Per-response creativity: randomize temperature in [0, 1).
+        # We keep the same temperature for the entire agent turn (including any follow-up call).
+        turn_temperature = random.random()
 
         streamed = ""
         saw_tool_event = False
@@ -235,7 +238,11 @@ class Brainstorm(Process):
         err_buf = io.StringIO()
         with contextlib.redirect_stderr(err_buf):
             with Live(self._live_view(answer_md="", tool_md=""), console=self.logger.console, refresh_per_second=12) as live:
-                async for ev in agent.stream_chat_events_async(prompt, streaming_mode="sse"):
+                async for ev in agent.stream_chat_events_async(
+                    prompt,
+                    streaming_mode="sse",
+                    temperature=turn_temperature,
+                ):
                     et = ev.get("type")
                     if et == "text":
                         chunk = ev.get("text") or ""
@@ -313,7 +320,11 @@ class Brainstorm(Process):
                     console=self.logger.console,
                     refresh_per_second=12,
                 ) as live:
-                    async for chunk in agent.stream_text_async(followup, streaming_mode="sse"):
+                    async for chunk in agent.stream_text_async(
+                        followup,
+                        streaming_mode="sse",
+                        temperature=turn_temperature,
+                    ):
                         if chunk:
                             response += str(chunk)
                             live.update(self._live_view(answer_md=response, tool_md="\n".join(tool_events[-max_tool_events:])))

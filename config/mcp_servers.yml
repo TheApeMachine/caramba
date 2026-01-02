@@ -15,3 +15,10 @@ deeplake:
   transport: streamable-http
   url: "http://localhost:8004/mcp"
 
+# Hosted by Weights & Biases (W&B). Requires WANDB_API_KEY in the environment.
+wandb:
+  transport: streamable-http
+  url: "https://mcp.withwandb.com/mcp"
+  headers:
+    authorization: "Bearer ${WANDB_API_KEY}"
+

@@ -92,7 +92,15 @@ targets:
                 top_m: 8
                 weight: 0.0
 
-    objective: objective.next_token_ce
+    objective:
+      ref: objective.mosaic_next_token_aux
+      config:
+        logits_key: logits
+        target_key: target_ids
+        aux_gate_weight: 0.1
+        aux_bits_weight: 0.1
+        aux_utility_weight: 0.1
+        aux_contrastive_weight: 0.1
     trainer: trainer.standard
     runs:
       - id: train

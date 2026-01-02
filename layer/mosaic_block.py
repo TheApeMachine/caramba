@@ -465,9 +465,14 @@ class MosaicBlockLayer(nn.Module):
         eta = float(self.config.mem_write_eta)
         thr = float(self.config.mem_write_threshold)
 
-        g_seq = x.new_empty((B, T, D))
-        r_seq = x.new_empty((B, T, D))
-        z_seq = x.new_zeros((B, T, D)) if self.reg_slots > 0 else None
+        # Build differentiable sequences without in-place writes.
+        # (In-place assignment into a fresh buffer breaks autograd connectivity.)
+        g_parts: list[Tensor] = []
+        r_parts: list[Tensor] = []
+        z_parts: list[Tensor] | None = [] if self.reg_slots > 0 else None
+        g_seq: Tensor | None = None
+        r_seq: Tensor | None = None
+        z_seq: Tensor | None = None
 
         s = st.s
         regs = st.regs
@@ -487,39 +492,68 @@ class MosaicBlockLayer(nn.Module):
         key_scale = 1.0 / math.sqrt(float(self.mem_key_dim))
 
         # Optional aux outputs for curriculum losses (gate/bits imitation).
+        # Initialize aux variables up-front so they are always bound.
+        gate_logits_parts: list[Tensor] = []
+        util_logits_parts: list[Tensor] = []
+        gate_logits_seq: Tensor | None = None
+        util_logits_seq: Tensor | None = None
+
+        read_bit_logits_parts: list[Tensor] | None = None
+        write_bit_logits_parts: list[Tensor] | None = None
+        read_bit_logits_seq: Tensor | None = None
+        write_bit_logits_seq: Tensor | None = None
+
+        read_vq_logits_parts: list[Tensor] | None = None
+        write_vq_logits_parts: list[Tensor] | None = None
+        read_vq_logits_seq: Tensor | None = None
+        write_vq_logits_seq: Tensor | None = None
+
+        opcode_logits_seq: Tensor | None = None
+        reg_write_gate_logits_seq: Tensor | None = None
+        reg_sel_logits_seq: Tensor | None = None
+
+        read_codes_seq: Tensor | None = None
+        write_codes_seq: Tensor | None = None
+
         collect_aux = bool(getattr(ctx, "mosaic_collect_aux", False)) if ctx is not None else False
         if collect_aux and ctx is not None:
             try:
                 setattr(ctx, "mosaic_aux_out", {})  # overwritten at end
             except Exception:
                 collect_aux = False
+
         if collect_aux:
-            gate_logits_seq = x.new_empty((B, T))
-            util_logits_seq = x.new_empty((B, T))
-            opcode_logits_seq = x.new_empty((B, T, self.opcode_vocab), dtype=torch.float32) if self.opcodes_enabled else None
+            # Differentiable aux sequences (built via cat/stack).
+            gate_logits_parts = []
+            util_logits_parts = []
+            gate_logits_seq = None
+            util_logits_seq = None
+
+            read_bit_logits_parts = [] if self.mem_router == "bits" else None
+            write_bit_logits_parts = [] if self.mem_router == "bits" else None
+            read_bit_logits_seq = None
+            write_bit_logits_seq = None
+
+            read_vq_logits_parts = [] if self.mem_router == "vq" else None
+            write_vq_logits_parts = [] if self.mem_router == "vq" else None
+            read_vq_logits_seq = None
+            write_vq_logits_seq = None
+
+            # Logging-only aux (safe to populate with in-place fills).
+            opcode_logits_seq = (
+                x.new_empty((B, T, self.opcode_vocab), dtype=torch.float32) if self.opcodes_enabled else None
+            )
             reg_write_gate_logits_seq = x.new_empty((B, T)) if self.reg_slots > 0 else None
-            reg_sel_logits_seq = x.new_empty((B, T, self.reg_slots), dtype=torch.float32) if self.reg_slots > 0 else None
-            # Router aux depends on router kind.
-            if self.mem_router == "bits":
-                read_bit_logits_seq = x.new_empty((B, T, self.mem_hashes, self.mem_bits))
-                write_bit_logits_seq = x.new_empty((B, T, self.mem_hashes, self.mem_bits))
-                read_codes_seq = None
-                write_codes_seq = None
-                read_vq_logits_seq = None
-                write_vq_logits_seq = None
-            else:
-                read_bit_logits_seq = None
-                write_bit_logits_seq = None
+            reg_sel_logits_seq = (
+                x.new_empty((B, T, self.reg_slots), dtype=torch.float32) if self.reg_slots > 0 else None
+            )
+
+            # Non-differentiable introspection.
+            read_codes_seq = None
+            write_codes_seq = None
+            if self.mem_router == "vq":
                 read_codes_seq = x.new_empty((B, T, self.mem_hashes, int(self.mem_vq_groups)), dtype=torch.long)
                 write_codes_seq = x.new_empty((B, T, self.mem_hashes, int(self.mem_vq_groups)), dtype=torch.long)
-                read_vq_logits_seq = x.new_empty(
-                    (B, T, self.mem_hashes, int(self.mem_vq_groups), int(self.mem_vq_codebook_size)),
-                    dtype=torch.float32,
-                )
-                write_vq_logits_seq = x.new_empty(
-                    (B, T, self.mem_hashes, int(self.mem_vq_groups), int(self.mem_vq_codebook_size)),
-                    dtype=torch.float32,
-                )
 
         def _finalize() -> Tensor:
             # Contrastive auxiliary: make memory reads predictive of future hidden state.
@@ -555,6 +589,7 @@ class MosaicBlockLayer(nn.Module):
                             idx = idx[perm]
                         b_idx = idx[:, 0]
                         t_idx = idx[:, 1]
+                        assert r_seq is not None
                         r_sel = r_seq[b_idx, t_idx, :].float()
                         p_sel = u[b_idx, t_idx + delta, :].float()
                         # InfoNCE within this minibatch: positives are aligned pairs.
@@ -567,6 +602,7 @@ class MosaicBlockLayer(nn.Module):
             gate_mem = torch.sigmoid(self.gate_mem(u))    # (B,T,1)
             gate_reg = torch.sigmoid(self.gate_reg(u)) if (self.gate_reg is not None and z_seq is not None) else None
 
+            assert g_seq is not None and r_seq is not None
             y = x + local + gate_long * g_seq + gate_mem * r_seq
             if gate_reg is not None and z_seq is not None:
                 y = y + gate_reg * z_seq
@@ -583,12 +619,43 @@ class MosaicBlockLayer(nn.Module):
             # Emit aux outputs (best-effort) for curriculum objectives.
             if collect_aux and ctx is not None:
                 try:
+                    # Finalize differentiable aux sequences (if built as parts).
+                    gate_logits = gate_logits_seq
+                    util_logits = util_logits_seq
+                    read_bit_logits = read_bit_logits_seq
+                    write_bit_logits = write_bit_logits_seq
+                    read_vq_logits = read_vq_logits_seq
+                    write_vq_logits = write_vq_logits_seq
+
+                    if gate_logits is None and len(gate_logits_parts) > 0:
+                        gate_logits = torch.cat(gate_logits_parts, dim=1)
+                    if util_logits is None and len(util_logits_parts) > 0:
+                        util_logits = torch.cat(util_logits_parts, dim=1)
+
+                    if read_bit_logits is None and isinstance(read_bit_logits_parts, list) and len(read_bit_logits_parts) > 0:
+                        read_bit_logits = torch.cat(read_bit_logits_parts, dim=1)
+                    if write_bit_logits is None and isinstance(write_bit_logits_parts, list) and len(write_bit_logits_parts) > 0:
+                        write_bit_logits = torch.cat(write_bit_logits_parts, dim=1)
+
+                    if read_vq_logits is None and isinstance(read_vq_logits_parts, list) and len(read_vq_logits_parts) > 0:
+                        read_vq_logits = torch.cat(read_vq_logits_parts, dim=1)
+                    if write_vq_logits is None and isinstance(write_vq_logits_parts, list) and len(write_vq_logits_parts) > 0:
+                        write_vq_logits = torch.cat(write_vq_logits_parts, dim=1)
+
                     setattr(
                         ctx,
                         "mosaic_aux_out",
                         {
-                            "mosaic_write_gate_logits": gate_logits_seq.detach(),
-                            "mosaic_write_utility_logits": util_logits_seq.detach(),
+                            **(
+                                {"mosaic_write_gate_logits": gate_logits}
+                                if isinstance(gate_logits, Tensor)
+                                else {}
+                            ),
+                            **(
+                                {"mosaic_write_utility_logits": util_logits}
+                                if isinstance(util_logits, Tensor)
+                                else {}
+                            ),
                             **(
                                 {"mosaic_opcode_logits": opcode_logits_seq.detach()}
                                 if isinstance(opcode_logits_seq, Tensor)
@@ -610,24 +677,24 @@ class MosaicBlockLayer(nn.Module):
                                 else {}
                             ),
                             **(
-                                {"mosaic_contrastive_loss": contrastive_loss.detach()}
+                                {"mosaic_contrastive_loss": contrastive_loss}
                                 if isinstance(contrastive_loss, Tensor)
                                 else {}
                             ),
                             **(
                                 {
-                                    "mosaic_read_bit_logits": read_bit_logits_seq.detach(),
-                                    "mosaic_write_bit_logits": write_bit_logits_seq.detach(),
+                                    "mosaic_read_bit_logits": read_bit_logits,
+                                    "mosaic_write_bit_logits": write_bit_logits,
                                 }
-                                if isinstance(read_bit_logits_seq, Tensor) and isinstance(write_bit_logits_seq, Tensor)
+                                if isinstance(read_bit_logits, Tensor) and isinstance(write_bit_logits, Tensor)
                                 else {}
                             ),
                             **(
                                 {
-                                    "mosaic_vq_read_logits": read_vq_logits_seq.detach(),
-                                    "mosaic_vq_write_logits": write_vq_logits_seq.detach(),
+                                    "mosaic_vq_read_logits": read_vq_logits,
+                                    "mosaic_vq_write_logits": write_vq_logits,
                                 }
-                                if isinstance(read_vq_logits_seq, Tensor) and isinstance(write_vq_logits_seq, Tensor)
+                                if isinstance(read_vq_logits, Tensor) and isinstance(write_vq_logits, Tensor)
                                 else {}
                             ),
                             **(
@@ -684,9 +751,9 @@ class MosaicBlockLayer(nn.Module):
                 assert self.mem_read_bits is not None and self.mem_write_bits is not None
                 z_read_all = self.mem_read_bits(u).view(B, T, Hh, int(self.mem_bits))
                 z_write_all = self.mem_write_bits(u).view(B, T, Hh, int(self.mem_bits))
-                if collect_aux and read_bit_logits_seq is not None and write_bit_logits_seq is not None:
-                    read_bit_logits_seq[:, :, :, :] = z_read_all
-                    write_bit_logits_seq[:, :, :, :] = z_write_all
+                if collect_aux:
+                    read_bit_logits_seq = z_read_all
+                    write_bit_logits_seq = z_write_all
                 idx_r_all = self._route_bits(z_read_all.reshape(B * T, Hh, int(self.mem_bits))).view(B, T, Hh)
                 idx_w_all = self._route_bits(z_write_all.reshape(B * T, Hh, int(self.mem_bits))).view(B, T, Hh)
             else:
@@ -719,11 +786,11 @@ class MosaicBlockLayer(nn.Module):
                     cand_w_idx_all = cand_w_idx.view(B, T, Hh, -1)
                     cand_w_w_all = cand_w_w.view(B, T, Hh, -1)
 
-                if collect_aux and isinstance(read_vq_logits_seq, Tensor) and isinstance(write_vq_logits_seq, Tensor):
+                if collect_aux:
                     if isinstance(gl_r, Tensor):
-                        read_vq_logits_seq[:, :, :, :, :] = gl_r.view(B, T, Hh, G, int(self.mem_vq_codebook_size))
+                        read_vq_logits_seq = gl_r.view(B, T, Hh, G, int(self.mem_vq_codebook_size))
                     if isinstance(gl_w, Tensor):
-                        write_vq_logits_seq[:, :, :, :, :] = gl_w.view(B, T, Hh, G, int(self.mem_vq_codebook_size))
+                        write_vq_logits_seq = gl_w.view(B, T, Hh, G, int(self.mem_vq_codebook_size))
 
                 if collect_aux and isinstance(read_codes_seq, Tensor) and isinstance(write_codes_seq, Tensor):
                     # Store top-1 VQ codes per group for introspection.
@@ -769,14 +836,15 @@ class MosaicBlockLayer(nn.Module):
                 inp = self.state_in(u_c).view(B, C, self.state_k, D).permute(0, 2, 1, 3)  # (B,K,C,D)
                 s_seq_c, s_last = leaky_integrator_scan(inp, s, decay)
                 s = s_last.to(dtype=x.dtype)
-                g_seq[:, t0:t1, :] = self.state_out(
+                g_c = self.state_out(
                     s_seq_c.permute(0, 2, 1, 3).to(dtype=x.dtype).reshape(B, C, self.state_k * D)
                 )
+                g_parts.append(g_c)
 
                 # Utility head.
                 util_logit_c = self.mem_utility_head(u_c).squeeze(-1)
                 if collect_aux:
-                    util_logits_seq[:, t0:t1] = util_logit_c
+                    util_logits_parts.append(util_logit_c)
 
                 # --- Memory read ---
                 idx_r_c = idx_r_all[:, t0:t1, :]  # (B,C,H)
@@ -819,7 +887,7 @@ class MosaicBlockLayer(nn.Module):
                         wslot = torch.where(any_valid, wslot, torch.zeros_like(wslot))
                         rh_ci = (wslot.unsqueeze(-1) * bv).sum(dim=3)  # (B,H,C,mem_dim)
                         read_h = read_h + rh_ci * ww[:, :, :, ci].permute(0, 2, 1).unsqueeze(-1)
-                    r_seq[:, t0:t1, :] = self.mem_out(read_h.sum(dim=1))
+                    r_c = self.mem_out(read_h.sum(dim=1))
                 else:
                     idx_g = idx_r_c.permute(0, 2, 1).to(dtype=torch.long).unsqueeze(-1).unsqueeze(-1)  # (B,H,C,1,1)
                     bk = mem_k.gather(dim=2, index=idx_g.expand(B, Hh, C, A, key_dim))
@@ -832,12 +900,13 @@ class MosaicBlockLayer(nn.Module):
                     w = torch.softmax(sim / float(temp), dim=-1)
                     w = torch.where(any_valid, w, torch.zeros_like(w))
                     read_h = (w.unsqueeze(-1) * bv).sum(dim=3)  # (B,H,C,mem_dim)
-                    r_seq[:, t0:t1, :] = self.mem_out(read_h.sum(dim=1))
+                    r_c = self.mem_out(read_h.sum(dim=1))
+                r_parts.append(r_c)
 
                 # --- Memory write (aggregated per slot; last-write-wins) ---
                 gate_logit_c = self.mem_write_gate(u_c).squeeze(-1)  # (B,C)
                 if collect_aux:
-                    gate_logits_seq[:, t0:t1] = gate_logit_c
+                    gate_logits_parts.append(gate_logit_c)
                 p_c = torch.sigmoid(gate_logit_c)  # (B,C)
                 mask_c = (p_c > float(thr)).to(dtype=u_c.dtype)
                 if teacher is not None and "write_gate" in teacher and isinstance(teacher["write_gate"], Tensor):
@@ -963,6 +1032,11 @@ class MosaicBlockLayer(nn.Module):
                                 mem_last[bw, h, buckw, slotw] = timew
 
             st.step = int(step0 + int(T))
+            # Finalize differentiable sequences for _finalize.
+            if len(g_parts) > 0:
+                g_seq = torch.cat(g_parts, dim=1)
+            if len(r_parts) > 0:
+                r_seq = torch.cat(r_parts, dim=1)
             return _finalize()
 
         for t in range(int(T)):
@@ -981,12 +1055,12 @@ class MosaicBlockLayer(nn.Module):
             inp = self.state_in(ut).view(B, self.state_k, D)
             s = decay * s + inp
             g_t = self.state_out(s.reshape(B, self.state_k * D))
-            g_seq[:, t, :] = g_t
+            g_parts.append(g_t.unsqueeze(1))
 
             # Utility prediction head (supervisable in curriculum).
             util_logit = self.mem_utility_head(ut).squeeze(-1)
             if collect_aux:
-                util_logits_seq[:, t] = util_logit
+                util_logits_parts.append(util_logit.view(B, 1))
 
             # Opcode head (logging only; semantics are layered later).
             if self.opcodes_enabled and self.opcode_head is not None and collect_aux and opcode_logits_seq is not None:
@@ -999,8 +1073,8 @@ class MosaicBlockLayer(nn.Module):
                 sim_r = torch.einsum("brd,bd->br", regs, ut) * (1.0 / math.sqrt(float(D)))
                 w_r = torch.softmax(sim_r.float(), dim=-1).to(dtype=ut.dtype)
                 z_t = (w_r.unsqueeze(-1) * regs).sum(dim=1)
-                if z_seq is not None:
-                    z_seq[:, t, :] = z_t
+                if z_parts is not None:
+                    z_parts.append(z_t.unsqueeze(1))
 
                 # Write: gated, top-1 slot select + overwrite/blend.
                 reg_gate_logit = self.reg_write_gate(ut).squeeze(-1)  # (B,)
@@ -1035,9 +1109,9 @@ class MosaicBlockLayer(nn.Module):
                 assert self.mem_read_bits is not None and self.mem_write_bits is not None
                 z_read = self.mem_read_bits(ut).view(B, self.mem_hashes, self.mem_bits)
                 z_write = self.mem_write_bits(ut).view(B, self.mem_hashes, self.mem_bits)
-                if collect_aux and read_bit_logits_seq is not None and write_bit_logits_seq is not None:
-                    read_bit_logits_seq[:, t, :, :] = z_read
-                    write_bit_logits_seq[:, t, :, :] = z_write
+                if collect_aux and isinstance(read_bit_logits_parts, list) and isinstance(write_bit_logits_parts, list):
+                    read_bit_logits_parts.append(z_read.unsqueeze(1))
+                    write_bit_logits_parts.append(z_write.unsqueeze(1))
                 idx_r = self._route_bits(z_read)
                 idx_w = self._route_bits(z_write)
             else:
@@ -1054,11 +1128,11 @@ class MosaicBlockLayer(nn.Module):
                 idx_w, cand_w_idx, cand_w_w, gl_w = self._route_vq(
                     yw, codebook=self.mem_vq_codebook_w, return_group_logits=bool(collect_aux)
                 )
-                if collect_aux and isinstance(read_vq_logits_seq, Tensor) and isinstance(write_vq_logits_seq, Tensor):
+                if collect_aux and isinstance(read_vq_logits_parts, list) and isinstance(write_vq_logits_parts, list):
                     if isinstance(gl_r, Tensor):
-                        read_vq_logits_seq[:, t, :, :, :] = gl_r
+                        read_vq_logits_parts.append(gl_r.unsqueeze(1))
                     if isinstance(gl_w, Tensor):
-                        write_vq_logits_seq[:, t, :, :, :] = gl_w
+                        write_vq_logits_parts.append(gl_w.unsqueeze(1))
                 if collect_aux and read_codes_seq is not None and write_codes_seq is not None:
                     # Store top-1 codes per group for introspection/training.
                     # Recover best codes by recomputing argmin from route_vq inputs.
@@ -1138,12 +1212,12 @@ class MosaicBlockLayer(nn.Module):
                     read_h = read_h + rh_ci * ww[:, :, ci].unsqueeze(-1)
             read_sum = read_h.sum(dim=1)  # (B, mem_dim)
             r_t = self.mem_out(read_sum)
-            r_seq[:, t, :] = r_t
+            r_parts.append(r_t.unsqueeze(1))
 
             # --- Hash memory write (sparse/evented) ---
             gate_logit = self.mem_write_gate(ut).squeeze(-1)  # (B,)
             if collect_aux:
-                gate_logits_seq[:, t] = gate_logit
+                gate_logits_parts.append(gate_logit.view(B, 1))
             p = torch.sigmoid(gate_logit)  # (B,)
             # Default: thresholded learned gate.
             mask = (p > thr).to(dtype=ut.dtype)  # (B,)
@@ -1261,6 +1335,14 @@ class MosaicBlockLayer(nn.Module):
                                 mem_last[br, bkh, bb, ss] = int(st.step)
 
             st.step += 1
+
+        # Finalize differentiable sequences for _finalize.
+        if len(g_parts) > 0:
+            g_seq = torch.cat(g_parts, dim=1)
+        if len(r_parts) > 0:
+            r_seq = torch.cat(r_parts, dim=1)
+        if z_parts is not None and len(z_parts) > 0:
+            z_seq = torch.cat(z_parts, dim=1)
 
         return _finalize()
 
