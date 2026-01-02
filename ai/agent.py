@@ -12,14 +12,18 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
+import os
+import re
 
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService, Session
 from google.genai import types
-from google.adk.tools.mcp_tool import McpToolset
+from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
+from google.adk.agents.run_config import RunConfig, StreamingMode
+import httpx
 
 from caramba.ai.persona import Persona
 from caramba.console import logger
@@ -36,36 +40,11 @@ warnings.filterwarnings(
     message=r".*non-text parts in the response.*",
 )
 
-# Runtime config (streaming, etc.). Import location varies by ADK version.
-try:  # pragma: no cover
-    from google.adk.agents.run_config import RunConfig, StreamingMode  # type: ignore
-except Exception:  # pragma: no cover
-    try:  # pragma: no cover
-        from google.adk.agents import RunConfig  # type: ignore
-
-        StreamingMode = None  # type: ignore[assignment]
-    except Exception:  # pragma: no cover
-        RunConfig = None  # type: ignore[assignment, misc]
-        StreamingMode = None  # type: ignore[assignment, misc]
-
-# Optional: httpx is a transitive dependency of ADK (used for MCP clients).
-try:  # pragma: no cover
-    import httpx  # type: ignore
-except Exception:  # pragma: no cover
-    httpx = None  # type: ignore[assignment]
-
-# Canonical import per ADK MCP docs/blogs:
-# `from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams`
-try:  # pragma: no cover - depends on installed ADK
-    from google.adk.tools.mcp_tool import StreamableHTTPConnectionParams  # type: ignore
-except Exception:  # pragma: no cover - depends on installed ADK
-    StreamableHTTPConnectionParams = None  # type: ignore[assignment, misc]
-
-
 @dataclass(frozen=True)
 class _McpEndpoint:
     url: str
     transport: str | None = None  # e.g. "streamable-http" or "sse"
+    headers: dict[str, str] | None = None
 
 
 def _iter_persona_tool_names(tools: object) -> list[str]:
@@ -86,6 +65,34 @@ def _iter_persona_tool_names(tools: object) -> list[str]:
     return []
 
 
+_ENV_PATTERN = re.compile(r"\$\{([A-Za-z0-9_]+)\}")
+
+
+def _expand_env_placeholders(payload: object) -> object:
+    """Recursively expand ${ENV_VAR} placeholders using os.environ.
+
+    Missing env vars are left as-is so unused tools don't break startup.
+    """
+    if isinstance(payload, dict):
+        return {k: _expand_env_placeholders(v) for k, v in payload.items()}
+    if isinstance(payload, list):
+        return [_expand_env_placeholders(v) for v in payload]
+    if isinstance(payload, tuple):
+        return tuple(_expand_env_placeholders(v) for v in payload)
+    if not isinstance(payload, str):
+        return payload
+
+    if "${" not in payload:
+        return payload
+
+    def _replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        val = os.getenv(name)
+        return match.group(0) if val is None else str(val)
+
+    return _ENV_PATTERN.sub(_replace, payload)
+
+
 def _load_mcp_endpoints() -> dict[str, _McpEndpoint]:
     """Load MCP endpoints from config files.
 
@@ -101,16 +108,18 @@ def _load_mcp_endpoints() -> dict[str, _McpEndpoint]:
         try:
             import yaml  # used elsewhere in repo
 
-            payload = yaml.safe_load(p.read_text()) or {}
+            payload = _expand_env_placeholders(yaml.safe_load(p.read_text()) or {})
             if isinstance(payload, dict):
                 for name, entry in payload.items():
                     if isinstance(entry, dict):
                         url = entry.get("url")
                         transport = entry.get("transport")
+                        headers = entry.get("headers")
                         if isinstance(url, str) and url:
                             merged[str(name)] = _McpEndpoint(
                                 url=url,
                                 transport=str(transport) if isinstance(transport, str) and transport else None,
+                                headers=dict(headers) if isinstance(headers, dict) else None,
                             )
         except Exception as e:
             logger.warning(f"Failed to parse {p}: {e}")
@@ -123,16 +132,18 @@ def _load_mcp_endpoints() -> dict[str, _McpEndpoint]:
 
             for yml in tools_dir.glob("*.yml"):
                 try:
-                    payload = yaml.safe_load(yml.read_text()) or {}
+                    payload = _expand_env_placeholders(yaml.safe_load(yml.read_text()) or {})
                     if isinstance(payload, dict):
                         for name, entry in payload.items():
                             if isinstance(entry, dict):
                                 url = entry.get("url")
                                 transport = entry.get("transport")
+                                headers = entry.get("headers")
                                 if isinstance(url, str) and url:
                                     merged[str(name)] = _McpEndpoint(
                                         url=url,
                                         transport=str(transport) if isinstance(transport, str) and transport else None,
+                                        headers=dict(headers) if isinstance(headers, dict) else None,
                                     )
                 except Exception as e:
                     logger.warning(f"Failed to parse {yml}: {e}")
@@ -254,14 +265,20 @@ def _connection_params_for(endpoint: _McpEndpoint):
                 "but this ADK install does not expose StreamableHTTPConnectionParams. "
                 "Upgrade google-adk to a version that supports streamable-http MCP, or adjust MCP transport to SSE."
             )
-        return StreamableHTTPConnectionParams(url=endpoint.url)  # type: ignore[misc]
+        return StreamableHTTPConnectionParams(  # type: ignore[misc]
+            url=endpoint.url,
+            headers=endpoint.headers or {},
+        )
     if transport in {"sse", "server-sent-events", "server_sent_events"}:
-        return SseConnectionParams(url=endpoint.url)
+        return SseConnectionParams(url=endpoint.url, headers=endpoint.headers or {})  # type: ignore[misc]
 
     # Unknown/unspecified: prefer streamable-http when available, else SSE.
     if StreamableHTTPConnectionParams is not None:
-        return StreamableHTTPConnectionParams(url=endpoint.url)  # type: ignore[misc]
-    return SseConnectionParams(url=endpoint.url)
+        return StreamableHTTPConnectionParams(  # type: ignore[misc]
+            url=endpoint.url,
+            headers=endpoint.headers or {},
+        )
+    return SseConnectionParams(url=endpoint.url, headers=endpoint.headers or {})  # type: ignore[misc]
 
 
 def _make_adk_model(persona: Persona):
@@ -352,7 +369,7 @@ class Agent:
             name=persona.name,
             description=persona.description,
             instruction=persona.instructions,
-            tools=tools,
+            tools=tools
         )
         self.session_service = session_service or InMemorySessionService()
         self.runner = Runner(
@@ -435,6 +452,7 @@ class Agent:
         input: str,
         *,
         streaming_mode: str | None = "sse",
+        temperature: float | None = None,
         run_config: Any | None = None,
     ):
         """Yield model text incrementally as it's produced.
@@ -443,8 +461,6 @@ class Agent:
         - ADK RunConfig streaming settings
         - The underlying model/provider support for streaming
         """
-        # If caller didn't provide a RunConfig but asked for a streaming mode,
-        # try to construct one when available.
         if run_config is None and RunConfig is not None and streaming_mode and StreamingMode is not None:
             mode_key = str(streaming_mode).strip().lower()
             mode = {
@@ -452,7 +468,11 @@ class Agent:
                 "sse": StreamingMode.SSE,
                 "bidi": getattr(StreamingMode, "BIDI", StreamingMode.SSE),
             }.get(mode_key, StreamingMode.SSE)
-            run_config = RunConfig(streaming_mode=mode)  # type: ignore[misc]
+
+            if temperature is None:
+                temperature = float(getattr(self.persona, "temperature", 0.0))
+
+            run_config = RunConfig(streaming_mode=mode, temperature=float(temperature))  # type: ignore[misc]
 
         buffer = ""
         async for event in self.run_events_async(input, run_config=run_config):
@@ -464,7 +484,6 @@ class Agent:
                 txt = getattr(part, "text", None)
                 if not isinstance(txt, str) or not txt:
                     continue
-
                 # ADK/providers differ: sometimes this is a delta, sometimes it's the full-so-far text.
                 # Emit only the incremental suffix when it looks like "full so far".
                 if txt.startswith(buffer):
@@ -485,6 +504,7 @@ class Agent:
         input: str,
         *,
         streaming_mode: str | None = "sse",
+        temperature: float | None = None,
         run_config: Any | None = None,
     ):
         """Yield a structured stream of text/tool events.
@@ -502,7 +522,11 @@ class Agent:
                 "sse": StreamingMode.SSE,
                 "bidi": getattr(StreamingMode, "BIDI", StreamingMode.SSE),
             }.get(mode_key, StreamingMode.SSE)
-            run_config = RunConfig(streaming_mode=mode)  # type: ignore[misc]
+
+            if temperature is None:
+                temperature = float(getattr(self.persona, "temperature", 0.0))
+
+            run_config = RunConfig(streaming_mode=mode, temperature=float(temperature))  # type: ignore[misc]
 
         buffer = ""
         seen_tool_calls: set[str] = set()
@@ -551,7 +575,6 @@ class Agent:
                 txt = getattr(part, "text", None)
                 if not isinstance(txt, str) or not txt:
                     continue
-
                 if txt.startswith(buffer):
                     delta = txt[len(buffer) :]
                     if delta:

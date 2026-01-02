@@ -1,0 +1,6 @@
+
+[2026-01-02T02:00:07Z] pre-push: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+mode=full
+✓ codegraph-sync ok • graph=caramba_code nodes=4248 edges=7297
