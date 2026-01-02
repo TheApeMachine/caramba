@@ -1,4 +1,19 @@
 services:
+  webcrawl-mcp:
+    build:
+      context: .
+      dockerfile: ai/tools/webcrawl/Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
   falkordb:
     image: falkordb/falkordb:latest
     ports:
@@ -36,7 +51,7 @@ services:
     volumes:
       - ./falkordb-config.yml:/app/mcp/config/config.yaml:ro
     ports:
-      - "8000:8000"
+      - "8002:8000"
     command: ["uv", "run", "main.py"]
 
   sympy-mcp:
@@ -44,37 +59,37 @@ services:
     ports:
       - "8081:8081"
 
-  paper-tool:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.paper-tool
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      - PAPER_PATH=${PAPER_PATH:-/app/artifacts}
-      - PATH=/root/.local/bin:${PATH}
-    volumes:
-      - ./artifacts:/app/artifacts
-    ports:
-      - "8001:8001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 10s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
+  # paper-tool:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.paper-tool
+  #   env_file:
+  #     - path: .env
+  #       required: false
+  #   environment:
+  #     - PAPER_PATH=${PAPER_PATH:-/app/artifacts}
+  #     - PATH=/root/.local/bin:${PATH}
+  #   volumes:
+  #     - ./artifacts:/app/artifacts
+  #   ports:
+  #     - "8003:8001"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     start_period: 15s
+  #     retries: 3
 
   deeplake-mcp:
     build:
       context: .
-      dockerfile: docker/Dockerfile.deeplake-mcp
+      dockerfile: ai/tools/deeplake/Dockerfile
     env_file:
       - path: .env
         required: false
     environment:
       - MCP_SERVER_HOST=0.0.0.0
-      - MCP_SERVER_PORT=8002
+      - MCP_SERVER_PORT=8001
       # Persist DeepLake dataset inside the mounted volume.
       - DEEPLAKE_DATASET_DIR=/app/.caramba/deeplake_colbert
       # Optional overrides:
@@ -83,16 +98,50 @@ services:
       # - DEEPLAKE_COLBERT_ROOT=/app/experiments
       # - DEEPLAKE_CREATE_IF_MISSING=1
       - PATH=/root/.local/bin:${PATH}
-    volumes:
-      - ./.caramba:/app/.caramba
-      - ./experiments:/app/experiments
     ports:
-      - "8002:8002"
+      - "8004:8001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
       timeout: 5s
       start_period: 30s
+      retries: 3
+
+  filesystem-mcp:
+    build:
+      context: .
+      dockerfile: ai/tools/filesystem/Dockerfile
+    ports:
+      - "8005:8001"
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  codegraph-mcp:
+    build:
+      context: .
+      dockerfile: ai/tools/codegraph/Dockerfile
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    environment:
+      - FALKORDB_URI=${FALKORDB_URI:-redis://falkordb:6379}
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+      - CARAMBA_CODEGRAPH_NAME=${CARAMBA_CODEGRAPH_NAME:-caramba_code}
+      - MCP_SERVER_HOST=0.0.0.0
+      - MCP_SERVER_PORT=8001
+    ports:
+      - "8006:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
       retries: 3
 
 volumes:

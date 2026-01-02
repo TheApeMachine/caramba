@@ -1,12 +1,14 @@
 .PHONY: install install-all test paper discussion brainstorm brainstorm-full ingest platform
+.PHONY: mosaic-smoke
 
 install:
 	python3.12 -m venv .venv
-	. .venv/bin/activate && pip3.12 install -e "."
+	. .venv/bin/activate && uv sync
 
 install-all:
 	python3.12 -m venv .venv
-	. .venv/bin/activate && pip3.12 install -e "."
+	. .venv/bin/activate && python3.12 -m pip install -U pip setuptools wheel
+	. .venv/bin/activate && python3.12 -m pip install -c constraints.txt -e "."
 
 test:
 	. .venv/bin/activate && python3.12 -m pytest -q
@@ -59,6 +61,11 @@ brainstorm-full:
 platform:
 	. .venv/bin/activate \
 	&& python3.12 -m caramba run config/presets/platform_improve.yml
+
+# First MOSAIC end-to-end smoke run (CPU by default).
+mosaic-smoke:
+	. .venv/bin/activate \
+	&& python3.12 -m caramba run config/presets/mosaic_memory_smoke.yml --target mosaic_smoke
 
 # Ingest the caramba codebase into FalkorDB graph (requires: make falkordb first)
 # Note: .gitignore patterns are automatically respected

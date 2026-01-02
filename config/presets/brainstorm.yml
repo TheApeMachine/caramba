@@ -1,0 +1,17 @@
+version: 2
+name: brainstorm
+notes: |
+  Interactive shared-context console chat across multiple providers.
+
+defaults: {}
+
+targets:
+  - type: process
+    name: brainstorm
+    description: "REPL chat routed via @chatgpt / @claude / @gemini"
+    team:
+      chatgpt: chatgpt
+      claude: claude
+      gemini: gemini
+    process:
+      type: brainstorm

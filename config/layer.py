@@ -393,6 +393,24 @@ class MosaicBlockLayerConfig(Config):
     # Contrastive auxiliary (InfoNCE-like) that makes memory reads predictive of future hidden state.
     aux_contrastive_delta: PositiveInt = 1
 
+    # -----------------------------
+    # dVM Registers / Opcodes (optional)
+    # -----------------------------
+    # Non-decaying register file (scratchpad). When set, enables a small persistent
+    # bank of vectors updated with a write-enable gate. If not written, a register
+    # persists exactly (identity mapping).
+    reg_slots: PositiveInt | None = None
+    reg_write_threshold: Probability = 0.5
+    reg_write_eta: Probability = 1.0
+    # Fusion gate for register read contribution.
+    gate_reg_init: float = 0.0
+
+    # Optional opcode head (for debugging/supervision). When enabled, the layer
+    # emits `mosaic_opcode_logits` into ctx aux outputs. It does not change runtime
+    # behavior unless later wired into control logic.
+    opcodes_enabled: bool = False
+    opcode_vocab: PositiveInt = 4  # NOP, READ, WRITE, CLEAR (convention)
+
     # Fusion gates: scale contributions from long state / memory read.
     gate_long_init: float = 0.0
     gate_mem_init: float = 0.0

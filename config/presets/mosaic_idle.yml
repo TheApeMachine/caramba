@@ -1,0 +1,153 @@
+version: 2
+name: mosaic_idle
+notes: |
+  MOSAIC + Idle loop preset.
+
+  Includes:
+    - a MOSAIC experiment target (so code_graph_sync can index a real topology)
+    - an `idle` agent process target (budgeted readiness + eval + 1-iter research loop)
+
+defaults:
+  logging:
+    instrument: rich
+    wandb: false
+
+vars:
+  d_model: 256
+  n_layers: 4
+  vocab_size: 8192
+  block_size: 256
+
+targets:
+  - type: experiment
+    name: mosaic_train
+    description: Train a small MOSAIC LM (for quick iteration).
+    backend: torch
+    task: task.language_modeling
+
+    data:
+      ref: dataset.mosaic_memory_curriculum
+      config:
+        block_size: ${block_size}
+        vocab_size: ${vocab_size}
+        mem_buckets: 4096
+        mem_hashes: 2
+        n_pairs: 4
+        distractor_len: 96
+        n_items: 10000
+        seed: 1337
+
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 8
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+                    mem_router: bits
+                    mem_buckets: 4096
+                    mem_dim: 128
+                    mem_hashes: 2
+                    mem_assoc: 2
+                    mem_key_dim: 32
+                    mem_read_temp: 1.0
+                    mem_match_threshold: 0.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.1
+                    forced_read_dropout_p: 0.0
+
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+              - type: MosaicNGramCacheLogitsLayer
+                vocab_size: ${vocab_size}
+                n: 6
+                table_size: 65536
+                top_m: 8
+                weight: 0.0
+
+    objective:
+      ref: objective.mosaic_next_token_aux
+      config:
+        logits_key: logits
+        target_key: target_ids
+        aux_gate_weight: 0.1
+        aux_bits_weight: 0.1
+        aux_utility_weight: 0.1
+        aux_contrastive_weight: 0.0
+
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_idle
+        seed: 1337
+        steps: 200
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 8
+          block_size: ${block_size}
+          lr: 0.0003
+          device: cpu
+          dtype: float32
+          telemetry_interval: 10
+          viz_interval: 1
+          mosaic_teacher_p_start: 1.0
+          mosaic_teacher_p_end: 0.0
+          mosaic_teacher_p_schedule: linear
+
+  - type: process
+    name: idle
+    team:
+      leader: research_lead
+      writer: writer
+      reviewer: reviewer
+    process:
+      type: idle
+      name: idle
+      max_wall_time_sec: 600
+
+      # Readiness: enable when Graphiti is running and personas have its MCP tools.
+      run_code_graph_sync: false
+      code_graph_sync_agent: leader
+      index_namespace: mosaic_idle
+
+      # Eval (optional): short deterministic commands.
+      run_eval: false
+      eval_cmds:
+        - python -m pytest -q
+      eval_timeout_sec: 300
+      eval_cwd: .
+
+      # Research loop: 1 iteration by default.
+      run_research_loop: true
+      leader: leader
+      writer: writer
+      reviewer: reviewer
+      research_max_iterations: 1
+      research_auto_run_experiments: false
+      output_dir: paper
+
+entrypoints:
+  default: mosaic_train
+  idle: idle
+

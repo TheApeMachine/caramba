@@ -61,27 +61,30 @@ type AgentRun = {
 
 export function AgentPanel() {
 	// Process selection and configuration
-	const [processType, setProcessType] = React.useState<ProcessType>("discussion");
+	const [processType, setProcessType] =
+		React.useState<ProcessType>("discussion");
 	const [topic, setTopic] = React.useState("");
-	const [manifestPath, setManifestPath] = React.useState("config/presets/agents.yml");
-	
+	const [manifestPath, setManifestPath] = React.useState(
+		"config/presets/agents.yml",
+	);
+
 	// Team configuration
 	const [teamConfig, setTeamConfig] = React.useState<Record<string, string>>({
 		leader: "researcher",
 		writer: "writer",
 		reviewer: "critic",
 	});
-	
+
 	// Available personas (loaded from backend)
 	const [personas, setPersonas] = React.useState<PersonaInfo[]>([]);
 	const [personasLoading, setPersonasLoading] = React.useState(false);
-	
+
 	// Run state
 	const [status, setStatus] = React.useState<AgentStatus>("idle");
 	const [currentRun, setCurrentRun] = React.useState<AgentRun | null>(null);
 	const [messages, setMessages] = React.useState<AgentMessage[]>([]);
 	const [error, setError] = React.useState<string | null>(null);
-	
+
 	// Streaming state
 	const [streamText, setStreamText] = React.useState("");
 	const eventSourceRef = React.useRef<EventSource | null>(null);
@@ -337,15 +340,18 @@ export function AgentPanel() {
 	};
 
 	const processDescriptions: Record<ProcessType, string> = {
-		discussion: "Multi-agent discussion with a leader coordinating the conversation",
+		discussion:
+			"Multi-agent discussion with a leader coordinating the conversation",
 		paper_write: "Write a research paper or document with an AI writer",
 		paper_review: "Review and critique a paper with suggested improvements",
-		research_loop: "Iterative research cycle: discuss → write → review → refine",
+		research_loop:
+			"Iterative research cycle: discuss → write → review → refine",
 		code_graph_sync: "Sync codebase to knowledge graph for agent understanding",
 		platform_improve: "Full platform improvement workflow with multiple agents",
 	};
 
-	const canStart = status === "idle" || status === "completed" || status === "error";
+	const canStart =
+		status === "idle" || status === "completed" || status === "error";
 	const canStop = status === "running" || status === "loading";
 
 	return (
@@ -359,7 +365,9 @@ export function AgentPanel() {
 			<CardContent className="space-y-6">
 				{/* Process Type Selection */}
 				<div className="space-y-3">
-					<div className="text-sm font-medium text-foreground">Process Type</div>
+					<div className="text-sm font-medium text-foreground">
+						Process Type
+					</div>
 					<div className="grid grid-cols-2 md:grid-cols-3 gap-2">
 						{(
 							[
@@ -421,7 +429,9 @@ export function AgentPanel() {
 
 				{/* Team Configuration */}
 				<div className="space-y-3">
-					<div className="text-sm font-medium text-foreground">Team Configuration</div>
+					<div className="text-sm font-medium text-foreground">
+						Team Configuration
+					</div>
 					<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 						{processType === "discussion" && (
 							<div className="space-y-1">
@@ -429,33 +439,44 @@ export function AgentPanel() {
 								<Input
 									value={teamConfig.leader || ""}
 									onChange={(e) =>
-										setTeamConfig((prev) => ({ ...prev, leader: e.target.value }))
+										setTeamConfig((prev) => ({
+											...prev,
+											leader: e.target.value,
+										}))
 									}
 									placeholder="researcher"
 									aria-label="Leader persona name"
 								/>
 							</div>
 						)}
-						{(processType === "paper_write" || processType === "research_loop") && (
+						{(processType === "paper_write" ||
+							processType === "research_loop") && (
 							<div className="space-y-1">
 								<span className="text-xs text-muted-foreground">Writer</span>
 								<Input
 									value={teamConfig.writer || ""}
 									onChange={(e) =>
-										setTeamConfig((prev) => ({ ...prev, writer: e.target.value }))
+										setTeamConfig((prev) => ({
+											...prev,
+											writer: e.target.value,
+										}))
 									}
 									placeholder="writer"
 									aria-label="Writer persona name"
 								/>
 							</div>
 						)}
-						{(processType === "paper_review" || processType === "research_loop") && (
+						{(processType === "paper_review" ||
+							processType === "research_loop") && (
 							<div className="space-y-1">
 								<span className="text-xs text-muted-foreground">Reviewer</span>
 								<Input
 									value={teamConfig.reviewer || ""}
 									onChange={(e) =>
-										setTeamConfig((prev) => ({ ...prev, reviewer: e.target.value }))
+										setTeamConfig((prev) => ({
+											...prev,
+											reviewer: e.target.value,
+										}))
 									}
 									placeholder="critic"
 									aria-label="Reviewer persona name"
@@ -468,7 +489,10 @@ export function AgentPanel() {
 								<Input
 									value={teamConfig.leader || ""}
 									onChange={(e) =>
-										setTeamConfig((prev) => ({ ...prev, leader: e.target.value }))
+										setTeamConfig((prev) => ({
+											...prev,
+											leader: e.target.value,
+										}))
 									}
 									placeholder="researcher"
 									aria-label="Leader persona name for research loop"
@@ -478,12 +502,13 @@ export function AgentPanel() {
 					</div>
 					{personas.length > 0 && (
 						<div className="text-xs text-muted-foreground">
-							Available personas:{" "}
-							{personas.map((p) => p.name).join(", ")}
+							Available personas: {personas.map((p) => p.name).join(", ")}
 						</div>
 					)}
 					{personasLoading && (
-						<div className="text-xs text-muted-foreground">Loading personas...</div>
+						<div className="text-xs text-muted-foreground">
+							Loading personas...
+						</div>
 					)}
 				</div>
 
@@ -582,17 +607,10 @@ export function AgentPanel() {
 				)}
 			</CardContent>
 			<CardFooter className="gap-2">
-				<Button
-					onClick={startProcess}
-					disabled={!canStart || !topic.trim()}
-				>
+				<Button onClick={startProcess} disabled={!canStart || !topic.trim()}>
 					{status === "loading" ? "Starting..." : "Start Process"}
 				</Button>
-				<Button
-					variant="outline"
-					onClick={stopProcess}
-					disabled={!canStop}
-				>
+				<Button variant="outline" onClick={stopProcess} disabled={!canStop}>
 					Stop
 				</Button>
 				<Button

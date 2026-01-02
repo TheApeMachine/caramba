@@ -11,6 +11,7 @@ caramba includes AI-assisted research automation through agent processes. These 
 - [Paper Writing](#paper-writing)
 - [Paper Review](#paper-review)
 - [Research Loop](#research-loop)
+- [Idle Loop](#idle-loop)
 - [Knowledge Integration](#knowledge-integration)
 - [Configuration](#configuration)
 
@@ -49,10 +50,12 @@ These processes coordinate AI agents to:
 | `paper_write`     | Generate LaTeX paper from experiments | writer                   |
 | `paper_review`    | Review paper and propose experiments  | reviewer                 |
 | `research_loop`   | Write → Review → Audit loop           | leader, writer, reviewer |
+| `idle`            | Budgeted readiness + eval + research loop | leader, writer, reviewer |
 | `discussion`      | Multi-agent research discussion       | multiple researchers     |
 | `code_graph_sync` | Index codebase into knowledge graph   | -                        |
 | `paper_collect_artifacts` | Collect benchmark artifacts into paper-ready tables/figures | - |
 | `platform_improve`| Ingest → ideate → implement → review → PR | leader, architect, developer, reviewer |
+| `multiplex_chat`  | Interactive shared-context chat across multiple model providers | chatgpt, claude, gemini |
 
 ### Process Target Structure
 
@@ -133,6 +136,49 @@ python3 -m caramba manifest.yml
 # Or run paper target specifically
 python3 -m caramba manifest.yml --target paper_write
 ```
+
+---
+
+## Multiplex Chat (ChatGPT / Claude / Gemini)
+
+An interactive REPL process that lets you route each turn to a specific model
+using `@chatgpt`, `@claude`, and `@gemini`, while sharing one transcript context.
+
+### Configuration
+
+```yaml
+targets:
+  - type: process
+    name: multiplex_chat
+    team:
+      chatgpt: chatgpt
+      claude: claude
+      gemini: gemini
+    process:
+      type: multiplex_chat
+      name: multiplex_chat
+      routes:
+        chatgpt: chatgpt
+        claude: claude
+        gemini: gemini
+      initial_route: chatgpt
+      stream: false
+```
+
+### Running
+
+```bash
+python3 -m caramba config/presets/multiplex_chat.yml --target multiplex_chat
+```
+
+### Required API keys
+
+- OpenAI: `OPENAI_API_KEY`
+- Anthropic: `ANTHROPIC_API_KEY`
+- Google: `GOOGLE_API_KEY`
+
+The default personas in `config/personas/chatgpt.yml`, `claude.yml`, and
+`gemini.yml` use LiteLLM routes for Anthropic/Gemini.
 
 ---
 
@@ -278,6 +324,52 @@ artifacts/
 
 ---
 
+## Idle Loop
+
+Budgeted background work: readiness + evaluation + a short research loop pass.
+
+This is intended to be safe by default: it can sync structure, run cheap checks,
+and write diffable artifacts, all within a strict wall-clock budget.
+
+### Configuration
+
+```yaml
+targets:
+  - type: process
+    name: idle
+    team:
+      leader: research_lead
+      writer: writer
+      reviewer: reviewer
+    process:
+      type: idle
+      name: idle
+      max_wall_time_sec: 600
+
+      # Readiness: index current model topology into Graphiti
+      run_code_graph_sync: true
+      code_graph_sync_agent: leader
+      index_namespace: main
+
+      # Continuous eval (optional): short deterministic commands
+      run_eval: true
+      eval_cmds:
+        - python -m pytest -q
+      eval_timeout_sec: 300
+      eval_cwd: .
+
+      # Research loop (optional): one quick iteration
+      run_research_loop: true
+      leader: leader
+      writer: writer
+      reviewer: reviewer
+      research_max_iterations: 1
+      research_auto_run_experiments: false
+      output_dir: paper
+```
+
+---
+
 ## Knowledge Integration
 
 Agents can access knowledge from multiple sources:
@@ -351,6 +443,35 @@ docker run -p 6379:6379 -it --rm falkordb/falkordb
 ```
 
 ---
+
+## Code graph ingestion (FalkorDB)
+
+Caramba can maintain a **deterministic structural code graph** (modules/classes/functions/methods + imports/inheritance/basic calls) in FalkorDB.
+
+### Manual sync
+
+```bash
+# Uses env FALKORDB_URI if set, otherwise defaults to localhost:6379.
+python3.12 -m caramba codegraph-sync .
+```
+
+### Git hook auto-sync (recommended)
+
+This repo includes best-effort hooks under `.githooks/`:
+- `post-commit`: sync changed `*.py` files after every commit
+- `pre-push`: sync changed `*.py` files before every push
+
+Enable them once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+To temporarily disable syncing:
+
+```bash
+export CARAMBA_SKIP_CODEGRAPH_SYNC=1
+```
 
 ## Configuration
 

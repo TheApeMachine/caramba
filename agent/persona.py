@@ -21,7 +21,12 @@ class Persona:
         return self.config.instructions
 
     def model(self) -> str:
-        return self.config.model
+        # LiteLLM expects provider-prefixed model IDs like "gemini/..." or "anthropic/...".
+        # Some configs historically used "litellm/<provider>/<model>"; normalize that here.
+        m = str(self.config.model or "")
+        if m.startswith("litellm/"):
+            m = m[len("litellm/") :]
+        return m
 
     def temperature(self) -> float:
         return self.config.temperature

@@ -18,7 +18,5 @@ instructions: |
 
 model: "gpt-5.2"
 temperature: 0.0
-tool_choice: "auto"
-
-mcp_servers:
-  - graphiti  # For context lookup
+tools:
+  - name: "math"

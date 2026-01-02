@@ -87,8 +87,11 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         def _append(
             tok: int,
             *,
-            wg: int = -1,
-            wu: int = -1,
+            # By default, supervise "do not write" and "not useful" everywhere.
+            # This prevents the write gate from drifting to high write rates due to
+            # only seeing positive supervision on a tiny subset of tokens.
+            wg: int = 0,
+            wu: int = 0,
             rb: list[int] | None = None,
             wb: list[int] | None = None,
             dl: int = 0,
@@ -110,29 +113,30 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         for k, v in zip(keys, vals):
             b = self._bucket_for_key(k)
             bvec = [b] * int(self.mem_hashes)
-            _append(self.T_SET)
-            _append(k)
-            _append(self.T_IS)
+            _append(self.T_SET, wg=0, wu=0)
+            _append(k, wg=0, wu=0)
+            _append(self.T_IS, wg=0, wu=0)
             # Write on value token (teacher-forced).
             _append(v, wg=1, wu=1, wb=bvec)
             # Distractors.
             for _ in range(int(self.distractor_len)):
-                _append(rng.randrange(self.min_tok, self.vocab_size))
+                _append(rng.randrange(self.min_tok, self.vocab_size), wg=0, wu=0)
 
         # Query phase: "GET k ? IS v"
         for k, v in zip(keys, vals):
             b = self._bucket_for_key(k)
             bvec = [b] * int(self.mem_hashes)
-            _append(self.T_GET)
-            _append(k)
-            _append(self.T_Q, dl=1)
+            # Force reliance on memory/state throughout the query prefix.
+            _append(self.T_GET, wg=0, wu=0, dl=1)
+            _append(k, wg=0, wu=0, dl=1)
+            _append(self.T_Q, wg=0, wu=0, dl=1)
             # On the token before emitting v as the next token (here: T_IS),
             # we want a memory read to be available.
-            _append(self.T_IS, rb=bvec, dl=1)
-            _append(v)
+            _append(self.T_IS, wg=0, wu=0, rb=bvec, dl=1)
+            _append(v, wg=0, wu=0)
             # More distractors (small).
             for _ in range(max(0, int(self.distractor_len) // 4)):
-                _append(rng.randrange(self.min_tok, self.vocab_size))
+                _append(rng.randrange(self.min_tok, self.vocab_size), wg=0, wu=0)
 
         # Pad/truncate to block_size+1 so we can create input/target pairs.
         # We need at least 2 tokens.

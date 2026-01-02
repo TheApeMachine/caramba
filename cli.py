@@ -5,12 +5,15 @@ The CLI is intentionally minimal: one entrypoint that runs a manifest.
 
 from __future__ import annotations
 
+import os
 import click
 from pathlib import Path
 
 from caramba.console import logger
 
 from caramba.experiment.runner import run_from_manifest_path
+from caramba.codegraph.parser import parse_repo
+from caramba.codegraph.sync import sync_files_to_falkordb
 
 
 class UvicornMissingError(click.ClickException):
@@ -110,6 +113,72 @@ def serve_cmd(host: str, port: int) -> None:
     from caramba_api import app
 
     uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+@cli.command("codegraph-sync")
+@click.argument("repo_root", type=click.Path(exists=True, file_okay=False, path_type=Path), default=".")
+@click.option("--graph", type=str, default="caramba_code", show_default=True, help="FalkorDB graph name.")
+@click.option(
+    "--falkordb-uri",
+    type=str,
+    default=None,
+    help="FalkorDB URI (e.g. redis://localhost:6379). Defaults to env FALKORDB_URI.",
+)
+@click.option("--falkordb-host", type=str, default=None, help="FalkorDB host (fallback if no URI).")
+@click.option("--falkordb-port", type=int, default=None, help="FalkorDB port (fallback if no URI).")
+@click.option("--falkordb-password", type=str, default=None, help="FalkorDB password.")
+@click.option(
+    "--file",
+    "files",
+    multiple=True,
+    type=str,
+    help="Relative file path(s) to sync (repeatable). If omitted, scans all *.py under repo_root.",
+)
+@click.option("--reset", is_flag=True, default=False, help="Wipe the entire graph before ingesting.")
+@click.option(
+    "--best-effort/--strict",
+    default=True,
+    show_default=True,
+    help="In best-effort mode, failures won't break hooks/CI.",
+)
+def codegraph_sync_cmd(
+    repo_root: Path,
+    graph: str,
+    falkordb_uri: str | None,
+    falkordb_host: str | None,
+    falkordb_port: int | None,
+    falkordb_password: str | None,
+    files: tuple[str, ...],
+    reset: bool,
+    best_effort: bool,
+) -> None:
+    """Parse Python code and sync a structural graph into FalkorDB."""
+    # Allow users to disable this (useful for hooks).
+    if (os.getenv("CARAMBA_SKIP_CODEGRAPH_SYNC") or "").strip():
+        logger.warning("codegraph-sync skipped (CARAMBA_SKIP_CODEGRAPH_SYNC is set).")
+        return
+
+    file_list = [str(x) for x in files if str(x).strip()] or None
+    nodes, edges = parse_repo(str(repo_root), files=file_list)
+    result = sync_files_to_falkordb(
+        repo_root=str(repo_root),
+        nodes=nodes,
+        edges=edges,
+        files=file_list,
+        graph=str(graph),
+        uri=falkordb_uri,
+        host=falkordb_host,
+        port=falkordb_port,
+        password=falkordb_password,
+        reset=bool(reset),
+        best_effort=bool(best_effort),
+    )
+    if result.get("ok"):
+        logger.success(
+            f"codegraph-sync ok • graph={result.get('graph')} nodes={result.get('nodes')} edges={result.get('edges')}"
+        )
+    else:
+        logger.warning(f"codegraph-sync failed: {result.get('error')}")
 
 
 def main(argv: list[str] | None = None) -> int:

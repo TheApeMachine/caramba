@@ -20,3 +20,4 @@ train.h5
 fineweb_edu_v29_100m.npy
 NOTES.md
 *.fdb_latexmk
+artifacts/mosaic/CONTEXT.md
