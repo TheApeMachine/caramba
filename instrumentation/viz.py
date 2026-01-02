@@ -4,13 +4,10 @@ We can't stream full activations/attention tensors during training: they're huge
 Instead we downsample aggressively and emit small, meaningful summaries that the
 frontend can render in real-time (attention heatmaps, activation slices, etc.).
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
-
-import torch
 from torch import Tensor
 
 
@@ -21,7 +18,6 @@ class TrainingVizContext:
     This is passed as `ctx=` through the model. Attention layers can detect it
     and record small samples.
     """
-
     enabled: bool
     step: int
     max_tokens: int = 16
@@ -133,4 +129,8 @@ class TrainingVizMosaicContext(TrainingVizContext):
 
     # Accumulated MOSAIC memory stats for logging (filled by MOSAIC layers).
     mosaic_mem_stats: dict[str, float] = field(default_factory=dict)
+
+    # Opaque state store for MOSAIC layers (e.g. n-gram cache state, persistent registers).
+    # This must be in __slots__ for layers to attach state to the context.
+    _mosaic: dict[str, Any] | None = None
 

@@ -9,7 +9,6 @@ dictionary-based protocol:
 The particular tensor keys are configured via the manifest so trainers stay
 completely model/task agnostic.
 """
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -32,6 +31,28 @@ def _require_tensor(d: Mapping[str, Any], key: str, *, where: str) -> Tensor:
     if not isinstance(v, Tensor):
         raise TypeError(f"Expected {where}[{key!r}] to be a Tensor, got {type(v).__name__}")
     return v
+
+
+def _maybe_get(obj: object, key: str) -> object | None:
+    """Best-effort Mapping/TensorDict getter.
+
+    `TensorDictBase` is dict-like but not necessarily a `dict`, so we can't rely on
+    `isinstance(x, dict)` checks when reading optional keys.
+    """
+    if obj is None:
+        return None
+    try:
+        getter = getattr(obj, "get", None)
+        if callable(getter):
+            return getter(key, None)
+    except Exception:
+        pass
+    try:
+        if key in obj:  # type: ignore[operator]
+            return obj[key]  # type: ignore[index]
+    except Exception:
+        pass
+    return None
 
 
 class KeyedMSEObjective:
@@ -156,13 +177,67 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         bits = ((b.unsqueeze(-1) >> shifts) & 1).to(dtype=torch.float32)
         return bits
 
+    @staticmethod
+    def _decode_codes(bucket: Tensor, *, K: int, G: int) -> Tensor:
+        # bucket: (B,T,H)
+        b = bucket.long().clamp_min(0)
+        codes = []
+        for g in range(int(G)):
+            codes.append(((b // (K**g)) % K).unsqueeze(-1))
+        return torch.cat(codes, dim=-1)  # (B,T,H,G)
+
+    def _bits_loss(self, t_bucket: Tensor, p_bits: Tensor) -> Tensor | None:
+        # t_bucket: (B,T) or (B,T,H)
+        # p_bits: (B,T,H,BITS)
+        if p_bits.ndim != 4:
+            return None
+        B, T, H, n_bits = p_bits.shape
+        tb = t_bucket
+        if tb.ndim == 2:
+            tb = tb.unsqueeze(-1).expand(B, T, H)
+        if tb.ndim != 3 or tb.shape[:3] != (B, T, H):
+            return None
+        mask = tb >= 0
+        if not bool(mask.any().item()):
+            return None
+        tgt_bits = self._bucket_to_bits(tb, n_bits=int(n_bits))
+        # Apply mask to bits.
+        m = mask.unsqueeze(-1).expand_as(tgt_bits)
+        return F.binary_cross_entropy_with_logits(
+            p_bits[m].float(),
+            tgt_bits[m].float(),
+        )
+
+    def _vq_ce(self, t_bucket: Tensor, p_logits: Tensor) -> Tensor | None:
+        # t_bucket: (B,T) or (B,T,H)
+        # p_logits: (B,T,H,G,K)
+        if p_logits.ndim != 5:
+            return None
+        B, T, H, G, K = p_logits.shape
+        tb = t_bucket
+        if tb.ndim == 2:
+            tb = tb.unsqueeze(-1).expand(B, T, H)
+        if tb.ndim != 3 or tb.shape != (B, T, H):
+            return None
+        mask = tb >= 0
+        if not bool(mask.any().item()):
+            return None
+        tgt_codes = self._decode_codes(tb, K=int(K), G=int(G))  # (B,T,H,G)
+        # Flatten.
+        p = p_logits.reshape(B * T * H * G, K)
+        tgt = tgt_codes.reshape(B * T * H * G)
+        m = mask.unsqueeze(-1).expand(B, T, H, G).reshape(B * T * H * G)
+        if not bool(m.any().item()):
+            return None
+        return F.cross_entropy(p[m], tgt[m])
+
     def loss(self, *, outputs: TensorDict, batch: TensorDict) -> Tensor:
         base = super().loss(outputs=outputs, batch=batch)
         loss = base
 
         # Gate imitation (optional).
-        tg = batch.get("mosaic_teacher_write_gate", None) if isinstance(batch, dict) else None
-        pg = outputs.get("mosaic_write_gate_logits", None) if isinstance(outputs, dict) else None
+        tg = _maybe_get(batch, "mosaic_teacher_write_gate")
+        pg = _maybe_get(outputs, "mosaic_write_gate_logits")
         if (
             self.aux_gate_weight > 0.0
             and isinstance(tg, Tensor)
@@ -180,89 +255,36 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
 
         # Address imitation via bit logits (optional).
         # We supervise bits rather than bucket softmax to avoid O(B) outputs.
-        tr = batch.get("mosaic_teacher_read_bucket", None) if isinstance(batch, dict) else None
-        tw = batch.get("mosaic_teacher_write_bucket", None) if isinstance(batch, dict) else None
-        pr = outputs.get("mosaic_read_bit_logits", None) if isinstance(outputs, dict) else None
-        pw = outputs.get("mosaic_write_bit_logits", None) if isinstance(outputs, dict) else None
-
-        def _bits_loss(t_bucket: Tensor, p_bits: Tensor) -> Tensor | None:
-            # t_bucket: (B,T) or (B,T,H)
-            # p_bits: (B,T,H,BITS)
-            if p_bits.ndim != 4:
-                return None
-            B, T, H, n_bits = p_bits.shape
-            tb = t_bucket
-            if tb.ndim == 2:
-                tb = tb.unsqueeze(-1).expand(B, T, H)
-            if tb.ndim != 3 or tb.shape[:3] != (B, T, H):
-                return None
-            mask = tb >= 0
-            if not bool(mask.any().item()):
-                return None
-            tgt_bits = self._bucket_to_bits(tb, n_bits=int(n_bits))
-            # Apply mask to bits.
-            m = mask.unsqueeze(-1).expand_as(tgt_bits)
-            return F.binary_cross_entropy_with_logits(
-                p_bits[m].float(),
-                tgt_bits[m].float(),
-            )
+        tr = _maybe_get(batch, "mosaic_teacher_read_bucket")
+        tw = _maybe_get(batch, "mosaic_teacher_write_bucket")
+        pr = _maybe_get(outputs, "mosaic_read_bit_logits")
+        pw = _maybe_get(outputs, "mosaic_write_bit_logits")
 
         if self.aux_bits_weight > 0.0 and isinstance(pr, Tensor) and isinstance(tr, Tensor):
-            bl = _bits_loss(tr, pr)
+            bl = self._bits_loss(tr, pr)
             if bl is not None:
                 loss = loss + float(self.aux_bits_weight) * bl
         if self.aux_bits_weight > 0.0 and isinstance(pw, Tensor) and isinstance(tw, Tensor):
-            bl2 = _bits_loss(tw, pw)
+            bl2 = self._bits_loss(tw, pw)
             if bl2 is not None:
                 loss = loss + float(self.aux_bits_weight) * bl2
 
         # VQ router imitation (optional): CE over per-group code logits.
-        vqr = outputs.get("mosaic_vq_read_logits", None) if isinstance(outputs, dict) else None
-        vqw = outputs.get("mosaic_vq_write_logits", None) if isinstance(outputs, dict) else None
-
-        def _decode_codes(bucket: Tensor, *, K: int, G: int) -> Tensor:
-            # bucket: (B,T,H)
-            b = bucket.long().clamp_min(0)
-            codes = []
-            for g in range(int(G)):
-                codes.append(((b // (K**g)) % K).unsqueeze(-1))
-            return torch.cat(codes, dim=-1)  # (B,T,H,G)
-
-        def _vq_ce(t_bucket: Tensor, p_logits: Tensor) -> Tensor | None:
-            # t_bucket: (B,T) or (B,T,H)
-            # p_logits: (B,T,H,G,K)
-            if p_logits.ndim != 5:
-                return None
-            B, T, H, G, K = p_logits.shape
-            tb = t_bucket
-            if tb.ndim == 2:
-                tb = tb.unsqueeze(-1).expand(B, T, H)
-            if tb.ndim != 3 or tb.shape != (B, T, H):
-                return None
-            mask = tb >= 0
-            if not bool(mask.any().item()):
-                return None
-            tgt_codes = _decode_codes(tb, K=int(K), G=int(G))  # (B,T,H,G)
-            # Flatten.
-            p = p_logits.reshape(B * T * H * G, K)
-            tgt = tgt_codes.reshape(B * T * H * G)
-            m = mask.unsqueeze(-1).expand(B, T, H, G).reshape(B * T * H * G)
-            if not bool(m.any().item()):
-                return None
-            return F.cross_entropy(p[m], tgt[m])
+        vqr = _maybe_get(outputs, "mosaic_vq_read_logits")
+        vqw = _maybe_get(outputs, "mosaic_vq_write_logits")
 
         if self.aux_bits_weight > 0.0 and isinstance(vqr, Tensor) and isinstance(tr, Tensor):
-            vql = _vq_ce(tr, vqr)
+            vql = self._vq_ce(tr, vqr)
             if vql is not None:
                 loss = loss + float(self.aux_bits_weight) * vql
         if self.aux_bits_weight > 0.0 and isinstance(vqw, Tensor) and isinstance(tw, Tensor):
-            vql2 = _vq_ce(tw, vqw)
+            vql2 = self._vq_ce(tw, vqw)
             if vql2 is not None:
                 loss = loss + float(self.aux_bits_weight) * vql2
 
         # Utility prediction imitation (optional).
-        tu = batch.get("mosaic_teacher_write_utility", None) if isinstance(batch, dict) else None
-        pu = outputs.get("mosaic_write_utility_logits", None) if isinstance(outputs, dict) else None
+        tu = _maybe_get(batch, "mosaic_teacher_write_utility")
+        pu = _maybe_get(outputs, "mosaic_write_utility_logits")
         if (
             self.aux_utility_weight > 0.0
             and isinstance(tu, Tensor)
@@ -275,7 +297,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 loss = loss + float(self.aux_utility_weight) * ul
 
         # Contrastive auxiliary from the model (optional scalar).
-        cl = outputs.get("mosaic_contrastive_loss", None) if isinstance(outputs, dict) else None
+        cl = _maybe_get(outputs, "mosaic_contrastive_loss")
         if self.aux_contrastive_weight > 0.0 and isinstance(cl, Tensor):
             # Expect scalar tensor; if not, reduce.
             cval = cl.float().mean()
@@ -291,20 +313,20 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         try:
             base = super().loss(outputs=outputs, batch=batch)
             m["lm_ce"] = float(base.detach())
-        except Exception:
-            m["lm_ce"] = float("nan")
+        except Exception as e:
+            raise RuntimeError(f"Failed to compute LM CE loss: {e}") from e
 
-        tg = batch.get("mosaic_teacher_write_gate", None) if isinstance(batch, dict) else None
-        pg = outputs.get("mosaic_write_gate_logits", None) if isinstance(outputs, dict) else None
-        tr = batch.get("mosaic_teacher_read_bucket", None) if isinstance(batch, dict) else None
-        tw = batch.get("mosaic_teacher_write_bucket", None) if isinstance(batch, dict) else None
-        pr = outputs.get("mosaic_read_bit_logits", None) if isinstance(outputs, dict) else None
-        pw = outputs.get("mosaic_write_bit_logits", None) if isinstance(outputs, dict) else None
-        vqr = outputs.get("mosaic_vq_read_logits", None) if isinstance(outputs, dict) else None
-        vqw = outputs.get("mosaic_vq_write_logits", None) if isinstance(outputs, dict) else None
-        tu = batch.get("mosaic_teacher_write_utility", None) if isinstance(batch, dict) else None
-        pu = outputs.get("mosaic_write_utility_logits", None) if isinstance(outputs, dict) else None
-        cl = outputs.get("mosaic_contrastive_loss", None) if isinstance(outputs, dict) else None
+        tg = _maybe_get(batch, "mosaic_teacher_write_gate")
+        pg = _maybe_get(outputs, "mosaic_write_gate_logits")
+        tr = _maybe_get(batch, "mosaic_teacher_read_bucket")
+        tw = _maybe_get(batch, "mosaic_teacher_write_bucket")
+        pr = _maybe_get(outputs, "mosaic_read_bit_logits")
+        pw = _maybe_get(outputs, "mosaic_write_bit_logits")
+        vqr = _maybe_get(outputs, "mosaic_vq_read_logits")
+        vqw = _maybe_get(outputs, "mosaic_vq_write_logits")
+        tu = _maybe_get(batch, "mosaic_teacher_write_utility")
+        pu = _maybe_get(outputs, "mosaic_write_utility_logits")
+        cl = _maybe_get(outputs, "mosaic_contrastive_loss")
 
         # Gate imitation (BCE).
         gate_loss = None
@@ -313,40 +335,27 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
             if bool(mask.any().item()):
                 try:
                     gate_loss = F.binary_cross_entropy_with_logits(pg[mask].float(), tg[mask].float())
-                except Exception:
-                    gate_loss = None
+                except Exception as e:
+                    raise RuntimeError(f"Failed to compute gate loss: {e}") from e
+
         if gate_loss is not None:
             m["aux_gate_bce"] = float(gate_loss.detach())
             m["aux_gate_weighted"] = float((gate_loss * float(self.aux_gate_weight)).detach())
-
-        def _bits_loss(t_bucket: Tensor, p_bits: Tensor) -> Tensor | None:
-            if p_bits.ndim != 4:
-                return None
-            B, T, H, n_bits = p_bits.shape
-            tb = t_bucket
-            if tb.ndim == 2:
-                tb = tb.unsqueeze(-1).expand(B, T, H)
-            if tb.ndim != 3 or tb.shape[:3] != (B, T, H):
-                return None
-            mask = tb >= 0
-            if not bool(mask.any().item()):
-                return None
-            tgt_bits = self._bucket_to_bits(tb, n_bits=int(n_bits))
-            msk = mask.unsqueeze(-1).expand_as(tgt_bits)
-            return F.binary_cross_entropy_with_logits(p_bits[msk].float(), tgt_bits[msk].float())
 
         bits_r = None
         bits_w = None
         if isinstance(tr, Tensor) and isinstance(pr, Tensor):
             try:
-                bits_r = _bits_loss(tr, pr)
-            except Exception:
-                bits_r = None
+                bits_r = self._bits_loss(tr, pr)
+            except Exception as e:
+                raise RuntimeError(f"Failed to compute bits loss: {e}") from e
+
         if isinstance(tw, Tensor) and isinstance(pw, Tensor):
             try:
-                bits_w = _bits_loss(tw, pw)
-            except Exception:
-                bits_w = None
+                bits_w = self._bits_loss(tw, pw)
+            except Exception as e:
+                raise RuntimeError(f"Failed to compute bits loss: {e}") from e
+
         if bits_r is not None:
             m["aux_bits_bce_read"] = float(bits_r.detach())
         if bits_w is not None:
@@ -356,43 +365,17 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
             if isinstance(val, Tensor):
                 m["aux_bits_weighted"] = float((val * float(self.aux_bits_weight)).detach())
 
-        def _decode_codes(bucket: Tensor, *, K: int, G: int) -> Tensor:
-            b = bucket.long().clamp_min(0)
-            codes = []
-            for g in range(int(G)):
-                codes.append(((b // (K**g)) % K).unsqueeze(-1))
-            return torch.cat(codes, dim=-1)
-
-        def _vq_ce(t_bucket: Tensor, p_logits: Tensor) -> Tensor | None:
-            if p_logits.ndim != 5:
-                return None
-            B, T, H, G, K = p_logits.shape
-            tb = t_bucket
-            if tb.ndim == 2:
-                tb = tb.unsqueeze(-1).expand(B, T, H)
-            if tb.ndim != 3 or tb.shape != (B, T, H):
-                return None
-            mask = tb >= 0
-            if not bool(mask.any().item()):
-                return None
-            tgt_codes = _decode_codes(tb, K=int(K), G=int(G))  # (B,T,H,G)
-            p = p_logits.reshape(B * T * H * G, K)
-            tgt = tgt_codes.reshape(B * T * H * G)
-            mm = mask.unsqueeze(-1).expand(B, T, H, G).reshape(B * T * H * G)
-            if not bool(mm.any().item()):
-                return None
-            return F.cross_entropy(p[mm], tgt[mm])
-
         vq_r = None
         vq_w = None
         if isinstance(tr, Tensor) and isinstance(vqr, Tensor):
             try:
-                vq_r = _vq_ce(tr, vqr)
-            except Exception:
-                vq_r = None
+                vq_r = self._vq_ce(tr, vqr)
+            except Exception as e:
+                raise RuntimeError(f"Failed to compute VQ CE loss: {e}") from e
+
         if isinstance(tw, Tensor) and isinstance(vqw, Tensor):
             try:
-                vq_w = _vq_ce(tw, vqw)
+                vq_w = self._vq_ce(tw, vqw)
             except Exception:
                 vq_w = None
         if vq_r is not None:
@@ -410,8 +393,9 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
             if bool(mask.any().item()):
                 try:
                     util_loss = F.binary_cross_entropy_with_logits(pu[mask].float(), tu[mask].float())
-                except Exception:
-                    util_loss = None
+                except Exception as e:
+                    raise RuntimeError(f"Failed to compute utility loss: {e}") from e
+
         if util_loss is not None:
             m["aux_utility_bce"] = float(util_loss.detach())
             m["aux_utility_weighted"] = float((util_loss * float(self.aux_utility_weight)).detach())
@@ -421,8 +405,8 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 cval = cl.float().mean()
                 m["aux_contrastive"] = float(cval.detach())
                 m["aux_contrastive_weighted"] = float((cval * float(self.aux_contrastive_weight)).detach())
-            except Exception:
-                pass
+            except Exception as e:
+                raise RuntimeError(f"Failed to compute contrastive loss: {e}") from e
 
         return m
 

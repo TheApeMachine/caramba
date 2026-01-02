@@ -7,59 +7,6 @@ import re
 from collections.abc import Mapping
 
 
-# Maps legacy/shorthand type names to canonical class names
-# This enables backward compatibility with older presets
-TYPE_ALIASES: dict[str, str] = {
-    # Model types
-    "transformer": "TransformerModel",
-    "gpt": "GPTModel",
-    "vit": "ViTModel",
-    "mlp": "MLPModel",
-    # Topology types
-    "branching": "BranchingTopology",
-    "cyclic": "CyclicTopology",
-    "nested": "NestedTopology",
-    "parallel": "ParallelTopology",
-    "recurrent": "RecurrentTopology",
-    "residual": "ResidualTopology",
-    "sequential": "SequentialTopology",
-    "stacked": "StackedTopology",
-    # Layer types
-    "layer_norm": "LayerNormLayer",
-    "rms_norm": "RMSNormLayer",
-    "linear": "LinearLayer",
-    "dropout": "DropoutLayer",
-    "attention": "AttentionLayer",
-    "swiglu": "SwiGLULayer",
-    "mosaic_block": "MosaicBlockLayer",
-    "mosaic_ngram_cache": "MosaicNGramCacheLogitsLayer",
-}
-
-
-def normalize_type_names(payload: object) -> object:
-    """
-    Recursively normalize legacy type names to canonical class names.
-
-    This allows presets to use shorthand names like 'rms_norm' or 'nested'
-    while internally converting them to the expected class names like
-    'RMSNormLayer' or 'NestedTopology'.
-    """
-    if isinstance(payload, Mapping):
-        result: dict[str, object] = {}
-        for k, v in payload.items():
-            if k == "type" and isinstance(v, str):
-                # Normalize the type value
-                result[k] = TYPE_ALIASES.get(v, v)
-            else:
-                result[k] = normalize_type_names(v)
-        return result
-    if isinstance(payload, list):
-        return [normalize_type_names(v) for v in payload]
-    if isinstance(payload, tuple):
-        return tuple(normalize_type_names(v) for v in payload)
-    return payload
-
-
 class Resolver:
     """
     Resolver expands ${var} references in manifest payloads.

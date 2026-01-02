@@ -12,7 +12,6 @@ It is designed to support Stage D1 (teacher-forced memory addressing/gating):
 
 The sequences are purely token-id based (no text/tokenizer dependency).
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -181,8 +180,8 @@ class MosaicMemoryCurriculumDataset:
     vocab_size: int = 8192
     mem_buckets: int = 16384
     mem_hashes: int = 2
-    n_pairs: int = 4
-    distractor_len: int = 256
+    n_pairs: int = 1
+    distractor_len: int = 64
     n_items: int = 100_000
     seed: int = 1337
 

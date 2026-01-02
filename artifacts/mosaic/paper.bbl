@@ -1,0 +1,75 @@
+\begin{thebibliography}{10}
+
+\bibitem{ainslie2023gqa}
+Joshua Ainslie, James Lee-Thorp, Michiel de~Jong, Yury Zemlyanskiy, Federico Lebr\'{o}n, and Sumit Sanghai.
+\newblock Gqa: Training generalized multi-query transformer models from multi-head checkpoints.
+\newblock {\em EMNLP}, 2023.
+
+\bibitem{beltagy2020longformer}
+Iz~Beltagy, Matthew~E. Peters, and Arman Cohan.
+\newblock Longformer: The long-document transformer.
+\newblock {\em arXiv preprint arXiv:2004.05150}, 2020.
+
+\bibitem{choromanski2021performer}
+Krzysztof Choromanski, Valerii Likhosherstov, David Dohan, Xingyou Song, Andreea Gane, Tamas Sarlos, Peter Hawkins, Jared Davis, Afroz Mohiuddin, {\L}ukasz Kaiser, David Belanger, Lucy Colwell, and Adrian Weller.
+\newblock Rethinking attention with performers.
+\newblock In {\em ICLR}, 2021.
+\newblock arXiv:2009.14794.
+
+\bibitem{de2024griffin}
+Soham De, Samuel~L. Smith, Anushan Fernando, Aleksandar Botev, George Cristian-Muraru, Albert Gu, Ruba Haroun, Leonard Berrada, Yutian Chen, Srivatsan Srinivasan, Guillaume Desjardins, Arnaud Doucet, David Budden, Yee~Whye Teh, Razvan Pascanu, Nando De~Freitas, and Caglar Gulcehre.
+\newblock Griffin: Mixing gated linear recurrences with local attention for efficient language models, 2024.
+
+\bibitem{deepseek2024v2}
+DeepSeek-AI.
+\newblock Deepseek-v2: A strong, economical, and efficient mixture-of-experts language model.
+\newblock {\em arXiv preprint arXiv:2405.04434}, 2024.
+
+\bibitem{gu2023mamba}
+Albert Gu and Tri Dao.
+\newblock Mamba: Linear-time sequence modeling with selective state spaces.
+\newblock {\em arXiv preprint arXiv:2312.00752}, 2023.
+
+\bibitem{hooper2024kvquant}
+Coleman Hooper et~al.
+\newblock Kvquant: Towards 10 million context length llm inference with kv cache quantization.
+\newblock {\em arXiv preprint arXiv:2401.18079}, 2024.
+
+\bibitem{kitaev2020reformer}
+Nikita Kitaev, {\L}ukasz Kaiser, and Anselm Levskaya.
+\newblock Reformer: The efficient transformer.
+\newblock In {\em ICLR}, 2020.
+\newblock arXiv:2001.04451.
+
+\bibitem{li2025commvq}
+Junyan Li, Yang Zhang, Muhammad~Yusuf Hasan, Talha Chafekar, Tianle Cai, Zhile Ren, Pengsheng Guo, Foroozan Karimzadeh, Colorado Reed, Chong Wang, and Chuang Gan.
+\newblock Commvq: Commutative vector quantization for kv cache compression.
+\newblock {\em arXiv preprint arXiv:2506.18879}, 2025.
+\newblock ICML 2025 poster.
+
+\bibitem{peng2023rwkv}
+Bo~Peng, Eric Alcaide, Quentin Anthony, Alon Albalak, Samuel Arcadinho, Stella Biderman, Huanqi Cao, Xin Cheng, Michael Chung, Matteo Grella, et~al.
+\newblock Rwkv: Reinventing {RNNs} for the transformer era.
+\newblock {\em arXiv preprint arXiv:2305.13048}, 2023.
+
+\bibitem{shazeer2019mqa}
+Noam Shazeer.
+\newblock Fast transformer decoding: One write-head is all you need.
+\newblock {\em arXiv preprint arXiv:1911.02150}, 2019.
+
+\bibitem{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan~N Gomez, {\L}ukasz Kaiser, and Illia Polosukhin.
+\newblock Attention is all you need.
+\newblock {\em NeurIPS}, 2017.
+
+\bibitem{wang2020linformer}
+Sinong Wang, Belinda~Z Li, Madian Khabsa, Han Fang, and Hao Ma.
+\newblock Linformer: Self-attention with linear complexity.
+\newblock {\em arXiv preprint arXiv:2006.04768}, 2020.
+
+\bibitem{zaheer2020bigbird}
+Manzil Zaheer, Guru Guruganesh, Avinava Dubey, Joshua Ainslie, Chris Alberti, Santiago Ontanon, Philip Pham, Anirudh Ravula, Qifan Wang, Li~Yang, and Amr Ahmed.
+\newblock Big bird: Transformers for longer sequences.
+\newblock {\em arXiv preprint arXiv:2007.14062}, 2020.
+
+\end{thebibliography}

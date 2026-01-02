@@ -29,3 +29,22 @@ mode=incremental
 ✓ codegraph-sync ok • graph=caramba_code nodes=15 edges=15
 ✓ codegraph-sync ok • graph=caramba_code nodes=40 edges=46
 ✓ codegraph-sync ok • graph=caramba_code nodes=85 edges=90
+
+[2026-01-02T03:57:34Z] post-commit: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+files:
+ai/agent.py
+trainer/gradient_isolation.py
+trainer/standard.py
+✓ codegraph-sync ok • graph=caramba_code nodes=59 edges=71
+✓ codegraph-sync ok • graph=caramba_code nodes=60 edges=64
+✓ codegraph-sync ok • graph=caramba_code nodes=85 edges=90
+
+[2026-01-02T03:57:56Z] pre-push: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+mode=incremental
+✓ codegraph-sync ok • graph=caramba_code nodes=59 edges=71
+✓ codegraph-sync ok • graph=caramba_code nodes=60 edges=64
+✓ codegraph-sync ok • graph=caramba_code nodes=85 edges=90

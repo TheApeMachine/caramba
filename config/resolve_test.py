@@ -1,16 +1,12 @@
 """
-Unit tests for the resolve module (variable interpolation and type normalization).
+Unit tests for the resolve module (variable interpolation).
 """
 from __future__ import annotations
 
 import unittest
 from typing import Any, cast
 
-from caramba.config.resolve import (
-    Resolver,
-    TYPE_ALIASES,
-    normalize_type_names,
-)
+from caramba.config.resolve import Resolver
 
 
 class TestResolver(unittest.TestCase):
@@ -105,161 +101,6 @@ class TestResolver(unittest.TestCase):
         })
         result = resolver.resolve("${doubled}")
         self.assertEqual(result, 64)
-
-
-class TestNormalizeTypeNames(unittest.TestCase):
-    """Tests for normalize_type_names function."""
-
-    def test_normalize_simple_type(self) -> None:
-        """Normalizes a simple type field."""
-        payload = {"type": "transformer"}
-        result = cast(dict[str, Any], normalize_type_names(payload))
-        self.assertEqual(result["type"], "TransformerModel")
-
-    def test_normalize_nested_types(self) -> None:
-        """Normalizes types in nested structures."""
-        payload = {
-            "model": {
-                "type": "transformer",
-                "topology": {
-                    "type": "stacked",
-                }
-            }
-        }
-        result = cast(dict[str, Any], normalize_type_names(payload))
-        self.assertEqual(result["model"]["type"], "TransformerModel")
-        self.assertEqual(result["model"]["topology"]["type"], "StackedTopology")
-
-    def test_normalize_layer_types(self) -> None:
-        """Normalizes layer type names."""
-        payload = {
-            "layers": [
-                {"type": "rms_norm", "eps": 1e-5},
-                {"type": "attention", "n_heads": 8},
-                {"type": "swiglu", "hidden_dim": 256},
-                {"type": "linear", "d_in": 128, "d_out": 128},
-            ]
-        }
-        result = cast(dict[str, Any], normalize_type_names(payload))
-        self.assertEqual(result["layers"][0]["type"], "RMSNormLayer")
-        self.assertEqual(result["layers"][1]["type"], "AttentionLayer")
-        self.assertEqual(result["layers"][2]["type"], "SwiGLULayer")
-        self.assertEqual(result["layers"][3]["type"], "LinearLayer")
-
-    def test_normalize_topology_types(self) -> None:
-        """Normalizes topology type names."""
-        for legacy, canonical in [
-            ("branching", "BranchingTopology"),
-            ("cyclic", "CyclicTopology"),
-            ("nested", "NestedTopology"),
-            ("parallel", "ParallelTopology"),
-            ("recurrent", "RecurrentTopology"),
-            ("residual", "ResidualTopology"),
-            ("sequential", "SequentialTopology"),
-            ("stacked", "StackedTopology"),
-        ]:
-            payload = {"type": legacy}
-            result = cast(dict[str, Any], normalize_type_names(payload))
-            self.assertEqual(result["type"], canonical, f"Failed for {legacy}")
-
-    def test_normalize_preserves_canonical_names(self) -> None:
-        """Already-canonical names are preserved."""
-        payload = {
-            "model": {
-                "type": "TransformerModel",
-                "topology": {
-                    "type": "StackedTopology",
-                    "layers": [
-                        {"type": "RMSNormLayer"},
-                        {"type": "AttentionLayer"},
-                    ]
-                }
-            }
-        }
-        result = cast(dict[str, Any], normalize_type_names(payload))
-        self.assertEqual(result["model"]["type"], "TransformerModel")
-        self.assertEqual(result["model"]["topology"]["type"], "StackedTopology")
-        self.assertEqual(result["model"]["topology"]["layers"][0]["type"], "RMSNormLayer")
-
-    def test_normalize_preserves_non_type_fields(self) -> None:
-        """Non-type fields are preserved unchanged."""
-        payload = {
-            "type": "transformer",
-            "name": "my_model",
-            "d_model": 512,
-            "layers": [1, 2, 3],
-            "config": {
-                "type": "nested",
-                "value": "unchanged",
-            }
-        }
-        result = cast(dict[str, Any], normalize_type_names(payload))
-        self.assertEqual(result["name"], "my_model")
-        self.assertEqual(result["d_model"], 512)
-        self.assertEqual(result["layers"], [1, 2, 3])
-        self.assertEqual(result["config"]["value"], "unchanged")
-
-    def test_normalize_handles_tuple(self) -> None:
-        """Normalizes types within tuples."""
-        payload = ({"type": "linear"}, {"type": "attention"})
-        result = cast(tuple[dict[str, Any], ...], normalize_type_names(payload))
-        self.assertEqual(result[0]["type"], "LinearLayer")
-        self.assertEqual(result[1]["type"], "AttentionLayer")
-
-    def test_normalize_handles_primitives(self) -> None:
-        """Primitive values are returned unchanged."""
-        self.assertEqual(normalize_type_names("string"), "string")
-        self.assertEqual(normalize_type_names(42), 42)
-        self.assertEqual(normalize_type_names(3.14), 3.14)
-        self.assertEqual(normalize_type_names(True), True)
-        self.assertEqual(normalize_type_names(None), None)
-
-    def test_normalize_handles_empty_structures(self) -> None:
-        """Empty structures are handled correctly."""
-        self.assertEqual(normalize_type_names({}), {})
-        self.assertEqual(normalize_type_names([]), [])
-        self.assertEqual(normalize_type_names(()), ())
-
-    def test_normalize_unknown_type_preserved(self) -> None:
-        """Unknown type values are preserved."""
-        payload = {"type": "custom_layer"}
-        result = cast(dict[str, Any], normalize_type_names(payload))
-        self.assertEqual(result["type"], "custom_layer")
-
-
-class TestTypeAliases(unittest.TestCase):
-    """Tests for TYPE_ALIASES constant."""
-
-    def test_aliases_exist(self) -> None:
-        """All expected aliases are defined."""
-        expected = [
-            "transformer", "gpt", "vit", "mlp",  # Models
-            "branching", "cyclic", "nested", "parallel",  # Topologies
-            "recurrent", "residual", "sequential", "stacked",
-            "layer_norm", "rms_norm", "linear", "dropout",  # Layers
-            "attention", "swiglu",
-        ]
-        for alias in expected:
-            self.assertIn(alias, TYPE_ALIASES, f"Missing alias: {alias}")
-
-    def test_aliases_map_to_correct_types(self) -> None:
-        """Aliases map to correctly-formatted canonical names."""
-        for alias, canonical in TYPE_ALIASES.items():
-            # Canonical names should be PascalCase
-            self.assertTrue(
-                canonical[0].isupper(),
-                f"Canonical name should be PascalCase: {canonical}"
-            )
-            # Canonical names should end with Model, Topology, or Layer
-            valid_suffix = (
-                canonical.endswith("Model") or
-                canonical.endswith("Topology") or
-                canonical.endswith("Layer")
-            )
-            self.assertTrue(
-                valid_suffix,
-                f"Canonical name should end with Model/Topology/Layer: {canonical}"
-            )
 
 
 if __name__ == "__main__":

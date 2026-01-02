@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import torch
 
 from caramba.config.layer import LayerType, MosaicBlockLayerConfig
-from caramba.layer.mosaic_block import MosaicBlockLayer
+from caramba.layer.mosaic.block import MosaicBlockLayer
 
 
 class MosaicBlockLayerTest(unittest.TestCase):
