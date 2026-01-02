@@ -47,6 +47,49 @@ class _McpEndpoint:
     headers: dict[str, str] | None = None
 
 
+def _make_run_config(*, streaming_mode: str | None, temperature: float | None) -> Any | None:
+    """Create a RunConfig using only fields the installed ADK supports.
+
+    We avoid hardcoding RunConfig's schema. Instead we:
+    - read RunConfig.model_fields (Pydantic v2) to see what's accepted
+    - only pass supported keys
+    - encode temperature as either a direct float or a dict, depending on which field exists
+    """
+    if not streaming_mode:
+        return None
+
+    mode_key = str(streaming_mode).strip().lower()
+    mode = {
+        "none": StreamingMode.NONE,
+        "sse": StreamingMode.SSE,
+        "bidi": getattr(StreamingMode, "BIDI", StreamingMode.SSE),
+    }.get(mode_key, StreamingMode.SSE)
+
+    fields = getattr(RunConfig, "model_fields", None) or {}
+    if not isinstance(fields, dict):
+        fields = {}
+
+    kwargs: dict[str, Any] = {}
+    if "streaming_mode" in fields:
+        kwargs["streaming_mode"] = mode
+
+    if temperature is not None:
+        t = float(temperature)
+        # Prefer explicit temperature if it's part of RunConfig; otherwise try
+        # any nested config fields that commonly carry generation parameters.
+        if "temperature" in fields:
+            kwargs["temperature"] = t
+        else:
+            for key in ("generate_content_config", "model_settings", "generation_config"):
+                if key in fields:
+                    kwargs[key] = {"temperature": t}
+                    break
+
+    if not kwargs:
+        return None
+    return RunConfig(**kwargs)
+
+
 def _iter_persona_tool_names(tools: object) -> list[str]:
     """Normalize persona tools into a list of tool/server names."""
     if not tools:
@@ -461,18 +504,10 @@ class Agent:
         - ADK RunConfig streaming settings
         - The underlying model/provider support for streaming
         """
-        if run_config is None and RunConfig is not None and streaming_mode and StreamingMode is not None:
-            mode_key = str(streaming_mode).strip().lower()
-            mode = {
-                "none": StreamingMode.NONE,
-                "sse": StreamingMode.SSE,
-                "bidi": getattr(StreamingMode, "BIDI", StreamingMode.SSE),
-            }.get(mode_key, StreamingMode.SSE)
-
+        if run_config is None:
             if temperature is None:
                 temperature = float(getattr(self.persona, "temperature", 0.0))
-
-            run_config = RunConfig(streaming_mode=mode, temperature=float(temperature))  # type: ignore[misc]
+            run_config = _make_run_config(streaming_mode=streaming_mode, temperature=temperature)
 
         buffer = ""
         async for event in self.run_events_async(input, run_config=run_config):
@@ -515,18 +550,10 @@ class Agent:
         - {"type": "tool_result", "name": "...", "response": {...}, "id": "..."}
         """
         # Mirror `stream_text_async` run_config behavior.
-        if run_config is None and RunConfig is not None and streaming_mode and StreamingMode is not None:
-            mode_key = str(streaming_mode).strip().lower()
-            mode = {
-                "none": StreamingMode.NONE,
-                "sse": StreamingMode.SSE,
-                "bidi": getattr(StreamingMode, "BIDI", StreamingMode.SSE),
-            }.get(mode_key, StreamingMode.SSE)
-
+        if run_config is None:
             if temperature is None:
                 temperature = float(getattr(self.persona, "temperature", 0.0))
-
-            run_config = RunConfig(streaming_mode=mode, temperature=float(temperature))  # type: ignore[misc]
+            run_config = _make_run_config(streaming_mode=streaming_mode, temperature=temperature)
 
         buffer = ""
         seen_tool_calls: set[str] = set()

@@ -28,7 +28,6 @@ instructions: |
     - Structure your responses in a way that is easy to follow and understand, and keep them concise and to the point.
 
 model: "anthropic/claude-opus-4-5-20251101"
-temperature: 0.7
 tools:
   - filesystem
   - webcrawl

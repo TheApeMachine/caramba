@@ -615,6 +615,21 @@ class StandardTrainer:
                 except TypeError:
                     # Some non-standard systems may not accept ctx; keep best-effort.
                     outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                # Best-effort: merge MOSAIC aux outputs from ctx into outputs so
+                # objectives can see them even when the system doesn't attach them.
+                try:
+                    aux_out = getattr(viz_ctx, "mosaic_aux_out", None)
+                    if isinstance(outputs, dict) and isinstance(aux_out, dict):
+                        for k, v in aux_out.items():
+                            if (
+                                isinstance(k, str)
+                                and k.startswith("mosaic_")
+                                and isinstance(v, Tensor)
+                                and k not in outputs
+                            ):
+                                outputs[k] = v
+                except Exception:
+                    pass
                 loss = _call_objective_loss(outputs=outputs, batch_td=batch_td)
             return outputs, loss
 

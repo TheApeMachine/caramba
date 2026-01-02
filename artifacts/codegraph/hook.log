@@ -4,3 +4,28 @@ repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
 falkor_uri=redis://localhost:6379
 mode=full
 ✓ codegraph-sync ok • graph=caramba_code nodes=4248 edges=7297
+
+[2026-01-02T03:25:26Z] post-commit: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+files:
+ai/agent.py
+ai/process/brainstorm.py
+config/mcp_registry.py
+layer/mosaic_block.py
+trainer/standard.py
+✓ codegraph-sync ok • graph=caramba_code nodes=57 edges=68
+✓ codegraph-sync ok • graph=caramba_code nodes=34 edges=50
+✓ codegraph-sync ok • graph=caramba_code nodes=15 edges=15
+✓ codegraph-sync ok • graph=caramba_code nodes=40 edges=46
+✓ codegraph-sync ok • graph=caramba_code nodes=85 edges=90
+
+[2026-01-02T03:25:50Z] pre-push: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+mode=incremental
+✓ codegraph-sync ok • graph=caramba_code nodes=57 edges=68
+✓ codegraph-sync ok • graph=caramba_code nodes=34 edges=50
+✓ codegraph-sync ok • graph=caramba_code nodes=15 edges=15
+✓ codegraph-sync ok • graph=caramba_code nodes=40 edges=46
+✓ codegraph-sync ok • graph=caramba_code nodes=85 edges=90
