@@ -7,9 +7,6 @@ from __future__ import annotations
 import os
 import click
 from pathlib import Path
-import uvicorn
-
-from caramba_api import app
 from caramba.console import logger
 
 from caramba.experiment.runner import run_from_manifest_path
@@ -99,6 +96,9 @@ def serve_cmd(host: str, port: int) -> None:
     - POST /api/runs to spawn `caramba run ...`
     - GET  /api/runs/<id>/events to stream `train.jsonl` as SSE
     """
+    from caramba_api import app
+    import uvicorn
+
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 

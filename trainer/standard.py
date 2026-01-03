@@ -11,6 +11,7 @@ components.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Iterable
 from pathlib import Path
 import time
 import math
@@ -44,6 +45,7 @@ from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_pla
 from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
 from caramba.layer.attention import AttentionLayer
 from caramba.layer.mosaic.block import MosaicBlockLayer
+from caramba.trainer.mosaic_table2 import Table2SummaryWriter, Table2Telemetry
 from caramba.trainer.swap_manager import SwapManager
 
 
@@ -644,6 +646,10 @@ class StandardTrainer:
                 loss = _call_objective_loss(outputs=outputs, batch_td=batch_td)
             return outputs, loss
 
+        table2 = Table2Telemetry()
+        table2_writer = Table2SummaryWriter()
+        last_table2_metrics: dict[str, float] | None = None
+
         try:
             with logger.progress_bar() as progress:
                 task = progress.add_task("Training...", total=int(run.steps))
@@ -856,6 +862,35 @@ class StandardTrainer:
                         except Exception as e:
                             raise RuntimeError("Failed to compute objective metrics") from e
 
+                        # Table 2 telemetry (memory curricula): distance-binned accuracy + collision proxy.
+                        try:
+                            if outputs is not None and last_batch_td is not None:
+                                has_table2_bin = False
+                                has_mem_teacher = False
+                                try:
+                                    v_tb = last_batch_td["table2_bin"]
+                                except KeyError:
+                                    v_tb = None
+                                has_table2_bin = isinstance(v_tb, Tensor)
+
+                                try:
+                                    v_rb = last_batch_td["mosaic_teacher_read_bucket"]
+                                    v_wb = last_batch_td["mosaic_teacher_write_bucket"]
+                                    v_wg = last_batch_td["mosaic_teacher_write_gate"]
+                                except KeyError:
+                                    v_rb = None
+                                    v_wb = None
+                                    v_wg = None
+                                has_mem_teacher = (
+                                    isinstance(v_rb, Tensor)
+                                    and isinstance(v_wb, Tensor)
+                                    and isinstance(v_wg, Tensor)
+                                )
+                                if has_table2_bin or has_mem_teacher:
+                                    metrics.update(table2.compute(outputs=outputs, batch=last_batch_td))
+                        except Exception as e:
+                            raise RuntimeError("Failed to compute Table 2 telemetry") from e
+
                         metrics.update(
                             {
                                 "time_data_s": float(t_data - t_data0),
@@ -939,8 +974,21 @@ class StandardTrainer:
                                     if av is not None:
                                         summary[key] = av
                                 logger.key_value(summary, title="MOSAIC memory stats (avg across layers)")
+
+                                # Table 2 required namespaces (stable keys).
+                                rg = _avg("/fuse_gate_mem_mean")
+                                wg = _avg("/write_gate_p_mean")
+                                re = _avg("/write_bucket_entropy_norm")
+                                if rg is not None:
+                                    metrics["mem/read_gate"] = float(rg)
+                                if wg is not None:
+                                    metrics["mem/write_gate"] = float(wg)
+                                if re is not None:
+                                    metrics["mem/routing_entropy"] = float(re)
                         except Exception as e:
                             raise RuntimeError("Failed to log MOSAIC memory stats") from e
+
+                        last_table2_metrics = dict(metrics)
                         run_logger.log_metrics(
                             run_id=str(run.id),
                             phase="standard",
@@ -978,6 +1026,59 @@ class StandardTrainer:
             step=int(run.steps),
             system=system,
         )
+
+        # Writer-ready export for the Table 2 bundle (only when Table 2 metrics were produced).
+        if (
+            bool(getattr(run_logger, "enabled", True))
+            and last_table2_metrics is not None
+            and any(k.startswith("acc/bin_") for k in last_table2_metrics.keys())
+        ):
+            # Prefer extracting memory config from the model (for MOSAIC). Fall back to dataset component when needed.
+            mb: int | None = None
+            mh: int | None = None
+            mod = getattr(system, "module", None)
+            if isinstance(mod, nn.Module):
+                buckets: set[int] = set()
+                hashes: set[int] = set()
+                for m in mod.modules():
+                    if isinstance(m, MosaicBlockLayer):
+                        buckets.add(int(m.memory.mem_buckets))
+                        hashes.add(int(m.memory.mem_hashes))
+                if buckets and hashes:
+                    if len(buckets) != 1 or len(hashes) != 1:
+                        raise ValueError("Inconsistent mem_buckets/mem_hashes across MosaicBlockLayer modules.")
+                    mb = next(iter(buckets))
+                    mh = next(iter(hashes))
+            if mb is None or mh is None:
+                mb2 = getattr(dataset_comp, "mem_buckets", None)
+                mh2 = getattr(dataset_comp, "mem_hashes", None)
+                if isinstance(mb2, int) and isinstance(mh2, int):
+                    mb = int(mb2)
+                    mh = int(mh2)
+            if mb is None or mh is None:
+                raise TypeError("Table 2 export requires mem_buckets/mem_hashes (from model or dataset).")
+
+            params_fn = getattr(system, "parameters", None)
+            if not callable(params_fn):
+                raise TypeError("Table 2 export requires system.parameters().")
+            n_params = 0
+            params_iter = params_fn()
+            if not isinstance(params_iter, Iterable):
+                raise TypeError("system.parameters() must return an iterable")
+            for p in params_iter:
+                if not isinstance(p, nn.Parameter):
+                    raise TypeError("system.parameters() must yield nn.Parameter objects")
+                n_params += int(p.numel())
+
+            table2_writer.write(
+                out_dir=checkpoint_dir,
+                run_id=str(run.id),
+                mem_buckets=int(mb),
+                mem_hashes=int(mh),
+                model_size=f"params={n_params}",
+                metrics=last_table2_metrics,
+                n_bins=int(table2.cfg.n_bins),
+            )
 
     def _build_loader(
         self,

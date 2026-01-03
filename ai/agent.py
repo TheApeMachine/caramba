@@ -503,18 +503,12 @@ class Agent:
         temperature: float | None = None,
         run_config: Any | None = None,
     ):
-        """Yield model text incrementally as it's produced.
-
-        Note: Whether you get true token streaming depends on:
-        - ADK RunConfig streaming settings
-        - The underlying model/provider support for streaming
-        """
+        """Yield model text incrementally as it's produced."""
         if run_config is None:
             if temperature is None:
                 temperature = float(getattr(self.persona, "temperature", 0.0))
             run_config = _make_run_config(streaming_mode=streaming_mode, temperature=temperature)
 
-        buffer = ""
         async for event in self.run_events_async(input, run_config=run_config):
             ev_content = getattr(event, "content", None)
             parts = getattr(ev_content, "parts", None)
@@ -522,22 +516,8 @@ class Agent:
                 continue
             for part in parts:
                 txt = getattr(part, "text", None)
-                if not isinstance(txt, str) or not txt:
-                    continue
-                # ADK/providers differ: sometimes this is a delta, sometimes it's the full-so-far text.
-                # Emit only the incremental suffix when it looks like "full so far".
-                if txt.startswith(buffer):
-                    delta = txt[len(buffer) :]
-                    if delta:
-                        buffer = txt
-                        yield delta
-                    continue
-                if buffer.startswith(txt):
-                    # Older chunk repeated; ignore.
-                    continue
-
-                buffer += txt
-                yield txt
+                if isinstance(txt, str) and txt:
+                    yield txt
 
     async def stream_chat_events_async(
         self,
@@ -550,19 +530,14 @@ class Agent:
         """Yield a structured stream of text/tool events.
 
         Emits dicts like:
-        - {"type": "text", "text": "..."}  (incremental)
+        - {"type": "text", "text": "..."}
         - {"type": "tool_call", "name": "...", "args": {...}, "id": "..."}
         - {"type": "tool_result", "name": "...", "response": {...}, "id": "..."}
         """
-        # Mirror `stream_text_async` run_config behavior.
         if run_config is None:
             if temperature is None:
                 temperature = float(getattr(self.persona, "temperature", 0.0))
             run_config = _make_run_config(streaming_mode=streaming_mode, temperature=temperature)
-
-        buffer = ""
-        seen_tool_calls: set[str] = set()
-        seen_tool_results: set[str] = set()
 
         async for event in self.run_events_async(input, run_config=run_config):
             ev_content = getattr(event, "content", None)
@@ -574,50 +549,27 @@ class Agent:
                 # Tool call
                 fc = getattr(part, "function_call", None)
                 if fc is not None:
-                    fc_id = str(getattr(fc, "id", "") or "")
-                    if fc_id and fc_id in seen_tool_calls:
-                        pass
-                    else:
-                        if fc_id:
-                            seen_tool_calls.add(fc_id)
-                        yield {
-                            "type": "tool_call",
-                            "id": fc_id,
-                            "name": getattr(fc, "name", None),
-                            "args": getattr(fc, "args", None) or getattr(fc, "partial_args", None),
-                        }
+                    yield {
+                        "type": "tool_call",
+                        "id": str(getattr(fc, "id", "") or ""),
+                        "name": getattr(fc, "name", None),
+                        "args": getattr(fc, "args", None) or getattr(fc, "partial_args", None),
+                    }
 
                 # Tool result
                 fr = getattr(part, "function_response", None)
                 if fr is not None:
-                    fr_id = str(getattr(fr, "id", "") or "")
-                    if fr_id and fr_id in seen_tool_results:
-                        pass
-                    else:
-                        if fr_id:
-                            seen_tool_results.add(fr_id)
-                        yield {
-                            "type": "tool_result",
-                            "id": fr_id,
-                            "name": getattr(fr, "name", None),
-                            "response": getattr(fr, "response", None),
-                        }
+                    yield {
+                        "type": "tool_result",
+                        "id": str(getattr(fr, "id", "") or ""),
+                        "name": getattr(fr, "name", None),
+                        "response": getattr(fr, "response", None),
+                    }
 
-                # Text (delta-ish)
+                # Text
                 txt = getattr(part, "text", None)
-                if not isinstance(txt, str) or not txt:
-                    continue
-                if txt.startswith(buffer):
-                    delta = txt[len(buffer) :]
-                    if delta:
-                        buffer = txt
-                        yield {"type": "text", "text": delta}
-                    continue
-                if buffer.startswith(txt):
-                    continue
-
-                buffer += txt
-                yield {"type": "text", "text": txt}
+                if isinstance(txt, str) and txt:
+                    yield {"type": "text", "text": txt}
 
     async def _ensure_session(self) -> Session | None:
         if self.session_ready:

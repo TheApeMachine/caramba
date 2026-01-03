@@ -27,7 +27,7 @@
   \texttt{theapemachine@gmail.com}
 }
 
-\date{December 2025}
+\date{January 2026}
 
 \begin{document}
 
@@ -41,11 +41,13 @@ Attention with a per-token KV cache implements one extremely general trick: \emp
 
 We propose \textbf{MOSAIC} (\textbf{M}ultiscale \textbf{O}scillator \textbf{S}tate + \textbf{A}ssociative \textbf{I}ndexed \textbf{C}ache), a streaming causal language model that is genuinely \textit{no attention, no KV cache}. MOSAIC decomposes ``memory'' into fixed-size explicit data structures controlled by a small neural controller: (i) a cheap local causal mixer for syntax/short patterns, (ii) a multiscale continuous state bank that preserves long-range intent at constant memory, and (iii) a hard-addressed associative cache that enables fast exact-ish recall without scanning the past. An optional n-gram continuation cache provides verbatim copying/continuation behavior with \(O(1)\) table access.
 
-This paper is a \textit{production-first} report: MOSAIC is implemented as first-class manifest-addressable components in Caramba (\path{config/presets/mosaic.yml}), enabling systematic ablations (cache sizes, timescales, write sparsity) on consumer hardware. We focus on the architectural spec, its streaming inference loop, and the evaluation plan for measuring copying fidelity, long-range dependency retention, and laptop-feasible latency/memory.
+Beyond token-stream language modeling, we also implement an \textbf{event-native interface}: external interaction is a JSON \texttt{EventEnvelope} encoded as byte tokens (\(\{0,\dots,255\}\)) via an \texttt{EventEncoder}/\texttt{EventDecoder}. This reframes decoding as \textbf{VM time-steps} over an event stream, and enables supervising a differentiable control surface (opcodes, memory gates, registers) with auxiliary losses on synthetic event traces. Phase 1 (event traces + opcode/memory gating) and Phase 2 (commitment lifecycle via \texttt{commitment\_delta}/\texttt{commitment\_id}) were both trained successfully, converging to losses of \(\sim 0.36\) and \(\sim 0.32\).
+
+This paper is a \textit{production-first} report: MOSAIC and its event-native runtime are implemented as manifest-addressable components in Caramba, with presets \path{mosaic.yml}, \path{mosaic\_event\_native.yml}, and \path{mosaic\_commitment.yml}. This enables systematic ablations on consumer hardware. We focus on the architectural spec, its streaming inference loop, and the evaluation plan for measuring copying fidelity, long-range dependency retention, and laptop-feasible latency/memory.
 \end{abstract}
 
 \paragraph{Keywords:}
-language modeling, no-attention, external memory, associative cache, n-gram cache, state space, long context, streaming inference, continual learning
+language modeling, event-native, no-attention, external memory, associative cache, control surfaces, differentiable VM, long context, streaming inference, continual learning
 
 % ============================================================================
 % 1. INTRODUCTION
@@ -70,13 +72,20 @@ MOSAIC starts from a different decomposition: \emph{stop trying to make the netw
 
 This paper focuses on a concrete, implementable design that is streaming causal, attention-free, and laptop-feasible.
 
+\subsection{Event-native interaction and the Differentiable VM view}
+In Caramba, MOSAIC is operated in an \textbf{event-native} regime: the external interface is a JSON envelope (\texttt{EventEnvelope}), while the internal compute substrate still operates on discrete steps (tokens)---now interpreted as \textbf{VM clock cycles}. Events are encoded into a byte-token stream, processed by MOSAIC, and decoded back into JSON. This enables training and inference to be driven by structured event traces rather than prompt-formatted text.
+
+We also treat MOSAIC as a \textbf{differentiable virtual machine (dVM)}: the model emits soft control signals (logits) corresponding to operations (opcodes) and commitment state changes. Crucially, these control surfaces are supervised with auxiliary losses rather than learned via reinforcement learning.
+
 \subsection{Contributions}
 
 \begin{enumerate}
     \item We specify \textbf{MOSAIC}, a no-attention/no-KV-cache streaming LM with constant memory w.r.t.\ context length.
     \item We introduce a \textbf{multiscale continuous state bank} (leaky integrators) that preserves long-range intent at \(O(Kd)\) memory/compute.
     \item We introduce a \textbf{hard-addressed associative cache} (fixed hash table) that provides \(O(1)\) lookup/update as a replacement for ``store all KV pairs''.
-    \item We implement MOSAIC as \textbf{manifest-addressable components} in Caramba (\path{config/presets/mosaic.yml}) to enable systematic ablations and laptop experiments.
+    \item We define and implement an \textbf{event-native interface} (JSON \texttt{EventEnvelope} \(\leftrightarrow\) byte tokens) and an in-memory \textbf{EventBus} for peer-to-peer event routing.
+    \item We implement a \textbf{dVM control surface} (opcodes, register gates, and commitment deltas) and supervise it with auxiliary losses on synthetic event traces.
+    \item We implement MOSAIC as \textbf{manifest-addressable components} in Caramba (\path{config/presets/mosaic.yml}, \path{config/presets/mosaic\_event\_native.yml}, \path{config/presets/mosaic\_commitment.yml}) to enable systematic ablations and laptop experiments.
 \end{enumerate}
 
 % ============================================================================
@@ -110,6 +119,23 @@ MOSAIC is a streaming causal language model that replaces attention+KV-cache wit
     \item \textbf{Associative indexed cache}: hard-addressed fixed-size hash memory for fast recall.
 \end{enumerate}
 An optional n-gram continuation cache provides cheap verbatim continuation.
+
+\subsection{Event-native interface: JSON events as byte tokens}
+\label{subsec:event_native}
+MOSAIC can be trained and operated on structured event streams. We define an \texttt{EventEnvelope} as a minimal JSON-serializable contract (required: \texttt{type}, \texttt{payload}, \texttt{sender}; optional: \texttt{priority}, \texttt{budget\_ms}, \texttt{id}, \texttt{ts}, plus Phase 2 commitment meta-fields). A deterministic serialization is encoded as UTF-8 bytes, yielding a token stream in \(\{0,\dots,255\}\).
+\[
+\mathbf{b}=\mathrm{utf8}(\mathrm{json}(\mathrm{EventEnvelope})) \in \{0,\dots,255\}^L.
+\]
+This reframes ``tokens'' as \textbf{VM time-steps} required to process an event. In Caramba, event datasets generate synthetic \texttt{EventEnvelope} traces and supervise control signals at aligned byte spans.
+
+\subsection{Differentiable VM control surfaces (opcodes, registers, commitments)}
+In addition to next-token logits, MOSAIC emits auxiliary logits that represent a soft instruction set and related control state:
+\begin{itemize}
+    \item \textbf{Opcodes:} \(\mathrm{logits}_{\text{op}} \in \mathbb{R}^{B\times T\times |\mathcal{O}|}\) (e.g., \texttt{READ\_MEM}, \texttt{WRITE\_MEM}), optionally used as a differentiable control surface that modulates compute paths.
+    \item \textbf{Registers:} a small non-decaying register file with a write-enable gate and slot selection, supervised with aligned teacher signals.
+    \item \textbf{Commitments (Phase 2):} \(\mathrm{logits}_{\text{c}} \in \mathbb{R}^{B\times T\times 3}\) over \{close, neutral, open\}, mapped to \(\{-1,0,+1\}\).
+\end{itemize}
+These heads are trained with auxiliary losses (cross-entropy or BCE), enabling stable supervision of control behavior without RL.
 
 \subsection{Local mixer: causal convolutional mixer}
 Let \(x_t\in\mathbb{R}^d\) be the residual stream and \(u_t=\mathrm{RMSNorm}(x_t)\).
@@ -161,6 +187,8 @@ Practical training therefore benefits from a curriculum and auxiliary objectives
     \item \textbf{Write sparsity:} regularize expected write rate to keep memory efficient and avoid thrashing.
     \item \textbf{Utility prediction:} train a head to predict whether a write will be useful \(k\) steps later (self-supervised credit assignment).
     \item \textbf{Collision pressure:} discourage mapping dissimilar contexts to the same bucket (contrastive loss on address codes).
+    \item \textbf{Opcode and commitment supervision:} train control-surface heads from synthetic traces (event-native datasets) via cross-entropy at aligned spans.
+    \item \textbf{State stability:} regularize learned state-bank decay rates to stay within a healthy operating band to prevent early saturation.
 \end{itemize}
 
 \paragraph{Forced-read dropout.}
@@ -202,23 +230,67 @@ Per token, MOSAIC updates only fixed-size buffers and tables:
 \end{algorithmic}
 \end{algorithm}
 
+\subsubsection{Event-driven runtime (Mode B commitment injection)}
+At the system level, MOSAIC is run as an event processor. Given an inbound \texttt{EventEnvelope}, we encode JSON to byte tokens, run the model autoregressively until a complete JSON object is produced, decode to an \texttt{EventEnvelope}, then inject commitment meta-fields from the auxiliary head logits (``Mode B'') and update a runtime commitment ledger.
+\begin{algorithm}[htbp]
+\caption{Event-native runtime step (JSON bytes + Mode B commitments)}
+\begin{algorithmic}[1]
+\STATE Input event \(e\) (\texttt{EventEnvelope})
+\STATE Encode \(e \rightarrow \mathbf{b}\in\{0,\dots,255\}^{L}\) and append delimiter
+\STATE Feed bytes to MOSAIC with persistent streaming state
+\STATE Autoregress bytes until buffer ends with \texttt{\}} and JSON decode succeeds
+\STATE Decode buffer to response event \(r\)
+\STATE \(\delta \leftarrow \arg\max(\mathrm{mosaic\_commitment\_logits}) - 1\)
+\STATE Set \(r.\texttt{commitment\_delta} \leftarrow \delta\) (Mode B)
+\STATE Update commitment ledger and publish \(r\) to the EventBus
+\end{algorithmic}
+\end{algorithm}
+
 \subsection{Implementation (Caramba)}
-MOSAIC is implemented as manifest-addressable layers:
-\texttt{MosaicBlockLayer} (\path{layer/mosaic/block.py}) and
-\texttt{MosaicNGramCacheLogitsLayer} (\path{layer/mosaic/ngram_cache.py}).
+MOSAIC is implemented as manifest-addressable layers and core primitives:
+\begin{itemize}
+    \item \texttt{MosaicBlockLayer} (\path{layer/mosaic/block.py}) and \\
+          \texttt{MosaicMemory} (\path{layer/mosaic/memory.py})
+    \item \texttt{MosaicNGramCacheLogitsLayer} (\path{layer/mosaic/ngram\_cache.py}) (optional inference-time logit bias)
+    \item Event primitives: \texttt{EventEnvelope} (\path{core/event.py}), \texttt{EventEncoder}/\texttt{EventDecoder} (\path{core/event\_codec.py}), and \texttt{EventBus} (\path{core/event\_bus.py})
+    \item Event-native curricula: \path{data/event\_trace.py} (\texttt{dataset.mosaic\_event\_traces})
+    \item Phase 2 runtime ledger and handler: \path{core/commitments.py} and \path{infer/event\_runtime.py}
+\end{itemize}
 
 % ============================================================================
 % 3. EXPERIMENTS
 % ============================================================================
 \section{Experiments}
 \subsection{Setup}
-We define a laptop-feasible MOSAIC baseline in \path{config/presets/mosaic.yml} and evaluate:
+We define:
+\begin{itemize}
+    \item a token-stream MOSAIC baseline in \path{config/presets/mosaic.yml},
+    \item an event-native Phase 1 preset in \path{config/presets/mosaic\_event\_native.yml}, and
+    \item an event-native Phase 2 commitment preset in \path{config/presets/mosaic\_commitment.yml}.
+\end{itemize}
+We evaluate:
 \begin{itemize}
     \item \textbf{Language modeling quality}: held-out perplexity on token shards.
     \item \textbf{Copying}: targeted synthetic tests (repeated spans, bracket closure, identifier reuse).
     \item \textbf{Long-range constraints}: instruction retention with long distractor spans.
     \item \textbf{Efficiency}: tokens/sec and peak resident memory during streaming decode.
+    \item \textbf{Event-native learning}: final training loss on synthetic event traces (Phase 1/2 curricula).
 \end{itemize}
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Event-native synthetic curriculum results (Caramba runs).}
+\label{tab:event_native_results}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Phase} & \textbf{Capability} & \textbf{Final loss} \\
+\midrule
+Phase 1 & Event traces + opcodes + memory gating & 0.36 \\
+Phase 2 & Commitment lifecycle (\(\Delta\in\{-1,0,+1\}\)) & 0.32 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Stress tests (what should break first)}
 To make MOSAIC falsifiable, we include targeted adversarial evaluations:
@@ -239,7 +311,7 @@ We ablate memory mechanisms to attribute behaviors:
 \begin{table}[htbp]
 \centering
 \small
-\caption{Planned MOSAIC results (placeholders).}
+\caption{Planned downstream MOSAIC results (LM evaluation; pending).}
 \label{tab:mosaic_results}
 \begin{tabular}{@{}lcccc@{}}
 \toprule
@@ -270,6 +342,7 @@ MOSAIC naturally separates learning timescales:
 
 \subsection{Structured internal control (a controller DSL)}
 If the model is a controller over memory and tools, internal reasoning need not be natural language. A small typed action DSL (memory ops, tool calls, state updates) can reduce failure modes and enable constrained decoding and verification. Natural language becomes a rendering layer rather than the core compute substrate.
+In the current MOSAIC implementation, this idea is realized as \textbf{soft control surfaces} (opcodes, register gates, and commitment deltas) trained with auxiliary losses and optionally wired into execution as differentiable gates.
 
 \section{Conclusion}
 MOSAIC operationalizes a simple principle: dense learned computation is expensive; explicit algorithmic memory is cheap. By turning attention's implicit memory into explicit fixed-size data structures, we obtain a streaming LM architecture whose memory does not grow with context length.
@@ -284,9 +357,11 @@ This research was conducted without external funding.
 
 \appendix
 \section{Manifest snippet}
-The reference preset for this paper is \path{config/presets/mosaic.yml}.
+Reference presets: \path{config/presets/mosaic.yml} (token-stream), \\
+\path{config/presets/mosaic\_event\_native.yml} (Phase 1), \\
+\path{config/presets/mosaic\_commitment.yml} (Phase 2).
 \section{Implementation notes}
-Core implementation: \path{layer/mosaic/block.py} and \path{layer/mosaic/ngram_cache.py}.
+Core implementation: \path{layer/mosaic/block.py}, \path{layer/mosaic/memory.py}, and event primitives in \path{core/}.
 
 % ============================================================================
 % REFERENCES

@@ -427,6 +427,10 @@ class MosaicBlockLayerConfig(Config):
     opcodes_control_enabled: bool = False
     opcodes_control_temp: PositiveFloat = 1.0
 
+    # Phase 2: Commitment lifecycle head (optional).
+    # When enabled, the layer emits `mosaic_commitment_logits` (B,T,3) into ctx aux outputs.
+    commitment_head_enabled: bool = False
+
     # Fusion gates: scale contributions from long state / memory read.
     gate_long_init: float = 0.0
     gate_mem_init: float = 0.0

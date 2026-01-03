@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.12.17)  2 JAN 2026 08:04
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.12.17)  3 JAN 2026 04:50
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -489,18 +489,22 @@ Package microtype Info: Loading generic protrusion settings for font family
 [2]
 
 [3]
-Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on input line 191.
-
 
 [4{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc}]
 
 [5]
+Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on input line 219.
+
 
 [6]
 
-[7] (./paper.bbl)
+[7]
 
-[8
+[8]
+
+[9] (./paper.bbl)
+
+[10
 
 ] (./paper.aux)
  ***********
@@ -508,21 +512,21 @@ LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
 Package rerunfilecheck Info: File `paper.out' has not changed.
-(rerunfilecheck)             Checksum: 14A0B1EF0DC46C47C4FD396281F25A55;4962.
+(rerunfilecheck)             Checksum: 49F8EE79DDB627A38DFBE1A28DDF690B;6404.
  ) 
 Here is how much of TeX's memory you used:
- 15075 strings out of 473190
- 238447 string characters out of 5715799
- 673613 words of memory out of 5000000
- 37849 multiletter control sequences out of 15000+600000
- 586585 words of font info for 184 fonts, out of 8000000 for 9000
+ 15169 strings out of 473190
+ 239574 string characters out of 5715799
+ 674804 words of memory out of 5000000
+ 37871 multiletter control sequences out of 15000+600000
+ 590565 words of font info for 216 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,8n,79p,1080b,541s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1095.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1728.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1095.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfti1095.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfti1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sftt1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sftt1095.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sftt1200.pfb>
-Output written on paper.pdf (8 pages, 454912 bytes).
+ 75i,9n,79p,1080b,580s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1095.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfbx1728.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm0800.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1095.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfti1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfti1095.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfti1200.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sftt1000.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sftt1095.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sftt1200.pfb>
+Output written on paper.pdf (10 pages, 484833 bytes).
 PDF statistics:
- 367 PDF objects out of 1000 (max. 8388607)
- 304 compressed objects within 4 object streams
- 88 named destinations out of 1000 (max. 500000)
- 50913 words of extra memory for PDF output out of 51595 (max. 10000000)
+ 411 PDF objects out of 1000 (max. 8388607)
+ 344 compressed objects within 4 object streams
+ 106 named destinations out of 1000 (max. 500000)
+ 64257 words of extra memory for PDF output out of 74296 (max. 10000000)
 

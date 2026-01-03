@@ -73,11 +73,12 @@ class SSMLayer(nn.Module):
         # Output projection
         self.out_proj = nn.Linear(self.d_inner, self.d_model, bias=config.bias)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, *, ctx: object | None = None) -> Tensor:
         """Process sequence through the SSM.
 
         Args:
             x: Input tensor, shape (B, T, d_model)
+            ctx: Optional inference context (unused by SSM, but required for topology compatibility)
 
         Returns:
             Output tensor, shape (B, T, d_model)

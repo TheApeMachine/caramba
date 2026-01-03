@@ -1984,3 +1984,82 @@ ImportError: cannot import name 'Task' from partially initialized module 'caramb
 ✓ codegraph-sync ok • graph=caramba_code nodes=62 edges=66
 ✓ codegraph-sync ok • graph=caramba_code nodes=31 edges=38
 ✓ codegraph-sync ok • graph=caramba_code nodes=85 edges=89
+
+[2026-01-03T01:27:24Z] post-commit: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+files:
+ai/agent.py
+ai/persona.py
+ai/persona_test.py
+ai/process/brainstorm.py
+ai/tasks/__init__.py
+ai/tasks/knowledge.py
+ai/tasks/meeting_notes.py
+ai/tasks/task.py
+config/layer.py
+core/__init__.py
+core/event.py
+core/event_bus.py
+core/event_codec.py
+core/homeostasis.py
+data/event_trace.py
+data/mosaic_synth.py
+layer/mosaic/block.py
+layer/mosaic/isa.py
+layer/mosaic/memory.py
+layer/mosaic_memory.py
+layer/mosaic_state.py
+runtime/engine/torch_engine.py
+trainer/objectives.py
+✓ codegraph-sync ok • graph=caramba_code nodes=60 edges=72
+✓ codegraph-sync ok • graph=caramba_code nodes=8 edges=7
+✓ codegraph-sync ok • graph=caramba_code nodes=8 edges=7
+✓ codegraph-sync ok • graph=caramba_code nodes=52 edges=85
+✓ codegraph-sync ok • graph=caramba_code nodes=5 edges=4
+✓ codegraph-sync ok • graph=caramba_code nodes=39 edges=47
+✓ codegraph-sync ok • graph=caramba_code nodes=26 edges=31
+✓ codegraph-sync ok • graph=caramba_code nodes=6 edges=5
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=47
+✓ codegraph-sync ok • graph=caramba_code nodes=5 edges=4
+✓ codegraph-sync ok • graph=caramba_code nodes=10 edges=9
+✓ codegraph-sync ok • graph=caramba_code nodes=16 edges=16
+✓ codegraph-sync ok • graph=caramba_code nodes=15 edges=18
+✓ codegraph-sync ok • graph=caramba_code nodes=18 edges=18
+✓ codegraph-sync ok • graph=caramba_code nodes=30 edges=32
+✓ codegraph-sync ok • graph=caramba_code nodes=16 edges=16
+✓ codegraph-sync ok • graph=caramba_code nodes=34 edges=41
+✓ codegraph-sync ok • graph=caramba_code nodes=11 edges=13
+✓ codegraph-sync ok • graph=caramba_code nodes=22 edges=27
+✓ codegraph-sync ok • graph=caramba_code nodes=0 edges=0
+✓ codegraph-sync ok • graph=caramba_code nodes=0 edges=0
+✓ codegraph-sync ok • graph=caramba_code nodes=28 edges=30
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=40
+
+[2026-01-03T01:28:56Z] pre-push: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+mode=incremental
+✓ codegraph-sync ok • graph=caramba_code nodes=60 edges=72
+✓ codegraph-sync ok • graph=caramba_code nodes=8 edges=7
+✓ codegraph-sync ok • graph=caramba_code nodes=8 edges=7
+✓ codegraph-sync ok • graph=caramba_code nodes=52 edges=85
+✓ codegraph-sync ok • graph=caramba_code nodes=5 edges=4
+✓ codegraph-sync ok • graph=caramba_code nodes=39 edges=47
+✓ codegraph-sync ok • graph=caramba_code nodes=26 edges=31
+✓ codegraph-sync ok • graph=caramba_code nodes=6 edges=5
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=47
+✓ codegraph-sync ok • graph=caramba_code nodes=5 edges=4
+✓ codegraph-sync ok • graph=caramba_code nodes=10 edges=9
+✓ codegraph-sync ok • graph=caramba_code nodes=16 edges=16
+✓ codegraph-sync ok • graph=caramba_code nodes=15 edges=18
+✓ codegraph-sync ok • graph=caramba_code nodes=18 edges=18
+✓ codegraph-sync ok • graph=caramba_code nodes=30 edges=32
+✓ codegraph-sync ok • graph=caramba_code nodes=16 edges=16
+✓ codegraph-sync ok • graph=caramba_code nodes=34 edges=41
+✓ codegraph-sync ok • graph=caramba_code nodes=11 edges=13
+✓ codegraph-sync ok • graph=caramba_code nodes=22 edges=27
+✓ codegraph-sync ok • graph=caramba_code nodes=0 edges=0
+✓ codegraph-sync ok • graph=caramba_code nodes=0 edges=0
+✓ codegraph-sync ok • graph=caramba_code nodes=28 edges=30
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=40
