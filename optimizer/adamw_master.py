@@ -31,12 +31,14 @@ class AdamWMaster(torch.optim.Optimizer):
         betas: tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-8,
         weight_decay: float = 0.01,
+        fused: bool = False,
     ) -> None:
         defaults = {
             "lr": float(lr),
             "betas": (float(betas[0]), float(betas[1])),
             "eps": float(eps),
             "weight_decay": float(weight_decay),
+            "fused": bool(fused),
         }
         super().__init__(params, defaults)
 
@@ -51,6 +53,8 @@ class AdamWMaster(torch.optim.Optimizer):
             beta1, beta2 = group["betas"]
             eps = float(group["eps"])
             wd = float(group["weight_decay"])
+            # Kernel policy: when running fp16 params on MPS, always use the fused Metal step.
+            fused = True
 
             for p in group["params"]:
                 if p.grad is None:
@@ -77,6 +81,42 @@ class AdamWMaster(torch.optim.Optimizer):
                 exp_avg: Tensor = state["exp_avg"]
                 exp_avg_sq: Tensor = state["exp_avg_sq"]
 
+                # Fast path: fused Metal step (fp16 params + fp32 state) on MPS.
+                if (
+                    fused
+                    and p.device.type == "mps"
+                    and p.dtype == torch.float16
+                    and isinstance(g, Tensor)
+                    and g.device.type == "mps"
+                    and g.dtype == torch.float16
+                    and master.device.type == "mps"
+                    and master.dtype == torch.float32
+                    and exp_avg.device.type == "mps"
+                    and exp_avg.dtype == torch.float32
+                    and exp_avg_sq.device.type == "mps"
+                    and exp_avg_sq.dtype == torch.float32
+                ):
+                    # Bias correction.
+                    bc1 = 1.0 - beta1**step
+                    bc2 = 1.0 - beta2**step
+                    step_size = lr * math.sqrt(bc2) / max(1e-12, bc1)
+
+                    from caramba.optimizer.kernels import adamw_step
+
+                    adamw_step(
+                        p=p,
+                        grad=g,
+                        master=master,
+                        exp_avg=exp_avg,
+                        exp_avg_sq=exp_avg_sq,
+                        step_size=float(step_size),
+                        beta1=float(beta1),
+                        beta2=float(beta2),
+                        eps=float(eps),
+                        lr_wd=float(lr * wd),
+                    )
+                    continue
+
                 grad = g.detach().float()
 
                 # Decoupled weight decay (AdamW)
@@ -98,4 +138,3 @@ class AdamWMaster(torch.optim.Optimizer):
                 # Copy back to model dtype
                 p.copy_(master.to(dtype=p.dtype))
         return None
-

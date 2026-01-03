@@ -19,6 +19,96 @@ from torch import Tensor, nn
 from caramba.config.layer import SSMLayerConfig
 
 
+class _SelectiveScan:
+    """Selective scan implementations.
+
+    The recurrence is:
+      h_t = a_t * h_{t-1} + u_t,    with h_{-1} = 0
+    where `a_t` and `u_t` are elementwise (no mixing across state dims).
+
+    This admits an associative scan over pairs (a, u) with composition:
+      (a2, u2) ∘ (a1, u1) = (a2*a1, u2 + a2*u1)
+    so we can compute all h_t in O(log T) scan steps using vectorized tensor ops.
+    """
+
+    @staticmethod
+    def _inclusive_affine_scan(a: Tensor, u: Tensor) -> Tensor:
+        """Compute inclusive scan over time for the affine recurrence.
+
+        Args:
+            a: (B, T, D_inner, D_state)
+            u: (B, T, D_inner, D_state)
+
+        Returns:
+            h: (B, T, D_inner, D_state) where h[t] equals the hidden state after step t.
+        """
+        if a.shape != u.shape:
+            raise ValueError(f"scan expects a/u same shape, got a={tuple(a.shape)} u={tuple(u.shape)}")
+        if a.ndim != 4:
+            raise ValueError(f"scan expects a/u with 4 dims (B,T,D_inner,D_state), got {tuple(a.shape)}")
+        T = int(a.shape[1])
+        if T <= 0:
+            raise ValueError("scan expects T > 0")
+
+        # Hillis–Steele inclusive scan. Cost: O(T log T) work but only O(log T)
+        # Python iterations; each iteration is a few large MPS-friendly tensor ops.
+        #
+        # Invariant: (a,u) at position t represents the composed transform from
+        # time 0..t applied to h_{-1}=0, so u == h_t.
+        k = 1
+        while k < T:
+            a_shift = torch.ones_like(a)
+            u_shift = torch.zeros_like(u)
+            a_shift[:, k:] = a[:, :-k]
+            u_shift[:, k:] = u[:, :-k]
+            u = u + a * u_shift
+            a = a * a_shift
+            k <<= 1
+        return u
+
+    @classmethod
+    def selective_scan(
+        cls,
+        *,
+        x: Tensor,
+        dt: Tensor,
+        A: Tensor,
+        B: Tensor,
+        C: Tensor,
+        D: Tensor,
+    ) -> Tensor:
+        """Vectorized selective scan, autograd-friendly on CPU/MPS/CUDA."""
+        if x.ndim != 3:
+            raise ValueError(f"expected x as (B,T,D_inner), got {tuple(x.shape)}")
+        if dt.shape != x.shape:
+            raise ValueError(f"expected dt shape == x shape, got dt={tuple(dt.shape)} x={tuple(x.shape)}")
+        if A.ndim != 2:
+            raise ValueError(f"expected A as (D_inner,D_state), got {tuple(A.shape)}")
+        if B.ndim != 3 or C.ndim != 3:
+            raise ValueError(f"expected B,C as (B,T,D_state), got B={tuple(B.shape)} C={tuple(C.shape)}")
+        if D.ndim != 1:
+            raise ValueError(f"expected D as (D_inner,), got {tuple(D.shape)}")
+
+        B_size, T, D_inner = x.shape
+        D_state = int(A.shape[1])
+        if int(A.shape[0]) != int(D_inner):
+            raise ValueError(f"A shape mismatch: expected A.shape[0]==D_inner ({D_inner}), got {int(A.shape[0])}")
+        if B.shape[0] != B_size or B.shape[1] != T or int(B.shape[2]) != D_state:
+            raise ValueError("B shape mismatch")
+        if C.shape[0] != B_size or C.shape[1] != T or int(C.shape[2]) != D_state:
+            raise ValueError("C shape mismatch")
+        if int(D.numel()) != int(D_inner):
+            raise ValueError(f"D shape mismatch: expected {D_inner}, got {int(D.numel())}")
+
+        # Discretize.
+        a = torch.exp(dt.unsqueeze(-1) * A.view(1, 1, D_inner, D_state))  # (B,T,D_inner,D_state)
+        u = (dt.unsqueeze(-1) * B.unsqueeze(2)) * x.unsqueeze(-1)  # (B,T,D_inner,D_state)
+
+        h = cls._inclusive_affine_scan(a, u)  # (B,T,D_inner,D_state)
+        y = (h * C.unsqueeze(2)).sum(dim=-1)  # (B,T,D_inner)
+        return y + x * D.view(1, 1, -1)
+
+
 class SSMLayer(nn.Module):
     """Selective State Space Model layer (Mamba-style) with parallel scan.
 
@@ -96,7 +186,8 @@ class SSMLayer(nn.Module):
         x = x.transpose(1, 2)  # (B, T, d_inner)
 
         # 3. Selective Scan
-        A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
+        # Keep A in the same dtype as activations for fused kernels.
+        A = (-torch.exp(self.A_log)).to(dtype=x.dtype)  # (d_inner, d_state)
 
         # Selective projections
         x_dbl = self.x_proj(x)  # (B, T, dt_rank + 2*d_state)
@@ -107,14 +198,24 @@ class SSMLayer(nn.Module):
         # dt: (B, T, d_inner)
         dt = F.softplus(self.dt_proj(dt))
 
-        # Selective Scan Path
-        # Check for fused Triton kernel availability
-        from caramba.optimizer.fused_ssm import fused_selective_scan, fused_ssm_available
-        if fused_ssm_available(x.device.type):
-            y = fused_selective_scan(x, dt, A, B_vals, C, self.D)
+        # Kernel contract: dt/B/C/D must match activation dtype.
+        dt = dt.to(dtype=x.dtype)
+        B_vals = B_vals.to(dtype=x.dtype)
+        C = C.to(dtype=x.dtype)
+        D_skip = self.D.to(dtype=x.dtype, device=x.device)
+
+        # Selective Scan Path (best available kernel)
+        if x.device.type == "mps" and x.dtype == torch.float16:
+            from caramba.optimizer.metal import MetalSSMSelectiveScan
+
+            scan = MetalSSMSelectiveScan()
+            y = scan.run(x=x, dt=dt, A=A, B=B_vals, C=C, D=D_skip)
+        elif x.device.type == "cuda":
+            from caramba.optimizer.fused_ssm import fused_selective_scan
+
+            y = fused_selective_scan(x, dt, A, B_vals, C, D_skip)
         else:
-            # Fallback to parallel scan implementation
-            y = self._selective_scan_parallel(x, dt, A, B_vals, C, self.D)
+            y = self._selective_scan_parallel(x, dt, A, B_vals, C, D_skip)
 
         # 4. Gating and output projection
         y = y * F.silu(z)
@@ -123,33 +224,5 @@ class SSMLayer(nn.Module):
     def _selective_scan_parallel(
         self, x: Tensor, dt: Tensor, A: Tensor, B: Tensor, C: Tensor, D: Tensor
     ) -> Tensor:
-        """Parallel selective scan implementation.
-
-        Computes the linear recurrence h_t = dA_t * h_{t-1} + dB_t * x_t
-        using a vectorized approach.
-        """
-        B_size, T, D_inner = x.shape
-        D_state = A.shape[1]
-
-        # Discretize
-        # dA: (B, T, d_inner, d_state)
-        # dB: (B, T, d_inner, d_state)
-        dA = torch.exp(dt.unsqueeze(-1) * A.view(1, 1, D_inner, D_state))
-        dB = dt.unsqueeze(-1) * B.unsqueeze(2)  # (B, T, d_inner, d_state)
-
-        u = dB * x.unsqueeze(-1)  # (B, T, d_inner, d_state)
-
-        # Recurrence using a JIT-friendly sequential loop
-        # In a future update, this can be replaced with a true
-        # parallel associative scan in PyTorch for CPU/MPS.
-        h = torch.zeros(B_size, D_inner, D_state, device=x.device, dtype=x.dtype)
-        ys = []
-
-        for t in range(T):
-            h = dA[:, t] * h + u[:, t]
-            y_t = (h * C[:, t].unsqueeze(1)).sum(dim=-1)
-            ys.append(y_t)
-
-        y = torch.stack(ys, dim=1)
-        y = y + x * D.view(1, 1, -1)
-        return y
+        """Selective scan using an associative scan (O(log T) steps)."""
+        return _SelectiveScan.selective_scan(x=x, dt=dt, A=A, B=B, C=C, D=D)

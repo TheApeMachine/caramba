@@ -78,8 +78,9 @@ targets:
       batch_size: 16
       block_size: ${table2_block_size}
       lr: 0.0001
-      device: cpu
-      dtype: float32
+      device: mps
+      dtype: float16
+      use_amp: false
       telemetry_interval: 10
 
 - type: experiment
@@ -140,8 +141,9 @@ targets:
       batch_size: 16
       block_size: ${table2_block_size}
       lr: 0.0001
-      device: cpu
-      dtype: float32
+      device: mps
+      dtype: float16
+      use_amp: false
       telemetry_interval: 10
 vars:
   d_model: 512

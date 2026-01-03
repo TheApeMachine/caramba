@@ -162,27 +162,6 @@ class RotaryEmbedding(nn.Module):
         cos = cos[pos_offset : pos_offset + T]
         sin = sin[pos_offset : pos_offset + T]
 
-        # Fast path via HAL (Metal / Triton / fallback).
-        try:
-            from caramba.optimizer.kernels import rope_apply
+        from caramba.optimizer.kernels import rope_apply
 
-            return rope_apply(x=x, cos=cos, sin=sin, rot_dim=int(self.rot_dim))
-        except Exception:
-            # Best-effort: fall back to PyTorch implementation.
-            if log.isEnabledFor(logging.DEBUG):
-                log.debug("HAL rope_apply failed; falling back to PyTorch", exc_info=True)
-            pass
-
-        cos = cos.unsqueeze(0).unsqueeze(0)
-        sin = sin.unsqueeze(0).unsqueeze(0)
-
-        x_rot = x[..., :rot]
-        x_pass = x[..., rot:]
-
-        # Half-split rotation (HF Llama rotate_half equivalent).
-        x1 = x_rot[..., : rot // 2]
-        x2 = x_rot[..., rot // 2 : rot]
-        y1 = x1 * cos - x2 * sin
-        y2 = x1 * sin + x2 * cos
-
-        return torch.cat([y1, y2, x_pass], dim=-1)
+        return rope_apply(x=x, cos=cos, sin=sin, rot_dim=int(self.rot_dim))

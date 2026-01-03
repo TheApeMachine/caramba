@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from caramba.console import logger
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import torch
 
@@ -15,12 +14,60 @@ if TYPE_CHECKING:
     from torch import Tensor
 
 
-_LOGGED = False
+class _AutogradCtx(Protocol):
+    saved_tensors: tuple["Tensor", ...]
+
+    def save_for_backward(self, *tensors: "Tensor") -> None: ...
 
 
 def metal_rope_available() -> bool:
     """Whether the runtime is capable of using the Metal RoPE path."""
     return bool(METAL_SUPPORTED and torch.backends.mps.is_available())
+
+
+class _MetalRoPEFn(torch.autograd.Function):
+    @staticmethod
+    def forward(  # type: ignore[override]
+        ctx: _AutogradCtx,
+        x: "Tensor",
+        cos: "Tensor",
+        sin: "Tensor",
+        rot_dim: int,
+        verbose_build: bool,
+    ) -> "Tensor":
+        if x.device.type != "mps":
+            raise RuntimeError("Metal RoPE requires device.type == 'mps'")
+        if x.dtype != torch.float16:
+            raise RuntimeError("Metal RoPE currently supports fp16 only")
+
+        x2 = x.contiguous()
+        cos2 = cos.to(device=x.device, dtype=torch.float16).contiguous()
+        sin2 = sin.to(device=x.device, dtype=torch.float16).contiguous()
+
+        ops = load_caramba_metal_ops(verbose=bool(verbose_build))
+
+        ctx.save_for_backward(cos2, sin2)
+        ctx.rot_dim = int(rot_dim)  # type: ignore[attr-defined]
+        return ops.rope(x2, cos2, sin2, int(rot_dim))
+
+    @staticmethod
+    def backward(  # type: ignore[override]
+        ctx: _AutogradCtx,
+        grad_out: "Tensor",
+    ) -> tuple["Tensor | None", ...]:
+        if grad_out is None:
+            raise RuntimeError("Metal RoPE backward requires grad_out")
+        if grad_out.device.type != "mps":
+            raise RuntimeError("Metal RoPE backward requires grad_out on MPS")
+        if grad_out.dtype != torch.float16:
+            grad_out = grad_out.to(dtype=torch.float16)
+        g = grad_out.contiguous()
+
+        (cos, sin) = ctx.saved_tensors
+        rot_dim = int(getattr(ctx, "rot_dim"))
+        ops = load_caramba_metal_ops(verbose=False)
+        grad_x = ops.rope_backward(g, cos, sin, rot_dim)
+        return (grad_x, None, None, None, None)
 
 
 def rope_fp16(
@@ -42,16 +89,16 @@ def rope_fp16(
     if x.dtype != torch.float16:
         raise RuntimeError("Metal RoPE currently supports fp16 only")
 
-    x2 = x.contiguous()
-    cos2 = cos.to(device=x.device).to(torch.float16).contiguous()
-    sin2 = sin.to(device=x.device).to(torch.float16).contiguous()
+    if not bool(x.requires_grad):
+        x2 = x.contiguous()
+        cos2 = cos.to(device=x.device).to(torch.float16).contiguous()
+        sin2 = sin.to(device=x.device).to(torch.float16).contiguous()
 
-    ops = load_caramba_metal_ops(verbose=bool(verbose_build))
+        ops = load_caramba_metal_ops(verbose=bool(verbose_build))
 
-    global _LOGGED
-    if not _LOGGED:
-        logger.success("Using custom Metal kernel: RoPE (fp16)")
-        _LOGGED = True
+        return ops.rope(x2, cos2, sin2, rot_dim)
 
-    return ops.rope(x2, cos2, sin2, rot_dim)
-
+    y = _MetalRoPEFn.apply(x, cos, sin, int(rot_dim), bool(verbose_build))
+    if not isinstance(y, torch.Tensor):
+        raise TypeError("Metal RoPE returned a non-tensor output")
+    return y

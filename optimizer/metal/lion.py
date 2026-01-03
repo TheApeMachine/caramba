@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from caramba.console import logger
 from typing import TYPE_CHECKING
 
 import torch
@@ -13,9 +12,6 @@ from .jit import load_caramba_metal_ops
 
 if TYPE_CHECKING:
     from torch import Tensor
-
-
-_LOGGED = False
 
 
 def metal_lion_available() -> bool:
@@ -43,10 +39,4 @@ def lion_fp16(
 
     ops = load_caramba_metal_ops(verbose=bool(verbose_build))
 
-    global _LOGGED
-    if not _LOGGED:
-        logger.success("Using custom Metal kernel: Lion optimizer (fp16)")
-        _LOGGED = True
-
     return ops.lion_step(p.contiguous(), grad.contiguous(), m.contiguous(), float(lr), float(beta1), float(weight_decay))
-

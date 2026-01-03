@@ -169,6 +169,33 @@ class MosaicBlockLayerTest(unittest.TestCase):
         self.assertTrue(torch.allclose(regs_last[:, 0, :], u_last, atol=1e-5, rtol=1e-5))
         self.assertTrue(torch.allclose(regs_last[:, 1, :], torch.zeros_like(regs_last[:, 1, :])))
 
+    def test_mps_fp16_fast_train_path_dtype_consistency(self) -> None:
+        if not torch.backends.mps.is_available():
+            return
+        torch.manual_seed(0)
+        cfg = MosaicBlockLayerConfig(
+            type=LayerType.MOSAIC_BLOCK,
+            d_model=32,
+            conv_kernel=7,
+            mlp_mult=2.0,
+            dropout_p=0.0,
+            state_k=8,
+            mem_buckets=256,
+            mem_dim=32,
+            mem_hashes=2,
+            mem_write_threshold=0.99,
+            mem_write_eta=0.1,
+        )
+        layer = cfg.build()
+        assert isinstance(layer, MosaicBlockLayer)
+        layer.train()
+        layer = layer.to(device=torch.device("mps"), dtype=torch.float16)
+
+        x = torch.randn(2, 16, 32, device=torch.device("mps"), dtype=torch.float16)
+        y = layer(x, ctx=None)  # type: ignore[call-arg]
+        self.assertEqual(tuple(y.shape), (2, 16, 32))
+        self.assertEqual(y.dtype, torch.float16)
+
 
 if __name__ == "__main__":
     unittest.main()

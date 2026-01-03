@@ -59,19 +59,12 @@ class Lion(torch.optim.Optimizer):
 
                 # Metal fused path (fp16 on MPS).
                 if fused and p.device.type == "mps" and p.dtype == torch.float16 and g.dtype == torch.float16:
-                    try:
-                        from caramba.optimizer.metal import lion_fp16, metal_lion_available
+                    from caramba.optimizer.kernels import lion_step
 
-                        if metal_lion_available() and m.device.type == "mps" and m.dtype == torch.float16:
-                            lion_fp16(p=p, grad=g, m=m, lr=lr, beta1=beta1, weight_decay=wd)
-                            # Secondary momentum update
-                            m.mul_(beta2).add_(g, alpha=1.0 - beta2)
-                            continue
-                    except (ImportError, AttributeError, RuntimeError, OSError):
-                        log.warning(
-                            "Metal Lion fused path failed; falling back to eager PyTorch update",
-                            exc_info=True,
-                        )
+                    lion_step(p=p, grad=g, m=m, lr=lr, beta1=beta1, weight_decay=wd)
+                    # Secondary momentum update
+                    m.mul_(beta2).add_(g, alpha=1.0 - beta2)
+                    continue
 
                 # Reference update (eager PyTorch).
                 # m = beta1*m + (1-beta1)*g

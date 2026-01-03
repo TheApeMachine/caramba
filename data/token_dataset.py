@@ -68,9 +68,6 @@ class TokenDataset:
         if kind not in {"fineweb", "fineweb_npy"}:
             raise ValueError(f"Unsupported data.config.prepare.type={kind!r}")
 
-        # Import locally so training can run without dataset deps unless requested.
-        from caramba.prepare_fineweb import prepare_fineweb_npy
-
         tok = str(cfg.get("tokenizer", "llama"))
         model_id = str(cfg.get("model_id", "meta-llama/Llama-3.2-1B"))
         ds_id = str(cfg.get("dataset", "HuggingFaceFW/fineweb"))
@@ -87,51 +84,5 @@ class TokenDataset:
         token_budget = str(cfg.get("tokens", "100M"))
         rebuild_on_failure = bool(cfg.get("rebuild_on_failure", True))
 
-        # First try to build without overwrite (respects existing files).
-        prepare_fineweb_npy(
-            tokens=token_budget,
-            output=str(p),
-            tokenizer=tok,
-            model_id=model_id,
-            dataset=ds_id,
-            subset=subset_s,
-            split=split,
-            text_field=text_field,
-            max_chars=max_chars,
-            append_eos=append_eos,
-            append_bos=append_bos,
-            overwrite=False,
-        )
-        try:
-            return build_token_dataset(path=p, block_size=int(self.block_size))
-        except Exception as e:
-            _log.warning(
-                "Token dataset build failed after prepare (overwrite=False); "
-                "will retry with overwrite=True if allowed "
-                "(path=%s, block_size=%s, rebuild_on_failure=%s): %s",
-                p,
-                self.block_size,
-                rebuild_on_failure,
-                e,
-                exc_info=True,
-            )
-            if not rebuild_on_failure:
-                raise
-
-        # Retry with overwrite to recover from mismatched tokenizer/config.
-        prepare_fineweb_npy(
-            tokens=token_budget,
-            output=str(p),
-            tokenizer=tok,
-            model_id=model_id,
-            dataset=ds_id,
-            subset=subset_s,
-            split=split,
-            text_field=text_field,
-            max_chars=max_chars,
-            append_eos=append_eos,
-            append_bos=append_bos,
-            overwrite=True,
-        )
         return build_token_dataset(path=p, block_size=int(self.block_size))
 

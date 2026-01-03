@@ -73,9 +73,11 @@ class Table2Telemetry:
         if isinstance(tb, Tensor):
             if tb.shape != (B, T):
                 raise ValueError(f"table2_bin shape mismatch: expected {(B, T)}, got {tuple(tb.shape)}")
-            bins = tb.detach().cpu().long()
-            pred_c = logits.argmax(dim=-1).detach().cpu().long()
-            tgt_c = target.detach().cpu().long()
+            # Keep telemetry on-device to avoid host sync stalls (especially on MPS).
+            # We only materialize small (n_bins,) tensors on CPU at the very end.
+            bins = tb.detach().long()
+            pred_c = logits.argmax(dim=-1).detach().long()
+            tgt_c = target.detach().long()
 
             n_bins = int(self.cfg.n_bins)
             if n_bins < 1:
@@ -83,24 +85,25 @@ class Table2Telemetry:
 
             # Vectorized bin counting
             valid_mask = bins >= 0
-            if (bins[valid_mask] >= n_bins).any():
+            if bool(valid_mask.any()):
                 max_bin = int(bins[valid_mask].max().item())
-                raise ValueError(f"table2_bin out of range: max={max_bin} for n_bins={n_bins}")
-            
+                if max_bin >= n_bins:
+                    raise ValueError(f"table2_bin out of range: max={max_bin} for n_bins={n_bins}")
+
             # Flatten and filter valid bins
             bins_flat = bins[valid_mask].to(dtype=torch.long)
             pred_flat = pred_c[valid_mask]
             tgt_flat = tgt_c[valid_mask]
             correct_flat = (pred_flat == tgt_flat).to(dtype=torch.long)
-            
+
             # Count totals and corrects per bin using scatter_add
             total_tensor = torch.zeros(n_bins, dtype=torch.long, device=bins.device)
             correct_tensor = torch.zeros(n_bins, dtype=torch.long, device=bins.device)
             total_tensor.scatter_add_(0, bins_flat, torch.ones_like(bins_flat))
             correct_tensor.scatter_add_(0, bins_flat, correct_flat)
-            
-            total = total_tensor.tolist()
-            correct = correct_tensor.tolist()
+
+            total = total_tensor.detach().cpu().tolist()
+            correct = correct_tensor.detach().cpu().tolist()
 
             out_generic: dict[str, float] = {}
             worst_generic: float | None = None

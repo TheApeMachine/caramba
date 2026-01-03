@@ -222,11 +222,25 @@ class StandardTrainer:
         weight_decay = float(getattr(train, "weight_decay", 0.0))
         fused_opt = bool(getattr(train, "fused_optimizer", False))
         if opt_name in ("adamw", "adam"):
-            optimizer = torch.optim.AdamW(
-                system.parameters(),  # type: ignore[arg-type]
-                lr=float(train.lr),
-                weight_decay=float(weight_decay),
-            )
+            # On MPS with fp16 weights, prefer AdamWMaster with fused Metal step for
+            # stability + performance (manifest remains the source of truth).
+            if device.type == "mps" and dtype == torch.float16:
+                from caramba.optimizer.adamw_master import AdamWMaster
+
+                optimizer = AdamWMaster(
+                    system.parameters(),  # type: ignore[arg-type]
+                    lr=float(train.lr),
+                    betas=(0.9, 0.999),
+                    eps=1e-8,
+                    weight_decay=float(weight_decay),
+                    fused=True,
+                )
+            else:
+                optimizer = torch.optim.AdamW(
+                    system.parameters(),  # type: ignore[arg-type]
+                    lr=float(train.lr),
+                    weight_decay=float(weight_decay),
+                )
         elif opt_name == "sgd":
             optimizer = torch.optim.SGD(
                 system.parameters(),  # type: ignore[arg-type]
@@ -469,12 +483,40 @@ class StandardTrainer:
             b0 = next(it)
             b0 = b0 if isinstance(b0, TensorDictBase) else as_tensordict(b0)  # type: ignore[arg-type]
             b0 = cast(TensorDictBase, to_device(b0, device=device))
-            if hasattr(system, "forward"):
-                o0 = system.forward(b0)  # type: ignore[attr-defined]
-            else:
-                o0 = {}
+
+            def _forward_for_shape_export(batch_td: TensorDictBase) -> object:
+                """Deterministic forward call for IO shape export.
+
+                Export is mandatory. If the system forward signature does not support a
+                `ctx` keyword, we call it without `ctx`. No silent fallbacks.
+                """
+                if not hasattr(system, "forward"):
+                    raise TypeError(
+                        "Failed to export IO shapes: system has no forward().\n"
+                        "Fix: ensure the system object exposes forward(batch, ...) so we can capture output shapes."
+                    )
+                fwd = system.forward  # type: ignore[attr-defined]
+                try:
+                    sig = inspect.signature(fwd)
+                except Exception as e:
+                    raise RuntimeError("Failed to introspect system.forward signature for IO export") from e
+
+                params = sig.parameters
+                if "ctx" in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                    return fwd(batch_td, ctx=None)  # type: ignore[call-arg]
+                return fwd(batch_td)  # type: ignore[call-arg]
+
+            o0 = _forward_for_shape_export(b0)
+
             def shape_sig(td: object) -> dict[str, object]:
                 out: dict[str, object] = {}
+                if isinstance(td, Tensor):
+                    out["__tensor__"] = {
+                        "shape": list(td.shape),
+                        "dtype": str(td.dtype),
+                        "device": str(td.device),
+                    }
+                    return out
                 if isinstance(td, dict):
                     items = td.items()
                 else:
@@ -493,7 +535,17 @@ class StandardTrainer:
                 encoding="utf-8",
             )
         except Exception as e:
-            raise RuntimeError("Failed to export IO shapes") from e
+            raise RuntimeError(
+                "Failed to export IO shapes.\n"
+                "Why this matters: IO shape export is required for reproducibility artifacts.\n"
+                "Fix:\n"
+                "  - Ensure the system forward returns a Tensor or a dict-like of Tensors.\n"
+                "  - Ensure system.forward accepts `ctx` or does not require it.\n"
+                "  - Ensure the batch is dict/TensorDict-like and convertible via as_tensordict().\n"
+                f"system={type(system).__name__}\n"
+                f"batch_type={type(b0).__name__}\n"
+                f"error={type(e).__name__}: {e}\n"
+            ) from e
 
         logger.header("Training", f"{target.name}:{run.id} • {run.steps} steps")
         loader_iter = iter(loader)
@@ -648,7 +700,6 @@ class StandardTrainer:
         table2 = Table2Telemetry()
         table2_writer = Table2SummaryWriter()
         last_table2_metrics: dict[str, float] | None = None
-
         try:
             with logger.progress_bar() as progress:
                 task = progress.add_task("Training...", total=int(run.steps))
@@ -821,6 +872,7 @@ class StandardTrainer:
 
                     if (step + 1) % telemetry_interval == 0:
                         # Log averaged loss per optimizer step (matches grad accumulation semantics).
+                        t_log0 = time.perf_counter()
                         loss_val = float(loss_sum) / float(accum_steps)
                         # Perplexity guardrails (avoid overflow in exp()).
                         ppl = float(safe_perplexity_from_nll(float(loss_val)))
@@ -830,9 +882,11 @@ class StandardTrainer:
                         lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
                         grad_norm = 0.0
                         try:
+                            t_gn0 = time.perf_counter()
                             from caramba.carmath import global_grad_norm_l2
 
                             grad_norm = float(global_grad_norm_l2(system))  # type: ignore[arg-type]
+                            t_gn1 = time.perf_counter()
                         except Exception as e:
                             raise RuntimeError("Failed to compute gradient norm") from e
 
@@ -886,7 +940,9 @@ class StandardTrainer:
                                     and isinstance(v_wg, Tensor)
                                 )
                                 if has_table2_bin or has_mem_teacher:
+                                    t_t20 = time.perf_counter()
                                     metrics.update(table2.compute(outputs=outputs, batch=last_batch_td))
+                                    t_t21 = time.perf_counter()
                         except Exception as e:
                             raise RuntimeError("Failed to compute Table 2 telemetry") from e
 
@@ -927,20 +983,40 @@ class StandardTrainer:
                             metrics["kernel_events_estimate"] = float(kernel_launches)
                         metrics["compiled"] = 1.0 if compiled else 0.0
 
+                        # Telemetry overhead timing (helps diagnose periodic stalls).
+                        try:
+                            metrics["time_log_total_s"] = float(time.perf_counter() - t_log0)
+                            metrics["time_log_grad_norm_s"] = float(t_gn1 - t_gn0)
+                            if "t_t20" in locals() and "t_t21" in locals():
+                                metrics["time_log_table2_s"] = float(float(t_t21) - float(t_t20))
+                        except Exception:
+                            pass
+
                         # MOSAIC memory stats (best-effort): include in JSONL + W&B.
                         try:
                             if isinstance(viz_ctx, TrainingVizMosaicContext) and viz_ctx.mosaic_mem_stats:
+                                # Convert scalar tensors in one batch to avoid per-key device syncs.
+                                mosaic_f: dict[str, float] = {}
+                                t_keys: list[str] = []
+                                t_vals: list[Tensor] = []
                                 for k, v in viz_ctx.mosaic_mem_stats.items():
+                                    kk = str(k)
                                     if isinstance(v, (int, float)):
-                                        metrics[str(k)] = float(v)
+                                        mosaic_f[kk] = float(v)
+                                    elif isinstance(v, Tensor) and v.numel() == 1:
+                                        t_keys.append(kk)
+                                        t_vals.append(v.detach().float())
+                                if t_vals:
+                                    stacked = torch.stack(t_vals)
+                                    flat = stacked.detach().cpu().tolist()
+                                    for kk, vv in zip(t_keys, flat, strict=True):
+                                        mosaic_f[kk] = float(vv)
+                                for kk, vv in mosaic_f.items():
+                                    metrics[kk] = float(vv)
                                 metrics["mosaic_teacher_p"] = float(getattr(viz_ctx, "mosaic_teacher_p", 1.0))
 
                                 def _avg(viz_ctx: Any, suffix: str) -> float | None:
-                                    vals = [
-                                        float(v)
-                                        for kk, v in viz_ctx.mosaic_mem_stats.items()
-                                        if str(kk).endswith(suffix) and isinstance(v, (int, float))
-                                    ]
+                                    vals = [float(v) for kk, v in mosaic_f.items() if str(kk).endswith(suffix)]
                                     if not vals:
                                         return None
                                     return float(sum(vals) / float(len(vals)))
@@ -999,10 +1075,12 @@ class StandardTrainer:
                             wandb_writer.log_scalars(prefix="train", step=step + 1, scalars=metrics)
                             wandb_writer.log_scalars(prefix="", step=step + 1, scalars=metrics)
 
+                    # Progress should advance every optimizer step, independent of telemetry cadence.
+                    loss_val_live = float(loss_sum) / float(accum_steps)
                     progress.update(
                         task,
                         advance=1,
-                        description=f"Step {step+1}/{run.steps} • loss={float(loss.detach()):.4f}",
+                        description=f"Step {step+1}/{run.steps} • loss={float(loss_val_live):.4f}",
                     )
         finally:
             if wandb_writer is not None:
@@ -1069,7 +1147,7 @@ class StandardTrainer:
                     raise TypeError("system.parameters() must yield nn.Parameter objects")
                 n_params += int(p.numel())
 
-            table2_writer.write(
+            out_path = table2_writer.write(
                 out_dir=checkpoint_dir,
                 run_id=str(run.id),
                 mem_buckets=int(mb),
@@ -1078,6 +1156,37 @@ class StandardTrainer:
                 metrics=last_table2_metrics,
                 n_bins=int(table2.cfg.n_bins),
             )
+
+            # Console UX: print both the path and a small table summary.
+            try:
+                logger.subheader("Table 2 export")
+                logger.path(str(out_path), label="summary_json")
+                logger.info(f"Table 2 summary written to [path]{out_path}[/path]")
+
+                rows: list[list[str]] = []
+                rows.append(["mem_buckets", str(int(mb))])
+                rows.append(["mem_hashes", str(int(mh))])
+                rows.append(["model_size", f"params={n_params}"])
+
+                wb = float(last_table2_metrics.get("acc/worst_bin", -1.0))
+                cr = float(last_table2_metrics.get("collision/wrong_item_read_rate", -1.0))
+                rows.append(["acc/worst_bin", "—" if wb < 0.0 else f"{wb:.4f}"])
+                rows.append(
+                    ["collision/wrong_item_read_rate", "—" if cr < 0.0 else f"{cr:.4f}"]
+                )
+
+                for i in range(int(table2.cfg.n_bins)):
+                    k = f"acc/bin_{i}"
+                    v = float(last_table2_metrics.get(k, -1.0))
+                    rows.append([k, "—" if v < 0.0 else f"{v:.4f}"])
+
+                logger.table(
+                    title=f"Table 2 summary • {target.name}:{run.id}",
+                    columns=["Metric", "Value"],
+                    rows=rows,
+                )
+            except Exception as e:
+                raise RuntimeError("Failed to print Table 2 export summary") from e
 
     def _build_loader(
         self,
