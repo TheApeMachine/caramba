@@ -16,7 +16,7 @@ __all__ = ["fused_selective_scan", "fused_ssm_available"]
 
 def fused_ssm_available(device_type: str) -> bool:
     """Check if fused SSM kernels are available."""
-    return TRITON_AVAILABLE and device_type == "cuda"
+    return bool(TRITON_AVAILABLE and device_type == "cuda" and selective_scan_triton is not None)
 
 
 def fused_selective_scan(
@@ -41,7 +41,12 @@ def fused_selective_scan(
         Output features (B, T, D_inner)
     """
     if not fused_ssm_available(x.device.type) or selective_scan_triton is None:
-        raise RuntimeError("Fused SSM kernels not available or not on CUDA")
+        raise RuntimeError(
+            "Fused CUDA SSM kernels are unavailable.\n"
+            "This build requires Triton selective-scan kernels for CUDA.\n"
+            "Ensure Triton is installed and the SSM kernels import/JIT successfully.\n"
+            "This is a hard failure under the kernel policy."
+        )
 
     # The triton kernel handles the batch/dim flattening
     return selective_scan_triton(x, dt, A, B, C, D)

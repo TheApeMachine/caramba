@@ -15,17 +15,27 @@ def global_grad_norm_l2(model: nn.Module) -> float:
 
     Performance note:
     - Avoids per-parameter `.item()` syncs; only syncs once at the end.
+    - Uses foreach ops to reduce kernel-launch overhead on accelerators.
     """
-    total_sq: torch.Tensor | None = None
+    grads: list[torch.Tensor] = []
     for p in model.parameters():
-        if p.grad is None:
+        g = getattr(p, "grad", None)
+        if g is None:
             continue
-        g = p.grad.detach()
-        v = g.float().pow(2).sum()
-        total_sq = v if total_sq is None else (total_sq + v)
-    if total_sq is None:
+        grads.append(g.detach())
+    if not grads:
         return 0.0
-    return float(total_sq.sqrt().item())
+
+    if not hasattr(torch, "_foreach_norm"):
+        raise RuntimeError(
+            "global_grad_norm_l2 requires torch._foreach_norm to be available.\n"
+            "Fix: upgrade to a PyTorch build that includes foreach ops."
+        )
+    norms = torch._foreach_norm(grads)  # type: ignore[attr-defined]
+    # Accumulate squared norms in float32.
+    ns = torch.stack([n.to(dtype=torch.float32) for n in norms], dim=0)
+    total = (ns * ns).sum().sqrt()
+    return float(total.item())
 
 
 def safe_perplexity_from_nll(nll: float, *, max_nll: float = 20.0) -> float:

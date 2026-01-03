@@ -47,7 +47,7 @@ def leaky_integrator_scan(
         raise ValueError("leaky_integrator_scan expects s0 of shape (B,K,D)")
 
     B, K, T, D = int(inp.size(0)), int(inp.size(1)), int(inp.size(2)), int(inp.size(3))
-    
+
     # Verify compatibility: inp (B,K,T,D) and s0 (B,K,D) share same batch, group, and feature dimensions
     if inp.size(0) != s0.size(0):
         raise ValueError(f"Batch dimension mismatch: inp.size(0)={inp.size(0)} != s0.size(0)={s0.size(0)}")
@@ -67,9 +67,18 @@ def leaky_integrator_scan(
             raise ValueError(f"decay.size(0)={d.size(0)} does not match K={K}")
         d = d.view(1, K, 1, 1)
     elif d.dim() == 3:
-        if d.size(0) != K:
-            raise ValueError(f"decay.size(0)={d.size(0)} does not match K={K}")
-        d = d.view(1, K, 1, 1)
+        # Accept common broadcast forms:
+        # - (1, K, 1)
+        # - (K, 1, 1)
+        if d.shape[0] == 1 and d.shape[1] == K and d.shape[2] == 1:
+            d = d.view(1, K, 1, 1)
+        elif d.shape[0] == K and d.shape[1] == 1 and d.shape[2] == 1:
+            d = d.view(1, K, 1, 1)
+        else:
+            raise ValueError(
+                "decay with dim==3 must be shaped like (1,K,1) or (K,1,1).\n"
+                f"Got decay.shape={tuple(d.shape)} but expected K={K}."
+            )
     elif d.dim() == 4:
         # Verify channel dimension matches K
         if d.shape[1] != K:

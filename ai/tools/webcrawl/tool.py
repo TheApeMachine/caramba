@@ -9,24 +9,12 @@ from starlette.responses import JSONResponse, Response
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
-try:
-    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
-    from crawl4ai import AdaptiveCrawler, AdaptiveConfig
-    from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
-    from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-    _CRAWL4AI_AVAILABLE = True
-except ImportError:
-    AsyncWebCrawler = None
-    CrawlerRunConfig = None
-    AdaptiveCrawler = None
-    AdaptiveConfig = None
-    BM25ContentFilter = None
-    PruningContentFilter = None
-    DefaultMarkdownGenerator = None
-    _CRAWL4AI_AVAILABLE = False
+from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
+from crawl4ai import AdaptiveCrawler, AdaptiveConfig
+from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 logger = logging.getLogger(__name__)
-
 mcp = FastMCP("mcp-crawl4ai")
 
 
@@ -58,23 +46,6 @@ async def crawl_url(
 
     if not url:
         raise ValueError("url is required")
-
-    if not _CRAWL4AI_AVAILABLE:
-        return json.dumps(
-            {
-                "error": "crawl4ai is not available in this runtime. Ensure dependencies are installed.",
-                "url": url,
-            }
-        )
-
-    # Tighten optional-import types for static checkers. At runtime, if crawl4ai is
-    # present, these symbols are classes; otherwise we returned above already.
-    if not _CRAWL4AI_AVAILABLE:
-        return json.dumps({"error": "crawl4ai dependencies not available", "url": url})
-    assert CrawlerRunConfig is not None
-    assert DefaultMarkdownGenerator is not None
-    assert BM25ContentFilter is not None
-    assert PruningContentFilter is not None
 
     # Build a markdown generator that outputs "fit_markdown" to reduce boilerplate
     # and keep agent context small.
@@ -245,7 +216,6 @@ if __name__ == "__main__":
     def health(_request: Request) -> Response:
         return JSONResponse({"status": "ok"})
 
-    # `mcp.sse_app()` is typed as a Starlette app; Starlette doesn't expose `.get`.
     app.add_route("/", root, methods=["GET"])
     app.add_route("/health", health, methods=["GET"])
 
