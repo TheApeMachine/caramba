@@ -70,6 +70,11 @@ class TorchEngine:
         )
         self.registry.register(
             backend="torch",
+            ref="dataset.mosaic_event_traces",
+            python="caramba.data.event_trace:MosaicEventTraceDataset",
+        )
+        self.registry.register(
+            backend="torch",
             ref="dataset.random_tokens",
             python="data.random_tokens:RandomTokenDataset",
         )
@@ -131,6 +136,11 @@ class TorchEngine:
             backend="torch",
             ref="objective.mosaic_next_token_aux",
             python="caramba.trainer.objectives:MosaicNextTokenWithAuxObjective",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="objective.mosaic_event_prediction",
+            python="caramba.trainer.objectives:MosaicEventPrediction",
         )
         self.registry.register(
             backend="torch",

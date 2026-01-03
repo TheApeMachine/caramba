@@ -21,9 +21,9 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from caramba.ai.agent import _make_adk_model
+from caramba.ai.agent import Agent
 from caramba.ai.persona import Persona
-from caramba.ai.tasks import Task
+from caramba.ai.tasks.task import Task
 from caramba.console import logger
 
 
@@ -67,7 +67,7 @@ class KnowledgeExtractionTask(Task):
     ):
         super().__init__("knowledge_extraction")
         self.conversation_history = conversation_history
-        self.persona_path = persona_path or Path("config/personas/research_lead.yml")
+        self.persona_path = persona_path or Path("config/personas/knowledge_curator.yml")
         self.prompt_path = prompt_path or Path("config/prompts/knowledge.yml")
         self.graph_name = graph_name
 
@@ -134,13 +134,12 @@ class KnowledgeExtractionTask(Task):
 
         persona = Persona.from_yaml(self.persona_path)
 
-        # Create LlmAgent directly with output_schema
-        adk_agent = LlmAgent(
-            model=_make_adk_model(persona),
-            name=persona.name,
-            description=persona.description,
-            instruction=persona.instructions,
-            output_schema=KnowledgeExtractionOutput,
+        # Create standard Agent wrapper
+        # The output_schema is now loaded from the persona YAML and passed to the underlying LlmAgent
+        agent = Agent(
+            persona=persona,
+            app_name="knowledge_extraction",
+            user_id="system",
         )
 
         # Render full history for extraction
@@ -150,32 +149,10 @@ class KnowledgeExtractionTask(Task):
         prompt_template = self._load_prompt()
         extraction_prompt = prompt_template.format(conversation_history=full_transcript)
 
-        # Create session and runner
-        session_service = InMemorySessionService()
-        session_id = str(uuid4())
-        await session_service.create_session(
-            app_name="knowledge_extraction",
-            user_id="system",
-            session_id=session_id,
-        )
-
-        runner = Runner(
-            agent=adk_agent,
-            app_name="knowledge_extraction",
-            session_service=session_service,
-        )
-
         try:
-            content = types.Content(role="user", parts=[types.Part(text=extraction_prompt)])
-            final_response = None
-
-            async for event in runner.run_async(
-                user_id="system",
-                session_id=session_id,
-                new_message=content,
-            ):
-                if event.is_final_response() and event.content and event.content.parts:
-                    final_response = event.content.parts[0].text
+            # Run the agent asynchronously
+            # agent.run_async returns the raw text response
+            final_response = await agent.run_async(extraction_prompt)
 
             if not final_response:
                 return None

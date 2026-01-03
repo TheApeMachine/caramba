@@ -9,7 +9,7 @@ import socket
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Annotated, cast
 from urllib.parse import urlparse
 from uuid import uuid4
 import os
@@ -24,6 +24,7 @@ from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
 from google.adk.agents.run_config import RunConfig, StreamingMode
 import httpx
+from jsonschema_pydantic import jsonschema_to_pydantic
 
 from caramba.ai.persona import Persona
 from caramba.console import logger
@@ -412,8 +413,12 @@ class Agent:
             name=persona.name,
             description=persona.description,
             instruction=persona.instructions,
-            tools=tools
+            tools=tools,
         )
+
+        if persona.output_schema:
+            self.adk_agent.output_schema = jsonschema_to_pydantic(persona.output_schema)
+
         self.session_service = session_service or InMemorySessionService()
         self.runner = Runner(
             agent=self.adk_agent,

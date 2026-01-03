@@ -52,7 +52,9 @@ dependencies = [
     "click==8.3.1",
     "fastapi==0.123.10",
     "uvicorn==0.40.0",
-    "fastmcp==2.11.3"
+    "fastmcp==2.11.3",
+    "pydantic-yaml==1.6.0",
+    "jsonschema-pydantic==0.6"
 ]
 
 [project.scripts]
@@ -62,7 +64,6 @@ caramba = "caramba.__main__:main"
 packages = [
     "caramba",
     "caramba.ai",
-    "caramba.agent",
     "caramba.benchmark",
     "caramba.cache",
     "caramba.codegraph",
