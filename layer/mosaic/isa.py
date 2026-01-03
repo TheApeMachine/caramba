@@ -35,7 +35,7 @@ class MosaicISAV0:
     """Typed helpers for the v0 opcode vocabulary."""
 
     def vocab_size(self) -> int:
-        return int(max(int(x.value) for x in MosaicOpcode) + 1)
+        return len(MosaicOpcode)
 
     def validate_opcode_vocab(self, opcode_vocab: int) -> int:
         v = int(opcode_vocab)

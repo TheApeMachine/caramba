@@ -101,20 +101,22 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
         bin_idx = rng.randrange(0, len(self.gap_bins))
         gap_len = int(self.gap_bins[bin_idx])
 
-        # Sample demo inputs.
-        demos_x: list[int] = []
-        used: set[int] = set()
-        for _ in range(int(self.n_demos)):
-            x = rng.randrange(int(self.min_tok), int(self.vocab_size))
-            while x in used:
-                x = rng.randrange(int(self.min_tok), int(self.vocab_size))
-            used.add(x)
-            demos_x.append(x)
-
-        # Query input should be unseen in demos.
-        xq = rng.randrange(int(self.min_tok), int(self.vocab_size))
-        while xq in used:
-            xq = rng.randrange(int(self.min_tok), int(self.vocab_size))
+        # Sample demo inputs deterministically without replacement.
+        available_pool_size = int(self.vocab_size) - int(self.min_tok)
+        if int(self.n_demos) + 1 > available_pool_size:
+            raise ValueError(
+                f"Cannot sample {self.n_demos} demos + 1 query from pool of size {available_pool_size}. "
+                f"Increase vocab_size or decrease n_demos."
+            )
+        
+        # Draw n_demos unique tokens from the available pool
+        pool = list(range(int(self.min_tok), int(self.vocab_size)))
+        demos_x = rng.sample(pool, int(self.n_demos))
+        used = set(demos_x)
+        
+        # Draw query token from remaining pool
+        remaining_pool = [x for x in pool if x not in used]
+        xq = rng.sample(remaining_pool, 1)[0]
         yq = self._apply_rule(xq, delta=int(delta))
 
         bld = _IclBuilder()

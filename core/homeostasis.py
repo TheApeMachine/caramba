@@ -10,8 +10,9 @@ or any specific agent loop.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from caramba.core.event import EventEnvelope
 
@@ -119,7 +120,7 @@ class HomeostaticLoop:
             return None
 
         # Priority is proportional to urgency; keep it integer for envelopes.
-        priority = int(round(max_urg * 1000.0))
+        priority = round(max_urg * 1000.0)
         payload = {
             "metrics": {str(k): float(v) for k, v in metrics.items()},
             "signals": [s.to_json() for s in signals],

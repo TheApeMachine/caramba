@@ -16,14 +16,11 @@ import yaml
 from pydantic import BaseModel, Field
 
 from falkordb import FalkorDB, Graph
-from google.adk.agents import LlmAgent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from caramba.ai.agent import Agent
 from caramba.ai.persona import Persona
-from caramba.ai.tasks.task import Task
+from caramba.ai.tasks import Task
 from caramba.console import logger
 
 
@@ -60,113 +57,45 @@ class KnowledgeExtractionTask(Task):
     """Knowledge extraction task that extracts structured knowledge from conversation history and stores it in FalkorDB."""
     def __init__(
         self,
-        conversation_history: list[dict[str, Any]],
-        persona_path: Path | None = None,
-        prompt_path: Path | None = None,
-        graph_name: str = "caramba_knowledge_base",
     ):
         super().__init__("knowledge_extraction")
-        self.conversation_history = conversation_history
-        self.persona_path = persona_path or Path("config/personas/knowledge_curator.yml")
-        self.prompt_path = prompt_path or Path("config/prompts/knowledge.yml")
-        self.graph_name = graph_name
-
-    def _render_history(self) -> str:
-        """Render conversation history as markdown."""
-        lines: list[str] = []
-        for msg in self.conversation_history:
-            mtype = str(msg.get("type", ""))
-            author = str(msg.get("author", ""))
-            content = msg.get("content", "")
-            if mtype == "user":
-                lines.append(f"- **{author}**: {content}")
-            elif mtype == "assistant":
-                lines.append(f"- **{author}**: {content}")
-            elif mtype == "tool_call":
-                payload = content if isinstance(content, dict) else {"call": content}
-                lines.append(
-                    f"- **{author} tool call**\n```json\n{json.dumps(payload, ensure_ascii=False)}\n```"
-                )
-            elif mtype == "tool_result":
-                payload = content if isinstance(content, dict) else {"result": content}
-                lines.append(
-                    f"- **tool result**\n```json\n{json.dumps(payload, ensure_ascii=False)}\n```"
-                )
-            else:
-                lines.append(f"- **{author}** ({mtype}): {content}")
-        return "\n".join(lines).strip()
-
-    def _connect_falkordb(self) -> Graph:
-        """Connect to FalkorDB and return the knowledge base graph."""
-        uri = os.getenv("FALKORDB_URI") or os.getenv("FALKOR_URI")
-        password = os.getenv("FALKORDB_PASSWORD") or None
-
-        if uri:
-            client = FalkorDB(url=uri, password=password)
-        else:
-            host = os.getenv("FALKORDB_HOST") or "localhost"
-            port = int(os.getenv("FALKORDB_PORT") or 6379)
-            client = FalkorDB(host=host, port=port, password=password)
-
-        return Graph(client, self.graph_name)
-
-    def _load_prompt(self) -> str:
-        """Load the extraction prompt from YAML config."""
-        if not self.prompt_path.exists():
-            raise FileNotFoundError(f"Prompt file not found: {self.prompt_path}")
-
-        with open(self.prompt_path, "r") as f:
-            data = yaml.safe_load(f) or {}
-            knowledge_config = data.get("knowledge_extraction", {})
-            prompt_template = knowledge_config.get("extraction_prompt", "")
-            if not prompt_template:
-                raise ValueError(f"No extraction_prompt found in {self.prompt_path}")
-            return prompt_template
-
-    async def _extract_knowledge(self) -> KnowledgeExtractionOutput | None:
-        """Extract useful knowledge from conversation history using an AI agent with output_schema."""
-        if not self.conversation_history:
-            return None
-
-        # Load persona from YAML
-        if not self.persona_path.exists():
-            raise FileNotFoundError(f"Persona file not found: {self.persona_path}")
-
-        persona = Persona.from_yaml(self.persona_path)
-
-        # Create standard Agent wrapper
-        # The output_schema is now loaded from the persona YAML and passed to the underlying LlmAgent
-        agent = Agent(
-            persona=persona,
+        self.agent = Agent(
+            persona=Persona.from_yaml(Path("config/personas/knowledge_curator.yml")),
             app_name="knowledge_extraction",
             user_id="system",
         )
+        self.graph = Graph(
+            FalkorDB(
+                url=os.getenv("FALKORDB_URI") or os.getenv("FALKOR_URI")
+            ), "caramba_knowledge_base"
+        )
 
-        # Render full history for extraction
-        full_transcript = self._render_history()
+    def run(self, history: list[types.Content]) -> dict[str, Any]:
+        """Run the task synchronously (wrapper around `run_async()`)."""
+        return super().run(history)
 
-        # Load prompt template and format it
-        prompt_template = self._load_prompt()
-        extraction_prompt = prompt_template.format(conversation_history=full_transcript)
+    async def extract_knowledge(self) -> KnowledgeExtractionOutput | None:
+        """Extract useful knowledge from conversation history using an AI agent with output_schema."""
+        if not self.history:
+            logger.warning("No conversation history to extract knowledge from.")
+            return
+
+        knowledge = await self.agent.run_async(
+            types.Content(
+                role="user",
+                parts=[part for item in self.history if item.parts for part in item.parts]
+            )
+        )
 
         try:
-            # Run the agent asynchronously
-            # agent.run_async returns the raw text response
-            final_response = await agent.run_async(extraction_prompt)
-
-            if not final_response:
-                return None
-
-            # Parse the JSON response (output_schema ensures it's valid JSON)
-            parsed = json.loads(final_response)
-            return KnowledgeExtractionOutput.model_validate(parsed)
+            return KnowledgeExtractionOutput.model_validate(knowledge)
 
         except Exception as e:
             logger.warning(f"Knowledge extraction failed: {e}")
             return None
 
-    def _find_existing_entity(self, graph: Graph, entity_type: str, name: str, description: str) -> str | None:
-        """Find an existing entity in the graph by name and description similarity."""
+    def find_existing_entity(self, graph: Graph, entity_type: str, name: str) -> str | None:
+        """Find an existing entity in the graph by name."""
         # First try exact name match
         query = f"MATCH (n:{entity_type} {{name: $name}}) RETURN n.id as id LIMIT 1"
         result = graph.query(query, {"name": name})
@@ -181,7 +110,7 @@ class KnowledgeExtractionTask(Task):
 
         return None
 
-    def _resolve_entity_ids(
+    def resolve_entity_ids(
         self, graph: Graph, entities: list[Entity]
     ) -> dict[str, str]:
         """Resolve temporary entity IDs to real UUIDs, deduplicating against existing entities."""
@@ -189,7 +118,7 @@ class KnowledgeExtractionTask(Task):
 
         for entity in entities:
             # Check if entity already exists in graph
-            existing_id = self._find_existing_entity(graph, entity.type, entity.name, entity.description)
+            existing_id = self.find_existing_entity(graph, entity.type, entity.name)
 
             if existing_id:
                 # Use existing ID
@@ -201,16 +130,14 @@ class KnowledgeExtractionTask(Task):
 
         return temp_to_real
 
-    def _store_knowledge_in_falkordb(self, knowledge: KnowledgeExtractionOutput) -> None:
+    def store_knowledge_in_falkordb(self, knowledge: KnowledgeExtractionOutput) -> None:
         """Store extracted knowledge into FalkorDB graph."""
         if not knowledge:
             return
 
         try:
-            graph = self._connect_falkordb()
-
             # Resolve temporary IDs to real UUIDs, deduplicating against existing entities
-            temp_to_real_id = self._resolve_entity_ids(graph, knowledge.entities)
+            temp_to_real_id = self.resolve_entity_ids(self.graph, knowledge.entities)
 
             # Store entities as nodes (using real IDs)
             for entity in knowledge.entities:
@@ -224,7 +151,7 @@ class KnowledgeExtractionTask(Task):
 
                 # Use MERGE to upsert nodes (will update if exists, create if not)
                 query = f"MERGE (n:{entity.type} {{id: $id}}) SET n += $props"
-                graph.query(query, {"id": real_id, "props": props})
+                self.graph.query(query, {"id": real_id, "props": props})
 
             # Store relationships (using real IDs)
             for rel in knowledge.relationships:
@@ -240,7 +167,7 @@ class KnowledgeExtractionTask(Task):
                     f"MERGE (a)-[r:{rel.type}]->(b) "
                     "SET r.description = $description, r.extracted_at = $extracted_at"
                 )
-                graph.query(
+                self.graph.query(
                     query,
                     {
                         "source_id": source_real_id,
@@ -254,14 +181,14 @@ class KnowledgeExtractionTask(Task):
             for fact in knowledge.facts:
                 # Check if fact already exists
                 query = "MATCH (f:Fact {content: $content}) RETURN f.id as id LIMIT 1"
-                result = graph.query(query, {"content": fact.content})
+                result = self.graph.query(query, {"content": fact.content})
                 if result.result_set:
                     # Fact already exists, skip
                     continue
 
                 fact_id = str(uuid4())
                 query = "CREATE (f:Fact {id: $id, content: $content, context: $context, extracted_at: $extracted_at})"
-                graph.query(
+                self.graph.query(
                     query,
                     {
                         "id": fact_id,
@@ -273,7 +200,7 @@ class KnowledgeExtractionTask(Task):
 
             total_items = len(knowledge.entities) + len(knowledge.relationships) + len(knowledge.facts)
             logger.info(
-                f"Stored {total_items} knowledge items ({len(knowledge.entities)} entities, {len(knowledge.relationships)} relationships, {len(knowledge.facts)} facts) into {self.graph_name}"
+                f"Stored {total_items} knowledge items ({len(knowledge.entities)} entities, {len(knowledge.relationships)} relationships, {len(knowledge.facts)} facts) into {self.graph.name}"
             )
 
         except Exception as e:
@@ -284,11 +211,11 @@ class KnowledgeExtractionTask(Task):
         logger.info("Extracting knowledge from conversation history...")
 
         # Extract knowledge using output_schema
-        knowledge = await self._extract_knowledge()
+        knowledge = await self.extract_knowledge()
 
         if knowledge:
-            logger.info(f"Storing extracted knowledge in FalkorDB graph '{self.graph_name}'...")
-            self._store_knowledge_in_falkordb(knowledge)
+            logger.info(f"Storing extracted knowledge in FalkorDB graph '{self.graph.name}'...")
+            self.store_knowledge_in_falkordb(knowledge)
             return {"success": True, "knowledge_extracted": True}
         else:
             logger.info("No knowledge extracted (empty history or extraction failed)")

@@ -47,8 +47,12 @@ def set_state(ctx: object | None, key: str, st: MosaicState) -> None:
     if store is None:
         store = {}
         try:
-            setattr(ctx, "_mosaic", store)
+            setattr(ctx, "_mosaic", store)  # type: ignore[arg-type]
         except Exception as e:
             raise RuntimeError(f"Failed to set state: {e}") from e
-    if isinstance(store, dict):
-        store[key] = st
+    if not isinstance(store, dict):
+        raise RuntimeError(
+            f"ctx._mosaic exists but is not a dict: {type(store).__name__}. "
+            f"Expected dict for state storage."
+        )
+    store[key] = st

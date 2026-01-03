@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import enum
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Literal, Self, TypeAlias
 from pathlib import Path
 
 import yaml
@@ -53,12 +53,18 @@ class SharedPersonaConfig(Config):
     tools: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _normalize_tool_fields(self) -> "SharedPersonaConfig":
+    def _normalize_tool_fields(self) -> Self:
         # If only one of the two lists is provided, mirror it into the other.
         if not self.mcp_servers and self.tools:
             self.mcp_servers = list(self.tools)
-        if not self.tools and self.mcp_servers:
+        elif not self.tools and self.mcp_servers:
             self.tools = list(self.mcp_servers)
+        elif self.mcp_servers and self.tools and self.mcp_servers != self.tools:
+            raise ValueError(
+                f"Both mcp_servers and tools are provided but differ: "
+                f"mcp_servers={self.mcp_servers}, tools={self.tools}. "
+                f"Please reconcile these values."
+            )
         return self
 
 

@@ -116,4 +116,3 @@ targets:
 
 entrypoints:
   default: mosaic_icl_rule_induction
-

@@ -312,15 +312,16 @@ class GradientIsolationTrainer:
                     if not hasattr(system, "forward"):
                         raise TypeError("System component does not expose forward()")
                     # Best-effort: attach MOSAIC-friendly fields onto ctx when present in batch.
-                    try:
-                        inp = batch_td.get("input_ids", None)  # type: ignore[attr-defined]
-                    except Exception:
+                    from collections.abc import Mapping
+                    if isinstance(batch_td, Mapping):
+                        inp = batch_td.get("input_ids", None)
+                    else:
                         inp = None
                     if isinstance(inp, Tensor):
                         viz_ctx.input_ids = inp
-                    try:
-                        dl = batch_td.get("mosaic_drop_local", None)  # type: ignore[attr-defined]
-                    except Exception:
+                    if isinstance(batch_td, Mapping):
+                        dl = batch_td.get("mosaic_drop_local", None)
+                    else:
                         dl = None
                     if isinstance(dl, Tensor):
                         viz_ctx.mosaic_drop_local = dl
@@ -344,7 +345,8 @@ class GradientIsolationTrainer:
 
                         if isinstance(objective, MosaicNextTokenWithAuxObjective):
                             collect_aux = True
-                    except Exception:
+                    except ImportError:
+                        # MosaicNextTokenWithAuxObjective not available, skip check
                         pass
                     viz_ctx.mosaic_collect_aux = bool(collect_aux)
 

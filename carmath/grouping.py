@@ -40,13 +40,14 @@ def last_write_wins(keys: Tensor, times: Tensor, *, big: int | None = None) -> T
     t = times.to(dtype=torch.long)
     idx = torch.arange(N, device=k.device, dtype=torch.long)
 
-    if big is None:
-        # Ensure (k * big + t) is injective for the range of times.
-        big = int(t.max().item()) + 2
-    base2 = int(N) + 1
-
-    sort_by = ((k * int(big) + t) * base2) + idx
-    order = torch.argsort(sort_by)
+    # Use stable multi-key sort to avoid int64 overflow: sort by (k, t, idx)
+    # Sort in reverse order of priority (stable sort preserves previous order)
+    # First by idx (tie-breaker), then by t, then by k
+    order = torch.argsort(idx, stable=True)
+    t_sorted = t[order]
+    order = order[torch.argsort(t_sorted, stable=True)]
+    k_sorted = k[order]
+    order = order[torch.argsort(k_sorted, stable=True)]
 
     k_sorted = k[order]
     boundary = torch.ones((N,), device=k.device, dtype=torch.bool)

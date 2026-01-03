@@ -29,6 +29,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY ai/tools/codegraph/ ./ai/tools/codegraph/
 
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
+RUN chown -R appuser:appuser /app
+
 EXPOSE 8001
+
+# Healthcheck to probe service readiness
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+USER appuser
 
 CMD ["python", "-m", "ai.tools.codegraph.tool"]

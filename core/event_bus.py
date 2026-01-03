@@ -12,7 +12,6 @@ import heapq
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import DefaultDict
 
 from caramba.core.event import EventEnvelope
 
@@ -28,7 +27,7 @@ class EventBus:
 
     _seq: int = 0
     _queue: list[tuple[int, float, int, EventEnvelope]] = field(default_factory=list)
-    _subs: DefaultDict[str, list[EventHandler]] = field(default_factory=lambda: defaultdict(list))
+    _subs: defaultdict[str, list[EventHandler]] = field(default_factory=lambda: defaultdict(list))
 
     def subscribe(self, event_type: str, handler: EventHandler) -> None:
         et = str(event_type)
@@ -55,7 +54,7 @@ class EventBus:
         heapq.heappush(self._queue, (pri, ts, int(self._seq), event))
 
     def pending(self) -> int:
-        return int(len(self._queue))
+        return len(self._queue)
 
     def dispatch_one(self) -> EventEnvelope:
         if not self._queue:

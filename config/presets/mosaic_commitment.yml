@@ -142,4 +142,3 @@ targets:
 
 entrypoints:
   default: mosaic_commitment_train
-

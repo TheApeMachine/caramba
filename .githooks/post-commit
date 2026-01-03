@@ -29,11 +29,14 @@ fi
 
 FALKOR_URI="${CARAMBA_FALKORDB_URI:-redis://localhost:6379}"
 
+# Redact password from URI before logging
+FALKOR_URI_MASKED=$(echo "${FALKOR_URI}" | sed 's/:[^@]*@/:***@/g')
+
 {
   echo ""
   echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] post-commit: syncing code graph"
   echo "repo=${ROOT}"
-  echo "falkor_uri=${FALKOR_URI}"
+  echo "falkor_uri=${FALKOR_URI_MASKED}"
   echo "files:"
   echo "${FILES}"
   # Execute per file (simple + portable).

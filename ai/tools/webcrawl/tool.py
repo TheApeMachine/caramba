@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 from typing import Any
 
 import uvicorn
@@ -7,10 +8,24 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
-from crawl4ai import AdaptiveCrawler, AdaptiveConfig
-from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+
+try:
+    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
+    from crawl4ai import AdaptiveCrawler, AdaptiveConfig
+    from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
+    from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+    _CRAWL4AI_AVAILABLE = True
+except ImportError:
+    AsyncWebCrawler = None
+    CrawlerRunConfig = None
+    AdaptiveCrawler = None
+    AdaptiveConfig = None
+    BM25ContentFilter = None
+    PruningContentFilter = None
+    DefaultMarkdownGenerator = None
+    _CRAWL4AI_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 mcp = FastMCP("mcp-crawl4ai")
 
@@ -44,7 +59,7 @@ async def crawl_url(
     if not url:
         raise ValueError("url is required")
 
-    if AsyncWebCrawler is None:
+    if not _CRAWL4AI_AVAILABLE:
         return json.dumps(
             {
                 "error": "crawl4ai is not available in this runtime. Ensure dependencies are installed.",
@@ -54,6 +69,8 @@ async def crawl_url(
 
     # Tighten optional-import types for static checkers. At runtime, if crawl4ai is
     # present, these symbols are classes; otherwise we returned above already.
+    if not _CRAWL4AI_AVAILABLE:
+        return json.dumps({"error": "crawl4ai dependencies not available", "url": url})
     assert CrawlerRunConfig is not None
     assert DefaultMarkdownGenerator is not None
     assert BM25ContentFilter is not None
@@ -141,7 +158,7 @@ async def crawl_url(
                 return payload.model_dump_json()
             except Exception as e:
                 # Fall back to single-page crawl if adaptive fails for any reason.
-                pass
+                logger.exception("Adaptive crawl failed, falling back to single-page crawl")
 
         # crawl4ai types can vary across versions; treat the result as dynamic.
         result: Any = await crawler.arun(url=url, config=run_config)

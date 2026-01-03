@@ -58,23 +58,6 @@ def _resolve_target(manifest: Manifest, target: str | None) -> str:
     raise ValueError("Manifest has no runnable targets.")
 
 
-# def _parse_target(target: str) -> tuple[str, str]:
-#     if ":" not in target:
-#         raise ValueError(
-#             f"Invalid target '{target}'. Expected 'target:<name>' or a bare target name."
-#         )
-#     kind, name = target.split(":", 1)
-#     kind = kind.strip().lower()
-#     name = name.strip()
-#     if kind not in {"target", "experiment", "process"}:
-#         raise ValueError(
-#             f"Invalid target kind '{kind}' for '{target}'. Expected 'target', 'experiment', or 'process'."
-#         )
-#     if not name:
-#         raise ValueError(f"Invalid target '{target}': missing name after ':'.")
-#     return kind, name
-
-
 def run_from_manifest_path(
     manifest_path: Path,
     *,

@@ -138,7 +138,6 @@ class _EventTraceBuilder:
         delimiter: int = 10,  # '\n'
     ) -> None:
         b = self._json_bytes(env)
-        s = b.decode("utf-8")
 
         op_s, op_e = opcode_span if opcode_span is not None else (0, 0)
         wg_s, wg_e = write_gate_span if write_gate_span is not None else (0, 0)
@@ -266,7 +265,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
         ts0 = float(1_700_000_000.0 + float(idx))
 
         # Write phase.
-        for j, (k, v) in enumerate(zip(keys, vals)):
+        for j, (k, v) in enumerate(zip(keys, vals, strict=True)):
             env = EventEnvelope(
                 type="MemoryWrite",
                 sender="dataset",
@@ -354,7 +353,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
                 b.append_event(env_close, commitment_span=span_close, commitment_delta=-1)
 
         # Query phase.
-        for j, (k, v) in enumerate(zip(keys, vals)):
+        for j, (k, v) in enumerate(zip(keys, vals, strict=True)):
             env_q = EventEnvelope(
                 type="MemoryQuery",
                 sender="dataset",
@@ -388,7 +387,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
 
         # Sleep/replay: no query key, but force a memory read and emit the answer.
         if int(self.sleep_replay_per_pair) > 0:
-            for j, (k, v) in enumerate(zip(keys, vals)):
+            for j, (k, v) in enumerate(zip(keys, vals, strict=True)):
                 bucket = self._bucket_for_key(k)
                 for r in range(int(self.sleep_replay_per_pair)):
                     env_idle = EventEnvelope(

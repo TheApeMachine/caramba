@@ -9,11 +9,12 @@ import socket
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Annotated, cast
+from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 import os
 import re
+import yaml
 
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
@@ -23,6 +24,7 @@ from google.genai import types
 from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
 from google.adk.agents.run_config import RunConfig, StreamingMode
+from google.adk.models import Gemini
 import httpx
 from jsonschema_pydantic import jsonschema_to_pydantic
 
@@ -42,53 +44,10 @@ warnings.filterwarnings(
 )
 
 @dataclass(frozen=True)
-class _McpEndpoint:
+class McpEndpoint:
     url: str
     transport: str | None = None  # e.g. "streamable-http" or "sse"
     headers: dict[str, str] | None = None
-
-
-def _make_run_config(*, streaming_mode: str | None, temperature: float | None) -> Any | None:
-    """Create a RunConfig using only fields the installed ADK supports.
-
-    We avoid hardcoding RunConfig's schema. Instead we:
-    - read RunConfig.model_fields (Pydantic v2) to see what's accepted
-    - only pass supported keys
-    - encode temperature as either a direct float or a dict, depending on which field exists
-    """
-    if not streaming_mode:
-        return None
-
-    mode_key = str(streaming_mode).strip().lower()
-    mode = {
-        "none": StreamingMode.NONE,
-        "sse": StreamingMode.SSE,
-        "bidi": getattr(StreamingMode, "BIDI", StreamingMode.SSE),
-    }.get(mode_key, StreamingMode.SSE)
-
-    fields = getattr(RunConfig, "model_fields", None) or {}
-    if not isinstance(fields, dict):
-        fields = {}
-
-    kwargs: dict[str, Any] = {}
-    if "streaming_mode" in fields:
-        kwargs["streaming_mode"] = mode
-
-    if temperature is not None:
-        t = float(temperature)
-        # Prefer explicit temperature if it's part of RunConfig; otherwise try
-        # any nested config fields that commonly carry generation parameters.
-        if "temperature" in fields:
-            kwargs["temperature"] = t
-        else:
-            for key in ("generate_content_config", "model_settings", "generation_config"):
-                if key in fields:
-                    kwargs[key] = {"temperature": t}
-                    break
-
-    if not kwargs:
-        return None
-    return RunConfig(**kwargs)
 
 
 def _iter_persona_tool_names(tools: object) -> list[str]:
@@ -137,34 +96,46 @@ def _expand_env_placeholders(payload: object) -> object:
     return _ENV_PATTERN.sub(_replace, payload)
 
 
-def _load_mcp_endpoints() -> dict[str, _McpEndpoint]:
+def _parse_mcp_entry(name: str, entry: dict) -> McpEndpoint | None:
+    """Parse a payload entry into an McpEndpoint.
+
+    Validates url is a non-empty string, reads transport and headers,
+    returns an McpEndpoint with transport coerced to str when non-empty
+    and headers coerced to dict when a dict, or returns None for invalid entries.
+    """
+    if not isinstance(entry, dict):
+        return None
+    url = entry.get("url")
+    transport = entry.get("transport")
+    headers = entry.get("headers")
+    if not isinstance(url, str) or not url:
+        return None
+    return McpEndpoint(
+        url=url,
+        transport=str(transport) if isinstance(transport, str) and transport else None,
+        headers=dict(headers) if isinstance(headers, dict) else None,
+    )
+
+
+def load_mcp_endpoints() -> dict[str, McpEndpoint]:
     """Load MCP endpoints from config files.
 
     Sources:
     - `config/mcp_servers.yml` (legacy consolidated mapping)
     - `config/tools/*.yml` (one tool per file)
     """
-    merged: dict[str, _McpEndpoint] = {}
+    merged: dict[str, McpEndpoint] = {}
 
     # 1) Legacy consolidated config
     p = Path("config/mcp_servers.yml")
     if p.exists():
         try:
-            import yaml  # used elsewhere in repo
-
             payload = _expand_env_placeholders(yaml.safe_load(p.read_text()) or {})
             if isinstance(payload, dict):
                 for name, entry in payload.items():
-                    if isinstance(entry, dict):
-                        url = entry.get("url")
-                        transport = entry.get("transport")
-                        headers = entry.get("headers")
-                        if isinstance(url, str) and url:
-                            merged[str(name)] = _McpEndpoint(
-                                url=url,
-                                transport=str(transport) if isinstance(transport, str) and transport else None,
-                                headers=dict(headers) if isinstance(headers, dict) else None,
-                            )
+                    endpoint = _parse_mcp_entry(name, entry)
+                    if endpoint is not None:
+                        merged[str(name)] = endpoint
         except Exception as e:
             logger.warning(f"Failed to parse {p}: {e}")
 
@@ -172,23 +143,14 @@ def _load_mcp_endpoints() -> dict[str, _McpEndpoint]:
     tools_dir = Path("config/tools")
     if tools_dir.exists():
         try:
-            import yaml
-
             for yml in tools_dir.glob("*.yml"):
                 try:
                     payload = _expand_env_placeholders(yaml.safe_load(yml.read_text()) or {})
                     if isinstance(payload, dict):
                         for name, entry in payload.items():
-                            if isinstance(entry, dict):
-                                url = entry.get("url")
-                                transport = entry.get("transport")
-                                headers = entry.get("headers")
-                                if isinstance(url, str) and url:
-                                    merged[str(name)] = _McpEndpoint(
-                                        url=url,
-                                        transport=str(transport) if isinstance(transport, str) and transport else None,
-                                        headers=dict(headers) if isinstance(headers, dict) else None,
-                                    )
+                            endpoint = _parse_mcp_entry(name, entry)
+                            if endpoint is not None:
+                                merged[str(name)] = endpoint
                 except Exception as e:
                     logger.warning(f"Failed to parse {yml}: {e}")
         except Exception as e:
@@ -216,7 +178,7 @@ def _url_is_reachable(url: str, *, timeout_sec: float = 0.25) -> bool:
         return False
 
 
-def _endpoint_is_healthy(endpoint: _McpEndpoint, *, timeout_sec: float = 0.5) -> bool:
+def _endpoint_is_healthy(endpoint: McpEndpoint, *, timeout_sec: float = 0.5) -> bool:
     """Best-effort health check to avoid hanging MCP session inits.
 
     For our own SSE servers we expose `/health`. For other servers, we fall back to
@@ -224,9 +186,6 @@ def _endpoint_is_healthy(endpoint: _McpEndpoint, *, timeout_sec: float = 0.5) ->
     """
     if not _url_is_reachable(endpoint.url, timeout_sec=min(timeout_sec, 0.25)):
         return False
-
-    if httpx is None:
-        return True
 
     transport = (endpoint.transport or "").strip().lower()
     if transport == "sse":
@@ -255,7 +214,7 @@ def _endpoint_is_healthy(endpoint: _McpEndpoint, *, timeout_sec: float = 0.5) ->
             # Many servers respond 405 (GET not allowed). That's fine: it proves the route exists.
             if r.status_code == 404:
                 return False
-            if 200 <= r.status_code < 500:
+            if 200 <= r.status_code < 300:
                 return True
             return False
         except Exception:
@@ -299,54 +258,16 @@ class BestEffortMcpToolset(McpToolset):
             return []
 
 
-def _connection_params_for(endpoint: _McpEndpoint):
-    """Create the correct ADK MCP connection params for an endpoint."""
+def connection_params_for(endpoint: McpEndpoint):
+    """Create MCP connection params for an endpoint."""
     transport = (endpoint.transport or "").strip().lower()
     if transport in {"streamable-http", "streamable_http", "streamablehttp"}:
-        if StreamableHTTPConnectionParams is None:
-            raise RuntimeError(
-                "MCP server is configured with transport=streamable-http, "
-                "but this ADK install does not expose StreamableHTTPConnectionParams. "
-                "Upgrade google-adk to a version that supports streamable-http MCP, or adjust MCP transport to SSE."
-            )
-        return StreamableHTTPConnectionParams(  # type: ignore[misc]
+        return StreamableHTTPConnectionParams(
             url=endpoint.url,
             headers=endpoint.headers or {},
         )
-    if transport in {"sse", "server-sent-events", "server_sent_events"}:
-        return SseConnectionParams(url=endpoint.url, headers=endpoint.headers or {})  # type: ignore[misc]
 
-    # Unknown/unspecified: prefer streamable-http when available, else SSE.
-    if StreamableHTTPConnectionParams is not None:
-        return StreamableHTTPConnectionParams(  # type: ignore[misc]
-            url=endpoint.url,
-            headers=endpoint.headers or {},
-        )
-    return SseConnectionParams(url=endpoint.url, headers=endpoint.headers or {})  # type: ignore[misc]
-
-
-def _make_adk_model(persona: Persona):
-    """Choose an ADK model implementation with safe fallbacks.
-
-    ADK warns when using Gemini via LiteLLM; use native Gemini if available.
-    """
-    model_name = str(persona.model or "")
-    if model_name.startswith("gemini/"):
-        gemini_model = model_name.split("/", 1)[1]
-        # Try a few known ADK import locations for Gemini, then fall back to LiteLLM.
-        try:
-            from google.adk.models import Gemini  # type: ignore
-
-            return Gemini(model=gemini_model)
-        except Exception:
-            try:
-                from google.adk.models.gemini import Gemini  # type: ignore
-
-                return Gemini(model=gemini_model)
-            except Exception:
-                return LiteLlm(model=model_name)
-    return LiteLlm(model=model_name)
-
+    return SseConnectionParams(url=endpoint.url, headers=endpoint.headers or {})
 
 class Agent:
     """Agent is a flexible wrapper to build AI agents."""
@@ -372,15 +293,15 @@ class Agent:
         tools: list[Any] = []
         tool_names = _iter_persona_tool_names(getattr(persona, "tools", None))
 
-        endpoints = _load_mcp_endpoints()
+        endpoints = load_mcp_endpoints()
 
         # If an explicit URL is provided, attach it as a single toolset (no name resolution).
         if isinstance(mcp_url, str) and mcp_url:
-            ep = _McpEndpoint(url=mcp_url)
+            ep = McpEndpoint(url=mcp_url)
             if _endpoint_is_healthy(ep):
                 tools.append(
                     BestEffortMcpToolset(
-                        connection_params=_connection_params_for(ep),
+                        connection_params=connection_params_for(ep),
                         label=mcp_url,
                     )
                 )
@@ -403,13 +324,18 @@ class Agent:
                     continue
                 tools.append(
                     BestEffortMcpToolset(
-                        connection_params=_connection_params_for(endpoint),
+                        connection_params=connection_params_for(endpoint),
                         label=name,
                     )
                 )
 
+        if persona.model.startswith("google/"):
+            self.model = Gemini(model=persona.model)
+        else:
+            self.model = LiteLlm(model=persona.model)
+
         self.adk_agent = LlmAgent(
-            model=_make_adk_model(persona),
+            model=self.model,
             name=persona.name,
             description=persona.description,
             instruction=persona.instructions,
@@ -432,18 +358,19 @@ class Agent:
         self.session_id = session_id or str(uuid4())
         self.session_ready = False
 
-    def run(self, input: str) -> str:
+    def run(self, message: types.Content) -> str:
         """Run a single turn and return the final text output."""
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(self.run_async(input))
+            return asyncio.run(self.run_async(message))
+            
         raise RuntimeError("Agent.run() cannot be called from an active event loop; use `await Agent.run_async(...)`.")
 
-    async def run_async(self, input: str) -> str:
+    async def run_async(self, message: types.Content) -> str:
         """Async variant of `run()`."""
         text_chunks: list[str] = []
-        async for event in self.run_events_async(input):
+        async for event in self.run_events_async(message):
             ev_content = getattr(event, "content", None)
             parts = getattr(ev_content, "parts", None)
             if not parts:
@@ -455,16 +382,15 @@ class Agent:
 
         return "".join(text_chunks).strip()
 
-    async def run_events_async(self, input: str, *, run_config: Any | None = None):
+    async def run_events_async(self, message: types.Content):
         """Yield ADK runtime events for a single user turn."""
         await self._ensure_session()
-        content = types.Content(role="user", parts=[types.Part(text=str(input))])
         try:
             async for event in self.runner.run_async(
                 user_id=self.user_id,
                 session_id=self.session_id,
-                new_message=content,
-                run_config=run_config,
+                new_message=message,
+                run_config=RunConfig(streaming_mode=StreamingMode.SSE),
             ):
                 yield event
         except BaseExceptionGroup as eg:  # py>=3.11: unwrap TaskGroup failures
@@ -476,7 +402,7 @@ class Agent:
             # Improve the most common failure mode: MCP session creation errors are opaque.
             msg = str(e)
             if "Failed to create MCP session" in msg:
-                endpoints = _load_mcp_endpoints()
+                endpoints = load_mcp_endpoints()
                 tool_names = _iter_persona_tool_names(getattr(self.persona, "tools", None))
                 details = []
                 for name in tool_names:
@@ -495,51 +421,42 @@ class Agent:
                 ) from e
             raise
 
-    async def stream_text_async(
-        self,
-        input: str,
-        *,
-        streaming_mode: str | None = "sse",
-        temperature: float | None = None,
-        run_config: Any | None = None,
-    ):
-        """Yield model text incrementally as it's produced."""
-        if run_config is None:
-            if temperature is None:
-                temperature = float(getattr(self.persona, "temperature", 0.0))
-            run_config = _make_run_config(streaming_mode=streaming_mode, temperature=temperature)
-
-        async for event in self.run_events_async(input, run_config=run_config):
-            ev_content = getattr(event, "content", None)
-            parts = getattr(ev_content, "parts", None)
-            if not parts:
-                continue
-            for part in parts:
-                txt = getattr(part, "text", None)
-                if isinstance(txt, str) and txt:
-                    yield txt
+    # async def stream_text_async(
+    #     self,
+    # ):
+    #     """Yield model text incrementally (deltas only)."""
+    #     seen_text = ""
+    #     async for event in self.run_events_async(message):
+    #         ev_content = getattr(event, "content", None)
+    #         parts = getattr(ev_content, "parts", None)
+    #         if not parts:
+    #             continue
+    #         for part in parts:
+    #             txt = getattr(part, "text", None)
+    #             if isinstance(txt, str) and txt:
+    #                 # ADK may send cumulative text - extract delta
+    #                 if txt.startswith(seen_text):
+    #                     delta = txt[len(seen_text):]
+    #                     if delta:
+    #                         seen_text = txt
+    #                         yield delta
+    #                 elif not seen_text:
+    #                     seen_text = txt
+    #                     yield txt
 
     async def stream_chat_events_async(
         self,
-        input: str,
-        *,
-        streaming_mode: str | None = "sse",
-        temperature: float | None = None,
-        run_config: Any | None = None,
+        message: types.Content,
     ):
         """Yield a structured stream of text/tool events.
 
         Emits dicts like:
-        - {"type": "text", "text": "..."}
+        - {"type": "text", "text": "..."} (deltas only)
         - {"type": "tool_call", "name": "...", "args": {...}, "id": "..."}
         - {"type": "tool_result", "name": "...", "response": {...}, "id": "..."}
         """
-        if run_config is None:
-            if temperature is None:
-                temperature = float(getattr(self.persona, "temperature", 0.0))
-            run_config = _make_run_config(streaming_mode=streaming_mode, temperature=temperature)
-
-        async for event in self.run_events_async(input, run_config=run_config):
+        seen_text = ""
+        async for event in self.run_events_async(message):
             ev_content = getattr(event, "content", None)
             parts = getattr(ev_content, "parts", None)
             if not parts:
@@ -566,22 +483,39 @@ class Agent:
                         "response": getattr(fr, "response", None),
                     }
 
-                # Text
+                # Text - extract delta from cumulative ADK output
                 txt = getattr(part, "text", None)
                 if isinstance(txt, str) and txt:
-                    yield {"type": "text", "text": txt}
+                    if txt.startswith(seen_text):
+                        delta = txt[len(seen_text):]
+                        if delta:
+                            seen_text = txt
+                            yield {"type": "text", "text": delta}
+                    elif not seen_text:
+                        seen_text = txt
+                        yield {"type": "text", "text": txt}
 
-    async def _ensure_session(self) -> Session | None:
+    async def _ensure_session(self) -> Session:
         if self.session_ready:
-            return
-        await self.session_service.create_session(
+            session = await self.session_service.get_session(
+                app_name=self.app_name,
+                user_id=self.user_id,
+                session_id=self.session_id,
+            )
+
+            if session is None:
+                raise RuntimeError(f"Session {self.session_id} not found after session_ready=True")
+
+            return session
+
+        self.session = await self.session_service.create_session(
             app_name=self.app_name,
             user_id=self.user_id,
             session_id=self.session_id,
         )
+
+        if self.session is None:
+            raise RuntimeError(f"Failed to create session {self.session_id}")
+
         self.session_ready = True
-        return await self.session_service.get_session(
-            app_name=self.app_name,
-            user_id=self.user_id,
-            session_id=self.session_id,
-        )
+        return self.session

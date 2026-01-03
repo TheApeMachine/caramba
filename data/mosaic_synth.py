@@ -143,7 +143,7 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
                     reg_sel.append(-1)
 
         # Write phase: "SET k IS v" with long distractors.
-        for i, (k, v) in enumerate(zip(keys, vals)):
+        for i, (k, v) in enumerate(zip(keys, vals, strict=True)):
             b = self._bucket_for_key(k)
             bvec = [b] * int(self.mem_hashes)
             _append(self.T_SET, wg=0, wu=0, op=self.OP_NOP)
@@ -157,7 +157,7 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
                 _append(rng.randrange(self.min_tok, self.vocab_size), wg=0, wu=0, op=self.OP_NOP)
 
         # Query phase: "GET k ? IS v"
-        for k, v in zip(keys, vals):
+        for k, v in zip(keys, vals, strict=True):
             b = self._bucket_for_key(k)
             bvec = [b] * int(self.mem_hashes)
             # Force reliance on memory/state throughout the query prefix.
@@ -175,7 +175,7 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         # Sleep/replay phase: lock external input (PAD), read memory, predict stored values.
         # Pattern: [PAD] -> target is v, with teacher read_bucket set on PAD positions.
         if int(self.sleep_replay_per_pair) > 0:
-            for k, v in zip(keys, vals):
+            for k, v in zip(keys, vals, strict=True):
                 b = self._bucket_for_key(k)
                 bvec = [b] * int(self.mem_hashes)
                 for _ in range(int(self.sleep_replay_per_pair)):

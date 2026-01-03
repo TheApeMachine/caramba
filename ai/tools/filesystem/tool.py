@@ -21,13 +21,19 @@ mcp = FastMCP("Filesystem Tool", json_response=True)
 @mcp.tool()
 def list_directory(path: str) -> list[str]:
     """List the contents of a directory"""
-    return os.listdir(path)
+    try:
+        return os.listdir(path)
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+        return []
 
 @mcp.tool()
 def read_file(path: str) -> str:
     """Read the contents of a file"""
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except (UnicodeDecodeError, PermissionError, OSError):
+        return ""
 
 @mcp.tool()
 def search_text(path: str, text: str) -> list[str]:
@@ -40,8 +46,13 @@ def search_text(path: str, text: str) -> list[str]:
         for file in files:
             file_path = os.path.join(root, file)
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    if text in f.read():
+                with open(file_path, encoding="utf-8") as f:
+                    found = False
+                    for line in f:
+                        if text in line:
+                            found = True
+                            break
+                    if found:
                         results.append(file_path)
             except (UnicodeDecodeError, PermissionError, OSError):
                 # Skip binary files or files we can't read

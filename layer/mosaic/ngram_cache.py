@@ -13,12 +13,16 @@ Important:
 from __future__ import annotations
 
 from array import array
+from collections.abc import Iterable
 from dataclasses import dataclass
+import logging
 import math
-from typing import Any, Iterable
+from typing import Any
 
 import torch
 from torch import Tensor, nn
+
+logger = logging.getLogger(__name__)
 
 from caramba.config.layer import MosaicNGramCacheLogitsLayerConfig
 
@@ -56,7 +60,8 @@ def _set_ngram_state(ctx: object | None, key: str, st: _NGramState) -> None:
         store = {}
         try:
             setattr(ctx, "_mosaic", store)
-        except Exception:
+        except (AttributeError, TypeError) as e:
+            logger.debug(f"Failed to set _mosaic attribute on ctx: {e}", exc_info=True)
             return
     if isinstance(store, dict):
         store[key] = st
@@ -192,6 +197,7 @@ class MosaicNGramCacheLogitsLayer(nn.Module):
             return logits
 
         out = logits
+        out_cloned = False
         for t in range(int(T)):
             tok = int(input_ids[0, t].item())
 
@@ -217,7 +223,9 @@ class MosaicNGramCacheLogitsLayer(nn.Module):
                                     idxs.append(tok_id)
                                     vals.append(math.log(p) * float(self.weight))
                             if idxs:
-                                out = out.clone()
+                                if not out_cloned:
+                                    out = out.clone()
+                                    out_cloned = True
                                 row = out[0, t, :]
                                 row.index_add_(
                                     0,

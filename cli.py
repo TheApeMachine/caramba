@@ -4,7 +4,6 @@ The CLI is intentionally minimal: one entrypoint that runs a manifest.
 """
 from __future__ import annotations
 
-import os
 import click
 from pathlib import Path
 from caramba.console import logger
@@ -83,7 +82,7 @@ def run(ctx: click.Context, manifest_path: Path, target: str | None, dry_run: bo
             logger.inspect(result)
     except Exception as e:
         logger.error(f"Error: {e}")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @cli.command("serve")
@@ -166,7 +165,7 @@ def codegraph_sync_cmd(
             logger.error(f"codegraph-sync failed: {result.get('error')}")
     except Exception as e:
         logger.error(f"Error: {e}")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 def main(argv: list[str] | None = None) -> int:

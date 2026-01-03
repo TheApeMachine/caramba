@@ -256,8 +256,6 @@ class StandardTrainer:
             ),
         )
 
-        from caramba.trainer.swap_manager import SwapManager
-
         swap = SwapManager(
             offload_optimizer=bool(getattr(train, "offload_optimizer", False)),
             offload_device="cpu",
@@ -304,7 +302,8 @@ class StandardTrainer:
                     if idx not in self.shapes:
                         self.shapes[idx] = [int(x) for x in list(z.shape)]
                 except Exception as e:
-                    raise RuntimeError("Failed to observe layer stats") from e
+                    import traceback
+                    logger.warning(f"Failed to observe layer stats: {e}\n{traceback.format_exc()}")
 
             def finalize(self) -> list[dict[str, object]]:
                 out: list[dict[str, object]] = []
@@ -360,16 +359,16 @@ class StandardTrainer:
                     if isinstance(mod, AttentionLayer):
                         # Give the module a stable viz id/name so it can emit per-layer samples.
                         try:
-                            setattr(mod, "_viz_index", int(len(attn_modules)))
-                            setattr(mod, "_viz_name", str(name))
+                            setattr(mod, "_viz_index", int(len(attn_modules)))  # type: ignore[arg-type]
+                            setattr(mod, "_viz_name", str(name))  # type: ignore[arg-type]
                         except Exception as e:
                             raise RuntimeError(f"Failed to set attributes on attention layer {name!r}: {e}") from e
 
                         attn_modules.append((len(attn_modules), str(name), mod))
                     if isinstance(mod, MosaicBlockLayer):
                         try:
-                            setattr(mod, "_mosaic_index", int(len(mosaic_modules)))
-                            setattr(mod, "_mosaic_name", str(name))
+                            setattr(mod, "_mosaic_index", int(len(mosaic_modules)))  # type: ignore[arg-type]
+                            setattr(mod, "_mosaic_name", str(name))  # type: ignore[arg-type]
                         except Exception as e:
                             raise RuntimeError(f"Failed to set attributes on mosaic layer {name!r}: {e}") from e
 
@@ -721,8 +720,8 @@ class StandardTrainer:
                     for _micro in range(int(accum_steps)):
                         try:
                             item = next(loader_iter)
-                        except StopIteration:
-                            raise RuntimeError("Reached end of loader, resetting")
+                        except StopIteration as err:
+                            raise RuntimeError("Reached end of loader, resetting") from err
 
                         if isinstance(item, TensorDictBase):
                             batch_td = item
@@ -936,7 +935,7 @@ class StandardTrainer:
                                         metrics[str(k)] = float(v)
                                 metrics["mosaic_teacher_p"] = float(getattr(viz_ctx, "mosaic_teacher_p", 1.0))
 
-                                def _avg(suffix: str) -> float | None:
+                                def _avg(viz_ctx: Any, suffix: str) -> float | None:
                                     vals = [
                                         float(v)
                                         for kk, v in viz_ctx.mosaic_mem_stats.items()
@@ -970,15 +969,15 @@ class StandardTrainer:
                                     ("/fuse_gate_mem_mean", "fuse_mem"),
                                     ("/rms_mem_contrib", "mem_contrib"),
                                 ]:
-                                    av = _avg(suf)
+                                    av = _avg(viz_ctx, suf)
                                     if av is not None:
                                         summary[key] = av
                                 logger.key_value(summary, title="MOSAIC memory stats (avg across layers)")
 
                                 # Table 2 required namespaces (stable keys).
-                                rg = _avg("/fuse_gate_mem_mean")
-                                wg = _avg("/write_gate_p_mean")
-                                re = _avg("/write_bucket_entropy_norm")
+                                rg = _avg(viz_ctx, "/fuse_gate_mem_mean")
+                                wg = _avg(viz_ctx, "/write_gate_p_mean")
+                                re = _avg(viz_ctx, "/write_bucket_entropy_norm")
                                 if rg is not None:
                                     metrics["mem/read_gate"] = float(rg)
                                 if wg is not None:

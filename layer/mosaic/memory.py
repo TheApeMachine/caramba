@@ -307,9 +307,7 @@ class MosaicMemory(nn.Module):
             w = torch.where(any_valid, w, torch.zeros_like(w))
 
             read_h = (w.unsqueeze(-1) * bv).sum(dim=3)  # (B,H,C,mem_dim)
-            r_c = self.mem_out(read_h.sum(dim=1).permute(0, 1, 2).reshape(B * C, mem_dim)).view(B, C, D)
-            # Wait, original summed dim 1 (H). read_h is (B, H, C, mem_dim)
-            # read_h.sum(dim=1) -> (B, C, mem_dim)
+            # read_h is (B, H, C, mem_dim), sum over H -> (B, C, mem_dim)
             r_c = self.mem_out(read_h.sum(dim=1))
 
         else:
@@ -435,11 +433,9 @@ class MosaicMemory(nn.Module):
                 ml = st.mem_last[:, h, :, :]
 
                 idxk = bidx.unsqueeze(-1).unsqueeze(-1).expand(B, C, A, key_dim)
-                idxv = bidx.unsqueeze(-1).unsqueeze(-1).expand(B, C, A, mem_dim)
                 idxl = bidx.unsqueeze(-1).expand(B, C, A)
 
                 bk_w = mk.gather(dim=1, index=idxk)
-                bv_w = mv.gather(dim=1, index=idxv)
                 bl_w = ml.gather(dim=1, index=idxl)
 
                 valid_w = bl_w >= 0

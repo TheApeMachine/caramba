@@ -132,4 +132,3 @@ targets:
 
 entrypoints:
   default: mosaic_event_train
-
