@@ -1,10 +1,8 @@
 FROM python:3.12-slim-bookworm
 
-# Pin package versions for reproducibility
-# Versions from Debian bookworm snapshot (2024-01-01)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl=7.88.1-10+deb12u6 \
-    ca-certificates=20230311 \
+    curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for Python package management
@@ -20,11 +18,14 @@ RUN set -eux; \
     sh "$INSTALLER"; \
     rm "$INSTALLER"
 
+# Make uv available for subsequent build steps.
+RUN mv /root/.local/bin/uv /usr/local/bin/uv
+
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -m -d /home/appuser -s /bin/bash appuser
 
 # Add uv to PATH (for appuser)
-ENV PATH="/home/appuser/.local/bin:${PATH}"
+ENV PATH="/usr/local/bin:${PATH}"
 
 # Configure uv for optimal Docker usage
 ENV UV_COMPILE_BYTECODE=1 \

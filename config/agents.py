@@ -246,6 +246,19 @@ class MultiplexChatProcessConfig(BaseModel):
     show_reasoning: bool = False
     show_output: bool = True
 
+    # Display name for the human user in the transcript.
+    user_name: str = "user"
+
+    # Transcript and prompt budgeting (manifest-driven; no environment variables).
+    transcript_path: str = "artifacts/ai/brainstorm.jsonl"
+    max_context_items: int = Field(default=40, ge=1)
+    # Transcript budgeting shared across all providers in the multiplex chat.
+    # Keep this below the smallest provider context window and leave headroom for
+    # system prompts + tool schemas + tool results.
+    max_context_tokens: int = Field(default=128000, ge=1024)
+    max_event_tokens: int = Field(default=8192, ge=256)
+    compact_after_bytes: int = Field(default=2_000_000, ge=1024)
+
     @model_validator(mode="after")
     def _default_name(self) -> "MultiplexChatProcessConfig":
         if not self.name:

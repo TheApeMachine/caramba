@@ -216,7 +216,6 @@ if __name__ == "__main__":
     def health(_request: Request) -> Response:
         return JSONResponse({"status": "ok"})
 
-    # `mcp.sse_app()` is typed as a Starlette app; Starlette doesn't expose `.get`.
     app.add_route("/", root, methods=["GET"])
     app.add_route("/health", health, methods=["GET"])
 
