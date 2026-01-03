@@ -299,14 +299,20 @@ class Brainstorm(Process):
             return {"type": "array", "len": len(resp), "preview": self._compact_json(resp[:5], max_chars=700)}
         return {"type": type(resp).__name__, "preview": self._compact_json(resp, max_chars=700)}
 
-    def _live_view(self, *, answer_md: str, tool_md: str) -> Group:
-        """Combine answer + tool activity into one Live renderable."""
-        tool_section = tool_md.strip() or "_(no tool activity)_"
-        return Group(
-            Markdown(answer_md or ""),
-            Rule(title="[muted]Tool activity[/muted]", style="muted"),
-            Markdown(tool_section),
-        )
+    def _live_view(self, *, answer_md: str, tool_calls: list[str]) -> Group:
+        """Combine answer + tool call indicators into one Live renderable.
+        
+        Only shows tool call names (not results) to keep output clean.
+        """
+        if tool_calls:
+            tool_section = "\n".join(tool_calls)
+            return Group(
+                Rule(title="[muted]Tools[/muted]", style="muted"),
+                Markdown(tool_section),
+                Rule(style="muted"),
+                Markdown(answer_md or ""),
+            )
+        return Group(Markdown(answer_md or ""))
 
     def _compose_agent_prompt(self, user_input: str) -> str:
         """Compose a prompt that forces shared context across agents.
@@ -410,9 +416,14 @@ class Brainstorm(Process):
             self.logger.error(f"Agent not found: {user_input}")
             return
 
-        # Add a little space between participants.
+        # Clear visual separator between agents
         self.logger.console.print()
-        self.logger.subheader(agent.persona.name)
+        self.logger.console.print(
+            Rule(
+                title=f"[highlight]◆ {agent.persona.name} ◆[/highlight]",
+                style="highlight",
+            )
+        )
 
         prompt = self._compose_agent_prompt(user_input)
         # Per-response creativity: randomize temperature in [0, 1).
@@ -421,13 +432,14 @@ class Brainstorm(Process):
 
         streamed = ""
         saw_tool_event = False
-        tool_events: list[str] = []
-        max_tool_events = 12
+        # Track tool call names only (for display)
+        tool_call_names: list[str] = []
+        max_tool_display = 8
         # Stream markdown by continuously re-rendering the current buffer.
         # Some upstream libraries emit noisy stderr lines; capture and filter them.
         err_buf = io.StringIO()
         with contextlib.redirect_stderr(err_buf):
-            with Live(self._live_view(answer_md="", tool_md=""), console=self.logger.console, refresh_per_second=12) as live:
+            with Live(self._live_view(answer_md="", tool_calls=[]), console=self.logger.console, refresh_per_second=12) as live:
                 # Make generator shutdown explicit to avoid:
                 # - RuntimeError: aclose(): asynchronous generator is already running
                 # - anyio cancel scope exit mismatches from generator finalizers
@@ -444,11 +456,12 @@ class Brainstorm(Process):
                             if et == "text":
                                 chunk = ev.get("text") or ""
                                 if chunk:
-                                    streamed += str(chunk)
+                                    # ADK sends full text so far, not deltas
+                                    streamed = str(chunk)
                                     live.update(
                                         self._live_view(
                                             answer_md=streamed,
-                                            tool_md="\n".join(tool_events[-max_tool_events:]),
+                                            tool_calls=tool_call_names[-max_tool_display:],
                                         )
                                     )
                             elif et == "tool_call":
@@ -460,20 +473,12 @@ class Brainstorm(Process):
                                     author=agent.persona.name,
                                     content={"name": name, "args": args, "id": ev.get("id")},
                                 )
-                                tool_events.append(
-                                    "\n".join(
-                                        [
-                                            f"- **call** `{name}`",
-                                            "```json",
-                                            self._compact_json(args, max_chars=900),
-                                            "```",
-                                        ]
-                                    )
-                                )
+                                # Only show tool name in console (not args or results)
+                                tool_call_names.append(f"• `{name}`")
                                 live.update(
                                     self._live_view(
                                         answer_md=streamed,
-                                        tool_md="\n".join(tool_events[-max_tool_events:]),
+                                        tool_calls=tool_call_names[-max_tool_display:],
                                     )
                                 )
                             elif et == "tool_result":
@@ -487,22 +492,7 @@ class Brainstorm(Process):
                                     # Keep the shared transcript compact (summary only).
                                     content={"name": name, "summary": summary, "id": ev.get("id")},
                                 )
-                                tool_events.append(
-                                    "\n".join(
-                                        [
-                                            f"- **result** `{name}`",
-                                            "```json",
-                                            self._compact_json(summary, max_chars=900),
-                                            "```",
-                                        ]
-                                    )
-                                )
-                                live.update(
-                                    self._live_view(
-                                        answer_md=streamed,
-                                        tool_md="\n".join(tool_events[-max_tool_events:]),
-                                    )
-                                )
+                                # Don't add tool results to console display
                 except asyncio.CancelledError:
                     # Treat cancellation (Ctrl-C / task cancellation) as a clean exit.
                     return
@@ -538,7 +528,7 @@ class Brainstorm(Process):
                       "explicitly using any tool results already in the transcript."
                 )
                 with Live(
-                    self._live_view(answer_md="", tool_md="\n".join(tool_events[-max_tool_events:])),
+                    self._live_view(answer_md="", tool_calls=tool_call_names[-max_tool_display:]),
                     console=self.logger.console,
                     refresh_per_second=12,
                 ) as live:
@@ -552,11 +542,12 @@ class Brainstorm(Process):
                         ) as stream2:
                             async for chunk in stream2:
                                 if chunk:
-                                    response += str(chunk)
+                                    # ADK sends full text so far, not deltas
+                                    response = str(chunk)
                                     live.update(
                                         self._live_view(
                                             answer_md=response,
-                                            tool_md="\n".join(tool_events[-max_tool_events:]),
+                                            tool_calls=tool_call_names[-max_tool_display:],
                                         )
                                     )
                     except asyncio.CancelledError:

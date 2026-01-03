@@ -39,6 +39,7 @@ class _EventTraceBuilder:
         self.read_bucket: list[list[int]] = []
         self.write_bucket: list[list[int]] = []
         self.drop_local: list[int] = []
+        self.commitment_delta: list[int] = []
         self.reg_write_gate: list[int] = []
         self.reg_sel: list[int] = []
 
@@ -52,12 +53,16 @@ class _EventTraceBuilder:
         rb: list[int] | None = None,
         wb: list[int] | None = None,
         dl: int = 0,
+        cd: int = -100,
         rg: int = 0,
         rs: int = -1,
     ) -> None:
         t = int(tok)
         if t < 0 or t > 255:
             raise ValueError(f"Event token must be a byte in [0, 255], got {t}")
+        cd_i = int(cd)
+        if cd_i not in (-100, -1, 0, 1):
+            raise ValueError(f"commitment_delta teacher must be in {{-100,-1,0,1}}, got {cd_i}")
         self.tokens.append(t)
         self.opcodes.append(int(op))
         self.write_gate.append(int(wg))
@@ -65,6 +70,7 @@ class _EventTraceBuilder:
         self.read_bucket.append(([-1] * self.mem_hashes) if rb is None else [int(x) for x in rb])
         self.write_bucket.append(([-1] * self.mem_hashes) if wb is None else [int(x) for x in wb])
         self.drop_local.append(int(dl))
+        self.commitment_delta.append(cd_i)
         if self.reg_slots > 0:
             self.reg_write_gate.append(int(rg))
             if int(rg) > 0:
@@ -94,6 +100,26 @@ class _EventTraceBuilder:
             raise ValueError("Field span mismatch when locating integer literal")
         return start, end
 
+    @staticmethod
+    def _span_for_str_field(s: str, *, field: str, value: str) -> tuple[int, int]:
+        if not isinstance(field, str) or not field.strip():
+            raise ValueError("field must be a non-empty string")
+        if not isinstance(value, str):
+            raise TypeError(f"value must be a string, got {type(value).__name__}")
+        if value == "":
+            raise ValueError("value must be non-empty for deterministic span location")
+        if any(c in value for c in ('"', "\\", "\n", "\r", "\t")):
+            raise ValueError("String span value contains characters that break deterministic JSON matching")
+        needle = f"\"{field}\":\"{value}\""
+        pos = s.find(needle)
+        if pos < 0:
+            raise ValueError(f"Failed to locate field {field!r} in JSON")
+        start = pos + len(f"\"{field}\":\"")
+        end = start + len(value)
+        if s[start:end] != value:
+            raise ValueError("Field span mismatch when locating string literal")
+        return start, end
+
     def append_event(
         self,
         env: EventEnvelope,
@@ -107,6 +133,8 @@ class _EventTraceBuilder:
         write_bucket: int | None = None,
         read_bucket: int | None = None,
         drop_local: int = 0,
+        commitment_span: tuple[int, int] | None = None,
+        commitment_delta: int = 0,
         delimiter: int = 10,  # '\n'
     ) -> None:
         b = self._json_bytes(env)
@@ -115,6 +143,7 @@ class _EventTraceBuilder:
         op_s, op_e = opcode_span if opcode_span is not None else (0, 0)
         wg_s, wg_e = write_gate_span if write_gate_span is not None else (0, 0)
         rg_s, rg_e = reg_write_gate_span if reg_write_gate_span is not None else (0, 0)
+        cd_s, cd_e = commitment_span if commitment_span is not None else (0, 0)
 
         if opcode_span is not None and not (0 <= op_s <= op_e <= len(b)):
             raise ValueError("opcode_span out of range")
@@ -122,6 +151,12 @@ class _EventTraceBuilder:
             raise ValueError("write_gate_span out of range")
         if reg_write_gate_span is not None and not (0 <= rg_s <= rg_e <= len(b)):
             raise ValueError("reg_write_gate_span out of range")
+        if commitment_span is not None and not (0 <= cd_s <= cd_e <= len(b)):
+            raise ValueError("commitment_span out of range")
+        if commitment_span is not None:
+            cd_i = int(commitment_delta)
+            if cd_i not in (-1, 0, 1):
+                raise ValueError(f"commitment_delta must be in {{-1,0,1}} when commitment_span is provided, got {cd_i}")
         if reg_write_gate_span is not None:
             if int(self.reg_slots) <= 0:
                 raise ValueError("reg_write_gate_span provided but reg_slots == 0")
@@ -137,6 +172,7 @@ class _EventTraceBuilder:
             wu = wg
             wb = wb_vec if (write_gate_span is not None and wg_s <= i < wg_e) else None
             rb = rb_vec if (opcode_span is not None and op_s <= i < op_e and rb_vec is not None) else None
+            cd = int(commitment_delta) if (commitment_span is not None and cd_s <= i < cd_e) else -100
             rg = 1 if (reg_write_gate_span is not None and rg_s <= i < rg_e) else 0
             if rg > 0:
                 if reg_slot is None:
@@ -144,10 +180,10 @@ class _EventTraceBuilder:
                 rs = int(reg_slot)
             else:
                 rs = -1
-            self._append_token(bt, op=op, wg=wg, wu=wu, rb=rb, wb=wb, dl=int(drop_local), rg=rg, rs=rs)
+            self._append_token(bt, op=op, wg=wg, wu=wu, rb=rb, wb=wb, dl=int(drop_local), cd=cd, rg=rg, rs=rs)
 
         # Add delimiter with no supervision.
-        self._append_token(int(delimiter), op=int(MosaicOpcode.NOP), wg=0, wu=0, rb=None, wb=None, dl=0)
+        self._append_token(int(delimiter), op=int(MosaicOpcode.NOP), wg=0, wu=0, rb=None, wb=None, dl=0, cd=-100)
 
 
 class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
@@ -161,6 +197,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
         mem_hashes: int,
         n_pairs: int,
         distractor_events: int,
+        negotiation_pairs: int = 0,
         seed: int,
         reg_slots: int = 0,
         sleep_replay_per_pair: int = 0,
@@ -172,6 +209,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
         self.mem_hashes = int(mem_hashes)
         self.n_pairs = int(n_pairs)
         self.distractor_events = int(distractor_events)
+        self.negotiation_pairs = int(negotiation_pairs)
         self.seed = int(seed)
         self.reg_slots = int(reg_slots)
         self.sleep_replay_per_pair = int(sleep_replay_per_pair)
@@ -190,6 +228,8 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
             raise ValueError(f"n_pairs must be >= 1, got {self.n_pairs}")
         if self.distractor_events < 0:
             raise ValueError(f"distractor_events must be >= 0, got {self.distractor_events}")
+        if self.negotiation_pairs < 0:
+            raise ValueError(f"negotiation_pairs must be >= 0, got {self.negotiation_pairs}")
         if self.reg_slots < 0:
             raise ValueError(f"reg_slots must be >= 0, got {self.reg_slots}")
         if self.sleep_replay_per_pair < 0:
@@ -262,6 +302,56 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
                     ts=ts0 + 0.1 + float(j) * 0.001 + float(dj) * 1e-6,
                 )
                 b.append_event(env_d)
+
+        # Negotiation phase (Phase 2): commitment open/neutral/close cycles.
+        if int(self.negotiation_pairs) > 0:
+            for j in range(int(self.negotiation_pairs)):
+                cid = f"{idx:08x}c{j:02x}"
+
+                txt_open = "I will look for that file"
+                env_open = EventEnvelope(
+                    type="Message",
+                    sender="agent",
+                    payload={"text": txt_open},
+                    priority=0,
+                    commitment_delta=+1,
+                    commitment_id=cid,
+                    id=f"{idx:08x}{j:02x}co",
+                    ts=ts0 + 0.5 + float(j) * 0.001,
+                )
+                js_open = json.dumps(env_open.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+                span_open = b._span_for_str_field(js_open, field="text", value=txt_open)
+                b.append_event(env_open, commitment_span=span_open, commitment_delta=+1)
+
+                txt_work = "Working on it"
+                env_work = EventEnvelope(
+                    type="Message",
+                    sender="agent",
+                    payload={"text": txt_work},
+                    priority=0,
+                    commitment_delta=0,
+                    commitment_id=cid,
+                    id=f"{idx:08x}{j:02x}cw",
+                    ts=ts0 + 0.6 + float(j) * 0.001,
+                )
+                js_work = json.dumps(env_work.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+                span_work = b._span_for_str_field(js_work, field="text", value=txt_work)
+                b.append_event(env_work, commitment_span=span_work, commitment_delta=0)
+
+                txt_close = "Here is the content"
+                env_close = EventEnvelope(
+                    type="Message",
+                    sender="agent",
+                    payload={"text": txt_close},
+                    priority=0,
+                    commitment_delta=-1,
+                    commitment_id=cid,
+                    id=f"{idx:08x}{j:02x}cc",
+                    ts=ts0 + 0.7 + float(j) * 0.001,
+                )
+                js_close = json.dumps(env_close.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+                span_close = b._span_for_str_field(js_close, field="text", value=txt_close)
+                b.append_event(env_close, commitment_span=span_close, commitment_delta=-1)
 
         # Query phase.
         for j, (k, v) in enumerate(zip(keys, vals)):
@@ -339,6 +429,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
             b.read_bucket = b.read_bucket[:need]
             b.write_bucket = b.write_bucket[:need]
             b.drop_local = b.drop_local[:need]
+            b.commitment_delta = b.commitment_delta[:need]
             if int(self.reg_slots) > 0:
                 b.reg_write_gate = b.reg_write_gate[:need]
                 b.reg_sel = b.reg_sel[:need]
@@ -352,6 +443,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
         wb = torch.tensor(b.write_bucket[:-1], dtype=torch.long)
         dl = torch.tensor(b.drop_local[:-1], dtype=torch.float32)
         op = torch.tensor(b.opcodes[:-1], dtype=torch.long)
+        cd = torch.tensor(b.commitment_delta[:-1], dtype=torch.long)
 
         out = {
             "input_ids": x,
@@ -362,6 +454,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
             "mosaic_teacher_write_bucket": wb,
             "mosaic_drop_local": dl,
             "mosaic_teacher_opcode": op,
+            "mosaic_teacher_commitment_delta": cd,
         }
         if int(self.reg_slots) > 0:
             out["mosaic_teacher_reg_write_gate"] = torch.tensor(b.reg_write_gate[:-1], dtype=torch.float32)
@@ -379,6 +472,7 @@ class MosaicEventTraceDataset:
     mem_hashes: int = 2
     n_pairs: int = 2
     distractor_events: int = 8
+    negotiation_pairs: int = 0
     n_items: int = 100_000
     seed: int = 1337
     reg_slots: int = 0
@@ -393,6 +487,7 @@ class MosaicEventTraceDataset:
             mem_hashes=int(self.mem_hashes),
             n_pairs=int(self.n_pairs),
             distractor_events=int(self.distractor_events),
+            negotiation_pairs=int(self.negotiation_pairs),
             seed=int(self.seed),
             reg_slots=int(self.reg_slots),
             sleep_replay_per_pair=int(self.sleep_replay_per_pair),

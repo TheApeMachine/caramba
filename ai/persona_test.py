@@ -32,11 +32,12 @@ class TestPersona(unittest.TestCase):
                             "properties": {
                                 "temp_id": {
                                     "type": "string",
-                                    "description": "Temporary identifier for referencing this entity (can be any string like 'entity1', 'concept_a', etc.)"
+                                    "description": "Descriptive identifier for referencing this entity (e.g., 'concept_kv_cache', 'decision_use_rotary')"
                                 },
                                 "type": {
                                     "type": "string",
-                                    "description": "Type of entity: Concept, Person, Decision, Fact, or Insight"
+                                    "enum": ["Concept", "Person", "Decision", "Fact", "Insight"],
+                                    "description": "Type of entity"
                                 },
                                 "name": {
                                     "type": "string",
@@ -44,7 +45,7 @@ class TestPersona(unittest.TestCase):
                                 },
                                 "description": {
                                     "type": "string",
-                                    "description": "Detailed description of the entity"
+                                    "description": "Detailed description sufficient for someone unfamiliar with the conversation"
                                 }
                             },
                             "required": [
@@ -62,19 +63,20 @@ class TestPersona(unittest.TestCase):
                             "properties": {
                                 "source": {
                                     "type": "string",
-                                    "description": "Temporary ID of the source entity (must match temp_id from entities list)"
+                                    "description": "temp_id of the source entity"
                                 },
                                 "target": {
                                     "type": "string",
-                                    "description": "Temporary ID of the target entity (must match temp_id from entities list)"
+                                    "description": "temp_id of the target entity"
                                 },
                                 "type": {
                                     "type": "string",
-                                    "description": "Type of relationship: RELATES_TO, DEPENDS_ON, LEADS_TO, or SIMILAR_TO"
+                                    "enum": ["RELATES_TO", "DEPENDS_ON", "LEADS_TO", "CONTRADICTS", "REFINES", "SUPPORTS"],
+                                    "description": "Type of relationship"
                                 },
                                 "description": {
                                     "type": "string",
-                                    "description": "Description of the relationship"
+                                    "description": "Explanation of why this relationship exists"
                                 }
                             },
                             "required": [
@@ -92,11 +94,15 @@ class TestPersona(unittest.TestCase):
                             "properties": {
                                 "content": {
                                     "type": "string",
-                                    "description": "The factual content"
+                                    "description": "The factual statement"
                                 },
                                 "context": {
                                     "type": "string",
-                                    "description": "Context in which this fact was mentioned"
+                                    "description": "Context sufficient to understand the fact independently"
+                                },
+                                "source": {
+                                    "type": "string",
+                                    "description": "Who stated this, if attributed"
                                 }
                             },
                             "required": [

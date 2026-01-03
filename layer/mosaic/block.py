@@ -130,6 +130,12 @@ class MosaicBlockLayer(nn.Module):
                     f"(to include NOP/READ/WRITE), got {self.opcode_vocab}"
                 )
 
+        # Commitment head (Phase 2): predicts {-1, 0, +1} commitment deltas.
+        self.commitment_head_enabled = bool(getattr(config, "commitment_head_enabled", False))
+        self.commitment_head: nn.Linear | None = None
+        if self.commitment_head_enabled:
+            self.commitment_head = nn.Linear(d, 3, bias=True)  # [close, neutral, open]
+
         # Fusion gates
         self.gate_long = nn.Linear(d, 1, bias=True)
         self.gate_mem = nn.Linear(d, 1, bias=True)
@@ -264,6 +270,8 @@ class MosaicBlockLayer(nn.Module):
                 if temp <= 0.0:
                     raise ValueError(f"opcodes_control_temp must be > 0, got {temp}")
                 opcode_probs = torch.softmax((opcode_logits.float() / float(temp)), dim=-1).to(dtype=u.dtype)
+        if bool(collect_aux) and self.commitment_head is not None:
+            outputs["commitment_logits"] = self.commitment_head(u)
         if bool(collect_aux):
             # Keep learned decays within a healthy band to prevent early saturation.
             # (Proposed in meeting notes: keep decay rates in [0.001, 0.999].)
@@ -282,6 +290,10 @@ class MosaicBlockLayer(nn.Module):
 
         y = x + delta
 
+        # Optional MOSAIC scalar telemetry (cheap, for logging).
+        if stats_enabled:
+            self._save_mem_stats(ctx, outputs=outputs, routing=routing, u=u)
+
         # Save state
         set_state(ctx, self._ctx_key, st)
 
@@ -290,6 +302,50 @@ class MosaicBlockLayer(nn.Module):
             self._save_aux_outputs(ctx, outputs, st, routing)
 
         return y
+
+    def _save_mem_stats(self, ctx: Any, *, outputs: dict[str, Any], routing: dict[str, Any], u: Tensor) -> None:
+        if ctx is None:
+            raise RuntimeError("_save_mem_stats called with ctx=None")
+        stats = getattr(ctx, "mosaic_mem_stats", None)
+        if not isinstance(stats, dict):
+            raise TypeError(f"ctx.mosaic_mem_stats must be a dict, got {type(stats).__name__}")
+
+        prefix = str(self._ctx_key)
+
+        # Write gate utilization (mean prob).
+        gl = outputs.get("gate_logits")
+        if isinstance(gl, Tensor) and gl.ndim == 2:
+            p = torch.sigmoid(gl.detach().float()).mean()
+            stats[f"{prefix}/write_gate_p_mean"] = float(p.item())
+
+        # Read gate utilization (mean fusion gate for memory contribution).
+        gm = torch.sigmoid(self.gate_mem(u).detach().float()).mean()
+        stats[f"{prefix}/fuse_gate_mem_mean"] = float(gm.item())
+
+        # Routing entropy (collapse indicator): entropy of idx_w distribution, normalized by log(mem_buckets).
+        idx_w = routing.get("idx_w")
+        if isinstance(idx_w, Tensor):
+            if idx_w.ndim == 2:
+                idx_w = idx_w.unsqueeze(-1)
+            if idx_w.ndim != 3:
+                raise ValueError(f"routing['idx_w'] must have shape (B,T,H), got {tuple(idx_w.shape)}")
+            H = int(idx_w.size(-1))
+            denom = math.log(float(self.memory.mem_buckets))
+            if denom <= 0.0:
+                raise ValueError("mem_buckets must be > 1 for entropy normalization")
+            ents: list[float] = []
+            for h in range(H):
+                flat = idx_w[:, :, h].detach().to(dtype=torch.int64).reshape(-1).cpu()
+                counts = torch.bincount(flat, minlength=int(self.memory.mem_buckets)).to(dtype=torch.float32)
+                total = float(counts.sum().item())
+                if total <= 0.0:
+                    continue
+                p = counts / float(total)
+                m = p > 0
+                ent = -float((p[m] * torch.log(p[m])).sum().item())
+                ents.append(ent / float(denom))
+            if ents:
+                stats[f"{prefix}/write_bucket_entropy_norm"] = float(sum(ents) / float(len(ents)))
 
     def _apply_forced_read_dropout(self, local: Tensor, ctx: Any, B: int, T: int, device: Any, dtype: Any):
         drop_p = float(getattr(self.config, "forced_read_dropout_p", 0.0))
@@ -574,6 +630,8 @@ class MosaicBlockLayer(nn.Module):
 
          if "opcode_logits" in outputs:
              aux["mosaic_opcode_logits"] = outputs["opcode_logits"]
+         if "commitment_logits" in outputs:
+             aux["mosaic_commitment_logits"] = outputs["commitment_logits"]
          if "state_decay_reg_loss" in outputs:
              aux["mosaic_state_decay_reg_loss"] = outputs["state_decay_reg_loss"]
 

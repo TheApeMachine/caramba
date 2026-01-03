@@ -25,6 +25,8 @@ class EventEnvelope:
     Optional fields (v0):
     - priority: higher is more urgent (default 0)
     - budget_ms: optional compute/latency budget for handling this event
+    - commitment_delta: commitment lifecycle signal (-1 close, 0 neutral, +1 open)
+    - commitment_id: optional id linking open/close pairs
     - id: unique event id (generated if absent)
     - ts: unix timestamp seconds (generated if absent)
     """
@@ -34,10 +36,16 @@ class EventEnvelope:
     sender: str
     priority: int = 0
     budget_ms: int | None = None
+    # Phase 2: commitment tracking
+    commitment_delta: int = 0  # -1 close, 0 neutral, +1 open
+    commitment_id: str | None = None
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     ts: float = field(default_factory=time.time)
 
     def to_json_dict(self) -> dict[str, Any]:
+        cd = int(self.commitment_delta)
+        if cd not in (-1, 0, 1):
+            raise ValueError(f"EventEnvelope.commitment_delta must be in {{-1, 0, 1}}, got {cd}")
         d: dict[str, Any] = {
             "id": str(self.id),
             "ts": float(self.ts),
@@ -45,9 +53,15 @@ class EventEnvelope:
             "sender": str(self.sender),
             "priority": int(self.priority),
             "payload": self.payload,
+            "commitment_delta": cd,
         }
         if self.budget_ms is not None:
             d["budget_ms"] = int(self.budget_ms)
+        if self.commitment_id is not None:
+            cid = self.commitment_id
+            if not isinstance(cid, str) or not cid.strip():
+                raise ValueError("EventEnvelope.commitment_id must be a non-empty string when provided")
+            d["commitment_id"] = cid.strip()
         return d
 
     @staticmethod
@@ -69,6 +83,8 @@ class EventEnvelope:
 
         priority = obj.get("priority", 0)
         budget_ms = obj.get("budget_ms", None)
+        commitment_delta = obj.get("commitment_delta", 0)
+        commitment_id = obj.get("commitment_id", None)
         eid = obj.get("id", uuid.uuid4().hex)
         ts = obj.get("ts", time.time())
 
@@ -88,6 +104,23 @@ class EventEnvelope:
             if budget_i < 0:
                 raise ValueError(f"EventEnvelope.budget_ms must be >= 0, got {budget_i}")
 
+        try:
+            cd_i = int(commitment_delta)
+        except Exception as e:
+            raise TypeError(
+                f"EventEnvelope.commitment_delta must be int-like, got {commitment_delta!r}"
+            ) from e
+        if cd_i not in (-1, 0, 1):
+            raise ValueError(f"EventEnvelope.commitment_delta must be in {{-1, 0, 1}}, got {cd_i}")
+
+        cid_s: str | None
+        if commitment_id is None:
+            cid_s = None
+        else:
+            if not isinstance(commitment_id, str) or not commitment_id.strip():
+                raise ValueError("EventEnvelope.commitment_id must be a non-empty string when provided")
+            cid_s = commitment_id.strip()
+
         if not isinstance(eid, str) or not eid.strip():
             raise ValueError("EventEnvelope.id must be a non-empty string")
         try:
@@ -101,6 +134,8 @@ class EventEnvelope:
             sender=sender.strip(),
             priority=priority_i,
             budget_ms=budget_i,
+            commitment_delta=cd_i,
+            commitment_id=cid_s,
             id=eid.strip(),
             ts=ts_f,
         )

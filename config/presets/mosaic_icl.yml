@@ -1,0 +1,119 @@
+version: 2
+name: mosaic_icl
+notes: |
+  Table 2 Row D: ICL-like few-shot rule induction with distractors.
+
+  Dataset provides `table2_bin` on query-marker positions so training telemetry can
+  report `acc/bin_*` by demo→query gap bin.
+
+defaults:
+  data:
+    tokenizer: tiktoken
+    val_frac: 0.1
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: mosaic
+    wandb_entity: ''
+    wandb_mode: offline
+    eval_iters: 50
+  runtime:
+    save_every: 100
+
+vars:
+  d_model: 256
+  n_layers: 6
+  vocab_size: 8192
+  block_size: 512
+  mem_buckets: 4096
+  mem_hashes: 2
+
+targets:
+  - type: experiment
+    name: mosaic_icl_rule_induction
+    description: Train MOSAIC on ICL-like synthetic rule induction traces.
+    backend: torch
+    task: task.language_modeling
+
+    data:
+      ref: dataset.icl_rule_induction
+      config:
+        block_size: ${block_size}
+        vocab_size: ${vocab_size}
+        n_demos: 4
+        gap_bins: [0, 16, 64, 256]
+        demo_distractors: 8
+        n_items: 200000
+        seed: 1337
+
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 8
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+                    mem_router: vq
+                    mem_vq_groups: 2
+                    mem_vq_codebook_size: 64    # 64^2=4096 buckets
+                    mem_vq_group_dim: 16
+                    mem_vq_beam: 2
+                    mem_write_multi: true
+                    mem_buckets: ${mem_buckets}
+                    mem_dim: 128
+                    mem_hashes: ${mem_hashes}
+                    mem_assoc: 4
+                    mem_key_dim: 32
+                    mem_read_temp: 1.0
+                    mem_match_threshold: 0.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.2
+                    forced_read_dropout_p: 0.0
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+
+    objective:
+      ref: objective.next_token_ce
+      config:
+        logits_key: logits
+        target_key: target_ids
+
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_icl
+        seed: 1337
+        steps: 2000
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 16
+          block_size: ${block_size}
+          lr: 0.0003
+          device: cpu
+          dtype: float32
+          telemetry_interval: 10
+
+entrypoints:
+  default: mosaic_icl_rule_induction
+

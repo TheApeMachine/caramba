@@ -139,6 +139,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
     - mosaic_teacher_read_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
     - mosaic_teacher_write_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
     - mosaic_teacher_opcode: (B,T) int64 opcode id, -1 to ignore
+    - mosaic_teacher_commitment_delta: (B,T) int64 in {-1,0,1} or -100 to ignore
     - mosaic_teacher_reg_write_gate: (B,T) float in {0,1} or -1 to ignore
     - mosaic_teacher_reg_sel: (B,T) int64 register slot id, -1 to ignore
 
@@ -147,6 +148,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
     - mosaic_read_bit_logits: (B,T,H,BITS) logits (before sign)
     - mosaic_write_bit_logits: (B,T,H,BITS) logits (before sign)
     - mosaic_opcode_logits: (B,T,OP) logits
+    - mosaic_commitment_logits: (B,T,3) logits [close, neutral, open]
     - mosaic_reg_write_gate_logits: (B,T) logits
     - mosaic_reg_sel_logits: (B,T,R) logits
     """
@@ -163,6 +165,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         aux_utility_weight: float = 0.1,
         aux_contrastive_weight: float = 0.1,
         aux_opcode_weight: float = 0.1,
+        aux_commitment_weight: float = 0.0,
         aux_reg_gate_weight: float = 0.0,
         aux_reg_sel_weight: float = 0.0,
         aux_state_decay_weight: float = 0.0,
@@ -178,6 +181,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         self.aux_utility_weight = float(aux_utility_weight)
         self.aux_contrastive_weight = float(aux_contrastive_weight)
         self.aux_opcode_weight = float(aux_opcode_weight)
+        self.aux_commitment_weight = float(aux_commitment_weight)
         self.aux_reg_gate_weight = float(aux_reg_gate_weight)
         self.aux_reg_sel_weight = float(aux_reg_sel_weight)
         self.aux_state_decay_weight = float(aux_state_decay_weight)
@@ -328,6 +332,35 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
             )
             loss = loss + float(self.aux_opcode_weight) * ce
 
+        # Commitment delta supervision (optional).
+        tc = _maybe_get(batch, "mosaic_teacher_commitment_delta")
+        pc = _maybe_get(outputs, "mosaic_commitment_logits")
+        if (
+            self.aux_commitment_weight > 0.0
+            and isinstance(tc, Tensor)
+            and isinstance(pc, Tensor)
+            and pc.ndim == 3
+            and int(pc.size(-1)) == 3
+            and tc.shape == pc.shape[:2]
+        ):
+            labels_raw = tc.long()
+            mask = labels_raw != -100
+            if bool(mask.any().item()):
+                v = labels_raw[mask]
+                ok = (v == -1) | (v == 0) | (v == 1)
+                if not bool(ok.all().item()):
+                    raise ValueError(
+                        "mosaic_teacher_commitment_delta must be in {-1,0,1} or -100 to ignore"
+                    )
+                labels = labels_raw.clone()
+                labels[mask] = labels_raw[mask] + 1  # {-1,0,1}->{0,1,2}
+                ce = F.cross_entropy(
+                    pc.float().view(-1, 3),
+                    labels.view(-1),
+                    ignore_index=-100,
+                )
+                loss = loss + float(self.aux_commitment_weight) * ce
+
         # Register supervision (optional).
         trg = _maybe_get(batch, "mosaic_teacher_reg_write_gate")
         prg = _maybe_get(outputs, "mosaic_reg_write_gate_logits")
@@ -403,6 +436,8 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         pu = _maybe_get(outputs, "mosaic_write_utility_logits")
         to = _maybe_get(batch, "mosaic_teacher_opcode")
         po = _maybe_get(outputs, "mosaic_opcode_logits")
+        tc = _maybe_get(batch, "mosaic_teacher_commitment_delta")
+        pc = _maybe_get(outputs, "mosaic_commitment_logits")
         trg = _maybe_get(batch, "mosaic_teacher_reg_write_gate")
         prg = _maybe_get(outputs, "mosaic_reg_write_gate_logits")
         trs = _maybe_get(batch, "mosaic_teacher_reg_sel")
@@ -498,6 +533,35 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 m["aux_opcode_weighted"] = float((op_ce * float(self.aux_opcode_weight)).detach())
             except Exception as e:
                 raise RuntimeError(f"Failed to compute opcode CE loss: {e}") from e
+
+        if (
+            isinstance(tc, Tensor)
+            and isinstance(pc, Tensor)
+            and pc.ndim == 3
+            and int(pc.size(-1)) == 3
+            and tc.shape == pc.shape[:2]
+        ):
+            labels_raw = tc.long()
+            mask = labels_raw != -100
+            if bool(mask.any().item()):
+                v = labels_raw[mask]
+                ok = (v == -1) | (v == 0) | (v == 1)
+                if not bool(ok.all().item()):
+                    raise ValueError(
+                        "mosaic_teacher_commitment_delta must be in {-1,0,1} or -100 to ignore"
+                    )
+                labels = labels_raw.clone()
+                labels[mask] = labels_raw[mask] + 1
+                try:
+                    c_ce = F.cross_entropy(
+                        pc.float().view(-1, 3),
+                        labels.view(-1),
+                        ignore_index=-100,
+                    )
+                    m["aux_commitment_ce"] = float(c_ce.detach())
+                    m["aux_commitment_weighted"] = float((c_ce * float(self.aux_commitment_weight)).detach())
+                except Exception as e:
+                    raise RuntimeError(f"Failed to compute commitment CE loss: {e}") from e
 
         if isinstance(trg, Tensor) and isinstance(prg, Tensor) and trg.shape == prg.shape:
             mask = trg >= 0

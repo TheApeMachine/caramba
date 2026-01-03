@@ -75,6 +75,11 @@ class TorchEngine:
         )
         self.registry.register(
             backend="torch",
+            ref="dataset.icl_rule_induction",
+            python="caramba.data.icl_rule:IclRuleInductionDataset",
+        )
+        self.registry.register(
+            backend="torch",
             ref="dataset.random_tokens",
             python="data.random_tokens:RandomTokenDataset",
         )
