@@ -1,0 +1,49 @@
+#!/bin/sh
+set -eu
+
+# Best-effort: never block commits.
+if [ -n "${CARAMBA_SKIP_CODEGRAPH_SYNC:-}" ]; then
+  exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${ROOT}" ]; then
+  exit 0
+fi
+
+# Log hook activity for debugging.
+LOG_DIR="${ROOT}/artifacts/codegraph"
+mkdir -p "${LOG_DIR}" >/dev/null 2>&1 || true
+LOG_FILE="${LOG_DIR}/hook.log"
+
+# Only sync python files changed in this commit.
+FILES="$(git diff-tree --no-commit-id --name-only -r HEAD -- '*.py' 2>/dev/null || true)"
+if [ -z "${FILES}" ]; then
+  exit 0
+fi
+
+PY="${ROOT}/.venv/bin/python"
+if [ ! -x "${PY}" ]; then
+  PY="python3"
+fi
+
+FALKOR_URI="${CARAMBA_FALKORDB_URI:-redis://localhost:6379}"
+
+# Redact password from URI before logging
+FALKOR_URI_MASKED=$(echo "${FALKOR_URI}" | sed 's/:[^@]*@/:***@/g')
+
+{
+  echo ""
+  echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] post-commit: syncing code graph"
+  echo "repo=${ROOT}"
+  echo "falkor_uri=${FALKOR_URI_MASKED}"
+  echo "files:"
+  echo "${FILES}"
+  # Execute per file (simple + portable).
+  echo "${FILES}" | while IFS= read -r f; do
+    [ -z "${f}" ] && continue
+    "${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort --falkordb-uri "${FALKOR_URI}" --file "${f}"
+  done
+} >>"${LOG_FILE}" 2>&1 || true
+exit 0
+

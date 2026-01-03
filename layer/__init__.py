@@ -23,7 +23,6 @@ class Layer(nn.Module):
     Provides a common interface with config storage and optional mask support.
     Subclasses implement the actual forward logic.
     """
-
     def __init__(self, config: LayerConfig) -> None:
         super().__init__()
         self.config = config

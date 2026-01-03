@@ -20,3 +20,13 @@ train.h5
 fineweb_edu_v29_100m.npy
 NOTES.md
 *.fdb_latexmk
+*.aux
+*.blg
+*.bbl
+*.fls
+*.log
+*.out
+*.toc
+*.synctex.gz
+artifacts/mosaic/CONTEXT.md
+artifacts/ai/brainstorm.jsonl

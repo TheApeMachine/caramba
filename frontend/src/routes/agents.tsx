@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { AgentPanel } from "@/components/agent-panel";
 import { buttonVariants } from "@/components/ui/button";
@@ -20,7 +20,10 @@ function AgentsPage() {
 							Configure and run multi-agent workflows
 						</div>
 					</div>
-					<Link to="/" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+					<Link
+						to="/"
+						className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+					>
 						← Back
 					</Link>
 				</div>
@@ -30,10 +33,13 @@ function AgentsPage() {
 				<div className="text-xs text-muted-foreground space-y-1">
 					<p>
 						<strong>Note:</strong> Agents require the backend to be running with{" "}
-						<code className="font-mono bg-muted px-1 rounded">caramba serve</code>
+						<code className="font-mono bg-muted px-1 rounded">
+							caramba serve
+						</code>
 					</p>
 					<p>
-						Available processes: Discussion, Paper Write, Paper Review, Research Loop, Code Graph Sync, Platform Improve
+						Available processes: Discussion, Paper Write, Paper Review, Research
+						Loop, Code Graph Sync, Platform Improve
 					</p>
 				</div>
 			</div>

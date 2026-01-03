@@ -1,6 +1,11 @@
 version: 2
 name: mamba_ssm
-notes: Selective SSM architecture for linear-time sequence modeling.
+notes: |
+  Selective SSM architecture for linear-time sequence modeling.
+  
+  Both targets use synthetic datasets (no file paths required). To use real token
+  datasets with auto-download/prepare, use `dataset.tokens` with a `prepare:` config
+  (see `data/token_dataset.py` for prepare options).
 defaults:
   data:
     tokenizer: tiktoken
@@ -17,14 +22,20 @@ defaults:
 targets:
 - type: experiment
   name: scratch_train
-  description: Training an SSM from scratch.
+  description: Training an SSM from scratch on synthetic memory curriculum.
   backend: torch
   task: task.language_modeling
   data:
-    ref: dataset.tokens
+    ref: dataset.mosaic_memory_curriculum
     config:
-      path: path/to/your/data.tokens
-      block_size: 1024
+      block_size: ${table2_block_size}
+      vocab_size: ${table2_vocab_size}
+      mem_buckets: ${table2_mem_buckets}
+      mem_hashes: ${table2_mem_hashes}
+      n_pairs: 1
+      distractor_len: 64
+      n_items: 200000
+      seed: 1337
   system:
     ref: system.language_model
     config:
@@ -32,27 +43,27 @@ targets:
         type: TransformerModel
         embedder:
           type: token
-          vocab_size: ${vocab_size}
-          d_model: ${d_model}
+          vocab_size: ${table2_vocab_size}
+          d_model: ${table2_d_model}
         topology:
           type: StackedTopology
           layers:
           - type: NestedTopology
-            repeat: ${n_layers}
+            repeat: ${table2_n_layers}
             layers:
             - type: ResidualTopology
               layers:
               - type: RMSNormLayer
-                d_model: ${d_model}
+                d_model: ${table2_d_model}
               - type: SSMLayer
-                d_model: ${d_model}
-                d_state: ${d_state}
-                expand: ${expand}
+                d_model: ${table2_d_model}
+                d_state: ${table2_d_state}
+                expand: ${table2_expand}
           - type: RMSNormLayer
-            d_model: ${d_model}
+            d_model: ${table2_d_model}
           - type: LinearLayer
-            d_in: ${d_model}
-            d_out: ${vocab_size}
+            d_in: ${table2_d_model}
+            d_out: ${table2_vocab_size}
   objective: objective.next_token_ce
   trainer: trainer.standard
   runs:
@@ -65,13 +76,84 @@ targets:
     train:
       phase: standard
       batch_size: 16
-      block_size: 1024
+      block_size: ${table2_block_size}
       lr: 0.0001
       device: cpu
       dtype: float32
+      telemetry_interval: 10
+
+- type: experiment
+  name: memory_curriculum_table2
+  description: Table 2 baseline (SSM) on MOSAIC memory curriculum dataset.
+  backend: torch
+  task: task.language_modeling
+  data:
+    ref: dataset.mosaic_memory_curriculum
+    config:
+      block_size: ${table2_block_size}
+      vocab_size: ${table2_vocab_size}
+      mem_buckets: ${table2_mem_buckets}
+      mem_hashes: ${table2_mem_hashes}
+      n_pairs: 1
+      distractor_len: 64
+      n_items: 200000
+      seed: 1337
+  system:
+    ref: system.language_model
+    config:
+      model:
+        type: TransformerModel
+        embedder:
+          type: token
+          vocab_size: ${table2_vocab_size}
+          d_model: ${table2_d_model}
+        topology:
+          type: StackedTopology
+          layers:
+          - type: NestedTopology
+            repeat: ${table2_n_layers}
+            layers:
+            - type: ResidualTopology
+              layers:
+              - type: RMSNormLayer
+                d_model: ${table2_d_model}
+              - type: SSMLayer
+                d_model: ${table2_d_model}
+                d_state: ${table2_d_state}
+                expand: ${table2_expand}
+          - type: RMSNormLayer
+            d_model: ${table2_d_model}
+          - type: LinearLayer
+            d_in: ${table2_d_model}
+            d_out: ${table2_vocab_size}
+  objective: objective.next_token_ce
+  trainer: trainer.standard
+  runs:
+  - id: train
+    mode: train
+    exp: ssm_table2_memory
+    seed: 1337
+    steps: 2000
+    expected: {}
+    train:
+      phase: standard
+      batch_size: 16
+      block_size: ${table2_block_size}
+      lr: 0.0001
+      device: cpu
+      dtype: float32
+      telemetry_interval: 10
 vars:
   d_model: 512
   n_layers: 12
   d_state: 16
   expand: 2
   vocab_size: 50257
+  table2_d_model: 256
+  table2_n_layers: 6
+  table2_d_state: 16
+  table2_expand: 2
+  table2_vocab_size: 8192
+  table2_block_size: 512
+  table2_mem_buckets: 4096
+  table2_mem_hashes: 2

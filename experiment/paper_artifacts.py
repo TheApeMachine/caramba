@@ -7,17 +7,27 @@ It is used by:
 - a `process` target (`paper_collect_artifacts`) so the workflow stays manifest-driven
 - an optional CLI wrapper script under `artifacts/paper/` for convenience
 """
-
 from __future__ import annotations
 
 import json
-import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from caramba.config.manifest import Manifest
 from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig
+
+
+class ConfigurationError(Exception):
+    """Raised when configuration setup fails."""
+
+
+class MatplotlibImportError(Exception):
+    """Raised when matplotlib import fails."""
+
+
+class NoRowsToPlotError(Exception):
+    """Raised when attempting to plot with no data rows."""
 
 
 @dataclass(frozen=True)
@@ -45,7 +55,9 @@ def _read_report_metrics(run_dir: Path, *, name: str) -> AblationRow | None:
     try:
         data = json.loads(rp.read_text(encoding="utf-8"))
     except Exception:
+        # Return None on read errors to preserve graceful continuation
         return None
+
     summary = data.get("summary", {}) if isinstance(data, dict) else {}
     if not isinstance(summary, dict):
         summary = {}
@@ -106,21 +118,23 @@ def _write_latex_table(out_dir: Path, *, title: str, rows: list[AblationRow]) ->
 
 def _write_plots(out_dir: Path, *, title_prefix: str, rows: list[AblationRow]) -> list[Path]:
     # Avoid Matplotlib cache warnings on read-only home dirs (CI/sandboxes).
+    cfg_dir = out_dir / ".mplconfig"
     try:
-        cfg_dir = out_dir / ".mplconfig"
         cfg_dir.mkdir(parents=True, exist_ok=True)
-        os.environ.setdefault("MPLCONFIGDIR", str(cfg_dir))
-    except Exception:
-        pass
+    except (OSError, PermissionError) as e:
+        raise ConfigurationError(f"Failed to create MPLCONFIGDIR: {e}") from e
+    os.environ.setdefault("MPLCONFIGDIR", str(cfg_dir))
+
     try:
         import matplotlib
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-    except Exception:
-        return []
+    except Exception as e:
+        raise MatplotlibImportError(f"Failed to import matplotlib: {e}") from e
 
     if not rows:
+        # Return empty list to preserve backward compatibility
         return []
 
     names = [r.name for r in rows]
@@ -129,31 +143,37 @@ def _write_plots(out_dir: Path, *, title_prefix: str, rows: list[AblationRow]) -
 
     paths: list[Path] = []
 
-    # Perplexity bar chart.
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(names, ppl, color="#e67e22")
-    ax.set_ylabel("Perplexity ↓")
-    ax.set_title(f"{title_prefix}: Held-out Perplexity")
-    ax.grid(True, axis="y", alpha=0.2)
-    ax.tick_params(axis="x", rotation=20)
-    fig.tight_layout()
-    p = out_dir / "ablation_perplexity.png"
-    fig.savefig(p, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-    paths.append(p)
-
-    # Tokens/sec bar chart.
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(names, tps, color="#2ecc71")
-    ax.set_ylabel("Tokens / sec ↑")
-    ax.set_title(f"{title_prefix}: Cached Decode Throughput")
-    ax.grid(True, axis="y", alpha=0.2)
-    ax.tick_params(axis="x", rotation=20)
-    fig.tight_layout()
-    p = out_dir / "ablation_latency_tokens_per_sec.png"
-    fig.savefig(p, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-    paths.append(p)
+    plots = [{
+        "color": "#e67e22",
+        "label": "Perplexity ↓",
+        "title": f"{title_prefix}: Held-out Perplexity",
+        "path": "ablation_perplexity.png",
+        "data": {
+            "names": names,
+            "ppl": ppl,
+        }
+    }, {
+        "color": "#2ecc71",
+        "label": "Tokens / sec ↑",
+        "title": f"{title_prefix}: Cached Decode Throughput",
+        "path": "ablation_latency_tokens_per_sec.png",
+        "data": {
+            "names": names,
+            "tps": tps,
+        }
+    }]
+    for plot in plots:
+        fig, ax = plt.subplots(figsize=(10, 4))
+        ax.bar(plot["data"]["names"], plot["data"]["ppl"], color=plot["color"])
+        ax.set_ylabel(plot["label"])
+        ax.set_title(plot["title"])
+        ax.grid(True, axis="y", alpha=0.2)
+        ax.tick_params(axis="x", rotation=20)
+        fig.tight_layout()
+        p = out_dir / plot["path"]
+        fig.savefig(p, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+        paths.append(p)
 
     return paths
 
@@ -186,11 +206,15 @@ def collect_ablation_artifacts(
     rows: list[AblationRow] = []
     for tname in targets:
         run_dir = _latest_run_dir(Path(artifact_root), manifest_name, str(tname))
+
         if run_dir is None:
             continue
+
         row = _read_report_metrics(run_dir, name=str(tname))
+
         if row is None:
             continue
+
         rows.append(row)
 
     written: dict[str, Path] = {}

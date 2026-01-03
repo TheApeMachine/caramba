@@ -1,0 +1,22 @@
+meeting_notes:
+  extraction_prompt: |
+    You are analyzing a conversation transcript to extract meeting notes.
+
+    Please provide a structured meeting report in Markdown format.
+
+    Your report should include:
+
+    1. **Meeting Summary**: A concise overview of what was discussed.
+    2. **Key Ideas & Consensus**:
+       - List the main ideas/topics discussed.
+       - For each idea, clearly state the level of consensus (Strong Consensus, Partial Consensus, Disagreement, or Unclear).
+       - Summarize the arguments for/against.
+       - Mention key participants involved in that specific discussion.
+    3. **Action Items / Next Steps**: If any follow-up actions were mentioned or implied.
+
+    Format the output cleanly using Markdown headers (#, ##, ###), bullet points, and bold text for readability.
+
+    IMPORTANT: Ignore all tool calls and tool results (code execution, file reads, etc.) in the transcript. Focus ONLY on the conversation between the participants.
+
+    Conversation History:
+    {conversation_history}
