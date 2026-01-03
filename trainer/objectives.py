@@ -138,11 +138,17 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
     - mosaic_teacher_write_gate: (B,T) float in {0,1} or -1 to ignore
     - mosaic_teacher_read_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
     - mosaic_teacher_write_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
+    - mosaic_teacher_opcode: (B,T) int64 opcode id, -1 to ignore
+    - mosaic_teacher_reg_write_gate: (B,T) float in {0,1} or -1 to ignore
+    - mosaic_teacher_reg_sel: (B,T) int64 register slot id, -1 to ignore
 
     Expected (optional) output keys (provided by MOSAIC layers via ctx):
     - mosaic_write_gate_logits: (B,T) logits
     - mosaic_read_bit_logits: (B,T,H,BITS) logits (before sign)
     - mosaic_write_bit_logits: (B,T,H,BITS) logits (before sign)
+    - mosaic_opcode_logits: (B,T,OP) logits
+    - mosaic_reg_write_gate_logits: (B,T) logits
+    - mosaic_reg_sel_logits: (B,T,R) logits
     """
 
     def __init__(
@@ -156,6 +162,10 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         aux_bits_weight: float = 0.1,
         aux_utility_weight: float = 0.1,
         aux_contrastive_weight: float = 0.1,
+        aux_opcode_weight: float = 0.1,
+        aux_reg_gate_weight: float = 0.0,
+        aux_reg_sel_weight: float = 0.0,
+        aux_state_decay_weight: float = 0.0,
     ) -> None:
         super().__init__(
             logits_key=logits_key,
@@ -167,6 +177,10 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         self.aux_bits_weight = float(aux_bits_weight)
         self.aux_utility_weight = float(aux_utility_weight)
         self.aux_contrastive_weight = float(aux_contrastive_weight)
+        self.aux_opcode_weight = float(aux_opcode_weight)
+        self.aux_reg_gate_weight = float(aux_reg_gate_weight)
+        self.aux_reg_sel_weight = float(aux_reg_sel_weight)
+        self.aux_state_decay_weight = float(aux_state_decay_weight)
 
     @staticmethod
     def _bucket_to_bits(bucket: Tensor, *, n_bits: int) -> Tensor:
@@ -296,12 +310,73 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 ul = F.binary_cross_entropy_with_logits(pu[mask].float(), tu[mask].float())
                 loss = loss + float(self.aux_utility_weight) * ul
 
+        # Opcode imitation (optional).
+        to = _maybe_get(batch, "mosaic_teacher_opcode")
+        po = _maybe_get(outputs, "mosaic_opcode_logits")
+        if (
+            self.aux_opcode_weight > 0.0
+            and isinstance(to, Tensor)
+            and isinstance(po, Tensor)
+            and po.ndim == 3
+            and to.shape == po.shape[:2]
+        ):
+            # CE over the opcode vocab, with -1 as ignore.
+            ce = F.cross_entropy(
+                po.float().view(-1, int(po.size(-1))),
+                to.long().view(-1),
+                ignore_index=-1,
+            )
+            loss = loss + float(self.aux_opcode_weight) * ce
+
+        # Register supervision (optional).
+        trg = _maybe_get(batch, "mosaic_teacher_reg_write_gate")
+        prg = _maybe_get(outputs, "mosaic_reg_write_gate_logits")
+        if (
+            self.aux_reg_gate_weight > 0.0
+            and isinstance(trg, Tensor)
+            and isinstance(prg, Tensor)
+            and trg.shape == prg.shape
+        ):
+            mask = trg >= 0
+            if bool(mask.any().item()):
+                rg = F.binary_cross_entropy_with_logits(prg[mask].float(), trg[mask].float())
+                loss = loss + float(self.aux_reg_gate_weight) * rg
+
+        trs = _maybe_get(batch, "mosaic_teacher_reg_sel")
+        prs = _maybe_get(outputs, "mosaic_reg_sel_logits")
+        if (
+            self.aux_reg_sel_weight > 0.0
+            and isinstance(trs, Tensor)
+            and isinstance(prs, Tensor)
+            and prs.ndim == 3
+            and trs.shape == prs.shape[:2]
+        ):
+            rs = F.cross_entropy(
+                prs.float().view(-1, int(prs.size(-1))),
+                trs.long().view(-1),
+                ignore_index=-1,
+            )
+            loss = loss + float(self.aux_reg_sel_weight) * rs
+
         # Contrastive auxiliary from the model (optional scalar).
         cl = _maybe_get(outputs, "mosaic_contrastive_loss")
         if self.aux_contrastive_weight > 0.0 and isinstance(cl, Tensor):
             # Expect scalar tensor; if not, reduce.
             cval = cl.float().mean()
             loss = loss + float(self.aux_contrastive_weight) * cval
+
+        # State-decay regularizer (scalar), accumulated across stacked MOSAIC blocks.
+        if self.aux_state_decay_weight > 0.0:
+            sdl = _maybe_get(outputs, "mosaic_state_decay_reg_loss")
+            if not isinstance(sdl, Tensor):
+                raise KeyError(
+                    "aux_state_decay_weight > 0 requires outputs['mosaic_state_decay_reg_loss']"
+                )
+            if int(sdl.numel()) != 1:
+                raise ValueError(
+                    f"mosaic_state_decay_reg_loss must be a scalar Tensor, got shape {tuple(sdl.shape)}"
+                )
+            loss = loss + float(self.aux_state_decay_weight) * sdl.float().reshape(())
 
         return loss
 
@@ -326,7 +401,14 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         vqw = _maybe_get(outputs, "mosaic_vq_write_logits")
         tu = _maybe_get(batch, "mosaic_teacher_write_utility")
         pu = _maybe_get(outputs, "mosaic_write_utility_logits")
+        to = _maybe_get(batch, "mosaic_teacher_opcode")
+        po = _maybe_get(outputs, "mosaic_opcode_logits")
+        trg = _maybe_get(batch, "mosaic_teacher_reg_write_gate")
+        prg = _maybe_get(outputs, "mosaic_reg_write_gate_logits")
+        trs = _maybe_get(batch, "mosaic_teacher_reg_sel")
+        prs = _maybe_get(outputs, "mosaic_reg_sel_logits")
         cl = _maybe_get(outputs, "mosaic_contrastive_loss")
+        sdl = _maybe_get(outputs, "mosaic_state_decay_reg_loss")
 
         # Gate imitation (BCE).
         gate_loss = None
@@ -400,6 +482,50 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
             m["aux_utility_bce"] = float(util_loss.detach())
             m["aux_utility_weighted"] = float((util_loss * float(self.aux_utility_weight)).detach())
 
+        if (
+            isinstance(to, Tensor)
+            and isinstance(po, Tensor)
+            and po.ndim == 3
+            and to.shape == po.shape[:2]
+        ):
+            try:
+                op_ce = F.cross_entropy(
+                    po.float().view(-1, int(po.size(-1))),
+                    to.long().view(-1),
+                    ignore_index=-1,
+                )
+                m["aux_opcode_ce"] = float(op_ce.detach())
+                m["aux_opcode_weighted"] = float((op_ce * float(self.aux_opcode_weight)).detach())
+            except Exception as e:
+                raise RuntimeError(f"Failed to compute opcode CE loss: {e}") from e
+
+        if isinstance(trg, Tensor) and isinstance(prg, Tensor) and trg.shape == prg.shape:
+            mask = trg >= 0
+            if bool(mask.any().item()):
+                try:
+                    rg = F.binary_cross_entropy_with_logits(prg[mask].float(), trg[mask].float())
+                    m["aux_reg_gate_bce"] = float(rg.detach())
+                    m["aux_reg_gate_weighted"] = float((rg * float(self.aux_reg_gate_weight)).detach())
+                except Exception as e:
+                    raise RuntimeError(f"Failed to compute reg gate loss: {e}") from e
+
+        if (
+            isinstance(trs, Tensor)
+            and isinstance(prs, Tensor)
+            and prs.ndim == 3
+            and trs.shape == prs.shape[:2]
+        ):
+            try:
+                rs = F.cross_entropy(
+                    prs.float().view(-1, int(prs.size(-1))),
+                    trs.long().view(-1),
+                    ignore_index=-1,
+                )
+                m["aux_reg_sel_ce"] = float(rs.detach())
+                m["aux_reg_sel_weighted"] = float((rs * float(self.aux_reg_sel_weight)).detach())
+            except Exception as e:
+                raise RuntimeError(f"Failed to compute reg sel loss: {e}") from e
+
         if isinstance(cl, Tensor):
             try:
                 cval = cl.float().mean()
@@ -408,5 +534,23 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
             except Exception as e:
                 raise RuntimeError(f"Failed to compute contrastive loss: {e}") from e
 
+        if isinstance(sdl, Tensor):
+            if int(sdl.numel()) != 1:
+                raise ValueError(
+                    f"mosaic_state_decay_reg_loss must be a scalar Tensor, got shape {tuple(sdl.shape)}"
+                )
+            m["aux_state_decay_reg"] = float(sdl.detach().float().reshape(()))
+            m["aux_state_decay_reg_weighted"] = float(
+                (sdl.detach().float().reshape(()) * float(self.aux_state_decay_weight))
+            )
+
         return m
 
+
+class MosaicEventPrediction(MosaicNextTokenWithAuxObjective):
+    """Event-centric alias for MOSAIC control-surface supervision.
+
+    This objective keeps next-token cross-entropy as the internal "VM step"
+    training signal, while adding auxiliary losses that supervise the model's
+    control surface (memory gates, routing logits, opcode logits, register gates).
+    """

@@ -48,3 +48,1939 @@ mode=incremental
 ✓ codegraph-sync ok • graph=caramba_code nodes=59 edges=71
 ✓ codegraph-sync ok • graph=caramba_code nodes=60 edges=64
 ✓ codegraph-sync ok • graph=caramba_code nodes=85 edges=90
+
+[2026-01-02T08:45:22Z] post-commit: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+files:
+agent/__init__.py
+agent/context.py
+agent/context_test.py
+agent/knowledge.py
+agent/message.py
+agent/persona.py
+agent/persona_test.py
+agent/process/__init__.py
+agent/process/code_graph_sync.py
+agent/process/discussion.py
+agent/process/idle.py
+agent/process/multiplex_chat.py
+agent/process/paper_review.py
+agent/process/paper_write.py
+agent/process/platform_improve.py
+agent/process/process_test.py
+agent/process/research_loop.py
+agent/process/utils.py
+agent/process_runner.py
+agent/prompt.py
+agent/researcher_test.py
+agent/tools/__init__.py
+agent/tools/deeplake.py
+agent/tools/file.py
+agent/tools/paper.py
+ai/process/brainstorm.py
+ai/tasks/__init__.py
+ai/tasks/knowledge.py
+ai/tools/filesystem/tool.py
+cli.py
+config/layer.py
+config/manifest.py
+config/resolve.py
+config/resolve_test.py
+data/mosaic_synth.py
+experiment/paper_artifacts.py
+experiment/runner.py
+instrumentation/viz.py
+layer/__init__.py
+layer/mosaic/block.py
+layer/mosaic/block_test.py
+layer/mosaic/memory.py
+layer/mosaic/ngram_cache.py
+layer/mosaic/ngram_cache_test.py
+layer/mosaic/state.py
+layer/mosaic_block.py
+layer/mosaic_block_test.py
+layer/mosaic_memory.py
+layer/mosaic_ngram_cache.py
+layer/mosaic_ngram_cache_test.py
+layer/mosaic_state.py
+model/language_model_system.py
+trainer/gradient_isolation.py
+trainer/objectives.py
+trainer/standard.py
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+
+[2026-01-02T09:27:09Z] pre-push: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+mode=incremental
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba_api import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/caramba_api.py", line 35, in <module>
+    from experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 23, in <module>
+    from caramba.ai.process.brainstorm import Brainstorm
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/process/brainstorm.py", line 20, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py", line 10, in <module>
+    from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/knowledge.py", line 26, in <module>
+    from caramba.ai.tasks import Task
+ImportError: cannot import name 'Task' from partially initialized module 'caramba.ai.tasks' (most likely due to a circular import) (/Users/theapemachine/go/src/github.com/theapemachine/caramba/ai/tasks/__init__.py)
+✓ codegraph-sync ok • graph=caramba_code nodes=26 edges=27
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=47
+✓ codegraph-sync ok • graph=caramba_code nodes=15 edges=14
+✓ codegraph-sync ok • graph=caramba_code nodes=9 edges=12
+✓ codegraph-sync ok • graph=caramba_code nodes=20 edges=41
+✓ codegraph-sync ok • graph=caramba_code nodes=16 edges=16
+✓ codegraph-sync ok • graph=caramba_code nodes=23 edges=22
+✓ codegraph-sync ok • graph=caramba_code nodes=39 edges=41
+✓ codegraph-sync ok • graph=caramba_code nodes=12 edges=13
+✓ codegraph-sync ok • graph=caramba_code nodes=13 edges=12
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=40
+✓ codegraph-sync ok • graph=caramba_code nodes=14 edges=19
+✓ codegraph-sync ok • graph=caramba_code nodes=22 edges=27
+✓ codegraph-sync ok • graph=caramba_code nodes=21 edges=25
+✓ codegraph-sync ok • graph=caramba_code nodes=11 edges=12
+✓ codegraph-sync ok • graph=caramba_code nodes=8 edges=7
+✓ codegraph-sync ok • graph=caramba_code nodes=0 edges=0
+✓ codegraph-sync ok • graph=caramba_code nodes=22 edges=27
+✓ codegraph-sync ok • graph=caramba_code nodes=8 edges=7
+✓ codegraph-sync ok • graph=caramba_code nodes=26 edges=25
+✓ codegraph-sync ok • graph=caramba_code nodes=62 edges=66
+✓ codegraph-sync ok • graph=caramba_code nodes=31 edges=38
+✓ codegraph-sync ok • graph=caramba_code nodes=85 edges=89

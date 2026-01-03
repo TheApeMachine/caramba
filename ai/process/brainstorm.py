@@ -18,11 +18,21 @@ import time
 from caramba.ai.process import Process
 from caramba.ai.agent import Agent
 from caramba.ai.tasks.knowledge import KnowledgeExtractionTask
+from caramba.ai.tasks.meeting_notes import MeetingNotesTask
 from rich.console import Group
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.prompt import Prompt
 from rich.rule import Rule
+
+# Try to import tiktoken for accurate token counting
+try:
+    import tiktoken
+    _TIKTOKEN_ENCODING = tiktoken.get_encoding("cl100k_base")
+    _HAS_TIKTOKEN = True
+except (ImportError, Exception):
+    _TIKTOKEN_ENCODING = None
+    _HAS_TIKTOKEN = False
 
 
 class Brainstorm(Process):
@@ -45,6 +55,9 @@ class Brainstorm(Process):
         super().__init__(agents, "brainstorm")
         self.name = os.getenv("USER") or "user"
         self.max_context_items = 40
+        # Token budget: leave room for prompt template (~500 tokens) and response (~5000 tokens)
+        # Default to 150000 tokens to stay well under the 200000 limit
+        self.max_context_tokens = 150000
         self.history_path = Path("artifacts") / "ai" / "brainstorm.jsonl"
         self._history_loaded = False
 
@@ -109,6 +122,29 @@ class Brainstorm(Process):
         self.append_history(event)
         self._persist_event(event)
 
+    def _truncate_content(self, content: str, max_tokens: int = 10000) -> str:
+        """Truncate content to fit within token budget.
+
+        If content exceeds max_tokens, truncates from the middle, keeping
+        the beginning and end with a separator.
+        """
+        content_tokens = self._estimate_tokens(content)
+        if content_tokens <= max_tokens:
+            return content
+
+        # Estimate characters per token for truncation
+        chars_per_token = len(content) / max(content_tokens, 1)
+        max_chars = int(max_tokens * chars_per_token * 1.1)  # 10% buffer
+
+        if len(content) <= max_chars:
+            return content
+
+        # Truncate from middle, keeping start and end
+        keep_start = max_chars // 2
+        keep_end = max_chars - keep_start - len("\n\n[... truncated ...]\n\n")
+        truncated = content[:keep_start] + "\n\n[... truncated ...]\n\n" + content[-keep_end:]
+        return truncated
+
     def _render_items(self, items: list[dict[str, object]]) -> str:
         lines: list[str] = []
         for msg in items:
@@ -116,9 +152,14 @@ class Brainstorm(Process):
             author = str(msg.get("author", ""))
             content = msg.get("content", "")
             if mtype == "user":
+                # Truncate very long user messages (max 5000 tokens)
+                if isinstance(content, str):
+                    content = self._truncate_content(content, max_tokens=5000)
                 lines.append(f"- **{author}**: {content}")
             elif mtype == "assistant":
-                # Keep assistant messages compact; they can be long.
+                # Truncate very long assistant messages (max 10000 tokens)
+                if isinstance(content, str):
+                    content = self._truncate_content(content, max_tokens=10000)
                 lines.append(f"- **{author}**: {content}")
             elif mtype == "tool_call":
                 payload = content if isinstance(content, dict) else {"call": content}
@@ -132,13 +173,99 @@ class Brainstorm(Process):
                     f"- **tool result**\n```json\n{json.dumps(payload, ensure_ascii=False)}\n```"
                 )
             else:
+                if isinstance(content, str):
+                    content = self._truncate_content(str(content), max_tokens=5000)
                 lines.append(f"- **{author}** ({mtype}): {content}")
         return "\n".join(lines).strip()
 
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count for text.
+
+        Uses tiktoken if available (cl100k_base encoding used by Claude),
+        otherwise falls back to character-based estimation (~4 chars per token).
+        """
+        if _HAS_TIKTOKEN and _TIKTOKEN_ENCODING is not None:
+            try:
+                return len(_TIKTOKEN_ENCODING.encode(text))
+            except Exception:
+                pass
+        # Fallback: rough estimate of ~4 characters per token
+        return len(text) // 4
+
+    def _estimate_item_tokens(self, item: dict[str, object]) -> int:
+        """Estimate token count for a single history item without truncation."""
+        mtype = str(item.get("type", ""))
+        author = str(item.get("author", ""))
+        content = item.get("content", "")
+
+        if mtype == "user":
+            content_str = str(content) if not isinstance(content, str) else content
+            # Estimate: "- **{author}**: {content}"
+            return self._estimate_tokens(f"- **{author}**: {content_str}")
+        elif mtype == "assistant":
+            content_str = str(content) if not isinstance(content, str) else content
+            # Estimate: "- **{author}**: {content}"
+            return self._estimate_tokens(f"- **{author}**: {content_str}")
+        elif mtype == "tool_call":
+            payload = content if isinstance(content, dict) else {"call": content}
+            payload_str = json.dumps(payload, ensure_ascii=False)
+            # Estimate: "- **{author} tool call**\n```json\n{payload}\n```"
+            return self._estimate_tokens(f"- **{author} tool call**\n```json\n{payload_str}\n```")
+        elif mtype == "tool_result":
+            payload = content if isinstance(content, dict) else {"result": content}
+            payload_str = json.dumps(payload, ensure_ascii=False)
+            # Estimate: "- **tool result**\n```json\n{payload}\n```"
+            return self._estimate_tokens(f"- **tool result**\n```json\n{payload_str}\n```")
+        else:
+            content_str = str(content)
+            # Estimate: "- **{author}** ({mtype}): {content}"
+            return self._estimate_tokens(f"- **{author}** ({mtype}): {content_str}")
+
     def _render_transcript_markdown(self) -> str:
-        """Render the last N transcript items as compact markdown."""
-        items = self.history[-self.max_context_items :]
-        return self._render_items(items)
+        """Render transcript items as compact markdown, respecting token budget.
+
+        Keeps the most recent items that fit within max_context_tokens.
+        If items are too long, truncates from the beginning of the window.
+        """
+        # Start with the most recent items (up to max_context_items)
+        candidate_items = self.history[-self.max_context_items :]
+
+        if not candidate_items:
+            return ""
+
+        # Estimate tokens for the prompt template (without transcript)
+        prompt_template = (
+            "You are one of several AI agents in a shared conversation.\n"
+            "You MUST take into account everything already said (including other agents and tool results).\n"
+            "Respond in **Markdown**.\n\n"
+            "## Conversation so far\n"
+            "{transcript}\n\n"
+            "## Now respond to the latest user message\n"
+        )
+        template_tokens = self._estimate_tokens(prompt_template)
+
+        # Available tokens for the transcript
+        available_tokens = self.max_context_tokens - template_tokens
+
+        # Build transcript from the end, working backwards until we hit the token limit
+        selected_items: list[dict[str, object]] = []
+        current_tokens = 0
+
+        for item in reversed(candidate_items):
+            item_tokens = self._estimate_item_tokens(item)
+
+            # Always include at least the most recent item (even if it's over budget)
+            if not selected_items:
+                selected_items.insert(0, item)
+                current_tokens += item_tokens
+            elif current_tokens + item_tokens <= available_tokens:
+                selected_items.insert(0, item)
+                current_tokens += item_tokens
+            else:
+                # Can't fit this item, stop here
+                break
+
+        return self._render_items(selected_items)
 
     def _copy_to_clipboard(self, text: str) -> None:
         """Copy text to the system clipboard."""
@@ -182,9 +309,12 @@ class Brainstorm(Process):
         )
 
     def _compose_agent_prompt(self, user_input: str) -> str:
-        """Compose a prompt that forces shared context across agents."""
+        """Compose a prompt that forces shared context across agents.
+
+        Validates that the prompt fits within token limits and logs warnings if approaching limits.
+        """
         transcript = self._render_transcript_markdown()
-        return (
+        prompt_template = (
             "You are one of several AI agents in a shared conversation.\n"
             "You MUST take into account everything already said (including other agents and tool results).\n"
             "Respond in **Markdown**.\n\n"
@@ -194,10 +324,28 @@ class Brainstorm(Process):
             f"{user_input}\n"
         )
 
+        # Validate prompt size
+        prompt_tokens = self._estimate_tokens(prompt_template)
+        if prompt_tokens > self.max_context_tokens:
+            self.logger.warning(
+                f"Prompt exceeds token budget: {prompt_tokens} tokens > {self.max_context_tokens} limit. "
+                "Consider using /wipe to clear history and extract knowledge."
+            )
+        elif prompt_tokens > self.max_context_tokens * 0.9:
+            self.logger.info(
+                f"Prompt approaching token limit: {prompt_tokens} tokens ({prompt_tokens / self.max_context_tokens * 100:.1f}% of budget)"
+            )
+
+        return prompt_template
+
     async def run(self) -> None:
         """Run the brainstorm process"""
         self._ensure_history_loaded()
-        self.logger.header("Brainstorm", "Type '@chatgpt …', '@claude …', '@gemini …' or just chat to broadcast")
+        self.logger.header(
+            "Brainstorm",
+            "Type '@chatgpt …', '@claude …', '@gemini …' or just chat to broadcast. "
+            "Commands: /wipe (clear history), /collect (extract meeting notes), /recall (load most recent meeting notes)"
+        )
         try:
             while True:
                 await self.handle_user_input(self.get_user_input().strip())
@@ -220,6 +368,16 @@ class Brainstorm(Process):
         # Check for /wipe command
         if user_input.strip() == "/wipe":
             await self._handle_wipe_command()
+            return
+
+        # Check for /collect command
+        if user_input.strip() == "/collect":
+            await self._handle_collect_command()
+            return
+
+        # Check for /recall command
+        if user_input.strip() == "/recall":
+            await self._handle_recall_command()
             return
 
         self._ensure_history_loaded()
@@ -450,3 +608,60 @@ class Brainstorm(Process):
             self.logger.success("History wiped. Knowledge has been preserved in caramba_knowledge_base graph.")
         else:
             self.logger.success("History wiped.")
+
+    async def _handle_collect_command(self) -> None:
+        """Handle the /collect command: extract meeting notes and save as markdown."""
+        # Ensure history is loaded before extraction
+        self._ensure_history_loaded()
+
+        if not self.history:
+            self.logger.warning("No conversation history to collect. Start a conversation first.")
+            return
+
+        # Run meeting notes extraction task
+        task = MeetingNotesTask(conversation_history=self.history)
+        result = await task.run_async()
+
+        if result.get("notes_extracted"):
+            filepath = result.get("filepath", "unknown")
+            num_ideas = result.get("num_ideas", 0)
+            self.logger.success(
+                f"Meeting notes collected: {num_ideas} ideas extracted and saved to {filepath}"
+            )
+        else:
+            self.logger.warning("Failed to extract meeting notes. The conversation may be too short or unclear.")
+
+    async def _handle_recall_command(self) -> None:
+        """Handle the /recall command: load the most recent meeting notes file into conversation history."""
+        meeting_notes_dir = Path("artifacts/ai/meeting_notes")
+        
+        if not meeting_notes_dir.exists():
+            self.logger.warning("No meeting notes directory found. Run /collect first to create meeting notes.")
+            return
+
+        # Find all meeting notes markdown files
+        meeting_files = list(meeting_notes_dir.glob("meeting_notes_*.md"))
+        
+        if not meeting_files:
+            self.logger.warning("No meeting notes files found. Run /collect first to create meeting notes.")
+            return
+
+        # Sort by modification time (most recent first)
+        meeting_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        most_recent_file = meeting_files[0]
+
+        try:
+            # Read the meeting notes content
+            notes_content = most_recent_file.read_text(encoding="utf-8")
+            
+            # Ensure history is loaded before appending
+            self._ensure_history_loaded()
+            
+            # Add the meeting notes to conversation history as a user message
+            # Format it clearly so agents know this is recalled context
+            formatted_content = f"[Recalled meeting notes from {most_recent_file.name}]\n\n{notes_content}"
+            self._append(type="user", author=self.name, content=formatted_content)
+            
+            self.logger.success(f"Recalled meeting notes from {most_recent_file.name} and added to conversation history.")
+        except Exception as e:
+            self.logger.warning(f"Failed to recall meeting notes from {most_recent_file}: {e}")

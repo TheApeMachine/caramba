@@ -9,6 +9,9 @@ It is designed to support Stage D1 (teacher-forced memory addressing/gating):
   - mosaic_teacher_write_gate
   - mosaic_teacher_write_bucket
   - mosaic_teacher_read_bucket
+  - mosaic_teacher_opcode
+  - mosaic_teacher_reg_write_gate (optional; when reg_slots > 0)
+  - mosaic_teacher_reg_sel (optional; when reg_slots > 0)
 
 The sequences are purely token-id based (no text/tokenizer dependency).
 """
@@ -36,6 +39,8 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         n_pairs: int,
         distractor_len: int,
         seed: int,
+        reg_slots: int = 0,
+        sleep_replay_per_pair: int = 0,
     ) -> None:
         self.n_items = int(n_items)
         self.block_size = int(block_size)
@@ -45,6 +50,12 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         self.n_pairs = int(n_pairs)
         self.distractor_len = int(distractor_len)
         self.seed = int(seed)
+        self.reg_slots = int(reg_slots)
+        self.sleep_replay_per_pair = int(sleep_replay_per_pair)
+        if self.reg_slots < 0:
+            raise ValueError(f"reg_slots must be >= 0, got {self.reg_slots}")
+        if self.sleep_replay_per_pair < 0:
+            raise ValueError(f"sleep_replay_per_pair must be >= 0, got {self.sleep_replay_per_pair}")
 
         # Reserve a tiny synthetic "protocol" token set in the low ids.
         self.T_SET = 1
@@ -56,6 +67,13 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         self.min_tok = 8
         if self.vocab_size <= self.min_tok + 8:
             raise ValueError("vocab_size too small for synthetic curriculum")
+
+        # VM opcode convention (matches MosaicBlockLayerConfig.opcode_vocab default=4):
+        # 0: NOP, 1: READ, 2: WRITE, 3: CLEAR
+        self.OP_NOP = 0
+        self.OP_READ = 1
+        self.OP_WRITE = 2
+        self.OP_CLEAR = 3
 
     def __len__(self) -> int:
         return self.n_items
@@ -82,6 +100,9 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         read_bucket: list[list[int]] = []
         write_bucket: list[list[int]] = []
         drop_local: list[int] = []
+        opcode: list[int] = []
+        reg_write_gate: list[int] = []
+        reg_sel: list[int] = []
 
         def _append(
             tok: int,
@@ -94,6 +115,9 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
             rb: list[int] | None = None,
             wb: list[int] | None = None,
             dl: int = 0,
+            op: int = 0,
+            rg: int = 0,
+            rs: int = -1,
         ) -> None:
             seq.append(int(tok))
             write_gate.append(int(wg))
@@ -107,42 +131,63 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
             else:
                 write_bucket.append([int(x) for x in wb])
             drop_local.append(int(dl))
+            opcode.append(int(op))
+            if self.reg_slots > 0:
+                reg_write_gate.append(int(rg))
+                if int(rg) > 0:
+                    sel = int(rs)
+                    if sel < 0 or sel >= int(self.reg_slots):
+                        raise ValueError(f"reg_sel out of range: {sel} for reg_slots={self.reg_slots}")
+                    reg_sel.append(sel)
+                else:
+                    reg_sel.append(-1)
 
         # Write phase: "SET k IS v" with long distractors.
-        for k, v in zip(keys, vals):
+        for i, (k, v) in enumerate(zip(keys, vals)):
             b = self._bucket_for_key(k)
             bvec = [b] * int(self.mem_hashes)
-            _append(self.T_SET, wg=0, wu=0)
-            _append(k, wg=0, wu=0)
-            _append(self.T_IS, wg=0, wu=0)
+            _append(self.T_SET, wg=0, wu=0, op=self.OP_NOP)
+            _append(k, wg=0, wu=0, op=self.OP_NOP)
+            _append(self.T_IS, wg=0, wu=0, op=self.OP_NOP)
             # Write on value token (teacher-forced).
-            _append(v, wg=1, wu=1, wb=bvec)
+            slot = int(i) % int(self.reg_slots) if self.reg_slots > 0 else -1
+            _append(v, wg=1, wu=1, wb=bvec, op=self.OP_WRITE, rg=1 if self.reg_slots > 0 else 0, rs=slot)
             # Distractors.
             for _ in range(int(self.distractor_len)):
-                _append(rng.randrange(self.min_tok, self.vocab_size), wg=0, wu=0)
+                _append(rng.randrange(self.min_tok, self.vocab_size), wg=0, wu=0, op=self.OP_NOP)
 
         # Query phase: "GET k ? IS v"
         for k, v in zip(keys, vals):
             b = self._bucket_for_key(k)
             bvec = [b] * int(self.mem_hashes)
             # Force reliance on memory/state throughout the query prefix.
-            _append(self.T_GET, wg=0, wu=0, dl=1)
-            _append(k, wg=0, wu=0, dl=1)
-            _append(self.T_Q, wg=0, wu=0, dl=1)
+            _append(self.T_GET, wg=0, wu=0, dl=1, op=self.OP_NOP)
+            _append(k, wg=0, wu=0, dl=1, op=self.OP_NOP)
+            _append(self.T_Q, wg=0, wu=0, dl=1, op=self.OP_NOP)
             # On the token before emitting v as the next token (here: T_IS),
             # we want a memory read to be available.
-            _append(self.T_IS, wg=0, wu=0, rb=bvec, dl=1)
-            _append(v, wg=0, wu=0)
+            _append(self.T_IS, wg=0, wu=0, rb=bvec, dl=1, op=self.OP_READ)
+            _append(v, wg=0, wu=0, op=self.OP_NOP)
             # More distractors (small).
             for _ in range(max(0, int(self.distractor_len) // 4)):
-                _append(rng.randrange(self.min_tok, self.vocab_size), wg=0, wu=0)
+                _append(rng.randrange(self.min_tok, self.vocab_size), wg=0, wu=0, op=self.OP_NOP)
+
+        # Sleep/replay phase: lock external input (PAD), read memory, predict stored values.
+        # Pattern: [PAD] -> target is v, with teacher read_bucket set on PAD positions.
+        if int(self.sleep_replay_per_pair) > 0:
+            for k, v in zip(keys, vals):
+                b = self._bucket_for_key(k)
+                bvec = [b] * int(self.mem_hashes)
+                for _ in range(int(self.sleep_replay_per_pair)):
+                    _append(self.T_PAD, wg=0, wu=0, rb=bvec, dl=1, op=self.OP_READ)
+                    _append(v, wg=0, wu=0, op=self.OP_NOP)
 
         # Pad/truncate to block_size+1 so we can create input/target pairs.
         # We need at least 2 tokens.
         need = int(self.block_size) + 1
         if len(seq) < need:
             for _ in range(need - len(seq)):
-                _append(self.T_PAD)
+                _append(self.T_PAD, op=self.OP_NOP)
         else:
             seq = seq[:need]
             write_gate = write_gate[:need]
@@ -150,6 +195,10 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
             read_bucket = read_bucket[:need]
             write_bucket = write_bucket[:need]
             drop_local = drop_local[:need]
+            opcode = opcode[:need]
+            if self.reg_slots > 0:
+                reg_write_gate = reg_write_gate[:need]
+                reg_sel = reg_sel[:need]
 
         x = torch.tensor(seq[:-1], dtype=torch.long)
         y = torch.tensor(seq[1:], dtype=torch.long)
@@ -160,8 +209,9 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         rb = torch.tensor(read_bucket[:-1], dtype=torch.long)
         wb = torch.tensor(write_bucket[:-1], dtype=torch.long)
         dl = torch.tensor(drop_local[:-1], dtype=torch.float32)
+        op = torch.tensor(opcode[:-1], dtype=torch.long)
 
-        return {
+        out = {
             "input_ids": x,
             "target_ids": y,
             "mosaic_teacher_write_gate": wg,
@@ -169,7 +219,12 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
             "mosaic_teacher_read_bucket": rb,
             "mosaic_teacher_write_bucket": wb,
             "mosaic_drop_local": dl,
+            "mosaic_teacher_opcode": op,
         }
+        if self.reg_slots > 0:
+            out["mosaic_teacher_reg_write_gate"] = torch.tensor(reg_write_gate[:-1], dtype=torch.float32)
+            out["mosaic_teacher_reg_sel"] = torch.tensor(reg_sel[:-1], dtype=torch.long)
+        return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +239,8 @@ class MosaicMemoryCurriculumDataset:
     distractor_len: int = 64
     n_items: int = 100_000
     seed: int = 1337
+    reg_slots: int = 0
+    sleep_replay_per_pair: int = 0
 
     def build(self) -> Dataset[TensorDictBase]:
         return _MosaicMemoryCurriculumDataset(
@@ -195,5 +252,7 @@ class MosaicMemoryCurriculumDataset:
             n_pairs=int(self.n_pairs),
             distractor_len=int(self.distractor_len),
             seed=int(self.seed),
+            reg_slots=int(self.reg_slots),
+            sleep_replay_per_pair=int(self.sleep_replay_per_pair),
         )
 

@@ -366,6 +366,10 @@ class MosaicBlockLayerConfig(Config):
     state_k: PositiveInt = 16
     state_decay_min: Probability = 0.90
     state_decay_max: Probability = 0.999
+    # Regularizer band for learned decay rates (prevents saturation/collapse).
+    # This is *not* the initialization range above; it's the healthy operating band.
+    state_decay_reg_min: Probability = 0.001
+    state_decay_reg_max: Probability = 0.999
 
     # Hard-addressed memory (fixed-size, sublinear, no scanning).
     # Router can be:
@@ -418,6 +422,10 @@ class MosaicBlockLayerConfig(Config):
     # behavior unless later wired into control logic.
     opcodes_enabled: bool = False
     opcode_vocab: PositiveInt = 4  # NOP, READ, WRITE, CLEAR (convention)
+    # If enabled, opcode probabilities modulate compute (memory/register gating).
+    # This makes the opcode head a true (soft) control surface.
+    opcodes_control_enabled: bool = False
+    opcodes_control_temp: PositiveFloat = 1.0
 
     # Fusion gates: scale contributions from long state / memory read.
     gate_long_init: float = 0.0

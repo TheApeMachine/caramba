@@ -19,6 +19,7 @@ from torch import Tensor, nn
 
 from caramba.carmath import leaky_integrator_scan
 from caramba.config.layer import MosaicBlockLayerConfig
+from caramba.layer.mosaic.isa import MosaicOpcode
 from caramba.layer.mosaic.state import MosaicState, get_state, set_state
 from caramba.layer.mosaic.memory import MosaicMemory
 
@@ -70,6 +71,13 @@ class MosaicBlockLayer(nn.Module):
         if not (0.0 <= dmin <= 1.0 and 0.0 <= dmax <= 1.0 and dmin <= dmax):
             raise ValueError(f"Invalid state_decay range: min={dmin}, max={dmax}")
 
+        rmin = float(getattr(config, "state_decay_reg_min", 0.001))
+        rmax = float(getattr(config, "state_decay_reg_max", 0.999))
+        if not (0.0 <= rmin <= 1.0 and 0.0 <= rmax <= 1.0 and rmin <= rmax):
+            raise ValueError(f"Invalid state_decay_reg range: min={rmin}, max={rmax}")
+        self.state_decay_reg_min = rmin
+        self.state_decay_reg_max = rmax
+
         if dmin == 0.0 and dmax == 0.0:
             init = torch.zeros(K)
         else:
@@ -103,11 +111,24 @@ class MosaicBlockLayer(nn.Module):
         # Opcodes
         self.opcodes_enabled = bool(getattr(config, "opcodes_enabled", False))
         self.opcode_vocab = int(getattr(config, "opcode_vocab", 4))
+        self.opcodes_control_enabled = bool(getattr(config, "opcodes_control_enabled", False))
+        self.opcodes_control_temp = float(getattr(config, "opcodes_control_temp", 1.0))
         self.opcode_head: nn.Linear | None = None
         if self.opcodes_enabled:
             if self.opcode_vocab < 2:
                 raise ValueError(f"opcode_vocab must be >= 2, got {self.opcode_vocab}")
             self.opcode_head = nn.Linear(d, self.opcode_vocab, bias=True)
+        if self.opcodes_control_enabled:
+            if not self.opcodes_enabled:
+                raise ValueError("opcodes_control_enabled requires opcodes_enabled=true")
+            if self.opcodes_control_temp <= 0.0:
+                raise ValueError(f"opcodes_control_temp must be > 0, got {self.opcodes_control_temp}")
+            min_vocab = int(MosaicOpcode.WRITE_MEM) + 1
+            if self.opcode_vocab < min_vocab:
+                raise ValueError(
+                    f"opcodes_control_enabled requires opcode_vocab >= {min_vocab} "
+                    f"(to include NOP/READ/WRITE), got {self.opcode_vocab}"
+                )
 
         # Fusion gates
         self.gate_long = nn.Linear(d, 1, bias=True)
@@ -206,6 +227,20 @@ class MosaicBlockLayer(nn.Module):
         # Apply teacher overrides to routing if needed
         self._apply_routing_overrides(routing, teacher, teacher_p, B, T, x.device)
 
+        # Teacher override for write gate (optional): passed to MosaicMemory.write_chunk.
+        write_mask: Tensor | None = None
+        if isinstance(teacher, dict) and "write_gate" in teacher:
+            twg = teacher["write_gate"]
+            if not isinstance(twg, Tensor):
+                raise TypeError(f"Expected teacher['write_gate'] to be a Tensor, got {type(twg).__name__}")
+            if twg.shape != (B, T):
+                raise ValueError(f"teacher['write_gate'] must have shape (B,T)={(B,T)}, got {tuple(twg.shape)}")
+            wg = twg.to(device=x.device, dtype=torch.float32)
+            if teacher_p < 1.0:
+                use = (torch.rand((B,), device=x.device) < float(teacher_p)).view(B, 1)
+                wg = torch.where(use, wg, torch.full_like(wg, -1.0))
+            write_mask = wg
+
         # Decide path
         stats_enabled = bool(ctx is not None and bool(getattr(ctx, "mosaic_stats_enabled", False)))
         has_clear = bool(isinstance(teacher, dict) and ("clear" in teacher))
@@ -217,11 +252,33 @@ class MosaicBlockLayer(nn.Module):
             and (self.reg_slots <= 0)
         )
 
-        outputs = {}
+        outputs: dict[str, Any] = {}
+        opcode_probs: Tensor | None = None
+        if self.opcodes_enabled and (bool(collect_aux) or bool(self.opcodes_control_enabled)):
+            assert self.opcode_head is not None
+            opcode_logits = self.opcode_head(u)
+            if bool(collect_aux):
+                outputs["opcode_logits"] = opcode_logits
+            if bool(self.opcodes_control_enabled):
+                temp = float(self.opcodes_control_temp)
+                if temp <= 0.0:
+                    raise ValueError(f"opcodes_control_temp must be > 0, got {temp}")
+                opcode_probs = torch.softmax((opcode_logits.float() / float(temp)), dim=-1).to(dtype=u.dtype)
+        if bool(collect_aux):
+            # Keep learned decays within a healthy band to prevent early saturation.
+            # (Proposed in meeting notes: keep decay rates in [0.001, 0.999].)
+            dec = torch.sigmoid(self.state_decay_logit).to(dtype=torch.float32)
+            lo = float(self.state_decay_reg_min)
+            hi = float(self.state_decay_reg_max)
+            if not (0.0 <= lo <= 1.0 and 0.0 <= hi <= 1.0 and lo <= hi):
+                raise ValueError(f"Invalid state_decay_reg range: min={lo}, max={hi}")
+            # Hinge penalty outside [lo, hi], averaged across timescales.
+            pen = (F.relu(lo - dec) + F.relu(dec - hi)).mean()
+            outputs["state_decay_reg_loss"] = pen
         if use_fast_train:
-             delta = self._fast_train_path(u, local, st, routing, teacher, teacher_p, ctx, outputs)
+             delta = self._fast_train_path(u, local, st, routing, teacher, teacher_p, write_mask, opcode_probs, ctx, outputs)
         else:
-             delta = self._sequential_path(u, local, st, routing, teacher, teacher_p, ctx, outputs)
+             delta = self._sequential_path(u, local, st, routing, teacher, teacher_p, write_mask, opcode_probs, ctx, outputs)
 
         y = x + delta
 
@@ -279,7 +336,7 @@ class MosaicBlockLayer(nn.Module):
 
     def _fast_train_path(
         self, u: Tensor, local: Tensor, st: MosaicState, routing: dict[str, Any],
-        teacher: Any, teacher_p: float, ctx: Any, outputs: dict[str, Any]
+        teacher: Any, teacher_p: float, write_mask: Tensor | None, opcode_probs: Tensor | None, ctx: Any, outputs: dict[str, Any]
     ) -> Tensor:
         B, T, D = u.shape
         chunk_size = int(getattr(self.config, "mem_train_chunk_size", 128))
@@ -318,8 +375,13 @@ class MosaicBlockLayer(nn.Module):
             r_parts.append(r_c)
 
             # Memory Write
-            mask = None # compute teacher mask if needed
-            gate_logit_c = self.memory.write_chunk(u_c, st, routing_c, t0, mask)
+            mask_c = write_mask[:, t0:t1] if isinstance(write_mask, Tensor) else None
+            ws_c = (
+                opcode_probs[:, t0:t1, int(MosaicOpcode.WRITE_MEM)]
+                if isinstance(opcode_probs, Tensor)
+                else None
+            )
+            gate_logit_c = self.memory.write_chunk(u_c, st, routing_c, t0, mask_c, write_scale=ws_c)
             gate_logits_parts.append(gate_logit_c)
 
         st.s = s.detach() # Persist state
@@ -333,6 +395,9 @@ class MosaicBlockLayer(nn.Module):
         gate_long = torch.sigmoid(self.gate_long(u))
         gate_mem = torch.sigmoid(self.gate_mem(u))
 
+        if isinstance(opcode_probs, Tensor):
+            r_seq = r_seq * opcode_probs[:, :, int(MosaicOpcode.READ_MEM)].unsqueeze(-1)
+
         delta = local + gate_long * g_seq + gate_mem * r_seq
 
         # Store aux outputs
@@ -343,7 +408,7 @@ class MosaicBlockLayer(nn.Module):
 
     def _sequential_path(
         self, u: Tensor, local: Tensor, st: MosaicState, routing: dict[str, Any],
-        teacher: Any, teacher_p: float, ctx: Any, outputs: dict[str, Any]
+        teacher: Any, teacher_p: float, write_mask: Tensor | None, opcode_probs: Tensor | None, ctx: Any, outputs: dict[str, Any]
     ) -> Tensor:
         B, T, D = u.shape
         decay = torch.sigmoid(self.state_decay_logit).to(dtype=u.dtype, device=u.device).view(1, self.state_k, 1)
@@ -363,6 +428,11 @@ class MosaicBlockLayer(nn.Module):
 
         for t in range(int(T)):
             ut = u[:, t:t+1, :] # (B, 1, D)
+            ws_t = (
+                opcode_probs[:, t, int(MosaicOpcode.WRITE_MEM)]
+                if isinstance(opcode_probs, Tensor)
+                else None
+            )
 
             # State bank update
             inp = self.state_in(ut).view(B, 1, self.state_k, D)
@@ -376,7 +446,7 @@ class MosaicBlockLayer(nn.Module):
 
             # Registers
             if self.reg_slots > 0:
-                 zt, regs, reg_aux = self._update_registers(ut.squeeze(1), regs)
+                 zt, regs, reg_aux = self._update_registers(ut.squeeze(1), regs, write_scale=ws_t)
                  z_parts.append(zt.unsqueeze(1))
                  if reg_aux:
                      reg_gate_logits_parts.append(reg_aux[0])
@@ -390,7 +460,9 @@ class MosaicBlockLayer(nn.Module):
             r_parts.append(r_t)
 
             # Memory Write
-            gate_logit_t = self.memory.write_chunk(ut, st, routing_t, 0, mask=None)
+            mask_t = write_mask[:, t:t+1] if isinstance(write_mask, Tensor) else None
+            ws1 = ws_t.view(B, 1) if isinstance(ws_t, Tensor) else None
+            gate_logit_t = self.memory.write_chunk(ut, st, routing_t, 0, mask_t, write_scale=ws1)
             gate_logits_parts.append(gate_logit_t)
 
             st.step += 1
@@ -405,12 +477,17 @@ class MosaicBlockLayer(nn.Module):
         gate_long = torch.sigmoid(self.gate_long(u))
         gate_mem = torch.sigmoid(self.gate_mem(u))
 
+        if isinstance(opcode_probs, Tensor):
+            r_seq = r_seq * opcode_probs[:, :, int(MosaicOpcode.READ_MEM)].unsqueeze(-1)
+
         delta = local + gate_long * g_seq + gate_mem * r_seq
 
         if self.reg_slots > 0 and len(z_parts) > 0:
              z_seq = torch.cat(z_parts, dim=1)
              assert self.gate_reg is not None
              gate_reg = torch.sigmoid(self.gate_reg(u))
+             if isinstance(opcode_probs, Tensor):
+                 z_seq = z_seq * opcode_probs[:, :, int(MosaicOpcode.WRITE_MEM)].unsqueeze(-1)
              delta = delta + gate_reg * z_seq
 
         # Aux outputs
@@ -422,7 +499,13 @@ class MosaicBlockLayer(nn.Module):
 
         return delta
 
-    def _update_registers(self, u_t: Tensor, regs: Tensor | None) -> tuple[Tensor, Tensor | None, tuple[Tensor, Tensor] | None]:
+    def _update_registers(
+        self,
+        u_t: Tensor,
+        regs: Tensor | None,
+        *,
+        write_scale: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor | None, tuple[Tensor, Tensor] | None]:
          if regs is None:
              return torch.zeros_like(u_t), None, None
 
@@ -443,6 +526,14 @@ class MosaicBlockLayer(nn.Module):
          aux = (reg_gate_logit, sel_logits)
 
          p_wr = torch.sigmoid(reg_gate_logit)
+         if write_scale is not None:
+             if not isinstance(write_scale, Tensor):
+                 raise TypeError(f"write_scale must be a Tensor, got {type(write_scale).__name__}")
+             if write_scale.ndim != 1 or write_scale.size(0) != u_t.size(0):
+                 raise ValueError(
+                     f"write_scale must have shape (B,)={(int(u_t.size(0)),)}, got {tuple(write_scale.shape)}"
+                 )
+             p_wr = p_wr * write_scale.to(dtype=p_wr.dtype, device=p_wr.device)
          thr_r = float(getattr(self.config, "reg_write_threshold", 0.5))
          eta_r = float(getattr(self.config, "reg_write_eta", 1.0))
 
@@ -474,12 +565,17 @@ class MosaicBlockLayer(nn.Module):
              aux["mosaic_write_utility_logits"] = outputs["util_logits"]
 
          if "reg_gate_logits" in outputs:
-             aux["mosaic_reg_write_gate_logits"] = outputs["reg_gate_logits"].detach()
+             aux["mosaic_reg_write_gate_logits"] = outputs["reg_gate_logits"]
          if "reg_sel_logits" in outputs:
-             aux["mosaic_reg_sel_logits"] = outputs["reg_sel_logits"].detach()
+             aux["mosaic_reg_sel_logits"] = outputs["reg_sel_logits"]
 
          if st.regs is not None:
              aux["mosaic_regs_last"] = st.regs.detach()
+
+         if "opcode_logits" in outputs:
+             aux["mosaic_opcode_logits"] = outputs["opcode_logits"]
+         if "state_decay_reg_loss" in outputs:
+             aux["mosaic_state_decay_reg_loss"] = outputs["state_decay_reg_loss"]
 
          # Routing aux
          if "read_bit_logits" in routing:
@@ -492,4 +588,23 @@ class MosaicBlockLayer(nn.Module):
          if "write_vq_logits" in routing:
              aux["mosaic_vq_write_logits"] = routing["write_vq_logits"]
 
-         setattr(ctx, "mosaic_aux_out", aux)
+         # Merge into ctx, accumulating scalar losses across stacked blocks.
+         prev = getattr(ctx, "mosaic_aux_out", None)
+         if isinstance(prev, dict):
+             for k, v in aux.items():
+                 if (
+                     isinstance(k, str)
+                     and isinstance(v, Tensor)
+                     and int(v.numel()) == 1
+                     and k.endswith("_loss")
+                 ):
+                     cur = prev.get(k)
+                     if isinstance(cur, Tensor) and int(cur.numel()) == 1:
+                         prev[k] = cur + v
+                     else:
+                         prev[k] = v
+                 else:
+                     prev[k] = v
+             setattr(ctx, "mosaic_aux_out", prev)
+         else:
+             setattr(ctx, "mosaic_aux_out", aux)

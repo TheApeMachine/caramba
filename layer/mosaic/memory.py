@@ -344,7 +344,16 @@ class MosaicMemory(nn.Module):
 
         return r_c
 
-    def write_chunk(self, u: Tensor, st: MosaicState, routing: dict[str, Any], t0: int, mask: Tensor | None = None) -> Tensor:
+    def write_chunk(
+        self,
+        u: Tensor,
+        st: MosaicState,
+        routing: dict[str, Any],
+        t0: int,
+        mask: Tensor | None = None,
+        *,
+        write_scale: Tensor | None = None,
+    ) -> Tensor:
         """Perform memory write for a chunk of data.
 
         Args:
@@ -379,6 +388,12 @@ class MosaicMemory(nn.Module):
              m = torch.where(mask >= 0, (mask > 0).to(dtype=m.dtype, device=m.device), m)
 
         w_eta = (float(eta) * p).to(dtype=u.dtype) * m
+        if write_scale is not None:
+            if not isinstance(write_scale, Tensor):
+                raise TypeError(f"write_scale must be a Tensor, got {type(write_scale).__name__}")
+            if write_scale.shape != (B, C):
+                raise ValueError(f"write_scale must have shape (B,C)={(B,C)}, got {tuple(write_scale.shape)}")
+            w_eta = w_eta * write_scale.to(dtype=u.dtype, device=u.device)
 
         do = w_eta > 0
         if not do.any():
