@@ -49,7 +49,7 @@ EXPOSE 8001
 
 # Healthcheck to probe service readiness
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
+    CMD sh -c 'code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/mcp); [ "$code" = "200" ] || [ "$code" = "405" ]'
 
 USER appuser
 

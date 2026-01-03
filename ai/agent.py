@@ -5,31 +5,41 @@ These make the agents compatible with the Agent-to-Agent protocol.
 from __future__ import annotations
 
 import asyncio
-import socket
 import warnings
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 from uuid import uuid4
-import os
-import re
-import yaml
 
 from google.adk.agents import LlmAgent
+try:
+    from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
+except ImportError:
+    # Fallback: try alternative import path
+    try:
+        from google.adk.a2a import RemoteA2aAgent  # type: ignore[import-untyped]
+    except ImportError:
+        RemoteA2aAgent = None  # type: ignore[assignment,misc]
+
+# Standard A2A agent card well-known path
+AGENT_CARD_WELL_KNOWN_PATH = "/.well-known/agent-card.json"
+
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService, Session
 from google.genai import types
-from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
-from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.models import Gemini
-import httpx
 from jsonschema_pydantic import jsonschema_to_pydantic
 
 from caramba.ai.persona import Persona
 from caramba.console import logger
+from caramba.ai.mcp import (
+    BestEffortMcpToolset,
+    McpEndpoint,
+    connection_params_for,
+    endpoint_is_healthy,
+    iter_persona_tool_names,
+    load_mcp_endpoints,
+)
 
 # Silence known-noisy runtime warnings from upstream libs.
 # (These are informational and overwhelm the REPL.)
@@ -38,236 +48,10 @@ warnings.filterwarnings(
     message=r".*\[EXPERIMENTAL\] BaseAuthenticatedTool:.*",
     category=UserWarning,
 )
-warnings.filterwarnings(
-    "ignore",
-    message=r".*non-text parts in the response.*",
-)
-
-@dataclass(frozen=True)
-class McpEndpoint:
-    url: str
-    transport: str | None = None  # e.g. "streamable-http" or "sse"
-    headers: dict[str, str] | None = None
+warnings.filterwarnings("ignore", message=r".*non-text parts in the response.*")
 
 
-def _iter_persona_tool_names(tools: object) -> list[str]:
-    """Normalize persona tools into a list of tool/server names."""
-    if not tools:
-        return []
-    if isinstance(tools, list):
-        out: list[str] = []
-        for item in tools:
-            if isinstance(item, str):
-                out.append(item)
-            elif isinstance(item, dict):
-                # Some legacy persona YAMLs use: tools: - name: "math"
-                name = item.get("name")
-                if isinstance(name, str) and name:
-                    out.append(name)
-        return out
-    return []
-
-
-_ENV_PATTERN = re.compile(r"\$\{([A-Za-z0-9_]+)\}")
-
-
-def _expand_env_placeholders(payload: object) -> object:
-    """Recursively expand ${ENV_VAR} placeholders using os.environ.
-
-    Missing env vars are left as-is so unused tools don't break startup.
-    """
-    if isinstance(payload, dict):
-        return {k: _expand_env_placeholders(v) for k, v in payload.items()}
-    if isinstance(payload, list):
-        return [_expand_env_placeholders(v) for v in payload]
-    if isinstance(payload, tuple):
-        return tuple(_expand_env_placeholders(v) for v in payload)
-    if not isinstance(payload, str):
-        return payload
-
-    if "${" not in payload:
-        return payload
-
-    def _replace(match: re.Match[str]) -> str:
-        name = match.group(1)
-        val = os.getenv(name)
-        return match.group(0) if val is None else str(val)
-
-    return _ENV_PATTERN.sub(_replace, payload)
-
-
-def _parse_mcp_entry(name: str, entry: dict) -> McpEndpoint | None:
-    """Parse a payload entry into an McpEndpoint.
-
-    Validates url is a non-empty string, reads transport and headers,
-    returns an McpEndpoint with transport coerced to str when non-empty
-    and headers coerced to dict when a dict, or returns None for invalid entries.
-    """
-    if not isinstance(entry, dict):
-        return None
-    url = entry.get("url")
-    transport = entry.get("transport")
-    headers = entry.get("headers")
-    if not isinstance(url, str) or not url:
-        return None
-    return McpEndpoint(
-        url=url,
-        transport=str(transport) if isinstance(transport, str) and transport else None,
-        headers=dict(headers) if isinstance(headers, dict) else None,
-    )
-
-
-def load_mcp_endpoints() -> dict[str, McpEndpoint]:
-    """Load MCP endpoints from config files.
-
-    Sources:
-    - `config/mcp_servers.yml` (legacy consolidated mapping)
-    - `config/tools/*.yml` (one tool per file)
-    """
-    merged: dict[str, McpEndpoint] = {}
-
-    # 1) Legacy consolidated config
-    p = Path("config/mcp_servers.yml")
-    if p.exists():
-        try:
-            payload = _expand_env_placeholders(yaml.safe_load(p.read_text()) or {})
-            if isinstance(payload, dict):
-                for name, entry in payload.items():
-                    endpoint = _parse_mcp_entry(name, entry)
-                    if endpoint is not None:
-                        merged[str(name)] = endpoint
-        except Exception as e:
-            logger.warning(f"Failed to parse {p}: {e}")
-
-    # 2) Per-tool configs
-    tools_dir = Path("config/tools")
-    if tools_dir.exists():
-        try:
-            for yml in tools_dir.glob("*.yml"):
-                try:
-                    payload = _expand_env_placeholders(yaml.safe_load(yml.read_text()) or {})
-                    if isinstance(payload, dict):
-                        for name, entry in payload.items():
-                            endpoint = _parse_mcp_entry(name, entry)
-                            if endpoint is not None:
-                                merged[str(name)] = endpoint
-                except Exception as e:
-                    logger.warning(f"Failed to parse {yml}: {e}")
-        except Exception as e:
-            logger.warning(f"Failed to load MCP tool configs: {e}")
-
-    return merged
-
-
-_MCP_UNHEALTHY_WARNED: set[str] = set()
-
-
-def _url_is_reachable(url: str, *, timeout_sec: float = 0.25) -> bool:
-    """Best-effort TCP reachability check to avoid opaque TaskGroup errors."""
-    try:
-        parsed = urlparse(url)
-        host = parsed.hostname
-        port = parsed.port
-        if not host:
-            return False
-        if port is None:
-            port = 443 if parsed.scheme == "https" else 80
-        with socket.create_connection((host, port), timeout=timeout_sec):
-            return True
-    except Exception:
-        return False
-
-
-def _endpoint_is_healthy(endpoint: McpEndpoint, *, timeout_sec: float = 0.5) -> bool:
-    """Best-effort health check to avoid hanging MCP session inits.
-
-    For our own SSE servers we expose `/health`. For other servers, we fall back to
-    basic TCP reachability.
-    """
-    if not _url_is_reachable(endpoint.url, timeout_sec=min(timeout_sec, 0.25)):
-        return False
-
-    transport = (endpoint.transport or "").strip().lower()
-    if transport == "sse":
-        # For SSE servers, don't GET /sse (it streams). Use /health if available.
-        try:
-            parsed = urlparse(endpoint.url)
-            if not parsed.scheme or not parsed.hostname:
-                return True
-            port = parsed.port or (443 if parsed.scheme == "https" else 80)
-            health_url = f"{parsed.scheme}://{parsed.hostname}:{port}/health"
-            r = httpx.get(health_url, timeout=timeout_sec)
-            return 200 <= r.status_code < 300
-        except Exception:
-            return False
-
-    if transport in {"streamable-http", "streamable_http", "streamablehttp"}:
-        # Streamable HTTP MCP endpoints are typically mounted at `/mcp`.
-        # Avoid hanging session initialization by verifying the endpoint responds quickly.
-        try:
-            r = httpx.get(
-                endpoint.url,
-                timeout=timeout_sec,
-                headers={"accept": "application/json"},
-                follow_redirects=False,
-            )
-            # Many servers respond 405 (GET not allowed). That's fine: it proves the route exists.
-            if r.status_code == 404:
-                return False
-            if 200 <= r.status_code < 300:
-                return True
-            return False
-        except Exception:
-            return False
-
-    # Unknown/unspecified transport: TCP reachability is already checked above.
-    return True
-
-
-class BestEffortMcpToolset(McpToolset):
-    """McpToolset that degrades to "no tools" on failure.
-
-    This must remain a `BaseToolset` instance for ADK validation, hence the subclass.
-    """
-
-    def __init__(self, *args: Any, label: str, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._label = label
-
-    async def get_tools(self, readonly_context: Any):
-        try:
-            return await super().get_tools(readonly_context)
-        except BaseException as e:
-            if isinstance(e, (KeyboardInterrupt, SystemExit)):
-                raise
-            logger.warning(
-                f"Disabling MCP toolset '{self._label}' due to error: {type(e).__name__}: {e}"
-            )
-            return []
-
-    async def get_tools_with_prefix(self, ctx: Any):
-        # Some ADK versions call this method instead of get_tools().
-        try:
-            return await super().get_tools_with_prefix(ctx)  # type: ignore[misc]
-        except BaseException as e:
-            if isinstance(e, (KeyboardInterrupt, SystemExit)):
-                raise
-            logger.warning(
-                f"Disabling MCP toolset '{self._label}' due to error: {type(e).__name__}: {e}"
-            )
-            return []
-
-
-def connection_params_for(endpoint: McpEndpoint):
-    """Create MCP connection params for an endpoint."""
-    transport = (endpoint.transport or "").strip().lower()
-    if transport in {"streamable-http", "streamable_http", "streamablehttp"}:
-        return StreamableHTTPConnectionParams(
-            url=endpoint.url,
-            headers=endpoint.headers or {},
-        )
-
-    return SseConnectionParams(url=endpoint.url, headers=endpoint.headers or {})
+MCP_UNHEALTHY_WARNED: set[str] = set()
 
 class Agent:
     """Agent is a flexible wrapper to build AI agents."""
@@ -288,17 +72,20 @@ class Agent:
         self.session_id = session_id or str(uuid4())
 
         # MCP tool wiring:
-        # - Persona declares tool server names in `persona.tools`
+        # - Persona declares tool server names in `persona.tools` or `persona.mcp_servers` (legacy)
         # - We resolve those names to URLs via config and create one toolset per server
         tools: list[Any] = []
-        tool_names = _iter_persona_tool_names(getattr(persona, "tools", None))
+        # Support both `tools` and legacy `mcp_servers` fields.
+        tool_names = iter_persona_tool_names(
+            getattr(persona, "tools", None) or getattr(persona, "mcp_servers", None)
+        )
 
         endpoints = load_mcp_endpoints()
 
         # If an explicit URL is provided, attach it as a single toolset (no name resolution).
         if isinstance(mcp_url, str) and mcp_url:
             ep = McpEndpoint(url=mcp_url)
-            if _endpoint_is_healthy(ep):
+            if endpoint_is_healthy(ep):
                 tools.append(
                     BestEffortMcpToolset(
                         connection_params=connection_params_for(ep),
@@ -313,11 +100,11 @@ class Agent:
                 if not endpoint:
                     logger.warning(f"Unknown MCP tool/server '{name}' (no URL found in config).")
                     continue
-                if not _endpoint_is_healthy(endpoint):
+                if not endpoint_is_healthy(endpoint):
                     # Avoid spamming the REPL: many agents share the same tool list.
                     key = f"{name}@{endpoint.url}"
-                    if key not in _MCP_UNHEALTHY_WARNED:
-                        _MCP_UNHEALTHY_WARNED.add(key)
+                    if key not in MCP_UNHEALTHY_WARNED:
+                        MCP_UNHEALTHY_WARNED.add(key)
                         logger.warning(
                             f"MCP tool/server '{name}' unhealthy/unreachable at {endpoint.url}; skipping."
                         )
@@ -329,17 +116,56 @@ class Agent:
                     )
                 )
 
-        if persona.model.startswith("google/"):
-            self.model = Gemini(model=persona.model)
+        # --- Model selection / normalization ---
+        #
+        # If persona.model is empty or "random", use RandomModel (selects one of three providers per request).
+        # Otherwise, support a few common model string conventions:
+        # - "gemini/<model>" (LiteLLM-style)
+        # - "google/<model>" (internal convention)
+        # - any other string -> routed to LiteLLM
+        #
+        # ADK's native Gemini integration expects the bare Gemini model name (e.g. "gemini-3-pro-preview"),
+        # not a prefixed identifier like "gemini/..." or "google/...".
+        from caramba.ai.models.random_model import RandomModel
+
+        raw_model = (persona.model or "").strip()
+        if not raw_model or raw_model.lower() == "random":
+            self.model = RandomModel()
+        elif raw_model.startswith(("gemini/", "google/")):
+            gemini_model = raw_model.split("/", 1)[1].strip()
+            self.model = Gemini(model=gemini_model)
         else:
-            self.model = LiteLlm(model=persona.model)
+            self.model = LiteLlm(model=raw_model)
+
+        # Build sub-agents (RemoteA2aAgent instances) if persona declares them.
+        sub_agents: list[Any] = []
+        if persona.sub_agents:
+            # Resolve sub-agent names to A2A agent card URLs.
+            # In docker-compose, each persona service is accessible via its service name.
+            # The agent card is at: http://<service_name>:8001/.well-known/agent-card.json
+            if RemoteA2aAgent is not None:
+                for sub_agent_name in persona.sub_agents:
+                    # Use docker-compose service name (persona name, lowercase, hyphens for underscores).
+                    service_name = sub_agent_name.lower().replace("_", "-")
+                    agent_card_url = f"http://{service_name}:8001{AGENT_CARD_WELL_KNOWN_PATH}"
+                    sub_agents.append(
+                        RemoteA2aAgent(  # type: ignore[misc]
+                            name=sub_agent_name,
+                            description=f"Expert agent: {sub_agent_name}",
+                            agent_card=agent_card_url,
+                        )
+                    )
+
+        # Convert RemoteA2aAgent list to list[BaseAgent] if needed
+        sub_agents_list = list(sub_agents) if sub_agents else None
 
         self.adk_agent = LlmAgent(
-            model=self.model,
+            model=self.model,  # type: ignore[arg-type]  # RandomModel is compatible via __getattr__
             name=persona.name,
             description=persona.description,
             instruction=persona.instructions,
             tools=tools,
+            sub_agents=sub_agents_list,  # type: ignore[arg-type]  # RemoteA2aAgent extends BaseAgent
         )
 
         if persona.output_schema:
@@ -364,7 +190,7 @@ class Agent:
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(self.run_async(message))
-            
+
         raise RuntimeError("Agent.run() cannot be called from an active event loop; use `await Agent.run_async(...)`.")
 
     async def run_async(self, message: types.Content) -> str:
@@ -384,6 +210,11 @@ class Agent:
 
     async def run_events_async(self, message: types.Content):
         """Yield ADK runtime events for a single user turn."""
+        # Reset RandomModel before each request (so it picks a new provider).
+        from caramba.ai.models.random_model import RandomModel
+        if isinstance(self.model, RandomModel):
+            self.model.reset()
+
         await self._ensure_session()
         try:
             async for event in self.runner.run_async(
@@ -403,7 +234,7 @@ class Agent:
             msg = str(e)
             if "Failed to create MCP session" in msg:
                 endpoints = load_mcp_endpoints()
-                tool_names = _iter_persona_tool_names(getattr(self.persona, "tools", None))
+                tool_names = iter_persona_tool_names(getattr(self.persona, "tools", None))
                 details = []
                 for name in tool_names:
                     ep = endpoints.get(name)
@@ -456,44 +287,88 @@ class Agent:
         - {"type": "tool_result", "name": "...", "response": {...}, "id": "..."}
         """
         seen_text = ""
-        async for event in self.run_events_async(message):
-            ev_content = getattr(event, "content", None)
-            parts = getattr(ev_content, "parts", None)
-            if not parts:
-                continue
+        try:
+            async for event in self.run_events_async(message):
+                ev_content = getattr(event, "content", None)
+                parts = getattr(ev_content, "parts", None)
+                if not parts:
+                    continue
 
-            for part in parts:
-                # Tool call
-                fc = getattr(part, "function_call", None)
-                if fc is not None:
-                    yield {
-                        "type": "tool_call",
-                        "id": str(getattr(fc, "id", "") or ""),
-                        "name": getattr(fc, "name", None),
-                        "args": getattr(fc, "args", None) or getattr(fc, "partial_args", None),
-                    }
+                for part in parts:
+                    # Tool call
+                    fc = getattr(part, "function_call", None)
+                    if fc is not None:
+                        yield {
+                            "type": "tool_call",
+                            "id": str(getattr(fc, "id", "") or ""),
+                            "name": getattr(fc, "name", None),
+                            "args": getattr(fc, "args", None) or getattr(fc, "partial_args", None),
+                        }
 
-                # Tool result
-                fr = getattr(part, "function_response", None)
-                if fr is not None:
-                    yield {
-                        "type": "tool_result",
-                        "id": str(getattr(fr, "id", "") or ""),
-                        "name": getattr(fr, "name", None),
-                        "response": getattr(fr, "response", None),
-                    }
+                    # Tool result
+                    fr = getattr(part, "function_response", None)
+                    if fr is not None:
+                        yield {
+                            "type": "tool_result",
+                            "id": str(getattr(fr, "id", "") or ""),
+                            "name": getattr(fr, "name", None),
+                            "response": getattr(fr, "response", None),
+                        }
 
-                # Text - extract delta from cumulative ADK output
-                txt = getattr(part, "text", None)
-                if isinstance(txt, str) and txt:
-                    if txt.startswith(seen_text):
-                        delta = txt[len(seen_text):]
-                        if delta:
+                    # Text - extract delta from cumulative ADK output
+                    txt = getattr(part, "text", None)
+                    if isinstance(txt, str) and txt:
+                        # ADK/provider variance:
+                        # - some providers stream *cumulative* text (txt grows each event)
+                        # - others stream *delta* chunks (txt is just the new slice)
+                        #
+                        # We unify both cases by emitting ONLY the new suffix that
+                        # wasn't already streamed (prevents end-of-stream duplication).
+                        if not seen_text:
                             seen_text = txt
-                            yield {"type": "text", "text": delta}
-                    elif not seen_text:
-                        seen_text = txt
-                        yield {"type": "text", "text": txt}
+                            yield {"type": "text", "text": txt}
+                            continue
+
+                        # Case 1: cumulative replay (txt contains everything so far).
+                        if txt.startswith(seen_text):
+                            delta = txt[len(seen_text) :]
+                            if delta:
+                                seen_text = txt
+                                yield {"type": "text", "text": delta}
+                            continue
+
+                        # Case 2: shorter prefix replay (can happen with retries).
+                        if seen_text.startswith(txt):
+                            continue
+
+                        # Case 3: delta chunk (or overlapping resend). Compute the maximum
+                        # overlap between the end of what we've seen and the start of txt,
+                        # then only emit the non-overlapping suffix.
+                        max_check = min(len(seen_text), len(txt), 2048)
+                        overlap = 0
+                        for k in range(max_check, 0, -1):
+                            if seen_text.endswith(txt[:k]):
+                                overlap = k
+                                break
+
+                        delta = txt[overlap:]
+                        if not delta:
+                            continue
+                        seen_text = seen_text + delta
+                        yield {"type": "text", "text": delta}
+        except asyncio.CancelledError:
+            # Propagate cancellations cleanly to callers.
+            raise
+        except Exception as e:
+            # Do not let provider/session exceptions crash the REPL loop. Emit a readable
+            # error message as part of the assistant stream and end the generator cleanly.
+            provider = (self.persona.name or "agent").strip()
+            err = str(e).strip() or repr(e)
+            yield {
+                "type": "text",
+                "text": f"\n\n---\n\n**[{provider} error]** {err}\n",
+            }
+            return
 
     async def _ensure_session(self) -> Session:
         if self.session_ready:

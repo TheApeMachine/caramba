@@ -130,16 +130,268 @@ services:
     depends_on:
       falkordb:
         condition: service_healthy
-    environment:
-      - FALKORDB_URI=${FALKORDB_URI:-redis://falkordb:6379}
-      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
-      - CARAMBA_CODEGRAPH_NAME=${CARAMBA_CODEGRAPH_NAME:-caramba_code}
-      - MCP_SERVER_HOST=0.0.0.0
-      - MCP_SERVER_PORT=8001
     ports:
       - "8006:8001"
+    command:
+      [
+        "python",
+        "-m",
+        "ai.tools.codegraph.tool",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8001",
+        "--falkordb-uri",
+        "redis://falkordb:6379",
+        "--graph-name",
+        "caramba_code"
+      ]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # Persona A2A servers (expert agents)
+  architect:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/architect.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  developer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/developer.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  research-lead:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/research_lead.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  writer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/writer.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  mathematician:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/mathematician.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  ml-expert:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/ml_expert.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  reviewer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/reviewer.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  knowledge-curator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/knowledge_curator.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  context-compactor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/context_compactor.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  note-taker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/note_taker.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  catalyst:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/catalyst.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # Root agent (exposed to host for TUI connection)
+  root-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/root.yml
+      - PORT=8001
+    volumes:
+      - ./:/app
+    ports:
+      - "9000:8001"  # Expose root agent to host for TUI
+    depends_on:
+      - architect
+      - developer
+      - research-lead
+      - writer
+      - mathematician
+      - ml-expert
+      - reviewer
+      - knowledge-curator
+      - context-compactor
+      - note-taker
+      - catalyst
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
       timeout: 5s
       start_period: 15s

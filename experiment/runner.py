@@ -22,18 +22,20 @@ from caramba.runtime.engine import TorchEngine
 from caramba.runtime.readiness import check_target_readiness, format_readiness_report
 from caramba.ai.process.brainstorm import Brainstorm
 from caramba.ai.process import Process
+from caramba.config.agents import MultiplexChatProcessConfig
 
 
 class ProcessFactory(Protocol):
-    """Protocol for process constructors that take only agents dict."""
-    def __call__(self, agents: dict[str, Agent]) -> Process: ...
+    """Protocol for process constructors that take agents and process config."""
+
+    def __call__(self, *, agents: dict[str, Agent], process: Any) -> Process: ...
 
 
 PROCESSMAP: dict[str, ProcessFactory] = {
-    "brainstorm": Brainstorm,
+    "brainstorm": cast(ProcessFactory, Brainstorm),
     # Keep backwards-compatible manifest process naming.
     # The new implementation lives at `caramba.ai.process.brainstorm.Brainstorm`.
-    "multiplex_chat": Brainstorm,
+    "multiplex_chat": cast(ProcessFactory, Brainstorm),
 }
 
 
@@ -128,7 +130,13 @@ class ExperimentRunner:
                     ) from e
                 agents[role_key] = Agent(persona=persona)
 
-            process = PROCESSMAP[process_type](agents=agents)
+            if not isinstance(target.process, MultiplexChatProcessConfig):
+                raise TypeError(
+                    f"Process type '{process_type}' requires MultiplexChatProcessConfig, "
+                    f"got {type(target.process).__name__}. Fix by setting process.type: multiplex_chat."
+                )
+
+            process = PROCESSMAP[process_type](agents=agents, process=target.process)
 
             asyncio.run(process.run())
             return {}

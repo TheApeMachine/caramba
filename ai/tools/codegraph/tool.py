@@ -10,13 +10,12 @@ Then connect to it via MCP SSE at:
 from __future__ import annotations
 
 import argparse
-import os
 import re
 from typing import Any
 
-import uvicorn
 from falkordb import FalkorDB, Graph
 from mcp.server.fastmcp import FastMCP
+import uvicorn
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -32,15 +31,23 @@ _WRITE_KEYWORDS = re.compile(
 _CALL_KEYWORD = re.compile(r"(?is)\bcall\b")
 
 
-def _graph_name() -> str:
-    return os.getenv("CARAMBA_CODEGRAPH_NAME") or "caramba_code"
+class CodeGraphBackend:
+    """Code graph backend connection details.
+
+    This keeps transport configuration explicit and avoids environment variables.
+    """
+
+    def __init__(self, *, uri: str, graph_name: str, password: str | None) -> None:
+        self.uri = uri
+        self.graph_name = graph_name
+        self.password = password
+
+    def connect(self) -> Graph:
+        client = FalkorDB(url=self.uri, password=self.password)
+        return Graph(client, self.graph_name)
 
 
-def _connect() -> Graph:
-    uri = os.getenv("FALKORDB_URI") or os.getenv("FALKOR_URI") or "redis://localhost:6379"
-    pwd = os.getenv("FALKORDB_PASSWORD") or None
-    client = FalkorDB(url=uri, password=pwd)
-    return Graph(client, _graph_name())
+backend = CodeGraphBackend(uri="redis://localhost:6379", graph_name="caramba_code", password=None)
 
 
 def _is_safe_readonly_cypher(q: str) -> bool:
@@ -81,11 +88,11 @@ def _coerce_result(res: Any, *, limit: int) -> dict[str, Any]:
 @mcp.tool()
 def ping() -> dict[str, Any]:
     """Check connectivity to the code graph."""
-    g = _connect()
+    g = backend.connect()
     # minimal query
     res = g.query("MATCH (n) RETURN count(n) AS n LIMIT 1")
     out = _coerce_result(res, limit=1)
-    return {"ok": True, "graph": _graph_name(), "stats": out}
+    return {"ok": True, "graph": backend.graph_name, "stats": out}
 
 
 @mcp.tool()
@@ -102,9 +109,9 @@ def query(cypher: str, params: dict[str, object] | None = None, limit: int = 50)
             "error": "unsafe_query",
             "hint": "Only read-only MATCH/RETURN queries are allowed (no CALL/CREATE/MERGE/DELETE/SET/etc).",
         }
-    g = _connect()
+    g = backend.connect()
     res = g.query(cypher, params=params or {})
-    return {"ok": True, "graph": _graph_name(), "result": _coerce_result(res, limit=limit)}
+    return {"ok": True, "graph": backend.graph_name, "result": _coerce_result(res, limit=limit)}
 
 
 @mcp.tool()
@@ -127,9 +134,9 @@ def neighbors(node_id: str, rel: str | None = None, direction: str = "out", limi
     else:
         q = f"MATCH (a {{id: $id}})-[r{rel_filter}]-(b) RETURN type(r) AS rel, b.id AS id, labels(b) AS labels LIMIT $limit"
 
-    g = _connect()
+    g = backend.connect()
     res = g.query(q, {"id": node_id, "limit": max(1, min(int(limit or 50), 500))})
-    return {"ok": True, "graph": _graph_name(), "result": _coerce_result(res, limit=limit)}
+    return {"ok": True, "graph": backend.graph_name, "result": _coerce_result(res, limit=limit)}
 
 
 @mcp.tool()
@@ -149,9 +156,9 @@ def shortest_path(
         "RETURN [n IN nodes(p) | n.id] AS nodes, [r IN relationships(p) | type(r)] AS rels "
         "LIMIT 1"
     )
-    g = _connect()
+    g = backend.connect()
     res = g.query(q, {"src": src_id, "dst": dst_id})
-    return {"ok": True, "graph": _graph_name(), "result": _coerce_result(res, limit=1)}
+    return {"ok": True, "graph": backend.graph_name, "result": _coerce_result(res, limit=1)}
 
 
 @mcp.tool()
@@ -172,16 +179,25 @@ def top_out_degree(
         "ORDER BY out_degree DESC "
         "LIMIT $k"
     )
-    g = _connect()
+    g = backend.connect()
     res = g.query(q, {"k": top_k})
-    return {"ok": True, "graph": _graph_name(), "result": _coerce_result(res, limit=top_k)}
+    return {"ok": True, "graph": backend.graph_name, "result": _coerce_result(res, limit=top_k)}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=int(os.getenv("MCP_SERVER_PORT", "8001")))
-    parser.add_argument("--host", type=str, default=os.getenv("MCP_SERVER_HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=8001)
+    parser.add_argument("--host", type=str, default="0.0.0.0")
+    parser.add_argument("--falkordb-uri", type=str, default="redis://localhost:6379")
+    parser.add_argument("--falkordb-password", type=str, default="")
+    parser.add_argument("--graph-name", type=str, default="caramba_code")
     args = parser.parse_args()
+
+    backend = CodeGraphBackend(
+        uri=args.falkordb_uri,
+        graph_name=args.graph_name,
+        password=(args.falkordb_password or None),
+    )
 
     mcp.settings.host = args.host
     mcp.settings.port = args.port

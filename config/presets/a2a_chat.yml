@@ -1,0 +1,21 @@
+version: 2
+name: a2a_chat
+notes: |
+  A2A-based chat with Root agent orchestrating expert personas.
+
+  This preset uses the new A2A architecture where:
+  - Each persona runs as an A2A server in Docker
+  - Root agent delegates to experts via A2A
+  - User interacts via Textual TUI connected to Root agent
+
+defaults: {}
+
+targets:
+  - type: process
+    name: a2a_chat
+    description: "A2A chat with Root agent and expert personas"
+    team:
+      root: root
+    process:
+      type: a2a_chat
+      name: a2a_chat
