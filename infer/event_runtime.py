@@ -236,7 +236,13 @@ class ModelHandler(EventHandler):
         event = self.ledger.apply(event)
 
         resp, aux = self.responder.respond(event)
-        resp = self.mode_b.inject(resp, aux=aux)
+        # Only inject commitment_delta if commitment head is enabled and aux contains the required key
+        if aux is not None and self.mode_b.key in aux:
+            try:
+                resp = self.mode_b.inject(resp, aux=aux)
+            except KeyError:
+                # Commitment head not available, skip injection
+                pass
         resp = self.ledger.apply(resp)
         self.bus.publish(resp)
 

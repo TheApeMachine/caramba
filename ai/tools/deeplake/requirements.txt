@@ -2,5 +2,5 @@ mcp[cli]==1.25.0
 uvicorn==0.40.0
 pydantic==2.12.5
 deeplake==4.4.4
-torch
+torch==2.1.0
 colbert-ai==0.2.22

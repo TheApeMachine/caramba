@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import ast
+import logging
 import subprocess
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,8 +116,8 @@ def _iter_py_files(repo_root: Path, files: list[str] | None) -> list[Path]:
         if proc.returncode == 0:
             rels = [ln.strip() for ln in (proc.stdout or "").splitlines() if ln.strip()]
             return [repo_root / r for r in rels]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Failed to get git-tracked files for {repo_root}, falling back to rglob: {e}", exc_info=True)
     return sorted(repo_root.rglob("*.py"))
 
 
@@ -319,9 +323,9 @@ def parse_python_file(repo_root: Path, file_path: Path) -> tuple[list[Node], lis
             top_level_funcs.add(stmt.name)
         if isinstance(stmt, ast.ClassDef):
             local_classes.add(stmt.name)
-            class_methods[stmt.name] = set(
+            class_methods[stmt.name] = {
                 s.name for s in stmt.body if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))
-            )
+            }
 
     # Top-level defs
     for stmt in getattr(tree, "body", []) or []:

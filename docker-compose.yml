@@ -59,6 +59,7 @@ services:
     ports:
       - "8081:8081"
 
+  # paper-tool: disabled - deprecated service
   # paper-tool:
   #   build:
   #     context: .

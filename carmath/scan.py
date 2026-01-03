@@ -47,6 +47,14 @@ def leaky_integrator_scan(
         raise ValueError("leaky_integrator_scan expects s0 of shape (B,K,D)")
 
     B, K, T, D = int(inp.size(0)), int(inp.size(1)), int(inp.size(2)), int(inp.size(3))
+    
+    # Verify compatibility: inp (B,K,T,D) and s0 (B,K,D) share same batch, group, and feature dimensions
+    if inp.size(0) != s0.size(0):
+        raise ValueError(f"Batch dimension mismatch: inp.size(0)={inp.size(0)} != s0.size(0)={s0.size(0)}")
+    if inp.size(1) != s0.size(1):
+        raise ValueError(f"Group dimension mismatch: inp.size(1)={inp.size(1)} != s0.size(1)={s0.size(1)}")
+    if inp.size(3) != s0.size(2):
+        raise ValueError(f"Feature dimension mismatch: inp.size(3)={inp.size(3)} != s0.size(2)={s0.size(2)}")
     if T <= 0:
         empty = inp.new_zeros((B, K, 0, D), dtype=torch.float32)
         s_last = s0.to(dtype=torch.float32)
@@ -55,10 +63,17 @@ def leaky_integrator_scan(
     # Normalize decay shape.
     d = decay.to(dtype=torch.float32, device=inp.device)
     if d.dim() == 1:
+        if d.size(0) != K:
+            raise ValueError(f"decay.size(0)={d.size(0)} does not match K={K}")
         d = d.view(1, K, 1, 1)
     elif d.dim() == 3:
+        if d.size(0) != K:
+            raise ValueError(f"decay.size(0)={d.size(0)} does not match K={K}")
         d = d.view(1, K, 1, 1)
     elif d.dim() == 4:
+        # Verify channel dimension matches K
+        if d.shape[1] != K:
+            raise ValueError(f"decay.shape[1]={d.shape[1]} does not match K={K}")
         # Assume broadcastable already.
         pass
     else:

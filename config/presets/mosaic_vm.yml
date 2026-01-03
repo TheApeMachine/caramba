@@ -134,4 +134,3 @@ targets:
 
 entrypoints:
   default: mosaic_vm_train
-

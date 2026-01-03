@@ -13,12 +13,9 @@ type ThemeProviderState = {
 	setTheme: (theme: Theme) => void;
 };
 
-const initialState: ThemeProviderState = {
-	theme: "system",
-	setTheme: () => null,
-};
-
-const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
+const ThemeProviderContext = createContext<ThemeProviderState | undefined>(
+	undefined,
+);
 
 export function ThemeProvider({
 	children,
@@ -26,9 +23,23 @@ export function ThemeProvider({
 	storageKey = "vite-ui-theme",
 	...props
 }: ThemeProviderProps) {
-	const [theme, setTheme] = useState<Theme>(
-		() => (localStorage.getItem(storageKey) as Theme) || defaultTheme,
-	);
+	const [theme, setTheme] = useState<Theme>(() => {
+		// Only access localStorage in browser
+		if (typeof window !== "undefined") {
+			return (localStorage.getItem(storageKey) as Theme) || defaultTheme;
+		}
+		return defaultTheme;
+	});
+
+	useEffect(() => {
+		// Read persisted theme on mount (client-side only)
+		if (typeof window !== "undefined") {
+			const persisted = localStorage.getItem(storageKey) as Theme;
+			if (persisted && persisted !== theme) {
+				setTheme(persisted);
+			}
+		}
+	}, [storageKey]);
 
 	useEffect(() => {
 		const root = window.document.documentElement;
@@ -36,13 +47,18 @@ export function ThemeProvider({
 		root.classList.remove("light", "dark");
 
 		if (theme === "system") {
-			const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-				.matches
-				? "dark"
-				: "light";
+			const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+			const updateSystemTheme = () => {
+				const systemTheme = mediaQuery.matches ? "dark" : "light";
+				root.classList.add(systemTheme);
+			};
 
-			root.classList.add(systemTheme);
-			return;
+			updateSystemTheme();
+			mediaQuery.addEventListener("change", updateSystemTheme);
+
+			return () => {
+				mediaQuery.removeEventListener("change", updateSystemTheme);
+			};
 		}
 
 		root.classList.add(theme);
@@ -57,7 +73,7 @@ export function ThemeProvider({
 	};
 
 	return (
-		<ThemeProviderContext.Provider {...props} value={value}>
+		<ThemeProviderContext.Provider value={value} {...props}>
 			{children}
 		</ThemeProviderContext.Provider>
 	);

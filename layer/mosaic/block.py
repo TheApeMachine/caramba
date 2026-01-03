@@ -206,10 +206,10 @@ class MosaicBlockLayer(nn.Module):
 
         st = get_state(ctx, self._ctx_key)
         if st is not None:
-             # Validate state shape match
-             bad_regs = bool(isinstance(st.regs, Tensor) and st.regs.size(0) != B)
-             if st.conv_buf.size(0) != B or st.s.size(0) != B or st.mem_k.size(0) != B or bad_regs:
-                 st = None
+            # Validate state shape match
+            bad_regs = bool(isinstance(st.regs, Tensor) and st.regs.size(0) != B)
+            if st.conv_buf.size(0) != B or st.s.size(0) != B or st.mem_k.size(0) != B or bad_regs:
+                st = None
 
         if st is None:
             st = self._init_state(B, x.device, x.dtype)
@@ -354,13 +354,23 @@ class MosaicBlockLayer(nn.Module):
         if ctx is not None:
             dm = getattr(ctx, "mosaic_drop_local", None)
             if isinstance(dm, Tensor):
-                try:
-                    if dm.dim() == 2 and dm.size(0) == B and dm.size(1) == T:
-                        drop_mask = dm.to(device=device, dtype=dtype).view(B, T, 1)
-                    elif dm.dim() == 1 and dm.size(0) == T:
-                        drop_mask = dm.to(device=device, dtype=dtype).view(1, T, 1).expand(B, T, 1)
-                except Exception:
-                    pass
+                if dm.dim() == 2:
+                    if dm.size(0) != B or dm.size(1) != T:
+                        raise ValueError(
+                            f"mosaic_drop_local has unexpected shape: {dm.shape}, expected (B,T)={(B,T)}"
+                        )
+                    drop_mask = dm.to(device=device, dtype=dtype).view(B, T, 1)
+                elif dm.dim() == 1:
+                    if dm.size(0) != T:
+                        raise ValueError(
+                            f"mosaic_drop_local has unexpected shape: {dm.shape}, expected (T,) with T={T}"
+                        )
+                    drop_mask = dm.to(device=device, dtype=dtype).view(1, T, 1).expand(B, T, 1)
+                else:
+                    raise ValueError(
+                        f"mosaic_drop_local has unexpected dim: {dm.dim()}, expected 1 or 2. "
+                        f"Shape: {dm.shape}, device: {dm.device}"
+                    )
 
         if drop_mask is None and self.training and drop_p > 0.0:
             drop_mask = (torch.rand((B, T, 1), device=device) < drop_p).to(dtype=dtype)
@@ -441,7 +451,7 @@ class MosaicBlockLayer(nn.Module):
             gate_logits_parts.append(gate_logit_c)
 
         st.s = s.detach() # Persist state
-        st.step += T
+        st.step += int(T)
 
         # Concat parts
         g_seq = torch.cat(g_parts, dim=1)
@@ -663,6 +673,6 @@ class MosaicBlockLayer(nn.Module):
                          prev[k] = v
                  else:
                      prev[k] = v
-             setattr(ctx, "mosaic_aux_out", prev)
+             ctx.mosaic_aux_out = prev
          else:
-             setattr(ctx, "mosaic_aux_out", aux)
+             ctx.mosaic_aux_out = aux

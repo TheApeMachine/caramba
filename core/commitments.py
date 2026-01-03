@@ -103,8 +103,8 @@ class CommitmentLedger:
         del self._open[cid_close]
         try:
             self._open_order.remove(cid_close)
-        except ValueError:
-            raise RuntimeError("commitment_id missing from open_order") from None
+        except ValueError as e:
+            raise RuntimeError("commitment_id missing from open_order") from e
         self.metrics.closes += 1
         return event
 

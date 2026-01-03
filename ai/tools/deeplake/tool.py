@@ -10,6 +10,7 @@ Reference:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -20,6 +21,8 @@ from colbert.infra import ColBERTConfig
 from colbert.modeling.checkpoint import Checkpoint
 
 from mcp.server.fastmcp import FastMCP
+
+logger = logging.getLogger(__name__)
 
 
 # Initialize FastMCP server (Docker-friendly HTTP transport)
@@ -61,14 +64,21 @@ class DeepLakeTool():
 
     def get_args(self) -> list[str]:
         """Get the arguments for the tool."""
-        return ["-m", "agent.tools.deeplake"]
+        return ["-m", "ai.tools.deeplake"]
 
     def open_or_create(self, *, create_if_missing: bool) -> deeplake.Dataset:
         """Open or create the DeepLake dataset."""
         try:
             ds = deeplake.open(self.dataset_uri)
-        except Exception:
-            if not create_if_missing:
+        except Exception as e:
+            # Check if this is a missing dataset error
+            error_msg = str(e).lower()
+            is_missing = (
+                "not found" in error_msg
+                or "does not exist" in error_msg
+                or isinstance(e, FileNotFoundError)
+            )
+            if not create_if_missing or not is_missing:
                 raise
             ds = deeplake.create(self.dataset_uri)
 
@@ -100,8 +110,6 @@ class DeepLakeTool():
 
     def search(self, query: str) -> list[dict]:
         """Search the DeepLake database."""
-        import json
-
         q_mat = self.embed_query(query)
         q_str = self.matrix_to_tql_array(q_mat)
 
@@ -159,8 +167,9 @@ class DeepLakeTool():
         texts: list[str] = []
         metas: list[str] = []
 
-        for it in items:
+        for idx, it in enumerate(items):
             if not isinstance(it, dict):
+                logger.warning(f"Skipping non-dict item at index {idx}: {repr(it)}")
                 continue
 
             ids.append(str(it.get("id", "")))
@@ -258,7 +267,7 @@ class DeepLakeMCP:
         return sys.executable
 
     def get_args(self) -> list[str]:
-        return ["-m", "agent.tools.deeplake"]
+        return ["-m", "ai.tools.deeplake"]
 
 
 if __name__ == "__main__":

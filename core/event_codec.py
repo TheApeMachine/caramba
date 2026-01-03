@@ -11,7 +11,8 @@ This is intended as a building block for event-native training/inference where
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 import torch
 from torch import Tensor

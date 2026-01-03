@@ -1,5 +1,4 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import type { RefObject } from "react";
 import { cn } from "@/lib/utils";
 
 const flexVariants = cva("flex", {
@@ -66,43 +65,32 @@ const flexVariants = cva("flex", {
 	},
 });
 
-interface FlexProps extends React.HTMLAttributes<HTMLDivElement> {
-	direction?: "row" | "column" | "row-reverse" | "column-reverse";
-	align?: "start" | "end" | "center" | "baseline" | "stretch";
-	justify?: "start" | "end" | "center" | "between" | "around" | "evenly";
-	wrap?: "nowrap" | "wrap" | "wrap-reverse";
-	gap?: 0 | 2 | 4 | 6 | 8;
-	pad?: 0 | 2 | 4 | 6 | 8;
-	grow?: boolean;
-	shrink?: boolean;
-	fullWidth?: boolean;
-	fullHeight?: boolean;
-	className?: string;
-	children?: React.ReactNode;
-	ref?: RefObject<HTMLDivElement | null>;
+interface FlexProps
+	extends React.HTMLAttributes<HTMLDivElement>,
+		VariantProps<typeof flexVariants> {
+	ref?: React.Ref<HTMLDivElement>;
 }
 
 export const Flex = ({
 	direction = "row",
-	align = "start",
-	justify = "start",
-	wrap = "nowrap",
-	gap = 0,
-	pad = 0,
-	grow = false,
-	shrink = false,
-	fullWidth = false,
-	fullHeight = false,
-	ref,
-	children,
+	align,
+	justify,
+	wrap,
+	gap,
+	pad,
+	grow,
+	shrink,
+	fullWidth,
+	fullHeight,
 	className,
+	children,
+	ref,
 	...props
 }: FlexProps) => {
 	return (
 		<div
 			ref={ref}
 			className={cn(
-				"flex",
 				className,
 				flexVariants({
 					direction,

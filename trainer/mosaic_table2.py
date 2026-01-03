@@ -81,19 +81,26 @@ class Table2Telemetry:
             if n_bins < 1:
                 raise ValueError(f"n_bins must be >= 1, got {n_bins}")
 
-            total = [0] * n_bins
-            correct = [0] * n_bins
-
-            for b in range(int(B)):
-                for t in range(int(T)):
-                    bi = int(bins[b, t].item())
-                    if bi < 0:
-                        continue
-                    if bi >= n_bins:
-                        raise ValueError(f"table2_bin out of range: {bi} for n_bins={n_bins}")
-                    total[bi] += 1
-                    if int(pred_c[b, t].item()) == int(tgt_c[b, t].item()):
-                        correct[bi] += 1
+            # Vectorized bin counting
+            valid_mask = bins >= 0
+            if (bins[valid_mask] >= n_bins).any():
+                max_bin = int(bins[valid_mask].max().item())
+                raise ValueError(f"table2_bin out of range: max={max_bin} for n_bins={n_bins}")
+            
+            # Flatten and filter valid bins
+            bins_flat = bins[valid_mask].to(dtype=torch.long)
+            pred_flat = pred_c[valid_mask]
+            tgt_flat = tgt_c[valid_mask]
+            correct_flat = (pred_flat == tgt_flat).to(dtype=torch.long)
+            
+            # Count totals and corrects per bin using scatter_add
+            total_tensor = torch.zeros(n_bins, dtype=torch.long, device=bins.device)
+            correct_tensor = torch.zeros(n_bins, dtype=torch.long, device=bins.device)
+            total_tensor.scatter_add_(0, bins_flat, torch.ones_like(bins_flat))
+            correct_tensor.scatter_add_(0, bins_flat, correct_flat)
+            
+            total = total_tensor.tolist()
+            correct = correct_tensor.tolist()
 
             out_generic: dict[str, float] = {}
             worst_generic: float | None = None

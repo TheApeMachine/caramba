@@ -67,7 +67,7 @@ def _upsert_edges(g: Graph, rel: str, edges: list[Edge]) -> None:
 
 def sync_files_to_falkordb(
     *,
-    repo_root: str | Path,
+    repo_root: str | Path,  # noqa: ARG001
     nodes: list[Node],
     edges: list[Edge],
     files: list[str] | None,
@@ -84,6 +84,8 @@ def sync_files_to_falkordb(
     Strategy:
     - If `reset`: wipe the whole graph.
     - Else: for each file in `files`, delete nodes scoped to that file then upsert.
+
+    Note: `repo_root` is reserved for future use (e.g., incremental sync by repo scope).
     """
     try:
         client = _connect_falkordb(uri=uri, host=host, port=port, password=password)

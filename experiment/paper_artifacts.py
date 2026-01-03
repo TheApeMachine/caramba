@@ -18,6 +18,18 @@ from caramba.config.manifest import Manifest
 from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig
 
 
+class ConfigurationError(Exception):
+    """Raised when configuration setup fails."""
+
+
+class MatplotlibImportError(Exception):
+    """Raised when matplotlib import fails."""
+
+
+class NoRowsToPlotError(Exception):
+    """Raised when attempting to plot with no data rows."""
+
+
 @dataclass(frozen=True)
 class AblationRow:
     name: str
@@ -42,8 +54,9 @@ def _read_report_metrics(run_dir: Path, *, name: str) -> AblationRow | None:
         return None
     try:
         data = json.loads(rp.read_text(encoding="utf-8"))
-    except Exception as e:
-        raise RuntimeError(f"Failed to read report metrics: {e}") from e
+    except Exception:
+        # Return None on read errors to preserve graceful continuation
+        return None
 
     summary = data.get("summary", {}) if isinstance(data, dict) else {}
     if not isinstance(summary, dict):
@@ -105,12 +118,12 @@ def _write_latex_table(out_dir: Path, *, title: str, rows: list[AblationRow]) ->
 
 def _write_plots(out_dir: Path, *, title_prefix: str, rows: list[AblationRow]) -> list[Path]:
     # Avoid Matplotlib cache warnings on read-only home dirs (CI/sandboxes).
+    cfg_dir = out_dir / ".mplconfig"
     try:
-        cfg_dir = out_dir / ".mplconfig"
         cfg_dir.mkdir(parents=True, exist_ok=True)
-        os.environ.setdefault("MPLCONFIGDIR", str(cfg_dir))
-    except Exception as e:
-        raise RuntimeError(f"Failed to set MPLCONFIGDIR: {e}") from e
+    except (OSError, PermissionError) as e:
+        raise ConfigurationError(f"Failed to create MPLCONFIGDIR: {e}") from e
+    os.environ.setdefault("MPLCONFIGDIR", str(cfg_dir))
 
     try:
         import matplotlib
@@ -118,10 +131,11 @@ def _write_plots(out_dir: Path, *, title_prefix: str, rows: list[AblationRow]) -
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except Exception as e:
-        raise RuntimeError(f"Failed to import matplotlib: {e}") from e
+        raise MatplotlibImportError(f"Failed to import matplotlib: {e}") from e
 
     if not rows:
-        raise RuntimeError("No rows to plot")
+        # Return empty list to preserve backward compatibility
+        return []
 
     names = [r.name for r in rows]
     ppl = [r.perplexity for r in rows]

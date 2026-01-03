@@ -7,8 +7,9 @@ The project is moving toward an event-native external interface:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 import time
 import uuid
 
@@ -65,7 +66,7 @@ class EventEnvelope:
         return d
 
     @staticmethod
-    def from_json_dict(obj: Mapping[str, Any]) -> "EventEnvelope":
+    def from_json_dict(obj: Mapping[str, Any]) -> EventEnvelope:
         if not isinstance(obj, Mapping):
             raise TypeError(f"Expected Mapping for EventEnvelope, got {type(obj).__name__}")
 

@@ -33,8 +33,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy application code
 COPY ai/tools/filesystem/ ./ai/tools/filesystem/
 
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
+RUN chown -R appuser:appuser /app
+
 # Expose MCP server port
 EXPOSE 8001
+
+# Healthcheck to probe service readiness
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+USER appuser
 
 # Run the MCP server
 CMD ["python", "-m", "ai.tools.filesystem.tool"]

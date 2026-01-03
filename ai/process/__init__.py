@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Any
 from caramba.console import Logger
 from caramba.ai.agent import Agent
+from google.genai import types
 
 
 class Process(ABC):
@@ -14,15 +15,13 @@ class Process(ABC):
         self.agents: dict[str, Agent] = agents
         self.name = name
         self.logger = Logger()
-        # Shared, process-level transcript.
-        # Each item is typically:
-        # {"type": "user"|"assistant"|"tool_call"|"tool_result", "author": str, "content": Any}
-        self.history: list[dict[str, Any]] = []
+        self.history: list[types.Content] = []
 
-    def append_history(self, message: dict[str, Any]) -> None:
+    def append_history(self, message: types.Content) -> None:
         """Append a message to the history."""
         self.history.append(message)
 
+    @abstractmethod
     async def run(self) -> None:
         """Run the process."""
         pass

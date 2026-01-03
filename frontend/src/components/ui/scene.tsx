@@ -228,13 +228,16 @@ export const Scene = () => {
 					const d = dx + dy + dz;
 
 					if (d > 1) {
+						// Guard against division by zero
+						const dirX = dx > 0 ? (px - ix) / dx : 0;
+						const dirY = dy > 0 ? (py - iy) / dy : 0;
+						const dirZ = dz > 0 ? (pz - iz) / dz : 0;
+
 						positions.setXYZ(
 							i,
-							px -
-								((px - ix) / dx) * data.speed * delta * (0.85 - Math.random()),
-							py - ((py - iy) / dy) * data.speed * delta * (1 + Math.random()),
-							pz -
-								((pz - iz) / dz) * data.speed * delta * (0.85 - Math.random()),
+							px - dirX * data.speed * delta * (0.85 - Math.random()),
+							py - dirY * data.speed * delta * (1 + Math.random()),
+							pz - dirZ * data.speed * delta * (0.85 - Math.random()),
 						);
 					} else {
 						data.verticesUp += 1;
@@ -298,24 +301,38 @@ export const Scene = () => {
 
 		const loader = new OBJLoader();
 
-		loader.load("/male02/male02.obj", (object) => {
-			const positions = combineBuffer(object, "position");
+		loader.load(
+			"/male02/male02.obj",
+			(object) => {
+				const positions = combineBuffer(object, "position");
 
-			createMesh(positions, 4.05, -500, -350, 600, 0xff7744);
-			createMesh(positions, 4.05, 500, -350, 0, 0xff5522);
-			createMesh(positions, 4.05, -250, -350, 1500, 0xff9922);
-			createMesh(positions, 4.05, -250, -350, -1500, 0xff99ff);
-		});
+				createMesh(positions, 4.05, -500, -350, 600, 0xff7744);
+				createMesh(positions, 4.05, 500, -350, 0, 0xff5522);
+				createMesh(positions, 4.05, -250, -350, 1500, 0xff9922);
+				createMesh(positions, 4.05, -250, -350, -1500, 0xff99ff);
+			},
+			undefined,
+			(error) => {
+				console.error("Failed to load male02.obj:", error);
+			},
+		);
 
-		loader.load("/female02/female02.obj", (object) => {
-			const positions = combineBuffer(object, "position");
+		loader.load(
+			"/female02/female02.obj",
+			(object) => {
+				const positions = combineBuffer(object, "position");
 
-			createMesh(positions, 4.05, -1000, -350, 0, 0xffdd44);
-			createMesh(positions, 4.05, 0, -350, 0, 0xffffff);
-			createMesh(positions, 4.05, 1000, -350, 400, 0xff4422);
-			createMesh(positions, 4.05, 250, -350, 1500, 0xff9955);
-			createMesh(positions, 4.05, 250, -350, 2500, 0xff77dd);
-		});
+				createMesh(positions, 4.05, -1000, -350, 0, 0xffdd44);
+				createMesh(positions, 4.05, 0, -350, 0, 0xffffff);
+				createMesh(positions, 4.05, 1000, -350, 400, 0xff4422);
+				createMesh(positions, 4.05, 250, -350, 1500, 0xff9955);
+				createMesh(positions, 4.05, 250, -350, 2500, 0xff77dd);
+			},
+			undefined,
+			(error) => {
+				console.error("Failed to load female02.obj:", error);
+			},
+		);
 
 		rendererRef.current = new THREE.WebGLRenderer();
 		rendererRef.current.setPixelRatio(window.devicePixelRatio);
@@ -358,9 +375,11 @@ export const Scene = () => {
 		composerRef.current.addPass(effectFocusRef.current);
 		composerRef.current.addPass(outputPass);
 
-		//stats
-		statsRef.current = new Stats();
-		containerRef.current?.appendChild(statsRef.current.dom);
+		//stats (development only)
+		if (import.meta.env.DEV) {
+			statsRef.current = new Stats();
+			containerRef.current?.appendChild(statsRef.current.dom);
+		}
 
 		window.addEventListener("resize", onWindowResize);
 		return () => {

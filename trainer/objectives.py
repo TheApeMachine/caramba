@@ -493,8 +493,8 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         if isinstance(tw, Tensor) and isinstance(vqw, Tensor):
             try:
                 vq_w = self._vq_ce(tw, vqw)
-            except Exception:
-                vq_w = None
+            except Exception as e:
+                raise RuntimeError(f"Failed to compute VQ CE loss for write: {e}") from e
         if vq_r is not None:
             m["aux_vq_ce_read"] = float(vq_r.detach())
         if vq_w is not None:
@@ -605,7 +605,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 )
             m["aux_state_decay_reg"] = float(sdl.detach().float().reshape(()))
             m["aux_state_decay_reg_weighted"] = float(
-                (sdl.detach().float().reshape(()) * float(self.aux_state_decay_weight))
+                sdl.detach().float().reshape(()) * float(self.aux_state_decay_weight)
             )
 
         return m

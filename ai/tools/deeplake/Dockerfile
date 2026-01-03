@@ -40,8 +40,18 @@ RUN python -c "import deeplake, torch; print('deeplake', deeplake.__version__, '
 # Copy application code
 COPY ai/tools/deeplake/ ./ai/tools/deeplake/
 
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
+RUN chown -R appuser:appuser /app
+
 # Expose MCP server port
 EXPOSE 8001
+
+# Healthcheck to probe service readiness
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+USER appuser
 
 # Run the MCP server
 CMD ["python", "-m", "ai.tools.deeplake.tool", "--host", "0.0.0.0", "--port", "8001"]

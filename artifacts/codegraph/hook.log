@@ -2063,3 +2063,70 @@ mode=incremental
 ✓ codegraph-sync ok • graph=caramba_code nodes=0 edges=0
 ✓ codegraph-sync ok • graph=caramba_code nodes=28 edges=30
 ✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=40
+
+[2026-01-03T04:59:50Z] post-commit: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+files:
+ai/agent.py
+ai/persona_test.py
+ai/process/brainstorm.py
+cli.py
+config/layer.py
+core/__init__.py
+core/commitments.py
+core/commitments_test.py
+core/event.py
+data/event_trace.py
+data/icl_rule.py
+infer/event_runtime.py
+infer/event_runtime_test.py
+layer/mosaic/block.py
+layer/ssm.py
+runtime/engine/torch_engine.py
+trainer/mosaic_table2.py
+trainer/objectives.py
+trainer/standard.py
+✓ codegraph-sync ok • graph=caramba_code nodes=60 edges=72
+✓ codegraph-sync ok • graph=caramba_code nodes=8 edges=7
+✓ codegraph-sync ok • graph=caramba_code nodes=52 edges=84
+✓ codegraph-sync ok • graph=caramba_code nodes=26 edges=27
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=47
+✓ codegraph-sync ok • graph=caramba_code nodes=6 edges=5
+✓ codegraph-sync ok • graph=caramba_code nodes=13 edges=13
+✓ codegraph-sync ok • graph=caramba_code nodes=14 edges=23
+✓ codegraph-sync ok • graph=caramba_code nodes=10 edges=9
+✓ codegraph-sync ok • graph=caramba_code nodes=32 edges=34
+✓ codegraph-sync ok • graph=caramba_code nodes=18 edges=18
+✓ codegraph-sync ok • graph=caramba_code nodes=29 edges=28
+✓ codegraph-sync ok • graph=caramba_code nodes=20 edges=19
+✓ codegraph-sync ok • graph=caramba_code nodes=35 edges=43
+✓ codegraph-sync ok • graph=caramba_code nodes=13 edges=13
+✓ codegraph-sync ok • graph=caramba_code nodes=28 edges=30
+✓ codegraph-sync ok • graph=caramba_code nodes=13 edges=13
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=40
+✓ codegraph-sync ok • graph=caramba_code nodes=91 edges=95
+
+[2026-01-03T05:01:40Z] pre-push: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+mode=incremental
+✓ codegraph-sync ok • graph=caramba_code nodes=60 edges=72
+✓ codegraph-sync ok • graph=caramba_code nodes=8 edges=7
+✓ codegraph-sync ok • graph=caramba_code nodes=52 edges=84
+✓ codegraph-sync ok • graph=caramba_code nodes=26 edges=27
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=47
+✓ codegraph-sync ok • graph=caramba_code nodes=6 edges=5
+✓ codegraph-sync ok • graph=caramba_code nodes=13 edges=13
+✓ codegraph-sync ok • graph=caramba_code nodes=14 edges=23
+✓ codegraph-sync ok • graph=caramba_code nodes=10 edges=9
+✓ codegraph-sync ok • graph=caramba_code nodes=32 edges=34
+✓ codegraph-sync ok • graph=caramba_code nodes=18 edges=18
+✓ codegraph-sync ok • graph=caramba_code nodes=29 edges=28
+✓ codegraph-sync ok • graph=caramba_code nodes=20 edges=19
+✓ codegraph-sync ok • graph=caramba_code nodes=35 edges=43
+✓ codegraph-sync ok • graph=caramba_code nodes=13 edges=13
+✓ codegraph-sync ok • graph=caramba_code nodes=28 edges=30
+✓ codegraph-sync ok • graph=caramba_code nodes=13 edges=13
+✓ codegraph-sync ok • graph=caramba_code nodes=33 edges=40
+✓ codegraph-sync ok • graph=caramba_code nodes=91 edges=95
