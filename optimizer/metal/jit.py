@@ -63,6 +63,8 @@ def _compile_metallib(*, out_dir: Path, verbose: bool) -> Path:
         _this_dir() / "layernorm.metal",
         _this_dir() / "rope.metal",
         _this_dir() / "lion.metal",
+        _this_dir() / "adamw.metal",
+        _this_dir() / "ssm_scan.metal",
     ]
     airs = [out_dir / f"{src.stem}.air" for src in sources]
     metallib = out_dir / "caramba_ops.metallib"

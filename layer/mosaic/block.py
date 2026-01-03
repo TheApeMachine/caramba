@@ -316,11 +316,11 @@ class MosaicBlockLayer(nn.Module):
         gl = outputs.get("gate_logits")
         if isinstance(gl, Tensor) and gl.ndim == 2:
             p = torch.sigmoid(gl.detach().float()).mean()
-            stats[f"{prefix}/write_gate_p_mean"] = float(p.item())
+            stats[f"{prefix}/write_gate_p_mean"] = p
 
         # Read gate utilization (mean fusion gate for memory contribution).
         gm = torch.sigmoid(self.gate_mem(u).detach().float()).mean()
-        stats[f"{prefix}/fuse_gate_mem_mean"] = float(gm.item())
+        stats[f"{prefix}/fuse_gate_mem_mean"] = gm
 
         # Routing entropy (collapse indicator): entropy of idx_w distribution, normalized by log(mem_buckets).
         idx_w = routing.get("idx_w")
@@ -333,19 +333,29 @@ class MosaicBlockLayer(nn.Module):
             denom = math.log(float(self.memory.mem_buckets))
             if denom <= 0.0:
                 raise ValueError("mem_buckets must be > 1 for entropy normalization")
-            ents: list[float] = []
+            ents_t: list[Tensor] = []
             for h in range(H):
-                flat = idx_w[:, :, h].detach().to(dtype=torch.int64).reshape(-1).cpu()
-                counts = torch.bincount(flat, minlength=int(self.memory.mem_buckets)).to(dtype=torch.float32)
-                total = float(counts.sum().item())
-                if total <= 0.0:
+                # Keep telemetry on-device to avoid host-sync stalls (especially on MPS).
+                flat = idx_w[:, :, h].detach().to(dtype=torch.long).reshape(-1)
+                mb = int(self.memory.mem_buckets)
+                if mb <= 1:
+                    raise ValueError("mem_buckets must be > 1")
+                mask = (flat >= 0) & (flat < mb)
+                if not bool(mask.any()):
                     continue
-                p = counts / float(total)
-                m = p > 0
-                ent = -float((p[m] * torch.log(p[m])).sum().item())
-                ents.append(ent / float(denom))
-            if ents:
-                stats[f"{prefix}/write_bucket_entropy_norm"] = float(sum(ents) / float(len(ents)))
+                flat2 = flat[mask]
+                ones = torch.ones_like(flat2, dtype=torch.float32)
+                counts = torch.zeros((mb,), device=flat2.device, dtype=torch.float32)
+                counts.scatter_add_(0, flat2, ones)
+                total = counts.sum()
+                if not bool(total > 0):
+                    continue
+                p = counts / total
+                eps = 1e-9
+                ent = -(p * torch.log(p + eps)).sum()  # scalar tensor
+                ents_t.append(ent / float(denom))
+            if ents_t:
+                stats[f"{prefix}/write_bucket_entropy_norm"] = torch.stack(ents_t).mean()
 
     def _apply_forced_read_dropout(self, local: Tensor, ctx: Any, B: int, T: int, device: Any, dtype: Any):
         drop_p = float(getattr(self.config, "forced_read_dropout_p", 0.0))
@@ -426,7 +436,8 @@ class MosaicBlockLayer(nn.Module):
             inp = self.state_in(u_c).view(B, C, self.state_k, D).permute(0, 2, 1, 3)
             s_seq_c, s_last = leaky_integrator_scan(inp, s, decay)
             s = s_last.to(dtype=u.dtype)
-            g_c = self.state_out(s_seq_c.permute(0, 2, 1, 3).reshape(B, C, self.state_k * D))
+            g_in = s_seq_c.to(dtype=u.dtype).permute(0, 2, 1, 3).reshape(B, C, self.state_k * D)
+            g_c = self.state_out(g_in)
             g_parts.append(g_c)
 
             # Utility

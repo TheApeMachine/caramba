@@ -44,7 +44,8 @@ class InferContext:
     mosaic_stats_enabled: bool = False
     mosaic_aux_out: dict[str, "Tensor"] | None = None
     mosaic_drop_local: "Tensor | None" = None
-    mosaic_mem_stats: dict[str, float] = field(default_factory=dict)
+    # Same contract as TrainingVizMosaicContext: values may be floats or scalar tensors.
+    mosaic_mem_stats: "dict[str, float | Tensor]" = field(default_factory=dict)
 
     _index: int = 0
 

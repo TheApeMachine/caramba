@@ -2,6 +2,7 @@ __pycache__/
 .DS_Store
 .venv/
 .pytest_cache/
+.pycache/
 artifacts/llama32_1b_dba_paper_efficiency/
 artifacts/platform_improve/
 internal/

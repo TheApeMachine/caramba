@@ -70,16 +70,10 @@ def _compute_loss(
         features: Tensor = result[0]  # type: ignore[index]
         logits: Tensor = result[1]  # type: ignore[index]
         if not torch.isfinite(logits.detach()).all():
-            # Diagnostic: try once with Metal kernels disabled to isolate kernel issues.
-            from caramba.optimizer.kernels import metal_kernels_disabled
-
-            with metal_kernels_disabled():
-                logits2 = student.forward(x, return_features=True)[1]  # type: ignore[index]
             raise RuntimeError(
                 "Non-finite logits detected.\n"
                 f"- {_tensor_stats('logits', logits)}\n"
-                f"- {_tensor_stats('logits_no_metal', logits2)}\n"
-                "If logits_no_metal is finite, a Metal kernel is the likely cause."
+                "This is a hard failure under the kernel policy (no silent fallback paths)."
             )
         # IMPORTANT: compute CE in fp32 for numerical stability (esp. MPS + 128k vocab).
         logits_f = logits.float()
@@ -96,15 +90,10 @@ def _compute_loss(
         return loss, ce_loss, diff_loss_val
     logits = student.forward(x)
     if not torch.isfinite(logits.detach()).all():
-        from caramba.optimizer.kernels import metal_kernels_disabled
-
-        with metal_kernels_disabled():
-            logits2 = student.forward(x)
         raise RuntimeError(
             "Non-finite logits detected.\n"
             f"- {_tensor_stats('logits', logits)}\n"
-            f"- {_tensor_stats('logits_no_metal', logits2)}\n"
-            "If logits_no_metal is finite, a Metal kernel is the likely cause."
+            "This is a hard failure under the kernel policy (no silent fallback paths)."
         )
     logits_f = logits.float()
     ce_loss = F.cross_entropy(logits_f.view(-1, logits_f.shape[-1]), y.reshape(-1))
@@ -453,4 +442,3 @@ class GlobalStepper:
             global_step=int(run.steps),
             is_final=True,
         )
-

@@ -15,7 +15,7 @@ defaults:
     wandb: true
     wandb_project: mosaic
     wandb_entity: ''
-    wandb_mode: offline
+    wandb_mode: online
     eval_iters: 50
   runtime:
     save_every: 100
@@ -110,8 +110,8 @@ targets:
           batch_size: 16
           block_size: ${block_size}
           lr: 0.0003
-          device: cpu
-          dtype: float32
+          device: mps
+          dtype: float16
           telemetry_interval: 10
 
 entrypoints:

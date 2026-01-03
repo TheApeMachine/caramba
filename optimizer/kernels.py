@@ -1,110 +1,56 @@
-"""Hardware abstraction layer (HAL) for fused kernels.
+"""Hardware abstraction layer (HAL) for high-impact kernels.
 
-The purpose of this module is to provide a single, stable API for high-impact
-ops (norms, positional encodings, attention decode, optimizer steps) while
-dispatching to the best available backend:
+Caramba operates on a strict kernel policy:
+- Dispatch deterministically to the best supported kernel path.
+- Validate required kernel backends at startup (see `optimizer/kernel_registry.py`).
+- If an expected fast path is unavailable, raise immediately (no silent fallbacks).
 
-- CUDA: Triton (when available)
-- MPS: custom Metal extension
-- CPU: PyTorch eager / torch.compile
-
-This module is intentionally conservative: every op must have a correct fallback.
+Notes:
+- Many CUDA code paths currently rely on PyTorch's native CUDA kernels for norms/RoPE.
+  This module keeps the public API stable while dispatching to the best validated backend.
 """
 
 from __future__ import annotations
 
-import contextlib
-import contextvars
-from collections.abc import Iterable, Iterator
-from typing import Any
-
-import os
 import torch
 from torch import Tensor
 import torch.nn.functional as F
 
-from caramba.console import logger
+from caramba.optimizer.kernel_registry import KERNELS
 
 
-_DISABLE_METAL_ALL = os.getenv("CARAMBA_DISABLE_METAL_KERNELS", "").strip() == "1"
-_DISABLE_METAL_KIND: dict[str, bool] = {
-    k.removeprefix("CARAMBA_DISABLE_METAL_").strip().upper(): (str(v).strip() == "1")
-    for k, v in os.environ.items()
-    if k.startswith("CARAMBA_DISABLE_METAL_")
-}
-
-_METAL_DISABLE_ALL: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "caramba_metal_disable_all", default=False
-)
-_METAL_DISABLE_KINDS: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar(
-    "caramba_metal_disable_kinds", default=frozenset()
-)
-
-
-@contextlib.contextmanager
-def metal_kernels_disabled(*, kinds: Iterable[str] | None = None) -> Iterator[None]:
-    """Temporarily disable Metal fast-path kernels.
-
-    Prefer this over mutating `os.environ` at runtime. Environment variables are
-    read at import time for performance/stability, while this context manager
-    provides a reliable runtime override for correctness checks and debugging.
-    """
-
-    token_all: contextvars.Token[bool] | None = None
-    token_kinds: contextvars.Token[frozenset[str]] | None = None
-
-    if kinds is None:
-        token_all = _METAL_DISABLE_ALL.set(True)
-    else:
-        ks = frozenset(str(k).strip().upper() for k in kinds if str(k).strip())
-        if ks:
-            token_kinds = _METAL_DISABLE_KINDS.set(_METAL_DISABLE_KINDS.get() | ks)
-
-    try:
-        yield
-    finally:
-        if token_kinds is not None:
-            _METAL_DISABLE_KINDS.reset(token_kinds)
-        if token_all is not None:
-            _METAL_DISABLE_ALL.reset(token_all)
-
-
-def _metal_disabled(kind: str) -> bool:
-    """Best-effort kill-switch for Metal kernels.
-
-    This is used to keep *correctness* (e.g. teacher parity sanity checks) independent
-    from the availability of fast-path kernels.
-
-    Runtime override:
-    - Prefer `metal_kernels_disabled()` for temporary disabling inside the current context.
-
-    Startup-only env override:
-    - `CARAMBA_DISABLE_METAL_KERNELS=1` disables all Metal kernels.
-    - `CARAMBA_DISABLE_METAL_<KIND>=1` disables a specific kernel kind.
-
-    IMPORTANT: only the literal string "1" disables kernels. Values like "true"/"yes"
-    do NOT disable anything.
-    """
-    if _METAL_DISABLE_ALL.get():
-        return True
-    if _DISABLE_METAL_ALL:
-        return True
-    k = str(kind).strip().upper()
-    if k and (k in _METAL_DISABLE_KINDS.get()):
-        return True
-    return bool(_DISABLE_METAL_KIND.get(k, False))
+def _require(cond: bool, *, msg: str) -> None:
+    if not cond:
+        raise RuntimeError(msg)
 
 
 def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     """RMSNorm: y = x * rsqrt(mean(x^2) + eps) * weight."""
-    if (not _metal_disabled("rmsnorm")) and x.device.type == "mps" and x.dtype == torch.float16:
-        try:
-            from caramba.optimizer.metal import metal_rmsnorm_available, rmsnorm_fp16
+    if x.device.type == "mps":
+        _require(
+            bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
+            msg="RMSNorm on MPS requires the Metal extension to be available and loaded at startup.",
+        )
+        _require(
+            x.dtype == torch.float16,
+            msg=f"RMSNorm on MPS requires fp16, got dtype={x.dtype}.",
+        )
+        from caramba.optimizer.metal import rmsnorm_fp16
 
-            if metal_rmsnorm_available():
-                return rmsnorm_fp16(x=x, weight=weight, eps=float(eps))
-        except Exception as e:
-            logger.error(f"Failed to use Metal rmsnorm, continuing: {e}")
+        return rmsnorm_fp16(x=x, weight=weight, eps=float(eps))
+
+    if x.device.type == "cuda":
+        _require(
+            bool(KERNELS.cuda_available and KERNELS.triton_available),
+            msg="RMSNorm on CUDA requires Triton to be available and validated at startup.",
+        )
+        _require(
+            x.dtype in (torch.float16, torch.bfloat16),
+            msg=f"RMSNorm on CUDA requires fp16/bf16, got dtype={x.dtype}.",
+        )
+        from caramba.optimizer.rmsnorm_triton import rmsnorm_triton
+
+        return rmsnorm_triton(x=x, weight=weight, eps=float(eps))
 
     x_f = x.float()
     inv_rms = torch.rsqrt(x_f.pow(2).mean(dim=-1, keepdim=True) + float(eps))
@@ -121,14 +67,31 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     - x: (B, H, T, D)
     - cos/sin: (T, rot_dim/2)
     """
-    if (not _metal_disabled("rope")) and x.device.type == "mps" and x.dtype == torch.float16:
-        try:
-            from caramba.optimizer.metal import metal_rope_available, rope_fp16
+    if x.device.type == "mps":
+        _require(
+            bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
+            msg="RoPE on MPS requires the Metal extension to be available and loaded at startup.",
+        )
+        _require(
+            x.dtype == torch.float16,
+            msg=f"RoPE on MPS requires fp16, got dtype={x.dtype}.",
+        )
+        from caramba.optimizer.metal import rope_fp16
 
-            if metal_rope_available():
-                return rope_fp16(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
-        except Exception as e:
-            logger.error(f"Failed to use Metal rope, continuing: {e}")
+        return rope_fp16(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
+
+    if x.device.type == "cuda":
+        _require(
+            bool(KERNELS.cuda_available and KERNELS.triton_available),
+            msg="RoPE on CUDA requires Triton to be available and validated at startup.",
+        )
+        _require(
+            x.dtype in (torch.float16, torch.bfloat16),
+            msg=f"RoPE on CUDA requires fp16/bf16, got dtype={x.dtype}.",
+        )
+        from caramba.optimizer.rope_triton import rope_triton
+
+        return rope_triton(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
 
     T = int(x.shape[2])
     cos2 = cos[:T].unsqueeze(0).unsqueeze(0).to(dtype=x.dtype, device=x.device)
@@ -151,38 +114,221 @@ def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: flo
 
     This matches PyTorch's `F.layer_norm(x, normalized_shape=(D,))` behavior.
     """
-    if (not _metal_disabled("layernorm")) and x.device.type == "mps" and x.dtype == torch.float16:
-        try:
-            from caramba.optimizer.metal import layernorm_fp16, metal_layernorm_available
+    if x.device.type == "mps":
+        _require(
+            bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
+            msg="LayerNorm on MPS requires the Metal extension to be available and loaded at startup.",
+        )
+        _require(
+            x.dtype == torch.float16,
+            msg=f"LayerNorm on MPS requires fp16, got dtype={x.dtype}.",
+        )
+        from caramba.optimizer.metal import layernorm_fp16
 
-            if metal_layernorm_available():
-                return layernorm_fp16(x=x, weight=weight, bias=bias, eps=float(eps))
-        except Exception as e:
-            logger.error(f"Failed to use Metal layernorm, continuing: {e}")
+        return layernorm_fp16(x=x, weight=weight, bias=bias, eps=float(eps))
+
+    if x.device.type == "cuda":
+        _require(
+            bool(KERNELS.cuda_available and KERNELS.triton_available),
+            msg="LayerNorm on CUDA requires Triton to be available and validated at startup.",
+        )
+        _require(
+            x.dtype in (torch.float16, torch.bfloat16),
+            msg=f"LayerNorm on CUDA requires fp16/bf16, got dtype={x.dtype}.",
+        )
+        from caramba.optimizer.layernorm_triton import layernorm_triton
+
+        return layernorm_triton(x=x, weight=weight, bias=bias, eps=float(eps))
 
     D = int(x.shape[-1])
     return F.layer_norm(x, normalized_shape=(D,), weight=weight, bias=bias, eps=float(eps))
 
 
-def attention_decode(*args: Any, **kwargs: Any) -> Tensor:
-    """Placeholder for fused decode attention.
+def attention_decode(
+    *,
+    q_sem: Tensor,
+    q_geo: Tensor,
+    k_sem: Tensor,
+    k_geo: Tensor,
+    v: Tensor,
+    k_sem_null: Tensor | None = None,
+    k_geo_null: Tensor | None = None,
+    v_null: Tensor | None = None,
+    sem_scale: float | None = None,
+    geo_scale: float | None = None,
+) -> Tensor:
+    """Fused decode attention (HAL).
 
-    CUDA path should dispatch to Triton; MPS path should dispatch to Metal.
+    Current supported fast paths:
+    - MPS (Metal): decoupled DBA decode (fp16)
+
+    Signature (kwargs-only):
+      q_sem, q_geo, k_sem, k_geo, v,
+      k_sem_null=None, k_geo_null=None, v_null=None,
+      sem_scale=None, geo_scale=None
     """
-    raise NotImplementedError("attention_decode not implemented in HAL yet")
+    if q_sem.device.type == "mps":
+        _require(
+            bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
+            msg="Attention decode on MPS requires the Metal extension to be available and loaded at startup.",
+        )
+        _require(
+            q_sem.dtype == torch.float16,
+            msg=f"Attention decode on MPS requires fp16, got dtype={q_sem.dtype}.",
+        )
+        from caramba.optimizer.metal import dba_decode_fp16
+
+        return dba_decode_fp16(
+            q_sem=q_sem,
+            q_geo=q_geo,
+            k_sem=k_sem,
+            k_geo=k_geo,
+            v=v,
+            k_sem_null=k_sem_null,
+            k_geo_null=k_geo_null,
+            v_null=v_null,
+            sem_scale=sem_scale,
+            geo_scale=geo_scale,
+        )
+
+    raise RuntimeError(
+        "attention_decode: no supported backend for this device/dtype.\n"
+        f"device={q_sem.device.type} dtype={q_sem.dtype}\n"
+        "Use the decoupled attention fused decode paths (CUDA Triton) or Metal DBA decode (MPS fp16)."
+    )
 
 
-def scan(*args: Any, **kwargs: Any) -> Tensor:
-    """Placeholder for fused scan/SSM kernels."""
-    raise NotImplementedError("scan not implemented in HAL yet")
+def scan(
+    *,
+    x: Tensor,
+    dt: Tensor,
+    A: Tensor,
+    B: Tensor,
+    C: Tensor,
+    D: Tensor,
+) -> Tensor:
+    """Fused scan/SSM kernels (HAL).
+
+    Signature (kwargs-only):
+      x, dt, A, B, C, D
+    """
+    if x.device.type == "mps":
+        _require(
+            bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
+            msg="SSM scan on MPS requires the Metal extension to be available and loaded at startup.",
+        )
+        _require(
+            x.dtype == torch.float16,
+            msg=f"SSM scan on MPS requires fp16, got dtype={x.dtype}.",
+        )
+        from caramba.optimizer.metal import MetalSSMSelectiveScan
+
+        return MetalSSMSelectiveScan().run(x=x, dt=dt, A=A, B=B, C=C, D=D)
+
+    if x.device.type == "cuda":
+        _require(
+            bool(KERNELS.cuda_available and KERNELS.triton_available),
+            msg="SSM scan on CUDA requires Triton kernels to be available and validated at startup.",
+        )
+        _require(
+            x.dtype in (torch.float16, torch.bfloat16),
+            msg=f"SSM scan on CUDA requires fp16/bf16, got dtype={x.dtype}.",
+        )
+        from caramba.optimizer.fused_ssm import fused_selective_scan
+
+        return fused_selective_scan(x, dt, A, B, C, D)
+
+    raise RuntimeError(
+        "scan: no supported backend for this device/dtype.\n"
+        f"device={x.device.type} dtype={x.dtype}\n"
+        "Supported backends: Metal (MPS fp16), Triton (CUDA fp16/bf16)."
+    )
 
 
-def adamw_step(*args: Any, **kwargs: Any) -> None:
-    """Placeholder for fused AdamW update."""
-    raise NotImplementedError("adamw_step not implemented in HAL yet")
+def adamw_step(
+    *,
+    p: Tensor,
+    grad: Tensor,
+    master: Tensor,
+    exp_avg: Tensor,
+    exp_avg_sq: Tensor,
+    step_size: float,
+    beta1: float,
+    beta2: float,
+    eps: float,
+    lr_wd: float,
+) -> None:
+    """Fused AdamW update (HAL).
+
+    This is the low-level per-tensor update used by `AdamWMaster` when fused.
+    """
+    if p.device.type == "mps":
+        _require(
+            bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
+            msg="AdamW step on MPS requires the Metal extension to be available and loaded at startup.",
+        )
+        _require(
+            p.dtype == torch.float16,
+            msg=f"AdamW step on MPS requires fp16 params, got dtype={p.dtype}.",
+        )
+        from caramba.optimizer.metal import AdamWMasterStep
+
+        AdamWMasterStep().run(
+            p=p,
+            grad=grad,
+            master=master,
+            exp_avg=exp_avg,
+            exp_avg_sq=exp_avg_sq,
+            step_size=float(step_size),
+            beta1=float(beta1),
+            beta2=float(beta2),
+            eps=float(eps),
+            lr_wd=float(lr_wd),
+            verbose_build=False,
+        )
+        return
+
+    raise RuntimeError(
+        "adamw_step: no supported backend for this device/dtype.\n"
+        f"device={p.device.type} dtype={p.dtype}\n"
+        "CUDA fused optimizer parity kernel is not available in this build."
+    )
 
 
-def lion_step(*args: Any, **kwargs: Any) -> None:
-    """Placeholder for fused Lion update."""
-    raise NotImplementedError("lion_step not implemented in HAL yet")
+def lion_step(
+    *,
+    p: Tensor,
+    grad: Tensor,
+    m: Tensor,
+    lr: float,
+    beta1: float,
+    weight_decay: float = 0.0,
+) -> None:
+    """Fused Lion update (HAL)."""
+    if p.device.type == "mps":
+        _require(
+            bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
+            msg="Lion step on MPS requires the Metal extension to be available and loaded at startup.",
+        )
+        _require(
+            p.dtype == torch.float16,
+            msg=f"Lion step on MPS requires fp16 params, got dtype={p.dtype}.",
+        )
+        from caramba.optimizer.metal import lion_fp16
 
+        lion_fp16(
+            p=p,
+            grad=grad,
+            m=m,
+            lr=float(lr),
+            beta1=float(beta1),
+            weight_decay=float(weight_decay),
+            verbose_build=False,
+        )
+        return
+
+    raise RuntimeError(
+        "lion_step: no supported backend for this device/dtype.\n"
+        f"device={p.device.type} dtype={p.dtype}\n"
+        "CUDA fused optimizer parity kernel is not available in this build."
+    )

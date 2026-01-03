@@ -74,6 +74,7 @@ class EventRuntimeTest(unittest.TestCase):
         self.assertEqual(ev.sender, "agent")
         self.assertEqual(ev.payload, {"text": "ok"})
         self.assertIsNotNone(aux)
+        assert aux is not None
         self.assertIn("mosaic_commitment_logits", aux)
 
         injected = CommitmentModeB().inject(ev, aux=aux)

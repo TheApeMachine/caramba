@@ -128,7 +128,9 @@ class TrainingVizMosaicContext(TrainingVizContext):
     mosaic_drop_local: Tensor | None = None
 
     # Accumulated MOSAIC memory stats for logging (filled by MOSAIC layers).
-    mosaic_mem_stats: dict[str, float] = field(default_factory=dict)
+    # Values may be Python floats or scalar tensors; logging code is responsible
+    # for converting to JSON-safe floats in a batched way.
+    mosaic_mem_stats: dict[str, float | Tensor] = field(default_factory=dict)
 
     # Opaque state store for MOSAIC layers (e.g. n-gram cache state, persistent registers).
     # This must be in __slots__ for layers to attach state to the context.
