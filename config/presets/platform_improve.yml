@@ -23,7 +23,7 @@ targets:
       ideator_catalyst: catalyst
       ideator_ml: ml_expert
       developer: developer
-      reviewer: reviewer
+      verifier: verifier
     process:
       type: platform_improve
       name: improve_platform
@@ -37,12 +37,19 @@ targets:
       leader: research_team_leader
       ideators: [ideator_architect, ideator_catalyst, ideator_ml]
       developer: developer
-      reviewer: reviewer
-      repo_root: .
+      verifier: verifier
       base_branch: main
       branch_prefix: agent/platform-improve
       tests: ["python -m pytest -q"]
       max_review_rounds: 2
       open_pr: true
       pr_title_prefix: "[caramba] "
+      workspace:
+        image: caramba-dev-agent:latest
+        container_name: caramba-dev-agent
+        workdir: /work
+        repo_url: https://github.com/theapemachine/caramba.git
+        repo_dir: repo
+        git_remote: origin
+        github_token_path: .secrets/github_token.txt
 

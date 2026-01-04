@@ -23,6 +23,7 @@ The Root agent orchestrates expert personas:
 - **Persona**: `config/personas/root.yml`
 - **Service**: `root-agent` (exposed on host port 9000)
 - **Sub-agents**: All expert personas configured in `root.yml`
+  - This includes an optional `verifier` persona that can act as a merge gate (diff + tests).
 
 ### RandomModel Provider
 
@@ -36,7 +37,7 @@ This ensures persona behavior is consistent while reducing model bias.
 
 ### Textual TUI
 
-The Textual TUI (`cli/tui.py`) provides:
+The Textual TUI is launched via `python -m caramba.tui` (implementation lives in `cli/tui.py`) and provides:
 
 - **Chat viewport**: Streaming responses from Root agent
 - **Experts sidebar**: Shows which experts are being consulted
@@ -53,12 +54,12 @@ The Textual TUI (`cli/tui.py`) provides:
 
 2. Run the TUI:
    ```bash
-   python -m cli.tui
+   python -m caramba.tui
    ```
 
    Or set `ROOT_AGENT_URL` to customize the root agent URL:
    ```bash
-   ROOT_AGENT_URL=http://localhost:9000 python -m cli.tui
+   ROOT_AGENT_URL=http://localhost:9000 python -m caramba.tui
    ```
 
 ### Architecture Flow
@@ -102,6 +103,6 @@ persona-name:
 
 ## Future Extensions
 
-- **Verifier/Critic agents**: Can be added as additional personas
+- **Verifier/Critic agents**: Supported via the `verifier` persona; can be extended with security/release roles.
 - **Sub-agent chains**: Any persona can have sub-agents (not just Root)
 - **Custom model pools**: Per-persona model selection policies
