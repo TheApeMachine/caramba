@@ -22,7 +22,7 @@ from caramba.runtime.engine import TorchEngine
 from caramba.runtime.readiness import check_target_readiness, format_readiness_report
 from caramba.ai.process.brainstorm import Brainstorm
 from caramba.ai.process import Process
-from caramba.config.agents import MultiplexChatProcessConfig
+from caramba.ai.process.platform_improve import PlatformImprove
 
 
 class ProcessFactory(Protocol):
@@ -36,6 +36,7 @@ PROCESSMAP: dict[str, ProcessFactory] = {
     # Keep backwards-compatible manifest process naming.
     # The new implementation lives at `caramba.ai.process.brainstorm.Brainstorm`.
     "multiplex_chat": cast(ProcessFactory, Brainstorm),
+    "platform_improve": cast(ProcessFactory, PlatformImprove),
 }
 
 
@@ -129,12 +130,6 @@ class ExperimentRunner:
                         f"Failed to load persona '{persona_name}' from {persona_path}: {e}"
                     ) from e
                 agents[role_key] = Agent(persona=persona)
-
-            if not isinstance(target.process, MultiplexChatProcessConfig):
-                raise TypeError(
-                    f"Process type '{process_type}' requires MultiplexChatProcessConfig, "
-                    f"got {type(target.process).__name__}. Fix by setting process.type: multiplex_chat."
-                )
 
             process = PROCESSMAP[process_type](agents=agents, process=target.process)
 

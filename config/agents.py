@@ -11,6 +11,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, Field, RootModel, model_validator
 
+from .platform_improve import PlatformImproveProcessConfig
 
 class AgentTeamConfig(RootModel[dict[str, str]]):
     """Mapping of team role keys to persona names.
@@ -151,54 +152,6 @@ class CodeGraphSyncProcessConfig(BaseModel):
 
     @model_validator(mode="after")
     def _default_name(self) -> "CodeGraphSyncProcessConfig":
-        if not self.name:
-            self.name = self.type
-        return self
-
-
-class PlatformImproveProcessConfig(BaseModel):
-    """End-to-end platform improvement pipeline.
-
-    Orchestrates:
-      1) Ingest latest repo + model topology into Graphiti/FalkorDB
-      2) Multi-agent ideation
-      3) Consensus plan
-      4) Developer implements on a new branch
-      5) Reviewer gate (iterate if needed)
-      6) Open PR
-    """
-
-    type: Literal["platform_improve"] = "platform_improve"
-    name: str | None = None
-
-    # High-level goal for ideation/discussion.
-    topic: str = "Propose and implement one high-impact improvement to the Caramba platform."
-
-    # Ingestion controls
-    ingest_repo: bool = True
-    ingest_models: bool = True
-    index_namespace: str = "main"
-    ingest_agent: str = "research_team_leader"
-    max_files: int = Field(default=250, ge=1)
-    max_chars_per_file: int = Field(default=4000, ge=256)
-
-    # Team roles
-    leader: str = "research_team_leader"
-    ideators: list[str] = Field(default_factory=list)
-    developer: str = "developer"
-    reviewer: str = "reviewer"
-
-    # Dev/review automation
-    repo_root: str = "."
-    base_branch: str = "main"
-    branch_prefix: str = "agent/platform-improve"
-    tests: list[str] = Field(default_factory=lambda: ["python -m pytest -q"])
-    max_review_rounds: int = Field(default=2, ge=0)
-    open_pr: bool = True
-    pr_title_prefix: str = "[caramba] "
-
-    @model_validator(mode="after")
-    def _default_name(self) -> "PlatformImproveProcessConfig":
         if not self.name:
             self.name = self.type
         return self

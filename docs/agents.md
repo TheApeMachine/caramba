@@ -54,7 +54,7 @@ These processes coordinate AI agents to:
 | `discussion`      | Multi-agent research discussion       | multiple researchers     |
 | `code_graph_sync` | Index codebase into knowledge graph   | -                        |
 | `paper_collect_artifacts` | Collect benchmark artifacts into paper-ready tables/figures | - |
-| `platform_improve`| Ingest → ideate → implement → review → PR | leader, architect, developer, reviewer |
+| `platform_improve`| Ingest → ideate → implement → verify → PR (in Docker workspace) | leader, ideators, developer, verifier |
 | `multiplex_chat`  | Interactive shared-context chat across multiple model providers | chatgpt, claude, gemini |
 
 ### Process Target Structure
