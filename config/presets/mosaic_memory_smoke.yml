@@ -1,0 +1,132 @@
+version: 2
+name: mosaic_memory_smoke
+notes: |
+  First end-to-end MOSAIC training attempt (smoke test).
+  Small model + short run, optimized for fast iteration and telemetry visibility.
+
+defaults:
+  data:
+    tokenizer: tiktoken
+    val_frac: 0.1
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: mosaic
+    wandb_entity: ''
+    wandb_mode: offline
+    eval_iters: 10
+  runtime:
+    save_every: 100
+
+vars:
+  d_model: 128
+  n_layers: 2
+  vocab_size: 2048
+  block_size: 256
+  mem_buckets: 1024         # must match (mem_vq_codebook_size ^ mem_vq_groups)
+  mem_hashes: 2
+
+targets:
+  - type: experiment
+    name: mosaic_smoke
+    description: Small MOSAIC curriculum run for first training attempt.
+    backend: torch
+    task: task.language_modeling
+
+    data:
+      ref: dataset.mosaic_memory_curriculum
+      config:
+        block_size: ${block_size}
+        vocab_size: ${vocab_size}
+        mem_buckets: ${mem_buckets}
+        mem_hashes: ${mem_hashes}
+        n_pairs: 2
+        distractor_len: 64
+        n_items: 10000
+        seed: 1337
+
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 8
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+
+                    # Memory / router
+                    mem_router: vq
+                    mem_vq_groups: 2
+                    mem_vq_codebook_size: 32     # 32^2 = 1024 buckets
+                    mem_vq_group_dim: 16
+                    mem_vq_beam: 2
+                    mem_write_multi: true
+
+                    mem_buckets: ${mem_buckets}
+                    mem_dim: 96
+                    mem_hashes: ${mem_hashes}
+                    mem_assoc: 4
+                    mem_key_dim: 32
+                    mem_read_temp: 1.0
+                    mem_match_threshold: 0.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.2
+
+                    # Training dynamics
+                    forced_read_dropout_p: 0.0
+                    aux_contrastive_delta: 1
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+
+    objective:
+      ref: objective.mosaic_next_token_aux
+      config:
+        logits_key: logits
+        target_key: target_ids
+        aux_gate_weight: 0.2
+        aux_bits_weight: 0.2
+        aux_utility_weight: 0.2
+        aux_contrastive_weight: 0.2
+
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_smoke
+        seed: 1337
+        steps: 400
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 8
+          block_size: ${block_size}
+          lr: 0.0003
+          # Note: Users on Apple Silicon can change this to 'mps' for GPU acceleration
+          device: cpu
+          dtype: float32
+          telemetry_interval: 1
+
+          # Stage D2: keep some teacher control for stability in a first run.
+          mosaic_teacher_p_start: 1.0
+          mosaic_teacher_p_end: 0.2
+          mosaic_teacher_p_schedule: linear
+          mosaic_teacher_p_warmup_steps: 50
+          mosaic_teacher_p_cooldown_steps: 50

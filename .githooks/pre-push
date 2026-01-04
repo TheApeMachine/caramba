@@ -1,0 +1,61 @@
+#!/bin/sh
+set -eu
+
+# Best-effort: never block pushes.
+if [ -n "${CARAMBA_SKIP_CODEGRAPH_SYNC:-}" ]; then
+  exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${ROOT}" ]; then
+  exit 0
+fi
+
+# Log hook activity for debugging.
+LOG_DIR="${ROOT}/artifacts/codegraph"
+mkdir -p "${LOG_DIR}" >/dev/null 2>&1 || true
+LOG_FILE="${LOG_DIR}/hook.log"
+
+PY="${ROOT}/.venv/bin/python"
+if [ ! -x "${PY}" ]; then
+  PY="python3"
+fi
+
+# stdin lines: <local ref> <local sha> <remote ref> <remote sha>
+FALKOR_URI="${CARAMBA_FALKORDB_URI:-redis://localhost:6379}"
+
+# Collect py files touched in the push range(s). If we can't determine, fall back to full sync.
+tmp="${LOG_DIR}/.prepush_files.$$"
+: > "${tmp}" || true
+full=0
+# Read stdin before redirecting to avoid subshell issues
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # initial push (remote sha is all zeros): do a full scan
+  if [ "${remote_sha}" = "0000000000000000000000000000000000000000" ]; then
+    full=1
+    break
+  fi
+  git diff --name-only "${remote_sha}" "${local_sha}" -- '*.py' 2>/dev/null >> "${tmp}" || true
+done
+
+{
+  echo ""
+  echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] pre-push: syncing code graph"
+  echo "repo=${ROOT}"
+  echo "falkor_uri=${FALKOR_URI}"
+
+  if [ "${full}" -eq 1 ] || [ ! -s "${tmp}" ]; then
+    echo "mode=full"
+    "${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort --falkordb-uri "${FALKOR_URI}"
+  else
+    echo "mode=incremental"
+    # uniq
+    awk '!seen[$0]++' "${tmp}" | while IFS= read -r f; do
+      [ -z "${f}" ] && continue
+      "${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort --falkordb-uri "${FALKOR_URI}" --file "${f}"
+    done
+  fi
+  rm -f "${tmp}" >/dev/null 2>&1 || true
+} >>"${LOG_FILE}" 2>&1 || true
+exit 0
+

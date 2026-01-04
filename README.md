@@ -94,6 +94,16 @@ caramba automatically optimizes your experiments:
 
 [→ Optimization Details](docs/optimization.md)
 
+### AI Research Collaborators
+
+```bash
+python3 -m caramba config/presets/multiplex_chat.yml --target brainstorm
+```
+
+The above command puts you in a chat session with ChatGPT 5.2, Claude Opus 4.1, and Gemini Pro 3, which all have the tools they need to inspect the code, perform research, and other relevant actions so you can collaborate on whatever research goals you have.
+
+The agents are not just talking directly with you, but also have the ability to respond to each other, so it should really feel like a team structure.
+
 ### 🤖 AI Research Automation
 
 Optional AI-assisted workflows:

@@ -6,7 +6,7 @@ the current position offset so layers know where they are in the sequence.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import torch
@@ -32,6 +32,20 @@ class InferContext:
     attn_mask: "Tensor | None" = None
     q_chunk: int | None = None
     local_window: int | None = None
+
+    # Optional token ids for token-aware non-attention layers (e.g., MOSAIC n-gram cache).
+    input_ids: "Tensor | None" = None
+
+    # Optional MOSAIC control plane (mirrors TrainingVizMosaicContext fields).
+    # These are only used by MOSAIC layers when present.
+    mosaic_teacher: dict[str, "Tensor"] | None = None
+    mosaic_collect_aux: bool = False
+    mosaic_teacher_p: float = 1.0
+    mosaic_stats_enabled: bool = False
+    mosaic_aux_out: dict[str, "Tensor"] | None = None
+    mosaic_drop_local: "Tensor | None" = None
+    # Same contract as TrainingVizMosaicContext: values may be floats or scalar tensors.
+    mosaic_mem_stats: "dict[str, float | Tensor]" = field(default_factory=dict)
 
     _index: int = 0
 

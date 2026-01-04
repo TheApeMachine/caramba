@@ -1,0 +1,60 @@
+# Dockerfile for persona A2A servers.
+#
+# This is a generic Dockerfile that can run any persona as an A2A server.
+# The PERSONA_FILE environment variable specifies which persona YAML to load.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Keep the virtualenv outside /app because docker-compose bind-mounts /app.
+# If the venv lived in /app, the mount would hide it and uv would try to
+# manage a host-created .venv (often with a mismatched interpreter).
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (same pattern as other docker images)
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+# Make uv available to non-root users (don't rely on /root/.local/bin).
+RUN mv /root/.local/bin/uv /usr/local/bin/uv
+
+# Copy dependency files (for better Docker caching)
+COPY pyproject.toml uv.lock ./
+
+# Install Python dependencies (locked) without building local project.
+# The project build needs sources like README.md and ./ai which are copied later.
+RUN python3.12 -m venv /opt/venv \
+	&& . /opt/venv/bin/activate \
+    && uv sync --frozen --no-install-project
+
+# Copy application code
+COPY . .
+
+# Install the local project now that sources are present.
+RUN . /opt/venv/bin/activate \
+    && uv sync --frozen
+
+# Create non-root user for security
+RUN groupadd -r appuser \
+    && useradd -r -g appuser -u 1000 -m -d /home/appuser -s /bin/bash appuser
+RUN chown -R appuser:appuser /app
+RUN mkdir -p /home/appuser/.cache/uv && chown -R appuser:appuser /home/appuser
+
+ENV HOME=/home/appuser
+ENV UV_CACHE_DIR=/home/appuser/.cache/uv
+
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl --fail http://localhost:8001/.well-known/agent-card.json || exit 1
+
+# Run the A2A server (PERSONA_FILE env var must be set)
+# Use the prebuilt venv directly; don't let uv touch /app/.venv at runtime.
+CMD ["python", "-m", "ai.a2a_server"]

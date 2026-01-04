@@ -11,7 +11,6 @@ from torch import Tensor, nn
 from typing_extensions import override
 
 from caramba.config.layer import RMSNormLayerConfig
-from caramba.console import logger
 
 
 class RMSNormLayer(nn.Module):
@@ -57,17 +56,6 @@ class RMSNormLayer(nn.Module):
         if int(x.shape[-1]) != int(self.d_model):
             raise ValueError(f"Expected x last dim {int(self.d_model)}, got {x.shape}")
 
-        # Fast path via HAL (Metal / Triton / fallback).
-        try:
-            from caramba.optimizer.kernels import rmsnorm
+        from caramba.optimizer.kernels import rmsnorm
 
-            return rmsnorm(x=x, weight=self.weight, eps=float(self.eps))
-        except Exception as e:
-            logger.error(f"HAL rmsnorm failed; falling back to PyTorch: {e}: {x.shape}")
-
-        x_f = x.float()
-        inv_rms = torch.rsqrt(x_f.pow(2).mean(dim=-1, keepdim=True) + float(self.eps))
-        y = (x_f * inv_rms).to(dtype=x.dtype)
-        if self.weight is not None:
-            y = y * self.weight
-        return y
+        return rmsnorm(x=x, weight=self.weight, eps=float(self.eps))

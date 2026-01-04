@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
 
 # Debug aid: avoid spamming logs on every decode step.
-_LOGGED_METAL_FUSED_DECODE = False
-_LOGGED_FUSED_DECODE_FAILURE = False
+_LOGGED_METAL_FUSED_DECODE = False  # deprecated: kept for backward compatibility
+_LOGGED_FUSED_DECODE_FAILURE = False  # deprecated: kept for backward compatibility
 
 
 class DecoupledAttentionLayer(AttentionBase):
@@ -339,7 +339,6 @@ class DecoupledAttentionLayer(AttentionBase):
         decode_block_override: int | None = None,
     ) -> tuple[Tensor, "DecoupledLayerKVCache | None"]:
         """DBA attention: (Q_sem·K_sem^T + Q_geo·K_geo^T) → softmax → V."""
-        global _LOGGED_FUSED_DECODE_FAILURE
         B, T, _ = x.shape
         ninfty = neg_inf(x.dtype)
 
@@ -402,101 +401,98 @@ class DecoupledAttentionLayer(AttentionBase):
                 and x.device.type in ("cuda", "mps")
             ):
                 if x.device.type == "cuda":
-                    try:
-                        from optimizer.fused_attention import (
-                            fused_decode_available,
-                            fused_decode_decoupled_q4q8q4,
-                            fused_decode_decoupled_q4q8q4_2pass,
+                    from caramba.optimizer.fused_attention import (
+                        fused_decode_available,
+                        fused_decode_decoupled_q4q8q4,
+                        fused_decode_decoupled_q4q8q4_2pass,
+                    )
+
+                    if not fused_decode_available(cache, "cuda"):
+                        raise RuntimeError(
+                            "Fused DBA decode is required for CUDA decode, but is unavailable for this cache/device.\n"
+                            "Ensure Triton is installed and the decoupled KV cache uses q4_0/q8_0/q4_0 with qblock=32.\n"
                         )
 
-                        if fused_decode_available(cache, x.device.type):
-                            decode_block = int(decode_block_override) if decode_block_override is not None else 1024
-                            ksn = kgn = vn = None
-                            if bool(getattr(self.config, "null_attn", False)):
-                                ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=qsh.dtype, device=x.device)
-                            cache_len = int(cache.pos)
-                            if cache_len > 4 * int(decode_block):
-                                out_fused = fused_decode_decoupled_q4q8q4_2pass(
-                                    q_sem=qsh,
-                                    q_geo=qgh,
-                                    cache=cache,
-                                    n_heads=int(self.n_heads),
-                                    sem_head_dim=int(sem_head_dim),
-                                    geo_head_dim=int(geo_head_dim),
-                                    v_head_dim=int(v_head_dim),
-                                    sem_scale=float(self._sem_scale),
-                                    geo_scale=float(self._geo_scale),
-                                    decode_block=int(decode_block),
-                                    k_sem_null=ksn,
-                                    k_geo_null=kgn,
-                                    v_null=vn,
-                                )
-                            else:
-                                out_fused = fused_decode_decoupled_q4q8q4(
-                                    q_sem=qsh,
-                                    q_geo=qgh,
-                                    cache=cache,
-                                    n_heads=int(self.n_heads),
-                                    sem_head_dim=int(sem_head_dim),
-                                    geo_head_dim=int(geo_head_dim),
-                                    v_head_dim=int(v_head_dim),
-                                    sem_scale=float(self._sem_scale),
-                                    geo_scale=float(self._geo_scale),
-                                    decode_block=int(decode_block),
-                                    k_sem_null=ksn,
-                                    k_geo_null=kgn,
-                                    v_null=vn,
-                                )
-                            y = self.out_proj(self._merge(out_fused))
-                            return y, cache
-                    except (ImportError, ModuleNotFoundError, RuntimeError, OSError) as e:
-                        if (not _LOGGED_FUSED_DECODE_FAILURE) and bool(getattr(self.config, "debug_fused_decode", False)):
-                            logger.warning(f"Fused DBA decode unavailable; falling back: {type(e).__name__}: {e}")
-                            _LOGGED_FUSED_DECODE_FAILURE = True
-                    except Exception as e:
-                        if bool(getattr(self.config, "debug_fused_decode", False)):
-                            logger.error(f"Unexpected fused DBA decode error: {type(e).__name__}: {e}")
-                        raise
-                elif x.device.type == "mps":
-                    global _LOGGED_METAL_FUSED_DECODE
-                    try:
-                        from optimizer.fused_attention import (
-                            fused_decode_available,
-                            fused_decode_decoupled_q4q8q4,
+                    decode_block = int(decode_block_override) if decode_block_override is not None else 1024
+                    ksn = kgn = vn = None
+                    if bool(getattr(self.config, "null_attn", False)):
+                        ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=qsh.dtype, device=x.device)
+
+                    cache_len = int(cache.pos)
+                    if cache_len > 4 * int(decode_block):
+                        out_fused = fused_decode_decoupled_q4q8q4_2pass(
+                            q_sem=qsh,
+                            q_geo=qgh,
+                            cache=cache,
+                            n_heads=int(self.n_heads),
+                            sem_head_dim=int(sem_head_dim),
+                            geo_head_dim=int(geo_head_dim),
+                            v_head_dim=int(v_head_dim),
+                            sem_scale=float(self._sem_scale),
+                            geo_scale=float(self._geo_scale),
+                            decode_block=int(decode_block),
+                            k_sem_null=ksn,
+                            k_geo_null=kgn,
+                            v_null=vn,
+                        )
+                    else:
+                        out_fused = fused_decode_decoupled_q4q8q4(
+                            q_sem=qsh,
+                            q_geo=qgh,
+                            cache=cache,
+                            n_heads=int(self.n_heads),
+                            sem_head_dim=int(sem_head_dim),
+                            geo_head_dim=int(geo_head_dim),
+                            v_head_dim=int(v_head_dim),
+                            sem_scale=float(self._sem_scale),
+                            geo_scale=float(self._geo_scale),
+                            decode_block=int(decode_block),
+                            k_sem_null=ksn,
+                            k_geo_null=kgn,
+                            v_null=vn,
+                        )
+                    y = self.out_proj(self._merge(out_fused))
+                    return y, cache
+
+                if x.device.type == "mps":
+                    from caramba.optimizer.metal import dba_decode_fp16, metal_dba_decode_available
+
+                    if not metal_dba_decode_available():
+                        raise RuntimeError("Metal DBA decode kernel is unavailable on this runtime.")
+
+                    if not (cache.k_sem.kind == "fp16" and cache.k_geo.kind == "fp16" and cache.v.kind == "fp16"):
+                        raise RuntimeError(
+                            "Metal DBA decode requires fp16 KV caches on MPS.\n"
+                            f"Got kinds: k_sem={cache.k_sem.kind}, k_geo={cache.k_geo.kind}, v={cache.v.kind}\n"
                         )
 
-                        if fused_decode_available(cache, x.device.type):
-                            if not _LOGGED_METAL_FUSED_DECODE:
-                                logger.info("Using Metal fused decoupled decode (best-effort)")
-                                _LOGGED_METAL_FUSED_DECODE = True
-                            ksn = kgn = vn = None
-                            if bool(getattr(self.config, "null_attn", False)):
-                                ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=qsh.dtype, device=x.device)
-                            out_fused = fused_decode_decoupled_q4q8q4(
-                                q_sem=qsh,
-                                q_geo=qgh,
-                                cache=cache,
-                                n_heads=int(self.n_heads),
-                                sem_head_dim=int(sem_head_dim),
-                                geo_head_dim=int(geo_head_dim),
-                                v_head_dim=int(v_head_dim),
-                                sem_scale=float(self._sem_scale),
-                                geo_scale=float(self._geo_scale),
-                                decode_block=1024,
-                                k_sem_null=ksn,
-                                k_geo_null=kgn,
-                                v_null=vn,
-                            )
-                            y = self.out_proj(self._merge(out_fused))
-                            return y, cache
-                    except (ImportError, ModuleNotFoundError, RuntimeError, OSError) as e:
-                        if (not _LOGGED_FUSED_DECODE_FAILURE) and bool(getattr(self.config, "debug_fused_decode", False)):
-                            logger.warning(f"Fused DBA decode unavailable; falling back: {type(e).__name__}: {e}")
-                            _LOGGED_FUSED_DECODE_FAILURE = True
-                    except Exception as e:
-                        if bool(getattr(self.config, "debug_fused_decode", False)):
-                            logger.error(f"Unexpected fused DBA decode error: {type(e).__name__}: {e}")
-                        raise
+                    if cache.k_sem.buf is None or cache.k_geo.buf is None or cache.v.buf is None:
+                        raise RuntimeError("fp16 KV cache buffers are not initialized")
+
+                    S = int(cache.pos)
+                    k_sem_all = cache.k_sem.buf.narrow(1, 0, S)
+                    k_geo_all = cache.k_geo.buf.narrow(1, 0, S)
+                    v_all = cache.v.buf.narrow(1, 0, S)
+
+                    ksn = kgn = vn = None
+                    if bool(getattr(self.config, "null_attn", False)):
+                        ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=qsh.dtype, device=x.device)
+
+                    out_fused = dba_decode_fp16(
+                        q_sem=qsh,
+                        q_geo=qgh,
+                        k_sem=k_sem_all,
+                        k_geo=k_geo_all,
+                        v=v_all,
+                        k_sem_null=ksn,
+                        k_geo_null=kgn,
+                        v_null=vn,
+                        sem_scale=float(self._sem_scale),
+                        geo_scale=float(self._geo_scale),
+                        verbose_build=False,
+                    )
+                    y = self.out_proj(self._merge(out_fused))
+                    return y, cache
 
             if old_len > 0:
                 k_sem_all, k_geo_all, v_all = cache.get(dtype=qsh.dtype)

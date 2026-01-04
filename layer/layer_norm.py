@@ -41,16 +41,11 @@ class LayerNormLayer(nn.Module):
         ctx: object | None = None,
     ) -> Tensor:
         """Apply layer normalization."""
-        # Fast path via HAL (Metal / Triton / fallback).
-        try:
-            from caramba.optimizer.kernels import layernorm
+        from caramba.optimizer.kernels import layernorm
 
-            return layernorm(
-                x=x,
-                weight=self.norm.weight,
-                bias=self.norm.bias,
-                eps=float(self.norm.eps),
-            )
-        except Exception:
-            # Best-effort: fall back to PyTorch implementation.
-            return self.norm(x)
+        return layernorm(
+            x=x,
+            weight=self.norm.weight,
+            bias=self.norm.bias,
+            eps=float(self.norm.eps),
+        )

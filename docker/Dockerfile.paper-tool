@@ -29,13 +29,9 @@ WORKDIR /app
 # Copy project files for dependency installation
 COPY pyproject.toml ./
 
-# Install Python dependencies (exclude dev dependency group)
+# Install Python dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-group dev
-
-# Copy application code
-COPY agent/ ./agent/
-COPY config/ ./config/
+    uv sync
 
 # Create artifacts directory (will be mounted as volume)
 RUN mkdir -p /app/artifacts

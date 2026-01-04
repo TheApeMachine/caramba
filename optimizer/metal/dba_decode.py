@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from caramba.console import logger
 from typing import TYPE_CHECKING
 
 import torch
@@ -14,9 +13,6 @@ from .jit import load_caramba_metal_ops
 
 if TYPE_CHECKING:
     from torch import Tensor
-
-
-_LOGGED = False
 
 
 def metal_dba_decode_available() -> bool:
@@ -119,17 +115,14 @@ def dba_decode_fp16(
         raise ValueError("v last dim must be divisible by H")
 
     v_hd = v_dim // H
+    if v_hd > 256:
+        raise ValueError(f"Metal DBA decode requires v_hd <= 256 (got v_hd={v_hd})")
     if sem_scale is None:
         sem_scale = 1.0 / math.sqrt(float(sem_hd))
     if geo_scale is None:
         geo_scale = 1.0 / math.sqrt(float(geo_hd))
 
     ops = load_caramba_metal_ops(verbose=bool(verbose_build))
-
-    global _LOGGED
-    if not _LOGGED:
-        logger.success("Using custom Metal kernel: DBA Decode (fp16)")
-        _LOGGED = True
 
     if use_null:
         assert ksn is not None, "ksn is None"
@@ -167,4 +160,3 @@ def dba_decode_fp16(
     if out.shape != (B, H, v_hd):
         raise RuntimeError(f"unexpected output shape {tuple(out.shape)}")
     return out.unsqueeze(2)
-

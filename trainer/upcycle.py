@@ -320,44 +320,38 @@ class _UpcycleSession:
         total_loss = 0.0
         total_tokens = 0
         n = 0
-        # Teacher parity should be a *correctness* check, not a kernel benchmark.
-        # Metal fast-path kernels are great for speed, but if they have a bug we want
-        # to detect it. For the sanity check, force pure PyTorch paths even on MPS.
-        from caramba.optimizer.kernels import metal_kernels_disabled
+        with torch.no_grad():
+            for batch in loader:
+                x = batch["input_ids"].to(self.device)
+                y = batch["target_ids"].to(self.device)
 
-        with metal_kernels_disabled():
-            with torch.no_grad():
-                for batch in loader:
-                    x = batch["input_ids"].to(self.device)
-                    y = batch["target_ids"].to(self.device)
-
-                    # Token/vocab compatibility check.
-                    mx = int(torch.maximum(x.max(), y.max()).item())
-                    if mx >= int(vocab_size):
-                        raise ValueError(
-                            f"Teacher sanity check failed: dataset token IDs exceed teacher vocab "
-                            f"(max_id={mx}, vocab_size={vocab_size}). "
-                            "This usually means the dataset was tokenized with a different tokenizer than the teacher."
-                        )
-
-                    logits = self.teacher(x)
-                    if not torch.isfinite(logits).all():
-                        raise ValueError(
-                            "Teacher sanity check failed: teacher produced NaN/Inf logits. "
-                            "This usually indicates a bad checkpoint load, dtype/device issue, or numerical instability."
-                        )
-                    loss = F.cross_entropy(
-                        logits.float().view(-1, logits.size(-1)),
-                        y.view(-1),
-                        reduction="sum",
+                # Token/vocab compatibility check.
+                mx = int(torch.maximum(x.max(), y.max()).item())
+                if mx >= int(vocab_size):
+                    raise ValueError(
+                        f"Teacher sanity check failed: dataset token IDs exceed teacher vocab "
+                        f"(max_id={mx}, vocab_size={vocab_size}). "
+                        "This usually means the dataset was tokenized with a different tokenizer than the teacher."
                     )
-                    if not torch.isfinite(loss):
-                        raise ValueError("Teacher sanity check failed: teacher loss is NaN/Inf.")
-                    total_loss += float(loss)
-                    total_tokens += int(y.numel())
-                    n += 1
-                    if n >= max_batches:
-                        break
+
+                logits = self.teacher(x)
+                if not torch.isfinite(logits).all():
+                    raise ValueError(
+                        "Teacher sanity check failed: teacher produced NaN/Inf logits. "
+                        "This usually indicates a bad checkpoint load, dtype/device issue, or numerical instability."
+                    )
+                loss = F.cross_entropy(
+                    logits.float().view(-1, logits.size(-1)),
+                    y.view(-1),
+                    reduction="sum",
+                )
+                if not torch.isfinite(loss):
+                    raise ValueError("Teacher sanity check failed: teacher loss is NaN/Inf.")
+                total_loss += float(loss)
+                total_tokens += int(y.numel())
+                n += 1
+                if n >= max_batches:
+                    break
 
         denom = max(1, int(total_tokens))
         nll = float(total_loss) / float(denom)
@@ -507,7 +501,6 @@ class _UpcycleSession:
 
         torch.manual_seed(run.seed)
         self.inst = self._build_instrumentation(run)
-
         self.stepper.run(
             run,
             self._ctx(),
@@ -620,4 +613,3 @@ class _UpcycleSession:
         except Exception:
             logger.error("Failed to save runtime plan, continuing")
         return plan
-

@@ -61,6 +61,14 @@ class LayerType(str, enum.Enum):
         """Return the Python module containing layer implementations."""
         return "caramba.layer"
 
+    def py_module(self) -> str:
+        """Return the submodule name for this layer type."""
+        if self == LayerType.MOSAIC_BLOCK:
+            return "mosaic.block"
+        if self == LayerType.MOSAIC_NGRAM_CACHE:
+            return "mosaic.ngram_cache"
+        return self.name.lower()
+
 
 class LinearLayerConfig(Config):
     """Configuration for a simple linear projection."""
@@ -358,6 +366,10 @@ class MosaicBlockLayerConfig(Config):
     state_k: PositiveInt = 16
     state_decay_min: Probability = 0.90
     state_decay_max: Probability = 0.999
+    # Regularizer band for learned decay rates (prevents saturation/collapse).
+    # This is *not* the initialization range above; it's the healthy operating band.
+    state_decay_reg_min: Probability = 0.001
+    state_decay_reg_max: Probability = 0.999
 
     # Hard-addressed memory (fixed-size, sublinear, no scanning).
     # Router can be:
@@ -392,6 +404,32 @@ class MosaicBlockLayerConfig(Config):
     forced_read_dropout_p: Probability = 0.0
     # Contrastive auxiliary (InfoNCE-like) that makes memory reads predictive of future hidden state.
     aux_contrastive_delta: PositiveInt = 1
+
+    # -----------------------------
+    # dVM Registers / Opcodes (optional)
+    # -----------------------------
+    # Non-decaying register file (scratchpad). When set, enables a small persistent
+    # bank of vectors updated with a write-enable gate. If not written, a register
+    # persists exactly (identity mapping).
+    reg_slots: PositiveInt | None = None
+    reg_write_threshold: Probability = 0.5
+    reg_write_eta: Probability = 1.0
+    # Fusion gate for register read contribution.
+    gate_reg_init: float = 0.0
+
+    # Optional opcode head (for debugging/supervision). When enabled, the layer
+    # emits `mosaic_opcode_logits` into ctx aux outputs. It does not change runtime
+    # behavior unless later wired into control logic.
+    opcodes_enabled: bool = False
+    opcode_vocab: PositiveInt = 4  # NOP, READ, WRITE, CLEAR (convention)
+    # If enabled, opcode probabilities modulate compute (memory/register gating).
+    # This makes the opcode head a true (soft) control surface.
+    opcodes_control_enabled: bool = False
+    opcodes_control_temp: PositiveFloat = 1.0
+
+    # Phase 2: Commitment lifecycle head (optional).
+    # When enabled, the layer emits `mosaic_commitment_logits` (B,T,3) into ctx aux outputs.
+    commitment_head_enabled: bool = False
 
     # Fusion gates: scale contributions from long state / memory read.
     gate_long_init: float = 0.0

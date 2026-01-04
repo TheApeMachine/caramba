@@ -1,0 +1,20 @@
+version: 2
+name: multiplex_chat
+notes: |
+  Interactive shared-context console chat across multiple providers.
+  This preset uses the new `caramba.ai.process.brainstorm` implementation.
+
+defaults: {}
+
+targets:
+  - type: process
+    name: brainstorm
+    description: "REPL chat routed via @chatgpt / @claude / @gemini"
+    team:
+      chatgpt: chatgpt
+      claude: claude
+      gemini: gemini
+    process:
+      # Backwards-compatible type name; runner maps this to `Brainstorm`.
+      type: multiplex_chat
+      name: brainstorm

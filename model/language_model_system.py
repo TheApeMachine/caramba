@@ -62,8 +62,10 @@ class LanguageModelSystem:
                         if isinstance(k, str) and isinstance(v, Tensor):
                             out[k] = v
                 return out
-        except TypeError:
-            logger.error("Failed to forward, continuing")
+        except TypeError as e:
+            # Don't hide real signature/dispatch issues; this is a common source of
+            # silent feature disablement (e.g., return_features not supported).
+            logger.warning(f"Model(return_features=True) TypeError; falling back: {e!r}")
         logits = self.module(input_ids, ctx=ctx)  # type: ignore[call-arg]
         out2 = {"logits": logits, "_system": self.module}
         aux2 = getattr(ctx, "mosaic_aux_out", None) if ctx is not None else None

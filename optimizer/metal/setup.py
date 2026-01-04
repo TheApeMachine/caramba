@@ -18,6 +18,8 @@ def compile_metal(out_dir: Path) -> None:
         HERE / "layernorm.metal",
         HERE / "rope.metal",
         HERE / "lion.metal",
+        HERE / "adamw.metal",
+        HERE / "ssm_scan.metal",
     ]
     for src in sources:
         if not src.is_file():
