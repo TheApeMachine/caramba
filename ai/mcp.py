@@ -86,6 +86,11 @@ def iter_persona_tool_names(tools: object) -> list[str]:
                 name = item.get("name")
                 if isinstance(name, str) and name:
                     out.append(name)
+            else:
+                # Support pydantic models (e.g. ToolRef) and other objects with a `name` attribute.
+                name = getattr(item, "name", None)
+                if isinstance(name, str) and name:
+                    out.append(name)
         return out
     return []
 
@@ -165,8 +170,12 @@ def url_is_reachable(url: str, *, timeout_sec: float = 0.25) -> bool:
         return False
     if port is None:
         port = 443 if parsed.scheme == "https" else 80
-    with socket.create_connection((host, port), timeout=timeout_sec):
-        return True
+    try:
+        with socket.create_connection((host, port), timeout=timeout_sec):
+            return True
+    except OSError:
+        # ConnectionRefusedError, timeout, DNS errors, etc.
+        return False
 
 
 def endpoint_is_healthy(endpoint: McpEndpoint, *, timeout_sec: float = 0.5) -> bool:
@@ -181,8 +190,11 @@ def endpoint_is_healthy(endpoint: McpEndpoint, *, timeout_sec: float = 0.5) -> b
             return True
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         health_url = f"{parsed.scheme}://{parsed.hostname}:{port}/health"
-        r = httpx.get(health_url, timeout=timeout_sec)
-        return 200 <= r.status_code < 300
+        try:
+            r = httpx.get(health_url, timeout=timeout_sec)
+            return 200 <= r.status_code < 300
+        except httpx.HTTPError:
+            return False
 
     if transport in {"streamable-http", "streamable_http", "streamablehttp"}:
         # Session-based protocol; probing with a raw GET triggers "Missing session ID".

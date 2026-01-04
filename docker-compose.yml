@@ -164,8 +164,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/architect.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -183,8 +181,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/developer.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -202,8 +198,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/research_lead.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -221,8 +215,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/writer.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -240,8 +232,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/mathematician.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -259,8 +249,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/ml_expert.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -278,8 +266,23 @@ services:
     environment:
       - PERSONA_FILE=config/personas/reviewer.yml
       - PORT=8001
-    volumes:
-      - ./:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  verifier:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PERSONA_FILE=config/personas/verifier.yml
+      - PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -297,8 +300,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/knowledge_curator.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -316,8 +317,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/context_compactor.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -335,8 +334,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/note_taker.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -354,8 +351,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/catalyst.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -374,8 +369,6 @@ services:
     environment:
       - PERSONA_FILE=config/personas/root.yml
       - PORT=8001
-    volumes:
-      - ./:/app
     ports:
       - "9000:8001"  # Expose root agent to host for TUI
     depends_on:
@@ -386,6 +379,7 @@ services:
       - mathematician
       - ml-expert
       - reviewer
+      - verifier
       - knowledge-curator
       - context-compactor
       - note-taker

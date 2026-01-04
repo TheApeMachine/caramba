@@ -1,5 +1,4 @@
-.PHONY: install install-all test paper discussion brainstorm brainstorm-full ingest platform
-.PHONY: mosaic-smoke
+.PHONY: install install-all test paper discussion brainstorm brainstorm-full ingest platform tui mosaic-smoke
 
 install:
 	python3.12 -m venv .venv
@@ -75,3 +74,7 @@ ingest:
 	--falkordb-host localhost \
 	--falkordb-port 6379 \
 	--include "**/*.py"
+
+tui:
+	. .venv/bin/activate \
+	&& ROOT_AGENT_URL=http://localhost:9000 python3.12 -m caramba.tui.app

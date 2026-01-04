@@ -5,6 +5,8 @@ These make the agents compatible with the Agent-to-Agent protocol.
 from __future__ import annotations
 
 import asyncio
+import random
+import re
 import warnings
 from typing import Any
 from uuid import uuid4
@@ -52,6 +54,23 @@ warnings.filterwarnings("ignore", message=r".*non-text parts in the response.*")
 
 
 MCP_UNHEALTHY_WARNED: set[str] = set()
+
+_VALID_NAME_RE = re.compile(r"[^0-9A-Za-z_]")
+
+
+def _to_valid_identifier(name: str, *, fallback: str = "agent") -> str:
+    """Convert an arbitrary display name into an ADK-valid identifier."""
+    s = (name or "").strip()
+    if not s:
+        return fallback
+    s = s.replace("-", "_").replace(" ", "_")
+    s = _VALID_NAME_RE.sub("_", s)
+    # Must start with a letter or underscore.
+    if not (s[0].isalpha() or s[0] == "_"):
+        s = "_" + s
+    # Collapse repeated underscores and trim.
+    s = re.sub(r"_+", "_", s).strip("_") or fallback
+    return s
 
 class Agent:
     """Agent is a flexible wrapper to build AI agents."""
@@ -118,7 +137,11 @@ class Agent:
 
         # --- Model selection / normalization ---
         #
-        # If persona.model is empty or "random", use RandomModel (selects one of three providers per request).
+        # If persona.model is empty or "random", select one provider at startup.
+        #
+        # NOTE: ADK's `LlmAgent` validates `model` as either a string or a BaseLlm
+        # instance. A lightweight "proxy" object (like our previous RandomModel)
+        # is rejected by Pydantic, so we choose a concrete ADK model here.
         # Otherwise, support a few common model string conventions:
         # - "gemini/<model>" (LiteLLM-style)
         # - "google/<model>" (internal convention)
@@ -130,7 +153,12 @@ class Agent:
 
         raw_model = (persona.model or "").strip()
         if not raw_model or raw_model.lower() == "random":
-            self.model = RandomModel()
+            model_id = random.choice(RandomModel.MODEL_POOL)
+            if model_id.startswith(("gemini/", "google/")):
+                gemini_model = model_id.split("/", 1)[1].strip()
+                self.model = Gemini(model=gemini_model)
+            else:
+                self.model = LiteLlm(model=model_id)
         elif raw_model.startswith(("gemini/", "google/")):
             gemini_model = raw_model.split("/", 1)[1].strip()
             self.model = Gemini(model=gemini_model)
@@ -156,12 +184,15 @@ class Agent:
                         )
                     )
 
-        # Convert RemoteA2aAgent list to list[BaseAgent] if needed
-        sub_agents_list = list(sub_agents) if sub_agents else None
+        # ADK's LlmAgent expects a list; passing None triggers Pydantic validation errors.
+        sub_agents_list = list(sub_agents) if sub_agents else []
+
+        # ADK validates agent names as identifiers; use persona.type when available.
+        agent_internal_name = _to_valid_identifier(persona.type or persona.name, fallback="caramba_agent")
 
         self.adk_agent = LlmAgent(
             model=self.model,  # type: ignore[arg-type]  # RandomModel is compatible via __getattr__
-            name=persona.name,
+            name=agent_internal_name,
             description=persona.description,
             instruction=persona.instructions,
             tools=tools,
@@ -210,10 +241,10 @@ class Agent:
 
     async def run_events_async(self, message: types.Content):
         """Yield ADK runtime events for a single user turn."""
-        # Reset RandomModel before each request (so it picks a new provider).
-        from caramba.ai.models.random_model import RandomModel
-        if isinstance(self.model, RandomModel):
-            self.model.reset()
+        # If the selected model supports resetting between requests, do it.
+        reset = getattr(self.model, "reset", None)
+        if callable(reset):
+            reset()
 
         await self._ensure_session()
         try:

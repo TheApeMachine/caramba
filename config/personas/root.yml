@@ -48,6 +48,7 @@ sub_agents:
   - mathematician
   - ml_expert
   - reviewer
+  - verifier
   - knowledge_curator
   - context_compactor
   - note_taker
