@@ -101,6 +101,33 @@ def serve_cmd(host: str, port: int) -> None:
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
+@cli.command("tui")
+@click.option("--url", type=str, default="http://localhost:9000", help="Root agent URL.")
+@click.option("--log", type=click.Path(exists=False), default=None, help="Training log file path.")
+@click.option("--steps", type=int, default=0, help="Total training steps.")
+@click.option("-o", "--output", type=click.Path(), default="manifest.yml", help="Manifest output path.")
+def tui_cmd(url: str, log: str | None, steps: int, output: str) -> None:
+    """Launch the unified Caramba TUI.
+
+    A single interface with multiple views:
+    - Chat (Ctrl+1): Agent chat interface
+    - Training (Ctrl+2): Real-time training metrics dashboard
+    - Builder (Ctrl+3): Visual manifest/architecture builder
+
+    Example:
+        caramba tui --url http://localhost:9000 --log runs/train.jsonl
+    """
+    from caramba.tui.unified import CarambaApp
+
+    app = CarambaApp(
+        root_agent_url=url,
+        log_path=log,
+        total_steps=steps,
+        manifest_output=output,
+    )
+    app.run()
+
+
 @cli.command("codegraph-sync")
 @click.argument("repo_root", type=click.Path(exists=True, file_okay=False, path_type=Path), default=".")
 @click.option("--graph", type=str, default="caramba_code", show_default=True, help="FalkorDB graph name.")

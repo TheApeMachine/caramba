@@ -5,13 +5,17 @@ These make the agents compatible with the Agent-to-Agent protocol.
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import re
 import warnings
 from typing import Any
 from uuid import uuid4
+from pathlib import Path
+from datetime import datetime, timezone
 
 from google.adk.agents import LlmAgent
+from google.adk.tools.agent_tool import AgentTool
 try:
     from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
 except ImportError:
@@ -34,6 +38,7 @@ from jsonschema_pydantic import jsonschema_to_pydantic
 
 from caramba.ai.persona import Persona
 from caramba.console import logger
+from caramba.ai.process.transcript_store import TranscriptStore
 from caramba.ai.mcp import (
     BestEffortMcpToolset,
     McpEndpoint,
@@ -165,8 +170,15 @@ class Agent:
         else:
             self.model = LiteLlm(model=raw_model)
 
-        # Build sub-agents (RemoteA2aAgent instances) if persona declares them.
-        sub_agents: list[Any] = []
+        # Build expert agents as AgentTools for DELEGATION (not handoff).
+        #
+        # Key distinction in ADK:
+        # - sub_agents + transfer_to_agent = HANDOFF: control moves entirely to sub-agent
+        # - AgentTool in tools list = DELEGATION: root agent invokes sub-agent as a tool,
+        #   maintains control, and synthesizes responses
+        #
+        # For the root orchestrator pattern (user always talks to root), we need delegation.
+        expert_agent_tools: list[Any] = []
         if persona.sub_agents:
             # Resolve sub-agent names to A2A agent card URLs.
             # In docker-compose, each persona service is accessible via its service name.
@@ -176,16 +188,16 @@ class Agent:
                     # Use docker-compose service name (persona name, lowercase, hyphens for underscores).
                     service_name = sub_agent_name.lower().replace("_", "-")
                     agent_card_url = f"http://{service_name}:8001{AGENT_CARD_WELL_KNOWN_PATH}"
-                    sub_agents.append(
-                        RemoteA2aAgent(  # type: ignore[misc]
-                            name=sub_agent_name,
-                            description=f"Expert agent: {sub_agent_name}",
-                            agent_card=agent_card_url,
-                        )
+                    remote_agent = RemoteA2aAgent(  # type: ignore[misc]
+                        name=sub_agent_name,
+                        description=f"Expert agent: {sub_agent_name}. Consult this agent for specialized knowledge.",
+                        agent_card=agent_card_url,
                     )
+                    # Wrap as AgentTool for delegation pattern (root maintains control)
+                    expert_agent_tools.append(AgentTool(agent=remote_agent))
 
-        # ADK's LlmAgent expects a list; passing None triggers Pydantic validation errors.
-        sub_agents_list = list(sub_agents) if sub_agents else []
+        # Combine MCP tools with expert agent tools
+        all_tools = tools + expert_agent_tools
 
         # ADK validates agent names as identifiers; use persona.type when available.
         agent_internal_name = _to_valid_identifier(persona.type or persona.name, fallback="caramba_agent")
@@ -195,8 +207,10 @@ class Agent:
             name=agent_internal_name,
             description=persona.description,
             instruction=persona.instructions,
-            tools=tools,
-            sub_agents=sub_agents_list,  # type: ignore[arg-type]  # RemoteA2aAgent extends BaseAgent
+            tools=all_tools,  # MCP tools + expert AgentTools for delegation
+            # NOTE: We intentionally do NOT use sub_agents here.
+            # sub_agents enables transfer_to_agent (handoff) which moves control away from root.
+            # Instead, we use AgentTool wrapping for delegation (root maintains control).
         )
 
         if persona.output_schema:
@@ -210,10 +224,65 @@ class Agent:
         )
         self.session_ready = False
 
+        # Durable local transcript (lightweight "memory") for resuming work across restarts.
+        # This is separate from ADK's in-memory session store and is intended to survive
+        # docker restarts via the repo volume mount.
+        self._transcript: TranscriptStore | None = None
+        self._memory_state_path: Path | None = None
+        try:
+            repo_root = Path(__file__).resolve().parent.parent
+            stable = _to_valid_identifier(persona.type or persona.name, fallback="agent").lower()
+            transcript_path = repo_root / "artifacts" / "ai" / "chat" / f"{stable}.jsonl"
+            self._memory_state_path = repo_root / "artifacts" / "ai" / "state" / f"{stable}.json"
+            self._transcript = TranscriptStore(
+                path=str(transcript_path),
+                max_items=60,
+                max_tokens=24_000,
+                max_event_tokens=4_096,
+                compact_after_bytes=2_000_000,
+            )
+            self._transcript.load()
+        except Exception as e:
+            # Memory must never prevent the agent from running.
+            logger.warning(f"Transcript memory disabled due to error: {type(e).__name__}: {e}")
+            self._transcript = None
+            self._memory_state_path = None
+
     def reset_session(self, *, session_id: str | None = None) -> None:
         """Reset the ADK session for a fresh run (useful for external transcripts)."""
         self.session_id = session_id or str(uuid4())
         self.session_ready = False
+
+    def memory_status(self) -> dict[str, Any]:
+        """Return durable memory status for this agent."""
+        transcript_path = None
+        items = 0
+        if self._transcript is not None:
+            try:
+                transcript_path = str(self._transcript.path)
+                items = len(self._transcript.history)
+            except Exception:
+                transcript_path = None
+                items = 0
+        return {
+            "enabled": self._transcript is not None,
+            "transcript_path": transcript_path,
+            "items": items,
+            "state_path": str(self._memory_state_path) if self._memory_state_path is not None else None,
+        }
+
+    def clear_memory(self) -> None:
+        """Clear durable transcript + state snapshot (best effort)."""
+        if self._transcript is not None:
+            try:
+                self._transcript.clear()
+            except Exception as e:
+                logger.warning(f"Failed to clear transcript: {type(e).__name__}: {e}")
+        if self._memory_state_path is not None and self._memory_state_path.exists():
+            try:
+                self._memory_state_path.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete memory state: {type(e).__name__}: {e}")
 
     def run(self, message: types.Content) -> str:
         """Run a single turn and return the final text output."""
@@ -317,9 +386,79 @@ class Agent:
         - {"type": "tool_call", "name": "...", "args": {...}, "id": "..."}
         - {"type": "tool_result", "name": "...", "response": {...}, "id": "..."}
         """
-        seen_text = ""
+        # If durable transcript is enabled, we run each turn "stateless" and inject
+        # bounded chat history as context. This preserves resume behavior across restarts
+        # without relying on an on-disk ADK SessionService.
+        injected_message = message
+        user_text = ""
         try:
-            async for event in self.run_events_async(message):
+            parts = getattr(message, "parts", None) or []
+            for part in parts:
+                txt = getattr(part, "text", None)
+                if isinstance(txt, str) and txt:
+                    user_text += txt
+            user_text = user_text.strip()
+        except Exception:
+            user_text = ""
+
+        if self._transcript is not None and user_text:
+            try:
+                # Build a bounded dialogue preamble for context injection.
+                history = self._transcript.as_dialog_text()
+                preamble = ""
+                if history:
+                    preamble = (
+                        "Context from prior conversation turns (most recent last):\n"
+                        f"{history}\n\n"
+                        "---\n\n"
+                    )
+
+                # Load a lightweight project-state snapshot (helps resume quickly).
+                state_preamble = ""
+                if self._memory_state_path is not None and self._memory_state_path.exists():
+                    try:
+                        raw = self._memory_state_path.read_text(encoding="utf-8")
+                        obj = json.loads(raw)
+                        if isinstance(obj, dict):
+                            updated_at = obj.get("updated_at", "")
+                            topic = obj.get("topic", "")
+                            files = obj.get("files", [])
+                            if isinstance(files, list):
+                                files = [f for f in files if isinstance(f, str) and f][:10]
+                            else:
+                                files = []
+                            lines = ["Project state snapshot:"]
+                            if isinstance(updated_at, str) and updated_at:
+                                lines.append(f"- updated_at: {updated_at}")
+                            if isinstance(topic, str) and topic:
+                                lines.append(f"- topic: {topic}")
+                            if files:
+                                lines.append("- relevant_files:")
+                                lines.extend([f"  - {f}" for f in files])
+                            state_preamble = "\n".join(lines).strip() + "\n\n---\n\n"
+                    except Exception:
+                        state_preamble = ""
+
+                # Persist the raw user message (after building preamble so we don't
+                # duplicate it inside the injected context for this same turn).
+                self._transcript.append_event(role="user", text=user_text)
+
+                injected_message = types.Content(
+                    role="user",
+                    parts=[types.Part(text=state_preamble + preamble + user_text)],
+                )
+
+                # Avoid double-memory: don't let ADK accumulate history in-memory if
+                # we're already injecting it from disk.
+                self.reset_session()
+            except Exception as e:
+                logger.warning(f"Transcript injection failed; continuing without it: {type(e).__name__}: {e}")
+                injected_message = message
+
+        seen_text = ""
+        assistant_text = ""
+        try:
+            async for event in self.run_events_async(injected_message):
                 ev_content = getattr(event, "content", None)
                 parts = getattr(ev_content, "parts", None)
                 if not parts:
@@ -357,6 +496,7 @@ class Agent:
                         # wasn't already streamed (prevents end-of-stream duplication).
                         if not seen_text:
                             seen_text = txt
+                            assistant_text += txt
                             yield {"type": "text", "text": txt}
                             continue
 
@@ -365,6 +505,7 @@ class Agent:
                             delta = txt[len(seen_text) :]
                             if delta:
                                 seen_text = txt
+                                assistant_text += delta
                                 yield {"type": "text", "text": delta}
                             continue
 
@@ -386,6 +527,7 @@ class Agent:
                         if not delta:
                             continue
                         seen_text = seen_text + delta
+                        assistant_text += delta
                         yield {"type": "text", "text": delta}
         except asyncio.CancelledError:
             # Propagate cancellations cleanly to callers.
@@ -400,6 +542,47 @@ class Agent:
                 "text": f"\n\n---\n\n**[{provider} error]** {err}\n",
             }
             return
+        finally:
+            # Persist assistant message at end of turn.
+            if self._transcript is not None and assistant_text.strip():
+                try:
+                    self._transcript.append_event(role="assistant", text=assistant_text.strip())
+                except Exception as e:
+                    logger.warning(f"Failed to persist assistant transcript: {type(e).__name__}: {e}")
+
+            # Update a tiny structured "project state" snapshot for quick resume.
+            if self._memory_state_path is not None and user_text and assistant_text.strip():
+                try:
+                    text_blob = f"{user_text}\n{assistant_text}"
+                    # Heuristic: capture paths that look like repo-relative files.
+                    paths = sorted(
+                        set(
+                            m.group(1)
+                            for m in re.finditer(
+                                r"(?:^|\\s)([A-Za-z0-9_./-]+\\.(?:yml|yaml|py|md|txt|json|jsonl|tex|bib|pdf|png|jpg|jpeg))(?:$|[\\s,.;:])",
+                                text_blob,
+                            )
+                        )
+                    )
+                    files = []
+                    for p in paths:
+                        p = p.strip()
+                        if p.startswith(("artifacts/", "config/", "docs/", "ai/", "trainer/", "optimizer/", "layer/")):
+                            files.append(p)
+                    files = files[:25]
+
+                    topic = (user_text.strip().splitlines()[0] if user_text.strip() else "")[:160]
+                    state = {
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "topic": topic,
+                        "files": files,
+                        "last_user": user_text[-2000:],
+                        "last_assistant": assistant_text.strip()[-4000:],
+                    }
+                    self._memory_state_path.parent.mkdir(parents=True, exist_ok=True)
+                    self._memory_state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+                except Exception as e:
+                    logger.warning(f"Failed to persist memory state: {type(e).__name__}: {e}")
 
     async def _ensure_session(self) -> Session:
         if self.session_ready:

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from caramba.console import Logger
-from caramba.ai.agent import Agent
 from google.genai import types
+
+if TYPE_CHECKING:
+    from caramba.ai.agent import Agent
 
 
 class Process(ABC):

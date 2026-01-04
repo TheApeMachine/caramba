@@ -533,7 +533,7 @@ class ExpertsSidebar(Vertical, can_focus=True):
         self._experts.clear()
 
 
-class ToolCallWidget(Static):
+class ToolCallWidget(Static, can_focus=True):
     """Widget showing a single tool call."""
 
     DEFAULT_CSS = """
@@ -777,7 +777,7 @@ class ToolsSidebar(Vertical, can_focus=True):
         except Exception:
             pass
 
-        tool = ToolCallWidget(tool_name, agent_name, can_focus=True)
+        tool = ToolCallWidget(tool_name, agent_name)
         if args:
             tool.set_args(args)
         self._tools.append(tool)

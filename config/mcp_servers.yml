@@ -1,19 +1,19 @@
 graphiti:
   transport: streamable-http
-  url: "http://localhost:8002/mcp"
+  url: "http://${CARAMBA_GRAPHITI_HOST:-localhost}:${CARAMBA_GRAPHITI_PORT:-8002}/mcp"
 
 paper:
   transport: streamable-http
-  url: "http://localhost:8001/mcp"
+  url: "http://${CARAMBA_PAPER_HOST:-localhost}:${CARAMBA_PAPER_PORT:-8001}/mcp"
 
 # Alias kept for backwards compatibility with existing personas.
 paper-tools:
   transport: streamable-http
-  url: "http://localhost:8001/mcp"
+  url: "http://${CARAMBA_PAPER_HOST:-localhost}:${CARAMBA_PAPER_PORT:-8001}/mcp"
 
 deeplake:
   transport: streamable-http
-  url: "http://localhost:8004/mcp"
+  url: "http://${CARAMBA_DEEPLAKE_HOST:-localhost}:${CARAMBA_DEEPLAKE_PORT:-8004}/mcp"
 
 # Hosted by Weights & Biases (W&B). Requires WANDB_API_KEY in the environment.
 wandb:

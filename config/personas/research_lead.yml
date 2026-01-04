@@ -24,3 +24,4 @@ tool_choice: "auto"
 mcp_servers:
   - graphiti  # Graph memory for storing discussion insights
   - deeplake  # Semantic store for code/research snippets
+  - filesystem

@@ -146,6 +146,34 @@ class TranscriptStore:
         self.persist_event({"role": role, "text": text})
         self.compact_file_if_needed()
 
+    def append_event(self, *, role: str, text: str) -> None:
+        """Append a plain (role,text) event to history and disk.
+
+        This is the preferred format for durable chat transcripts that may be
+        re-ingested later as bounded conversational context.
+        """
+        if not isinstance(role, str) or not role:
+            raise ValueError("role must be a non-empty string")
+        if not isinstance(text, str) or not text:
+            raise ValueError("text must be a non-empty string")
+
+        text = self.truncate_to_tokens(text, self.max_event_tokens)
+        event = types.Content(role=role, parts=[types.Part(text=text)])
+        self.history.append(event)
+        self.trim_in_place()
+        self.persist_event({"role": role, "text": text})
+        self.compact_file_if_needed()
+
+    def as_dialog_text(self) -> str:
+        """Render current in-memory transcript as simple dialogue text."""
+        lines: list[str] = []
+        for msg in self.history:
+            role = getattr(msg, "role", None)
+            text = self.content_text(msg)
+            if isinstance(role, str) and role and text:
+                lines.append(f"{role}: {text}")
+        return "\n".join(lines).strip()
+
     def persist_event(self, event: dict[str, object]) -> None:
         """Persist one transcript event to JSONL.
 

@@ -194,12 +194,23 @@ def _add_custom_routes(app: Any, agent: Agent, persona: Persona) -> None:
                 "activity": "unknown",
             })
 
+    async def memory_status(request: Request) -> JSONResponse:
+        """Get durable memory status for this agent instance."""
+        return JSONResponse(agent.memory_status())
+
+    async def memory_clear(request: Request) -> JSONResponse:
+        """Clear durable memory (transcript + state) for this agent instance."""
+        agent.clear_memory()
+        return JSONResponse({"ok": True, **agent.memory_status()})
+
     # Insert routes at the BEGINNING of the routes list so they take precedence
     # (Starlette matches routes in order, and the A2A app may have a catch-all)
     app.routes.insert(0, Route("/health", health_check, methods=["GET"]))
     app.routes.insert(1, Route("/chat", chat_stream, methods=["POST"]))
-    app.routes.insert(2, Route("/agents/status", agents_status, methods=["GET"]))
-    app.routes.insert(3, Route("/agents/details", agent_details, methods=["GET"]))
+    app.routes.insert(2, Route("/memory", memory_status, methods=["GET"]))
+    app.routes.insert(3, Route("/memory/clear", memory_clear, methods=["POST"]))
+    app.routes.insert(4, Route("/agents/status", agents_status, methods=["GET"]))
+    app.routes.insert(5, Route("/agents/details", agent_details, methods=["GET"]))
 
 
 def create_a2a_server_for_persona(persona_path: Path, *, port: int = 8001) -> None:

@@ -1,8 +1,18 @@
 # development
 
+This codebase is called "caramba" and is by design a fully manifest-driven, general machine learning and AI exploration framework. It does not implement any one specific architecture or system, rather it provides modular building-blocks which can be composed, driven, experimented with, etc. entirely by its manifest system.
+
+It is very important to keep this in mind during development, as you will often be asked to implement specific systems or architectures, but you should never try an make rigid, specific implementations that drive caramba away from its general application.
+
+Instead, when implementing specific architectures, you should break it down into the modules that are needed to describe that architecture within the current manifest definitions (or expand where needed).
+
 # Caramba Framework — Mandatory Development Rules
 
 This document defines non-negotiable rules for all development work on the caramba framework. These rules are not suggestions. They are not starting points for discussion. They are the specification.
+
+Be very clear on the fact that caramba is not a toy, or a "development" implementation of what it wants to be. It is very much positioned as a production-grade, seriously usable research tool that sits right at the cutting-edge of advanced machine-learning and AI research, often dealing with radically new concepts and ideas.
+
+Never think that just because some previous implementation exists in a certain way, you are obligated to work within those as a form of constraint. A framework as complex as this will naturally be in flux when it comes to how things are best implemented, and if it would genuinely improve the framework, you should always consider if upgrading the existing implementations first, such that integrating new implementations results in a overall system that is even better aligned with the core design philosophies.
 
 ---
 
@@ -158,6 +168,14 @@ def process_attention(q, k, v, mask, rope, cache, config):
 - Names should be descriptive, unambiguous, use the least amount of words needed, and never stutter with the package name.
 - No single-letter variables except for well-established conventions (`i`, `j` for indices; `x` for input tensors in ML contexts).
 - No abbreviations unless they are universally understood in the domain (`kv` for key-value, `ssm` for state space model)
+- If an element or component becomes too large to fit within a single file, the breaking out should be done within a sub-directory using the root name of that component or element, an non-stuttering filenames.
+  Example:
+
+  trainer
+  |_ steppers
+     |_ blockwise.py
+     |_ global.py
+     |_ default.py
 
 ### Type Hints
 

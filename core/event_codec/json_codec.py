@@ -1,18 +1,13 @@
-"""Event transducers (JSON ↔ Tensor).
+"""JSON event codec
 
-The encoder/decoder provide a minimal, reversible bridge between:
-- external event envelopes (JSON)
-- internal tensor representations (byte-level tokens)
-
-This is intended as a building block for event-native training/inference where
-"tokens" are VM time-steps but the *interface* is event-based.
+Encodes/decodes EventEnvelope as canonical JSON bytes. This is human-friendly and
+useful for debugging, but does not support arbitrary raw binary payloads.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Sequence
-from typing import Any
 
 import torch
 from torch import Tensor
@@ -20,12 +15,10 @@ from torch import Tensor
 from caramba.core.event import EventEnvelope
 
 
-class EventEncoder:
-    """Encode EventEnvelope → byte-level token tensor.
+class JsonEventEncoder:
+    """JSON event encoder.
 
-    Representation:
-    - JSON is serialized with stable separators and sorted keys.
-    - UTF-8 bytes are returned as int64 tensor values in [0, 255].
+    Converts EventEnvelope to UTF-8 bytes and returns them as a 1D int64 tensor.
     """
 
     def encode(self, event: EventEnvelope) -> Tensor:
@@ -40,40 +33,33 @@ class EventEncoder:
     def encode_many(self, events: Sequence[EventEnvelope]) -> list[Tensor]:
         return [self.encode(e) for e in events]
 
-    def encode_padded(
-        self,
-        events: Sequence[EventEnvelope],
-        *,
-        pad_id: int = 0,
-    ) -> tuple[Tensor, Tensor]:
-        """Encode a batch to (ids, mask).
-
-        Returns:
-        - ids:  (B, L) int64
-        - mask: (B, L) bool, True where ids are real (not padding)
-        """
+    def encode_padded(self, events: Sequence[EventEnvelope], *, pad_id: int = 0) -> tuple[Tensor, Tensor]:
+        """Encode a batch to (ids, mask)."""
         if not isinstance(events, Sequence):
             raise TypeError(f"Expected a Sequence of events, got {type(events).__name__}")
         encoded = self.encode_many(events)
         if not encoded:
             raise ValueError("encode_padded requires at least one event")
         lens = [int(t.numel()) for t in encoded]
-        L = max(lens)
-        if L <= 0:
+        max_len = max(lens)
+        if max_len <= 0:
             raise ValueError("Encoded events have zero length")
-        B = len(encoded)
+        batch_size = len(encoded)
         pad = int(pad_id)
-        ids = torch.full((B, L), pad, dtype=torch.long)
-        mask = torch.zeros((B, L), dtype=torch.bool)
-        for i, t in enumerate(encoded):
-            n = int(t.numel())
-            ids[i, :n] = t
-            mask[i, :n] = True
+        ids = torch.full((batch_size, max_len), pad, dtype=torch.long)
+        mask = torch.zeros((batch_size, max_len), dtype=torch.bool)
+        for index, tokens in enumerate(encoded):
+            n = int(tokens.numel())
+            ids[index, :n] = tokens
+            mask[index, :n] = True
         return ids, mask
 
 
-class EventDecoder:
-    """Decode byte-level token tensor → EventEnvelope."""
+class JsonEventDecoder:
+    """JSON event decoder.
+
+    Converts 1D byte-level token tensors into EventEnvelope by decoding UTF-8 JSON.
+    """
 
     def decode(self, ids: Tensor) -> EventEnvelope:
         if not isinstance(ids, Tensor):
@@ -109,9 +95,9 @@ class EventDecoder:
             raise TypeError(f"mask must be bool, got {mask.dtype}")
 
         out: list[EventEnvelope] = []
-        B = int(ids.size(0))
-        for i in range(B):
-            sel = mask[i]
-            out.append(self.decode(ids[i][sel]))
+        batch_size = int(ids.size(0))
+        for index in range(batch_size):
+            sel = mask[index]
+            out.append(self.decode(ids[index][sel]))
         return out
 

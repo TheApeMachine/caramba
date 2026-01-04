@@ -21,3 +21,4 @@ tool_choice: "auto"
 
 mcp_servers:
   - paper
+  - filesystem

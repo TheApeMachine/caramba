@@ -1,0 +1,50 @@
+version: 2
+name: ccp_unknown_format
+notes: |
+  Cognitive Control Plane demo: Unknown Format Decoder.
+
+  This runs a deterministic closed-world demo via a manifest target that:
+    - generates an unknown-format sample (raw bytes + oracle tests)
+    - emits a ToolDefinition
+    - runs tool tests deterministically
+    - simulates a version bump and repairs the tool
+    - writes a trace artifact
+
+targets:
+  - type: experiment
+    name: ccp_unknown_format_demo
+    description: CCP party trick demo (unknown format decoder with tool test loop).
+    backend: torch
+    task: { ref: task.language_modeling, config: {} }
+    data:
+      ref: dataset.none
+      impl: python:caramba.lab.unknown_format.dataset:UnknownFormatLabDataset
+      config:
+        seed: 1337
+        n_items: 1
+    system:
+      ref: system.generic
+      config: {}
+    objective:
+      ref: objective.none
+      impl: python:caramba.trainer.objectives:KeyedMSEObjective
+      config: {}
+    trainer:
+      ref: trainer.ccp_demo
+      impl: python:caramba.trainer.ccp_demo:CcpDemoTrainer
+      config:
+        output_dir: artifacts/ccp_demo
+        tool_root: artifacts/ccp_demo/tools
+        seed: 1337
+        n_items: 1
+    runs:
+      - id: demo
+        mode: train
+        exp: ccp_unknown_format
+        seed: 1337
+        steps: 1
+        expected: {}
+
+entrypoints:
+  default: ccp_unknown_format_demo
+

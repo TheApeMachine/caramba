@@ -20,3 +20,4 @@ tool_choice: "auto"
 mcp_servers:
   - graphiti  # For searching codebase and research context
   - deeplake
+  - filesystem

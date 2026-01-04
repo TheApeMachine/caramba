@@ -95,7 +95,7 @@ def iter_persona_tool_names(tools: object) -> list[str]:
     return []
 
 
-ENV_PATTERN = re.compile(r"\$\{([A-Za-z0-9_]+)\}")
+ENV_PATTERN = re.compile(r"\$\{([A-Za-z0-9_]+)(?::-(.*?))?\}")
 
 
 def expand_env_placeholders(payload: object) -> object:
@@ -113,8 +113,13 @@ def expand_env_placeholders(payload: object) -> object:
 
     def replace(match: re.Match[str]) -> str:
         name = match.group(1)
+        default = match.group(2)
         val = os.getenv(name)
-        return match.group(0) if val is None else str(val)
+        if val is None:
+            if isinstance(default, str):
+                return default
+            return match.group(0)
+        return str(val)
 
     return ENV_PATTERN.sub(replace, payload)
 

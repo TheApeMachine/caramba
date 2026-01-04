@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import uvicorn
+from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from mcp.server.fastmcp import FastMCP
@@ -18,12 +19,60 @@ from mcp.server.fastmcp import FastMCP
 # Initialize FastMCP server
 mcp = FastMCP("Filesystem Tool", json_response=True)
 
+
+def _allowed_roots() -> list[Path]:
+    """Parse allowlisted roots from env.
+
+    Comma-separated paths. Defaults to /app/artifacts and /app/config.
+    """
+    raw = os.getenv("FILESYSTEM_ALLOWED_ROOTS", "/app/artifacts,/app/config").strip()
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    roots: list[Path] = []
+    for p in parts:
+        try:
+            roots.append(Path(p).resolve())
+        except Exception:
+            continue
+    return roots
+
+
+_ROOTS = _allowed_roots()
+_BASE_DIR = Path("/app").resolve()
+
+
+def _resolve_and_check(path: str) -> str:
+    """Resolve a path and enforce it is under an allowed root."""
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("path must be a non-empty string")
+
+    p = Path(path.strip())
+    if not p.is_absolute():
+        p = _BASE_DIR / p
+
+    rp = p.resolve()
+
+    # Allow exact file matches OR paths under allowed directories.
+    for root in _ROOTS:
+        try:
+            if rp == root:
+                return str(rp)
+            # Directory containment
+            if root.is_dir():
+                rp.relative_to(root)
+                return str(rp)
+            # If root is a file, only exact match is allowed (handled above).
+        except Exception:
+            continue
+
+    allowed = ", ".join(str(r) for r in _ROOTS) if _ROOTS else "(none)"
+    raise PermissionError(f"Access denied. Path not under allowed roots: {allowed}")
+
+
 @mcp.tool()
 def list_directory(path: str) -> list[str]:
     """List the contents of a directory"""
-    if not path:
-        raise ValueError("path must be a non-empty string")
-    return os.listdir(path)
+    resolved = _resolve_and_check(path)
+    return os.listdir(resolved)
 
 @mcp.tool()
 def read_file(
@@ -41,8 +90,7 @@ def read_file(
     - returning either a warning (mode="warn") or a truncated excerpt (mode="truncate")
     - exposing `read_file_lines()` so an agent can page through large files
     """
-    if not path:
-        raise ValueError("path must be a non-empty string")
+    path = _resolve_and_check(path)
     if current_context_tokens < 0:
         raise ValueError("current_context_tokens must be >= 0")
     if context_window_tokens <= 0:
@@ -109,8 +157,7 @@ def read_file_lines(
     Agents can call this repeatedly to page through large files without blowing
     the shared context.
     """
-    if not path:
-        raise ValueError("path must be a non-empty string")
+    path = _resolve_and_check(path)
     if start_line <= 0:
         raise ValueError("start_line must be >= 1")
     if max_lines <= 0:
@@ -187,8 +234,7 @@ def read_file_lines(
 @mcp.tool()
 def search_text(path: str, text: str) -> list[str]:
     """Search the contents of a directory recursively for a given text"""
-    if not path:
-        raise ValueError("path must be a non-empty string")
+    path = _resolve_and_check(path)
     if not isinstance(text, str):
         raise TypeError("text must be a string")
     results = []
