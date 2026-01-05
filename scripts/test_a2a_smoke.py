@@ -19,6 +19,10 @@ from pathlib import Path
 
 import httpx
 
+# This file lives under scripts/ but is named test_*.py; tell pytest to ignore it.
+# It's an integration smoke script, not a unit test.
+__test__ = False
+
 # Add repo root to path
 repo_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(repo_root))
@@ -41,9 +45,48 @@ async def test_root_agent_card() -> bool:
         return False
 
 
+def _docker_healthcheck_compose_service(service: str) -> tuple[bool, str]:
+    """Best-effort docker compose health check from the host.
+
+    This avoids trying to hit `http://<service>:8001` from the host (which only works
+    inside the compose network).
+    """
+    try:
+        import docker  # type: ignore[import-not-found]
+    except Exception as e:
+        return False, f"docker sdk unavailable: {e}"
+
+    try:
+        client = docker.from_env()
+        containers = client.containers.list(
+            filters={"label": f"com.docker.compose.service={service}"}
+        )
+        if not containers:
+            return False, f"no docker compose container found for service={service!r}"
+        for c in containers:
+            state = (c.attrs or {}).get("State", {})  # type: ignore[assignment]
+            status = str(state.get("Status", "unknown"))
+            health = (state.get("Health", {}) or {}).get("Status", None)
+            if health is not None:
+                health = str(health)
+                ok = (status == "running") and (health == "healthy")
+                if not ok:
+                    return (
+                        False,
+                        f"container={str(getattr(c, 'id', 'unknown'))[:12]} status={status} health={health}",
+                    )
+            else:
+                ok = status == "running"
+                if not ok:
+                    return False, f"container={str(getattr(c, 'id', 'unknown'))[:12]} status={status}"
+        return True, f"replicas={len(containers)} status=running"
+    except Exception as e:
+        return False, f"docker query failed: {e}"
+
+
 async def test_expert_agent_cards() -> bool:
-    """Test that expert agents expose agent cards."""
-    print("\nTesting expert agent cards...")
+    """Verify expert services are up (via docker healthchecks)."""
+    print("\nTesting expert agent services (docker healthchecks)...")
     experts = [
         "architect",
         "developer",
@@ -58,23 +101,17 @@ async def test_expert_agent_cards() -> bool:
         "catalyst",
     ]
 
-    results = []
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        for expert in experts:
-            try:
-                # In docker-compose, services use service names (with hyphens)
-                url = f"http://{expert}:8001/.well-known/agent-card.json"
-                # For local testing, we'd need to use localhost with different ports
-                # For now, just check if the service is reachable via docker network
-                # This is a simplified test - in real docker network, use service names
-                print(f"  Checking {expert}... (skipping - requires docker network)")
-                results.append(True)  # Assume OK for now
-            except Exception as e:
-                print(f"  ✗ {expert} failed: {e}")
-                results.append(False)
+    results: list[bool] = []
+    for expert in experts:
+        ok, detail = _docker_healthcheck_compose_service(expert)
+        if ok:
+            print(f"  ✓ {expert}: {detail}")
+        else:
+            print(f"  ✗ {expert}: {detail}")
+        results.append(bool(ok))
 
     if all(results):
-        print("✓ Expert agent cards accessible (simplified check)")
+        print("✓ Expert agent services are healthy")
         return True
     return False
 

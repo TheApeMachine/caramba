@@ -129,13 +129,17 @@ class TrainConfig(BaseModel):
     gradient_accumulation_steps: PositiveInt = 1
     num_workers: NonNegativeInt = 0
     pin_memory: bool = False
+    prefetch_factor: PositiveInt = 2
     compile_model: bool | str = False
     compile_mode: str = "reduce-overhead"
 
     # Optimizer configuration (standard training loops).
     optimizer: str = "adamw"  # adamw|sgd|lion
     weight_decay: NonNegativeFloat = 0.0
-    fused_optimizer: bool = False
+    # "Intelligent" default: request fused optimizer when available, but allow
+    # runtime to fall back (with loud warning) when unsupported on the current
+    # device/dtype.
+    fused_optimizer: bool = True
     offload_optimizer: bool = False
 
     # Distributed training (cluster promotion; optional).

@@ -27,7 +27,7 @@
   \texttt{theapemachine@gmail.com}
 }
 
-\date{December 2025}
+\date{January 2026}
 
 \begin{document}
 
@@ -39,7 +39,7 @@
 \begin{abstract}
 The Key-Value (KV) cache in Transformer language models scales linearly with sequence length and attention dimension, creating a practical memory bottleneck for long-context inference. We propose \textbf{Decoupled Bottleneck Attention (DBA)}, an architectural modification that separates \textit{semantic routing} (which token attends to which) from \textit{positional geometry} (how far away it is). DBA computes attention scores as the sum of a low-rank semantic path and a higher-fidelity geometric path (with RoPE), enabling aggressive cache compression where it matters most.
 
-This paper is a \textit{production-first} report: all training runs are executed via \path{production/} and the \texttt{production.cli} entry point using \texttt{--paper-strict}. We report results from an initial decoupled 1B checkpoint trained for 100k steps on FineWeb-Edu tokens, evaluated with a lightweight benchmark script (\path{eval_ckpt.py}) on held-out FineWeb-Edu token shards. We additionally demonstrate successful long-context inference \textit{stability} up to \textbf{131{,}072 tokens} on consumer hardware (Apple M4 Max, 128GB unified memory), while noting that perplexity at extreme context lengths degrades sharply due to RoPE extrapolation (training context is 2k and \texttt{rope\_base=10000}).
+This paper is a \textit{manifest-first} report: all training runs are executed via the Caramba manifest runner (\texttt{python -m caramba.cli run}) using the paper presets in \path{config/presets/}. We are rerunning the primary baseline vs.\ DBA comparison in Caramba (switching from the earlier production codebase) and will update the reported step counts and figures as the new runs complete. Training uses FineWeb-Edu tokens and a lightweight benchmark script (\path{eval_ckpt.py}) for held-out evaluation. We additionally demonstrate long-context inference \textit{stability} up to \textbf{131{,}072 tokens} on consumer hardware (Apple M4 Max, 128GB unified memory), while noting that perplexity at extreme context lengths degrades sharply due to RoPE extrapolation (training context is 2k and \texttt{rope\_base=10000}).
 \end{abstract}
 
 \paragraph{Keywords:}
@@ -209,16 +209,12 @@ While we report training throughput in our experiments, the theoretical FLOPs re
 
 \subsection{Experimental Setup}
 
-\paragraph{Reproducibility discipline (production-only).}
-All paper experiments are executed through \path{production/} using a single CLI surface (\texttt{python -m production.cli}) with \texttt{--paper-strict}. The two canonical training commands for the main comparison are:
+\paragraph{Reproducibility discipline (manifest-only).}
+All paper experiments are executed from a single manifest preset (\path{config/presets/dba\_paper\_rerun.yml}) using the Caramba CLI (\texttt{python -m caramba.cli run}). The two canonical training invocations for the main comparison are:
 \begin{verbatim}
-python -m production.cli --mode train --paper-strict --exp paper_decoupled \
-  --data fineweb_20b.npy --out-dir runs/a100_fw1b_l22_decoupled_s1337_paper_strict \
-  --seed 1337 --steps 100000
+python -m caramba.cli run config/presets/dba_paper_rerun.yml --target decoupled
 
-python -m production.cli --mode train --paper-strict --exp paper_baseline \
-  --data fineweb_20b.npy --out-dir runs/a100_fw1b_l22_baseline_s1337_paper_strict \
-  --seed 1337 --steps 100000
+python -m caramba.cli run config/presets/dba_paper_rerun.yml --target baseline
 \end{verbatim}
 
 \paragraph{Datasets.}
@@ -230,7 +226,7 @@ All reported numbers in this draft are produced by \path{eval_ckpt.py}, which ru
 \subsection{FineWeb-Edu Results (Current)}
 
 \paragraph{Decoupled checkpoint (A100 training; local evaluation).}
-For the checkpoint \texttt{runs/a100\_fw1b\_l22\_decoupled\_s1337\_paper\_strict/ckpt\_step100000.pt}, \path{eval_ckpt.py} reports the following held-out language modeling quality on FineWeb-Edu token shards:
+For the checkpoint \texttt{runs/a100\_fw1b\_l22\_decoupled\_s1337\_paper\_strict/ckpt\_step100000.pt}, \path{eval_ckpt.py} (included in the Caramba repository) reports the following held-out language modeling quality on FineWeb-Edu token shards:
 
 \begin{table}[htbp]
 \centering

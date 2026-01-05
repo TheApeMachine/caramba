@@ -27,9 +27,9 @@ Srinadh Bhojanapalli et~al.
 \newblock {\em ICML}, 2020.
 
 \bibitem{chiang2025rope}
-David Chiang and Dani Yogatama.
+Ting-Rui Chiang and Dani Yogatama.
 \newblock The rotary position embedding may cause dimension inefficiency in attention heads for long-distance retrieval.
-\newblock {\em arXiv preprint}, 2025.
+\newblock {\em arXiv preprint arXiv:2502.11276}, 2025.
 
 \bibitem{choromanski2021performer}
 Krzysztof Choromanski, Valerii Likhosherstov, David Dohan, Xingyou Song, Andreea Gane, Tamas Sarlos, Peter Hawkins, Jared Davis, Afroz Mohiuddin, {\L}ukasz Kaiser, David Belanger, Lucy Colwell, and Adrian Weller.

@@ -56,15 +56,15 @@
 \@writefile{toc}{\contentsline {paragraph}{Heterogeneous KV-cache quantization (decoupled).}{6}{section*.10}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{6}{section.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Experimental Setup}{6}{subsection.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Reproducibility discipline (production-only).}{6}{section*.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Reproducibility discipline (manifest-only).}{6}{section*.11}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Datasets.}{6}{section*.12}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Evaluation and artifacts (this paper).}{6}{section*.13}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.2}FineWeb-Edu Results (Current)}{6}{subsection.4.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Decoupled checkpoint (A100 training; local evaluation).}{6}{section*.14}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Baseline checkpoint (pending).}{6}{section*.16}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Held-out perplexity for the decoupled 1B checkpoint (100k steps).}}{7}{table.caption.15}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Held-out perplexity for the decoupled 1B checkpoint (100k steps).}}{6}{table.caption.15}\protected@file@percent }
 \providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
-\newlabel{tab:ppl_current}{{1}{7}{Held-out perplexity for the decoupled 1B checkpoint (100k steps)}{table.caption.15}{}}
+\newlabel{tab:ppl_current}{{1}{6}{Held-out perplexity for the decoupled 1B checkpoint (100k steps)}{table.caption.15}{}}
+\@writefile{toc}{\contentsline {paragraph}{Baseline checkpoint (pending).}{7}{section*.16}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Long-context stability up to 131{,}072 tokens (consumer hardware).}{7}{section*.17}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Ablations and Additional Benchmarks (Planned)}{7}{subsection.4.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Memory--Quality Trade-off (Pending)}{7}{subsection.4.4}\protected@file@percent }
@@ -90,25 +90,31 @@
 \@writefile{toc}{\contentsline {paragraph}{Future Work.}{9}{section*.26}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Attention Surgery and the Caramba framework.}{9}{section*.27}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Conflict of Interest.}{9}{section*.29}\protected@file@percent }
-\bibstyle{plain}
-\bibdata{references}
-\bibcite{aghajanyan2021intrinsic}{1}
-\bibcite{ainslie2023gqa}{2}
-\bibcite{amsel2025qualityheads}{3}
 \@writefile{toc}{\contentsline {paragraph}{Data Availability.}{10}{section*.30}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Funding.}{10}{section*.31}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {A}Pending: Effective Rank Evidence}{10}{appendix.A}\protected@file@percent }
 \newlabel{app:effective_rank}{{A}{10}{Pending: Effective Rank Evidence}{appendix.A}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {B}Pending: Decoupled Ablations}{10}{appendix.B}\protected@file@percent }
 \newlabel{app:decoupled_ablations}{{B}{10}{Pending: Decoupled Ablations}{appendix.B}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Ablation suite: held-out perplexity (lower is better).}}{10}{figure.caption.32}\protected@file@percent }
+\newlabel{fig:ablation_perplexity}{{3}{10}{Ablation suite: held-out perplexity (lower is better)}{figure.caption.32}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Ablation suite: cached decode throughput (tokens/sec; higher is better).}}{10}{figure.caption.33}\protected@file@percent }
+\newlabel{fig:ablation_latency}{{4}{10}{Ablation suite: cached decode throughput (tokens/sec; higher is better)}{figure.caption.33}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {C}Long-Context Sweep (Up to 131{,}072 Tokens)}{10}{appendix.C}\protected@file@percent }
 \newlabel{app:long_context_sweep}{{C}{10}{Long-Context Sweep (Up to 131{,}072 Tokens)}{appendix.C}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Context sweep results for \texttt  {ckpt\_step100000.pt} on Apple M4 Max (MPS).}}{10}{table.caption.32}\protected@file@percent }
-\newlabel{tab:context_sweep}{{3}{10}{Context sweep results for \texttt {ckpt\_step100000.pt} on Apple M4 Max (MPS)}{table.caption.32}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Decode-at-context cost (ms/token) vs.\ context length from \texttt  {eval\_ckpt.py}. At long contexts, runtime is dominated by system memory pressure (swapping) rather than an architectural failure mode; the sweep remained stable through 131{,}072 tokens (\texttt  {ok=true}).}}{11}{figure.caption.33}\protected@file@percent }
-\newlabel{fig:context_decode_one_ms}{{3}{11}{Decode-at-context cost (ms/token) vs.\ context length from \texttt {eval\_ckpt.py}. At long contexts, runtime is dominated by system memory pressure (swapping) rather than an architectural failure mode; the sweep remained stable through 131{,}072 tokens (\texttt {ok=true})}{figure.caption.33}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Cached decode throughput microbenchmark (batch=1) from \texttt  {eval\_ckpt.py}.}}{11}{figure.caption.34}\protected@file@percent }
-\newlabel{fig:latency_tokens_per_sec}{{4}{11}{Cached decode throughput microbenchmark (batch=1) from \texttt {eval\_ckpt.py}}{figure.caption.34}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Context sweep results for \texttt  {ckpt\_step100000.pt} on Apple M4 Max (MPS).}}{11}{table.caption.34}\protected@file@percent }
+\newlabel{tab:context_sweep}{{3}{11}{Context sweep results for \texttt {ckpt\_step100000.pt} on Apple M4 Max (MPS)}{table.caption.34}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Decode-at-context cost (ms/token) vs.\ context length from \texttt  {eval\_ckpt.py}. At long contexts, runtime is dominated by system memory pressure (swapping) rather than an architectural failure mode; the sweep remained stable through 131{,}072 tokens (\texttt  {ok=true}).}}{11}{figure.caption.35}\protected@file@percent }
+\newlabel{fig:context_decode_one_ms}{{5}{11}{Decode-at-context cost (ms/token) vs.\ context length from \texttt {eval\_ckpt.py}. At long contexts, runtime is dominated by system memory pressure (swapping) rather than an architectural failure mode; the sweep remained stable through 131{,}072 tokens (\texttt {ok=true})}{figure.caption.35}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Cached decode throughput microbenchmark (batch=1) from \texttt  {eval\_ckpt.py}.}}{11}{figure.caption.36}\protected@file@percent }
+\newlabel{fig:latency_tokens_per_sec}{{6}{11}{Cached decode throughput microbenchmark (batch=1) from \texttt {eval\_ckpt.py}}{figure.caption.36}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Held-out perplexity on FineWeb-Edu token shards from \texttt  {eval\_ckpt.py}.}}{12}{figure.caption.37}\protected@file@percent }
+\newlabel{fig:perplexity_plot}{{7}{12}{Held-out perplexity on FineWeb-Edu token shards from \texttt {eval\_ckpt.py}}{figure.caption.37}{}}
+\bibstyle{plain}
+\bibdata{references}
+\bibcite{aghajanyan2021intrinsic}{1}
+\bibcite{ainslie2023gqa}{2}
+\bibcite{amsel2025qualityheads}{3}
 \bibcite{beltagy2020longformer}{4}
 \bibcite{bhojanapalli2020lowrank}{5}
 \bibcite{chiang2025rope}{6}
@@ -120,8 +126,6 @@
 \bibcite{hu2021lora}{12}
 \bibcite{huang2023longcontextsurvey}{13}
 \bibcite{kitaev2020reformer}{14}
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Held-out perplexity on FineWeb-Edu token shards from \texttt  {eval\_ckpt.py}.}}{12}{figure.caption.35}\protected@file@percent }
-\newlabel{fig:perplexity_plot}{{5}{12}{Held-out perplexity on FineWeb-Edu token shards from \texttt {eval\_ckpt.py}}{figure.caption.35}{}}
 \bibcite{kobayashi2024weightdecay}{15}
 \bibcite{kuang2025structuredmatrices}{16}
 \bibcite{li2025commvq}{17}
@@ -134,4 +138,4 @@
 \bibcite{wang2020linformer}{24}
 \bibcite{wang2025lowdim}{25}
 \bibcite{zaheer2020bigbird}{26}
-\gdef \@abspage@last{13}
+\gdef \@abspage@last{14}

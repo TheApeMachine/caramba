@@ -11,6 +11,7 @@ components.
 from __future__ import annotations
 
 import inspect
+import traceback
 from collections.abc import Iterable
 from pathlib import Path
 import time
@@ -220,25 +221,60 @@ class StandardTrainer:
             raise TypeError("System component does not expose parameters()")
         opt_name = str(getattr(train, "optimizer", "adamw")).lower()
         weight_decay = float(getattr(train, "weight_decay", 0.0))
-        fused_opt = bool(getattr(train, "fused_optimizer", False))
+        fused_opt = bool(getattr(train, "fused_optimizer", True))
         if opt_name in ("adamw", "adam"):
-            # On MPS with fp16 weights, prefer AdamWMaster with fused Metal step for
-            # stability + performance (manifest remains the source of truth).
-            if device.type == "mps" and dtype == torch.float16:
-                from caramba.optimizer.adamw_master import AdamWMaster
+            if fused_opt:
+                # "Intelligent" optimization:
+                # - Prefer AdamWMaster when supported.
+                # - Otherwise, fall back to torch.optim.AdamW with a high-signal warning.
+                use_master = (device.type == "mps" and dtype == torch.float16) or (
+                    device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
+                )
+                if use_master:
+                    try:
+                        from caramba.optimizer.adamw_master import AdamWMaster
 
-                optimizer = AdamWMaster(
+                        optimizer = AdamWMaster(
+                            system.parameters(),  # type: ignore[arg-type]
+                            lr=float(train.lr),
+                            betas=(0.9, 0.999),
+                            eps=1e-8,
+                            weight_decay=float(weight_decay),
+                            fused=True,
+                        )
+                        logger.info(f"optimizer=adamw fused=true backend=adamw_master device={device.type} dtype={dtype}")
+                    except Exception as e:
+                        logger.fallback_warning(
+                            "WARNING: AdamW fused optimizer requested but unavailable; falling back to torch.optim.AdamW.\n"
+                            f"reason={e} device={device.type} dtype={dtype}"
+                        )
+                        optimizer = torch.optim.AdamW(
+                            system.parameters(),  # type: ignore[arg-type]
+                            lr=float(train.lr),
+                            betas=(0.9, 0.999),
+                            eps=1e-8,
+                            weight_decay=float(weight_decay),
+                        )
+                else:
+                    logger.fallback_warning(
+                        "WARNING: AdamW fused optimizer requested but unsupported for this device/dtype; "
+                        "falling back to torch.optim.AdamW.\n"
+                        f"device={device.type} dtype={dtype}"
+                    )
+                    optimizer = torch.optim.AdamW(
+                        system.parameters(),  # type: ignore[arg-type]
+                        lr=float(train.lr),
+                        betas=(0.9, 0.999),
+                        eps=1e-8,
+                        weight_decay=float(weight_decay),
+                    )
+            else:
+                logger.info(f"optimizer=adamw fused=false backend=torch_adamw device={device.type} dtype={dtype}")
+                optimizer = torch.optim.AdamW(
                     system.parameters(),  # type: ignore[arg-type]
                     lr=float(train.lr),
                     betas=(0.9, 0.999),
                     eps=1e-8,
-                    weight_decay=float(weight_decay),
-                    fused=True,
-                )
-            else:
-                optimizer = torch.optim.AdamW(
-                    system.parameters(),  # type: ignore[arg-type]
-                    lr=float(train.lr),
                     weight_decay=float(weight_decay),
                 )
         elif opt_name == "sgd":
@@ -372,21 +408,23 @@ class StandardTrainer:
                 for name, mod in modules_iter:
                     if isinstance(mod, AttentionLayer):
                         # Give the module a stable viz id/name so it can emit per-layer samples.
+                        idx = int(len(attn_modules))
                         try:
-                            setattr(mod, "_viz_index", int(len(attn_modules)))  # type: ignore[arg-type]
-                            setattr(mod, "_viz_name", str(name))  # type: ignore[arg-type]
+                            mod._viz_index = int(idx)  # type: ignore[attr-defined]
+                            mod._viz_name = str(name)  # type: ignore[attr-defined]
                         except Exception as e:
                             raise RuntimeError(f"Failed to set attributes on attention layer {name!r}: {e}") from e
 
-                        attn_modules.append((len(attn_modules), str(name), mod))
+                        attn_modules.append((idx, str(name), mod))
                     if isinstance(mod, MosaicBlockLayer):
+                        idx = int(len(mosaic_modules))
                         try:
-                            setattr(mod, "_mosaic_index", int(len(mosaic_modules)))  # type: ignore[arg-type]
-                            setattr(mod, "_mosaic_name", str(name))  # type: ignore[arg-type]
+                            mod._mosaic_index = int(idx)  # type: ignore[attr-defined]
+                            mod._mosaic_name = str(name)  # type: ignore[attr-defined]
                         except Exception as e:
                             raise RuntimeError(f"Failed to set attributes on mosaic layer {name!r}: {e}") from e
 
-                        mosaic_modules.append((len(mosaic_modules), str(name), mod))
+                        mosaic_modules.append((idx, str(name), mod))
 
                 def _make_hook(i: int):
                     def _hook(_m: nn.Module, _inp: tuple[object, ...], out: object) -> None:
@@ -990,7 +1028,7 @@ class StandardTrainer:
                             if "t_t20" in locals() and "t_t21" in locals():
                                 metrics["time_log_table2_s"] = float(float(t_t21) - float(t_t20))
                         except Exception:
-                            pass
+                            logger.warning(f"telemetry overhead timing failed:\n{traceback.format_exc().strip()}")
 
                         # MOSAIC memory stats (best-effort): include in JSONL + W&B.
                         try:
@@ -1015,7 +1053,7 @@ class StandardTrainer:
                                     metrics[kk] = float(vv)
                                 metrics["mosaic_teacher_p"] = float(getattr(viz_ctx, "mosaic_teacher_p", 1.0))
 
-                                def _avg(viz_ctx: Any, suffix: str) -> float | None:
+                                def _avg(mosaic_f: dict[str, float], suffix: str) -> float | None:
                                     vals = [float(v) for kk, v in mosaic_f.items() if str(kk).endswith(suffix)]
                                     if not vals:
                                         return None
@@ -1045,15 +1083,15 @@ class StandardTrainer:
                                     ("/fuse_gate_mem_mean", "fuse_mem"),
                                     ("/rms_mem_contrib", "mem_contrib"),
                                 ]:
-                                    av = _avg(viz_ctx, suf)
+                                    av = _avg(mosaic_f, suf)
                                     if av is not None:
                                         summary[key] = av
                                 logger.key_value(summary, title="MOSAIC memory stats (avg across layers)")
 
                                 # Table 2 required namespaces (stable keys).
-                                rg = _avg(viz_ctx, "/fuse_gate_mem_mean")
-                                wg = _avg(viz_ctx, "/write_gate_p_mean")
-                                re = _avg(viz_ctx, "/write_bucket_entropy_norm")
+                                rg = _avg(mosaic_f, "/fuse_gate_mem_mean")
+                                wg = _avg(mosaic_f, "/write_gate_p_mean")
+                                re = _avg(mosaic_f, "/write_bucket_entropy_norm")
                                 if rg is not None:
                                     metrics["mem/read_gate"] = float(rg)
                                 if wg is not None:

@@ -120,10 +120,23 @@ def initialize_kernels() -> KernelRegistry:
             kv_decode_reduce_partitions,
             kv_decode_update_decoupled_q4q8q4,
         )
+        from caramba.optimizer.flash_attention_triton_kernels_bwd import (
+            flash_attn_bwd_dkv,
+            flash_attn_bwd_dq,
+            flash_attn_bwd_preprocess,
+        )
+        from caramba.optimizer.flash_attention_triton_kernels_fwd import flash_attn_fwd
+        from caramba.optimizer.dba_attention_triton_kernels_bwd import (
+            dba_attn_bwd_dkv,
+            dba_attn_bwd_dq,
+            dba_attn_bwd_preprocess,
+        )
+        from caramba.optimizer.dba_attention_triton_kernels_fwd import dba_attn_fwd
         from caramba.optimizer.kernels_ssm import selective_scan_triton
         from caramba.optimizer.rmsnorm_triton_kernels import rmsnorm_fwd, rmsnorm_bwd_x, rmsnorm_bwd_x_noweight, rmsnorm_bwd_w
         from caramba.optimizer.layernorm_triton_kernels import layernorm_fwd, layernorm_bwd_x, layernorm_gradw, layernorm_gradb
         from caramba.optimizer.rope_triton_kernels import rope_fwd, rope_bwd
+        from caramba.optimizer.adamw_triton_kernels import adamw_master_step
 
         missing = [
             name
@@ -131,6 +144,14 @@ def initialize_kernels() -> KernelRegistry:
                 ("kv_decode_update_decoupled_q4q8q4", kv_decode_update_decoupled_q4q8q4),
                 ("kv_decode_partition_stats_decoupled_q4q8q4", kv_decode_partition_stats_decoupled_q4q8q4),
                 ("kv_decode_reduce_partitions", kv_decode_reduce_partitions),
+                ("flash_attn_fwd", flash_attn_fwd),
+                ("flash_attn_bwd_preprocess", flash_attn_bwd_preprocess),
+                ("flash_attn_bwd_dkv", flash_attn_bwd_dkv),
+                ("flash_attn_bwd_dq", flash_attn_bwd_dq),
+                ("dba_attn_fwd", dba_attn_fwd),
+                ("dba_attn_bwd_preprocess", dba_attn_bwd_preprocess),
+                ("dba_attn_bwd_dkv", dba_attn_bwd_dkv),
+                ("dba_attn_bwd_dq", dba_attn_bwd_dq),
                 ("selective_scan_triton", selective_scan_triton),
                 ("rmsnorm_fwd", rmsnorm_fwd),
                 ("rmsnorm_bwd_x", rmsnorm_bwd_x),
@@ -142,6 +163,7 @@ def initialize_kernels() -> KernelRegistry:
                 ("layernorm_gradb", layernorm_gradb),
                 ("rope_fwd", rope_fwd),
                 ("rope_bwd", rope_bwd),
+                ("adamw_master_step", adamw_master_step),
             ]
             if k is None
         ]
@@ -178,10 +200,13 @@ def initialize_kernels() -> KernelRegistry:
         if _REGISTRY.cuda_available:
             logger.info(f"[KERNEL] CUDA device: {_cuda_device_summary()}")
             logger.info("[KERNEL] Attention Decode: Triton q4/q8/q4 decode + split-K (CUDA, inference)")
+            logger.info("[KERNEL] Attention Train: Triton FlashAttention forward+backward (CUDA)")
+            logger.info("[KERNEL] DBA Attention Train: Triton decoupled FlashAttention forward+backward (CUDA)")
             logger.info("[KERNEL] SSM Scan: Triton selective scan forward+backward (CUDA)")
             logger.info("[KERNEL] RMSNorm: Triton fused forward+backward (CUDA)")
             logger.info("[KERNEL] LayerNorm: Triton fused forward+backward (CUDA)")
             logger.info("[KERNEL] RoPE: Triton forward+backward (CUDA)")
+            logger.info("[KERNEL] AdamW Master Step: Triton fused (CUDA)")
 
     return _REGISTRY
 

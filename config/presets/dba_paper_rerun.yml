@@ -1,0 +1,260 @@
+version: 2
+name: dba_paper_rerun
+notes: >
+  Single-manifest rerun for the DBA paper's primary A100 comparison:
+  baseline (standard attention) vs decoupled bottleneck attention (DBA).
+  IMPORTANT: `trainer.standard` writes checkpoints to `runs/<target.name>/`.
+  Targets are named to match the paper-style run directory names.
+
+defaults:
+  data:
+    tokenizer: tiktoken:gpt2
+    val_frac: 0.0
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-paper
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 0
+  runtime:
+    # Checkpoints are written by the trainer into `runs/<target.name>/`.
+    save_every: ${save_every}
+    # Fail fast on missing optional performance backends (cluster runs).
+    best_effort: false
+
+vars:
+  # ----- Dataset -----
+  # Tokenized FineWeb-Edu (20B tokens) produced by your pipeline.
+  # Keep as a plain path; generation is intentionally not attempted from manifest.
+  dataset_path: fineweb_20b.npy
+  block_size: 2048
+
+  # ----- Model (Llama-1B-ish) -----
+  d_model: 2048
+  n_layers: 22
+  n_heads: 32
+  # Llama-1B-ish intermediate size; change if your baseline differs.
+  d_ff: 5632
+  # Dataset is GPT-2 encoded (fineweb_20b.npy); use 50257 rounded to 128.
+  vocab_size: 50304
+  rope_base: 10000.0
+
+  # ----- DBA bottleneck dims (Corrected) -----
+  # Target: Sem=16/head, Geo=32/head. Total=48/head.
+  # Math: 16 * 32 = 512.   32 * 32 = 1024.
+  sem_dim: 512
+  geo_dim: 1024
+  # attn_dim must equal sem_dim + geo_dim for the Value projection
+  attn_dim: 1536
+
+  # ----- Training -----
+  steps: 10000
+  seed: 1337
+  device: cuda
+  # Use explicit dtype to avoid "auto" differences across backends.
+  dtype: bfloat16
+  # A100 utilization: avoid tiny microbatches + single-worker dataloading.
+  # Keep effective tokens/step the same as grad_accum=32,batch_size=1 by using a bigger microbatch:
+  # effective_tokens_per_step = batch_size * grad_accum * block_size
+  batch_size: 4
+  grad_accum: 4
+  # Feed the GPU: parallelize mmap slicing + tensor materialization.
+  num_workers: 16
+  prefetch_factor: 4
+  pin_memory: true
+  lr: 3.0e-4
+  weight_decay: 0.1
+  optimizer: adamw
+  fused_optimizer: true
+  scheduler: cosine
+  warmup_steps: 2000
+  save_every: 500
+
+targets:
+  # ---------------------------------------------------------------------------
+  # Baseline: standard attention (full KV dimension = d_model)
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: a100_fw1b_l22_baseline_s1337_paper_strict
+    description: "Paper baseline: standard attention (no bottleneck)."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        # Full attention baseline: n_kv_heads defaults to n_heads when omitted.
+                        mode: standard
+                        rope_enabled: true
+                        rope_base: ${rope_base}
+                        is_causal: true
+                        dropout_p: 0.0
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: paper_baseline
+        seed: ${seed}
+        steps: ${steps}
+        expected: {}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: ${device}
+          dtype: ${dtype}
+          gradient_accumulation_steps: ${grad_accum}
+          optimizer: ${optimizer}
+          weight_decay: ${weight_decay}
+          fused_optimizer: ${fused_optimizer}
+          scheduler: ${scheduler}
+          warmup_steps: ${warmup_steps}
+          min_lr_ratio: 0.0
+          # Strict / "paper" behavior: never silently resume or skip.
+          auto_resume: false
+          skip_if_final: false
+          auto_batch_size: false
+          compile_model: false
+
+  # ---------------------------------------------------------------------------
+  # DBA: decoupled bottleneck attention (KV dims = sem+geo for K, attn_dim for V)
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: a100_fw1b_l22_decoupled_s1337_paper_strict
+    description: "Paper decoupled: DBA (sem+geo bottleneck; v bottlenecked via attn_dim)."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_base}
+                        rope_semantic: false
+                        tie_qk: false
+                        null_attn: false
+                        # The paper score is an unweighted sum (semantic + geometric).
+                        decoupled_gate: false
+                        is_causal: true
+                        dropout_p: 0.0
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: paper_decoupled
+        seed: ${seed}
+        steps: ${steps}
+        expected: {}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: ${device}
+          dtype: ${dtype}
+          gradient_accumulation_steps: ${grad_accum}
+          optimizer: ${optimizer}
+          weight_decay: ${weight_decay}
+          fused_optimizer: ${fused_optimizer}
+          scheduler: ${scheduler}
+          warmup_steps: ${warmup_steps}
+          min_lr_ratio: 0.0
+          auto_resume: false
+          skip_if_final: false
+          auto_batch_size: false
+          compile_model: false
+
+entrypoints:
+  # Run both targets sequentially by omitting --target.
+  baseline: "target:a100_fw1b_l22_baseline_s1337_paper_strict"
+  decoupled: "target:a100_fw1b_l22_decoupled_s1337_paper_strict"

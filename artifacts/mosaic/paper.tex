@@ -11,16 +11,16 @@
 \usepackage{multirow}
 \usepackage{caption}
 \usepackage{subcaption}
-\usepackage{microtype}  % Better text flow, reduces overfull hbox
-\usepackage[margin=1in]{geometry}  % Consistent margins
-\usepackage{placeins} % Provides \FloatBarrier to prevent float reordering across sections
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{placeins}
 
 % Custom colors
 \definecolor{accent}{RGB}{45, 106, 79}
 
-\title{\textbf{The Cognitive Control Plane (CCP):} \\[0.3em]
-\large Explicit Memory and Control for Persistent Event-Native AI \\[0.25em]
-\normalsize \textit{with MOSAIC as a no-attention neural control kernel}}
+\title{\textbf{The Cognitive Control Plane:} \\[0.3em]
+\large A Runtime Architecture for Persistent, Event-Native Intelligent Systems \\[0.25em]
+\normalsize \textit{with MOSAIC as an attention-free neural control kernel}}
 
 \author{
   Daniel Owen van Dommelen\\
@@ -38,357 +38,616 @@
 % ABSTRACT
 % ============================================================================
 \begin{abstract}
-Modern LLMs are strong pattern learners, but weak \emph{systems}: they lack persistent control, explicit memory boundaries, determinism/auditability, and safe tool acquisition. Attention with a per-token KV cache implements one extremely general trick---\emph{store a vector for every past token, then do content-based lookup over all of them}---but this conflates memory, retrieval, and computation, and incurs \(O(T)\) memory growth and dense interactions.
+What would it take to build a long-lived intelligent system---not a chatbot that processes prompts, but an agent that persists, adapts, and extends itself while remaining auditable and safe?
 
-We present the \textbf{Cognitive Control Plane (CCP)}, a runtime architecture for long-lived, event-driven intelligent systems. CCP separates concerns into (i) an event-native substrate (JSON \texttt{EventEnvelope} \(\leftrightarrow\) byte tokens), (ii) explicit memory/control surfaces with deterministic trace and replay, and (iii) a test-driven tool lifecycle (definition, sandboxed execution, unit tests, evaluator gates). At its core we use \textbf{MOSAIC} (\textbf{M}ultiscale \textbf{O}scillator \textbf{S}tate + \textbf{A}ssociative \textbf{I}ndexed \textbf{C}ache), a streaming, no-attention neural controller that manages fixed-size explicit state: a local causal mixer, a multiscale continuous state bank, and a hard-addressed associative cache (plus an optional n-gram continuation cache).
+We argue that such systems require a \textbf{Cognitive Control Plane (CCP)}: a runtime architecture that separates neural computation from explicit memory, control, and tool management. CCP provides three capabilities missing from current LLM deployments: (i) an event-native substrate where all I/O is structured, traceable, and replayable; (ii) explicit memory with constant-size guarantees and supervised control surfaces; and (iii) a test-driven tool lifecycle where the system can propose, verify, and adopt new capabilities.
 
-In local runs, we train supervised control surfaces (opcodes, memory gating, commitments) on synthetic event traces as \emph{smoke-test curricula} (Table~\ref{tab:event_native_results}). We report the implemented architecture, the runtime interfaces that make it testable and auditable, and diagnostics that highlight the central unsolved bottleneck: \emph{hard addressing}.
+At the core of CCP sits \textbf{MOSAIC} (\textbf{M}ultiscale \textbf{O}scillator \textbf{S}tate + \textbf{A}ssociative \textbf{I}ndexed \textbf{C}ache), an attention-free neural controller that maintains fixed-size explicit state. MOSAIC decomposes the work of attention into three specialized mechanisms: a local causal mixer for short-range token interactions, a multiscale state bank for long-horizon intent, and a hard-addressed associative cache for $O(1)$ retrieval.
+
+This paper presents the architecture, implementation, and early diagnostic experiments. We are explicit about what remains unsolved: the central bottleneck is \emph{addressing}---teaching a controller to emit the right query before it can retrieve the information it needs. We report telemetry, curricula, and stress tests designed to make this bottleneck falsifiable rather than hidden.
 \end{abstract}
 
 \paragraph{Keywords:}
-language modeling, event-native, no-attention, external memory, associative cache, control surfaces, differentiable VM, long context, streaming inference, continual learning
+cognitive control plane, event-native systems, attention-free language modeling, explicit memory, associative cache, control surfaces, differentiable VM, streaming inference, continual learning
 
 % ============================================================================
 % 1. INTRODUCTION
 % ============================================================================
 \section{Introduction}
+\label{sec:introduction}
 
-Transformer attention \cite{vaswani2017attention} is often described as a token-mixing operator, but in practice it is also a memory system: it stores a vector per past token and performs content-based lookup against the entire history. The KV cache makes this explicit by persisting those vectors across decode steps.
+Modern large language models are remarkable pattern learners, but they are weak \emph{systems}. They lack persistent state across sessions, have no explicit memory boundaries, offer limited auditability, and cannot safely acquire new tools. These are not limitations of scale; they are limitations of architecture.
 
-\subsection{Attention as a ``store everything'' memory}
+\subsection{The Problem: From Pattern Matching to Persistent Systems}
 
-The attention+KV-cache pattern provides three high-value capabilities:
+Consider what a long-lived intelligent system actually requires:
+
 \begin{enumerate}
-    \item \textbf{Copying from context:} verbatim continuation and exact recall (names, brackets, numbers).
-    \item \textbf{Long-range dependencies without forced compression:} past tokens remain individually addressable.
-    \item \textbf{A substrate for in-context learning:} rapid pattern acquisition via retrieval-like behavior.
+    \item \textbf{Persistence:} State must survive across interactions. A system that forgets everything between API calls is not a system; it is a function.
+    \item \textbf{Explicit memory:} The system must know what it knows. Implicit storage in neural weights is useful for generalization but useless for debugging, auditing, or selective forgetting.
+    \item \textbf{Bounded resources:} Memory and compute must be predictable. A system whose memory grows as $O(T)$ with context length cannot run indefinitely.
+    \item \textbf{Structured I/O:} Interactions should be traceable and replayable. ``It worked once'' is not evidence for systems work.
+    \item \textbf{Safe extensibility:} The system should be able to acquire new capabilities without becoming unsafe or unpredictable.
 \end{enumerate}
-However, it also brings two costs that dominate on consumer hardware: memory that grows as \(O(T)\) with context length and dense interactions that scale with history.
 
-\subsection{The MOSAIC hypothesis}
+Current transformer-based LLMs, despite their power, violate all five requirements. The KV cache grows linearly with context. Memory is implicit in attention patterns. There is no native event structure. Tool use is bolted on via prompting.
 
-MOSAIC starts from a different decomposition: \emph{stop trying to make the network itself be the memory}. Instead, make the network a controller for a small number of explicit, fixed-size data structures. The network decides what to keep, how to compress it, and how to retrieve it; the memory is sublinear, lossy, and constant-size.
+\subsection{Attention as an Implicit Memory System}
 
-This paper focuses on a concrete, implementable design that is streaming causal, attention-free, and laptop-feasible.
+Transformer attention \cite{vaswani2017attention} is often described as a token-mixing operator, but in practice it is also a memory system. The KV cache stores one vector per past token and performs content-based lookup against the entire history. This provides three high-value capabilities:
 
-\subsection{From an architecture to a system substrate}
-MOSAIC is now only one layer of the overall work. The core claim of this paper is system-level: \textbf{persistent intelligent systems require a control plane}. We therefore separate concerns:
+\begin{enumerate}
+    \item \textbf{Verbatim copying:} exact recall of names, brackets, numbers, identifiers.
+    \item \textbf{Uncompressed long-range access:} past tokens remain individually addressable.
+    \item \textbf{In-context learning:} rapid pattern acquisition via retrieval-like behavior.
+\end{enumerate}
+
+However, attention conflates three distinct concerns---local mixing, long-range state, and associative retrieval---into a single mechanism. This conflation brings costs: $O(T)$ memory growth, dense quadratic interactions during training, and no explicit control over what is stored or retrieved.
+
+\subsection{Our Approach: Separation of Concerns}
+
+This paper presents a complete architecture built on separation of concerns:
+
 \begin{itemize}
-    \item \textbf{MOSAIC (kernel):} a no-attention neural controller that maintains internal state and emits control signals.
-    \item \textbf{CCP (system):} a runtime architecture that provides event-native I/O, deterministic trace/replay, and safe tool acquisition/verification.
-    \item \textbf{Substrate (data plane):} sandboxed tool execution and versioned registries, with objective evaluator gates.
+    \item \textbf{The Cognitive Control Plane (CCP)} is the runtime architecture. It provides event-native I/O, deterministic trace/replay, and a test-driven tool lifecycle. CCP defines \emph{what} a persistent intelligent system needs without prescribing \emph{how} the neural computation works.
+
+    \item \textbf{MOSAIC} is the neural control kernel. It replaces attention with three explicit mechanisms---local mixer, state bank, and associative cache---each with constant-size memory and a clear purpose. MOSAIC is \emph{one possible} kernel for CCP; the architecture is designed to be kernel-agnostic.
+
+    \item \textbf{Control surfaces} are the interface between neural and symbolic. MOSAIC emits opcodes, register gates, and commitment signals that CCP can interpret, log, and constrain. This makes the neural controller auditable and steerable.
 \end{itemize}
-This paper is written as \emph{infrastructure}: we are not claiming AGI; we are defining components and interfaces that can be tested and iterated.
+
+\subsection{What This Paper Is (and Is Not)}
+
+We are not claiming a better chatbot or SOTA on benchmarks. We are presenting \textbf{infrastructure}: a set of components and interfaces that can be tested, iterated, and composed into larger systems. The experiments in this paper are \textbf{diagnostic}---designed to reveal whether the architecture is working as intended, not to prove superiority over alternatives.
+
+We are explicit about what remains unsolved. The central bottleneck in explicit-memory architectures is \textbf{addressing}: teaching the controller to emit the correct query \emph{before} it can receive gradients through the retrieved value. We treat addressing performance as a first-class diagnostic, not a problem to be hidden.
 
 \subsection{Contributions}
 
 \begin{enumerate}
-    \item We specify \textbf{MOSAIC}, a no-attention/no-KV-cache streaming LM with constant memory w.r.t.\ context length.
-    \item We introduce a \textbf{multiscale continuous state bank} (leaky integrators) that preserves long-range intent at \(O(Kd)\) memory/compute.
-    \item We introduce a \textbf{hard-addressed associative cache} (fixed hash table) that provides \(O(1)\) lookup/update as a replacement for ``store all KV pairs''.
-    \item We define and implement an \textbf{event-native interface} (JSON \texttt{EventEnvelope} \(\leftrightarrow\) byte tokens) and an in-memory \textbf{EventBus} for peer-to-peer event routing.
-    \item We implement a \textbf{dVM control surface} (opcodes, register gates, and commitment deltas) and supervise it with auxiliary losses on synthetic event traces.
-    \item We implement MOSAIC as \textbf{manifest-addressable components} in Caramba (\path{config/presets/mosaic.yml}, \path{config/presets/mosaic\_event\_native.yml}, \path{config/presets/mosaic\_commitment.yml}) to enable systematic ablations and laptop experiments.
+    \item We specify the \textbf{Cognitive Control Plane (CCP)}, a runtime architecture for persistent, event-native intelligent systems with deterministic trace/replay and a test-driven tool lifecycle.
+
+    \item We specify \textbf{MOSAIC}, an attention-free streaming language model with constant memory. MOSAIC decomposes attention into three mechanisms: local mixer (short-range), state bank (long-range intent), and associative cache ($O(1)$ retrieval).
+
+    \item We introduce \textbf{product-quantized VQ routing with VSA-augmented addressing} as a learnable, constant-time solution to the hard addressing problem, including neighbor reads for drift tolerance and novelty-based write scaling.
+
+    \item We define \textbf{control surfaces} (opcodes, registers, commitments) as the interface between neural computation and symbolic execution, supervised with auxiliary losses on synthetic event traces.
+
+    \item We implement the full architecture as \textbf{manifest-addressable components} in Caramba,\footnote{Caramba is available at \url{https://github.com/theapemachine/caramba}} our open-source framework for manifest-driven neural architecture experimentation (see Appendix~\ref{app:caramba}), enabling systematic ablations and reproducible experiments on consumer hardware.
 \end{enumerate}
 
 % ============================================================================
-% 2. COGNITIVE CONTROL PLANE (NEW)
+% 2. THE COGNITIVE CONTROL PLANE
 % ============================================================================
-\section{The Cognitive Control Plane (CCP)}
+\section{The Cognitive Control Plane}
 \label{sec:ccp}
 
-CCP is a runtime architecture for long-lived, event-driven intelligent systems. It exists to make a learning system \emph{auditable}, \emph{deterministic when needed}, and \emph{safe to extend} with tools.
+The Cognitive Control Plane (CCP) is a runtime architecture for long-lived, event-driven intelligent systems. It exists to make a learning system \emph{auditable}, \emph{deterministic when needed}, and \emph{safe to extend} with tools.
 
-\subsection{Planes and separation of concerns}
-We use a three-plane decomposition:
-\begin{itemize}
-    \item \textbf{Data plane:} tool execution (sandbox), I/O, and resource usage.
-    \item \textbf{Control plane:} explicit memory, control surfaces, policy gates, and commitments.
-    \item \textbf{Deliberative plane (optional):} higher-level planning/reasoning models that can propose actions, tools, and experiments.
-\end{itemize}
-This paper focuses on the control plane and its interfaces; MOSAIC is the kernel controller used by the control plane.
+\subsection{Design Principles}
 
-\subsection{Event-native substrate (JSON events as byte tokens)}
-\label{subsec:event_native_ccp}
-CCP uses an event-native boundary: external interaction is a JSON \texttt{EventEnvelope} (required: \texttt{type}, \texttt{payload}, \texttt{sender}; optional: \texttt{priority}, \texttt{budget\_ms}, \texttt{id}, \texttt{ts}, plus commitment meta-fields). A deterministic serialization is encoded as UTF-8 bytes, yielding a token stream in \(\{0,\dots,255\}\). This reframes decoding as \textbf{VM time-steps} over an event stream and enables supervision aligned to structured event traces.
-
-\subsection{Determinism, trace, and replay}
-For systems work, ``it ran once'' is not evidence. CCP therefore includes deterministic trace logging and replay:
-\begin{itemize}
-    \item \textbf{Trace:} record event envelopes, tool lifecycle events, and evaluator outcomes as an append-only log.
-    \item \textbf{Replay:} deterministically reproduce a run to debug regressions and verify behavior under identical inputs.
-\end{itemize}
-This makes training curricula, tool acquisition, and runtime interventions inspectable and testable.
-
-\subsection{Tool synthesis and verification as a first-class capability}
-\label{subsec:tool_synthesis}
-CCP treats tools as compiled hypotheses rather than free-form code. A minimal lifecycle is:
-\begin{enumerate}
-    \item \textbf{Define:} propose a tool interface and implementation (\texttt{ToolDefinition}).
-    \item \textbf{Test:} auto-generate unit tests from an oracle or dataset (\texttt{ToolTestGenerator}).
-    \item \textbf{Sandbox:} execute tests in an isolated environment with explicit capabilities.
-    \item \textbf{Gate:} evaluator enforces policy (capabilities, resource limits) and accepts/rejects a tool.
-\end{enumerate}
-This allows the system to extend itself while keeping an objective, replayable record of what changed and why.
-
-\subsection{Motivating ``party trick'': Unknown Format Decoder}
-\label{subsec:unknown_format_decoder}
-As a concrete end-to-end driver, we use an ``Unknown Format Decoder'' demo: given raw bytes, the system must infer a binary format, propose a parser tool, validate it against oracle-generated tests, and adapt when the format shifts. This is implemented as a manifest-runner target and lab dataset with deterministic trace/replay, making failures falsifiable rather than anecdotal.
-
-% ============================================================================
-% RELATED WORK
-% ============================================================================
-\section{Related Work}
-\label{sec:related_work}
-
-No single architecture fully resembles MOSAIC, but MOSAIC draws from and synthesizes several distinct research threads. We organize prior work by the specific capability each addresses.
-
-\subsection{Attention-Free State Space Models}
-
-The closest relatives to MOSAIC's core approach are SSM-based models that replace attention entirely.
-\textbf{Mamba} \cite{gu2023mamba} uses selective state spaces with input-dependent gating, achieving linear-time sequence modeling.
-\textbf{RWKV} \cite{peng2023rwkv} uses linear attention approximations to reinvent RNNs for the Transformer era.
-\textbf{Griffin} \cite{de2024griffin} mixes gated linear recurrences with local attention for efficient language models.
-
-MOSAIC's multiscale continuous state bank with leaky integrators is similar in spirit but differs by: (i) using multiple timescales ($K$ states with different learned decay rates $\lambda_k$), and (ii) being explicitly designed as a ``vibe/intent'' channel rather than the primary compute path. In MOSAIC, the SSM-like state bank is one of three complementary mechanisms, not the whole architecture.
-
-\subsection{Attention Efficiency Improvements}
-
-Most ``attention-efficient'' work retains the core primitive (softmax over past tokens) while changing how it is computed. Low-rank or projected variants reduce interaction cost (e.g., Linformer \cite{wang2020linformer}); kernel and hashing methods approximate attention without enumerating all pairs (e.g., Performer \cite{choromanski2021performer}, Reformer \cite{kitaev2020reformer}); sparse/local patterns reduce compute while preserving some long-range access (e.g., Longformer \cite{beltagy2020longformer}, BigBird \cite{zaheer2020bigbird}). These methods can reduce compute, but autoregressive decoding typically still benefits from (or requires) history-dependent state that grows with context length. MOSAIC takes a different approach: remove attention entirely.
-
-\subsection{KV-Cache Optimization}
-
-Orthogonal work reduces the \emph{storage format} of KV caches via head sharing (MQA/GQA) \cite{shazeer2019mqa,ainslie2023gqa}, latent caching \cite{deepseek2024v2}, or quantization \cite{hooper2024kvquant,li2025commvq}. MOSAIC targets a different axis: removing the ``store one vector per token'' mechanism entirely, replacing it with fixed-size explicit memory structures.
-
-\subsection{Memory-Augmented Neural Networks}
-
-The \textbf{Neural Turing Machine} (NTM) \cite{graves2014ntm} and \textbf{Differentiable Neural Computer} (DNC) \cite{graves2016dnc} pioneered neural networks with external memory. However, they use soft attention-based addressing over memory (content-based lookup), and DNCs still have $O(N)$ memory growth per sequence.
-
-The \textbf{Sparse DNC} \cite{rae2016sparse} introduced LSH-based sparse addressing to reduce complexity. This is closer to MOSAIC's approach, but still differs: MOSAIC uses hard-addressed hash tables with $O(1)$ lookup and no attention whatsoever, making the addressing fundamentally discrete rather than soft.
-
-\subsection{Hash-Based Memory Addressing}
-
-MOSAIC's product-quantized VQ routing for the associative cache has precedents in Sparse Access Memory (SAM) using k-d trees, LSH-based sparse memory access, and product quantization for nearest-neighbor search \cite{jegou2011pq}. However, these techniques were not previously combined with SSM-style continuous state in a unified language modeling architecture.
-
-\subsection{N-gram Cache Models}
-
-The n-gram continuation cache is the most ``classical'' component. This has deep roots:
-\textbf{Kuhn \& De Mori} \cite{kuhn1990cache} introduced cache-based natural language models for speech recognition.
-\textbf{Grave et al.} \cite{grave2016cache} proposed improving neural language models with a continuous cache---a very similar concept of using n-gram caching with neural LM interpolation.
-\textbf{Infini-Gram} \cite{liu2024infinigram} scaled n-gram models massively, demonstrating their continued value.
-
-Our framing of the n-gram cache as ``disproportionately high-yield'' for verbatim continuation aligns with this literature: many ``hard'' failures in small models are not deep reasoning errors but failures of verbatim continuation (identifiers, brackets, repeated substrings).
-
-\subsection{What Makes MOSAIC Distinct}
-
-The unique contribution is not any single component but the specific combination and framing:
+CCP is built on three principles:
 
 \begin{enumerate}
-    \item \textbf{Three-way decomposition:} local mixer + continuous state bank + hard-addressed cache (rather than attention doing all three).
-    \item \textbf{Explicit constant-size memory guarantee:} $O(1)$ rather than $O(T)$.
-    \item \textbf{Training curriculum for memory usage:} write curriculum, forced-read dropout, utility prediction---addressing the ``memory getting used'' problem that plagued earlier memory-augmented networks.
-    \item \textbf{Event-native + dVM framing:} treating decoding as VM time-steps with supervised control surfaces rather than pure next-token prediction.
+    \item \textbf{Events as the atomic unit:} All external interaction is a structured event (not raw text). Events are typed, timestamped, and attributed to a sender. This enables logging, replay, and policy enforcement.
+
+    \item \textbf{Explicit over implicit:} Memory, control state, and commitments are explicit data structures, not implicit patterns in neural weights. This enables inspection, selective forgetting, and formal constraints.
+
+    \item \textbf{Test-driven extensibility:} New capabilities (tools) are proposed, tested in isolation, and gated by objective evaluators before adoption. The system can extend itself while remaining auditable.
 \end{enumerate}
 
-None of the closest existing architectures---Griffin, Mamba, or the continuous cache LM---fully overlap with MOSAIC's specific combination, particularly the hard-addressed cache replacing KV-cache entirely, the dVM framing, and the event-native interface.
+\subsection{Three-Plane Decomposition}
 
-% ============================================================================
-% 2. METHODOLOGY
-% ============================================================================
-\section{MOSAIC as the Control Kernel}
+We use a three-plane decomposition inspired by network architecture:
 
-\subsection{Overview}
-MOSAIC is a streaming causal language model that replaces attention+KV-cache with explicit constant-size state:
-\begin{enumerate}
-    \item \textbf{Local mixer}: short-range token interactions (depthwise causal conv + gated MLP).
-    \item \textbf{Multiscale continuous state}: long-range intent via a bank of leaky integrators.
-    \item \textbf{Associative indexed cache}: hard-addressed fixed-size hash memory for fast recall.
-\end{enumerate}
-An optional n-gram continuation cache provides cheap verbatim continuation.
+\begin{description}
+    \item[Data Plane:] Tool execution (sandboxed), I/O, and resource usage. This is where side effects happen.
 
-\subsection{What MOSAIC is not}
-MOSAIC is a kernel controller, not a full agent:
-\begin{itemize}
-    \item It is \textbf{not} a planning algorithm and does not inherently produce explicit plans.
-    \item It is \textbf{not} a safety system; CCP policy/evaluator gates provide constraints.
-    \item It is \textbf{not} a benchmark claim; the goal is controllable interfaces and falsifiable diagnostics.
-\end{itemize}
+    \item[Control Plane:] Explicit memory, control surfaces, policy gates, and commitments. This is where decisions are made and logged. MOSAIC operates here.
 
-\subsection{Event-native interface: JSON events as byte tokens}
+    \item[Deliberative Plane (optional):] Higher-level planning and reasoning models that can propose actions, tools, and experiments. This plane can be a separate model or the same model in a different mode.
+\end{description}
+
+This paper focuses on the control plane and its interfaces. The data plane is implemented as sandboxed execution with explicit capability grants. The deliberative plane is future work.
+
+\subsection{Event-Native Substrate}
 \label{subsec:event_native}
-MOSAIC can be trained and operated on structured event streams. We define an \texttt{EventEnvelope} as a minimal JSON-serializable contract (required: \texttt{type}, \texttt{payload}, \texttt{sender}; optional: \texttt{priority}, \texttt{budget\_ms}, \texttt{id}, \texttt{ts}, plus Phase 2 commitment meta-fields). A deterministic serialization is encoded as UTF-8 bytes, yielding a token stream in \(\{0,\dots,255\}\).
-\[
-\mathbf{b}=\mathrm{utf8}(\mathrm{json}(\mathrm{EventEnvelope})) \in \{0,\dots,255\}^L.
-\]
-This reframes ``tokens'' as \textbf{VM time-steps} required to process an event. In Caramba, event datasets generate synthetic \texttt{EventEnvelope} traces and supervise control signals at aligned byte spans.
 
-\subsection{Differentiable VM control surfaces (opcodes, registers, commitments)}
-In addition to next-token logits, MOSAIC emits auxiliary logits that represent a soft instruction set and related control state:
+CCP uses an \textbf{event-native} boundary: all external interaction is a JSON \texttt{EventEnvelope}. The envelope contract is:
+
 \begin{itemize}
-    \item \textbf{Opcodes:} \(\mathrm{logits}_{\text{op}} \in \mathbb{R}^{B\times T\times |\mathcal{O}|}\) (e.g., \texttt{READ\_MEM}, \texttt{WRITE\_MEM}), optionally used as a differentiable control surface that modulates compute paths.
-    \item \textbf{Registers:} a small non-decaying register file with a write-enable gate and slot selection, supervised with aligned teacher signals.
-    \item \textbf{Commitments (Phase 2):} \(\mathrm{logits}_{\text{c}} \in \mathbb{R}^{B\times T\times 3}\) over \{close, neutral, open\}, mapped to \(\{-1,0,+1\}\).
-\end{itemize}
-These heads are trained with auxiliary losses (cross-entropy or BCE), enabling stable supervision of control behavior without RL.
-
-\subsection{Local mixer: causal convolutional mixer}
-Let \(x_t\in\mathbb{R}^d\) be the residual stream and \(u_t=\mathrm{RMSNorm}(x_t)\).
-The local mixer applies a depthwise causal convolution over a window of \(k\) activations:
-\[
-\tilde{u}_t=\mathrm{DWConv}_k(u_{\le t}), \qquad
-m_t=\sigma(W_g\tilde{u}_t)\odot \tilde{u}_t, \qquad
-\Delta^{\text{local}}_t=W_2\,\phi(W_1 m_t).
-\]
-We update \(x_t\leftarrow x_t+\Delta^{\text{local}}_t\).
-
-\subsection{Multiscale continuous state}
-Maintain \(K\) state vectors \(s_{k,t}\in\mathbb{R}^d\) with learnable decays \(\lambda_k\in(0,1)\):
-\[
-s_{k,t+1}=\lambda_k\odot s_{k,t}+W^{\text{in}}_k u_t,
-\qquad
-g_t=W^{\text{out}}\,[s_{1,t};\dots;s_{K,t}].
-\]
-
-\subsection{Associative indexed cache (hard-addressed)}
-Maintain a fixed table \(M\in\mathbb{R}^{B\times D_m}\) (optionally \(H\) independent routes).
-At each step, route to one (or a small constant number of) bucket indices \(b_t\) and read:
-\[
-r_t=W_r\,M[b_t].
-\]
-With a saliency gate \(p_t=\sigma(w^\top u_t)\), write sparsely:
-\[
-M[b_t]\leftarrow(1-\eta p_t)\,M[b_t]+(\eta p_t)\,W_v u_t.
-\]
-This replaces ``store one KV per past token'' with \(O(1)\) lookup/update into fixed memory.
-
-\subsection{The hidden bottleneck: addressing}
-The most failure-prone part of MOSAIC is not the memory size; it is the \emph{addressing problem}. Attention performs content-based retrieval by directly comparing \(Q\) against all \(K\). A hard-addressed table requires the controller to generate the correct address from the current state. If relevant information has decayed from the continuous state, the model may be unable to produce the address that would allow it to retrieve the missing information.
-
-\paragraph{Why addressing is the core unsolved problem.}
-Hard addressing is a discrete, credit-assignment-heavy problem: the model must emit the correct key \emph{before} it can receive gradients through the retrieved value. This makes addressing the primary axis where MOSAIC can fail even when the memory capacity is sufficient. CCP therefore treats addressing performance as a first-class diagnostic via telemetry (routing entropy, gate utilization) and targeted stress tests (collision/interference probes).
-
-\paragraph{Mitigation: learnable discretized routing (product-quantized VQ).}
-Instead of fixed hashing, we use a learned router that remains \(O(1)\) at inference. A practical choice is product-quantized VQ routing: project \(u_t\) to a small vector, split into \(G\) groups, and assign each group to one of \(K\) codes via nearest-neighbor lookup. The resulting tuple defines a bucket address in a \(K^G\) space (e.g., \(K{=}64, G{=}2 \Rightarrow 4{,}096\) buckets). Straight-through estimators allow end-to-end training while preserving discrete routing.
-
-In the current implementation (\texttt{MosaicMemory}), VQ routing is configured via:
-\begin{itemize}
-    \item \texttt{mem\_vq\_groups}: number of groups $G$ (default 2).
-    \item \texttt{mem\_vq\_codebook\_size}: codes per group $K$ (e.g., 64 yields $64^2=4096$ buckets).
-    \item \texttt{mem\_vq\_group\_dim}: embedding dimension per group (default 16).
-    \item \texttt{mem\_vq\_beam}: number of top codes to consider for neighbor reads (default 2).
-\end{itemize}
-Separate read/write codebooks (\texttt{mem\_vq\_codebook\_r}, \texttt{mem\_vq\_codebook\_w}) allow the model to learn different routing strategies for retrieval versus storage.
-
-\paragraph{Neighbor reads for drift tolerance (constant factor).}
-To improve recall when embeddings shift, we read a small constant neighborhood: top-2 codes per group yields at most \(2^G\) candidate buckets (e.g., \(4\) when \(G=2\)). This preserves constant-time access while significantly improving robustness under drift.
-
-\paragraph{Mitigation: set-associative buckets (tags + slots).}
-A fixed table can be made more robust by storing multiple entries per bucket (small associativity) and attaching a lightweight tag/key to each entry. Reads then compare only within the bucket. This preserves \(O(1)\) access while reducing destructive overwrites.
-
-\subsection{Training: making the memory get used}
-Hard addressing and sparse writes create an optimization hazard: the model can learn to rely only on smooth-gradient paths (local mixer + state bank) and ignore the associative cache.
-Practical training therefore benefits from a curriculum and auxiliary objectives:
-\begin{itemize}
-    \item \textbf{Write curriculum:} begin with heuristic writes (e.g., punctuation, rare tokens, entity-like tokens) and gradually hand control to a learned saliency gate.
-    \item \textbf{Write sparsity:} regularize expected write rate to keep memory efficient and avoid thrashing.
-    \item \textbf{Utility prediction:} train a head to predict whether a write will be useful \(k\) steps later (self-supervised credit assignment).
-    \item \textbf{Collision pressure:} discourage mapping dissimilar contexts to the same bucket (contrastive loss on address codes).
-    \item \textbf{Opcode and commitment supervision:} train control-surface heads from synthetic traces (event-native datasets) via cross-entropy at aligned spans.
-    \item \textbf{State stability:} regularize learned state-bank decay rates to stay within a healthy operating band to prevent early saturation.
+    \item \textbf{Required:} \texttt{type} (event type identifier), \texttt{payload} (JSON-serializable data), \texttt{sender} (stable identity).
+    \item \textbf{Optional:} \texttt{priority} (higher is more urgent), \texttt{budget\_ms} (compute/latency budget), \texttt{id} (unique event id), \texttt{ts} (Unix timestamp).
+    \item \textbf{Phase 2:} \texttt{commitment\_delta} ($\in \{-1, 0, +1\}$), \texttt{commitment\_id} (linking open/close pairs).
 \end{itemize}
 
-\paragraph{Forced-read dropout.}
-To prevent the model from ignoring memory, we explicitly drop the local mixer contribution on a small fraction of tokens/spans during training, forcing prediction to depend on the state bank and retrieved memory.
+For neural processing, we serialize events deterministically to UTF-8 bytes, yielding a token stream in $\{0, \ldots, 255\}$:
+\[
+\mathbf{b} = \mathrm{utf8}(\mathrm{json}(\mathrm{EventEnvelope})) \in \{0, \ldots, 255\}^L.
+\]
 
-\paragraph{Utility prediction and contrastive recall.}
-We add a utility head that predicts whether a write will be queried in the near future, and an InfoNCE-style auxiliary that makes retrieved vectors predictive of future hidden state. These losses provide direct gradients to make the memory pathway carry useful information.
+This reframes ``tokens'' as \textbf{VM time-steps} required to process an event. A decode step is not just predicting the next byte; it is the neural controller's single cycle of computation.
 
-\paragraph{Stage D2: scheduled sampling for student-controlled memory.}
-After teacher-forced memory (D1), we transition to student-controlled routing and gating using scheduled sampling: with probability \(p_t\) we apply teacher actions (write gate/address, read address), otherwise we use the model's own router outputs. We anneal \(p_t\) from 1.0 to 0.0 over training. For discretized routers (e.g., VQ routing), we additionally supervise router decisions with per-group cross-entropy over code assignments.
+\paragraph{EventBus.} Events are routed through an in-memory \texttt{EventBus} that provides priority-ordered dispatch and strict delivery guarantees (no silent drops). Handlers subscribe by event type; publishing an event with no subscribers raises an error. This makes event flow explicit and debuggable.
+
+\subsection{Determinism, Trace, and Replay}
+\label{subsec:trace_replay}
+
+For systems work, ``it ran once'' is not evidence. CCP therefore includes deterministic trace logging and replay:
+
+\begin{itemize}
+    \item \textbf{Trace:} Record event envelopes, tool lifecycle events, and evaluator outcomes as an append-only log. Include neural controller outputs (opcodes, commitment signals) at byte-aligned spans.
+
+    \item \textbf{Replay:} Given a trace, deterministically reproduce the run. This enables debugging, regression testing, and counterfactual analysis (``what if we changed this tool?'').
+\end{itemize}
+
+Determinism requires care: random seeds must be logged, tool execution must be hermetic, and floating-point operations must be reproducible (or their non-determinism must be bounded and logged).
+
+\subsection{Test-Driven Tool Lifecycle}
+\label{subsec:tool_lifecycle}
+
+CCP treats tools as \textbf{compiled hypotheses} rather than free-form code. A tool is not trusted because a model generated it; it is trusted because it passed objective tests. The lifecycle is:
+
+\begin{enumerate}
+    \item \textbf{Define:} Propose a tool interface and implementation (\texttt{ToolDefinition}). The definition includes type signatures, resource requirements, and capability requests.
+
+    \item \textbf{Test:} Auto-generate unit tests from an oracle or dataset (\texttt{ToolTestGenerator}). Tests are first-class artifacts, not afterthoughts.
+
+    \item \textbf{Sandbox:} Execute tests in an isolated environment with explicit capability grants (network, filesystem, etc.). Capabilities are whitelisted, not blacklisted.
+
+    \item \textbf{Gate:} An evaluator enforces policy (resource limits, capability bounds, test pass rate) and accepts or rejects the tool. Rejected tools can be refined and resubmitted.
+\end{enumerate}
+
+This allows the system to extend itself while keeping an objective, replayable record of what changed and why. The trace includes tool proposals, test results, and gate decisions.
+
+\subsection{Commitments: Making Promises Explicit}
+\label{subsec:commitments}
+
+A persistent system often makes implicit promises: ``I will get back to you,'' ``I'm working on this,'' ``I need more information.'' CCP makes these explicit via a \textbf{commitment ledger}.
+
+\begin{itemize}
+    \item A commitment is \textbf{opened} when the system signals ongoing work ($\texttt{commitment\_delta} = +1$).
+    \item A commitment is \textbf{closed} when the work is complete or abandoned ($\texttt{commitment\_delta} = -1$).
+    \item Commitments are paired by \texttt{commitment\_id}; the ledger tracks open-to-close latency.
+\end{itemize}
+
+The ledger provides system-level health metrics: How many commitments are open? How long do they stay open? Are there idle events with open commitments (a sign of dropped work)?
+
+In MOSAIC, commitment signals are emitted by a dedicated head and injected into outbound events (``Mode B''). This makes promises auditable and enables policy constraints (e.g., ``do not accept new work while $> 3$ commitments are open'').
+
+% ============================================================================
+% 3. MOSAIC: THE NEURAL CONTROL KERNEL
+% ============================================================================
+\section{MOSAIC: The Neural Control Kernel}
+\label{sec:mosaic}
+
+MOSAIC (\textbf{M}ultiscale \textbf{O}scillator \textbf{S}tate + \textbf{A}ssociative \textbf{I}ndexed \textbf{C}ache) is a streaming, attention-free language model designed to serve as the neural controller for CCP. It maintains fixed-size explicit state and emits control signals in addition to next-token predictions.
+
+\subsection{Design Rationale}
+
+MOSAIC starts from a different decomposition than transformers: \emph{stop trying to make the network itself be the memory}. Instead, make the network a controller for a small number of explicit, fixed-size data structures. The network decides what to keep, how to compress it, and how to retrieve it; the memory is sublinear, lossy, and constant-size.
+
+The key insight is that attention's three capabilities---local mixing, long-range state, and associative retrieval---can be separated into specialized mechanisms, each with better complexity/capability trade-offs for its specific purpose.
+
+\subsection{Architecture Overview}
+
+A MOSAIC block takes a residual stream $x_t \in \mathbb{R}^d$ and produces an updated stream via three parallel paths:
+
+\begin{enumerate}
+    \item \textbf{Local Mixer:} Short-range token interactions via depthwise causal convolution and gated MLP. Complexity: $O(kd)$ per token, where $k$ is the kernel size.
+
+    \item \textbf{State Bank:} Long-range intent via a bank of $K$ leaky integrators with learnable decay rates. Complexity: $O(Kd)$ per token.
+
+    \item \textbf{Associative Cache:} Fast recall via a hard-addressed hash table with set-associative buckets. Complexity: $O(1)$ lookup and update.
+\end{enumerate}
+
+An optional \textbf{n-gram cache} provides cheap verbatim continuation as an additive logit bias.
+
+\subsection{Local Mixer: Short-Range Token Interactions}
+\label{subsec:local_mixer}
+
+The local mixer handles dependencies within a small window (typically 7--15 tokens). It applies:
+
+\begin{enumerate}
+    \item RMSNorm followed by depthwise causal convolution:
+    \[
+    u_t = \frac{x_t}{\sqrt{\frac{1}{d}\sum_{i=1}^{d} x_{t,i}^2 + \epsilon}}, \quad \tilde{u}_t = \mathrm{DWConv}_k(u_{\le t}).
+    \]
+
+    \item A gating mechanism:
+    \[
+    m_t = \sigma(W_g \tilde{u}_t) \odot \tilde{u}_t.
+    \]
+
+    \item A two-layer MLP with GELU activation:
+    \[
+    \Delta^{\text{local}}_t = W_2 \, \phi(W_1 m_t).
+    \]
+\end{enumerate}
+
+The local mixer is the ``fast path'' that handles most token-to-token predictions. It has no memory beyond the convolution buffer and processes each token in constant time.
+
+\subsection{State Bank: Long-Range Intent}
+\label{subsec:state_bank}
+
+The state bank maintains $K$ state vectors $s_{k,t} \in \mathbb{R}^d$ with learnable decay rates $\lambda_k \in (0, 1)$. These act as leaky integrators at multiple timescales:
+
+\[
+s_{k, t+1} = \lambda_k \odot s_{k,t} + W^{\text{in}}_k u_t, \qquad g_t = W^{\text{out}} [s_{1,t}; \ldots; s_{K,t}].
+\]
+
+The decay rates are parameterized as $\lambda_k = \sigma(\theta_k)$, where $\theta_k$ are learnable logits initialized to span a geometric range (e.g., 0.90 to 0.999).
+
+\paragraph{Purpose.} The state bank is a ``vibe channel'': it carries long-range intent, topic, and style information without storing individual tokens. It cannot perform exact recall, but it provides a stable context signal that persists over hundreds or thousands of tokens.
+
+\paragraph{Comparison to SSMs.} The state bank is similar in spirit to selective state-space models (Mamba, RWKV), but simpler: no selective gating per token, just fixed decay rates. In MOSAIC, the state bank is one of three mechanisms, not the whole architecture.
+
+\subsection{Associative Cache: Fast Recall}
+\label{subsec:associative_cache}
+
+The associative cache provides $O(1)$ lookup and update into a fixed-size memory table. It replaces the ``store one KV per token'' pattern of attention with a bounded hash table.
+
+\paragraph{Memory structure.} Maintain a table $M \in \mathbb{R}^{H \times B \times A \times d}$, where:
+\begin{itemize}
+    \item $H$ = number of independent hash functions (``hashes'')
+    \item $B$ = number of buckets per hash
+    \item $A$ = associativity (slots per bucket)
+    \item $d$ = value dimension
+\end{itemize}
+
+Each slot stores a key vector $k \in \mathbb{R}^{d_k}$, a value vector $v \in \mathbb{R}^d$, and a VSA tag $\tau \in \mathbb{R}^{d_{\text{vsa}}}$ (see Section~\ref{sec:addressing}).
+
+\paragraph{Read operation.} Given the current state $u_t$:
+\begin{enumerate}
+    \item Compute a query key: $q_t = W_q u_t \in \mathbb{R}^{d_k}$.
+    \item Route to bucket indices $b_t \in \{0, \ldots, B-1\}^H$ via learned routing (Section~\ref{sec:addressing}).
+    \item For each hash $h$ and bucket $b_t^{(h)}$, compute slot scores over the $A$ slots. Let $k_i, v_i, \tau_i$ denote the key, value, and VSA tag of slot $i$:
+    \[
+    s_i = \frac{q_t^\top k_i}{\sqrt{d_k}} + w_{\text{vsa}} \cdot q_\tau^\top \tau_i, \quad \alpha_i = \frac{\exp(s_i / T)}{\sum_{j=1}^{A} \exp(s_j / T)}.
+    \]
+    \item Aggregate values: $\hat{v}^{(h)} = \sum_{i=1}^{A} \alpha_i \, v_i$.
+    \item Pool across hashes and project: $r_t = W_r \left( \frac{1}{H} \sum_{h=1}^{H} \hat{v}^{(h)} \right)$.
+\end{enumerate}
+The softmax temperature $T$ controls the sharpness of slot selection (default $T=1$). When $A=1$ (no associativity), this reduces to direct lookup.
+
+\paragraph{Write operation.} Writing is gated by a learned saliency signal $p_t = \sigma(w^\top u_t)$:
+\[
+M[b_t] \leftarrow (1 - \eta p_t) \cdot M[b_t] + (\eta p_t) \cdot W_v u_t.
+\]
+
+Writes target the least-recently-used slot within the bucket (FIFO replacement). A novelty signal (Section~\ref{subsec:novelty}) downweights redundant writes.
 
 \subsection{Fusion}
-We combine streams with learned gates:
+\label{subsec:fusion}
+
+The three paths are combined with learned gates:
 \[
-x_t \leftarrow x_t + \Delta^{\text{local}}_t + \sigma(a^\top u_t)\,g_t + \sigma(b^\top u_t)\,r_t.
+x_t \leftarrow x_t + \Delta^{\text{local}}_t + \sigma(a^\top u_t) \cdot g_t + \sigma(b^\top u_t) \cdot r_t.
 \]
 
-\subsection{Optional n-gram continuation cache}
-We maintain a fixed-size \(N\)-gram table over token IDs that yields a sparse next-token distribution
-and add it as a logit bias:
+The gates allow the model to dynamically weight local, state, and memory contributions based on context.
+
+\subsection{N-Gram Continuation Cache (Optional)}
+\label{subsec:ngram}
+
+We optionally maintain a fixed-size $N$-gram table over token IDs that yields a sparse next-token distribution. This is added as a logit bias at inference:
 \[
-\ell_t \leftarrow \ell_t + \alpha\log(p_{\text{ng}}+\varepsilon).
+\ell_t \leftarrow \ell_t + \alpha \log(p_{\text{ng}} + \varepsilon).
 \]
 
-\subsection{Streaming inference}
-Per token, MOSAIC updates only fixed-size buffers and tables:
+\paragraph{Why n-grams?} Many ``hard'' failures in small models are not deep reasoning errors; they are failures of verbatim continuation (identifiers, brackets, repeated substrings). A classical n-gram cache supplies this cheaply, freeing neural capacity for generalization. This is not a novel contribution---cache-based language models have a long history \cite{kuhn1990cache, grave2016cache}---but it is a high-yield addition to MOSAIC.
+
+\subsection{Streaming Inference}
+\label{subsec:streaming}
+
+MOSAIC is designed for streaming: each token updates only fixed-size buffers and tables. Algorithm~\ref{alg:decode} shows a single decode step.
+
 \begin{algorithm}[htbp]
 \caption{MOSAIC decode step (no attention, no KV cache)}
+\label{alg:decode}
 \begin{algorithmic}[1]
-\STATE Input \(x_t\), states \(\{s_k\}\), conv buffer, memory \(M\)
-\STATE \(u_t\leftarrow\mathrm{RMSNorm}(x_t)\)
-\STATE \(\Delta^{\text{local}}_t\leftarrow\mathrm{LocalMixer}(u_t,\text{buf})\)
-\STATE \(g_t\leftarrow\mathrm{StateBank}(u_t,\{s_k\})\)
-\STATE \(r_t\leftarrow\mathrm{HashRead}(u_t,M)\)
-\STATE \(\ell_t\leftarrow\mathrm{LMHead}(x_t+\Delta^{\text{local}}_t+\mathrm{gate}(g_t,r_t))\)
-\STATE \(\ell_t\leftarrow\ell_t+\mathrm{NGramBias}(\cdot)\) \textbf{(optional)}
-\STATE Update \(M\) on sparse write events
-\STATE Sample \(x_{t+1}\sim\mathrm{softmax}(\ell_t)\)
+\STATE \textbf{Input:} $x_t$, states $\{s_k\}$, conv buffer, memory $M$
+\STATE $u_t \leftarrow \mathrm{RMSNorm}(x_t)$
+\STATE $\Delta^{\text{local}}_t \leftarrow \mathrm{LocalMixer}(u_t, \text{buf})$; update conv buffer
+\STATE $g_t, \{s_k\} \leftarrow \mathrm{StateBank}(u_t, \{s_k\})$
+\STATE $r_t \leftarrow \mathrm{CacheRead}(u_t, M)$
+\STATE $\ell_t \leftarrow \mathrm{LMHead}(x_t + \Delta^{\text{local}}_t + \mathrm{gate}(g_t, r_t))$
+\STATE $\ell_t \leftarrow \ell_t + \mathrm{NGramBias}(\cdot)$ \textbf{(optional)}
+\STATE Update $M$ on sparse write events
+\STATE \textbf{Output:} $\ell_t$ (logits), updated states
 \end{algorithmic}
 \end{algorithm}
 
-\subsubsection{Event-driven runtime (Mode B commitment injection)}
-At the system level, MOSAIC is run as an event processor. Given an inbound \texttt{EventEnvelope}, we encode JSON to byte tokens, run the model autoregressively until a complete JSON object is produced, decode to an \texttt{EventEnvelope}, then inject commitment meta-fields from the auxiliary head logits (``Mode B'') and update a runtime commitment ledger.
-\begin{algorithm}[htbp]
-\caption{Event-native runtime step (JSON bytes + Mode B commitments)}
-\begin{algorithmic}[1]
-\STATE Input event \(e\) (\texttt{EventEnvelope})
-\STATE Encode \(e \rightarrow \mathbf{b}\in\{0,\dots,255\}^{L}\) and append delimiter
-\STATE Feed bytes to MOSAIC with persistent streaming state
-\STATE Autoregress bytes until buffer ends with \texttt{\}} and JSON decode succeeds
-\STATE Decode buffer to response event \(r\)
-\STATE \(\delta \leftarrow \arg\max(\mathrm{mosaic\_commitment\_logits}) - 1\)
-\STATE Set \(r.\texttt{commitment\_delta} \leftarrow \delta\) (Mode B)
-\STATE Update commitment ledger and publish \(r\) to the EventBus
-\end{algorithmic}
-\end{algorithm}
+Memory footprint is $O(1)$ in context length. Per-token compute is dominated by the MLP and projections, not by attention over history.
 
-\subsection{Implementation (Caramba)}
-MOSAIC is implemented as manifest-addressable layers and core primitives:
+\subsection{Complexity Analysis}
+\label{subsec:complexity}
+
+Table~\ref{tab:complexity} compares the per-token complexity of MOSAIC components against standard transformer attention.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Per-token time and space complexity. $T$ = context length, $d$ = model dimension, $k$ = conv kernel, $K$ = state bank size, $H$ = hashes, $B$ = buckets, $A$ = associativity.}
+\label{tab:complexity}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Component} & \textbf{Time (per token)} & \textbf{Space (total)} \\
+\midrule
+Transformer attention & $O(Td)$ & $O(Td)$ \\
+\midrule
+MOSAIC local mixer & $O(kd)$ & $O(kd)$ \\
+MOSAIC state bank & $O(Kd)$ & $O(Kd)$ \\
+MOSAIC associative cache & $O(HAd)$ & $O(HBAd)$ \\
+MOSAIC n-gram cache & $O(1)$ & $O(N \cdot V)$ \\
+\midrule
+\textbf{MOSAIC total} & $O((k + K + HA)d)$ & $O((k + K)d + HBAd)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Key observations:
 \begin{itemize}
-    \item \textbf{Core layers:} \texttt{MosaicBlockLayer} (\path{layer/mosaic/block/layer.py}) implements the full block including local mixer, state bank, and memory fusion. \texttt{MosaicMemory} (\path{layer/mosaic/memory/memory.py}) implements the hard-addressed associative cache with VQ or bits routing, set-associative buckets, and sparse writes.
-    \item \textbf{State management:} \texttt{MosaicState} (\path{layer/mosaic/state.py}) maintains conv buffer, state bank vectors, registers, and memory tables across streaming decode steps.
-    \item \textbf{Control surfaces:} Opcode head, register gates, and commitment head are integrated into \texttt{MosaicBlockLayer} with configurable enable flags (\texttt{opcodes\_enabled}, \texttt{reg\_slots}, \texttt{commitment\_head\_enabled}).
-    \item \texttt{MosaicNGramCacheLogitsLayer} (\path{layer/mosaic/ngram\_cache.py}) (optional inference-time logit bias).
-    \item \textbf{Event primitives:} \texttt{EventEnvelope} (\path{core/event.py}), \texttt{EventEncoder}/\texttt{EventDecoder} (\path{core/event\_codec/}), and \texttt{EventBus} (\path{core/event\_bus.py}).
-    \item \textbf{Curricula:} Memory curriculum (\texttt{dataset.mosaic\_memory\_curriculum}), ICL rule induction (\texttt{dataset.icl\_rule\_induction}), and event traces (\texttt{dataset.mosaic\_event\_traces}).
-    \item \textbf{Phase 2 runtime:} Commitment ledger (\path{core/commitments.py}) and event runtime (\path{infer/event\_runtime.py}).
+    \item MOSAIC time complexity is \textbf{independent of context length} $T$.
+    \item MOSAIC space complexity is \textbf{constant} w.r.t.\ $T$; attention grows as $O(Td)$.
+    \item Typical values: $k=7$, $K=16$, $H=4$, $B=1024$, $A=4$, $d=256$. This yields $\sim$4M parameters for memory vs.\ unbounded growth for KV cache.
 \end{itemize}
 
-The training loop in \texttt{StandardTrainer} collects MOSAIC-specific telemetry including per-block write gate utilization, read gate utilization, and routing entropy (normalized bucket distribution entropy). These metrics are logged to WandB and console for debugging memory usage patterns.
+% ============================================================================
+% 4. ADDRESSING: THE CENTRAL BOTTLENECK
+% ============================================================================
+\section{Addressing: The Central Bottleneck}
+\label{sec:addressing}
+
+The most failure-prone part of MOSAIC is not the memory size; it is the \textbf{addressing problem}. Attention performs content-based retrieval by directly comparing $Q$ against all $K$. A hard-addressed table requires the controller to generate the correct address from the current state---before seeing the value that would confirm the address is correct.
+
+\subsection{Why Addressing Is Hard}
+\label{subsec:addressing_hard}
+
+Hard addressing is a discrete, credit-assignment-heavy problem:
+\begin{itemize}
+    \item The model must emit the correct key \emph{before} it can receive gradients through the retrieved value.
+    \item If relevant information has decayed from the state bank, the model may be unable to produce the address that would retrieve it.
+    \item Collisions and interference can destroy information before it is ever retrieved.
+\end{itemize}
+
+This makes addressing the primary axis where MOSAIC can fail even when memory capacity is sufficient. CCP therefore treats addressing performance as a first-class diagnostic via telemetry (routing entropy, gate utilization, hit rates) and targeted stress tests.
+
+\subsection{Product-Quantized VQ Routing}
+\label{subsec:vq_routing}
+
+Instead of fixed hashing (which cannot learn), we use a \textbf{learned router} that remains $O(1)$ at inference. The approach is product-quantized vector quantization (VQ):
+
+\begin{enumerate}
+    \item Project the query key to a small vector: $z_t = W_z q_t \in \mathbb{R}^{G \cdot d_g}$.
+    \item Split into $G$ groups: $z_t = [z_t^{(1)}; \ldots; z_t^{(G)}]$, each $z_t^{(g)} \in \mathbb{R}^{d_g}$.
+    \item For each group, find the nearest code in a learnable codebook $C^{(g)} \in \mathbb{R}^{K \times d_g}$:
+    \[
+    c_t^{(g)} = \arg\min_{k \in \{1, \ldots, K\}} \|z_t^{(g)} - C^{(g)}_k\|^2.
+    \]
+    \item The tuple $(c_t^{(1)}, \ldots, c_t^{(G)})$ defines a bucket address in a $K^G$ space (e.g., $K = 64$, $G = 2 \Rightarrow 4096$ buckets).
+\end{enumerate}
+
+Straight-through estimators allow end-to-end training. Let $d_k = \|z_t^{(g)} - C^{(g)}_k\|^2$ be the squared distance to code $k$. The forward pass uses the hard assignment $c_t^{(g)} = \arg\min_k d_k$, while the backward pass flows gradients through soft distances:
+\[
+\tilde{c}_t^{(g)} = \sum_{k=1}^{K} \frac{\exp(-d_k / \tau)}{\sum_{j=1}^{K} \exp(-d_j / \tau)} \cdot C^{(g)}_k, \quad \nabla_{z} \mathcal{L} = \nabla_{\tilde{c}} \mathcal{L} \cdot \frac{\partial \tilde{c}}{\partial z}.
+\]
+The codebook vectors $C^{(g)}_k$ are updated via exponential moving average of assigned embeddings (EMA update) or jointly via gradient descent.
+
+\paragraph{Separate read/write codebooks.} We maintain separate codebooks for reading and writing (\texttt{mem\_vq\_codebook\_r}, \texttt{mem\_vq\_codebook\_w}). This allows the model to learn different routing strategies for retrieval (``what do I need?'') versus storage (``what should I remember?'').
+
+\subsection{Neighbor Reads for Drift Tolerance}
+\label{subsec:neighbor_reads}
+
+Embedding spaces shift during training and across contexts. To improve recall when a query drifts slightly from its original write address, we read a small constant neighborhood: top-$m$ codes per group yields at most $m^G$ candidate buckets (e.g., $m = 2$, $G = 2 \Rightarrow 4$ candidates).
+
+This preserves constant-time access (the neighborhood size is a fixed hyperparameter, not dependent on sequence length) while significantly improving robustness under drift.
+
+\subsection{VSA-Augmented In-Bucket Selection}
+\label{subsec:vsa}
+
+Within a bucket, multiple slots may contain relevant information. We augment the standard key similarity with a \textbf{vector-symbolic architecture (VSA)} channel:
+
+\begin{itemize}
+    \item Each slot stores a VSA tag $\tau \in \mathbb{R}^{d_{\text{vsa}}}$, computed via a fixed random projection (Rademacher matrix) followed by $\tanh$ squashing:
+    \[
+    \tau = \tanh(\gamma \cdot R \cdot k), \quad R \in \{-1, +1\}^{d_{\text{vsa}} \times d_k}.
+    \]
+
+    \item Reads compute a combined slot score:
+    \[
+    \text{sim}_{\text{total}} = \text{sim}_{\text{key}} + w_{\text{vsa}} \cdot \text{sim}_{\text{vsa}}.
+    \]
+\end{itemize}
+
+The VSA channel provides a second similarity signal that is less sensitive to small perturbations in the learned key space, improving robustness to drift and collisions.
+
+\subsection{Novelty-Based Write Scaling}
+\label{subsec:novelty}
+
+Sparse hard writes can thrash when a router repeatedly targets the same bucket for redundant content. We compute a \textbf{novelty factor} based on VSA similarity:
+
+\begin{enumerate}
+    \item Compute the maximum VSA similarity between the candidate write tag and existing slot tags in the target bucket.
+    \item Apply a soft novelty function: $\text{novelty} = 1 - \sigma(\beta \cdot (\text{max\_sim} - \theta))$.
+    \item Scale the write update by the novelty factor.
+\end{enumerate}
+
+Redundant writes are downweighted while novel writes retain full strength. This stabilizes sparse-write dynamics without changing routing or introducing fallback behavior.
+
+\subsection{Set-Associative Buckets}
+\label{subsec:set_associative}
+
+A fixed table can be made more robust by storing multiple entries per bucket (associativity $A > 1$). Reads compare only within the bucket; writes target the least-recently-used slot (tracked via a timestamp).
+
+This preserves $O(1)$ access while reducing destructive overwrites. Typical values: $A = 4$ to $8$ slots per bucket.
 
 % ============================================================================
-% 3. EXPERIMENTS
+% 5. CONTROL SURFACES
+% ============================================================================
+\section{Control Surfaces: The Neural-Symbolic Interface}
+\label{sec:control_surfaces}
+
+In addition to next-token logits, MOSAIC emits auxiliary signals that represent a soft instruction set and control state. These \textbf{control surfaces} are the interface between neural computation and the symbolic runtime of CCP.
+
+\subsection{Opcodes}
+\label{subsec:opcodes}
+
+An opcode head emits logits over a small vocabulary of operations:
+\[
+\text{logits}_{\text{op}} \in \mathbb{R}^{B \times T \times |\mathcal{O}|}.
+\]
+
+The current opcode vocabulary (v0) includes:
+\begin{itemize}
+    \item \texttt{NOP}: No operation
+    \item \texttt{READ\_MEM}, \texttt{WRITE\_MEM}, \texttt{CLEAR\_MEM}: Memory operations
+    \item \texttt{IDLE}: Signal idle state
+    \item \texttt{GATE\_UP}, \texttt{GATE\_DOWN}: Modulate fusion gates
+    \item \texttt{SCAN}: Trigger state-bank consolidation
+    \item \texttt{COMMIT}, \texttt{RESPOND}: Commitment lifecycle
+\end{itemize}
+
+Opcodes are trained with auxiliary cross-entropy loss against teacher signals derived from synthetic event traces. At inference, opcodes can optionally modulate execution paths (gating memory reads/writes) via straight-through selection.
+
+\subsection{Registers}
+\label{subsec:registers}
+
+A small non-decaying register file ($R$ slots, typically 4--8) provides stable storage for explicit values:
+
+\begin{itemize}
+    \item A write-enable gate determines whether to update each slot.
+    \item Slot selection is supervised with aligned teacher signals.
+\end{itemize}
+
+Registers are intended for high-value, explicit state (e.g., current user ID, task phase, key constraints). Unlike the state bank, they do not decay.
+
+\subsection{Commitments}
+\label{subsec:commitment_head}
+
+A commitment head emits logits over $\{-1, 0, +1\}$:
+\[
+\text{logits}_{\text{c}} \in \mathbb{R}^{B \times T \times 3}.
+\]
+
+The argmax is mapped to a commitment delta and injected into outbound events (``Mode B''). The runtime commitment ledger (Section~\ref{subsec:commitments}) tracks open/close pairs.
+
+\subsection{Training Control Surfaces}
+
+Control surfaces are trained with auxiliary losses:
+\begin{itemize}
+    \item \textbf{Opcode loss:} Cross-entropy against teacher opcode labels at byte-aligned spans.
+    \item \textbf{Commitment loss:} Cross-entropy against teacher commitment deltas.
+    \item \textbf{Write gate loss:} BCE against teacher write masks (for memory curriculum).
+\end{itemize}
+
+These losses are weighted and summed with the primary next-token loss. Synthetic event-trace datasets provide dense supervision for control surfaces.
+
+% ============================================================================
+% 6. TRAINING: MAKING THE MEMORY GET USED
+% ============================================================================
+\section{Training: Making the Memory Get Used}
+\label{sec:training}
+
+Hard addressing and sparse writes create an optimization hazard: the model can learn to rely only on smooth-gradient paths (local mixer + state bank) and ignore the associative cache. Practical training requires curricula and auxiliary objectives that force the memory pathway to carry useful information.
+
+\subsection{Memory Curriculum}
+\label{subsec:memory_curriculum}
+
+We begin with a structured curriculum that makes memory usage necessary:
+
+\begin{enumerate}
+    \item \textbf{Teacher-forced writes:} Initially, a teacher signal provides write gates and addresses. The model learns to use retrieved values before it learns to route.
+
+    \item \textbf{Heuristic writes:} Transition to heuristic triggers (punctuation, rare tokens, entity-like tokens) that correlate with high-value writes.
+
+    \item \textbf{Learned saliency:} Gradually hand control to the learned saliency gate via scheduled sampling. Anneal the teacher probability from 1.0 to 0.0 over training.
+\end{enumerate}
+
+\subsection{Auxiliary Objectives}
+\label{subsec:aux_objectives}
+
+We define several auxiliary losses to encourage healthy memory usage. The total training loss is:
+\[
+\mathcal{L} = \mathcal{L}_{\text{LM}} + \lambda_{\text{sparse}} \mathcal{L}_{\text{sparse}} + \lambda_{\text{util}} \mathcal{L}_{\text{util}} + \lambda_{\text{NCE}} \mathcal{L}_{\text{NCE}} + \lambda_{\text{coll}} \mathcal{L}_{\text{coll}} + \lambda_{\text{decay}} \mathcal{L}_{\text{decay}}.
+\]
+
+\paragraph{Write sparsity.} Regularize expected write rate to keep memory efficient and avoid thrashing:
+\[
+\mathcal{L}_{\text{sparse}} = \frac{1}{T} \sum_{t=1}^{T} p_t, \quad p_t = \sigma(w^\top u_t).
+\]
+
+\paragraph{Utility prediction.} Train a utility head $f_{\text{util}}$ to predict whether a write at time $t$ will be read within the next $\Delta$ steps. Let $y_t = \mathbf{1}[\text{read within } \Delta]$ be the binary label (computed retrospectively):
+\[
+\mathcal{L}_{\text{util}} = -\frac{1}{T} \sum_{t=1}^{T} \left[ y_t \log \hat{y}_t + (1 - y_t) \log(1 - \hat{y}_t) \right], \quad \hat{y}_t = \sigma(f_{\text{util}}(u_t)).
+\]
+
+\paragraph{Contrastive recall (InfoNCE).} Make retrieved vectors predictive of future hidden states. For a write at time $t$ and a future read at time $t + \delta$, treat the retrieved value as the positive and other batch elements as negatives:
+\[
+\mathcal{L}_{\text{NCE}} = -\frac{1}{|\mathcal{P}|} \sum_{(t, t+\delta) \in \mathcal{P}} \log \frac{\exp(r_{t+\delta}^\top h_{t+\delta} / \tau)}{\sum_{j} \exp(r_j^\top h_{t+\delta} / \tau)},
+\]
+where $\mathcal{P}$ is the set of write-read pairs, $r$ is the retrieved vector, and $h$ is the hidden state.
+
+\paragraph{Collision pressure.} Discourage mapping dissimilar contexts to the same bucket. For pairs $(i, j)$ with different ground-truth content but same bucket address:
+\[
+\mathcal{L}_{\text{coll}} = \frac{1}{|\mathcal{C}|} \sum_{(i,j) \in \mathcal{C}} \max(0, \mu - \|z_i - z_j\|^2),
+\]
+where $\mathcal{C}$ is the set of collision pairs and $\mu$ is a margin hyperparameter.
+
+\paragraph{State stability.} Regularize learned decay logits $\theta_k$ to stay within a healthy band $[\theta_{\min}, \theta_{\max}]$:
+\[
+\mathcal{L}_{\text{decay}} = \frac{1}{K} \sum_{k=1}^{K} \left[ \max(0, \theta_{\min} - \theta_k)^2 + \max(0, \theta_k - \theta_{\max})^2 \right].
+\]
+This prevents decay rates from saturating at 0 or 1, which would cause vanishing or exploding state.
+
+\subsection{Forced-Read Dropout}
+
+To prevent the model from ignoring memory entirely, we drop the local mixer contribution on a small fraction of tokens/spans during training, forcing prediction to depend on the state bank and retrieved memory. This is analogous to dropout but applied at the path level.
+
+\subsection{Scheduled Sampling for Student-Controlled Memory}
+
+After teacher-forced memory (Stage D1), we transition to student-controlled routing and gating (Stage D2):
+\begin{itemize}
+    \item With probability $p_t$, apply teacher actions (write gate, read address, write address).
+    \item Otherwise, use the model's own router outputs.
+    \item Anneal $p_t$ from 1.0 to 0.0 over training.
+    \item For VQ routing, supervise router decisions with per-group cross-entropy over code assignments.
+\end{itemize}
+
+% ============================================================================
+% 7. EXPERIMENTS
 % ============================================================================
 \section{Experiments}
-\subsection{Setup}
-We define several presets for systematic evaluation:
-\begin{itemize}
-    \item \textbf{Token-stream MOSAIC} in \path{config/presets/mosaic.yml} (base architecture).
-    \item \textbf{MOSAIC ICL} in \path{config/presets/mosaic\_icl.yml} (few-shot rule induction with VQ routing).
-    \item \textbf{SSM baseline} in \path{config/presets/mamba\_ssm.yml} (pure SSM without explicit memory).
-    \item \textbf{Event-native Phase 1} in \path{config/presets/mosaic\_event\_native.yml} (opcodes + memory gating).
-    \item \textbf{Event-native Phase 2} in \path{config/presets/mosaic\_commitment.yml} (commitment lifecycle).
-\end{itemize}
-All experiments use 6-layer models with $d=256$ on the synthetic memory curriculum or ICL rule induction datasets, trained for 2000 steps on Apple M-series hardware (MPS backend).
+\label{sec:experiments}
 
-We evaluate:
+Our experiments are diagnostic, not competitive. We aim to answer: Is the architecture working as intended? Is the memory being used? Where does it fail?
+
+\subsection{Setup}
+
+We define several manifest presets for systematic evaluation:
 \begin{itemize}
-    \item \textbf{Language modeling quality}: held-out perplexity on token shards.
-    \item \textbf{Copying}: targeted synthetic tests (repeated spans, bracket closure, identifier reuse).
-    \item \textbf{Long-range constraints}: instruction retention with long distractor spans.
-    \item \textbf{Efficiency}: tokens/sec and peak resident memory during streaming decode.
-    \item \textbf{Event-native learning}: final training loss on synthetic event traces (Phase 1/2 curricula).
+    \item \textbf{mosaic.yml}: Token-stream baseline (base architecture).
+    \item \textbf{mosaic\_icl.yml}: In-context learning with VQ routing.
+    \item \textbf{mamba\_ssm.yml}: Pure SSM baseline (no explicit memory).
+    \item \textbf{mosaic\_event\_native.yml}: Event-native Phase 1 (opcodes + memory gating).
+    \item \textbf{mosaic\_commitment.yml}: Event-native Phase 2 (commitment lifecycle).
+    \item \textbf{mosaic\_memory\_curriculum.yml}: Memory curriculum training.
 \end{itemize}
+
+All experiments use 6-layer models with $d = 256$ on synthetic curricula, trained for 2000 steps on Apple M-series hardware (MPS backend).
+
+\subsection{Evaluation Axes}
+
+\begin{enumerate}
+    \item \textbf{Language modeling quality:} Held-out perplexity on token shards.
+    \item \textbf{Copying:} Targeted synthetic tests (repeated spans, bracket closure, identifier reuse).
+    \item \textbf{Long-range constraints:} Instruction retention with long distractor spans.
+    \item \textbf{Efficiency:} Tokens/sec and peak resident memory during streaming decode.
+    \item \textbf{Event-native learning:} Final training loss on synthetic event traces.
+    \item \textbf{Memory telemetry:} Routing entropy, gate utilization, hit rates.
+\end{enumerate}
+
+\subsection{Event-Native Curriculum Results}
 
 \begin{table}[htbp]
 \centering
@@ -400,43 +659,34 @@ We evaluate:
 \textbf{Phase} & \textbf{Capability} & \textbf{Final loss} & \textbf{tok/s} \\
 \midrule
 Phase 1 & Event traces + opcodes + memory gating & 0.36 & $\sim$970 \\
-Phase 2 & Commitment lifecycle (\(\Delta\in\{-1,0,+1\}\)) & 0.32 & $\sim$930 \\
+Phase 2 & Commitment lifecycle ($\Delta \in \{-1, 0, +1\}$) & 0.32 & $\sim$930 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{ICL Rule Induction (Table 2 Row D)}
+These results demonstrate that supervised control surfaces can be trained on synthetic event traces as smoke-test curricula. The low final loss indicates the model is learning the byte-level structure of events and the control signals.
 
-We trained MOSAIC on a synthetic in-context learning task: given 4 demonstrations of a simple input$\to$output rule (with distractors), predict the correct output for a query. The dataset binds gap distances (number of tokens between demonstration and query) into bins for fine-grained analysis.
+\subsection{ICL Rule Induction (Diagnostic)}
 
-After 2000 steps, MOSAIC achieved a training loss of $\sim$2.5 (PPL $\sim$12.7). The per-bin accuracy remained at 0\% across all gap bins, indicating that MOSAIC has not yet learned to perform reliable few-shot rule induction---a known weakness of memory-augmented networks without careful curriculum design. However, memory telemetry shows:
+We trained MOSAIC on a synthetic in-context learning task: given 4 demonstrations of a simple input$\to$output rule (with distractors), predict the correct output for a query. The dataset bins gap distances for fine-grained analysis.
+
+After 2000 steps, MOSAIC achieved training loss $\sim$2.5 (PPL $\sim$12.7). Per-bin accuracy remained at 0\% across all gap bins, indicating MOSAIC has not yet learned reliable few-shot rule induction.
+
+However, memory telemetry shows:
 \begin{itemize}
-    \item Routing entropy decreasing from $\sim$0.25 to $\sim$0.1 (routing is becoming more concentrated).
+    \item Routing entropy decreasing from $\sim$0.25 to $\sim$0.1 (routing is concentrating).
     \item Memory read gates at $\sim$60\% utilization (memory is being queried).
     \item Teacher annealing reaching 0\% by step 2000 (student is in control).
 \end{itemize}
-This suggests the memory is being used but not yet in a way that solves the ICL task. Further curriculum design (e.g., utility prediction, contrastive recall losses) is needed.
 
-\subsection{Stress tests (what should break first)}
-To make MOSAIC falsifiable, we include targeted adversarial evaluations:
-\begin{itemize}
-    \item \textbf{Hash collision stress:} long contexts with many distinct entities/facts to quantify interference.
-    \item \textbf{Few-shot in-context learning probes:} measure whether MOSAIC can acquire and apply a new pattern from a handful of examples without gradient updates. (Current results: 0\% accuracy; see above.)
-    \item \textbf{Non-verbatim manipulation:} tasks like ``repeat this list sorted'' to distinguish mere copying from compositional reuse.
-\end{itemize}
+This suggests the memory is being used but not yet in a way that solves the ICL task. The addressing problem remains unsolved for this capability; curriculum design and auxiliary losses need further work.
 
-\subsection{Ablations}
-We ablate memory mechanisms to attribute behaviors:
-\begin{itemize}
-    \item \textbf{-hash memory}: disable associative cache reads/writes.
-    \item \textbf{-state bank}: disable multiscale long state.
-    \item \textbf{+n-gram cache}: enable continuation cache logit bias.
-\end{itemize}
+\subsection{MOSAIC vs SSM Baseline}
 
 \begin{table}[htbp]
 \centering
 \small
-\caption{MOSAIC vs SSM baseline on memory curriculum (2000 steps, synthetic retrieval task).}
+\caption{MOSAIC vs SSM baseline on memory curriculum (2000 steps).}
 \label{tab:mosaic_vs_ssm}
 \begin{tabular}{@{}lcccc@{}}
 \toprule
@@ -448,7 +698,19 @@ MOSAIC ICL (6L, d=256) & 2.54 & 12.7 & 13.2M & $\sim$200 \\
 \end{tabular}
 \end{table}
 
-The SSM baseline achieves lower perplexity on the memory curriculum task, but this is expected: the curriculum is designed to stress-test discrete retrieval, which is precisely where SSMs (smooth continuous state) excel when patterns are predictable. MOSAIC's higher perplexity reflects the harder optimization surface of learning discrete addressing. Crucially, MOSAIC's memory telemetry shows healthy routing entropy ($\sim$0.1--0.25) and active memory gates ($\sim$50\% read/write utilization), indicating the memory subsystem is being used rather than ignored.
+The SSM baseline achieves lower perplexity, but this is expected: the curriculum is designed to stress discrete retrieval, precisely where continuous-state models have smooth gradients. MOSAIC's higher perplexity reflects the harder optimization surface of learning discrete addressing. The key diagnostic is memory telemetry, which shows the memory subsystem is active rather than ignored.
+
+\subsection{Stress Tests}
+
+To make MOSAIC falsifiable, we include targeted adversarial evaluations:
+
+\begin{itemize}
+    \item \textbf{Hash collision stress:} Long contexts with many distinct entities/facts to quantify interference.
+    \item \textbf{Few-shot ICL probes:} Measure whether MOSAIC can acquire a new pattern from examples without gradient updates. (Current: 0\% accuracy.)
+    \item \textbf{Non-verbatim manipulation:} Tasks like ``repeat this list sorted'' to distinguish copying from compositional reuse.
+\end{itemize}
+
+\subsection{Planned Ablations}
 
 \begin{table}[htbp]
 \centering
@@ -467,86 +729,237 @@ MOSAIC (+n-gram) & -- & -- & -- & -- \\
 \end{tabular}
 \end{table}
 
-\section{Discussion}
-\subsection{Trade-offs}
-Hash memories offer \(O(1)\) access but introduce collisions and interference. Multiscale state provides stable long-range influence but cannot perform exact recall. The n-gram cache provides near-perfect continuation for repeated strings but is not a substitute for semantic retrieval.
+% ============================================================================
+% 8. RELATED WORK
+% ============================================================================
+\section{Related Work}
+\label{sec:related_work}
 
-\subsection{Why the n-gram cache is disproportionately high-yield}
-Many ``hard'' failures in small on-device models are not deep reasoning errors; they are failures of verbatim continuation (identifiers, brackets, repeated substrings). A classical n-gram cache can supply this cheaply as an additive logit bias, freeing neural capacity for generalization.
+MOSAIC draws from and synthesizes several research threads. We organize prior work by the capability each addresses.
 
-\subsection{Continual learning as a first-class design axis}
-MOSAIC naturally separates learning timescales:
-\begin{itemize}
-    \item \textbf{Fast (no gradients):} memory writes during inference (session adaptation).
-    \item \textbf{Medium (tiny gradients):} consolidate frequently retrieved behaviors into small adapters (e.g., low-rank side modules), using replay buffers and regularization toward the base model.
-    \item \textbf{Slow (offline):} full training runs informed by logged memory misses, useful writes, and tool traces.
-\end{itemize}
+\subsection{Attention-Free State-Space Models}
 
-\subsection{Idle-time compute, latent impulses, and native tool-building}
-\label{subsec:idle_tooling}
-While MOSAIC is a language model architecture, the Caramba runtime layers on system behaviors that are useful for long-lived agents:
-\begin{itemize}
-    \item \textbf{Idle-time compute spend:} when no external events arrive, the runtime can spend bounded compute on maintenance (e.g., replay-based consolidation updates to small adapters) rather than sitting idle (see preset \path{config/presets/mosaic\_idle.yml}).
-    \item \textbf{Latent impulses:} the runtime can emit internal ``wake'' or ``drive'' events (via a homeostatic loop) that keep the system active, producing self-initiated event traces instead of only prompt$\to$response behavior.
-    \item \textbf{Native tool-building:} tools can be defined, tested, and registered as first-class events (a minimal toolchain + evaluator). This supports workflows where the system proposes a tool, runs unit tests, and only then adopts it (e.g., an ``unknown format decoder'' demo runner built on deterministic trace/replay and lab datasets).
-\end{itemize}
-These are presented here as \emph{integration points} rather than claims about agent performance; they define how MOSAIC can be embedded into a controlled, test-driven runtime.
+The closest relatives to MOSAIC's core approach are SSM-based models that replace attention entirely. \textbf{Mamba} \cite{gu2023mamba} uses selective state spaces with input-dependent gating. \textbf{RWKV} \cite{peng2023rwkv} uses linear attention approximations. \textbf{Griffin} \cite{de2024griffin} mixes gated linear recurrences with local attention.
+
+MOSAIC's state bank is similar in spirit but differs by: (i) using multiple fixed timescales rather than input-dependent selection, and (ii) being one of three mechanisms rather than the whole architecture.
+
+\subsection{Memory-Augmented Neural Networks}
+
+The \textbf{Neural Turing Machine} \cite{graves2014ntm} and \textbf{Differentiable Neural Computer} \cite{graves2016dnc} pioneered neural networks with external memory, but use soft attention-based addressing. The \textbf{Sparse DNC} \cite{rae2016sparse} introduced LSH-based sparse addressing. \textbf{Wormhole connections} \cite{gulcehre2018wormhole} proposed discrete shortcut paths to improve gradient flow in MANNs, addressing similar challenges to our hard addressing approach.
+
+MOSAIC differs by using hard-addressed hash tables with $O(1)$ lookup and no attention, making addressing fundamentally discrete.
+
+\subsection{Retrieval-Augmented and Compressive Memory}
+
+Several recent architectures augment transformers with external retrieval or compressive memory. \textbf{Memorizing Transformers} \cite{wu2022memorizing} use kNN lookup over cached hidden states to extend context. \textbf{RETRO} \cite{borgeaud2022retro} retrieves from a massive external corpus during generation. \textbf{Infini-attention} \cite{munkhdalai2024infiniattention} combines standard attention with a compressive memory that accumulates context into a fixed-size state.
+
+MOSAIC shares the goal of bounded memory but differs in two ways: (i) we replace attention entirely rather than augmenting it, and (ii) our associative cache uses hard addressing rather than soft retrieval, trading expressiveness for $O(1)$ complexity.
+
+\subsection{Product-Key Memory and Large Memory Layers}
+
+\textbf{Large Memory Layers with Product Keys} \cite{lample2019large} introduced product-quantized addressing for large-scale memory layers in transformers. MOSAIC's VQ routing is directly inspired by this work, using product quantization to achieve $O(1)$ addressing into a fixed-size table. We extend the approach with VSA-augmented in-bucket selection and novelty-based write gating.
+
+\subsection{Vector Symbolic Architectures}
+
+Hyperdimensional computing and vector symbolic architectures (VSAs) \cite{kanerva2009hyperdimensional} provide a mathematical framework for representing and manipulating symbols as high-dimensional vectors. MOSAIC uses VSA-style fixed random projections for tag-based slot selection, providing a secondary similarity channel that is robust to drift in the learned key space.
+
+The connection to \textbf{modern Hopfield networks} \cite{ramsauer2021hopfield} is also relevant: these show that attention can be interpreted as an associative memory retrieval operation, which motivates our explicit separation of memory from computation.
+
+\subsection{KV-Cache Optimization}
+
+Work on MQA/GQA \cite{shazeer2019mqa, ainslie2023gqa}, latent caching \cite{deepseek2024v2}, and quantization \cite{hooper2024kvquant, li2025commvq} reduces the storage format of KV caches. MOSAIC targets a different axis: removing ``store one vector per token'' entirely.
+
+\subsection{N-Gram Cache Models}
+
+The n-gram cache has deep roots: \textbf{Kuhn \& De Mori} \cite{kuhn1990cache} for speech recognition, \textbf{Grave et al.} \cite{grave2016cache} for neural LM interpolation, \textbf{Infini-Gram} \cite{liu2024infinigram} for massive-scale n-gram models.
+
+\subsection{Memory Operating Systems}
+
+Recent work frames memory management for LLMs as a systems problem. \textbf{MemGPT} \cite{packer2024memgpt} treats the context window as virtual memory, paging information in and out to enable unbounded conversations. \textbf{MemOS} \cite{li2025memos} proposes a full memory operating system with unified representation of plaintext, activation, and parameter memories, lifecycle management via ``MemCubes,'' and systematic governance.
+
+CCP shares the systems-level perspective with this work: we treat memory as an explicit, manageable resource rather than an implicit side effect of attention. However, CCP focuses on a different layer: while MemOS and MemGPT operate at the application/orchestration level (managing what goes into context), CCP and MOSAIC operate at the architecture level (replacing attention with explicit memory structures). These approaches are complementary---a MemOS-style orchestrator could manage multiple MOSAIC-based agents.
+
+\subsection{What Makes MOSAIC Distinct}
+
+The unique contribution is the combination and framing:
+\begin{enumerate}
+    \item Three-way decomposition: local mixer + state bank + hard-addressed cache.
+    \item Explicit constant-size memory guarantee: $O(1)$ rather than $O(T)$.
+    \item Training curriculum for memory usage: addressing the ``memory getting used'' problem.
+    \item Control surfaces and event-native framing: treating decoding as VM time-steps.
+\end{enumerate}
 
 % ============================================================================
-% LIMITATIONS / NON-GOALS (NEW)
+% 9. DISCUSSION
+% ============================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Trade-offs}
+
+Each component in MOSAIC makes explicit trade-offs:
+
+\begin{itemize}
+    \item \textbf{Local mixer:} Fast and stable, but blind beyond the kernel window.
+    \item \textbf{State bank:} Long-range influence, but lossy---cannot perform exact recall.
+    \item \textbf{Associative cache:} $O(1)$ access, but collisions and interference destroy information.
+    \item \textbf{N-gram cache:} Near-perfect verbatim continuation, but no semantic generalization.
+\end{itemize}
+
+The architecture bets that these trade-offs are acceptable for a control kernel, and that the combination covers most practical needs.
+
+\subsection{Continual Learning}
+
+MOSAIC naturally separates learning timescales:
+\begin{itemize}
+    \item \textbf{Fast (no gradients):} Memory writes during inference (session adaptation).
+    \item \textbf{Medium (tiny gradients):} Consolidate frequently retrieved behaviors into small adapters.
+    \item \textbf{Slow (offline):} Full training runs informed by logged memory misses and tool traces.
+\end{itemize}
+
+This separation is a design goal, not yet a proven capability.
+
+\subsection{Idle-Time Compute and Latent Impulses}
+
+The CCP runtime can spend bounded compute on maintenance when no external events arrive:
+\begin{itemize}
+    \item \textbf{Idle-time consolidation:} Replay-based adapter updates.
+    \item \textbf{Latent impulses:} Internal ``wake'' events that keep the system active, producing self-initiated traces.
+\end{itemize}
+
+These are integration points, not claims about agent performance.
+
+% ============================================================================
+% 10. LIMITATIONS AND NON-GOALS
 % ============================================================================
 \section{Limitations and Non-Goals}
 \label{sec:limitations}
+
 This work is infrastructure-first. We explicitly do \emph{not} claim:
+
 \begin{itemize}
-    \item \textbf{General intelligence:} CCP is not an AGI claim; it is a control substrate.
-    \item \textbf{Open-world safety:} sandboxing and evaluator gates reduce risk but do not make an arbitrary tool-safe agent.
-    \item \textbf{SOTA language modeling:} experiments here are diagnostic (telemetry + falsifiability), not benchmark competitions.
-    \item \textbf{Solved in-context learning:} current ICL probes remain unsolved; addressing and curriculum design are active work.
+    \item \textbf{General intelligence:} CCP is a control substrate, not an AGI claim.
+    \item \textbf{Open-world safety:} Sandboxing and evaluator gates reduce risk but do not guarantee safety.
+    \item \textbf{SOTA language modeling:} Experiments are diagnostic, not benchmark competitions.
+    \item \textbf{Solved in-context learning:} Current ICL probes remain unsolved; addressing is active work.
 \end{itemize}
 
-\subsection{Structured internal control (a controller DSL)}
-If the model is a controller over memory and tools, internal reasoning need not be natural language. A small typed action DSL (memory ops, tool calls, state updates) can reduce failure modes and enable constrained decoding and verification. Natural language becomes a rendering layer rather than the core compute substrate.
-In the current MOSAIC implementation, this idea is realized as \textbf{soft control surfaces} (opcodes, register gates, and commitment deltas) trained with auxiliary losses and optionally wired into execution as differentiable gates.
+\subsection{The Unsolved Problem: Addressing}
 
+We want to be explicit: the central bottleneck is \textbf{addressing}. Teaching a controller to emit the correct query before it can retrieve the information remains hard. Our diagnostic experiments show the memory being used but not solving the tasks that require precise retrieval.
+
+This is not a failure of the architecture; it is the expected challenge of discrete memory. CCP is designed to make addressing failures measurable (via telemetry) and improvable (via targeted curricula).
+
+% ============================================================================
+% 11. CONCLUSION
+% ============================================================================
 \section{Conclusion}
-We are not proposing a better chatbot. We present the \textbf{Cognitive Control Plane (CCP)}, a missing systems layer for persistent, event-native intelligent systems: deterministic trace/replay, explicit control surfaces, and a test-driven tool lifecycle. MOSAIC serves as a concrete, implemented \textbf{control kernel} for this substrate: an attention-free controller over fixed-size explicit state (local mixer, multiscale state bank, associative cache).
+\label{sec:conclusion}
 
-Our experiments are intentionally diagnostic. They show that supervised control surfaces (opcodes, memory gating, commitments) can be trained as smoke-test curricula, and that explicit-memory telemetry provides falsifiable signals about whether the model is using its memory pathways. The central technical bottleneck remains addressing; CCP is designed to make addressing failures measurable and tool-driven remediation testable.
+We present the \textbf{Cognitive Control Plane (CCP)}, a runtime architecture for persistent, event-native intelligent systems. CCP provides three capabilities missing from current LLM deployments: event-native I/O with deterministic trace/replay, explicit memory with supervised control surfaces, and a test-driven tool lifecycle.
+
+At the core of CCP sits \textbf{MOSAIC}, an attention-free neural controller that maintains fixed-size explicit state. MOSAIC decomposes attention into three specialized mechanisms---local mixer, state bank, and associative cache---each with constant-size memory and a clear purpose.
+
+Our experiments are diagnostic. They show that supervised control surfaces can be trained on synthetic curricula, and that memory telemetry provides falsifiable signals about whether the model uses its memory pathways. The central bottleneck---addressing---remains unsolved, but CCP is designed to make this bottleneck measurable and improvable.
 
 If long-lived intelligent systems are built, they will require a cognitive control plane. This work provides a concrete, implemented starting point.
 
+% ============================================================================
+% STATEMENTS AND DECLARATIONS
+% ============================================================================
 \section*{Statements and Declarations}
-\paragraph{Conflict of Interest.}
-The author declares no competing interests.
-\paragraph{Data Availability.}
-All datasets used in this study are publicly available.
-\paragraph{Funding.}
-This research was conducted without external funding.
 
+\paragraph{Conflict of Interest.} The author declares no competing interests.
+
+\paragraph{Data Availability.} All datasets used in this study are publicly available.
+
+\paragraph{Funding.} This research was conducted without external funding.
+
+% ============================================================================
+% APPENDICES
+% ============================================================================
 \appendix
+
 \section{Manifest Presets}
+\label{app:presets}
+
 Reference presets for reproducing experiments:
 \begin{itemize}
     \item \path{config/presets/mosaic.yml} --- Token-stream baseline.
-    \item \path{config/presets/mosaic\_icl.yml} --- ICL rule induction (Table 2 Row D).
-    \item \path{config/presets/mamba\_ssm.yml} --- SSM baseline for comparison.
-    \item \path{config/presets/mosaic\_event\_native.yml} --- Event-native Phase 1.
-    \item \path{config/presets/mosaic\_commitment.yml} --- Event-native Phase 2 (commitments).
-    \item \path{config/presets/mosaic\_memory\_curriculum.yml} --- Memory curriculum training.
-    \item \path{config/presets/mosaic\_idle.yml} --- Idle-time compute / maintenance loop.
+    \item \path{config/presets/mosaic_icl.yml} --- ICL rule induction.
+    \item \path{config/presets/mamba_ssm.yml} --- SSM baseline.
+    \item \path{config/presets/mosaic_event_native.yml} --- Event-native Phase 1.
+    \item \path{config/presets/mosaic_commitment.yml} --- Event-native Phase 2.
+    \item \path{config/presets/mosaic_memory_curriculum.yml} --- Memory curriculum.
+    \item \path{config/presets/mosaic_idle.yml} --- Idle-time compute.
 \end{itemize}
 
+\section{Caramba: Manifest-Driven Experimentation}
+\label{app:caramba}
+
+Caramba is an open-source Python framework for manifest-driven neural architecture experimentation. It is designed around three principles:
+
+\begin{enumerate}
+    \item \textbf{Manifest-addressable components:} Every layer, dataset, optimizer, and training loop is a named component that can be instantiated from a YAML manifest. This enables reproducibility: a manifest file fully specifies an experiment.
+
+    \item \textbf{Composable presets:} Complex configurations are built by composing smaller preset files. For example, \texttt{mosaic\_event\_native.yml} extends \texttt{mosaic.yml} with event-native training options.
+
+    \item \textbf{Consumer-hardware first:} All experiments in this paper run on Apple M-series laptops (MPS backend) or single consumer GPUs. The framework prioritizes accessibility over scale.
+\end{enumerate}
+
+The manifest system allows systematic ablations: to disable the associative cache, change one line in the manifest. To switch from VQ routing to bit routing, change \texttt{mem\_router: vq} to \texttt{mem\_router: bits}. This makes experiments reproducible and configurations diffable.
+
+\paragraph{Running experiments.} Given a manifest file, experiments are launched via:
+\begin{verbatim}
+python -m caramba train --manifest config/presets/mosaic.yml
+\end{verbatim}
+
+All hyperparameters, dataset paths, and architectural choices are specified in the manifest. Training logs, checkpoints, and telemetry are written to structured output directories.
+
+\paragraph{Availability.} Caramba is available under the MIT license at:
+\begin{center}
+\url{https://github.com/theapemachine/caramba}
+\end{center}
+
 \section{Implementation Notes}
-Core implementation:
+\label{app:implementation}
+
+Core MOSAIC implementation in Caramba:
+
 \begin{itemize}
     \item \textbf{Block layer:} \path{layer/mosaic/block/layer.py} --- local mixer, state bank, fusion, control surfaces.
-    \item \textbf{Memory subsystem:} \path{layer/mosaic/memory/memory.py} --- VQ/bits routing, set-associative read/write, last-write-wins conflict resolution.
-    \item \textbf{State:} \path{layer/mosaic/state.py} --- streaming state container.
-    \item \textbf{Opcodes:} \path{layer/mosaic/isa.py} --- instruction set enum (NOP, READ\_MEM, WRITE\_MEM, etc.).
-    \item \textbf{Event primitives:} \path{core/event.py}, \path{core/event\_codec/}, \path{core/event\_bus.py}.
-    \item \textbf{Commitments:} \path{core/commitments.py} --- runtime ledger for Phase 2.
+
+    \item \textbf{Local mixer:} \path{layer/mosaic/block/local_mixer.py} --- causal conv + gated MLP.
+
+    \item \textbf{State bank:} \path{layer/mosaic/block/state_bank.py} --- leaky integrators with learnable decay.
+
+    \item \textbf{Memory subsystem:} \path{layer/mosaic/memory/memory.py}\\VQ/bits routing, set-associative read/write.
+
+    \item \textbf{VSA helpers:} \path{layer/mosaic/memory/vsa.py} --- tag projection, novelty write scaling.
+
+    \item \textbf{Routing:} \path{layer/mosaic/memory/routing.py} --- BitRouter, VqRouter.
+
+    \item \textbf{State container:} \path{layer/mosaic/state.py} --- streaming state.
+
+    \item \textbf{Opcodes:} \path{layer/mosaic/isa.py} --- instruction set enum.
+
+    \item \textbf{Event primitives:} \path{core/event.py}, \path{core/event_bus.py}.
+
+    \item \textbf{Commitments:} \path{core/commitments.py} --- runtime ledger.
 \end{itemize}
+
+\section{Motivating Demo: Unknown Format Decoder}
+\label{app:demo}
+
+As a concrete end-to-end driver, we use an ``Unknown Format Decoder'' demo: given raw bytes, the system must:
+\begin{enumerate}
+    \item Infer a binary format structure.
+    \item Propose a parser tool (\texttt{ToolDefinition}).
+    \item Validate against oracle-generated tests.
+    \item Adapt when the format shifts.
+\end{enumerate}
+
+This is implemented as a manifest-runner target with deterministic trace/replay, making failures falsifiable rather than anecdotal.
 
 % ============================================================================
 % REFERENCES

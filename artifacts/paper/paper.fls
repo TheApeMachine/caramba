@@ -1,8 +1,8 @@
-PWD /Users/theapemachine/go/src/github.com/theapemachine/experiments/paper
+PWD /Users/theapemachine/go/src/github.com/theapemachine/caramba/artifacts/paper
 INPUT /usr/local/texlive/2025/texmf.cnf
 INPUT /usr/local/texlive/2025/texmf-dist/web2c/texmf.cnf
 INPUT /usr/local/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt
-INPUT /Users/theapemachine/go/src/github.com/theapemachine/experiments/paper/paper.tex
+INPUT /Users/theapemachine/go/src/github.com/theapemachine/caramba/artifacts/paper/paper.tex
 OUTPUT paper.log
 INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/base/article.cls
 INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/base/article.cls
@@ -139,6 +139,8 @@ INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/geometry/geometry.sty
 INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/geometry/geometry.sty
 INPUT /usr/local/texlive/2025/texmf-dist/tex/generic/iftex/ifvtex.sty
 INPUT /usr/local/texlive/2025/texmf-dist/tex/generic/iftex/ifvtex.sty
+INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/placeins/placeins.sty
+INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/placeins/placeins.sty
 INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
 INPUT /usr/local/texlive/2025/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
 INPUT ./paper.aux
@@ -240,6 +242,9 @@ INPUT /usr/local/texlive/2025/texmf-dist/fonts/tfm/jknappen/ec/ecti0900.tfm
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/tfm/jknappen/ec/ecrm0700.tfm
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/tfm/jknappen/ec/ecrm0500.tfm
+INPUT ./ablation_tables.tex
+INPUT ./ablation_tables.tex
+INPUT ablation_tables.tex
 INPUT ./context_decode_one_ms.png
 INPUT ./context_decode_one_ms.png
 INPUT ./context_decode_one_ms.png

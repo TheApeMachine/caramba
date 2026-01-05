@@ -46,7 +46,12 @@ class _NpySource(_TensorSource):
 
     def get(self, idx: int) -> Tensor:
         x = self.arr[idx]
-        return torch.from_numpy(np.asarray(x))
+        t = torch.from_numpy(np.asarray(x))
+        # PyTorch does not implement many ops (e.g. index_select) for uint16.
+        # Promote to a supported integer dtype at the data boundary.
+        if t.dtype == torch.uint16:
+            return t.to(torch.int32)
+        return t
 
 
 class _SafeTensorsSource(_TensorSource):

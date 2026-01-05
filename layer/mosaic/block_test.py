@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import torch
 
 from caramba.config.layer import MosaicBlockLayerConfig
 from caramba.layer.mosaic.block import MosaicBlockLayer
 from caramba.layer.mosaic.isa import MosaicOpcode
-from caramba.layer.mosaic.state import set_state
+from caramba.layer.mosaic.state import MosaicState
 
 
 @dataclass(slots=True)
@@ -18,6 +18,7 @@ class _Ctx:
     mosaic_stats_enabled: bool = False
     mosaic_teacher_p: float = 1.0
     mosaic_teacher: dict[str, torch.Tensor] | None = None
+    _mosaic: dict[str, MosaicState] = field(default_factory=dict)
 
 
 def _make_layer(*, d_model: int = 8) -> MosaicBlockLayer:
@@ -86,7 +87,7 @@ def _prefill_memory(layer: MosaicBlockLayer, ctx: _Ctx, *, B: int, device: torch
     st.mem_v.zero_()
     st.mem_v[:, :, 0, 0, :] = 1.0
 
-    set_state(ctx, layer.ctx_key, st)
+    layer.state_store.set(ctx, key=layer.ctx_key, state=st)
 
 
 def test_opcode_control_gates_memory_read_output() -> None:

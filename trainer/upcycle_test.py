@@ -35,6 +35,7 @@ class MockTrainConfig:
     gradient_accumulation_steps: int
     num_workers: int
     pin_memory: bool
+    prefetch_factor: int
     compile_model: bool
     compile_mode: str
     auto_batch_size: bool
@@ -63,6 +64,7 @@ class MockTrainConfig:
             "gradient_accumulation_steps": 1,
             "num_workers": 0,
             "pin_memory": False,
+            "prefetch_factor": 2,
             "compile_model": False,
             "compile_mode": "reduce-overhead",
             "auto_batch_size": False,
@@ -237,7 +239,7 @@ class DataLoaderOptimizationsTest(unittest.TestCase):
         }
 
         if train.num_workers > 0:
-            loader_kwargs["prefetch_factor"] = 2
+            loader_kwargs["prefetch_factor"] = train.prefetch_factor
 
         self.assertEqual(loader_kwargs["num_workers"], 4)
         self.assertEqual(loader_kwargs["prefetch_factor"], 2)

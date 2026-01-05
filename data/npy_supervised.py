@@ -30,6 +30,11 @@ class _NpyPairDataset(Dataset[TensorDictBase]):
     def __getitem__(self, idx: int) -> TensorDictBase:
         x = torch.from_numpy(self.x[idx])
         y = torch.from_numpy(self.y[idx])
+        # Avoid uint16 tensors (many PyTorch ops don't support them).
+        if x.dtype == torch.uint16:
+            x = x.to(torch.long)
+        if y.dtype == torch.uint16:
+            y = y.to(torch.long)
         return as_tensordict({"inputs": x, "targets": y})
 
 

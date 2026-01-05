@@ -92,11 +92,11 @@ class AttentionLayer(nn.Module):
     def __new__(cls, config: AttentionLayerConfig) -> "AttentionLayer":
         if cls is AttentionLayer:
             if config.mode == AttentionMode.DECOUPLED:
-                from .decoupled import DecoupledAttentionLayer
+                from .decoupled.layer import DecoupledAttentionLayer
 
                 impl_cls = DecoupledAttentionLayer
             else:
-                from .standard import StandardAttentionLayer
+                from .standard.layer import StandardAttentionLayer
 
                 impl_cls = StandardAttentionLayer
             # `nn.Module.__new__` is fine with a subclass here, but type checkers

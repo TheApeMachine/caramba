@@ -20,7 +20,7 @@ from torch import Tensor, nn
 from caramba.config.layer import MosaicBlockLayerConfig
 from caramba.layer.mosaic.isa import MosaicOpcode
 from caramba.layer.mosaic.memory import MosaicMemory
-from caramba.layer.mosaic.state import MosaicState, get_state, set_state
+from caramba.layer.mosaic.state import MosaicState, MosaicStateStore
 from caramba.layer.mosaic.block.local_mixer import LocalMixer
 from caramba.layer.mosaic.block.norm import RmsNorm
 from caramba.layer.mosaic.block.paths import FastTrainPath, SequentialPath
@@ -56,6 +56,7 @@ class MosaicBlockLayer(nn.Module):
         super().__init__()
         self.config = config
         self.ctx_key = f"mosaic_block::{id(self)}"
+        self.state_store = MosaicStateStore()
         self.norm = RmsNorm(eps=1e-6)
         self.d_model = int(config.d_model)
 
@@ -127,8 +128,9 @@ class MosaicBlockLayer(nn.Module):
         s = torch.zeros((B, int(self.state_bank.state_k), D), device=device, dtype=dtype)
         mem_k = torch.zeros((B, self.memory.mem_hashes, self.memory.mem_buckets, self.memory.mem_assoc, self.memory.mem_key_dim), device=device, dtype=dtype)
         mem_v = torch.zeros((B, self.memory.mem_hashes, self.memory.mem_buckets, self.memory.mem_assoc, self.memory.mem_dim), device=device, dtype=dtype)
+        mem_tag = torch.zeros((B, self.memory.mem_hashes, self.memory.mem_buckets, self.memory.mem_assoc, self.memory.mem_vsa_dim), device=device, dtype=dtype)
         mem_last = torch.full((B, self.memory.mem_hashes, self.memory.mem_buckets, self.memory.mem_assoc), -1, device=device, dtype=torch.long)
-        return MosaicState(conv_buf=conv_buf, s=s, regs=None, step=0, mem_k=mem_k, mem_v=mem_v, mem_last=mem_last)
+        return MosaicState(conv_buf=conv_buf, s=s, regs=None, step=0, mem_k=mem_k, mem_v=mem_v, mem_tag=mem_tag, mem_last=mem_last)
 
     def forward(self, x: Tensor, *, ctx: Any | None = None) -> Tensor:
         if x.ndim != 3:
@@ -136,7 +138,7 @@ class MosaicBlockLayer(nn.Module):
         B, T, D = x.shape
         if int(D) != int(self.d_model):
             raise ValueError(f"Expected d_model={int(self.d_model)}, got {int(D)}")
-        st = get_state(ctx, self.ctx_key)
+        st = self.state_store.get(ctx, key=self.ctx_key)
         if st is None or int(st.s.size(0)) != int(B):
             st = self.init_state(int(B), x.device, x.dtype)
 
@@ -158,7 +160,7 @@ class MosaicBlockLayer(nn.Module):
             delta, outputs = self.seq_path.run(u=u, local=local, st=st, routing=routing, write_mask=write_mask, opcode_ctrl=opcode_ctrl)
 
         y = x + delta
-        set_state(ctx, self.ctx_key, st)
+        self.state_store.set(ctx, key=self.ctx_key, state=st)
         if collect_aux and ctx is not None:
             self.save_aux(ctx, outputs=outputs, routing=routing, opcode_logits=self.get_opcode_logits(u))
         return y

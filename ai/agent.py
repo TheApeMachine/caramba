@@ -9,6 +9,7 @@ import json
 import random
 import re
 import warnings
+from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import uuid4
 from pathlib import Path
@@ -16,14 +17,8 @@ from datetime import datetime, timezone
 
 from google.adk.agents import LlmAgent
 from google.adk.tools.agent_tool import AgentTool
-try:
-    from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
-except ImportError:
-    # Fallback: try alternative import path
-    try:
-        from google.adk.a2a import RemoteA2aAgent  # type: ignore[import-untyped]
-    except ImportError:
-        RemoteA2aAgent = None  # type: ignore[assignment,misc]
+from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
+from google.adk.a2a.utils.agent_to_a2a import to_a2a
 
 # Standard A2A agent card well-known path
 AGENT_CARD_WELL_KNOWN_PATH = "/.well-known/agent-card.json"
@@ -35,6 +30,10 @@ from google.genai import types
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.models import Gemini
 from jsonschema_pydantic import jsonschema_to_pydantic
+from starlette.applications import Starlette
+from starlette.routing import Route
+from starlette.responses import JSONResponse, Response, StreamingResponse
+from starlette.requests import Request
 
 from caramba.ai.persona import Persona
 from caramba.console import logger
@@ -248,12 +247,83 @@ class Agent:
             self._transcript = None
             self._memory_state_path = None
 
+    def server(self) -> Starlette:
+        """Return the agent card for this agent."""
+        app = to_a2a(self.adk_agent)
+        app.routes.insert(0, Route("/health", self.health_check, methods=["GET"]))
+        app.routes.insert(1, Route("/chat", self.chat_stream, methods=["POST"]))
+        app.routes.insert(2, Route("/memory", self.memory_status, methods=["GET"]))
+        app.routes.insert(3, Route("/memory/clear", self.memory_clear, methods=["POST"]))
+        app.routes.insert(4, Route("/agents/status", self.agents_status, methods=["GET"]))
+        app.routes.insert(5, Route("/agents/details", self.agent_details, methods=["GET"]))
+
+        return app
+
+    def health_check(self, request: Request) -> JSONResponse:
+        """Return the health check for this agent."""
+        return JSONResponse({"status": "ok", "agent": self.persona.name})
+
+    async def chat_stream(self, request: Request) -> Response:
+        """Handle chat requests with SSE streaming response."""
+        try:
+            body = await request.json()
+            message_text = body.get("message", "")
+            if not message_text:
+                return JSONResponse({"error": "No message provided"}, status_code=400)
+
+            # Create the content for the agent
+            content = types.Content(
+                role="user",
+                parts=[types.Part(text=message_text)],
+            )
+
+            async def event_generator() -> AsyncGenerator[str, None]:
+                """Generate SSE events from agent response."""
+                try:
+                    async for event in self.stream_chat_events_async(content):
+                        event_type = event.get("type", "")
+                        if event_type == "text":
+                            yield f"data: {json.dumps(event)}\n\n"
+                        elif event_type in ("tool_call", "tool_result"):
+                            yield f"data: {json.dumps(event)}\n\n"
+                        else:
+                            # Pass through other event types
+                            yield f"data: {json.dumps(event)}\n\n"
+                except Exception as e:
+                    yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+            return StreamingResponse(
+                event_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                },
+            )
+        except json.JSONDecodeError:
+            return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+        except Exception as e:
+            logger.error(f"Chat error: {e}")
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    def memory_clear(self, request: Request) -> JSONResponse:
+        """Return the memory clear for this agent."""
+        return JSONResponse({"status": "ok", "agent": self.persona.name})
+
+    def agents_status(self, request: Request) -> JSONResponse:
+        """Return the agents status for this agent."""
+        return JSONResponse({"status": "ok", "agent": self.persona.name})
+
+    def agent_details(self, request: Request) -> JSONResponse:
+        """Return the agent details for this agent."""
+        return JSONResponse({"status": "ok", "agent": self.persona.name})
+
     def reset_session(self, *, session_id: str | None = None) -> None:
         """Reset the ADK session for a fresh run (useful for external transcripts)."""
         self.session_id = session_id or str(uuid4())
         self.session_ready = False
 
-    def memory_status(self) -> dict[str, Any]:
+    def memory_status(self, request: Request) -> JSONResponse:
         """Return durable memory status for this agent."""
         transcript_path = None
         items = 0
@@ -264,12 +334,14 @@ class Agent:
             except Exception:
                 transcript_path = None
                 items = 0
-        return {
-            "enabled": self._transcript is not None,
-            "transcript_path": transcript_path,
-            "items": items,
-            "state_path": str(self._memory_state_path) if self._memory_state_path is not None else None,
-        }
+        return JSONResponse(
+            {
+                "enabled": self._transcript is not None,
+                "transcript_path": transcript_path,
+                "items": items,
+                "state_path": str(self._memory_state_path) if self._memory_state_path is not None else None,
+            }
+        )
 
     def clear_memory(self) -> None:
         """Clear durable transcript + state snapshot (best effort)."""

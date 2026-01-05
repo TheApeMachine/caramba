@@ -288,10 +288,47 @@ def adamw_step(
         )
         return
 
+    if p.device.type == "cuda":
+        _require(
+            bool(KERNELS.cuda_available and KERNELS.triton_available),
+            msg="AdamW step on CUDA requires Triton to be available and validated at startup.",
+        )
+        _require(
+            p.dtype in (torch.float16, torch.bfloat16),
+            msg=f"AdamW step on CUDA requires fp16/bf16 params, got dtype={p.dtype}.",
+        )
+        _require(
+            grad.dtype == p.dtype,
+            msg="AdamW step on CUDA requires grad dtype to match param dtype.",
+        )
+        _require(
+            master.dtype == torch.float32 and exp_avg.dtype == torch.float32 and exp_avg_sq.dtype == torch.float32,
+            msg="AdamW step on CUDA requires fp32 master/exp_avg/exp_avg_sq.",
+        )
+        _require(
+            p.is_contiguous() and grad.is_contiguous() and master.is_contiguous() and exp_avg.is_contiguous() and exp_avg_sq.is_contiguous(),
+            msg="AdamW step on CUDA requires all tensors to be contiguous.",
+        )
+        from caramba.optimizer.adamw_triton import adamw_triton_master_step
+
+        adamw_triton_master_step(
+            p=p.view(-1),
+            grad=grad.view(-1),
+            master=master.view(-1),
+            exp_avg=exp_avg.view(-1),
+            exp_avg_sq=exp_avg_sq.view(-1),
+            step_size=float(step_size),
+            beta1=float(beta1),
+            beta2=float(beta2),
+            eps=float(eps),
+            lr_wd=float(lr_wd),
+        )
+        return
+
     raise RuntimeError(
         "adamw_step: no supported backend for this device/dtype.\n"
         f"device={p.device.type} dtype={p.dtype}\n"
-        "CUDA fused optimizer parity kernel is not available in this build."
+        "Supported backends: Metal (MPS fp16) and Triton (CUDA fp16/bf16)."
     )
 
 

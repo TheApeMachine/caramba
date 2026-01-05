@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from caramba.config import PositiveInt, Probability
+from caramba.config import NonNegativeInt, PositiveInt, Probability
 
 
 class DefaultsData(BaseModel):
@@ -27,7 +27,7 @@ class DefaultsLogging(BaseModel):
     wandb_project: str = ""
     wandb_entity: str = ""
     wandb_mode: str = "online"
-    eval_iters: PositiveInt = 50
+    eval_iters: NonNegativeInt = 50
 
 
 class DefaultsRuntime(BaseModel):

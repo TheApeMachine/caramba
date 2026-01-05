@@ -398,6 +398,14 @@ class MosaicBlockLayerConfig(Config):
     mem_write_threshold: Probability = 0.5
     mem_write_eta: Probability = 0.1
 
+    # VSA tag channel (hybrid: hard buckets + content selection within assoc).
+    mem_vsa_enabled: bool = True
+    mem_vsa_dim: PositiveInt = 32
+    mem_vsa_weight: float = 1.0
+    mem_vsa_tanh_scale: PositiveFloat = 1.0
+    mem_vsa_novelty_beta: PositiveFloat = 1.0
+    mem_vsa_novelty_threshold: float = 0.0
+
     # Training dynamics hooks (Stage D).
     # When set >0 during training, randomly drop the local mixer contribution to force dependence
     # on state bank + memory reads.

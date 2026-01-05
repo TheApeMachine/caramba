@@ -84,7 +84,7 @@ class DefaultCollector:
             "pin_memory": use_pin_memory,
         }
         if int(train.num_workers) > 0:
-            loader_kwargs["prefetch_factor"] = 2
+            loader_kwargs["prefetch_factor"] = int(train.prefetch_factor)
 
         if ctx.dist_ctx is not None:
             train_loader = ctx.dist_ctx.wrap_dataloader(
