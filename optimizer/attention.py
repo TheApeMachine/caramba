@@ -2,16 +2,15 @@
 
 Caramba's attention policy:
 - CUDA training uses custom Triton FlashAttention (forward+backward).
-- MPS training uses PyTorch SDPA (Metal-backed) as the fastest available path.
+- MPS training uses custom Metal fused attention (forward+backward).
 
-This module provides a single composable object for attention execution so
-layers don't need to embed backend-specific logic.
+This module provides a single composable object for attention execution so layers
+don't need to embed backend-specific logic.
 """
 
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor
 
 from caramba.optimizer.kernel_registry import KERNELS
@@ -55,14 +54,15 @@ class AttentionTraining:
 
     def _run_mps(self, *, q: Tensor, k: Tensor, v: Tensor, causal: bool, scale: float, dropout_p: float) -> Tensor:
         self._require(bool(KERNELS.mps_available), msg="MPS attention training requires torch.backends.mps to be available.")
-        return F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            attn_mask=None,
-            dropout_p=float(dropout_p),
-            is_causal=bool(causal),
+        from caramba.optimizer.metal.attention_training import MetalAttentionTraining
+
+        return MetalAttentionTraining().run(
+            q=q,
+            k=k,
+            v=v,
+            causal=bool(causal),
             scale=float(scale),
+            dropout_p=float(dropout_p),
         )
 
     def run(
@@ -83,7 +83,7 @@ class AttentionTraining:
             causal: causal masking
             scale: scaling applied to QK^T
             attn_mask: must be None for the fused path
-            dropout_p: must be 0 for the fused path
+            dropout_p: dropout probability (mask is regenerated from seed in backward)
         """
         self._validate_common(q=q, k=k, v=v, attn_mask=attn_mask, dropout_p=float(dropout_p))
         if q.device.type == "cuda":

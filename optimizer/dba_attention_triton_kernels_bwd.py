@@ -145,17 +145,17 @@ def dba_attn_bwd_dkv(
         k_sem_ptr + z * stride_ksz + offs_n[:, None] * stride_kst + ds[None, :] * stride_ksd,
         mask=n_mask[:, None] & ms[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
     k_geo = tl.load(
         k_geo_ptr + z * stride_kgz + offs_n[:, None] * stride_kgt + dg[None, :] * stride_kgd,
         mask=n_mask[:, None] & mg[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
     v = tl.load(
         v_ptr + z * stride_vz + offs_n[:, None] * stride_vt + dv[None, :] * stride_vd,
         mask=n_mask[:, None] & mv[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
 
     dk_sem = tl.zeros((BLOCK_N, BLOCK_DSEM), tl.float32)
     dk_geo = tl.zeros((BLOCK_N, BLOCK_DGEO), tl.float32)
@@ -169,17 +169,17 @@ def dba_attn_bwd_dkv(
             q_sem_ptr + z * stride_qsz + offs_m[:, None] * stride_qst + ds[None, :] * stride_qsd,
             mask=m_mask[:, None] & ms[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
         q_geo = tl.load(
             q_geo_ptr + z * stride_qgz + offs_m[:, None] * stride_qgt + dg[None, :] * stride_qgd,
             mask=m_mask[:, None] & mg[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
         do = tl.load(
             do_ptr + z * stride_doz + offs_m[:, None] * stride_dot + dv[None, :] * stride_dod,
             mask=m_mask[:, None] & mv[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
 
         lse = tl.load(lse_ptr + z * stride_lsez + offs_m * stride_lset, mask=m_mask, other=-float("inf")).to(tl.float32)
         delta = tl.load(delta_ptr + z * stride_deltaz + offs_m * stride_deltat, mask=m_mask, other=0.0).to(tl.float32)
@@ -203,12 +203,12 @@ def dba_attn_bwd_dkv(
         else:
             w = p
 
-        dV += tl.dot(tl.trans(w), do)
+        dV += tl.dot(tl.trans(w.to(do.dtype)), do)
 
         dp = tl.dot(do, tl.trans(v))
         dscores = w * (dp - delta[:, None])
-        dk_sem += tl.dot(tl.trans(dscores), q_sem) * SEM_SCALE
-        dk_geo += tl.dot(tl.trans(dscores), q_geo) * GEO_SCALE
+        dk_sem += tl.dot(tl.trans(dscores.to(q_sem.dtype)), q_sem) * SEM_SCALE
+        dk_geo += tl.dot(tl.trans(dscores.to(q_geo.dtype)), q_geo) * GEO_SCALE
 
     tl.store(
         dk_sem_ptr + z * stride_dksz + offs_n[:, None] * stride_dkst + ds[None, :] * stride_dksd,
@@ -302,17 +302,17 @@ def dba_attn_bwd_dq(
         q_sem_ptr + z * stride_qsz + offs_m[:, None] * stride_qst + ds[None, :] * stride_qsd,
         mask=m_mask[:, None] & ms[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
     q_geo = tl.load(
         q_geo_ptr + z * stride_qgz + offs_m[:, None] * stride_qgt + dg[None, :] * stride_qgd,
         mask=m_mask[:, None] & mg[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
     do = tl.load(
         do_ptr + z * stride_doz + offs_m[:, None] * stride_dot + dv[None, :] * stride_dod,
         mask=m_mask[:, None] & mv[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
 
     lse = tl.load(lse_ptr + z * stride_lsez + offs_m * stride_lset, mask=m_mask, other=-float("inf")).to(tl.float32)
     delta = tl.load(delta_ptr + z * stride_deltaz + offs_m * stride_deltat, mask=m_mask, other=0.0).to(tl.float32)
@@ -328,17 +328,17 @@ def dba_attn_bwd_dq(
             k_sem_ptr + z * stride_ksz + offs_n[:, None] * stride_kst + ds[None, :] * stride_ksd,
             mask=n_mask[:, None] & ms[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
         k_geo = tl.load(
             k_geo_ptr + z * stride_kgz + offs_n[:, None] * stride_kgt + dg[None, :] * stride_kgd,
             mask=n_mask[:, None] & mg[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
         v = tl.load(
             v_ptr + z * stride_vz + offs_n[:, None] * stride_vt + dv[None, :] * stride_vd,
             mask=n_mask[:, None] & mv[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
 
         sem = tl.dot(q_sem, tl.trans(k_sem)) * SEM_SCALE
         geo = tl.dot(q_geo, tl.trans(k_geo)) * GEO_SCALE
@@ -361,8 +361,8 @@ def dba_attn_bwd_dq(
         dp = tl.dot(do, tl.trans(v))
         dscores = w * (dp - delta[:, None])
 
-        dq_sem += tl.dot(dscores, k_sem) * SEM_SCALE
-        dq_geo += tl.dot(dscores, k_geo) * GEO_SCALE
+        dq_sem += tl.dot(dscores.to(k_sem.dtype), k_sem) * SEM_SCALE
+        dq_geo += tl.dot(dscores.to(k_geo.dtype), k_geo) * GEO_SCALE
 
     tl.store(
         dq_sem_ptr + z * stride_dqsz + offs_m[:, None] * stride_dqst + ds[None, :] * stride_dqsd,
@@ -374,4 +374,3 @@ def dba_attn_bwd_dq(
         dq_geo,
         mask=m_mask[:, None] & mg[None, :],
     )
-

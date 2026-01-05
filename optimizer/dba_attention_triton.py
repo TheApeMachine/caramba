@@ -12,17 +12,28 @@ Contract:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch import Tensor
 
-from caramba.optimizer.dba_attention_triton_kernels_bwd import (
-    dba_attn_bwd_dkv,
-    dba_attn_bwd_dq,
-    dba_attn_bwd_preprocess,
-)
-from caramba.optimizer.dba_attention_triton_kernels_fwd import dba_attn_fwd
+from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+
+
+# Keep this module importable on non-CUDA installs (e.g., MPS-only laptops).
+# The *symbols* exist, but kernels stay as None unless Triton is present.
+dba_attn_fwd: object | None = None
+dba_attn_bwd_preprocess: object | None = None
+dba_attn_bwd_dkv: object | None = None
+dba_attn_bwd_dq: object | None = None
+
+if not TYPE_CHECKING and TRITON_AVAILABLE:
+    from caramba.optimizer.dba_attention_triton_kernels_bwd import (
+        dba_attn_bwd_dkv,
+        dba_attn_bwd_dq,
+        dba_attn_bwd_preprocess,
+    )
+    from caramba.optimizer.dba_attention_triton_kernels_fwd import dba_attn_fwd
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,9 +120,9 @@ class _DBAAttentionTriton:
             seed=int(seed),
             block_m=64,
             block_n=64,
-            block_dsem=128,
-            block_dgeo=128,
-            block_dv=256,
+            block_dsem=32 if int(D_sem) <= 32 else (64 if int(D_sem) <= 64 else 128),
+            block_dgeo=32 if int(D_geo) <= 32 else (64 if int(D_geo) <= 64 else 128),
+            block_dv=64 if int(D_v) <= 64 else (128 if int(D_v) <= 128 else 256),
         )
 
     def forward(
@@ -378,4 +389,3 @@ class DecoupledAttentionTraining:
         if not isinstance(y, torch.Tensor):
             raise TypeError("DecoupledAttentionTraining returned a non-tensor output")
         return y
-

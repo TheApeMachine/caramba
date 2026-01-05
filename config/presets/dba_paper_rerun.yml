@@ -60,7 +60,7 @@ vars:
   batch_size: 4
   grad_accum: 4
   # Feed the GPU: parallelize mmap slicing + tensor materialization.
-  num_workers: 16
+  num_workers: 8
   prefetch_factor: 4
   pin_memory: true
   lr: 3.0e-4

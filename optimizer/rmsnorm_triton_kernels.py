@@ -111,21 +111,30 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             inv_ptr,
             gy_ptr,
             gw_ptr,
-            rows: tl.constexpr,
+            rows,
             D: tl.constexpr,
             stride_xr: tl.constexpr,
             stride_gyr: tl.constexpr,
-            BLOCK: tl.constexpr,
+            pid_rows: tl.constexpr,
+            BLOCK_COL: tl.constexpr,
         ):
-            col_block = tl.program_id(0)
-            cols = col_block * BLOCK + tl.arange(0, BLOCK)
+            """Compute grad_w with a tiled reduction over rows and atomic adds.
+
+            Note: A full `for r in range(rows)` unroll is not viable; we instead
+            parallelize across row tiles and accumulate into `gw_ptr`.
+            """
+            pid_c = tl.program_id(0)
+            pid_r = tl.program_id(1)
+            cols = pid_c * BLOCK_COL + tl.arange(0, BLOCK_COL)
             m = cols < D
 
-            acc = tl.zeros((BLOCK,), dtype=tl.float32)
-            for r in range(0, rows):
-                x = tl.load(x_ptr + r * stride_xr + cols, mask=m, other=0.0).to(tl.float32)
-                gy = tl.load(gy_ptr + r * stride_gyr + cols, mask=m, other=0.0).to(tl.float32)
-                inv = tl.load(inv_ptr + r).to(tl.float32)
+            r0 = pid_r * pid_rows
+            acc = tl.zeros((BLOCK_COL,), dtype=tl.float32)
+            for rr in range(0, pid_rows):
+                r = r0 + rr
+                rm = r < rows
+                x = tl.load(x_ptr + r * stride_xr + cols, mask=rm & m, other=0.0).to(tl.float32)
+                gy = tl.load(gy_ptr + r * stride_gyr + cols, mask=rm & m, other=0.0).to(tl.float32)
+                inv = tl.load(inv_ptr + r, mask=rm, other=0.0).to(tl.float32)
                 acc += gy * x * inv
-            tl.store(gw_ptr + cols, acc.to(tl.float32), mask=m)
-
+            tl.atomic_add(gw_ptr + cols, acc, mask=m)

@@ -125,12 +125,12 @@ def flash_attn_bwd_dkv(
         k_ptr + z * stride_kz + offs_n[:, None] * stride_kt + offs_d[None, :] * stride_kd,
         mask=n_mask[:, None] & d_mask[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
     v = tl.load(
         v_ptr + z * stride_vz + offs_n[:, None] * stride_vt + offs_d[None, :] * stride_vd,
         mask=n_mask[:, None] & d_mask[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
 
     dk = tl.zeros((BLOCK_N, BLOCK_D), tl.float32)
     dv = tl.zeros((BLOCK_N, BLOCK_D), tl.float32)
@@ -144,12 +144,12 @@ def flash_attn_bwd_dkv(
             q_ptr + z * stride_qz + offs_m[:, None] * stride_qt + offs_d[None, :] * stride_qd,
             mask=m_mask[:, None] & d_mask[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
         do = tl.load(
             do_ptr + z * stride_doz + offs_m[:, None] * stride_dot + offs_d[None, :] * stride_dod,
             mask=m_mask[:, None] & d_mask[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
 
         lse = tl.load(lse_ptr + z * stride_lsez + offs_m * stride_lset, mask=m_mask, other=-float("inf")).to(
             tl.float32
@@ -177,12 +177,12 @@ def flash_attn_bwd_dkv(
             w = p
 
         # dV: P^T @ dO
-        dv += tl.dot(tl.trans(w), do)
+        dv += tl.dot(tl.trans(w.to(do.dtype)), do)
 
         # dK: (P * (dP))^T @ Q, where dP = (dO @ V^T) and softmax jacobian uses (dP - delta)
         dp = tl.dot(do, tl.trans(v))
         ds = (w * (dp - delta[:, None])) * SM_SCALE
-        dk += tl.dot(tl.trans(ds), q)
+        dk += tl.dot(tl.trans(ds.to(q.dtype)), q)
 
     tl.store(
         dk_ptr + z * stride_dkz + offs_n[:, None] * stride_dkt + offs_d[None, :] * stride_dkd,
@@ -255,12 +255,12 @@ def flash_attn_bwd_dq(
         q_ptr + z * stride_qz + offs_m[:, None] * stride_qt + offs_d[None, :] * stride_qd,
         mask=m_mask[:, None] & d_mask[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
     do = tl.load(
         do_ptr + z * stride_doz + offs_m[:, None] * stride_dot + offs_d[None, :] * stride_dod,
         mask=m_mask[:, None] & d_mask[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
     lse = tl.load(lse_ptr + z * stride_lsez + offs_m * stride_lset, mask=m_mask, other=-float("inf")).to(tl.float32)
     delta = tl.load(
         delta_ptr + z * stride_deltaz + offs_m * stride_deltat, mask=m_mask, other=0.0
@@ -276,12 +276,12 @@ def flash_attn_bwd_dq(
             k_ptr + z * stride_kz + offs_n[:, None] * stride_kt + offs_d[None, :] * stride_kd,
             mask=n_mask[:, None] & d_mask[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
         v = tl.load(
             v_ptr + z * stride_vz + offs_n[:, None] * stride_vt + offs_d[None, :] * stride_vd,
             mask=n_mask[:, None] & d_mask[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
 
         qk = tl.dot(q, tl.trans(k)) * SM_SCALE
         if CAUSAL:
@@ -302,11 +302,10 @@ def flash_attn_bwd_dq(
 
         dp = tl.dot(do, tl.trans(v))
         ds = (w * (dp - delta[:, None])) * SM_SCALE
-        dq += tl.dot(ds, k)
+        dq += tl.dot(ds.to(k.dtype), k)
 
     tl.store(
         dq_ptr + z * stride_dqz + offs_m[:, None] * stride_dqt + offs_d[None, :] * stride_dqd,
         dq,
         mask=m_mask[:, None] & d_mask[None, :],
     )
-

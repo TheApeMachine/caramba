@@ -80,12 +80,12 @@ def dba_attn_fwd(
         q_sem_ptr + z * stride_qsz + offs_m[:, None] * stride_qst + ds[None, :] * stride_qsd,
         mask=m_mask[:, None] & ms[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
     q_geo = tl.load(
         q_geo_ptr + z * stride_qgz + offs_m[:, None] * stride_qgt + dg[None, :] * stride_qgd,
         mask=m_mask[:, None] & mg[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
 
     m_i = tl.full((BLOCK_M,), -float("inf"), tl.float32)
     l_i = tl.zeros((BLOCK_M,), tl.float32)
@@ -99,12 +99,12 @@ def dba_attn_fwd(
             k_sem_ptr + z * stride_ksz + offs_n[:, None] * stride_kst + ds[None, :] * stride_ksd,
             mask=n_mask[:, None] & ms[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
         k_geo = tl.load(
             k_geo_ptr + z * stride_kgz + offs_n[:, None] * stride_kgt + dg[None, :] * stride_kgd,
             mask=n_mask[:, None] & mg[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
 
         sem = tl.dot(q_sem, tl.trans(k_sem)) * SEM_SCALE
         geo = tl.dot(q_geo, tl.trans(k_geo)) * GEO_SCALE
@@ -125,7 +125,7 @@ def dba_attn_fwd(
             v_ptr + z * stride_vz + offs_n[:, None] * stride_vt + dv[None, :] * stride_vd,
             mask=n_mask[:, None] & mv[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
         if USE_DROPOUT:
             keep_prob = 1.0 - float(DROPOUT_P)
             q_pos = offs_m[:, None]
@@ -136,6 +136,9 @@ def dba_attn_fwd(
         else:
             p_num = p
 
+        # Cast the softmax numerator to V's dtype so matmul can use tensor cores
+        # (accumulation still happens in fp32).
+        p_num = p_num.to(v.dtype)
         acc = acc * alpha[:, None] + tl.dot(p_num, v)
 
         m_i = m_new
@@ -149,4 +152,3 @@ def dba_attn_fwd(
     )
     lse = m_i + tl.log(l_i)
     tl.store(lse_ptr + z * stride_lsez + offs_m * stride_lset, lse, mask=m_mask)
-

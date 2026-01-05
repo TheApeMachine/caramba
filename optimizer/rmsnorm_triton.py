@@ -133,8 +133,11 @@ class _RMSNormTriton:
             num_warps=4,
         )
 
-        gw = torch.empty((meta.D,), device=x.device, dtype=torch.float32)
-        kw[(_cdiv(meta.D, 256),)](
+        # Kernel uses atomic adds across row tiles; initialize to zero.
+        gw = torch.zeros((meta.D,), device=x.device, dtype=torch.float32)
+        block_col = 256
+        pid_rows = 8
+        kw[(_cdiv(meta.D, block_col), _cdiv(meta.rows, pid_rows))](
             x2,
             inv,
             gy2,
@@ -143,7 +146,8 @@ class _RMSNormTriton:
             D=meta.D,
             stride_xr=x2.stride(0),
             stride_gyr=gy2.stride(0),
-            BLOCK=256,
+            pid_rows=pid_rows,
+            BLOCK_COL=block_col,
             num_warps=4,
         )
         return gx.to(dtype=x.dtype).view_as(x), gw.to(dtype=weight.dtype)
@@ -186,4 +190,3 @@ def rmsnorm_triton(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     if not isinstance(y, torch.Tensor):
         raise TypeError("rmsnorm_triton returned a non-tensor output")
     return y
-

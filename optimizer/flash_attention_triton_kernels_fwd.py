@@ -66,7 +66,7 @@ def flash_attn_fwd(
         q_ptr + z * stride_qz + offs_m[:, None] * stride_qt + offs_d[None, :] * stride_qd,
         mask=m_mask[:, None] & d_mask[None, :],
         other=0.0,
-    ).to(tl.float32)
+    )
 
     # Running online softmax state.
     m_i = tl.full((BLOCK_M,), -float("inf"), tl.float32)
@@ -82,7 +82,7 @@ def flash_attn_fwd(
             k_ptr + z * stride_kz + offs_n[:, None] * stride_kt + offs_d[None, :] * stride_kd,
             mask=n_mask[:, None] & d_mask[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
         # (BLOCK_M, BLOCK_N)
         qk = tl.dot(q, tl.trans(k))
         qk *= SM_SCALE
@@ -104,7 +104,7 @@ def flash_attn_fwd(
             v_ptr + z * stride_vz + offs_n[:, None] * stride_vt + offs_d[None, :] * stride_vd,
             mask=n_mask[:, None] & d_mask[None, :],
             other=0.0,
-        ).to(tl.float32)
+        )
 
         if USE_DROPOUT:
             # Dropout on *softmax probabilities* (PyTorch semantics): apply mask/scale
@@ -118,6 +118,9 @@ def flash_attn_fwd(
         else:
             p_num = p
 
+        # Cast the softmax numerator to V's dtype so matmul can use tensor cores
+        # (accumulation still happens in fp32).
+        p_num = p_num.to(v.dtype)
         acc = acc * alpha[:, None] + tl.dot(p_num, v)
 
         m_i = m_new

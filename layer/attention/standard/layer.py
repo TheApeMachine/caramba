@@ -90,7 +90,7 @@ class StandardAttentionLayer(AttentionBase):
     ) -> bool:
         return bool(
             self.training
-            and qh.device.type == "cuda"
+            and qh.device.type in ("cuda", "mps")
             and mask is None
             and cache is None
             and q_chunk is None

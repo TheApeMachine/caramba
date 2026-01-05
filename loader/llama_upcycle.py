@@ -18,6 +18,7 @@ from caramba.layer.rms_norm import RMSNormLayer
 from caramba.layer.swiglu import SwiGLULayer
 from caramba.loader.state_reader import StateReader
 from caramba.model.embedder import Embedder
+from caramba.console import logger
 
 
 class LlamaUpcycle:
@@ -84,7 +85,7 @@ class LlamaUpcycle:
     def load_embedder(self) -> None:
         """Load the token embedding table."""
         embed = self.find_embedder()
-        if embed is None or embed.token_embedding is None:
+        if embed.token_embedding is None:
             raise ValueError("Model has no embedder with token_embedding")
 
         key = self.state.key(self.prefix, "embed_tokens", "weight")
@@ -121,8 +122,6 @@ class LlamaUpcycle:
         (tied embeddings).
         """
         head = self.find_head()
-        if head is None:
-            raise ValueError("Model has no linear head")
 
         weight = self.state.get_optional(self.head_key)
         if weight is None:
@@ -134,7 +133,11 @@ class LlamaUpcycle:
     def load_rms_norm(self, layer: nn.Module, layer_prefix: str, name: str) -> None:
         """Load RMSNorm scale weights."""
         if not isinstance(layer, RMSNormLayer) or layer.weight is None:
-            return
+            raise TypeError(
+                "RMSNorm load failed: unexpected module type or missing weight.\n"
+                f"Expected RMSNormLayer with weight, got {type(layer).__name__}.\n"
+                f"Context: layer_prefix={layer_prefix!r} name={name!r}"
+            )
         key = self.state.key(layer_prefix, name, "weight")
         layer.weight.data.copy_(self.state.get(key))
 
@@ -145,7 +148,11 @@ class LlamaUpcycle:
         to initialize the semantic and geometric projections.
         """
         if not isinstance(layer, AttentionLayer):
-            return
+            raise TypeError(
+                "Attention load failed: unexpected module type.\n"
+                f"Expected AttentionLayer, got {type(layer).__name__}.\n"
+                f"Context: layer_prefix={layer_prefix!r}"
+            )
 
         attn_prefix = self.state.key(layer_prefix, "self_attn")
 
@@ -155,8 +162,10 @@ class LlamaUpcycle:
         o_weight = self.state.get(self.state.key(attn_prefix, "o_proj", "weight"))
 
         if layer.mode == AttentionMode.DECOUPLED:
+            logger.info("Loading DBA attention")
             self._load_attention_dba(layer, attn_prefix, q_weight, k_weight, v_weight, o_weight)
         else:
+            logger.info("Loading standard attention")
             self._load_attention_standard(layer, q_weight, k_weight, v_weight, o_weight)
 
     def _load_attention_standard(
@@ -269,7 +278,7 @@ class LlamaUpcycle:
 
         target_rank = int(sem_dim) + int(geo_dim)
         if target_rank <= 0:
-            return
+            raise ValueError(f"Invalid DBA target_rank={target_rank} (sem_dim={sem_dim}, geo_dim={geo_dim})")
 
         # If the target rank is close to full rank, fall back to exact SVD.
         full_rank = min(int(A.shape[0]), int(A.shape[1]))
@@ -281,15 +290,18 @@ class LlamaUpcycle:
             else:
                 U, S, Vh = randomized_svd(A, rank=target_rank, n_iter=2, oversample=8, seed=seed)
         except Exception as e:
-            # Fallback to simple truncation if SVD fails
-            if "CUDA out of memory" in str(e) or "OutOfMemoryError" in type(e).__name__:
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            sem_weight.data.copy_(teacher_weight[:sem_dim, :].to(device=dev, dtype=sem_weight.dtype))
-            geo_weight.data.copy_(
-                teacher_weight[sem_dim : sem_dim + geo_dim, :].to(device=dev, dtype=geo_weight.dtype)
-            )
-            return
+            raise RuntimeError(
+                "DBA SVD initialization failed.\n"
+                "Why this matters: dba_init=svd is a strict part of the attention-surgery contract; "
+                "we do not silently fall back to a different initialization.\n"
+                "Fix:\n"
+                "  - Reduce sem_dim/geo_dim (target_rank = sem_dim + geo_dim)\n"
+                "  - Use a smaller model or run on a device with more memory\n"
+                "  - Or set train.dba_init=random to explicitly opt into random init\n"
+                f"Context: seed={seed!r} teacher_weight_shape={tuple(teacher_weight.shape)} "
+                f"sem_dim={int(sem_dim)} geo_dim={int(geo_dim)} device={dev.type}\n"
+                f"Error: {type(e).__name__}: {e}"
+            ) from e
 
         rank = min(int(S.size(0)), target_rank)
         sem_rank = min(int(sem_dim), rank)
@@ -316,7 +328,11 @@ class LlamaUpcycle:
         fused w_gate_up layer.
         """
         if not isinstance(layer, SwiGLULayer):
-            return
+            raise TypeError(
+                "SwiGLU load failed: unexpected module type.\n"
+                f"Expected SwiGLULayer, got {type(layer).__name__}.\n"
+                f"Context: layer_prefix={layer_prefix!r}"
+            )
 
         mlp_prefix = self.state.key(layer_prefix, "mlp")
 
@@ -345,14 +361,18 @@ class LlamaUpcycle:
                 self.state.get(self.state.key(mlp_prefix, "down_proj", "bias"))
             )
 
-    def find_embedder(self) -> Embedder | None:
+    def find_embedder(self) -> Embedder:
         """Find the model's embedder module."""
         for _, m in self.model.named_modules():
             if isinstance(m, Embedder):
                 return m
-        return None
 
-    def find_head(self) -> LinearLayer | None:
+        raise ValueError("No embedder found in model")
+
+    def find_head(self) -> LinearLayer:
         """Find the model's LM head (last LinearLayer)."""
         heads = [m for _, m in self.model.named_modules() if isinstance(m, LinearLayer)]
-        return heads[-1] if heads else None
+        if heads:
+            return heads[-1]
+        else:
+            raise ValueError("No LM head found in model")

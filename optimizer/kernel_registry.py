@@ -96,6 +96,9 @@ def initialize_kernels() -> KernelRegistry:
             from caramba.optimizer.metal.jit import load_caramba_metal_ops
 
             _ = load_caramba_metal_ops(verbose=False)
+            from caramba.optimizer.metal.attention_jit import load_caramba_metal_attention_ops
+
+            _ = load_caramba_metal_attention_ops(verbose=False)
             metal_ops_loaded = True
         except Exception as e:
             raise RuntimeError(
@@ -194,6 +197,7 @@ def initialize_kernels() -> KernelRegistry:
             logger.info("[KERNEL] LayerNorm: Metal fp16 + backward (MPS)")
             logger.info("[KERNEL] RoPE: Metal fp16 + backward (MPS)")
             logger.info("[KERNEL] Attention Decode: Metal fp16 (MPS, inference)")
+            logger.info("[KERNEL] Attention Train: Metal fp16 + backward (MPS)")
             logger.info("[KERNEL] SSM Scan: Metal fp16 + backward (MPS)")
             logger.info("[KERNEL] AdamW Master Step: Metal fused (MPS)")
             logger.info("[KERNEL] Lion Step: Metal fused (MPS)")

@@ -14,6 +14,7 @@ the full score matrix.
 from __future__ import annotations
 
 from .dba_decode import dba_decode_fp16, metal_dba_decode_available
+from .attention_training import MetalAttentionTraining, metal_attention_training_available
 from .adamw import AdamWMasterStep, metal_adamw_available
 from .rmsnorm import metal_rmsnorm_available, rmsnorm_fp16
 from .layernorm import layernorm_fp16, metal_layernorm_available
@@ -24,6 +25,8 @@ from .ssm import MetalSSMSelectiveScan, MetalSSMScanAvailability
 __all__ = [
     "dba_decode_fp16",
     "metal_dba_decode_available",
+    "MetalAttentionTraining",
+    "metal_attention_training_available",
     "AdamWMasterStep",
     "metal_adamw_available",
     "rmsnorm_fp16",

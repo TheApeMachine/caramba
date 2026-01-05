@@ -13,18 +13,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch import Tensor
 
 from caramba.console import logger
-from caramba.optimizer.flash_attention_triton_kernels_bwd import (
-    flash_attn_bwd_dkv,
-    flash_attn_bwd_dq,
-    flash_attn_bwd_preprocess,
-)
-from caramba.optimizer.flash_attention_triton_kernels_fwd import flash_attn_fwd
+from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+
+
+# Keep this module importable on non-CUDA installs (e.g., MPS-only laptops).
+# The *symbols* exist, but kernels stay as None unless Triton is present.
+flash_attn_fwd: object | None = None
+flash_attn_bwd_preprocess: object | None = None
+flash_attn_bwd_dkv: object | None = None
+flash_attn_bwd_dq: object | None = None
+
+if not TYPE_CHECKING and TRITON_AVAILABLE:
+    from caramba.optimizer.flash_attention_triton_kernels_bwd import (
+        flash_attn_bwd_dkv,
+        flash_attn_bwd_dq,
+        flash_attn_bwd_preprocess,
+    )
+    from caramba.optimizer.flash_attention_triton_kernels_fwd import flash_attn_fwd
 
 _TRITON_DEBUG: bool = False
 
@@ -87,7 +98,7 @@ class _FlashAttentionTriton:
             seed=int(seed),
             block_m=64,
             block_n=64,
-            block_d=128,
+            block_d=32 if int(D) <= 32 else (64 if int(D) <= 64 else 128),
         )
 
     def _launch_fwd(self, *, q: Tensor, k: Tensor, v: Tensor, meta: _FlashMeta) -> tuple[Tensor, Tensor]:
@@ -362,4 +373,3 @@ class FlashAttention:
         if not isinstance(y, torch.Tensor):
             raise TypeError("FlashAttention returned a non-tensor output")
         return y
-
