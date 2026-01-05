@@ -22,20 +22,37 @@ struct DBAParams {
 
 inline float dot_half(device const half* a, device const half* b, uint dim) {
     // Vectorize within a thread using packed_half2 to leverage SIMD ops.
+    //
+    // IMPORTANT: packed_half2 loads require 4-byte alignment. The incoming pointers
+    // can be derived from head/offset arithmetic (e.g. head * sem_hd) and may be
+    // only 2-byte aligned. Only vectorize when both pointers are 4-byte aligned
+    // AND dim is even; otherwise fall back to a scalar loop.
+    const bool dim_even = ((dim & 1u) == 0u);
+    const bool a_aligned4 = ((reinterpret_cast<ulong>(a) & 0x3ul) == 0ul);
+    const bool b_aligned4 = ((reinterpret_cast<ulong>(b) & 0x3ul) == 0ul);
+    const bool can_vec = dim_even && a_aligned4 && b_aligned4;
+
+    device const packed_half2* ap2 = nullptr;
+    device const packed_half2* bp2 = nullptr;
+
+    if (!can_vec) {
+        float acc = 0.0f;
+        for (uint i = 0; i < dim; ++i) {
+            acc += float(a[i]) * float(b[i]);
+        }
+        return acc;
+    }
+
     float2 acc2 = float2(0.0f);
     const uint n2 = dim / 2;
-    device const packed_half2* ap2 = reinterpret_cast<device const packed_half2*>(a);
-    device const packed_half2* bp2 = reinterpret_cast<device const packed_half2*>(b);
+    ap2 = reinterpret_cast<device const packed_half2*>(a);
+    bp2 = reinterpret_cast<device const packed_half2*>(b);
     for (uint i = 0; i < n2; ++i) {
         const half2 ha = half2(ap2[i]);
         const half2 hb = half2(bp2[i]);
         acc2 += float2(ha) * float2(hb);
     }
-    float acc = acc2.x + acc2.y;
-    if (dim & 1u) {
-        acc += float(a[dim - 1]) * float(b[dim - 1]);
-    }
-    return acc;
+    return acc2.x + acc2.y;
 }
 
 // Fused DBA decode for fp16 caches.

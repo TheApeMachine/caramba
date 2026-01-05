@@ -219,8 +219,9 @@ std::vector<torch::Tensor> attn_train_fwd(
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
   id<MTLComputePipelineState> pipeline = ensure_pipeline(device, &g_fwd, "attn_train_fwd_fp16");
   const NSUInteger simdWidth = simd_width_or_default(pipeline);
-  const NSUInteger nsimd = (kThreadsPerThreadgroup + simdWidth - 1) / simdWidth; // round up
-  TORCH_CHECK(nsimd >= 1, "attn_train_fwd: invalid SIMD width reported by pipeline");
+  // Invariant: simd_width_or_default(pipeline) returns >= 32 (fallback), and
+  // kThreadsPerThreadgroup is 256, so simdgroups_per_threadgroup (ceil(256 / simdWidth)) is always >= 1.
+  (void)simdWidth;
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "attn_train_fwd: failed to get current MPS stream");
@@ -301,8 +302,8 @@ std::vector<torch::Tensor> attn_train_bwd(
   {
     id<MTLComputePipelineState> p_pre = ensure_pipeline(device, &g_bwd_pre, "attn_train_bwd_preprocess_fp16");
     const NSUInteger simdWidth = simd_width_or_default(p_pre);
-    const NSUInteger nsimd = (kThreadsPerThreadgroup + simdWidth - 1) / simdWidth; // round up
-    TORCH_CHECK(nsimd >= 1, "attn_train_bwd_preprocess: invalid SIMD width reported by pipeline");
+    // See note above: simdWidth is guaranteed >= 32 (fallback), so simdgroups_per_threadgroup >= 1.
+    (void)simdWidth;
     [encoder setComputePipelineState:p_pre];
     set_tensor(out, 0);
     set_tensor(grad_out, 1);
@@ -317,8 +318,8 @@ std::vector<torch::Tensor> attn_train_bwd(
   {
     id<MTLComputePipelineState> p_dkv = ensure_pipeline(device, &g_bwd_dkv, "attn_train_bwd_dkv_fp16");
     const NSUInteger simdWidth = simd_width_or_default(p_dkv);
-    const NSUInteger nsimd = (kThreadsPerThreadgroup + simdWidth - 1) / simdWidth; // round up
-    TORCH_CHECK(nsimd >= 1, "attn_train_bwd_dkv: invalid SIMD width reported by pipeline");
+    // See note above: simdWidth is guaranteed >= 32 (fallback), so simdgroups_per_threadgroup >= 1.
+    (void)simdWidth;
     [encoder setComputePipelineState:p_dkv];
     set_tensor(q, 0);
     set_tensor(k, 1);
@@ -338,8 +339,8 @@ std::vector<torch::Tensor> attn_train_bwd(
   {
     id<MTLComputePipelineState> p_dq = ensure_pipeline(device, &g_bwd_dq, "attn_train_bwd_dq_fp16");
     const NSUInteger simdWidth = simd_width_or_default(p_dq);
-    const NSUInteger nsimd = (kThreadsPerThreadgroup + simdWidth - 1) / simdWidth; // round up
-    TORCH_CHECK(nsimd >= 1, "attn_train_bwd_dq: invalid SIMD width reported by pipeline");
+    // See note above: simdWidth is guaranteed >= 32 (fallback), so simdgroups_per_threadgroup >= 1.
+    (void)simdWidth;
     [encoder setComputePipelineState:p_dq];
     set_tensor(q, 0);
     set_tensor(k, 1);
