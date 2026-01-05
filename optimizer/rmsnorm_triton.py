@@ -136,8 +136,8 @@ class _RMSNormTriton:
         # Kernel uses atomic adds across row tiles; initialize to zero.
         gw = torch.zeros((meta.D,), device=x.device, dtype=torch.float32)
         block_col = 256
-        pid_rows = 8
-        kw[(_cdiv(meta.D, block_col), _cdiv(meta.rows, pid_rows))](
+        rows_per_tile = 8
+        kw[(_cdiv(meta.D, block_col), _cdiv(meta.rows, rows_per_tile))](
             x2,
             inv,
             gy2,
@@ -146,7 +146,7 @@ class _RMSNormTriton:
             D=meta.D,
             stride_xr=x2.stride(0),
             stride_gyr=gy2.stride(0),
-            pid_rows=pid_rows,
+            ROWS_PER_TILE=rows_per_tile,
             BLOCK_COL=block_col,
             num_warps=4,
         )

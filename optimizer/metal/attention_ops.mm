@@ -5,6 +5,7 @@
 
 #include <dlfcn.h>
 #include <filesystem>
+#include <limits>
 #include <mutex>
 #include <string>
 
@@ -104,6 +105,13 @@ static id<MTLComputePipelineState> ensure_pipeline(
   return *pipeline;
 }
 
+static inline NSUInteger simd_width_or_default(id<MTLComputePipelineState> pipeline) {
+  // Metal reports the runtime SIMD-group width for this pipeline.
+  // Older/edge toolchains may report 0; preserve prior behavior by falling back to 32.
+  const NSUInteger w = pipeline.threadExecutionWidth;
+  return w ? w : 32;
+}
+
 static inline id<MTLBuffer> storage_as_mtlbuffer(const at::Tensor& t) {
   const auto& dp = t.storage().data_ptr();
   void* ctx = dp.get_context();
@@ -133,6 +141,7 @@ static AttnParams make_params(
     bool causal,
     double dropout_p,
     uint32_t seed) {
+  constexpr int64_t kU32Max = (int64_t)std::numeric_limits<uint32_t>::max();
   const int64_t B = q.size(0);
   const int64_t H = q.size(1);
   const int64_t T = q.size(2);
@@ -142,6 +151,18 @@ static AttnParams make_params(
   TORCH_CHECK(out.sizes() == q.sizes(), "attention_train: out shape mismatch");
   TORCH_CHECK(lse_like.dim() == 3 && lse_like.size(0) == B && lse_like.size(1) == H && lse_like.size(2) == T,
               "attention_train: lse/delta must be (B,H,T)");
+  auto stride_u32 = [&](const at::Tensor& t, const char* tname, int idx) -> uint32_t {
+    const int64_t s = t.stride(idx);
+    TORCH_CHECK(
+        s >= 0 && s <= kU32Max,
+        "attention_train: ",
+        tname,
+        ".stride(",
+        idx,
+        ") out of range for uint32 (stride in elements must be within [0, UINT32_MAX]), got ",
+        s);
+    return static_cast<uint32_t>(s);
+  };
   AttnParams p;
   p.B = (uint32_t)B;
   p.H = (uint32_t)H;
@@ -150,22 +171,22 @@ static AttnParams make_params(
   p.scale = (float)scale;
   p.causal = causal ? 1u : 0u;
   p.dropout_p = (float)dropout_p;
-  p.seed = (uint32_t)seed;
-  p.q_stride_b = (uint32_t)q.stride(0);
-  p.q_stride_h = (uint32_t)q.stride(1);
-  p.q_stride_t = (uint32_t)q.stride(2);
-  p.k_stride_b = (uint32_t)k.stride(0);
-  p.k_stride_h = (uint32_t)k.stride(1);
-  p.k_stride_t = (uint32_t)k.stride(2);
-  p.v_stride_b = (uint32_t)v.stride(0);
-  p.v_stride_h = (uint32_t)v.stride(1);
-  p.v_stride_t = (uint32_t)v.stride(2);
-  p.o_stride_b = (uint32_t)out.stride(0);
-  p.o_stride_h = (uint32_t)out.stride(1);
-  p.o_stride_t = (uint32_t)out.stride(2);
-  p.lse_stride_b = (uint32_t)lse_like.stride(0);
-  p.lse_stride_h = (uint32_t)lse_like.stride(1);
-  p.lse_stride_t = (uint32_t)lse_like.stride(2);
+  p.seed = seed;
+  p.q_stride_b = stride_u32(q, "q", 0);
+  p.q_stride_h = stride_u32(q, "q", 1);
+  p.q_stride_t = stride_u32(q, "q", 2);
+  p.k_stride_b = stride_u32(k, "k", 0);
+  p.k_stride_h = stride_u32(k, "k", 1);
+  p.k_stride_t = stride_u32(k, "k", 2);
+  p.v_stride_b = stride_u32(v, "v", 0);
+  p.v_stride_h = stride_u32(v, "v", 1);
+  p.v_stride_t = stride_u32(v, "v", 2);
+  p.o_stride_b = stride_u32(out, "out", 0);
+  p.o_stride_h = stride_u32(out, "out", 1);
+  p.o_stride_t = stride_u32(out, "out", 2);
+  p.lse_stride_b = stride_u32(lse_like, "lse_like", 0);
+  p.lse_stride_h = stride_u32(lse_like, "lse_like", 1);
+  p.lse_stride_t = stride_u32(lse_like, "lse_like", 2);
   return p;
 }
 
@@ -177,6 +198,12 @@ std::vector<torch::Tensor> attn_train_fwd(
     bool causal,
     double dropout_p,
     int64_t seed) {
+  constexpr int64_t kU32Max = (int64_t)std::numeric_limits<uint32_t>::max();
+  TORCH_CHECK(
+      seed >= 0 && seed <= kU32Max,
+      "attn_train_fwd: seed must be within [0, UINT32_MAX], got ",
+      seed);
+  const uint32_t seed_u32 = static_cast<uint32_t>(seed);
   check_attn_tensor(q, "attn_train_fwd: q");
   check_attn_tensor(k, "attn_train_fwd: k");
   check_attn_tensor(v, "attn_train_fwd: v");
@@ -187,10 +214,13 @@ std::vector<torch::Tensor> attn_train_fwd(
   auto out = torch::empty_like(q);
   auto lse = torch::empty({q.size(0), q.size(1), q.size(2)}, q.options().dtype(at::kFloat));
 
-  const AttnParams p = make_params(q, k, v, out, lse, scale, causal, dropout_p, (uint32_t)seed);
+  const AttnParams p = make_params(q, k, v, out, lse, scale, causal, dropout_p, seed_u32);
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
   id<MTLComputePipelineState> pipeline = ensure_pipeline(device, &g_fwd, "attn_train_fwd_fp16");
+  const NSUInteger simdWidth = simd_width_or_default(pipeline);
+  const NSUInteger nsimd = (kThreadsPerThreadgroup + simdWidth - 1) / simdWidth; // round up
+  TORCH_CHECK(nsimd >= 1, "attn_train_fwd: invalid SIMD width reported by pipeline");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "attn_train_fwd: failed to get current MPS stream");
@@ -230,6 +260,12 @@ std::vector<torch::Tensor> attn_train_bwd(
     bool causal,
     double dropout_p,
     int64_t seed) {
+  constexpr int64_t kU32Max = (int64_t)std::numeric_limits<uint32_t>::max();
+  TORCH_CHECK(
+      seed >= 0 && seed <= kU32Max,
+      "attn_train_bwd: seed must be within [0, UINT32_MAX], got ",
+      seed);
+  const uint32_t seed_u32 = static_cast<uint32_t>(seed);
   check_attn_tensor(q, "attn_train_bwd: q");
   check_attn_tensor(k, "attn_train_bwd: k");
   check_attn_tensor(v, "attn_train_bwd: v");
@@ -246,8 +282,8 @@ std::vector<torch::Tensor> attn_train_bwd(
   auto dk = torch::empty_like(k);
   auto dv = torch::empty_like(v);
 
-  const AttnParams p0 = make_params(q, k, v, out, lse, scale, causal, dropout_p, (uint32_t)seed);
-  const AttnParams p1 = make_params(q, k, v, out, delta, scale, causal, dropout_p, (uint32_t)seed);
+  const AttnParams p0 = make_params(q, k, v, out, lse, scale, causal, dropout_p, seed_u32);
+  const AttnParams p1 = make_params(q, k, v, out, delta, scale, causal, dropout_p, seed_u32);
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
@@ -264,6 +300,9 @@ std::vector<torch::Tensor> attn_train_bwd(
   // 1) delta preprocess
   {
     id<MTLComputePipelineState> p_pre = ensure_pipeline(device, &g_bwd_pre, "attn_train_bwd_preprocess_fp16");
+    const NSUInteger simdWidth = simd_width_or_default(p_pre);
+    const NSUInteger nsimd = (kThreadsPerThreadgroup + simdWidth - 1) / simdWidth; // round up
+    TORCH_CHECK(nsimd >= 1, "attn_train_bwd_preprocess: invalid SIMD width reported by pipeline");
     [encoder setComputePipelineState:p_pre];
     set_tensor(out, 0);
     set_tensor(grad_out, 1);
@@ -277,6 +316,9 @@ std::vector<torch::Tensor> attn_train_bwd(
   // 2) dK/dV
   {
     id<MTLComputePipelineState> p_dkv = ensure_pipeline(device, &g_bwd_dkv, "attn_train_bwd_dkv_fp16");
+    const NSUInteger simdWidth = simd_width_or_default(p_dkv);
+    const NSUInteger nsimd = (kThreadsPerThreadgroup + simdWidth - 1) / simdWidth; // round up
+    TORCH_CHECK(nsimd >= 1, "attn_train_bwd_dkv: invalid SIMD width reported by pipeline");
     [encoder setComputePipelineState:p_dkv];
     set_tensor(q, 0);
     set_tensor(k, 1);
@@ -295,6 +337,9 @@ std::vector<torch::Tensor> attn_train_bwd(
   // 3) dQ
   {
     id<MTLComputePipelineState> p_dq = ensure_pipeline(device, &g_bwd_dq, "attn_train_bwd_dq_fp16");
+    const NSUInteger simdWidth = simd_width_or_default(p_dq);
+    const NSUInteger nsimd = (kThreadsPerThreadgroup + simdWidth - 1) / simdWidth; // round up
+    TORCH_CHECK(nsimd >= 1, "attn_train_bwd_dq: invalid SIMD width reported by pipeline");
     [encoder setComputePipelineState:p_dq];
     set_tensor(q, 0);
     set_tensor(k, 1);

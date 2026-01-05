@@ -318,7 +318,8 @@ class StandardTrainer:
         profile_every = int(getattr(train, "profile_every", 0)) or 0
         profile_record_shapes = bool(getattr(train, "profile_record_shapes", False))
         layer_stats_enabled = False
-        layer_telemetry_interval = int(telemetry_interval)
+        layer_telemetry_interval = int(getattr(train, "layer_telemetry_interval", 0) or 0)
+        layer_telemetry_interval = max(0, int(layer_telemetry_interval))
         _hook_handles: list[RemovableHandle] = []
         attn_modules: list[tuple[int, str, torch.nn.Module]] = []
         mosaic_modules: list[tuple[int, str, torch.nn.Module]] = []
@@ -393,63 +394,65 @@ class StandardTrainer:
         _collector = _LayerStatsCollector()
 
         try:
-            raw = getattr(train, "layer_telemetry_interval", None)
-            # Default to every step (metrics telemetry can remain slower).
-            layer_telemetry_interval = int(raw) if raw is not None else 1
-            layer_telemetry_interval = max(1, int(layer_telemetry_interval))
+            if layer_telemetry_interval <= 0:
+                layer_stats_enabled = False
+            else:
+                layer_telemetry_interval = max(1, int(layer_telemetry_interval))
 
-            root_mod = getattr(system, "module", None)
-            if isinstance(root_mod, nn.Module):
-                try:
-                    modules_iter = root_mod.named_modules()
-                except Exception as e:
-                    raise RuntimeError(f"Failed to iterate over model modules: {e}") from e
-
-                for name, mod in modules_iter:
-                    if isinstance(mod, AttentionLayer):
-                        # Give the module a stable viz id/name so it can emit per-layer samples.
-                        idx = int(len(attn_modules))
-                        try:
-                            mod._viz_index = int(idx)  # type: ignore[attr-defined]
-                            mod._viz_name = str(name)  # type: ignore[attr-defined]
-                        except Exception as e:
-                            raise RuntimeError(f"Failed to set attributes on attention layer {name!r}: {e}") from e
-
-                        attn_modules.append((idx, str(name), mod))
-                    if isinstance(mod, MosaicBlockLayer):
-                        idx = int(len(mosaic_modules))
-                        try:
-                            mod._mosaic_index = int(idx)  # type: ignore[attr-defined]
-                            mod._mosaic_name = str(name)  # type: ignore[attr-defined]
-                        except Exception as e:
-                            raise RuntimeError(f"Failed to set attributes on mosaic layer {name!r}: {e}") from e
-
-                        mosaic_modules.append((idx, str(name), mod))
-
-                def _make_hook(i: int):
-                    def _hook(_m: nn.Module, _inp: tuple[object, ...], out: object) -> None:
-                        if not _collector.enabled:
-                            return
-                        y = (
-                            out[0]
-                            if isinstance(out, tuple)
-                            and len(out) > 0
-                            and isinstance(out[0], Tensor)
-                            else out
-                        )
-                        if isinstance(y, Tensor):
-                            _collector.observe(i, y)
-
-                    return _hook
-
-                for idx, _name, mod in attn_modules:
+                root_mod = getattr(system, "module", None)
+                if isinstance(root_mod, nn.Module):
                     try:
-                        handle = mod.register_forward_hook(_make_hook(idx))
-                        _hook_handles.append(handle)
+                        modules_iter = root_mod.named_modules()
                     except Exception as e:
-                        raise RuntimeError(f"Failed to register forward hook on attention layer {_name!r} (index {idx}): {e}") from e
+                        raise RuntimeError(f"Failed to iterate over model modules: {e}") from e
 
-                layer_stats_enabled = len(attn_modules) > 0
+                    for name, mod in modules_iter:
+                        if isinstance(mod, AttentionLayer):
+                            # Give the module a stable viz id/name so it can emit per-layer samples.
+                            idx = int(len(attn_modules))
+                            try:
+                                mod._viz_index = int(idx)  # type: ignore[attr-defined]
+                                mod._viz_name = str(name)  # type: ignore[attr-defined]
+                            except Exception as e:
+                                raise RuntimeError(f"Failed to set attributes on attention layer {name!r}: {e}") from e
+
+                            attn_modules.append((idx, str(name), mod))
+                        if isinstance(mod, MosaicBlockLayer):
+                            idx = int(len(mosaic_modules))
+                            try:
+                                mod._mosaic_index = int(idx)  # type: ignore[attr-defined]
+                                mod._mosaic_name = str(name)  # type: ignore[attr-defined]
+                            except Exception as e:
+                                raise RuntimeError(f"Failed to set attributes on mosaic layer {name!r}: {e}") from e
+
+                            mosaic_modules.append((idx, str(name), mod))
+
+                    def _make_hook(i: int):
+                        def _hook(_m: nn.Module, _inp: tuple[object, ...], out: object) -> None:
+                            if not _collector.enabled:
+                                return
+                            y = (
+                                out[0]
+                                if isinstance(out, tuple)
+                                and len(out) > 0
+                                and isinstance(out[0], Tensor)
+                                else out
+                            )
+                            if isinstance(y, Tensor):
+                                _collector.observe(i, y)
+
+                        return _hook
+
+                    for idx, _name, mod in attn_modules:
+                        try:
+                            handle = mod.register_forward_hook(_make_hook(idx))
+                            _hook_handles.append(handle)
+                        except Exception as e:
+                            raise RuntimeError(
+                                f"Failed to register forward hook on attention layer {_name!r} (index {idx}): {e}"
+                            ) from e
+
+                    layer_stats_enabled = len(attn_modules) > 0
         except RuntimeError:
             # Re-raise RuntimeError as-is (already has context)
             raise
@@ -588,134 +591,160 @@ class StandardTrainer:
         logger.header("Training", f"{target.name}:{run.id} • {run.steps} steps")
         loader_iter = iter(loader)
 
+        if not hasattr(objective, "loss"):
+            raise TypeError("Objective component does not expose loss()")
+        loss_fn = objective.loss  # type: ignore[attr-defined]
+        try:
+            loss_sig = inspect.signature(loss_fn)
+            loss_params = loss_sig.parameters
+        except Exception as e:
+            raise RuntimeError("Failed to introspect objective loss function") from e
+        if "outputs" not in loss_params:
+            # All current objectives use `outputs=...`; keep this strict.
+            raise TypeError("Objective.loss must accept keyword argument 'outputs'")
+        if "batch" in loss_params:
+            loss_batch_key = "batch"
+        elif "_batch" in loss_params:
+            loss_batch_key = "_batch"
+        elif "batch_td" in loss_params:
+            loss_batch_key = "batch_td"
+        elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in loss_params.values()):
+            # Best-effort: prefer the canonical name if **kwargs is accepted.
+            loss_batch_key = "batch"
+        else:
+            raise TypeError("Objective.loss must accept a batch keyword (e.g. 'batch' or '_batch')")
+
         def _call_objective_loss(*, outputs: object, batch_td: TensorDictBase) -> Tensor:
-            if not hasattr(objective, "loss"):
-                raise TypeError("Objective component does not expose loss()")
-            loss_fn = objective.loss  # type: ignore[attr-defined]
-            try:
-                sig = inspect.signature(loss_fn)
-                params = sig.parameters
-            except Exception as e:
-                raise RuntimeError("Failed to introspect objective loss function") from e
-
-            kwargs: dict[str, object] = {}
-
-            if "outputs" in params:
-                kwargs["outputs"] = outputs
+            if loss_batch_key == "batch":
+                loss = loss_fn(outputs=outputs, batch=batch_td)
+            elif loss_batch_key == "_batch":
+                loss = loss_fn(outputs=outputs, _batch=batch_td)
             else:
-                # All current objectives use `outputs=...`; keep this strict.
-                raise TypeError("Objective.loss must accept keyword argument 'outputs'")
-
-            if "batch" in params:
-                kwargs["batch"] = batch_td
-            elif "_batch" in params:
-                kwargs["_batch"] = batch_td
-            elif "batch_td" in params:
-                kwargs["batch_td"] = batch_td
-            elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-                # Best-effort: prefer the canonical name if **kwargs is accepted.
-                kwargs["batch"] = batch_td
-            else:
-                raise TypeError("Objective.loss must accept a batch keyword (e.g. 'batch' or '_batch')")
-
-            loss = loss_fn(**kwargs)
+                loss = loss_fn(outputs=outputs, batch_td=batch_td)
 
             if not isinstance(loss, Tensor):
                 raise TypeError(f"Objective.loss must return a Tensor, got {type(loss).__name__}")
 
             return loss
 
-        def _call_objective_metrics(
-            *, outputs: object, batch_td: TensorDictBase, loss: Tensor
-        ) -> dict[str, float] | None:
-            if not hasattr(objective, "metrics"):
-                return None
-
-            metrics_fn = objective.metrics  # type: ignore[attr-defined]
-
+        metrics_fn = getattr(objective, "metrics", None)
+        metrics_params: dict[str, inspect.Parameter] | None = None
+        metrics_accepts_kwargs = False
+        if callable(metrics_fn):
             try:
-                sig = inspect.signature(metrics_fn)
-                params = sig.parameters
+                metrics_sig = inspect.signature(metrics_fn)
+                # signature.parameters is a MappingProxyType, normalize to dict for typing + membership checks
+                metrics_params = dict(metrics_sig.parameters)
+                metrics_accepts_kwargs = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in metrics_params.values()
+                )
             except Exception as e:
                 raise RuntimeError("Failed to introspect objective metrics function") from e
 
+        def _call_objective_metrics(
+            *, outputs: object, batch_td: TensorDictBase, loss: Tensor
+        ) -> dict[str, float] | None:
+            if not callable(metrics_fn) or metrics_params is None:
+                return None
+
             kwargs: dict[str, object] = {}
-            if "outputs" in params:
+            if "outputs" in metrics_params or metrics_accepts_kwargs:
                 kwargs["outputs"] = outputs
-            if "batch" in params:
+            if "batch" in metrics_params:
                 kwargs["batch"] = batch_td
-            elif "_batch" in params:
+            elif "_batch" in metrics_params:
                 kwargs["_batch"] = batch_td
-            elif "batch_td" in params:
+            elif "batch_td" in metrics_params:
                 kwargs["batch_td"] = batch_td
-            elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            elif metrics_accepts_kwargs:
                 kwargs["batch"] = batch_td
 
-            if "loss" in params:
+            if "loss" in metrics_params:
                 kwargs["loss"] = loss
-            elif "_loss" in params:
+            elif "_loss" in metrics_params:
                 kwargs["_loss"] = loss
-            elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            elif metrics_accepts_kwargs:
                 kwargs["loss"] = loss
 
-            extra = metrics_fn(**kwargs)
+            extra = metrics_fn(**kwargs)  # type: ignore[misc]
             return cast(dict[str, float] | None, extra) if isinstance(extra, dict) else None
 
+        if not hasattr(system, "forward"):
+            raise TypeError("System component does not expose forward()")
+        forward_fn = system.forward  # type: ignore[attr-defined]
+        forward_accepts_ctx = True
+        try:
+            f_sig = inspect.signature(forward_fn)
+            f_params = f_sig.parameters
+            forward_accepts_ctx = ("ctx" in f_params) or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in f_params.values()
+            )
+        except Exception:
+            # Best-effort: fall back to probing on the first call.
+            forward_accepts_ctx = True
+
         def _forward_loss(batch_td: TensorDictBase) -> tuple[object, Tensor]:
+            nonlocal forward_accepts_ctx
             with torch.autocast(
                 device_type=device.type,
                 dtype=amp_dtype,
                 enabled=use_amp,
             ):
-                if not hasattr(system, "forward"):
-                    raise TypeError("System component does not expose forward()")
-                try:
-                    # Attach MOSAIC-friendly fields onto the ctx (best-effort).
-                    # Note: TrainingVizContext uses slots, so we use a subclass that adds fields.
-                    if isinstance(viz_ctx, TrainingVizMosaicContext):
+                # Attach MOSAIC-friendly fields onto the ctx (best-effort).
+                # Note: TrainingVizContext uses slots, so we use a subclass that adds fields.
+                if isinstance(viz_ctx, TrainingVizMosaicContext):
+                    try:
+                        inp = batch_td.get("input_ids", None)  # type: ignore[attr-defined]
+                    except Exception as e:
+                        raise RuntimeError("Failed to get input ids") from e
+
+                    if isinstance(inp, Tensor):
+                        viz_ctx.input_ids = inp
+
+                    try:
+                        dl = batch_td.get("mosaic_drop_local", None)  # type: ignore[attr-defined]
+                    except Exception as e:
+                        raise RuntimeError("Failed to get mosaic drop local") from e
+
+                    if isinstance(dl, Tensor):
+                        viz_ctx.mosaic_drop_local = dl
+
+                    teacher: dict[str, Tensor] = {}
+
+                    for k in ("read_bucket", "write_bucket", "write_gate", "clear"):
                         try:
-                            inp = batch_td.get("input_ids", None)  # type: ignore[attr-defined]
+                            v = batch_td.get(f"mosaic_teacher_{k}", None)  # type: ignore[attr-defined]
                         except Exception as e:
-                            raise RuntimeError("Failed to get input ids") from e
+                            raise RuntimeError("Failed to get mosaic teacher signal") from e
 
-                        if isinstance(inp, Tensor):
-                            viz_ctx.input_ids = inp
+                        if isinstance(v, Tensor):
+                            teacher[k] = v
 
-                        try:
-                            dl = batch_td.get("mosaic_drop_local", None)  # type: ignore[attr-defined]
-                        except Exception as e:
-                            raise RuntimeError("Failed to get mosaic drop local") from e
+                    viz_ctx.mosaic_teacher = teacher or None
 
-                        if isinstance(dl, Tensor):
-                            viz_ctx.mosaic_drop_local = dl
+                    collect_aux = bool(teacher)
+                    try:
+                        from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
 
-                        teacher: dict[str, Tensor] = {}
+                        if isinstance(objective, MosaicNextTokenWithAuxObjective):
+                            collect_aux = True
+                    except Exception as e:
+                        raise RuntimeError("Failed to check if objective expects MOSAIC aux") from e
 
-                        for k in ("read_bucket", "write_bucket", "write_gate", "clear"):
-                            try:
-                                v = batch_td.get(f"mosaic_teacher_{k}", None)  # type: ignore[attr-defined]
-                            except Exception as e:
-                                raise RuntimeError("Failed to get mosaic teacher signal") from e
+                    viz_ctx.mosaic_collect_aux = bool(collect_aux)
 
-                            if isinstance(v, Tensor):
-                                teacher[k] = v
-
-                        viz_ctx.mosaic_teacher = teacher or None
-
-                        collect_aux = bool(teacher)
-                        try:
-                            from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
-
-                            if isinstance(objective, MosaicNextTokenWithAuxObjective):
-                                collect_aux = True
-                        except Exception as e:
-                            raise RuntimeError("Failed to check if objective expects MOSAIC aux") from e
-
-                        viz_ctx.mosaic_collect_aux = bool(collect_aux)
-                    outputs = system.forward(batch_td, ctx=viz_ctx)  # type: ignore[attr-defined]
-                except TypeError:
-                    # Some non-standard systems may not accept ctx; keep best-effort.
-                    outputs = system.forward(batch_td)  # type: ignore[attr-defined]
+                if forward_accepts_ctx:
+                    try:
+                        outputs = forward_fn(batch_td, ctx=viz_ctx)
+                    except TypeError as e:
+                        msg = str(e)
+                        if "unexpected keyword argument" in msg and "ctx" in msg:
+                            forward_accepts_ctx = False
+                            outputs = forward_fn(batch_td)
+                        else:
+                            raise
+                else:
+                    outputs = forward_fn(batch_td)
                 # Best-effort: merge MOSAIC aux outputs from ctx into outputs so
                 # objectives can see them even when the system doesn't attach them.
                 try:
@@ -738,17 +767,17 @@ class StandardTrainer:
         table2 = Table2Telemetry()
         table2_writer = Table2SummaryWriter()
         last_table2_metrics: dict[str, float] | None = None
+        loss_val_live: float | None = None
         try:
             with logger.progress_bar() as progress:
                 task = progress.add_task("Training...", total=int(run.steps))
                 for step in range(int(run.steps)):
                     t0 = time.perf_counter()
                     # Training viz: emit small attention/activation samples periodically.
-                    # Default to every step; this is small (downsampled) and users
-                    # often want responsive visuals even when steps are slow.
-                    viz_interval = int(getattr(train, "viz_interval", 1) or 1)
-                    viz_interval = max(1, int(viz_interval))
-                    viz_enabled = ((step + 1) % viz_interval) == 0
+                    # Disabled by default for performance; enable via `train.viz_interval`.
+                    viz_interval = int(getattr(train, "viz_interval", 0) or 0)
+                    viz_interval = max(0, int(viz_interval))
+                    viz_enabled = bool(viz_interval > 0 and ((step + 1) % viz_interval) == 0)
                     viz_ctx = TrainingVizMosaicContext(
                         enabled=bool(viz_enabled),
                         step=int(step + 1),
@@ -799,7 +828,7 @@ class StandardTrainer:
                     accum_steps = max(1, accum_steps)
                     optimizer.zero_grad(set_to_none=True)
                     kernel_launches: int | None = None
-                    loss_sum = 0.0
+                    loss_sum = torch.zeros((), device=device, dtype=torch.float32)
                     outputs: object | None = None
                     last_batch_td: TensorDictBase | None = None
 
@@ -821,7 +850,14 @@ class StandardTrainer:
                                 "StandardTrainer expects batch items to be dict/TensorDict. "
                                 f"Got {type(item).__name__}."
                             )
-                        batch_td = cast(TensorDictBase, to_device(batch_td, device=device))
+                        batch_td = cast(
+                            TensorDictBase,
+                            to_device(
+                                batch_td,
+                                device=device,
+                                non_blocking=bool(getattr(train, "pin_memory", False) and device.type == "cuda"),
+                            ),
+                        )
                         micro_batches.append(batch_td)
                     t_data = time.perf_counter()
 
@@ -844,7 +880,7 @@ class StandardTrainer:
                             ) as prof:
                                 # Profile only the first microbatch to keep overhead bounded.
                                 outputs, loss = _forward_loss(micro_batches[0])
-                                loss_sum += float(loss.detach())
+                                loss_sum += loss.detach().float()
                                 (loss / float(accum_steps)).backward()
                             # Heuristic: count device-side events as “launch-ish”.
                             if device.type == "cuda":
@@ -864,7 +900,7 @@ class StandardTrainer:
                     start_idx = 1 if did_profile_first else 0
                     for mb in micro_batches[start_idx:]:
                         outputs, loss = _forward_loss(mb)
-                        loss_sum += float(loss.detach())
+                        loss_sum += loss.detach().float()
                         (loss / float(accum_steps)).backward()
                         last_batch_td = mb
                     if layer_stats_enabled:
@@ -911,7 +947,9 @@ class StandardTrainer:
                     if (step + 1) % telemetry_interval == 0:
                         # Log averaged loss per optimizer step (matches grad accumulation semantics).
                         t_log0 = time.perf_counter()
-                        loss_val = float(loss_sum) / float(accum_steps)
+                        loss_val = float((loss_sum / float(accum_steps)).item())
+                        loss_val_live = float(loss_val)
+                        t_sync = time.perf_counter()
                         # Perplexity guardrails (avoid overflow in exp()).
                         ppl = float(safe_perplexity_from_nll(float(loss_val)))
 
@@ -989,20 +1027,20 @@ class StandardTrainer:
                                 "time_data_s": float(t_data - t_data0),
                                 "time_fwd_s": float(t_fwd - t_data),
                                 "time_bwd_s": float(t_bwd - t_fwd),
-                                "time_optim_s": float(t_optim - t_bwd),
-                                "time_step_s": float(t_optim - t0),
+                                "time_optim_s": float(t_sync - t_bwd),
+                                "time_step_s": float(t_sync - t0),
                                 # Legacy-friendly ms fields.
                                 "ms_fwd": float((t_fwd - t_data) * 1000.0),
                                 "ms_bwd": float((t_bwd - t_fwd) * 1000.0),
-                                "ms_opt": float((t_optim - t_bwd) * 1000.0),
-                                "ms_step": float((t_optim - t0) * 1000.0),
+                                "ms_opt": float((t_sync - t_bwd) * 1000.0),
+                                "ms_step": float((t_sync - t0) * 1000.0),
                             }
                         )
                         # Token throughput (best-effort for token LM datasets).
                         try:
                             y = last_batch_td.get("target_ids", None) if last_batch_td is not None else None  # type: ignore[attr-defined]
                             if isinstance(y, Tensor):
-                                step_s = float(max(1e-9, t_optim - t0))
+                                step_s = float(max(1e-9, t_sync - t0))
                                 metrics["tok_s"] = float(y.numel() * int(accum_steps)) / step_s
                         except Exception as e:
                             raise RuntimeError("Failed to compute token throughput") from e
@@ -1114,11 +1152,13 @@ class StandardTrainer:
                             wandb_writer.log_scalars(prefix="", step=step + 1, scalars=metrics)
 
                     # Progress should advance every optimizer step, independent of telemetry cadence.
-                    loss_val_live = float(loss_sum) / float(accum_steps)
+                    desc = f"Step {step+1}/{run.steps}"
+                    if loss_val_live is not None:
+                        desc = f"{desc} • loss={float(loss_val_live):.4f}"
                     progress.update(
                         task,
                         advance=1,
-                        description=f"Step {step+1}/{run.steps} • loss={float(loss_val_live):.4f}",
+                        description=desc,
                     )
         finally:
             if wandb_writer is not None:
@@ -1255,6 +1295,9 @@ class StandardTrainer:
             "drop_last": True,
             "collate_fn": collate_to_tensordict,
         }
+        if int(train.num_workers) > 0:
+            loader_kwargs["prefetch_factor"] = int(getattr(train, "prefetch_factor", 2))
+            loader_kwargs["persistent_workers"] = True
         if dist_ctx is not None and hasattr(dist_ctx, "wrap_dataloader"):
             return dist_ctx.wrap_dataloader(train_ds, shuffle=True, **loader_kwargs)  # type: ignore[no-any-return, attr-defined]
         return DataLoader(train_ds, shuffle=True, **loader_kwargs)

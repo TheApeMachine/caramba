@@ -21,9 +21,19 @@ struct DBAParams {
 };
 
 inline float dot_half(device const half* a, device const half* b, uint dim) {
-    float acc = 0.0f;
-    for (uint i = 0; i < dim; ++i) {
-        acc += float(a[i]) * float(b[i]);
+    // Vectorize within a thread using packed_half2 to leverage SIMD ops.
+    float2 acc2 = float2(0.0f);
+    const uint n2 = dim / 2;
+    device const packed_half2* ap2 = reinterpret_cast<device const packed_half2*>(a);
+    device const packed_half2* bp2 = reinterpret_cast<device const packed_half2*>(b);
+    for (uint i = 0; i < n2; ++i) {
+        const half2 ha = half2(ap2[i]);
+        const half2 hb = half2(bp2[i]);
+        acc2 += float2(ha) * float2(hb);
+    }
+    float acc = acc2.x + acc2.y;
+    if (dim & 1u) {
+        acc += float(a[dim - 1]) * float(b[dim - 1]);
     }
     return acc;
 }
@@ -53,11 +63,12 @@ kernel void dba_decode_fp16(
     // (thread_position_in_threadgroup is uint3; mixing uint + uint3 in inputs is rejected
     // by newer Metal toolchains.)
     uint tid                [[ thread_index_in_threadgroup ]],
+    uint lane               [[ thread_index_in_simdgroup ]],
+    uint sg                 [[ simdgroup_index_in_threadgroup ]],
+    uint sgs                [[ simdgroups_per_threadgroup ]],
     uint3 tgid              [[ threadgroup_position_in_grid ]]
 ) {
     constexpr uint TG = 256;
-    constexpr uint SIMD = 32;
-    constexpr uint NSIMD = TG / SIMD; // 8
 
     // Grid: (1, n_heads, batch_size)
     const uint head = tgid.y;
@@ -83,8 +94,8 @@ kernel void dba_decode_fp16(
     device const half* qsem = q_sem + row * sem_hd;
     device const half* qgeo = q_geo + row * geo_hd;
 
-    threadgroup float tg_max[NSIMD];
-    threadgroup float tg_sum[NSIMD];
+    threadgroup float tg_max[TG];
+    threadgroup float tg_sum[TG];
     threadgroup float weights[TG];
     threadgroup float shared_m;
     threadgroup float shared_d;
@@ -92,8 +103,7 @@ kernel void dba_decode_fp16(
     threadgroup float shared_beta;
     threadgroup float shared_block_m;
 
-    const uint sg = tid / SIMD;
-    const bool lane0 = (tid % SIMD) == 0;
+    const bool lane0 = (lane == 0);
     if (tid == 0) {
         shared_m = -INFINITY;
         shared_d = 0.0f;
@@ -126,12 +136,11 @@ kernel void dba_decode_fp16(
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
-        float m0 = -INFINITY;
-        if (tid < NSIMD) {
-            m0 = tg_max[tid];
-        }
-        float m_blk = simd_max(m0);
         if (tid == 0) {
+            float m_blk = -INFINITY;
+            for (uint i = 0; i < sgs; ++i) {
+                m_blk = max(m_blk, tg_max[i]);
+            }
             shared_block_m = m_blk;
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -149,7 +158,7 @@ kernel void dba_decode_fp16(
 
         if (tid == 0) {
             float d_blk = 0.0f;
-            for (uint i = 0; i < NSIMD; ++i) {
+            for (uint i = 0; i < sgs; ++i) {
                 d_blk += tg_sum[i];
             }
 
@@ -209,11 +218,12 @@ kernel void dba_decode_fp16_null(
     device half* out              [[ buffer(8) ]],
     constant DBAParams& p         [[ buffer(9) ]],
     uint tid                      [[ thread_index_in_threadgroup ]],
+    uint lane                     [[ thread_index_in_simdgroup ]],
+    uint sg                       [[ simdgroup_index_in_threadgroup ]],
+    uint sgs                      [[ simdgroups_per_threadgroup ]],
     uint3 tgid                    [[ threadgroup_position_in_grid ]]
 ) {
     constexpr uint TG = 256;
-    constexpr uint SIMD = 32;
-    constexpr uint NSIMD = TG / SIMD; // 8
 
     // Grid: (1, n_heads, batch_size)
     const uint head = tgid.y;
@@ -242,8 +252,8 @@ kernel void dba_decode_fp16_null(
     device const half* kgn = k_geo_null + row * geo_hd;
     device const half* vn  = v_null + row * v_hd;
 
-    threadgroup float tg_max[NSIMD];
-    threadgroup float tg_sum[NSIMD];
+    threadgroup float tg_max[TG];
+    threadgroup float tg_sum[TG];
     threadgroup float weights[TG];
     threadgroup float shared_m;
     threadgroup float shared_d;
@@ -251,8 +261,7 @@ kernel void dba_decode_fp16_null(
     threadgroup float shared_beta;
     threadgroup float shared_block_m;
 
-    const uint sg = tid / SIMD;
-    const bool lane0 = (tid % SIMD) == 0;
+    const bool lane0 = (lane == 0);
 
     // Seed online softmax with the null token.
     float out_acc = 0.0f;
@@ -285,12 +294,11 @@ kernel void dba_decode_fp16_null(
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
-        float m0 = -INFINITY;
-        if (tid < NSIMD) {
-            m0 = tg_max[tid];
-        }
-        float m_blk = simd_max(m0);
         if (tid == 0) {
+            float m_blk = -INFINITY;
+            for (uint i = 0; i < sgs; ++i) {
+                m_blk = max(m_blk, tg_max[i]);
+            }
             shared_block_m = m_blk;
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -307,7 +315,7 @@ kernel void dba_decode_fp16_null(
 
         if (tid == 0) {
             float d_blk = 0.0f;
-            for (uint i = 0; i < NSIMD; ++i) {
+            for (uint i = 0; i < sgs; ++i) {
                 d_blk += tg_sum[i];
             }
 

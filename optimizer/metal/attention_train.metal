@@ -39,13 +39,21 @@ struct AttnParams {
 };
 
 constexpr uint TG = 256;
-constexpr uint SIMD = 32;
-constexpr uint NSIMD = TG / SIMD; // 8
 
 inline float dot_half(device const half* a, device const half* b, uint dim) {
-    float acc = 0.0f;
-    for (uint i = 0; i < dim; ++i) {
-        acc += float(a[i]) * float(b[i]);
+    // Vectorize within a thread using packed_half2 to leverage SIMD ops.
+    float2 acc2 = float2(0.0f);
+    const uint n2 = dim / 2;
+    device const packed_half2* ap2 = reinterpret_cast<device const packed_half2*>(a);
+    device const packed_half2* bp2 = reinterpret_cast<device const packed_half2*>(b);
+    for (uint i = 0; i < n2; ++i) {
+        const half2 ha = half2(ap2[i]);
+        const half2 hb = half2(bp2[i]);
+        acc2 += float2(ha) * float2(hb);
+    }
+    float acc = acc2.x + acc2.y;
+    if (dim & 1u) {
+        acc += float(a[dim - 1]) * float(b[dim - 1]);
     }
     return acc;
 }
@@ -75,6 +83,9 @@ kernel void attn_train_fwd_fp16(
     device float* lse    [[ buffer(4) ]],
     constant AttnParams& p [[ buffer(5) ]],
     uint tid [[ thread_index_in_threadgroup ]],
+    uint lane [[ thread_index_in_simdgroup ]],
+    uint sg [[ simdgroup_index_in_threadgroup ]],
+    uint sgs [[ simdgroups_per_threadgroup ]],
     uint3 tgid [[ threadgroup_position_in_grid ]]
 ) {
     // Grid: (T, H, B) -> (q_idx, head, batch)
@@ -87,8 +98,8 @@ kernel void attn_train_fwd_fp16(
     const bool compute_out = tid < p.D;
     float out_acc = 0.0f;
 
-    threadgroup float tg_max[NSIMD];
-    threadgroup float tg_sum[NSIMD];
+    threadgroup float tg_max[TG];
+    threadgroup float tg_sum[TG];
     threadgroup float weights_raw[TG];
     threadgroup float weights_drop[TG];
     threadgroup float shared_m;
@@ -97,8 +108,7 @@ kernel void attn_train_fwd_fp16(
     threadgroup float shared_beta;
     threadgroup float shared_block_m;
 
-    const uint sg = tid / SIMD;
-    const bool lane0 = (tid % SIMD) == 0;
+    const bool lane0 = (lane == 0);
     if (tid == 0) {
         shared_m = -INFINITY;
         shared_d = 0.0f;
@@ -125,12 +135,11 @@ kernel void attn_train_fwd_fp16(
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
-        float m0 = -INFINITY;
-        if (tid < NSIMD) {
-            m0 = tg_max[tid];
-        }
-        float m_blk = simd_max(m0);
         if (tid == 0) {
+            float m_blk = -INFINITY;
+            for (uint i = 0; i < sgs; ++i) {
+                m_blk = max(m_blk, tg_max[i]);
+            }
             shared_block_m = m_blk;
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -155,7 +164,7 @@ kernel void attn_train_fwd_fp16(
 
         if (tid == 0) {
             float d_blk = 0.0f;
-            for (uint i = 0; i < NSIMD; ++i) {
+            for (uint i = 0; i < sgs; ++i) {
                 d_blk += tg_sum[i];
             }
             const float m_prev = shared_m;
@@ -207,15 +216,17 @@ kernel void attn_train_bwd_preprocess_fp16(
     device float* delta        [[ buffer(2) ]],
     constant AttnParams& p     [[ buffer(3) ]],
     uint tid [[ thread_index_in_threadgroup ]],
+    uint lane [[ thread_index_in_simdgroup ]],
+    uint sg [[ simdgroup_index_in_threadgroup ]],
+    uint sgs [[ simdgroups_per_threadgroup ]],
     uint3 tgid [[ threadgroup_position_in_grid ]]
 ) {
     const uint q_idx = tgid.x;
     const uint head = tgid.y;
     const uint batch = tgid.z;
 
-    threadgroup float tg_sum[NSIMD];
-    const uint sg = tid / SIMD;
-    const bool lane0 = (tid % SIMD) == 0;
+    threadgroup float tg_sum[TG];
+    const bool lane0 = (lane == 0);
 
     float x = 0.0f;
     if (tid < p.D) {
@@ -231,7 +242,7 @@ kernel void attn_train_bwd_preprocess_fp16(
 
     if (tid == 0) {
         float s = 0.0f;
-        for (uint i = 0; i < NSIMD; ++i) {
+        for (uint i = 0; i < sgs; ++i) {
             s += tg_sum[i];
         }
         device float* d_vec = delta + batch * p.lse_stride_b + head * p.lse_stride_h + q_idx * p.lse_stride_t;
@@ -250,6 +261,9 @@ kernel void attn_train_bwd_dkv_fp16(
     device half* grad_v [[ buffer(7) ]],
     constant AttnParams& p [[ buffer(8) ]],
     uint tid [[ thread_index_in_threadgroup ]],
+    uint lane [[ thread_index_in_simdgroup ]],
+    uint sg [[ simdgroup_index_in_threadgroup ]],
+    uint sgs [[ simdgroups_per_threadgroup ]],
     uint3 tgid [[ threadgroup_position_in_grid ]]
 ) {
     // Grid: (T, H, B) -> (k_idx, head, batch)
@@ -269,11 +283,10 @@ kernel void attn_train_bwd_dkv_fp16(
     float dk = 0.0f;
     float dv = 0.0f;
 
-    threadgroup float tg_sum[NSIMD];
+    threadgroup float tg_sum[TG];
     threadgroup float shared_s;
     threadgroup float shared_dp;
-    const uint sg = tid / SIMD;
-    const bool lane0 = (tid % SIMD) == 0;
+    const bool lane0 = (lane == 0);
 
     const bool use_dropout = p.dropout_p > 0.0f;
     const float keep_prob = 1.0f - p.dropout_p;
@@ -301,7 +314,7 @@ kernel void attn_train_bwd_dkv_fp16(
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (tid == 0) {
             float s_total = 0.0f;
-            for (uint i = 0; i < NSIMD; ++i) {
+            for (uint i = 0; i < sgs; ++i) {
                 s_total += tg_sum[i];
             }
             shared_s = s_total * p.scale;
@@ -326,7 +339,7 @@ kernel void attn_train_bwd_dkv_fp16(
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (tid == 0) {
             float dp = 0.0f;
-            for (uint i = 0; i < NSIMD; ++i) {
+            for (uint i = 0; i < sgs; ++i) {
                 dp += tg_sum[i];
             }
             shared_dp = dp;
@@ -360,6 +373,9 @@ kernel void attn_train_bwd_dq_fp16(
     device half* grad_q [[ buffer(6) ]],
     constant AttnParams& p [[ buffer(7) ]],
     uint tid [[ thread_index_in_threadgroup ]],
+    uint lane [[ thread_index_in_simdgroup ]],
+    uint sg [[ simdgroup_index_in_threadgroup ]],
+    uint sgs [[ simdgroups_per_threadgroup ]],
     uint3 tgid [[ threadgroup_position_in_grid ]]
 ) {
     // Grid: (T, H, B) -> (q_idx, head, batch)
@@ -382,11 +398,10 @@ kernel void attn_train_bwd_dq_fp16(
 
     float dq = 0.0f;
 
-    threadgroup float tg_sum[NSIMD];
+    threadgroup float tg_sum[TG];
     threadgroup float shared_s;
     threadgroup float shared_dp;
-    const uint sg = tid / SIMD;
-    const bool lane0 = (tid % SIMD) == 0;
+    const bool lane0 = (lane == 0);
 
     const bool use_dropout = p.dropout_p > 0.0f;
     const float keep_prob = 1.0f - p.dropout_p;
@@ -408,7 +423,7 @@ kernel void attn_train_bwd_dq_fp16(
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (tid == 0) {
             float s_total = 0.0f;
-            for (uint i = 0; i < NSIMD; ++i) {
+            for (uint i = 0; i < sgs; ++i) {
                 s_total += tg_sum[i];
             }
             shared_s = s_total * p.scale;
@@ -432,7 +447,7 @@ kernel void attn_train_bwd_dq_fp16(
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (tid == 0) {
             float dp = 0.0f;
-            for (uint i = 0; i < NSIMD; ++i) {
+            for (uint i = 0; i < sgs; ++i) {
                 dp += tg_sum[i];
             }
             shared_dp = dp;

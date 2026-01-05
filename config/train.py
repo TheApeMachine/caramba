@@ -151,6 +151,19 @@ class TrainConfig(BaseModel):
     profile_every: NonNegativeInt = 0
     profile_record_shapes: bool = False
 
+    # Lightweight viz payloads (optional; disabled by default for performance).
+    # When enabled, attention layers may copy small downsampled tensors back to CPU.
+    viz_interval: NonNegativeInt = 0
+    viz_tokens: PositiveInt = 16
+    viz_channels: PositiveInt = 32
+    viz_heads: PositiveInt = 4
+    viz_topk: PositiveInt = 8
+
+    # Per-layer activation stats telemetry (optional; disabled by default).
+    # When enabled, forward hooks compute scalar stats and will synchronize devices
+    # on the logging steps.
+    layer_telemetry_interval: NonNegativeInt = 0
+
     # Activation checkpointing: controls when we recompute activations instead
     # of storing them to reduce peak memory usage on long sequences.
     activation_checkpointing: bool = False

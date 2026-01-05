@@ -6,8 +6,11 @@ attention training kernels independent from the existing fused ops module.
 
 from __future__ import annotations
 
+import os
+import platform
 from pathlib import Path
 import subprocess
+import sys
 from typing import Any
 
 from caramba.optimizer.runtime import METAL_BUILD_TOOLS_AVAILABLE, METAL_SUPPORTED
@@ -67,6 +70,13 @@ def _compile_attention_metallib(*, out_dir: Path, verbose: bool) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [metal, "-c", str(src), "-o", str(air)]
+    # Ensure the Metal compiler targets the correct AIR architecture on Apple Silicon.
+    # Allow override via env for debugging / cross-compiling.
+    explicit_arch = os.environ.get("CARAMBA_METAL_AIR_ARCH")
+    if explicit_arch:
+        cmd += ["-arch", explicit_arch]
+    elif sys.platform == "darwin" and platform.machine() == "arm64":
+        cmd += ["-arch", "air64"]
     if verbose:
         print("[caramba] compiling Metal attention shader:", " ".join(cmd))
     proc = subprocess.run(cmd, capture_output=True, text=True)

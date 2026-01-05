@@ -139,9 +139,9 @@ class _LayerNormTriton:
         _require(layernorm_gradw is not None, msg="LayerNorm Triton grad_w kernel is unavailable.")
         kgw: Any = layernorm_gradw
         gw = torch.zeros((meta.D,), device=x.device, dtype=torch.float32)
-        pid_rows = 128
+        rows_per_tile = 128
         block_col = 256
-        kgw[(_cdiv(meta.D, block_col), _cdiv(meta.rows, pid_rows))](
+        kgw[(_cdiv(meta.D, block_col), _cdiv(meta.rows, rows_per_tile))](
             x2,
             mean,
             inv,
@@ -151,7 +151,7 @@ class _LayerNormTriton:
             D=meta.D,
             stride_xr=x2.stride(0),
             stride_gyr=gy2.stride(0),
-            pid_rows=pid_rows,
+            ROWS_PER_TILE=rows_per_tile,
             BLOCK_COL=block_col,
             num_warps=4,
         )
@@ -162,13 +162,13 @@ class _LayerNormTriton:
         _require(layernorm_gradb is not None, msg="LayerNorm Triton grad_b kernel is unavailable.")
         kgb: Any = layernorm_gradb
         gb = torch.zeros((meta.D,), device=x.device, dtype=torch.float32)
-        kgb[(_cdiv(meta.D, block_col), _cdiv(meta.rows, pid_rows))](
+        kgb[(_cdiv(meta.D, block_col), _cdiv(meta.rows, rows_per_tile))](
             gy2,
             gb,
             rows=meta.rows,
             D=meta.D,
             stride_gyr=gy2.stride(0),
-            pid_rows=pid_rows,
+            ROWS_PER_TILE=rows_per_tile,
             BLOCK_COL=block_col,
             num_warps=4,
         )

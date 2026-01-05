@@ -372,7 +372,6 @@ class LlamaUpcycle:
     def find_head(self) -> LinearLayer:
         """Find the model's LM head (last LinearLayer)."""
         heads = [m for _, m in self.model.named_modules() if isinstance(m, LinearLayer)]
-        if heads:
-            return heads[-1]
-        else:
+        if not heads:
             raise ValueError("No LM head found in model")
+        return heads[-1]

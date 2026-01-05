@@ -115,7 +115,7 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             D: tl.constexpr,
             stride_xr: tl.constexpr,
             stride_gyr: tl.constexpr,
-            pid_rows: tl.constexpr,
+            ROWS_PER_TILE: tl.constexpr,
             BLOCK_COL: tl.constexpr,
         ):
             """Compute grad_w with a tiled reduction over rows and atomic adds.
@@ -128,9 +128,9 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             cols = pid_c * BLOCK_COL + tl.arange(0, BLOCK_COL)
             m = cols < D
 
-            r0 = pid_r * pid_rows
+            r0 = pid_r * ROWS_PER_TILE
             acc = tl.zeros((BLOCK_COL,), dtype=tl.float32)
-            for rr in range(0, pid_rows):
+            for rr in range(ROWS_PER_TILE):
                 r = r0 + rr
                 rm = r < rows
                 x = tl.load(x_ptr + r * stride_xr + cols, mask=rm & m, other=0.0).to(tl.float32)
