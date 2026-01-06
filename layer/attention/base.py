@@ -18,8 +18,10 @@ from caramba.config.layer import AttentionLayerConfig, AttentionMode
 from caramba.console import logger
 from caramba.layer.attention import AttentionLayer
 from caramba.layer.rope import RotaryEmbedding
-from caramba.cache.decoupled import DecoupledLayerKVCache
-from caramba.cache.layer import LayerKVCache
+
+if TYPE_CHECKING:
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+    from caramba.cache.layer import LayerKVCache
 
 
 # Error message constants (keep exact wording for tests/log searchability).

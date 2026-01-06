@@ -18,16 +18,18 @@ defaults:
     wandb_mode: disabled
     eval_iters: 0
   runtime:
-    save_every: 0
+    # Schema requires positive; checkpoint_compare does no training anyway.
+    save_every: 1
     best_effort: true
 
 vars:
   # --- Checkpoints (you'll drop these into research/dba/) ---
-  baseline_ckpt: research/dba/ckpt_baseline.pt
-  decoupled_ckpt: research/dba/ckpt_decoupled.pt
+  baseline_ckpt: research/dba/a100_fw1b_l22_baseline_s1337_10k.pt
+  decoupled_ckpt: research/dba/a100_fw1b_l22_decoupled_s1337_10k.pt
 
   # --- Dataset shard for perplexity (optional but recommended) ---
-  dataset_path: fineweb_100m.npy
+  # NOTE: Match the dataset used for the A100 training runs (see prepare_fineweb.py).
+  dataset_path: fineweb_edu_v29_100m.npy
   block_size: 2048
 
   # --- Model dims (paper preset) ---
@@ -45,7 +47,7 @@ vars:
 
   # --- Runtime ---
   device: mps
-  dtype: float32
+  dtype: float16
 
 targets:
   - type: experiment
@@ -169,12 +171,16 @@ targets:
       # Dummy run entry to satisfy schema; trainer.checkpoint_compare does no training.
       - id: eval
         mode: train
+        exp: benchmark_only
+        seed: 1337
         steps: 1
+        expected: {phase: standard}
         train:
           phase: standard
           batch_size: 1
           block_size: ${block_size}
-          lr: 0.0
+          # Schema requires positive; this run is a no-op for checkpoint_compare.
+          lr: 1.0e-9
           device: ${device}
           dtype: ${dtype}
     benchmarks:
@@ -194,6 +200,20 @@ targets:
           block_size: ${block_size}
           batch_size: 1
           num_batches: 200
+        models: [teacher, student]
+
+      - id: downstream_accuracy
+        config:
+          type: accuracy
+          # Full HuggingFace datasets (no instruction tuning assumed).
+          # For a quick smoke test, set `limit: 100` (per task).
+          # tasks: [hellaswag, piqa, winogrande, arc_easy, arc_challenge, boolq]
+          tasks: [hellaswag, winogrande, arc_easy]
+          tokenizer:
+            type: tiktoken
+            encoding: gpt2
+          # Optional sliding window to keep scoring stable at long prompts.
+          context_window: 2048
         models: [teacher, student]
 
       - id: latency_cached

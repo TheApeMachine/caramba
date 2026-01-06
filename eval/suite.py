@@ -223,13 +223,32 @@ def _run_case(
                 max_new_tokens=max_new_tokens,
                 context_window=context_window,
             )
-            expected = str(case.answer).strip()
-            t_out = str(t_text).strip()
-            s_out = str(s_text).strip()
+            expected = case.answer.strip()
+
+            def _canon(out_text: str) -> str:
+                mode = str(getattr(case, "match", "exact")).strip().lower()
+                raw = out_text
+                if mode == "first_line":
+                    raw = raw.splitlines()[0] if raw.splitlines() else raw
+                # For "prefix" we still return the full stripped output; comparison uses startswith.
+                return raw.strip()
+
+            t_out = t_text.strip()
+            s_out = s_text.strip()
+            t_out = _canon(t_out)
+            s_out = _canon(s_out)
+
+            match_mode = str(getattr(case, "match", "exact")).strip().lower()
+            if match_mode == "prefix":
+                t_ok = t_out.startswith(expected)
+                s_ok = s_out.startswith(expected)
+            else:
+                t_ok = (t_out == expected)
+                s_ok = (s_out == expected)
             return EvalCaseResult(
                 case_id=case.id,
-                teacher_ok=(t_out == expected),
-                student_ok=(s_out == expected),
+                teacher_ok=bool(t_ok),
+                student_ok=bool(s_ok),
                 teacher_answer=t_out,
                 student_answer=s_out,
             )

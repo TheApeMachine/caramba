@@ -45,6 +45,11 @@ class EvalCase(BaseModel):
 
     choices: list[str] | None = None
     answer: str | int | None = None
+    # For exact_match_greedy, control how we judge "correct".
+    # - exact: output (stripped) must equal answer (stripped)
+    # - first_line: compare only the first line of output (stripped)
+    # - prefix: output (stripped) must start with answer (stripped)
+    match: Literal["exact", "first_line", "prefix"] = "exact"
 
     @model_validator(mode="after")
     def _validate_case(self) -> "EvalCase":
@@ -72,6 +77,8 @@ class EvalCase(BaseModel):
             case "exact_match_greedy":
                 if not isinstance(self.answer, str) or not str(self.answer).strip():
                     raise ValueError("exact_match_greedy requires a non-empty string answer")
+                if str(self.match) not in {"exact", "first_line", "prefix"}:
+                    raise ValueError("exact_match_greedy.match must be one of: exact, first_line, prefix")
             case _:
                 raise ValueError(f"Unsupported eval case kind: {self.kind!r}")
 

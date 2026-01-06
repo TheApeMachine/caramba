@@ -22,9 +22,13 @@ class NoiseSchedule:
     kind: str
     beta_start: float = 1e-4
     beta_end: float = 2e-2
+    s: float = 0.008
 
     def alphasCumprod(self, *, timesteps: int, device: torch.device) -> Tensor:
         """Compute alpha_bar over timesteps on device."""
+
+        if not isinstance(timesteps, int) or timesteps <= 0:
+            raise ValueError(f"alphasCumprod requires timesteps to be an int > 0, got {timesteps!r}")
 
         kind = str(self.kind).lower().strip()
         if kind == "linear":
@@ -45,9 +49,11 @@ class NoiseSchedule:
     def cosineBetas(self, *, timesteps: int, device: torch.device) -> Tensor:
         """Cosine beta schedule (Nichol & Dhariwal)."""
 
-        s = 0.008
+        if not isinstance(timesteps, int) or timesteps <= 0:
+            raise ValueError(f"cosineBetas requires timesteps to be an int > 0, got {timesteps!r}")
+
         steps = torch.arange(int(timesteps) + 1, device=device) / int(timesteps)
-        alpha = torch.cos((steps + s) / (1.0 + s) * torch.pi / 2.0) ** 2
+        alpha = torch.cos((steps + float(self.s)) / (1.0 + float(self.s)) * torch.pi / 2.0) ** 2
         alpha = alpha / alpha[0]
         betas = 1.0 - (alpha[1:] / alpha[:-1])
         return betas.clamp(1e-5, 0.999)
@@ -55,9 +61,21 @@ class NoiseSchedule:
     def gatherToShape(self, *, values: Tensor, t: Tensor, shape: torch.Size) -> Tensor:
         """Gather values[t] and broadcast to `shape`."""
 
+        if values.dim() != 1:
+            raise ValueError(
+                "gatherToShape expects values to be 1-D, "
+                f"got values.shape={tuple(values.shape)}"
+            )
         if t.dim() != 1:
             raise ValueError(f"Expected t to be 1D, got shape={tuple(t.shape)}")
+        if len(shape) < 1:
+            raise ValueError(f"gatherToShape expects non-empty shape, got shape={tuple(shape)}")
         batch = int(t.shape[0])
+        if int(shape[0]) != batch:
+            raise ValueError(
+                "gatherToShape shape mismatch: "
+                f"shape[0]={int(shape[0])} batch={batch} shape={tuple(shape)} t.shape={tuple(t.shape)}"
+            )
         gathered = values.gather(0, t)
         view = gathered.view(batch, *((1,) * (len(shape) - 1)))
         return view.expand(shape)

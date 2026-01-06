@@ -86,6 +86,24 @@ class RNNLayer(nn.Module):
 
         RNNs compress history into a fixed-size state; that can be a feature when
         you want bounded memory rather than full-context attention.
+
+        Parameters
+        ----------
+        x:
+            Input sequence tensor. Shape follows the configured `batch_first`:
+            - if batch_first=True: (B, T, input_size)
+            - else: (T, B, input_size)
+        ctx:
+            Optional runtime context. Intended to carry initial hidden state (h0/c0)
+            when provided by the caller (TODO); currently unused.
+
+        Returns
+        -------
+        (output, state):
+            - output: the per-step outputs (same time/batch layout as `x`, last dim is
+              `hidden_size` or `proj_size` for LSTM with projection).
+            - state: the final hidden state. For GRU/RNN this is `h_n`; for LSTM it is
+              `(h_n, c_n)` as returned by PyTorch.
         """
         # TODO: Extract h0/c0 from ctx if present
         return self.rnn(x)

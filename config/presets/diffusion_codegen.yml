@@ -9,8 +9,8 @@ notes: >
   - it can generate samples from the latest checkpoint
 
 defaults:
-  data: { tokenizer: none, val_frac: 0.0 }
-  logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 0 }
+  data: { tokenizer: none, val_frac: 0.1 }
+  logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 100 }
   runtime: { save_every: 200, best_effort: false }
 
 vars:
@@ -150,10 +150,6 @@ targets:
           run_id: train
           device: cpu
           num_samples: 5
-          sampler: ddim
-          guidance_scale: 7.5
-          ddim_steps: 50
-          ddim_eta: 0.0
           sequence_length: ${seq_len}
           prompt: ""
 

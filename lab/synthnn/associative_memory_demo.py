@@ -40,6 +40,34 @@ class AssociativeMemoryDemoTrainer:
     dt: float = 0.05
     rerank_top_k: int = 64
 
+    # PhaseAssociativeMemory hyperparameters (configurable for experiments)
+    coupling_strength: float = 0.35
+    damping: float = 0.02
+    zero_diag: bool = True
+    clamp_cue: bool = True
+    project_each_step: bool = True
+    project_interval: int = 1
+
+    def __post_init__(self) -> None:
+        # Normalize numeric fields early so validation is consistent.
+        self.units = int(self.units)
+        self.patterns = int(self.patterns)
+        self.steps = int(self.steps)
+        self.project_interval = int(self.project_interval)
+
+        if not (0.0 <= float(self.known_frac) <= 1.0):
+            raise ValueError(f"known_frac must be in [0, 1], got {self.known_frac}")
+        if float(self.noise_std) < 0.0:
+            raise ValueError(f"noise_std must be >= 0, got {self.noise_std}")
+        if int(self.units) <= 0:
+            raise ValueError(f"units must be > 0, got {self.units}")
+        if int(self.patterns) <= 0:
+            raise ValueError(f"patterns must be > 0, got {self.patterns}")
+        if int(self.steps) <= 0:
+            raise ValueError(f"steps must be > 0, got {self.steps}")
+        if float(self.dt) <= 0.0:
+            raise ValueError(f"dt must be > 0, got {self.dt}")
+
     def run(
         self,
         *,
@@ -48,6 +76,28 @@ class AssociativeMemoryDemoTrainer:
         engine: object,
         dry_run: bool = False,
     ) -> dict[str, Any] | None:
+        """Run the associative memory demo (trainer interface).
+
+        Parameters
+        ----------
+        manifest:
+            The experiment `Manifest` driving this run (unused by the demo logic, but
+            required by the trainer protocol).
+        target:
+            Experiment target configuration (unused by the demo logic, but part of the
+            trainer protocol).
+        engine:
+            Execution engine handle (unused; this demo runs locally and produces artifacts).
+        dry_run:
+            When True, skip execution and return None. This allows orchestrators to
+            validate manifests without producing artifacts.
+
+        Returns
+        -------
+        dict | None
+            On success, returns a dict containing artifact/metadata info (e.g. the output
+            JSON path). Returns None when `dry_run=True`.
+        """
         _ = (manifest, target, engine)
         if dry_run:
             logger.info("Dry run requested, skipping SynthNN associative memory demo")
@@ -59,7 +109,15 @@ class AssociativeMemoryDemoTrainer:
         rng = np.random.default_rng(int(self.seed))
         n = int(self.units)
         k = int(self.patterns)
-        dtype = np.dtype(np.complex64) if str(self.dtype) == "c64" else np.dtype(np.complex128)
+        dtype_key = str(self.dtype).strip().lower()
+        if dtype_key in {"c64", "complex64"}:
+            dtype = np.dtype(np.complex64)
+        elif dtype_key in {"c128", "complex128"}:
+            dtype = np.dtype(np.complex128)
+        else:
+            raise ValueError(
+                f"Invalid dtype {self.dtype!r}. Expected 'c64' or 'c128' (aliases: 'complex64', 'complex128')."
+            )
 
         angles = rng.uniform(-np.pi, np.pi, size=(k, n)).astype(np.float64)
         pats = np.exp(1j * angles).astype(dtype, copy=False)
@@ -69,12 +127,12 @@ class AssociativeMemoryDemoTrainer:
             n,
             dtype=dtype,
             label_prefix=None,
-            coupling_strength=0.35,
-            damping=0.02,
-            zero_diag=True,
-            clamp_cue=True,
-            project_each_step=True,
-            project_interval=1,
+            coupling_strength=float(self.coupling_strength),
+            damping=float(self.damping),
+            zero_diag=bool(self.zero_diag),
+            clamp_cue=bool(self.clamp_cue),
+            project_each_step=bool(self.project_each_step),
+            project_interval=int(self.project_interval),
             node_prefix="mem_",
         )
         mem.store(pats, labels=labels)
@@ -87,6 +145,8 @@ class AssociativeMemoryDemoTrainer:
 
         mask = rng.random(n) < float(self.known_frac)
         cue_partial = base.copy()
+        # For unknown elements, use a unit-magnitude complex value with zero phase as a
+        # neutral initialization for masked cue entries prior to mem.recall(...).
         cue_partial[~mask] = 1.0 + 0.0j
         res_partial = mem.recall(cue_partial, mask=mask, steps=int(self.steps), dt=float(self.dt), snap=True, rerank_top_k=int(self.rerank_top_k))
 

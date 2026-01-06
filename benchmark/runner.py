@@ -12,12 +12,14 @@ import torch
 from torch import nn
 
 from caramba.benchmark.artifacts import ArtifactGenerator, ExperimentMetadata
+from caramba.benchmark.accuracy import AccuracyBenchmark, AccuracyResult
 from caramba.benchmark.behavior import BehaviorBenchmark, BehaviorResult
 from caramba.benchmark.context import ContextBenchmark, ContextResult
 from caramba.benchmark.latency import LatencyBenchmark, LatencyResult
 from caramba.benchmark.memory import MemoryBenchmark, MemoryResult
 from caramba.benchmark.perplexity import PerplexityBenchmark, PerplexityResult
 from caramba.config.benchmark import (
+    AccuracyBenchmarkConfig,
     BenchmarkSuite,
     BenchmarkType,
     BehaviorBenchmarkConfig,
@@ -67,6 +69,8 @@ class BenchmarkRunner:
         teacher_memory: MemoryResult | None = None
         student_memory: MemoryResult | None = None
         behavior: BehaviorResult | None = None
+        teacher_accuracy: AccuracyResult | None = None
+        student_accuracy: AccuracyResult | None = None
         teacher_context: ContextResult | None = None
         student_context: ContextResult | None = None
 
@@ -161,6 +165,24 @@ class BenchmarkRunner:
                                     )
                                     logger.metric("student", kv_bytes, " bytes/tok")
 
+                    case BenchmarkType.ACCURACY:
+                        assert isinstance(spec.config, AccuracyBenchmarkConfig)
+                        benchmark = AccuracyBenchmark(spec.config, self.device)
+
+                        if "teacher" in spec.models:
+                            if teacher is None:
+                                logger.warning("Benchmark requested teacher model, but none is available (skipping).")
+                            else:
+                                teacher_accuracy = benchmark.run(teacher, "teacher")
+                                logger.metric("teacher", teacher_accuracy.micro_accuracy * 100.0, "% micro-acc")
+
+                        if "student" in spec.models:
+                            if student is None:
+                                logger.warning("Benchmark requested student model, but none is available (skipping).")
+                            else:
+                                student_accuracy = benchmark.run(student, "student")
+                                logger.metric("student", student_accuracy.micro_accuracy * 100.0, "% micro-acc")
+
                     case BenchmarkType.BEHAVIOR:
                         assert isinstance(spec.config, BehaviorBenchmarkConfig)
                         if teacher is None or student is None:
@@ -190,22 +212,52 @@ class BenchmarkRunner:
                                 teacher_context = benchmark.run(teacher, "teacher")
                                 # Report last decode-tps at max context (best-effort).
                                 try:
-                                    xs = [m.decode_tok_per_s for m in teacher_context.decode if m.ok and m.decode_tok_per_s == m.decode_tok_per_s]
+                                    decode = teacher_context.decode
+                                    xs = [
+                                        m.decode_tok_per_s
+                                        for m in decode
+                                        if m.ok and m.decode_tok_per_s == m.decode_tok_per_s
+                                    ]
+                                except Exception as e:
+                                    logger.error(
+                                        "Failed to collect teacher decode rates from teacher_context.decode "
+                                        f"(reading m.decode_tok_per_s): {e!r}"
+                                    )
+                                else:
                                     if xs:
-                                        logger.metric("teacher", float(xs[-1]), " tok/s@ctx")
-                                except Exception:
-                                    pass
+                                        try:
+                                            logger.metric("teacher", float(xs[-1]), " tok/s@ctx")
+                                        except Exception as e:
+                                            logger.error(
+                                                "Failed to emit teacher tok/s@ctx via logger.metric "
+                                                f"(from teacher_context.decode / m.decode_tok_per_s): {e!r}"
+                                            )
                         if "student" in spec.models:
                             if student is None:
                                 logger.warning("Benchmark requested student model, but none is available (skipping).")
                             else:
                                 student_context = benchmark.run(student, "student")
                                 try:
-                                    xs = [m.decode_tok_per_s for m in student_context.decode if m.ok and m.decode_tok_per_s == m.decode_tok_per_s]
+                                    decode = student_context.decode
+                                    xs = [
+                                        m.decode_tok_per_s
+                                        for m in decode
+                                        if m.ok and m.decode_tok_per_s == m.decode_tok_per_s
+                                    ]
+                                except Exception as e:
+                                    logger.error(
+                                        "Failed to collect student decode rates from student_context.decode "
+                                        f"(reading m.decode_tok_per_s): {e!r}"
+                                    )
+                                else:
                                     if xs:
-                                        logger.metric("student", float(xs[-1]), " tok/s@ctx")
-                                except Exception:
-                                    pass
+                                        try:
+                                            logger.metric("student", float(xs[-1]), " tok/s@ctx")
+                                        except Exception as e:
+                                            logger.error(
+                                                "Failed to emit student tok/s@ctx via logger.metric "
+                                                f"(from student_context.decode / m.decode_tok_per_s): {e!r}"
+                                            )
 
                     case _:
                         logger.warning(
@@ -223,6 +275,8 @@ class BenchmarkRunner:
             student_latency=student_latency,
             teacher_memory=teacher_memory,
             student_memory=student_memory,
+            teacher_accuracy=teacher_accuracy,
+            student_accuracy=student_accuracy,
             behavior=behavior,
             teacher_context=teacher_context,
             student_context=student_context,

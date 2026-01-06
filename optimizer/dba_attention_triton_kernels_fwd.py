@@ -13,6 +13,9 @@ import triton.language as tl  # type: ignore[reportMissingImports]
 
 __all__ = ["dba_attn_fwd"]
 
+# Used to keep forward/backward scaling consistent when combining sem+geo logits.
+INV_SQRT2 = 0.70710678
+
 
 @triton.jit
 def dba_attn_fwd(
@@ -108,7 +111,7 @@ def dba_attn_fwd(
 
         sem = tl.dot(q_sem, tl.trans(k_sem)) * SEM_SCALE
         geo = tl.dot(q_geo, tl.trans(k_geo)) * GEO_SCALE
-        logits = (sem + geo) * 0.70710678
+        logits = (sem + geo) * INV_SQRT2
 
         if CAUSAL:
             q_pos = offs_m[:, None]

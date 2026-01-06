@@ -7,6 +7,7 @@ different representations and inductive biases.
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, cast
 
 import torch
@@ -201,8 +202,23 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         dropout_p = float(self.config.dropout_p) if self.training else 0.0
         null_enabled = bool(getattr(self.config, "null_attn", False))
 
-        dba_backend = str(getattr(self.config, "dba_train_backend", "auto") or "auto").lower().strip()
+        # `dba_train_backend` controls which DBA training backend to use:
+        # - "auto": prefer the Triton training kernel when eligible (default)
+        # - "triton": prefer the Triton training kernel (warn/fallback if ineligible)
+        # - "sdpa": force scaled dot-product attention
+        raw_backend = getattr(self.config, "dba_train_backend", "auto")
+        dba_backend = str(raw_backend or "auto").lower().strip()
+        allowed = {"auto", "triton", "sdpa"}
+        if dba_backend not in allowed:
+            warnings.warn(
+                f"Invalid dba_train_backend={raw_backend!r}; falling back to 'auto'. "
+                f"Allowed values: {sorted(allowed)}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            dba_backend = "auto"
         force_sdpa = (dba_backend == "sdpa")
+        force_triton = (dba_backend == "triton")
         if (
             (not force_sdpa)
             and q_chunk is None
@@ -223,6 +239,14 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                 sem_scale=float(sem_scale),
                 geo_scale=float(geo_scale),
                 dropout_p=float(dropout_p),
+            )
+        elif force_triton and self.training:
+            warnings.warn(
+                "dba_train_backend='triton' requested, but Triton training kernel is not eligible "
+                "for this call; falling back to SDPA. Eligibility requires: training=True, "
+                "device=cuda, no q_chunk/local_window/mask/cache, and null_attn disabled.",
+                RuntimeWarning,
+                stacklevel=2,
             )
         elif q_chunk is None and local_window is None:
             q_cat = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)

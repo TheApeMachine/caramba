@@ -120,7 +120,7 @@ def test_rmf_emits_routing_logits_and_updates_state() -> None:
     st = layer.state_store.get(ctx, key=layer.ctx_key)
     assert st is not None
     assert isinstance(st.rmf_field, torch.Tensor)
-    assert tuple(st.rmf_field.shape[-1:]) == (2,)
+    assert st.rmf_field.shape[-1] == 2
 
 
 def _prefill_memory(layer: MosaicBlockLayer, ctx: _Ctx, *, B: int, device: torch.device, dtype: torch.dtype) -> None:

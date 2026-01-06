@@ -9,7 +9,7 @@ from __future__ import annotations
 import enum
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from caramba.config import Config, PositiveFloat, PositiveInt, Probability
 
@@ -485,6 +485,25 @@ class MosaicBlockLayerConfig(Config):
     # Fusion gates: scale contributions from long state / memory read.
     gate_long_init: float = 0.0
     gate_mem_init: float = 0.0
+
+    @model_validator(mode="after")
+    def _validate_memory_aux_weights(self) -> "MosaicBlockLayerConfig":
+        """Keep auxiliary weights non-negative and consistent with enable flags."""
+        if self.mem_phase_weight < 0:
+            raise ValueError(f"mem_phase_weight must be >= 0, got {self.mem_phase_weight!r}")
+        if self.mem_vsa_weight < 0:
+            raise ValueError(f"mem_vsa_weight must be >= 0, got {self.mem_vsa_weight!r}")
+        if self.rmf_weight < 0:
+            raise ValueError(f"rmf_weight must be >= 0, got {self.rmf_weight!r}")
+
+        if not bool(self.mem_phase_enabled):
+            self.mem_phase_weight = 0.0
+        if not bool(self.mem_vsa_enabled):
+            self.mem_vsa_weight = 0.0
+        if not bool(self.rmf_enabled):
+            self.rmf_weight = 0.0
+
+        return self
 
 
 class MosaicNGramCacheLogitsLayerConfig(Config):

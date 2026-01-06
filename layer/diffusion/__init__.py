@@ -6,6 +6,7 @@ single logits distribution.
 """
 from __future__ import annotations
 
+import math
 from typing import Protocol
 import torch
 from torch import Tensor, nn
@@ -30,7 +31,7 @@ class DiffusionDenoiser(Protocol):
         prompt_emb: Tensor | None,
         prompt_pad_mask: Tensor | None,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        raise NotImplementedError
+        ...
 
 
 class DiffusionLayer(nn.Module):
@@ -96,6 +97,28 @@ class DiffusionLayer(nn.Module):
             self.config.cfg_guidance_scale
         ) if guidance_scale is None else float(guidance_scale)
 
+        if math.isclose(scale, 1.0):
+            eps_cond, x0_cond, _ = self.model.forward(
+                noisy_emb=x,
+                t=t,
+                target_pad_mask=target_pad_mask,
+                self_cond=self_cond,
+                prompt_emb=prompt_emb,
+                prompt_pad_mask=prompt_pad_mask,
+            )
+            return eps_cond, x0_cond
+
+        if math.isclose(scale, 0.0):
+            eps_uncond, x0_uncond, _ = self.model.forward(
+                noisy_emb=x,
+                t=t,
+                target_pad_mask=target_pad_mask,
+                self_cond=self_cond,
+                prompt_emb=None,
+                prompt_pad_mask=None,
+            )
+            return eps_uncond, x0_uncond
+
         eps_cond, x0_cond, _ = self.model.forward(
             noisy_emb=x,
             t=t,
@@ -104,7 +127,6 @@ class DiffusionLayer(nn.Module):
             prompt_emb=prompt_emb,
             prompt_pad_mask=prompt_pad_mask,
         )
-
         eps_uncond, _, _ = self.model.forward(
             noisy_emb=x,
             t=t,
@@ -113,9 +135,7 @@ class DiffusionLayer(nn.Module):
             prompt_emb=None,
             prompt_pad_mask=None,
         )
-
         guided = eps_uncond + scale * (eps_cond - eps_uncond)
-
         return guided, x0_cond
 
     def embedding_tokens(self, embedding: Tensor, weight: Tensor) -> Tensor:

@@ -1,6 +1,5 @@
 """Fast train path for MOSAIC blocks"""
 
-from dataclasses import dataclass
 from typing import Any
 import torch
 from torch import Tensor, nn
@@ -34,6 +33,26 @@ class FastTrainPath(Path):
             gate_mem=gate_mem,
             chunk_size=chunk_size,
         )
+
+    def forward(self, *args: Tensor, **kwargs: Tensor) -> Tensor:
+        """Forward is not used; prefer `run(...)`.
+
+        This exists to satisfy the abstract `Path.forward` contract so the class is
+        instantiable. MOSAIC calls the explicit `run(...)` API.
+        """
+        _ = args
+        if kwargs:
+            # Best-effort support: if the caller passes the `run(...)` kwargs, return delta.
+            delta, _out = self.run(  # type: ignore[arg-type]
+                u=kwargs["u"],
+                local=kwargs["local"],
+                st=kwargs["st"],  # type: ignore[typeddict-item]
+                routing=kwargs["routing"],  # type: ignore[typeddict-item]
+                write_mask=kwargs.get("write_mask", None),
+                opcode_ctrl=kwargs.get("opcode_ctrl", None),
+            )
+            return delta
+        raise RuntimeError("FastTrainPath.forward is not used; call FastTrainPath.run(...) instead.")
 
     def run(
         self,
@@ -79,7 +98,8 @@ class FastTrainPath(Path):
 
         return self.finalize(u=u, local=local, parts=parts)
 
-    def prepare_parts(self, st: MosaicState) -> dict[str, list[Tensor]]:
+    def prepare_parts(self, _st: MosaicState) -> dict[str, list[Tensor]]:
+        # `_st` is intentionally unused (reserved for future state-driven partitioning).
         return {"g": [], "r": [], "gate": [], "util": []}
 
     def chunks(self, *, u: Tensor, routing: dict[str, Any]):
@@ -146,7 +166,7 @@ class FastTrainPath(Path):
         if isinstance(opcode_ctrl, Tensor) and int(MosaicOpcode.READ_MEM) < int(opcode_ctrl.size(-1)):
             rd = opcode_ctrl[:, t0:t1, int(MosaicOpcode.READ_MEM)]
 
-            if not bool((rd > 0).any()):
+            if not (rd > 0).any().item():
                 return torch.zeros((
                     int(u.size(0)),
                     int(u.size(1)),

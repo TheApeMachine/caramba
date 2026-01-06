@@ -17,7 +17,6 @@ from typing import Any
 
 import torch
 from tokenizers import Tokenizer
-from torch import Tensor
 from torch.utils.data import Dataset
 
 from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
@@ -51,8 +50,8 @@ class CodeChunksTorchDataset(Dataset[TensorDictBase]):
 
         self.padId = self.requirePadId()
         self.files = self.listFiles()
-        self.chunks = self.buildChunks()
         self.cache: dict[str, list[int]] = {}
+        self.chunks = self.buildChunks()
 
     def __len__(self) -> int:
         return len(self.chunks)

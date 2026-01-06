@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor, nn
 
 
@@ -54,6 +55,11 @@ class PositionalEmbedding(nn.Module):
         self.table = nn.Embedding(self.max_len, self.dim)
 
     def forward(self, x: Tensor) -> Tensor:
+        """Return learned embeddings for each position in `x`.
+
+        Note: this module uses `x` **only for its shape/device** (expects `(B, L, H)`),
+        and returns a `(B, L, dim)` tensor of learned per-position embeddings.
+        """
         if x.dim() != 3:
             raise ValueError(f"Expected x to be (B,L,H), got shape={tuple(x.shape)}")
         batch, length, _hidden = x.shape
@@ -131,7 +137,7 @@ class DiffusionTransformer(nn.Module):
             memory_key_padding_mask=memory_mask,
         )
         pred_eps, x0_pred = self.head(out).chunk(2, dim=-1)
-        logits = torch.matmul(x0_pred, self.embedding.weight.t())
+        logits = F.linear(x0_pred, self.embedding.weight)
         return pred_eps, x0_pred, logits
 
     def prepareMemory(
@@ -234,9 +240,18 @@ class DiffusionCodegenSystem:
                 "pad_id was not provided and tokenizer_file is missing. "
                 "Provide system.config.pad_id or system.config.tokenizer_file."
             )
+        # Optional dependency: we only require `tokenizers` when resolving `pad_id`
+        # from a tokenizer JSON file. This keeps import-time dependencies light and
+        # makes `caramba` usable even when `tokenizers` isn't installed.
         from pathlib import Path
 
-        from tokenizers import Tokenizer
+        try:
+            from tokenizers import Tokenizer
+        except ImportError as e:  # pragma: no cover
+            raise ImportError(
+                "Resolving pad_id from tokenizer_file requires the optional dependency "
+                "`tokenizers`. Install it or provide system.config.pad_id explicitly."
+            ) from e
 
         path = Path(self.tokenizer_file)
         if not path.exists():

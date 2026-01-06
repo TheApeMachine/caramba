@@ -34,76 +34,147 @@ vars:
   distractor_len: 64
   sleep_replay_per_pair: 32
   n_items: 20000
+  # Portability: default to CPU; override (e.g. mps/cuda) via CLI by setting vars.device.
+  device: cpu
 
 targets:
+  # Shared dataset config
+  - &hyp_sig_data
+    ref: dataset.mosaic_memory_curriculum
+    config:
+      block_size: ${block_size}
+      vocab_size: ${vocab_size}
+      mem_buckets: ${mem_buckets}
+      mem_hashes: ${mem_hashes}
+      n_pairs: ${n_pairs}
+      distractor_len: ${distractor_len}
+      sleep_replay_per_pair: ${sleep_replay_per_pair}
+      n_items: ${n_items}
+      seed: ${seed}
+
+  # Shared system configs: RMF ON/OFF variants.
+  - &hyp_sig_system_rmf_off
+    ref: system.language_model
+    config:
+      model:
+        type: TransformerModel
+        embedder:
+          type: token
+          vocab_size: ${vocab_size}
+          d_model: ${d_model}
+        topology:
+          type: StackedTopology
+          layers:
+            - type: NestedTopology
+              repeat: ${n_layers}
+              layers:
+                - type: MosaicBlockLayer
+                  d_model: ${d_model}
+                  conv_kernel: 7
+                  mlp_mult: 2.0
+                  dropout_p: 0.0
+                  state_k: 8
+                  state_decay_min: 0.90
+                  state_decay_max: 0.999
+                  mem_router: vq
+                  mem_vq_groups: 2
+                  mem_vq_codebook_size: 32
+                  mem_vq_group_dim: 16
+                  mem_vq_beam: 2
+                  mem_write_multi: true
+                  mem_buckets: ${mem_buckets}
+                  mem_dim: 96
+                  mem_hashes: ${mem_hashes}
+                  mem_assoc: 4
+                  mem_key_dim: 32
+                  mem_read_temp: 1.0
+                  mem_write_threshold: 0.5
+                  mem_write_eta: 0.2
+                  mem_vsa_enabled: true
+                  mem_vsa_weight: 1.0
+                  rmf_enabled: false
+            - type: RMSNormLayer
+              d_model: ${d_model}
+            - type: LinearLayer
+              d_in: ${d_model}
+              d_out: ${vocab_size}
+
+  - &hyp_sig_system_rmf_on
+    ref: system.language_model
+    config:
+      model:
+        type: TransformerModel
+        embedder:
+          type: token
+          vocab_size: ${vocab_size}
+          d_model: ${d_model}
+        topology:
+          type: StackedTopology
+          layers:
+            - type: NestedTopology
+              repeat: ${n_layers}
+              layers:
+                - type: MosaicBlockLayer
+                  d_model: ${d_model}
+                  conv_kernel: 7
+                  mlp_mult: 2.0
+                  dropout_p: 0.0
+                  state_k: 8
+                  state_decay_min: 0.90
+                  state_decay_max: 0.999
+                  mem_router: vq
+                  mem_vq_groups: 2
+                  mem_vq_codebook_size: 32
+                  mem_vq_group_dim: 16
+                  mem_vq_beam: 2
+                  mem_write_multi: true
+                  mem_buckets: ${mem_buckets}
+                  mem_dim: 96
+                  mem_hashes: ${mem_hashes}
+                  mem_assoc: 4
+                  mem_key_dim: 32
+                  mem_read_temp: 1.0
+                  mem_write_threshold: 0.5
+                  mem_write_eta: 0.2
+                  mem_vsa_enabled: true
+                  mem_vsa_weight: 1.0
+                  rmf_enabled: true
+                  rmf_dim: 64
+                  rmf_eta: 0.2
+                  rmf_weight: 1.0
+            - type: RMSNormLayer
+              d_model: ${d_model}
+            - type: LinearLayer
+              d_in: ${d_model}
+              d_out: ${vocab_size}
+
+  # Shared objective config
+  - &hyp_sig_objective
+    ref: objective.mosaic_next_token_aux
+    config: { aux_gate_weight: 0.2, aux_bits_weight: 0.2, aux_utility_weight: 0.2, aux_contrastive_weight: 0.2 }
+
+  # Shared run config (teacher p differs per target)
+  - &hyp_sig_train_base
+    phase: standard
+    batch_size: ${batch_size}
+    block_size: ${block_size}
+    lr: ${lr}
+    device: ${device}
+    dtype: float16
+    telemetry_interval: 50
+    offload_optimizer: true
+    mosaic_teacher_p_schedule: constant
+    mosaic_teacher_p_warmup_steps: 0
+    mosaic_teacher_p_cooldown_steps: 0
+
   - type: experiment
     name: mosaic_hyp_teacher_always
     description: "Hypothesis run: teacher routing always (p=1.0)."
     backend: torch
     task: task.language_modeling
-    data:
-      ref: dataset.mosaic_memory_curriculum
-      config:
-        block_size: ${block_size}
-        vocab_size: ${vocab_size}
-        mem_buckets: ${mem_buckets}
-        mem_hashes: ${mem_hashes}
-        n_pairs: ${n_pairs}
-        distractor_len: ${distractor_len}
-        sleep_replay_per_pair: ${sleep_replay_per_pair}
-        n_items: ${n_items}
-        seed: ${seed}
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          embedder:
-            type: token
-            vocab_size: ${vocab_size}
-            d_model: ${d_model}
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: MosaicBlockLayer
-                    d_model: ${d_model}
-                    conv_kernel: 7
-                    mlp_mult: 2.0
-                    dropout_p: 0.0
-                    state_k: 8
-                    state_decay_min: 0.90
-                    state_decay_max: 0.999
-                    mem_router: vq
-                    mem_vq_groups: 2
-                    mem_vq_codebook_size: 32
-                    mem_vq_group_dim: 16
-                    mem_vq_beam: 2
-                    mem_write_multi: true
-                    mem_buckets: ${mem_buckets}
-                    mem_dim: 96
-                    mem_hashes: ${mem_hashes}
-                    mem_assoc: 4
-                    mem_key_dim: 32
-                    mem_read_temp: 1.0
-                    mem_write_threshold: 0.5
-                    mem_write_eta: 0.2
-                    mem_vsa_enabled: true
-                    mem_vsa_weight: 1.0
-                    rmf_enabled: true
-                    rmf_dim: 64
-                    rmf_eta: 0.2
-                    rmf_weight: 1.0
-              - type: RMSNormLayer
-                d_model: ${d_model}
-              - type: LinearLayer
-                d_in: ${d_model}
-                d_out: ${vocab_size}
-    objective:
-      ref: objective.mosaic_next_token_aux
-      config: { aux_gate_weight: 0.2, aux_bits_weight: 0.2, aux_utility_weight: 0.2, aux_contrastive_weight: 0.2 }
+    data: *hyp_sig_data
+    system: *hyp_sig_system_rmf_on
+    objective: *hyp_sig_objective
     trainer: trainer.standard
     runs:
       - id: train
@@ -113,88 +184,18 @@ targets:
         steps: ${steps}
         expected: {}
         train:
-          phase: standard
-          batch_size: ${batch_size}
-          block_size: ${block_size}
-          lr: ${lr}
-          device: mps
-          dtype: float16
-          telemetry_interval: 50
-          offload_optimizer: true
+          <<: *hyp_sig_train_base
           mosaic_teacher_p_start: 1.0
           mosaic_teacher_p_end: 1.0
-          mosaic_teacher_p_schedule: constant
-          mosaic_teacher_p_warmup_steps: 0
-          mosaic_teacher_p_cooldown_steps: 0
 
   - type: experiment
     name: mosaic_hyp_teacher_never
     description: "Hypothesis run: teacher routing never (p=0.0)."
     backend: torch
     task: task.language_modeling
-    data:
-      ref: dataset.mosaic_memory_curriculum
-      config:
-        block_size: ${block_size}
-        vocab_size: ${vocab_size}
-        mem_buckets: ${mem_buckets}
-        mem_hashes: ${mem_hashes}
-        n_pairs: ${n_pairs}
-        distractor_len: ${distractor_len}
-        sleep_replay_per_pair: ${sleep_replay_per_pair}
-        n_items: ${n_items}
-        seed: ${seed}
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          embedder:
-            type: token
-            vocab_size: ${vocab_size}
-            d_model: ${d_model}
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: MosaicBlockLayer
-                    d_model: ${d_model}
-                    conv_kernel: 7
-                    mlp_mult: 2.0
-                    dropout_p: 0.0
-                    state_k: 8
-                    state_decay_min: 0.90
-                    state_decay_max: 0.999
-                    mem_router: vq
-                    mem_vq_groups: 2
-                    mem_vq_codebook_size: 32
-                    mem_vq_group_dim: 16
-                    mem_vq_beam: 2
-                    mem_write_multi: true
-                    mem_buckets: ${mem_buckets}
-                    mem_dim: 96
-                    mem_hashes: ${mem_hashes}
-                    mem_assoc: 4
-                    mem_key_dim: 32
-                    mem_read_temp: 1.0
-                    mem_write_threshold: 0.5
-                    mem_write_eta: 0.2
-                    mem_vsa_enabled: true
-                    mem_vsa_weight: 1.0
-                    rmf_enabled: true
-                    rmf_dim: 64
-                    rmf_eta: 0.2
-                    rmf_weight: 1.0
-              - type: RMSNormLayer
-                d_model: ${d_model}
-              - type: LinearLayer
-                d_in: ${d_model}
-                d_out: ${vocab_size}
-    objective:
-      ref: objective.mosaic_next_token_aux
-      config: { aux_gate_weight: 0.2, aux_bits_weight: 0.2, aux_utility_weight: 0.2, aux_contrastive_weight: 0.2 }
+    data: *hyp_sig_data
+    system: *hyp_sig_system_rmf_on
+    objective: *hyp_sig_objective
     trainer: trainer.standard
     runs:
       - id: train
@@ -204,88 +205,18 @@ targets:
         steps: ${steps}
         expected: {}
         train:
-          phase: standard
-          batch_size: ${batch_size}
-          block_size: ${block_size}
-          lr: ${lr}
-          device: mps
-          dtype: float16
-          telemetry_interval: 50
-          offload_optimizer: true
+          <<: *hyp_sig_train_base
           mosaic_teacher_p_start: 0.0
           mosaic_teacher_p_end: 0.0
-          mosaic_teacher_p_schedule: constant
-          mosaic_teacher_p_warmup_steps: 0
-          mosaic_teacher_p_cooldown_steps: 0
 
   - type: experiment
     name: mosaic_hyp_rmf_on
     description: "Hypothesis run: RMF on (teacher_p=0.5 constant)."
     backend: torch
     task: task.language_modeling
-    data:
-      ref: dataset.mosaic_memory_curriculum
-      config:
-        block_size: ${block_size}
-        vocab_size: ${vocab_size}
-        mem_buckets: ${mem_buckets}
-        mem_hashes: ${mem_hashes}
-        n_pairs: ${n_pairs}
-        distractor_len: ${distractor_len}
-        sleep_replay_per_pair: ${sleep_replay_per_pair}
-        n_items: ${n_items}
-        seed: ${seed}
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          embedder:
-            type: token
-            vocab_size: ${vocab_size}
-            d_model: ${d_model}
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: MosaicBlockLayer
-                    d_model: ${d_model}
-                    conv_kernel: 7
-                    mlp_mult: 2.0
-                    dropout_p: 0.0
-                    state_k: 8
-                    state_decay_min: 0.90
-                    state_decay_max: 0.999
-                    mem_router: vq
-                    mem_vq_groups: 2
-                    mem_vq_codebook_size: 32
-                    mem_vq_group_dim: 16
-                    mem_vq_beam: 2
-                    mem_write_multi: true
-                    mem_buckets: ${mem_buckets}
-                    mem_dim: 96
-                    mem_hashes: ${mem_hashes}
-                    mem_assoc: 4
-                    mem_key_dim: 32
-                    mem_read_temp: 1.0
-                    mem_write_threshold: 0.5
-                    mem_write_eta: 0.2
-                    mem_vsa_enabled: true
-                    mem_vsa_weight: 1.0
-                    rmf_enabled: true
-                    rmf_dim: 64
-                    rmf_eta: 0.2
-                    rmf_weight: 1.0
-              - type: RMSNormLayer
-                d_model: ${d_model}
-              - type: LinearLayer
-                d_in: ${d_model}
-                d_out: ${vocab_size}
-    objective:
-      ref: objective.mosaic_next_token_aux
-      config: { aux_gate_weight: 0.2, aux_bits_weight: 0.2, aux_utility_weight: 0.2, aux_contrastive_weight: 0.2 }
+    data: *hyp_sig_data
+    system: *hyp_sig_system_rmf_on
+    objective: *hyp_sig_objective
     trainer: trainer.standard
     runs:
       - id: train
@@ -295,85 +226,18 @@ targets:
         steps: ${steps}
         expected: {}
         train:
-          phase: standard
-          batch_size: ${batch_size}
-          block_size: ${block_size}
-          lr: ${lr}
-          device: mps
-          dtype: float16
-          telemetry_interval: 50
-          offload_optimizer: true
+          <<: *hyp_sig_train_base
           mosaic_teacher_p_start: 0.5
           mosaic_teacher_p_end: 0.5
-          mosaic_teacher_p_schedule: constant
-          mosaic_teacher_p_warmup_steps: 0
-          mosaic_teacher_p_cooldown_steps: 0
 
   - type: experiment
     name: mosaic_hyp_rmf_off
     description: "Hypothesis run: RMF off (teacher_p=0.5 constant)."
     backend: torch
     task: task.language_modeling
-    data:
-      ref: dataset.mosaic_memory_curriculum
-      config:
-        block_size: ${block_size}
-        vocab_size: ${vocab_size}
-        mem_buckets: ${mem_buckets}
-        mem_hashes: ${mem_hashes}
-        n_pairs: ${n_pairs}
-        distractor_len: ${distractor_len}
-        sleep_replay_per_pair: ${sleep_replay_per_pair}
-        n_items: ${n_items}
-        seed: ${seed}
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          embedder:
-            type: token
-            vocab_size: ${vocab_size}
-            d_model: ${d_model}
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: MosaicBlockLayer
-                    d_model: ${d_model}
-                    conv_kernel: 7
-                    mlp_mult: 2.0
-                    dropout_p: 0.0
-                    state_k: 8
-                    state_decay_min: 0.90
-                    state_decay_max: 0.999
-                    mem_router: vq
-                    mem_vq_groups: 2
-                    mem_vq_codebook_size: 32
-                    mem_vq_group_dim: 16
-                    mem_vq_beam: 2
-                    mem_write_multi: true
-                    mem_buckets: ${mem_buckets}
-                    mem_dim: 96
-                    mem_hashes: ${mem_hashes}
-                    mem_assoc: 4
-                    mem_key_dim: 32
-                    mem_read_temp: 1.0
-                    mem_write_threshold: 0.5
-                    mem_write_eta: 0.2
-                    mem_vsa_enabled: true
-                    mem_vsa_weight: 1.0
-                    rmf_enabled: false
-              - type: RMSNormLayer
-                d_model: ${d_model}
-              - type: LinearLayer
-                d_in: ${d_model}
-                d_out: ${vocab_size}
-    objective:
-      ref: objective.mosaic_next_token_aux
-      config: { aux_gate_weight: 0.2, aux_bits_weight: 0.2, aux_utility_weight: 0.2, aux_contrastive_weight: 0.2 }
+    data: *hyp_sig_data
+    system: *hyp_sig_system_rmf_off
+    objective: *hyp_sig_objective
     trainer: trainer.standard
     runs:
       - id: train
@@ -383,19 +247,9 @@ targets:
         steps: ${steps}
         expected: {}
         train:
-          phase: standard
-          batch_size: ${batch_size}
-          block_size: ${block_size}
-          lr: ${lr}
-          device: mps
-          dtype: float16
-          telemetry_interval: 50
-          offload_optimizer: true
+          <<: *hyp_sig_train_base
           mosaic_teacher_p_start: 0.5
           mosaic_teacher_p_end: 0.5
-          mosaic_teacher_p_schedule: constant
-          mosaic_teacher_p_warmup_steps: 0
-          mosaic_teacher_p_cooldown_steps: 0
 
 entrypoints:
   default: mosaic_hyp_teacher_always

@@ -125,7 +125,7 @@ targets:
     runs:
       - id: train
         mode: train
-        exp: mosaic_d1_full_mps_conservative
+        exp: mosaic_d1_memory_full_mps_conservative
         seed: 1337
         steps: 500
         expected: {}

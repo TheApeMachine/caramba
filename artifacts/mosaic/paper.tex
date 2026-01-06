@@ -447,6 +447,7 @@ This preserves constant-time access (the neighborhood size is a fixed hyperparam
 \label{subsec:vsa}
 
 Within a bucket, multiple slots may contain relevant information. We augment the standard key similarity with a \textbf{vector-symbolic architecture (VSA)} channel:
+We describe two augmentation channels: VSA-based tags (this subsection) and an optional phase-similarity channel in \S\ref{subsec:phase_resonant_cache} (Resonant Memory Fields (RMF) and Phase Similarity).
 
 \begin{itemize}
     \item Each slot stores a VSA tag $\tau \in \mathbb{R}^{d_{\text{vsa}}}$, computed via a fixed random projection (Rademacher matrix) followed by $\tanh$ squashing:
@@ -465,24 +466,23 @@ The VSA channel provides a second similarity signal that is less sensitive to sm
 \subsection{Resonant Memory Fields (RMF) and Phase Similarity}
 \label{subsec:phase_resonant_cache}
 
-The MOSAIC framing is intentionally modular: the associative cache is a \emph{bounded data structure} with a (router, scorer, updater) interface, not a monolithic mechanism. This makes it possible to (i) improve in-bucket selection with additional \emph{local} similarity signals, and (ii) attach \emph{control-plane} modules that shape future retrieval without changing constant-time lookup.
+The MOSAIC framing is intentionally modular: the associative cache can be viewed as a \emph{bounded data structure} with a (router, scorer, updater) interface, not a monolithic mechanism. Concretely, the router proposes one (or a small constant number of) bucket addresses, the scorer ranks a bounded candidate set within the addressed bucket(s) using local similarity signals, and the updater applies bounded writes/evictions. This makes it possible to (i) improve in-bucket selection with additional \emph{local} similarity signals, and (ii) attach \emph{control-plane} modules that shape future retrieval without changing constant-time lookup.
 
 \paragraph{Resonant Memory Field (RMF): successor-biased activation over memory.}
 CCP benefits from modules that shape future retrieval \emph{before} a discrete address is emitted. A \textbf{Resonant Memory Field (RMF)} consumes recent recalled memory items and produces a graded activation field over \emph{likely successor} memories. In implementation, RMF can be built from simple coupled-oscillator components (\texttt{ResonantNode}, \texttt{ResonantNetwork}) operating on phasor-coded embeddings and emitting a sparse set of activated candidates.
 
 This field is advisory (not authoritative): it can bias routing, prefetch a small candidate set, or gate memory reads, thereby reducing the effective search entropy for the next access. Importantly, RMF lives \emph{around} the cache as a control prior; it is not required for the in-bucket scorer (where MOSAIC already uses VSA tags).
+Here, \texttt{ResonantNode} denotes a coupled-oscillator unit operating on phasor-coded embeddings that outputs a phase/amplitude activation, and \texttt{ResonantNetwork} denotes a sparse recurrent graph of \texttt{ResonantNode} units that produces a graded successor activation field over candidate memories (Appendix~\ref{app:implementation}).
 
 \paragraph{Global-phase invariant similarity (optional local signal).}
 For completeness, we also use global-phase-invariant similarity as a cheap, local similarity signal when comparing a query to a small set of candidates (e.g., within a fixed associativity bucket). For a query phasor $q_\phi \in \mathbb{C}^N$ and slot key phasor $k_{\phi,i} \in \mathbb{C}^N$, define:
 \[
 s^{(\phi)}_i = \frac{\left|\langle q_\phi, k_{\phi,i}\rangle\right|}{N}.
 \]
-This score is invariant to global phase rotation and robust to partial/noisy cues in phase space. When used \emph{within a bucket} of fixed associativity $A$ (or within RMF's top-$K$ candidate set), it remains $O(A)$ / $O(K)$ and preserves MOSAIC's constant-time contract.
+Here $\mathbb{C}^N$ denotes $N$-dimensional complex vectors, $\langle a,b\rangle := a^H b$ is the conjugate-transpose inner product, and $|\cdot|$ is the complex modulus of a scalar. In practice, phasor encodings are obtained from the real-valued query $q_t = W_q u_t \in \mathbb{R}^{d_k}$ via a deterministic complex embedding map $\Phi$, e.g.\ $q_\phi := \Phi(q_t)\in\mathbb{C}^N$ implemented as elementwise phase $q_\phi=\exp(i\cdot \theta(q_t))$ or a learned linear projection followed by normalization to unit modulus; similarly for $k_{\phi,i}$. The score $s^{(\phi)}_i$ uses the conjugate inner product and is normalized by $N$ as written. This score is invariant to global phase rotation and robust to partial/noisy cues in phase space. When used \emph{within a bucket} of fixed associativity $A$ (or within RMF's top-$K$ candidate set), it remains $O(A)$ / $O(K)$ and preserves MOSAIC's constant-time contract.
 
 \paragraph{Bounded cache vs.\ retrieval oracle.}
-Our reference resonant associative implementation scores against all stored patterns (exact $O(KN)$) and is therefore not the production MOSAIC cache. Its role inside CCP is primarily:
-(i) a \emph{diagnostic harness} for the addressing bottleneck (an explicit, auditable retrieval oracle for stress tests), and
-(ii) a prototype substrate for RMF-style successor fields, where scoring is applied to a bounded candidate set (top-$K$) or a fixed-size set-associative table (router emits the address; local similarity selects among $A$ slots).
+Our \emph{reference resonant associative implementation} is a diagnostic RMF harness that was implemented and tested (Appendix~\ref{app:implementation}). It scores against all stored patterns (exact $O(KN)$) and is therefore \emph{not} the production MOSAIC cache, whose contract is bounded-time, set-associative access with local scoring. Its role inside CCP is primarily (i) an explicit, auditable retrieval oracle for stress tests of the addressing bottleneck, and (ii) a prototype substrate for RMF-style successor fields. A bounded RMF variant---either top-$K$ candidate preselection or a set-associative realization with $O(K)$ candidates (optionally packaged as a control-plane module around MOSAIC)---is planned as future work; in that setting RMF remains a CCP-side prior that biases routing/scoring without changing the MOSAIC cache core.
 
 \subsection{Novelty-Based Write Scaling}
 \label{subsec:novelty}
@@ -970,7 +970,7 @@ Core MOSAIC implementation in Caramba:
 
     \item \textbf{Commitments:} \path{core/commitments.py} --- runtime ledger.
 
-    \item \textbf{Resonant Memory Field (RMF) substrate:} \path{resonant/core/associative\_memory/}\\Explicit phasor-coded associative recall and diagnostic harness.
+    \item \textbf{Resonant Memory Field (RMF) substrate:} \path{resonant/core/associative\_memory/} --- Explicit phasor-coded associative recall and diagnostic harness (see also \path{resonant/core/resonant\_node.py}, \path{resonant/core/resonant\_network.py}).
 \end{itemize}
 
 \section{Motivating Demo: Unknown Format Decoder}

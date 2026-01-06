@@ -38,6 +38,10 @@ class CodeBpeTokenizer:
         """
 
         root = Path(data_dir)
+        if root.exists() and not root.is_dir():
+            raise NotADirectoryError(
+                f"Tokenizer training data_dir must be a directory: {root}"
+            )
         if not root.exists():
             raise FileNotFoundError(
                 f"Tokenizer training data_dir does not exist: {root}. "
@@ -55,8 +59,8 @@ class CodeBpeTokenizer:
         tokenizer = self.makeTokenizer()
 
         trainer = BpeTrainer(
-            vocab_size=int(self.vocab_size),
-            special_tokens=list(self.special_tokens),
+            vocab_size=self.vocab_size,
+            special_tokens=self.special_tokens,
         )
         tokenizer.train_from_iterator(iterator, trainer=trainer, length=len(files))
 
@@ -103,7 +107,21 @@ class CodeBpeTokenizer:
         Uses deterministic ordering for reproducibility.
         """
 
-        exts = {e.lower() for e in self.file_extensions}
+        if not self.file_extensions:
+            raise ValueError("file_extensions must be non-empty.")
+        # Normalize extensions to match Path.suffix (leading dot) and compare
+        # case-insensitively. This avoids mismatches like "py" vs p.suffix ".py".
+        exts: set[str] = set()
+        for e in self.file_extensions:
+            if not isinstance(e, str) or not e.strip():
+                raise ValueError(
+                    "file_extensions entries must be non-empty strings. "
+                    f"Got invalid entry: {e!r}"
+                )
+            ext = e.strip().lower()
+            if not ext.startswith("."):
+                ext = "." + ext
+            exts.add(ext)
         if not exts:
             raise ValueError("file_extensions must be non-empty.")
 
@@ -137,9 +155,8 @@ class CodeBpeTokenizer:
     def unkToken(self) -> str:
         """Select the unknown token."""
 
-        for token in self.special_tokens:
-            if token == "<unk>":
-                return token
+        if "<unk>" in self.special_tokens:
+            return "<unk>"
         raise ValueError(
             "special_tokens must include '<unk>' so the tokenizer has a defined unknown token."
         )

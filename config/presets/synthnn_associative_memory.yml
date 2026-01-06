@@ -45,7 +45,7 @@ targets:
     runs:
       - id: demo
         mode: train
-        exp: synthnn_associative_memory
+        exp: synthnn_phase_associative_memory_demo
         seed: 1
         steps: 1
         expected: {}

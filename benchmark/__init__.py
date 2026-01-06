@@ -13,6 +13,7 @@ Benchmark types:
 from __future__ import annotations
 
 from caramba.benchmark.artifacts import ArtifactGenerator
+from caramba.benchmark.accuracy import AccuracyBenchmark
 from caramba.benchmark.latency import LatencyBenchmark
 from caramba.benchmark.memory import MemoryBenchmark
 from caramba.benchmark.perplexity import PerplexityBenchmark
@@ -21,6 +22,7 @@ from caramba.benchmark.runner import BenchmarkRunner
 __all__ = [
     "BenchmarkRunner",
     "PerplexityBenchmark",
+    "AccuracyBenchmark",
     "LatencyBenchmark",
     "MemoryBenchmark",
     "ArtifactGenerator",

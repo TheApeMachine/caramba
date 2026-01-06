@@ -26,8 +26,21 @@ class TestCodeBpeTokenizer:
         assert saved.exists()
 
         loaded = tok.load(tokenizer_file=str(saved))
-        assert loaded.token_to_id("<pad>") is not None
-        ids = loaded.encode("def foo():\n    return 1\n").ids
+        pad_id = loaded.token_to_id("<pad>")
+        assert isinstance(pad_id, int)
+        assert pad_id >= 0
+
+        text = "def foo():\n    return 1\n"
+        ids = loaded.encode(text).ids
         assert isinstance(ids, list)
-        assert len(ids) > 0
+        assert len(ids) > 1
+        assert all(isinstance(i, int) for i in ids)
+        assert all(i >= 0 for i in ids)
+
+        # Deterministic encoding for the same input text.
+        ids2 = loaded.encode(text).ids
+        assert ids == ids2
+
+        # Special token handling: <pad> should not appear when we're not padding.
+        assert pad_id not in ids
 

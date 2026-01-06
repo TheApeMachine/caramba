@@ -27,6 +27,15 @@ class LoRALinearLayer(nn.Module):
 
         The rank controls how expressive the update is; scaling by alpha/r keeps
         update magnitudes predictable across different ranks.
+
+        Args:
+            config: LoRA configuration object with attributes:
+                - d_in (int): input dimension.
+                - d_out (int): output dimension.
+                - r (int): LoRA rank (low-rank dimension).
+                - alpha (float): scaling factor (effective scale is alpha / r).
+                - bias (bool): whether the base linear has a bias term.
+                - dropout (float): dropout probability applied on the LoRA path.
         """
         super().__init__()
         self.config = config
@@ -61,6 +70,18 @@ class LoRALinearLayer(nn.Module):
         You can think of this as “base linear + learned delta”; when the base is
         frozen, LoRA focuses learning capacity where it matters without touching
         the full parameter set.
+
+        Parameters
+        ----------
+        x:
+            Input tensor of shape `(..., d_in)`.
+        ctx:
+            Optional runtime context (currently unused).
+
+        Returns
+        -------
+        Tensor
+            Output tensor of shape `(..., d_out)`.
         """
         # x: (..., d_in)
         result = self.linear(x)

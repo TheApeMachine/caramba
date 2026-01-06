@@ -380,6 +380,7 @@ targets:
           teacher_sanity_max_nll_delta_vs_ref: 0.10
           dba_init: random
           gradient_accumulation_steps: ${grad_accum}
+          # Per-block gradient clipping to stabilize blockwise distillation (limits each block to ||g||<=1.0).
           blockwise_grad_clip_norm: 1.0
           orchestrator_enabled: true
           orchestrator_max_loss_increase: 2.0
@@ -408,6 +409,7 @@ targets:
           pin_memory: ${pin_memory}
           prefetch_factor: ${prefetch_factor}
           gradient_accumulation_steps: ${grad_accum}
+          # Global gradient clipping to stabilize healing and prevent rare exploding steps (limits ||g||<=1.0).
           grad_clip_norm: 1.0
           orchestrator_enabled: true
           orchestrator_max_loss_increase: 2.0

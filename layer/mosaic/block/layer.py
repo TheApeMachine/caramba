@@ -8,6 +8,7 @@ instead of attention and KV caches.
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -23,6 +24,31 @@ from caramba.layer.mosaic.block.norm import RmsNorm
 from caramba.layer.mosaic.block.path.fast_train import FastTrainPath
 from caramba.layer.mosaic.block.path.sequential import SequentialPath
 from caramba.layer.mosaic.block.state_bank import StateBank
+
+
+def _mean_scalar(x: Tensor) -> Tensor:
+    return x.detach().float().mean()
+
+
+def _bucket_change_rate(idx: Tensor) -> Tensor:
+    if idx.ndim != 3:
+        return torch.zeros((), device=idx.device, dtype=torch.float32)
+    if int(idx.size(1)) <= 1:
+        return torch.zeros((), device=idx.device, dtype=torch.float32)
+    d = (idx[:, 1:, :] != idx[:, :-1, :]).detach().float().mean()
+    return d.to(dtype=torch.float32)
+
+
+def _bucket_entropy_norm(idx: Tensor, buckets: int) -> Tensor:
+    if idx.ndim != 3:
+        return torch.zeros((), device=idx.device, dtype=torch.float32)
+    v = idx.detach().reshape(-1).to(dtype=torch.long)
+    v = v.clamp(0, int(buckets) - 1)
+    c = torch.bincount(v, minlength=int(buckets)).float()
+    p = c / c.sum().clamp_min(1.0)
+    ent = -(p * (p.clamp_min(1e-12).log())).sum()
+    denom = float(max(1.0, math.log(float(buckets))))
+    return (ent / denom).to(dtype=torch.float32)
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +186,18 @@ class MosaicBlockLayer(nn.Module):
         init_mode = str(getattr(self.config, "mem_init_mode", "empty")).lower().strip()
         init_scale = float(getattr(self.config, "mem_init_scale", 0.02))
         if init_scale <= 0.0:
+            warnings.warn(
+                f"Invalid mem_init_scale={init_scale}; falling back to 0.02",
+                RuntimeWarning,
+                stacklevel=2,
+            )
             init_scale = 0.02
+
+        allowed_modes = {"random_full", "random_empty", "zeros_full", "zeros_empty", "empty"}
+        if init_mode not in allowed_modes:
+            raise ValueError(
+                f"Invalid mem_init_mode={init_mode!r}. Expected one of {sorted(allowed_modes)}."
+            )
 
         if init_mode in {"random_full", "random_empty"}:
             mem_k = torch.randn(shape_k, device=device, dtype=dtype) * float(init_scale)
@@ -314,27 +351,6 @@ class MosaicBlockLayer(nn.Module):
         mem_stats = getattr(ctx, "mosaic_mem_stats", None)
         if not isinstance(mem_stats, dict):
             return
-
-        def _mean_scalar(x: Tensor) -> Tensor:
-            return x.detach().float().mean()
-
-        def _bucket_change_rate(idx: Tensor) -> Tensor:
-            if idx.ndim != 3:
-                return torch.zeros((), device=idx.device, dtype=torch.float32)
-            if int(idx.size(1)) <= 1:
-                return torch.zeros((), device=idx.device, dtype=torch.float32)
-            d = (idx[:, 1:, :] != idx[:, :-1, :]).detach().float().mean()
-            return d.to(dtype=torch.float32)
-
-        def _bucket_entropy_norm(idx: Tensor, buckets: int) -> Tensor:
-            if idx.ndim != 3:
-                return torch.zeros((), device=idx.device, dtype=torch.float32)
-            v = idx.detach().reshape(-1).to(dtype=torch.long)
-            v = v.clamp(0, int(buckets) - 1)
-            c = torch.bincount(v, minlength=int(buckets)).float()
-            p = c / c.sum().clamp_min(1.0)
-            ent = -(p * (p.clamp_min(1e-12).log())).sum()
-            return (ent / float(max(1.0, torch.log(torch.tensor(float(buckets))).item()))).to(dtype=torch.float32)
 
         if "rmf_delta_rms" in routing and isinstance(routing["rmf_delta_rms"], Tensor):
             mem_stats[f"{self.ctx_key}/rmf_delta_rms"] = _mean_scalar(routing["rmf_delta_rms"])

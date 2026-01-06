@@ -18,6 +18,7 @@ from caramba.benchmark.latency import LatencyResult
 from caramba.benchmark.memory import MemoryResult
 from caramba.benchmark.perplexity import PerplexityResult
 from caramba.benchmark.behavior import BehaviorResult
+from caramba.benchmark.accuracy import AccuracyResult
 from caramba.benchmark.context import ContextResult
 
 
@@ -84,6 +85,8 @@ class ArtifactGenerator:
         student_latency: LatencyResult | None = None,
         teacher_memory: MemoryResult | None = None,
         student_memory: MemoryResult | None = None,
+        teacher_accuracy: AccuracyResult | None = None,
+        student_accuracy: AccuracyResult | None = None,
         behavior: BehaviorResult | None = None,
         teacher_context: ContextResult | None = None,
         student_context: ContextResult | None = None,
@@ -106,6 +109,8 @@ class ArtifactGenerator:
             path = self._write_json_report(
                 metadata,
                 summary,
+                teacher_accuracy=teacher_accuracy,
+                student_accuracy=student_accuracy,
                 behavior=behavior,
                 teacher_context=teacher_context,
                 student_context=student_context,
@@ -120,6 +125,8 @@ class ArtifactGenerator:
                 student_latency=student_latency,
                 teacher_memory=teacher_memory,
                 student_memory=student_memory,
+                teacher_accuracy=teacher_accuracy,
+                student_accuracy=student_accuracy,
                 behavior=behavior,
                 teacher_context=teacher_context,
                 student_context=student_context,
@@ -133,6 +140,8 @@ class ArtifactGenerator:
                 student_latency=student_latency,
                 teacher_memory=teacher_memory,
                 student_memory=student_memory,
+                teacher_accuracy=teacher_accuracy,
+                student_accuracy=student_accuracy,
                 behavior=behavior,
                 teacher_context=teacher_context,
                 student_context=student_context,
@@ -142,8 +151,82 @@ class ArtifactGenerator:
         if "latex" in formats:
             path = self._write_latex_tables(metadata, summary)
             generated["tables.tex"] = path
+            # Optional detailed behavior table for appendices / paper transparency.
+            if behavior is not None and behavior.measurements:
+                try:
+                    bpath = self._write_latex_behavior_table(behavior=behavior)
+                    generated["behavior_cases_table.tex"] = bpath
+                except Exception:
+                    # Best-effort: never fail the run due to LaTeX formatting.
+                    pass
 
         return generated
+
+    @staticmethod
+    def _latex_escape(s: str) -> str:
+        """Escape a string for safe inclusion in LaTeX text mode."""
+        t = str(s)
+        # Normalize whitespace but keep newlines visible.
+        t = t.replace("\r\n", "\n").replace("\r", "\n")
+        t = t.replace("\t", " ")
+        # Escape backslash first.
+        t = t.replace("\\", r"\textbackslash{}")
+        # LaTeX special chars.
+        t = (
+            t.replace("{", r"\{")
+            .replace("}", r"\}")
+            .replace("&", r"\&")
+            .replace("%", r"\%")
+            .replace("$", r"\$")
+            .replace("#", r"\#")
+            .replace("_", r"\_")
+            .replace("~", r"\textasciitilde{}")
+            .replace("^", r"\textasciicircum{}")
+        )
+        # Make newlines visible without breaking tables.
+        t = t.replace("\n", r"\textbackslash{}n ")
+        # Collapse runs of spaces.
+        t = " ".join(t.split())
+        return t
+
+    def _write_latex_behavior_table(self, *, behavior: BehaviorResult) -> Path:
+        """Write a per-case behavior table as LaTeX for paper appendices."""
+        path = self.output_dir / "behavior_cases_table.tex"
+
+        def _trunc(s: str, n: int = 64) -> str:
+            ss = str(s)
+            if len(ss) <= int(n):
+                return ss
+            return ss[: max(0, int(n) - 1)] + "…"
+
+        lines: list[str] = []
+        lines.append(r"\begin{table}[htbp]")
+        lines.append(r"\centering")
+        lines.append(r"\small")
+        lines.append(r"\caption{Behavioral probe results (per case).}")
+        lines.append(r"\label{tab:behavior_cases}")
+        # Use fixed-width columns for answers to avoid overflow.
+        lines.append(r"\begin{tabular}{@{}lccp{0.33\textwidth}p{0.33\textwidth}@{}}")
+        lines.append(r"\toprule")
+        lines.append(r"\textbf{Case} & \textbf{T} & \textbf{S} & \textbf{Teacher output} & \textbf{Student output} \\")
+        lines.append(r"\midrule")
+        for m in behavior.measurements:
+            cid = self._latex_escape(str(m.case_id))
+            tok = "1" if bool(m.teacher_ok) else "0"
+            sok = "1" if bool(m.student_ok) else "0"
+            tout = self._latex_escape(_trunc(str(m.teacher_answer)))
+            sout = self._latex_escape(_trunc(str(m.student_answer)))
+            # Use \texttt for outputs to preserve punctuation feel.
+            lines.append(
+                rf"{cid} & {tok} & {sok} & \texttt{{{tout}}} & \texttt{{{sout}}} \\"
+            )
+        lines.append(r"\bottomrule")
+        lines.append(r"\end{tabular}")
+        lines.append(r"\end{table}")
+        lines.append("")
+
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return path
 
     def _compute_summary(
         self,
@@ -193,6 +276,8 @@ class ArtifactGenerator:
         metadata: ExperimentMetadata,
         summary: ComparisonSummary,
         *,
+        teacher_accuracy: AccuracyResult | None = None,
+        student_accuracy: AccuracyResult | None = None,
         behavior: BehaviorResult | None = None,
         teacher_context: ContextResult | None = None,
         student_context: ContextResult | None = None,
@@ -203,6 +288,24 @@ class ArtifactGenerator:
         report = {
             "metadata": asdict(metadata),
             "summary": asdict(summary),
+            "accuracy": {
+                "teacher": (
+                    {
+                        "micro_accuracy": float(teacher_accuracy.micro_accuracy),
+                        "tasks": [asdict(t) for t in teacher_accuracy.tasks],
+                    }
+                    if teacher_accuracy is not None
+                    else None
+                ),
+                "student": (
+                    {
+                        "micro_accuracy": float(student_accuracy.micro_accuracy),
+                        "tasks": [asdict(t) for t in student_accuracy.tasks],
+                    }
+                    if student_accuracy is not None
+                    else None
+                ),
+            },
             "behavior": (
                 {
                     "benchmark_id": str(behavior.benchmark_id),
@@ -256,6 +359,8 @@ class ArtifactGenerator:
         student_latency: LatencyResult | None,
         teacher_memory: MemoryResult | None,
         student_memory: MemoryResult | None,
+        teacher_accuracy: AccuracyResult | None,
+        student_accuracy: AccuracyResult | None,
         behavior: BehaviorResult | None,
         teacher_context: ContextResult | None,
         student_context: ContextResult | None,
@@ -359,6 +464,28 @@ class ArtifactGenerator:
                             )
             paths["memory.csv"] = path
 
+        # Accuracy CSV (downstream tasks)
+        if teacher_accuracy is not None or student_accuracy is not None:
+            path = self.output_dir / "accuracy.csv"
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["model", "task", "split", "accuracy", "correct", "total"])
+                for result in [teacher_accuracy, student_accuracy]:
+                    if result is None:
+                        continue
+                    for t in result.tasks:
+                        writer.writerow(
+                            [
+                                result.model_name,
+                                t.task,
+                                t.split,
+                                f"{float(t.accuracy):.6f}",
+                                int(t.correct),
+                                int(t.total),
+                            ]
+                        )
+            paths["accuracy.csv"] = path
+
         # Behavior CSV
         if behavior is not None and behavior.measurements:
             path = self.output_dir / "behavior.csv"
@@ -392,34 +519,42 @@ class ArtifactGenerator:
             path = self.output_dir / "context_sweep_teacher.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(list(teacher_context.sweep[0].__dict__.keys()))
+                header = list(asdict(teacher_context.sweep[0]).keys())
+                writer.writerow(header)
                 for m in teacher_context.sweep:
-                    writer.writerow(list(m.__dict__.values()))
+                    row = asdict(m)
+                    writer.writerow([row[k] for k in header])
             paths["context_sweep_teacher.csv"] = path
         if student_context is not None and student_context.sweep:
             path = self.output_dir / "context_sweep_student.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(list(student_context.sweep[0].__dict__.keys()))
+                header = list(asdict(student_context.sweep[0]).keys())
+                writer.writerow(header)
                 for m in student_context.sweep:
-                    writer.writerow(list(m.__dict__.values()))
+                    row = asdict(m)
+                    writer.writerow([row[k] for k in header])
             paths["context_sweep_student.csv"] = path
 
         if teacher_context is not None and teacher_context.decode:
             path = self.output_dir / "context_decode_teacher.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(list(teacher_context.decode[0].__dict__.keys()))
+                header = list(asdict(teacher_context.decode[0]).keys())
+                writer.writerow(header)
                 for m in teacher_context.decode:
-                    writer.writerow(list(m.__dict__.values()))
+                    row = asdict(m)
+                    writer.writerow([row[k] for k in header])
             paths["context_decode_teacher.csv"] = path
         if student_context is not None and student_context.decode:
             path = self.output_dir / "context_decode_student.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(list(student_context.decode[0].__dict__.keys()))
+                header = list(asdict(student_context.decode[0]).keys())
+                writer.writerow(header)
                 for m in student_context.decode:
-                    writer.writerow(list(m.__dict__.values()))
+                    row = asdict(m)
+                    writer.writerow([row[k] for k in header])
             paths["context_decode_student.csv"] = path
 
         return paths
@@ -431,6 +566,8 @@ class ArtifactGenerator:
         student_latency: LatencyResult | None,
         teacher_memory: MemoryResult | None,
         student_memory: MemoryResult | None,
+        teacher_accuracy: AccuracyResult | None,
+        student_accuracy: AccuracyResult | None,
         behavior: BehaviorResult | None,
         teacher_context: ContextResult | None,
         student_context: ContextResult | None,
@@ -638,6 +775,39 @@ class ArtifactGenerator:
             plt.savefig(path, dpi=200, bbox_inches="tight")
             plt.close()
             paths["behavior_accuracy.png"] = path
+
+        # Accuracy by task (grouped bars).
+        if (teacher_accuracy is not None and teacher_accuracy.tasks) or (
+            student_accuracy is not None and student_accuracy.tasks
+        ):
+            try:
+                # Build aligned task list.
+                tmap = {t.task: t for t in (teacher_accuracy.tasks if teacher_accuracy else [])}
+                smap = {t.task: t for t in (student_accuracy.tasks if student_accuracy else [])}
+                tasks = sorted(set(tmap.keys()) | set(smap.keys()))
+                if tasks:
+                    fig, ax = plt.subplots(figsize=(max(6, 1.2 * len(tasks)), 4))
+                    x = list(range(len(tasks)))
+                    tw = 0.38
+                    tv = [float(tmap[k].accuracy) * 100.0 if k in tmap else 0.0 for k in tasks]
+                    sv = [float(smap[k].accuracy) * 100.0 if k in smap else 0.0 for k in tasks]
+                    ax.bar([i - tw / 2 for i in x], tv, width=tw, label="Teacher", color="#3498db")
+                    ax.bar([i + tw / 2 for i in x], sv, width=tw, label="Student (DBA)", color="#e74c3c")
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(tasks, rotation=30, ha="right")
+                    ax.set_ylabel("Accuracy (%) ↑")
+                    ax.set_title("Downstream task accuracy")
+                    ax.set_ylim(0, 100)
+                    ax.grid(True, axis="y", alpha=0.2)
+                    ax.legend()
+                    plt.tight_layout()
+                    p = self.output_dir / "accuracy_by_task.png"
+                    plt.savefig(p, dpi=200, bbox_inches="tight")
+                    plt.close()
+                    paths["accuracy_by_task.png"] = p
+            except Exception:
+                # Best-effort only.
+                pass
 
         # Context sweep plots (compat with paper names).
         def _plot_context_decode_one(*, ctx_result: ContextResult, name: str) -> Path | None:

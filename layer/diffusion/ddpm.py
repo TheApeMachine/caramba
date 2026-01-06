@@ -6,6 +6,8 @@ in a single forward pass.
 """
 from __future__ import annotations
 
+from typing import cast
+
 import torch
 from torch import Tensor
 
@@ -20,6 +22,8 @@ class DdpmSampler(DiffusionLayer):
     the manifest responsible for hyperparameters while runtime provides the
     conditioning tensors (masks/prompt) for a specific sampling call.
     """
+    alpha_bar: Tensor
+
     def __init__(
         self,
         config: DDPMLayerConfig,
@@ -28,7 +32,10 @@ class DdpmSampler(DiffusionLayer):
         alpha_bar: Tensor,
     ) -> None:
         super().__init__(config=config, model=model)
-        self.alpha_bar: Tensor = alpha_bar
+        self.register_buffer("alpha_bar", alpha_bar)
+        # Help type checkers: `nn.Module.__getattr__` is typed as Tensor|Module, but this
+        # attribute is always a Tensor buffer.
+        self.alpha_bar = cast(Tensor, self.alpha_bar)
 
     @torch.no_grad()
     def sampleEmbeddings(
@@ -61,8 +68,8 @@ class DdpmSampler(DiffusionLayer):
         for t_index in reversed(range(timesteps)):
             x, self_cond = self.ddpmStep(
                 x=x,
-                t_index=int(t_index),
-                batch_size=int(batch_size),
+                t_index=t_index,
+                batch_size=batch_size,
                 device=device,
                 target_pad_mask=target_pad_mask,
                 prompt_emb=prompt_emb,
@@ -158,5 +165,6 @@ class DdpmSampler(DiffusionLayer):
         mean = schedule["sqrt_recip_alpha"][t_index] * (
             x - schedule["betas"][t_index] / schedule["sqrt_one_minus_alpha_bar"][t_index] * eps
         )
-        x_next = mean + (schedule["betas"][t_index].sqrt() * torch.randn_like(x) if t_index > 0 else 0.0)
+        noise = torch.randn_like(x) if t_index > 0 else torch.zeros_like(x)
+        x_next = mean + schedule["betas"][t_index].sqrt() * noise
         return x_next, x0

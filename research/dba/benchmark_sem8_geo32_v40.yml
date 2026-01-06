@@ -17,7 +17,8 @@ defaults:
     wandb_mode: disabled
     eval_iters: 0
   runtime:
-    save_every: 0
+    # Schema requires positive; checkpoint_compare does no training anyway.
+    save_every: 1
     best_effort: true
 
 vars:
@@ -41,6 +42,8 @@ vars:
   sem_dim: 256
   geo_dim: 1024
   attn_dim: 1280
+  # Clarifies notes: value dim per head is derived from attn_dim / n_heads (=40 here).
+  v_head_dim: 40
 
   # --- Runtime ---
   device: mps
@@ -166,12 +169,16 @@ targets:
     runs:
       - id: eval
         mode: train
+        exp: benchmark_only
+        seed: 1337
         steps: 1
+        expected: {phase: standard}
         train:
           phase: standard
           batch_size: 1
           block_size: ${block_size}
-          lr: 0.0
+          # Schema requires positive; this run is a no-op for checkpoint_compare.
+          lr: 1.0e-9
           device: ${device}
           dtype: ${dtype}
     benchmarks:
@@ -252,9 +259,13 @@ targets:
         config:
           type: context
           dataset: ${dataset_path}
-          context_lengths: [2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072]
-          chunk_size: 1024
-          max_mask_elems: 32000000
+          # NOTE: this preset defaults to device=mps; avoid very large contexts that would
+          # materialize huge causal masks / KV caches and OOM. If running on CUDA, you can
+          # extend this list and increase max_mask_elems accordingly (≈ L^2 for full masks).
+          context_lengths: [2048, 4096, 8192]
+          chunk_size: 512
+          # Must be >= max(context_lengths)^2 when a full attention mask is built.
+          max_mask_elems: 80000000
           batch_size: 1
           decode_len: 128
           decode_warmup: 8

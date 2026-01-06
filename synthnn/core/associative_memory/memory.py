@@ -6,6 +6,7 @@ Public API wrapper that composes storage, dynamics, scoring, and serialization.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import numbers
 
 import numpy as np
 
@@ -58,12 +59,12 @@ class PhaseAssociativeMemory:
         """Store patterns and build derived structures."""
 
         storage = MemoryStorage(
-            num_units=int(self.num_units),
+            num_units=self.num_units,
             dtype=self.dtype,
-            node_prefix=str(self.node_prefix),
-            coupling_strength=float(self.coupling_strength),
-            damping=float(self.damping),
-            zero_diag=bool(self.zero_diag),
+            node_prefix=self.node_prefix,
+            coupling_strength=self.coupling_strength,
+            damping=self.damping,
+            zero_diag=self.zero_diag,
             math=self.math,
         )
         self.stored = storage.store(patterns=np.asarray(patterns), labels=labels)
@@ -84,21 +85,25 @@ class PhaseAssociativeMemory:
         """Recall a stored attractor from a cue."""
 
         stored = self.requireStored()
-        projection_eps = float(self.projection_eps) if self.projection_eps is not None else self.math.defaultProjectionEps(dtype=self.dtype)
-        cue_v = self.validateCue(cue=np.asarray(cue))
+        projection_eps_obj = self.projection_eps
+        if projection_eps_obj is None:
+            # __post_init__ should ensure projection_eps is set.
+            raise RuntimeError("projection_eps is not initialized")
+        projection_eps = float(projection_eps_obj)
+        cue_v = self.validateCue(cue=cue)
         known = self.validateMask(mask=mask)
         cue_ph = self.math.toPhasors(cue_v, dtype=self.dtype)
 
         dyn = MemoryDynamics(
-            num_units=int(self.num_units),
+            num_units=self.num_units,
             dtype=self.dtype,
-            projection_eps=float(projection_eps),
-            coupling_strength=float(self.coupling_strength),
-            damping=float(self.damping),
-            clamp_cue=bool(self.clamp_cue),
+            projection_eps=projection_eps,
+            coupling_strength=self.coupling_strength,
+            damping=self.damping,
+            clamp_cue=self.clamp_cue,
             clamp_alpha=self.clamp_alpha,
-            project_each_step=bool(self.project_each_step),
-            project_interval=int(self.project_interval),
+            project_each_step=self.project_each_step,
+            project_interval=self.project_interval,
             math=self.math,
         )
         dyn_res = dyn.settle(
@@ -106,17 +111,17 @@ class PhaseAssociativeMemory:
             known=known,
             weights=stored.weights,
             network=stored.network,
-            steps=int(steps),
-            dt=float(dt),
-            tol=float(tol),
-            patience=int(patience),
-            use_vectorized=bool(use_vectorized_dynamics),
+            steps=steps,
+            dt=dt,
+            tol=tol,
+            patience=patience,
+            use_vectorized=use_vectorized_dynamics,
         )
 
         scorer = MemoryScorer(
-            num_units=int(self.num_units),
+            num_units=self.num_units,
             dtype=self.dtype,
-            projection_eps=float(projection_eps),
+            projection_eps=projection_eps,
             label_prefix=self.label_prefix,
         )
         return scorer.finish(
@@ -124,31 +129,35 @@ class PhaseAssociativeMemory:
             labels=stored.labels,
             final_state=dyn_res.final_state,
             known=known,
-            snap=bool(snap),
-            rerank_top_k=int(rerank_top_k),
-            steps_run=int(dyn_res.steps_run),
-            converged=bool(dyn_res.converged),
-            mean_phase_delta=float(dyn_res.mean_phase_delta),
+            snap=snap,
+            rerank_top_k=rerank_top_k,
+            steps_run=dyn_res.steps_run,
+            converged=dyn_res.converged,
+            mean_phase_delta=dyn_res.mean_phase_delta,
         )
 
     def save(self, path: str) -> None:
         """Save memory to an npz artifact."""
 
         stored = self.requireStored()
-        projection_eps = float(self.projection_eps) if self.projection_eps is not None else self.math.defaultProjectionEps(dtype=self.dtype)
-        MemorySerializer().save(
+        projection_eps_obj = self.projection_eps
+        if projection_eps_obj is None:
+            # __post_init__ should ensure projection_eps is set.
+            raise RuntimeError("projection_eps is not initialized")
+        projection_eps = float(projection_eps_obj)
+        MemorySerializer.save(
             path=str(path),
-            num_units=int(self.num_units),
+            num_units=self.num_units,
             dtype=self.dtype,
-            coupling_strength=float(self.coupling_strength),
-            damping=float(self.damping),
-            zero_diag=bool(self.zero_diag),
-            clamp_cue=bool(self.clamp_cue),
-            project_each_step=bool(self.project_each_step),
-            projection_eps=float(projection_eps),
-            project_interval=int(self.project_interval),
+            coupling_strength=self.coupling_strength,
+            damping=self.damping,
+            zero_diag=self.zero_diag,
+            clamp_cue=self.clamp_cue,
+            project_each_step=self.project_each_step,
+            projection_eps=projection_eps,
+            project_interval=self.project_interval,
             clamp_alpha=self.clamp_alpha,
-            node_prefix=str(self.node_prefix),
+            node_prefix=self.node_prefix,
             label_prefix=self.label_prefix,
             stored=stored,
         )
@@ -157,18 +166,19 @@ class PhaseAssociativeMemory:
     def load(cls, path: str) -> "PhaseAssociativeMemory":
         """Load memory from an npz artifact."""
 
-        meta = MemorySerializer().load(path=str(path))
+        meta = MemorySerializer.load(path=str(path))
         num_units_obj = meta.get("num_units", None)
-        if not isinstance(num_units_obj, int):
-            raise TypeError("Serialized memory is missing int num_units.")
-        num_units = int(num_units_obj)
+        try:
+            num_units = int(num_units_obj)  # type: ignore[arg-type]
+        except (TypeError, ValueError) as e:
+            raise TypeError("Serialized memory is missing int num_units.") from e
         patterns = np.asarray(meta["patterns"])
         weights = np.asarray(meta["weights"])
         dtype = np.dtype(patterns.dtype)
         label_prefix_obj = meta.get("label_prefix", None)
         label_prefix = label_prefix_obj if isinstance(label_prefix_obj, str) else None
         clamp_alpha_obj = meta.get("clamp_alpha", None)
-        clamp_alpha = float(clamp_alpha_obj) if isinstance(clamp_alpha_obj, float) else None
+        clamp_alpha = float(clamp_alpha_obj) if isinstance(clamp_alpha_obj, numbers.Real) else None
         mem = cls(
             num_units=num_units,
             dtype=dtype,
@@ -184,12 +194,12 @@ class PhaseAssociativeMemory:
             node_prefix=str(meta["node_prefix"]),  # type: ignore[arg-type]
         )
         storage = MemoryStorage(
-            num_units=int(mem.num_units),
+            num_units=mem.num_units,
             dtype=mem.dtype,
-            node_prefix=str(mem.node_prefix),
-            coupling_strength=float(mem.coupling_strength),
-            damping=float(mem.damping),
-            zero_diag=bool(mem.zero_diag),
+            node_prefix=mem.node_prefix,
+            coupling_strength=mem.coupling_strength,
+            damping=mem.damping,
+            zero_diag=mem.zero_diag,
             math=mem.math,
         )
         net = storage.networkFromWeights(weights=weights.astype(mem.dtype, copy=False))

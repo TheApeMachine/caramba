@@ -5,7 +5,6 @@ Handles saving/loading PhaseAssociativeMemory state as an npz artifact.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -13,12 +12,14 @@ import numpy as np
 from synthnn.core.associative_memory.state import StoredMemory
 
 
-@dataclass(frozen=True, slots=True)
 class MemorySerializer:
     """Serialize stored memory + config."""
 
+    # Sentinel to preserve distinction between `None` and "" across roundtrips.
+    _LABEL_PREFIX_NONE_SENTINEL = "__SYNTHNN_NONE__"
+
+    @staticmethod
     def save(
-        self,
         *,
         path: str,
         num_units: int,
@@ -38,6 +39,11 @@ class MemorySerializer:
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         labels = [] if stored.labels is None else list(stored.labels)
+        label_prefix_out = (
+            MemorySerializer._LABEL_PREFIX_NONE_SENTINEL
+            if label_prefix is None
+            else str(label_prefix)
+        )
         np.savez_compressed(
             str(out),
             num_units=np.array([int(num_units)], dtype=np.int64),
@@ -52,12 +58,16 @@ class MemorySerializer:
             project_each_step=np.array([int(project_each_step)], dtype=np.int8),
             projection_eps=np.array([float(projection_eps)], dtype=np.float64),
             project_interval=np.array([int(project_interval)], dtype=np.int64),
-            clamp_alpha=np.array([(-1.0 if clamp_alpha is None else float(clamp_alpha))], dtype=np.float64),
+            # Clamp alpha: None is represented by absence of meaning via sentinel -1.0.
+            clamp_alpha=np.array(
+                [(-1.0 if clamp_alpha is None else float(clamp_alpha))], dtype=np.float64
+            ),
             node_prefix=np.array([str(node_prefix)], dtype=object),
-            label_prefix=np.array(["" if label_prefix is None else str(label_prefix)], dtype=object),
+            label_prefix=np.array([label_prefix_out], dtype=object),
         )
 
-    def load(self, *, path: str) -> dict[str, object]:
+    @staticmethod
+    def load(*, path: str) -> dict[str, object]:
         d = np.load(path, allow_pickle=True)
         num_units = int(np.asarray(d["num_units"]).reshape(-1)[0])
         patterns = np.asarray(d["patterns"])
@@ -65,10 +75,18 @@ class MemorySerializer:
         labels = None if not labels_raw else [str(x) for x in labels_raw]
         weights = np.asarray(d["weights"])
 
-        clamp_alpha_raw = float(np.asarray(d["clamp_alpha"]).reshape(-1)[0]) if "clamp_alpha" in d else -1.0
-        clamp_alpha = None if clamp_alpha_raw < 0 else float(clamp_alpha_raw)
-        label_prefix_raw = str(np.asarray(d["label_prefix"]).reshape(-1)[0]) if "label_prefix" in d else ""
-        label_prefix = None if not label_prefix_raw else label_prefix_raw
+        clamp_alpha_raw = (
+            float(np.asarray(d["clamp_alpha"]).reshape(-1)[0]) if "clamp_alpha" in d else -1.0
+        )
+        clamp_alpha = None if float(clamp_alpha_raw) == -1.0 else float(clamp_alpha_raw)
+        label_prefix_raw = (
+            str(np.asarray(d["label_prefix"]).reshape(-1)[0]) if "label_prefix" in d else ""
+        )
+        label_prefix = (
+            None
+            if label_prefix_raw == MemorySerializer._LABEL_PREFIX_NONE_SENTINEL
+            else label_prefix_raw
+        )
 
         return {
             "num_units": num_units,

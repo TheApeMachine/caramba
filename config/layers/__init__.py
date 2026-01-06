@@ -11,15 +11,14 @@ from caramba.config.layers.diffusion.ddpm import DDPMLayerConfig
 from caramba.config.layers.diffusion.ddim import DdimLayerConfig
 
 
-# Union type for any diffusion layer config, with automatic deserialization
+# Configs specific to diffusion layers; supports automatic deserialization into
+# concrete diffusion layer types via the layer factory/discriminated union.
 DiffusionLayerConfig: TypeAlias = Annotated[
     DDPMLayerConfig
     | DdimLayerConfig,
     Field(discriminator="type"),
 ]
 
-# Union type for any diffusion layer config, with automatic deserialization
-LayerConfig: TypeAlias = Annotated[
-    DiffusionLayerConfig,
-    Field(discriminator="type"),
-]
+# Broader union type for any layer config (including non-diffusion layers) used
+# by the layer factory/deserializer. Today this is identical to DiffusionLayerConfig.
+LayerConfig: TypeAlias = DiffusionLayerConfig

@@ -30,6 +30,25 @@ class SequentialPath(Path):
             state=state, memory=memory, gate_long=gate_long, gate_mem=gate_mem, chunk_size=1,
         )
 
+    def forward(self, *args: Tensor, **kwargs: Tensor) -> Tensor:
+        """Forward is not used; prefer `run(...)`.
+
+        This exists to satisfy the abstract `Path.forward` contract so the class is
+        instantiable. MOSAIC calls the explicit `run(...)` API.
+        """
+        _ = args
+        if kwargs:
+            delta, _out = self.run(  # type: ignore[arg-type]
+                u=kwargs["u"],
+                local=kwargs["local"],
+                st=kwargs["st"],  # type: ignore[typeddict-item]
+                routing=kwargs["routing"],  # type: ignore[typeddict-item]
+                write_mask=kwargs.get("write_mask", None),
+                opcode_ctrl=kwargs.get("opcode_ctrl", None),
+            )
+            return delta
+        raise RuntimeError("SequentialPath.forward is not used; call SequentialPath.run(...) instead.")
+
     def run(
         self,
         *,
@@ -72,8 +91,9 @@ class SequentialPath(Path):
         for t in range(T):
             u1 = u[:, t : t + 1, :]
             if bool(getattr(self.memory, "rmf_enabled", False)) and getattr(self.memory, "rmf", None) is not None:
-                routing_t = self.memory.compute_routing_step(u1, st, collect_aux=bool(routing.get("collect_aux", False)))
-                routing_t["collect_aux"] = bool(routing.get("collect_aux", False))
+                collect_aux = bool(routing.get("collect_aux", False))
+                routing_t = self.memory.compute_routing_step(u1, st, collect_aux=collect_aux)
+                routing_t["collect_aux"] = collect_aux
             else:
                 # Only slice tensors that actually carry a time dimension.
                 routing_t: dict[str, Any] = {}
@@ -109,7 +129,7 @@ class SequentialPath(Path):
     def read_with_opcode(self, *, u: Tensor, st: MosaicState, routing: dict[str, Any], opcode_ctrl: Tensor | None, t: int) -> Tensor:
         if isinstance(opcode_ctrl, Tensor) and int(MosaicOpcode.READ_MEM) < int(opcode_ctrl.size(-1)):
             rd = opcode_ctrl[:, t, int(MosaicOpcode.READ_MEM)]
-            if not bool((rd > 0).any()):
+            if not (rd > 0).any().item():
                 return torch.zeros((int(u.size(0)), 1, int(self.memory.mem_dim)), device=u.device, dtype=u.dtype)
             return self.memory.read(u, st, routing) * rd.view(int(u.size(0)), 1, 1)
         return self.memory.read(u, st, routing)
@@ -118,7 +138,7 @@ class SequentialPath(Path):
         if isinstance(opcode_ctrl, Tensor) and int(MosaicOpcode.WRITE_MEM) < int(opcode_ctrl.size(-1)):
             ws = opcode_ctrl[:, t, int(MosaicOpcode.WRITE_MEM)]
             return ws.view(int(B), 1)
-            
+
         return None
 
     def collect_routing_aux(self, route_parts: dict[str, list[Tensor]], routing_t: dict[str, Any]) -> None:

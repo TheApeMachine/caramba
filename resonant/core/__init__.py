@@ -5,8 +5,8 @@ These are the building blocks for Resonant Memory Fields (RMF):
 - `ResonantNetwork`: a coupled set of nodes / weight matrix
 """
 
-from synthnn.core.resonant_network import ResonantNetwork
-from synthnn.core.resonant_node import ResonantNode
+from resonant.core.resonant_network import ResonantNetwork
+from resonant.core.resonant_node import ResonantNode
 
 __all__ = ["ResonantNetwork", "ResonantNode"]
 

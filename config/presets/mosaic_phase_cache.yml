@@ -11,6 +11,11 @@ defaults:
   logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 0 }
   runtime: { save_every: 200, best_effort: false }
 
+vars:
+  # Single source of truth for both dataset slicing and training loop.
+  block_size: 128
+  batch_size: 1
+
 targets:
   - type: experiment
     name: mosaic_phase_cache_smoke
@@ -20,8 +25,8 @@ targets:
     data:
       ref: dataset.mosaic_memory_curriculum
       config:
-        block_size: 128
-        batch_size: 1
+        block_size: ${block_size}
+        batch_size: ${batch_size}
         seq_len: 128
         vocab_size: 256
         seed: 1
@@ -75,8 +80,8 @@ targets:
         expected: {}
         train:
           phase: standard
-          batch_size: 1
-          block_size: 128
+          batch_size: ${batch_size}
+          block_size: ${block_size}
           lr: 0.001
           device: cpu
           dtype: float32

@@ -1,4 +1,4 @@
-"""DBA layer setup
+"""DBA layer setup for the DBA (decoupled) variant
 
 This module is purely about constructing the learnable parts of a decoupled
 attention layer (projections, RoPE, gates, null tokens), keeping initialization
@@ -54,6 +54,9 @@ class DecoupledSetup:
         DBA uses separate Q/K projections for semantic and geometric channels,
         then uses a shared V projection; that split is the core structural
         difference from standard attention.
+
+        Precondition: `self.n_heads` must already be set, as it is used to
+        determine per-head projection shapes and related knobs.
         """
         d_model = int(config.d_model)
         if config.sem_dim is None or config.geo_dim is None:

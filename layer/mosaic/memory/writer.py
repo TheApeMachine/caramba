@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import torch
 from torch import Tensor, nn
@@ -49,6 +49,25 @@ class MemoryWriter:
     mem_trie_eta_decay: float
     mem_trie_max_levels: int | None
 
+    def __post_init__(self) -> None:
+        if self.mem_vsa_enabled:
+            if self.vsa_projector is None:
+                raise ValueError("mem_vsa_enabled is True but vsa_projector is None")
+            if self.vsa_novelty is None:
+                raise ValueError("mem_vsa_enabled is True but vsa_novelty is None")
+
+        if self.mem_trie_enabled:
+            if int(self.mem_buckets) < 2:
+                raise ValueError("mem_trie_enabled requires mem_buckets >= 2")
+            if int(self.mem_buckets) & (int(self.mem_buckets) - 1) != 0:
+                raise ValueError("mem_trie_enabled requires mem_buckets to be a power of two")
+            expected_table_buckets = int(2 * int(self.mem_buckets) - 1)
+            if int(self.mem_table_buckets) != expected_table_buckets:
+                raise ValueError(
+                    "mem_trie_enabled requires mem_table_buckets == 2 * mem_buckets - 1, "
+                    f"got mem_table_buckets={int(self.mem_table_buckets)} mem_buckets={int(self.mem_buckets)}"
+                )
+
     def write_chunk(
         self,
         u: Tensor,
@@ -78,9 +97,7 @@ class MemoryWriter:
 
             wk = self.mem_wkey(u)
             if self.mem_vsa_enabled:
-                if self.vsa_projector is None:
-                    raise RuntimeError("mem_vsa_enabled is True but vsa_projector is None")
-                wt = self.vsa_projector(wk)
+                wt = cast(VsaTagProjector, self.vsa_projector)(wk)
             else:
                 wt = torch.zeros((B, T, int(self.mem_tag_dim)), device=u.device, dtype=wk.dtype)
             v = self.mem_value(u)
@@ -161,10 +178,6 @@ class MemoryWriter:
     ) -> None:
         """Write to leaf node and its ancestors with geometric eta decay."""
         leaves = int(self.mem_buckets)
-        if leaves < 2:
-            return
-        if leaves & (leaves - 1) != 0:
-            raise ValueError("mem_trie_enabled requires mem_buckets (leaf count) to be a power of two")
         max_depth = int((leaves - 1).bit_length())
         if self.mem_trie_max_levels is not None:
             max_depth = min(max_depth, int(self.mem_trie_max_levels))

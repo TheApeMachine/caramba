@@ -77,7 +77,7 @@ targets:
                     mem_trie_eta_decay: 0.5
                     mem_trie_fallback_enabled: true
                     # Critical for MPS memory: cap ancestor writes (leaf + N parents).
-                    # 2 means write leaf + parent + grandparent (3 total nodes).
+                    # Zero-indexed: 2 means write levels 0, 1, and 2 (leaf + parent + grandparent; 3 total nodes).
                     mem_trie_max_levels: 2
 
                     mem_router: vq
@@ -131,7 +131,7 @@ targets:
     runs:
       - id: train
         mode: train
-        exp: mosaic_d1_full
+        exp: mosaic_d1_memory_full
         seed: 1337
         steps: 2000
         expected: {}

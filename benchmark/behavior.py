@@ -17,9 +17,9 @@ import yaml
 from torch import nn
 
 from caramba.config.benchmark import BehaviorBenchmarkConfig
-from caramba.config.eval import EvalCase
+from caramba.config.eval import EvalCase, EvalThresholds, EvalVerifyConfig
+from caramba.console import logger
 from caramba.eval.suite import run_eval_verify
-from caramba.config.eval import EvalThresholds, EvalVerifyConfig
 
 
 @dataclass
@@ -57,14 +57,16 @@ class BehaviorBenchmark:
         self.device = device
 
     def _load_cases(self) -> list[EvalCase]:
-        path = Path(str(self.config.cases_file))
+        path = Path(self.config.cases_file)
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not isinstance(payload, list) or not payload:
             raise ValueError("BehaviorBenchmark cases_file must be a non-empty YAML list")
         cases: list[EvalCase] = []
-        for item in payload:
+        for i, item in enumerate(payload):
             if not isinstance(item, dict):
-                raise TypeError("BehaviorBenchmark cases must be dict objects")
+                raise TypeError(
+                    f"BehaviorBenchmark cases must be dict objects, got {type(item)!r} at index {i}"
+                )
             cases.append(EvalCase.model_validate(item))
         return cases
 
@@ -95,5 +97,40 @@ class BehaviorBenchmark:
                     student_answer=str(r.student_answer),
                 )
             )
+
+        # Optional: print per-case outputs for insight/debugging.
+        if bool(getattr(self.config, "print_outputs", False)) and out.measurements:
+            max_chars = int(getattr(self.config, "print_max_chars", 160))
+            only_fail = bool(getattr(self.config, "print_only_failures", True))
+
+            def _trunc(s: str) -> str:
+                ss = str(s).replace("\r\n", "\n").replace("\r", "\n")
+                ss = ss.replace("\n", "\\n")
+                if len(ss) <= max_chars:
+                    return ss
+                return ss[: max(0, max_chars - 1)] + "…"
+
+            rows: list[list[str]] = []
+            for m in out.measurements:
+                disagree = bool(m.teacher_ok) != bool(m.student_ok)
+                any_wrong = (not bool(m.teacher_ok)) or (not bool(m.student_ok))
+                if only_fail and not (disagree or any_wrong):
+                    continue
+                rows.append(
+                    [
+                        str(m.case_id),
+                        "✓" if bool(m.teacher_ok) else "✗",
+                        "✓" if bool(m.student_ok) else "✗",
+                        _trunc(m.teacher_answer),
+                        _trunc(m.student_answer),
+                    ]
+                )
+            if rows:
+                logger.table(
+                    title=f"Behavior outputs • {benchmark_id}",
+                    columns=["case", "T", "S", "teacher_output", "student_output"],
+                    rows=rows,
+                )
+
         return out
 

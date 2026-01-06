@@ -7,6 +7,8 @@ from torch import Tensor, nn
 
 from caramba.diffusion.samplers import DdimSampler, DdpmSampler, GuidanceConfig
 
+VOCAB_SIZE = 8
+
 
 class DummyDiffusionModel(nn.Module):
     """Minimal diffusion model for sampler tests."""
@@ -24,7 +26,7 @@ class DummyDiffusionModel(nn.Module):
         _ = (t, target_pad_mask, self_cond, prompt_emb, prompt_pad_mask)
         pred_eps = torch.zeros_like(noisy_emb)
         x0 = torch.zeros_like(noisy_emb)
-        logits = torch.zeros(noisy_emb.shape[0], noisy_emb.shape[1], 8, device=noisy_emb.device)
+        logits = torch.zeros(noisy_emb.shape[0], noisy_emb.shape[1], VOCAB_SIZE, device=noisy_emb.device)
         return pred_eps, x0, logits
 
 
@@ -44,15 +46,19 @@ class TestSamplers:
     def test_ddpm_and_ddim_return_token_ids(self) -> None:
         device = torch.device("cpu")
         model: Any = DummyDiffusionModel()
-        alpha_bar = torch.linspace(1.0, 0.1, 8, device=device)
-        emb_w = torch.randn(8, 4, device=device)
+        alpha_bar = torch.linspace(1.0, 0.1, VOCAB_SIZE, device=device)
+        emb_w = torch.randn(VOCAB_SIZE, 4, device=device)
         cfg = GuidanceConfig(guidance_scale=1.0)
 
-        ddpm = DdpmSampler(model=model, alpha_bar=alpha_bar, timesteps=8, device=device, hidden_size=4)
+        ddpm = DdpmSampler(model=model, alpha_bar=alpha_bar, timesteps=VOCAB_SIZE, device=device, hidden_size=4)
         out_ddpm = ddpm.sample(batch_size=2, seq_len=6, target_pad_mask=None, prompt_emb=None, prompt_pad_mask=None, cfg=cfg, embedding_weight=emb_w)
         assert tuple(out_ddpm.shape) == (2, 6)
+        assert torch.all(out_ddpm >= 0)
+        assert torch.all(out_ddpm < emb_w.shape[0])
 
-        ddim = DdimSampler(model=model, alpha_bar=alpha_bar, timesteps=8, device=device, hidden_size=4, steps=4, eta=0.0)
+        ddim = DdimSampler(model=model, alpha_bar=alpha_bar, timesteps=VOCAB_SIZE, device=device, hidden_size=4, steps=4, eta=0.0)
         out_ddim = ddim.sample(batch_size=2, seq_len=6, target_pad_mask=None, prompt_emb=None, prompt_pad_mask=None, cfg=cfg, embedding_weight=emb_w)
         assert tuple(out_ddim.shape) == (2, 6)
+        assert torch.all(out_ddim >= 0)
+        assert torch.all(out_ddim < emb_w.shape[0])
 

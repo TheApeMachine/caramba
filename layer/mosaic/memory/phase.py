@@ -64,10 +64,29 @@ class PhaseSimilarity(nn.Module):
             raise ValueError(f"q_angles must be (B,T,N), got {tuple(q_angles.shape)}")
         if k_angles.ndim != 5:
             raise ValueError(f"k_angles must be (B,H,T,A,N), got {tuple(k_angles.shape)}")
+        if int(batch) != int(q_angles.size(0)) or int(time) != int(q_angles.size(1)):
+            raise ValueError(
+                "PhaseSimilarity.score batch/time mismatch: "
+                f"batch={int(batch)} time={int(time)} q_angles.shape={tuple(q_angles.shape)}"
+            )
         if int(q_angles.size(-1)) != int(self.phase_dim):
             raise ValueError("q_angles last dim must match phase_dim")
         if int(k_angles.size(-1)) != int(self.phase_dim):
             raise ValueError("k_angles last dim must match phase_dim")
+        if int(k_angles.size(0)) != int(q_angles.size(0)) or int(k_angles.size(2)) != int(q_angles.size(1)):
+            raise ValueError(
+                "PhaseSimilarity.score expects matching B and T: "
+                f"q_angles.shape={tuple(q_angles.shape)} k_angles.shape={tuple(k_angles.shape)}"
+            )
+
+        expected_out_shape = (int(q_angles.size(0)), int(k_angles.size(1)), int(q_angles.size(1)), int(k_angles.size(3)))
+        try:
+            torch.broadcast_shapes(tuple(valid.shape), expected_out_shape)
+        except Exception as e:
+            raise ValueError(
+                "PhaseSimilarity.score valid mask is not broadcastable to output. "
+                f"valid.shape={tuple(valid.shape)} expected_out_shape={expected_out_shape}"
+            ) from e
 
         cq = torch.cos(q_angles).view(batch, 1, time, 1, self.phase_dim)
         sq = torch.sin(q_angles).view(batch, 1, time, 1, self.phase_dim)

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from synthnn.core.associative_memory.types import RecallResult
+from synthnn.core.associative_memory.types import RecallResult, SelectionMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +21,11 @@ class MemoryScorer:
     dtype: np.dtype
     projection_eps: float
     label_prefix: str | None
+
+    def __post_init__(self) -> None:
+        dtype = np.dtype(self.dtype)
+        if not np.issubdtype(dtype, np.complexfloating):
+            raise TypeError(f"MemoryScorer dtype must be complex, got {dtype}")
 
     def finish(
         self,
@@ -44,14 +49,20 @@ class MemoryScorer:
         scores = np.abs(dots) / float(denom)
 
         masked_scores: np.ndarray | None = None
-        selection = "full"
+        selection: SelectionMode = "full"
         best_idx = int(np.argmax(scores)) if scores.size else None
         if int(rerank_top_k) > 0 and np.any(~known) and int(np.sum(known)) > 0:
-            selection, best_idx, masked_scores = self.rerank(patterns=patterns, final_state=final_state, known=known, scores=scores, top_k=int(rerank_top_k))
+            selection, best_idx, masked_scores = self.rerank(
+                patterns=patterns,
+                final_state=final_state,
+                known=known,
+                scores=scores,
+                top_k=int(rerank_top_k),
+            )
 
         label = self.labelOf(labels=labels, index=best_idx)
         best_score = float(scores[best_idx]) if best_idx is not None else 0.0
-        if selection.startswith("rerank") and masked_scores is not None and best_idx is not None:
+        if selection != "full" and masked_scores is not None and best_idx is not None:
             best_score = float(masked_scores[best_idx])
 
         snapped = self.snap(patterns=patterns, final_state=final_state, index=best_idx) if bool(snap) else None
@@ -61,7 +72,7 @@ class MemoryScorer:
             score=float(best_score),
             scores=scores,
             masked_scores=masked_scores,
-            selection=str(selection),
+            selection=selection,
             final_state=final_state,
             snapped_state=snapped,
             steps_run=int(steps_run),
@@ -77,7 +88,7 @@ class MemoryScorer:
         known: np.ndarray,
         scores: np.ndarray,
         top_k: int,
-    ) -> tuple[str, int, np.ndarray]:
+    ) -> tuple[SelectionMode, int, np.ndarray]:
         m = int(np.sum(known))
         v_known = final_state.copy()
         v_known[~known] = self.dtype.type(0.0 + 0.0j)
@@ -97,7 +108,9 @@ class MemoryScorer:
             return None
         p = patterns[int(index)]
         ph = np.vdot(p, final_state)
-        if ph == 0:
+        # Treat near-zero inner products as zero to avoid noisy rotations.
+        eps = float(np.finfo(np.dtype(np.float32)).eps)
+        if np.isclose(np.abs(ph), 0.0, atol=eps, rtol=0.0):
             rot = self.dtype.type(1.0 + 0.0j)
         else:
             rot = np.exp(1j * np.angle(ph)).astype(self.dtype, copy=False)

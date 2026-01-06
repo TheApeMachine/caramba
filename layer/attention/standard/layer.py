@@ -91,7 +91,7 @@ class StandardAttentionLayer(AttentionBase):
         *,
         qh: Tensor,
         mask: Tensor | None,
-        cache: "LayerKVCache | None",
+        cache: LayerKVCache | None,
         q_chunk: int | None,
         local_window: int | None,
         T: int,
@@ -111,12 +111,12 @@ class StandardAttentionLayer(AttentionBase):
         x: Tensor,
         *,
         mask: Tensor | None,
-        cache: "LayerKVCache | None",
+        cache: LayerKVCache | None,
         pos_offset: int,
         ctx: object | None = None,
         q_chunk_override: int | None = None,
         local_window_override: int | None = None,
-    ) -> tuple[Tensor, "LayerKVCache | None"]:
+    ) -> tuple[Tensor, LayerKVCache | None]:
         """Compute standard attention output
 
         The output is a weighted sum of values, where weights come from a

@@ -5,6 +5,7 @@
 
 - id: copy_fewshot_spaces
   kind: exact_match_greedy
+  match: first_line
   prompt: |
     Input: 1 2 3. Output: 1 2 3.
     Input: Red Green Blue. Output: Red Green Blue.
@@ -13,59 +14,85 @@
 
 - id: copy_fewshot_commas
   kind: exact_match_greedy
+  match: first_line
   prompt: |
     Input: 1, 2, 3. Output: 1, 2, 3.
     Input: Red, Green, Blue. Output: Red, Green, Blue.
     Input: A7, B4, C9, D2. Output:
   answer: "A7, B4, C9, D2."
 
+- id: copy_semantic_collision
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Input: Apple Banana Cherry. Output: Apple Banana Cherry.
+    Input: Monday Tuesday Wednesday. Output: Monday Tuesday Wednesday.
+    Input: King Queen Prince. Output:
+  # If d_sem is too small, sibling concepts may collapse (semantic collision).
+  answer: "King Queen Prince."
+
 - id: repeat_exact
   kind: exact_match_greedy
+  match: first_line
   prompt: |
-    Repeat exactly the following text and nothing else:
-    A7 B4 C9 D2.
-    Answer:
+    Text: 1 2 3.
+    Copy: 1 2 3.
+    Text: Red Green Blue.
+    Copy: Red Green Blue.
+    Text: A7 B4 C9 D2.
+    Copy:
   answer: "A7 B4 C9 D2."
 
 - id: repeat_exact_with_quotes
   kind: exact_match_greedy
+  match: first_line
   prompt: |
-    Repeat exactly the following text and nothing else:
-    "A7 B4 C9 D2."
-    Answer:
+    Text: "Hello."
+    Copy: "Hello."
+    Text: "A7 B4 C9 D2."
+    Copy:
   answer: "\"A7 B4 C9 D2.\""
 
 - id: copy_table_row
   kind: exact_match_greedy
+  match: first_line
   prompt: |
-    Copy the next line exactly (including punctuation):
-    | A7 | B4 | C9 | D2 |
-    Answer:
+    Row: | A1 | B2 | C3 | D4 |
+    Copy: | A1 | B2 | C3 | D4 |
+    Row: | A7 | B4 | C9 | D2 |
+    Copy:
   answer: "| A7 | B4 | C9 | D2 |"
 
 - id: arithmetic_add
   kind: int_greedy
-  prompt: "Compute: 17 + 25 ="
+  prompt: |
+    3 + 4 = 7
+    12 + 8 = 20
+    17 + 25 =
   answer: 42
 
 - id: arithmetic_mul
   kind: int_greedy
-  prompt: "Compute: 9 * 7 ="
+  prompt: |
+    2 * 3 = 6
+    4 * 5 = 20
+    9 * 7 =
   answer: 63
 
 - id: arithmetic_sub_neg
   kind: int_greedy
-  prompt: "Compute: 7 - 19 ="
+  prompt: |
+    5 - 8 = -3
+    10 - 12 = -2
+    7 - 19 =
   answer: -12
 
 - id: passkey_choice_logprob
   kind: choice_logprob
   prompt: |
-    Read carefully:
     The passkey is 73921.
-    Question: What is the passkey?
-    Answer:
-  choices: ["73921", "73912", "79321", "73922"]
+    The passkey is
+  choices: ["73912", "79321", "73921", "73922"]
   answer: "73921"
 
 - id: passkey_choice_logprob_distractors
@@ -73,8 +100,114 @@
   prompt: |
     The passkey is 12057.
     The following numbers are not the passkey: 12075, 10257, 01257.
-    Question: What is the passkey?
-    Answer:
-  choices: ["12057", "12075", "10257", "01257"]
+    The passkey is
+  choices: ["12075", "12057", "10257", "01257"]
   answer: "12057"
+
+- id: copy_brackets
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    X -> [A1|B2|C3]
+    X -> [K9|Q8|P7]
+    X -> [A7|B4|C9]
+    X ->
+  answer: "[A7|B4|C9]"
+
+- id: copy_json_field
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    {"id": 1, "key": "alpha"} -> alpha
+    {"id": 2, "key": "beta"} -> beta
+    {"id": 3, "key": "gamma"} ->
+  answer: "gamma"
+
+- id: pattern_next_token
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Sequence: A B C D E
+    Next: F
+    Sequence: 1 2 3 4 5
+    Next: 6
+    Sequence: K L M N O
+    Next:
+  answer: "P"
+
+- id: parity_choice
+  kind: choice_logprob
+  prompt: |
+    17 is odd.
+    18 is even.
+    19 is
+  choices: [" odd.", " even."]
+  answer: " odd."
+
+- id: simple_analogy_choice
+  kind: choice_logprob
+  prompt: |
+    hot : cold
+    up : down
+    in :
+  choices: [" out", " under", " near", " around"]
+  answer: " out"
+
+- id: short_factual_choice
+  kind: choice_logprob
+  prompt: |
+    The capital of France is Paris.
+    The capital of France is
+  choices: [" Paris", " London", " Berlin", " Madrid"]
+  answer: " Paris"
+
+- id: count_commas_int
+  kind: int_greedy
+  prompt: |
+    Items: A, B, C -> 3
+    Items: A, B -> 2
+    Items: A, B, C, D, E ->
+  answer: 5
+
+- id: arithmetic_add_2
+  kind: int_greedy
+  prompt: |
+    100 + 23 = 123
+    50 + 7 = 57
+    81 + 19 =
+  answer: 100
+
+- id: arithmetic_mul_2
+  kind: int_greedy
+  prompt: |
+    3 * 3 = 9
+    6 * 6 = 36
+    8 * 8 =
+  answer: 64
+
+- id: arithmetic_sub_2
+  kind: int_greedy
+  prompt: |
+    10 - 3 = 7
+    12 - 5 = 7
+    20 - 7 =
+  answer: 13
+
+- id: spelling_choice
+  kind: choice_logprob
+  prompt: |
+    cat -> c a t
+    dog -> d o g
+    sun -> s u
+  choices: [" n", " m", " r", " t"]
+  answer: " n"
+
+- id: closing_paren
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    (A7 B4 C9 D2) -> (A7 B4 C9 D2)
+    (K1 Q2 P3) -> (K1 Q2 P3)
+    (X9 Y8 Z7 ->
+  answer: "(X9 Y8 Z7)"
 

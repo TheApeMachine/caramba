@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from caramba.config import PositiveFloat, PositiveInt, Probability
-from caramba.config.eval import TokenizerConfig
+from caramba.config.eval import TiktokenTokenizerConfig, TokenizerConfig
 from caramba.config.kvcache import KVCacheConfig
 
 
@@ -98,8 +98,18 @@ class AccuracyBenchmarkConfig(BaseModel):
 
     type: Literal[BenchmarkType.ACCURACY] = BenchmarkType.ACCURACY
     tasks: list[str]
+    # Text tokenizer used to encode prompts/choices for scoring.
+    # Default matches the paper's GPT-style experiments.
+    tokenizer: TokenizerConfig = Field(default_factory=lambda: TiktokenTokenizerConfig(encoding="gpt2"))
     num_fewshot: PositiveInt = 0
     limit: PositiveInt | None = None
+    # Optional sliding context window for scoring long prompts.
+    context_window: PositiveInt | None = None
+    # Optional: print a small number of examples per task for insight.
+    # This does not affect scoring, only console output.
+    print_examples: PositiveInt = 0
+    print_only_incorrect: bool = True
+    print_max_chars: PositiveInt = 240
 
 
 class GenerationBenchmarkConfig(BaseModel):
@@ -130,6 +140,12 @@ class BehaviorBenchmarkConfig(BaseModel):
     cases_file: str
     max_new_tokens: PositiveInt = 32
     context_window: PositiveInt | None = None
+    # Optional: print per-case outputs to console for debugging/insight.
+    print_outputs: bool = False
+    # If true, only print cases where either model is wrong or they disagree.
+    print_only_failures: bool = True
+    # Truncate printed outputs to keep logs readable.
+    print_max_chars: PositiveInt = 160
 
 
 class ContextBenchmarkConfig(BaseModel):
@@ -159,6 +175,9 @@ class ContextBenchmarkConfig(BaseModel):
     decode_warmup: PositiveInt = 8
     # KV cache config for the benchmark run.
     cache_kind: str = "fp16"
+    # Optional explicit KV-cache policy (enables heterogeneous DBA caching).
+    # If provided, it overrides cache_kind/qblock/residual_len behavior in the generator.
+    cache_policy: KVCacheConfig | None = None
 
 
 # Union of all benchmark config types

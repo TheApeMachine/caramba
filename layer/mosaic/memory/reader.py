@@ -37,6 +37,9 @@ class MemoryReader:
     mem_assoc: int
     mem_hashes: int
     mem_buckets: int
+    # `mem_buckets` is the number of leaf buckets (routing space). `mem_table_buckets`
+    # is the physical table size (state space): in trie mode it includes internal nodes
+    # (e.g., `mem_table_buckets = 2 * mem_buckets - 1`), otherwise it equals `mem_buckets`.
     mem_table_buckets: int
     mem_read_temp: float
     mem_vsa_weight: float
@@ -121,8 +124,13 @@ class MemoryReader:
         Returns:
             (idx_final, valid_final, steps) where:
             - idx_final: (B,H,T) final node index after fallback
-            - valid_final: (B,H,T,A) validity mask for that node's slots
+            - valid_final: (B,H,T,A) validity mask for that node's slots. Slots are
+              considered valid when `mem_last` is non-negative (`bl >= 0`).
             - steps: (B,H,T) number of parent steps taken
+
+        Notes:
+            - The root is a fixed point: when `cur == 0`, `parent` stays 0 via `torch.where`,
+              so fallback cannot walk past the root.
         """
         if int(self.mem_buckets) < 2:
             raise ValueError("Trie requires mem_buckets (leaf count) >= 2")

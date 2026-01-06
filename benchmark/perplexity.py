@@ -80,6 +80,7 @@ class PerplexityBenchmark:
         total_loss = 0.0
         total_tokens = 0
         num_batches = 0
+        warned_max_failed = False
 
         with torch.no_grad():
             for batch in loader:
@@ -90,15 +91,28 @@ class PerplexityBenchmark:
                 # This frequently indicates a tokenizer mismatch (e.g. GPT-family tokens
                 # evaluated with a Llama-family model), which makes perplexity meaningless.
                 try:
-                    mx = int(torch.maximum(x.max(), y.max()).item())
+                    # NOTE: on MPS, reductions on int64 (torch.long) can raise for some ops.
+                    # We only need this check for control-flow, so do it on CPU to avoid
+                    # spamming warnings and to keep the guard effective on all backends.
+                    mx = int(
+                        torch.maximum(
+                            x.detach().to(device="cpu").max(),
+                            y.detach().to(device="cpu").max(),
+                        ).item()
+                    )
                     if mx >= int(vocab_size):
                         raise ValueError(
                             f"Dataset token IDs exceed model vocab: max_id={mx}, vocab_size={vocab_size}. "
                             "This usually means the dataset was tokenized with a different tokenizer than the model."
                         )
-                except Exception:
+                except Exception as e:
                     # If max() fails for some reason, continue and let cross_entropy raise.
-                    logger.warning("Max() failed, continuing and letting cross_entropy raise")
+                    if not warned_max_failed:
+                        warned_max_failed = True
+                        logger.warning(
+                            f"Max() failed in vocab guard ({type(e).__name__}: {e}); "
+                            "continuing and letting cross_entropy raise"
+                        )
 
                 logits = model(x)
 

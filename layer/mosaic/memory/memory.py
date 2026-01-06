@@ -106,6 +106,12 @@ class MosaicMemory(nn.Module):
         if self.rmf_weight < 0.0:
             raise ValueError("rmf_weight must be >= 0")
 
+        # Ensure enabled flags match actual module construction: when the corresponding
+        # weight is zero, downstream components should not see enabled=True while the
+        # module is None.
+        self.mem_phase_enabled = bool(self.mem_phase_enabled and float(self.mem_phase_weight) != 0.0)
+        self.rmf_enabled = bool(self.rmf_enabled and float(self.rmf_weight) != 0.0)
+
         self.mem_qkey = nn.Linear(int(d_model), int(self.mem_key_dim), bias=False)
         self.mem_wkey = nn.Linear(int(d_model), int(self.mem_key_dim), bias=False)
         self.mem_value = nn.Linear(int(d_model), int(self.mem_dim), bias=False)
@@ -128,7 +134,7 @@ class MosaicMemory(nn.Module):
 
         self.phase_projector: PhaseTagProjector | None = None
         self.phase_similarity: PhaseSimilarity | None = None
-        if self.mem_phase_enabled and float(self.mem_phase_weight) != 0.0:
+        if self.mem_phase_enabled:
             self.phase_projector = PhaseTagProjector(
                 in_dim=int(self.mem_key_dim),
                 phase_dim=int(self.mem_phase_dim),
@@ -137,7 +143,7 @@ class MosaicMemory(nn.Module):
             self.phase_similarity = PhaseSimilarity(phase_dim=int(self.mem_phase_dim))
 
         self.rmf: ResonantMemoryField | None = None
-        if self.rmf_enabled and float(self.rmf_weight) != 0.0:
+        if self.rmf_enabled:
             self.rmf = ResonantMemoryField(
                 buckets=int(self.mem_buckets),
                 rmf_dim=int(self.rmf_dim),

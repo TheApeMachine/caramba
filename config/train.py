@@ -128,8 +128,16 @@ class TrainConfig(BaseModel):
     amp_dtype: str = "float16"
     gradient_accumulation_steps: PositiveInt = 1
     # Gradient clipping (L2 norm). 0 disables.
-    # This is especially useful for stabilizing occasional spikes at high LR
-    # (e.g. right after warmup) without changing the LR schedule.
+    #
+    # Relationship to `blockwise_grad_clip_norm`:
+    # - During the BLOCKWISE phase, `blockwise_grad_clip_norm` applies per-block clipping.
+    # - During the GLOBAL/STANDARD phase, `grad_clip_norm` applies global L2-norm clipping.
+    #
+    # Both `blockwise_grad_clip_norm` and `grad_clip_norm` may be set, but only the
+    # clipping mode active for the current training phase will be used. Precedence is
+    # phase-specific: if both are non-zero, the phase-specific parameter takes effect.
+    # If training switches between phases, the respective parameter is used after the
+    # switch.
     grad_clip_norm: NonNegativeFloat = 0.0
     num_workers: NonNegativeInt = 0
     pin_memory: bool = False
@@ -192,9 +200,19 @@ class TrainConfig(BaseModel):
     # -----------------------------
     # MOSAIC write warmup (garbage-control experiments)
     # -----------------------------
-    # If > 0, disable memory writes for the first N *training steps* by forcing
-    # write_mask=0 in the MOSAIC block. This isolates the effect of early random
-    # writes ("garbage") from the rest of learning.
+    # Experimental / research flag (not production-ready): if > 0, disable memory
+    # writes for the first N *training steps* by forcing write_mask=0 in the MOSAIC
+    # block. This isolates the effect of early random writes ("garbage") from the
+    # rest of learning. Default: 0 (no warmup; writes enabled immediately).
+    #
+    # Edge cases:
+    # - If `mosaic_write_warmup_steps` exceeds total training steps, writes will be
+    #   disabled for the entire run.
+    #
+    # Interaction with `mosaic_teacher_p_warmup_steps`:
+    # - Both warmups are keyed off the same global training step and run concurrently.
+    # - During the overlap, teacher-mixing p_t is still scheduled as configured, but
+    #   writes remain forced-off until `mosaic_write_warmup_steps` elapses.
     mosaic_write_warmup_steps: NonNegativeInt = 0
 
     # Orchestrator settings (dynamic optimizer switching)

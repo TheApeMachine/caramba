@@ -221,7 +221,7 @@ python -m caramba.cli run config/presets/dba_paper_rerun.yml --target baseline
 Training uses a large tokenized FineWeb-Edu dump (\texttt{fineweb\_20b.npy}; \(\sim\)20B tokens). For lightweight post-hoc evaluation on local hardware we use smaller token shards from the same pipeline: \texttt{fineweb\_100m.npy} and \texttt{fineweb\_1b.npy}.
 
 \paragraph{Evaluation and artifacts (this paper).}
-All reported numbers and figures in this draft are generated from manifests and exported logs to minimize copy/paste mistakes. We use a local benchmark harness (Section~3; \path{research/dba/benchmark.yml} and variants) for paired checkpoint comparisons; it writes plots/tables into \path{research/dba/} via \texttt{artifacts\_dir} to avoid manual copying.
+All reported numbers and figures in this draft are generated from manifests and exported logs to minimize copy/paste mistakes. We use a local benchmark harness (Section~3; \path{research/dba/benchmark.yml} and variants) for paired checkpoint comparisons; it writes plots/tables into \path{research/dba/} via \texttt{artifacts\_dir} to avoid manual copying. For behavioral probes (identity retention and semantic collision), we include per-case teacher/student outputs as a generated appendix table when available (Appendix~\ref{app:behavior_cases}).
 
 \paragraph{Training dynamics (A100; 1B; 10k steps).}
 Figure~\ref{fig:a100_training_curves} summarizes the training loss and a perplexity proxy (computed as $\exp(\text{loss})$) for the A100 rerun (\texttt{baseline} vs.\ \texttt{decoupled}). These plots are generated directly from the exported W\&B CSV in \path{research/dba/} to avoid manual copy errors.
@@ -255,6 +255,18 @@ Figure~\ref{fig:a100_training_curves} summarizes the training loss and a perplex
 \IfFileExists{A100-1b-10k-training_summary.tex}{
   \input{\detokenize{A100-1b-10k-training_summary.tex}}
 }{}
+
+\paragraph{Optimization stability note (warmup boundary).}
+In early decoupled runs we observed transient loss spikes at the end of LR warmup (peak LR), even when the overall training curve matched the baseline. In the current reruns we mitigate this by using a more conservative peak LR for the decoupled configuration, adding gradient clipping, and applying small implementation-level compensations for the decoupled bottleneck. For transparency, we include a diagnostic plot (loss min/max band and LR) when available:
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{A100-1b-10k-warmup_spikes.png}{
+  \includegraphics[width=0.9\textwidth]{\detokenize{A100-1b-10k-warmup_spikes.png}}
+}{}
+\caption{Warmup-boundary diagnostic: loss (with min/max envelope when logged) and learning-rate schedule.}
+\label{fig:warmup_spikes}
+\end{figure}
 
 \paragraph{Planned: A100 1B 100k-step runs.}
 After the 10k-step pilot completes, we will run the full 100k-step baseline vs.\ decoupled comparison under the same manifest discipline (\path{config/presets/dba_paper_rerun.yml}). The corresponding plots/tables will be generated in the same way (exported logs $\rightarrow$ \path{research/dba/} artifacts), and the results section below will be updated to reference the 100k outputs once available.
@@ -535,6 +547,15 @@ This appendix reserves space for empirical effective-rank measurements of Q/K pr
 \label{app:decoupled_ablations}
 
 This appendix reserves space for DBA ablations (null token, tied Q--K, RoPE variants, semantic/geometric dimension splits), executed under the same manifest-driven discipline and reported via \path{research/dba/benchmark.yml}.
+
+\section{Behavioral Probe Cases (Per-Case Outputs)}
+\label{app:behavior_cases}
+
+For transparency, we include a per-case table of behavioral probes (teacher vs.\ student pass/fail, plus a truncated preview of each model's output). This table is generated automatically by the benchmark harness and included here via \texttt{\textbackslash input} when present.
+
+\IfFileExists{behavior_cases_table.tex}{
+  \input{\detokenize{behavior_cases_table.tex}}
+}{}
 
 \section{Long-Context Sweep (Up to 131{,}072 Tokens)}
 \label{app:long_context_sweep}

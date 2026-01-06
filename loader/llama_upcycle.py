@@ -316,11 +316,9 @@ class LlamaUpcycle:
 
         # Fill semantic (first sem_dim rows).
         sem_rows = min(int(sem_dim), int(rank))
+        sem_weight.data.zero_()
         if sem_rows > 0:
-            sem_weight.data.zero_()
             sem_weight.data[:sem_rows, :].copy_(Wr[:sem_rows, :].to(dtype=sem_weight.dtype))
-        else:
-            sem_weight.data.zero_()
 
         # Fill geometric (next geo_dim rows after sem_dim).
         geo_start = int(sem_dim)

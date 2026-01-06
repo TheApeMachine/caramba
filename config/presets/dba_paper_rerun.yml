@@ -64,10 +64,10 @@ vars:
   prefetch_factor: 4
   pin_memory: true
   lr: 3.0e-4
-  # DBA is more sensitive to peak LR; using baseline LR often produces a spike
-  # when warmup ends (peak LR). Keep baseline at lr, but run decoupled at a
-  # slightly lower peak LR.
-  lr_decoupled: 2.0e-4
+  # Paper parity: keep baseline vs DBA on the *same* LR to avoid confounds.
+  # If you intentionally want a stability ablation (different peak LR), override
+  # lr_decoupled explicitly and document it in your experiment notes.
+  lr_decoupled: ${lr}
   weight_decay: 0.1
   optimizer: adamw
   fused_optimizer: true
@@ -202,9 +202,10 @@ targets:
                         d_model: ${d_model}
                         n_heads: ${n_heads}
                         mode: decoupled
-                        # Debug/stability: force SDPA training path (bypass Triton DBA training kernel).
-                        # If this removes the warmup-boundary loss spike, the kernel is the culprit.
-                        dba_train_backend: sdpa
+                        # Paper backend: use the Triton DBA training kernel when eligible (CUDA train path).
+                        # Rationale: avoids the SDPA concat path and is the intended fast training backend.
+                        # If you need maximum numerical conservatism for debugging, set `sdpa`.
+                        dba_train_backend: triton
                         attn_dim: ${attn_dim}
                         sem_dim: ${sem_dim}
                         geo_dim: ${geo_dim}
@@ -246,7 +247,7 @@ targets:
           phase: standard
           batch_size: ${batch_size}
           block_size: ${block_size}
-          lr: ${lr_decoupled}
+          lr: ${lr}
           device: ${device}
           dtype: ${dtype}
           gradient_accumulation_steps: ${grad_accum}

@@ -37,7 +37,9 @@ class PhasorMath:
 
         x = np.asarray(x)
         if np.iscomplexobj(x):
-            return self.normalizeComplex(x=x, dtype=dtype)
+            return self.normalizeComplex(
+                x=x, dtype=dtype, eps=self.defaultProjectionEps(dtype=dtype)
+            )
         angles = x.astype(np.float64, copy=False)
         out = np.exp(1j * angles)
         return out.astype(dtype, copy=False)
@@ -78,6 +80,8 @@ class PhasorMath:
         """Choose a practical eps based on complex dtype."""
 
         dtype = np.dtype(dtype)
+        if not np.issubdtype(dtype, np.complexfloating):
+            raise TypeError(f"dtype must be complex, got {dtype}")
         if dtype == np.dtype(np.complex64):
             return float(self.projection_eps_c64)
         return float(self.projection_eps_c128)

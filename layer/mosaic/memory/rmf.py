@@ -85,10 +85,7 @@ class ResonantMemoryField(nn.Module):
         re = field[:, :, 0]
         im = field[:, :, 1]
         n = torch.sqrt(re * re + im * im).clamp_min(1e-6)
-        out = field.clone()
-        out[:, :, 0] = re / n
-        out[:, :, 1] = im / n
-        return out
+        return field / n.unsqueeze(-1)
 
     def routing_delta(self, *, field: Tensor) -> Tensor:
         """Compute a (B, key_dim) delta for routing key/tag space."""

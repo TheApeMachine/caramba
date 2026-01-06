@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import torch
-from torch import nn
 
 from caramba.carmath import weight_dtype
 from caramba.compiler.lower import Lowerer
@@ -155,18 +154,20 @@ class CheckpointCompareTrainer:
         logger.info(f"Loading teacher checkpoint: {t_path}")
         t_sd = _safe_load_checkpoint(t_path, unsafe_pickle_load=self.unsafe_pickle_load)
         t_res = teacher.load_state_dict(t_sd, strict=bool(self.strict))
-        if t_res is not None:
-            missing, unexpected = t_res
-            if missing or unexpected:
-                logger.warning(f"Teacher load_state_dict: missing={len(missing)} unexpected={len(unexpected)}")
+        missing, unexpected = t_res
+        if missing or unexpected:
+            logger.warning(
+                f"Teacher load_state_dict: missing={len(missing)} unexpected={len(unexpected)}"
+            )
 
         logger.info(f"Loading student checkpoint: {s_path}")
         s_sd = _safe_load_checkpoint(s_path, unsafe_pickle_load=self.unsafe_pickle_load)
         s_res = student.load_state_dict(s_sd, strict=bool(self.strict))
-        if s_res is not None:
-            missing, unexpected = s_res
-            if missing or unexpected:
-                logger.warning(f"Student load_state_dict: missing={len(missing)} unexpected={len(unexpected)}")
+        missing, unexpected = s_res
+        if missing or unexpected:
+            logger.warning(
+                f"Student load_state_dict: missing={len(missing)} unexpected={len(unexpected)}"
+            )
 
         teacher.eval()
         student.eval()
@@ -175,6 +176,6 @@ class CheckpointCompareTrainer:
             "teacher": teacher,
             "student": student,
             "device": self.device,
-            "checkpoint_dir": str(Path(str(getattr(manifest, "artifacts_dir", "artifacts"))) / "benchmarks"),
+            "checkpoint_dir": str(Path(getattr(manifest, "artifacts_dir", "artifacts")) / "benchmarks"),
         }
 

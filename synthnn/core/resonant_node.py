@@ -30,7 +30,7 @@ class ResonantNode:
 
     def __post_init__(self) -> None:
         self.natural_freq = float(self.natural_freq)
-        self.damping = float(np.clip(float(self.damping), 0.0, 1.0))
+        self.damping = np.clip(float(self.damping), 0.0, 1.0)
         self.signal = complex(self.signal)
 
     def amplitude(self) -> float:
@@ -48,16 +48,25 @@ class ResonantNode:
 
         amp = max(0.0, float(amplitude))
         ph = float(phase) % (2.0 * float(np.pi))
-        self.signal = complex(amp * np.exp(1j * ph))
+        self.signal = amp * np.exp(1j * ph)
 
     def step(self, *, dt: float, coupling: complex = 0.0 + 0.0j, damping_override: float | None = None) -> None:
         """Advance node dynamics by dt."""
 
         dt = float(dt)
-        damping = self.damping if damping_override is None else float(damping_override)
-        self.signal *= complex(np.exp(1j * 2.0 * np.pi * self.natural_freq * dt))
-        self.signal += complex(coupling)
-        self.signal *= complex(1.0 - damping * dt)
+        damping = self.damping
+        if damping_override is not None:
+            try:
+                damping = float(damping_override)
+            except (TypeError, ValueError):
+                damping = float(self.damping)
+            damping = float(np.clip(damping, 0.0, 1.0))
+
+        # Phase advance, then coupling, then damping.
+        self.signal *= np.exp(1j * 2.0 * np.pi * self.natural_freq * dt)
+        self.signal += coupling
+        decay = float(np.exp(-damping * dt))
+        self.signal *= decay
 
     def energy(self) -> float:
         """Instantaneous energy proxy."""

@@ -10,10 +10,11 @@ aligning with `internal/CORE_PHILOSOPHY.md`.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from caramba.config import PositiveInt
 from caramba.config.defaults import Defaults
@@ -39,6 +40,23 @@ class Manifest(BaseModel):
     # the CLI doesn't specify --target. Values can be either a bare target name
     # or an explicit `target:<name>` string.
     entrypoints: dict[str, str] | None = None
+
+    @field_validator("artifacts_dir")
+    @classmethod
+    def _validate_artifacts_dir(cls, v: str) -> str:
+        """Ensure artifacts_dir is a safe, non-empty relative path."""
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("artifacts_dir must be a non-empty relative path")
+        vv = os.path.normpath(v.strip())
+        # Reject '.' (or empty after normalization) to avoid surprising outputs.
+        if vv in ("", "."):
+            raise ValueError("artifacts_dir must be a non-empty relative path")
+        if os.path.isabs(vv):
+            raise ValueError("artifacts_dir must be a relative path (absolute paths are not allowed)")
+        parts = Path(vv).parts
+        if any(p == ".." for p in parts):
+            raise ValueError("artifacts_dir must not contain parent traversal segments ('..')")
+        return vv
 
     @classmethod
     def from_path(cls, path: Path) -> "Manifest":

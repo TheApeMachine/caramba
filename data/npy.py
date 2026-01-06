@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-from torch import Tensor
 from torch.utils.data import Dataset
 from typing_extensions import override
 

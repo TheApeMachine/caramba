@@ -75,7 +75,8 @@ class DecoupledMemorySummarizer:
         self.mem_k_proj_sem = nn.Conv1d(sem_head_dim, sem_head_dim, kernel_size=3, padding=1, groups=sem_head_dim, bias=False)
         self.mem_k_proj_geo = nn.Conv1d(geo_head_dim, geo_head_dim, kernel_size=3, padding=1, groups=geo_head_dim, bias=False)
         self.mem_v_proj_dba = nn.Conv1d(v_head_dim, v_head_dim, kernel_size=3, padding=1, groups=v_head_dim, bias=False)
-        w = torch.tensor([0.25, 0.5, 0.25], dtype=torch.float32)
+        # Initialize as identity/pass-through (do nothing): center weight = 1, others = 0.
+        w = torch.tensor([0.0, 1.0, 0.0], dtype=torch.float32)
         for m in (self.mem_k_proj_sem, self.mem_k_proj_geo, self.mem_v_proj_dba):
             ww = cast(nn.Conv1d, m).weight
             d = int(ww.shape[0])

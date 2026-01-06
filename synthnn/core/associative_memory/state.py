@@ -12,7 +12,7 @@ import numpy as np
 from synthnn.core.resonant_network import ResonantNetwork
 
 
-@dataclass
+@dataclass(slots=True, eq=False)
 class StoredMemory:
     """Stored memory payload
 

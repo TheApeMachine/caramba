@@ -22,6 +22,9 @@ import triton.language as tl  # type: ignore[reportMissingImports]
 
 __all__ = ["dba_attn_bwd_preprocess", "dba_attn_bwd_dkv", "dba_attn_bwd_dq"]
 
+# Used to keep forward/backward scaling consistent when combining sem+geo logits.
+INV_SQRT2 = 0.70710678
+
 
 @triton.jit
 def dba_attn_bwd_preprocess(
@@ -186,7 +189,7 @@ def dba_attn_bwd_dkv(
 
         sem = tl.dot(q_sem, tl.trans(k_sem)) * SEM_SCALE
         geo = tl.dot(q_geo, tl.trans(k_geo)) * GEO_SCALE
-        logits = (sem + geo) * 0.70710678
+        logits = (sem + geo) * INV_SQRT2
         if CAUSAL:
             q_pos = offs_m[:, None]
             k_pos = offs_n[None, :]
@@ -206,7 +209,7 @@ def dba_attn_bwd_dkv(
         dV += tl.dot(tl.trans(w.to(do.dtype)), do)
 
         dp = tl.dot(do, tl.trans(v))
-        dscores = (w * (dp - delta[:, None])) * 0.70710678
+        dscores = (w * (dp - delta[:, None])) * INV_SQRT2
         dk_sem += tl.dot(tl.trans(dscores.to(q_sem.dtype)), q_sem) * SEM_SCALE
         dk_geo += tl.dot(tl.trans(dscores.to(q_geo.dtype)), q_geo) * GEO_SCALE
 
@@ -342,7 +345,7 @@ def dba_attn_bwd_dq(
 
         sem = tl.dot(q_sem, tl.trans(k_sem)) * SEM_SCALE
         geo = tl.dot(q_geo, tl.trans(k_geo)) * GEO_SCALE
-        logits = (sem + geo) * 0.70710678
+        logits = (sem + geo) * INV_SQRT2
         if CAUSAL:
             q_pos = offs_m[:, None]
             k_pos = offs_n[None, :]
@@ -359,7 +362,7 @@ def dba_attn_bwd_dq(
         else:
             w = p
         dp = tl.dot(do, tl.trans(v))
-        dscores = (w * (dp - delta[:, None])) * 0.70710678
+        dscores = (w * (dp - delta[:, None])) * INV_SQRT2
 
         dq_sem += tl.dot(dscores.to(k_sem.dtype), k_sem) * SEM_SCALE
         dq_geo += tl.dot(dscores.to(k_geo.dtype), k_geo) * GEO_SCALE

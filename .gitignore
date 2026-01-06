@@ -16,6 +16,9 @@ train.h5
 x.jsonl
 fineweb_100m.npy
 fineweb_100m.npy.meta
+fineweb_20b.npy
+fineweb_20b.npy.meta
+*.crdownload
 train.h5
 .coverage
 fineweb_edu_v29_100m.npy

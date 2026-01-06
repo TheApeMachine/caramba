@@ -100,12 +100,6 @@ packages = [
     "caramba.lab",
     "caramba.lab.synthnn",
     "caramba.lab.resonant",
-    "synthnn",
-    "synthnn.core",
-    "synthnn.core.associative_memory",
-    "resonant",
-    "resonant.core",
-    "resonant.core.associative_memory",
 ]
 
 [tool.setuptools.package-dir]
