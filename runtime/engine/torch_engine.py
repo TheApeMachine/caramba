@@ -53,8 +53,18 @@ class TorchEngine:
         )
         self.registry.register(
             backend="torch",
+            ref="trainer.checkpoint_compare",
+            python="caramba.trainer.checkpoint_compare:CheckpointCompareTrainer",
+        )
+        self.registry.register(
+            backend="torch",
             ref="trainer.gradient_isolation",
             python="caramba.trainer.gradient_isolation:GradientIsolationTrainer",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="trainer.diffusion_codegen",
+            python="caramba.trainer.diffusion_codegen.trainer:DiffusionCodegenTrainer",
         )
 
         # Datasets
@@ -100,6 +110,11 @@ class TorchEngine:
         )
         self.registry.register(
             backend="torch",
+            ref="dataset.codegen_chunks",
+            python="caramba.data.code_chunks:CodeChunksDataset",
+        )
+        self.registry.register(
+            backend="torch",
             ref="dataset.tensors",
             python="caramba.data.tensors:TensorFilesDataset",
         )
@@ -129,6 +144,11 @@ class TorchEngine:
             backend="torch",
             ref="system.diffusion_denoiser",
             python="caramba.model.diffusion_denoiser_system:DiffusionDenoiserSystem",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="system.diffusion_codegen",
+            python="caramba.model.diffusion_codegen_system:DiffusionCodegenSystem",
         )
 
         # Objectives
@@ -217,7 +237,7 @@ class TorchEngine:
             suite = BenchmarkSuite(
                 benchmarks=target.benchmarks,
                 output_dir=str(
-                    Path("artifacts")
+                    Path(str(getattr(manifest, "artifacts_dir", "artifacts") or "artifacts"))
                     / str(manifest.name or "experiment")
                     / str(target.name)
                     / datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -39,7 +39,7 @@
 \begin{abstract}
 The Key-Value (KV) cache in Transformer language models scales linearly with sequence length and attention dimension, creating a practical memory bottleneck for long-context inference. We propose \textbf{Decoupled Bottleneck Attention (DBA)}, an architectural modification that separates \textit{semantic routing} (which token attends to which) from \textit{positional geometry} (how far away it is). DBA computes attention scores as the sum of a low-rank semantic path and a higher-fidelity geometric path (with RoPE), enabling aggressive cache compression where it matters most.
 
-This paper is a \textit{manifest-first} report: all training runs are executed via the Caramba manifest runner (\texttt{python -m caramba.cli run}) using the paper presets in \path{config/presets/}. We are rerunning the primary baseline vs.\ DBA comparison in Caramba (switching from the earlier production codebase) and will update the reported step counts and figures as the new runs complete. Training uses FineWeb-Edu tokens and a lightweight benchmark script (\path{eval_ckpt.py}) for held-out evaluation. We also demonstrate long-context inference \textit{stability} up to \textbf{131{,}072 tokens} on consumer hardware, while noting that perplexity at extreme context lengths can degrade sharply due to RoPE extrapolation (training context is 2k and \texttt{rope\_base=10000}).
+This paper is a \textit{manifest-first} report: all training runs are executed via the Caramba manifest runner (\texttt{python -m caramba.cli run}) using the paper presets in \path{config/presets/}. We are rerunning the primary baseline vs.\ DBA comparison in Caramba (switching from the earlier production codebase) and will update the reported step counts and figures as the new runs complete. Training uses FineWeb-Edu tokens, and all held-out evaluation is performed by the manifest-driven benchmark harness (\path{research/dba/benchmark.yml} and variants), which exports JSON/CSV/PNG artifacts directly into \path{research/dba/} to avoid manual copy/paste mistakes. We also demonstrate long-context inference \textit{stability} up to \textbf{131{,}072 tokens} on consumer hardware using the same harness, while noting that perplexity at extreme context lengths can degrade sharply due to RoPE extrapolation (training context is 2k and \texttt{rope\_base=10000}).
 \end{abstract}
 
 \paragraph{Keywords:}
@@ -77,7 +77,7 @@ DeBERTa \cite{he2020deberta} pioneered the separation of content and position re
     \item We propose DBA: decoupling semantic routing from positional geometry, and evaluate a 1B-scale configuration where the semantic path is substantially smaller than the geometric path.
     \item We propose \textbf{Decoupled Bottleneck Attention (DBA)}, which implements this decoupling by separating semantic and geometric scoring paths with asymmetric dimensionality.
     \item We introduce a \textbf{Null Token} mechanism that provides an explicit ``attend nowhere'' option, and treat it as an ablation (Appendix~\ref{app:decoupled_ablations}).
-    \item We provide a production-first evaluation workflow (\path{eval_ckpt.py}) that reports held-out perplexity, cached decode latency microbenchmarks, and long-context sweep behavior from trained checkpoints. Detailed KV-cache memory measurements at 128k (end-to-end device deltas) are planned and kept as placeholders in this draft.
+    \item We provide a \textbf{manifest-driven} evaluation workflow (\path{research/dba/benchmark.yml}) that reports held-out perplexity, cached decode latency microbenchmarks, behavioral sanity checks, and long-context sweeps from paired checkpoints, exporting artifacts directly into \path{research/dba/}. End-to-end device memory deltas at 128k (end-to-end device deltas) are planned and kept as placeholders in this draft.
 \end{enumerate}
 
 % ============================================================================
@@ -198,7 +198,7 @@ The architectural contribution is the \textit{dimension reduction} (the ratio $4
 \paragraph{Heterogeneous KV-cache quantization (decoupled).}
 A practical benefit of decoupling is that it enables \textit{heterogeneous} KV-cache quantization: we can compress the semantic path more aggressively (e.g., Q4) while keeping the geometric (RoPE) path at higher fidelity (e.g., Q8). In this draft, heterogeneous KV-cache policies are treated as \textit{planned work}: we will report both quality deltas (held-out perplexity) and end-to-end device memory deltas at long context once the corresponding inference benchmarks are finalized.
 
-In this draft, we do not yet report the end-to-end device memory deltas at 128k context; instead we report (i) theoretical KV-cache bytes/token estimates derived from the checkpoint \texttt{ModelConfig} and (ii) empirical long-context stability and decode-at-context timing from \path{eval_ckpt.py}. End-to-end memory instrumentation remains planned work.
+In this draft, we do not yet report the end-to-end device memory deltas at 128k context; instead we report (i) theoretical KV-cache bytes/token estimates derived from the checkpoint \texttt{ModelConfig} and (ii) empirical long-context stability and decode-at-context timing from the manifest-driven benchmark harness (\path{research/dba/benchmark.yml}). End-to-end memory instrumentation remains planned work.
 
 While we report training throughput in our experiments, the theoretical FLOPs reduction in the attention mechanism ($O(n^2 d) \to O(n^2 r)$) implies a proportional speedup in the \textit{prefill phase} of inference, where the KV-cache is populated. For autoregressive decoding, the memory bandwidth savings from the smaller cache dominate latency improvements.
 
@@ -221,61 +221,53 @@ python -m caramba.cli run config/presets/dba_paper_rerun.yml --target baseline
 Training uses a large tokenized FineWeb-Edu dump (\texttt{fineweb\_20b.npy}; \(\sim\)20B tokens). For lightweight post-hoc evaluation on local hardware we use smaller token shards from the same pipeline: \texttt{fineweb\_100m.npy} and \texttt{fineweb\_1b.npy}.
 
 \paragraph{Evaluation and artifacts (this paper).}
-All reported numbers in this draft are produced by \path{eval_ckpt.py}, which runs (i) held-out perplexity, (ii) KV-cache bytes-per-token estimates derived from the checkpoint's \texttt{ModelConfig}, (iii) cached decode latency microbenchmarks, and (iv) a context-length sweep that tests long-context prefill and measures decode-at-context cost. The script also supports optional diagnostics (e.g., long-seq approximation drift for decoupled attention and correctness/parity checks) behind explicit flags. It writes \texttt{report.json} and CSVs into the run directory; plots are optional.
+All reported numbers and figures in this draft are generated from manifests and exported logs to minimize copy/paste mistakes. We use a local benchmark harness (Section~3; \path{research/dba/benchmark.yml} and variants) for paired checkpoint comparisons; it writes plots/tables into \path{research/dba/} via \texttt{artifacts\_dir} to avoid manual copying.
 
-\paragraph{Training dynamics (A100; 1B; 100k steps).}
-Figure~\ref{fig:a100_training_curves} summarizes the training loss, perplexity proxy, throughput (tokens/sec), and wall-clock time per step logged during the A100 runs for both \texttt{decoupled} and \texttt{baseline}.
+\paragraph{Training dynamics (A100; 1B; 10k steps).}
+Figure~\ref{fig:a100_training_curves} summarizes the training loss and a perplexity proxy (computed as $\exp(\text{loss})$) for the A100 rerun (\texttt{baseline} vs.\ \texttt{decoupled}). These plots are generated directly from the exported W\&B CSV in \path{research/dba/} to avoid manual copy errors.
 
 \begin{figure}[htbp]
 \centering
 \begin{subfigure}[t]{0.49\textwidth}
   \centering
-  \IfFileExists{A100-1b-100k-loss.png}{
-    \includegraphics[width=\textwidth]{\detokenize{A100-1b-100k-loss.png}}
+  \IfFileExists{A100-1b-10k-loss.png}{
+    \includegraphics[width=\textwidth]{\detokenize{A100-1b-10k-loss.png}}
   }{
-    \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{A100-1b-100k-loss.png}.}}
+    \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{A100-1b-10k-loss.png}.}}
   }
   \caption{Training loss vs.\ step.}
 \end{subfigure}
 \hfill
 \begin{subfigure}[t]{0.49\textwidth}
   \centering
-  \IfFileExists{A100-1b-100k-ppl.png}{
-    \includegraphics[width=\textwidth]{\detokenize{A100-1b-100k-ppl.png}}
+  \IfFileExists{A100-1b-10k-ppl.png}{
+    \includegraphics[width=\textwidth]{\detokenize{A100-1b-10k-ppl.png}}
   }{
-    \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{A100-1b-100k-ppl.png}.}}
+    \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{A100-1b-10k-ppl.png}.}}
   }
-  \caption{Training perplexity (logged metric) vs.\ step.}
+  \caption{Perplexity proxy ($\exp(\text{loss})$) vs.\ step.}
 \end{subfigure}
-\vspace{0.5em}
-
-\begin{subfigure}[t]{0.49\textwidth}
-  \centering
-  \IfFileExists{A100-1b-100k-tok_s.png}{
-    \includegraphics[width=\textwidth]{\detokenize{A100-1b-100k-tok_s.png}}
-  }{
-    \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{A100-1b-100k-tok\_s.png}.}}
-  }
-  \caption{Training throughput (tokens/sec) vs.\ step.}
-\end{subfigure}
-\hfill
-\begin{subfigure}[t]{0.49\textwidth}
-  \centering
-  \IfFileExists{A100-1b-100k-ms_step.png}{
-    \includegraphics[width=\textwidth]{\detokenize{A100-1b-100k-ms_step.png}}
-  }{
-    \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{A100-1b-100k-ms\_step.png}.}}
-  }
-  \caption{Step time (ms/step) vs.\ step.}
-\end{subfigure}
-\caption{A100 training curves for the 1B/100k-step runs (\texttt{baseline} vs.\ \texttt{decoupled}).}
+\caption{A100 training curves for the 1B/10k-step rerun (\texttt{baseline} vs.\ \texttt{decoupled}).}
 \label{fig:a100_training_curves}
 \end{figure}
 
-\subsection{FineWeb-Edu Results (Current)}
+% Auto-generated summary table from the W\&B export CSV.
+\IfFileExists{A100-1b-10k-training_summary.tex}{
+  \input{\detokenize{A100-1b-10k-training_summary.tex}}
+}{}
+
+\paragraph{Planned: A100 1B 100k-step runs.}
+After the 10k-step pilot completes, we will run the full 100k-step baseline vs.\ decoupled comparison under the same manifest discipline (\path{config/presets/dba_paper_rerun.yml}). The corresponding plots/tables will be generated in the same way (exported logs $\rightarrow$ \path{research/dba/} artifacts), and the results section below will be updated to reference the 100k outputs once available.
+
+\subsection{FineWeb-Edu Results (Pending refresh)}
+
+\paragraph{Status.}
+This section will be regenerated from the manifest-driven benchmark harness once the paired checkpoints for the current rerun are finalized (10k pilot), and then updated again after the 100k-step runs complete. The harness lives at \path{research/dba/benchmark.yml} (and variants), and writes plots/tables into \path{research/dba/} to avoid manual copying mistakes.
+
+\iffalse % legacy/pending results block (kept for reference; not included in build)
 
 \paragraph{Decoupled checkpoint (A100 training; local evaluation).}
-For the checkpoint \path{runs/a100_fw1b_l22_decoupled_s1337_paper_strict/ckpt_step100000.pt}, \path{eval_ckpt.py} reports the following held-out language modeling quality on FineWeb-Edu token shards:
+For the checkpoint \path{runs/a100_fw1b_l22_decoupled_s1337_paper_strict/ckpt_step100000.pt}, the benchmark harness reports the following held-out language modeling quality on FineWeb-Edu token shards:
 
 \begin{table}[htbp]
 \centering
@@ -370,11 +362,12 @@ FineWeb-Edu 1B tokens (\texttt{fineweb\_1b.npy}) & 26.604 & 23.835 \\
 \label{fig:robustness_compare_100k}
 \end{figure}
 
+\fi
 \paragraph{Long-context stability up to 131{,}072 tokens (consumer hardware).}
-Using the same decoupled checkpoint and \path{eval_ckpt.py}'s context sweep, we successfully completed chunked prefill and a decode-at-context step up to \textbf{131{,}072 tokens} on an Apple M4 Max with 128GB unified memory (\texttt{ok=true} at all tested lengths; Appendix~\ref{app:long_context_sweep}). At very long contexts, runtime becomes dominated by system memory pressure (swapping), but the model remains functionally stable. We emphasize that the extremely high perplexity at $\ge$8k context in this sweep reflects RoPE extrapolation outside the model's training context (\texttt{block\_size=2048}) rather than an architectural memory failure.
+Using the same decoupled checkpoint and the manifest-driven \texttt{context} benchmark, we successfully completed chunked prefill and a decode-at-context step up to \textbf{131{,}072 tokens} on an Apple M4 Max with 128GB unified memory (\texttt{ok=true} at all tested lengths; Appendix~\ref{app:long_context_sweep}). At very long contexts, runtime becomes dominated by system memory pressure (swapping), but the model remains functionally stable. We emphasize that the extremely high perplexity at $\ge$8k context in this sweep reflects RoPE extrapolation outside the model's training context (\texttt{block\_size=2048}) rather than an architectural memory failure.
 
 \paragraph{Long-context decode throughput (planned figure).}
-For long contexts beyond the training window, one-shot prefill benchmarks are invalid because the model hard-fails when \texttt{seq\_len > block\_size}. We therefore measure long-context decode throughput using chunked prefill with caches followed by a multi-token cached decode loop (\path{eval_ckpt.py} \texttt{--context-decode}), and will report the resulting comparison curve once generated:
+For long contexts beyond the training window, one-shot prefill benchmarks are invalid because the model hard-fails when \texttt{seq\_len > block\_size}. We therefore measure long-context decode throughput using chunked prefill with caches followed by a multi-token cached decode loop (the manifest-driven \texttt{context} benchmark), and will report the resulting comparison curve once generated:
 
 \begin{figure}[htbp]
 \centering
@@ -382,7 +375,7 @@ For long contexts beyond the training window, one-shot prefill benchmarks are in
   \includegraphics[width=0.9\textwidth]{\detokenize{compare_context_decode_tok_per_sec.png}}
 }{
   \fbox{\parbox{0.92\textwidth}{\textbf{Pending figure:} \texttt{compare\_context\_decode\_tok\_per\_sec.png}.\\
-  Generated by \path{eval_ckpt.py} with \texttt{--context-decode} and copied into the paper directory.}}
+  Generated by the manifest-driven benchmark harness (\path{research/dba/benchmark.yml}) and written into the paper directory.}}
 }
 \caption{Planned: cached decode throughput (tokens/sec) vs.\ context length using chunked prefill + cached decode.}
 \label{fig:compare_context_decode_tok_per_sec}
@@ -392,7 +385,7 @@ For long contexts beyond the training window, one-shot prefill benchmarks are in
 
 This draft intentionally removes legacy result sections from earlier prototypes. The following experiments are planned and will be reported once the corresponding runs complete:
 \begin{itemize}
-    \item \textbf{Baseline vs.\ decoupled (primary):} completed and reported in Section~3 (Tables~\ref{tab:ppl_compare_100k}, Figures~\ref{fig:compare_100k} and~\ref{fig:robustness_compare_100k}).
+    \item \textbf{Baseline vs.\ decoupled (primary):} rerun in progress; the full benchmark tables/figures will be regenerated from \path{research/dba/benchmark.yml} once paired checkpoints are finalized.
     \item \textbf{Context-length breaking point up to 128k:} context sweep to identify stability limits and throughput curves.
     \item \textbf{Downstream tasks:} HellaSwag / ARC / etc.\ (pending integration into the evaluation harness).
     \item \textbf{DBA design ablations:} null token, tied Q--K, RoPE variants, and semantic/geometric dimension splits.
@@ -468,7 +461,7 @@ We hypothesize two complementary explanations:
 Following Aghajanyan et al. \cite{aghajanyan2021intrinsic}, natural language representations lie on low-dimensional manifolds. The attention mechanism's role is \textit{routing}---selecting which tokens to aggregate---not computing complex transformations. Routing decisions are inherently low-entropy and thus low-rank.
 
 \paragraph{Regularization Effect.}
-The bottleneck may act as an implicit regularizer by reducing the capacity of token--token interactions. In our current 1B/100k-step comparison on FineWeb-Edu shards, the standard-attention baseline attains lower perplexity (Table~\ref{tab:ppl_compare_100k}), so the primary observed benefit of DBA is efficiency rather than perplexity improvement.
+The bottleneck may act as an implicit regularizer by reducing the capacity of token--token interactions. In early comparisons on FineWeb-Edu shards, the standard-attention baseline can attain lower perplexity, so the primary observed benefit of DBA is efficiency rather than perplexity improvement.
 
 \paragraph{Gradient Rank Dynamics.}
 AdaRankGrad \cite{refael2024adarankgrad} proves that gradient rank decreases monotonically during training, eventually approaching rank one. This suggests that \textit{architectural} bottlenecks become increasingly appropriate as training progresses---the model naturally ``wants'' to operate in a low-rank subspace. By hard-wiring this constraint from the start, we may accelerate convergence by matching the architecture to the optimization landscape.
@@ -491,7 +484,7 @@ Decoupled Bottleneck Attention can be implemented using PyTorch's fused \texttt{
 \subsection{Limitations}
 
 \begin{itemize}
-    \item \textbf{Quality--efficiency trade-off:} at 100k steps on FineWeb-Edu shards, the baseline achieves lower perplexity than DBA (Table~\ref{tab:ppl_compare_100k}), while DBA is faster at longer prompts and uses a substantially smaller KV cache (Figure~\ref{fig:compare_100k}).
+    \item \textbf{Quality--efficiency trade-off:} baseline can achieve lower perplexity than DBA at matched compute, while DBA is faster at longer prompts and uses a substantially smaller KV cache.
     \item \textbf{Limited downstream evaluation:} this draft does not yet include standardized benchmarks (HellaSwag / ARC / etc.).
     \item \textbf{Long-context quality is not validated:} we demonstrate \textit{stability} up to 131{,}072 tokens on consumer hardware, but perplexity degrades sharply beyond the 2k training context due to RoPE extrapolation (\texttt{rope\_base=10000}) and lack of long-context training / scaling.
     \item The optimal $(d_{\text{sem}}, d_{\text{geo}})$ split may vary with model scale and tokenizer.
@@ -502,7 +495,7 @@ Decoupled Bottleneck Attention can be implemented using PyTorch's fused \texttt{
 % ============================================================================
 \section{Conclusion}
 
-We have demonstrated that attention in Transformers contains significant redundancy. In the current production-only draft, we report held-out perplexity for a decoupled 1B checkpoint trained for 100k steps (Table~\ref{tab:ppl_current}) and an apples-to-apples comparison against a standard-attention baseline trained under the same discipline (Table~\ref{tab:ppl_compare_100k}; Figures~\ref{fig:compare_100k} and~\ref{fig:robustness_compare_100k}). We also demonstrate successful long-context \textit{stability} up to 131{,}072 tokens on consumer hardware (Appendix~\ref{app:long_context_sweep}).
+We have demonstrated that attention in Transformers contains significant redundancy. In this draft we provide a manifest-driven methodology and include training-curve artifacts generated directly from exported logs, while keeping downstream benchmark tables/figures tied to the manifest harness to avoid manual copying errors. We also demonstrate successful long-context \textit{stability} up to 131{,}072 tokens on consumer hardware (Appendix~\ref{app:long_context_sweep}).
 
 The core insight is architectural: \textbf{Attention is a router, not a processor.} The heavy computation should happen in the feedforward layers (which we leave at full rank), while attention merely selects which tokens to aggregate. By matching the architecture to this functional role, we unlock dramatic efficiency gains.
 
@@ -541,18 +534,18 @@ This appendix reserves space for empirical effective-rank measurements of Q/K pr
 \section{Pending: Decoupled Ablations}
 \label{app:decoupled_ablations}
 
-This appendix reserves space for DBA ablations (null token, tied Q--K, RoPE variants, semantic/geometric dimension splits), executed under the same manifest-driven discipline and reported via \path{eval_ckpt.py}.
+This appendix reserves space for DBA ablations (null token, tied Q--K, RoPE variants, semantic/geometric dimension splits), executed under the same manifest-driven discipline and reported via \path{research/dba/benchmark.yml}.
 
 \section{Long-Context Sweep (Up to 131{,}072 Tokens)}
 \label{app:long_context_sweep}
 
-We report the \path{eval_ckpt.py} context sweep for the decoupled checkpoint, using chunked prefill and then measuring a single decode step at the final context length. The sweep records:
+We report the manifest-driven \texttt{context} benchmark for the decoupled checkpoint, using chunked prefill and then measuring a single decode step at the final context length. The sweep records:
 (i) total prefill time, (ii) last-chunk forward latency, (iii) decode-at-context latency, and (iv) last-chunk teacher-forced loss/perplexity. We stress that the loss/perplexity at long context reflects RoPE extrapolation beyond the 2k training context and should not be interpreted as long-context \emph{capability} without dedicated long-context training.
 
 \begin{table}[htbp]
 \centering
 \small
-\caption{Context sweep results for \texttt{ckpt\_step100000.pt} on Apple M4 Max (MPS).}
+\caption{Context sweep results for a legacy decoupled checkpoint (\texttt{ckpt\_step100000.pt}) on Apple M4 Max (MPS).}
 \label{tab:context_sweep}
 \begin{tabular}{@{}rcccc@{}}
 \toprule
@@ -576,9 +569,9 @@ We report the \path{eval_ckpt.py} context sweep for the decoupled checkpoint, us
   \includegraphics[width=0.9\textwidth]{\detokenize{context_decode_one_ms.png}}
 }{
   \fbox{\parbox{0.92\textwidth}{\textbf{Pending figure:} \texttt{context\_decode\_one\_ms.png}.\\
-  Generated by \path{eval_ckpt.py} and copied into the paper directory for arXiv.}}
+  Generated by the manifest-driven benchmark harness and written into the paper directory for arXiv.}}
 }
-\caption{Decode-at-context cost (ms/token) vs.\ context length from \texttt{eval\_ckpt.py}. At long contexts, runtime is dominated by system memory pressure (swapping) rather than an architectural failure mode; the sweep remained stable through 131{,}072 tokens (\texttt{ok=true}).}
+\caption{Decode-at-context cost (ms/token) vs.\ context length from the manifest-driven \texttt{context} benchmark. At long contexts, runtime is dominated by system memory pressure (swapping) rather than an architectural failure mode; the sweep remained stable through 131{,}072 tokens (\texttt{ok=true}).}
 \label{fig:context_decode_one_ms}
 \end{figure}
 
@@ -589,7 +582,7 @@ We report the \path{eval_ckpt.py} context sweep for the decoupled checkpoint, us
 }{
   \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{latency\_tokens\_per\_sec.png}.}}
 }
-\caption{Cached decode throughput microbenchmark (batch=1) from \texttt{eval\_ckpt.py}.}
+\caption{Cached decode throughput microbenchmark (batch=1) from the manifest-driven benchmark harness.}
 \label{fig:latency_tokens_per_sec}
 \end{figure}
 
@@ -600,7 +593,7 @@ We report the \path{eval_ckpt.py} context sweep for the decoupled checkpoint, us
 }{
   \fbox{\parbox{0.92\textwidth}{\textbf{Missing figure:} \texttt{perplexity.png}.}}
 }
-\caption{Held-out perplexity on FineWeb-Edu token shards from \texttt{eval\_ckpt.py}.}
+\caption{Held-out perplexity on FineWeb-Edu token shards from the manifest-driven benchmark harness.}
 \label{fig:perplexity_plot}
 \end{figure}
 

@@ -1,9 +1,8 @@
-"""Chunked/windowed SDPA for standard attention.
+"""Chunked/windowed SDPA
 
-This is used when:
-- local_window is set, or
-- q_chunk is set, or
-- a KV cache is present (prefill/decode).
+This module implements a lower-peak-memory attention path by slicing queries
+into chunks and optionally restricting keys to a local window, which can make
+long-context inference practical without changing model weights.
 """
 
 from __future__ import annotations
@@ -16,7 +15,12 @@ from torch import Tensor
 
 
 class StandardSDPAChunked:
-    """Scaled-dot-product attention with chunking/windowing for lower peak memory."""
+    """Chunked SDPA attention helper
+
+    Chunking trades some overhead for much lower peak memory, which is often
+    the limiting factor when you move from “trainable lengths” to “inference
+    lengths”.
+    """
 
     def run(
         self,
@@ -33,18 +37,11 @@ class StandardSDPAChunked:
         dropout_p: float,
         maybe_summarize_kv: Callable[..., tuple[Tensor, Tensor, Tensor]],
     ) -> Tensor:
-        """Compute attention in query chunks and/or a sliding window.
+        """Compute attention in chunks/windows
 
-        Args:
-            qh/kh/vh: (B,H,T,hd)
-            is_causal: causal masking
-            scale: scalar scale for SDPA
-            pos_offset: base offset when not cached
-            cache_pos: cache.pos when cached, else None
-            q_chunk: query chunk size
-            local_window: local window size
-            dropout_p: dropout probability
-            maybe_summarize_kv: callable matching AttentionBase._maybe_summarize_kv
+        Attention is still computed with SDPA, but on smaller slices so the
+        intermediate attention matrix does not need to exist for the whole
+        sequence at once.
         """
         _B, _H, T, _D = qh.shape
         kT = int(kh.size(2))

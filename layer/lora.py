@@ -15,17 +15,18 @@ from caramba.config.layer import LoRALinearLayerConfig
 
 
 class LoRALinearLayer(nn.Module):
-    """Linear layer with Low-Rank Adaptation (LoRA).
+    """Low-Rank Adaptation (LoRA) projection
 
-    Computes: output = x @ W + (x @ A @ B) * (alpha / r)
-    where W is the frozen weight and A, B are the low-rank adaptation matrices.
+    LoRA is a parameter-efficient trick: instead of updating a full weight
+    matrix, you learn a low-rank update that can be trained quickly and stored
+    cheaply.
     """
 
     def __init__(self, config: LoRALinearLayerConfig) -> None:
-        """Initialize the base linear layer and LoRA adapters.
+        """Initialize LoRA adapters
 
-        Args:
-            config: Specifies input/output dims, rank (r), alpha, and dropout.
+        The rank controls how expressive the update is; scaling by alpha/r keeps
+        update magnitudes predictable across different ranks.
         """
         super().__init__()
         self.config = config
@@ -55,7 +56,12 @@ class LoRALinearLayer(nn.Module):
         *,
         ctx: object | None = None,
     ) -> Tensor:
-        """Apply base projection + low-rank adaptation."""
+        """Apply LoRA projection
+
+        You can think of this as “base linear + learned delta”; when the base is
+        frozen, LoRA focuses learning capacity where it matters without touching
+        the full parameter set.
+        """
         # x: (..., d_in)
         result = self.linear(x)
 

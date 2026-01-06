@@ -1,7 +1,8 @@
-"""State management for MOSAIC block.
+"""MOSAIC state management
 
-Provides the streaming state container and a context-backed store for keeping
-per-layer state across decode steps without global variables.
+Streaming models need persistent state across decode steps; this module keeps
+that state explicit and context-scoped so generation stays reproducible and does
+not rely on hidden globals.
 """
 
 from __future__ import annotations
@@ -39,12 +40,17 @@ class MosaicState:
     mem_tag: Tensor
     mem_last: Tensor
 
+    # Optional Resonant Memory Field (RMF) state.
+    # Stored as (B, rmf_dim, 2) where the last dim is (real, imag).
+    rmf_field: Tensor | None = None
+
 
 class MosaicStateStore:
-    """Context-backed state store.
+    """Context-backed state store
 
-    Uses `ctx._mosaic` as a dict keyed by per-layer ids. This keeps streaming state
-    attached to the caller-provided context object and avoids hidden globals.
+    Storing state on the caller-provided context object makes state ownership
+    obvious: whoever owns the context owns the state, which is especially handy
+    when debugging multi-request inference servers.
     """
 
     class Ctx(Protocol):

@@ -17,6 +17,8 @@ from pathlib import Path
 from caramba.benchmark.latency import LatencyResult
 from caramba.benchmark.memory import MemoryResult
 from caramba.benchmark.perplexity import PerplexityResult
+from caramba.benchmark.behavior import BehaviorResult
+from caramba.benchmark.context import ContextResult
 
 
 @dataclass
@@ -82,6 +84,9 @@ class ArtifactGenerator:
         student_latency: LatencyResult | None = None,
         teacher_memory: MemoryResult | None = None,
         student_memory: MemoryResult | None = None,
+        behavior: BehaviorResult | None = None,
+        teacher_context: ContextResult | None = None,
+        student_context: ContextResult | None = None,
         formats: list[str] | None = None,
     ) -> dict[str, Path]:
         """Generate all artifacts and return a dict of paths."""
@@ -98,7 +103,13 @@ class ArtifactGenerator:
         )
 
         if "json" in formats:
-            path = self._write_json_report(metadata, summary)
+            path = self._write_json_report(
+                metadata,
+                summary,
+                behavior=behavior,
+                teacher_context=teacher_context,
+                student_context=student_context,
+            )
             generated["report.json"] = path
 
         if "csv" in formats:
@@ -109,6 +120,9 @@ class ArtifactGenerator:
                 student_latency=student_latency,
                 teacher_memory=teacher_memory,
                 student_memory=student_memory,
+                behavior=behavior,
+                teacher_context=teacher_context,
+                student_context=student_context,
             )
             generated.update(paths)
 
@@ -119,6 +133,9 @@ class ArtifactGenerator:
                 student_latency=student_latency,
                 teacher_memory=teacher_memory,
                 student_memory=student_memory,
+                behavior=behavior,
+                teacher_context=teacher_context,
+                student_context=student_context,
             )
             generated.update(paths)
 
@@ -175,6 +192,10 @@ class ArtifactGenerator:
         self,
         metadata: ExperimentMetadata,
         summary: ComparisonSummary,
+        *,
+        behavior: BehaviorResult | None = None,
+        teacher_context: ContextResult | None = None,
+        student_context: ContextResult | None = None,
     ) -> Path:
         """Write JSON summary report with metadata and comparison."""
         path = self.output_dir / "report.json"
@@ -182,6 +203,43 @@ class ArtifactGenerator:
         report = {
             "metadata": asdict(metadata),
             "summary": asdict(summary),
+            "behavior": (
+                {
+                    "benchmark_id": str(behavior.benchmark_id),
+                    "teacher_accuracy": float(behavior.teacher_accuracy),
+                    "student_accuracy": float(behavior.student_accuracy),
+                    "cases": [
+                        {
+                            "case_id": str(m.case_id),
+                            "teacher_ok": bool(m.teacher_ok),
+                            "student_ok": bool(m.student_ok),
+                            "teacher_answer": str(m.teacher_answer),
+                            "student_answer": str(m.student_answer),
+                        }
+                        for m in behavior.measurements
+                    ],
+                }
+                if behavior is not None
+                else None
+            ),
+            "context": {
+                "teacher": (
+                    {
+                        "sweep": [asdict(m) for m in teacher_context.sweep],
+                        "decode": [asdict(m) for m in teacher_context.decode],
+                    }
+                    if teacher_context is not None
+                    else None
+                ),
+                "student": (
+                    {
+                        "sweep": [asdict(m) for m in student_context.sweep],
+                        "decode": [asdict(m) for m in student_context.decode],
+                    }
+                    if student_context is not None
+                    else None
+                ),
+            },
             "generated_at": datetime.now().isoformat(),
         }
 
@@ -198,6 +256,9 @@ class ArtifactGenerator:
         student_latency: LatencyResult | None,
         teacher_memory: MemoryResult | None,
         student_memory: MemoryResult | None,
+        behavior: BehaviorResult | None,
+        teacher_context: ContextResult | None,
+        student_context: ContextResult | None,
     ) -> dict[str, Path]:
         """Write CSV files with raw benchmark data."""
         paths: dict[str, Path] = {}
@@ -298,6 +359,69 @@ class ArtifactGenerator:
                             )
             paths["memory.csv"] = path
 
+        # Behavior CSV
+        if behavior is not None and behavior.measurements:
+            path = self.output_dir / "behavior.csv"
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        "benchmark_id",
+                        "case_id",
+                        "teacher_ok",
+                        "student_ok",
+                        "teacher_answer",
+                        "student_answer",
+                    ]
+                )
+                for m in behavior.measurements:
+                    writer.writerow(
+                        [
+                            behavior.benchmark_id,
+                            m.case_id,
+                            int(bool(m.teacher_ok)),
+                            int(bool(m.student_ok)),
+                            m.teacher_answer,
+                            m.student_answer,
+                        ]
+                    )
+            paths["behavior.csv"] = path
+
+        # Context sweep CSVs
+        if teacher_context is not None and teacher_context.sweep:
+            path = self.output_dir / "context_sweep_teacher.csv"
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(list(teacher_context.sweep[0].__dict__.keys()))
+                for m in teacher_context.sweep:
+                    writer.writerow(list(m.__dict__.values()))
+            paths["context_sweep_teacher.csv"] = path
+        if student_context is not None and student_context.sweep:
+            path = self.output_dir / "context_sweep_student.csv"
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(list(student_context.sweep[0].__dict__.keys()))
+                for m in student_context.sweep:
+                    writer.writerow(list(m.__dict__.values()))
+            paths["context_sweep_student.csv"] = path
+
+        if teacher_context is not None and teacher_context.decode:
+            path = self.output_dir / "context_decode_teacher.csv"
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(list(teacher_context.decode[0].__dict__.keys()))
+                for m in teacher_context.decode:
+                    writer.writerow(list(m.__dict__.values()))
+            paths["context_decode_teacher.csv"] = path
+        if student_context is not None and student_context.decode:
+            path = self.output_dir / "context_decode_student.csv"
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(list(student_context.decode[0].__dict__.keys()))
+                for m in student_context.decode:
+                    writer.writerow(list(m.__dict__.values()))
+            paths["context_decode_student.csv"] = path
+
         return paths
 
     def _generate_charts(
@@ -307,6 +431,9 @@ class ArtifactGenerator:
         student_latency: LatencyResult | None,
         teacher_memory: MemoryResult | None,
         student_memory: MemoryResult | None,
+        behavior: BehaviorResult | None,
+        teacher_context: ContextResult | None,
+        student_context: ContextResult | None,
     ) -> dict[str, Path]:
         """Generate PNG charts for visual comparison."""
         paths: dict[str, Path] = {}
@@ -493,6 +620,93 @@ class ArtifactGenerator:
                 paths["memory_scaling.png"] = path
 
                 plt.close()
+
+        # Behavior accuracy (single-panel).
+        if behavior is not None and behavior.measurements:
+            fig, ax = plt.subplots(figsize=(6, 4))
+            models = ["Teacher", "Student (DBA)"]
+            vals = [float(behavior.teacher_accuracy) * 100.0, float(behavior.student_accuracy) * 100.0]
+            colors = ["#3498db", "#e74c3c"]
+            bars = ax.bar(models, vals, color=colors)
+            ax.set_ylabel("Accuracy (%) ↑")
+            ax.set_title(f"Behavior suite • {behavior.benchmark_id}")
+            ax.set_ylim(0, 100)
+            ax.bar_label(bars, fmt="%.1f")
+            ax.grid(True, axis="y", alpha=0.2)
+            plt.tight_layout()
+            path = self.output_dir / "behavior_accuracy.png"
+            plt.savefig(path, dpi=200, bbox_inches="tight")
+            plt.close()
+            paths["behavior_accuracy.png"] = path
+
+        # Context sweep plots (compat with paper names).
+        def _plot_context_decode_one(*, ctx_result: ContextResult, name: str) -> Path | None:
+            rs = [m for m in ctx_result.sweep if m.ok and float(m.decode_one_ms) == float(m.decode_one_ms)]
+            rs = sorted(rs, key=lambda m: int(m.context_len))
+            if not rs:
+                return None
+            fig, ax = plt.subplots(figsize=(7, 4))
+            ax.plot([m.context_len for m in rs], [m.decode_one_ms for m in rs], marker="o")
+            ax.set_xscale("log", base=2)
+            ax.set_xlabel("Context length (tokens)")
+            ax.set_ylabel("Decode 1 token (ms)")
+            ax.set_title(f"Decode-at-context ({name})")
+            ax.grid(True, alpha=0.3)
+            plt.tight_layout()
+            p = self.output_dir / f"context_decode_one_ms_{name}.png"
+            plt.savefig(p, dpi=200, bbox_inches="tight")
+            plt.close()
+            return p
+
+        def _plot_context_decode_tps_compare(
+            *, a: ContextResult, b: ContextResult, a_name: str, b_name: str
+        ) -> Path | None:
+            ra = [m for m in a.decode if m.ok and float(m.decode_tok_per_s) == float(m.decode_tok_per_s)]
+            rb = [m for m in b.decode if m.ok and float(m.decode_tok_per_s) == float(m.decode_tok_per_s)]
+            if not ra or not rb:
+                return None
+            ra = sorted(ra, key=lambda m: int(m.context_len))
+            rb = sorted(rb, key=lambda m: int(m.context_len))
+            fig, ax = plt.subplots(figsize=(7.5, 4.2))
+            ax.plot([m.context_len for m in ra], [m.decode_tok_per_s for m in ra], marker="o", label=a_name)
+            ax.plot([m.context_len for m in rb], [m.decode_tok_per_s for m in rb], marker="o", label=b_name)
+            ax.set_xscale("log", base=2)
+            ax.set_xlabel("Context length (tokens)")
+            ax.set_ylabel("Decode throughput (tok/s)")
+            ax.set_title("Cached decode throughput vs context")
+            ax.grid(True, alpha=0.3)
+            ax.legend()
+            plt.tight_layout()
+            p = self.output_dir / "compare_context_decode_tok_per_sec.png"
+            plt.savefig(p, dpi=200, bbox_inches="tight")
+            plt.close()
+            return p
+
+        # Single-model plot for student (used by paper appendix as context_decode_one_ms.png).
+        # Prefer student (DBA) if available; else teacher.
+        chosen = student_context or teacher_context
+        if chosen is not None:
+            p = _plot_context_decode_one(ctx_result=chosen, name="student" if chosen is student_context else "teacher")
+            if p is not None:
+                # Paper-compat fixed name.
+                compat = self.output_dir / "context_decode_one_ms.png"
+                try:
+                    compat.write_bytes(p.read_bytes())
+                    paths["context_decode_one_ms.png"] = compat
+                except Exception:
+                    pass
+                paths[p.name] = p
+
+        # Compare plot: decode tok/s vs context.
+        if teacher_context is not None and student_context is not None:
+            p = _plot_context_decode_tps_compare(
+                a=teacher_context,
+                b=student_context,
+                a_name="Teacher",
+                b_name="Student (DBA)",
+            )
+            if p is not None:
+                paths["compare_context_decode_tok_per_sec.png"] = p
 
         return paths
 

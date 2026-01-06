@@ -1,9 +1,8 @@
-"""SwiGLU: the MLP variant used in Llama and modern transformers.
+"""SwiGLU layer
 
-SwiGLU combines a gated linear unit with the SiLU (Swish) activation.
-The gate and up projections are computed in parallel, then combined:
-output = down(silu(gate(x)) * up(x)). This implementation uses a fused
-projection for the gate and up matrices to maximize hardware utilization.
+SwiGLU is a GLU-style MLP that uses SiLU in the gate, and it is widely used in
+modern LLMs because it tends to give strong quality-per-parameter while staying
+friendly to fused matmul kernels.
 """
 from __future__ import annotations
 
@@ -16,18 +15,17 @@ from caramba.config.layer import SwiGLULayerConfig
 
 
 class SwiGLULayer(nn.Module):
-    """SwiGLU MLP layer with fused gate/up projections.
+    """SwiGLU MLP layer
 
-    The hidden dimension (d_ff) is typically 8/3 × d_model. This implementation
-    fuses the gate and up projections into a single linear layer to improve
-    throughput during both training and inference.
+    The gate and up projections are fused into one larger GEMM, which is usually
+    faster than two separate projections on GPUs and Apple Silicon.
     """
 
     def __init__(self, config: SwiGLULayerConfig) -> None:
-        """Initialize the projections.
+        """Initialize SwiGLU projections
 
-        Args:
-            config: Specifies d_model, d_ff (hidden dim), and bias settings.
+        SwiGLU is structurally “two projections, elementwise gate, then down”;
+        fusing the first two projections keeps it simple and fast.
         """
         super().__init__()
         self.config = config
@@ -46,13 +44,10 @@ class SwiGLULayer(nn.Module):
         *,
         ctx: object | None = None,
     ) -> Tensor:
-        """Apply SwiGLU: silu(gate(x)) * up(x), then down-project.
+        """Apply SwiGLU
 
-        Args:
-            x: Input tensor (B, T, d_model)
-
-        Returns:
-            Output tensor (B, T, d_model)
+        The nonlinearity lives in the gate; multiplying by the “up” projection
+        gives the block a multiplicative interaction that plain MLPs lack.
         """
         # Fused projection: (B, T, d_model) @ (d_model, 2 * d_ff) -> (B, T, 2 * d_ff)
         gate_up = self.w_gate_up(x)

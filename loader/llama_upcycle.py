@@ -266,12 +266,17 @@ class LlamaUpcycle:
     ) -> None:
         """Split teacher projection into semantic and geometric using SVD.
 
-        The teacher's Q or K matrix is decomposed as U @ S @ Vh. The top
-        singular vectors (semantic) capture content routing patterns; the
-        remaining vectors (geometric) capture positional structure.
+        Important: sem/geo dims are *compressed output dims* of the teacher's
+        projection. The correct operation is therefore a projection onto the
+        teacher's top singular subspace, not selecting the first output rows.
+
+        Concretely, with A = teacher_weight (d_out x d_in) and SVD A = U S V^T:
+          U_r^T A = diag(S_r) V_r^T
+        gives a rank-r representation in an orthonormal output basis. We take
+        the first sem_dim rows as "semantic" and the next geo_dim rows as
+        "geometric", yielding disjoint components instead of overlapping slices.
         """
-        # We only need the leading sem_dim+geo_dim singular components (DBA bottleneck),
-        # and we only need the first sem_dim/geo_dim rows of the reconstructions.
+        # We only need the leading sem_dim+geo_dim singular components (DBA bottleneck).
         # Use a randomized truncated SVD on the model device for speed.
         dev = sem_weight.device
         A = teacher_weight.to(device=dev, dtype=torch.float32)
@@ -304,22 +309,28 @@ class LlamaUpcycle:
             ) from e
 
         rank = min(int(S.size(0)), target_rank)
-        sem_rank = min(int(sem_dim), rank)
-        geo_rank = min(int(geo_dim), max(0, rank - int(sem_dim)))
+        # Build compressed weights in the singular output basis:
+        #   W_comp = diag(S_r) @ Vh_r   (rank x d_in)
+        # This is equivalent to U_r^T @ A and has stable, disjoint rows.
+        Wr = (S[:rank].view(-1, 1) * Vh[:rank, :]).contiguous()
 
-        # Semantic: first sem_rank components, but only first sem_dim rows.
-        if sem_rank > 0:
-            u_rows = U[: int(sem_dim), :sem_rank]
-            sem = (u_rows * S[:sem_rank].view(1, -1)) @ Vh[:sem_rank, :]
-            sem_weight.data.copy_(sem.to(dtype=sem_weight.dtype))
+        # Fill semantic (first sem_dim rows).
+        sem_rows = min(int(sem_dim), int(rank))
+        if sem_rows > 0:
+            sem_weight.data.zero_()
+            sem_weight.data[:sem_rows, :].copy_(Wr[:sem_rows, :].to(dtype=sem_weight.dtype))
+        else:
+            sem_weight.data.zero_()
 
-        # Geometric: next geo_rank components, only first geo_dim rows.
-        if geo_rank > 0:
-            geo_start = sem_rank
-            geo_end = sem_rank + geo_rank
-            u_rows = U[: int(geo_dim), geo_start:geo_end]
-            geo = (u_rows * S[geo_start:geo_end].view(1, -1)) @ Vh[geo_start:geo_end, :]
-            geo_weight.data.copy_(geo.to(dtype=geo_weight.dtype))
+        # Fill geometric (next geo_dim rows after sem_dim).
+        geo_start = int(sem_dim)
+        geo_end = int(sem_dim) + int(geo_dim)
+        geo_rows = max(0, min(int(rank), geo_end) - geo_start)
+        geo_weight.data.zero_()
+        if geo_rows > 0:
+            geo_weight.data[:geo_rows, :].copy_(
+                Wr[geo_start:geo_start + geo_rows, :].to(dtype=geo_weight.dtype)
+            )
 
     def load_mlp(self, layer: nn.Module, layer_prefix: str) -> None:
         """Load SwiGLU MLP weights (gate, up, down projections).

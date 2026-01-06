@@ -27,6 +27,9 @@ class Manifest(BaseModel):
     version: PositiveInt
     name: str | None = None
     notes: str = ""
+    # Optional override for where artifacts are written.
+    # Default is "artifacts" to preserve legacy behavior.
+    artifacts_dir: str = "artifacts"
     defaults: Defaults
 
     # Runnable units.

@@ -1,4 +1,9 @@
-"""Training visualization helpers for attention layers."""
+"""Attention visualization helpers
+
+Attention is hard to debug from losses alone; these utilities record small,
+cheap-to-compute summaries (like tiny attention matrices and entropy) so you can
+see what heads are doing during training.
+"""
 
 from __future__ import annotations
 
@@ -9,10 +14,10 @@ from caramba.instrumentation.viz import TrainingVizContext
 
 
 class AttentionViz:
-    """Attention training visualization hooks.
+    """Attention visualization hooks
 
-    SDPA does not return attention weights; we recompute a tiny attention matrix
-    for a few heads/tokens only.
+    SDPA kernels are optimized for speed and do not expose full attention
+    weights, so we recompute a small slice for instrumentation only.
     """
 
     def record_attention_matrix(

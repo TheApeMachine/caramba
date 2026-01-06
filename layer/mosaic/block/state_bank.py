@@ -7,7 +7,6 @@ long-horizon intent tracking without attention.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 
 import torch
 from torch import Tensor, nn
@@ -15,21 +14,33 @@ from torch import Tensor, nn
 from caramba.carmath import leaky_integrator_scan
 
 
-@dataclass(slots=True)
-class StateBank:
-    """State bank."""
+class StateBank(nn.Module):
+    """Multiscale state bank
 
-    state_k: int
-    state_in: nn.Linear
-    state_out: nn.Linear
-    decay_logit: nn.Parameter
+    A bank of leaky integrators provides multiple “time constants” in parallel,
+    so some state tracks short-term detail while other state changes slowly and
+    can carry longer-horizon intent.
+    """
+
+    def __init__(self, *, state_k: int, state_in: nn.Linear, state_out: nn.Linear, decay_logit: nn.Parameter) -> None:
+        super().__init__()
+        if int(state_k) < 1:
+            raise ValueError("state_k must be >= 1")
+        self.state_k = int(state_k)
+        self.state_in = state_in
+        self.state_out = state_out
+        self.decay_logit = decay_logit
 
     def decay(self, *, dtype: torch.dtype, device: torch.device) -> Tensor:
         d = torch.sigmoid(self.decay_logit).to(dtype=dtype, device=device)
         return d.view(1, int(self.state_k), 1)
 
     def scan(self, u: Tensor, *, s0: Tensor) -> tuple[Tensor, Tensor]:
-        """Chunk scan: returns (g_seq, s_last)."""
+        """Scan a chunk of tokens
+
+        Scanning lets you update the state across a whole sequence chunk with a
+        vectorized operator, which is much faster than a Python loop.
+        """
         if u.ndim != 3:
             raise ValueError(f"u must have shape (B,T,D), got {tuple(u.shape)}")
         B, T, D = u.shape
@@ -40,7 +51,11 @@ class StateBank:
         return g, s_last.to(dtype=u.dtype)
 
     def step(self, u_t: Tensor, *, s: Tensor) -> tuple[Tensor, Tensor]:
-        """Streaming update for one token: returns (g_t, s_next)."""
+        """Update state for one token
+
+        This is the “true” recurrent update used during decoding, where you only
+        have one new token at a time.
+        """
         if u_t.ndim != 2:
             raise ValueError(f"u_t must have shape (B,D), got {tuple(u_t.shape)}")
         B, D = u_t.shape

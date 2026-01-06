@@ -234,6 +234,16 @@ class GlobalOrchestratedStepper:
                     bwd_s += float(tb1 - tb0)
 
                 grad_norm = global_grad_norm_l2(ctx.student)
+                grad_norm_post = float(grad_norm)
+                grad_clip = float(getattr(train, "grad_clip_norm", 0.0))
+                if grad_clip > 0.0:
+                    try:
+                        if scaler is not None and autocast_enabled:
+                            scaler.unscale_(cast(object, current_strategy.optimizer))  # type: ignore[attr-defined]
+                        torch.nn.utils.clip_grad_norm_(ctx.student.parameters(), max_norm=float(grad_clip))
+                        grad_norm_post = float(global_grad_norm_l2(ctx.student))
+                    except Exception:
+                        grad_norm_post = float(grad_norm)
 
                 loss_for_step = torch.tensor(loss_sum / float(accum_steps), device=ctx.device)
                 topt0 = time.perf_counter()
@@ -257,7 +267,7 @@ class GlobalOrchestratedStepper:
                 if d_model <= 0.0:
                     d_model = float(getattr(train, "block_size", 0) or 0)
                 gbs = (float(tokens_seen) * float(d_model) * 2.0) / (1e9 * step_s) if step_s > 0 else 0.0
-                snapshot = orchestrator.record(loss=loss_val, grad_norm=grad_norm, lr=current_strategy.current_lr)
+                snapshot = orchestrator.record(loss=loss_val, grad_norm=float(grad_norm_post), lr=current_strategy.current_lr)
 
                 reason = orchestrator.should_evaluate(step + 1, snapshot)
                 if reason == DecisionBoundary.SAFETY:
@@ -325,7 +335,9 @@ class GlobalOrchestratedStepper:
                     "loss": loss_val,
                     "ce_loss": float(ce_sum) / float(accum_steps),
                     "lr": float(lr),
-                    "grad_norm": grad_norm,
+                    "grad_norm": float(grad_norm_post),
+                    "grad_norm_preclip": float(grad_norm),
+                    "grad_clip_norm": float(grad_clip),
                     "spike_count": float(snapshot.spike_count),
                     **step_metrics,
                 }

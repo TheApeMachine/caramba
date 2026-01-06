@@ -1,9 +1,8 @@
-"""Rotary positional embeddings (RoPE) with efficient caching.
+"""Rotary positional embeddings (RoPE)
 
-RoPE encodes position information by rotating query and key vectors.
-Unlike absolute positional embeddings, RoPE makes attention scores depend
-on relative positions, improving generalization to sequence lengths longer
-than training. The rotation is applied in pairs of dimensions.
+RoPE injects position information by rotating query/key features, which makes
+attention scores depend on relative position and often generalizes better to
+longer contexts than absolute embeddings.
 """
 from __future__ import annotations
 
@@ -16,11 +15,11 @@ log = logging.getLogger(__name__)
 
 
 class RotaryEmbedding(nn.Module):
-    """RoPE with cached cos/sin tables.
+    """RoPE embedding cache
 
-    Caches are keyed by (device, dtype) and grow geometrically to avoid
-    creating O(N) cache entries during token-by-token decoding. This is
-    critical for efficient inference.
+    Caching cos/sin tables is a practical acceleration: decoding would
+    otherwise spend a surprising amount of time recomputing trigonometry for
+    every token step.
     """
 
     inv_freq: torch.Tensor
@@ -33,11 +32,11 @@ class RotaryEmbedding(nn.Module):
         *,
         rope_scaling: dict[str, object] | None = None,
     ) -> None:
-        """Initialize RoPE with the given rotation dimension.
+        """Initialize RoPE
 
-        Args:
-            rot_dim: Number of dimensions to rotate (must be even)
-            base: Base for the frequency calculation (higher = slower decay)
+        The `base` controls how quickly rotation frequencies decay across
+        dimensions; changing it is one way to tune how position sensitivity is
+        distributed across the head dimension.
         """
         super().__init__()
         if rot_dim % 2 != 0:
@@ -101,7 +100,11 @@ class RotaryEmbedding(nn.Module):
 
     @staticmethod
     def _next_pow2(n: int) -> int:
-        """Round up to the next power of 2 for cache sizing."""
+        """Next power-of-two helper
+
+        Power-of-two growth is a simple amortization trick that keeps cache
+        expansions infrequent during long-context decoding.
+        """
         n = int(n)
         if n <= 0:
             return 0
@@ -110,9 +113,10 @@ class RotaryEmbedding(nn.Module):
     def _cos_sin(
         self, seq_len: int, device: torch.device, dtype: torch.dtype
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Get cached cos/sin tables, expanding if needed.
+        """Get cached cos/sin tables
 
-        Uses geometric growth to minimize reallocations during decoding.
+        The cache grows geometrically so the common “one token at a time” decode
+        path stays dominated by attention compute, not by cache maintenance.
         """
         seq_len = int(seq_len)
         key = (str(device), str(dtype))
@@ -142,16 +146,11 @@ class RotaryEmbedding(nn.Module):
         return (cos_cached[:seq_len], sin_cached[:seq_len])
 
     def rotate(self, x: torch.Tensor, pos_offset: int = 0) -> torch.Tensor:
-        """Apply rotary embeddings to query/key tensor.
+        """Apply rotary embedding rotation
 
-        Args:
-            x: Tensor of shape (B, H, T, D) where D >= rot_dim
-            pos_offset: Starting position for RoPE (for cached generation)
-
-        Returns:
-            Rotated tensor of same shape
-
-        The first rot_dim dimensions are rotated; the rest pass through unchanged.
+        Only the first `rot_dim` features are rotated; the remaining dimensions
+        pass through unchanged, which lets you reserve capacity for non-positional
+        features if you want.
         """
         _B, _H, T, D = x.shape
         rot = self.rot_dim

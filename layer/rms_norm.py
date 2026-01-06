@@ -14,19 +14,18 @@ from caramba.config.layer import RMSNormLayerConfig
 
 
 class RMSNormLayer(nn.Module):
-    """Root mean square normalization layer.
+    """Root mean square normalization layer
 
-    Unlike LayerNorm, RMSNorm doesn't center the activations (no mean
-    subtraction), only scales them. This reduces computation and the
-    learnable bias term while maintaining training stability.
+    RMSNorm skips mean-centering and only rescales by the RMS, which often
+    preserves the stability benefits of normalization while reducing compute and
+    parameter count.
     """
 
     def __init__(self, config: RMSNormLayerConfig) -> None:
-        """Initialize RMSNorm with optional learnable scale.
+        """Initialize RMSNorm
 
-        Args:
-            config: Specifies d_model, epsilon, and whether to use
-                   a learnable elementwise scale (weight).
+        The learnable weight gives the model a way to “undo” normalization where
+        helpful, while still keeping activations numerically well-behaved.
         """
         super().__init__()
         self.config = config
@@ -46,10 +45,11 @@ class RMSNormLayer(nn.Module):
         *,
         ctx: object | None = None,
     ) -> Tensor:
-        """Normalize by root mean square.
+        """Normalize by root mean square
 
-        Computes x / sqrt(mean(x^2) + eps), then optionally scales by
-        a learned per-dimension weight.
+        RMSNorm rescales each token by a single scalar derived from its feature
+        magnitudes, which is a cheap way to keep layer activations in a stable
+        range.
         """
         if x.ndim < 1:
             raise ValueError(f"Expected x.ndim >= 1, got {x.shape}")

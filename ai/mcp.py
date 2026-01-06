@@ -7,7 +7,6 @@ It supports both transports used in the project:
 - `sse` for local tool servers exposing `/sse` + `/health`
 - `streamable-http` for MCP servers exposing `/mcp` (session-based)
 """
-
 from __future__ import annotations
 
 import socket

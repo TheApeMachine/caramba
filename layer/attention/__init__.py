@@ -1,38 +1,27 @@
-"""Attention layer package.
+"""Attention layers
 
-This module intentionally keeps the public import stable:
-
-    from layer.attention import AttentionLayer
-
-Internally, we split implementations by attention mode:
-- standard/gqa: `StandardAttentionLayer`
-- decoupled (DBA): `DecoupledAttentionLayer`
-
-`AttentionLayer` acts as a small factory base-class so config-driven builds
-(`AttentionLayerConfig.build()`) can continue to instantiate `AttentionLayer`
-while returning the correct concrete implementation.
+This package keeps a stable entry point (`AttentionLayer`) while allowing
+multiple attention implementations to coexist, so manifests can switch attention
+mechanisms without rewriting model wiring.
 """
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-
-from torch import nn
+from torch import Tensor, nn
 
 from caramba.config.layer import AttentionLayerConfig, AttentionMode
 
 if TYPE_CHECKING:
-    from cache.decoupled import DecoupledLayerKVCache
-    from cache.layer import LayerKVCache
-    import torch
-    from torch import Tensor
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+    from caramba.cache.layer import LayerKVCache
 
 
 class AttentionLayer(nn.Module):
-    """Factory base-class for attention implementations.
+    """Attention layer factory
 
-    Note: this class' `__new__` returns a *concrete subclass instance* while
-    preserving `isinstance(x, AttentionLayer)` semantics across the codebase.
+    The constructor returns a concrete implementation based on config (standard
+    vs decoupled), which keeps call sites simple while still supporting multiple
+    attention research directions in one codebase.
     """
 
     # Attribute declarations for type checkers.

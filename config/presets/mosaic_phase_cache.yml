@@ -1,0 +1,86 @@
+version: 2
+name: mosaic_phase_cache
+notes: >
+  MOSAIC preset enabling the phase-resonant in-bucket scoring channel.
+
+  This keeps routing (bits/VQ) unchanged and only modifies in-bucket selection
+  by adding a global-phase-invariant similarity term.
+
+defaults:
+  data: { tokenizer: tiktoken, val_frac: 0.0 }
+  logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 0 }
+  runtime: { save_every: 200, best_effort: false }
+
+targets:
+  - type: experiment
+    name: mosaic_phase_cache_smoke
+    description: "MOSAIC with phase-resonant slot scoring enabled."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.mosaic_memory_curriculum
+      config:
+        block_size: 128
+        batch_size: 1
+        seq_len: 128
+        vocab_size: 256
+        seed: 1
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: 256
+            d_model: 256
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: 2
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: 256
+                    conv_kernel: 7
+                    state_k: 16
+                    mem_router: bits
+                    mem_buckets: 1024
+                    mem_hashes: 2
+                    mem_assoc: 4
+                    mem_dim: 256
+                    mem_key_dim: 32
+                    mem_vsa_enabled: true
+                    mem_vsa_weight: 1.0
+                    mem_phase_enabled: true
+                    mem_phase_dim: 32
+                    mem_phase_weight: 1.0
+                    mem_phase_tanh_scale: 1.0
+              - type: RMSNormLayer
+                d_model: 256
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: 256
+                d_out: 256
+                bias: false
+    objective: objective.mosaic_next_token_aux
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_phase_cache
+        seed: 1
+        steps: 50
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 1
+          block_size: 128
+          lr: 0.001
+          device: cpu
+          dtype: float32
+
+entrypoints:
+  default: mosaic_phase_cache_smoke
+

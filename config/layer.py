@@ -188,6 +188,12 @@ class AttentionLayerConfig(Config):
     # If enabled, logs when DBA fused-decode kernels fail and we fall back.
     debug_fused_decode: bool = False
 
+    # DBA training backend selection (CUDA full-sequence training path).
+    # - auto: use Triton training kernel when eligible (default)
+    # - triton: require Triton training kernel when eligible (may error if unavailable)
+    # - sdpa: force PyTorch SDPA path (more numerically conservative; useful for stability/debug)
+    dba_train_backend: Literal["auto", "triton", "sdpa"] = "auto"
+
     @property
     def head_dim(self) -> int:
         """Compute head dimension from total attention dimension."""
@@ -372,6 +378,20 @@ class MosaicBlockLayerConfig(Config):
     state_decay_reg_max: Probability = 0.999
 
     # Hard-addressed memory (fixed-size, sublinear, no scanning).
+    # Memory index structure:
+    # - "hash": classic set-associative hash table (current default)
+    # - "trie": flat binary radix trie overlay with longest-prefix fallback
+    #   (stores internal prefix nodes in the same fixed-size table).
+    mem_index: Literal["hash", "trie"] = "hash"
+    # Trie behavior (only used when mem_index="trie").
+    # - trie_eta_decay: scale factor applied per ancestor level when writing.
+    #   1.0 means write equally to all ancestors; smaller emphasizes leaves.
+    mem_trie_eta_decay: Probability = 0.5
+    # - trie_max_levels: optional cap on number of ancestor levels to update/read.
+    #   If None, uses the full depth implied by mem_buckets (power-of-two).
+    mem_trie_max_levels: PositiveInt | None = None
+    # - trie_fallback_enabled: if True, read falls back to parent prefixes when leaf is empty.
+    mem_trie_fallback_enabled: bool = True
     # Router can be:
     # - "bits": learned SimHash-style sign bits (default; very cheap)
     # - "vq": product-quantized VQ routing (learned discrete router; more stable/fuzzy)
@@ -398,6 +418,14 @@ class MosaicBlockLayerConfig(Config):
     mem_write_threshold: Probability = 0.5
     mem_write_eta: Probability = 0.1
 
+    # Memory initialization (garbage-control experiments).
+    # - "empty": all-zero tables, mem_last=-1 (default)
+    # - "random_empty": random tables, mem_last=-1 (still behaves empty)
+    # - "random_full": random tables, mem_last=0 (all slots valid "garbage")
+    # - "zeros_full": zero tables, mem_last=0 (degenerate constant "garbage")
+    mem_init_mode: Literal["empty", "random_empty", "random_full", "zeros_full"] = "empty"
+    mem_init_scale: PositiveFloat = 0.02
+
     # VSA tag channel (hybrid: hard buckets + content selection within assoc).
     mem_vsa_enabled: bool = True
     mem_vsa_dim: PositiveInt = 32
@@ -405,6 +433,21 @@ class MosaicBlockLayerConfig(Config):
     mem_vsa_tanh_scale: PositiveFloat = 1.0
     mem_vsa_novelty_beta: PositiveFloat = 1.0
     mem_vsa_novelty_threshold: float = 0.0
+
+    # Phase-resonant in-bucket scoring (optional).
+    # Adds a global-phase-invariant similarity channel over phasor-coded tags.
+    mem_phase_enabled: bool = False
+    mem_phase_dim: PositiveInt = 32
+    mem_phase_weight: float = 0.0
+    mem_phase_tanh_scale: PositiveFloat = 1.0
+
+    # Resonant Memory Field (RMF): successor-biased routing prior (optional).
+    # RMF maintains a stateful activation field over discrete memory addresses and
+    # biases future routing by adding a learned delta in key/tag space.
+    rmf_enabled: bool = False
+    rmf_dim: PositiveInt = 64
+    rmf_eta: Probability = 0.2
+    rmf_weight: float = 1.0
 
     # Training dynamics hooks (Stage D).
     # When set >0 during training, randomly drop the local mixer contribution to force dependence

@@ -1,0 +1,393 @@
+version: 2
+name: mosaic_garbage_suite_signal
+notes: |
+  Garbage-focused hypothesis suite (signal-tuned).
+
+  This suite does NOT test RMF/teacher per se; it tests the "garbage" unknowns:
+  - Are early random writes harmful? (write warmup freeze)
+  - Is random prefill "fuel" or "poison"? (mem_init_mode=random_full)
+
+  Run all targets:
+    uv run -m caramba.cli run config/presets/mosaic_garbage_suite_signal.yml
+
+defaults:
+  data: { tokenizer: tiktoken, val_frac: 0.0 }
+  logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 0 }
+  runtime: { save_every: 200, best_effort: false }
+
+vars:
+  d_model: 192
+  n_layers: 4
+  vocab_size: 8192
+  block_size: 256
+  mem_buckets: 256
+  mem_hashes: 2
+  steps: 2000
+  batch_size: 4
+  lr: 0.0003
+  seed: 1337
+  n_pairs: 4
+  distractor_len: 64
+  sleep_replay_per_pair: 32
+  n_items: 20000
+
+targets:
+  - type: experiment
+    name: mosaic_garbage_baseline
+    description: "Baseline: empty memory init, writes enabled from step 1."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.mosaic_memory_curriculum
+      config:
+        block_size: ${block_size}
+        vocab_size: ${vocab_size}
+        mem_buckets: ${mem_buckets}
+        mem_hashes: ${mem_hashes}
+        n_pairs: ${n_pairs}
+        distractor_len: ${distractor_len}
+        sleep_replay_per_pair: ${sleep_replay_per_pair}
+        n_items: ${n_items}
+        seed: ${seed}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 8
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+                    mem_router: vq
+                    mem_vq_groups: 2
+                    mem_vq_codebook_size: 32
+                    mem_vq_group_dim: 16
+                    mem_vq_beam: 2
+                    mem_write_multi: true
+                    mem_buckets: ${mem_buckets}
+                    mem_dim: 96
+                    mem_hashes: ${mem_hashes}
+                    mem_assoc: 4
+                    mem_key_dim: 32
+                    mem_read_temp: 1.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.2
+                    mem_init_mode: empty
+                    mem_init_scale: 0.02
+                    mem_vsa_enabled: true
+                    mem_vsa_weight: 1.0
+                    rmf_enabled: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+    objective:
+      ref: objective.mosaic_next_token_aux
+      config: { aux_gate_weight: 0.2, aux_bits_weight: 0.2, aux_utility_weight: 0.2, aux_contrastive_weight: 0.2 }
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_garbage_baseline
+        seed: ${seed}
+        steps: ${steps}
+        expected: {}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: mps
+          dtype: float16
+          telemetry_interval: 50
+          offload_optimizer: true
+          mosaic_teacher_p_start: 0.0
+          mosaic_teacher_p_end: 0.0
+          mosaic_teacher_p_schedule: constant
+          mosaic_write_warmup_steps: 0
+
+  - type: experiment
+    name: mosaic_garbage_write_warmup
+    description: "Writes OFF for warmup: empty init, disable writes for first 500 steps."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.mosaic_memory_curriculum
+      config:
+        block_size: ${block_size}
+        vocab_size: ${vocab_size}
+        mem_buckets: ${mem_buckets}
+        mem_hashes: ${mem_hashes}
+        n_pairs: ${n_pairs}
+        distractor_len: ${distractor_len}
+        sleep_replay_per_pair: ${sleep_replay_per_pair}
+        n_items: ${n_items}
+        seed: ${seed}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 8
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+                    mem_router: vq
+                    mem_vq_groups: 2
+                    mem_vq_codebook_size: 32
+                    mem_vq_group_dim: 16
+                    mem_vq_beam: 2
+                    mem_write_multi: true
+                    mem_buckets: ${mem_buckets}
+                    mem_dim: 96
+                    mem_hashes: ${mem_hashes}
+                    mem_assoc: 4
+                    mem_key_dim: 32
+                    mem_read_temp: 1.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.2
+                    mem_init_mode: empty
+                    mem_init_scale: 0.02
+                    mem_vsa_enabled: true
+                    mem_vsa_weight: 1.0
+                    rmf_enabled: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+    objective:
+      ref: objective.mosaic_next_token_aux
+      config: { aux_gate_weight: 0.2, aux_bits_weight: 0.2, aux_utility_weight: 0.2, aux_contrastive_weight: 0.2 }
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_garbage_write_warmup
+        seed: ${seed}
+        steps: ${steps}
+        expected: {}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: mps
+          dtype: float16
+          telemetry_interval: 50
+          offload_optimizer: true
+          mosaic_teacher_p_start: 0.0
+          mosaic_teacher_p_end: 0.0
+          mosaic_teacher_p_schedule: constant
+          mosaic_write_warmup_steps: 500
+
+  - type: experiment
+    name: mosaic_garbage_random_full
+    description: "Random prefill: mem_init_mode=random_full, writes enabled from step 1."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.mosaic_memory_curriculum
+      config:
+        block_size: ${block_size}
+        vocab_size: ${vocab_size}
+        mem_buckets: ${mem_buckets}
+        mem_hashes: ${mem_hashes}
+        n_pairs: ${n_pairs}
+        distractor_len: ${distractor_len}
+        sleep_replay_per_pair: ${sleep_replay_per_pair}
+        n_items: ${n_items}
+        seed: ${seed}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 8
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+                    mem_router: vq
+                    mem_vq_groups: 2
+                    mem_vq_codebook_size: 32
+                    mem_vq_group_dim: 16
+                    mem_vq_beam: 2
+                    mem_write_multi: true
+                    mem_buckets: ${mem_buckets}
+                    mem_dim: 96
+                    mem_hashes: ${mem_hashes}
+                    mem_assoc: 4
+                    mem_key_dim: 32
+                    mem_read_temp: 1.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.2
+                    mem_init_mode: random_full
+                    mem_init_scale: 0.02
+                    mem_vsa_enabled: true
+                    mem_vsa_weight: 1.0
+                    rmf_enabled: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+    objective:
+      ref: objective.mosaic_next_token_aux
+      config: { aux_gate_weight: 0.2, aux_bits_weight: 0.2, aux_utility_weight: 0.2, aux_contrastive_weight: 0.2 }
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_garbage_random_full
+        seed: ${seed}
+        steps: ${steps}
+        expected: {}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: mps
+          dtype: float16
+          telemetry_interval: 50
+          offload_optimizer: true
+          mosaic_teacher_p_start: 0.0
+          mosaic_teacher_p_end: 0.0
+          mosaic_teacher_p_schedule: constant
+          mosaic_write_warmup_steps: 0
+
+  - type: experiment
+    name: mosaic_garbage_random_full_warmup
+    description: "Random prefill + no early writes: random_full init, disable writes for first 500 steps."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.mosaic_memory_curriculum
+      config:
+        block_size: ${block_size}
+        vocab_size: ${vocab_size}
+        mem_buckets: ${mem_buckets}
+        mem_hashes: ${mem_hashes}
+        n_pairs: ${n_pairs}
+        distractor_len: ${distractor_len}
+        sleep_replay_per_pair: ${sleep_replay_per_pair}
+        n_items: ${n_items}
+        seed: ${seed}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MosaicBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 8
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+                    mem_router: vq
+                    mem_vq_groups: 2
+                    mem_vq_codebook_size: 32
+                    mem_vq_group_dim: 16
+                    mem_vq_beam: 2
+                    mem_write_multi: true
+                    mem_buckets: ${mem_buckets}
+                    mem_dim: 96
+                    mem_hashes: ${mem_hashes}
+                    mem_assoc: 4
+                    mem_key_dim: 32
+                    mem_read_temp: 1.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.2
+                    mem_init_mode: random_full
+                    mem_init_scale: 0.02
+                    mem_vsa_enabled: true
+                    mem_vsa_weight: 1.0
+                    rmf_enabled: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+    objective:
+      ref: objective.mosaic_next_token_aux
+      config: { aux_gate_weight: 0.2, aux_bits_weight: 0.2, aux_utility_weight: 0.2, aux_contrastive_weight: 0.2 }
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_garbage_random_full_warmup
+        seed: ${seed}
+        steps: ${steps}
+        expected: {}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: mps
+          dtype: float16
+          telemetry_interval: 50
+          offload_optimizer: true
+          mosaic_teacher_p_start: 0.0
+          mosaic_teacher_p_end: 0.0
+          mosaic_teacher_p_schedule: constant
+          mosaic_write_warmup_steps: 500
+
+entrypoints:
+  default: mosaic_garbage_baseline
+

@@ -1,4 +1,9 @@
-"""Training visualization helpers for DBA attention."""
+"""DBA visualization helpers
+
+DBA has multiple attention channels; recording small attention slices during
+training can reveal whether semantic/geometric paths are behaving differently or
+collapsing into the same patterns.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +14,11 @@ from caramba.instrumentation.viz import TrainingVizContext
 
 
 class DecoupledAttentionViz:
-    """DBA visualization hooks."""
+    """DBA visualization hooks
+
+    The visualization path is intentionally lightweight: it records tiny matrices
+    for a handful of heads/tokens, avoiding the cost of storing full attention.
+    """
 
     def record_attention_matrix(
         self,

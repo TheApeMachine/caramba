@@ -6,7 +6,6 @@ Run this as a standalone MCP SSE server:
 Then connect to it via MCP SSE at:
     http://localhost:<port>/sse
 """
-
 from __future__ import annotations
 
 import argparse

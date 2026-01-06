@@ -1,8 +1,8 @@
 """Simple linear projection layer.
 
-This wraps nn.Linear with our standard layer interface (config-based
-construction, optional ctx parameter). Used for the LM head and other
-projections that don't need special handling.
+This is the “default” projection primitive; by keeping it tiny and
+configuration-driven, you can reuse it everywhere (heads, adapters, probes)
+without reintroducing bespoke glue code.
 """
 from __future__ import annotations
 
@@ -23,17 +23,19 @@ if TYPE_CHECKING:
 
 
 class LinearLayer(nn.Module):
-    """A linear projection with our standard layer interface.
+    """Linear projection layer
 
-    Wraps nn.Linear so it can be constructed from config and used
-    consistently with other layer types.
+    Linear layers are the main way transformer models move between feature
+    spaces; most architectural variation is “where do we put projections and
+    what do we do between them?”
     """
 
     def __init__(self, config: LinearLayerConfig) -> None:
-        """Create a linear projection.
+        """Create a linear projection
 
-        Args:
-            config: Specifies input dim (d_in), output dim (d_out), and bias.
+        A linear layer is just an affine transform; the interesting part is not
+        the math, but how many times you apply it and where you add nonlinear
+        structure around it.
         """
         super().__init__()
         self.config = config
@@ -50,5 +52,9 @@ class LinearLayer(nn.Module):
         *,
         ctx: object | None = None,
     ) -> Tensor:
-        """Apply the linear projection."""
+        """Apply the projection
+
+        This is a single matrix multiply (plus optional bias), so it stays fast
+        and predictable across devices.
+        """
         return self.linear(x)

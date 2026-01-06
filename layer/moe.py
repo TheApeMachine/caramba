@@ -18,18 +18,19 @@ from caramba.config.layer import MoELayerConfig
 
 
 class MoELayer(nn.Module):
-    """Sparsel-gated Mixture of Experts layer with load balancing.
+    """Mixture of Experts layer
 
-    A MoE layer uses a router to select the top-k experts for each input token.
-    Tokens are grouped and processed using batched operations to avoid Python
-    overhead and maximize GPU utilization.
+    The core idea is “conditional computation”: you grow parameter capacity by
+    adding experts, but you keep per-token compute bounded by only activating a
+    small top-k subset.
     """
 
     def __init__(self, config: MoELayerConfig) -> None:
-        """Initialize MoE with vectorized projections and routing.
+        """Initialize MoE routing and expert parameters
 
-        The config specifies the number of experts, top_k activation,
-        and the dimensions for the SwiGLU experts.
+        In MoE, the router is as important as the experts: if routing collapses
+        onto a few experts, you lose the benefit of capacity, so we also track a
+        load-balancing signal during training.
         """
         super().__init__()
         self.config = config
@@ -69,19 +70,22 @@ class MoELayer(nn.Module):
         self.aux_loss: Tensor | None = None
 
     def reset_parameters(self) -> None:
-        """Initialize expert weights using transformer defaults."""
+        """Initialize weights
+
+        A sane initialization matters more in MoE than dense layers because
+        routing decisions can amplify early imbalances if experts start with
+        very different scales.
+        """
         nn.init.normal_(self.w_gate_up, std=0.02)
         nn.init.normal_(self.w_down, std=0.02)
         nn.init.zeros_(self.router.weight)
 
     def forward(self, x: Tensor) -> Tensor:
-        """Vectorized MoE forward pass.
+        """Route tokens through experts
 
-        Args:
-            x: Input tensor, shape (B, T, d_model)
-
-        Returns:
-            Output tensor, shape (B, T, d_model)
+        Efficient MoE is mostly a data-movement problem: you want to group tokens
+        by expert so each expert sees one contiguous batch, turning many tiny
+        ops into a few large matmuls that accelerators handle well.
         """
         B, T, D = x.shape
         x_flat = x.view(-1, D)  # (N, D) where N = B*T
@@ -179,7 +183,12 @@ class MoELayer(nn.Module):
         return final_output.view(B, T, D)
 
     def _compute_aux_loss(self, routing_weights: Tensor, top_indices: Tensor) -> Tensor:
-        """Compute the auxiliary load balancing loss (Switch Transformer style)."""
+        """Compute load-balancing loss
+
+        This is the classic Switch-Transformer idea: encourage the router's soft
+        probabilities and the hard top-k selections to spread tokens across
+        experts, so capacity is actually used.
+        """
         N = routing_weights.shape[0]
 
         # Fraction of tokens routed to each expert (based on softmax)

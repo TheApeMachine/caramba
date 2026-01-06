@@ -18,6 +18,7 @@ class _Ctx:
     mosaic_stats_enabled: bool = False
     mosaic_teacher_p: float = 1.0
     mosaic_teacher: dict[str, torch.Tensor] | None = None
+    mosaic_aux_out: dict[str, torch.Tensor] | None = None
     _mosaic: dict[str, MosaicState] = field(default_factory=dict)
 
 
@@ -76,6 +77,50 @@ def _make_layer(*, d_model: int = 8) -> MosaicBlockLayer:
         layer.gate_mem.weight.zero_()
 
     return layer
+
+
+def test_rmf_emits_routing_logits_and_updates_state() -> None:
+    torch.manual_seed(0)
+    cfg = MosaicBlockLayerConfig(
+        d_model=8,
+        conv_kernel=3,
+        mlp_mult=1.0,
+        dropout_p=0.0,
+        state_k=2,
+        state_decay_min=0.9,
+        state_decay_max=0.9,
+        mem_router="bits",
+        mem_buckets=8,
+        mem_dim=8,
+        mem_hashes=1,
+        mem_assoc=2,
+        mem_key_dim=4,
+        mem_read_temp=1.0,
+        mem_write_threshold=0.99,
+        mem_write_eta=0.0,
+        forced_read_dropout_p=0.0,
+        opcodes_enabled=False,
+        rmf_enabled=True,
+        rmf_dim=16,
+        rmf_eta=0.5,
+        rmf_weight=1.0,
+    )
+    layer = MosaicBlockLayer(cfg)
+    layer.train()
+
+    B, T, D = 1, 3, 8
+    x = torch.randn((B, T, D), dtype=torch.float32)
+    ctx = _Ctx(mosaic_collect_aux=True, mosaic_stats_enabled=False, mosaic_teacher_p=1.0, mosaic_teacher=None)
+
+    y = layer(x, ctx=ctx)
+    assert torch.isfinite(y).all()
+    assert isinstance(ctx.mosaic_aux_out, dict)
+    assert "mosaic_read_bit_logits" in ctx.mosaic_aux_out
+
+    st = layer.state_store.get(ctx, key=layer.ctx_key)
+    assert st is not None
+    assert isinstance(st.rmf_field, torch.Tensor)
+    assert tuple(st.rmf_field.shape[-1:]) == (2,)
 
 
 def _prefill_memory(layer: MosaicBlockLayer, ctx: _Ctx, *, B: int, device: torch.device, dtype: torch.dtype) -> None:

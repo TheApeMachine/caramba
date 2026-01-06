@@ -20,27 +20,19 @@ from caramba.config.layer import SSMLayerConfig
 
 
 class _SelectiveScan:
-    """Selective scan implementations.
+    """Selective scan implementation
 
-    The recurrence is:
-      h_t = a_t * h_{t-1} + u_t,    with h_{-1} = 0
-    where `a_t` and `u_t` are elementwise (no mixing across state dims).
-
-    This admits an associative scan over pairs (a, u) with composition:
-      (a2, u2) ∘ (a1, u1) = (a2*a1, u2 + a2*u1)
-    so we can compute all h_t in O(log T) scan steps using vectorized tensor ops.
+    A simple affine recurrence becomes parallelizable when you view each timestep
+    as an associative “transform”, which is why SSMs can be both recurrent in
+    spirit and parallel in execution.
     """
 
     @staticmethod
     def _inclusive_affine_scan(a: Tensor, u: Tensor) -> Tensor:
-        """Compute inclusive scan over time for the affine recurrence.
+        """Inclusive scan for an affine recurrence
 
-        Args:
-            a: (B, T, D_inner, D_state)
-            u: (B, T, D_inner, D_state)
-
-        Returns:
-            h: (B, T, D_inner, D_state) where h[t] equals the hidden state after step t.
+        Scans trade a sequential loop for a small number of large tensor ops,
+        which is often a win on accelerators even if total FLOPs increase.
         """
         if a.shape != u.shape:
             raise ValueError(f"scan expects a/u same shape, got a={tuple(a.shape)} u={tuple(u.shape)}")
@@ -77,7 +69,11 @@ class _SelectiveScan:
         C: Tensor,
         D: Tensor,
     ) -> Tensor:
-        """Vectorized selective scan, autograd-friendly on CPU/MPS/CUDA."""
+        """Vectorized selective scan
+
+        This is the core SSM computation: evolve a per-feature state through time
+        and read it out with a learned projection to produce sequence features.
+        """
         if x.ndim != 3:
             raise ValueError(f"expected x as (B,T,D_inner), got {tuple(x.shape)}")
         if dt.shape != x.shape:
@@ -118,10 +114,11 @@ class SSMLayer(nn.Module):
     """
 
     def __init__(self, config: SSMLayerConfig) -> None:
-        """Initialize the SSM with projections and scan parameters.
+        """Initialize SSM parameters
 
-        The config specifies the state dimension, expansion factor, and
-        convolution settings.
+        The architecture mixes three ideas: local convolution for short-range
+        patterns, a selective scan for long-range memory, and a gate to control
+        information flow between them.
         """
         super().__init__()
         self.config = config
@@ -164,14 +161,10 @@ class SSMLayer(nn.Module):
         self.out_proj = nn.Linear(self.d_inner, self.d_model, bias=config.bias)
 
     def forward(self, x: Tensor, *, ctx: object | None = None) -> Tensor:
-        """Process sequence through the SSM.
+        """Process a sequence with an SSM
 
-        Args:
-            x: Input tensor, shape (B, T, d_model)
-            ctx: Optional inference context (unused by SSM, but required for topology compatibility)
-
-        Returns:
-            Output tensor, shape (B, T, d_model)
+        SSMs are “stateful” models, but with the scan trick they can be trained
+        and run with parallel tensor ops instead of an explicit Python loop.
         """
         B, T, D = x.shape
 

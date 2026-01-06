@@ -13,18 +13,18 @@ from caramba.config.layer import LayerNormLayerConfig
 
 
 class LayerNormLayer(nn.Module):
-    """Standard layer normalization wrapping nn.LayerNorm.
+    """Layer normalization layer
 
-    Normalizes each sample to zero mean and unit variance across the
-    last dimension, then applies a learnable affine transform.
+    LayerNorm stabilizes optimization by keeping activations in a predictable
+    range; that usually allows larger learning rates and reduces sensitivity to
+    initialization.
     """
 
     def __init__(self, config: LayerNormLayerConfig) -> None:
-        """Initialize LayerNorm with the given dimension and epsilon.
+        """Initialize LayerNorm
 
-        Args:
-            config: Specifies d_model (normalized dimension) and eps for
-                   numerical stability.
+        The epsilon is a tiny constant added for numerical stability so the
+        normalization never divides by zero.
         """
         super().__init__()
         self.config = config
@@ -40,7 +40,11 @@ class LayerNormLayer(nn.Module):
         *,
         ctx: object | None = None,
     ) -> Tensor:
-        """Apply layer normalization."""
+        """Apply LayerNorm
+
+        Normalizing per token (across the last dimension) is a strong default
+        for transformer blocks because it does not depend on sequence length.
+        """
         from caramba.optimizer.kernels import layernorm
 
         return layernorm(

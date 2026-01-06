@@ -312,12 +312,32 @@ class GlobalStepper:
                     bwd_s += float(tb1 - tb0)
 
                 grad_norm = 0.0
+                grad_norm_post = 0.0
+                grad_clip = float(getattr(train, "grad_clip_norm", 0.0))
                 try:
                     from caramba.carmath import global_grad_norm_l2
 
                     grad_norm = float(global_grad_norm_l2(ctx.student))
                 except Exception:
                     grad_norm = 0.0
+
+                # Optional: clip to stabilize occasional spikes without changing LR.
+                # Important: unscale before clipping when using GradScaler (CUDA fp16).
+                if grad_clip > 0.0:
+                    try:
+                        if scaler is not None and autocast_enabled:
+                            scaler.unscale_(optimizer)
+                        torch.nn.utils.clip_grad_norm_(ctx.student.parameters(), max_norm=float(grad_clip))
+                        try:
+                            from caramba.carmath import global_grad_norm_l2
+
+                            grad_norm_post = float(global_grad_norm_l2(ctx.student))
+                        except Exception:
+                            grad_norm_post = 0.0
+                    except Exception:
+                        grad_norm_post = 0.0
+                else:
+                    grad_norm_post = float(grad_norm)
 
                 topt0 = time.perf_counter()
                 if scaler is not None and autocast_enabled:
@@ -361,7 +381,9 @@ class GlobalStepper:
                         "lr": float(lr),
                         "lr_base": float(lr_base),
                         "lr_mult": float(lr_mult),
-                        "grad_norm": float(grad_norm),
+                        "grad_norm": float(grad_norm_post),
+                        "grad_norm_preclip": float(grad_norm),
+                        "grad_clip_norm": float(grad_clip),
                         "grad_accum": float(accum_steps),
                         "batch_size": float(getattr(train, "batch_size", 0)),
                         "seq_len": float(getattr(train, "block_size", 0)),

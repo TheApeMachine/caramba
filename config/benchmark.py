@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from caramba.config import PositiveFloat, PositiveInt, Probability
+from caramba.config.eval import TokenizerConfig
 from caramba.config.kvcache import KVCacheConfig
 
 
@@ -26,6 +27,8 @@ class BenchmarkType(str, enum.Enum):
     MEMORY = "memory"
     ACCURACY = "accuracy"
     GENERATION = "generation"
+    BEHAVIOR = "behavior"
+    CONTEXT = "context"
 
 
 class PerplexityBenchmarkConfig(BaseModel):
@@ -114,6 +117,50 @@ class GenerationBenchmarkConfig(BaseModel):
     repetition_penalty: PositiveFloat = 1.0
 
 
+class BehaviorBenchmarkConfig(BaseModel):
+    """Run a small behavioral prompt suite against teacher/student.
+
+    This is intended for paper workflows where we want deterministic,
+    structured sanity checks (e.g. copy/format fidelity, simple arithmetic)
+    in addition to perplexity/latency/memory.
+    """
+
+    type: Literal[BenchmarkType.BEHAVIOR] = BenchmarkType.BEHAVIOR
+    tokenizer: TokenizerConfig
+    cases_file: str
+    max_new_tokens: PositiveInt = 32
+    context_window: PositiveInt | None = None
+
+
+class ContextBenchmarkConfig(BaseModel):
+    """Long-context stability + decode-at-context throughput.
+
+    Uses KV caches with chunked prefill to reach contexts beyond the training
+    block size. Intended for the DBA paper's "stability up to 128k" claim and
+    decode-at-context throughput curves.
+    """
+
+    type: Literal[BenchmarkType.CONTEXT] = BenchmarkType.CONTEXT
+    # Optional dataset used only to source a deterministic token prefix.
+    # If missing/unavailable, falls back to random tokens.
+    dataset: str | None = None
+    # Context lengths to test.
+    context_lengths: list[PositiveInt] = Field(
+        default_factory=lambda: [2048, 4096, 8192, 16384, 32768]
+    )
+    # Chunk size for prefill. Actual chunk size may be reduced dynamically to
+    # keep attention mask materialization bounded.
+    chunk_size: PositiveInt = 1024
+    # Upper bound on (t_q * t_k) for any attention mask block (best-effort).
+    max_mask_elems: PositiveInt = 16_000_000
+    batch_size: PositiveInt = 1
+    # Decode benchmark after prefill.
+    decode_len: PositiveInt = 128
+    decode_warmup: PositiveInt = 8
+    # KV cache config for the benchmark run.
+    cache_kind: str = "fp16"
+
+
 # Union of all benchmark config types
 BenchmarkConfig = (
     PerplexityBenchmarkConfig
@@ -121,6 +168,8 @@ BenchmarkConfig = (
     | MemoryBenchmarkConfig
     | AccuracyBenchmarkConfig
     | GenerationBenchmarkConfig
+    | BehaviorBenchmarkConfig
+    | ContextBenchmarkConfig
 )
 
 

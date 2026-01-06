@@ -1,17 +1,8 @@
-"""Diffusion-based next-token head for hybrid generation.
+"""Diffusion next-token head
 
-This is an experimental adapter that adds diffusion-based token prediction
-on top of a standard autoregressive transformer. Instead of directly sampling
-from logits, we run a denoising diffusion process conditioned on the
-transformer's hidden states to generate a clean token embedding.
-
-Key benefits:
-- Can be trained while the backbone is frozen (cheap laptop experiments)
-- Supports classifier-free guidance for improved generation quality
-- Uses 🤗 diffusers schedulers for efficient sampling (DDIM, DPM-Solver)
-
-Inspired by Diffusion-LM but used as a lightweight head rather than a
-full standalone generator.
+This module treats next-token prediction as denoising in embedding space: the
+transformer provides conditioning, and a small diffusion head iteratively turns
+noise into a token embedding that can be projected back into the vocabulary.
 """
 from __future__ import annotations
 
@@ -28,7 +19,11 @@ from typing_extensions import override
 
 
 def _spec_exists(name: str) -> bool:
-    """Check if a module is available without importing it."""
+    """Check module availability
+
+    This is a small packaging utility: we can gate optional integrations while
+    keeping error messages clear when a dependency is missing.
+    """
     try:
         return importlib.util.find_spec(name) is not None
     except (ImportError, ModuleNotFoundError):
@@ -40,10 +35,10 @@ DIFFUSERS_AVAILABLE: bool = _spec_exists("diffusers")
 
 @dataclass(frozen=True)
 class DiffusionHeadConfig:
-    """Configuration for the diffusion next-token head.
+    """Diffusion head configuration
 
-    These settings control the diffusion process: how many timesteps,
-    which scheduler to use, classifier-free guidance strength, etc.
+    These settings describe the denoising schedule and guidance behavior, which
+    largely determines the quality/speed trade-off during sampling.
     """
 
     enabled: bool = False
@@ -59,7 +54,11 @@ class DiffusionHeadConfig:
 
 @dataclass(frozen=True)
 class StepOutput:
-    """Output from a diffusion scheduler step."""
+    """Scheduler step output
+
+    Diffusers schedulers return rich objects; we wrap just the piece we need so
+    the rest of the code can stay strongly typed.
+    """
 
     prev_sample: Tensor
 
@@ -76,7 +75,11 @@ class DiffusersSchedulerAdapter:
 
     @property
     def timesteps(self) -> Tensor:
-        """Get the inference timesteps tensor."""
+        """Get inference timesteps
+
+        Exposing timesteps explicitly makes sampling loops easier to audit and
+        helps catch scheduler API mismatches early.
+        """
         ts = getattr(self._inner, "timesteps", None)
         if not isinstance(ts, Tensor):
             raise TypeError("diffusers scheduler timesteps must be a torch.Tensor")
@@ -88,7 +91,11 @@ class DiffusersSchedulerAdapter:
         noise: Tensor,
         timesteps: Tensor,
     ) -> Tensor:
-        """Add noise to samples at the given timesteps."""
+        """Add noise at a timestep
+
+        Training typically corrupts clean embeddings with schedule-controlled
+        noise; this method centralizes that operation behind one adapter call.
+        """
         fn = getattr(self._inner, "add_noise", None)
         if not callable(fn):
             raise TypeError("diffusers scheduler missing add_noise")
@@ -98,7 +105,11 @@ class DiffusersSchedulerAdapter:
         return out
 
     def set_timesteps(self, num_inference_steps: int, *, device: torch.device) -> None:
-        """Configure the inference timestep schedule."""
+        """Configure inference schedule
+
+        This is where you choose speed vs quality: fewer inference steps make
+        sampling faster but give the denoiser fewer chances to correct errors.
+        """
         fn = getattr(self._inner, "set_timesteps", None)
         if not callable(fn):
             raise TypeError("diffusers scheduler missing set_timesteps")
@@ -110,7 +121,11 @@ class DiffusersSchedulerAdapter:
         timestep: object,
         sample: Tensor,
     ) -> StepOutput:
-        """Perform a single reverse diffusion step."""
+        """Perform one reverse step
+
+        A reverse step is the atomic unit of sampling: given a model prediction,
+        the scheduler computes the next less-noisy sample.
+        """
         fn = getattr(self._inner, "step", None)
         if not callable(fn):
             raise TypeError("diffusers scheduler missing step")

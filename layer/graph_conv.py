@@ -1,8 +1,8 @@
-"""High-performance Graph Convolution layers.
+"""Graph convolution layers
 
-Implements GCN (Graph Convolutional Network) and GAT (Graph Attention Network)
-using sparse matrix operations for efficiency without external dependencies
-like torch_geometric.
+These layers let you do message passing over graphs (GCN/GAT) using only PyTorch
+ops, which makes it easy to prototype graph ideas without pulling in a separate
+graph framework.
 """
 from __future__ import annotations
 
@@ -23,12 +23,11 @@ if TYPE_CHECKING:
 
 
 class GraphConvLayer(nn.Module):
-    """Graph Convolution Layer (GCN or GAT).
+    """Graph convolution layer
 
-    Expects input to be a tuple (x, adj) where:
-    - x: Node features (N, in_features)
-    - adj: Adjacency matrix (N, N) - can be sparse or dense
-           OR edge_index (2, E)
+    Graph layers generalize “convolution” to arbitrary connectivity: instead of
+    a fixed spatial neighborhood, each node aggregates information from its
+    neighbors defined by the adjacency structure.
     """
 
     def __init__(self, config: GraphConvLayerConfig) -> None:
@@ -49,10 +48,10 @@ class GraphConvLayer(nn.Module):
         *,
         ctx: object | None = None,
     ) -> Tensor:
-        """Apply graph convolution.
+        """Apply message passing
 
-        Args:
-            x: Either a Tensor of features (if adj is in ctx) or tuple (features, adj)
+        The adjacency can be passed directly alongside features or supplied via
+        context; either way, the computation is “mix features along edges”.
         """
         adj: Tensor | None = None
 
@@ -71,7 +70,11 @@ class GraphConvLayer(nn.Module):
 
 
 class _GCNImpl(nn.Module):
-    """Kipf & Welling GCN implementation."""
+    """GCN implementation
+
+    GCN performs a neighborhood-averaging style aggregation (often with a
+    normalized adjacency), which is a strong baseline for many graph tasks.
+    """
 
     def __init__(self, config: GraphConvLayerConfig) -> None:
         super().__init__()
@@ -92,10 +95,10 @@ class _GCNImpl(nn.Module):
 
 
 class _GATImpl(nn.Module):
-    """Graph Attention Network (GAT) implementation.
+    """Graph Attention Network (GAT) implementation
 
-    Uses dense implementation for simplicity and batching support,
-    optimized for smaller graphs or node-classification benchmarks.
+    GAT replaces fixed neighbor weighting with learned attention over edges,
+    letting the model decide which neighbors matter for each node.
     """
 
     def __init__(self, config: GraphConvLayerConfig) -> None:

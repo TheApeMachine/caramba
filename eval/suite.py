@@ -201,6 +201,38 @@ def _run_case(
                 teacher_answer=str(t_int),
                 student_answer=str(s_int),
             )
+        case "exact_match_greedy":
+            if not isinstance(case.answer, str):
+                raise TypeError(
+                    f"Case {case.id!r}: expected answer to be str for exact_match_greedy, "
+                    f"got {type(case.answer).__name__}"
+                )
+            t_text = _greedy_generate(
+                model=teacher,
+                prompt_ids=prompt_ids,
+                tokenizer=tokenizer,
+                device=device,
+                max_new_tokens=max_new_tokens,
+                context_window=context_window,
+            )
+            s_text = _greedy_generate(
+                model=student,
+                prompt_ids=prompt_ids,
+                tokenizer=tokenizer,
+                device=device,
+                max_new_tokens=max_new_tokens,
+                context_window=context_window,
+            )
+            expected = str(case.answer).strip()
+            t_out = str(t_text).strip()
+            s_out = str(s_text).strip()
+            return EvalCaseResult(
+                case_id=case.id,
+                teacher_ok=(t_out == expected),
+                student_ok=(s_out == expected),
+                teacher_answer=t_out,
+                student_answer=s_out,
+            )
         case _:
             raise ValueError(f"Unsupported eval kind: {case.kind!r}")
 

@@ -7,7 +7,7 @@ import math
 import torch
 from torch import nn
 
-from console import logger
+from caramba.console import logger
 
 
 def global_grad_norm_l2(model: nn.Module) -> float:

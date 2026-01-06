@@ -1,4 +1,9 @@
-"""DBA-specific memory summarization helpers."""
+"""DBA memory summarization helpers
+
+When sequences get long, DBA can compress “remote” history into a small number
+of summary tokens while keeping semantic and geometric paths aligned, so both
+channels continue to refer to the same compressed context.
+"""
 
 from __future__ import annotations
 
@@ -11,12 +16,10 @@ from caramba.config.layer import AttentionLayerConfig
 
 
 class DecoupledMemorySummarizer:
-    """Optional KV memory summarization for DBA.
+    """DBA memory summarization mixin
 
-    This class is a **mixin**: it does not define an `__init__` and expects the
-    composing attention layer to provide the core attributes it references,
-    notably `self.config` and `self._v_head_dim` (and the optional modules it
-    initializes such as `mem_k_proj_sem`, `mem_k_proj_geo`, `mem_v_proj_dba`).
+    A mixin keeps summarization logic separate from attention math; the main
+    layer just calls into `maybe_summarize_kv_decoupled` when configured.
     """
 
     config: AttentionLayerConfig
@@ -28,7 +31,11 @@ class DecoupledMemorySummarizer:
     mem_v_proj: nn.Module | None
 
     def _init_memory_summarizer_decoupled(self) -> None:
-        """Initialize optional modules for DBA mem_block summarization."""
+        """Initialize DBA memory summarizer modules
+
+        Linear/conv summarizers start as “do nothing” equivalents, so you can
+        turn them on without immediately changing behavior in surprising ways.
+        """
         kind = str(getattr(self.config, "mem_summarize", "mean")).lower()
         sem_head_dim = int(self.config.sem_head_dim or 0)
         geo_head_dim = int(self.config.geo_head_dim or 0)
@@ -91,7 +98,12 @@ class DecoupledMemorySummarizer:
         v: Tensor,
         k_pos: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        """Summarize older KV blocks for DBA, keeping paths aligned."""
+        """Summarize older KV blocks for DBA
+
+        The summarizer compresses old tokens into block means (optionally with a
+        learned linear/conv transform), which reduces KV length without
+        discarding the newest tokens.
+        """
         mem_block = getattr(self.config, "mem_block", None)
         if mem_block is None:
             return k_sem, k_geo, v, k_pos

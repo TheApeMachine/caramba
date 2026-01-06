@@ -17,12 +17,17 @@ import torch
 from torch import Tensor, nn
 
 from caramba.layer.mosaic.memory.vsa import VsaTagProjector
+from caramba.layer.mosaic.memory.phase import PhaseSimilarity, PhaseTagProjector
 from caramba.layer.mosaic.state import MosaicState
 
 
 @dataclass(slots=True)
 class MemoryReader:
-    """Memory reader."""
+    """Memory reader
+
+    Reads are “content addressed within a bucket”: routing picks a small set of
+    candidate slots, then similarity scoring decides which slot(s) to use.
+    """
 
     mem_out: nn.Linear
     mem_qkey: nn.Linear
@@ -32,16 +37,30 @@ class MemoryReader:
     mem_assoc: int
     mem_hashes: int
     mem_buckets: int
+    mem_table_buckets: int
     mem_read_temp: float
     mem_vsa_weight: float
     mem_vsa_enabled: bool
     vsa_projector: VsaTagProjector | None
+    mem_phase_weight: float
+    mem_phase_enabled: bool
+    phase_projector: PhaseTagProjector | None
+    phase_similarity: PhaseSimilarity | None
+    mem_trie_enabled: bool
+    mem_trie_fallback_enabled: bool
+    mem_trie_max_levels: int | None = None
 
     def read(self, u: Tensor, st: MosaicState, routing: dict[str, Any]) -> Tensor:
-        """Read memory for a chunk."""
+        """Read memory for a chunk
+
+        The returned vector is a learned projection of weighted slot values,
+        which makes the memory interface compatible with the model dimension.
+        """
         B, T = self.validate(u)
-        idx_g = self.gather_index(routing)
+        idx_g, valid_hint = self.gather_index_and_valid(st, routing, batch=B, time=T)
         bk, bv, bt, valid = self.gather_bucket(st, idx_g=idx_g, batch=B, time=T)
+        if valid_hint is not None:
+            valid = valid_hint
         qk = self.mem_qkey(u)
         sim_key = self.score_key(bk=bk, qk=qk, valid=valid, batch=B, time=T)
         if self.mem_vsa_enabled and float(self.mem_vsa_weight) != 0.0:
@@ -53,12 +72,22 @@ class MemoryReader:
         else:
             sim_vsa = torch.zeros_like(sim_key)
             sim_total = sim_key
+        if self.mem_phase_enabled and float(self.mem_phase_weight) != 0.0:
+            if self.phase_projector is None or self.phase_similarity is None:
+                raise RuntimeError("mem_phase_enabled is True but phase modules are missing")
+            qphi = self.phase_projector(qk)
+            kphi = self.phase_projector(bk)
+            sim_phase = self.phase_similarity.score(q_angles=qphi, k_angles=kphi, valid=valid, batch=B, time=T)
+            sim_total = sim_total + float(self.mem_phase_weight) * sim_phase
+        else:
+            sim_phase = torch.zeros_like(sim_key)
         w = self.slot_weights(sim=sim_total, valid=valid)
         read_h = (w.unsqueeze(-1) * bv).sum(dim=3)
         if bool(routing.get("collect_aux", False)):
             routing["read_slot_weights"] = w.detach()
             routing["read_slot_sim"] = sim_total.detach()
             routing["read_slot_sim_vsa"] = sim_vsa.detach()
+            routing["read_slot_sim_phase"] = sim_phase.detach()
         return self.mem_out(read_h.sum(dim=1))
 
     def validate(self, u: Tensor) -> tuple[int, int]:
@@ -67,9 +96,54 @@ class MemoryReader:
         B, T, _ = u.shape
         return int(B), int(T)
 
-    def gather_index(self, routing: dict[str, Any]) -> Tensor:
+    def gather_index_and_valid(self, st: MosaicState, routing: dict[str, Any], *, batch: int, time: int) -> tuple[Tensor, Tensor | None]:
         idx_r = routing["idx_r"]
-        return idx_r.permute(0, 2, 1).to(dtype=torch.long).unsqueeze(-1).unsqueeze(-1)
+        if idx_r.ndim != 3:
+            raise ValueError(f"routing['idx_r'] must have shape (B,T,H), got {tuple(idx_r.shape)}")
+        idx = idx_r.permute(0, 2, 1).to(dtype=torch.long)  # (B,H,T) in leaf bucket space
+        valid_hint: Tensor | None = None
+        if self.mem_trie_enabled:
+            leaves = int(self.mem_buckets)
+            base = int(leaves - 1)
+            idx = idx + base  # leaf node indices in [base, base+leaves-1]
+            if self.mem_trie_fallback_enabled:
+                idx, valid_hint, steps = self.trie_fallback_index(st, idx=idx, batch=batch, time=time)
+                if bool(routing.get("collect_aux", False)) and isinstance(steps, Tensor):
+                    routing["trie_fallback_steps"] = steps.detach()
+        return idx.unsqueeze(-1).unsqueeze(-1), valid_hint
+
+    def trie_fallback_index(self, st: MosaicState, *, idx: Tensor, batch: int, time: int) -> tuple[Tensor, Tensor, Tensor]:
+        """Fallback up trie parents when leaf bucket is empty.
+
+        Args:
+            idx: (B,H,T) node indices in trie table (0..mem_table_buckets-1)
+
+        Returns:
+            (idx_final, valid_final, steps) where:
+            - idx_final: (B,H,T) final node index after fallback
+            - valid_final: (B,H,T,A) validity mask for that node's slots
+            - steps: (B,H,T) number of parent steps taken
+        """
+        if int(self.mem_buckets) < 2:
+            raise ValueError("Trie requires mem_buckets (leaf count) >= 2")
+        max_depth = int((int(self.mem_buckets) - 1).bit_length())
+        if self.mem_trie_max_levels is not None:
+            max_depth = min(max_depth, int(self.mem_trie_max_levels))
+        steps = torch.zeros((batch, self.mem_hashes, time), device=idx.device, dtype=torch.long)
+        cur = idx
+        valid = torch.zeros((batch, self.mem_hashes, time, self.mem_assoc), device=idx.device, dtype=torch.bool)
+        for _ in range(int(max_depth) + 1):
+            idxl = cur.unsqueeze(-1).expand(batch, self.mem_hashes, time, self.mem_assoc)
+            bl = st.mem_last.gather(dim=2, index=idxl)
+            valid = bl >= 0
+            any_valid = valid.any(dim=-1)  # (B,H,T)
+            need = ~any_valid
+            if not bool(need.any()):
+                break
+            parent = torch.where(cur > 0, (cur - 1) // 2, cur)
+            cur = torch.where(need, parent, cur)
+            steps = steps + need.to(dtype=torch.long)
+        return cur, valid, steps
 
     def gather_bucket(self, st: MosaicState, *, idx_g: Tensor, batch: int, time: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         bk = st.mem_k.gather(dim=2, index=idx_g.expand(batch, self.mem_hashes, time, self.mem_assoc, self.mem_key_dim))

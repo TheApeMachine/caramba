@@ -30,10 +30,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from config.manifest import Manifest
-from config.model import ModelConfig
-from experiment.runner import _resolve_target as _resolve_target_name
-from console import logger
+from caramba.config.manifest import Manifest
+from caramba.config.model import ModelConfig
+from caramba.experiment.runner import _resolve_target as _resolve_target_name
+from caramba.console import logger
 
 _REPO_ROOT = Path(__file__).resolve().parent
 

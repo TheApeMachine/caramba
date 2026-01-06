@@ -1,11 +1,8 @@
 """MOSAIC block layer
 
-Implements a streaming, shape-preserving block:
-- local mixer (causal conv + gated MLP)
-- multiscale state bank (leaky integrators)
-- hard-addressed memory (tag-routed, set-associative)
-
-This is an explicit-memory alternative to attention/KV caches.
+This module implements a streaming transformer-like block that relies on explicit
+state (local buffers, multiscale integrators, and a hard-addressed memory table)
+instead of attention and KV caches.
 """
 
 from __future__ import annotations
@@ -23,7 +20,8 @@ from caramba.layer.mosaic.memory import MosaicMemory
 from caramba.layer.mosaic.state import MosaicState, MosaicStateStore
 from caramba.layer.mosaic.block.local_mixer import LocalMixer
 from caramba.layer.mosaic.block.norm import RmsNorm
-from caramba.layer.mosaic.block.paths import FastTrainPath, SequentialPath
+from caramba.layer.mosaic.block.path.fast_train import FastTrainPath
+from caramba.layer.mosaic.block.path.sequential import SequentialPath
 from caramba.layer.mosaic.block.state_bank import StateBank
 
 
@@ -38,6 +36,12 @@ class OpcodeControl:
     temp: float
 
     def control(self, logits: Tensor, *, dtype: torch.dtype) -> Tensor:
+        """Compute opcode selections
+
+        Straight-through selection makes the model commit to a discrete action
+        in the forward pass while still getting a usable gradient signal during
+        training.
+        """
         if logits.ndim != 3:
             raise ValueError(f"opcode logits must have shape (B,T,V), got {tuple(logits.shape)}")
         if float(self.temp) <= 0.0:
@@ -50,7 +54,12 @@ class OpcodeControl:
 
 
 class MosaicBlockLayer(nn.Module):
-    """MOSAIC block layer."""
+    """MOSAIC block layer
+
+    This is a shape-preserving residual block for streaming models: it takes
+    (B,T,D) in and returns (B,T,D), while maintaining per-layer state in the
+    caller's context so decoding can be truly incremental.
+    """
 
     def __init__(self, config: MosaicBlockLayerConfig) -> None:
         super().__init__()
@@ -93,6 +102,11 @@ class MosaicBlockLayer(nn.Module):
         )
 
     def build_local_mixer(self) -> LocalMixer:
+        """Build the local mixer submodule
+
+        The local mixer handles short-range pattern modeling with a fixed window,
+        freeing the explicit memory subsystem to focus on longer-horizon storage.
+        """
         d = int(self.d_model)
         k = int(getattr(self.config, "conv_kernel", 7))
         conv = nn.Conv1d(d, d, kernel_size=k, padding=k - 1, groups=d, bias=False)
@@ -104,6 +118,11 @@ class MosaicBlockLayer(nn.Module):
         return LocalMixer(conv=conv, gate_proj=gate_proj, mlp_up=mlp_up, mlp_down=mlp_down, dropout=dropout, conv_kernel=k)
 
     def build_state_bank(self) -> StateBank:
+        """Build the multiscale state bank
+
+        A bank of leaky integrators gives the block a set of learned time scales,
+        which is a simple way to keep persistent intent without attention.
+        """
         d = int(self.d_model)
         K = int(getattr(self.config, "state_k", 16))
         state_in = nn.Linear(d, K * d, bias=False)
@@ -121,18 +140,49 @@ class MosaicBlockLayer(nn.Module):
         return StateBank(state_k=K, state_in=state_in, state_out=state_out, decay_logit=decay_logit)
 
     def init_state(self, batch_size: int, device: torch.device, dtype: torch.dtype) -> MosaicState:
+        """Initialize streaming state
+
+        The state contains the minimum buffers needed to make training and
+        single-token decoding share the same semantics (conv history, integrator
+        state, and explicit memory tables).
+        """
         B = int(batch_size)
         D = int(self.d_model)
         k = int(getattr(self.config, "conv_kernel", 7))
         conv_buf = torch.zeros((B, max(0, k - 1), D), device=device, dtype=dtype)
         s = torch.zeros((B, int(self.state_bank.state_k), D), device=device, dtype=dtype)
-        mem_k = torch.zeros((B, self.memory.mem_hashes, self.memory.mem_buckets, self.memory.mem_assoc, self.memory.mem_key_dim), device=device, dtype=dtype)
-        mem_v = torch.zeros((B, self.memory.mem_hashes, self.memory.mem_buckets, self.memory.mem_assoc, self.memory.mem_dim), device=device, dtype=dtype)
-        mem_tag = torch.zeros((B, self.memory.mem_hashes, self.memory.mem_buckets, self.memory.mem_assoc, self.memory.mem_vsa_dim), device=device, dtype=dtype)
-        mem_last = torch.full((B, self.memory.mem_hashes, self.memory.mem_buckets, self.memory.mem_assoc), -1, device=device, dtype=torch.long)
+        table_buckets = int(getattr(self.memory, "mem_table_buckets", self.memory.mem_buckets))
+        shape_k = (B, self.memory.mem_hashes, table_buckets, self.memory.mem_assoc, self.memory.mem_key_dim)
+        shape_v = (B, self.memory.mem_hashes, table_buckets, self.memory.mem_assoc, self.memory.mem_dim)
+        shape_t = (B, self.memory.mem_hashes, table_buckets, self.memory.mem_assoc, self.memory.mem_vsa_dim)
+        shape_l = (B, self.memory.mem_hashes, table_buckets, self.memory.mem_assoc)
+
+        init_mode = str(getattr(self.config, "mem_init_mode", "empty")).lower().strip()
+        init_scale = float(getattr(self.config, "mem_init_scale", 0.02))
+        if init_scale <= 0.0:
+            init_scale = 0.02
+
+        if init_mode in {"random_full", "random_empty"}:
+            mem_k = torch.randn(shape_k, device=device, dtype=dtype) * float(init_scale)
+            mem_v = torch.randn(shape_v, device=device, dtype=dtype) * float(init_scale)
+            mem_tag = torch.randn(shape_t, device=device, dtype=dtype) * float(init_scale)
+        else:
+            mem_k = torch.zeros(shape_k, device=device, dtype=dtype)
+            mem_v = torch.zeros(shape_v, device=device, dtype=dtype)
+            mem_tag = torch.zeros(shape_t, device=device, dtype=dtype)
+
+        if init_mode in {"random_full", "zeros_full"}:
+            mem_last = torch.zeros(shape_l, device=device, dtype=torch.long)
+        else:
+            mem_last = torch.full(shape_l, -1, device=device, dtype=torch.long)
         return MosaicState(conv_buf=conv_buf, s=s, regs=None, step=0, mem_k=mem_k, mem_v=mem_v, mem_tag=mem_tag, mem_last=mem_last)
 
     def forward(self, x: Tensor, *, ctx: Any | None = None) -> Tensor:
+        """Apply the MOSAIC block
+
+        The block mixes local features, multiscale state, and explicit memory,
+        then adds the result back to the input as a residual update.
+        """
         if x.ndim != 3:
             raise ValueError(f"x must have shape (B,T,D), got {tuple(x.shape)}")
         B, T, D = x.shape
@@ -148,9 +198,28 @@ class MosaicBlockLayer(nn.Module):
             st.conv_buf = new_buf
 
         collect_aux = bool(getattr(ctx, "mosaic_collect_aux", False)) if ctx is not None else False
-        routing = self.memory.compute_routing(u, collect_aux=collect_aux)
+        teacher = getattr(ctx, "mosaic_teacher", None) if ctx is not None else None
+        teacher_p = float(getattr(ctx, "mosaic_teacher_p", 1.0)) if ctx is not None else 0.0
+        if (
+            ctx is not None
+            and isinstance(teacher, dict)
+            and bool(getattr(self.memory, "rmf_enabled", False))
+            and getattr(self.memory, "rmf", None) is not None
+            and "read_bucket" in teacher
+        ):
+            routing = self.memory.compute_routing_with_teacher(u, st, teacher, collect_aux=collect_aux)
+        else:
+            routing = self.memory.compute_routing(u, collect_aux=collect_aux)
         routing["collect_aux"] = bool(collect_aux)
+        if ctx is not None and isinstance(teacher, dict):
+            self.memory.apply_teacher_overrides(routing, teacher, p=float(teacher_p))
         write_mask = self.resolve_write_mask(ctx, B=B, T=T, device=x.device)
+        # MOSAIC write warmup: force no-writes for first N training steps.
+        if ctx is not None:
+            warm = int(getattr(ctx, "mosaic_write_warmup_steps", 0) or 0)
+            step = int(getattr(ctx, "step", 0) or 0)
+            if warm > 0 and step > 0 and step <= warm:
+                write_mask = torch.zeros((int(B), int(T)), device=x.device, dtype=torch.float32)
         opcode_ctrl = self.compute_opcode_control(u, collect_aux=collect_aux)
 
         use_fast = bool(self.training) and int(T) > 1 and not bool(getattr(ctx, "mosaic_stats_enabled", False))
@@ -166,6 +235,11 @@ class MosaicBlockLayer(nn.Module):
         return y
 
     def resolve_write_mask(self, ctx: Any | None, *, B: int, T: int, device: torch.device) -> Tensor | None:
+        """Resolve an optional teacher-provided write mask
+
+        A write mask is a training-time control signal that lets you supervise
+        or restrict memory writes without changing the rest of the block logic.
+        """
         teacher = getattr(ctx, "mosaic_teacher", None) if ctx is not None else None
         if not (isinstance(teacher, dict) and "write_gate" in teacher):
             return None
@@ -175,6 +249,12 @@ class MosaicBlockLayer(nn.Module):
         return wg.to(device=device, dtype=torch.float32)
 
     def compute_opcode_control(self, u: Tensor, *, collect_aux: bool) -> Tensor | None:
+        """Compute opcode control tensor
+
+        Opcodes act like a tiny “action vocabulary” the block can use to gate
+        reads/writes; this makes control decisions inspectable and, if desired,
+        supervisable.
+        """
         if not bool(self.opcodes_enabled) or self.opcode_head is None:
             return None
         if not bool(self.opcodes_control_enabled):
@@ -183,6 +263,11 @@ class MosaicBlockLayer(nn.Module):
         return ctrl.control(self.opcode_head(u), dtype=u.dtype)
 
     def get_opcode_logits(self, u: Tensor) -> Tensor | None:
+        """Get opcode logits
+
+        Exposing raw logits is useful for instrumentation and supervised
+        training targets without threading extra outputs through the forward.
+        """
         if not bool(self.opcodes_enabled) or self.opcode_head is None:
             return None
         return self.opcode_head(u)
@@ -198,6 +283,12 @@ class MosaicBlockLayer(nn.Module):
         routing: dict[str, Any],
         opcode_logits: Tensor | None,
     ) -> None:
+        """Save auxiliary outputs into the context
+
+        MOSAIC produces rich internal signals (gates, routing logits, stats);
+        storing them on the context keeps the layer API clean while still
+        enabling debugging and research instrumentation.
+        """
         aux = getattr(ctx, "mosaic_aux_out", None)
         if aux is None:
             aux = {}
@@ -216,4 +307,83 @@ class MosaicBlockLayer(nn.Module):
         if "write_vq_logits" in routing:
             aux["mosaic_vq_write_logits"] = routing["write_vq_logits"]
         ctx.mosaic_aux_out = aux
+
+        # RMF observability: cheap scalar stats for logging.
+        if not bool(getattr(ctx, "mosaic_stats_enabled", False)):
+            return
+        mem_stats = getattr(ctx, "mosaic_mem_stats", None)
+        if not isinstance(mem_stats, dict):
+            return
+
+        def _mean_scalar(x: Tensor) -> Tensor:
+            return x.detach().float().mean()
+
+        def _bucket_change_rate(idx: Tensor) -> Tensor:
+            if idx.ndim != 3:
+                return torch.zeros((), device=idx.device, dtype=torch.float32)
+            if int(idx.size(1)) <= 1:
+                return torch.zeros((), device=idx.device, dtype=torch.float32)
+            d = (idx[:, 1:, :] != idx[:, :-1, :]).detach().float().mean()
+            return d.to(dtype=torch.float32)
+
+        def _bucket_entropy_norm(idx: Tensor, buckets: int) -> Tensor:
+            if idx.ndim != 3:
+                return torch.zeros((), device=idx.device, dtype=torch.float32)
+            v = idx.detach().reshape(-1).to(dtype=torch.long)
+            v = v.clamp(0, int(buckets) - 1)
+            c = torch.bincount(v, minlength=int(buckets)).float()
+            p = c / c.sum().clamp_min(1.0)
+            ent = -(p * (p.clamp_min(1e-12).log())).sum()
+            return (ent / float(max(1.0, torch.log(torch.tensor(float(buckets))).item()))).to(dtype=torch.float32)
+
+        if "rmf_delta_rms" in routing and isinstance(routing["rmf_delta_rms"], Tensor):
+            mem_stats[f"{self.ctx_key}/rmf_delta_rms"] = _mean_scalar(routing["rmf_delta_rms"])
+        if "rmf_field_rms" in routing and isinstance(routing["rmf_field_rms"], Tensor):
+            mem_stats[f"{self.ctx_key}/rmf_field_rms"] = _mean_scalar(routing["rmf_field_rms"])
+
+        # Teacher addressing diagnostics: agreement on non-teacher-forced steps.
+        if "read_teacher_agree" in routing and isinstance(routing["read_teacher_agree"], Tensor):
+            mem_stats[f"{self.ctx_key}/read_teacher_agree"] = _mean_scalar(routing["read_teacher_agree"])
+        if "read_teacher_agree_free" in routing and isinstance(routing["read_teacher_agree_free"], Tensor):
+            mem_stats[f"{self.ctx_key}/read_teacher_agree_free"] = _mean_scalar(routing["read_teacher_agree_free"])
+        if "write_teacher_agree" in routing and isinstance(routing["write_teacher_agree"], Tensor):
+            mem_stats[f"{self.ctx_key}/write_teacher_agree"] = _mean_scalar(routing["write_teacher_agree"])
+        if "write_teacher_agree_free" in routing and isinstance(routing["write_teacher_agree_free"], Tensor):
+            mem_stats[f"{self.ctx_key}/write_teacher_agree_free"] = _mean_scalar(routing["write_teacher_agree_free"])
+        if "read_teacher_agree_label_count" in routing and isinstance(routing["read_teacher_agree_label_count"], Tensor):
+            mem_stats[f"{self.ctx_key}/read_teacher_label_count"] = routing["read_teacher_agree_label_count"].detach().float()
+        if "read_teacher_agree_probe_count" in routing and isinstance(routing["read_teacher_agree_probe_count"], Tensor):
+            mem_stats[f"{self.ctx_key}/read_teacher_probe_count"] = routing["read_teacher_agree_probe_count"].detach().float()
+        if "write_teacher_agree_label_count" in routing and isinstance(routing["write_teacher_agree_label_count"], Tensor):
+            mem_stats[f"{self.ctx_key}/write_teacher_label_count"] = routing["write_teacher_agree_label_count"].detach().float()
+        if "write_teacher_agree_probe_count" in routing and isinstance(routing["write_teacher_agree_probe_count"], Tensor):
+            mem_stats[f"{self.ctx_key}/write_teacher_probe_count"] = routing["write_teacher_agree_probe_count"].detach().float()
+        if "teacher_used_frac" in routing and isinstance(routing["teacher_used_frac"], Tensor):
+            mem_stats[f"{self.ctx_key}/teacher_used_frac"] = _mean_scalar(routing["teacher_used_frac"])
+
+        # Routing dynamics diagnostics.
+        idx_r_src = routing.get("idx_r_pre", routing.get("idx_r", None))
+        if isinstance(idx_r_src, Tensor):
+            mem_stats[f"{self.ctx_key}/read_bucket_change_rate"] = _bucket_change_rate(idx_r_src)
+        idx_w_src = routing.get("idx_w_pre", routing.get("idx_w", None))
+        if isinstance(idx_w_src, Tensor):
+            mem_stats[f"{self.ctx_key}/write_bucket_change_rate"] = _bucket_change_rate(idx_w_src)
+            mem_stats[f"{self.ctx_key}/write_bucket_entropy_norm"] = _bucket_entropy_norm(
+                idx_w_src, int(getattr(self.memory, "mem_buckets", 1024))
+            )
+
+        # VQ router accuracy (early signal): per-group code accuracy is far more informative than
+        # full bucket match in high-cardinality tables.
+        if "vq_read_group_acc" in routing and isinstance(routing["vq_read_group_acc"], Tensor):
+            mem_stats[f"{self.ctx_key}/vq_read_group_acc"] = routing["vq_read_group_acc"].detach().float()
+        if "vq_write_group_acc" in routing and isinstance(routing["vq_write_group_acc"], Tensor):
+            mem_stats[f"{self.ctx_key}/vq_write_group_acc"] = routing["vq_write_group_acc"].detach().float()
+
+        # Write gate behavior.
+        gate_logits = outputs.get("gate_logits", None)
+        if isinstance(gate_logits, Tensor):
+            p = torch.sigmoid(gate_logits.detach().float())
+            mem_stats[f"{self.ctx_key}/write_gate_p_mean"] = p.mean()
+            thr = float(getattr(self.memory, "mem_write_threshold", 0.5))
+            mem_stats[f"{self.ctx_key}/write_gate_fire_frac"] = (p > float(thr)).float().mean()
 

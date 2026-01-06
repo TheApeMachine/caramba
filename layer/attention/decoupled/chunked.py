@@ -1,9 +1,7 @@
-"""Chunked/windowed attention path for DBA.
+"""Chunked/windowed DBA attention
 
-Used when:
-- q_chunk is set, or
-- local_window is set, or
-- an explicit mask is provided.
+This module computes decoupled attention in smaller query chunks (and optionally
+with a local window), which keeps memory usage bounded when sequences get long.
 """
 
 from __future__ import annotations
@@ -18,7 +16,12 @@ from caramba.carmath import neg_inf
 
 
 class DecoupledSDPAChunked:
-    """Chunked DBA attention to reduce peak memory for long sequences."""
+    """Chunked DBA attention helper
+
+    Chunking is especially useful for DBA because the layer builds multiple
+    score matrices (semantic and geometric); slicing reduces the size of those
+    intermediates.
+    """
 
     def run(
         self,
@@ -40,6 +43,12 @@ class DecoupledSDPAChunked:
         null_kv: Callable[..., tuple[Tensor, Tensor, Tensor]],
         maybe_summarize_decoupled: Callable[..., tuple[Tensor, Tensor, Tensor, Tensor]],
     ) -> Tensor:
+        """Compute DBA attention in chunks/windows
+
+        The semantic and geometric paths are combined either via SDPA over a
+        concatenated representation or via explicit score matrices when a mask
+        is provided.
+        """
         B, _H, T, _ = qsh.shape
         kT = int(ksh.size(2))
         q_chunk = max(1, int(q_chunk))

@@ -1,0 +1,171 @@
+version: 2
+name: diffusion_codegen
+notes: >
+  Recipe: diffusion-based code generation (train + generate).
+
+  This preset is intentionally self-contained for new users:
+  - it can train a BPE tokenizer on a source tree (manifest-driven)
+  - it trains a diffusion denoiser over token embeddings
+  - it can generate samples from the latest checkpoint
+
+defaults:
+  data: { tokenizer: none, val_frac: 0.0 }
+  logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 0 }
+  runtime: { save_every: 200, best_effort: false }
+
+vars:
+  data_dir: "."
+  tokenizer_file: "runs/diffusion_codegen/tokenizer/bpe_tokenizer.json"
+  vocab_size: 50000
+
+  seq_len: 128
+  timesteps: 1000
+
+  hidden_size: 768
+  num_layers: 8
+  num_heads: 12
+  dim_feedforward: 3072
+
+targets:
+  - type: experiment
+    name: codegen_diffusion_train
+    description: "Train diffusion codegen model (with optional tokenizer training)."
+    backend: torch
+    task: task.diffusion_codegen
+
+    data:
+      ref: dataset.codegen_chunks
+      config:
+        data_dir: ${data_dir}
+        tokenizer_file: ${tokenizer_file}
+        seq_len: ${seq_len}
+        stride: null
+
+    system:
+      ref: system.diffusion_codegen
+      config:
+        vocab_size: ${vocab_size}
+        hidden_size: ${hidden_size}
+        num_layers: ${num_layers}
+        num_heads: ${num_heads}
+        dim_feedforward: ${dim_feedforward}
+        max_len: ${seq_len}
+        tokenizer_file: ${tokenizer_file}
+        pad_token: "<pad>"
+
+    objective: objective.mse
+    trainer:
+      ref: trainer.diffusion_codegen
+      config:
+        action: train
+        checkpoint_dir: "runs/codegen_diffusion_train"
+        timesteps: ${timesteps}
+        schedule: linear
+        mse_lambda: 0.5
+        unconditional_prob: 0.1
+        self_condition_prob: 0.5
+        grad_clip: 1.0
+        use_ema: true
+        ema_decay: 0.999
+        tokenizer:
+          tokenizer_file: ${tokenizer_file}
+          data_dir: ${data_dir}
+          vocab_size: ${vocab_size}
+          special_tokens: ["<unk>", "<pad>", "<s>", "</s>"]
+          file_extensions: [".py", ".js", ".ts", ".go", ".java", ".cs", ".cpp", ".c"]
+          train_if_missing: true
+        sampler:
+          kind: ddim
+          every: 200
+          num_samples: 2
+          seq_len: ${seq_len}
+          guidance_scale: 7.5
+          ddim_steps: 50
+          ddim_eta: 0.0
+
+    runs:
+      - id: train
+        mode: train
+        exp: diffusion_codegen
+        seed: 42
+        steps: 2000
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 32
+          block_size: 1
+          lr: 0.0005
+          device: cpu
+          dtype: float32
+          gradient_accumulation_steps: 1
+          optimizer: adamw
+          weight_decay: 0.0
+          scheduler: cosine
+          use_amp: false
+          num_workers: 0
+          pin_memory: false
+
+  - type: experiment
+    name: codegen_diffusion_generate
+    description: "Generate code samples from latest diffusion checkpoint."
+    backend: torch
+    task: task.diffusion_codegen
+
+    data:
+      ref: dataset.codegen_chunks
+      config:
+        data_dir: ${data_dir}
+        tokenizer_file: ${tokenizer_file}
+        seq_len: ${seq_len}
+
+    system:
+      ref: system.diffusion_codegen
+      config:
+        vocab_size: ${vocab_size}
+        hidden_size: ${hidden_size}
+        num_layers: ${num_layers}
+        num_heads: ${num_heads}
+        dim_feedforward: ${dim_feedforward}
+        max_len: ${seq_len}
+        tokenizer_file: ${tokenizer_file}
+        pad_token: "<pad>"
+
+    objective: objective.mse
+    trainer:
+      ref: trainer.diffusion_codegen
+      config:
+        action: generate
+        checkpoint_dir: "runs/codegen_diffusion_train"
+        timesteps: ${timesteps}
+        schedule: linear
+        sampler:
+          kind: ddim
+          guidance_scale: 7.5
+          ddim_steps: 50
+          ddim_eta: 0.0
+        tokenizer:
+          tokenizer_file: ${tokenizer_file}
+          train_if_missing: false
+        generate:
+          run_id: train
+          device: cpu
+          num_samples: 5
+          sampler: ddim
+          guidance_scale: 7.5
+          ddim_steps: 50
+          ddim_eta: 0.0
+          sequence_length: ${seq_len}
+          prompt: ""
+
+    runs:
+      - id: generate
+        mode: sample
+        exp: diffusion_codegen_generate
+        seed: 1
+        steps: 1
+        expected: {}
+
+entrypoints:
+  train: "target:codegen_diffusion_train"
+  generate: "target:codegen_diffusion_generate"
+

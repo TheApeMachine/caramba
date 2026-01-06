@@ -108,7 +108,7 @@ def dba_attn_fwd(
 
         sem = tl.dot(q_sem, tl.trans(k_sem)) * SEM_SCALE
         geo = tl.dot(q_geo, tl.trans(k_geo)) * GEO_SCALE
-        logits = sem + geo
+        logits = (sem + geo) * 0.70710678
 
         if CAUSAL:
             q_pos = offs_m[:, None]

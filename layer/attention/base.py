@@ -1,5 +1,9 @@
-"""Shared implementation pieces for attention layers."""
+"""Attention shared utilities
 
+This module holds common initialization and tensor-shaping helpers so attention
+implementations can focus on their unique mechanics (standard SDPA vs decoupled
+DBA) without duplicating the same scaffolding.
+"""
 from __future__ import annotations
 
 import math
@@ -14,10 +18,8 @@ from caramba.config.layer import AttentionLayerConfig, AttentionMode
 from caramba.console import logger
 from caramba.layer.attention import AttentionLayer
 from caramba.layer.rope import RotaryEmbedding
-
-if TYPE_CHECKING:
-    from cache.decoupled import DecoupledLayerKVCache
-    from cache.layer import LayerKVCache
+from caramba.cache.decoupled import DecoupledLayerKVCache
+from caramba.cache.layer import LayerKVCache
 
 
 # Error message constants (keep exact wording for tests/log searchability).
@@ -28,7 +30,11 @@ _InferContext: type | None = None
 
 
 def _get_infer_context_type() -> type:
-    """Get the InferContext type, caching it on first access."""
+    """Get `InferContext` type
+
+    Importing and caching the type once avoids subtle module aliasing issues and
+    keeps the forward path fast when decoding token-by-token.
+    """
     global _InferContext
     if _InferContext is None:
         # Import from the `caramba` package namespace. Importing `infer.context`
@@ -41,7 +47,12 @@ def _get_infer_context_type() -> type:
 
 
 class AttentionBase(AttentionLayer):
-    """Common init + helpers for all attention implementations."""
+    """Attention base class
+
+    Attention variants differ in how they build Q/K/V and score keys, but they
+    share the same tensor plumbing; centralizing that plumbing reduces bugs and
+    keeps experiments comparable.
+    """
 
     # Shared attributes used across implementations
     config: AttentionLayerConfig
@@ -83,14 +94,25 @@ class AttentionBase(AttentionLayer):
         self.logit_scale = None
 
     def _init_common_modules(self) -> None:
-        """Initialize modules shared across modes (after projections exist)."""
+        """Initialize shared modules
+
+        These features (learned temperature, memory summarization) apply to both
+        standard and decoupled attention, so we attach them after projections are
+        constructed.
+        """
         if bool(getattr(self.config, "learned_temp", False)):
             self.logit_scale = nn.Parameter(torch.zeros(self.n_heads))
         self._init_memory_summarizer()
 
     def _init_memory_summarizer(self) -> None:
-        """Initialize optional modules for mem_block summarization."""
+        """Initialize memory summarizer
+
+        Summarizing old KV blocks into a small set of “memory tokens” is a way to
+        stretch context lengths without paying full attention cost over the full
+        history.
+        """
         kind = str(getattr(self.config, "mem_summarize", "mean")).lower()
+
         if kind == "linear":
             d = int(self.head_dim)
             self.mem_k_proj = nn.Linear(d, d, bias=False)
@@ -122,7 +144,12 @@ class AttentionBase(AttentionLayer):
         v: Tensor,
         k_pos: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Summarize older KV blocks into memory tokens for long sequences."""
+        """Summarize older KV into memory tokens
+
+        The goal is to keep the most recent tokens intact while compressing the
+        distant past into a smaller representation that still preserves useful
+        context.
+        """
         mem_block = getattr(self.config, "mem_block", None)
         if mem_block is None:
             return k, v, k_pos
@@ -206,18 +233,30 @@ class AttentionBase(AttentionLayer):
         return k2, v2, pos2
 
     def _shape(self, x: Tensor, head_dim: int, n_heads: int | None = None) -> Tensor:
-        """Reshape (B, T, D) → (B, H, T, head_dim) for attention."""
+        """Shape into attention heads
+
+        Attention kernels typically operate on (B, H, T, D_head); reshaping once
+        here keeps the rest of the implementation focused on the math.
+        """
         B, T, _ = x.shape
         H = n_heads if n_heads is not None else self.n_heads
         return x.view(B, T, H, head_dim).transpose(1, 2).contiguous()
 
     def _merge(self, x: Tensor) -> Tensor:
-        """Reshape (B, H, T, head_dim) → (B, T, D) after attention."""
+        """Merge heads back into model dimension
+
+        After attention, per-head outputs are concatenated so downstream layers
+        see a standard (B, T, D_model) tensor again.
+        """
         B, H, T, hd = x.shape
         return x.transpose(1, 2).contiguous().view(B, T, H * hd)
 
     def _apply_logit_scale(self, q: Tensor) -> Tensor:
-        """Apply learned per-head temperature scaling."""
+        """Apply learned per-head temperature
+
+        A learned temperature can soften or sharpen attention distributions per
+        head, which sometimes improves stability or specialization.
+        """
         if self.logit_scale is None:
             return q
         s = self.logit_scale.float().clamp(min=-8.0, max=8.0)
@@ -233,7 +272,12 @@ class AttentionBase(AttentionLayer):
         pos_offset: int = 0,
         ctx: object | None = None,
     ) -> tuple[Tensor, "LayerKVCache | DecoupledLayerKVCache | None"]:
-        """Compute attention and return output with updated cache."""
+        """Compute attention with optional cache
+
+        The base forward handles inference context plumbing (mask overrides, KV
+        cache selection) and delegates the actual attention math to the chosen
+        implementation.
+        """
         InferContextType = _get_infer_context_type()
         q_chunk_override: int | None = None
         local_window_override: int | None = None

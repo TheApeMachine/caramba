@@ -41,7 +41,7 @@ class EvalCase(BaseModel):
     """
     id: str
     prompt: str
-    kind: Literal["choice_logprob", "int_greedy"]
+    kind: Literal["choice_logprob", "int_greedy", "exact_match_greedy"]
 
     choices: list[str] | None = None
     answer: str | int | None = None
@@ -69,6 +69,9 @@ class EvalCase(BaseModel):
             case "int_greedy":
                 if not isinstance(self.answer, int):
                     raise ValueError("int_greedy requires an integer answer")
+            case "exact_match_greedy":
+                if not isinstance(self.answer, str) or not str(self.answer).strip():
+                    raise ValueError("exact_match_greedy requires a non-empty string answer")
             case _:
                 raise ValueError(f"Unsupported eval case kind: {self.kind!r}")
 

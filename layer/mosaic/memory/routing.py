@@ -17,7 +17,11 @@ from torch import Tensor, nn
 
 @dataclass(frozen=True, slots=True)
 class Routing:
-    """Routing outputs."""
+    """Routing outputs
+
+    Routing turns continuous tags into discrete bucket indices, which is what
+    makes the memory operations constant-time with respect to total memory size.
+    """
 
     idx_r: Tensor
     idx_w: Tensor
@@ -75,7 +79,12 @@ class BitRouter(nn.Module):
 
 
 class VqRouter(nn.Module):
-    """Product-quantized router."""
+    """Product-quantized router
+
+    VQ routing is a learned, discrete indexing mechanism: it maps tags to
+    codebook entries per group and combines them into bucket ids, which can be
+    more stable than raw sign-bit hashing for some distributions.
+    """
 
     def __init__(
         self,

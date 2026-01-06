@@ -80,6 +80,7 @@ packages = [
     "caramba.config",
     "caramba.console",
     "caramba.data",
+    "caramba.diffusion",
     "caramba.eval",
     "caramba.experiment",
     "caramba.infer",
@@ -87,6 +88,7 @@ packages = [
     "caramba.layer",
     "caramba.loader",
     "caramba.model",
+    "caramba.tokenizer",
     "caramba.carmath",
     "caramba.optimizer",
     "caramba.optimizer.metal",
@@ -94,6 +96,16 @@ packages = [
     "caramba.runtime",
     "caramba.topology",
     "caramba.trainer",
+    "caramba.trainer.diffusion_codegen",
+    "caramba.lab",
+    "caramba.lab.synthnn",
+    "caramba.lab.resonant",
+    "synthnn",
+    "synthnn.core",
+    "synthnn.core.associative_memory",
+    "resonant",
+    "resonant.core",
+    "resonant.core.associative_memory",
 ]
 
 [tool.setuptools.package-dir]

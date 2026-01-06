@@ -1,0 +1,80 @@
+#
+# Behavioral prompt suite for baseline-vs-DBA comparisons.
+# Keep cases short and deterministic; prefer exact-match or numeric extraction.
+#
+
+- id: copy_fewshot_spaces
+  kind: exact_match_greedy
+  prompt: |
+    Input: 1 2 3. Output: 1 2 3.
+    Input: Red Green Blue. Output: Red Green Blue.
+    Input: A7 B4 C9 D2. Output:
+  answer: "A7 B4 C9 D2."
+
+- id: copy_fewshot_commas
+  kind: exact_match_greedy
+  prompt: |
+    Input: 1, 2, 3. Output: 1, 2, 3.
+    Input: Red, Green, Blue. Output: Red, Green, Blue.
+    Input: A7, B4, C9, D2. Output:
+  answer: "A7, B4, C9, D2."
+
+- id: repeat_exact
+  kind: exact_match_greedy
+  prompt: |
+    Repeat exactly the following text and nothing else:
+    A7 B4 C9 D2.
+    Answer:
+  answer: "A7 B4 C9 D2."
+
+- id: repeat_exact_with_quotes
+  kind: exact_match_greedy
+  prompt: |
+    Repeat exactly the following text and nothing else:
+    "A7 B4 C9 D2."
+    Answer:
+  answer: "\"A7 B4 C9 D2.\""
+
+- id: copy_table_row
+  kind: exact_match_greedy
+  prompt: |
+    Copy the next line exactly (including punctuation):
+    | A7 | B4 | C9 | D2 |
+    Answer:
+  answer: "| A7 | B4 | C9 | D2 |"
+
+- id: arithmetic_add
+  kind: int_greedy
+  prompt: "Compute: 17 + 25 ="
+  answer: 42
+
+- id: arithmetic_mul
+  kind: int_greedy
+  prompt: "Compute: 9 * 7 ="
+  answer: 63
+
+- id: arithmetic_sub_neg
+  kind: int_greedy
+  prompt: "Compute: 7 - 19 ="
+  answer: -12
+
+- id: passkey_choice_logprob
+  kind: choice_logprob
+  prompt: |
+    Read carefully:
+    The passkey is 73921.
+    Question: What is the passkey?
+    Answer:
+  choices: ["73921", "73912", "79321", "73922"]
+  answer: "73921"
+
+- id: passkey_choice_logprob_distractors
+  kind: choice_logprob
+  prompt: |
+    The passkey is 12057.
+    The following numbers are not the passkey: 12075, 10257, 01257.
+    Question: What is the passkey?
+    Answer:
+  choices: ["12057", "12075", "10257", "01257"]
+  answer: "12057"
+

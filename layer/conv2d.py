@@ -1,6 +1,8 @@
-"""High-performance 2D Convolution layer.
+"""2D convolution layer
 
-Wraps nn.Conv2d with Caramba's configuration interface.
+Convolutions are still a great inductive bias for local structure; wrapping
+`nn.Conv2d` as a manifest-friendly layer makes it easy to mix CNN components
+into otherwise transformer-centric experiments.
 """
 from __future__ import annotations
 
@@ -16,12 +18,16 @@ if TYPE_CHECKING:
 
 
 class Conv2dLayer(nn.Module):
-    """2D Convolution layer."""
+    """2D convolution layer
+
+    A small wrapper like this is mostly about ergonomics: it keeps construction
+    consistent with the rest of the platform (config in, module out).
+    """
 
     def __init__(self, config: Conv2dLayerConfig) -> None:
         super().__init__()
         self.config = config
-        
+
         # Ensure tuple formats for rigorous typing
         k = self._pair(config.kernel_size)
         s = self._pair(config.stride)
@@ -52,10 +58,10 @@ class Conv2dLayer(nn.Module):
         *,
         ctx: object | None = None,
     ) -> Tensor:
-        """Apply convolution.
-        
-        Args:
-            x: Input tensor of shape (B, C_in, H, W)
-            ctx: Context (unused)
+        """Apply convolution
+
+        Convolution is a learned, translation-equivariant filter; it is often a
+        good fit when you want spatial locality “for free” instead of learning
+        it purely through attention.
         """
         return self.conv(x)

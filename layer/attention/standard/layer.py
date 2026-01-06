@@ -1,11 +1,14 @@
-"""Standard and GQA attention implementation."""
+"""Standard (SDPA/GQA) attention layer
 
+This implementation is the reference attention path: it computes dot-product
+attention over heads and optionally uses grouped-query attention (GQA) to reduce
+KV compute while keeping many query heads.
+"""
 from __future__ import annotations
 
 import math
 from typing import TYPE_CHECKING
 
-import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
@@ -15,17 +18,15 @@ from caramba.layer.attention.standard.chunked import StandardSDPAChunked
 from caramba.layer.attention.standard.viz import AttentionViz
 from caramba.layer.rope import RotaryEmbedding
 from caramba.optimizer.attention import AttentionTraining
-
-if TYPE_CHECKING:
-    from caramba.cache.layer import LayerKVCache
+from caramba.cache.layer import LayerKVCache
 
 
 class StandardAttentionLayer(AttentionBase):
-    """Multi-head attention (standard + GQA).
+    """Standard multi-head attention layer
 
-    Uses Triton FlashAttention for CUDA training when eligible.
+    This layer is “the thing most people mean by attention”: project Q/K/V,
+    score keys with QK^T, normalize with softmax, and mix values.
     """
-
     q_proj: nn.Linear | None
     k_proj: nn.Linear | None
     v_proj: nn.Linear
@@ -36,14 +37,21 @@ class StandardAttentionLayer(AttentionBase):
     def __init__(self, config: AttentionLayerConfig) -> None:
         if config.mode == AttentionMode.DECOUPLED:
             raise ValueError("StandardAttentionLayer cannot be constructed with mode=decoupled")
+
         super().__init__(config)
+
         self._init_standard(config)
         self._init_common_modules()
         self._viz = AttentionViz()
         self._chunked = StandardSDPAChunked()
 
     def _init_standard(self, config: AttentionLayerConfig) -> None:
-        """Set up projections for standard/GQA attention."""
+        """Initialize standard projections
+
+        Standard attention learns separate projections for Q/K/V; GQA is a small
+        tweak where K/V have fewer heads than Q, which can reduce memory and
+        improve speed without changing model dimension.
+        """
         d_model = int(config.d_model)
         attn_dim = int(config.attn_dim) if config.attn_dim else d_model
         kv_dim = int(self.n_kv_heads) * int(self.head_dim)
@@ -109,7 +117,11 @@ class StandardAttentionLayer(AttentionBase):
         q_chunk_override: int | None = None,
         local_window_override: int | None = None,
     ) -> tuple[Tensor, "LayerKVCache | None"]:
-        """Standard/GQA attention: Q·K^T → softmax → V."""
+        """Compute standard attention output
+
+        The output is a weighted sum of values, where weights come from a
+        softmax-normalized similarity between queries and keys.
+        """
         _B, T, _ = x.shape
         if self.q_proj is None or self.k_proj is None:
             raise RuntimeError("Standard mode projections not initialized")
@@ -143,13 +155,21 @@ class StandardAttentionLayer(AttentionBase):
             vh = vh.repeat_interleave(self.group_size, dim=1)
 
         scale = float(self._scale or 1.0)
-        self._viz.record_attention_matrix(ctx=ctx, layer=self, q=qh, k=kh, scale=scale, causal=bool(self.config.is_causal))
+        self._viz.record_attention_matrix(
+            ctx=ctx,
+            layer=self,
+            q=qh,
+            k=kh,
+            scale=scale,
+            causal=bool(self.config.is_causal),
+        )
 
         q_chunk = q_chunk_override if q_chunk_override is not None else self.config.q_chunk
         local_window = local_window_override if local_window_override is not None else self.config.local_window
         dropout_p = float(self.config.dropout_p) if self.training else 0.0
 
         use_chunked = mask is None and (q_chunk is not None or local_window is not None or cache is not None)
+
         if use_chunked:
             out = self._chunked.run(
                 qh=qh,
@@ -197,4 +217,3 @@ class StandardAttentionLayer(AttentionBase):
         y = self.out_proj(self._merge(out))
         self._viz.record_activation_sample(ctx=ctx, layer=self, y=y)
         return y, cache
-

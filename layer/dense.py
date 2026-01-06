@@ -1,7 +1,8 @@
-"""High-performance Dense (Fully Connected) layer.
+"""Dense block layer
 
-Combines Linear projection with optional Normalization, Activation, and Dropout
-into a single fused block for efficiency and convenience.
+Dense “blocks” (linear + optional norm/activation/dropout) are the workhorse of
+MLPs; packaging them as one layer makes it easy to express common patterns
+without repeating boilerplate across architectures.
 """
 from __future__ import annotations
 
@@ -17,7 +18,12 @@ if TYPE_CHECKING:
 
 
 class DenseLayer(nn.Module):
-    """Fused Dense Layer (Linear -> Norm -> Act -> Dropout)."""
+    """Dense block layer
+
+    In practice, the exact ordering of projection/norm/activation is an
+    architectural choice; keeping it in one configurable block makes those
+    choices cheap to explore.
+    """
 
     def __init__(self, config: DenseLayerConfig) -> None:
         super().__init__()
@@ -64,7 +70,11 @@ class DenseLayer(nn.Module):
         *,
         ctx: object | None = None,
     ) -> Tensor:
-        """Apply dense layer."""
+        """Apply dense block
+
+        This is the classic “feature transform” step: project to a new space,
+        optionally normalize, apply a nonlinearity, then regularize.
+        """
         x = self.linear(x)
 
         if self.norm is not None:

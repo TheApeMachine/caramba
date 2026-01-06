@@ -7055,3 +7055,672 @@ constexpr uint TG = 256;
 
 
 
+
+[2026-01-05T14:03:52Z] pre-push: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+mode=incremental
+Traceback (most recent call last):
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 101, in initialize_kernels
+    _ = load_caramba_metal_attention_ops(verbose=False)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 139, in load_caramba_metal_attention_ops
+    _compile_attention_metallib(out_dir=build_dir, verbose=verbose)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 84, in _compile_attention_metallib
+    raise RuntimeError(
+RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 11, in <module>
+    from caramba.experiment.runner import run_from_manifest_path
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 17, in <module>
+    from caramba.benchmark.latency import LatencyResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/latency.py", line 21, in <module>
+    from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/__init__.py", line 9, in <module>
+    from caramba.infer.context import InferContext, causal_mask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/context.py", line 14, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/__init__.py", line 70, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/decoupled.py", line 13, in <module>
+    from caramba.cache.tensor import SeqCacheTensor
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/tensor.py", line 18, in <module>
+    from caramba.optimizer.quantizer import Quantizer
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/__init__.py", line 22, in <module>
+    from caramba.optimizer.kernel_registry import KERNELS as _KERNELS  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 218, in <module>
+    KERNELS: Final[KernelRegistry] = initialize_kernels()
+                                     ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 104, in initialize_kernels
+    raise RuntimeError(
+RuntimeError: Metal kernel compilation/loading failed.
+This is a hard failure under the kernel policy.
+Error: RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+Traceback (most recent call last):
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 101, in initialize_kernels
+    _ = load_caramba_metal_attention_ops(verbose=False)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 139, in load_caramba_metal_attention_ops
+    _compile_attention_metallib(out_dir=build_dir, verbose=verbose)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 84, in _compile_attention_metallib
+    raise RuntimeError(
+RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 11, in <module>
+    from caramba.experiment.runner import run_from_manifest_path
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 17, in <module>
+    from caramba.benchmark.latency import LatencyResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/latency.py", line 21, in <module>
+    from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/__init__.py", line 9, in <module>
+    from caramba.infer.context import InferContext, causal_mask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/context.py", line 14, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/__init__.py", line 70, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/decoupled.py", line 13, in <module>
+    from caramba.cache.tensor import SeqCacheTensor
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/tensor.py", line 18, in <module>
+    from caramba.optimizer.quantizer import Quantizer
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/__init__.py", line 22, in <module>
+    from caramba.optimizer.kernel_registry import KERNELS as _KERNELS  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 218, in <module>
+    KERNELS: Final[KernelRegistry] = initialize_kernels()
+                                     ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 104, in initialize_kernels
+    raise RuntimeError(
+RuntimeError: Metal kernel compilation/loading failed.
+This is a hard failure under the kernel policy.
+Error: RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+Traceback (most recent call last):
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 101, in initialize_kernels
+    _ = load_caramba_metal_attention_ops(verbose=False)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 139, in load_caramba_metal_attention_ops
+    _compile_attention_metallib(out_dir=build_dir, verbose=verbose)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 84, in _compile_attention_metallib
+    raise RuntimeError(
+RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 11, in <module>
+    from caramba.experiment.runner import run_from_manifest_path
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 17, in <module>
+    from caramba.benchmark.latency import LatencyResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/latency.py", line 21, in <module>
+    from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/__init__.py", line 9, in <module>
+    from caramba.infer.context import InferContext, causal_mask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/context.py", line 14, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/__init__.py", line 70, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/decoupled.py", line 13, in <module>
+    from caramba.cache.tensor import SeqCacheTensor
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/tensor.py", line 18, in <module>
+    from caramba.optimizer.quantizer import Quantizer
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/__init__.py", line 22, in <module>
+    from caramba.optimizer.kernel_registry import KERNELS as _KERNELS  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 218, in <module>
+    KERNELS: Final[KernelRegistry] = initialize_kernels()
+                                     ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 104, in initialize_kernels
+    raise RuntimeError(
+RuntimeError: Metal kernel compilation/loading failed.
+This is a hard failure under the kernel policy.
+Error: RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+Traceback (most recent call last):
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 101, in initialize_kernels
+    _ = load_caramba_metal_attention_ops(verbose=False)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 139, in load_caramba_metal_attention_ops
+    _compile_attention_metallib(out_dir=build_dir, verbose=verbose)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 84, in _compile_attention_metallib
+    raise RuntimeError(
+RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 11, in <module>
+    from caramba.experiment.runner import run_from_manifest_path
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 17, in <module>
+    from caramba.benchmark.latency import LatencyResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/latency.py", line 21, in <module>
+    from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/__init__.py", line 9, in <module>
+    from caramba.infer.context import InferContext, causal_mask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/context.py", line 14, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/__init__.py", line 70, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/decoupled.py", line 13, in <module>
+    from caramba.cache.tensor import SeqCacheTensor
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/tensor.py", line 18, in <module>
+    from caramba.optimizer.quantizer import Quantizer
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/__init__.py", line 22, in <module>
+    from caramba.optimizer.kernel_registry import KERNELS as _KERNELS  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 218, in <module>
+    KERNELS: Final[KernelRegistry] = initialize_kernels()
+                                     ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 104, in initialize_kernels
+    raise RuntimeError(
+RuntimeError: Metal kernel compilation/loading failed.
+This is a hard failure under the kernel policy.
+Error: RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+Traceback (most recent call last):
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 101, in initialize_kernels
+    _ = load_caramba_metal_attention_ops(verbose=False)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 139, in load_caramba_metal_attention_ops
+    _compile_attention_metallib(out_dir=build_dir, verbose=verbose)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 84, in _compile_attention_metallib
+    raise RuntimeError(
+RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 11, in <module>
+    from caramba.experiment.runner import run_from_manifest_path
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 17, in <module>
+    from caramba.benchmark.latency import LatencyResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/latency.py", line 21, in <module>
+    from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/__init__.py", line 9, in <module>
+    from caramba.infer.context import InferContext, causal_mask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/context.py", line 14, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/__init__.py", line 70, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/decoupled.py", line 13, in <module>
+    from caramba.cache.tensor import SeqCacheTensor
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/tensor.py", line 18, in <module>
+    from caramba.optimizer.quantizer import Quantizer
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/__init__.py", line 22, in <module>
+    from caramba.optimizer.kernel_registry import KERNELS as _KERNELS  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 218, in <module>
+    KERNELS: Final[KernelRegistry] = initialize_kernels()
+                                     ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 104, in initialize_kernels
+    raise RuntimeError(
+RuntimeError: Metal kernel compilation/loading failed.
+This is a hard failure under the kernel policy.
+Error: RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+Traceback (most recent call last):
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 101, in initialize_kernels
+    _ = load_caramba_metal_attention_ops(verbose=False)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 139, in load_caramba_metal_attention_ops
+    _compile_attention_metallib(out_dir=build_dir, verbose=verbose)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 84, in _compile_attention_metallib
+    raise RuntimeError(
+RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 11, in <module>
+    from caramba.experiment.runner import run_from_manifest_path
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 17, in <module>
+    from caramba.benchmark.latency import LatencyResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/latency.py", line 21, in <module>
+    from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/__init__.py", line 9, in <module>
+    from caramba.infer.context import InferContext, causal_mask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/context.py", line 14, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/__init__.py", line 70, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/decoupled.py", line 13, in <module>
+    from caramba.cache.tensor import SeqCacheTensor
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/tensor.py", line 18, in <module>
+    from caramba.optimizer.quantizer import Quantizer
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/__init__.py", line 22, in <module>
+    from caramba.optimizer.kernel_registry import KERNELS as _KERNELS  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 218, in <module>
+    KERNELS: Final[KernelRegistry] = initialize_kernels()
+                                     ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 104, in initialize_kernels
+    raise RuntimeError(
+RuntimeError: Metal kernel compilation/loading failed.
+This is a hard failure under the kernel policy.
+Error: RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+Traceback (most recent call last):
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 101, in initialize_kernels
+    _ = load_caramba_metal_attention_ops(verbose=False)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 139, in load_caramba_metal_attention_ops
+    _compile_attention_metallib(out_dir=build_dir, verbose=verbose)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 84, in _compile_attention_metallib
+    raise RuntimeError(
+RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 11, in <module>
+    from caramba.experiment.runner import run_from_manifest_path
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 17, in <module>
+    from caramba.benchmark.latency import LatencyResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/latency.py", line 21, in <module>
+    from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/__init__.py", line 9, in <module>
+    from caramba.infer.context import InferContext, causal_mask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/context.py", line 14, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/__init__.py", line 70, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/decoupled.py", line 13, in <module>
+    from caramba.cache.tensor import SeqCacheTensor
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/tensor.py", line 18, in <module>
+    from caramba.optimizer.quantizer import Quantizer
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/__init__.py", line 22, in <module>
+    from caramba.optimizer.kernel_registry import KERNELS as _KERNELS  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 218, in <module>
+    KERNELS: Final[KernelRegistry] = initialize_kernels()
+                                     ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 104, in initialize_kernels
+    raise RuntimeError(
+RuntimeError: Metal kernel compilation/loading failed.
+This is a hard failure under the kernel policy.
+Error: RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+Traceback (most recent call last):
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 101, in initialize_kernels
+    _ = load_caramba_metal_attention_ops(verbose=False)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 139, in load_caramba_metal_attention_ops
+    _compile_attention_metallib(out_dir=build_dir, verbose=verbose)
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_jit.py", line 84, in _compile_attention_metallib
+    raise RuntimeError(
+RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 11, in <module>
+    from caramba.experiment.runner import run_from_manifest_path
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 17, in <module>
+    from caramba.benchmark.latency import LatencyResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/latency.py", line 21, in <module>
+    from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/__init__.py", line 9, in <module>
+    from caramba.infer.context import InferContext, causal_mask
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/infer/context.py", line 14, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/__init__.py", line 70, in <module>
+    from caramba.cache.decoupled import DecoupledLayerKVCache
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/decoupled.py", line 13, in <module>
+    from caramba.cache.tensor import SeqCacheTensor
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cache/tensor.py", line 18, in <module>
+    from caramba.optimizer.quantizer import Quantizer
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/__init__.py", line 22, in <module>
+    from caramba.optimizer.kernel_registry import KERNELS as _KERNELS  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 218, in <module>
+    KERNELS: Final[KernelRegistry] = initialize_kernels()
+                                     ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/kernel_registry.py", line 104, in initialize_kernels
+    raise RuntimeError(
+RuntimeError: Metal kernel compilation/loading failed.
+This is a hard failure under the kernel policy.
+Error: RuntimeError: Failed to compile Metal attention shaders with the active toolchain.
+
+Command:
+  /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.3.48.0.gQkwx3/Metal.xctoolchain/usr/bin/metal -c /Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal -o /Users/theapemachine/Library/Caches/torch_extensions/py312_cpu/caramba_metal_attention_ops/attention_train.air -arch air64
+
+stdout:
+
+
+stderr:
+/Users/theapemachine/go/src/github.com/theapemachine/caramba/optimizer/metal/attention_train.metal:41:16: error: program scope variable must reside in constant address space
+constexpr uint TG = 256;
+               ^
+1 error generated.
+
+
+

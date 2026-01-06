@@ -1,4 +1,9 @@
-"""Decoupled (DBA) attention implementation."""
+"""Decoupled (DBA) attention layer
+
+DBA splits attention into semantic and geometric channels and recombines them,
+which is a way to test whether different “types” of relationships benefit from
+different representations and inductive biases.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +28,12 @@ if TYPE_CHECKING:
 
 
 class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySummarizer):
-    """DBA attention layer: semantic + geometric paths."""
+    """Decoupled bottleneck attention layer
+
+    The goal is to give the model two specialized sub-attentions and a learned
+    way to mix them, instead of forcing one attention space to represent
+    everything at once.
+    """
 
     q_sem: nn.Linear | None
     k_sem: nn.Linear | None
@@ -60,7 +70,11 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         self._init_memory_summarizer_decoupled()
 
     def _decoupled_gate(self, x: Tensor) -> Tensor | None:
-        """Compute per-head semantic/geometric mixing weights."""
+        """Compute semantic/geometric mixing gate
+
+        A per-head gate lets some heads lean semantic while others lean
+        geometric, which encourages specialization without hard-coding a split.
+        """
         if self.decoupled_gate_logit is None:
             return None
         gate_bias = self.decoupled_gate_logit.view(1, -1, 1, 1).to(dtype=torch.float32, device=x.device)
@@ -72,7 +86,11 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         return torch.sigmoid(gate_logit).to(dtype=x.dtype)
 
     def _null_kv_tensors(self, *, B: int, dtype: torch.dtype, device: torch.device) -> tuple[Tensor, Tensor, Tensor]:
-        """Return expanded (k_sem_null, k_geo_null, v_null) for null attention."""
+        """Build null-attention KV tensors
+
+        A learned “null” token gives the model a safe option when no real key
+        should be attended to, which can reduce pathological attention patterns.
+        """
         if self.k_sem_null is None or self.k_geo_null is None or self.v_null is None:
             raise RuntimeError("null_attn enabled but null parameters are missing")
         ksn = self.k_sem_null.unsqueeze(0).unsqueeze(2).expand(B, -1, 1, -1).to(device=device, dtype=dtype)
@@ -92,7 +110,11 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         local_window_override: int | None = None,
         decode_block_override: int | None = None,
     ) -> tuple[Tensor, "DecoupledLayerKVCache | None"]:
-        """DBA attention: (Q_sem·K_sem^T + Q_geo·K_geo^T) → softmax → V."""
+        """Compute decoupled attention output
+
+        The semantic and geometric scores are computed separately, then combined
+        (optionally with a learned gate) before mixing values.
+        """
         B, T, _ = x.shape
         if self.q_sem is None or self.k_sem is None or self.q_geo is None or self.k_geo is None:
             raise RuntimeError("Decoupled mode projections not initialized")
@@ -179,7 +201,18 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         dropout_p = float(self.config.dropout_p) if self.training else 0.0
         null_enabled = bool(getattr(self.config, "null_attn", False))
 
-        if q_chunk is None and local_window is None and mask is None and cache is None and x.device.type == "cuda" and self.training and not null_enabled:
+        dba_backend = str(getattr(self.config, "dba_train_backend", "auto") or "auto").lower().strip()
+        force_sdpa = (dba_backend == "sdpa")
+        if (
+            (not force_sdpa)
+            and q_chunk is None
+            and local_window is None
+            and mask is None
+            and cache is None
+            and x.device.type == "cuda"
+            and self.training
+            and not null_enabled
+        ):
             out = DecoupledAttentionTraining().run(
                 q_sem=qsh,
                 q_geo=qgh,

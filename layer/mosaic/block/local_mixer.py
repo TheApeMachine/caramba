@@ -3,10 +3,7 @@
 Implements a causal, depthwise convolution + gated MLP mixer.
 This replaces attention's short-range pattern modeling with a fixed-window operator.
 """
-
 from __future__ import annotations
-
-from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
@@ -15,24 +12,43 @@ from torch import Tensor, nn
 from caramba.layer.mosaic.state import MosaicState
 
 
-@dataclass(slots=True)
-class LocalMixer:
-    """Local mixer.
+class LocalMixer(nn.Module):
+    """Local mixer module
 
-    Computes local features from the normalized residual stream.
+    Local operations are a cheap way to capture short-range patterns; MOSAIC uses
+    them to handle “nearby” structure so explicit memory can focus on longer
+    horizons.
     """
-
-    conv: nn.Conv1d
-    gate_proj: nn.Linear
-    mlp_up: nn.Linear
-    mlp_down: nn.Linear
-    dropout: nn.Dropout
-    conv_kernel: int
+    def __init__(
+        self,
+        *,
+        conv: nn.Conv1d,
+        gate_proj: nn.Linear,
+        mlp_up: nn.Linear,
+        mlp_down: nn.Linear,
+        dropout: nn.Dropout,
+        conv_kernel: int,
+    ) -> None:
+        super().__init__()
+        if int(conv_kernel) < 1:
+            raise ValueError("conv_kernel must be >= 1")
+            
+        self.conv = conv
+        self.gate_proj = gate_proj
+        self.mlp_up = mlp_up
+        self.mlp_down = mlp_down
+        self.dropout = dropout
+        self.conv_kernel = int(conv_kernel)
 
     def forward(self, u: Tensor, *, state: MosaicState | None) -> tuple[Tensor, Tensor | None]:
-        """Compute local mixer output and next conv buffer (if streaming)."""
+        """Compute local features and updated buffer
+
+        The conv buffer carries the last k−1 normalized tokens so single-token
+        decoding can use the same causal convolution semantics as training.
+        """
         if u.ndim != 3:
             raise ValueError(f"u must have shape (B,T,D), got {tuple(u.shape)}")
+
         B, T, D = u.shape
         k = int(self.conv_kernel)
         new_buf: Tensor | None = None
@@ -57,5 +73,6 @@ class LocalMixer:
 
         gate = torch.sigmoid(self.gate_proj(u))
         mlp = self.mlp_down(F.silu(self.mlp_up(u)))
+
         return self.dropout(gate * (x + mlp)), new_buf
 

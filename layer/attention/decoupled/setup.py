@@ -1,4 +1,9 @@
-"""DBA module setup (projections, RoPE, gating, null tokens)."""
+"""DBA layer setup
+
+This module is purely about constructing the learnable parts of a decoupled
+attention layer (projections, RoPE, gates, null tokens), keeping initialization
+separate from the forward-pass logic.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +18,12 @@ from caramba.layer.rope import RotaryEmbedding
 
 
 class DecoupledSetup:
-    """Initialization helpers for `DecoupledAttentionLayer`."""
+    """Decoupled layer initialization helpers
+
+    Separating initialization into a helper class keeps the main layer focused
+    on the attention math while making it easier to audit what parameters exist
+    for the DBA variant.
+    """
 
     n_heads: int
     q_sem: nn.Linear | None
@@ -39,7 +49,12 @@ class DecoupledSetup:
     _scale: float | None
 
     def init_decoupled(self, config: AttentionLayerConfig) -> None:
-        """Set up projections for DBA attention."""
+        """Initialize DBA projections and knobs
+
+        DBA uses separate Q/K projections for semantic and geometric channels,
+        then uses a shared V projection; that split is the core structural
+        difference from standard attention.
+        """
         d_model = int(config.d_model)
         if config.sem_dim is None or config.geo_dim is None:
             raise ValueError("Decoupled mode requires sem_dim and geo_dim")

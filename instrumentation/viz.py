@@ -116,6 +116,9 @@ class TrainingVizMosaicContext(TrainingVizContext):
     # Scheduled sampling probability: probability of using teacher controls when present.
     mosaic_teacher_p: float = 1.0
 
+    # If > 0, MOSAIC layers may disable writes for first N training steps.
+    mosaic_write_warmup_steps: int = 0
+
     # If true, MOSAIC layers may compute cheap scalar stats for logging.
     # This is independent of `enabled` (which controls heavy viz payloads).
     mosaic_stats_enabled: bool = False

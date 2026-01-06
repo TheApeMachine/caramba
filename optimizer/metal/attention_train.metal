@@ -38,7 +38,10 @@ struct AttnParams {
     uint lse_stride_t;
 };
 
-constexpr uint TG = 256;
+// NOTE: Some Metal toolchains reject program-scope `constexpr` unless it is in the
+// `constant` address space. We use a macro so `TG` is always a valid compile-time
+// constant (required for threadgroup array sizing).
+#define TG 256u
 
 inline float dot_half(device const half* a, device const half* b, uint dim) {
     // Vectorize within a thread using packed_half2 to leverage SIMD ops.

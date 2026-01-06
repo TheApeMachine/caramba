@@ -1,4 +1,4 @@
-"""MOSAIC "Differentiable VM" instruction set (v0).
+"""MOSAIC instruction set (v0)
 
 This module is MOSAIC-specific: Caramba is the substrate; MOSAIC is one
 architecture built on it. Other architectures can define their own ISAs.
@@ -11,11 +11,11 @@ from enum import IntEnum
 
 
 class MosaicOpcode(IntEnum):
-    """v0 opcode IDs (contiguous from 0).
+    """Opcode identifiers
 
-    Notes:
-    - IDs are stable and intended to be used as supervision targets.
-    - Model configs may use a smaller `opcode_vocab` (prefix of this enum).
+    Stable opcode IDs make “control signals” learnable and supervisable; you can
+    treat them like a tiny action vocabulary that the model can predict and
+    execute during streaming.
     """
 
     NOP = 0
@@ -32,7 +32,11 @@ class MosaicOpcode(IntEnum):
 
 @dataclass(frozen=True, slots=True)
 class MosaicISAV0:
-    """Typed helpers for the v0 opcode vocabulary."""
+    """ISA helper utilities
+
+    Keeping ISA helpers typed and centralized makes it easier to evolve the
+    opcode set without sprinkling numeric constants across the codebase.
+    """
 
     def vocab_size(self) -> int:
         return len(MosaicOpcode)

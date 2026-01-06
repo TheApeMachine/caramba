@@ -1,0 +1,55 @@
+version: 2
+name: synthnn_associative_memory
+notes: >
+  Deprecated: use `config/presets/resonant_memory_field_demo.yml`.
+
+  Recipe: Phase associative memory demo (diagnostic harness).
+
+  This is an algorithmic demo (no gradient training) that stores random phase
+  patterns as attractors and recalls them from noisy and partial cues.
+
+defaults:
+  data: { tokenizer: none, val_frac: 0.0 }
+  logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 0 }
+  runtime: { save_every: 1, best_effort: false }
+
+targets:
+  - type: experiment
+    name: synthnn_phase_associative_memory_demo
+    description: "Run SynthNN phase associative memory demo and write artifacts."
+    backend: torch
+    task: { ref: task.language_modeling, config: {} }
+    data:
+      ref: dataset.none
+      impl: python:caramba.lab.unknown_format.dataset:UnknownFormatLabDataset
+      config: { seed: 1, n_items: 1 }
+    system: { ref: system.generic, config: {} }
+    objective:
+      ref: objective.none
+      impl: python:caramba.trainer.objectives:KeyedMSEObjective
+      config: {}
+    trainer:
+      ref: trainer.synthnn_associative_memory_demo
+      impl: python:caramba.lab.synthnn.associative_memory_demo:AssociativeMemoryDemoTrainer
+      config:
+        output_dir: artifacts/synthnn/associative_memory
+        seed: 123
+        units: 64
+        patterns: 5
+        dtype: c128
+        noise_std: 0.65
+        known_frac: 0.28
+        steps: 500
+        dt: 0.05
+        rerank_top_k: 64
+    runs:
+      - id: demo
+        mode: train
+        exp: synthnn_associative_memory
+        seed: 1
+        steps: 1
+        expected: {}
+
+entrypoints:
+  default: synthnn_phase_associative_memory_demo
+

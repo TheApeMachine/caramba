@@ -1,7 +1,8 @@
-"""High-performance Recurrent Neural Network layer.
+"""Recurrent neural network layer
 
-Wraps Torch's cuDNN-optimized RNN implementations (LSTM/GRU) with
-Caramba's configuration interface.
+RNNs are the original sequence models: they update a hidden state over time,
+which can be a useful inductive bias when you want explicit recurrence instead
+of attention.
 """
 from __future__ import annotations
 
@@ -18,10 +19,10 @@ if TYPE_CHECKING:
 
 
 class RNNLayer(nn.Module):
-    """Recurrent Neural Network layer (LSTM/GRU).
-    
-    Uses PyTorch's native implementations which dispatch to fused cuDNN kernels
-    on GPU for maximum performance.
+    """Recurrent neural network layer
+
+    This is a thin wrapper around PyTorch's optimized RNN kernels, so you can
+    include LSTM/GRU-style recurrence in a manifest-driven topology.
     """
 
     def __init__(self, config: RNNLayerConfig) -> None:
@@ -81,15 +82,10 @@ class RNNLayer(nn.Module):
         *,
         ctx: object | None = None,
     ) -> tuple[Tensor, Tensor | tuple[Tensor, Tensor]]:
-        """Apply RNN.
-        
-        Args:
-            x: Input tensor (B, T, input_size) if batch_first=True
-            ctx: Context (can contain initial hidden state 'h0' or 'c0')
-            
-        Returns:
-            output: (B, T, D * hidden_size)
-            hidden: final hidden state
+        """Apply recurrence
+
+        RNNs compress history into a fixed-size state; that can be a feature when
+        you want bounded memory rather than full-context attention.
         """
         # TODO: Extract h0/c0 from ctx if present
         return self.rnn(x)

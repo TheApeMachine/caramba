@@ -165,6 +165,8 @@ targets:
           # Blockwise benefits from *more* optimizer updates per block.
           # (The distillation loop steps the optimizer once per `gradient_accumulation_steps`.)
           gradient_accumulation_steps: 4
+          # Prevent rare spikes from destabilizing a block.
+          blockwise_grad_clip_norm: 1.0
           orchestrator_enabled: true
           orchestrator_max_loss_increase: 2.0
           optimizer: lion
@@ -200,6 +202,8 @@ targets:
           pin_memory: ${pin_memory}
           prefetch_factor: ${prefetch_factor}
           gradient_accumulation_steps: ${grad_accum}
+          # Stabilize occasional spikes during healing without reducing LR.
+          grad_clip_norm: 1.0
           # Speed: on MPS, the orchestrator's AdamW-based strategy portfolio can poison fp16 weights
           # (no GradScaler / no fp32 master weights), forcing us into bf16 and slowing things down.
           # Use the plain GlobalStepper here (Lion + fused) for fast, stable finetune.
@@ -376,6 +380,7 @@ targets:
           teacher_sanity_max_nll_delta_vs_ref: 0.10
           dba_init: random
           gradient_accumulation_steps: ${grad_accum}
+          blockwise_grad_clip_norm: 1.0
           orchestrator_enabled: true
           orchestrator_max_loss_increase: 2.0
           optimizer: lion
@@ -403,6 +408,7 @@ targets:
           pin_memory: ${pin_memory}
           prefetch_factor: ${prefetch_factor}
           gradient_accumulation_steps: ${grad_accum}
+          grad_clip_norm: 1.0
           orchestrator_enabled: true
           orchestrator_max_loss_increase: 2.0
           optimizer: lion

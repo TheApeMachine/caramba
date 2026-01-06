@@ -1,4 +1,9 @@
-"""Fused decode path for decoupled caches."""
+"""Fused DBA decode
+
+Single-token decoding is a tight loop; this module dispatches to fused kernels
+so per-step attention becomes bandwidth/compute efficient instead of Python
+overhead dominated.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +19,11 @@ if TYPE_CHECKING:
 
 
 class DecoupledDecode:
-    """Fused DBA decode dispatch for CUDA (Triton) and MPS (Metal)."""
+    """Fused DBA decode dispatcher
+
+    The decode kernels are specialized for the cache layout and quantization,
+    which is why decode has its own fast path instead of reusing generic SDPA.
+    """
 
     def run(
         self,

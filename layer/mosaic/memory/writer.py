@@ -23,12 +23,17 @@ from caramba.layer.mosaic.state import MosaicState
 
 @dataclass(slots=True)
 class MemoryWriter:
-    """Memory writer."""
+    """Memory writer
+
+    Writes are a policy decision: when to store, where to store, and whether to
+    overwrite a similar existing item or replace the least-recently used slot.
+    """
 
     mem_wkey: nn.Linear
     mem_value: nn.Linear
     mem_write_gate: nn.Linear
     mem_buckets: int
+    mem_table_buckets: int
     mem_hashes: int
     mem_assoc: int
     mem_key_dim: int
@@ -40,6 +45,9 @@ class MemoryWriter:
     mem_vsa_enabled: bool
     vsa_projector: VsaTagProjector | None
     vsa_novelty: VsaNovelty | None
+    mem_trie_enabled: bool
+    mem_trie_eta_decay: float
+    mem_trie_max_levels: int | None
 
     def write_chunk(
         self,
@@ -50,53 +58,138 @@ class MemoryWriter:
         mask: Tensor | None,
         write_scale: Tensor | None,
     ) -> Tensor:
-        """Write a chunk and return gate logits (B,T)."""
+        """Write a chunk of tokens
+
+        Writes update runtime state (the memory tables), so they run under
+        `no_grad` to avoid autograd tracking and in-place versioning issues.
+        """
         B, T, idx_w, gate_logit, w_eta, do = self.prepare(u, routing, mask=mask, write_scale=write_scale)
         if not bool(do.any()):
             return gate_logit
         if bool(routing.get("collect_aux", False)):
             routing["write_do"] = do.detach()
 
-        wk = self.mem_wkey(u)
-        if self.mem_vsa_enabled:
-            if self.vsa_projector is None:
-                raise RuntimeError("mem_vsa_enabled is True but vsa_projector is None")
-            wt = self.vsa_projector(wk)
-        else:
-            wt = torch.zeros((B, T, int(self.mem_tag_dim)), device=u.device, dtype=wk.dtype)
-        v = self.mem_value(u)
-        pos = torch.nonzero(do, as_tuple=False)
-        b_ev_all = pos[:, 0]
-        t_ev_all = pos[:, 1]
+        # Memory writes are runtime state updates, not part of the differentiable path.
+        # Doing them under autograd causes in-place versioning errors (esp. on MPS).
+        with torch.no_grad():
+            # Clone mutable state ONCE per chunk write.
+            # (Trie mode writes to multiple nodes; cloning per node explodes allocations.)
+            self.ensure_mutable_state(st)
 
-        novelty_sum = torch.zeros((B, T), device=u.device, dtype=u.dtype)
-        max_sim_sum = torch.zeros((B, T), device=u.device, dtype=u.dtype)
-        for h in range(int(self.mem_hashes)):
+            wk = self.mem_wkey(u)
             if self.mem_vsa_enabled:
-                novelty_h, max_sim_h = self.hash_novelty(st, bidx=idx_w[:, :, h], wt=wt)
+                if self.vsa_projector is None:
+                    raise RuntimeError("mem_vsa_enabled is True but vsa_projector is None")
+                wt = self.vsa_projector(wk)
             else:
-                novelty_h = torch.ones((B, T), device=u.device, dtype=u.dtype)
-                max_sim_h = torch.zeros((B, T), device=u.device, dtype=u.dtype)
-            novelty_sum = novelty_sum + novelty_h
-            max_sim_sum = max_sim_sum + max_sim_h
+                wt = torch.zeros((B, T, int(self.mem_tag_dim)), device=u.device, dtype=wk.dtype)
+            v = self.mem_value(u)
+            pos = torch.nonzero(do, as_tuple=False)
+            b_ev_all = pos[:, 0]
+            t_ev_all = pos[:, 1]
+
+            novelty_sum = torch.zeros((B, T), device=u.device, dtype=u.dtype)
+            max_sim_sum = torch.zeros((B, T), device=u.device, dtype=u.dtype)
+            for h in range(int(self.mem_hashes)):
+                bidx_leaf = idx_w[:, :, h]
+                if self.mem_trie_enabled:
+                    bidx0 = self.trie_leaf_to_node(bidx_leaf)
+                else:
+                    bidx0 = bidx_leaf
+
+                if self.mem_vsa_enabled:
+                    novelty_h, max_sim_h = self.hash_novelty(st, bidx=bidx0, wt=wt, h=int(h))
+                else:
+                    novelty_h = torch.ones((B, T), device=u.device, dtype=u.dtype)
+                    max_sim_h = torch.zeros((B, T), device=u.device, dtype=u.dtype)
+                novelty_sum = novelty_sum + novelty_h
+                max_sim_sum = max_sim_sum + max_sim_h
+                if self.mem_trie_enabled:
+                    self.write_trie(
+                        u=u,
+                        st=st,
+                        bidx_leaf=bidx_leaf,
+                        wk=wk,
+                        wt=wt,
+                        v=v,
+                        b_ev_all=b_ev_all,
+                        t_ev_all=t_ev_all,
+                        w_eta=(w_eta * novelty_h),
+                        h=int(h),
+                        t0=int(t0),
+                    )
+                else:
+                    self.write_hash(
+                        u=u,
+                        st=st,
+                        bidx=bidx0,
+                        wk=wk,
+                        wt=wt,
+                        v=v,
+                        b_ev_all=b_ev_all,
+                        t_ev_all=t_ev_all,
+                        w_eta=(w_eta * novelty_h),
+                        h=int(h),
+                        t0=int(t0),
+                    )
+            if bool(routing.get("collect_aux", False)):
+                denom = float(max(1, int(self.mem_hashes)))
+                routing["write_novelty"] = (novelty_sum / denom).detach()
+                routing["write_max_sim_vsa"] = (max_sim_sum / denom).detach()
+        return gate_logit
+
+    def trie_leaf_to_node(self, bidx_leaf: Tensor) -> Tensor:
+        """Map leaf bucket ids (0..L-1) to trie node indices (base..base+L-1)."""
+        leaves = int(self.mem_buckets)
+        base = int(leaves - 1)
+        return bidx_leaf.to(dtype=torch.long) + base
+
+    def write_trie(
+        self,
+        *,
+        u: Tensor,
+        st: MosaicState,
+        bidx_leaf: Tensor,
+        wk: Tensor,
+        wt: Tensor,
+        v: Tensor,
+        b_ev_all: Tensor,
+        t_ev_all: Tensor,
+        w_eta: Tensor,
+        h: int,
+        t0: int,
+    ) -> None:
+        """Write to leaf node and its ancestors with geometric eta decay."""
+        leaves = int(self.mem_buckets)
+        if leaves < 2:
+            return
+        if leaves & (leaves - 1) != 0:
+            raise ValueError("mem_trie_enabled requires mem_buckets (leaf count) to be a power of two")
+        max_depth = int((leaves - 1).bit_length())
+        if self.mem_trie_max_levels is not None:
+            max_depth = min(max_depth, int(self.mem_trie_max_levels))
+        cur = self.trie_leaf_to_node(bidx_leaf)
+        eta = w_eta
+        for _level in range(int(max_depth) + 1):
             self.write_hash(
                 u=u,
                 st=st,
-                bidx=idx_w[:, :, h],
+                bidx=cur,
                 wk=wk,
                 wt=wt,
                 v=v,
                 b_ev_all=b_ev_all,
                 t_ev_all=t_ev_all,
-                w_eta=(w_eta * novelty_h),
+                w_eta=eta,
                 h=int(h),
                 t0=int(t0),
             )
-        if bool(routing.get("collect_aux", False)):
-            denom = float(max(1, int(self.mem_hashes)))
-            routing["write_novelty"] = (novelty_sum / denom).detach()
-            routing["write_max_sim_vsa"] = (max_sim_sum / denom).detach()
-        return gate_logit
+            if int(_level) >= int(max_depth):
+                break
+            if not bool((cur > 0).any()):
+                break
+            cur = torch.where(cur > 0, (cur - 1) // 2, cur)
+            eta = eta * float(self.mem_trie_eta_decay)
 
     def prepare(
         self,
@@ -123,13 +216,17 @@ class MemoryWriter:
         do = w_eta > 0
         return int(B), int(T), idx_w, gate_logit, w_eta, do
 
-    def hash_novelty(self, st: MosaicState, *, bidx: Tensor, wt: Tensor) -> tuple[Tensor, Tensor]:
+    def hash_novelty(self, st: MosaicState, *, bidx: Tensor, wt: Tensor, h: int) -> tuple[Tensor, Tensor]:
         if self.vsa_novelty is None:
             raise RuntimeError("mem_vsa_enabled is True but vsa_novelty is None")
+        if int(h) < 0 or int(h) >= int(self.mem_hashes):
+            raise ValueError(f"h must be in [0,{int(self.mem_hashes)-1}], got {int(h)}")
         B, T = int(bidx.size(0)), int(bidx.size(1))
-        idx = bidx.to(dtype=torch.long).unsqueeze(-1).unsqueeze(-1)
-        bt = st.mem_tag.gather(dim=2, index=idx.expand(B, 1, T, self.mem_assoc, self.mem_tag_dim)).squeeze(1)
-        bl = st.mem_last.gather(dim=2, index=idx[..., 0].expand(B, 1, T, self.mem_assoc)).squeeze(1)
+        idx = bidx.to(dtype=torch.long).unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
+        mt = st.mem_tag[:, int(h) : int(h) + 1, :, :, :]
+        ml = st.mem_last[:, int(h) : int(h) + 1, :, :]
+        bt = mt.gather(dim=2, index=idx.expand(B, 1, T, self.mem_assoc, self.mem_tag_dim)).squeeze(1)
+        bl = ml.gather(dim=2, index=idx[..., 0].expand(B, 1, T, self.mem_assoc)).squeeze(1)
         valid = bl >= 0
         sim = (bt * wt.unsqueeze(2)).sum(dim=-1) * (1.0 / math.sqrt(float(self.mem_tag_dim)))
         sim = sim.masked_fill(~valid, float("-inf"))
@@ -227,7 +324,6 @@ class MemoryWriter:
         )
         if b_ev is None:
             return
-        self.ensure_mutable_state(st)
         self.apply_updates(
             st=st,
             b_ev=b_ev,
@@ -275,7 +371,8 @@ class MemoryWriter:
         h: int,
     ) -> tuple[Tensor | None, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         bucket_ev, slot_ev, eta_ev, wk_ev, wt_ev, v_ev, upd_ev, time_ev = pack
-        global_key = ((b_ev_all * int(self.mem_hashes) + int(h)) * int(self.mem_buckets) + bucket_ev) * int(self.mem_assoc) + slot_ev
+        buckets = int(self.mem_table_buckets) if int(self.mem_table_buckets) > 0 else int(self.mem_buckets)
+        global_key = ((b_ev_all * int(self.mem_hashes) + int(h)) * buckets + bucket_ev) * int(self.mem_assoc) + slot_ev
         order = last_write_wins(global_key, time_ev)
         if order.numel() <= 0:
             f = torch.empty((0,), device=b_ev_all.device, dtype=eta_ev.dtype)

@@ -68,7 +68,12 @@ def _set_ngram_state(ctx: object | None, key: str, st: _NGramState) -> None:
 
 
 class MosaicNGramCacheLogitsLayer(nn.Module):
-    """Mix an n-gram cache distribution into logits (sparse, fixed-size table)."""
+    """N-gram cache logits mixer
+
+    This layer is a small “copy bias” helper: it remembers short n-gram
+    continuations in a fixed-size table and adds a sparse logit boost for likely
+    next tokens during inference.
+    """
 
     def __init__(self, config: MosaicNGramCacheLogitsLayerConfig) -> None:
         super().__init__()

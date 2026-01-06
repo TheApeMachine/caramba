@@ -525,6 +525,13 @@ class StandardTrainer:
             b0 = b0 if isinstance(b0, TensorDictBase) else as_tensordict(b0)  # type: ignore[arg-type]
             b0 = cast(TensorDictBase, to_device(b0, device=device))
 
+            # IO shape export should be cheap and must not OOM on accelerators.
+            # Use a tiny batch slice for the forward call; interface shapes remain valid.
+            try:
+                b_export = b0[:1]
+            except Exception as e:
+                raise RuntimeError("Failed to slice a small batch for IO export") from e
+
             def _forward_for_shape_export(batch_td: TensorDictBase) -> object:
                 """Deterministic forward call for IO shape export.
 
@@ -547,7 +554,8 @@ class StandardTrainer:
                     return fwd(batch_td, ctx=None)  # type: ignore[call-arg]
                 return fwd(batch_td)  # type: ignore[call-arg]
 
-            o0 = _forward_for_shape_export(b0)
+            with torch.no_grad():
+                o0 = _forward_for_shape_export(b_export)
 
             def shape_sig(td: object) -> dict[str, object]:
                 out: dict[str, object] = {}
@@ -572,7 +580,7 @@ class StandardTrainer:
                 return out
             import json
             (checkpoint_dir / "io_shapes.json").write_text(
-                json.dumps({"batch": shape_sig(b0), "outputs": shape_sig(o0)}, indent=2) + "\n",
+                json.dumps({"batch": shape_sig(b_export), "outputs": shape_sig(o0)}, indent=2) + "\n",
                 encoding="utf-8",
             )
         except Exception as e:
@@ -824,6 +832,12 @@ class StandardTrainer:
                     except Exception as e:
                         raise RuntimeError("Failed to compute mosaic stats enabled") from e
 
+                    # MOSAIC write warmup: disable writes for first N training steps.
+                    try:
+                        setattr(viz_ctx, "mosaic_write_warmup_steps", int(getattr(train, "mosaic_write_warmup_steps", 0) or 0))
+                    except Exception as e:
+                        raise RuntimeError("Failed to set mosaic write warmup steps") from e
+
                     accum_steps = int(getattr(train, "gradient_accumulation_steps", 1))
                     accum_steps = max(1, accum_steps)
                     optimizer.zero_grad(set_to_none=True)
@@ -908,6 +922,17 @@ class StandardTrainer:
                     if last_batch_td is None:
                         last_batch_td = micro_batches[-1]
                     t_bwd = time.perf_counter()
+                    # Optional gradient clipping (L2 norm).
+                    # Useful for taming rare spikes (often coinciding with peak LR after warmup).
+                    clip = float(getattr(train, "grad_clip_norm", 0.0) or 0.0)
+                    if clip > 0.0:
+                        try:
+                            torch.nn.utils.clip_grad_norm_(  # type: ignore[attr-defined]
+                                system.parameters(),  # type: ignore[arg-type]
+                                max_norm=float(clip),
+                            )
+                        except Exception as e:
+                            raise RuntimeError("Failed to clip gradients") from e
                     swap.before_optimizer_step(optimizer, device=device)
                     optimizer.step()
                     if lr_scheduler is not None:
@@ -1120,6 +1145,19 @@ class StandardTrainer:
                                     ("/rms_mem", "rms_mem"),
                                     ("/fuse_gate_mem_mean", "fuse_mem"),
                                     ("/rms_mem_contrib", "mem_contrib"),
+                                    ("/rmf_delta_rms", "rmf_delta"),
+                                    ("/rmf_field_rms", "rmf_field"),
+                                    ("/read_teacher_agree", "read_agree"),
+                                    ("/write_teacher_agree", "write_agree"),
+                                    ("/teacher_used_frac", "teacher_used"),
+                                    ("/read_teacher_agree_free", "read_agree_free"),
+                                    ("/write_teacher_agree_free", "write_agree_free"),
+                                    ("/read_teacher_label_count", "read_labels"),
+                                    ("/write_teacher_label_count", "write_labels"),
+                                    ("/read_teacher_probe_count", "read_probe"),
+                                    ("/write_teacher_probe_count", "write_probe"),
+                                    ("/vq_read_group_acc", "vq_read_gacc"),
+                                    ("/vq_write_group_acc", "vq_write_gacc"),
                                 ]:
                                     av = _avg(mosaic_f, suf)
                                     if av is not None:

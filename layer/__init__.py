@@ -1,8 +1,8 @@
-"""Neural network layers: the building blocks of transformer models.
+"""Layer primitives
 
-Each layer type (attention, MLP, normalization, etc.) is defined here as a
-configurable nn.Module. The model's topology is composed from these layers
-based on the YAML configuration, allowing flexible architecture experiments.
+This package is the model's vocabulary of building blocks: small, composable
+`nn.Module`s that can be assembled by manifests into many different
+architectures without rewriting model code.
 """
 from __future__ import annotations
 
@@ -18,17 +18,22 @@ from caramba.config.layer import LayerConfig
 
 
 class Layer(nn.Module):
-    """Base class for all layer modules.
+    """Layer base class
 
-    Provides a common interface with config storage and optional mask support.
-    Subclasses implement the actual forward logic.
+    A shared interface makes layers interchangeable inside manifest-driven
+    topologies, so you can swap implementations (attention, MLP, norms) without
+    changing the orchestration code that wires a model together.
     """
     def __init__(self, config: LayerConfig) -> None:
         super().__init__()
         self.config = config
 
     def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
-        """Forward pass, to be implemented by subclasses."""
+        """Forward pass
+
+        Layers take tensors in, tensors out; the point of the base class is to
+        standardize the signature so composition stays frictionless.
+        """
         raise NotImplementedError("Subclasses must implement forward pass.")
 
     def cross_attention(
@@ -38,10 +43,11 @@ class Layer(nn.Module):
         V: Tensor,
         mask: Optional[Tensor] = None,
     ) -> tuple[Tensor, Tensor]:
-        """Compute cross-attention between queries and key-value pairs.
+        """Cross-attention helper
 
-        This is a utility method for layers that need attention computation
-        without the full AttentionLayer machinery.
+        This is the “scaled dot-product attention” core, extracted as a small
+        utility so non-attention layers can reuse the math without importing a
+        larger attention stack.
         """
         d_k = Q.size(-1)
         scale = math.sqrt(float(d_k))

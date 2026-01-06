@@ -127,6 +127,10 @@ class TrainConfig(BaseModel):
     use_amp: bool = False
     amp_dtype: str = "float16"
     gradient_accumulation_steps: PositiveInt = 1
+    # Gradient clipping (L2 norm). 0 disables.
+    # This is especially useful for stabilizing occasional spikes at high LR
+    # (e.g. right after warmup) without changing the LR schedule.
+    grad_clip_norm: NonNegativeFloat = 0.0
     num_workers: NonNegativeInt = 0
     pin_memory: bool = False
     prefetch_factor: PositiveInt = 2
@@ -184,6 +188,14 @@ class TrainConfig(BaseModel):
     mosaic_teacher_p_schedule: Literal["linear", "cosine", "constant"] = "linear"
     mosaic_teacher_p_warmup_steps: NonNegativeInt = 0
     mosaic_teacher_p_cooldown_steps: NonNegativeInt = 0
+
+    # -----------------------------
+    # MOSAIC write warmup (garbage-control experiments)
+    # -----------------------------
+    # If > 0, disable memory writes for the first N *training steps* by forcing
+    # write_mask=0 in the MOSAIC block. This isolates the effect of early random
+    # writes ("garbage") from the rest of learning.
+    mosaic_write_warmup_steps: NonNegativeInt = 0
 
     # Orchestrator settings (dynamic optimizer switching)
     orchestrator_enabled: bool = False
