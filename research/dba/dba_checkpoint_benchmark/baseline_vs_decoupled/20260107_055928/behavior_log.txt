@@ -1,0 +1,405 @@
+================================================================================
+BEHAVIOR BENCHMARK: behavior_sanity
+================================================================================
+
+[1/23] copy_fewshot_spaces
+----------------------------------------
+PROMPT:
+Input: 1 2 3. Output: 1 2 3.
+Input: Red Green Blue. Output: Red Green Blue.
+Input: A7 B4 C9 D2. Output:
+
+
+EXPECTED: A7 B4 C9 D2.
+
+TEACHER ✗:
+Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green
+
+STUDENT ✗:
+Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output:
+
+
+[2/23] copy_fewshot_commas
+----------------------------------------
+PROMPT:
+Input: 1, 2, 3. Output: 1, 2, 3.
+Input: Red, Green, Blue. Output: Red, Green, Blue.
+Input: A7, B4, C9, D2. Output:
+
+
+EXPECTED: A7, B4, C9, D2.
+
+TEACHER ✗:
+Output: Red, Green, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue,
+
+STUDENT ✗:
+Output: Red, Green, Blue. Output: Red, Green, Blue. Output: Red, Green, Blue. Output: Red, Green, Blue.
+
+
+[3/23] copy_semantic_collision
+----------------------------------------
+PROMPT:
+Input: Apple Banana Cherry. Output: Apple Banana Cherry.
+Input: Monday Tuesday Wednesday. Output: Monday Tuesday Wednesday.
+Input: King Queen Prince. Output:
+
+
+EXPECTED: King Queen Prince.
+
+TEACHER ✗:
+1. Apple Banana Cherry
+
+STUDENT ✗:
+Output: Apple banana Cherry. Output: Apple banana Cherry. Output: Apple banana Cherry. Output: Apple banana Cherry. Output: Apple banana Cherry. Output:
+
+
+[4/23] repeat_exact
+----------------------------------------
+PROMPT:
+Text: 1 2 3.
+Copy: 1 2 3.
+Text: Red Green Blue.
+Copy: Red Green Blue.
+Text: A7 B4 C9 D2.
+Copy:
+
+
+EXPECTED: A7 B4 C9 D2.
+
+TEACHER ✗:
+Text: Red Green Blue.
+
+STUDENT ✗:
+Text: Red Green Blue.
+
+
+[5/23] repeat_exact_with_quotes
+----------------------------------------
+PROMPT:
+Text: "Hello."
+Copy: "Hello."
+Text: "A7 B4 C9 D2."
+Copy:
+
+
+EXPECTED: "A7 B4 C9 D2."
+
+TEACHER ✗:
+"Hello. I'm going to go to the library and I'll go to the library and I'll go to the library and I'll go to the library
+
+STUDENT ✗:
+Text: "Hello."
+
+
+[6/23] copy_table_row
+----------------------------------------
+PROMPT:
+Row: | A1 | B2 | C3 | D4 |
+Copy: | A1 | B2 | C3 | D4 |
+Row: | A7 | B4 | C9 | D2 |
+Copy:
+
+
+EXPECTED: | A7 | B4 | C9 | D2 |
+
+TEACHER ✗:
+Row: | A1 | D4 | D4 | D4 | D4 | D4 | D4 | D4 | D4 | D4
+
+STUDENT ✗:
+Copy: | A1 | B2 | D4 | D4 | D4 | D4 | D4 | D4 | D4 | D4
+
+
+[7/23] arithmetic_add
+----------------------------------------
+PROMPT:
+3 + 4 = 7
+12 + 8 = 20
+17 + 25 =
+
+
+EXPECTED: 42
+
+TEACHER ✗:
+18
+
+STUDENT ✗:
+18
+
+
+[8/23] arithmetic_mul
+----------------------------------------
+PROMPT:
+2 * 3 = 6
+4 * 5 = 20
+9 * 7 =
+
+
+EXPECTED: 63
+
+TEACHER ✗:
+10
+
+STUDENT ✗:
+10
+
+
+[9/23] arithmetic_sub_neg
+----------------------------------------
+PROMPT:
+5 - 8 = -3
+10 - 12 = -2
+7 - 19 =
+
+
+EXPECTED: -12
+
+TEACHER ✗:
+8
+
+STUDENT ✗:
+8
+
+
+[10/23] passkey_choice_logprob
+----------------------------------------
+PROMPT:
+The passkey is 73921.
+The passkey is
+
+
+EXPECTED: 73921
+
+TEACHER ✓:
+73921
+
+STUDENT ✗:
+73922
+
+
+[11/23] passkey_choice_logprob_distractors
+----------------------------------------
+PROMPT:
+The passkey is 12057.
+The following numbers are not the passkey: 12075, 10257, 01257.
+The passkey is
+
+
+EXPECTED: 12057
+
+TEACHER ✗:
+12075
+
+STUDENT ✗:
+12075
+
+
+[12/23] copy_brackets
+----------------------------------------
+PROMPT:
+X -> [A1|B2|C3]
+X -> [K9|Q8|P7]
+X -> [A7|B4|C9]
+X ->
+
+
+EXPECTED: [A7|B4|C9]
+
+TEACHER ✗:
+X -> [A7|B4]
+
+STUDENT ✗:
+X -> [A7|B4|C9]
+
+
+[13/23] copy_json_field
+----------------------------------------
+PROMPT:
+{"id": 1, "key": "alpha"} -> alpha
+{"id": 2, "key": "beta"} -> beta
+{"id": 3, "key": "gamma"} ->
+
+
+EXPECTED: gamma
+
+TEACHER ✗:
+bgid: "key": "alphaル
+
+STUDENT ✗:
+key": "alpha── -> beta
+
+
+[14/23] pattern_next_token
+----------------------------------------
+PROMPT:
+Sequence: A B C D E
+Next: F
+Sequence: 1 2 3 4 5
+Next: 6
+Sequence: K L M N O
+Next:
+
+
+EXPECTED: P
+
+TEACHER ✗:
+Sequence: K L M N O
+
+STUDENT ✗:
+Sequence: K L M N O
+
+
+[15/23] parity_choice
+----------------------------------------
+PROMPT:
+17 is odd.
+18 is even.
+19 is
+
+
+EXPECTED:  odd.
+
+TEACHER ✓:
+ odd.
+
+STUDENT ✗:
+ even.
+
+
+[16/23] simple_analogy_choice
+----------------------------------------
+PROMPT:
+hot : cold
+up : down
+in :
+
+
+EXPECTED:  out
+
+TEACHER ✓:
+ out
+
+STUDENT ✓:
+ out
+
+
+[17/23] short_factual_choice
+----------------------------------------
+PROMPT:
+The capital of France is Paris.
+The capital of France is
+
+
+EXPECTED:  Paris
+
+TEACHER ✓:
+ Paris
+
+STUDENT ✓:
+ Paris
+
+
+[18/23] count_commas_int
+----------------------------------------
+PROMPT:
+Items: A, B, C -> 3
+Items: A, B -> 2
+Items: A, B, C, D, E ->
+
+
+EXPECTED: 5
+
+TEACHER ✗:
+3
+
+STUDENT ✗:
+3
+
+
+[19/23] arithmetic_add_2
+----------------------------------------
+PROMPT:
+100 + 23 = 123
+50 + 7 = 57
+81 + 19 =
+
+
+EXPECTED: 100
+
+TEACHER ✗:
+81
+
+STUDENT ✗:
+80
+
+
+[20/23] arithmetic_mul_2
+----------------------------------------
+PROMPT:
+3 * 3 = 9
+6 * 6 = 36
+8 * 8 =
+
+
+EXPECTED: 64
+
+TEACHER ✗:
+9
+
+STUDENT ✗:
+9
+
+
+[21/23] arithmetic_sub_2
+----------------------------------------
+PROMPT:
+10 - 3 = 7
+12 - 5 = 7
+20 - 7 =
+
+
+EXPECTED: 13
+
+TEACHER ✗:
+20
+
+STUDENT ✗:
+20
+
+
+[22/23] spelling_choice
+----------------------------------------
+PROMPT:
+cat -> c a t
+dog -> d o g
+sun -> s u
+
+
+EXPECTED:  n
+
+TEACHER ✗:
+ t
+
+STUDENT ✓:
+ n
+
+
+[23/23] closing_paren
+----------------------------------------
+PROMPT:
+(A7 B4 C9 D2) -> (A7 B4 C9 D2)
+(K1 Q2 P3) -> (K1 Q2 P3)
+(X9 Y8 Z7 ->
+
+
+EXPECTED: (X9 Y8 Z7)
+
+TEACHER ✗:
+X9 Y8 Z7 ->
+
+STUDENT ✗:
+(X9 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y
+
+
+================================================================================
+SUMMARY: teacher 4/23 (17.4%) │ student 3/23 (13.0%)
+================================================================================

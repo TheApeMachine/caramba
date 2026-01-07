@@ -26,10 +26,11 @@ vars:
   # --- Checkpoints (you'll drop these into research/dba/) ---
   baseline_ckpt: research/dba/a100_fw1b_l22_baseline_s1337_10k.pt
   decoupled_ckpt: research/dba/a100_fw1b_l22_decoupled_s1337_10k.pt
+  sem8geo32v40_ckpt: research/dba/a100_fw1b_l22_decoupled_sem8geo32v40_s1337_10k.pt
 
   # --- Dataset shard for perplexity (optional but recommended) ---
   # NOTE: Match the dataset used for the A100 training runs (see prepare_fineweb.py).
-  dataset_path: fineweb_edu_v29_100m.npy
+  dataset_path: fineweb_20b.npy
   block_size: 2048
 
   # --- Model dims (paper preset) ---
@@ -45,6 +46,14 @@ vars:
   geo_dim: 1024
   attn_dim: 1536
 
+  # DBA dims (compressed variant: sem8/geo32/v40)
+  # sem_dim = 8 * n_heads = 256
+  # geo_dim = 32 * n_heads = 1024
+  # attn_dim(v_dim) = 40 * n_heads = 1280
+  sem8_sem_dim: 256
+  sem8_geo_dim: 1024
+  sem8_attn_dim: 1280
+
   # --- Runtime ---
   device: mps
   dtype: float16
@@ -52,7 +61,7 @@ vars:
 targets:
   - type: experiment
     name: baseline_vs_decoupled
-    description: "Compare baseline vs DBA decoupled checkpoints."
+    description: "Compare baseline vs DBA decoupled checkpoints (primary sem16/geo32)."
     backend: torch
     task: task.language_modeling
     data:
@@ -184,7 +193,7 @@ targets:
           device: ${device}
           dtype: ${dtype}
     benchmarks:
-      - id: ppl_fineweb_100m
+      - id: ppl_fineweb_20b
         config:
           type: perplexity
           dataset: ${dataset_path}
@@ -193,27 +202,13 @@ targets:
           num_batches: 50
         models: [teacher, student]
 
-      - id: ppl_fineweb_100m_deeper
+      - id: ppl_fineweb_20b_deeper
         config:
           type: perplexity
           dataset: ${dataset_path}
           block_size: ${block_size}
           batch_size: 1
           num_batches: 200
-        models: [teacher, student]
-
-      - id: downstream_accuracy
-        config:
-          type: accuracy
-          # Full HuggingFace datasets (no instruction tuning assumed).
-          # For a quick smoke test, set `limit: 100` (per task).
-          # tasks: [hellaswag, piqa, winogrande, arc_easy, arc_challenge, boolq]
-          tasks: [hellaswag, winogrande, arc_easy]
-          tokenizer:
-            type: tiktoken
-            encoding: gpt2
-          # Optional sliding window to keep scoring stable at long prompts.
-          context_window: 2048
         models: [teacher, student]
 
       - id: latency_cached
@@ -269,22 +264,295 @@ targets:
           cases_file: research/dba/behavior_cases.yml
           max_new_tokens: 32
           context_window: 2048
+          # Attention introspection (paper): dump tiny attention matrices + mass stats.
+          dump_attention: true
+          dump_attention_case_ids:
+            - copy_fewshot_spaces
+            - copy_fewshot_commas
+          dump_attention_max_tokens: 96
+          dump_attention_max_heads: 4
+          dump_attention_anchor: "A7"
+          dump_attention_paper_dir: research/dba/figs/attention
+          dump_attention_paper_tag: dba_sem8geo32v40
         models: [teacher, student]
 
-      - id: context_sweep
+      - id: downstream_accuracy
         config:
-          type: context
-          dataset: ${dataset_path}
-          context_lengths: [2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072]
-          chunk_size: 1024
-          # Best-effort cap on attention mask materialization during chunked prefill.
-          # Increase if your device can handle larger temporary masks.
-          max_mask_elems: 32000000
+          type: accuracy
+          # Full HuggingFace datasets (no instruction tuning assumed).
+          # For a quick smoke test, set `limit: 100` (per task).
+          # tasks: [hellaswag, piqa, winogrande, arc_easy, arc_challenge, boolq]
+          tasks: [winogrande, arc_easy]
+          tokenizer:
+            type: tiktoken
+            encoding: gpt2
+          # Optional sliding window to keep scoring stable at long prompts.
+          context_window: 2048
+          # Live streaming: show each example as it's evaluated
+          stream_live: true
+          stream_every: 10  # Print every 10th example (reduce to 1 for all)
+        models: [teacher, student]
+
+      # - id: context_sweep
+      #   config:
+      #     type: context
+      #     dataset: ${dataset_path}
+      #     context_lengths: [2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072]
+      #     chunk_size: 1024
+      #     # Best-effort cap on attention mask materialization during chunked prefill.
+      #     # Increase if your device can handle larger temporary masks.
+      #     max_mask_elems: 32000000
+      #     batch_size: 1
+      #     decode_len: 128
+      #     decode_warmup: 8
+      #     cache_kind: fp16
+      #   models: [teacher, student]
+  - type: experiment
+    name: baseline_vs_decoupled_sem8geo32v40
+    description: "Compare baseline vs DBA aggressive decoupled checkpoints (sem8/geo32)."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      # Student model (DBA decoupled)
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        mode: decoupled
+                        dba_train_backend: sdpa
+                        attn_dim: ${sem8_attn_dim}
+                        sem_dim: ${sem8_sem_dim}
+                        geo_dim: ${sem8_geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_base}
+                        rope_semantic: false
+                        tie_qk: false
+                        null_attn: false
+                        decoupled_gate: false
+                        is_causal: true
+                        dropout_p: 0.0
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.checkpoint_compare
+      config:
+        teacher_ckpt: ${baseline_ckpt}
+        student_ckpt: ${sem8geo32v40_ckpt}
+        device: ${device}
+        dtype: ${dtype}
+        strict: true
+        unsafe_pickle_load: false
+        # Teacher model (baseline standard attention)
+        teacher_model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        mode: standard
+                        rope_enabled: true
+                        rope_base: ${rope_base}
+                        is_causal: true
+                        dropout_p: 0.0
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    runs:
+      # Dummy run entry to satisfy schema; trainer.checkpoint_compare does no training.
+      - id: eval
+        mode: train
+        exp: benchmark_only
+        seed: 1337
+        steps: 1
+        expected: {phase: standard}
+        train:
+          phase: standard
           batch_size: 1
-          decode_len: 128
-          decode_warmup: 8
+          block_size: ${block_size}
+          # Schema requires positive; this run is a no-op for checkpoint_compare.
+          lr: 1.0e-9
+          device: ${device}
+          dtype: ${dtype}
+    benchmarks:
+      - id: ppl_fineweb_20b
+        config:
+          type: perplexity
+          dataset: ${dataset_path}
+          block_size: ${block_size}
+          batch_size: 1
+          num_batches: 50
+        models: [teacher, student]
+
+      - id: ppl_fineweb_20b_deeper
+        config:
+          type: perplexity
+          dataset: ${dataset_path}
+          block_size: ${block_size}
+          batch_size: 1
+          num_batches: 200
+        models: [teacher, student]
+
+      - id: latency_cached
+        config:
+          type: latency
+          prompt_lengths: [128, 512, 1024, 2048]
+          generation_lengths: [128]
+          batch_sizes: [1]
+          warmup_runs: 2
+          timed_runs: 5
+          use_cache: true
           cache_kind: fp16
         models: [teacher, student]
+
+      - id: latency_cached_long_prompt
+        config:
+          type: latency
+          prompt_lengths: [2048, 4096, 8192]
+          generation_lengths: [64]
+          batch_sizes: [1]
+          warmup_runs: 1
+          timed_runs: 3
+          use_cache: true
+          cache_kind: fp16
+        models: [teacher, student]
+
+      - id: memory_kv
+        config:
+          type: memory
+          sequence_lengths: [512, 1024, 2048, 4096]
+          batch_sizes: [1]
+          measure_peak: true
+          measure_kvcache: true
+          quantization_modes: [fp16]
+        models: [teacher, student]
+
+      - id: memory_kv_long
+        config:
+          type: memory
+          sequence_lengths: [2048, 4096, 8192, 16384]
+          batch_sizes: [1]
+          measure_peak: true
+          measure_kvcache: true
+          quantization_modes: [fp16]
+        models: [teacher, student]
+
+      - id: behavior_sanity
+        config:
+          type: behavior
+          tokenizer:
+            type: tiktoken
+            encoding: gpt2
+          cases_file: research/dba/behavior_cases.yml
+          max_new_tokens: 32
+          context_window: 2048
+          # Attention introspection (paper): dump tiny attention matrices + mass stats.
+          dump_attention: true
+          dump_attention_case_ids:
+            - copy_fewshot_spaces
+            - copy_fewshot_commas
+          dump_attention_max_tokens: 96
+          dump_attention_max_heads: 4
+          dump_attention_anchor: "A7"
+        models: [teacher, student]
+
+      - id: downstream_accuracy
+        config:
+          type: accuracy
+          # Full HuggingFace datasets (no instruction tuning assumed).
+          # For a quick smoke test, set `limit: 100` (per task).
+          # tasks: [hellaswag, piqa, winogrande, arc_easy, arc_challenge, boolq]
+          tasks: [winogrande, arc_easy]
+          tokenizer:
+            type: tiktoken
+            encoding: gpt2
+          # Optional sliding window to keep scoring stable at long prompts.
+          context_window: 2048
+          # Live streaming: show each example as it's evaluated
+          stream_live: true
+          stream_every: 10  # Print every 10th example (reduce to 1 for all)
+        models: [teacher, student]
+
+      # - id: context_sweep
+      #   config:
+      #     type: context
+      #     dataset: ${dataset_path}
+      #     context_lengths: [2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072]
+      #     chunk_size: 1024
+      #     # Best-effort cap on attention mask materialization during chunked prefill.
+      #     # Increase if your device can handle larger temporary masks.
+      #     max_mask_elems: 32000000
+      #     batch_size: 1
+      #     decode_len: 128
+      #     decode_warmup: 8
+      #     cache_kind: fp16
+      #   models: [teacher, student]
 
 entrypoints:
   default: "target:baseline_vs_decoupled"

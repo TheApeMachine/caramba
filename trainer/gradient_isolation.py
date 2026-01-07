@@ -188,9 +188,12 @@ class GradientIsolationTrainer:
             try:
                 import torch.nn as nn
 
-                m = getattr(system, "module", None)
+                # `system` is typed as `object` (generic component), but may expose a
+                # `.module: nn.Module` attribute that can be wrapped/replaced.
+                system_any = cast(Any, system)
+                m = getattr(system_any, "module", None)
                 if isinstance(m, nn.Module):
-                    system.module = dist_ctx.wrap_model(m)  # type: ignore[attr-defined]
+                    system_any.module = dist_ctx.wrap_model(m)
             except Exception:
                 pass
 

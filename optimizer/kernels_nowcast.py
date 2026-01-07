@@ -7,6 +7,7 @@ Includes fused operations for:
 """
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Callable
 from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
 
@@ -277,161 +278,112 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             num_nodes,
             node_dim: tl.constexpr,
             head_dim: tl.constexpr,
-            scale: tl.constexpr,
+            scale,
             # Block config
             BLOCK_EDGES: tl.constexpr,
+            MAX_DEGREE: tl.constexpr,
         ):
             """Attention-weighted message passing on weight graph.
 
             For each node, computes attention over its neighbors and
             aggregates their features weighted by attention scores.
             """
+            # This kernel is implemented with *static* loop bounds (Triton requirement) by
+            # bounding the maximum degree. We run a single-pass numerically-stable softmax
+            # (online log-sum-exp) over neighbors for performance and to avoid a second pass.
+            #
+            # Performance note: we aggregate neighbor features first and apply the value
+            # projection once:  sum_i a_i * (x_i @ V) == (sum_i a_i * x_i) @ V
             node_idx = tl.program_id(0)
+            in_bounds = node_idx < num_nodes
 
-            if node_idx >= num_nodes:
-                return
-
-            # Load row pointers for this node's edges
-            row_start = tl.load(RowPtr_ptr + node_idx)
-            row_end = tl.load(RowPtr_ptr + node_idx + 1)
+            # Load row pointers for this node's edges (CSR).
+            row_start = tl.load(RowPtr_ptr + node_idx, mask=in_bounds, other=0).to(tl.int32)
+            row_end = tl.load(RowPtr_ptr + node_idx + 1, mask=in_bounds, other=0).to(tl.int32)
             num_neighbors = row_end - row_start
 
-            if num_neighbors == 0:
-                # No neighbors - just copy input to output
-                offs_d = tl.arange(0, node_dim)
-                node_feat = tl.load(
-                    Node_ptr + node_idx * node_dim + offs_d,
-                    mask=offs_d < node_dim,
-                    other=0.0,
-                )
-                tl.store(
-                    Out_ptr + node_idx * node_dim + offs_d,
-                    node_feat,
-                    mask=offs_d < node_dim,
-                )
-                return
-
-            # Load this node's features
             offs_d = tl.arange(0, node_dim)
+            offs_h = tl.arange(0, head_dim)
+
+            # Load this node's features.
             node_feat = tl.load(
                 Node_ptr + node_idx * node_dim + offs_d,
-                mask=offs_d < node_dim,
+                mask=in_bounds,
                 other=0.0,
-            )
+            ).to(tl.float32)
 
-            # Compute query for this node
-            offs_h = tl.arange(0, head_dim)
+            # Compute query for this node: q = x @ Q
             query = tl.zeros((head_dim,), dtype=tl.float32)
-            for d in range(node_dim):
+            for d in tl.static_range(0, node_dim):
                 q_proj = tl.load(
                     Attn_Q_ptr + d * head_dim + offs_h,
                     mask=offs_h < head_dim,
                     other=0.0,
-                )
+                ).to(tl.float32)
                 query += node_feat[d] * q_proj
 
-            # Compute attention scores and aggregate
-            max_score = float('-inf')
+            # Online softmax accumulators (scalar m, scalar l, vector z).
+            m = tl.full((), float("-inf"), dtype=tl.float32)
+            l = tl.zeros((), dtype=tl.float32)
+            z = tl.zeros((node_dim,), dtype=tl.float32)
 
-            # First pass: compute max for numerical stability
-            for e_block in range((num_neighbors + BLOCK_EDGES - 1) // BLOCK_EDGES):
-                e_offs = e_block * BLOCK_EDGES + tl.arange(0, BLOCK_EDGES)
-                e_mask = e_offs < num_neighbors
+            # Process neighbors in fixed blocks up to MAX_DEGREE.
+            for e_base in tl.static_range(0, MAX_DEGREE, BLOCK_EDGES):
+                e_offs = e_base + tl.arange(0, BLOCK_EDGES)
+                e_mask = in_bounds & (e_offs < num_neighbors)
 
                 neighbor_idx = tl.load(
                     ColIdx_ptr + row_start + e_offs,
                     mask=e_mask,
                     other=0,
-                )
+                ).to(tl.int32)
 
-                # Load neighbor features and compute key
-                for e in range(BLOCK_EDGES):
-                    if e_offs[e] < num_neighbors:
-                        n_idx = neighbor_idx[e]
+                # Load neighbor features for this edge block: (BLOCK_EDGES, node_dim)
+                n_ptrs = Node_ptr + neighbor_idx[:, None] * node_dim + offs_d[None, :]
+                n_feat = tl.load(n_ptrs, mask=e_mask[:, None], other=0.0).to(tl.float32)
 
-                        # Load neighbor features
-                        n_feat = tl.load(
-                            Node_ptr + n_idx * node_dim + offs_d,
-                            mask=offs_d < node_dim,
-                            other=0.0,
-                        )
+                # Compute keys for this block: k = x @ K  -> (BLOCK_EDGES, head_dim)
+                key = tl.zeros((BLOCK_EDGES, head_dim), dtype=tl.float32)
+                for d in tl.static_range(0, node_dim):
+                    k_proj = tl.load(
+                        Attn_K_ptr + d * head_dim + offs_h,
+                        mask=offs_h < head_dim,
+                        other=0.0,
+                    ).to(tl.float32)
+                    key += n_feat[:, d][:, None] * k_proj[None, :]
 
-                        # Compute key
-                        key = tl.zeros((head_dim,), dtype=tl.float32)
-                        for d in range(node_dim):
-                            k_proj = tl.load(
-                                Attn_K_ptr + d * head_dim + offs_h,
-                                mask=offs_h < head_dim,
-                                other=0.0,
-                            )
-                            key += n_feat[d] * k_proj
+                # Scores for this block: (BLOCK_EDGES,)
+                score = tl.sum(key * query[None, :], axis=1) * scale
+                score = tl.where(e_mask, score, float("-inf"))
 
-                        # Attention score
-                        score = tl.sum(query * key) * scale
-                        max_score = tl.maximum(max_score, score)
+                # Online log-sum-exp update.
+                m_new = tl.maximum(m, tl.max(score, axis=0))
+                alpha = tl.exp(m - m_new)
+                exp_scores = tl.exp(score - m_new)  # masked -inf -> 0
 
-            # Second pass: compute softmax and aggregate
-            exp_sum = 0.0
+                l = l * alpha + tl.sum(exp_scores, axis=0)
+                z = z * alpha + tl.sum(n_feat * exp_scores[:, None], axis=0)
+                m = m_new
+
+            # Normalize aggregated neighbor features.
+            inv_l = tl.where(l > 0.0, 1.0 / l, 0.0)
+            attn_feat = z * inv_l
+
+            # Apply value projection once: out_feat = attn_feat @ V
             agg = tl.zeros((node_dim,), dtype=tl.float32)
+            for d_in in tl.static_range(0, node_dim):
+                v_row = tl.load(
+                    Attn_V_ptr + d_in * node_dim + offs_d,
+                    mask=offs_d < node_dim,
+                    other=0.0,
+                ).to(tl.float32)
+                agg += attn_feat[d_in] * v_row
 
-            for e_block in range((num_neighbors + BLOCK_EDGES - 1) // BLOCK_EDGES):
-                e_offs = e_block * BLOCK_EDGES + tl.arange(0, BLOCK_EDGES)
-                e_mask = e_offs < num_neighbors
-
-                neighbor_idx = tl.load(
-                    ColIdx_ptr + row_start + e_offs,
-                    mask=e_mask,
-                    other=0,
-                )
-
-                for e in range(BLOCK_EDGES):
-                    if e_offs[e] < num_neighbors:
-                        n_idx = neighbor_idx[e]
-
-                        # Load neighbor features
-                        n_feat = tl.load(
-                            Node_ptr + n_idx * node_dim + offs_d,
-                            mask=offs_d < node_dim,
-                            other=0.0,
-                        )
-
-                        # Compute key
-                        key = tl.zeros((head_dim,), dtype=tl.float32)
-                        for d in range(node_dim):
-                            k_proj = tl.load(
-                                Attn_K_ptr + d * head_dim + offs_h,
-                                mask=offs_h < head_dim,
-                                other=0.0,
-                            )
-                            key += n_feat[d] * k_proj
-
-                        # Attention weight
-                        score = tl.sum(query * key) * scale
-                        attn_weight = tl.exp(score - max_score)
-                        exp_sum += attn_weight
-
-                        # Compute value projection and aggregate
-                        value = tl.zeros((node_dim,), dtype=tl.float32)
-                        for d_in in range(node_dim):
-                            v_proj = tl.load(
-                                Attn_V_ptr + d_in * node_dim + offs_d,
-                                mask=offs_d < node_dim,
-                                other=0.0,
-                            )
-                            value += n_feat[d_in] * v_proj
-
-                        agg += value * attn_weight
-
-            # Normalize by softmax denominator
-            agg = agg / (exp_sum + 1e-8)
-
-            # Residual connection
             out = node_feat + agg
-
             tl.store(
                 Out_ptr + node_idx * node_dim + offs_d,
                 out,
-                mask=offs_d < node_dim,
+                mask=in_bounds,
             )
 
         # ============================================================
@@ -610,6 +562,8 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             attn_q: torch.Tensor,
             attn_k: torch.Tensor,
             attn_v: torch.Tensor,
+            *,
+            max_degree: int = 256,
         ) -> torch.Tensor:
             """Attention-weighted graph message passing.
 
@@ -632,6 +586,9 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
 
             grid = (num_nodes,)
             BLOCK_EDGES = 32
+            max_degree_i = int(max_degree)
+            # Ensure MAX_DEGREE is a multiple of BLOCK_EDGES for tl.static_range.
+            MAX_DEGREE = int(math.ceil(max_degree_i / BLOCK_EDGES) * BLOCK_EDGES)
 
             _attention_message_pass_kernel[grid](
                 node_features.contiguous(),
@@ -646,6 +603,8 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
                 head_dim,
                 scale,
                 BLOCK_EDGES,
+                MAX_DEGREE,
+                num_warps=4,
             )
 
             return out
@@ -671,6 +630,11 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             Returns:
                 Updated weights (num_params,)
             """
+            if not momentum_buffer.is_contiguous():
+                raise RuntimeError(
+                    "fused_weight_update: momentum_buffer must be contiguous for in-place updates "
+                    "(got non-contiguous tensor; refusing to silently update a copy)."
+                )
             num_params = weights.numel()
             out = torch.empty_like(weights)
 
@@ -680,7 +644,7 @@ if not TYPE_CHECKING and TRITON_AVAILABLE:
             _fused_weight_update_kernel[grid](
                 weights.flatten().contiguous(),
                 predicted_delta.flatten().contiguous(),
-                momentum_buffer.flatten().contiguous(),
+                momentum_buffer.view(-1),
                 out,
                 num_params,
                 horizon,

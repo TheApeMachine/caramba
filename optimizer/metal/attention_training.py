@@ -33,6 +33,8 @@ class _AttnMeta:
 
 
 class _MetalAttnTrainFn(torch.autograd.Function):
+    _U32_MASK: int = (1 << 32) - 1
+
     @staticmethod
     def forward(  # type: ignore[override]
         ctx,
@@ -58,10 +60,19 @@ class _MetalAttnTrainFn(torch.autograd.Function):
         if q2.ndim != 4:
             raise RuntimeError(f"MetalAttentionTraining expects q/k/v shape (B,H,T,D), got shape={tuple(q2.shape)}")
 
-        ops = load_caramba_metal_attention_ops(verbose=False)
-        out, lse = ops.attn_train_fwd(q2, k2, v2, float(scale), bool(causal), float(dropout_p), int(seed))
+        seed_i = int(seed)
+        if seed_i < 0:
+            raise RuntimeError(f"MetalAttentionTraining seed must be >= 0 (got {seed_i})")
+        # The extension enforces uint32 seeds. Also avoid pybind conversion
+        # failures for very large Python ints by narrowing before the call.
+        seed_u32 = int(seed_i & _MetalAttnTrainFn._U32_MASK)
 
-        meta = _AttnMeta(causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p), seed=int(seed))
+        ops = load_caramba_metal_attention_ops(verbose=False)
+        res = ops.attn_train_fwd(q2, k2, v2, float(scale), bool(causal), float(dropout_p), int(seed_u32))
+        # pybind returns a python list[Tensor]
+        out, lse = res[0], res[1]
+
+        meta = _AttnMeta(causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p), seed=int(seed_u32))
         ctx.meta = meta  # type: ignore[attr-defined]
         ctx.save_for_backward(q2, k2, v2, out, lse)
         return out
@@ -123,8 +134,11 @@ class MetalAttentionTraining:
         if verbose_build:
             _ = load_caramba_metal_attention_ops(verbose=True)
 
-        seed_i = int(torch.seed()) if seed is None else int(seed)
-        y = _MetalAttnTrainFn.apply(q, k, v, bool(causal), float(scale), float(dropout_p), seed_i)
+        seed_i_raw = int(torch.seed()) if seed is None else int(seed)
+        if seed_i_raw < 0:
+            raise ValueError(f"seed must be >= 0 (got {seed_i_raw})")
+        seed_u32 = int(seed_i_raw & _MetalAttnTrainFn._U32_MASK)
+        y = _MetalAttnTrainFn.apply(q, k, v, bool(causal), float(scale), float(dropout_p), seed_u32)
         if not isinstance(y, torch.Tensor):
             raise TypeError("MetalAttentionTraining returned a non-tensor output")
         return y

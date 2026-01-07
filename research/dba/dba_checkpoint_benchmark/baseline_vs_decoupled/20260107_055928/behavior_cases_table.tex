@@ -1,0 +1,35 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Behavioral probe results (per case).}
+\label{tab:behavior_cases}
+\begin{tabular}{@{}lccp{0.33\textwidth}p{0.33\textwidth}@{}}
+\toprule
+\textbf{Case} & \textbf{T} & \textbf{S} & \textbf{Teacher output} & \textbf{Student output} \\
+\midrule
+copy\_fewshot\_spaces & 0 & 0 & \texttt{Red Green Blue. Output: Red Green Blue. Output: Red Green Blue.…} & \texttt{Output: Red Green Blue. Output: Red Green Blue. Output: Red Gre…} \\
+copy\_fewshot\_commas & 0 & 0 & \texttt{Output: Red, Green, Blue, Blue, Blue, Blue, Blue, Blue, Blue, B…} & \texttt{Output: Red, Green, Blue. Output: Red, Green, Blue. Output: Red…} \\
+copy\_semantic\_collision & 0 & 0 & \texttt{1. Apple Banana Cherry} & \texttt{Output: Apple banana Cherry. Output: Apple banana Cherry. Outpu…} \\
+repeat\_exact & 0 & 0 & \texttt{Text: Red Green Blue.} & \texttt{Text: Red Green Blue.} \\
+repeat\_exact\_with\_quotes & 0 & 0 & \texttt{"Hello. I'm going to go to the library and I'll go to the libra…} & \texttt{Text: "Hello."} \\
+copy\_table\_row & 0 & 0 & \texttt{Row: | A1 | D4 | D4 | D4 | D4 | D4 | D4 | D4 | D4 | D4} & \texttt{Copy: | A1 | B2 | D4 | D4 | D4 | D4 | D4 | D4 | D4 | D4} \\
+arithmetic\_add & 0 & 0 & \texttt{18} & \texttt{18} \\
+arithmetic\_mul & 0 & 0 & \texttt{10} & \texttt{10} \\
+arithmetic\_sub\_neg & 0 & 0 & \texttt{8} & \texttt{8} \\
+passkey\_choice\_logprob & 1 & 0 & \texttt{73921} & \texttt{73922} \\
+passkey\_choice\_logprob\_distractors & 0 & 0 & \texttt{12075} & \texttt{12075} \\
+copy\_brackets & 0 & 0 & \texttt{X -> [A7|B4]} & \texttt{X -> [A7|B4|C9]} \\
+copy\_json\_field & 0 & 0 & \texttt{bgid: "key": "alphaル} & \texttt{key": "alpha── -> beta} \\
+pattern\_next\_token & 0 & 0 & \texttt{Sequence: K L M N O} & \texttt{Sequence: K L M N O} \\
+parity\_choice & 1 & 0 & \texttt{odd.} & \texttt{even.} \\
+simple\_analogy\_choice & 1 & 1 & \texttt{out} & \texttt{out} \\
+short\_factual\_choice & 1 & 1 & \texttt{Paris} & \texttt{Paris} \\
+count\_commas\_int & 0 & 0 & \texttt{3} & \texttt{3} \\
+arithmetic\_add\_2 & 0 & 0 & \texttt{81} & \texttt{80} \\
+arithmetic\_mul\_2 & 0 & 0 & \texttt{9} & \texttt{9} \\
+arithmetic\_sub\_2 & 0 & 0 & \texttt{20} & \texttt{20} \\
+spelling\_choice & 0 & 1 & \texttt{t} & \texttt{n} \\
+closing\_paren & 0 & 0 & \texttt{X9 Y8 Z7 ->} & \texttt{(X9 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y} \\
+\bottomrule
+\end{tabular}
+\end{table}

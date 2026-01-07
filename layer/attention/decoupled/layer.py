@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, cast
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
+from torch._dynamo import is_compiling as _dynamo_is_compiling
+from caramba.console import logger
 
 from caramba.config.layer import AttentionLayerConfig, AttentionMode
 from caramba.layer.attention.base import AttentionBase
@@ -55,6 +57,9 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
     mem_k_proj_sem: nn.Module | None
     mem_k_proj_geo: nn.Module | None
     mem_v_proj_dba: nn.Module | None
+
+    # Cache of the fastest CUDA training backend per (dtype, T, sem/geo/v head dims, causal).
+    _cuda_train_backend_cache: dict[tuple[torch.dtype, int, int, int, int, bool], str] = {}
 
     def __init__(self, config: AttentionLayerConfig) -> None:
         if config.mode != AttentionMode.DECOUPLED:
@@ -229,17 +234,114 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
             and self.training
             and not null_enabled
         ):
-            out = DecoupledAttentionTraining().run(
-                q_sem=qsh,
-                q_geo=qgh,
-                k_sem=ksh,
-                k_geo=kgh,
-                v=vh,
-                causal=bool(self.config.is_causal) and int(T) > 1,
-                sem_scale=float(sem_scale),
-                geo_scale=float(geo_scale),
-                dropout_p=float(dropout_p),
-            )
+            # Auto-select between Triton DBA training kernel and PyTorch SDPA (which can
+            # dispatch to FlashAttention2 on CUDA). We benchmark once per shape and
+            # deterministically reuse the faster backend.
+            backend = "triton"
+            # Avoid benchmarking inside torch.compile traces; prefer SDPA there.
+            if bool(_dynamo_is_compiling()):
+                backend = "sdpa"
+            elif dba_backend == "auto" and float(dropout_p) == 0.0 and torch.is_grad_enabled():
+                key = (x.dtype, int(T), int(sem_head_dim), int(geo_head_dim), int(v_head_dim), bool(self.config.is_causal))
+                cached = self._cuda_train_backend_cache.get(key, None)
+                if isinstance(cached, str):
+                    backend = cached
+                else:
+                    # Benchmark forward+backward for one representative microbatch.
+                    def _bench(fn_name: str, fn):
+                        q1 = qsh.detach().clone().requires_grad_(True)
+                        q2 = qgh.detach().clone().requires_grad_(True)
+                        k1 = ksh.detach().clone().requires_grad_(True)
+                        k2 = kgh.detach().clone().requires_grad_(True)
+                        v1 = vh.detach().clone().requires_grad_(True)
+
+                        def step() -> None:
+                            q1.grad = None
+                            q2.grad = None
+                            k1.grad = None
+                            k2.grad = None
+                            v1.grad = None
+                            out0 = fn(q1, q2, k1, k2, v1)
+                            loss0 = out0.float().mean()
+                            loss0.backward()
+
+                        for _ in range(2):
+                            step()
+                        torch.cuda.synchronize()
+                        start = torch.cuda.Event(enable_timing=True)
+                        end = torch.cuda.Event(enable_timing=True)
+                        iters = 5
+                        start.record()
+                        for _ in range(iters):
+                            step()
+                        end.record()
+                        torch.cuda.synchronize()
+                        ms = float(start.elapsed_time(end)) / float(iters)
+                        logger.info(f"DBA train CUDA bench {fn_name}: {ms:.3f} ms (fwd+bwd)")
+                        return ms
+
+                    from caramba.optimizer.dba_attention_triton import DecoupledAttentionTraining as _TritonDBA
+
+                    def triton_fn(qs, qg, ks, kg, vv):
+                        return _TritonDBA().run(
+                            q_sem=qs,
+                            q_geo=qg,
+                            k_sem=ks,
+                            k_geo=kg,
+                            v=vv,
+                            causal=bool(self.config.is_causal) and int(T) > 1,
+                            sem_scale=float(sem_scale),
+                            geo_scale=float(geo_scale),
+                            dropout_p=0.0,
+                        )
+
+                    def sdpa_fn(qs, qg, ks, kg, vv):
+                        q_cat = torch.cat([qs * float(sem_scale), qg * float(geo_scale)], dim=-1)
+                        k_cat = torch.cat([ks, kg], dim=-1)
+                        return F.scaled_dot_product_attention(
+                            q_cat,
+                            k_cat,
+                            vv,
+                            attn_mask=None,
+                            dropout_p=0.0,
+                            is_causal=bool(self.config.is_causal) and int(T) > 1,
+                            scale=1.0,
+                        )
+
+                    ms_triton = _bench("triton_dba", triton_fn)
+                    ms_sdpa = _bench("pytorch_sdpa", sdpa_fn)
+                    backend = "sdpa" if ms_sdpa < ms_triton else "triton"
+                    self._cuda_train_backend_cache[key] = backend
+                    logger.info(
+                        f"DBA train selected CUDA backend={backend} (sdpa_ms={ms_sdpa:.3f}, triton_ms={ms_triton:.3f}) "
+                        f"for dtype={x.dtype} T={int(T)} sem={int(sem_head_dim)} geo={int(geo_head_dim)} v={int(v_head_dim)} causal={bool(self.config.is_causal)}"
+                    )
+
+            if backend == "sdpa":
+                q_cat = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)
+                k_cat = torch.cat([ksh, kgh], dim=-1)
+                out = F.scaled_dot_product_attention(
+                    q_cat,
+                    k_cat,
+                    vh,
+                    attn_mask=None,
+                    dropout_p=float(dropout_p),
+                    is_causal=bool(self.config.is_causal) and int(T) > 1,
+                    scale=1.0,
+                )
+                self._viz.record_attention_matrix(ctx=ctx, layer=self, q_cat=q_cat, k_cat=k_cat)
+            else:
+                out = DecoupledAttentionTraining().run(
+                    q_sem=qsh,
+                    q_geo=qgh,
+                    k_sem=ksh,
+                    k_geo=kgh,
+                    v=vh,
+                    causal=bool(self.config.is_causal) and int(T) > 1,
+                    sem_scale=float(sem_scale),
+                    geo_scale=float(geo_scale),
+                    dropout_p=float(dropout_p),
+                )
         elif force_triton and self.training:
             warnings.warn(
                 "dba_train_backend='triton' requested, but Triton training kernel is not eligible "

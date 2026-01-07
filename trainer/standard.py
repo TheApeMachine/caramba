@@ -11,18 +11,19 @@ components.
 from __future__ import annotations
 
 import inspect
+import json
+import math
+import time
 import traceback
 from collections.abc import Iterable
 from pathlib import Path
-import time
-import math
 from typing import Any, Protocol, Sized, cast
 
 import torch
-from torch import Tensor
-from torch.utils.hooks import RemovableHandle
-from torch.utils.data import DataLoader, Subset
 import torch.nn as nn
+from torch import Tensor
+from torch.utils.data import DataLoader, Subset
+from torch.utils.hooks import RemovableHandle
 
 from caramba.carmath import (
     autocast_dtype,
@@ -38,20 +39,211 @@ from caramba.config.run import Run
 from caramba.config.target import ExperimentTargetConfig
 from caramba.config.train import TrainConfig, TrainPhase
 from caramba.console import logger
-from caramba.instrumentation import RunLogger, TrainingVizContext
+from caramba.instrumentation import RunLogger
 from caramba.instrumentation.viz import TrainingVizMosaicContext
 from caramba.instrumentation.wandb_writer import WandBWriter
-from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
-from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
 from caramba.layer.attention import AttentionLayer
 from caramba.layer.mosaic.block import MosaicBlockLayer
+from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
+from caramba.runtime.tensordict_utils import (
+    TensorDictBase,
+    as_tensordict,
+    collate_tensordict,
+    to_device,
+)
+from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from caramba.trainer.mosaic_table2 import Table2SummaryWriter, Table2Telemetry
 from caramba.trainer.swap_manager import SwapManager
 
 
 class _Engine(Protocol):
     registry: Any
+
+
+def _bytes_to_mb(n: int) -> float:
+    return float(n) / (1024.0 * 1024.0)
+
+
+def _is_unexpected_ctx_kwarg_error(e: TypeError) -> bool:
+    msg = str(e)
+    return ("unexpected keyword argument" in msg) and ("ctx" in msg)
+
+
+class _ForwardCaller:
+    """Calls system.forward with an optional ctx, caching whether ctx is supported.
+
+    This makes the ctx fallback explicit and easy to reason about:
+    - Try with ctx once
+    - If forward rejects ctx (unexpected keyword), permanently switch to calling without ctx
+    - Do not swallow other TypeErrors
+    """
+
+    def __init__(self, forward_fn: Any):
+        self._forward = forward_fn
+        self._supports_ctx: bool | None = None  # None = unknown (probe), True/False = cached
+
+    def __call__(self, batch_td: TensorDictBase, ctx: object | None) -> object:
+        if self._supports_ctx is False:
+            return self._forward(batch_td)
+        if self._supports_ctx is True:
+            return self._forward(batch_td, ctx=ctx)
+
+        # Probe once.
+        try:
+            out = self._forward(batch_td, ctx=ctx)
+            self._supports_ctx = True
+            return out
+        except TypeError as e:
+            if _is_unexpected_ctx_kwarg_error(e):
+                self._supports_ctx = False
+                return self._forward(batch_td)
+            raise
+
+
+class _LayerStatsCollector:
+    """Collect lightweight activation stats from attention layers via forward hooks."""
+
+    def __init__(self, attn_modules: list[tuple[int, str, nn.Module]]) -> None:
+        self._attn_modules = attn_modules
+        self.enabled = False
+        self.reset()
+
+    def reset(self) -> None:
+        self.counts: dict[int, int] = {}
+        self.sum_ms: dict[int, float] = {}
+        self.sum_ma: dict[int, float] = {}
+        self.max_abs: dict[int, float] = {}
+        self.shapes: dict[int, list[int]] = {}
+
+    def observe(self, idx: int, y: Tensor) -> None:
+        # Best-effort; keep overhead bounded.
+        try:
+            z = y.detach().float()
+            ms = float((z * z).mean().item())
+            ma = float(z.abs().mean().item())
+            mx = float(z.abs().max().item())
+            self.counts[idx] = int(self.counts.get(idx, 0)) + 1
+            self.sum_ms[idx] = float(self.sum_ms.get(idx, 0.0) + ms)
+            self.sum_ma[idx] = float(self.sum_ma.get(idx, 0.0) + ma)
+            self.max_abs[idx] = float(max(self.max_abs.get(idx, 0.0), mx))
+            if idx not in self.shapes:
+                self.shapes[idx] = [int(x) for x in list(z.shape)]
+        except Exception as e:
+            logger.warning(f"Failed to observe layer stats: {e}\n{traceback.format_exc()}")
+
+    def finalize(self) -> list[dict[str, object]]:
+        out: list[dict[str, object]] = []
+        for idx, name, mod in self._attn_modules:
+            n = int(self.counts.get(idx, 0))
+            if n <= 0:
+                continue
+            ms = float(self.sum_ms.get(idx, 0.0)) / float(n)
+            ma = float(self.sum_ma.get(idx, 0.0)) / float(n)
+            mx = float(self.max_abs.get(idx, 0.0))
+            rms = float(math.sqrt(max(0.0, ms)))
+            cfg = getattr(mod, "config", None)
+            out.append(
+                {
+                    "index": int(idx),
+                    "name": str(name),
+                    "type": "attention",
+                    "shape": self.shapes.get(idx, None),
+                    "mean_abs": float(ma),
+                    "rms": float(rms),
+                    "max_abs": float(mx),
+                    "mode": str(
+                        getattr(getattr(mod, "mode", None), "value", getattr(mod, "mode", ""))
+                    ),
+                    "null_attn": bool(getattr(cfg, "null_attn", False)) if cfg is not None else False,
+                    "tie_qk": bool(getattr(cfg, "tie_qk", False)) if cfg is not None else False,
+                    "rope_semantic": bool(getattr(cfg, "rope_semantic", False)) if cfg is not None else False,
+                    "decoupled_gate": bool(getattr(cfg, "decoupled_gate", False)) if cfg is not None else False,
+                }
+            )
+        return out
+
+
+class _LayerStatsManager:
+    def __init__(self, system: object, interval: int) -> None:
+        self.interval = max(0, int(interval))
+        self.enabled = self.interval > 0
+
+        self.attn_modules: list[tuple[int, str, nn.Module]] = []
+        self.mosaic_modules: list[tuple[int, str, nn.Module]] = []
+        self._handles: list[RemovableHandle] = []
+        self._collector = _LayerStatsCollector(self.attn_modules)
+
+        if not self.enabled:
+            return
+
+        root_mod = getattr(system, "module", None)
+        if not isinstance(root_mod, nn.Module):
+            self.enabled = False
+            return
+
+        # Discover modules and attach stable viz IDs.
+        for name, mod in root_mod.named_modules():
+            if isinstance(mod, AttentionLayer):
+                idx = int(len(self.attn_modules))
+                mod._viz_index = int(idx)  # type: ignore[attr-defined]
+                mod._viz_name = str(name)  # type: ignore[attr-defined]
+                self.attn_modules.append((idx, str(name), mod))
+            if isinstance(mod, MosaicBlockLayer):
+                idx = int(len(self.mosaic_modules))
+                mod._mosaic_index = int(idx)  # type: ignore[attr-defined]
+                mod._mosaic_name = str(name)  # type: ignore[attr-defined]
+                self.mosaic_modules.append((idx, str(name), mod))
+
+        if not self.attn_modules:
+            self.enabled = False
+            return
+
+        def _make_hook(i: int):
+            def _hook(_m: nn.Module, _inp: tuple[object, ...], out: object) -> None:
+                if not self._collector.enabled:
+                    return
+                y = (
+                    out[0]
+                    if isinstance(out, tuple) and len(out) > 0 and isinstance(out[0], Tensor)
+                    else out
+                )
+                if isinstance(y, Tensor):
+                    self._collector.observe(i, y)
+
+            return _hook
+
+        for idx, name, mod in self.attn_modules:
+            try:
+                self._handles.append(mod.register_forward_hook(_make_hook(idx)))
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to register forward hook on attention layer {name!r} (index {idx}): {e}"
+                ) from e
+
+    def begin_step(self, step_1based: int) -> None:
+        if not self.enabled:
+            return
+        self._collector.reset()
+        self._collector.enabled = bool((step_1based % self.interval) == 0)
+
+    def end_step(self) -> None:
+        if not self.enabled:
+            return
+        self._collector.enabled = False
+
+    def should_log(self, step_1based: int) -> bool:
+        return bool(self.enabled and (step_1based % self.interval) == 0)
+
+    def payload(self) -> dict[str, object]:
+        return {"layers": self._collector.finalize()}
+
+    def close(self) -> None:
+        for h in self._handles:
+            try:
+                h.remove()
+            except Exception as e:
+                raise RuntimeError("Failed to remove hook") from e
+        self._handles.clear()
 
 
 class StandardTrainer:
@@ -70,7 +262,6 @@ class StandardTrainer:
             logger.info("Dry run requested, skipping training")
             return None
 
-        # Build components once per target.
         dataset_comp = engine.registry.build(target.data, backend=str(target.backend))
         system = engine.registry.build(target.system, backend=str(target.backend))
         objective = engine.registry.build(target.objective, backend=str(target.backend))
@@ -81,7 +272,7 @@ class StandardTrainer:
             else Path("runs") / target.name
         )
         ckpt_dir.mkdir(parents=True, exist_ok=True)
-        # Note: when running distributed, only rank0 should write logs.
+
         run_logger = RunLogger(ckpt_dir, filename="train.jsonl", enabled=True)
 
         last_device: torch.device | None = None
@@ -92,6 +283,7 @@ class StandardTrainer:
                 raise ValueError(
                     f"trainer.standard only supports phase=standard, got {run.train.phase}"
                 )
+
             self._run_single(
                 defaults=manifest.defaults,
                 target=target,
@@ -123,11 +315,15 @@ class StandardTrainer:
         torch.manual_seed(run.seed)
         device = torch.device(train.device)
 
-        dist_ctx = None
+        dist_ctx: object | None = None
         dist_strategy = str(getattr(train, "distributed_strategy", "none")).lower()
         if dist_strategy != "none":
             try:
-                from caramba.trainer.distributed import DistributedConfig, DistributedContext, DistributedStrategy
+                from caramba.trainer.distributed import (
+                    DistributedConfig,
+                    DistributedContext,
+                    DistributedStrategy,
+                )
 
                 cfg = DistributedConfig(
                     strategy=DistributedStrategy(dist_strategy),
@@ -137,22 +333,21 @@ class StandardTrainer:
                 device = dist_ctx.device
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize distributed training: {e}") from e
-            # Only rank0 writes JSONL/HDF5 logs.
+
+            # Only rank0 writes logs.
             try:
                 if hasattr(dist_ctx, "is_main") and not bool(getattr(dist_ctx, "is_main")):
                     run_logger.enabled = False
             except Exception as e:
                 raise RuntimeError("Failed to check if this is the main process") from e
 
-        # Optional W&B writer (standard trainer previously only emitted JSONL).
-        # This is best-effort and will never crash training.
+        # W&B writer: truly best-effort. Never crash training if it fails.
         wandb_writer: WandBWriter | None = None
         if bool(getattr(defaults.logging, "wandb", False)):
             is_main = True
-            if dist_ctx is not None:
+            if dist_ctx is not None and hasattr(dist_ctx, "is_main"):
                 try:
-                    if hasattr(dist_ctx, "is_main"):
-                        is_main = bool(getattr(dist_ctx, "is_main"))
+                    is_main = bool(getattr(dist_ctx, "is_main"))
                 except Exception as e:
                     raise RuntimeError("Failed to check if this is the main process") from e
 
@@ -175,7 +370,11 @@ class StandardTrainer:
                         },
                     )
                 except Exception as e:
-                    raise RuntimeError("Failed to initialize W&B writer") from e
+                    wandb_writer = None
+                    logger.fallback_warning(
+                        "WARNING: W&B enabled but failed to initialize; continuing without W&B.\n"
+                        f"reason={type(e).__name__}: {e}"
+                    )
 
         runtime_plan = self._load_or_create_runtime_plan(
             checkpoint_dir=checkpoint_dir,
@@ -188,25 +387,34 @@ class StandardTrainer:
         if hasattr(system, "to"):
             system.to(device=device, dtype=dtype)  # type: ignore[attr-defined]
 
+        # CUDA perf knobs (best-effort).
+        #
+        # TF32 is safe and commonly enabled on Ampere+ for faster fp32 matmuls
+        # (many reductions / softmax stats run in fp32 even when weights are bf16).
+        if device.type == "cuda":
+            try:
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+                # PyTorch 2.x: nudge matmul towards faster kernels.
+                torch.set_float32_matmul_precision("high")
+            except Exception:
+                pass
+
         # Wrap system module for DDP/FSDP if requested.
         if dist_ctx is not None:
             try:
-                m = getattr(system, "module", None)
-                if isinstance(m, torch.nn.Module):
-                    system.module = dist_ctx.wrap_model(m)  # type: ignore[attr-defined]
+                # `system` is intentionally generic (typed as `object`), but some systems
+                # expose a `.module: nn.Module` attribute that we can wrap/replace.
+                # Cast to Any so Pyright/Pylance allows dynamic attribute assignment.
+                system_any = cast(Any, system)
+                m = getattr(system_any, "module", None)
+                if isinstance(m, nn.Module):
+                    system_any.module = dist_ctx.wrap_model(m)
             except Exception as e:
                 raise RuntimeError("Failed to wrap system module for DDP/FSDP") from e
 
+        # torch.compile status (set later; must be defined for telemetry).
         compiled = False
-        if bool(getattr(runtime_plan, "compile", False)):
-            # Best-effort torch.compile: only apply when a module is exposed.
-            try:
-                m = getattr(system, "module", None)
-                if isinstance(m, torch.nn.Module):
-                    system.module = torch.compile(m, mode=str(runtime_plan.compile_mode))  # type: ignore[attr-defined]
-                    compiled = True
-            except Exception as e:
-                raise RuntimeError("Failed to compile model") from e
 
         loader = self._build_loader(
             dataset_comp=dataset_comp,
@@ -217,85 +425,62 @@ class StandardTrainer:
             dist_ctx=dist_ctx,
         )
 
-        if not hasattr(system, "parameters"):
-            raise TypeError("System component does not expose parameters()")
-        opt_name = str(getattr(train, "optimizer", "adamw")).lower()
-        weight_decay = float(getattr(train, "weight_decay", 0.0))
-        fused_opt = bool(getattr(train, "fused_optimizer", True))
-        if opt_name in ("adamw", "adam"):
-            if fused_opt:
-                # "Intelligent" optimization:
-                # - Prefer AdamWMaster when supported.
-                # - Otherwise, fall back to torch.optim.AdamW with a high-signal warning.
-                use_master = (device.type == "mps" and dtype == torch.float16) or (
-                    device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
-                )
-                if use_master:
-                    try:
-                        from caramba.optimizer.adamw_master import AdamWMaster
+        # Export reproducibility artifacts.
+        #
+        # IMPORTANT: export IO shapes BEFORE torch.compile.
+        # Some Inductor versions can fail during the forward-only probe used for IO export.
+        self._export_compiled_plan(checkpoint_dir=checkpoint_dir, target=target)
+        self._export_io_shapes(
+            checkpoint_dir=checkpoint_dir,
+            loader=loader,
+            system=system,
+            device=device,
+        )
 
-                        optimizer = AdamWMaster(
-                            system.parameters(),  # type: ignore[arg-type]
-                            lr=float(train.lr),
-                            betas=(0.9, 0.999),
-                            eps=1e-8,
-                            weight_decay=float(weight_decay),
-                            fused=True,
-                        )
-                        logger.info(f"optimizer=adamw fused=true backend=adamw_master device={device.type} dtype={dtype}")
-                    except Exception as e:
-                        logger.fallback_warning(
-                            "WARNING: AdamW fused optimizer requested but unavailable; falling back to torch.optim.AdamW.\n"
-                            f"reason={e} device={device.type} dtype={dtype}"
-                        )
-                        optimizer = torch.optim.AdamW(
-                            system.parameters(),  # type: ignore[arg-type]
-                            lr=float(train.lr),
-                            betas=(0.9, 0.999),
-                            eps=1e-8,
-                            weight_decay=float(weight_decay),
-                        )
+        # Activation checkpointing: enable on topology modules when requested.
+        #
+        # The topology stack supports checkpointing, but we must flip the flags here
+        # based on `TrainConfig` (otherwise the knobs are silently ignored).
+        if bool(getattr(train, "activation_checkpointing", False)):
+            thr_mb = float(getattr(train, "activation_checkpoint_threshold_mb", 0.0) or 0.0)
+            try:
+                system_any = cast(Any, system)
+                root = getattr(system_any, "module", None)
+                if isinstance(root, nn.Module):
+                    self._enable_activation_checkpointing(root, enabled=True, threshold_mb=thr_mb)
+                elif isinstance(system, nn.Module):
+                    self._enable_activation_checkpointing(system, enabled=True, threshold_mb=thr_mb)
+            except Exception as e:
+                raise RuntimeError("Failed to enable activation checkpointing") from e
+
+        # Optional torch.compile (best-effort, but if requested and it fails, raise).
+        if bool(getattr(runtime_plan, "compile", False)):
+            try:
+                system_any = cast(Any, system)
+                m = getattr(system_any, "module", None)
+                if isinstance(m, nn.Module):
+                    system_any.module = torch.compile(
+                        m, mode=str(runtime_plan.compile_mode)
+                    )
+                    compiled = True
+                    logger.info(
+                        f"torch.compile enabled (mode={runtime_plan.compile_mode}) for {target.name}:{run.id}"
+                    )
                 else:
-                    logger.fallback_warning(
-                        "WARNING: AdamW fused optimizer requested but unsupported for this device/dtype; "
-                        "falling back to torch.optim.AdamW.\n"
-                        f"device={device.type} dtype={dtype}"
+                    logger.info(
+                        f"torch.compile requested but no nn.Module found on system.module "
+                        f"(target={target.name} run={run.id}); continuing without compile."
                     )
-                    optimizer = torch.optim.AdamW(
-                        system.parameters(),  # type: ignore[arg-type]
-                        lr=float(train.lr),
-                        betas=(0.9, 0.999),
-                        eps=1e-8,
-                        weight_decay=float(weight_decay),
-                    )
-            else:
-                logger.info(f"optimizer=adamw fused=false backend=torch_adamw device={device.type} dtype={dtype}")
-                optimizer = torch.optim.AdamW(
-                    system.parameters(),  # type: ignore[arg-type]
-                    lr=float(train.lr),
-                    betas=(0.9, 0.999),
-                    eps=1e-8,
-                    weight_decay=float(weight_decay),
-                )
-        elif opt_name == "sgd":
-            optimizer = torch.optim.SGD(
-                system.parameters(),  # type: ignore[arg-type]
-                lr=float(train.lr),
-                weight_decay=float(weight_decay),
-            )
-        elif opt_name == "lion":
-            from caramba.optimizer.lion import Lion
+            except Exception as e:
+                raise RuntimeError("Failed to compile model") from e
 
-            optimizer = Lion(
-                system.parameters(),  # type: ignore[arg-type]
-                lr=float(train.lr),
-                weight_decay=float(weight_decay),
-                fused=bool(fused_opt),
-            )
-        else:
-            raise ValueError(f"Unknown optimizer {opt_name!r}")
+        optimizer = self._build_optimizer(
+            system=system,
+            train=train,
+            device=device,
+            dtype=dtype,
+        )
 
-        # Optional LR scheduler (manifest-driven).
         lr_scheduler = build_lr_scheduler(
             optimizer,
             LRSchedulerConfig(
@@ -315,182 +500,21 @@ class StandardTrainer:
         amp_dtype = autocast_dtype(device, str(train.amp_dtype))
 
         telemetry_interval = int(getattr(train, "telemetry_interval", 10)) or 10
+        telemetry_interval = max(1, telemetry_interval)
+
         profile_every = int(getattr(train, "profile_every", 0)) or 0
+        profile_every = max(0, profile_every)
         profile_record_shapes = bool(getattr(train, "profile_record_shapes", False))
-        layer_stats_enabled = False
-        layer_telemetry_interval = int(getattr(train, "layer_telemetry_interval", 0) or 0)
-        layer_telemetry_interval = max(0, int(layer_telemetry_interval))
-        _hook_handles: list[RemovableHandle] = []
-        attn_modules: list[tuple[int, str, torch.nn.Module]] = []
-        mosaic_modules: list[tuple[int, str, torch.nn.Module]] = []
 
-        class _LayerStatsCollector:
-            enabled: bool
+        layer_stats = _LayerStatsManager(
+            system=system,
+            interval=int(getattr(train, "layer_telemetry_interval", 0) or 0),
+        )
 
-            def __init__(self) -> None:
-                self.enabled = False
-                self.reset()
+        # Precompute static-ish memory numbers once.
+        param_mb = _bytes_to_mb(self._param_bytes(system))
 
-            def reset(self) -> None:
-                self.counts: dict[int, int] = {}
-                self.sum_ms: dict[int, float] = {}
-                self.sum_ma: dict[int, float] = {}
-                self.max_abs: dict[int, float] = {}
-                self.shapes: dict[int, list[int]] = {}
-
-            def observe(self, idx: int, y: Tensor) -> None:
-                # Keep overhead bounded; this is best-effort.
-                try:
-                    z = y.detach()
-                    z = z.float()
-                    ms = float((z * z).mean().item())
-                    ma = float(z.abs().mean().item())
-                    mx = float(z.abs().max().item())
-                    self.counts[idx] = int(self.counts.get(idx, 0)) + 1
-                    self.sum_ms[idx] = float(self.sum_ms.get(idx, 0.0) + ms)
-                    self.sum_ma[idx] = float(self.sum_ma.get(idx, 0.0) + ma)
-                    self.max_abs[idx] = float(max(self.max_abs.get(idx, 0.0), mx))
-                    if idx not in self.shapes:
-                        self.shapes[idx] = [int(x) for x in list(z.shape)]
-                except Exception as e:
-                    import traceback
-                    logger.warning(f"Failed to observe layer stats: {e}\n{traceback.format_exc()}")
-
-            def finalize(self) -> list[dict[str, object]]:
-                out: list[dict[str, object]] = []
-                for idx, name, mod in attn_modules:
-                    n = int(self.counts.get(idx, 0))
-                    if n <= 0:
-                        continue
-                    ms = float(self.sum_ms.get(idx, 0.0)) / float(n)
-                    ma = float(self.sum_ma.get(idx, 0.0)) / float(n)
-                    mx = float(self.max_abs.get(idx, 0.0))
-                    rms = float(math.sqrt(max(0.0, ms)))
-                    cfg = getattr(mod, "config", None)
-                    out.append(
-                        {
-                            "index": int(idx),
-                            "name": str(name),
-                            "type": "attention",
-                            "shape": self.shapes.get(idx, None),
-                            "mean_abs": float(ma),
-                            "rms": float(rms),
-                            "max_abs": float(mx),
-                            "mode": str(
-                                getattr(
-                                    getattr(mod, "mode", None),
-                                    "value",
-                                    getattr(mod, "mode", ""),
-                                )
-                            ),
-                            "null_attn": bool(getattr(cfg, "null_attn", False)) if cfg is not None else False,
-                            "tie_qk": bool(getattr(cfg, "tie_qk", False)) if cfg is not None else False,
-                            "rope_semantic": bool(getattr(cfg, "rope_semantic", False)) if cfg is not None else False,
-                            "decoupled_gate": bool(getattr(cfg, "decoupled_gate", False)) if cfg is not None else False,
-                        }
-                    )
-                return out
-
-        _collector = _LayerStatsCollector()
-
-        try:
-            if layer_telemetry_interval <= 0:
-                layer_stats_enabled = False
-            else:
-                layer_telemetry_interval = max(1, int(layer_telemetry_interval))
-
-                root_mod = getattr(system, "module", None)
-                if isinstance(root_mod, nn.Module):
-                    try:
-                        modules_iter = root_mod.named_modules()
-                    except Exception as e:
-                        raise RuntimeError(f"Failed to iterate over model modules: {e}") from e
-
-                    for name, mod in modules_iter:
-                        if isinstance(mod, AttentionLayer):
-                            # Give the module a stable viz id/name so it can emit per-layer samples.
-                            idx = int(len(attn_modules))
-                            try:
-                                mod._viz_index = int(idx)  # type: ignore[attr-defined]
-                                mod._viz_name = str(name)  # type: ignore[attr-defined]
-                            except Exception as e:
-                                raise RuntimeError(f"Failed to set attributes on attention layer {name!r}: {e}") from e
-
-                            attn_modules.append((idx, str(name), mod))
-                        if isinstance(mod, MosaicBlockLayer):
-                            idx = int(len(mosaic_modules))
-                            try:
-                                mod._mosaic_index = int(idx)  # type: ignore[attr-defined]
-                                mod._mosaic_name = str(name)  # type: ignore[attr-defined]
-                            except Exception as e:
-                                raise RuntimeError(f"Failed to set attributes on mosaic layer {name!r}: {e}") from e
-
-                            mosaic_modules.append((idx, str(name), mod))
-
-                    def _make_hook(i: int):
-                        def _hook(_m: nn.Module, _inp: tuple[object, ...], out: object) -> None:
-                            if not _collector.enabled:
-                                return
-                            y = (
-                                out[0]
-                                if isinstance(out, tuple)
-                                and len(out) > 0
-                                and isinstance(out[0], Tensor)
-                                else out
-                            )
-                            if isinstance(y, Tensor):
-                                _collector.observe(i, y)
-
-                        return _hook
-
-                    for idx, _name, mod in attn_modules:
-                        try:
-                            handle = mod.register_forward_hook(_make_hook(idx))
-                            _hook_handles.append(handle)
-                        except Exception as e:
-                            raise RuntimeError(
-                                f"Failed to register forward hook on attention layer {_name!r} (index {idx}): {e}"
-                            ) from e
-
-                    layer_stats_enabled = len(attn_modules) > 0
-        except RuntimeError:
-            # Re-raise RuntimeError as-is (already has context)
-            raise
-        except Exception as e:
-            raise RuntimeError(f"Failed to register forward hooks: {e}") from e
-
-        def bytes_to_mb(n: int) -> float:
-            return float(n) / (1024.0 * 1024.0)
-
-        def param_bytes() -> int:
-            total = 0
-            for p in system.parameters():  # type: ignore[attr-defined]
-                if isinstance(p, Tensor):
-                    total += int(p.numel()) * int(p.element_size())
-            return total
-
-        def grad_bytes() -> int:
-            total = 0
-            for p in system.parameters():  # type: ignore[attr-defined]
-                g = getattr(p, "grad", None)
-                if isinstance(g, Tensor):
-                    total += int(g.numel()) * int(g.element_size())
-            return total
-
-        def optim_state_bytes() -> int:
-            total = 0
-            try:
-                for _param, state in optimizer.state.items():
-                    if isinstance(state, dict):
-                        for v in state.values():
-                            if isinstance(v, Tensor):
-                                total += int(v.numel()) * int(v.element_size())
-            except Exception as e:
-                raise RuntimeError("Failed to compute optimizer state bytes") from e
-
-            return total
-
-        # Emit static-ish run metadata once (best-effort).
+        # Emit run metadata once (best-effort).
         try:
             run_logger.log_event(
                 type="telemetry",
@@ -504,125 +528,34 @@ class StandardTrainer:
                     "amp_dtype": str(amp_dtype),
                     "compiled": bool(compiled),
                     "compile_mode": str(getattr(runtime_plan, "compile_mode", "")),
-                    "param_mb": bytes_to_mb(param_bytes()),
+                    "param_mb": float(param_mb),
                 },
             )
         except Exception as e:
             raise RuntimeError("Failed to emit telemetry") from e
 
-        # Export a reproducibility artifact (lowered plan + io shapes).
-        try:
-            from caramba.compiler.plan import Planner
-
-            plan_txt = Planner().format_target(target, indent=0, path=f"targets[{target.name}]")
-            (checkpoint_dir / "compiled_plan.txt").write_text("\n".join(plan_txt) + "\n", encoding="utf-8")
-        except Exception:
-            logger.warning("Failed to export compiled plan (ignoring)")
-        try:
-            # Capture one batch IO signature (best-effort).
-            it = iter(loader)
-            b0 = next(it)
-            b0 = b0 if isinstance(b0, TensorDictBase) else as_tensordict(b0)  # type: ignore[arg-type]
-            b0 = cast(TensorDictBase, to_device(b0, device=device))
-
-            # IO shape export should be cheap and must not OOM on accelerators.
-            # Use a tiny batch slice for the forward call; interface shapes remain valid.
-            try:
-                b_export = b0[:1]
-            except Exception as e:
-                raise RuntimeError("Failed to slice a small batch for IO export") from e
-
-            def _forward_for_shape_export(batch_td: TensorDictBase) -> object:
-                """Deterministic forward call for IO shape export.
-
-                Export is mandatory. If the system forward signature does not support a
-                `ctx` keyword, we call it without `ctx`. No silent fallbacks.
-                """
-                if not hasattr(system, "forward"):
-                    raise TypeError(
-                        "Failed to export IO shapes: system has no forward().\n"
-                        "Fix: ensure the system object exposes forward(batch, ...) so we can capture output shapes."
-                    )
-                fwd = system.forward  # type: ignore[attr-defined]
-                try:
-                    sig = inspect.signature(fwd)
-                except Exception as e:
-                    raise RuntimeError("Failed to introspect system.forward signature for IO export") from e
-
-                params = sig.parameters
-                if "ctx" in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
-                    return fwd(batch_td, ctx=None)  # type: ignore[call-arg]
-                return fwd(batch_td)  # type: ignore[call-arg]
-
-            with torch.no_grad():
-                o0 = _forward_for_shape_export(b_export)
-
-            def shape_sig(td: object) -> dict[str, object]:
-                out: dict[str, object] = {}
-                if isinstance(td, Tensor):
-                    out["__tensor__"] = {
-                        "shape": list(td.shape),
-                        "dtype": str(td.dtype),
-                        "device": str(td.device),
-                    }
-                    return out
-                if isinstance(td, dict):
-                    items = td.items()
-                else:
-                    try:
-                        items = dict(td).items()  # type: ignore[arg-type]
-                    except Exception as e:
-                        raise RuntimeError("Failed to introspect IO shapes") from e
-
-                for k, v in items:
-                    if isinstance(v, Tensor):
-                        out[str(k)] = {"shape": list(v.shape), "dtype": str(v.dtype), "device": str(v.device)}
-                return out
-            import json
-            (checkpoint_dir / "io_shapes.json").write_text(
-                json.dumps({"batch": shape_sig(b_export), "outputs": shape_sig(o0)}, indent=2) + "\n",
-                encoding="utf-8",
-            )
-        except Exception as e:
-            raise RuntimeError(
-                "Failed to export IO shapes.\n"
-                "Why this matters: IO shape export is required for reproducibility artifacts.\n"
-                "Fix:\n"
-                "  - Ensure the system forward returns a Tensor or a dict-like of Tensors.\n"
-                "  - Ensure system.forward accepts `ctx` or does not require it.\n"
-                "  - Ensure the batch is dict/TensorDict-like and convertible via as_tensordict().\n"
-                f"system={type(system).__name__}\n"
-                f"batch_type={type(b0).__name__}\n"
-                f"error={type(e).__name__}: {e}\n"
-            ) from e
-
         logger.header("Training", f"{target.name}:{run.id} • {run.steps} steps")
-        loader_iter = iter(loader)
 
         if not hasattr(objective, "loss"):
             raise TypeError("Objective component does not expose loss()")
         loss_fn = objective.loss  # type: ignore[attr-defined]
-        try:
-            loss_sig = inspect.signature(loss_fn)
-            loss_params = loss_sig.parameters
-        except Exception as e:
-            raise RuntimeError("Failed to introspect objective loss function") from e
-        if "outputs" not in loss_params:
-            # All current objectives use `outputs=...`; keep this strict.
-            raise TypeError("Objective.loss must accept keyword argument 'outputs'")
-        if "batch" in loss_params:
-            loss_batch_key = "batch"
-        elif "_batch" in loss_params:
-            loss_batch_key = "_batch"
-        elif "batch_td" in loss_params:
-            loss_batch_key = "batch_td"
-        elif any(p.kind == inspect.Parameter.VAR_KEYWORD for p in loss_params.values()):
-            # Best-effort: prefer the canonical name if **kwargs is accepted.
-            loss_batch_key = "batch"
-        else:
-            raise TypeError("Objective.loss must accept a batch keyword (e.g. 'batch' or '_batch')")
+        loss_batch_key = self._resolve_loss_batch_key(loss_fn)
 
-        def _call_objective_loss(*, outputs: object, batch_td: TensorDictBase) -> Tensor:
+        metrics_fn = getattr(objective, "metrics", None)
+        metrics_sig = None
+        metrics_params: dict[str, inspect.Parameter] | None = None
+        metrics_accepts_kwargs = False
+        if callable(metrics_fn):
+            try:
+                metrics_sig = inspect.signature(metrics_fn)
+                metrics_params = dict(metrics_sig.parameters)
+                metrics_accepts_kwargs = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in metrics_params.values()
+                )
+            except Exception as e:
+                raise RuntimeError("Failed to introspect objective metrics function") from e
+
+        def call_objective_loss(*, outputs: object, batch_td: TensorDictBase) -> Tensor:
             if loss_batch_key == "batch":
                 loss = loss_fn(outputs=outputs, batch=batch_td)
             elif loss_batch_key == "_batch":
@@ -632,24 +565,9 @@ class StandardTrainer:
 
             if not isinstance(loss, Tensor):
                 raise TypeError(f"Objective.loss must return a Tensor, got {type(loss).__name__}")
-
             return loss
 
-        metrics_fn = getattr(objective, "metrics", None)
-        metrics_params: dict[str, inspect.Parameter] | None = None
-        metrics_accepts_kwargs = False
-        if callable(metrics_fn):
-            try:
-                metrics_sig = inspect.signature(metrics_fn)
-                # signature.parameters is a MappingProxyType, normalize to dict for typing + membership checks
-                metrics_params = dict(metrics_sig.parameters)
-                metrics_accepts_kwargs = any(
-                    p.kind == inspect.Parameter.VAR_KEYWORD for p in metrics_params.values()
-                )
-            except Exception as e:
-                raise RuntimeError("Failed to introspect objective metrics function") from e
-
-        def _call_objective_metrics(
+        def call_objective_metrics(
             *, outputs: object, batch_td: TensorDictBase, loss: Tensor
         ) -> dict[str, float] | None:
             if not callable(metrics_fn) or metrics_params is None:
@@ -658,6 +576,7 @@ class StandardTrainer:
             kwargs: dict[str, object] = {}
             if "outputs" in metrics_params or metrics_accepts_kwargs:
                 kwargs["outputs"] = outputs
+
             if "batch" in metrics_params:
                 kwargs["batch"] = batch_td
             elif "_batch" in metrics_params:
@@ -679,182 +598,74 @@ class StandardTrainer:
 
         if not hasattr(system, "forward"):
             raise TypeError("System component does not expose forward()")
-        forward_fn = system.forward  # type: ignore[attr-defined]
-        forward_accepts_ctx = True
-        try:
-            f_sig = inspect.signature(forward_fn)
-            f_params = f_sig.parameters
-            forward_accepts_ctx = ("ctx" in f_params) or any(
-                p.kind == inspect.Parameter.VAR_KEYWORD for p in f_params.values()
-            )
-        except Exception:
-            # Best-effort: fall back to probing on the first call.
-            forward_accepts_ctx = True
-
-        def _forward_loss(batch_td: TensorDictBase) -> tuple[object, Tensor]:
-            nonlocal forward_accepts_ctx
-            with torch.autocast(
-                device_type=device.type,
-                dtype=amp_dtype,
-                enabled=use_amp,
-            ):
-                # Attach MOSAIC-friendly fields onto the ctx (best-effort).
-                # Note: TrainingVizContext uses slots, so we use a subclass that adds fields.
-                if isinstance(viz_ctx, TrainingVizMosaicContext):
-                    try:
-                        inp = batch_td.get("input_ids", None)  # type: ignore[attr-defined]
-                    except Exception as e:
-                        raise RuntimeError("Failed to get input ids") from e
-
-                    if isinstance(inp, Tensor):
-                        viz_ctx.input_ids = inp
-
-                    try:
-                        dl = batch_td.get("mosaic_drop_local", None)  # type: ignore[attr-defined]
-                    except Exception as e:
-                        raise RuntimeError("Failed to get mosaic drop local") from e
-
-                    if isinstance(dl, Tensor):
-                        viz_ctx.mosaic_drop_local = dl
-
-                    teacher: dict[str, Tensor] = {}
-
-                    for k in ("read_bucket", "write_bucket", "write_gate", "clear"):
-                        try:
-                            v = batch_td.get(f"mosaic_teacher_{k}", None)  # type: ignore[attr-defined]
-                        except Exception as e:
-                            raise RuntimeError("Failed to get mosaic teacher signal") from e
-
-                        if isinstance(v, Tensor):
-                            teacher[k] = v
-
-                    viz_ctx.mosaic_teacher = teacher or None
-
-                    collect_aux = bool(teacher)
-                    try:
-                        from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
-
-                        if isinstance(objective, MosaicNextTokenWithAuxObjective):
-                            collect_aux = True
-                    except Exception as e:
-                        raise RuntimeError("Failed to check if objective expects MOSAIC aux") from e
-
-                    viz_ctx.mosaic_collect_aux = bool(collect_aux)
-
-                if forward_accepts_ctx:
-                    try:
-                        outputs = forward_fn(batch_td, ctx=viz_ctx)
-                    except TypeError as e:
-                        msg = str(e)
-                        if "unexpected keyword argument" in msg and "ctx" in msg:
-                            forward_accepts_ctx = False
-                            outputs = forward_fn(batch_td)
-                        else:
-                            raise
-                else:
-                    outputs = forward_fn(batch_td)
-                # Best-effort: merge MOSAIC aux outputs from ctx into outputs so
-                # objectives can see them even when the system doesn't attach them.
-                try:
-                    aux_out = getattr(viz_ctx, "mosaic_aux_out", None)
-                    if isinstance(outputs, dict) and isinstance(aux_out, dict):
-                        for k, v in aux_out.items():
-                            if (
-                                isinstance(k, str)
-                                and k.startswith("mosaic_")
-                                and isinstance(v, Tensor)
-                                and k not in outputs
-                            ):
-                                outputs[k] = v
-                except Exception as e:
-                    raise RuntimeError("Failed to merge mosaic aux outputs") from e
-
-                loss = _call_objective_loss(outputs=outputs, batch_td=batch_td)
-            return outputs, loss
+        forward_caller = _ForwardCaller(system.forward)  # type: ignore[attr-defined]
 
         table2 = Table2Telemetry()
         table2_writer = Table2SummaryWriter()
+
         last_table2_metrics: dict[str, float] | None = None
         loss_val_live: float | None = None
+
+        loader_iter = iter(loader)
+
         try:
             with logger.progress_bar() as progress:
                 task = progress.add_task("Training...", total=int(run.steps))
-                for step in range(int(run.steps)):
-                    t0 = time.perf_counter()
-                    # Training viz: emit small attention/activation samples periodically.
-                    # Disabled by default for performance; enable via `train.viz_interval`.
-                    viz_interval = int(getattr(train, "viz_interval", 0) or 0)
-                    viz_interval = max(0, int(viz_interval))
-                    viz_enabled = bool(viz_interval > 0 and ((step + 1) % viz_interval) == 0)
+
+                for step0 in range(int(run.steps)):
+                    step_1 = int(step0 + 1)
+                    t_step0 = time.perf_counter()
+
+                    # Viz context setup.
+                    viz_interval = max(0, int(getattr(train, "viz_interval", 0) or 0))
+                    viz_enabled = bool(viz_interval > 0 and (step_1 % viz_interval) == 0)
+
                     viz_ctx = TrainingVizMosaicContext(
                         enabled=bool(viz_enabled),
-                        step=int(step + 1),
+                        step=int(step_1),
                         max_tokens=int(getattr(train, "viz_tokens", 16) or 16),
                         max_channels=int(getattr(train, "viz_channels", 32) or 32),
                         max_heads=int(getattr(train, "viz_heads", 4) or 4),
                         topk=int(getattr(train, "viz_topk", 8) or 8),
                     )
-                    # MOSAIC scheduled sampling: compute teacher mixing probability.
-                    try:
-                        total = int(run.steps)
-                        s = int(step + 1)
-                        warm = int(getattr(train, "mosaic_teacher_p_warmup_steps", 0) or 0)
-                        cool = int(getattr(train, "mosaic_teacher_p_cooldown_steps", 0) or 0)
-                        p0 = float(getattr(train, "mosaic_teacher_p_start", 1.0))
-                        p1 = float(getattr(train, "mosaic_teacher_p_end", 0.0))
-                        sched = str(getattr(train, "mosaic_teacher_p_schedule", "linear")).lower()
-                        # Clamp phases.
-                        s_eff = max(0, min(total, s))
-                        # Linear interpolation over the "middle" region.
-                        denom = max(1, total - warm - cool)
-                        if s_eff <= warm:
-                            alpha = 0.0
-                        elif s_eff >= total - cool:
-                            alpha = 1.0
-                        else:
-                            alpha = float(s_eff - warm) / float(denom)
-                        if sched == "cosine":
-                            import math as _math
 
-                            alpha2 = 0.5 - 0.5 * _math.cos(_math.pi * float(alpha))
-                        elif sched == "constant":
-                            alpha2 = 0.0
-                        else:
-                            alpha2 = float(alpha)
-                        p_t = float(p0 + (p1 - p0) * float(alpha2))
-                        viz_ctx.mosaic_teacher_p = float(max(0.0, min(1.0, p_t)))
-                    except Exception as e:
-                        raise RuntimeError("Failed to compute mosaic teacher p") from e
+                    viz_ctx.mosaic_teacher_p = self._compute_mosaic_teacher_p(
+                        train=train, step_1=step_1, total_steps=int(run.steps)
+                    )
 
-                    # MOSAIC scalar stats: compute only on metric logging steps.
-                    try:
-                        viz_ctx.mosaic_stats_enabled = bool(((step + 1) % int(telemetry_interval)) == 0)
-                    except Exception as e:
-                        raise RuntimeError("Failed to compute mosaic stats enabled") from e
+                    viz_ctx.mosaic_stats_enabled = bool((step_1 % telemetry_interval) == 0)
 
-                    # MOSAIC write warmup: disable writes for first N training steps.
                     try:
-                        setattr(viz_ctx, "mosaic_write_warmup_steps", int(getattr(train, "mosaic_write_warmup_steps", 0) or 0))
+                        viz_ctx.mosaic_write_warmup_steps = int(
+                            getattr(train, "mosaic_write_warmup_steps", 0) or 0
+                        )
                     except Exception as e:
                         raise RuntimeError("Failed to set mosaic write warmup steps") from e
 
-                    accum_steps = int(getattr(train, "gradient_accumulation_steps", 1))
-                    accum_steps = max(1, accum_steps)
+                    # Gradient accumulation.
+                    accum_steps = max(1, int(getattr(train, "gradient_accumulation_steps", 1) or 1))
+
                     optimizer.zero_grad(set_to_none=True)
-                    kernel_launches: int | None = None
+
                     loss_sum = torch.zeros((), device=device, dtype=torch.float32)
-                    outputs: object | None = None
+                    outputs_last: object | None = None
+                    loss_last: Tensor | None = None
                     last_batch_td: TensorDictBase | None = None
+                    kernel_events_estimate: int | None = None
 
-                    # Fetch/prepare microbatches for this optimizer step.
-                    micro_batches: list[TensorDictBase] = []
+                    layer_stats.begin_step(step_1)
+
+                    # Optional profiling (best-effort, but if enabled and it fails, raise).
+                    did_profile_first = bool(profile_every > 0 and (step_1 % profile_every) == 0)
+                    # Stream microbatches: avoid staging the full accumulation window on GPU.
+                    # This reduces peak VRAM and host overhead, and can enable larger microbatches
+                    # (a real throughput win) without activation checkpoint recompute.
                     t_data0 = time.perf_counter()
-                    for _micro in range(int(accum_steps)):
-                        try:
-                            item = next(loader_iter)
-                        except StopIteration as err:
-                            raise RuntimeError("Reached end of loader, resetting") from err
-
+                    t_fwb0 = time.perf_counter()
+                    did_profiled = False
+                    prof = None
+                    for mb_i in range(int(accum_steps)):
+                        item, loader_iter = self._next_loader_item(loader, loader_iter)
                         if isinstance(item, TensorDictBase):
                             batch_td = item
                         elif isinstance(item, dict):
@@ -864,7 +675,7 @@ class StandardTrainer:
                                 "StandardTrainer expects batch items to be dict/TensorDict. "
                                 f"Got {type(item).__name__}."
                             )
-                        batch_td = cast(
+                        mb = cast(
                             TensorDictBase,
                             to_device(
                                 batch_td,
@@ -872,58 +683,92 @@ class StandardTrainer:
                                 non_blocking=bool(getattr(train, "pin_memory", False) and device.type == "cuda"),
                             ),
                         )
-                        micro_batches.append(batch_td)
-                    t_data = time.perf_counter()
 
-                    if layer_stats_enabled:
-                        _collector.reset()
-                        _collector.enabled = bool(((step + 1) % layer_telemetry_interval) == 0)
+                        # torch.compile can use CUDA graphs that reuse output buffers across
+                        # invocations. During gradient accumulation we invoke the model multiple
+                        # times per optimizer step and may keep references to outputs (e.g.
+                        # outputs_last for telemetry). Marking step boundaries prevents
+                        # "accessing tensor output of CUDAGraphs that has been overwritten".
+                        if compiled and device.type == "cuda":
+                            try:
+                                torch.compiler.cudagraph_mark_step_begin()
+                            except Exception as e:
+                                raise RuntimeError(
+                                    "torch.compile is enabled on CUDA, but failed to mark cudagraph step boundary. "
+                                    "This is required to safely access outputs across multiple model invocations "
+                                    "within a single optimizer step (e.g. gradient accumulation)."
+                                ) from e
 
-                    # Optional profiling (best-effort; primarily useful on CUDA).
-                    if profile_every > 0 and ((step + 1) % profile_every == 0):
-                        try:
-                            from torch.profiler import ProfilerActivity, profile
+                        # Profile exactly one microbatch (first in the accumulation) when enabled.
+                        if did_profile_first and (not did_profiled):
+                            try:
+                                from torch.profiler import ProfilerActivity, profile
 
-                            acts = [ProfilerActivity.CPU]
-                            if device.type == "cuda":
-                                acts.append(ProfilerActivity.CUDA)
-                            with profile(
-                                activities=acts,
-                                record_shapes=bool(profile_record_shapes),
-                                profile_memory=True,
-                            ) as prof:
-                                # Profile only the first microbatch to keep overhead bounded.
-                                outputs, loss = _forward_loss(micro_batches[0])
-                                loss_sum += loss.detach().float()
-                                (loss / float(accum_steps)).backward()
-                            # Heuristic: count device-side events as “launch-ish”.
-                            if device.type == "cuda":
-                                try:
-                                    evs = prof.events() or []
-                                    # We intentionally keep this a heuristic; different builds expose
-                                    # different event metadata. The main goal is “fewer events over time”.
-                                    kernel_launches = int(len(evs))
-                                except Exception as e:
-                                    raise RuntimeError("Failed to count kernel launches") from e
-                        except Exception as e:
-                            raise RuntimeError("Failed to profile") from e
+                                acts = [ProfilerActivity.CPU]
+                                if device.type == "cuda":
+                                    acts.append(ProfilerActivity.CUDA)
 
-                    t_fwd = time.perf_counter()
-                    # Backward over remaining microbatches (and the first when not profiled).
-                    did_profile_first = bool(profile_every > 0 and ((step + 1) % profile_every == 0))
-                    start_idx = 1 if did_profile_first else 0
-                    for mb in micro_batches[start_idx:]:
-                        outputs, loss = _forward_loss(mb)
-                        loss_sum += loss.detach().float()
-                        (loss / float(accum_steps)).backward()
+                                with profile(
+                                    activities=acts,
+                                    record_shapes=bool(profile_record_shapes),
+                                    profile_memory=True,
+                                ) as prof_ctx:
+                                    outputs_last, loss_last = self._forward_loss(
+                                        batch_td=mb,
+                                        device=device,
+                                        use_amp=use_amp,
+                                        amp_dtype=amp_dtype,
+                                        viz_ctx=viz_ctx,
+                                        forward_caller=forward_caller,
+                                        objective_loss=call_objective_loss,
+                                    )
+                                    loss_sum += loss_last.detach().float()
+                                    (loss_last / float(accum_steps)).backward()
+                                prof = prof_ctx
+                                did_profiled = True
+                            except Exception as e:
+                                raise RuntimeError("Failed to profile") from e
+                        else:
+                            outputs_last, loss_last = self._forward_loss(
+                                batch_td=mb,
+                                device=device,
+                                use_amp=use_amp,
+                                amp_dtype=amp_dtype,
+                                viz_ctx=viz_ctx,
+                                forward_caller=forward_caller,
+                                objective_loss=call_objective_loss,
+                            )
+                            loss_sum += loss_last.detach().float()
+                            (loss_last / float(accum_steps)).backward()
+
                         last_batch_td = mb
-                    if layer_stats_enabled:
-                        _collector.enabled = False
-                    if last_batch_td is None:
-                        last_batch_td = micro_batches[-1]
-                    t_bwd = time.perf_counter()
-                    # Optional gradient clipping (L2 norm).
-                    # Useful for taming rare spikes (often coinciding with peak LR after warmup).
+
+                    t_data1 = time.perf_counter()
+                    if prof is not None and device.type == "cuda":
+                        try:
+                            kernel_events_estimate = int(len(prof.events() or []))
+                        except Exception as e:
+                            raise RuntimeError("Failed to count profiler events") from e
+                        # Persist a human-readable summary so we can identify the true bottleneck
+                        # without guessing (e.g., attention vs MLP vs vocab projection/loss).
+                        try:
+                            prof_dir = checkpoint_dir / "profiles"
+                            prof_dir.mkdir(parents=True, exist_ok=True)
+                            prof_path = prof_dir / f"profile_step_{step_1}.txt"
+                            table = prof.key_averages().table(
+                                sort_by="cuda_time_total",
+                                row_limit=40,
+                            )
+                            prof_path.write_text(str(table) + "\n", encoding="utf-8")
+                            logger.info(f"Saved torch profiler summary to {prof_path}")
+                        except Exception as e:
+                            raise RuntimeError("Failed to export torch profiler summary") from e
+
+                    layer_stats.end_step()
+
+                    t_fwb1 = time.perf_counter()
+
+                    # Optional grad clipping.
                     clip = float(getattr(train, "grad_clip_norm", 0.0) or 0.0)
                     if clip > 0.0:
                         try:
@@ -933,282 +778,107 @@ class StandardTrainer:
                             )
                         except Exception as e:
                             raise RuntimeError("Failed to clip gradients") from e
-                    swap.before_optimizer_step(optimizer, device=device)
-                    optimizer.step()
-                    if lr_scheduler is not None:
-                        lr_scheduler.step()
-                    swap.after_optimizer_step(optimizer)
-                    if bool(getattr(train, "offload_optimizer", False)):
-                        # After offloading, grads should be freed aggressively.
-                        optimizer.zero_grad(set_to_none=True)
-                    t_optim = time.perf_counter()
 
-                    # Emit layer-level telemetry independent of `telemetry_interval`.
-                    if layer_stats_enabled and ((step + 1) % layer_telemetry_interval == 0):
+                    # Optimizer step.
+                    try:
+                        swap.before_optimizer_step(optimizer, device=device)
+                        optimizer.step()
+                        if lr_scheduler is not None:
+                            lr_scheduler.step()
+                        swap.after_optimizer_step(optimizer)
+                        if bool(getattr(train, "offload_optimizer", False)):
+                            optimizer.zero_grad(set_to_none=True)
+                    except Exception as e:
+                        raise RuntimeError("Optimizer step failed") from e
+
+                    t_after_optim = time.perf_counter()
+
+                    # Layer stats logging independent of main telemetry cadence.
+                    if layer_stats.should_log(step_1):
                         try:
                             run_logger.log_event(
                                 type="layer_stats",
                                 run_id=str(run.id),
                                 phase="standard",
-                                step=step + 1,
-                                data={"layers": _collector.finalize()},
+                                step=int(step_1),
+                                data=layer_stats.payload(),
                             )
                         except Exception as e:
                             raise RuntimeError("Failed to log layer stats") from e
 
-                    # Emit viz payload independent of `telemetry_interval`.
+                    # Viz payload logging independent of main telemetry cadence.
                     if viz_ctx.enabled:
                         try:
                             run_logger.log_event(
                                 type="viz",
                                 run_id=str(run.id),
                                 phase="standard",
-                                step=step + 1,
+                                step=int(step_1),
                                 data=viz_ctx.to_event(),
                             )
                         except Exception as e:
-                            raise RuntimeError("Failed to log layer stats") from e
+                            raise RuntimeError("Failed to log viz payload") from e
 
-                    if (step + 1) % telemetry_interval == 0:
-                        # Log averaged loss per optimizer step (matches grad accumulation semantics).
-                        t_log0 = time.perf_counter()
-                        loss_val = float((loss_sum / float(accum_steps)).item())
-                        loss_val_live = float(loss_val)
-                        t_sync = time.perf_counter()
-                        # Perplexity guardrails (avoid overflow in exp()).
-                        ppl = float(safe_perplexity_from_nll(float(loss_val)))
-
-                        lr = float(optimizer.param_groups[0].get("lr", float(train.lr)))
-                        lr_base = float(getattr(train, "lr", lr))
-                        lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
-                        grad_norm = 0.0
-                        try:
-                            t_gn0 = time.perf_counter()
-                            from caramba.carmath import global_grad_norm_l2
-
-                            grad_norm = float(global_grad_norm_l2(system))  # type: ignore[arg-type]
-                            t_gn1 = time.perf_counter()
-                        except Exception as e:
-                            raise RuntimeError("Failed to compute gradient norm") from e
-
-                        # Start with legacy-friendly keys so old dashboards work.
-                        metrics: dict[str, float] = {
-                            "loss": float(loss_val),
-                            "train_loss": float(loss_val),
-                            "ppl": float(ppl),
-                            "train_ppl": float(ppl),
-                            "lr": float(lr),
-                            "lr_base": float(lr_base),
-                            "lr_mult": float(lr_mult),
-                            "grad_norm": float(grad_norm),
-                            "grad_accum": float(getattr(train, "gradient_accumulation_steps", 1)),
-                            "batch_size": float(getattr(train, "batch_size", 0)),
-                            "seq_len": float(getattr(train, "block_size", 0)),
-                        }
-                        try:
-                            # Best-effort: compute extra metrics on the last microbatch.
-                            if outputs is not None and last_batch_td is not None:
-                                extra = _call_objective_metrics(outputs=outputs, batch_td=last_batch_td, loss=loss)
-                            else:
-                                extra = None
-                            if isinstance(extra, dict):
-                                metrics.update({str(k): float(v) for k, v in extra.items()})
-                        except Exception as e:
-                            raise RuntimeError("Failed to compute objective metrics") from e
-
-                        # Table 2 telemetry (memory curricula): distance-binned accuracy + collision proxy.
-                        try:
-                            if outputs is not None and last_batch_td is not None:
-                                has_table2_bin = False
-                                has_mem_teacher = False
-                                try:
-                                    v_tb = last_batch_td["table2_bin"]
-                                except KeyError:
-                                    v_tb = None
-                                has_table2_bin = isinstance(v_tb, Tensor)
-
-                                try:
-                                    v_rb = last_batch_td["mosaic_teacher_read_bucket"]
-                                    v_wb = last_batch_td["mosaic_teacher_write_bucket"]
-                                    v_wg = last_batch_td["mosaic_teacher_write_gate"]
-                                except KeyError:
-                                    v_rb = None
-                                    v_wb = None
-                                    v_wg = None
-                                has_mem_teacher = (
-                                    isinstance(v_rb, Tensor)
-                                    and isinstance(v_wb, Tensor)
-                                    and isinstance(v_wg, Tensor)
-                                )
-                                if has_table2_bin or has_mem_teacher:
-                                    t_t20 = time.perf_counter()
-                                    metrics.update(table2.compute(outputs=outputs, batch=last_batch_td))
-                                    t_t21 = time.perf_counter()
-                        except Exception as e:
-                            raise RuntimeError("Failed to compute Table 2 telemetry") from e
-
-                        metrics.update(
-                            {
-                                "time_data_s": float(t_data - t_data0),
-                                "time_fwd_s": float(t_fwd - t_data),
-                                "time_bwd_s": float(t_bwd - t_fwd),
-                                "time_optim_s": float(t_sync - t_bwd),
-                                "time_step_s": float(t_sync - t0),
-                                # Legacy-friendly ms fields.
-                                "ms_fwd": float((t_fwd - t_data) * 1000.0),
-                                "ms_bwd": float((t_bwd - t_fwd) * 1000.0),
-                                "ms_opt": float((t_sync - t_bwd) * 1000.0),
-                                "ms_step": float((t_sync - t0) * 1000.0),
-                            }
+                    # Main telemetry.
+                    if (step_1 % telemetry_interval) == 0:
+                        metrics = self._build_step_metrics(
+                            system=system,
+                            train=train,
+                            runtime_plan=runtime_plan,
+                            optimizer=optimizer,
+                            compiled=compiled,
+                            step_time_s=float(max(1e-9, t_after_optim - t_step0)),
+                            data_time_s=float(max(0.0, t_data1 - t_data0)),
+                            fwd_bwd_time_s=float(max(0.0, t_fwb1 - t_fwb0)),
+                            optim_time_s=float(max(0.0, t_after_optim - t_fwb1)),
+                            accum_steps=accum_steps,
+                            loss_sum=loss_sum,
+                            loss_last=loss_last,
+                            outputs_last=outputs_last,
+                            last_batch_td=last_batch_td,
+                            call_objective_metrics=call_objective_metrics,
+                            table2=table2,
+                            viz_ctx=viz_ctx,
+                            param_mb=float(param_mb),
+                            kernel_events_estimate=kernel_events_estimate,
                         )
-                        # Token throughput (best-effort for token LM datasets).
-                        try:
-                            y = last_batch_td.get("target_ids", None) if last_batch_td is not None else None  # type: ignore[attr-defined]
-                            if isinstance(y, Tensor):
-                                step_s = float(max(1e-9, t_sync - t0))
-                                metrics["tok_s"] = float(y.numel() * int(accum_steps)) / step_s
-                        except Exception as e:
-                            raise RuntimeError("Failed to compute token throughput") from e
-                        # Memory footprint estimates (MiB).
-                        try:
-                            metrics.update(
-                                {
-                                    "mem_params_mb": bytes_to_mb(param_bytes()),
-                                    "mem_grads_mb": bytes_to_mb(grad_bytes()),
-                                    "mem_optim_mb": bytes_to_mb(optim_state_bytes()),
-                                }
-                            )
-                        except Exception:
-                            logger.warning("Failed to compute memory metrics (ignoring)")
-                        if kernel_launches is not None:
-                            metrics["kernel_events_estimate"] = float(kernel_launches)
-                        metrics["compiled"] = 1.0 if compiled else 0.0
 
-                        # Telemetry overhead timing (helps diagnose periodic stalls).
-                        try:
-                            metrics["time_log_total_s"] = float(time.perf_counter() - t_log0)
-                            metrics["time_log_grad_norm_s"] = float(t_gn1 - t_gn0)
-                            if "t_t20" in locals() and "t_t21" in locals():
-                                metrics["time_log_table2_s"] = float(float(t_t21) - float(t_t20))
-                        except Exception:
-                            logger.warning(f"telemetry overhead timing failed:\n{traceback.format_exc().strip()}")
-
-                        # MOSAIC memory stats (best-effort): include in JSONL + W&B.
-                        try:
-                            if isinstance(viz_ctx, TrainingVizMosaicContext) and viz_ctx.mosaic_mem_stats:
-                                # Convert scalar tensors in one batch to avoid per-key device syncs.
-                                mosaic_f: dict[str, float] = {}
-                                t_keys: list[str] = []
-                                t_vals: list[Tensor] = []
-                                for k, v in viz_ctx.mosaic_mem_stats.items():
-                                    kk = str(k)
-                                    if isinstance(v, (int, float)):
-                                        mosaic_f[kk] = float(v)
-                                    elif isinstance(v, Tensor) and v.numel() == 1:
-                                        t_keys.append(kk)
-                                        t_vals.append(v.detach().float())
-                                if t_vals:
-                                    stacked = torch.stack(t_vals)
-                                    flat = stacked.detach().cpu().tolist()
-                                    for kk, vv in zip(t_keys, flat, strict=True):
-                                        mosaic_f[kk] = float(vv)
-                                for kk, vv in mosaic_f.items():
-                                    metrics[kk] = float(vv)
-                                metrics["mosaic_teacher_p"] = float(getattr(viz_ctx, "mosaic_teacher_p", 1.0))
-
-                                def _avg(mosaic_f: dict[str, float], suffix: str) -> float | None:
-                                    vals = [float(v) for kk, v in mosaic_f.items() if str(kk).endswith(suffix)]
-                                    if not vals:
-                                        return None
-                                    return float(sum(vals) / float(len(vals)))
-
-                                summary = {"teacher_p": float(getattr(viz_ctx, "mosaic_teacher_p", 1.0))}
-                                for suf, key in [
-                                    ("/read_hit_rate", "read_hit"),
-                                    ("/read_hit_rate@req", "read_hit@req"),
-                                    ("/read_conf@req", "read_conf@req"),
-                                    ("/read_best_sim", "read_best_sim"),
-                                    ("/read_conf", "read_conf"),
-                                    ("/read_slot_entropy", "read_slot_ent"),
-                                    ("/read_bucket_change_rate", "read_jitter"),
-                                    ("/write_rate", "write_rate"),
-                                    ("/write_update_frac", "write_update"),
-                                    ("/write_insert_empty_frac", "write_insert_empty"),
-                                    ("/write_evict_frac", "write_evict"),
-                                    ("/write_bucket_full_frac", "write_full"),
-                                    ("/write_gate_p_mean", "gate_p"),
-                                    ("/write_gate_fire_frac", "gate_fire"),
-                                    ("/write_bucket_entropy_norm", "write_ent"),
-                                    ("/write_bucket_change_rate", "write_jitter"),
-                                    ("/cand_buckets", "cand_buckets"),
-                                    ("/drop_local_frac", "drop_local"),
-                                    ("/rms_mem", "rms_mem"),
-                                    ("/fuse_gate_mem_mean", "fuse_mem"),
-                                    ("/rms_mem_contrib", "mem_contrib"),
-                                    ("/rmf_delta_rms", "rmf_delta"),
-                                    ("/rmf_field_rms", "rmf_field"),
-                                    ("/read_teacher_agree", "read_agree"),
-                                    ("/write_teacher_agree", "write_agree"),
-                                    ("/teacher_used_frac", "teacher_used"),
-                                    ("/read_teacher_agree_free", "read_agree_free"),
-                                    ("/write_teacher_agree_free", "write_agree_free"),
-                                    ("/read_teacher_label_count", "read_labels"),
-                                    ("/write_teacher_label_count", "write_labels"),
-                                    ("/read_teacher_probe_count", "read_probe"),
-                                    ("/write_teacher_probe_count", "write_probe"),
-                                    ("/vq_read_group_acc", "vq_read_gacc"),
-                                    ("/vq_write_group_acc", "vq_write_gacc"),
-                                ]:
-                                    av = _avg(mosaic_f, suf)
-                                    if av is not None:
-                                        summary[key] = av
-                                logger.key_value(summary, title="MOSAIC memory stats (avg across layers)")
-
-                                # Table 2 required namespaces (stable keys).
-                                rg = _avg(mosaic_f, "/fuse_gate_mem_mean")
-                                wg = _avg(mosaic_f, "/write_gate_p_mean")
-                                re = _avg(mosaic_f, "/write_bucket_entropy_norm")
-                                if rg is not None:
-                                    metrics["mem/read_gate"] = float(rg)
-                                if wg is not None:
-                                    metrics["mem/write_gate"] = float(wg)
-                                if re is not None:
-                                    metrics["mem/routing_entropy"] = float(re)
-                        except Exception as e:
-                            raise RuntimeError("Failed to log MOSAIC memory stats") from e
-
+                        loss_val_live = float(metrics.get("loss", metrics.get("train_loss", 0.0)))
                         last_table2_metrics = dict(metrics)
+
                         run_logger.log_metrics(
                             run_id=str(run.id),
                             phase="standard",
-                            step=step + 1,
+                            step=int(step_1),
                             metrics=metrics,
                         )
-                        if wandb_writer is not None:
-                            # Log both: current platform namespace + legacy flat keys.
-                            wandb_writer.log_scalars(prefix="train", step=step + 1, scalars=metrics)
-                            wandb_writer.log_scalars(prefix="", step=step + 1, scalars=metrics)
 
-                    # Progress should advance every optimizer step, independent of telemetry cadence.
-                    desc = f"Step {step+1}/{run.steps}"
+                        if wandb_writer is not None:
+                            try:
+                                wandb_writer.log_scalars(prefix="train", step=int(step_1), scalars=metrics)
+                                wandb_writer.log_scalars(prefix="", step=int(step_1), scalars=metrics)
+                            except Exception as e:
+                                logger.fallback_warning(
+                                    "WARNING: W&B logging failed for this step (continuing).\n"
+                                    f"reason={type(e).__name__}: {e}"
+                                )
+
+                    # Progress always advances per optimizer step.
+                    desc = f"Step {step_1}/{run.steps}"
                     if loss_val_live is not None:
                         desc = f"{desc} • loss={float(loss_val_live):.4f}"
-                    progress.update(
-                        task,
-                        advance=1,
-                        description=desc,
-                    )
+                    progress.update(task, advance=1, description=desc)
+
         finally:
-            if wandb_writer is not None:
-                wandb_writer.close()
-            # Cleanup hooks (best-effort).
+            # Cleanups must never depend on successful completion.
             try:
-                if "layer_stats_enabled" in locals() and layer_stats_enabled:
-                    for h in _hook_handles:
-                        try:
-                            h.remove()
-                        except Exception as e:
-                            raise RuntimeError("Failed to remove hook") from e
+                if wandb_writer is not None:
+                    wandb_writer.close()
+            except Exception:
+                logger.warning("Failed to close W&B writer (ignoring)")
+
+            try:
+                layer_stats.close()
             except Exception as e:
                 raise RuntimeError("Failed to cleanup hooks") from e
 
@@ -1220,89 +890,586 @@ class StandardTrainer:
             system=system,
         )
 
-        # Writer-ready export for the Table 2 bundle (only when Table 2 metrics were produced).
+        # Table 2 export (only if Table 2 metrics were produced).
         if (
             bool(getattr(run_logger, "enabled", True))
             and last_table2_metrics is not None
             and any(k.startswith("acc/bin_") for k in last_table2_metrics.keys())
         ):
-            # Prefer extracting memory config from the model (for MOSAIC). Fall back to dataset component when needed.
-            mb: int | None = None
-            mh: int | None = None
-            mod = getattr(system, "module", None)
-            if isinstance(mod, nn.Module):
-                buckets: set[int] = set()
-                hashes: set[int] = set()
-                for m in mod.modules():
-                    if isinstance(m, MosaicBlockLayer):
-                        buckets.add(int(m.memory.mem_buckets))
-                        hashes.add(int(m.memory.mem_hashes))
-                if buckets and hashes:
-                    if len(buckets) != 1 or len(hashes) != 1:
-                        raise ValueError("Inconsistent mem_buckets/mem_hashes across MosaicBlockLayer modules.")
-                    mb = next(iter(buckets))
-                    mh = next(iter(hashes))
-            if mb is None or mh is None:
-                mb2 = getattr(dataset_comp, "mem_buckets", None)
-                mh2 = getattr(dataset_comp, "mem_hashes", None)
-                if isinstance(mb2, int) and isinstance(mh2, int):
-                    mb = int(mb2)
-                    mh = int(mh2)
-            if mb is None or mh is None:
-                raise TypeError("Table 2 export requires mem_buckets/mem_hashes (from model or dataset).")
-
-            params_fn = getattr(system, "parameters", None)
-            if not callable(params_fn):
-                raise TypeError("Table 2 export requires system.parameters().")
-            n_params = 0
-            params_iter = params_fn()
-            if not isinstance(params_iter, Iterable):
-                raise TypeError("system.parameters() must return an iterable")
-            for p in params_iter:
-                if not isinstance(p, nn.Parameter):
-                    raise TypeError("system.parameters() must yield nn.Parameter objects")
-                n_params += int(p.numel())
-
-            out_path = table2_writer.write(
-                out_dir=checkpoint_dir,
-                run_id=str(run.id),
-                mem_buckets=int(mb),
-                mem_hashes=int(mh),
-                model_size=f"params={n_params}",
-                metrics=last_table2_metrics,
-                n_bins=int(table2.cfg.n_bins),
+            self._export_table2_bundle(
+                checkpoint_dir=checkpoint_dir,
+                target=target,
+                run=run,
+                system=system,
+                dataset_comp=dataset_comp,
+                table2_writer=table2_writer,
+                table2_cfg=table2.cfg,
+                last_table2_metrics=last_table2_metrics,
             )
 
-            # Console UX: print both the path and a small table summary.
+    def _forward_loss(
+        self,
+        *,
+        batch_td: TensorDictBase,
+        device: torch.device,
+        use_amp: bool,
+        amp_dtype: torch.dtype,
+        viz_ctx: TrainingVizMosaicContext,
+        forward_caller: _ForwardCaller,
+        objective_loss: Any,
+    ) -> tuple[object, Tensor]:
+        with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
+            # Attach MOSAIC-friendly fields onto the ctx (best-effort).
+            inp = None
             try:
-                logger.subheader("Table 2 export")
-                logger.path(str(out_path), label="summary_json")
-                logger.info(f"Table 2 summary written to [path]{out_path}[/path]")
-
-                rows: list[list[str]] = []
-                rows.append(["mem_buckets", str(int(mb))])
-                rows.append(["mem_hashes", str(int(mh))])
-                rows.append(["model_size", f"params={n_params}"])
-
-                wb = float(last_table2_metrics.get("acc/worst_bin", -1.0))
-                cr = float(last_table2_metrics.get("collision/wrong_item_read_rate", -1.0))
-                rows.append(["acc/worst_bin", "—" if wb < 0.0 else f"{wb:.4f}"])
-                rows.append(
-                    ["collision/wrong_item_read_rate", "—" if cr < 0.0 else f"{cr:.4f}"]
-                )
-
-                for i in range(int(table2.cfg.n_bins)):
-                    k = f"acc/bin_{i}"
-                    v = float(last_table2_metrics.get(k, -1.0))
-                    rows.append([k, "—" if v < 0.0 else f"{v:.4f}"])
-
-                logger.table(
-                    title=f"Table 2 summary • {target.name}:{run.id}",
-                    columns=["Metric", "Value"],
-                    rows=rows,
-                )
+                inp = batch_td.get("input_ids", None)  # type: ignore[attr-defined]
             except Exception as e:
-                raise RuntimeError("Failed to print Table 2 export summary") from e
+                raise RuntimeError("Failed to get input ids") from e
+            if isinstance(inp, Tensor):
+                viz_ctx.input_ids = inp
+
+            try:
+                dl = batch_td.get("mosaic_drop_local", None)  # type: ignore[attr-defined]
+            except Exception as e:
+                raise RuntimeError("Failed to get mosaic drop local") from e
+            if isinstance(dl, Tensor):
+                viz_ctx.mosaic_drop_local = dl
+
+            teacher: dict[str, Tensor] = {}
+            for k in ("read_bucket", "write_bucket", "write_gate", "clear"):
+                try:
+                    v = batch_td.get(f"mosaic_teacher_{k}", None)  # type: ignore[attr-defined]
+                except Exception as e:
+                    raise RuntimeError("Failed to get mosaic teacher signal") from e
+                if isinstance(v, Tensor):
+                    teacher[k] = v
+            viz_ctx.mosaic_teacher = teacher or None
+
+            # Decide whether to collect aux signals (objective-dependent).
+            collect_aux = bool(teacher)
+            try:
+                from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
+
+                if isinstance(getattr(objective_loss, "__self__", None), MosaicNextTokenWithAuxObjective):
+                    collect_aux = True
+            except Exception:
+                # If this import/check fails, just stick to teacher-based gating.
+                pass
+            viz_ctx.mosaic_collect_aux = bool(collect_aux)
+
+            # Speed: avoid threading a changing Python `ctx` object through the model when we
+            # don't need it. Passing `ctx` can introduce graph breaks / retracing when
+            # torch.compile is enabled, and can also trigger per-layer instrumentation checks.
+            #
+            # We only pass ctx when we are actually collecting aux signals or running viz.
+            ctx_to_pass: object | None = viz_ctx if (bool(viz_ctx.enabled) or bool(collect_aux)) else None
+
+            outputs = forward_caller(batch_td, ctx_to_pass)
+
+            # Best-effort: merge MOSAIC aux outputs from ctx into outputs.
+            try:
+                aux_out = getattr(viz_ctx, "mosaic_aux_out", None)
+                if isinstance(outputs, dict) and isinstance(aux_out, dict):
+                    for k, v in aux_out.items():
+                        if (
+                            isinstance(k, str)
+                            and k.startswith("mosaic_")
+                            and isinstance(v, Tensor)
+                            and k not in outputs
+                        ):
+                            outputs[k] = v
+            except Exception as e:
+                raise RuntimeError("Failed to merge mosaic aux outputs") from e
+
+            loss = objective_loss(outputs=outputs, batch_td=batch_td)
+            if not isinstance(loss, Tensor):
+                raise TypeError(f"Objective.loss must return a Tensor, got {type(loss).__name__}")
+            return outputs, loss
+
+    def _build_step_metrics(
+        self,
+        *,
+        system: object,
+        train: TrainConfig,
+        runtime_plan: RuntimePlan,
+        optimizer: torch.optim.Optimizer,
+        compiled: bool,
+        step_time_s: float,
+        data_time_s: float,
+        fwd_bwd_time_s: float,
+        optim_time_s: float,
+        accum_steps: int,
+        loss_sum: Tensor,
+        loss_last: Tensor | None,
+        outputs_last: object | None,
+        last_batch_td: TensorDictBase,
+        call_objective_metrics: Any,
+        table2: Table2Telemetry,
+        viz_ctx: TrainingVizMosaicContext,
+        param_mb: float,
+        kernel_events_estimate: int | None,
+    ) -> dict[str, float]:
+        # Loss value (mean over microbatches).
+        loss_val = float((loss_sum / float(accum_steps)).item())
+        ppl = float(safe_perplexity_from_nll(float(loss_val)))
+
+        lr = float(optimizer.param_groups[0].get("lr", float(train.lr)))
+        lr_base = float(getattr(train, "lr", lr))
+        lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
+
+        # Grad norm (best-effort).
+        grad_norm = 0.0
+        try:
+            from caramba.carmath import global_grad_norm_l2
+
+            grad_norm = float(global_grad_norm_l2(system))  # type: ignore[arg-type]
+        except Exception as e:
+            raise RuntimeError("Failed to compute gradient norm") from e
+
+        metrics: dict[str, float] = {
+            "loss": float(loss_val),
+            "train_loss": float(loss_val),
+            "ppl": float(ppl),
+            "train_ppl": float(ppl),
+            "lr": float(lr),
+            "lr_base": float(lr_base),
+            "lr_mult": float(lr_mult),
+            "grad_norm": float(grad_norm),
+            "grad_accum": float(accum_steps),
+            # Log the effective batch size (runtime plan can override train.batch_size).
+            "batch_size": float(getattr(runtime_plan, "batch_size", getattr(train, "batch_size", 0))),
+            "seq_len": float(getattr(train, "block_size", 0)),
+            "compiled": 1.0 if compiled else 0.0,
+            "time_step_s": float(step_time_s),
+            "time_data_s": float(data_time_s),
+            "time_fwd_bwd_s": float(fwd_bwd_time_s),
+            "time_optim_s": float(optim_time_s),
+            # Legacy ms keys (keep old dashboards working).
+            "ms_step": float(step_time_s * 1000.0),
+            "ms_data": float(data_time_s * 1000.0),
+            "ms_fwd_bwd": float(fwd_bwd_time_s * 1000.0),
+            "ms_opt": float(optim_time_s * 1000.0),
+        }
+
+        # Objective extra metrics (best-effort).
+        if outputs_last is not None and loss_last is not None:
+            try:
+                extra = call_objective_metrics(outputs=outputs_last, batch_td=last_batch_td, loss=loss_last)
+                if isinstance(extra, dict):
+                    metrics.update({str(k): float(v) for k, v in extra.items()})
+            except Exception as e:
+                raise RuntimeError("Failed to compute objective metrics") from e
+
+        # Table 2 telemetry (best-effort).
+        try:
+            has_table2_bin = isinstance(last_batch_td.get("table2_bin", None), Tensor)  # type: ignore[attr-defined]
+            has_mem_teacher = (
+                isinstance(last_batch_td.get("mosaic_teacher_read_bucket", None), Tensor)  # type: ignore[attr-defined]
+                and isinstance(last_batch_td.get("mosaic_teacher_write_bucket", None), Tensor)  # type: ignore[attr-defined]
+                and isinstance(last_batch_td.get("mosaic_teacher_write_gate", None), Tensor)  # type: ignore[attr-defined]
+            )
+            if (has_table2_bin or has_mem_teacher) and (outputs_last is not None):
+                metrics.update(table2.compute(outputs=outputs_last, batch=last_batch_td))
+        except Exception as e:
+            raise RuntimeError("Failed to compute Table 2 telemetry") from e
+
+        # Token throughput (best-effort, for token-LM style datasets).
+        try:
+            y = last_batch_td.get("target_ids", None)  # type: ignore[attr-defined]
+            if isinstance(y, Tensor):
+                metrics["tok_s"] = float(y.numel() * int(accum_steps)) / float(max(1e-9, step_time_s))
+        except Exception as e:
+            raise RuntimeError("Failed to compute token throughput") from e
+
+        # Memory footprint estimates (MiB) (best-effort).
+        metrics["mem_params_mb"] = float(param_mb)
+        try:
+            metrics["mem_grads_mb"] = float(_bytes_to_mb(self._grad_bytes(system)))
+        except Exception:
+            pass
+        try:
+            metrics["mem_optim_mb"] = float(_bytes_to_mb(self._optim_state_bytes(optimizer)))
+        except Exception:
+            pass
+
+        if kernel_events_estimate is not None:
+            metrics["kernel_events_estimate"] = float(kernel_events_estimate)
+
+        # MOSAIC memory stats (best-effort).
+        try:
+            if isinstance(viz_ctx, TrainingVizMosaicContext) and viz_ctx.mosaic_mem_stats:
+                mosaic_f: dict[str, float] = {}
+                t_keys: list[str] = []
+                t_vals: list[Tensor] = []
+                for k, v in viz_ctx.mosaic_mem_stats.items():
+                    kk = str(k)
+                    if isinstance(v, (int, float)):
+                        mosaic_f[kk] = float(v)
+                    elif isinstance(v, Tensor) and v.numel() == 1:
+                        t_keys.append(kk)
+                        t_vals.append(v.detach().float())
+
+                if t_vals:
+                    stacked = torch.stack(t_vals)
+                    flat = stacked.detach().cpu().tolist()
+                    for kk, vv in zip(t_keys, flat, strict=True):
+                        mosaic_f[kk] = float(vv)
+
+                for kk, vv in mosaic_f.items():
+                    metrics[kk] = float(vv)
+
+                metrics["mosaic_teacher_p"] = float(getattr(viz_ctx, "mosaic_teacher_p", 1.0))
+
+                def _avg(suffix: str) -> float | None:
+                    vals = [float(v) for kk, v in mosaic_f.items() if str(kk).endswith(suffix)]
+                    if not vals:
+                        return None
+                    return float(sum(vals) / float(len(vals)))
+
+                # Table 2 stable namespaces.
+                rg = _avg("/fuse_gate_mem_mean")
+                wg = _avg("/write_gate_p_mean")
+                re = _avg("/write_bucket_entropy_norm")
+                if rg is not None:
+                    metrics["mem/read_gate"] = float(rg)
+                if wg is not None:
+                    metrics["mem/write_gate"] = float(wg)
+                if re is not None:
+                    metrics["mem/routing_entropy"] = float(re)
+        except Exception as e:
+            raise RuntimeError("Failed to log MOSAIC memory stats") from e
+
+        return metrics
+
+    def _compute_mosaic_teacher_p(self, *, train: TrainConfig, step_1: int, total_steps: int) -> float:
+        try:
+            warm = int(getattr(train, "mosaic_teacher_p_warmup_steps", 0) or 0)
+            cool = int(getattr(train, "mosaic_teacher_p_cooldown_steps", 0) or 0)
+            p0 = float(getattr(train, "mosaic_teacher_p_start", 1.0))
+            p1 = float(getattr(train, "mosaic_teacher_p_end", 0.0))
+            sched = str(getattr(train, "mosaic_teacher_p_schedule", "linear")).lower()
+
+            s_eff = max(0, min(int(total_steps), int(step_1)))
+            denom = max(1, int(total_steps) - warm - cool)
+
+            if s_eff <= warm:
+                alpha = 0.0
+            elif s_eff >= int(total_steps) - cool:
+                alpha = 1.0
+            else:
+                alpha = float(s_eff - warm) / float(denom)
+
+            if sched == "cosine":
+                alpha2 = 0.5 - 0.5 * math.cos(math.pi * float(alpha))
+            elif sched == "constant":
+                alpha2 = 0.0
+            else:
+                alpha2 = float(alpha)
+
+            p_t = float(p0 + (p1 - p0) * float(alpha2))
+            return float(max(0.0, min(1.0, p_t)))
+        except Exception as e:
+            raise RuntimeError("Failed to compute mosaic teacher p") from e
+
+    def _next_loader_item(
+        self, loader: DataLoader, it: Iterable[Any]
+    ) -> tuple[Any, Iterable[Any]]:
+        """Cycles the dataloader instead of crashing when it is exhausted."""
+        try:
+            item = next(it)  # type: ignore[arg-type]
+            return item, it
+        except StopIteration:
+            it2 = iter(loader)
+            try:
+                item = next(it2)
+            except StopIteration as e:
+                raise RuntimeError("Dataloader is empty; cannot fetch a batch") from e
+            return item, it2
+
+    def _build_optimizer(
+        self,
+        *,
+        system: object,
+        train: TrainConfig,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.optim.Optimizer:
+        if not hasattr(system, "parameters"):
+            raise TypeError("System component does not expose parameters()")
+
+        params = system.parameters()  # type: ignore[attr-defined]
+        opt_name = str(getattr(train, "optimizer", "adamw")).lower()
+        weight_decay = float(getattr(train, "weight_decay", 0.0))
+        fused_opt = bool(getattr(train, "fused_optimizer", True))
+        lr = float(train.lr)
+
+        if opt_name in ("adamw", "adam"):
+            if opt_name == "adamw":
+                if fused_opt:
+                    use_master = (device.type == "mps" and dtype == torch.float16) or (
+                        device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
+                    )
+                    if use_master:
+                        try:
+                            from caramba.optimizer.adamw_master import AdamWMaster
+
+                            logger.info(
+                                f"optimizer=adamw fused=true backend=adamw_master device={device.type} dtype={dtype}"
+                            )
+                            return AdamWMaster(
+                                params,  # type: ignore[arg-type]
+                                lr=lr,
+                                betas=(0.9, 0.999),
+                                eps=1e-8,
+                                weight_decay=float(weight_decay),
+                                fused=True,
+                            )
+                        except Exception as e:
+                            logger.fallback_warning(
+                                "WARNING: AdamW fused optimizer requested but unavailable; "
+                                "falling back to torch.optim.AdamW.\n"
+                                f"reason={type(e).__name__}: {e} device={device.type} dtype={dtype}"
+                            )
+                    else:
+                        logger.fallback_warning(
+                            "WARNING: AdamW fused optimizer requested but unsupported for this device/dtype; "
+                            "falling back to torch.optim.AdamW.\n"
+                            f"device={device.type} dtype={dtype}"
+                        )
+
+                logger.info(f"optimizer=adamw fused=false backend=torch_adamw device={device.type} dtype={dtype}")
+                return torch.optim.AdamW(
+                    params,  # type: ignore[arg-type]
+                    lr=lr,
+                    betas=(0.9, 0.999),
+                    eps=1e-8,
+                    weight_decay=float(weight_decay),
+                )
+
+            # opt_name == "adam"
+            logger.info(f"optimizer=adam backend=torch_adam device={device.type} dtype={dtype}")
+            return torch.optim.Adam(
+                params,  # type: ignore[arg-type]
+                lr=lr,
+                betas=(0.9, 0.999),
+                eps=1e-8,
+                weight_decay=float(weight_decay),
+            )
+
+        if opt_name == "sgd":
+            return torch.optim.SGD(
+                params,  # type: ignore[arg-type]
+                lr=lr,
+                weight_decay=float(weight_decay),
+            )
+
+        if opt_name == "lion":
+            from caramba.optimizer.lion import Lion
+
+            return Lion(
+                params,  # type: ignore[arg-type]
+                lr=lr,
+                weight_decay=float(weight_decay),
+                fused=bool(fused_opt),
+            )
+
+        raise ValueError(f"Unknown optimizer {opt_name!r}")
+
+    def _resolve_loss_batch_key(self, loss_fn: Any) -> str:
+        try:
+            loss_sig = inspect.signature(loss_fn)
+            loss_params = loss_sig.parameters
+        except Exception as e:
+            raise RuntimeError("Failed to introspect objective loss function") from e
+
+        if "outputs" not in loss_params:
+            raise TypeError("Objective.loss must accept keyword argument 'outputs'")
+
+        if "batch" in loss_params:
+            return "batch"
+        if "_batch" in loss_params:
+            return "_batch"
+        if "batch_td" in loss_params:
+            return "batch_td"
+
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in loss_params.values()):
+            return "batch"
+
+        raise TypeError("Objective.loss must accept a batch keyword (e.g. 'batch' or '_batch')")
+
+    def _export_compiled_plan(self, *, checkpoint_dir: Path, target: ExperimentTargetConfig) -> None:
+        try:
+            from caramba.compiler.plan import Planner
+
+            plan_txt = Planner().format_target(target, indent=0, path=f"targets[{target.name}]")
+            (checkpoint_dir / "compiled_plan.txt").write_text("\n".join(plan_txt) + "\n", encoding="utf-8")
+        except Exception:
+            logger.warning("Failed to export compiled plan (ignoring)")
+
+    def _export_io_shapes(
+        self,
+        *,
+        checkpoint_dir: Path,
+        loader: DataLoader,
+        system: object,
+        device: torch.device,
+    ) -> None:
+        try:
+            it = iter(loader)
+            b0 = next(it)
+            b0 = b0 if isinstance(b0, TensorDictBase) else as_tensordict(b0)  # type: ignore[arg-type]
+            b0 = cast(TensorDictBase, to_device(b0, device=device))
+
+            try:
+                b_export = b0[:1]
+            except Exception as e:
+                raise RuntimeError("Failed to slice a small batch for IO export") from e
+
+            if not hasattr(system, "forward"):
+                raise TypeError(
+                    "Failed to export IO shapes: system has no forward().\n"
+                    "Fix: ensure the system object exposes forward(batch, ...) so we can capture output shapes."
+                )
+
+            fwd = system.forward  # type: ignore[attr-defined]
+            try:
+                sig = inspect.signature(fwd)
+            except Exception as e:
+                raise RuntimeError("Failed to introspect system.forward signature for IO export") from e
+
+            params = sig.parameters
+            accepts_ctx = ("ctx" in params) or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+            )
+
+            with torch.no_grad():
+                if accepts_ctx:
+                    o0 = fwd(b_export, ctx=None)  # type: ignore[call-arg]
+                else:
+                    o0 = fwd(b_export)  # type: ignore[call-arg]
+
+            def shape_sig(td: object) -> dict[str, object]:
+                out: dict[str, object] = {}
+                if isinstance(td, Tensor):
+                    out["__tensor__"] = {
+                        "shape": list(td.shape),
+                        "dtype": str(td.dtype),
+                        "device": str(td.device),
+                    }
+                    return out
+                if isinstance(td, dict):
+                    items = td.items()
+                else:
+                    items = dict(td).items()  # type: ignore[arg-type]
+
+                for k, v in items:
+                    if isinstance(v, Tensor):
+                        out[str(k)] = {"shape": list(v.shape), "dtype": str(v.dtype), "device": str(v.device)}
+                return out
+
+            (checkpoint_dir / "io_shapes.json").write_text(
+                json.dumps({"batch": shape_sig(b_export), "outputs": shape_sig(o0)}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except Exception as e:
+            raise RuntimeError(
+                "Failed to export IO shapes.\n"
+                "Why this matters: IO shape export is required for reproducibility artifacts.\n"
+                "Fix:\n"
+                "  - Ensure the system forward returns a Tensor or a dict-like of Tensors.\n"
+                "  - Ensure system.forward accepts `ctx` or does not require it.\n"
+                "  - Ensure the batch is dict/TensorDict-like and convertible via as_tensordict().\n"
+                f"system={type(system).__name__}\n"
+                f"error={type(e).__name__}: {e}\n"
+            ) from e
+
+    def _export_table2_bundle(
+        self,
+        *,
+        checkpoint_dir: Path,
+        target: ExperimentTargetConfig,
+        run: Run,
+        system: object,
+        dataset_comp: object,
+        table2_writer: Table2SummaryWriter,
+        table2_cfg: Any,
+        last_table2_metrics: dict[str, float],
+    ) -> None:
+        # Prefer extracting memory config from the model (for MOSAIC). Fall back to dataset component when needed.
+        mb: int | None = None
+        mh: int | None = None
+        mod = getattr(system, "module", None)
+        if isinstance(mod, nn.Module):
+            buckets: set[int] = set()
+            hashes: set[int] = set()
+            for m in mod.modules():
+                if isinstance(m, MosaicBlockLayer):
+                    buckets.add(int(m.memory.mem_buckets))
+                    hashes.add(int(m.memory.mem_hashes))
+            if buckets and hashes:
+                if len(buckets) != 1 or len(hashes) != 1:
+                    raise ValueError("Inconsistent mem_buckets/mem_hashes across MosaicBlockLayer modules.")
+                mb = next(iter(buckets))
+                mh = next(iter(hashes))
+
+        if mb is None or mh is None:
+            mb2 = getattr(dataset_comp, "mem_buckets", None)
+            mh2 = getattr(dataset_comp, "mem_hashes", None)
+            if isinstance(mb2, int) and isinstance(mh2, int):
+                mb = int(mb2)
+                mh = int(mh2)
+
+        if mb is None or mh is None:
+            raise TypeError("Table 2 export requires mem_buckets/mem_hashes (from model or dataset).")
+
+        params_fn = getattr(system, "parameters", None)
+        if not callable(params_fn):
+            raise TypeError("Table 2 export requires system.parameters().")
+
+        n_params = 0
+        params_iter = params_fn()
+        if not isinstance(params_iter, Iterable):
+            raise TypeError("system.parameters() must return an iterable")
+        for p in params_iter:
+            if not isinstance(p, nn.Parameter):
+                raise TypeError("system.parameters() must yield nn.Parameter objects")
+            n_params += int(p.numel())
+
+        out_path = table2_writer.write(
+            out_dir=checkpoint_dir,
+            run_id=str(run.id),
+            mem_buckets=int(mb),
+            mem_hashes=int(mh),
+            model_size=f"params={n_params}",
+            metrics=last_table2_metrics,
+            n_bins=int(table2_cfg.n_bins),
+        )
+
+        # Console UX: print both the path and a small table summary.
+        logger.subheader("Table 2 export")
+        logger.path(str(out_path), label="summary_json")
+        logger.info(f"Table 2 summary written to [path]{out_path}[/path]")
+
+        rows: list[list[str]] = []
+        rows.append(["mem_buckets", str(int(mb))])
+        rows.append(["mem_hashes", str(int(mh))])
+        rows.append(["model_size", f"params={n_params}"])
+
+        wb = float(last_table2_metrics.get("acc/worst_bin", -1.0))
+        cr = float(last_table2_metrics.get("collision/wrong_item_read_rate", -1.0))
+        rows.append(["acc/worst_bin", "—" if wb < 0.0 else f"{wb:.4f}"])
+        rows.append(["collision/wrong_item_read_rate", "—" if cr < 0.0 else f"{cr:.4f}"])
+
+        for i in range(int(table2_cfg.n_bins)):
+            k = f"acc/bin_{i}"
+            v = float(last_table2_metrics.get(k, -1.0))
+            rows.append([k, "—" if v < 0.0 else f"{v:.4f}"])
+
+        logger.table(
+            title=f"Table 2 summary • {target.name}:{run.id}",
+            columns=["Metric", "Value"],
+            rows=rows,
+        )
 
     def _build_loader(
         self,
@@ -1326,7 +1493,7 @@ class StandardTrainer:
         def collate_to_tensordict(items: list[Any]) -> TensorDictBase:
             return collate_tensordict(items)
 
-        loader_kwargs = {
+        loader_kwargs: dict[str, Any] = {
             "batch_size": int(batch_size),
             "num_workers": int(train.num_workers),
             "pin_memory": bool(train.pin_memory) and device.type == "cuda",
@@ -1336,6 +1503,7 @@ class StandardTrainer:
         if int(train.num_workers) > 0:
             loader_kwargs["prefetch_factor"] = int(getattr(train, "prefetch_factor", 2))
             loader_kwargs["persistent_workers"] = True
+
         if dist_ctx is not None and hasattr(dist_ctx, "wrap_dataloader"):
             return dist_ctx.wrap_dataloader(train_ds, shuffle=True, **loader_kwargs)  # type: ignore[no-any-return, attr-defined]
         return DataLoader(train_ds, shuffle=True, **loader_kwargs)
@@ -1370,6 +1538,20 @@ class StandardTrainer:
         if dt == "bfloat16":
             return torch.bfloat16
         return torch.float32
+
+    def _enable_activation_checkpointing(self, root: nn.Module, *, enabled: bool, threshold_mb: float) -> None:
+        """Enable activation checkpointing on supported topology modules."""
+        for m in root.modules():
+            if hasattr(m, "activation_checkpointing"):
+                try:
+                    setattr(m, "activation_checkpointing", bool(enabled))
+                except Exception:
+                    pass
+            if hasattr(m, "activation_checkpoint_threshold_mb"):
+                try:
+                    setattr(m, "activation_checkpoint_threshold_mb", float(threshold_mb))
+                except Exception:
+                    pass
 
     def _load_or_create_runtime_plan(
         self,
@@ -1430,3 +1612,28 @@ class StandardTrainer:
             raise RuntimeError("Failed to save runtime plan") from e
 
         return plan
+
+    def _param_bytes(self, system: object) -> int:
+        total = 0
+        for p in system.parameters():  # type: ignore[attr-defined]
+            if isinstance(p, Tensor):
+                total += int(p.numel()) * int(p.element_size())
+        return total
+
+    def _grad_bytes(self, system: object) -> int:
+        total = 0
+        for p in system.parameters():  # type: ignore[attr-defined]
+            g = getattr(p, "grad", None)
+            if isinstance(g, Tensor):
+                recognized = int(g.numel()) * int(g.element_size())
+                total += recognized
+        return total
+
+    def _optim_state_bytes(self, optimizer: torch.optim.Optimizer) -> int:
+        total = 0
+        for _param, state in optimizer.state.items():
+            if isinstance(state, dict):
+                for v in state.values():
+                    if isinstance(v, Tensor):
+                        total += int(v.numel()) * int(v.element_size())
+        return total

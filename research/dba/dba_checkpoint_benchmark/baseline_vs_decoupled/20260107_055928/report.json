@@ -1,0 +1,235 @@
+{
+  "metadata": {
+    "name": "baseline_vs_decoupled",
+    "timestamp": "2026-01-07T05:59:28.458819",
+    "manifest_path": "dba_checkpoint_benchmark",
+    "teacher_checkpoint": "None",
+    "student_config": "ModelType.TRANSFORMER",
+    "device": "mps",
+    "notes": "Manifest-driven checkpoint benchmark: baseline (teacher) vs DBA decoupled (student). Drops all tables/plots/CSVs into research/dba/<name>/<target>/<timestamp>/.\n"
+  },
+  "summary": {
+    "teacher_perplexity": 29.589568243265393,
+    "student_perplexity": 31.29679277363596,
+    "perplexity_ratio": 1.057696838167253,
+    "teacher_tokens_per_sec": 82.61249701268837,
+    "student_tokens_per_sec": 88.75175585900047,
+    "speedup": 1.0743139242646205,
+    "teacher_kvcache_bytes_per_token": 180224.0,
+    "student_kvcache_bytes_per_token": 135168.0,
+    "memory_reduction": 1.3333333333333333
+  },
+  "accuracy": {
+    "teacher": {
+      "micro_accuracy": 0.50789330430049,
+      "tasks": [
+        {
+          "task": "winogrande",
+          "split": "validation",
+          "accuracy": 0.5185477505919495,
+          "correct": 657,
+          "total": 1267
+        },
+        {
+          "task": "arc_easy",
+          "split": "validation",
+          "accuracy": 0.4842105263157895,
+          "correct": 276,
+          "total": 570
+        }
+      ]
+    },
+    "student": {
+      "micro_accuracy": 0.4839412084921067,
+      "tasks": [
+        {
+          "task": "winogrande",
+          "split": "validation",
+          "accuracy": 0.5043409629044988,
+          "correct": 639,
+          "total": 1267
+        },
+        {
+          "task": "arc_easy",
+          "split": "validation",
+          "accuracy": 0.43859649122807015,
+          "correct": 250,
+          "total": 570
+        }
+      ]
+    }
+  },
+  "behavior": {
+    "benchmark_id": "behavior_sanity",
+    "teacher_accuracy": 0.17391304347826086,
+    "student_accuracy": 0.13043478260869565,
+    "cases": [
+      {
+        "case_id": "copy_fewshot_spaces",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green",
+        "student_answer": "Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output:"
+      },
+      {
+        "case_id": "copy_fewshot_commas",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "Output: Red, Green, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue, Blue,",
+        "student_answer": "Output: Red, Green, Blue. Output: Red, Green, Blue. Output: Red, Green, Blue. Output: Red, Green, Blue."
+      },
+      {
+        "case_id": "copy_semantic_collision",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "1. Apple Banana Cherry",
+        "student_answer": "Output: Apple banana Cherry. Output: Apple banana Cherry. Output: Apple banana Cherry. Output: Apple banana Cherry. Output: Apple banana Cherry. Output:"
+      },
+      {
+        "case_id": "repeat_exact",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "Text: Red Green Blue.",
+        "student_answer": "Text: Red Green Blue."
+      },
+      {
+        "case_id": "repeat_exact_with_quotes",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "\"Hello. I'm going to go to the library and I'll go to the library and I'll go to the library and I'll go to the library",
+        "student_answer": "Text: \"Hello.\""
+      },
+      {
+        "case_id": "copy_table_row",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "Row: | A1 | D4 | D4 | D4 | D4 | D4 | D4 | D4 | D4 | D4",
+        "student_answer": "Copy: | A1 | B2 | D4 | D4 | D4 | D4 | D4 | D4 | D4 | D4"
+      },
+      {
+        "case_id": "arithmetic_add",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "18",
+        "student_answer": "18"
+      },
+      {
+        "case_id": "arithmetic_mul",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "10",
+        "student_answer": "10"
+      },
+      {
+        "case_id": "arithmetic_sub_neg",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "8",
+        "student_answer": "8"
+      },
+      {
+        "case_id": "passkey_choice_logprob",
+        "teacher_ok": true,
+        "student_ok": false,
+        "teacher_answer": "73921",
+        "student_answer": "73922"
+      },
+      {
+        "case_id": "passkey_choice_logprob_distractors",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "12075",
+        "student_answer": "12075"
+      },
+      {
+        "case_id": "copy_brackets",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "X -> [A7|B4]",
+        "student_answer": "X -> [A7|B4|C9]"
+      },
+      {
+        "case_id": "copy_json_field",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "bgid: \"key\": \"alpha\u30eb",
+        "student_answer": "key\": \"alpha\u2500\u2500 -> beta"
+      },
+      {
+        "case_id": "pattern_next_token",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "Sequence: K L M N O",
+        "student_answer": "Sequence: K L M N O"
+      },
+      {
+        "case_id": "parity_choice",
+        "teacher_ok": true,
+        "student_ok": false,
+        "teacher_answer": " odd.",
+        "student_answer": " even."
+      },
+      {
+        "case_id": "simple_analogy_choice",
+        "teacher_ok": true,
+        "student_ok": true,
+        "teacher_answer": " out",
+        "student_answer": " out"
+      },
+      {
+        "case_id": "short_factual_choice",
+        "teacher_ok": true,
+        "student_ok": true,
+        "teacher_answer": " Paris",
+        "student_answer": " Paris"
+      },
+      {
+        "case_id": "count_commas_int",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "3",
+        "student_answer": "3"
+      },
+      {
+        "case_id": "arithmetic_add_2",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "81",
+        "student_answer": "80"
+      },
+      {
+        "case_id": "arithmetic_mul_2",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "9",
+        "student_answer": "9"
+      },
+      {
+        "case_id": "arithmetic_sub_2",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "20",
+        "student_answer": "20"
+      },
+      {
+        "case_id": "spelling_choice",
+        "teacher_ok": false,
+        "student_ok": true,
+        "teacher_answer": " t",
+        "student_answer": " n"
+      },
+      {
+        "case_id": "closing_paren",
+        "teacher_ok": false,
+        "student_ok": false,
+        "teacher_answer": "X9 Y8 Z7 ->",
+        "student_answer": "(X9 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y8 Y"
+      }
+    ]
+  },
+  "context": {
+    "teacher": null,
+    "student": null
+  },
+  "generated_at": "2026-01-07T06:25:45.197191"
+}

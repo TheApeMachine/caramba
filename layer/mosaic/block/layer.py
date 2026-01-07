@@ -259,7 +259,16 @@ class MosaicBlockLayer(nn.Module):
                 write_mask = torch.zeros((int(B), int(T)), device=x.device, dtype=torch.float32)
         opcode_ctrl = self.compute_opcode_control(u, collect_aux=collect_aux)
 
-        use_fast = bool(self.training) and int(T) > 1 and not bool(getattr(ctx, "mosaic_stats_enabled", False))
+        # Fast path is a training-only optimization, but it does not currently
+        # model per-step RMF updates (which are stateful and order-dependent).
+        # When RMF is enabled, prefer the exact sequential path so RMF state
+        # (st.rmf_field) is updated and observable after forward.
+        use_fast = (
+            bool(self.training)
+            and int(T) > 1
+            and not bool(getattr(ctx, "mosaic_stats_enabled", False))
+            and not (bool(getattr(self.memory, "rmf_enabled", False)) and getattr(self.memory, "rmf", None) is not None)
+        )
         if use_fast:
             delta, outputs = self.fast_path.run(u=u, local=local, st=st, routing=routing, write_mask=write_mask, opcode_ctrl=opcode_ctrl)
         else:

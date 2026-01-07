@@ -16,6 +16,7 @@ Supported tasks (task ids in config):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Iterator, cast
 
 import torch
@@ -167,9 +168,16 @@ class AccuracyBenchmark:
         self.config = config
         self.device = device
         self.tokenizer = build_tokenizer(self.config.tokenizer)
+        self._output_dir: Path | None = None
 
-    def run(self, model: nn.Module, model_name: str) -> AccuracyResult:
+    def run(
+        self,
+        model: nn.Module,
+        model_name: str,
+        output_dir: Path | None = None,
+    ) -> AccuracyResult:
         model.eval()
+        self._output_dir = output_dir
         out = AccuracyResult(model_name=str(model_name))
 
         for task in list(self.config.tasks):
@@ -191,6 +199,8 @@ class AccuracyBenchmark:
         nprint = int(getattr(self.config, "print_examples", 0))
         only_bad = bool(getattr(self.config, "print_only_incorrect", True))
         max_chars = int(getattr(self.config, "print_max_chars", 240))
+        stream_live = bool(getattr(self.config, "stream_live", False))
+        stream_every = int(getattr(self.config, "stream_every", 1))
 
         # Task adapters return (prompt, choices, answer_choice_string).
         def iter_examples(*, split: str) -> Iterator[tuple[str, list[str], str, str]]:
@@ -313,6 +323,26 @@ class AccuracyBenchmark:
         split_name = "validation"
         shown = 0
         sample_rows: list[list[str]] = []
+        log_file = getattr(self.config, "log_file", None)
+        log_lines: list[str] = []
+
+        def _tr(s: str, mx: int = max_chars) -> str:
+            ss = _norm_ws(str(s))
+            return ss if len(ss) <= mx else ss[: max(0, mx - 1)] + "…"
+
+        # Print header showing which model is being evaluated
+        if stream_live:
+            logger.console.print()
+            logger.console.print(
+                f"[highlight]━━━ {task} • {model_name} ━━━[/highlight]"
+            )
+
+        # Log file header
+        if log_file:
+            log_lines.append(f"{'=' * 80}")
+            log_lines.append(f"TASK: {task} | MODEL: {model_name}")
+            log_lines.append(f"{'=' * 80}")
+            log_lines.append("")
 
         with torch.no_grad():
             for prompt, choices, gold, split in iter_examples(split="validation"):
@@ -327,14 +357,41 @@ class AccuracyBenchmark:
                     context_window=ctxw,
                 )
                 total += 1
-                if str(pred) == str(gold):
+                ok = str(pred) == str(gold)
+                if ok:
                     correct += 1
+
+                # Live streaming: print each example as it's evaluated
+                if stream_live and (total % stream_every == 0):
+                    acc_so_far = (correct / total) * 100.0 if total > 0 else 0.0
+                    status = "[success]✓[/success]" if ok else "[error]✗[/error]"
+                    # Compact single-line output for real-time feedback
+                    logger.console.print(
+                        f"  {status} [{total:>5}] acc={acc_so_far:5.1f}% │ "
+                        f"[muted]prompt:[/muted] {_tr(prompt, 50)} │ "
+                        f"[muted]pred:[/muted] {_tr(pred, 30)} │ "
+                        f"[muted]gold:[/muted] {_tr(gold, 30)}"
+                    )
+
+                # Log file: write full untruncated details
+                if log_file:
+                    mark = "✓" if ok else "✗"
+                    log_lines.append(f"[{total}] {mark}")
+                    log_lines.append("-" * 40)
+                    log_lines.append("PROMPT:")
+                    log_lines.append(prompt)
+                    log_lines.append("")
+                    log_lines.append("CHOICES:")
+                    for j, c in enumerate(choices):
+                        log_lines.append(f"  [{j}] {c}")
+                    log_lines.append("")
+                    log_lines.append(f"GOLD: {gold}")
+                    log_lines.append(f"PRED: {pred}")
+                    log_lines.append("")
+
+                # Collect samples for end-of-task table (existing behavior)
                 if nprint > 0 and shown < nprint:
-                    ok = str(pred) == str(gold)
                     if (not only_bad) or (not ok):
-                        def _tr(s: str) -> str:
-                            ss = _norm_ws(str(s))
-                            return ss if len(ss) <= max_chars else ss[: max(0, max_chars - 1)] + "…"
                         # Show best vs gold; also show runner-up score gap if available.
                         best_score = scored[0][1] if scored else float("nan")
                         gold_score = next((s for c, s in scored if str(c) == str(gold)), float("nan"))
@@ -352,6 +409,32 @@ class AccuracyBenchmark:
                     break
 
         acc = float(correct) / float(total) if total > 0 else 0.0
+
+        # Final summary for live streaming
+        if stream_live:
+            logger.console.print()
+            logger.console.print(
+                f"  [highlight]━━━ {task} complete:[/highlight] "
+                f"[metric]{correct}[/metric]/[metric]{total}[/metric] = "
+                f"[success]{acc * 100.0:.2f}%[/success] accuracy"
+            )
+            logger.console.print()
+
+        # Write log file (append mode to accumulate across models)
+        if log_file and log_lines:
+            log_lines.append(f"SUMMARY: {correct}/{total} = {acc * 100:.2f}%")
+            log_lines.append("")
+            log_lines.append("")
+
+            log_path = Path(log_file)
+            if self._output_dir and not log_path.is_absolute():
+                log_path = self._output_dir / log_path
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            # Append mode so both teacher and student results go to same file
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write("\n".join(log_lines) + "\n")
+            logger.info(f"Accuracy log appended to: {log_path}")
+
         logger.metric(str(model_name), acc * 100.0, "% acc")
         if sample_rows:
             logger.table(

@@ -437,6 +437,12 @@ class TestRMSNormKernel:
 
 If a test passes because a fallback silently caught an error, that test is wrong. Remove or fix it.
 
+## General Tips & Advice
+
+1. Always research the code-base first to find what relates to the parts you are about to change, and pick up on conventions.
+2. Always verify your assumptions, and use the web search tool liberally. Remember, your knowledge has a cut-off date, so you are not up to date, web search overcomes that limitation.
+3. Seriously, use the web-search tool, almost always, even when you believe you are sure about something. Better to be safe than sorry.
+
 ---
 
 ## The Mantras
@@ -448,3 +454,5 @@ If a test passes because a fallback silently caught an error, that test is wrong
 **If it exists in the API, it must be fully implemented and optimized for all platforms.**
 
 **The requirements are not a negotiation.**
+
+**Use the web search tool**

@@ -40,8 +40,12 @@ class SequentialTopology(nn.Module):
             if self.activation_checkpointing and x.requires_grad and should_activation_checkpoint(
                 x=x, threshold_mb=self.activation_checkpoint_threshold_mb
             ):
-                def fn(inp: Tensor) -> Tensor:
-                    out = layer(inp, ctx=ctx)  # type: ignore[call-arg]
+                # Bind `layer` at definition time to avoid late-binding closure bugs
+                # during checkpoint recomputation (can call the wrong layer).
+                layer0 = layer
+
+                def fn(inp: Tensor, *, _layer: nn.Module = layer0, _ctx: object | None = ctx) -> Tensor:
+                    out = _layer(inp, ctx=_ctx)  # type: ignore[call-arg]
                     return out[0] if isinstance(out, tuple) else out
 
                 x = cast(Tensor, activation_checkpoint(fn, x))

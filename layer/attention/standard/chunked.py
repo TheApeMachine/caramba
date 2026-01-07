@@ -48,8 +48,11 @@ class StandardSDPAChunked:
         q_chunk = max(1, int(q_chunk))
 
         if cache_pos is not None:
-            base_q = int(cache_pos) - int(T)
-            q_pos_full = base_q + torch.arange(int(T), device=qh.device)
+            # When appending into a KV cache, `cache_pos` is the starting absolute
+            # position of the new query tokens (i.e. the cache length before append).
+            # The queries in `qh` correspond to positions [cache_pos, cache_pos+T).
+            base_q = int(cache_pos)
+            q_pos_full = int(base_q) + torch.arange(int(T), device=qh.device)
             k_pos_full = torch.arange(int(kT), device=qh.device)
         else:
             base_q = int(pos_offset)

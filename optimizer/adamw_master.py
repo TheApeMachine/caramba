@@ -43,10 +43,11 @@ class AdamWMaster(torch.optim.Optimizer):
         super().__init__(params, defaults)
 
     @torch.no_grad()
-    def step(self, closure=None) -> None:  # type: ignore[override]
+    def step(self, closure=None):  # type: ignore[override]
+        loss = None
         if closure is not None:
             with torch.enable_grad():
-                _ = closure()
+                loss = closure()
 
         for group in self.param_groups:
             lr = float(group["lr"])
@@ -171,4 +172,4 @@ class AdamWMaster(torch.optim.Optimizer):
 
                 # Copy back to model dtype
                 p.copy_(master.to(dtype=p.dtype))
-        return None
+        return loss

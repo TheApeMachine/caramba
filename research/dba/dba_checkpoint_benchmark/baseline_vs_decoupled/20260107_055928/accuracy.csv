@@ -1,0 +1,5 @@
+model,task,split,accuracy,correct,total
+teacher,winogrande,validation,0.518548,657,1267
+teacher,arc_easy,validation,0.484211,276,570
+student,winogrande,validation,0.504341,639,1267
+student,arc_easy,validation,0.438596,250,570

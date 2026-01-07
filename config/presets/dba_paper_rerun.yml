@@ -58,16 +58,18 @@ vars:
   # Keep effective tokens/step the same as grad_accum=32,batch_size=1 by using a bigger microbatch:
   # effective_tokens_per_step = batch_size * grad_accum * block_size
   batch_size: 4
-  grad_accum: 4
+  # Match the original effective batch (1 * 32) while keeping larger microbatches:
+  # 4 * 8 = 32 sequences/step.
+  grad_accum: 8
   # Feed the GPU: parallelize mmap slicing + tensor materialization.
   num_workers: 8
   prefetch_factor: 4
   pin_memory: true
   lr: 3.0e-4
-  # Paper parity: keep baseline vs DBA on the *same* LR to avoid confounds.
-  # If you intentionally want a stability ablation (different peak LR), override
-  # lr_decoupled explicitly and document it in your experiment notes.
-  lr_decoupled: ${lr}
+  # DBA is more sensitive to peak LR; using baseline LR often produces a spike
+  # when warmup ends (peak LR). Keep baseline at lr, but run decoupled at a
+  # slightly lower peak LR.
+  lr_decoupled: 2.0e-4
   weight_decay: 0.1
   optimizer: adamw
   fused_optimizer: true
@@ -152,6 +154,8 @@ targets:
           device: ${device}
           dtype: ${dtype}
           gradient_accumulation_steps: ${grad_accum}
+          # Clip to prevent rare catastrophic steps (baseline can also hit these).
+          grad_clip_norm: 1.0
           optimizer: ${optimizer}
           weight_decay: ${weight_decay}
           fused_optimizer: ${fused_optimizer}
@@ -202,10 +206,9 @@ targets:
                         d_model: ${d_model}
                         n_heads: ${n_heads}
                         mode: decoupled
-                        # Paper backend: use the Triton DBA training kernel when eligible (CUDA train path).
-                        # Rationale: avoids the SDPA concat path and is the intended fast training backend.
-                        # If you need maximum numerical conservatism for debugging, set `sdpa`.
-                        dba_train_backend: triton
+                        # Debug/stability: force SDPA training path (bypass Triton DBA training kernel).
+                        # If this removes the warmup-boundary loss spike, the kernel is the culprit.
+                        dba_train_backend: sdpa
                         attn_dim: ${attn_dim}
                         sem_dim: ${sem_dim}
                         geo_dim: ${geo_dim}
@@ -247,7 +250,7 @@ targets:
           phase: standard
           batch_size: ${batch_size}
           block_size: ${block_size}
-          lr: ${lr}
+          lr: ${lr_decoupled}
           device: ${device}
           dtype: ${dtype}
           gradient_accumulation_steps: ${grad_accum}

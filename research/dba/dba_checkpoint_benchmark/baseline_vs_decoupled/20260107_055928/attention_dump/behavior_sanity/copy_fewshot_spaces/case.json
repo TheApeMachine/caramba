@@ -1,0 +1,10 @@
+{
+  "case_id": "copy_fewshot_spaces",
+  "kind": "exact_match_greedy",
+  "prompt": "Input: 1 2 3. Output: 1 2 3.\nInput: Red Green Blue. Output: Red Green Blue.\nInput: A7 B4 C9 D2. Output:\n",
+  "expected": "A7 B4 C9 D2.",
+  "teacher_ok": false,
+  "student_ok": false,
+  "teacher_answer": "Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green",
+  "student_answer": "Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output: Red Green Blue. Output:"
+}

@@ -110,6 +110,14 @@ class AccuracyBenchmarkConfig(BaseModel):
     print_examples: PositiveInt = 0
     print_only_incorrect: bool = True
     print_max_chars: PositiveInt = 240
+    # Stream examples to console as they are evaluated (live progress).
+    # Shows prompt snippet, model choice, and correct/incorrect status in real-time.
+    stream_live: bool = True
+    # How often to print live progress (every N examples). Set to 1 for all.
+    stream_every: PositiveInt = 1
+    # Write full untruncated details to a log file for later analysis.
+    # If set, writes to this path (relative to output_dir or absolute).
+    log_file: str | None = "accuracy_log.txt"
 
 
 class GenerationBenchmarkConfig(BaseModel):
@@ -146,6 +154,30 @@ class BehaviorBenchmarkConfig(BaseModel):
     print_only_failures: bool = True
     # Truncate printed outputs to keep logs readable.
     print_max_chars: PositiveInt = 160
+    # Stream each case to console in real-time as it's evaluated.
+    # Shows prompt, teacher/student outputs, and pass/fail status live.
+    stream_live: bool = True
+    # Write full untruncated details to a log file for later analysis.
+    # If set, writes to this path (relative to output_dir or absolute).
+    log_file: str | None = "behavior_log.txt"
+
+    # ---- Optional attention introspection (paper/debug) ----
+    # If true, run an additional forward pass on selected prompts with a viz ctx
+    # and dump small attention matrices + summary stats to output_dir.
+    dump_attention: bool = False
+    # Which case IDs to dump. If empty/None, dumps only cases where either model is wrong.
+    dump_attention_case_ids: list[str] | None = None
+    # Downsample controls (these bounds apply per attention layer).
+    dump_attention_max_tokens: PositiveInt = 96
+    dump_attention_max_heads: PositiveInt = 4
+    # Substring used to split exemplar vs target regions (for mass metrics).
+    # For the copy probes, "A7" is a stable anchor.
+    dump_attention_anchor: str = "A7"
+    # Optional: also copy rendered PNGs into a stable "paper figures" directory.
+    # This makes paper.tex inclusion deterministic (no timestamped run dirs).
+    dump_attention_paper_dir: str | None = None
+    # Tag used in filenames when copying to paper dir (e.g. "dba_decoupled" or "dba_sem8geo32v40").
+    dump_attention_paper_tag: str | None = None
 
 
 class ContextBenchmarkConfig(BaseModel):

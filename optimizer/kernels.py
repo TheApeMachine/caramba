@@ -15,6 +15,7 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 import torch.nn.functional as F
+from torch._dynamo import disable as _dynamo_disable
 
 from caramba.optimizer.kernel_registry import KERNELS
 
@@ -24,6 +25,7 @@ def _require(cond: bool, *, msg: str) -> None:
         raise RuntimeError(msg)
 
 
+@_dynamo_disable
 def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     """RMSNorm: y = x * rsqrt(mean(x^2) + eps) * weight."""
     if x.device.type == "mps":
@@ -60,6 +62,7 @@ def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     return y
 
 
+@_dynamo_disable
 def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     """Apply RoPE using cos/sin tables for the sequence window.
 
@@ -109,6 +112,7 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     return torch.cat([y1, y2, x_pass], dim=-1)
 
 
+@_dynamo_disable
 def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: float) -> Tensor:
     """LayerNorm over the last dimension.
 
@@ -144,6 +148,7 @@ def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: flo
     return F.layer_norm(x, normalized_shape=(D,), weight=weight, bias=bias, eps=float(eps))
 
 
+@_dynamo_disable
 def attention_decode(
     *,
     q_sem: Tensor,
@@ -198,6 +203,7 @@ def attention_decode(
     )
 
 
+@_dynamo_disable
 def scan(
     *,
     x: Tensor,
@@ -245,6 +251,7 @@ def scan(
     )
 
 
+@_dynamo_disable
 def adamw_step(
     *,
     p: Tensor,

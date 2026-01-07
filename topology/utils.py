@@ -37,11 +37,14 @@ def activation_checkpoint(fn: Callable[[Tensor], Tensor], x: Tensor) -> Tensor:
     """Run a function under activation checkpointing with a stable default.
 
     Why this exists:
-    - Prefer `use_reentrant=False` (PyTorch recommendation)
-    - Fall back for older torch versions that don't accept the kwarg
+    - Prefer `use_reentrant=True` for broad compatibility.
+      Some custom/autograd-heavy kernels can trigger "different number of tensors
+      saved during forward vs recomputation" errors with the newer non-reentrant
+      checkpoint implementation. Reentrant checkpointing avoids that failure mode.
+    - Fall back for older torch versions that don't accept the kwarg.
     """
 
     try:
-        return cast(Tensor, _torch_checkpoint(fn, x, use_reentrant=False))  # type: ignore[call-arg]
+        return cast(Tensor, _torch_checkpoint(fn, x, use_reentrant=True))  # type: ignore[call-arg]
     except TypeError:
         return cast(Tensor, _torch_checkpoint(fn, x))

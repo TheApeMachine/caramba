@@ -1,6 +1,9 @@
-"""Implements the Google Agent Development Kit
+"""Agent compatible with the Google Agent Development Kit
 
-These make the agents compatible with the Agent-to-Agent protocol.
+An agent is a wrapper around the Google Agent Development Kit, using
+Model Context Protocol (MCP) tools.
+It functions as an AI enabled automation tool and can be used for many
+advanced use cases.
 """
 from __future__ import annotations
 
@@ -19,10 +22,6 @@ from google.adk.agents import LlmAgent
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
 from google.adk.a2a.utils.agent_to_a2a import to_a2a
-
-# Standard A2A agent card well-known path
-AGENT_CARD_WELL_KNOWN_PATH = "/.well-known/agent-card.json"
-
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService, Session
@@ -47,8 +46,7 @@ from caramba.ai.mcp import (
     load_mcp_endpoints,
 )
 
-# Silence known-noisy runtime warnings from upstream libs.
-# (These are informational and overwhelm the REPL.)
+
 warnings.filterwarnings(
     "ignore",
     message=r".*\[EXPERIMENTAL\] BaseAuthenticatedTool:.*",
@@ -56,28 +54,17 @@ warnings.filterwarnings(
 )
 warnings.filterwarnings("ignore", message=r".*non-text parts in the response.*")
 
-
+AGENT_CARD_WELL_KNOWN_PATH = "/.well-known/agent-card.json"
 MCP_UNHEALTHY_WARNED: set[str] = set()
+VALID_NAME_RE = re.compile(r"[^0-9A-Za-z_]")
 
-_VALID_NAME_RE = re.compile(r"[^0-9A-Za-z_]")
-
-
-def _to_valid_identifier(name: str, *, fallback: str = "agent") -> str:
-    """Convert an arbitrary display name into an ADK-valid identifier."""
-    s = (name or "").strip()
-    if not s:
-        return fallback
-    s = s.replace("-", "_").replace(" ", "_")
-    s = _VALID_NAME_RE.sub("_", s)
-    # Must start with a letter or underscore.
-    if not (s[0].isalpha() or s[0] == "_"):
-        s = "_" + s
-    # Collapse repeated underscores and trim.
-    s = re.sub(r"_+", "_", s).strip("_") or fallback
-    return s
 
 class Agent:
-    """Agent is a flexible wrapper to build AI agents."""
+    """Agent is a flexible wrapper to build AI agents using MCP tools.
+
+    Standard implementation uses agents for things like AI assisted research flows,
+    and platform self-improvement.
+    """
     def __init__(
         self,
         persona: Persona,
@@ -86,7 +73,6 @@ class Agent:
         user_id: str = "user",
         session_service: InMemorySessionService | None = None,
         session_id: str | None = None,
-        # Optional override: single MCP URL (primarily for tests / quick wiring).
         mcp_url: str | None = None,
     ):
         self.persona = persona
@@ -94,18 +80,13 @@ class Agent:
         self.user_id = user_id
         self.session_id = session_id or str(uuid4())
 
-        # MCP tool wiring:
-        # - Persona declares tool server names in `persona.tools` or `persona.mcp_servers` (legacy)
-        # - We resolve those names to URLs via config and create one toolset per server
         tools: list[Any] = []
-        # Support both `tools` and legacy `mcp_servers` fields.
         tool_names = iter_persona_tool_names(
             getattr(persona, "tools", None) or getattr(persona, "mcp_servers", None)
         )
 
         endpoints = load_mcp_endpoints()
 
-        # If an explicit URL is provided, attach it as a single toolset (no name resolution).
         if isinstance(mcp_url, str) and mcp_url:
             ep = McpEndpoint(url=mcp_url)
             if endpoint_is_healthy(ep):

@@ -34,3 +34,6 @@ NOTES.md
 *.synctex.gz
 artifacts/mosaic/CONTEXT.md
 artifacts/ai/brainstorm.jsonl
+.cache/
+.tmp/
+*.pt

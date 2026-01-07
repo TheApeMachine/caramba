@@ -40,8 +40,13 @@ class StackedTopology(nn.Module):
             if self.activation_checkpointing and x.requires_grad and should_activation_checkpoint(
                 x=x, threshold_mb=self.activation_checkpoint_threshold_mb
             ):
-                def fn(inp: Tensor) -> Tensor:
-                    return unwrap_output(layer(inp, ctx=ctx))  # type: ignore[call-arg]
+                # Bind `layer` at definition time. Without this, Python's late-binding
+                # closure semantics can cause the checkpoint recomputation to run the
+                # wrong layer (often the final projection), producing shape mismatches.
+                layer0 = layer
+
+                def fn(inp: Tensor, *, _layer: nn.Module = layer0, _ctx: object | None = ctx) -> Tensor:
+                    return unwrap_output(_layer(inp, ctx=_ctx))  # type: ignore[call-arg]
 
                 x = cast(Tensor, activation_checkpoint(fn, x))
             else:

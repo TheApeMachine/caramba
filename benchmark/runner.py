@@ -173,14 +173,14 @@ class BenchmarkRunner:
                             if teacher is None:
                                 logger.warning("Benchmark requested teacher model, but none is available (skipping).")
                             else:
-                                teacher_accuracy = benchmark.run(teacher, "teacher")
+                                teacher_accuracy = benchmark.run(teacher, "teacher", output_dir=self.output_dir)
                                 logger.metric("teacher", teacher_accuracy.micro_accuracy * 100.0, "% micro-acc")
 
                         if "student" in spec.models:
                             if student is None:
                                 logger.warning("Benchmark requested student model, but none is available (skipping).")
                             else:
-                                student_accuracy = benchmark.run(student, "student")
+                                student_accuracy = benchmark.run(student, "student", output_dir=self.output_dir)
                                 logger.metric("student", student_accuracy.micro_accuracy * 100.0, "% micro-acc")
 
                     case BenchmarkType.BEHAVIOR:
@@ -193,6 +193,7 @@ class BenchmarkRunner:
                                 teacher=teacher,
                                 student=student,
                                 benchmark_id=str(spec.id),
+                                output_dir=self.output_dir,
                             )
                             behavior = result
                             logger.metric(
