@@ -71,6 +71,9 @@ class RunLogger:
 
         try:
             # Line-buffered text append.
+            # Note: We intentionally don't use a context manager here because the file
+            # needs to stay open for the lifetime of the logger. The close() method
+            # handles cleanup, and __exit__ ensures cleanup on context manager usage.
             self._fh = open(self.path, "a", encoding="utf-8", buffering=1)
         except Exception:
             self.enabled = False

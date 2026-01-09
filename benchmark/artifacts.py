@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
 
@@ -162,6 +162,17 @@ class ArtifactGenerator:
 
         return generated
 
+    # Translation table for LaTeX escaping (more efficient than repeated replace calls).
+    _LATEX_ESCAPE_TABLE = str.maketrans({
+        "{": r"\{",
+        "}": r"\}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+    })
+
     @staticmethod
     def _latex_escape(s: str) -> str:
         """Escape a string for safe inclusion in LaTeX text mode."""
@@ -169,20 +180,13 @@ class ArtifactGenerator:
         # Normalize whitespace but keep newlines visible.
         t = t.replace("\r\n", "\n").replace("\r", "\n")
         t = t.replace("\t", " ")
-        # Escape backslash first.
+        # Escape backslash first (must be before translate since it uses backslash).
         t = t.replace("\\", r"\textbackslash{}")
-        # LaTeX special chars.
-        t = (
-            t.replace("{", r"\{")
-            .replace("}", r"\}")
-            .replace("&", r"\&")
-            .replace("%", r"\%")
-            .replace("$", r"\$")
-            .replace("#", r"\#")
-            .replace("_", r"\_")
-            .replace("~", r"\textasciitilde{}")
-            .replace("^", r"\textasciicircum{}")
-        )
+        # Use translate for single-char replacements (more efficient).
+        t = t.translate(ArtifactGenerator._LATEX_ESCAPE_TABLE)
+        # Multi-char replacements still need replace.
+        t = t.replace("~", r"\textasciitilde{}")
+        t = t.replace("^", r"\textasciicircum{}")
         # Make newlines visible without breaking tables.
         t = t.replace("\n", r"\textbackslash{}n ")
         # Collapse runs of spaces.
@@ -515,46 +519,43 @@ class ArtifactGenerator:
             paths["behavior.csv"] = path
 
         # Context sweep CSVs
+        # Use fields() to get header once, then use getattr() to avoid repeated asdict() calls.
         if teacher_context is not None and teacher_context.sweep:
             path = self.output_dir / "context_sweep_teacher.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                header = list(asdict(teacher_context.sweep[0]).keys())
-                writer.writerow(header)
+                field_names = [fld.name for fld in fields(teacher_context.sweep[0])]
+                writer.writerow(field_names)
                 for m in teacher_context.sweep:
-                    row = asdict(m)
-                    writer.writerow([row[k] for k in header])
+                    writer.writerow([getattr(m, name) for name in field_names])
             paths["context_sweep_teacher.csv"] = path
         if student_context is not None and student_context.sweep:
             path = self.output_dir / "context_sweep_student.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                header = list(asdict(student_context.sweep[0]).keys())
-                writer.writerow(header)
+                field_names = [fld.name for fld in fields(student_context.sweep[0])]
+                writer.writerow(field_names)
                 for m in student_context.sweep:
-                    row = asdict(m)
-                    writer.writerow([row[k] for k in header])
+                    writer.writerow([getattr(m, name) for name in field_names])
             paths["context_sweep_student.csv"] = path
 
         if teacher_context is not None and teacher_context.decode:
             path = self.output_dir / "context_decode_teacher.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                header = list(asdict(teacher_context.decode[0]).keys())
-                writer.writerow(header)
+                field_names = [fld.name for fld in fields(teacher_context.decode[0])]
+                writer.writerow(field_names)
                 for m in teacher_context.decode:
-                    row = asdict(m)
-                    writer.writerow([row[k] for k in header])
+                    writer.writerow([getattr(m, name) for name in field_names])
             paths["context_decode_teacher.csv"] = path
         if student_context is not None and student_context.decode:
             path = self.output_dir / "context_decode_student.csv"
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                header = list(asdict(student_context.decode[0]).keys())
-                writer.writerow(header)
+                field_names = [fld.name for fld in fields(student_context.decode[0])]
+                writer.writerow(field_names)
                 for m in student_context.decode:
-                    row = asdict(m)
-                    writer.writerow([row[k] for k in header])
+                    writer.writerow([getattr(m, name) for name in field_names])
             paths["context_decode_student.csv"] = path
 
         return paths

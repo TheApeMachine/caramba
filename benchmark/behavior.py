@@ -419,9 +419,9 @@ def _find_anchor_token_index(tokens: list[str], *, anchor: str) -> int | None:
         if anchor in t:
             return int(i)
     # Fallback: try the reconstructed string.
-    s = ""
-    for i, t in enumerate(tokens):
-        s += t
+    # Use itertools.accumulate to avoid O(n²) string concatenation.
+    from itertools import accumulate
+    for i, s in enumerate(accumulate(tokens)):
         if anchor in s:
             return int(i)
     return None

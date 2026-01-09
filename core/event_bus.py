@@ -23,11 +23,16 @@ class EventHandler(ABC):
 
 @dataclass(slots=True)
 class EventBus:
-    """Priority-ordered event dispatcher."""
+    """Priority-ordered event dispatcher.
+
+    Note: The queue has a configurable max size to prevent unbounded memory growth.
+    When the queue is full, publishing will raise an error.
+    """
 
     _seq: int = 0
     _queue: list[tuple[int, float, int, EventEnvelope]] = field(default_factory=list)
     _subs: defaultdict[str, list[EventHandler]] = field(default_factory=lambda: defaultdict(list))
+    _max_queue_size: int = 100000  # Maximum pending events before rejecting
 
     def subscribe(self, event_type: str, handler: EventHandler) -> None:
         et = str(event_type)
@@ -47,6 +52,12 @@ class EventBus:
         hs = (self._subs.get(et) or []) + (self._subs.get("*") or [])
         if not hs:
             raise RuntimeError(f"No subscribers for event type {et!r}")
+        # Prevent unbounded queue growth.
+        if len(self._queue) >= self._max_queue_size:
+            raise RuntimeError(
+                f"Event queue full ({self._max_queue_size} pending events). "
+                "Consider increasing drain rate or max_queue_size."
+            )
         # Use a max-priority heap (invert priority).
         pri = -int(event.priority)
         ts = float(event.ts)

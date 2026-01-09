@@ -73,13 +73,13 @@ def _coerce_result(res: Any, *, limit: int) -> dict[str, Any]:
     if isinstance(header, list):
         # header items are typically column names (strings)
         cols = [str(x) for x in header]
+    # Use list comprehension instead of loop for better performance.
     rows: list[list[object]] = []
     if isinstance(result_set, list):
-        for r in result_set:
-            if isinstance(r, (list, tuple)):
-                rows.append(list(r))
-            else:
-                rows.append([r])
+        rows = [
+            list(r) if isinstance(r, (list, tuple)) else [r]
+            for r in result_set
+        ]
     rows = _limit_rows(rows, limit)
     return {"columns": cols, "rows": rows, "row_count": len(rows)}
 
