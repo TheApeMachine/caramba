@@ -13,12 +13,36 @@ from pathlib import Path
 from typing import Any
 
 from google.genai import types
+from pydantic import BaseModel, Field
 
 from caramba.ai.agent import Agent
 from caramba.ai.process import Process
 from caramba.ai.process.platform_improve.docker_workspace import DockerWorkspace
 from caramba.config.platform_improve import PlatformImproveProcessConfig
 from caramba.console import logger
+
+
+class IdeaOutput(BaseModel):
+    """Structured output for ideator agents."""
+
+    title: str = Field(description="Short title for the improvement")
+    rationale: str = Field(description="Why this improvement matters and its expected impact")
+    risk: str = Field(description="Potential risks and how to mitigate them")
+    verification: str = Field(description="How to verify the improvement works")
+    files_to_touch: list[str] = Field(description="List of files that will need to be modified")
+
+
+class FileSelectionOutput(BaseModel):
+    """Structured output for file selector agent."""
+
+    files: list[str] = Field(description="List of relative file paths to inspect")
+
+
+class VerdictOutput(BaseModel):
+    """Structured output for verifier agent."""
+
+    ok: bool = Field(description="True if the change passes verification, false otherwise")
+    feedback: str = Field(description="Actionable feedback for the developer if ok is false")
 
 
 @dataclass(frozen=True)
@@ -93,7 +117,7 @@ class PlatformImprove(Process):
             workspace.applyPatch(repo_dir=config.workspace.repo_dir, patch_text=patch)
             report = self.verify(workspace=workspace)
             verdict = await self.verdict(team=team, workspace=workspace, plan=plan, report=report)
-            if report.ok() and bool(verdict.get("ok")):
+            if report.ok() and verdict.ok:
                 await self.openPrIfConfigured(workspace=workspace, plan=plan, branch=branch)
                 return
             plan = self.feedbackPlan(plan=plan, report=report, verdict=verdict)
@@ -107,16 +131,17 @@ class PlatformImprove(Process):
         """
 
         config = self.process
-        required = [config.leader, config.developer, config.verifier]
+        required = [config.leader, config.file_selector, config.developer, config.verifier]
         for role in required:
             if role not in self.agents:
                 raise KeyError(f"Missing required team role: {role}")
         return self.agents
 
-    async def collectIdeas(self, *, team: dict[str, Agent]) -> list[dict[str, str]]:
+    async def collectIdeas(self, *, team: dict[str, Agent]) -> list[IdeaOutput]:
         """Collect ideas
 
-        Requests one JSON idea from each ideator.
+        Requests one structured idea from each ideator. The ideator personas have
+        output_schema set, so they return valid JSON matching IdeaOutput.
         """
 
         config = self.process
@@ -124,17 +149,18 @@ class PlatformImprove(Process):
         if not ideators:
             raise ValueError("platform_improve requires at least one ideator")
         prompt = (
-            "Return ONE idea as JSON only:\n"
-            '{"title":"...","rationale":"...","risk":"...","verification":"...","files_to_touch":"..."}\n'
+            f"Topic: {config.topic}\n\n"
+            "Propose ONE high-impact improvement for the Caramba platform. "
+            "Use your tools to explore the codebase before proposing."
         )
-        ideas: list[dict[str, str]] = []
+        ideas: list[IdeaOutput] = []
         for agent in ideators:
             text = await agent.run_async(types.Content(role="user", parts=[types.Part(text=prompt)]))
-            obj = self.parseJsonObject(text=text, expected="idea JSON object")
-            ideas.append({k: str(v) for k, v in obj.items()})
+            idea = IdeaOutput.model_validate_json(text)
+            ideas.append(idea)
         return ideas
 
-    async def makePlan(self, *, team: dict[str, Agent], ideas: list[dict[str, str]]) -> str:
+    async def makePlan(self, *, team: dict[str, Agent], ideas: list[IdeaOutput]) -> str:
         """Make plan
 
         Leader selects exactly one improvement and produces a deterministic plan.
@@ -142,25 +168,31 @@ class PlatformImprove(Process):
 
         config = self.process
         leader = team[config.leader]
+        ideas_json = [idea.model_dump() for idea in ideas]
         prompt = (
             "Pick EXACTLY ONE improvement and output a plan.\n"
             "Return plain text (no JSON), with acceptance criteria and verification commands.\n\n"
-            f"Topic: {config.topic}\n\nIdeas:\n{json.dumps(ideas, ensure_ascii=False)}\n"
+            f"Topic: {config.topic}\n\nIdeas:\n{json.dumps(ideas_json, ensure_ascii=False)}\n"
         )
         return await leader.run_async(types.Content(role="user", parts=[types.Part(text=prompt)]))
 
     async def developerPatch(self, *, team: dict[str, Agent], workspace: DockerWorkspace, plan: str) -> str:
         """Developer patch
 
-        Developer chooses files to inspect, receives their contents, and returns a git diff.
+        File selector chooses files to inspect, then developer receives their contents
+        and returns a git diff.
         """
 
         config = self.process
+        file_selector = team[config.file_selector]
         developer = team[config.developer]
-        file_prompt = 'Return ONLY JSON array of relative paths to inspect, e.g. ["ai/agent.py"]'
-        files_text = await developer.run_async(types.Content(role="user", parts=[types.Part(text=file_prompt)]))
-        files = self.parseJsonStringList(text=files_text, expected="file list JSON array")
-        context = self.readFiles(workspace=workspace, files=files)
+
+        # File selector has output_schema set, returns valid JSON matching FileSelectionOutput
+        file_prompt = f"Select the files that need to be inspected for this plan:\n\n{plan}"
+        files_text = await file_selector.run_async(types.Content(role="user", parts=[types.Part(text=file_prompt)]))
+        file_selection = FileSelectionOutput.model_validate_json(files_text)
+
+        context = self.readFiles(workspace=workspace, files=file_selection.files)
         patch_prompt = (
             "Return ONLY a git diff patch starting with 'diff --git'. No prose.\n\n"
             f"PLAN:\n{plan}\n\nFILES:\n{context}\n"
@@ -208,22 +240,22 @@ class PlatformImprove(Process):
 
     async def verdict(
         self, *, team: dict[str, Agent], workspace: DockerWorkspace, plan: str, report: VerificationReport
-    ) -> dict[str, Any]:
+    ) -> VerdictOutput:
         """Verifier verdict
 
-        Verifier agent gates on plan + diff + command outputs.
+        Verifier agent gates on plan + diff + command outputs. The verifier persona
+        has output_schema set, so it returns valid JSON matching VerdictOutput.
         """
 
         config = self.process
         verifier = team[config.verifier]
         diff_text = workspace.diff(repo_dir=config.workspace.repo_dir)
         prompt = (
-            "Return JSON only: {\"ok\": true|false, \"feedback\": \"...\"}\n"
-            "Hard rule: failing commands block ok=true.\n\n"
+            "Review this change. Hard rule: failing commands block approval.\n\n"
             f"PLAN:\n{plan}\n\nDIFF:\n{diff_text}\n\nCOMMANDS:\n{json.dumps(report.outputs, ensure_ascii=False)}\n"
         )
         text = await verifier.run_async(types.Content(role="user", parts=[types.Part(text=prompt)]))
-        return self.parseJsonObject(text=text, expected="verifier JSON object")
+        return VerdictOutput.model_validate_json(text)
 
     async def openPrIfConfigured(self, *, workspace: DockerWorkspace, plan: str, branch: str) -> None:
         """Open PR
@@ -273,38 +305,15 @@ class PlatformImprove(Process):
         safe_prefix = str(prefix).rstrip("/").replace(" ", "-")
         return f"{safe_prefix}/round-{round_index + 1}"
 
-    def feedbackPlan(self, *, plan: str, report: VerificationReport, verdict: dict[str, Any]) -> str:
+    def feedbackPlan(self, *, plan: str, report: VerificationReport, verdict: VerdictOutput) -> str:
         """Feedback plan
 
         Appends verifier feedback and command outputs to guide the next round.
         """
 
-        feedback = str(verdict.get("feedback", "")).strip()
-        return plan + "\n\nVERIFIER FEEDBACK:\n" + feedback + "\n\nCOMMAND OUTPUTS:\n" + json.dumps(
+        return plan + "\n\nVERIFIER FEEDBACK:\n" + verdict.feedback + "\n\nCOMMAND OUTPUTS:\n" + json.dumps(
             report.outputs, ensure_ascii=False
         )
-
-    def parseJsonObject(self, *, text: str, expected: str) -> dict[str, Any]:
-        """Parse JSON object
-
-        Enforces strict, machine-checkable JSON from agents.
-        """
-
-        payload = json.loads(text)
-        if not isinstance(payload, dict):
-            raise TypeError(f"Expected {expected}, got {type(payload).__name__}")
-        return payload
-
-    def parseJsonStringList(self, *, text: str, expected: str) -> list[str]:
-        """Parse JSON string list
-
-        Enforces strict JSON arrays of strings from agents.
-        """
-
-        payload = json.loads(text)
-        if not isinstance(payload, list) or not all(isinstance(x, str) for x in payload):
-            raise TypeError(f"Expected {expected}, got {type(payload).__name__}")
-        return [x for x in payload if x.strip()]
 
     def requirePatch(self, *, text: str) -> str:
         """Require patch

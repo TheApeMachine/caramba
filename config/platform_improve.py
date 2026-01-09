@@ -48,6 +48,7 @@ class PlatformImproveProcessConfig(BaseModel):
 
     leader: str = "research_team_leader"
     ideators: list[str] = Field(default_factory=list)
+    file_selector: str = "file_selector"
     developer: str = "developer"
     verifier: str = "verifier"
 

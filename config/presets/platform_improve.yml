@@ -19,9 +19,10 @@ targets:
     description: "Autonomous platform improvement pipeline (ingest → ideate → implement → review → PR)."
     team:
       research_team_leader: research_lead
-      ideator_architect: architect
-      ideator_catalyst: catalyst
-      ideator_ml: ml_expert
+      ideator_architect: ideator_architect
+      ideator_catalyst: ideator_catalyst
+      ideator_ml: ideator_ml
+      file_selector: file_selector
       developer: developer
       verifier: verifier
     process:

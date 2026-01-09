@@ -29,6 +29,10 @@ instructions: |
      - `context_compactor` - Summarization, context management
      - `note_taker` - Meeting notes, documentation
      - `catalyst` - Brainstorming, ideation, creative solutions
+     - `feature_analyst` - Analyze feature requests and plan implementations
+     - `code_reviewer` - Review code changes for correctness and security
+     - `experiment_proposer` - Design and propose new experiments
+     - `results_analyzer` - Analyze experiment results and provide insights
 
   3. **Synthesize**
      YOU are responsible for the final response to the user. When you call expert tools:
@@ -100,3 +104,7 @@ sub_agents:
   - context_compactor
   - note_taker
   - catalyst
+  - feature_analyst
+  - code_reviewer
+  - experiment_proposer
+  - results_analyzer
