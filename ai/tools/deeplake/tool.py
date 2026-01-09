@@ -14,7 +14,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 import deeplake
 from deeplake import types
 from colbert.infra import ColBERTConfig
@@ -23,6 +23,41 @@ from colbert.modeling.checkpoint import Checkpoint
 from mcp.server.fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
+
+
+def _rowview_to_str_dict(row: object) -> dict[str, Any]:
+    """Convert a DeepLake RowView-like object into a str-keyed dict.
+
+    DeepLake rows are mapping-like but often typed as bytes-keyed (e.g. RowView[bytes, ...]),
+    which makes static type checkers reject `row.get("column")` and `dict(row)`.
+    """
+    if isinstance(row, dict):
+        out_dict: dict[str, Any] = {}
+        for k, v in row.items():
+            if isinstance(k, bytes):
+                out_dict[k.decode("utf-8", errors="replace")] = v
+            else:
+                out_dict[str(k)] = v
+        return out_dict
+
+    # RowView: supports keys() and __getitem__ access.
+    if hasattr(row, "keys") and hasattr(row, "__getitem__"):
+        try:
+            keys = list(row.keys())  # type: ignore[attr-defined]
+        except Exception:
+            return {}
+
+        out_row: dict[str, Any] = {}
+        for k in keys:
+            sk = k.decode("utf-8", errors="replace") if isinstance(k, bytes) else str(k)
+            try:
+                out_row[sk] = row[k]  # type: ignore[index]
+            except Exception:
+                # Best-effort; skip columns we can't read.
+                continue
+        return out_row
+
+    return {}
 
 
 # Initialize FastMCP server (Docker-friendly HTTP transport)
@@ -125,7 +160,7 @@ class DeepLakeTool():
         for row in view:
             # Use getattr with default to avoid expensive exception handling in loops.
             # DeepLake rows support dict-like access, so we use a helper approach.
-            row_dict = dict(row) if hasattr(row, 'keys') else {}
+            row_dict = _rowview_to_str_dict(row)
 
             raw = row_dict.get(self.metadata_column, "{}")
             if isinstance(raw, str):

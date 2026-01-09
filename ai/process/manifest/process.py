@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from caramba.ai.agent import Agent
 from caramba.ai.process import Process
-from caramba.ai.process.manifest.builder import ManifestBuilder, ManifestSpec
+from caramba.ai.process.manifest.builder import ExperimentSpec, ManifestBuilder, ManifestSpec
 from caramba.ai.process.manifest.collector import ResultsCollector, ResultsSummary
 from caramba.config.agents import ManifestProcessConfig
 from caramba.console import logger
@@ -120,14 +120,14 @@ class ManifestProcess(Process):
             name=proposal.name,
             notes=f"Hypothesis: {proposal.hypothesis}\n\nExpected: {proposal.expected_outcome}",
             experiments=[
-                {
-                    "name": proposal.name,
-                    "description": proposal.hypothesis,
-                    "model_type": proposal.model_type,
-                    "dataset": proposal.dataset,
-                    "training_config": proposal.key_parameters,
-                    "metrics": ["loss", "perplexity"],
-                }
+                ExperimentSpec(
+                    name=proposal.name,
+                    description=proposal.hypothesis,
+                    model_type=proposal.model_type,
+                    dataset=proposal.dataset,
+                    training_config=proposal.key_parameters,
+                    metrics=["loss", "perplexity"],
+                )
             ],
         )
 

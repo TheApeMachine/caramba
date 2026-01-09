@@ -18,6 +18,8 @@ from uuid import uuid4
 from pathlib import Path
 from datetime import datetime, timezone
 
+import httpx
+
 from google.adk.agents import LlmAgent
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
@@ -37,6 +39,7 @@ from starlette.requests import Request
 from caramba.ai.persona import Persona
 from caramba.console import logger
 from caramba.ai.process.transcript_store import TranscriptStore
+from caramba.ai.models.random_model import RandomModel
 import caramba.ai.tools as mcp_tools
 
 
@@ -136,8 +139,6 @@ class Agent:
         #
         # ADK's native Gemini integration expects the bare Gemini model name (e.g. "gemini-3-pro-preview"),
         # not a prefixed identifier like "gemini/..." or "google/...".
-        from caramba.ai.models.random_model import RandomModel
-
         raw_model = (persona.model or "").strip()
         if not raw_model or raw_model.lower() == "random":
             model_id = random.choice(RandomModel.MODEL_POOL)
@@ -293,13 +294,115 @@ class Agent:
         """Return the memory clear for this agent."""
         return JSONResponse({"status": "ok", "agent": self.persona.name})
 
-    def agents_status(self, request: Request) -> JSONResponse:
-        """Return the agents status for this agent."""
-        return JSONResponse({"status": "ok", "agent": self.persona.name})
+    async def agents_status(self, request: Request) -> JSONResponse:
+        """Return the agents status for this agent and all sub-agents.
+
+        Returns:
+            JSONResponse with format:
+            {
+                "root": {
+                    "name": str,
+                    "healthy": bool
+                },
+                "sub_agents": {
+                    "agent_name": {
+                        "healthy": bool,
+                        "error": str
+                    },
+                    ...
+                }
+            }
+        """
+        # Root agent is healthy if we can respond to this request
+        root_info = {
+            "name": self.persona.name,
+            "healthy": True
+        }
+
+        # Check sub-agent health
+        sub_agents_status: dict[str, dict[str, Any]] = {}
+
+        if self.persona.sub_agents:
+            # Use httpx.AsyncClient to check each sub-agent's health
+            async with httpx.AsyncClient() as client:
+                for sub_agent_name in self.persona.sub_agents:
+                    # Convert sub-agent name to service name (lowercase, underscores to hyphens)
+                    service_name = sub_agent_name.lower().replace("_", "-")
+                    health_url = f"http://{service_name}:8001/health"
+
+                    try:
+                        # Try to get health status with 5s timeout
+                        response = await client.get(health_url, timeout=5.0)
+                        if response.status_code == 200:
+                            sub_agents_status[sub_agent_name] = {
+                                "healthy": True,
+                                "error": ""
+                            }
+                        else:
+                            sub_agents_status[sub_agent_name] = {
+                                "healthy": False,
+                                "error": f"HTTP {response.status_code}"
+                            }
+                    except httpx.ConnectError as e:
+                        sub_agents_status[sub_agent_name] = {
+                            "healthy": False,
+                            "error": "Connection refused"
+                        }
+                    except httpx.TimeoutException:
+                        sub_agents_status[sub_agent_name] = {
+                            "healthy": False,
+                            "error": "Connection timeout"
+                        }
+                    except Exception as e:
+                        sub_agents_status[sub_agent_name] = {
+                            "healthy": False,
+                            "error": str(e)[:50]  # Truncate long error messages
+                        }
+
+        return JSONResponse({
+            "root": root_info,
+            "sub_agents": sub_agents_status
+        })
 
     def agent_details(self, request: Request) -> JSONResponse:
-        """Return the agent details for this agent."""
-        return JSONResponse({"status": "ok", "agent": self.persona.name})
+        """Return detailed information about this agent.
+
+        Returns:
+            JSONResponse with format:
+            {
+                "name": str,
+                "type": str,
+                "description": str,
+                "model": str,
+                "temperature": float,
+                "tools": list[str],
+                "sub_agents": list[str],
+                "instructions_preview": str  # First 200 chars
+            }
+        """
+        # Extract tool names from the persona
+        tool_names = []
+        for tool in self.persona.tools:
+            if isinstance(tool, str):
+                tool_names.append(tool)
+            elif hasattr(tool, "name"):
+                tool_names.append(tool.name)
+
+        # Preview instructions (first 200 chars)
+        instructions_preview = self.persona.instructions[:200]
+        if len(self.persona.instructions) > 200:
+            instructions_preview += "..."
+
+        return JSONResponse({
+            "name": self.persona.name,
+            "type": self.persona.type,
+            "description": self.persona.description,
+            "model": self.persona.model,
+            "temperature": self.persona.temperature,
+            "tools": tool_names,
+            "sub_agents": self.persona.sub_agents,
+            "instructions_preview": instructions_preview
+        })
 
     def reset_session(self, *, session_id: str | None = None) -> None:
         """Reset the ADK session for a fresh run (useful for external transcripts)."""
