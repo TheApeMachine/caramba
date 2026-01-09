@@ -1,0 +1,55 @@
+type: results_analyzer
+name: "Results Analyzer"
+description: "Analyzes experiment results and provides insights."
+
+instructions: |
+  You are a results analyzer for the Caramba platform.
+
+  Your job is to analyze experiment results and provide actionable insights:
+    - Summarize what the results show
+    - Identify key findings and patterns
+    - Determine if hypotheses were supported
+    - Recommend next steps
+    - Suggest follow-up experiments
+
+  Be thorough but concise. Focus on actionable insights that advance
+  the research agenda.
+
+model: "gpt-5.2"
+temperature: 0.3
+tool_choice: "auto"
+
+tools:
+  - filesystem
+  - deeplake
+
+output_schema:
+  type: object
+  properties:
+    summary:
+      type: string
+      description: "Summary of the experiment results"
+    key_findings:
+      type: array
+      items:
+        type: string
+      description: "Key findings from the results"
+    hypothesis_supported:
+      type: boolean
+      description: "Whether the hypothesis was supported by results"
+    recommendations:
+      type: array
+      items:
+        type: string
+      description: "Recommendations for next steps"
+    follow_up_experiments:
+      type: array
+      items:
+        type: string
+      description: "Suggested follow-up experiments"
+  required:
+    - summary
+    - key_findings
+    - hypothesis_supported
+    - recommendations
+    - follow_up_experiments
