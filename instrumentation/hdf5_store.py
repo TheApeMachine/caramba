@@ -79,12 +79,20 @@ class H5Store:
 
     Layout:
       /steps/<step>/<name> : dataset for each tensor/array
+
+    Supports context manager protocol for safe resource cleanup.
     """
 
     path: Path
     enabled: bool = True
     compression: str | None = "gzip"
     compression_opts: int | None = 4
+
+    def __enter__(self) -> "H5Store":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
     def __post_init__(self) -> None:
         self.path = Path(self.path)
@@ -108,6 +116,9 @@ class H5Store:
             return
 
         try:
+            # Note: We intentionally don't use a context manager here because the file
+            # needs to stay open for the lifetime of the store. The close() method
+            # handles cleanup.
             self._fh = self._h5py.File(str(self.path), "a")
         except Exception as e:
             logger.error(f"Failed to open HDF5 file, continuing: {e}")

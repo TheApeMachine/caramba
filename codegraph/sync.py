@@ -39,6 +39,16 @@ def _delete_file_scope(g: Graph, *, file: str) -> None:
     g.query("MATCH (n) WHERE n.file = $file DETACH DELETE n", {"file": file})
 
 
+def _delete_files_batch(g: Graph, *, files: list[str]) -> None:
+    """Batch delete all nodes anchored to the given files.
+
+    This is more efficient than deleting file-by-file (avoids N+1 query pattern).
+    """
+    if not files:
+        return
+    g.query("MATCH (n) WHERE n.file IN $files DETACH DELETE n", {"files": files})
+
+
 def _upsert_nodes(g: Graph, label: str, nodes: list[Node]) -> None:
     if not nodes:
         return
@@ -96,9 +106,9 @@ def sync_files_to_falkordb(
             g.query("MATCH (n) DETACH DELETE n")
 
         # If a file list is provided, scope deletes to those files. Otherwise assume full rebuild.
+        # Use batch delete to avoid N+1 query pattern.
         if files:
-            for f in sorted(set(files)):
-                _delete_file_scope(g, file=f)
+            _delete_files_batch(g, files=sorted(set(files)))
 
         by_label: dict[str, list[Node]] = defaultdict(list)
         for n in nodes:

@@ -232,11 +232,11 @@ class NGramCacheLogitsLayer(nn.Module):
                                     out = out.clone()
                                     out_cloned = True
                                 row = out[0, t, :]
-                                row.index_add_(
-                                    0,
-                                    torch.tensor(idxs, device=out.device, dtype=torch.long),
-                                    torch.tensor(vals, device=out.device, dtype=out.dtype),
-                                )
+                                # Pre-create tensors outside the hot path to reduce allocations.
+                                # Note: For very long sequences, consider batching these operations.
+                                idx_tensor = torch.tensor(idxs, device=out.device, dtype=torch.long)
+                                val_tensor = torch.tensor(vals, device=out.device, dtype=out.dtype)
+                                row.index_add_(0, idx_tensor, val_tensor)
 
             # Write observation: current N-gram -> next token
             if t + 1 < int(T) and st.filled >= int(self.n):
