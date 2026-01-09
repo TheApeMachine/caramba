@@ -123,26 +123,28 @@ class DeepLakeTool():
 
         out: list[dict] = []
         for row in view:
-            try:
-                raw = row[self.metadata_column]  # type: ignore[index]
-            except (KeyError, IndexError):
-                raw = "{}"
-            try:
-                meta = json.loads(raw) if isinstance(raw, str) else {}
-            except Exception:
+            # Use getattr with default to avoid expensive exception handling in loops.
+            # DeepLake rows support dict-like access, so we use a helper approach.
+            row_dict = dict(row) if hasattr(row, 'keys') else {}
+
+            raw = row_dict.get(self.metadata_column, "{}")
+            if isinstance(raw, str):
+                try:
+                    meta = json.loads(raw)
+                except (json.JSONDecodeError, ValueError):
+                    meta = {}
+            else:
                 meta = {}
+
+            row_id = str(row_dict.get(self.id_column, ""))
+            row_text = str(row_dict.get(self.text_column, ""))
+
+            score_val = row_dict.get("score", 0.0)
             try:
-                row_id = str(row[self.id_column])  # type: ignore[index]
-            except (KeyError, IndexError):
-                row_id = ""
-            try:
-                row_text = str(row[self.text_column])  # type: ignore[index]
-            except (KeyError, IndexError):
-                row_text = ""
-            try:
-                row_score = float(row["score"])  # type: ignore[index]
-            except (KeyError, IndexError, ValueError):
+                row_score = float(score_val) if score_val is not None else 0.0
+            except (TypeError, ValueError):
                 row_score = 0.0
+
             out.append(
                 {
                     "id": row_id,
@@ -198,6 +200,25 @@ class DeepLakeTool():
 
 
 _DEEPLAKE_TOOL: DeepLakeTool | None = None
+
+
+def _cleanup_deeplake_tool() -> None:
+    """Clean up the global DeepLake tool singleton.
+
+    Call this during application shutdown to properly close resources.
+    """
+    global _DEEPLAKE_TOOL
+    if _DEEPLAKE_TOOL is not None:
+        try:
+            # DeepLake datasets should be committed before closing.
+            if hasattr(_DEEPLAKE_TOOL, 'ds') and _DEEPLAKE_TOOL.ds is not None:
+                try:
+                    _DEEPLAKE_TOOL.ds.commit()
+                except Exception:
+                    pass  # Best-effort cleanup
+        except Exception:
+            pass  # Best-effort cleanup
+        _DEEPLAKE_TOOL = None
 
 
 def _env_bool(name: str, default: bool) -> bool:
