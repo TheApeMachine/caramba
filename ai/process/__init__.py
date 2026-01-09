@@ -13,6 +13,10 @@ if TYPE_CHECKING:
 
 class Process(ABC):
     """Base class for AI processes."""
+
+    # Maximum number of history messages to retain (prevents unbounded memory growth).
+    MAX_HISTORY_SIZE: int = 10000
+
     def __init__(self, agents: dict[str, Agent], name: str):
         self.agents: dict[str, Agent] = agents
         self.name = name
@@ -20,8 +24,15 @@ class Process(ABC):
         self.history: list[types.Content] = []
 
     def append_history(self, message: types.Content) -> None:
-        """Append a message to the history."""
+        """Append a message to the history with LRU eviction."""
         self.history.append(message)
+        # Evict oldest entries if history exceeds max size.
+        if len(self.history) > self.MAX_HISTORY_SIZE:
+            self.history = self.history[-self.MAX_HISTORY_SIZE:]
+
+    def clear_history(self) -> None:
+        """Clear the conversation history."""
+        self.history.clear()
 
     @abstractmethod
     async def run(self) -> None:

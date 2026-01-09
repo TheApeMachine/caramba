@@ -268,6 +268,9 @@ class InputBar(Vertical):
             """The InputBar that sent this message."""
             return self._control
 
+    # Maximum number of history entries to retain (prevents unbounded memory growth).
+    MAX_HISTORY_SIZE: int = 1000
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.history: list[str] = []
@@ -304,9 +307,12 @@ class InputBar(Vertical):
         if not value:
             return
 
-        # Add to history
+        # Add to history (with LRU eviction to prevent unbounded growth).
         if not self.history or self.history[-1] != value:
             self.history.append(value)
+            # Evict oldest entries if history exceeds max size.
+            if len(self.history) > self.MAX_HISTORY_SIZE:
+                self.history = self.history[-self.MAX_HISTORY_SIZE:]
         self.history_index = -1
 
         # Clear input
