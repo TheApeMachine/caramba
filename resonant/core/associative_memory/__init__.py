@@ -1,10 +1,10 @@
-"""Associative memory substrate for RMF.
+"""Associative memory
 
-This currently re-exports the reference phasor-coded associative memory that
-historically lived under the `synthnn` name.
+Exports the phase associative memory building block.
 """
 
-from synthnn.core.associative_memory import PhaseAssociativeMemory, RecallResult
+from resonant.core.associative_memory.memory import PhaseAssociativeMemory
+from resonant.core.associative_memory.types import RecallResult
 
 __all__ = ["PhaseAssociativeMemory", "RecallResult"]
 

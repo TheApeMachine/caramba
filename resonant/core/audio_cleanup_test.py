@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from synthnn.core.resonant_cleanup import ResonantCleanupConfig, cleanup_resonant_only, detect_artifacts_resonant
+from resonant.core.resonant_cleanup import ResonantCleanupConfig, cleanup_resonant_only, detect_artifacts_resonant
 
 
 class TestResonantAudioCleanup:

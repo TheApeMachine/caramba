@@ -12146,3 +12146,1366 @@ refused.
 localhost:6379. Connection refused.
 ✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
 refused.
+
+[2026-01-09T04:26:28Z] post-commit: syncing code graph
+repo=/Users/theapemachine/go/src/github.com/theapemachine/caramba
+falkor_uri=redis://localhost:6379
+files:
+adapter/__init__.py
+adapter/schema/__init__.py
+adapter/schema/base.py
+adapter/schema/loader.py
+adapter/state_dict/__init__.py
+adapter/state_dict/transformer.py
+ai/agent.py
+ai/persona.py
+ai/process/transcript_store.py
+ai/tools/__init__.py
+api/__init__.py
+api/app.py
+benchmark/__init__.py
+benchmark/accuracy.py
+benchmark/accuracy/__init__.py
+benchmark/accuracy/base.py
+benchmark/accuracy/task.py
+benchmark/accuracy/tasks/__init__.py
+benchmark/accuracy/tasks/arc_challenge.py
+benchmark/accuracy/tasks/arc_easy.py
+benchmark/accuracy/tasks/base.py
+benchmark/accuracy/tasks/boolq.py
+benchmark/accuracy/tasks/builder.py
+benchmark/accuracy/tasks/hellaswag.py
+benchmark/accuracy/tasks/piqa.py
+benchmark/accuracy/tasks/winogrande.py
+benchmark/accuracy/utils.py
+benchmark/behavior.py
+benchmark/context.py
+benchmark/context/__init__.py
+benchmark/context/base.py
+benchmark/runner.py
+caramba_api.py
+carmath/sketch.py
+cli.py
+collector/__init__.py
+collector/layer_stats.py
+collector/measurement/__init__.py
+collector/measurement/accuracy/__init__.py
+collector/measurement/accuracy/result.py
+collector/measurement/accuracy/task.py
+collector/measurement/base.py
+collector/measurement/context/__init__.py
+collector/measurement/context/base.py
+collector/measurement/context/decode.py
+collector/measurement/context/result.py
+collector/measurement/context/sweep.py
+compiler/validate.py
+config/eval.py
+config/layer.py
+config/manifest.py
+config/model.py
+config/persona.py
+config/persona_test.py
+config/target.py
+config/topology.py
+config/weight_init.py
+conftest.py
+core/error.py
+core/platform.py
+data/__init__.py
+data/auto.py
+data/auto_test.py
+data/base.py
+data/code_chunks.py
+data/code_chunks_test.py
+data/config.py
+data/datasets/__init__.py
+data/datasets/builder.py
+data/diffusion_vector.py
+data/error.py
+data/event_trace.py
+data/graph_npy.py
+data/graphs/__init__.py
+data/graphs/npy.py
+data/graphs/single.py
+data/icl_rule.py
+data/mosaic_synth.py
+data/npy.py
+data/npy_supervised.py
+data/random_tokens.py
+data/tensors.py
+data/tensors/__init__.py
+data/tensors/dataset.py
+data/tensors/npy_source.py
+data/tensors/safetensors_source.py
+data/tensors/source.py
+data/tensors/tensors_test.py
+data/tensors/utils.py
+data/tensors_test.py
+data/text_tokens.py
+data/token_dataset.py
+data/tokenizers/__init__.py
+data/tokenizers/base.py
+data/tokenizers/bpe.py
+data/tokenizers/bpe_eval.py
+data/tokenizers/bpe_test.py
+data/tokenizers/builder.py
+data/tokenizers/encoding.py
+data/tokenizers/hf_json.py
+data/tokenizers/huggingface.py
+data/tokenizers/tiktoken.py
+data/tokenizers/training.py
+data/tokens.py
+data/transforms.py
+data/transforms/__init__.py
+data/transforms/add_mask.py
+data/transforms/base.py
+data/transforms/cast_dtype.py
+data/transforms/compose.py
+data/transforms/gaussian_noise.py
+data/transforms/graph_batch.py
+data/transforms/rename_keys.py
+data/transforms/token_shift.py
+eval/logprob/__init__.py
+eval/logprob/completion/__init__.py
+eval/logprob/completion/base.py
+eval/logprob/completion/full_sequence.py
+eval/logprob/completion/windowed.py
+eval/logprob/scorer.py
+eval/suite.py
+eval/tokenizer.py
+eval/tokenizer_test.py
+experiment/group.py
+initializers/__init__.py
+initializers/base.py
+initializers/dba/__init__.py
+initializers/dba/base.py
+initializers/dba/random.py
+initializers/dba/svd.py
+initializers/gpt2.py
+initializers/registry.py
+instrumentation/wandb_writer.py
+layer/attention/__init__.py
+layer/attention/decoupled/layer.py
+layer/attention/decoupled/setup.py
+layer/attention/standard/layer.py
+layer/attention_test.py
+layer/diffusion/__init__.py
+loader/checkpoint.py
+loader/checkpoint/__init__.py
+loader/checkpoint/base.py
+loader/checkpoint/builder.py
+loader/checkpoint/error.py
+loader/checkpoint/hf.py
+loader/checkpoint/pytorch.py
+loader/checkpoint/safetensors.py
+loader/checkpoint/sharded.py
+loader/hf.py
+loader/llama_upcycle.py
+loader/state_reader.py
+model/diffusion_codegen_system.py
+model/language_model_system.py
+optimizer/adamw_master.py
+optimizer/adamw_triton_kernels.py
+optimizer/adamw_triton_test.py
+optimizer/attention.py
+optimizer/dba_attention_triton.py
+optimizer/dba_attention_triton_test.py
+optimizer/flash_attention_triton.py
+optimizer/flash_attention_triton_test.py
+optimizer/fused_attention.py
+optimizer/fused_ssm.py
+optimizer/kernel_registry.py
+optimizer/kernels.py
+optimizer/kernels_decoupled.py
+optimizer/kernels_nowcast.py
+optimizer/kernels_ssm.py
+optimizer/layernorm_triton_kernels.py
+optimizer/layernorm_triton_test.py
+optimizer/lion_test.py
+optimizer/metal/adamw.py
+optimizer/metal/attention_jit.py
+optimizer/metal/attention_training.py
+optimizer/metal/attention_training_test.py
+optimizer/metal/dba_decode.py
+optimizer/metal/dba_decode_test.py
+optimizer/metal/jit.py
+optimizer/metal/layernorm.py
+optimizer/metal/layernorm_autograd_test.py
+optimizer/metal/layernorm_test.py
+optimizer/metal/lion.py
+optimizer/metal/lion_test.py
+optimizer/metal/rmsnorm.py
+optimizer/metal/rmsnorm_test.py
+optimizer/metal/rope.py
+optimizer/metal/rope_test.py
+optimizer/metal/ssm.py
+optimizer/metal/ssm_test.py
+optimizer/rmsnorm_triton_kernels.py
+optimizer/rmsnorm_triton_test.py
+optimizer/rope_triton_kernels.py
+optimizer/rope_triton_test.py
+optimizer/runtime.py
+optimizer/ssm_triton_kernels_bwd.py
+optimizer/ssm_triton_kernels_fwd.py
+optimizer/ssm_triton_test.py
+optimizer/triton_runtime.py
+orchestrator/nowcast.py
+prepare_fineweb.py
+research/dba/generate_wandb_training_curves.py
+resonant/__init__.py
+resonant/core/artifacts.py
+resonant/core/audio_cleanup.py
+resonant/core/cleanup_report.py
+resonant/core/resonant_cleanup.py
+runtime/engine/torch_engine.py
+runtime/plan.py
+runtime/plan/__init__.py
+runtime/plan/builder.py
+runtime/readiness.py
+runtime/readiness_test.py
+synthnn/core/__init__.py
+synthnn/core/artifacts.py
+synthnn/core/audio_cleanup.py
+synthnn/core/audio_cleanup_test.py
+synthnn/core/cleanup_report.py
+synthnn/core/resonant_cleanup.py
+synthnn/core/resonant_node.py
+tokenizer/__init__.py
+tokenizer/code_bpe.py
+tokenizer/code_bpe_test.py
+trainer/checkpoint_compare.py
+trainer/chunked_cross_entropy.py
+trainer/collectors/default.py
+trainer/collectors/default_test.py
+trainer/diffusion_codegen/generation.py
+trainer/diffusion_codegen/prompt.py
+trainer/diffusion_codegen/tokenizer_ops.py
+trainer/diffusion_codegen/train_context.py
+trainer/diffusion_codegen/train_stepper.py
+trainer/initializers/default.py
+trainer/initializers/default_test.py
+trainer/objectives.py
+trainer/standard.py
+trainer/steppers/global_orchestrated.py
+trainer/steppers/global_stepper.py
+trainer/train_dataloader/__init__.py
+trainer/train_dataloader/builder.py
+trainer/upcycle.py
+trainer/upcycle_eval.py
+trainer/verifiers/default.py
+tui/__init__.py
+tui/app.py
+tui/sidebars.py
+tui/viewport.py
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)

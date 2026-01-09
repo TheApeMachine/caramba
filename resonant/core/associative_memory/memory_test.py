@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from synthnn.core.associative_memory.memory import PhaseAssociativeMemory
+from resonant.core.associative_memory.memory import PhaseAssociativeMemory
 
 
 class TestPhaseAssociativeMemory:

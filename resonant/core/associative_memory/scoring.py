@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from synthnn.core.associative_memory.types import RecallResult, SelectionMode
+from resonant.core.associative_memory.types import RecallResult, SelectionMode
 
 
 @dataclass(frozen=True, slots=True)

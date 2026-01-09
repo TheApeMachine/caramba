@@ -9,10 +9,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from synthnn.core.phasor_math import PhasorMath
-from synthnn.core.resonant_network import ResonantNetwork
-from synthnn.core.resonant_node import ResonantNode
-from synthnn.core.associative_memory.state import StoredMemory
+from resonant.core.phasor_math import PhasorMath
+from resonant.core.resonant_network import ResonantNetwork
+from resonant.core.resonant_node import ResonantNode
+from resonant.core.associative_memory.state import StoredMemory
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,8 +3,8 @@
 This package is the preferred name for the resonant-phase components used to
 build Resonant Memory Fields (RMF).
 
-It currently re-exports the existing reference implementation that historically
-lived under the `synthnn` name.
+This package provides the reference resonant-phase implementation (formerly
+named `synthnn`).
 """
 
 from resonant.core import ResonantNetwork, ResonantNode

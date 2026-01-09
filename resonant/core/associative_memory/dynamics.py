@@ -10,8 +10,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from synthnn.core.phasor_math import PhasorMath
-from synthnn.core.resonant_network import ResonantNetwork
+from resonant.core.phasor_math import PhasorMath
+from resonant.core.resonant_network import ResonantNetwork
 
 
 @dataclass(frozen=True, slots=True)

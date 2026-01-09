@@ -10,13 +10,13 @@ import numbers
 
 import numpy as np
 
-from synthnn.core.associative_memory.dynamics import MemoryDynamics
-from synthnn.core.associative_memory.scoring import MemoryScorer
-from synthnn.core.associative_memory.serialization import MemorySerializer
-from synthnn.core.associative_memory.state import StoredMemory
-from synthnn.core.associative_memory.storage import MemoryStorage
-from synthnn.core.associative_memory.types import RecallResult
-from synthnn.core.phasor_math import PhasorMath
+from resonant.core.associative_memory.dynamics import MemoryDynamics
+from resonant.core.associative_memory.scoring import MemoryScorer
+from resonant.core.associative_memory.serialization import MemorySerializer
+from resonant.core.associative_memory.state import StoredMemory
+from resonant.core.associative_memory.storage import MemoryStorage
+from resonant.core.associative_memory.types import RecallResult
+from resonant.core.phasor_math import PhasorMath
 
 
 @dataclass

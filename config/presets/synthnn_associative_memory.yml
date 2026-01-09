@@ -30,9 +30,9 @@ targets:
       config: {}
     trainer:
       ref: trainer.synthnn_associative_memory_demo
-      impl: python:caramba.lab.synthnn.associative_memory_demo:AssociativeMemoryDemoTrainer
+      impl: python:caramba.lab.resonant.associative_memory_demo:AssociativeMemoryDemoTrainer
       config:
-        output_dir: artifacts/synthnn/associative_memory
+        output_dir: artifacts/resonant/associative_memory
         seed: 123
         units: 64
         patterns: 5

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from synthnn.core.associative_memory.state import StoredMemory
+from resonant.core.associative_memory.state import StoredMemory
 
 
 class MemorySerializer:

@@ -30,7 +30,7 @@ targets:
       config: {}
     trainer:
       ref: trainer.resonant_memory_field_demo
-      impl: python:caramba.lab.synthnn.associative_memory_demo:AssociativeMemoryDemoTrainer
+      impl: python:caramba.lab.resonant.associative_memory_demo:AssociativeMemoryDemoTrainer
       config:
         output_dir: artifacts/resonant_memory_field/demo
         seed: 123

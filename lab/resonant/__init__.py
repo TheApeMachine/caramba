@@ -1,5 +1,6 @@
-"""Resonant Memory Field (RMF) lab demos.
+"""Resonant lab
 
-These demos are the preferred naming over the historical `lab.synthnn` path.
+Contains small manifest-runnable demo trainers/datasets for resonant-phase
+building blocks (associative memory, resonant networks, etc.).
 """
 

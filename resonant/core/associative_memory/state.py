@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from synthnn.core.resonant_network import ResonantNetwork
+from resonant.core.resonant_network import ResonantNetwork
 
 
 @dataclass(slots=True, eq=False)
