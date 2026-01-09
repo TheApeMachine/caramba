@@ -8,8 +8,6 @@ OpenHands SDK for contained development.
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
 from typing import Any
 
 from google.genai import types
@@ -18,6 +16,7 @@ from pydantic import BaseModel, Field
 from caramba.ai.agent import Agent
 from caramba.ai.process import Process
 from caramba.ai.process.development.openhands_workspace import OpenHandsWorkspace, DevelopmentResult
+from caramba.config.agents import DevelopmentProcessConfig
 from caramba.console import logger
 
 
@@ -38,18 +37,6 @@ class CodeReviewOutput(BaseModel):
     issues: list[str] = Field(description="List of issues found in the code")
     suggestions: list[str] = Field(description="Suggestions for improvement")
     security_concerns: list[str] = Field(description="Any security concerns identified")
-
-
-@dataclass
-class DevelopmentConfig:
-    """Configuration for the development process."""
-
-    repo_url: str
-    base_branch: str = "main"
-    branch_prefix: str = "feature"
-    test_command: str = "python -m pytest -q"
-    max_iterations: int = 3
-    auto_pr: bool = True
 
 
 class DevelopmentProcess(Process):
@@ -73,10 +60,10 @@ class DevelopmentProcess(Process):
         self,
         *,
         agents: dict[str, Agent],
-        config: DevelopmentConfig,
+        process: DevelopmentProcessConfig,
     ) -> None:
         super().__init__(agents, name="development")
-        self.config = config
+        self.process = process
         self.workspace: OpenHandsWorkspace | None = None
 
     async def run(self, feature_request: str) -> DevelopmentResult:
@@ -107,8 +94,8 @@ class DevelopmentProcess(Process):
             # Step 3: Set up OpenHands workspace
             logger.header("Development", "Setting up development workspace...")
             self.workspace = OpenHandsWorkspace(
-                repo_url=self.config.repo_url,
-                base_branch=self.config.base_branch,
+                repo_url=self.process.repo_url,
+                base_branch=self.process.base_branch,
             )
             self.workspace.setup()
 
@@ -126,17 +113,17 @@ class DevelopmentProcess(Process):
 
             # Step 6: Run tests
             logger.header("Development", "Running tests...")
-            test_success, test_output = self.workspace.run_tests(self.config.test_command)
+            test_success, test_output = self.workspace.run_tests(self.process.test_command)
             result.test_output = test_output
 
             if not test_success:
                 # Try to fix test failures
-                for iteration in range(self.config.max_iterations):
+                for iteration in range(self.process.max_iterations):
                     logger.info(f"Attempting to fix test failures (iteration {iteration + 1})...")
                     fix_result = self.workspace.implement_changes(
                         f"The tests failed with this output:\n{test_output}\n\nPlease fix the issues."
                     )
-                    test_success, test_output = self.workspace.run_tests(self.config.test_command)
+                    test_success, test_output = self.workspace.run_tests(self.process.test_command)
                     if test_success:
                         break
 
@@ -151,7 +138,7 @@ class DevelopmentProcess(Process):
                 return result
 
             # Step 8: Commit and create PR
-            if self.config.auto_pr and test_success:
+            if self.process.auto_pr and test_success:
                 logger.header("Development", "Creating pull request...")
                 commit_message = f"feat: {analysis.feature_description[:50]}"
                 self.workspace.commit_and_push(branch_name, commit_message)
@@ -238,7 +225,7 @@ class DevelopmentProcess(Process):
         slug = feature_description.lower()[:40]
         slug = "".join(c if c.isalnum() or c == " " else "" for c in slug)
         slug = slug.strip().replace(" ", "-")
-        return f"{self.config.branch_prefix}/{slug}"
+        return f"{self.process.branch_prefix}/{slug}"
 
     def build_implementation_task(self, analysis: FeatureAnalysis, context: str) -> str:
         """Build the implementation task for OpenHands."""

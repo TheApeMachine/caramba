@@ -219,6 +219,51 @@ class MultiplexChatProcessConfig(BaseModel):
         return self
 
 
+class DevelopmentProcessConfig(BaseModel):
+    """Configuration for AI-driven feature development using OpenHands SDK."""
+
+    type: Literal["development"] = "development"
+    name: str | None = None
+
+    # Repository configuration
+    repo_url: str = Field(description="Git repository URL to work on")
+    base_branch: str = Field(default="main", description="Base branch for development")
+    branch_prefix: str = Field(default="feature", description="Prefix for feature branches")
+
+    # Test configuration
+    test_command: str = Field(default="python -m pytest -q", description="Command to run tests")
+
+    # Process configuration
+    max_iterations: int = Field(default=3, ge=1, description="Max iterations to fix test failures")
+    auto_pr: bool = Field(default=True, description="Automatically create PR on success")
+
+    @model_validator(mode="after")
+    def _default_name(self) -> "DevelopmentProcessConfig":
+        if not self.name:
+            self.name = self.type
+        return self
+
+
+class ManifestProcessConfig(BaseModel):
+    """Configuration for AI-driven experiment management process."""
+
+    type: Literal["manifest"] = "manifest"
+    name: str | None = None
+
+    # Directory configuration
+    presets_dir: str = Field(default="config/presets", description="Directory for manifest presets")
+    artifacts_dir: str = Field(default="artifacts", description="Directory for experiment artifacts")
+
+    # Research loop configuration
+    max_iterations: int = Field(default=3, ge=1, description="Max iterations for research loop")
+
+    @model_validator(mode="after")
+    def _default_name(self) -> "ManifestProcessConfig":
+        if not self.name:
+            self.name = self.type
+        return self
+
+
 AgentProcessConfig: TypeAlias = Annotated[
     DiscussionProcessConfig
     | PaperWriteProcessConfig
@@ -228,7 +273,9 @@ AgentProcessConfig: TypeAlias = Annotated[
     | CodeGraphSyncProcessConfig
     | PlatformImproveProcessConfig
     | PaperCollectArtifactsProcessConfig
-    | MultiplexChatProcessConfig,
+    | MultiplexChatProcessConfig
+    | DevelopmentProcessConfig
+    | ManifestProcessConfig,
     Field(discriminator="type"),
 ]
 

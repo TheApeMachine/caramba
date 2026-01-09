@@ -16,6 +16,7 @@ from caramba.ai.agent import Agent
 from caramba.ai.process import Process
 from caramba.ai.process.manifest.builder import ManifestBuilder, ManifestSpec
 from caramba.ai.process.manifest.collector import ResultsCollector, ResultsSummary
+from caramba.config.agents import ManifestProcessConfig
 from caramba.console import logger
 from caramba.experiment.runner import run_from_manifest_path
 
@@ -56,12 +57,12 @@ class ManifestProcess(Process):
         self,
         *,
         agents: dict[str, Agent],
-        presets_dir: str = "config/presets",
-        artifacts_dir: str = "artifacts",
+        process: ManifestProcessConfig,
     ) -> None:
         super().__init__(agents, name="manifest")
-        self.builder = ManifestBuilder(presets_dir)
-        self.collector = ResultsCollector(artifacts_dir)
+        self.process = process
+        self.builder = ManifestBuilder(process.presets_dir)
+        self.collector = ResultsCollector(process.artifacts_dir)
 
     async def propose_experiment(self, research_goal: str) -> ExperimentProposal:
         """Have the research lead propose an experiment based on a research goal.
@@ -197,7 +198,7 @@ class ManifestProcess(Process):
         self,
         research_goal: str,
         *,
-        max_iterations: int = 3,
+        max_iterations: int | None = None,
     ) -> list[dict[str, Any]]:
         """Run an iterative research loop.
 
@@ -213,9 +214,10 @@ class ManifestProcess(Process):
         """
         iterations: list[dict[str, Any]] = []
         current_goal = research_goal
+        max_iters = max_iterations if max_iterations is not None else self.process.max_iterations
 
-        for i in range(max_iterations):
-            logger.header("Research Loop", f"Iteration {i + 1}/{max_iterations}")
+        for i in range(max_iters):
+            logger.header("Research Loop", f"Iteration {i + 1}/{max_iters}")
 
             # Propose experiment
             logger.info("Proposing experiment...")
