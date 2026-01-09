@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from caramba.optimizer.runtime import METAL_BUILD_TOOLS_AVAILABLE, METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_build_tools_available, metal_supported
 
 
 def _this_dir() -> Path:
@@ -135,11 +135,11 @@ def load_caramba_metal_ops(*, verbose: bool = False) -> Any:
     if _CACHED_ERR is not None:
         raise _CACHED_ERR
 
-    if not METAL_SUPPORTED:
+    if not metal_supported():
         err = RuntimeError("Metal/MPS is not supported on this runtime")
         _CACHED_ERR = err
         raise err
-    if not METAL_BUILD_TOOLS_AVAILABLE:
+    if not metal_build_tools_available():
         err = RuntimeError(
             "Metal build tools unavailable.\n\n"
             "caramba's fused Metal kernels require Xcode's Metal toolchain (`metal`, `metallib`).\n"

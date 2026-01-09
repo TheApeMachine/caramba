@@ -1,33 +1,57 @@
-"""Automatic dataset selection based on token file format.
+"""Automatic dataset builder
 
-Why this exists:
-- Caramba experiments may point at `.npy` (preferred) or legacy `.tokens` files.
-- Call sites should not have to special-case each format.
+Selects the appropriate dataset implementation based on file extension, making
+it easy to load different data formats without manually choosing the right class.
+This factory pattern keeps data loading code simple and extensible.
 """
-
 from __future__ import annotations
 
-import logging
-from pathlib import Path
+from typing import cast
 
 from torch.utils.data import Dataset
 
+from caramba.data.config import DatasetConfig, DatasetType
 from caramba.data.npy import NpyDataset
-from caramba.data.text_tokens import TextTokensDataset
+from caramba.console.logger import Logger
 from caramba.runtime.tensordict_utils import TensorDictBase
 
-logger = logging.getLogger(__name__)
+logger: Logger = Logger()
 
 
-def build_token_dataset(*, path: str | Path, block_size: int) -> Dataset[TensorDictBase]:
-    """Build a dataset appropriate for the given path."""
-    p = Path(path)
-    suf = p.suffix.lower()
-    if suf == ".npy":
-        return NpyDataset(str(p), block_size=int(block_size))
-    if suf in (".tokens", ".txt"):
-        return TextTokensDataset(str(p), block_size=int(block_size))
-    # Default to NPY behavior for unknown suffixes (common in manifests).
-    logger.warning("Unexpected file suffix '%s' for %s, defaulting to NpyDataset", suf, p)
-    return NpyDataset(str(p), block_size=int(block_size))
+class AutoDataset(Dataset):
+    """Auto dataset builder
+
+    Selects the appropriate dataset implementation based on file extension, making
+    it easy to load different data formats without manually choosing the right class.
+    This factory pattern keeps data loading code simple and extensible.
+    """
+    def __init__(self, config: DatasetConfig):
+        self.config = config
+        self._dataset: Dataset[TensorDictBase] | None = None
+
+    def build(self) -> Dataset[TensorDictBase]:
+        """Build token dataset from path
+
+        Inspects the file extension and returns the appropriate dataset class,
+        eliminating the need to know which dataset type handles which format.
+        """
+        match self.config.type:
+            case DatasetType.NPY:
+                return NpyDataset(self.config.source, block_size=self.config.tokens)
+            case _:
+                raise ValueError(f"Unsupported dataset type {self.config.type!r}")
+
+    def __len__(self) -> int:
+        """Get dataset length."""
+        if self._dataset is None:
+            self._dataset = self.build()
+        # Type cast: we know build() returns NpyDataset which implements __len__
+        dataset = cast(NpyDataset, self._dataset)
+        return len(dataset)
+
+    def __getitem__(self, index: int) -> TensorDictBase:
+        """Get item by index."""
+        if self._dataset is None:
+            self._dataset = self.build()
+        return self._dataset[index]
 

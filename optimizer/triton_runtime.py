@@ -10,13 +10,9 @@ Keep this module to avoid breaking imports.
 from __future__ import annotations
 
 from caramba.optimizer.runtime import (
-    TRITON_AVAILABLE,
-    triton_decoupled_q4q8q4_available,
-    triton_ssm_available,
+    triton_supported,
 )
 
 __all__ = [
-    "TRITON_AVAILABLE",
-    "triton_decoupled_q4q8q4_available",
-    "triton_ssm_available",
+    "triton_supported",
 ]

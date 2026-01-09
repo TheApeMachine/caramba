@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from caramba.optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_supported
 
 from .jit import load_caramba_metal_ops
 
@@ -21,7 +21,7 @@ def metal_dba_decode_available() -> bool:
     Note: this answers "can we run/build it" (Darwin + MPS). The actual extension
     may still fail to build depending on the local toolchain.
     """
-    return bool(METAL_SUPPORTED and torch.backends.mps.is_available())
+    return metal_supported()
 
 
 def _squeeze_q(q: Tensor) -> Tensor:

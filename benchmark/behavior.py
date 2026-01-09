@@ -22,7 +22,7 @@ from caramba.config.benchmark import BehaviorBenchmarkConfig
 from caramba.config.eval import EvalCase, EvalThresholds, EvalVerifyConfig
 from caramba.console import logger
 from caramba.eval.suite import run_eval_verify
-from caramba.eval.tokenizer import build_tokenizer
+from caramba.data.tokenizers.builder import TokenizerBuilder
 from caramba.instrumentation.viz import TrainingVizContext
 from caramba.layer.attention import AttentionLayer
 
@@ -302,7 +302,7 @@ class BehaviorBenchmark:
             logger.info("Attention dump enabled, but no matching cases selected.")
             return
 
-        tok = build_tokenizer(self.config.tokenizer)
+        tok = TokenizerBuilder().build(self.config.tokenizer)
         max_tokens = int(getattr(self.config, "dump_attention_max_tokens", 96))
         max_heads = int(getattr(self.config, "dump_attention_max_heads", 4))
         anchor = str(getattr(self.config, "dump_attention_anchor", "A7"))

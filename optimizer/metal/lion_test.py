@@ -3,14 +3,11 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_supported
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_metal_lion_step_matches_reference() -> None:
-    if not torch.backends.mps.is_available():
-        pytest.skip("torch.backends.mps is not available")
-
     # Build/load the extension; if the toolchain isn't present, skip rather than fail.
     try:
         from caramba.optimizer.metal.jit import load_caramba_metal_ops

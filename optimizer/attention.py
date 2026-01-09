@@ -19,6 +19,8 @@ from torch._dynamo import is_compiling as _dynamo_is_compiling
 
 from caramba.optimizer.kernel_registry import KERNELS
 from caramba.console import logger
+from caramba.optimizer.flash_attention_triton import FlashAttention
+from caramba.optimizer.metal.attention_training import MetalAttentionTraining
 
 
 class AttentionTraining:
@@ -127,8 +129,6 @@ class AttentionTraining:
         if isinstance(cached, str):
             return cached
 
-        from caramba.optimizer.flash_attention_triton import FlashAttention
-
         def triton_fn(qi: Tensor, ki: Tensor, vi: Tensor) -> Tensor:
             return FlashAttention().run(q=qi, k=ki, v=vi, causal=bool(causal), scale=float(scale), dropout_p=0.0)
 
@@ -158,7 +158,16 @@ class AttentionTraining:
             bool(KERNELS.cuda_available and KERNELS.triton_available),
             msg="CUDA attention training requires Triton kernels validated at startup.",
         )
-        backend = self._select_cuda_backend(q=q, k=k, v=v, causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p))
+
+        backend = self._select_cuda_backend(
+            q=q,
+            k=k,
+            v=v,
+            causal=bool(causal),
+            scale=float(scale),
+            dropout_p=float(dropout_p),
+        )
+
         if backend == "sdpa":
             return F.scaled_dot_product_attention(
                 q,
@@ -169,13 +178,14 @@ class AttentionTraining:
                 is_causal=bool(causal),
                 scale=float(scale),
             )
-        from caramba.optimizer.flash_attention_triton import FlashAttention
 
         return FlashAttention().run(q=q, k=k, v=v, causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p))
 
     def _run_mps(self, *, q: Tensor, k: Tensor, v: Tensor, causal: bool, scale: float, dropout_p: float) -> Tensor:
-        self._require(bool(KERNELS.mps_available), msg="MPS attention training requires torch.backends.mps to be available.")
-        from caramba.optimizer.metal.attention_training import MetalAttentionTraining
+        self._require(
+            cond=bool(KERNELS.mps_available),
+            msg="MPS attention training requires torch.backends.mps to be available."
+        )
 
         return MetalAttentionTraining().run(
             q=q,
@@ -207,9 +217,11 @@ class AttentionTraining:
             dropout_p: dropout probability (mask is regenerated from seed in backward)
         """
         self._validate_common(q=q, k=k, v=v, attn_mask=attn_mask, dropout_p=float(dropout_p))
+
         if q.device.type == "cuda":
             return self._run_cuda(q=q, k=k, v=v, causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p))
         if q.device.type == "mps":
             return self._run_mps(q=q, k=k, v=v, causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p))
+
         raise RuntimeError(f"AttentionTraining: unsupported device.type={q.device.type!r}.")
 

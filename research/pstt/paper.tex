@@ -1,0 +1,296 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath, amssymb}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{natbib}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+\newcommand{\system}{PSTT}
+\newcommand{\SystemName}{Prosody-Synchronous Trust-Preserving Translation}
+
+\title{\SystemName{} (\system): A Contract for Flow-First Conversational Mediation}
+
+% TODO: Replace author block later (or use an ACL/CHI template).
+\author{
+Anonymous Author(s)\\
+}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We propose \SystemName{} (\system), a \emph{flow-first} speech-to-speech mediation framework for informal multilingual conversation.
+Unlike conventional translation systems optimized primarily for semantic fidelity, \system treats conversation as a composite of (i) propositional content, (ii) prosodic timing and turn-taking structure, and (iii) paralinguistic signals such as laughter, fillers, and hesitation.
+We formalize a \emph{conversational mediation contract}: a single governing principle, a failure taxonomy that distinguishes human-like noise from trust-breaking errors, and guardrails that prohibit predictive commitments in high-risk semantic regions (negation, quantities, names, commitments).
+We further provide a feasibility map that decomposes the contract into known components (streaming ASR, incremental/simultaneous MT, prosody-conditioned synthesis, paralinguistic detection, confidence estimation) and outline evaluation protocols (including Wizard-of-Oz studies) focused on \emph{trust} and \emph{prosodic synchrony} rather than verbatim adequacy alone.
+\end{abstract}
+
+\section{Introduction}
+Speech translation has rapidly advanced from cascaded pipelines to end-to-end models, and from offline translation to low-latency \emph{simultaneous} settings \citep{sperber2020speech, ma-etal-2019-stacl, ren-etal-2020-simulspeech}.
+Yet everyday conversation is not merely a sequence of semantic propositions.
+Humans manage turn-taking with fine temporal precision \citep{Sacks1974a}, use disfluencies and self-repair as normal interactional tools \citep{Shriberg2001, schegloff1977preference}, and rely on paralinguistic cues (laughter, fillers, hesitation) to regulate rapport and intent \citep{Truong2007, Kaushik2015Laughter}.
+
+This paper frames a distinct target: \emph{trusted, informal, low-stakes multilingual conversation} where maintaining perceived human presence and conversational rhythm is often more important than verbatim completeness.
+In this regime, the most damaging failures are not minor paraphrases, but \emph{trust-breaking} errors: polarity flips (negation), fabricated specifics, false commitments, and speaker/intent misattribution.
+
+\paragraph{Contributions.}
+We contribute:
+\begin{itemize}[leftmargin=*, itemsep=0.25em]
+  \item A \textbf{conversational mediation contract} for flow-first real-time speech-to-speech mediation, including a signal model, a governing objective, and a failure taxonomy (acceptable vs.\ forbidden failures).
+  \item A set of \textbf{predictive guardrails} specifying when early generation is permitted and when it must be delayed, hedged, or de-specified.
+  \item A \textbf{feasibility map} connecting contract requirements to known technical methods in streaming ASR/MT/TTS, paralinguistic detection, and confidence estimation \citep{graves2012sequence, pmlr-v70-raffel17a, ma-etal-2019-stacl, li2021confidence}.
+  \item An \textbf{evaluation framework} emphasizing prosodic synchrony and trust, including Wizard-of-Oz protocols \citep{dahlback1993wizard, kelley1984iterative}.
+\end{itemize}
+
+\section{Problem Setting and Scope}
+\subsection{What \system is (and is not)}
+\system is not a general-purpose translator.
+It is a \emph{personality-preserving conversational mediator} for \textbf{trusted, informal} interactions where participants can tolerate small drift but not trust violations.
+We explicitly exclude high-stakes domains (legal, medical, financial, contractual) where even ``human-like'' uncertainty is unacceptable.
+
+\subsection{Interaction and channel model}
+We assume a dyadic (or small-group) setting where each participant speaks naturally in their own language, and receives mediated speech in that same language from the other side(s).
+In typical usage, each participant need not hear the target-language audio produced for their interlocutor; the system is therefore free to optimize the outgoing channel for the listener while keeping the speaker experience natural (e.g., via local audio routing or earbud playback).
+Any ``traceability'' UI (e.g., confidence indicators, flags) should be off-channel and optional, to avoid breaking conversational immersion.
+
+\subsection{Explicit non-goals}
+\system does \emph{not} guarantee verbatim translation, legal or factual precision, or suitability for official contexts.
+Conversational self-repair and mild vagueness are expected behaviors under the contract, not failures.
+
+\subsection{Operating constraints}
+\paragraph{Real time means prosodic synchrony.}
+We treat ``real time'' as maintaining turn-taking rhythm and overlap behavior, not merely minimizing end-to-end latency.
+The system should enter the channel at turn start, avoid unnatural silence, and preserve the timing of transition-relevance places (TRPs) \citep{Sacks1974a}.
+
+\paragraph{Selective slowdown is allowed.}
+Delays are acceptable \emph{locally} in high-risk semantic zones (negation, numbers, names, commitments), provided the interaction remains natural (e.g., through hedging, fillers, or partial framing).
+
+\section{Related Work}
+\subsection{Simultaneous and incremental translation}
+Simultaneous MT formalizes the quality--latency trade-off and motivates policies that interleave reading and writing \citep{gu2017learning, ma-etal-2019-stacl}.
+Streaming speech translation extends these ideas to speech, often using segmentation and wait-$k$-style constraints \citep{ren-etal-2020-simulspeech}.
+Monotonic attention provides a differentiable mechanism for online alignment \citep{pmlr-v70-raffel17a}.
+
+\subsection{Speech-to-speech translation}
+Direct speech-to-speech translation has been demonstrated in end-to-end settings \citep{jia2019direct, jia2021translatotron2}.
+These systems highlight feasibility, but are typically evaluated with text-centric metrics (e.g., BLEU) and often do not explicitly optimize for conversational trust and turn-taking naturalness.
+
+\subsection{Conversation structure: turn-taking and repair}
+Turn-taking is a core organizational principle of conversation \citep{Sacks1974a}.
+Self-repair is not an error mode to eliminate but a structured interactional mechanism \citep{schegloff1977preference}; disfluencies can be informative and context-sensitive \citep{Shriberg2001}.
+Modern dialogue systems model turn timing via continuous predictors and transformer-based models \citep{Skantze2017, ekstedt-skantze-2020-turngpt}.
+
+\subsection{Paralinguistic events and confidence}
+Automatic discrimination of laughter from speech is well studied \citep{Truong2007}, and joint laughter/filler detection has been explored in naturalistic audio \citep{Kaushik2015Laughter}.
+For guardrails, confidence estimation in ASR is crucial to prevent premature commitments \citep{li2021confidence}.
+
+\subsection{Interpreting theory and Wizard-of-Oz prototyping}
+Conference interpreting research emphasizes cognitive load and trade-offs between accuracy and timing \citep{gile2009basic}.
+Wizard-of-Oz methods are a pragmatic way to study interactional demands before full automation \citep{dahlback1993wizard, kelley1984iterative}.
+
+\section{A Conversational Mediation Contract}
+We formalize \system as a contract that constrains behavior in real time.
+The contract is intended to be implementable and falsifiable: every observed failure must be classifiable under the taxonomy below.
+
+\subsection{Governing principle}
+\begin{quote}
+\textbf{When forced to choose, \system must favor conversational flow and perceived human presence over semantic completeness, provided no hard semantic violations occur.}
+\end{quote}
+
+This principle shifts optimization from verbatim adequacy to \emph{safe mediation}: preserve rhythm and affect, but never fabricate commitments or polarity.
+
+\subsection{Signal model}
+We treat live speech as a layered signal:
+\begin{enumerate}[leftmargin=*, itemsep=0.25em]
+  \item \textbf{Linguistic content}: propositional meaning, requests, claims.
+  \item \textbf{Prosodic structure}: timing, rhythm, intonation, overlap.
+  \item \textbf{Paralinguistics}: laughter, sighs, fillers, hesitations, backchannels.
+  \item \textbf{Meta-conversational events}: self-repair, rephrasing, clarification.
+\end{enumerate}
+
+\paragraph{Translation rule.}
+Only linguistic content is translated; prosody and paralinguistics are preserved or mirrored; meta-conversational events are rendered naturally in the target language (not explained).
+
+\subsection{Prosodic lock-in}
+``Real time'' is operationalized as \emph{prosodic synchrony}: the mediated voice should begin promptly, track rhythm, and respect TRPs.
+The system is allowed to use non-lexical vocalizations (e.g., target-language-appropriate fillers or backchannels) to maintain presence when semantic content is unstable.
+
+\subsection{Failure taxonomy}
+We define three failure classes (Table~\ref{tab:failure-taxonomy}).
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}p{0.16\linewidth}p{0.78\linewidth}@{}}
+\toprule
+\textbf{Class} & \textbf{Description / examples} \\
+\midrule
+A (acceptable) &
+Natural conversational noise: mild paraphrase drift, vagueness, self-repair markers, brief rephrasing. \\
+\addlinespace
+B (tolerable) &
+Managed disruption: local slowdown in detail-heavy segments, hedging, partial framing that recovers naturally. \\
+\addlinespace
+C (forbidden) &
+Trust-breaking errors: negation/polarity flips, fabricated specifics, false commitments, identity or speaker misattribution, emotional polarity inversion in sensitive contexts. \\
+\bottomrule
+\end{tabular}
+\caption{Failure taxonomy for \system. The contract permits A, minimizes B, and forbids C.}
+\label{tab:failure-taxonomy}
+\end{table}
+
+\subsection{Prediction contract (guardrails)}
+Simultaneous systems often benefit from prediction/anticipation \citep{ma-etal-2019-stacl}.
+\system permits prediction only when error impact is low.
+
+\paragraph{Never predict (hard guardrails).}
+\begin{itemize}[leftmargin=*, itemsep=0.25em]
+  \item Negation and polarity markers (e.g., ``not'', ``never'')
+  \item Numbers, quantities, dates, times
+  \item Names and proper nouns (entities)
+  \item Commitments/approvals (``yes'', ``no'', ``I agree'', ``I will'')
+  \item Sensitive-domain content (health, money, legal commitments)
+\end{itemize}
+If these are unstable, the system must hold, hedge, or ask for clarification.
+Guardrails can be implemented via token- and segment-level confidence, NER, and risk classifiers \citep{lample2016neural, li2021confidence, morante2012modality}.
+
+\paragraph{Conditionally predict.}
+Discourse markers, politeness strategies, and clause framing can often be produced in a way that remains compatible with multiple future completions.
+
+\paragraph{Freely predict.}
+Prosodic timing, backchannels, and non-lexical ``presence'' cues can be produced early, since they rarely create Class C failures.
+
+\subsection{Translation gating for non-verbals}
+When laughter, dominant fillers, or hesitation are detected, translation output should be gated: no propositional content is emitted, but paralinguistic mirroring and timing continuity continue \citep{Truong2007, Kaushik2015Laughter}.
+This prevents ``over-translating humanity'' while preserving affect and conversational flow.
+
+\subsection{Context-sensitive conservatism}
+\system adapts conservatism based on conversational context:
+\begin{itemize}[leftmargin=*, itemsep=0.25em]
+  \item \textbf{Flow zones} (small talk, storytelling, low-specificity opinions): aggressive flow preservation, optimistic mediation.
+  \item \textbf{Detail zones} (names, numbers, logistics): selective slowdown and near-zero guessing.
+  \item \textbf{Sensitive zones} (health, money, family conflict, politics): expanded guardrails and tone neutrality.
+\end{itemize}
+This can be implemented as a risk-aware decoding policy conditioned on topic and confidence signals.
+
+\subsection{Repair and recovery semantics}
+\paragraph{Repair.}
+Repairs must be additive or reframing, consistent with the conversational preference for self-correction \citep{schegloff1977preference}.
+No apologies or system explanations occur in the mediated speech channel.
+
+\paragraph{Recovery.}
+After a rare hard correction, the system should revert to the last stable semantic state and re-enter with a clean utterance, prioritizing re-immersion over transparency.
+
+\section{Feasibility Map}
+The contract is only useful if each requirement maps to at least one plausible implementation technique.
+Table~\ref{tab:feasibility} summarizes a non-exhaustive mapping; \system's novelty lies primarily in \emph{coordinating} these components under the failure taxonomy, rather than inventing new primitives.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}p{0.32\linewidth}p{0.62\linewidth}@{}}
+\toprule
+\textbf{Contract requirement} & \textbf{Plausible methods (examples)} \\
+\midrule
+Prosodic lock-in (early turn entry, TRP timing) &
+Streaming ASR with partial hypotheses \citep{graves2012sequence}; turn-taking predictors \citep{Skantze2017, ekstedt-skantze-2020-turngpt}; low-latency synthesis. \\
+\addlinespace
+Signal separation (speech vs laughter/fillers) &
+Paralinguistic classifiers and laughter/filler detection \citep{Truong2007, Kaushik2015Laughter}. \\
+\addlinespace
+Never-predict guardrails (negation, entities, commitments) &
+Confidence estimation \citep{li2021confidence}; NER \citep{lample2016neural}; negation/modality modeling \citep{morante2012modality}. \\
+\addlinespace
+Local holding / hedging while speaking &
+SimulMT policies and incremental decoding \citep{gu2017learning, ma-etal-2019-stacl}. \\
+\addlinespace
+Human-like repair (additive, no system meta-talk) &
+Conversation-analytic repair structure \citep{schegloff1977preference}; incremental regeneration of recent clauses. \\
+\bottomrule
+\end{tabular}
+\caption{Feasibility map: each \system requirement maps to known methods.}
+\label{tab:feasibility}
+\end{table}
+
+\section{Architecture Sketch}
+We outline a minimal architecture consistent with the contract (Figure~\ref{fig:architecture}).
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\linewidth}{
+\small
+\textbf{Streaming ASR} $\rightarrow$ \textbf{Incremental MT} $\rightarrow$ \textbf{Commit / Guardrail Manager} $\rightarrow$ \textbf{Prosody \& Paralinguistic Planner} $\rightarrow$ \textbf{Low-latency TTS} \\
+\quad\quad\quad\quad\quad\quad\quad\quad\quad\quad\quad\quad
+\textbf{Paralinguistic / VAD classifiers} $\rightarrow$ gating signals
+}}
+\caption{A contract-aligned architecture sketch. Each block can be implemented with existing techniques; novelty lies in the policy logic that enforces the failure taxonomy.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Streaming ASR}
+Streaming ASR provides partial hypotheses with token-level uncertainty.
+RNN-Transducers \citep{graves2012sequence} and related streaming architectures enable low-latency decoding, which is a prerequisite for prosodic lock-in.
+
+\subsection{Incremental MT / SimulMT}
+Incremental MT can be implemented via fixed-latency policies such as wait-$k$ \citep{ma-etal-2019-stacl} or adaptive read/write policies \citep{gu2017learning}.
+Online alignment mechanisms, including monotonic attention, can reduce recomputation and support incremental commitment \citep{pmlr-v70-raffel17a}.
+
+\subsection{Commit manager and guardrails}
+The commit manager decides which target tokens are safe to emit now versus which must be delayed, hedged, or de-specified.
+Inputs include:
+\begin{itemize}[leftmargin=*, itemsep=0.25em]
+  \item token/segment confidence (ASR and MT),
+  \item entity and number detection,
+  \item negation risk markers,
+  \item domain/sensitivity classifiers,
+  \item dialogue state (last stable semantic state).
+\end{itemize}
+
+\subsection{Prosody and paralinguistic planner}
+Prosody and paralinguistics are first-class outputs.
+When propositional content is gated, the system can still produce appropriate presence cues (e.g., acknowledgments, hesitation markers) to preserve synchrony without risking Class C failures.
+
+\section{Evaluation Framework}
+\subsection{What to measure}
+We argue for evaluation targets beyond adequacy/fluency:
+\begin{itemize}[leftmargin=*, itemsep=0.25em]
+  \item \textbf{Class C rate}: frequency of forbidden failures (polarity flips, false commitments, fabricated specifics, misattribution).
+  \item \textbf{Prosodic synchrony}: deviation in onset timing and TRP alignment; overlap/gap statistics relative to human baselines \citep{Sacks1974a}.
+  \item \textbf{Conversational naturalness}: subjective ratings of ``human presence'' and ``flow''.
+  \item \textbf{Recovery quality}: how quickly interaction returns to smooth flow after disruptions.
+\end{itemize}
+
+\subsection{Protocols}
+\paragraph{Wizard-of-Oz (WoZ).}
+WoZ studies can validate the contract and collect interaction data before full automation \citep{dahlback1993wizard, kelley1984iterative}.
+A human mediator can follow the contract rules (including guardrails) to establish human tolerance thresholds for hedging, delays, and repairs.
+
+\paragraph{Incremental technical MVP.}
+After WoZ, a narrow technical MVP (single language pair, limited domains) can test whether automatic components can satisfy the Class C constraints under realistic latency.
+
+\section{Limitations and Ethical Considerations}
+The contract explicitly excludes high-stakes domains.
+Even in low-stakes contexts, voice preservation in direct speech-to-speech translation introduces misuse risks, and prior work has proposed mitigations \citep{jia2021translatotron2}.
+We emphasize that the goal is trusted informal communication, not authoritative translation.
+
+\section{Conclusion}
+We presented \system, a contract-driven framing for flow-first conversational mediation.
+By separating acceptable conversational noise from forbidden trust-breaking failures and by formalizing guardrails for prediction, \system offers a practical target for building real-time multilingual mediation that feels human without pretending to be perfect.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

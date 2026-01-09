@@ -201,12 +201,8 @@ class WandBWriter:
         if not self.enabled or self.run is None:
             return
         try:
-            pfx = str(prefix or "")
-            if pfx:
-                payload = {f"{pfx}/{k}": float(v) for k, v in scalars.items()}
-            else:
-                # Legacy compatibility: allow flat keys when prefix is empty.
-                payload = {str(k): float(v) for k, v in scalars.items()}
+            pfx = str(prefix or "").strip() or "metrics"
+            payload = {f"{pfx}/{k}": float(v) for k, v in scalars.items()}
             # W&B requires monotonically increasing steps within a run.
             # Some components (e.g. verifiers) log "summary-ish" metrics at step=0
             # after training has already logged many steps. Clamp to a monotonic

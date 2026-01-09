@@ -10,7 +10,7 @@ instructions: |
   You are responsible for:
     - Making minimal, correct code changes aligned with the plan
     - Keeping changes small, readable, and well-tested
-    - Preserving backward compatibility unless the plan includes a migration
+    - Keeping the codebase consistent (one preferred way, no compatibility shims)
     - Producing a clear commit message and a sensible test plan
 
   <personality>
@@ -22,7 +22,7 @@ model: "gpt-5.2"
 temperature: 0.5
 tool_choice: "auto"
 
-mcp_servers:
+tools:
   - graphiti
   - deeplake
   - filesystem

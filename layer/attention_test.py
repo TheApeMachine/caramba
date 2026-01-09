@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 import torch
- 
+
 
 from caramba.config.layer import AttentionLayerConfig, AttentionMode, LayerType
 from caramba.layer.attention import AttentionLayer
@@ -133,7 +133,11 @@ class TestAttentionLayerStandard(unittest.TestCase):
         y, _ = layer(x)
 
         # With window=1, attention output equals V (single key), then out_proj.
-        v = layer.v_proj(x)
+        assert layer.qkv_proj is not None  # packed-qkv standard attention
+        qkv = layer.qkv_proj(x)
+        q_dim = self.n_heads * cfg.head_dim
+        kv_dim = cfg.kv_heads * cfg.head_dim
+        _q, _k, v = qkv.split([q_dim, kv_dim, kv_dim], dim=-1)
         expected = layer.out_proj(v)
         torch.testing.assert_close(y, expected, atol=1e-5, rtol=1e-5)
 
@@ -224,13 +228,9 @@ class TestAttentionLayerGQA(unittest.TestCase):
         kv_dim = self.n_kv_heads * cfg.head_dim
         q_dim = self.n_heads * cfg.head_dim
 
-        self.assertIsNotNone(layer.k_proj)
-        self.assertIsNotNone(layer.q_proj)
-        assert layer.k_proj is not None  # type guard for pyright
-        assert layer.q_proj is not None  # type guard for pyright
-        self.assertEqual(layer.k_proj.out_features, kv_dim)
-        self.assertEqual(layer.v_proj.out_features, kv_dim)
-        self.assertEqual(layer.q_proj.out_features, q_dim)
+        self.assertIsNotNone(layer.qkv_proj)
+        assert layer.qkv_proj is not None  # type guard for pyright
+        self.assertEqual(layer.qkv_proj.out_features, q_dim + 2 * kv_dim)
 
     def test_gqa_group_size(self) -> None:
         """Group size is correctly computed."""
@@ -357,7 +357,7 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
 
         # Should have rotary_geo but not rotary
         self.assertIsNotNone(layer.rotary_geo)
-        self.assertIsNone(layer.rotary)
+        self.assertFalse(hasattr(layer, "rotary"))
         self.assertIsNone(layer.rotary_sem)
         assert layer.rotary_geo is not None  # type guard for pyright
         self.assertEqual(layer.rotary_geo.rot_dim, cfg.geo_head_dim)
@@ -438,8 +438,8 @@ class TestAttentionLayerDecoupled(unittest.TestCase):
         )
         layer = AttentionLayer(cfg)
 
-        self.assertIsNone(layer.q_proj)
-        self.assertIsNone(layer.k_proj)
+        # Standard attention uses packed QKV; decoupled has distinct projections.
+        self.assertFalse(hasattr(layer, "qkv_proj"))
 
     def test_decoupled_gate(self) -> None:
         """Decoupled gate is created when enabled."""
@@ -704,9 +704,11 @@ class TestAttentionMemorySummarization(unittest.TestCase):
         B, T, D = 1, 8, 32
         x = torch.randn(B, T, D)
 
-        q = layer.q_proj(x)  # type: ignore[union-attr]
-        k = layer.k_proj(x)  # type: ignore[union-attr]
-        v = layer.v_proj(x)
+        assert layer.qkv_proj is not None
+        qkv = layer.qkv_proj(x)
+        q_dim = cfg.n_heads * cfg.head_dim
+        kv_dim = cfg.kv_heads * cfg.head_dim
+        q, k, v = qkv.split([q_dim, kv_dim, kv_dim], dim=-1)
         qh = layer._shape(q, layer.head_dim, layer.n_heads)
         kh = layer._shape(k, layer.head_dim, layer.n_kv_heads)
         vh = layer._shape(v, layer.head_dim, layer.n_kv_heads)
@@ -735,8 +737,11 @@ class TestAttentionMemorySummarization(unittest.TestCase):
         layer = AttentionLayer(cfg)
         B, T, D = 1, 8, 32
         x = torch.randn(B, T, D)
-        k = layer.k_proj(x)  # type: ignore[union-attr]
-        v = layer.v_proj(x)
+        assert layer.qkv_proj is not None
+        qkv = layer.qkv_proj(x)
+        q_dim = cfg.n_heads * cfg.head_dim
+        kv_dim = cfg.kv_heads * cfg.head_dim
+        _q, k, v = qkv.split([q_dim, kv_dim, kv_dim], dim=-1)
         kh = layer._shape(k, layer.head_dim, layer.n_kv_heads)
         vh = layer._shape(v, layer.head_dim, layer.n_kv_heads)
         if layer.group_size > 1:

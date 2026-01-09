@@ -1,13 +1,8 @@
-"""Synthetic random-token dataset (no files required).
+"""Random token dataset
 
-This dataset exists to make it easy to run *real* end-to-end training loops
-without requiring external corpora. It's primarily intended for:
-
-- UI demos (streaming train.jsonl to a frontend)
-- smoke tests of training/instrumentation plumbing
-- quick perf checks on CPU/GPU
-
-The samples are deterministic per-index given a seed, so runs are reproducible.
+Generates synthetic token sequences on-the-fly without requiring data files,
+making it easy to test training infrastructure or run demos. Samples are
+deterministic based on index and seed, ensuring reproducible experiments.
 """
 
 from __future__ import annotations
@@ -22,7 +17,18 @@ from runtime.tensordict_utils import TensorDictBase
 
 
 class _RandomTokensTorchDataset(Dataset[TensorDictBase]):
+    """Random tokens dataset implementation
+
+    Generates random token sequences deterministically based on sample index,
+    ensuring the same index always produces the same sequence for reproducible
+    testing and debugging.
+    """
     def __init__(self, *, vocab_size: int, block_size: int, length: int, seed: int) -> None:
+        """Initialize random tokens dataset
+
+        Sets up parameters for generating synthetic sequences, validating that
+        all values are positive and reasonable for token generation.
+        """
         self.vocab_size = int(vocab_size)
         self.block_size = int(block_size)
         self.length = int(length)
@@ -36,9 +42,20 @@ class _RandomTokensTorchDataset(Dataset[TensorDictBase]):
             raise ValueError(f"length must be > 0, got {self.length}")
 
     def __len__(self) -> int:
+        """Get dataset length
+
+        Returns the configured number of samples, which are generated on-demand
+        rather than pre-computed to keep memory usage minimal.
+        """
         return int(self.length)
 
     def __getitem__(self, idx: int) -> dict[str, Tensor]:
+        """Generate random sample
+
+        Creates a deterministic random sequence by seeding the generator with
+        the sample index, then shifts it to create (input, target) pairs for
+        next-token prediction training.
+        """
         # Deterministic sample based on seed + idx.
         g = torch.Generator()
         g.manual_seed(int(self.seed) + int(idx))
@@ -58,13 +75,11 @@ class _RandomTokensTorchDataset(Dataset[TensorDictBase]):
 
 @dataclass(frozen=True, slots=True)
 class RandomTokenDataset:
-    """Manifest dataset component that yields random token sequences.
+    """Random token dataset component
 
-    Config:
-    - vocab_size: size of token vocabulary
-    - block_size: sequence length (T)
-    - length: number of samples in the dataset
-    - seed: RNG seed used for deterministic per-index samples
+    Manifest-level dataset that generates synthetic token sequences without
+    requiring data files. Useful for testing, demos, and quick performance
+    benchmarks where real data isn't necessary.
     """
 
     vocab_size: int
@@ -73,6 +88,11 @@ class RandomTokenDataset:
     seed: int = 0
 
     def build(self) -> Dataset[TensorDictBase]:
+        """Build random token dataset
+
+        Creates the PyTorch dataset that will generate samples on-demand,
+        making it memory-efficient even for large synthetic datasets.
+        """
         return _RandomTokensTorchDataset(
             vocab_size=int(self.vocab_size),
             block_size=int(self.block_size),

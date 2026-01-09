@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from caramba.optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_supported
 
 from .jit import load_caramba_metal_ops
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def metal_lion_available() -> bool:
-    return bool(METAL_SUPPORTED and torch.backends.mps.is_available())
+    return metal_supported()
 
 
 def lion_fp16(

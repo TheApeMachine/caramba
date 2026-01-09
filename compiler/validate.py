@@ -39,15 +39,12 @@ class Validator:
             if isinstance(layer, AttentionLayerConfig):
                 self.validate_attention(layer, path=path)
 
-        # Planner currently only formats legacy manifests; keep flag for parity.
+        # Planner formatting is optional; keep flag for parity.
         _ = print_plan
         return model
 
     def validate_manifest(self, manifest: object, *, print_plan: bool = False) -> object:
-        """Legacy shim: validators are now component-specific.
-
-        Manifest v2 is validated by the target runner/engine based on referenced components.
-        """
+        """No-op: manifest validation is handled by the engine/components."""
         _ = print_plan
         return manifest
 

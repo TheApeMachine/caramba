@@ -12,9 +12,9 @@ import torch
 from torch import nn
 
 from caramba.benchmark.artifacts import ArtifactGenerator, ExperimentMetadata
-from caramba.benchmark.accuracy import AccuracyBenchmark, AccuracyResult
+from caramba.benchmark.accuracy import BenchmarkAccuracy, AccuracyResult
 from caramba.benchmark.behavior import BehaviorBenchmark, BehaviorResult
-from caramba.benchmark.context import ContextBenchmark, ContextResult
+from caramba.benchmark.context import BenchmarkContext, ContextResult
 from caramba.benchmark.latency import LatencyBenchmark, LatencyResult
 from caramba.benchmark.memory import MemoryBenchmark, MemoryResult
 from caramba.benchmark.perplexity import PerplexityBenchmark, PerplexityResult
@@ -167,7 +167,7 @@ class BenchmarkRunner:
 
                     case BenchmarkType.ACCURACY:
                         assert isinstance(spec.config, AccuracyBenchmarkConfig)
-                        benchmark = AccuracyBenchmark(spec.config, self.device)
+                        benchmark = BenchmarkAccuracy(spec.config, self.device)
 
                         if "teacher" in spec.models:
                             if teacher is None:
@@ -205,7 +205,7 @@ class BenchmarkRunner:
 
                     case BenchmarkType.CONTEXT:
                         assert isinstance(spec.config, ContextBenchmarkConfig)
-                        benchmark = ContextBenchmark(spec.config, self.device)
+                        benchmark = BenchmarkContext(spec.config, self.device)
                         if "teacher" in spec.models:
                             if teacher is None:
                                 logger.warning("Benchmark requested teacher model, but none is available (skipping).")

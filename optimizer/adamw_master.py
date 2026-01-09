@@ -15,9 +15,31 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
+from typing import Protocol, cast
 
 import torch
 from torch import Tensor
+
+from caramba.optimizer.kernels import adamw_step as _adamw_step
+
+
+class _AdamWStepFn(Protocol):
+    def __call__(
+        self,
+        *,
+        p: Tensor,
+        grad: Tensor,
+        master: Tensor,
+        exp_avg: Tensor,
+        exp_avg_sq: Tensor,
+        step_size: float,
+        beta1: float,
+        beta2: float,
+        eps: float,
+        lr_wd: float,
+    ) -> None: ...
+
+adamw_step: _AdamWStepFn = cast(_AdamWStepFn, _adamw_step)
 
 
 class AdamWMaster(torch.optim.Optimizer):
@@ -81,62 +103,38 @@ class AdamWMaster(torch.optim.Optimizer):
                 exp_avg: Tensor = state["exp_avg"]
                 exp_avg_sq: Tensor = state["exp_avg_sq"]
 
-                # Fast path: fused Metal step (fp16 params + fp32 state) on MPS.
-                if (
-                    fused
-                    and p.device.type == "mps"
-                    and p.dtype == torch.float16
-                    and isinstance(g, Tensor)
-                    and g.device.type == "mps"
-                    and g.dtype == torch.float16
-                    and master.device.type == "mps"
-                    and master.dtype == torch.float32
-                    and exp_avg.device.type == "mps"
-                    and exp_avg.dtype == torch.float32
-                    and exp_avg_sq.device.type == "mps"
-                    and exp_avg_sq.dtype == torch.float32
-                ):
-                    # Bias correction.
+                # Fast path: fused HAL kernel (Metal on MPS, Triton on CUDA).
+                use_fused = False
+                if fused and isinstance(g, Tensor):
+                    if p.device.type == "mps":
+                        use_fused = (
+                            p.dtype == torch.float16
+                            and g.device.type == "mps"
+                            and g.dtype == torch.float16
+                            and master.device.type == "mps"
+                            and master.dtype == torch.float32
+                            and exp_avg.device.type == "mps"
+                            and exp_avg.dtype == torch.float32
+                            and exp_avg_sq.device.type == "mps"
+                            and exp_avg_sq.dtype == torch.float32
+                        )
+                    elif p.device.type == "cuda":
+                        use_fused = (
+                            p.dtype in (torch.float16, torch.bfloat16)
+                            and g.device.type == "cuda"
+                            and g.dtype == p.dtype
+                            and master.device.type == "cuda"
+                            and master.dtype == torch.float32
+                            and exp_avg.device.type == "cuda"
+                            and exp_avg.dtype == torch.float32
+                            and exp_avg_sq.device.type == "cuda"
+                            and exp_avg_sq.dtype == torch.float32
+                        )
+
+                if use_fused:
                     bc1 = 1.0 - beta1**step
                     bc2 = 1.0 - beta2**step
                     step_size = lr * math.sqrt(bc2) / max(1e-12, bc1)
-
-                    from caramba.optimizer.kernels import adamw_step
-
-                    adamw_step(
-                        p=p,
-                        grad=g,
-                        master=master,
-                        exp_avg=exp_avg,
-                        exp_avg_sq=exp_avg_sq,
-                        step_size=float(step_size),
-                        beta1=float(beta1),
-                        beta2=float(beta2),
-                        eps=float(eps),
-                        lr_wd=float(lr * wd),
-                    )
-                    continue
-
-                # Fast path: fused Triton step (fp16/bf16 params + fp32 state) on CUDA.
-                if (
-                    fused
-                    and p.device.type == "cuda"
-                    and p.dtype in (torch.float16, torch.bfloat16)
-                    and isinstance(g, Tensor)
-                    and g.device.type == "cuda"
-                    and g.dtype == p.dtype
-                    and master.device.type == "cuda"
-                    and master.dtype == torch.float32
-                    and exp_avg.device.type == "cuda"
-                    and exp_avg.dtype == torch.float32
-                    and exp_avg_sq.device.type == "cuda"
-                    and exp_avg_sq.dtype == torch.float32
-                ):
-                    bc1 = 1.0 - beta1**step
-                    bc2 = 1.0 - beta2**step
-                    step_size = lr * math.sqrt(bc2) / max(1e-12, bc1)
-
-                    from caramba.optimizer.kernels import adamw_step
 
                     adamw_step(
                         p=p,

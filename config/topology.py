@@ -15,7 +15,24 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import Field
 
 from caramba.config import Config, PositiveInt
-from caramba.config.layer import LayerConfig
+from caramba.config.layer import (
+    AttentionLayerConfig,
+    Conv2dLayerConfig,
+    DenseLayerConfig,
+    DropoutLayerConfig,
+    GLULayerConfig,
+    GraphConvLayerConfig,
+    LayerNormLayerConfig,
+    LinearLayerConfig,
+    LoRALinearLayerConfig,
+    MoELayerConfig,
+    MosaicBlockLayerConfig,
+    MosaicNGramCacheLogitsLayerConfig,
+    RMSNormLayerConfig,
+    RNNLayerConfig,
+    SSMLayerConfig,
+    SwiGLULayerConfig,
+ )
 
 
 class TopologyType(str, enum.Enum):
@@ -166,4 +183,33 @@ TopologyConfig: TypeAlias = Annotated[
 
 
 # A node in the topology tree can be either a layer or a sub-topology
-NodeConfig: TypeAlias = LayerConfig | TopologyConfig
+NodeConfig: TypeAlias = Annotated[
+    # Layers
+    LinearLayerConfig
+    | LoRALinearLayerConfig
+    | LayerNormLayerConfig
+    | RMSNormLayerConfig
+    | DropoutLayerConfig
+    | AttentionLayerConfig
+    | SwiGLULayerConfig
+    | GLULayerConfig
+    | MoELayerConfig
+    | SSMLayerConfig
+    | Conv2dLayerConfig
+    | RNNLayerConfig
+    | GraphConvLayerConfig
+    | DenseLayerConfig
+    | MosaicBlockLayerConfig
+    | MosaicNGramCacheLogitsLayerConfig
+    # Topologies
+    | NestedTopologyConfig
+    | StackedTopologyConfig
+    | ResidualTopologyConfig
+    | SequentialTopologyConfig
+    | ParallelTopologyConfig
+    | BranchingTopologyConfig
+    | CyclicTopologyConfig
+    | RecurrentTopologyConfig
+    | GraphTopologyConfig,
+    Field(discriminator="type"),
+]

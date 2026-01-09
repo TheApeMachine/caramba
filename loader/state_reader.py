@@ -15,7 +15,6 @@ class StateReader:
     Wraps a raw state_dict with methods that check for existence and type,
     providing clear error messages when something is wrong.
     """
-
     def __init__(self, state_dict: dict[str, Tensor]) -> None:
         """Wrap a state_dict for validated access."""
         self.state_dict = state_dict
@@ -61,24 +60,33 @@ class StateReader:
         """
         if not hasattr(dst, "weight"):
             raise ValueError(f"Expected DenseWeight-like dst, got {type(dst)!r}")
+
         dst_weight = getattr(dst, "weight")
+
         if not isinstance(dst_weight, Tensor):
             raise ValueError(f"Expected tensor weight, got {type(dst_weight)!r}")
+
         if dst_weight.shape != weight.shape:
             raise ValueError(
                 f"Weight shape mismatch: {dst_weight.shape} vs {weight.shape}"
             )
+
         dst_weight.data.copy_(weight)
 
         dst_bias = getattr(dst, "bias", None)
+
         if (dst_bias is None) != (bias is None):
             raise ValueError("Bias presence mismatch between dst and src")
+
         if dst_bias is not None:
             if not isinstance(dst_bias, Tensor):
                 raise ValueError(f"Expected tensor bias, got {type(dst_bias)!r}")
+
             assert bias is not None
+
             if dst_bias.shape != bias.shape:
                 raise ValueError(
                     f"Bias shape mismatch: {dst_bias.shape} vs {bias.shape}"
                 )
+
             dst_bias.data.copy_(bias)

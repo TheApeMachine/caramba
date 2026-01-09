@@ -30,7 +30,13 @@ class ResonantNode:
 
     def __post_init__(self) -> None:
         self.natural_freq = float(self.natural_freq)
-        self.damping = np.clip(float(self.damping), 0.0, 1.0)
+        damping = float(self.damping)
+        if not np.isfinite(damping):
+            damping = 0.0
+        # Treat damping as a non-negative decay rate (not a [0,1] fraction). This
+        # is more useful for signal-processing style resonant filters where the
+        # desired time constant can be much shorter than 1s.
+        self.damping = max(0.0, damping)
         self.signal = complex(self.signal)
 
     def amplitude(self) -> float:
@@ -60,7 +66,9 @@ class ResonantNode:
                 damping = float(damping_override)
             except (TypeError, ValueError):
                 damping = float(self.damping)
-            damping = float(np.clip(damping, 0.0, 1.0))
+            if not np.isfinite(damping):
+                damping = float(self.damping)
+            damping = max(0.0, float(damping))
 
         # Phase advance, then coupling, then damping.
         self.signal *= np.exp(1j * 2.0 * np.pi * self.natural_freq * dt)

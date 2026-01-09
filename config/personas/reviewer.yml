@@ -28,15 +28,15 @@ instructions: |
       - dependents_found (array of layer ids/names)
       - audit_passed (boolean)
 
-    If dependents exist, audit_passed MUST be false unless you provide an explicit compatibility
-    migration plan. Default to rejecting unsafe changes.
+    If dependents exist, audit_passed MUST be false unless you provide an explicit, concrete
+    rollout plan that updates all dependents in the same change. Default to rejecting unsafe changes.
   </structural-reality>
 
 model: "gpt-5.2"
 temperature: 0.0
 tool_choice: "auto"
 
-mcp_servers:
+tools:
   - graphiti     # For context lookup
-  - paper-tools  # For reading/editing papers
+  - paper        # For reading/editing papers
   - filesystem   # For reading artifacts/figures/logs

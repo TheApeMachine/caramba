@@ -122,8 +122,8 @@ def test_plotting_requested_warns_when_matplotlib_missing(monkeypatch) -> None:
 
 def test_no_decoupled_attention_skips_perf_backend_checks(monkeypatch) -> None:
     # Even if perf backends are "missing", without DBA attention we don't care.
-    monkeypatch.setattr(readiness, "METAL_SUPPORTED", False)
-    monkeypatch.setattr(readiness, "TRITON_AVAILABLE", False)
+    monkeypatch.setattr(readiness, "metal_supported", False)
+    monkeypatch.setattr(readiness, "triton_supported", False)
 
     m = _default_manifest()
     t = _non_decoupled_target(device="mps")
@@ -132,8 +132,8 @@ def test_no_decoupled_attention_skips_perf_backend_checks(monkeypatch) -> None:
 
 
 def test_mps_unavailable_is_error_when_decoupled_and_fp16_cache(monkeypatch) -> None:
-    monkeypatch.setattr(readiness, "METAL_SUPPORTED", False)
-    monkeypatch.setattr(readiness, "METAL_BUILD_TOOLS_AVAILABLE", True)
+    monkeypatch.setattr(readiness, "metal_supported", False)
+    monkeypatch.setattr(readiness, "metal_build_tools_available", True)
 
     b = BenchmarkSpec(id="lat", config=LatencyBenchmarkConfig(cache_kind="fp16"))
     t = _decoupled_target(device="mps", benchmarks=[b])
@@ -144,8 +144,8 @@ def test_mps_unavailable_is_error_when_decoupled_and_fp16_cache(monkeypatch) -> 
 
 
 def test_metal_build_tools_missing_is_error_or_warning_based_on_best_effort(monkeypatch) -> None:
-    monkeypatch.setattr(readiness, "METAL_SUPPORTED", True)
-    monkeypatch.setattr(readiness, "METAL_BUILD_TOOLS_AVAILABLE", False)
+    monkeypatch.setattr(readiness, "metal_supported", True)
+    monkeypatch.setattr(readiness, "metal_build_tools_available", False)
 
     b = BenchmarkSpec(id="lat", config=LatencyBenchmarkConfig(cache_kind="auto"))
     t = _decoupled_target(device="mps", benchmarks=[b])
@@ -159,7 +159,7 @@ def test_metal_build_tools_missing_is_error_or_warning_based_on_best_effort(monk
 
 
 def test_triton_missing_for_cuda_q4_is_error_or_warning(monkeypatch) -> None:
-    monkeypatch.setattr(readiness, "TRITON_AVAILABLE", False)
+    monkeypatch.setattr(readiness, "triton_supported", False)
 
     b = BenchmarkSpec(id="mem", config=MemoryBenchmarkConfig(quantization_modes=["q4_0"]))
     t = _decoupled_target(device="cuda", benchmarks=[b])

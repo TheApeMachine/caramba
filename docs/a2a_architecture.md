@@ -10,7 +10,7 @@ The A2A architecture converts every persona into an A2A-served expert agent runn
 
 ### Persona A2A Servers
 
-Each persona YAML (except legacy provider personas) runs as an A2A server in a Docker container:
+Each persona YAML runs as an A2A server in a Docker container:
 
 - **Service name**: Persona name (lowercase, hyphens for underscores)
 - **Port**: 8001 (internal, not exposed to host)

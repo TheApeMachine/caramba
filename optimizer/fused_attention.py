@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, cast, Callable, Protocol
 import torch
 import torch.nn.functional as F
 
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 from caramba.optimizer.kernels_decoupled import (
     kv_decode_update_decoupled_q4q8q4,
     kv_decode_partition_stats_decoupled_q4q8q4,
@@ -49,7 +49,7 @@ _kv_decode_reduce_partitions = cast(_Kernel | None, kv_decode_reduce_partitions)
 
 def fused_decode_available(cache: "DecoupledLayerKVCache", device_type: str) -> bool:
     """Check if fused decode can be used for the given cache and device."""
-    if not TRITON_AVAILABLE:
+    if not triton_supported():
         return False
     if device_type != "cuda":
         return False
@@ -184,7 +184,7 @@ def fused_decode_decoupled_q4q8q4(
     Returns:
         Attention output (B, H, 1, v_head_dim)
     """
-    if not TRITON_AVAILABLE:
+    if not triton_supported():
         raise RuntimeError("Triton not available")
     if q_sem.device.type != "cuda":
         raise RuntimeError("Fused decode requires CUDA")
@@ -388,7 +388,7 @@ def fused_decode_decoupled_q4q8q4_2pass(
 
     Use this for cache_len > 4 * decode_block for better GPU utilization.
     """
-    if not TRITON_AVAILABLE:
+    if not triton_supported():
         raise RuntimeError("Triton not available")
     if q_sem.device.type != "cuda":
         raise RuntimeError("Fused decode requires CUDA")

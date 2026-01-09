@@ -24,6 +24,6 @@ model: "gpt-5.2"
 temperature: 1.0
 tool_choice: "auto"
 
-mcp_servers:
+tools:
   - graphiti
   - deeplake

@@ -78,7 +78,7 @@ temperature: 0.7
 tool_choice: "auto"
 
 # Root should be able to inspect manifests/artifacts and query knowledge tools directly when available.
-mcp_servers:
+tools:
   - filesystem
   - codegraph
   - webcrawl

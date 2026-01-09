@@ -27,14 +27,17 @@ vars:
   # ----- Dataset -----
   # Tokenized FineWeb-Edu (20B tokens) produced by your pipeline.
   # Keep as a plain path; generation is intentionally not attempted from manifest.
+  dataset: HuggingFaceFW/fineweb
+  tokens: 20b
   dataset_path: fineweb_20b.npy
+
   block_size: 2048
 
   # ----- Model (Llama-1B-ish) -----
   d_model: 2048
   n_layers: 22
   n_heads: 32
-  # Llama-1B-ish intermediate size; change if your baseline differs.
+  # Intermediate size: trades some throughput for stronger MLP capacity.
   d_ff: 5632
   # Dataset is GPT-2 encoded (fineweb_20b.npy); use 50257 rounded to 128.
   vocab_size: 50304
@@ -54,13 +57,17 @@ vars:
   # A100 utilization: avoid tiny microbatches + single-worker dataloading.
   # Keep effective tokens/step the same as grad_accum=32,batch_size=1 by using a bigger microbatch:
   # effective_tokens_per_step = batch_size * grad_accum * block_size
+  # Prefer larger microbatches over higher grad accumulation: better GPU utilization.
+  # batch_size=16 OOMed; use the largest stable microbatch.
+  # NOTE: This changes effective batch from 32 -> 24 sequences/step, but keeps
+  # baseline vs decoupled strictly apples-to-apples.
   batch_size: 8
   grad_accum: 4
   # Feed the GPU: parallelize mmap slicing + tensor materialization.
   num_workers: 8
   prefetch_factor: 4
   pin_memory: true
-  lr: 2.0e-4
+  lr: 3.0e-4
   # DBA is more sensitive to peak LR; using baseline LR often produces a spike
   # when warmup ends (peak LR). Keep baseline at lr, but run decoupled at a
   # slightly lower peak LR.
@@ -70,7 +77,7 @@ vars:
   fused_optimizer: true
   scheduler: cosine
   warmup_steps: 2000
-  save_every: 500
+  save_every: 10000
 
 targets:
   # ---------------------------------------------------------------------------
@@ -89,6 +96,8 @@ targets:
     system:
       ref: system.language_model
       config:
+        weight_init:
+          type: GPT2Initializer
         model:
           type: TransformerModel
           tied_embeddings: false
@@ -157,10 +166,12 @@ targets:
           use_amp: true
           amp_dtype: bfloat16
           compile_model: true
-          compile_mode: reduce-overhead
-          # Profiling (writes runs/<target>/profiles/profile_step_<N>.txt).
-          # Low frequency to minimize overhead while still giving definitive bottlenecks.
-          profile_every: 200
+          # 'default' is the most stable mode under gradient accumulation and
+          # tends to avoid long autotune/benchmark phases that don't reliably
+          # improve cuBLAS GEMMs on A100.
+          compile_mode: default
+          # Profiling disabled for production runs (avoids step-time spikes).
+          profile_every: 0
           profile_record_shapes: false
           # Clip to prevent rare catastrophic steps (baseline can also hit these).
           grad_clip_norm: 1.0
@@ -191,6 +202,8 @@ targets:
     system:
       ref: system.language_model
       config:
+        weight_init:
+          type: GPT2Initializer
         model:
           type: TransformerModel
           tied_embeddings: false
@@ -265,9 +278,10 @@ targets:
           use_amp: true
           amp_dtype: bfloat16
           compile_model: true
-          compile_mode: reduce-overhead
-          # Profiling (writes runs/<target>/profiles/profile_step_<N>.txt).
-          profile_every: 200
+          # See baseline run notes.
+          compile_mode: default
+          # Profiling disabled for production runs (avoids step-time spikes).
+          profile_every: 0
           profile_record_shapes: false
           grad_clip_norm: 1.0
           optimizer: ${optimizer}

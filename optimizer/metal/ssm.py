@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import torch
 
-from caramba.optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_supported
 
 from .jit import load_caramba_metal_ops
 
@@ -22,7 +22,7 @@ class _AutogradCtx(Protocol):
 @dataclass(frozen=True, slots=True)
 class MetalSSMScanAvailability:
     def available(self) -> bool:
-        return bool(METAL_SUPPORTED and torch.backends.mps.is_available())
+        return metal_supported()
 
 
 class MetalSSMSelectiveScanFn(torch.autograd.Function):

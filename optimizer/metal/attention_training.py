@@ -14,14 +14,14 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from caramba.optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_supported
 
 from .attention_jit import load_caramba_metal_attention_ops
 
 
 def metal_attention_training_available() -> bool:
     """Whether the runtime is capable of using the Metal attention training path."""
-    return bool(METAL_SUPPORTED and torch.backends.mps.is_available())
+    return metal_supported()
 
 
 @dataclass(frozen=True, slots=True)

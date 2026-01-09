@@ -15,6 +15,10 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from pathlib import Path
+
+from caramba.data.tokenizers.hf_json import HfJsonTokenizer
+
 
 class TimestepEmbedding(nn.Module):
     """Timestep embedding
@@ -240,26 +244,14 @@ class DiffusionCodegenSystem:
                 "pad_id was not provided and tokenizer_file is missing. "
                 "Provide system.config.pad_id or system.config.tokenizer_file."
             )
-        # Optional dependency: we only require `tokenizers` when resolving `pad_id`
-        # from a tokenizer JSON file. This keeps import-time dependencies light and
-        # makes `caramba` usable even when `tokenizers` isn't installed.
-        from pathlib import Path
 
-        try:
-            from tokenizers import Tokenizer
-        except ImportError as e:  # pragma: no cover
-            raise ImportError(
-                "Resolving pad_id from tokenizer_file requires the optional dependency "
-                "`tokenizers`. Install it or provide system.config.pad_id explicitly."
-            ) from e
-
-        path = Path(self.tokenizer_file)
+        path = Path(str(self.tokenizer_file))
         if not path.exists():
             raise FileNotFoundError(
                 f"tokenizer_file not found: {path}. "
                 "Train the tokenizer first or set system.config.tokenizer_file."
             )
-        tokenizer = Tokenizer.from_file(str(path))
+        tokenizer = HfJsonTokenizer.from_file(tokenizer_file=str(path))
         pad_id = tokenizer.token_to_id(str(self.pad_token))
         if pad_id is None:
             raise ValueError(
@@ -267,4 +259,3 @@ class DiffusionCodegenSystem:
                 "Ensure the tokenizer was trained with this special token."
             )
         return int(pad_id)
-

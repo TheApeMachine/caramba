@@ -1,10 +1,13 @@
 """Kernel registry and startup validation.
 
-Caramba operates on a strict policy:
+Caramba operates on a strict policy when an accelerator is available:
 - Pick the fastest supported kernel path deterministically.
 - Validate required kernel backends at startup.
 - If a required kernel backend is unavailable, fail loudly with an actionable error.
 - Log the chosen performance paths exactly once at initialization.
+
+In CPU-only environments (no CUDA/MPS), the registry initializes in a "no fused
+kernels" mode so import-time behavior remains safe and unit tests can run.
 """
 
 from __future__ import annotations
@@ -18,9 +21,9 @@ import torch
 
 from caramba.console import logger
 from caramba.optimizer.runtime import (
-    METAL_BUILD_TOOLS_AVAILABLE,
-    METAL_SUPPORTED,
-    TRITON_AVAILABLE,
+    metal_build_tools_available,
+    metal_supported,
+    triton_supported,
 )
 
 
@@ -46,7 +49,8 @@ def _cuda_device_summary() -> str:
         name = str(torch.cuda.get_device_name(idx))
         cap = ".".join(str(x) for x in torch.cuda.get_device_capability(idx))
         return f"{name} (sm_{cap})"
-    except Exception:
+    except Exception as e:
+        logger.warning(f"CUDA available but device query failed: {e!r}")
         return "CUDA available (device query failed)"
 
 
@@ -66,27 +70,30 @@ def initialize_kernels() -> KernelRegistry:
 
     cuda_available = bool(torch.cuda.is_available())
     mps_available = bool(torch.backends.mps.is_available())
-
-    _require(
-        cuda_available or mps_available,
-        msg=(
-            "No supported accelerator detected.\n"
-            "Caramba requires either CUDA (`torch.cuda.is_available()`) or Apple MPS (`torch.backends.mps.is_available()`).\n"
-        ),
-    )
+    # CPU-only mode: no validation, no fused kernels.
+    if not cuda_available and not mps_available:
+        _REGISTRY = KernelRegistry(
+            cuda_available=False,
+            mps_available=False,
+            triton_available=False,
+            metal_supported=bool(metal_supported()),
+            metal_build_tools_available=bool(metal_build_tools_available()),
+            metal_ops_loaded=False,
+        )
+        return _REGISTRY
 
     # ---- Metal/MPS validation (compile+load extension at startup) ----
     metal_ops_loaded = False
     if mps_available:
         _require(
-            bool(METAL_SUPPORTED),
+            bool(metal_supported()),
             msg=(
                 "MPS is available but Metal is marked unsupported by caramba.\n"
                 f"platform.system()={platform.system()!r}\n"
             ),
         )
         _require(
-            bool(METAL_BUILD_TOOLS_AVAILABLE),
+            bool(metal_build_tools_available()),
             msg=(
                 "Metal/MPS is available but the Metal build toolchain is not.\n"
                 "Install Xcode Command Line Tools and ensure `xcrun -sdk macosx --find metal` works.\n"
@@ -110,7 +117,7 @@ def initialize_kernels() -> KernelRegistry:
     # ---- CUDA/Triton validation ----
     if cuda_available:
         _require(
-            bool(TRITON_AVAILABLE),
+            bool(triton_supported()),
             msg=(
                 "CUDA is available but Triton is not.\n"
                 "Install Triton (and its CUDA dependencies) so CUDA fused kernels can be used.\n"
@@ -183,9 +190,9 @@ def initialize_kernels() -> KernelRegistry:
     _REGISTRY = KernelRegistry(
         cuda_available=cuda_available,
         mps_available=mps_available,
-        triton_available=bool(TRITON_AVAILABLE),
-        metal_supported=bool(METAL_SUPPORTED),
-        metal_build_tools_available=bool(METAL_BUILD_TOOLS_AVAILABLE),
+        triton_available=bool(triton_supported()),
+        metal_supported=bool(metal_supported()),
+        metal_build_tools_available=bool(metal_build_tools_available()),
         metal_ops_loaded=bool(metal_ops_loaded),
     )
 

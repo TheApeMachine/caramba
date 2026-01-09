@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 from caramba.console import logger
 
 __all__ = [
@@ -35,7 +35,7 @@ kv_decode_reduce_partitions: object | None = None
 
 
 # Hide Triton code from type checker (TYPE_CHECKING=True) but load at runtime when available.
-if not TYPE_CHECKING and TRITON_AVAILABLE:
+if not TYPE_CHECKING and triton_supported():
     try:  # pyright: ignore[reportUnreachable]
         import triton
         import triton.language as tl

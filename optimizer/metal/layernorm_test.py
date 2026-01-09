@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_supported
 
 
 @pytest.fixture(scope="session")
@@ -19,7 +19,7 @@ def metal_ops() -> object:
         pytest.skip(f"caramba metal extension unavailable: {e}")
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_metal_layernorm_matches_reference(metal_ops: object) -> None:
     _ = metal_ops
     from caramba.optimizer.metal import layernorm_fp16
@@ -49,7 +49,7 @@ def test_metal_layernorm_matches_reference(metal_ops: object) -> None:
     assert torch.allclose(out_metal, out_ref, atol=3e-2, rtol=3e-2)
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_metal_layernorm_weight_matches_reference(metal_ops: object) -> None:
     _ = metal_ops
     from caramba.optimizer.metal import layernorm_fp16
@@ -77,7 +77,7 @@ def test_metal_layernorm_weight_matches_reference(metal_ops: object) -> None:
     assert torch.allclose(out_metal, out_ref, atol=3e-2, rtol=3e-2)
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_metal_layernorm_noweight_matches_reference(metal_ops: object) -> None:
     _ = metal_ops
     from caramba.optimizer.metal import layernorm_fp16

@@ -11,7 +11,7 @@ from torch.utils.data.dataset import Subset
 
 from caramba.config.collector import DefaultCollectorConfig
 from caramba.config.train import TrainConfig
-from caramba.data import build_token_dataset
+from caramba.data.datasets.builder import TokenDatasetBuilder
 from caramba.carmath import train_val_counts
 from caramba.trainer.upcycle_context import UpcycleContext
 from caramba.runtime.tensordict_utils import TensorDictBase, collate_tensordict
@@ -62,7 +62,7 @@ class DefaultCollector:
                 f"Dataset file not found: {ctx.group.data!r}. Tried: {tried}. "
                 f"Fix by setting `groups[].data` to an absolute path or placing the file under `./data/`."
             )
-        dataset = build_token_dataset(path=path, block_size=int(train.block_size))
+        dataset = TokenDatasetBuilder.build(path=path, block_size=int(train.block_size))
 
         val_frac = float(ctx.defaults.data.val_frac) if ctx.defaults else 0.0
         n = len(cast(Sized, dataset))

@@ -213,7 +213,7 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         # - "sdpa": force scaled dot-product attention
         raw_backend = getattr(self.config, "dba_train_backend", "auto")
         dba_backend = str(raw_backend or "auto").lower().strip()
-        allowed = {"auto", "triton", "sdpa"}
+        allowed = {"auto", "triton", "sdpa", "metal"}
         if dba_backend not in allowed:
             warnings.warn(
                 f"Invalid dba_train_backend={raw_backend!r}; falling back to 'auto'. "
@@ -222,7 +222,8 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                 stacklevel=2,
             )
             dba_backend = "auto"
-        force_sdpa = (dba_backend == "sdpa")
+        # "metal" is a manifest-friendly alias for the SDPA-style path on MPS.
+        force_sdpa = (dba_backend == "sdpa" or dba_backend == "metal")
         force_triton = (dba_backend == "triton")
         if (
             (not force_sdpa)

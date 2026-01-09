@@ -1,15 +1,9 @@
-"""ICL-like synthetic rule induction dataset.
+"""In-context learning rule induction dataset
 
-Row D (Table 2): Few-shot rule induction with distractors, sweeping the gap
-between demonstrations and query.
-
-The dataset emits:
-- input_ids, target_ids: next-token LM pairs
-- table2_bin: (T,) int64 bin id for evaluation positions, -1 elsewhere
-
-`table2_bin` is aligned to input positions: at positions where table2_bin>=0,
-the next token (target_ids at the same position) is the answer token whose
-accuracy should be attributed to that bin.
+Generates few-shot learning tasks where models must infer rules from
+demonstrations, with configurable gaps between examples and queries. Includes
+binning labels for evaluating performance at different gap lengths, measuring
+how well models generalize learned patterns.
 """
 
 from __future__ import annotations
@@ -24,15 +18,33 @@ from torch.utils.data import Dataset
 
 @dataclass(slots=True)
 class _IclBuilder:
+    """ICL sequence builder
+
+    Constructs token sequences with bin labels, tracking which positions
+    correspond to answer tokens that should be evaluated for accuracy at
+    specific gap lengths.
+    """
     tokens: list[int] = field(default_factory=list)
     bins: list[int] = field(default_factory=list)
 
     def append(self, tok: int, *, b: int = -1) -> None:
+        """Append token with bin label
+
+        Adds a token to the sequence along with its evaluation bin, where
+        -1 means the position isn't evaluated and >=0 indicates which gap
+        length bin this answer belongs to.
+        """
         self.tokens.append(int(tok))
         self.bins.append(int(b))
 
 
 class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
+    """ICL rule induction dataset implementation
+
+    Generates few-shot learning sequences with demonstrations, distractors, and
+    queries, teaching models to infer rules from examples. Each sample includes
+    bin labels for evaluating performance at different gap lengths.
+    """
     def __init__(
         self,
         *,
@@ -44,6 +56,12 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
         demo_distractors: int,
         seed: int,
     ) -> None:
+        """Initialize ICL rule induction dataset
+
+        Sets up parameters for generating rule-learning tasks, including the
+        number of demonstrations, gap lengths to evaluate, and distractors
+        between examples to test robust pattern recognition.
+        """
         self.n_items = int(n_items)
         self.block_size = int(block_size)
         self.vocab_size = int(vocab_size)
@@ -82,6 +100,12 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
         return int(self.n_items)
 
     def _apply_rule(self, x: int, *, delta: int) -> int:
+        """Apply rule transformation
+
+        Transforms an input token by adding a delta offset modulo the token
+        range, creating a simple but learnable rule that models must infer
+        from demonstrations.
+        """
         # Keep values in [min_tok, vocab_size).
         span = int(self.vocab_size) - int(self.min_tok)
         if span <= 0:
@@ -108,12 +132,12 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
                 f"Cannot sample {self.n_demos} demos + 1 query from pool of size {available_pool_size}. "
                 f"Increase vocab_size or decrease n_demos."
             )
-        
+
         # Draw n_demos unique tokens from the available pool
         pool = list(range(int(self.min_tok), int(self.vocab_size)))
         demos_x = rng.sample(pool, int(self.n_demos))
         used = set(demos_x)
-        
+
         # Draw query token from remaining pool
         remaining_pool = [x for x in pool if x not in used]
         xq = rng.sample(remaining_pool, 1)[0]
@@ -162,7 +186,12 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
 
 @dataclass(frozen=True, slots=True)
 class IclRuleInductionDataset:
-    """Manifest dataset component wrapper."""
+    """ICL rule induction dataset component
+
+    Manifest-level dataset for few-shot rule learning experiments. Generates
+    demonstration-query pairs with configurable gaps, enabling evaluation of
+    how well models generalize learned patterns across different distances.
+    """
 
     block_size: int = 512
     vocab_size: int = 8192
@@ -173,6 +202,11 @@ class IclRuleInductionDataset:
     demo_distractors: int = 8
 
     def build(self) -> Dataset[dict[str, Tensor]]:
+        """Build ICL rule induction dataset
+
+        Creates the PyTorch dataset that generates few-shot learning sequences
+        with rule demonstrations and queries, ready for training and evaluation.
+        """
         return _IclRuleInductionTorchDataset(
             n_items=int(self.n_items),
             block_size=int(self.block_size),

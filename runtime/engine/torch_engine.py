@@ -159,6 +159,11 @@ class TorchEngine:
         )
         self.registry.register(
             backend="torch",
+            ref="objective.next_token_ce_chunked",
+            python="caramba.trainer.objectives:NextTokenCrossEntropyChunkedObjective",
+        )
+        self.registry.register(
+            backend="torch",
             ref="objective.mosaic_next_token_aux",
             python="caramba.trainer.objectives:MosaicNextTokenWithAuxObjective",
         )
@@ -218,7 +223,7 @@ class TorchEngine:
 
         artifacts: dict[str, Path] = {}
 
-        # Legacy benchmark suite.
+        # Optional benchmark suite.
         #
         # - Upcycle targets return {"teacher", "student"}.
         # - Standard scratch targets return {"system"}; treat that as "student" for benchmarks.

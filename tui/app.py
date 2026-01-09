@@ -417,25 +417,25 @@ class RootChatApp(App):
 
         elif event_type == "expert_consulting" and self._experts_sidebar:
             expert_name = event.get("expert", "")
-            self._experts_sidebar.update_expert_status(
+            self._experts_sidebar.update_agent_activity(
                 expert_name, ExpertStatus.CONSULTING
             )
 
         elif event_type == "expert_responding" and self._experts_sidebar:
             expert_name = event.get("expert", "")
-            self._experts_sidebar.update_expert_status(
+            self._experts_sidebar.update_agent_activity(
                 expert_name, ExpertStatus.RESPONDING
             )
 
         elif event_type == "expert_done" and self._experts_sidebar:
             expert_name = event.get("expert", "")
-            self._experts_sidebar.update_expert_status(
+            self._experts_sidebar.update_agent_activity(
                 expert_name, ExpertStatus.DONE
             )
 
         elif event_type == "expert_error" and self._experts_sidebar:
             expert_name = event.get("expert", "")
-            self._experts_sidebar.update_expert_status(
+            self._experts_sidebar.update_agent_activity(
                 expert_name, ExpertStatus.ERROR
             )
 
@@ -472,7 +472,7 @@ class RootChatApp(App):
         if self._viewport:
             self._viewport.clear_messages()
         if self._experts_sidebar:
-            self._experts_sidebar.clear_experts()
+            self._experts_sidebar.clear_all_activity()
         if self._tools_sidebar:
             self._tools_sidebar.clear_tools()
 

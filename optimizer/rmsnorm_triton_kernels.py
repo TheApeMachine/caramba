@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from caramba.console import logger
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 
 __all__ = ["rmsnorm_fwd", "rmsnorm_bwd_x", "rmsnorm_bwd_x_noweight", "rmsnorm_bwd_w"]
 
@@ -15,7 +15,7 @@ rmsnorm_bwd_x_noweight: object | None = None
 rmsnorm_bwd_w: object | None = None
 
 
-if not TYPE_CHECKING and TRITON_AVAILABLE:
+if not TYPE_CHECKING and triton_supported():
     try:  # pyright: ignore[reportUnreachable]
         import triton
         import triton.language as tl

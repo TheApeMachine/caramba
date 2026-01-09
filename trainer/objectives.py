@@ -20,6 +20,8 @@ from torch import Tensor
 
 from caramba.runtime.tensordict_utils import TensorDictBase
 
+from caramba.trainer.chunked_cross_entropy import ChunkedCELossConfig, chunked_linear_cross_entropy
+
 TensorDict = TensorDictBase
 MetricDict = dict[str, float]
 
@@ -111,7 +113,7 @@ class KeyedCrossEntropyObjective:
 
 
 class NextTokenCrossEntropyObjective(KeyedCrossEntropyObjective):
-    """Legacy name for a keyed cross entropy objective (LM next-token by default)."""
+    """Next-token cross entropy objective (LM by default)."""
 
     def __init__(
         self,
@@ -127,9 +129,61 @@ class NextTokenCrossEntropyObjective(KeyedCrossEntropyObjective):
             ignore_index=ignore_index,
             label_smoothing=label_smoothing,
         )
-        # Backwards-compatible alias.
-        self.target_key = self.labels_key
+        self.target_key = str(target_key)
 
+
+class NextTokenCrossEntropyChunkedObjective:
+    """Memory-efficient next-token CE for large vocab models.
+
+    What it is:
+    - Computes cross entropy for logits = hidden @ W^T without materializing logits.
+
+    Why it is:
+    - For long sequences and large vocabularies, logits tensors can be multiple GiB.
+      Avoiding logits enables larger microbatches (real throughput wins) and reduces
+      allocator pressure.
+
+    Requirements:
+    - outputs must include "features" (B,T,D) and "_system" pointing at a `Model`.
+    - The model must have a token embedding weight of shape (V,D) (tied embeddings).
+    """
+
+    def __init__(
+        self,
+        *,
+        features_key: str = "features",
+        target_key: str = "target_ids",
+        ignore_index: int = -100,
+        vocab_chunk: int = 8192,
+    ) -> None:
+        self.features_key = str(features_key)
+        self.target_key = str(target_key)
+        self.ignore_index = int(ignore_index)
+        self.vocab_chunk = int(vocab_chunk)
+
+    def loss(self, *, outputs: TensorDict, batch: TensorDict) -> Tensor:
+        feats = _require_tensor(outputs, self.features_key, where="outputs")
+        tgt = _require_tensor(batch, self.target_key, where="batch").long()
+        sys = outputs.get("_system", None)  # type: ignore[attr-defined]
+        emb = getattr(getattr(sys, "embedder", None), "token_embedding", None)
+        w = getattr(emb, "weight", None)
+        if not isinstance(w, Tensor):
+            raise TypeError(
+                "NextTokenCrossEntropyChunkedObjective requires outputs['_system'].embedder.token_embedding.weight"
+            )
+        if feats.ndim != 3:
+            raise ValueError(f"features must be (B,T,D), got {tuple(feats.shape)}")
+        if tgt.ndim != 2 or tgt.shape[:2] != feats.shape[:2]:
+            raise ValueError(f"target_ids must be (B,T) matching features, got {tuple(tgt.shape)}")
+        x = feats.reshape(int(feats.size(0) * feats.size(1)), int(feats.size(2)))
+        y = tgt.reshape(-1)
+        cfg = ChunkedCELossConfig(vocab_chunk=int(self.vocab_chunk), ignore_index=int(self.ignore_index))
+        return chunked_linear_cross_entropy(x=x, weight=w, target=y, bias=None, cfg=cfg)
+
+    def metrics(self, *, outputs: TensorDict, batch: TensorDict, loss: Tensor) -> MetricDict:
+        _ = outputs
+        _ = batch
+        return {"ce_loss": float(loss.detach())}
 
 class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
     """Next-token CE + auxiliary curriculum losses for MOSAIC memory control.

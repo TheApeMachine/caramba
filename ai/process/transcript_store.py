@@ -68,14 +68,8 @@ class TranscriptStore:
     def parse_event_line(self, raw: str, *, line_number: int) -> types.Content:
         """Parse one JSONL line into a Content message.
 
-        This supports both the current transcript schema:
-          {"role": "...", "text": "..."}
-
-        And legacy-compatible shapes:
-          {"type": "...", "content": "..."}
-          {"type": "...", "text": "..."}
-          {"role": "...", "content": "..."}
-          {"role": "...", "parts": [{"text": "..."}]}
+        Transcript schema (single supported shape):
+          {"role": "...", "text": "..."}  # role in {"user","assistant","system"}
         """
         try:
             obj = json.loads(raw)
@@ -101,32 +95,10 @@ class TranscriptStore:
         if isinstance(role, str) and role and isinstance(text, str) and text:
             return role, text
 
-        legacy_type = obj.get("type", None)
-        legacy_content = obj.get("content", None)
-        if isinstance(legacy_type, str) and legacy_type:
-            if isinstance(text, str) and text:
-                return legacy_type, text
-            if isinstance(legacy_content, str) and legacy_content:
-                return legacy_type, legacy_content
-
-        if isinstance(role, str) and role and isinstance(legacy_content, str) and legacy_content:
-            return role, legacy_content
-
-        parts = obj.get("parts", None)
-        if isinstance(role, str) and role and isinstance(parts, list) and parts:
-            texts: list[str] = []
-            for part in parts:
-                if isinstance(part, dict):
-                    part_text = part.get("text", None)
-                    if isinstance(part_text, str) and part_text:
-                        texts.append(part_text)
-            if texts:
-                return role, "\n".join(texts)
-
         keys = ", ".join(sorted(str(k) for k in obj.keys()))
         raise ValueError(
             f"Transcript line {line_number} missing role/text fields. "
-            f"Expected keys like (role,text) or (type,content). Found keys: {keys}. "
+            f"Expected keys (role,text). Found keys: {keys}. "
             f"Fix by deleting {self.path} or repairing it to include role/text per line."
         )
 

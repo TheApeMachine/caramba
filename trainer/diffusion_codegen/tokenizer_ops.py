@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from caramba.tokenizer.code_bpe import CodeBpeTokenizer
+from caramba.data.tokenizers.bpe import CodeBpeTokenizer
 
 
 @dataclass(frozen=True, slots=True)

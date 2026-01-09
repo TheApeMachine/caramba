@@ -6,11 +6,6 @@ paper:
   transport: streamable-http
   url: "http://${CARAMBA_PAPER_HOST:-localhost}:${CARAMBA_PAPER_PORT:-8001}/mcp"
 
-# Alias kept for backwards compatibility with existing personas.
-paper-tools:
-  transport: streamable-http
-  url: "http://${CARAMBA_PAPER_HOST:-localhost}:${CARAMBA_PAPER_PORT:-8001}/mcp"
-
 deeplake:
   transport: streamable-http
   url: "http://${CARAMBA_DEEPLAKE_HOST:-localhost}:${CARAMBA_DEEPLAKE_PORT:-8004}/mcp"

@@ -37,14 +37,7 @@ from starlette.requests import Request
 from caramba.ai.persona import Persona
 from caramba.console import logger
 from caramba.ai.process.transcript_store import TranscriptStore
-from caramba.ai.mcp import (
-    BestEffortMcpToolset,
-    McpEndpoint,
-    connection_params_for,
-    endpoint_is_healthy,
-    iter_persona_tool_names,
-    load_mcp_endpoints,
-)
+import caramba.ai.tools as mcp_tools
 
 
 warnings.filterwarnings(
@@ -57,6 +50,17 @@ warnings.filterwarnings("ignore", message=r".*non-text parts in the response.*")
 AGENT_CARD_WELL_KNOWN_PATH = "/.well-known/agent-card.json"
 MCP_UNHEALTHY_WARNED: set[str] = set()
 VALID_NAME_RE = re.compile(r"[^0-9A-Za-z_]")
+
+def _to_valid_identifier(name: str, *, fallback: str = "agent") -> str:
+    """Normalize an arbitrary name into a valid identifier for ADK."""
+    raw = str(name or "").strip()
+    if not raw:
+        raw = str(fallback).strip() or "agent"
+    raw = VALID_NAME_RE.sub("_", raw)
+    # Identifiers can't start with a digit.
+    if raw and raw[0].isdigit():
+        raw = f"_{raw}"
+    return raw or "agent"
 
 
 class Agent:
@@ -81,18 +85,16 @@ class Agent:
         self.session_id = session_id or str(uuid4())
 
         tools: list[Any] = []
-        tool_names = iter_persona_tool_names(
-            getattr(persona, "tools", None) or getattr(persona, "mcp_servers", None)
-        )
+        tool_names = mcp_tools.iter_persona_tool_names(getattr(persona, "tools", None))
 
-        endpoints = load_mcp_endpoints()
+        endpoints = mcp_tools.load_mcp_endpoints()
 
         if isinstance(mcp_url, str) and mcp_url:
-            ep = McpEndpoint(url=mcp_url)
-            if endpoint_is_healthy(ep):
+            ep = mcp_tools.McpEndpoint(url=mcp_url)
+            if mcp_tools.endpoint_is_healthy(ep):
                 tools.append(
-                    BestEffortMcpToolset(
-                        connection_params=connection_params_for(ep),
+                    mcp_tools.BestEffortMcpToolset(
+                        connection_params=mcp_tools.connection_params_for(ep),
                         label=mcp_url,
                     )
                 )
@@ -104,7 +106,7 @@ class Agent:
                 if not endpoint:
                     logger.warning(f"Unknown MCP tool/server '{name}' (no URL found in config).")
                     continue
-                if not endpoint_is_healthy(endpoint):
+                if not mcp_tools.endpoint_is_healthy(endpoint):
                     # Avoid spamming the REPL: many agents share the same tool list.
                     key = f"{name}@{endpoint.url}"
                     if key not in MCP_UNHEALTHY_WARNED:
@@ -114,8 +116,8 @@ class Agent:
                         )
                     continue
                 tools.append(
-                    BestEffortMcpToolset(
-                        connection_params=connection_params_for(endpoint),
+                    mcp_tools.BestEffortMcpToolset(
+                        connection_params=mcp_tools.connection_params_for(endpoint),
                         label=name,
                     )
                 )
@@ -386,8 +388,8 @@ class Agent:
             # Improve the most common failure mode: MCP session creation errors are opaque.
             msg = str(e)
             if "Failed to create MCP session" in msg:
-                endpoints = load_mcp_endpoints()
-                tool_names = iter_persona_tool_names(getattr(self.persona, "tools", None))
+                endpoints = mcp_tools.load_mcp_endpoints()
+                tool_names = mcp_tools.iter_persona_tool_names(getattr(self.persona, "tools", None))
                 details = []
                 for name in tool_names:
                     ep = endpoints.get(name)

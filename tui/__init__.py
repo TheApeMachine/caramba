@@ -23,7 +23,7 @@ __all__ = [
     "TrainingView",
     "BuilderView",
     "main",
-    # Legacy standalone apps
+    # Standalone apps
     "RootChatApp",
     "TrainingDashboard",
     "ManifestBuilder",

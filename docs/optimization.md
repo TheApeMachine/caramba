@@ -85,7 +85,7 @@ train:
 
 ### Plan Persistence
 
-Runtime plans are cached in `caramba/runtime/plan.py`:
+Runtime plans are cached in `caramba/runtime/plan/` (see `caramba/runtime/plan/__init__.py`):
 
 ```python
 from caramba.runtime.plan import RuntimePlan, load_plan, save_plan

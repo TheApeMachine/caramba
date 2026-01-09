@@ -26,11 +26,21 @@ class LlamaTokenizerConfig(BaseModel):
     model_id: str = "meta-llama/Llama-3.2-1B"
 
 
+class CodeBpeTokenizerConfig(BaseModel):
+    """
+    CodeBpeTokenizerConfig configures a deterministic CodeBPE tokenizer loaded
+    from a local HuggingFace `tokenizers` JSON file.
+    """
+
+    type: Literal["code_bpe"] = "code_bpe"
+    tokenizer_file: str
+
+
 # TokenizerConfig is a union of supported tokenizer backends.
 # Using Annotated with discriminator allows extension to support
 # multiple tokenizer backends without breaking existing configs.
 TokenizerConfig = Annotated[
-    TiktokenTokenizerConfig | LlamaTokenizerConfig,
+    TiktokenTokenizerConfig | LlamaTokenizerConfig | CodeBpeTokenizerConfig,
     Field(discriminator="type"),
 ]
 

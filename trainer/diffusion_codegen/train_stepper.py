@@ -11,7 +11,6 @@ from typing import Any
 import torch
 import torch.nn.functional as torchF
 from torch import Tensor
-from torch.cuda.amp import GradScaler, autocast
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
@@ -100,7 +99,7 @@ class TrainStepper:
     ) -> Tensor:
         mse_weight = float(self.settings.mse_lambda)
         use_sc = torch.rand((), device=noisy.device) < float(self.settings.self_condition_prob)
-        with autocast(enabled=bool(use_amp)):
+        with torch.autocast(device_type="cuda", enabled=bool(use_amp)):
             eps1, x0_1, logits1 = ctx.model(
                 noisy_emb=noisy,
                 t=t,

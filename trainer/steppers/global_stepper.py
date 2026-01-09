@@ -357,7 +357,7 @@ class GlobalStepper:
                 t1 = time.perf_counter()
                 step_s = float(t1 - t0)
                 tok_s = float(tokens_seen) / step_s if step_s > 0 else 0.0
-                # Heuristic "gbs" throughput proxy to match legacy dashboards.
+                # Heuristic "gbs" throughput proxy (tokens * d_model * 2 / sec).
                 d_model = float(getattr(getattr(ctx.student, "config", object()), "d_model", 0.0) or 0.0)
                 if d_model <= 0.0:
                     d_model = float(getattr(train, "block_size", 0) or 0)
@@ -372,35 +372,6 @@ class GlobalStepper:
                     metrics["diff_loss"] = float(diff_sum) / float(accum_steps)
                 if ctx.inst:
                     ctx.inst.log_scalars(step=step + 1, prefix="train/global", scalars=metrics)
-                    # Legacy W&B keys (flat) to match the original project dashboards.
-                    legacy: dict[str, float] = {
-                        "loss": float(loss_val),
-                        "train_loss": float(loss_val),
-                        "ppl": safe_perplexity_from_nll(float(loss_val)),
-                        "train_ppl": safe_perplexity_from_nll(float(loss_val)),
-                        "lr": float(lr),
-                        "lr_base": float(lr_base),
-                        "lr_mult": float(lr_mult),
-                        "grad_norm": float(grad_norm_post),
-                        "grad_norm_preclip": float(grad_norm),
-                        "grad_clip_norm": float(grad_clip),
-                        "grad_accum": float(accum_steps),
-                        "batch_size": float(getattr(train, "batch_size", 0)),
-                        "seq_len": float(getattr(train, "block_size", 0)),
-                        "tok_s": float(tok_s),
-                        "gbs": float(gbs),
-                        "ms_fwd": float(fwd_s * 1000.0),
-                        "ms_bwd": float(bwd_s * 1000.0),
-                        "ms_opt": float((topt1 - topt0) * 1000.0),
-                        "ms_step": float(step_s * 1000.0),
-                    }
-                    if ctx.device.type == "cuda":
-                        try:
-                            legacy["cuda_mem_alloc_bytes"] = float(torch.cuda.memory_allocated(ctx.device))
-                            legacy["cuda_mem_reserved_bytes"] = float(torch.cuda.memory_reserved(ctx.device))
-                        except Exception:
-                            pass
-                    ctx.inst.log_scalars(step=step + 1, prefix="", scalars=legacy)
 
                 if (
                     val_loader is not None

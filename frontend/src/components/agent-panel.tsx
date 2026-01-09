@@ -26,7 +26,7 @@ type PersonaInfo = {
 	name: string;
 	model: string;
 	temperature: number;
-	mcp_servers: string[];
+	tools: string[];
 };
 
 type ProcessConfig = {

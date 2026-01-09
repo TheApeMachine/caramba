@@ -32,8 +32,6 @@ class Persona(BaseModel):
         default_factory=list,
         description="List of MCP tool server names enabled for this persona",
     )
-    # Legacy alias: some YAML files use `mcp_servers` instead of `tools`.
-    mcp_servers: list[str | ToolRef] = Field(default_factory=list, description="Legacy alias for tools")
     # Optional list of sub-agent names (for A2A delegation).
     # Empty by default; only root persona will have sub-agents initially.
     sub_agents: list[str] = Field(default_factory=list, description="List of sub-agent persona names (A2A)")

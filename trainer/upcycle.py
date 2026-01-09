@@ -50,14 +50,14 @@ from caramba.trainer.collectors import Collector
 from caramba.trainer.verifiers import Verifier
 from caramba.trainer.checkpointers import CheckPointer
 from caramba.trainer.steppers import Stepper
-from caramba.data import build_token_dataset
+from caramba.data.datasets.builder import TokenDatasetBuilder
 from caramba.runtime.tensordict_utils import TensorDictBase, collate_tensordict
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 
 class _ManifestShim:
-    """Minimal shape expected by legacy upcycling components."""
+    """Minimal manifest view for the upcycling pipeline."""
 
     __slots__ = ("name", "notes", "defaults", "model")
 
@@ -112,7 +112,7 @@ class UpcycleTrainer:
             model=model_cfg,
         )
 
-        # Build a legacy Group object for the existing collector/checkpointer layout.
+        # Build a Group object for the existing collector/checkpointer layout.
         data_path = target.data.config.get("path", "")
         if not isinstance(data_path, str):
             data_path = str(data_path)
@@ -280,12 +280,12 @@ class _UpcycleSession:
                 overwrite=bool(overwrite),
             )
         try:
-            dataset = build_token_dataset(path=data_path, block_size=int(train.block_size))
+            dataset = TokenDatasetBuilder.build(path=data_path, block_size=int(train.block_size))
         except Exception as e:
             # If the dataset doesn't exist yet, and a prepare config is present, build it now.
             if prepare_cfg is not None:
                 _maybe_prepare(overwrite=False)
-                dataset = build_token_dataset(path=data_path, block_size=int(train.block_size))
+                dataset = TokenDatasetBuilder.build(path=data_path, block_size=int(train.block_size))
             else:
                 logger.error(f"Teacher sanity check skipped: failed to load dataset {data_path!r}: {e}")
                 return

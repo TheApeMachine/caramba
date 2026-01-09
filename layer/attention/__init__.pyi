@@ -17,9 +17,8 @@ class AttentionLayer(nn.Module):
     group_size: int
 
     # Common module attributes exposed by all concrete implementations
-    q_proj: nn.Linear | None
-    k_proj: nn.Linear | None
-    v_proj: nn.Linear
+    qkv_proj: nn.Linear | None
+    v_proj: nn.Linear | None
     out_proj: nn.Linear
 
     # Decoupled-only (DBA) attributes (present as None in standard/gqa)

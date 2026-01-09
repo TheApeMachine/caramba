@@ -15,6 +15,7 @@ from caramba.config import Config
 from caramba.config.diffusion import DiffusionHeadConfig
 from caramba.config.embedder import EmbedderConfig, NoEmbedderConfig
 from caramba.config.embedder import TokenEmbedderConfig
+from caramba.config.weight_init import WeightInitConfig, GPT2InitConfig
 from caramba.config.layer import (
     AttentionMode,
     AttentionLayerConfig,
@@ -69,6 +70,7 @@ class ModelConfig(Config):
     embedder: EmbedderConfig = Field(default_factory=NoEmbedderConfig)
     topology: TopologyConfig
     diffusion_head: DiffusionHeadConfig = Field(default_factory=DiffusionHeadConfig)
+    weight_init: WeightInitConfig = Field(default_factory=GPT2InitConfig)
     tied_embeddings: bool = True
 
     # Optional self-optimization target: approximate parameter budget.
@@ -139,6 +141,9 @@ class ModelConfig(Config):
 
         if isinstance(cfg.embedder, TokenEmbedderConfig):
             cfg.embedder.d_model = int(d_model)
+
+        if isinstance(cfg.weight_init, GPT2InitConfig):
+            cfg.weight_init.n_layers = int(n_layer_guess)
 
         def scale_node(node: NodeConfig) -> NodeConfig:
             if isinstance(node, AttentionLayerConfig):

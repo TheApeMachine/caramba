@@ -1,12 +1,12 @@
-"""NPY dataset for preprocessed token data.
+"""NumPy token dataset
 
-Training on raw text is slow because tokenization happens on-the-fly. For
-efficiency, we preprocess text into token IDs and save them as .npy files.
-This dataset loads those files and serves fixed-length token blocks for
-next-token prediction training.
+Loads pre-tokenized data from `.npy` files and serves fixed-length sequences
+for next-token prediction. Using preprocessed tokens avoids repeated
+tokenization overhead during training, significantly speeding up data loading.
 """
 from __future__ import annotations
 
+import warnings
 import numpy as np
 import torch
 from torch.utils.data import Dataset
@@ -18,21 +18,19 @@ _INT32_MAX = 2**31 - 1
 
 
 class NpyDataset(Dataset[TensorDictBase]):
-    """Dataset that loads preprocessed tokens from a .npy file.
+    """NumPy token dataset
 
-    The file should contain a 1D array of token IDs. The dataset serves
-    fixed-length blocks where each sample is (x, y) with y being the
-    next-token shift of x—the standard format for language modeling.
+    Loads a 1D array of token IDs from disk and serves fixed-length blocks
+    for next-token prediction. Uses memory-mapping to handle datasets larger
+    than RAM without loading everything into memory at once.
     """
 
     def __init__(self, path: str, *, block_size: int) -> None:
-        """Load tokens from a .npy file.
+        """Initialize NumPy dataset
 
-        Args:
-            path: Path to the .npy file containing token IDs
-            block_size: Length of token sequences to serve (context length)
-
-        The file is memory-mapped for efficiency with large datasets.
+        Opens the token file using memory-mapping so large datasets don't need
+        to fit in RAM. The block_size determines the sequence length for each
+        training sample, which should match your model's context window.
         """
         if block_size <= 0:
             raise ValueError(f"block_size must be > 0, got {block_size}")
@@ -61,7 +59,12 @@ class NpyDataset(Dataset[TensorDictBase]):
         self._validate_sample()
 
     def _validate_sample(self) -> None:
-        """Sample tokens using numpy to verify range."""
+        """Validate token range
+
+        Checks that token IDs are in a valid range (non-negative and fit in
+        int32) by sampling from the dataset. This catches corrupted files or
+        incorrect tokenization early rather than during training.
+        """
         if self.tokens_np.size == 0:
             raise ValueError("Token array is empty.")
 
@@ -85,16 +88,22 @@ class NpyDataset(Dataset[TensorDictBase]):
             raise ValueError(f"Token IDs must fit in int32, found max={mx}")
 
     def __len__(self) -> int:
-        """Return the number of full non-overlapping blocks."""
+        """Get dataset length
+
+        Calculates how many non-overlapping blocks fit in the token array,
+        ensuring each sample is independent and the dataset size is
+        predictable for training loop progress tracking.
+        """
         # Stride = block_size for standard LM training (no overlap).
         return (self.tokens_np.size - 1) // self.block_size
 
     @override
     def __getitem__(self, idx: int) -> TensorDictBase:
-        """Get a (input, target) pair for language modeling.
+        """Get training sample
 
-        Returns x[0:block_size] and y[1:block_size+1] where y is the
-        next-token target for each position in x.
+        Extracts a token block and creates (input, target) pairs where target
+        is the input shifted by one position. This is the standard format for
+        autoregressive language modeling where the model predicts the next token.
         """
         # Calculate start position for non-overlapping block
         start = idx * self.block_size
@@ -103,9 +112,12 @@ class NpyDataset(Dataset[TensorDictBase]):
         # Slice from mmap (numpy handles uint16 correctly)
         block_np = self.tokens_np[start:end]
 
-        # Convert to tensor (copy) and cast to long
+        # Convert to tensor and cast to long
         # numpy uint16 -> torch int32/int64 works fine for small arrays.
-        block = torch.from_numpy(block_np).to(dtype=torch.long)
+        # Suppress PyTorch warning about read-only arrays since this dataset is read-only.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*not writable.*")
+            block = torch.from_numpy(block_np).to(dtype=torch.long)
 
         x = block[:-1]
         y = block[1:]

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_supported
 
 
 def _skip_if_no_metal_extension() -> None:
@@ -17,7 +17,7 @@ def _skip_if_no_metal_extension() -> None:
         pytest.skip(f"caramba metal extension unavailable: {e}")
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_layernorm_backward_matches_pytorch() -> None:
     _skip_if_no_metal_extension()
 
@@ -60,7 +60,7 @@ def test_layernorm_backward_matches_pytorch() -> None:
     torch.testing.assert_close(gb_m, b.grad, rtol=1e-2, atol=1e-2)
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_layernorm_weight_only_backward_matches_pytorch() -> None:
     _skip_if_no_metal_extension()
 
@@ -99,7 +99,7 @@ def test_layernorm_weight_only_backward_matches_pytorch() -> None:
     torch.testing.assert_close(gw_m, w.grad, rtol=1e-2, atol=1e-2)
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_layernorm_noweight_backward_matches_pytorch() -> None:
     _skip_if_no_metal_extension()
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import enum
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from caramba.config import Config, PositiveFloat, PositiveInt, Probability
 
@@ -192,7 +192,21 @@ class AttentionLayerConfig(Config):
     # - auto: use Triton training kernel when eligible (default)
     # - triton: require Triton training kernel when eligible (may error if unavailable)
     # - sdpa: force PyTorch SDPA path (more numerically conservative; useful for stability/debug)
-    dba_train_backend: Literal["auto", "triton", "sdpa"] = "auto"
+    #
+    # Note: "metal" is accepted for MPS/Metal runs and maps to an SDPA-style path
+    # (no Triton). It's primarily a manifest-friendly way to be explicit about
+    # the intended device family.
+    dba_train_backend: Literal["auto", "triton", "sdpa", "metal"] = "auto"
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _coerce_mode(cls, v: object) -> object:
+        """Back-compat sugar: `mode: bottleneck` == `mode: standard` + `attn_dim`."""
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s == "bottleneck":
+                return AttentionMode.STANDARD
+        return v
 
     @property
     def head_dim(self) -> int:

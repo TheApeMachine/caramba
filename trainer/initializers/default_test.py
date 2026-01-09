@@ -62,11 +62,11 @@ def test_default_initializer_resolve_teacher_ckpt(tmp_path: Path) -> None:
 
 def test_default_initializer_init_models_is_testable_with_monkeypatch(tmp_path: Path, monkeypatch) -> None:
     # Patch heavy components to minimal deterministic stubs.
-    monkeypatch.setattr(init, "CheckpointLoader", lambda: type("CL", (), {"load": lambda _self, _p: {"k": torch.tensor(1)}})())
+    monkeypatch.setattr(init, "CheckpointBuilder", lambda: type("CB", (), {"load": lambda _self, _p: {"k": torch.tensor(1)}})())
     monkeypatch.setattr(
         init,
-        "LlamaUpcycle",
-        lambda _m, _sd, **_kw: type("U", (), {"apply": lambda _self: None})(),
+        "AdapterStateDictTransformer",
+        type("A", (), {"llama": staticmethod(lambda **_kw: type("U", (), {"apply": staticmethod(lambda **_k: None)})())}),
     )
 
     class FakeModel(nn.Module):

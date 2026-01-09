@@ -1,7 +1,8 @@
-"""Toy diffusion dataset on vector data.
+"""Diffusion vector dataset
 
-This is a minimal diffusion-style objective (predict noise) that doesn't depend
-on external diffusion libraries.
+Generates training samples for diffusion models by adding noise to data vectors
+at random timesteps. This implements the core diffusion training objective
+(predict noise) without requiring external diffusion libraries.
 """
 
 from __future__ import annotations
@@ -18,22 +19,34 @@ from torch.utils.data import Dataset
 from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 def _linear_beta_schedule(timesteps: int, beta_start: float = 1e-4, beta_end: float = 2e-2) -> Tensor:
+    """Linear noise schedule
+
+    Creates a linear schedule for the noise level (beta) across diffusion
+    timesteps, which controls how much noise is added at each step. Linear
+    schedules are simple and work well for many tasks.
+    """
     return torch.linspace(beta_start, beta_end, timesteps)
 
 
 @dataclass(frozen=True, slots=True)
 class DiffusionVectorDataset:
-    """Dataset component yielding (x_t, t, eps) for diffusion training.
+    """Diffusion vector dataset component
 
-    Config:
-    - x_path: npy array of shape (N, D)
-    - timesteps: number of diffusion steps (T)
+    Manifest-level dataset that loads vector data and generates (noisy_data,
+    timestep, noise) triplets for diffusion model training. Each sample
+    randomly selects a timestep and adds the corresponding amount of noise.
     """
 
     x_path: str
     timesteps: int = 1000
 
     def build(self) -> Dataset[TensorDictBase]:
+        """Build diffusion dataset
+
+        Loads the clean data, computes the noise schedule, and creates a
+        dataset that samples random timesteps and generates noisy versions
+        of the data for training the denoising model.
+        """
         x0 = np.load(Path(self.x_path))
         x0_t = torch.from_numpy(x0).float()
         betas = _linear_beta_schedule(int(self.timesteps))

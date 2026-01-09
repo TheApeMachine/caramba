@@ -11,10 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from tokenizers import Tokenizer
 from torch import Tensor
-from torch.cuda.amp import GradScaler
+from torch.amp.grad_scaler import GradScaler
 
+from caramba.data.tokenizers.hf_json import HfJsonTokenizer
+from caramba.data.tokenizers.training import TrainingTokenizer
 from caramba.diffusion.schedule import NoiseSchedule
 
 
@@ -24,7 +25,7 @@ class TrainingContext:
 
     device: torch.device
     model: Any
-    tokenizer: Tokenizer
+    tokenizer: TrainingTokenizer
     pad_id: int
     alpha_bar: Tensor
     schedule: NoiseSchedule
@@ -43,7 +44,7 @@ class TrainingContext:
         schedule: NoiseSchedule,
     ) -> "TrainingContext":
         device = next(model.parameters()).device
-        tokenizer = Tokenizer.from_file(str(Path(tokenizer_file)))
+        tokenizer = HfJsonTokenizer.from_file(tokenizer_file=str(Path(tokenizer_file)))
         pad_id = tokenizer.token_to_id("<pad>")
         if pad_id is None:
             raise ValueError("Tokenizer must define <pad>.")
@@ -54,7 +55,7 @@ class TrainingContext:
             pad_id=int(pad_id),
             alpha_bar=alpha_bar,
             schedule=schedule,
-            scaler=GradScaler(enabled=(device.type == "cuda")),
+            scaler=GradScaler("cuda", enabled=(device.type == "cuda")),
             hidden_size=int(getattr(model, "hidden_size", 512)),
             seq_len=int(getattr(model, "max_len", 128)),
         )

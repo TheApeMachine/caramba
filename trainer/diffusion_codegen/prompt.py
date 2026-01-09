@@ -9,8 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import torch
-from tokenizers import Tokenizer
 from torch import Tensor, nn
+
+from caramba.data.tokenizers.training import TrainingTokenizer
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +21,7 @@ class PromptEncoder:
     Converts prompt text into (prompt_emb, prompt_pad_mask) aligned to seq_len.
     """
 
-    tokenizer: Tokenizer
+    tokenizer: TrainingTokenizer
     embedding: nn.Embedding
     pad_id: int
     seq_len: int

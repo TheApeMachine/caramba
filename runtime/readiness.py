@@ -25,9 +25,9 @@ from caramba.config.manifest import Manifest
 from caramba.config.model import ModelConfig
 from caramba.config.target import ExperimentTargetConfig
 from caramba.optimizer.runtime import (
-    METAL_BUILD_TOOLS_AVAILABLE,
-    METAL_SUPPORTED,
-    TRITON_AVAILABLE,
+    metal_build_tools_available,
+    metal_supported,
+    triton_supported,
 )
 
 
@@ -136,6 +136,20 @@ def _matplotlib_available() -> bool:
         return False
 
 
+def _probe_flag(value: object) -> bool:
+    """Interpret a readiness probe that may be a bool or a 0-arg callable.
+
+    Tests monkeypatch these probes to booleans; production code provides callables.
+    """
+    if callable(value):
+        try:
+            return bool(value())
+        except TypeError:
+            # If a non-0-arg callable slips through, treat it as truthy/falsey.
+            return bool(value)
+    return bool(value)
+
+
 def check_target_readiness(
     manifest: Manifest,
     target: ExperimentTargetConfig,
@@ -168,7 +182,7 @@ def check_target_readiness(
 
     # Metal (MPS) fused decode is used for fp16 caches on MPS.
     if "mps" in devices and ("fp16" in cache_kinds or "auto" in cache_kinds):
-        if not METAL_SUPPORTED:
+        if not _probe_flag(metal_supported):
             report.errors.append(
                 ReadinessIssue(
                     kind="error",
@@ -176,7 +190,7 @@ def check_target_readiness(
                     message="Target requests device=mps, but PyTorch MPS is not available.",
                 )
             )
-        elif not METAL_BUILD_TOOLS_AVAILABLE:
+        elif not _probe_flag(metal_build_tools_available):
             issue = ReadinessIssue(
                 kind="warning" if best_effort else "error",
                 code="metal_build_tools_missing",
@@ -198,7 +212,7 @@ def check_target_readiness(
     # Triton fused decode is used for quantized caches on CUDA.
     wants_q4 = any(k.startswith("q4") or k == "q4_0" for k in cache_kinds)
     if "cuda" in devices and wants_q4:
-        if not TRITON_AVAILABLE:
+        if not _probe_flag(triton_supported):
             issue = ReadinessIssue(
                 kind="warning" if best_effort else "error",
                 code="triton_missing",

@@ -8,7 +8,7 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 from caramba.optimizer.kernels_ssm import selective_scan_triton
 
 __all__ = ["fused_selective_scan", "fused_ssm_available"]
@@ -16,7 +16,7 @@ __all__ = ["fused_selective_scan", "fused_ssm_available"]
 
 def fused_ssm_available(device_type: str) -> bool:
     """Check if fused SSM kernels are available."""
-    return bool(TRITON_AVAILABLE and device_type == "cuda" and selective_scan_triton is not None)
+    return bool(triton_supported() and device_type == "cuda" and selective_scan_triton is not None)
 
 
 def fused_selective_scan(

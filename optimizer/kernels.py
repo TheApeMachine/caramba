@@ -12,6 +12,9 @@ Notes:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any, TypeVar, cast
+
 import torch
 from torch import Tensor
 import torch.nn.functional as F
@@ -25,7 +28,61 @@ def _require(cond: bool, *, msg: str) -> None:
         raise RuntimeError(msg)
 
 
-@_dynamo_disable
+_F = TypeVar("_F", bound=Callable[..., object])
+
+
+def _dynamo_disable_typed(fn: _F) -> _F:
+    """Typed wrapper for `torch._dynamo.disable`.
+
+    basedpyright can lose decorated function signatures otherwise, and treat
+    decorated callables as `disable(...)` at import sites.
+    """
+
+    return cast(_F, _dynamo_disable(fn))
+
+
+# ---- Optional backend imports (top-level; errors raised on use) ----
+_METAL_IMPORT_ERROR: Exception | None = None
+_TRITON_IMPORT_ERROR: Exception | None = None
+
+_rmsnorm_fp16: Any | None = None
+_rope_fp16: Any | None = None
+_layernorm_fp16: Any | None = None
+_dba_decode_fp16: Any | None = None
+_MetalSSMSelectiveScan: Any | None = None
+_AdamWMasterStep: Any | None = None
+_lion_fp16: Any | None = None
+
+try:
+    from caramba.optimizer.metal import (
+        AdamWMasterStep as _AdamWMasterStep,
+        MetalSSMSelectiveScan as _MetalSSMSelectiveScan,
+        dba_decode_fp16 as _dba_decode_fp16,
+        layernorm_fp16 as _layernorm_fp16,
+        lion_fp16 as _lion_fp16,
+        rmsnorm_fp16 as _rmsnorm_fp16,
+        rope_fp16 as _rope_fp16,
+    )
+except Exception as e:
+    _METAL_IMPORT_ERROR = e
+
+_rmsnorm_triton: Any | None = None
+_rope_triton: Any | None = None
+_layernorm_triton: Any | None = None
+_fused_selective_scan: Any | None = None
+_adamw_triton_master_step: Any | None = None
+
+try:
+    from caramba.optimizer.adamw_triton import adamw_triton_master_step as _adamw_triton_master_step
+    from caramba.optimizer.fused_ssm import fused_selective_scan as _fused_selective_scan
+    from caramba.optimizer.layernorm_triton import layernorm_triton as _layernorm_triton
+    from caramba.optimizer.rmsnorm_triton import rmsnorm_triton as _rmsnorm_triton
+    from caramba.optimizer.rope_triton import rope_triton as _rope_triton
+except Exception as e:
+    _TRITON_IMPORT_ERROR = e
+
+
+@_dynamo_disable_typed
 def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     """RMSNorm: y = x * rsqrt(mean(x^2) + eps) * weight."""
     if x.device.type == "mps":
@@ -37,9 +94,9 @@ def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
             x.dtype == torch.float16,
             msg=f"RMSNorm on MPS requires fp16, got dtype={x.dtype}.",
         )
-        from caramba.optimizer.metal import rmsnorm_fp16
-
-        return rmsnorm_fp16(x=x, weight=weight, eps=float(eps))
+        if _rmsnorm_fp16 is None:
+            raise RuntimeError(f"Metal RMSNorm import failed: {_METAL_IMPORT_ERROR!r}")
+        return _rmsnorm_fp16(x=x, weight=weight, eps=float(eps))
 
     if x.device.type == "cuda":
         _require(
@@ -50,9 +107,9 @@ def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
             x.dtype in (torch.float16, torch.bfloat16),
             msg=f"RMSNorm on CUDA requires fp16/bf16, got dtype={x.dtype}.",
         )
-        from caramba.optimizer.rmsnorm_triton import rmsnorm_triton
-
-        return rmsnorm_triton(x=x, weight=weight, eps=float(eps))
+        if _rmsnorm_triton is None:
+            raise RuntimeError(f"Triton RMSNorm import failed: {_TRITON_IMPORT_ERROR!r}")
+        return _rmsnorm_triton(x=x, weight=weight, eps=float(eps))
 
     x_f = x.float()
     inv_rms = torch.rsqrt(x_f.pow(2).mean(dim=-1, keepdim=True) + float(eps))
@@ -62,7 +119,7 @@ def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     return y
 
 
-@_dynamo_disable
+@_dynamo_disable_typed
 def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     """Apply RoPE using cos/sin tables for the sequence window.
 
@@ -79,9 +136,9 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
             x.dtype == torch.float16,
             msg=f"RoPE on MPS requires fp16, got dtype={x.dtype}.",
         )
-        from caramba.optimizer.metal import rope_fp16
-
-        return rope_fp16(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
+        if _rope_fp16 is None:
+            raise RuntimeError(f"Metal RoPE import failed: {_METAL_IMPORT_ERROR!r}")
+        return _rope_fp16(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
 
     if x.device.type == "cuda":
         _require(
@@ -92,9 +149,9 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
             x.dtype in (torch.float16, torch.bfloat16),
             msg=f"RoPE on CUDA requires fp16/bf16, got dtype={x.dtype}.",
         )
-        from caramba.optimizer.rope_triton import rope_triton
-
-        return rope_triton(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
+        if _rope_triton is None:
+            raise RuntimeError(f"Triton RoPE import failed: {_TRITON_IMPORT_ERROR!r}")
+        return _rope_triton(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
 
     T = int(x.shape[2])
     cos2 = cos[:T].unsqueeze(0).unsqueeze(0).to(dtype=x.dtype, device=x.device)
@@ -112,7 +169,7 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     return torch.cat([y1, y2, x_pass], dim=-1)
 
 
-@_dynamo_disable
+@_dynamo_disable_typed
 def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: float) -> Tensor:
     """LayerNorm over the last dimension.
 
@@ -127,9 +184,9 @@ def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: flo
             x.dtype == torch.float16,
             msg=f"LayerNorm on MPS requires fp16, got dtype={x.dtype}.",
         )
-        from caramba.optimizer.metal import layernorm_fp16
-
-        return layernorm_fp16(x=x, weight=weight, bias=bias, eps=float(eps))
+        if _layernorm_fp16 is None:
+            raise RuntimeError(f"Metal LayerNorm import failed: {_METAL_IMPORT_ERROR!r}")
+        return _layernorm_fp16(x=x, weight=weight, bias=bias, eps=float(eps))
 
     if x.device.type == "cuda":
         _require(
@@ -140,15 +197,15 @@ def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: flo
             x.dtype in (torch.float16, torch.bfloat16),
             msg=f"LayerNorm on CUDA requires fp16/bf16, got dtype={x.dtype}.",
         )
-        from caramba.optimizer.layernorm_triton import layernorm_triton
-
-        return layernorm_triton(x=x, weight=weight, bias=bias, eps=float(eps))
+        if _layernorm_triton is None:
+            raise RuntimeError(f"Triton LayerNorm import failed: {_TRITON_IMPORT_ERROR!r}")
+        return _layernorm_triton(x=x, weight=weight, bias=bias, eps=float(eps))
 
     D = int(x.shape[-1])
     return F.layer_norm(x, normalized_shape=(D,), weight=weight, bias=bias, eps=float(eps))
 
 
-@_dynamo_disable
+@_dynamo_disable_typed
 def attention_decode(
     *,
     q_sem: Tensor,
@@ -181,9 +238,9 @@ def attention_decode(
             q_sem.dtype == torch.float16,
             msg=f"Attention decode on MPS requires fp16, got dtype={q_sem.dtype}.",
         )
-        from caramba.optimizer.metal import dba_decode_fp16
-
-        return dba_decode_fp16(
+        if _dba_decode_fp16 is None:
+            raise RuntimeError(f"Metal attention decode import failed: {_METAL_IMPORT_ERROR!r}")
+        return _dba_decode_fp16(
             q_sem=q_sem,
             q_geo=q_geo,
             k_sem=k_sem,
@@ -203,7 +260,7 @@ def attention_decode(
     )
 
 
-@_dynamo_disable
+@_dynamo_disable_typed
 def scan(
     *,
     x: Tensor,
@@ -227,9 +284,9 @@ def scan(
             x.dtype == torch.float16,
             msg=f"SSM scan on MPS requires fp16, got dtype={x.dtype}.",
         )
-        from caramba.optimizer.metal import MetalSSMSelectiveScan
-
-        return MetalSSMSelectiveScan().run(x=x, dt=dt, A=A, B=B, C=C, D=D)
+        if _MetalSSMSelectiveScan is None:
+            raise RuntimeError(f"Metal SSM import failed: {_METAL_IMPORT_ERROR!r}")
+        return _MetalSSMSelectiveScan().run(x=x, dt=dt, A=A, B=B, C=C, D=D)
 
     if x.device.type == "cuda":
         _require(
@@ -240,9 +297,9 @@ def scan(
             x.dtype in (torch.float16, torch.bfloat16),
             msg=f"SSM scan on CUDA requires fp16/bf16, got dtype={x.dtype}.",
         )
-        from caramba.optimizer.fused_ssm import fused_selective_scan
-
-        return fused_selective_scan(x, dt, A, B, C, D)
+        if _fused_selective_scan is None:
+            raise RuntimeError(f"Triton SSM import failed: {_TRITON_IMPORT_ERROR!r}")
+        return _fused_selective_scan(x, dt, A, B, C, D)
 
     raise RuntimeError(
         "scan: no supported backend for this device/dtype.\n"
@@ -251,7 +308,7 @@ def scan(
     )
 
 
-@_dynamo_disable
+@_dynamo_disable_typed
 def adamw_step(
     *,
     p: Tensor,
@@ -278,9 +335,9 @@ def adamw_step(
             p.dtype == torch.float16,
             msg=f"AdamW step on MPS requires fp16 params, got dtype={p.dtype}.",
         )
-        from caramba.optimizer.metal import AdamWMasterStep
-
-        AdamWMasterStep().run(
+        if _AdamWMasterStep is None:
+            raise RuntimeError(f"Metal AdamW import failed: {_METAL_IMPORT_ERROR!r}")
+        _AdamWMasterStep().run(
             p=p,
             grad=grad,
             master=master,
@@ -316,9 +373,9 @@ def adamw_step(
             p.is_contiguous() and grad.is_contiguous() and master.is_contiguous() and exp_avg.is_contiguous() and exp_avg_sq.is_contiguous(),
             msg="AdamW step on CUDA requires all tensors to be contiguous.",
         )
-        from caramba.optimizer.adamw_triton import adamw_triton_master_step
-
-        adamw_triton_master_step(
+        if _adamw_triton_master_step is None:
+            raise RuntimeError(f"Triton AdamW import failed: {_TRITON_IMPORT_ERROR!r}")
+        _adamw_triton_master_step(
             p=p.view(-1),
             grad=grad.view(-1),
             master=master.view(-1),
@@ -358,9 +415,9 @@ def lion_step(
             p.dtype == torch.float16,
             msg=f"Lion step on MPS requires fp16 params, got dtype={p.dtype}.",
         )
-        from caramba.optimizer.metal import lion_fp16
-
-        lion_fp16(
+        if _lion_fp16 is None:
+            raise RuntimeError(f"Metal Lion import failed: {_METAL_IMPORT_ERROR!r}")
+        _lion_fp16(
             p=p,
             grad=grad,
             m=m,

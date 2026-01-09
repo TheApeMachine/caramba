@@ -17,7 +17,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from caramba.config.eval import EvalCase, EvalThresholds, EvalVerifyConfig
-from caramba.eval.tokenizer import Tokenizer, build_tokenizer
+from caramba.data.tokenizers.base import Tokenizer
+from caramba.data.tokenizers.builder import TokenizerBuilder
 
 
 class EvalCaseResult:
@@ -75,7 +76,7 @@ def run_eval_verify(
     Runs all test cases against both teacher and student models,
     returning an aggregate summary of their performance.
     """
-    tokenizer = build_tokenizer(cfg.tokenizer)
+    tokenizer = TokenizerBuilder().build(cfg.tokenizer)
     teacher.eval()
     student.eval()
 

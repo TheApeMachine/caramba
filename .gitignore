@@ -37,3 +37,6 @@ artifacts/ai/brainstorm.jsonl
 .cache/
 .tmp/
 *.pt
+tmp/
+*.npy
+*.npy.meta

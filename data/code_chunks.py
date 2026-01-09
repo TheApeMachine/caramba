@@ -1,12 +1,9 @@
 """Code chunk dataset
 
-Builds a prompt/target paired dataset from a source tree:
-- target_ids: a token window from a file
-- prompt_ids: the preceding context window from the same file
-
-This teaches conditional generation where the model learns to continue code from
-previous context, while still supporting unconditional generation via CFG by
-masking the prompt.
+Loads code files and creates (prompt, target) pairs where target is a token
+window and prompt is the preceding context. This enables conditional code
+generation training while supporting unconditional generation through prompt
+masking in classifier-free guidance.
 """
 
 from __future__ import annotations
@@ -16,30 +13,38 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from tokenizers import Tokenizer
 from torch.utils.data import Dataset
 
+from caramba.data.tokenizers.training import TrainingTokenizer
+from caramba.data.tokenizers.hf_json import HfJsonTokenizer
 from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 
 class CodeChunksTorchDataset(Dataset[TensorDictBase]):
-    """Torch dataset yielding paired (target_ids, prompt_ids) windows.
+    """Code chunks dataset implementation
 
-    This class is deterministic: file ordering and chunk indexing are stable so
-    that runs are reproducible when seeded.
+    Processes code files into overlapping windows with prompt/target pairs,
+    caching tokenized files to avoid repeated tokenization. File ordering and
+    chunking are deterministic for reproducible training runs.
     """
 
     def __init__(
         self,
         *,
         data_dir: Path,
-        tokenizer: Tokenizer,
+        tokenizer: TrainingTokenizer,
         seq_len: int,
         stride: int,
         extensions: list[str],
         max_files: int | None,
         cache_size: int,
     ) -> None:
+        """Initialize code chunks dataset
+
+        Scans the data directory for code files, builds a chunk index, and sets
+        up a bounded cache to store tokenized file contents for efficient
+        repeated access during training.
+        """
         self.data_dir = data_dir
         self.tokenizer = tokenizer
         self.seq_len = int(seq_len)
@@ -54,9 +59,20 @@ class CodeChunksTorchDataset(Dataset[TensorDictBase]):
         self.chunks = self.buildChunks()
 
     def __len__(self) -> int:
+        """Get dataset length
+
+        Returns the number of chunks across all files, which depends on file
+        sizes, sequence length, and stride parameters.
+        """
         return len(self.chunks)
 
     def __getitem__(self, idx: int) -> TensorDictBase:
+        """Get code chunk sample
+
+        Extracts a target window and its preceding prompt context from the
+        same file, then pads or truncates both to the configured sequence
+        length for consistent batch shapes.
+        """
         path, target_start, target_end = self.chunks[int(idx)]
         target_ids = self.loadTokenSlice(path=path, start=target_start, end=target_end)
 
@@ -75,16 +91,23 @@ class CodeChunksTorchDataset(Dataset[TensorDictBase]):
         )
 
     def requirePadId(self) -> int:
-        """Require that the tokenizer defines <pad>."""
+        """Get padding token ID
 
+        Ensures the tokenizer has a padding token defined, which is required
+        for creating fixed-length sequences from variable-length code chunks.
+        """
         pad_id = self.tokenizer.token_to_id("<pad>")
         if pad_id is None:
             raise ValueError("Tokenizer must define a <pad> token.")
         return int(pad_id)
 
     def listFiles(self) -> list[Path]:
-        """List code files deterministically."""
+        """List code files
 
+        Recursively scans the data directory for files matching the configured
+        extensions, sorting them deterministically for reproducible dataset
+        ordering across runs.
+        """
         if not self.data_dir.exists():
             raise FileNotFoundError(
                 f"Dataset data_dir does not exist: {self.data_dir}. "
@@ -110,8 +133,12 @@ class CodeChunksTorchDataset(Dataset[TensorDictBase]):
         return files
 
     def buildChunks(self) -> list[tuple[str, int, int]]:
-        """Build (file, start, end) token ranges."""
+        """Build chunk index
 
+        Creates (file, start, end) tuples representing all valid token windows
+        across all files, using the configured stride to control overlap
+        between chunks.
+        """
         chunks: list[tuple[str, int, int]] = []
         min_len = max(1, int(self.seq_len) // 2)
 
@@ -135,14 +162,21 @@ class CodeChunksTorchDataset(Dataset[TensorDictBase]):
         return chunks
 
     def loadTokenSlice(self, *, path: str, start: int, end: int) -> list[int]:
-        """Load a token slice, using a bounded per-process cache."""
+        """Load token slice
 
+        Extracts a contiguous range of tokens from a file, using the cached
+        tokenized content to avoid re-tokenizing on every access.
+        """
         ids = self.loadAllTokens(path=path)
         return ids[int(start) : int(end)]
 
     def loadAllTokens(self, *, path: str) -> list[int]:
-        """Load all token IDs for a file, caching by path."""
+        """Load and cache file tokens
 
+        Tokenizes a file and stores the result in a bounded cache, evicting
+        the oldest entry when the cache is full. This balances memory usage
+        with access speed for frequently accessed files.
+        """
         if path in self.cache:
             return self.cache[path]
 
@@ -162,8 +196,12 @@ class CodeChunksTorchDataset(Dataset[TensorDictBase]):
         return self.cache[path]
 
     def padOrTruncate(self, *, ids: list[int]) -> list[int]:
-        """Pad or truncate to seq_len."""
+        """Pad or truncate sequence
 
+        Ensures sequences are exactly seq_len tokens by truncating longer
+        sequences or padding shorter ones with the padding token, maintaining
+        consistent batch shapes for efficient training.
+        """
         if len(ids) >= int(self.seq_len):
             return ids[: int(self.seq_len)]
         return ids + [int(self.padId)] * (int(self.seq_len) - len(ids))
@@ -171,10 +209,11 @@ class CodeChunksTorchDataset(Dataset[TensorDictBase]):
 
 @dataclass(frozen=True, slots=True)
 class CodeChunksDataset:
-    """Code chunk dataset component
+    """Code chunks dataset component
 
-    This is a dataset component (manifest `data.ref`) that can be built into a
-    torch Dataset yielding TensorDict batches.
+    Manifest-level dataset that processes code files into prompt/target pairs
+    for conditional generation training. Supports multiple programming languages
+    and configurable chunking strategies.
     """
 
     data_dir: str
@@ -186,9 +225,13 @@ class CodeChunksDataset:
     cache_size: int = 200
 
     def build(self) -> Dataset[TensorDictBase]:
-        """Build the torch Dataset."""
+        """Build code chunks dataset
 
-        tokenizer = Tokenizer.from_file(str(Path(self.tokenizer_file)))
+        Loads the tokenizer, sets default file extensions if not specified,
+        and creates the PyTorch dataset that will process code files into
+        training samples.
+        """
+        tokenizer = HfJsonTokenizer.from_file(tokenizer_file=str(Path(self.tokenizer_file)))
         stride = int(self.stride) if self.stride is not None else max(1, int(self.seq_len) // 2)
         extensions = self.extensions or [
             ".py",
@@ -212,8 +255,11 @@ class CodeChunksDataset:
         )
 
     def config(self) -> dict[str, Any]:
-        """Return a serializable config payload (for checkpoints)."""
+        """Get serializable config
 
+        Returns a dictionary representation suitable for saving in checkpoints
+        or logging, ensuring all parameters can be reconstructed later.
+        """
         return {
             "data_dir": str(self.data_dir),
             "tokenizer_file": str(self.tokenizer_file),

@@ -17,7 +17,7 @@ model: "gpt-5.2"
 temperature: 0.3
 tool_choice: "auto"
 
-mcp_servers:
+tools:
   - graphiti  # For searching codebase and research context
   - deeplake
   - filesystem

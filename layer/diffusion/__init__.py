@@ -138,12 +138,4 @@ class DiffusionLayer(nn.Module):
         guided = eps_uncond + scale * (eps_cond - eps_uncond)
         return guided, x0_cond
 
-    def embedding_tokens(self, embedding: Tensor, weight: Tensor) -> Tensor:
-        """Convert embeddings to token IDs
-
-        Compatibility alias for older code that used `embedding_tokens`.
-        Prefer `tokensFromEmbeddings`.
-        """
-        return self.tokensFromEmbeddings(
-            embedding=embedding, embedding_weight=weight
-        )
+    # Note: `tokensFromEmbeddings` is the single supported API; no aliases.

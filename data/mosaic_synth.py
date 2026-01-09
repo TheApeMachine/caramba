@@ -1,19 +1,9 @@
-"""Synthetic datasets for MOSAIC curriculum training.
+"""MOSAIC synthetic curriculum dataset
 
-This module provides a cheap, infinite-ish source of sequences that *require*
-explicit memory over long gaps.
-
-It is designed to support Stage D1 (teacher-forced memory addressing/gating):
-- emits next-token training pairs (input_ids, target_ids)
-- emits teacher signals:
-  - mosaic_teacher_write_gate
-  - mosaic_teacher_write_bucket
-  - mosaic_teacher_read_bucket
-  - mosaic_teacher_opcode
-  - mosaic_teacher_reg_write_gate (optional; when reg_slots > 0)
-  - mosaic_teacher_reg_sel (optional; when reg_slots > 0)
-
-The sequences are purely token-id based (no text/tokenizer dependency).
+Generates synthetic sequences that require explicit memory operations over long
+gaps, providing teacher signals for memory addressing and gating. Designed for
+curriculum training where models learn to use external memory before handling
+real-world tasks.
 """
 from __future__ import annotations
 
@@ -28,6 +18,13 @@ from caramba.runtime.tensordict_utils import TensorDictBase
 
 
 class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
+    """MOSAIC memory curriculum dataset implementation
+
+    Generates synthetic key-value memory tasks with write-then-query patterns,
+    teaching models when to store and retrieve information from external memory.
+    Includes teacher signals for all memory operations to enable supervised
+    learning of memory mechanisms.
+    """
     def __init__(
         self,
         *,
@@ -42,6 +39,12 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         reg_slots: int = 0,
         sleep_replay_per_pair: int = 0,
     ) -> None:
+        """Initialize memory curriculum dataset
+
+        Sets up parameters for generating memory tasks, including the number
+        of key-value pairs, distractor length between operations, and optional
+        register slots for register-based memory architectures.
+        """
         self.n_items = int(n_items)
         self.block_size = int(block_size)
         self.vocab_size = int(vocab_size)
@@ -79,6 +82,12 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         return self.n_items
 
     def _bucket_for_key(self, key_tok: int) -> int:
+        """Compute memory bucket for key
+
+        Maps a key token to a memory bucket using modulo hashing, providing
+        deterministic addressing that models can learn. This creates a stable
+        mapping so the same key always goes to the same bucket.
+        """
         # Deterministic teacher addressing: stable mapping key->bucket.
         return int(key_tok) % int(self.mem_buckets)
 
@@ -229,7 +238,12 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
 
 @dataclass(frozen=True, slots=True)
 class MosaicMemoryCurriculumDataset:
-    """Manifest component wrapper for the synthetic curriculum dataset."""
+    """MOSAIC memory curriculum dataset component
+
+    Manifest-level dataset for curriculum training of memory-augmented models.
+    Generates synthetic tasks that require explicit memory operations, with
+    teacher signals guiding models to learn proper memory usage patterns.
+    """
 
     block_size: int = 512
     vocab_size: int = 8192
@@ -243,6 +257,11 @@ class MosaicMemoryCurriculumDataset:
     sleep_replay_per_pair: int = 0
 
     def build(self) -> Dataset[TensorDictBase]:
+        """Build memory curriculum dataset
+
+        Creates the PyTorch dataset that generates synthetic memory tasks with
+        teacher signals, ready for curriculum training of MOSAIC models.
+        """
         return _MosaicMemoryCurriculumDataset(
             n_items=int(self.n_items),
             block_size=int(self.block_size),

@@ -235,81 +235,6 @@ class AgentWidget(Static, can_focus=True):
         self._last_update = datetime.now()
 
 
-class ExpertWidget(Static):
-    """Widget showing status of a single expert agent (legacy, for activity tracking)."""
-
-    DEFAULT_CSS = """
-    ExpertWidget {
-        height: auto;
-        padding: 0 1;
-        margin-bottom: 1;
-    }
-
-    ExpertWidget.idle {
-        color: #6C7086;
-    }
-
-    ExpertWidget.consulting {
-        color: #F59E0B;
-        text-style: bold;
-    }
-
-    ExpertWidget.responding {
-        color: #3B82F6;
-        text-style: bold;
-    }
-
-    ExpertWidget.done {
-        color: #10B981;
-    }
-
-    ExpertWidget.error {
-        color: #EF4444;
-    }
-    """
-
-    status: reactive[ExpertStatus] = reactive(ExpertStatus.IDLE)
-
-    def __init__(self, expert_name: str, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.expert_name = expert_name
-        self._last_update = datetime.now()
-
-    def on_mount(self) -> None:
-        self._update_display()
-
-    def watch_status(self, status: ExpertStatus) -> None:
-        """React to status changes."""
-        # Remove all status classes
-        for s in ExpertStatus:
-            self.remove_class(s.value)
-        # Add current status class
-        self.add_class(status.value)
-        self._update_display()
-
-    def _update_display(self) -> None:
-        """Update the display based on current status."""
-        icons = {
-            ExpertStatus.IDLE: "[dim]○[/]",
-            ExpertStatus.CONSULTING: "[yellow]●[/]",
-            ExpertStatus.RESPONDING: "[blue]◉[/]",
-            ExpertStatus.DONE: "[green]✓[/]",
-            ExpertStatus.ERROR: "[red]✗[/]",
-        }
-        icon = icons.get(self.status, "[dim]○[/]")
-        self.update(f"{icon} {self.expert_name}")
-
-    def set_status(self, status: str | ExpertStatus) -> None:
-        """Set the expert's status."""
-        if isinstance(status, str):
-            try:
-                status = ExpertStatus(status)
-            except ValueError:
-                status = ExpertStatus.IDLE
-        self.status = status
-        self._last_update = datetime.now()
-
-
 class ExpertsSidebar(Vertical, can_focus=True):
     """Left sidebar showing agent hierarchy with health status."""
 
@@ -375,7 +300,6 @@ class ExpertsSidebar(Vertical, can_focus=True):
         super().__init__(*args, **kwargs)
         self._root_agent: AgentWidget | None = None
         self._sub_agents: dict[str, AgentWidget] = {}
-        self._experts: dict[str, ExpertWidget] = {}
         self._agent_order: list[str] = []  # Track order for navigation
 
     def compose(self) -> ComposeResult:
@@ -484,6 +408,10 @@ class ExpertsSidebar(Vertical, can_focus=True):
         if name in self._sub_agents:
             self._sub_agents[name].set_activity(activity)
 
+    def update_expert_status(self, name: str, status: ExpertStatus) -> None:
+        """Backward-compatible alias for updating expert activity status."""
+        self.update_agent_activity(name, status)
+
     def set_all_agents_checking(self) -> None:
         """Mark all agents as 'checking' during a status refresh."""
         if self._root_agent:
@@ -506,31 +434,6 @@ class ExpertsSidebar(Vertical, can_focus=True):
             self._root_agent.set_activity(ExpertStatus.IDLE)
         for widget in self._sub_agents.values():
             widget.set_activity(ExpertStatus.IDLE)
-
-    # Legacy methods for backward compatibility with activity tracking
-    def add_expert(self, name: str, status: ExpertStatus = ExpertStatus.IDLE) -> ExpertWidget:
-        """Add an expert to the sidebar (legacy method for activity tracking)."""
-        # Map to activity update if the agent exists
-        self.update_agent_activity(name, status)
-
-        if name in self._experts:
-            self._experts[name].set_status(status)
-            return self._experts[name]
-
-        # Create a hidden widget for tracking (not displayed)
-        expert = ExpertWidget(name)
-        expert.set_status(status)
-        self._experts[name] = expert
-        return expert
-
-    def update_expert_status(self, name: str, status: str | ExpertStatus) -> None:
-        """Update an expert's activity status."""
-        self.update_agent_activity(name, status)
-
-    def clear_experts(self) -> None:
-        """Clear activity states (reset all agents to idle)."""
-        self.clear_all_activity()
-        self._experts.clear()
 
 
 class ToolCallWidget(Static, can_focus=True):

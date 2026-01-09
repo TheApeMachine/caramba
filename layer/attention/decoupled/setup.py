@@ -43,10 +43,6 @@ class DecoupledSetup:
     k_geo_null: nn.Parameter | None
     v_null: nn.Parameter | None
 
-    q_proj: nn.Linear | None
-    k_proj: nn.Linear | None
-    rotary: nn.Module | None
-    _scale: float | None
 
     def init_decoupled(self, config: AttentionLayerConfig) -> None:
         """Initialize DBA projections and knobs
@@ -130,10 +126,4 @@ class DecoupledSetup:
         else:
             self.decoupled_gate_logit = None
             self.decoupled_gate_proj = None
-
-        # Standard-only attributes (kept for backwards compatibility / tests)
-        self.q_proj = None
-        self.k_proj = None
-        self.rotary = None
-        self._scale = None
 

@@ -17,12 +17,12 @@ from typing import Any, cast
 import torch
 from torch import nn
 
+from caramba.adapter.state_dict import AdapterStateDictTransformer
 from caramba.carmath import weight_dtype
 from caramba.config.model import ModelConfig
 from caramba.console import logger
-from caramba.loader.checkpoint import CheckpointLoader
+from caramba.loader.checkpoint import CheckpointBuilder
 from caramba.loader.hf import HFLoader
-from caramba.loader.llama_upcycle import LlamaUpcycle
 from caramba.model import Model
 from caramba.trainer.initializers.default import _make_teacher_model_config
 
@@ -77,7 +77,7 @@ class UpcycleEvalTrainer:
         teacher_state = self._load_teacher_state(self.teacher_ckpt)
         teacher_cfg = _make_teacher_model_config(model_cfg)
         teacher = Model(teacher_cfg).to(device=self.device, dtype=dt)
-        LlamaUpcycle(teacher, teacher_state).apply()
+        AdapterStateDictTransformer.llama(dba_init="svd").apply(model=teacher, state_dict=teacher_state)
         teacher.eval()
 
         # ---- student ----
@@ -97,7 +97,7 @@ class UpcycleEvalTrainer:
         p = Path(ckpt)
         if ckpt.startswith("hf://"):
             p = HFLoader(repo_id=ckpt[5:]).load()
-        state = CheckpointLoader().load(p)
+        state = CheckpointBuilder().load(p)
         return cast(dict[str, torch.Tensor], state)
 
     def _load_student_checkpoint(self, student: nn.Module, ckpt_path: str) -> None:

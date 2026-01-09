@@ -27,9 +27,7 @@ class StandardAttentionLayer(AttentionBase):
     This layer is “the thing most people mean by attention”: project Q/K/V,
     score keys with QK^T, normalize with softmax, and mix values.
     """
-    q_proj: nn.Linear | None
-    k_proj: nn.Linear | None
-    v_proj: nn.Linear
+    qkv_proj: nn.Linear
     out_proj: nn.Linear
     rotary: RotaryEmbedding | None
     _scale: float | None
@@ -56,9 +54,9 @@ class StandardAttentionLayer(AttentionBase):
         attn_dim = int(config.attn_dim) if config.attn_dim else d_model
         kv_dim = int(self.n_kv_heads) * int(self.head_dim)
 
-        self.q_proj = nn.Linear(d_model, attn_dim, bias=bool(config.bias))
-        self.k_proj = nn.Linear(d_model, kv_dim, bias=bool(config.bias))
-        self.v_proj = nn.Linear(d_model, kv_dim, bias=bool(config.bias))
+        # Packed QKV projection: one GEMM, then split into q/k/v.
+        # This reduces kernel launches and is a common throughput win on GPUs.
+        self.qkv_proj = nn.Linear(d_model, attn_dim + 2 * kv_dim, bias=bool(config.bias))
         self.out_proj = nn.Linear(attn_dim, d_model, bias=bool(config.bias))
 
         if bool(config.rope_enabled):
@@ -70,7 +68,7 @@ class StandardAttentionLayer(AttentionBase):
 
         self._scale = 1.0 / math.sqrt(float(self.head_dim))
 
-        # Decoupled-only attributes (kept for backwards compatibility / tests)
+        # Decoupled-only attributes (present on this class as None)
         self.q_sem = None
         self.k_sem = None
         self.q_geo = None
@@ -123,12 +121,10 @@ class StandardAttentionLayer(AttentionBase):
         softmax-normalized similarity between queries and keys.
         """
         _B, T, _ = x.shape
-        if self.q_proj is None or self.k_proj is None:
-            raise RuntimeError("Standard mode projections not initialized")
-
-        q = self.q_proj(x)
-        k = self.k_proj(x)
-        v = self.v_proj(x)
+        q_dim = int(self.config.attn_dim) if self.config.attn_dim else int(self.config.d_model)
+        kv_dim = int(self.n_kv_heads) * int(self.head_dim)
+        qkv = self.qkv_proj(x)
+        q, k, v = qkv.split([q_dim, kv_dim, kv_dim], dim=-1)
 
         qh = self._shape(q, self.head_dim, self.n_heads)
         kh = self._shape(k, self.head_dim, self.n_kv_heads)

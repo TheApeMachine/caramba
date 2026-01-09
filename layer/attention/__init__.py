@@ -43,9 +43,8 @@ class AttentionLayer(nn.Module):
     head_dim: int
     group_size: int
 
-    q_proj: nn.Linear | None
-    k_proj: nn.Linear | None
-    v_proj: nn.Linear
+    qkv_proj: nn.Linear | None
+    v_proj: nn.Linear | None
     out_proj: nn.Linear
     q_sem: nn.Linear | None
     k_sem: nn.Linear | None

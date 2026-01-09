@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 from typing import TYPE_CHECKING, Callable
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 
 __all__ = [
     "fused_weight_encode",
@@ -23,7 +23,7 @@ fused_graph_message_pass: Callable | None = None
 fused_weight_update: Callable | None = None
 TrajectoryEncoder: type | None = None
 
-if not TYPE_CHECKING and TRITON_AVAILABLE:
+if not TYPE_CHECKING and triton_supported():
     try:
         import triton
         import triton.language as tl

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_supported
 
 
 def _skip_if_no_metal_extension() -> None:
@@ -35,7 +35,7 @@ def _reference_scan(*, x: torch.Tensor, dt: torch.Tensor, A: torch.Tensor, B: to
     return y + x * D.view(1, 1, -1)
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_metal_ssm_scan_forward_matches_reference() -> None:
     _skip_if_no_metal_extension()
     torch.manual_seed(0)
@@ -68,7 +68,7 @@ def test_metal_ssm_scan_forward_matches_reference() -> None:
     torch.testing.assert_close(y_metal, y_ref, rtol=3e-2, atol=3e-2)
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_metal_ssm_scan_backward_matches_reference() -> None:
     _skip_if_no_metal_extension()
     torch.manual_seed(1)

@@ -268,7 +268,7 @@ def main() -> None:
     fig.savefig(here / f"{args.prefix}-ppl.png", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
-    # Keep legacy names for paper inclusion, regardless of chosen prefix.
+    # Keep stable names for paper inclusion, regardless of chosen prefix.
     _write_summary_table(here, loss_series=loss_series)
 
     # --- Optional: warmup-boundary spike diagnostics (loss band + LR) ---

@@ -24,7 +24,7 @@ def test_load_persona_loads_and_validates(tmp_path: Path) -> None:
                 "model: gpt-4.1-mini",
                 "temperature: 0.2",
                 "tool_choice: auto",
-                "mcp_servers: [cursor-ide-browser]",
+                "tools: [cursor-ide-browser]",
             ]
         )
         + "\n",
@@ -35,7 +35,7 @@ def test_load_persona_loads_and_validates(tmp_path: Path) -> None:
     assert cfg.type == PersonaType.DEVELOPER
     assert cfg.name == "Dev"
     assert cfg.model == "gpt-4.1-mini"
-    assert cfg.mcp_servers == ["cursor-ide-browser"]
+    assert cfg.tools == ["cursor-ide-browser"]
 
 
 def test_load_persona_falls_back_to_research_lead(tmp_path: Path) -> None:
@@ -53,7 +53,7 @@ def test_load_persona_falls_back_to_research_lead(tmp_path: Path) -> None:
                 "temperature: 0.1",
                 "tool_choice: auto",
                 # Uses default_factory in config, but include explicitly to keep test simple.
-                "mcp_servers: [graphiti]",
+                "tools: [graphiti]",
             ]
         )
         + "\n",

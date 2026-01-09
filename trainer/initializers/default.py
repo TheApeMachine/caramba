@@ -12,9 +12,9 @@ from caramba.config.initializer import DefaultInitializerConfig
 from caramba.config.model import ModelConfig
 from caramba.config.train import TrainConfig
 from caramba.console import logger
-from caramba.loader.checkpoint import CheckpointLoader
+from caramba.adapter.state_dict import AdapterStateDictTransformer
+from caramba.loader.checkpoint import CheckpointBuilder
 from caramba.loader.hf import HFLoader
-from caramba.loader.llama_upcycle import LlamaUpcycle
 from caramba.model import Model
 from caramba.trainer.upcycle_init_context import UpcycleInitContext
 
@@ -72,7 +72,7 @@ class DefaultInitializer:
         logger.header("Model Initialization")
         logger.info(f"Loading teacher checkpoint: {train.teacher_ckpt}")
         ckpt_path = self._resolve_teacher_ckpt(str(train.teacher_ckpt))
-        state_dict = CheckpointLoader().load(ckpt_path)
+        state_dict = CheckpointBuilder().load(ckpt_path)
         logger.success(f"Loaded checkpoint with {len(state_dict)} keys")
 
         logger.info("Building teacher model (standard attention)...")
@@ -85,11 +85,11 @@ class DefaultInitializer:
         logger.success("Student model ready")
 
         logger.info("Applying weights to teacher...")
-        LlamaUpcycle(teacher, state_dict).apply()
+        AdapterStateDictTransformer.llama(dba_init="svd").apply(model=teacher, state_dict=state_dict)
 
         logger.info("Applying upcycle surgery to student...")
         dba_init = str(getattr(train, "dba_init", "svd"))
-        LlamaUpcycle(student, state_dict, dba_init=dba_init).apply()
+        AdapterStateDictTransformer.llama(dba_init=dba_init).apply(model=student, state_dict=state_dict)
         logger.success("Weight transfer complete")
 
         if ctx.dist_ctx is not None:

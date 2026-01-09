@@ -1,11 +1,9 @@
-"""Event-native synthetic datasets (JSON event envelopes → token streams).
+"""Event trace dataset
 
-This bridges the "events vs tokens" paradigm:
-- External interface: EventEnvelope (JSON contract)
-- Internal training substrate: fixed-cost VM time steps (tokens)
-
-The dataset produces next-token pairs (input_ids, target_ids) plus teacher
-signals for MOSAIC control surfaces (opcodes, memory routing, write gates).
+Converts JSON event envelopes into token sequences for training, bridging the
+gap between high-level events and low-level token processing. Produces
+next-token pairs along with teacher signals for MOSAIC memory operations,
+enabling models to learn when and how to interact with external memory.
 """
 
 from __future__ import annotations
@@ -24,7 +22,19 @@ from caramba.layer.mosaic.isa import MosaicOpcode
 
 
 class _EventTraceBuilder:
+    """Event trace builder
+
+    Converts event envelopes into token sequences with supervision signals,
+    tracking which tokens correspond to memory operations, write gates, and
+    other MOSAIC control mechanisms for teacher-forced training.
+    """
     def __init__(self, *, mem_hashes: int, reg_slots: int = 0) -> None:
+        """Initialize event trace builder
+
+        Sets up storage for tokens and supervision signals, configuring the
+        number of memory hash functions and register slots for the target
+        architecture.
+        """
         self.mem_hashes = int(mem_hashes)
         if self.mem_hashes < 1:
             raise ValueError(f"mem_hashes must be >= 1, got {self.mem_hashes}")
@@ -57,6 +67,12 @@ class _EventTraceBuilder:
         rg: int = 0,
         rs: int = -1,
     ) -> None:
+        """Append token with supervision
+
+        Adds a token to the sequence along with its associated supervision
+        signals, which tell the model what memory operations should happen
+        at this position during teacher-forced training.
+        """
         t = int(tok)
         if t < 0 or t > 255:
             raise ValueError(f"Event token must be a byte in [0, 255], got {t}")
@@ -82,6 +98,12 @@ class _EventTraceBuilder:
                 self.reg_sel.append(-1)
 
     def _json_bytes(self, env: EventEnvelope) -> bytes:
+        """Serialize event to bytes
+
+        Converts an event envelope to a deterministic JSON byte string, which
+        becomes the token sequence. The deterministic encoding ensures the same
+        event always produces the same tokens.
+        """
         s = json.dumps(env.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
         b = s.encode("utf-8")
         if not b:
@@ -90,6 +112,12 @@ class _EventTraceBuilder:
 
     @staticmethod
     def _span_for_int_field(s: str, *, field: str, value: int) -> tuple[int, int]:
+        """Find integer field span
+
+        Locates a specific integer field in JSON and returns its byte position,
+        enabling supervision signals to target specific parts of the event
+        representation (e.g., marking where memory writes occur).
+        """
         needle = f"\"{field}\":{int(value)}"
         pos = s.find(needle)
         if pos < 0:
@@ -102,6 +130,12 @@ class _EventTraceBuilder:
 
     @staticmethod
     def _span_for_str_field(s: str, *, field: str, value: str) -> tuple[int, int]:
+        """Find string field span
+
+        Locates a specific string field in JSON and returns its byte position,
+        similar to integer field spans but handling string values that may
+        contain special characters.
+        """
         if not isinstance(field, str) or not field.strip():
             raise ValueError("field must be a non-empty string")
         if not isinstance(value, str):
@@ -137,6 +171,12 @@ class _EventTraceBuilder:
         commitment_delta: int = 0,
         delimiter: int = 10,  # '\n'
     ) -> None:
+        """Append event with supervision
+
+        Converts an event to tokens and adds supervision signals at specific
+        byte positions, enabling the model to learn which tokens trigger
+        memory operations, write gates, and other control mechanisms.
+        """
         b = self._json_bytes(env)
 
         op_s, op_e = opcode_span if opcode_span is not None else (0, 0)
@@ -186,6 +226,12 @@ class _EventTraceBuilder:
 
 
 class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
+    """MOSAIC event trace dataset implementation
+
+    Generates synthetic event sequences that require memory operations, creating
+    write-then-query patterns with distractors to teach models when to use
+    external memory versus local context.
+    """
     def __init__(
         self,
         *,
@@ -201,6 +247,12 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
         reg_slots: int = 0,
         sleep_replay_per_pair: int = 0,
     ) -> None:
+        """Initialize event trace dataset
+
+        Sets up parameters for generating synthetic memory operations, including
+        the number of key-value pairs, distractors between operations, and
+        optional commitment tracking for multi-agent scenarios.
+        """
         self.n_items = int(n_items)
         self.block_size = int(block_size)
         self.vocab_size = int(vocab_size)
@@ -463,7 +515,12 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
 
 @dataclass(frozen=True, slots=True)
 class MosaicEventTraceDataset:
-    """Manifest dataset component wrapper for event-native MOSAIC traces."""
+    """MOSAIC event trace dataset component
+
+    Manifest-level dataset that generates synthetic event sequences for training
+    MOSAIC models. Creates write-then-query patterns with teacher signals,
+    teaching models to use external memory for long-range dependencies.
+    """
 
     block_size: int = 256
     vocab_size: int = 2048  # must be >= 256 (byte-level tokens)
@@ -478,6 +535,11 @@ class MosaicEventTraceDataset:
     sleep_replay_per_pair: int = 0
 
     def build(self) -> Dataset[dict[str, Tensor]]:
+        """Build event trace dataset
+
+        Creates the PyTorch dataset that will generate synthetic event sequences
+        with memory operation supervision, ready for training MOSAIC models.
+        """
         return _MosaicEventTraceTorchDataset(
             n_items=int(self.n_items),
             block_size=int(self.block_size),

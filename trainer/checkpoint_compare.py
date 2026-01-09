@@ -39,14 +39,13 @@ def _extract_state_dict(obj: object) -> dict[str, torch.Tensor]:
     - {"system_state_dict": ...}
     - {"model_state_dict": ...}
     - {"state_dict": ...}
-    - {"student_state_dict": ...} (legacy upcycle-eval shape)
     """
     if isinstance(obj, dict):
         # Raw state dict (most common for safetensors / some .pt dumps).
         if obj and all(isinstance(v, torch.Tensor) for v in obj.values()):
             return cast(dict[str, torch.Tensor], obj)
 
-        for k in ("system_state_dict", "model_state_dict", "state_dict", "student_state_dict"):
+        for k in ("system_state_dict", "model_state_dict", "state_dict"):
             if k in obj:
                 sd = obj.get(k)
                 if isinstance(sd, dict) and all(isinstance(v, torch.Tensor) for v in sd.values()):
@@ -55,7 +54,7 @@ def _extract_state_dict(obj: object) -> dict[str, torch.Tensor]:
 
     raise TypeError(
         "Unsupported checkpoint format. Expected a state_dict-like dict or a dict containing "
-        "one of: system_state_dict, model_state_dict, state_dict, student_state_dict."
+        "one of: system_state_dict, model_state_dict, state_dict."
     )
 
 

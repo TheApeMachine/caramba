@@ -6,9 +6,16 @@ Each tool is deployed as a Docker container using the docker compose file.
 """
 from __future__ import annotations
 
-import re
 import os
+import re
+import socket
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+import httpx
+import yaml
 from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
 
@@ -17,12 +24,18 @@ from caramba.console import logger
 
 ENV_PATTERN = re.compile(r"\$\{([A-Za-z0-9_]+)(?::-(.*?))?\}")
 
+@dataclass(frozen=True)
+class McpEndpoint:
+    url: str
+    transport: str | None = None
+    headers: dict[str, str] | None = None
 
-class Tool(McpToolset):
-    """Tool is the base class for all tools to inherit from.
+
+class BestEffortMcpToolset(McpToolset):
+    """MCP toolset that disables itself on errors.
 
     It is a wrapper around the Google Agent Development Kit's McpToolset,
-    providing a consistent interface for all tools.
+    providing a consistent interface for all tools while avoiding hard failures.
     """
     def __init__(self, *args: Any, label: str, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

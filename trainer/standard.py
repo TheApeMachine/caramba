@@ -17,22 +17,20 @@ import time
 import traceback
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Protocol, Sized, cast
-
+from typing import Any, Protocol, cast
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from torch.utils.hooks import RemovableHandle
+from torch.profiler import ProfilerActivity, profile
 
 from caramba.carmath import (
     autocast_dtype,
-    autocast_dtype_str,
+    global_grad_norm_l2,
     safe_perplexity_from_nll,
-    token_budget_batch_size,
-    train_val_counts,
-    weight_dtype_str,
 )
+from caramba.compiler.plan import Planner
 from caramba.config.defaults import Defaults
 from caramba.config.manifest import Manifest
 from caramba.config.run import Run
@@ -44,16 +42,25 @@ from caramba.instrumentation.viz import TrainingVizMosaicContext
 from caramba.instrumentation.wandb_writer import WandBWriter
 from caramba.layer.attention import AttentionLayer
 from caramba.layer.mosaic.block import MosaicBlockLayer
-from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
+from caramba.runtime.plan import RuntimePlan
 from caramba.runtime.tensordict_utils import (
     TensorDictBase,
     as_tensordict,
-    collate_tensordict,
     to_device,
 )
 from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from caramba.trainer.mosaic_table2 import Table2SummaryWriter, Table2Telemetry
 from caramba.trainer.swap_manager import SwapManager
+from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
+from caramba.trainer.distributed import (
+    DistributedConfig,
+    DistributedContext,
+    DistributedStrategy,
+)
+from caramba.optimizer.adamw_master import AdamWMaster
+from caramba.optimizer.lion import Lion
+from caramba.runtime.plan.builder import RuntimePlanBuilder
+from caramba.trainer.train_dataloader.builder import TrainDataLoaderBuilder
 
 
 class _Engine(Protocol):
@@ -247,8 +254,16 @@ class _LayerStatsManager:
 
 
 class StandardTrainer:
-    def __init__(self, *, checkpoint_dir: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        checkpoint_dir: str | None = None,
+        runtime_plan_builder: RuntimePlanBuilder | None = None,
+        train_dataloader_builder: TrainDataLoaderBuilder | None = None,
+    ) -> None:
         self._checkpoint_dir_override = checkpoint_dir
+        self._runtime_plan_builder = runtime_plan_builder or RuntimePlanBuilder()
+        self._train_dataloader_builder = train_dataloader_builder or TrainDataLoaderBuilder()
 
     def run(
         self,
@@ -262,7 +277,13 @@ class StandardTrainer:
             logger.info("Dry run requested, skipping training")
             return None
 
-        dataset_comp = engine.registry.build(target.data, backend=str(target.backend))
+        data_spec = target.data
+        if data_spec.ref == "dataset.tokens":
+            cfg = dict(data_spec.config)
+            if "tokenizer" not in cfg:
+                cfg["tokenizer"] = str(getattr(manifest.defaults.data, "tokenizer", "tiktoken"))
+            data_spec = data_spec.model_copy(update={"config": cfg})
+        dataset_comp = engine.registry.build(data_spec, backend=str(target.backend))
         system = engine.registry.build(target.system, backend=str(target.backend))
         objective = engine.registry.build(target.objective, backend=str(target.backend))
 
@@ -319,12 +340,6 @@ class StandardTrainer:
         dist_strategy = str(getattr(train, "distributed_strategy", "none")).lower()
         if dist_strategy != "none":
             try:
-                from caramba.trainer.distributed import (
-                    DistributedConfig,
-                    DistributedContext,
-                    DistributedStrategy,
-                )
-
                 cfg = DistributedConfig(
                     strategy=DistributedStrategy(dist_strategy),
                     backend=str(getattr(train, "distributed_backend", "nccl")),
@@ -397,8 +412,10 @@ class StandardTrainer:
                 torch.backends.cudnn.allow_tf32 = True
                 # PyTorch 2.x: nudge matmul towards faster kernels.
                 torch.set_float32_matmul_precision("high")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.fallback_warning(
+                   f"WARNING: Failed to enable TF32; continuing without TF32. device={device.type} dtype={dtype} error={e}"
+                )
 
         # Wrap system module for DDP/FSDP if requested.
         if dist_ctx is not None:
@@ -454,17 +471,49 @@ class StandardTrainer:
                 raise RuntimeError("Failed to enable activation checkpointing") from e
 
         # Optional torch.compile (best-effort, but if requested and it fails, raise).
+        #
+        # NOTE: torch.compile's "reduce-overhead" mode uses CUDA graphs. When we invoke the
+        # model multiple times per optimizer step (gradient accumulation), CUDA-graph output
+        # buffer reuse can trigger correctness errors:
+        #   "accessing tensor output of CUDAGraphs that has been overwritten..."
+        # In that regime, we must avoid CUDA graphs.
         if bool(getattr(runtime_plan, "compile", False)):
             try:
                 system_any = cast(Any, system)
                 m = getattr(system_any, "module", None)
                 if isinstance(m, nn.Module):
-                    system_any.module = torch.compile(
-                        m, mode=str(runtime_plan.compile_mode)
-                    )
+                    compile_mode = str(getattr(runtime_plan, "compile_mode", "default"))
+                    if device.type == "cuda":
+                        accum_steps_cfg = max(1, int(getattr(train, "gradient_accumulation_steps", 1) or 1))
+                        if compile_mode == "reduce-overhead" and int(accum_steps_cfg) > 1:
+                            compile_mode = "default"
+                            logger.info(
+                                "torch.compile mode reduced from 'reduce-overhead' to 'default' because "
+                                f"gradient_accumulation_steps={accum_steps_cfg} can trip CUDA-graph output reuse."
+                            )
+                        # max-autotune can also enable CUDA graphs internally; prefer the no-cudagraphs
+                        # variant when we have multiple invocations per step.
+                        if compile_mode == "max-autotune" and int(accum_steps_cfg) > 1:
+                            compile_mode = "max-autotune-no-cudagraphs"
+                            logger.info(
+                                "torch.compile mode adjusted from 'max-autotune' to 'max-autotune-no-cudagraphs' because "
+                                f"gradient_accumulation_steps={accum_steps_cfg} requires avoiding CUDA-graph output reuse."
+                            )
+                    try:
+                        system_any.module = torch.compile(m, mode=str(compile_mode))
+                    except Exception as e:
+                        # If the runtime doesn't recognize a mode (older PyTorch), fall back to default.
+                        if str(compile_mode) == "max-autotune-no-cudagraphs":
+                            logger.warning(
+                                "torch.compile mode 'max-autotune-no-cudagraphs' failed; falling back to 'default'. "
+                                f"Error: {type(e).__name__}: {e}"
+                            )
+                            system_any.module = torch.compile(m, mode="default")
+                        else:
+                            raise
                     compiled = True
                     logger.info(
-                        f"torch.compile enabled (mode={runtime_plan.compile_mode}) for {target.name}:{run.id}"
+                        f"torch.compile enabled (mode={compile_mode}) for {target.name}:{run.id}"
                     )
                 else:
                     logger.info(
@@ -702,8 +751,6 @@ class StandardTrainer:
                         # Profile exactly one microbatch (first in the accumulation) when enabled.
                         if did_profile_first and (not did_profiled):
                             try:
-                                from torch.profiler import ProfilerActivity, profile
-
                                 acts = [ProfilerActivity.CPU]
                                 if device.type == "cuda":
                                     acts.append(ProfilerActivity.CUDA)
@@ -759,7 +806,16 @@ class StandardTrainer:
                                 sort_by="cuda_time_total",
                                 row_limit=40,
                             )
-                            prof_path.write_text(str(table) + "\n", encoding="utf-8")
+                            out = [str(table)]
+                            if profile_record_shapes:
+                                # Group by input shape so `aten::mm` gets split into its real callers.
+                                out.append(
+                                    prof.key_averages(group_by_input_shape=True).table(
+                                        sort_by="cuda_time_total",
+                                        row_limit=80,
+                                    )
+                                )
+                            prof_path.write_text("\n\n".join(out) + "\n", encoding="utf-8")
                             logger.info(f"Saved torch profiler summary to {prof_path}")
                         except Exception as e:
                             raise RuntimeError("Failed to export torch profiler summary") from e
@@ -874,8 +930,8 @@ class StandardTrainer:
             try:
                 if wandb_writer is not None:
                     wandb_writer.close()
-            except Exception:
-                logger.warning("Failed to close W&B writer (ignoring)")
+            except Exception as e:
+                logger.warning(f"Failed to close W&B writer (ignoring). error={e!r}")
 
             try:
                 layer_stats.close()
@@ -948,13 +1004,11 @@ class StandardTrainer:
             # Decide whether to collect aux signals (objective-dependent).
             collect_aux = bool(teacher)
             try:
-                from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
-
                 if isinstance(getattr(objective_loss, "__self__", None), MosaicNextTokenWithAuxObjective):
                     collect_aux = True
-            except Exception:
-                # If this import/check fails, just stick to teacher-based gating.
-                pass
+            except Exception as e:
+                raise RuntimeError("Failed to check if objective is MosaicNextTokenWithAuxObjective") from e
+
             viz_ctx.mosaic_collect_aux = bool(collect_aux)
 
             # Speed: avoid threading a changing Python `ctx` object through the model when we
@@ -982,8 +1036,10 @@ class StandardTrainer:
                 raise RuntimeError("Failed to merge mosaic aux outputs") from e
 
             loss = objective_loss(outputs=outputs, batch_td=batch_td)
+
             if not isinstance(loss, Tensor):
                 raise TypeError(f"Objective.loss must return a Tensor, got {type(loss).__name__}")
+
             return outputs, loss
 
     def _build_step_metrics(
@@ -1020,8 +1076,6 @@ class StandardTrainer:
         # Grad norm (best-effort).
         grad_norm = 0.0
         try:
-            from caramba.carmath import global_grad_norm_l2
-
             grad_norm = float(global_grad_norm_l2(system))  # type: ignore[arg-type]
         except Exception as e:
             raise RuntimeError("Failed to compute gradient norm") from e
@@ -1044,7 +1098,7 @@ class StandardTrainer:
             "time_data_s": float(data_time_s),
             "time_fwd_bwd_s": float(fwd_bwd_time_s),
             "time_optim_s": float(optim_time_s),
-            # Legacy ms keys (keep old dashboards working).
+            # Timing metrics (ms).
             "ms_step": float(step_time_s * 1000.0),
             "ms_data": float(data_time_s * 1000.0),
             "ms_fwd_bwd": float(fwd_bwd_time_s * 1000.0),
@@ -1085,12 +1139,12 @@ class StandardTrainer:
         metrics["mem_params_mb"] = float(param_mb)
         try:
             metrics["mem_grads_mb"] = float(_bytes_to_mb(self._grad_bytes(system)))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to estimate grad memory; continuing. error={e!r}")
         try:
             metrics["mem_optim_mb"] = float(_bytes_to_mb(self._optim_state_bytes(optimizer)))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to estimate optimizer memory; continuing. error={e!r}")
 
         if kernel_events_estimate is not None:
             metrics["kernel_events_estimate"] = float(kernel_events_estimate)
@@ -1206,36 +1260,37 @@ class StandardTrainer:
         if opt_name in ("adamw", "adam"):
             if opt_name == "adamw":
                 if fused_opt:
+                    # CPU has no fused optimizer backend; make this explicit.
+                    if device.type == "cpu":
+                        logger.warning(
+                            "AdamW fused optimizer requested on CPU; falling back to torch.optim.AdamW. "
+                            "Set train.fused_optimizer=false to silence this warning."
+                        )
+                        fused_opt = False
+
                     use_master = (device.type == "mps" and dtype == torch.float16) or (
                         device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
                     )
                     if use_master:
-                        try:
-                            from caramba.optimizer.adamw_master import AdamWMaster
-
-                            logger.info(
-                                f"optimizer=adamw fused=true backend=adamw_master device={device.type} dtype={dtype}"
-                            )
-                            return AdamWMaster(
-                                params,  # type: ignore[arg-type]
-                                lr=lr,
-                                betas=(0.9, 0.999),
-                                eps=1e-8,
-                                weight_decay=float(weight_decay),
-                                fused=True,
-                            )
-                        except Exception as e:
-                            logger.fallback_warning(
-                                "WARNING: AdamW fused optimizer requested but unavailable; "
-                                "falling back to torch.optim.AdamW.\n"
-                                f"reason={type(e).__name__}: {e} device={device.type} dtype={dtype}"
-                            )
-                    else:
-                        logger.fallback_warning(
-                            "WARNING: AdamW fused optimizer requested but unsupported for this device/dtype; "
-                            "falling back to torch.optim.AdamW.\n"
-                            f"device={device.type} dtype={dtype}"
+                        logger.info(
+                            f"optimizer=adamw fused=true backend=adamw_master device={device.type} dtype={dtype}"
                         )
+                        return AdamWMaster(
+                            params,  # type: ignore[arg-type]
+                            lr=lr,
+                            betas=(0.9, 0.999),
+                            eps=1e-8,
+                            weight_decay=float(weight_decay),
+                            fused=True,
+                        )
+                    else:
+                        # On accelerators, this is a performance-critical request; fail loud.
+                        if device.type in ("cuda", "mps"):
+                            raise RuntimeError(
+                                "AdamW fused optimizer requested but unsupported for this device/dtype.\n"
+                                f"device={device.type} dtype={dtype}\n"
+                                "Supported: MPS fp16, CUDA fp16/bf16."
+                            )
 
                 logger.info(f"optimizer=adamw fused=false backend=torch_adamw device={device.type} dtype={dtype}")
                 return torch.optim.AdamW(
@@ -1264,8 +1319,6 @@ class StandardTrainer:
             )
 
         if opt_name == "lion":
-            from caramba.optimizer.lion import Lion
-
             return Lion(
                 params,  # type: ignore[arg-type]
                 lr=lr,
@@ -1299,12 +1352,10 @@ class StandardTrainer:
 
     def _export_compiled_plan(self, *, checkpoint_dir: Path, target: ExperimentTargetConfig) -> None:
         try:
-            from caramba.compiler.plan import Planner
-
             plan_txt = Planner().format_target(target, indent=0, path=f"targets[{target.name}]")
             (checkpoint_dir / "compiled_plan.txt").write_text("\n".join(plan_txt) + "\n", encoding="utf-8")
-        except Exception:
-            logger.warning("Failed to export compiled plan (ignoring)")
+        except Exception as e:
+            raise RuntimeError("Failed to export compiled plan (compiled_plan.txt)") from e
 
     def _export_io_shapes(
         self,
@@ -1481,32 +1532,14 @@ class StandardTrainer:
         batch_size: int,
         dist_ctx: object | None = None,
     ) -> DataLoader:
-        if not hasattr(dataset_comp, "build"):
-            raise TypeError("Dataset component does not expose build()")
-        dataset = dataset_comp.build()  # type: ignore[attr-defined]
-
-        val_frac = float(defaults.data.val_frac)
-        n = len(cast(Sized, dataset))
-        n_train, _n_val = train_val_counts(n, float(val_frac))
-        train_ds = Subset(dataset, range(0, n_train))
-
-        def collate_to_tensordict(items: list[Any]) -> TensorDictBase:
-            return collate_tensordict(items)
-
-        loader_kwargs: dict[str, Any] = {
-            "batch_size": int(batch_size),
-            "num_workers": int(train.num_workers),
-            "pin_memory": bool(train.pin_memory) and device.type == "cuda",
-            "drop_last": True,
-            "collate_fn": collate_to_tensordict,
-        }
-        if int(train.num_workers) > 0:
-            loader_kwargs["prefetch_factor"] = int(getattr(train, "prefetch_factor", 2))
-            loader_kwargs["persistent_workers"] = True
-
-        if dist_ctx is not None and hasattr(dist_ctx, "wrap_dataloader"):
-            return dist_ctx.wrap_dataloader(train_ds, shuffle=True, **loader_kwargs)  # type: ignore[no-any-return, attr-defined]
-        return DataLoader(train_ds, shuffle=True, **loader_kwargs)
+        return self._train_dataloader_builder.build(
+            dataset_comp=dataset_comp,
+            defaults=defaults,
+            train=train,
+            device=device,
+            batch_size=int(batch_size),
+            dist_ctx=dist_ctx,
+        )
 
     def _save_checkpoint(
         self,
@@ -1545,13 +1578,17 @@ class StandardTrainer:
             if hasattr(m, "activation_checkpointing"):
                 try:
                     setattr(m, "activation_checkpointing", bool(enabled))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to set activation_checkpointing on {type(m).__name__}; continuing. error={e!r}"
+                    )
             if hasattr(m, "activation_checkpoint_threshold_mb"):
                 try:
                     setattr(m, "activation_checkpoint_threshold_mb", float(threshold_mb))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to set activation_checkpoint_threshold_mb on {type(m).__name__}; continuing. error={e!r}"
+                    )
 
     def _load_or_create_runtime_plan(
         self,
@@ -1569,49 +1606,12 @@ class StandardTrainer:
             "system": system_cfg,
             "train": train_payload,
         }
-        key = make_plan_key(payload)
-        plan_path = checkpoint_dir / "plans" / f"{key}.json"
-
-        existing = load_plan(plan_path)
-        if existing is not None and existing.key == key:
-            return existing
-
-        dtype_str = str(train.dtype).lower()
-        if dtype_str == "auto":
-            dtype_str = weight_dtype_str(device)
-
-        amp_dtype_str = str(train.amp_dtype).lower()
-        if amp_dtype_str == "auto":
-            amp_dtype_str = autocast_dtype_str(device)
-
-        batch_size = int(train.batch_size)
-        if bool(getattr(train, "auto_batch_size", False)):
-            ref_block = int(getattr(train, "auto_batch_ref_block_size", 512))
-            min_bs = int(getattr(train, "auto_batch_min", 1))
-            batch_size = token_budget_batch_size(
-                batch_size,
-                block_size=int(train.block_size),
-                ref_block_size=int(ref_block),
-                min_batch_size=int(min_bs),
-            )
-
-        plan = RuntimePlan(
-            key=key,
-            device=str(device),
-            torch_version=torch.__version__,
-            dtype=dtype_str,
-            use_amp=bool(train.use_amp),
-            amp_dtype=amp_dtype_str,
-            batch_size=int(batch_size),
-            compile=bool(getattr(train, "compile_model", False)),
-            compile_mode=str(getattr(train, "compile_mode", "reduce-overhead")),
+        return self._runtime_plan_builder.build(
+            checkpoint_dir=checkpoint_dir,
+            device=device,
+            train=train,
+            payload=payload,
         )
-        try:
-            save_plan(plan_path, plan, payload=payload)
-        except Exception as e:
-            raise RuntimeError("Failed to save runtime plan") from e
-
-        return plan
 
     def _param_bytes(self, system: object) -> int:
         total = 0

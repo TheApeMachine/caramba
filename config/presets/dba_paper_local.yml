@@ -25,7 +25,8 @@ defaults:
 
 vars:
   # ----- Dataset -----
-  dataset_path: fineweb_1b.npy
+  dataset: HuggingFaceFW/fineweb
+  tokens: 100m
   block_size: 2048
 
   # ----- Model (12-layer, same per-layer arch as 1B) -----
@@ -33,7 +34,7 @@ vars:
   n_layers: 12
   n_heads: 32
   n_kv_heads_gqa: 4  # 8:1 ratio for GQA
-  d_ff: 5632
+  d_ff: 4096
   vocab_size: 50304
   rope_base: 10000.0
 
@@ -65,6 +66,12 @@ vars:
 # TOPOLOGY ANCHORS (YAML anchors to avoid repetition)
 # =============================================================================
 
+# Shared token dataset config (auto-download)
+x-token-dataset: &token_dataset
+  dataset: ${dataset}
+  tokens: ${tokens}
+  block_size: ${block_size}
+
 # Shared embedder
 x-embedder: &embedder
   type: token
@@ -85,13 +92,15 @@ x-ffn-block: &ffn_block
 
 # Shared final layers
 x-final-layers: &final_layers
-  - type: RMSNormLayer
-    d_model: ${d_model}
-    eps: 1e-5
-  - type: LinearLayer
-    d_in: ${d_model}
-    d_out: ${vocab_size}
-    bias: false
+  type: SequentialTopology
+  layers:
+    - type: RMSNormLayer
+      d_model: ${d_model}
+      eps: 1e-5
+    - type: LinearLayer
+      d_in: ${d_model}
+      d_out: ${vocab_size}
+      bias: false
 
 # Shared training config base
 x-train-base: &train_base
@@ -127,9 +136,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -178,9 +185,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -229,9 +234,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -283,9 +286,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -307,7 +308,7 @@ targets:
                       - type: AttentionLayer
                         d_model: ${d_model}
                         n_heads: ${n_heads}
-                        mode: bottleneck
+                        mode: decoupled
                         attn_dim: ${attn_dim}
                         rope_enabled: true
                         rope_base: ${rope_base}
@@ -335,9 +336,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -359,7 +358,7 @@ targets:
                       - type: AttentionLayer
                         d_model: ${d_model}
                         n_heads: ${n_heads}
-                        mode: bottleneck
+                        mode: decoupled
                         attn_dim: ${attn_dim}
                         rope_enabled: true
                         rope_base: ${rope_base}
@@ -387,9 +386,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -411,7 +408,7 @@ targets:
                       - type: AttentionLayer
                         d_model: ${d_model}
                         n_heads: ${n_heads}
-                        mode: bottleneck
+                        mode: decoupled
                         attn_dim: ${attn_dim}
                         rope_enabled: true
                         rope_base: ${rope_base}
@@ -442,9 +439,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -502,9 +497,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -562,9 +555,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -625,9 +616,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -677,9 +666,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -729,9 +716,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -784,9 +769,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -835,9 +818,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -889,9 +870,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -941,9 +920,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -1005,9 +982,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -1065,9 +1040,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:
@@ -1125,9 +1098,7 @@ targets:
     task: task.language_modeling
     data:
       ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
+      config: *token_dataset
     system:
       ref: system.language_model
       config:

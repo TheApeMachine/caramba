@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 
 
 def _skip_if_no_cuda_triton() -> None:
     if not torch.cuda.is_available():
         pytest.skip("CUDA is not available")
-    if not TRITON_AVAILABLE:
+    if not triton_supported():
         pytest.skip("Triton is not available")
 
 

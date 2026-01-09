@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import Tensor
 
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 
 
 # Keep this module importable on non-CUDA installs (e.g., MPS-only laptops).
@@ -27,7 +27,7 @@ dba_attn_bwd_preprocess: object | None = None
 dba_attn_bwd_dkv: object | None = None
 dba_attn_bwd_dq: object | None = None
 
-if not TYPE_CHECKING and TRITON_AVAILABLE:
+if not TYPE_CHECKING and triton_supported():
     from caramba.optimizer.dba_attention_triton_kernels_bwd import (
         dba_attn_bwd_dkv,
         dba_attn_bwd_dq,

@@ -1,0 +1,32 @@
+name: llama
+prefix: model
+
+embedder:
+  tokens_weight: embed_tokens.weight
+
+block:
+  path: layers.{i}
+  input_norm_weight: input_layernorm.weight
+  post_attn_norm_weight: post_attention_layernorm.weight
+
+attention:
+  path: self_attn
+  q_weight: q_proj.weight
+  k_weight: k_proj.weight
+  v_weight: v_proj.weight
+  o_weight: o_proj.weight
+
+mlp:
+  path: mlp
+  gate_weight: gate_proj.weight
+  up_weight: up_proj.weight
+  down_weight: down_proj.weight
+  gate_bias: gate_proj.bias
+  up_bias: up_proj.bias
+  down_bias: down_proj.bias
+
+final_norm_weight: norm.weight
+
+head:
+  weight: lm_head.weight
+

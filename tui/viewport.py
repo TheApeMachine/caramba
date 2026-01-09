@@ -94,8 +94,6 @@ class Viewport(VerticalScroll):
     auto_scroll = reactive(True)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        # Remove root_agent_url if passed (legacy compatibility)
-        kwargs.pop("root_agent_url", None)
         super().__init__(*args, **kwargs)
         self._messages: list[MessageBubble] = []
         self._current_stream: StreamingMessage | None = None
@@ -237,17 +235,3 @@ class Viewport(VerticalScroll):
         """Scroll to the bottom of the viewport."""
         if self.auto_scroll:
             self.scroll_end(animate=False)
-
-    # Legacy compatibility method
-    def render_text(self, text: str) -> None:
-        """Legacy method for backwards compatibility.
-
-        This method is kept for compatibility with the old Viewport API.
-        New code should use add_user_message, add_assistant_message, etc.
-        """
-        # If we have an active stream, append to it
-        if self._current_stream:
-            self.stream_token(text)
-        else:
-            # Otherwise create a new assistant message
-            self.add_assistant_message(text)

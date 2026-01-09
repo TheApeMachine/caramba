@@ -29,7 +29,7 @@ class Manifest(BaseModel):
     name: str | None = None
     notes: str = ""
     # Optional override for where artifacts are written.
-    # Default is "artifacts" to preserve legacy behavior.
+    # Default is "artifacts".
     artifacts_dir: str = "artifacts"
     defaults: Defaults
 

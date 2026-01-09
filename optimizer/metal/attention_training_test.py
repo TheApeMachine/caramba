@@ -6,7 +6,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from caramba.optimizer.runtime import METAL_SUPPORTED
+from caramba.optimizer.runtime import metal_supported
 
 
 def _skip_if_no_metal_attention_extension() -> None:
@@ -20,7 +20,7 @@ def _skip_if_no_metal_attention_extension() -> None:
         pytest.skip(f"caramba metal attention extension unavailable: {e}")
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 @pytest.mark.parametrize("causal", [False, True])
 def test_metal_attention_training_forward_matches_sdpa(causal: bool) -> None:
     _skip_if_no_metal_attention_extension()
@@ -42,7 +42,7 @@ def test_metal_attention_training_forward_matches_sdpa(causal: bool) -> None:
     torch.testing.assert_close(y, y_ref, rtol=8e-2, atol=8e-2)
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 @pytest.mark.parametrize("causal", [False, True])
 def test_metal_attention_training_backward_matches_sdpa(causal: bool) -> None:
     _skip_if_no_metal_attention_extension()
@@ -83,7 +83,7 @@ def test_metal_attention_training_backward_matches_sdpa(causal: bool) -> None:
     torch.testing.assert_close(dv, dv_ref, rtol=1e-1, atol=1e-1)
 
 
-@pytest.mark.skipif(not METAL_SUPPORTED, reason="Metal/MPS not supported on this platform")
+@pytest.mark.skipif(not metal_supported(), reason="Metal/MPS not supported on this platform")
 def test_metal_attention_training_dropout_is_deterministic_given_seed() -> None:
     _skip_if_no_metal_attention_extension()
     torch.manual_seed(2)

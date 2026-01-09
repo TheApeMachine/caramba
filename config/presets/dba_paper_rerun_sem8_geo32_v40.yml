@@ -30,7 +30,8 @@ vars:
   d_model: 2048
   n_layers: 22
   n_heads: 32
-  d_ff: 5632
+  # Intermediate size: trades some throughput for stronger MLP capacity.
+  d_ff: 4096
   vocab_size: 50304
   rope_base: 10000.0
 
@@ -150,7 +151,11 @@ targets:
           auto_resume: false
           skip_if_final: false
           auto_batch_size: false
-          compile_model: false
+          compile_model: true
+          compile_mode: max-autotune
+          # Profiling disabled for production runs (avoids step-time spikes).
+          profile_every: 0
+          profile_record_shapes: false
 
 entrypoints:
   baseline: "target:a100_fw1b_l22_baseline_s1337_paper_sem8geo32v40"

@@ -22,7 +22,7 @@ import torch
 from torch import Tensor, nn
 
 from caramba.carmath.sketch import sketch_dot5, stride_sketch_indices
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 
 log = logging.getLogger(__name__)
 
@@ -510,7 +510,7 @@ class WeightNowcaster:
             "num_params_tracked": int(len(self._tracked_params)),
             "block_node_mode": str(self.cfg.block_node_mode),
             "predictor_dtype": str(self._pred_dtype) if self._pred_dtype is not None else "fp32",
-            "triton_available": bool(TRITON_AVAILABLE),
+            "triton_available": bool(triton_supported()),
         }
 
     # ---------------------------

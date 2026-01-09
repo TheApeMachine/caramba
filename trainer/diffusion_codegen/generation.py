@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from tokenizers import Tokenizer
 from torch import Tensor, nn
 
 from caramba.console import logger
+from caramba.data.tokenizers.hf_json import HfJsonTokenizer
+from caramba.data.tokenizers.training import TrainingTokenizer
 from caramba.diffusion.samplers import DdimSampler, DdpmSampler, GuidanceConfig
 from caramba.diffusion.schedule import NoiseSchedule
 from caramba.trainer.diffusion_codegen.checkpoints import CheckpointManager
@@ -62,7 +63,7 @@ class GenerationRunner:
         self.loadModelState(system=system, state=ckpt.get("model_state", {}))
         model = self.unwrapModel(system=system)
 
-        tokenizer = Tokenizer.from_file(str(Path(tokenizer_file)))
+        tokenizer = HfJsonTokenizer.from_file(tokenizer_file=str(Path(tokenizer_file)))
         pad_id = tokenizer.token_to_id("<pad>")
         if pad_id is None:
             raise ValueError("Tokenizer must define <pad>.")
@@ -140,7 +141,7 @@ class GenerationRunner:
         self,
         *,
         cfg: dict[str, Any],
-        tokenizer: Tokenizer,
+        tokenizer: TrainingTokenizer,
         model: nn.Module,
         pad_id: int,
         seq_len: int,

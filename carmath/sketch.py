@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 
 # Optional Triton bindings (populated only when available)
 triton = None  # type: ignore[assignment]
@@ -99,7 +99,7 @@ def _sketch_dot5_torch(
     return uu, tt, ut, vv, uv_dot
 
 
-if not TYPE_CHECKING and TRITON_AVAILABLE:
+if not TYPE_CHECKING and triton_supported():
     try:
         import triton as _triton  # type: ignore
         import triton.language as _tl  # type: ignore
@@ -207,7 +207,7 @@ def sketch_dot5(
     """
     # Fast path: Triton on CUDA.
     if (
-        TRITON_AVAILABLE
+        triton_supported()
         and triton is not None
         and _sketch_dot5_contiguous_kernel is not None
         and _sketch_dot5_indexed_kernel is not None

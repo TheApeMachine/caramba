@@ -19,7 +19,7 @@ def test_lion_step_updates_parameter_and_supports_closure() -> None:
 
     loss = opt.step(closure)
     assert loss is not None
-    assert float(loss) == 1.0
+    assert float(loss.detach()) == 1.0
 
     # With beta1=0, m becomes grad. Update is p -= lr*sign(m).
     # sign([3,-4]) = [1,-1] => p = [1-0.1, -2+0.1]

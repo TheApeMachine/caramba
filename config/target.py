@@ -38,7 +38,7 @@ class ExperimentTargetConfig(BaseModel):
     # Optional post-run evaluators/metrics; concrete implementations live behind refs.
     metrics: list[ComponentSpec] = Field(default_factory=list)
 
-    # Optional legacy benchmark suite (used by migrated LM presets initially).
+    # Optional benchmark suite.
     benchmarks: list[BenchmarkSpec] | None = None
 
     runs: list[Run] = Field(default_factory=list)
@@ -57,12 +57,20 @@ class ExperimentTargetConfig(BaseModel):
 
         # Validate built-in dataset type shape.
         if self.data.ref == "dataset.tokens":
-            p = self.data.config.get("path", None)
             bs = self.data.config.get("block_size", None)
-            if not isinstance(p, str) or not p:
-                raise ValueError("dataset.tokens requires data.config.path (non-empty string)")
             if not isinstance(bs, int) or bs <= 0:
                 raise ValueError("dataset.tokens requires data.config.block_size (positive int)")
+            p = self.data.config.get("path", None)
+            ds = self.data.config.get("dataset", None)
+            tok = self.data.config.get("tokens", None)
+            has_path = isinstance(p, str) and bool(p.strip())
+            has_ds = isinstance(ds, str) and bool(ds.strip())
+            has_tok = isinstance(tok, str) and bool(tok.strip())
+            if not has_path and not (has_ds and has_tok):
+                raise ValueError(
+                    "dataset.tokens requires either data.config.path (existing .npy) or "
+                    "both data.config.dataset (HuggingFace id) and data.config.tokens (e.g. '1b')."
+                )
 
         return self
 

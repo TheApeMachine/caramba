@@ -43,7 +43,7 @@ def test_default_collector_build_loaders_uses_monkeypatched_dataset(tmp_path: Pa
     f.write_text("stub", encoding="utf-8")
 
     monkeypatch.setattr(dc, "_resolve_data_path", lambda _spec: f)
-    monkeypatch.setattr(dc, "build_token_dataset", lambda *, path, block_size: TinyTokenDataset(40))
+    monkeypatch.setattr(dc, "TokenDatasetBuilder", type("TokenDatasetBuilder", (), {"build": staticmethod(lambda *, path, block_size: TinyTokenDataset(40))}))
 
     train = TrainConfig(phase=TrainPhase.STANDARD, batch_size=4, block_size=4, lr=1e-3, device="cpu")
     run = Run(id="r", mode=Mode.TRAIN, exp="e", seed=0, steps=1, expected={}, train=train)

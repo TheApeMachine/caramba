@@ -15,62 +15,19 @@ import platform
 import shutil
 import subprocess
 from typing import TYPE_CHECKING
+import torch
 
 __all__ = [
-    "TRITON_AVAILABLE",
-    "METAL_SUPPORTED",
-    "METAL_BUILD_TOOLS_AVAILABLE",
-    "triton_decoupled_q4q8q4_available",
-    "triton_ssm_available",
+    "triton_supported",
     "metal_supported",
-    "metal_build_tools_available",
 ]
 
 
-def _has_module(name: str) -> bool:
+def has_module(name: str) -> bool:
     try:
         return importlib.util.find_spec(name) is not None
     except (ImportError, ValueError, AttributeError):
         return False
-
-
-# At type-check time, force these off so optional code stays behind guards.
-TRITON_AVAILABLE: bool = (
-    False
-    if TYPE_CHECKING
-    else bool(_has_module("triton") and _has_module("triton.language"))
-)
-
-
-def triton_decoupled_q4q8q4_available() -> bool:
-    """Check if fused decoupled q4/q8/q4 decode kernels can be used."""
-    return bool(TRITON_AVAILABLE)
-
-
-def triton_ssm_available() -> bool:
-    """Check if fused SSM kernels can be used."""
-    return bool(TRITON_AVAILABLE)
-
-
-def metal_supported() -> bool:
-    """Whether the current runtime *can* execute custom Metal (MPS) ops.
-
-    This indicates platform + PyTorch MPS support. It does NOT guarantee that the
-    custom extension is already built/loaded; higher-level code may JIT build it.
-    """
-    if TYPE_CHECKING:
-        return False
-    if platform.system() != "Darwin":
-        return False
-    try:
-        import torch
-    except Exception:
-        return False
-    try:
-        return bool(torch.backends.mps.is_available())
-    except Exception:
-        return False
-
 
 def metal_build_tools_available() -> bool:
     """Whether the host can compile Metal shaders via Xcode toolchain.
@@ -81,11 +38,24 @@ def metal_build_tools_available() -> bool:
     - This function is intentionally conservative: if we can't *prove* the tools
       exist, we return False so training can surface a clear, actionable error.
     """
-    if not metal_supported():
+    # Do not call metal_supported() here: metal_supported() is a *runtime* check,
+    # while this function is a *toolchain* check. Keeping them independent avoids
+    # accidental recursion and makes errors actionable.
+    if TYPE_CHECKING:
         return False
+
+    if platform.system() != "Darwin":
+        return False
+
+    try:
+        if not bool(torch.backends.mps.is_available()):
+            return False
+    except Exception:
+        return False
+
     if shutil.which("xcrun") is None:
         return False
-    # Ensure the actual Metal tools exist in the selected toolchain.
+
     try:
         subprocess.check_output(["xcrun", "-sdk", "macosx", "--find", "metal"], stderr=subprocess.STDOUT)
         subprocess.check_output(["xcrun", "-sdk", "macosx", "--find", "metallib"], stderr=subprocess.STDOUT)
@@ -93,9 +63,22 @@ def metal_build_tools_available() -> bool:
         return False
     return True
 
+def triton_supported() -> bool:
+    return bool(has_module("triton") and has_module("triton.language"))
 
-METAL_SUPPORTED: bool = bool(metal_supported()) if not TYPE_CHECKING else False
-METAL_BUILD_TOOLS_AVAILABLE: bool = (
-    bool(metal_build_tools_available()) if not TYPE_CHECKING else False
-)
+def metal_supported() -> bool:
+    """Whether the current runtime *can* execute custom Metal (MPS) ops.
 
+    This indicates platform + PyTorch MPS support. It does NOT guarantee that the
+    custom extension is already built/loaded; higher-level code may JIT build it.
+    """
+    if TYPE_CHECKING:
+        return False
+
+    if platform.system() != "Darwin":
+        return False
+
+    try:
+        return bool(torch.backends.mps.is_available())
+    except Exception:
+        return False

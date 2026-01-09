@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from caramba.console import logger
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+from caramba.optimizer.runtime import triton_supported
 
 __all__ = [
     "layernorm_fwd",
@@ -20,7 +20,7 @@ layernorm_gradw: object | None = None
 layernorm_gradb: object | None = None
 
 
-if not TYPE_CHECKING and TRITON_AVAILABLE:
+if not TYPE_CHECKING and triton_supported():
     try:  # pyright: ignore[reportUnreachable]
         import triton
         import triton.language as tl

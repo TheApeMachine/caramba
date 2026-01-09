@@ -15,7 +15,7 @@ from caramba.config.eval import EvalVerifyConfig
 from caramba.config.verifier import DefaultVerifierConfig
 from caramba.config.verify import CompareVerifyConfig, FidelityVerifyConfig, KVCacheVerifyConfig
 from caramba.console import logger
-from caramba.data import build_token_dataset
+from caramba.data.datasets.builder import TokenDatasetBuilder
 from caramba.eval.suite import assert_eval_thresholds, run_eval_verify
 from caramba.layer.attention import AttentionLayer
 from caramba.carmath import train_val_counts
@@ -247,7 +247,7 @@ class DefaultVerifier:
         count: int,
     ) -> list[Tensor]:
         path = Path(group_data)
-        dataset = build_token_dataset(path=path, block_size=int(block_size))
+        dataset = TokenDatasetBuilder.build(path=path, block_size=int(block_size))
         loader = DataLoader(
             dataset,
             batch_size=int(batch_size),
@@ -275,7 +275,7 @@ class DefaultVerifier:
         split: str,
     ) -> list[TensorDictBase]:
         path = Path(group_data)
-        dataset = build_token_dataset(path=path, block_size=int(block_size))
+        dataset = TokenDatasetBuilder.build(path=path, block_size=int(block_size))
 
         val_frac = float(getattr(defaults, "val_frac", 0.0)) if defaults else 0.0
         n = len(cast(Sized, dataset))

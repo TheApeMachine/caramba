@@ -27,7 +27,7 @@ tool_choice: "auto"
 
 # Tools are optional here; verifier mostly reasons over plan/diff/logs.
 # Keep read-only tools available for deeper audits.
-mcp_servers:
+tools:
   - filesystem
   - codegraph
 

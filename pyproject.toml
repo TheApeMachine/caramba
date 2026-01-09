@@ -72,6 +72,7 @@ caramba = "caramba.__main__:main"
 packages = [
     "caramba",
     "caramba.tui",
+    "caramba.api",
     "caramba.ai",
     "caramba.benchmark",
     "caramba.cache",
@@ -87,8 +88,10 @@ packages = [
     "caramba.instrumentation",
     "caramba.layer",
     "caramba.loader",
+    "caramba.adapter",
+    "caramba.adapter.schema",
+    "caramba.adapter.state_dict",
     "caramba.model",
-    "caramba.tokenizer",
     "caramba.carmath",
     "caramba.optimizer",
     "caramba.optimizer.metal",
@@ -100,6 +103,12 @@ packages = [
     "caramba.lab",
     "caramba.lab.synthnn",
     "caramba.lab.resonant",
+    "synthnn",
+    "synthnn.core",
+    "synthnn.core.associative_memory",
+    "resonant",
+    "resonant.core",
+    "resonant.core.associative_memory",
 ]
 
 [tool.setuptools.package-dir]

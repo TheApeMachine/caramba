@@ -1,8 +1,7 @@
 """Experiment target wrapper.
 
-This module used to wrap legacy `manifest.groups[]`. The manifest schema is now
-target-based, so this wrapper selects an `experiment` target and exposes a
-stable, convenient view for downstream tooling.
+This wrapper selects an `experiment` target and exposes a stable, convenient
+view for downstream tooling.
 """
 from __future__ import annotations
 
@@ -40,7 +39,7 @@ class ExperimentGroup:
         self.runs = list(target.runs)
         self.benchmarks = target.benchmarks
 
-        # Best-effort "data" string for legacy benchmarking code paths.
+        # Best-effort "data" string for benchmarking / reporting.
         p = target.data.config.get("path", None)
         self.data = str(p) if p is not None else str(target.data.ref)
 
