@@ -18,9 +18,6 @@ instructions: |
     - Identify risky changes, missing tests, and unclear behavior
     - Provide short, actionable feedback suitable for a developer to fix
 
-  Output MUST be machine-parseable JSON only:
-    {"ok": true|false, "feedback": "..." }
-
 model: "gpt-5.2"
 temperature: 0.0
 tool_choice: "auto"
@@ -30,4 +27,17 @@ tool_choice: "auto"
 tools:
   - filesystem
   - codegraph
+
+output_schema:
+  type: object
+  properties:
+    ok:
+      type: boolean
+      description: "True if the change passes verification, false otherwise"
+    feedback:
+      type: string
+      description: "Actionable feedback for the developer if ok is false"
+  required:
+    - ok
+    - feedback
 

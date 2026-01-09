@@ -518,6 +518,126 @@ services:
       start_period: 15s
       retries: 3
 
+  feature-analyst:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./config:/app/config:ro
+    environment:
+      - PERSONA_FILE=config/personas/feature_analyst.yml
+      - PORT=8001
+      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
+      - CARAMBA_GRAPHITI_PORT=8000
+      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
+      - CARAMBA_DEEPLAKE_PORT=8001
+      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
+      - CARAMBA_FILESYSTEM_PORT=8001
+      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
+      - CARAMBA_CODEGRAPH_PORT=8001
+      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
+      - CARAMBA_WEBCRAWL_PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  code-reviewer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./config:/app/config:ro
+    environment:
+      - PERSONA_FILE=config/personas/code_reviewer.yml
+      - PORT=8001
+      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
+      - CARAMBA_GRAPHITI_PORT=8000
+      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
+      - CARAMBA_DEEPLAKE_PORT=8001
+      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
+      - CARAMBA_FILESYSTEM_PORT=8001
+      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
+      - CARAMBA_CODEGRAPH_PORT=8001
+      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
+      - CARAMBA_WEBCRAWL_PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  experiment-proposer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./config:/app/config:ro
+    environment:
+      - PERSONA_FILE=config/personas/experiment_proposer.yml
+      - PORT=8001
+      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
+      - CARAMBA_GRAPHITI_PORT=8000
+      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
+      - CARAMBA_DEEPLAKE_PORT=8001
+      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
+      - CARAMBA_FILESYSTEM_PORT=8001
+      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
+      - CARAMBA_CODEGRAPH_PORT=8001
+      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
+      - CARAMBA_WEBCRAWL_PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  results-analyzer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./config:/app/config:ro
+    environment:
+      - PERSONA_FILE=config/personas/results_analyzer.yml
+      - PORT=8001
+      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
+      - CARAMBA_GRAPHITI_PORT=8000
+      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
+      - CARAMBA_DEEPLAKE_PORT=8001
+      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
+      - CARAMBA_FILESYSTEM_PORT=8001
+      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
+      - CARAMBA_CODEGRAPH_PORT=8001
+      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
+      - CARAMBA_WEBCRAWL_PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
   # Root agent (exposed to host for TUI connection)
   root-agent:
     build:
@@ -557,6 +677,10 @@ services:
       - context-compactor
       - note-taker
       - catalyst
+      - feature-analyst
+      - code-reviewer
+      - experiment-proposer
+      - results-analyzer
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
