@@ -17,7 +17,7 @@ class Process(ABC):
     # Maximum number of history messages to retain (prevents unbounded memory growth).
     MAX_HISTORY_SIZE: int = 10000
 
-    def __init__(self, agents: dict[str, Agent], name: str):
+    def __init__(self, agents: dict[str, Agent], name: str) -> None:
         self.agents: dict[str, Agent] = agents
         self.name = name
         self.logger = Logger()
