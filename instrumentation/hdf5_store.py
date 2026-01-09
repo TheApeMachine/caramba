@@ -119,7 +119,7 @@ class H5Store:
             # Note: We intentionally don't use a context manager here because the file
             # needs to stay open for the lifetime of the store. The close() method
             # handles cleanup.
-            self._fh = self._h5py.File(str(self.path), "a")  # noqa: SIM115
+            self._fh = self._h5py.File(str(self.path), "a")
         except Exception as e:
             logger.error(f"Failed to open HDF5 file, continuing: {e}")
             self.enabled = False
