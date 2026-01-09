@@ -189,13 +189,13 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
     """Next-token CE + auxiliary curriculum losses for MOSAIC memory control.
 
     Expected (optional) batch keys:
-    - mosaic_teacher_write_gate: (B,T) float in {0,1} or -1 to ignore
-    - mosaic_teacher_read_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
-    - mosaic_teacher_write_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
-    - mosaic_teacher_opcode: (B,T) int64 opcode id, -1 to ignore
-    - mosaic_teacher_commitment_delta: (B,T) int64 in {-1,0,1} or -100 to ignore
-    - mosaic_teacher_reg_write_gate: (B,T) float in {0,1} or -1 to ignore
-    - mosaic_teacher_reg_sel: (B,T) int64 register slot id, -1 to ignore
+    - memblock_teacher_write_gate: (B,T) float in {0,1} or -1 to ignore
+    - memblock_teacher_read_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
+    - memblock_teacher_write_bucket: (B,T) or (B,T,H) int64 bucket index, -1 to ignore
+    - memblock_teacher_opcode: (B,T) int64 opcode id, -1 to ignore
+    - memblock_teacher_commitment_delta: (B,T) int64 in {-1,0,1} or -100 to ignore
+    - memblock_teacher_reg_write_gate: (B,T) float in {0,1} or -1 to ignore
+    - memblock_teacher_reg_sel: (B,T) int64 register slot id, -1 to ignore
 
     Expected (optional) output keys (provided by MOSAIC layers via ctx):
     - mosaic_write_gate_logits: (B,T) logits
@@ -308,7 +308,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         loss = base
 
         # Gate imitation (optional).
-        tg = _maybe_get(batch, "mosaic_teacher_write_gate")
+        tg = _maybe_get(batch, "memblock_teacher_write_gate")
         pg = _maybe_get(outputs, "mosaic_write_gate_logits")
         if (
             self.aux_gate_weight > 0.0
@@ -327,8 +327,8 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
 
         # Address imitation via bit logits (optional).
         # We supervise bits rather than bucket softmax to avoid O(B) outputs.
-        tr = _maybe_get(batch, "mosaic_teacher_read_bucket")
-        tw = _maybe_get(batch, "mosaic_teacher_write_bucket")
+        tr = _maybe_get(batch, "memblock_teacher_read_bucket")
+        tw = _maybe_get(batch, "memblock_teacher_write_bucket")
         pr = _maybe_get(outputs, "mosaic_read_bit_logits")
         pw = _maybe_get(outputs, "mosaic_write_bit_logits")
 
@@ -355,7 +355,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 loss = loss + float(self.aux_bits_weight) * vql2
 
         # Utility prediction imitation (optional).
-        tu = _maybe_get(batch, "mosaic_teacher_write_utility")
+        tu = _maybe_get(batch, "memblock_teacher_write_utility")
         pu = _maybe_get(outputs, "mosaic_write_utility_logits")
         if (
             self.aux_utility_weight > 0.0
@@ -369,7 +369,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 loss = loss + float(self.aux_utility_weight) * ul
 
         # Opcode imitation (optional).
-        to = _maybe_get(batch, "mosaic_teacher_opcode")
+        to = _maybe_get(batch, "memblock_teacher_opcode")
         po = _maybe_get(outputs, "mosaic_opcode_logits")
         if (
             self.aux_opcode_weight > 0.0
@@ -387,7 +387,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
             loss = loss + float(self.aux_opcode_weight) * ce
 
         # Commitment delta supervision (optional).
-        tc = _maybe_get(batch, "mosaic_teacher_commitment_delta")
+        tc = _maybe_get(batch, "memblock_teacher_commitment_delta")
         pc = _maybe_get(outputs, "mosaic_commitment_logits")
         if (
             self.aux_commitment_weight > 0.0
@@ -404,7 +404,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 ok = (v == -1) | (v == 0) | (v == 1)
                 if not bool(ok.all().item()):
                     raise ValueError(
-                        "mosaic_teacher_commitment_delta must be in {-1,0,1} or -100 to ignore"
+                        "memblock_teacher_commitment_delta must be in {-1,0,1} or -100 to ignore"
                     )
                 labels = labels_raw.clone()
                 labels[mask] = labels_raw[mask] + 1  # {-1,0,1}->{0,1,2}
@@ -416,7 +416,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 loss = loss + float(self.aux_commitment_weight) * ce
 
         # Register supervision (optional).
-        trg = _maybe_get(batch, "mosaic_teacher_reg_write_gate")
+        trg = _maybe_get(batch, "memblock_teacher_reg_write_gate")
         prg = _maybe_get(outputs, "mosaic_reg_write_gate_logits")
         if (
             self.aux_reg_gate_weight > 0.0
@@ -429,7 +429,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 rg = F.binary_cross_entropy_with_logits(prg[mask].float(), trg[mask].float())
                 loss = loss + float(self.aux_reg_gate_weight) * rg
 
-        trs = _maybe_get(batch, "mosaic_teacher_reg_sel")
+        trs = _maybe_get(batch, "memblock_teacher_reg_sel")
         prs = _maybe_get(outputs, "mosaic_reg_sel_logits")
         if (
             self.aux_reg_sel_weight > 0.0
@@ -478,23 +478,23 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
         except Exception as e:
             raise RuntimeError(f"Failed to compute LM CE loss: {e}") from e
 
-        tg = _maybe_get(batch, "mosaic_teacher_write_gate")
+        tg = _maybe_get(batch, "memblock_teacher_write_gate")
         pg = _maybe_get(outputs, "mosaic_write_gate_logits")
-        tr = _maybe_get(batch, "mosaic_teacher_read_bucket")
-        tw = _maybe_get(batch, "mosaic_teacher_write_bucket")
+        tr = _maybe_get(batch, "memblock_teacher_read_bucket")
+        tw = _maybe_get(batch, "memblock_teacher_write_bucket")
         pr = _maybe_get(outputs, "mosaic_read_bit_logits")
         pw = _maybe_get(outputs, "mosaic_write_bit_logits")
         vqr = _maybe_get(outputs, "mosaic_vq_read_logits")
         vqw = _maybe_get(outputs, "mosaic_vq_write_logits")
-        tu = _maybe_get(batch, "mosaic_teacher_write_utility")
+        tu = _maybe_get(batch, "memblock_teacher_write_utility")
         pu = _maybe_get(outputs, "mosaic_write_utility_logits")
-        to = _maybe_get(batch, "mosaic_teacher_opcode")
+        to = _maybe_get(batch, "memblock_teacher_opcode")
         po = _maybe_get(outputs, "mosaic_opcode_logits")
-        tc = _maybe_get(batch, "mosaic_teacher_commitment_delta")
+        tc = _maybe_get(batch, "memblock_teacher_commitment_delta")
         pc = _maybe_get(outputs, "mosaic_commitment_logits")
-        trg = _maybe_get(batch, "mosaic_teacher_reg_write_gate")
+        trg = _maybe_get(batch, "memblock_teacher_reg_write_gate")
         prg = _maybe_get(outputs, "mosaic_reg_write_gate_logits")
-        trs = _maybe_get(batch, "mosaic_teacher_reg_sel")
+        trs = _maybe_get(batch, "memblock_teacher_reg_sel")
         prs = _maybe_get(outputs, "mosaic_reg_sel_logits")
         cl = _maybe_get(outputs, "mosaic_contrastive_loss")
         sdl = _maybe_get(outputs, "mosaic_state_decay_reg_loss")
@@ -602,7 +602,7 @@ class MosaicNextTokenWithAuxObjective(NextTokenCrossEntropyObjective):
                 ok = (v == -1) | (v == 0) | (v == 1)
                 if not bool(ok.all().item()):
                     raise ValueError(
-                        "mosaic_teacher_commitment_delta must be in {-1,0,1} or -100 to ignore"
+                        "memblock_teacher_commitment_delta must be in {-1,0,1} or -100 to ignore"
                     )
                 labels = labels_raw.clone()
                 labels[mask] = labels_raw[mask] + 1

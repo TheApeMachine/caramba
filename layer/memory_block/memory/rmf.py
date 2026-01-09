@@ -1,4 +1,4 @@
-"""Resonant Memory Field (RMF) for MOSAIC
+"""Resonant Memory Field (RMF)
 
 RMF is a control-plane module that maintains a successor-biased activation field
 over discrete memory addresses. It updates after each memory access and biases

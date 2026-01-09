@@ -128,7 +128,7 @@ class LanguageModelSystem:
                     features, logits = result
                     out = {"features": features, "logits": logits, "_system": self.module}
                     # Best-effort: attach MOSAIC aux outputs when present on ctx.
-                    aux = getattr(ctx, "mosaic_aux_out", None) if ctx is not None else None
+                    aux = getattr(ctx, "memblock_aux_out", None) if ctx is not None else None
                     if isinstance(aux, dict):
                         for k, v in aux.items():
                             if isinstance(k, str) and isinstance(v, Tensor):
@@ -140,7 +140,7 @@ class LanguageModelSystem:
                 logger.warning(f"Model(return_features=True) TypeError; falling back: {e!r}")
         logits = self.module(input_ids, ctx=ctx)  # type: ignore[call-arg]
         out2 = {"logits": logits, "_system": self.module}
-        aux2 = getattr(ctx, "mosaic_aux_out", None) if ctx is not None else None
+        aux2 = getattr(ctx, "memblock_aux_out", None) if ctx is not None else None
         if isinstance(aux2, dict):
             for k, v in aux2.items():
                 if isinstance(k, str) and isinstance(v, Tensor):

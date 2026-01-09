@@ -41,7 +41,7 @@ from caramba.instrumentation import RunLogger
 from caramba.instrumentation.viz import TrainingVizMosaicContext
 from caramba.instrumentation.wandb_writer import WandBWriter
 from caramba.layer.attention import AttentionLayer
-from caramba.layer.mosaic.block import MosaicBlockLayer
+from caramba.layer.memory_block.block import MemoryBlockLayer
 from caramba.runtime.plan import RuntimePlan
 from caramba.runtime.tensordict_utils import (
     TensorDictBase,
@@ -195,7 +195,7 @@ class _LayerStatsManager:
                 mod._viz_index = int(idx)  # type: ignore[attr-defined]
                 mod._viz_name = str(name)  # type: ignore[attr-defined]
                 self.attn_modules.append((idx, str(name), mod))
-            if isinstance(mod, MosaicBlockLayer):
+            if isinstance(mod, MemoryBlockLayer):
                 idx = int(len(self.mosaic_modules))
                 mod._mosaic_index = int(idx)  # type: ignore[attr-defined]
                 mod._mosaic_name = str(name)  # type: ignore[attr-defined]
@@ -678,15 +678,15 @@ class StandardTrainer:
                         topk=int(getattr(train, "viz_topk", 8) or 8),
                     )
 
-                    viz_ctx.mosaic_teacher_p = self._compute_mosaic_teacher_p(
+                    viz_ctx.memblock_teacher_p = self._compute_memblock_teacher_p(
                         train=train, step_1=step_1, total_steps=int(run.steps)
                     )
 
-                    viz_ctx.mosaic_stats_enabled = bool((step_1 % telemetry_interval) == 0)
+                    viz_ctx.memblock_stats_enabled = bool((step_1 % telemetry_interval) == 0)
 
                     try:
-                        viz_ctx.mosaic_write_warmup_steps = int(
-                            getattr(train, "mosaic_write_warmup_steps", 0) or 0
+                        viz_ctx.memblock_write_warmup_steps = int(
+                            getattr(train, "memblock_write_warmup_steps", 0) or 0
                         )
                     except Exception as e:
                         raise RuntimeError("Failed to set mosaic write warmup steps") from e
@@ -994,12 +994,12 @@ class StandardTrainer:
             teacher: dict[str, Tensor] = {}
             for k in ("read_bucket", "write_bucket", "write_gate", "clear"):
                 try:
-                    v = batch_td.get(f"mosaic_teacher_{k}", None)  # type: ignore[attr-defined]
+                    v = batch_td.get(f"memblock_teacher_{k}", None)  # type: ignore[attr-defined]
                 except Exception as e:
                     raise RuntimeError("Failed to get mosaic teacher signal") from e
                 if isinstance(v, Tensor):
                     teacher[k] = v
-            viz_ctx.mosaic_teacher = teacher or None
+            viz_ctx.memblock_teacher = teacher or None
 
             # Decide whether to collect aux signals (objective-dependent).
             collect_aux = bool(teacher)
@@ -1009,7 +1009,7 @@ class StandardTrainer:
             except Exception as e:
                 raise RuntimeError("Failed to check if objective is MosaicNextTokenWithAuxObjective") from e
 
-            viz_ctx.mosaic_collect_aux = bool(collect_aux)
+            viz_ctx.memblock_collect_aux = bool(collect_aux)
 
             # Speed: avoid threading a changing Python `ctx` object through the model when we
             # don't need it. Passing `ctx` can introduce graph breaks / retracing when
@@ -1022,7 +1022,7 @@ class StandardTrainer:
 
             # Best-effort: merge MOSAIC aux outputs from ctx into outputs.
             try:
-                aux_out = getattr(viz_ctx, "mosaic_aux_out", None)
+                aux_out = getattr(viz_ctx, "memblock_aux_out", None)
                 if isinstance(outputs, dict) and isinstance(aux_out, dict):
                     for k, v in aux_out.items():
                         if (
@@ -1118,9 +1118,9 @@ class StandardTrainer:
         try:
             has_table2_bin = isinstance(last_batch_td.get("table2_bin", None), Tensor)  # type: ignore[attr-defined]
             has_mem_teacher = (
-                isinstance(last_batch_td.get("mosaic_teacher_read_bucket", None), Tensor)  # type: ignore[attr-defined]
-                and isinstance(last_batch_td.get("mosaic_teacher_write_bucket", None), Tensor)  # type: ignore[attr-defined]
-                and isinstance(last_batch_td.get("mosaic_teacher_write_gate", None), Tensor)  # type: ignore[attr-defined]
+                isinstance(last_batch_td.get("memblock_teacher_read_bucket", None), Tensor)  # type: ignore[attr-defined]
+                and isinstance(last_batch_td.get("memblock_teacher_write_bucket", None), Tensor)  # type: ignore[attr-defined]
+                and isinstance(last_batch_td.get("memblock_teacher_write_gate", None), Tensor)  # type: ignore[attr-defined]
             )
             if (has_table2_bin or has_mem_teacher) and (outputs_last is not None):
                 metrics.update(table2.compute(outputs=outputs_last, batch=last_batch_td))
@@ -1151,11 +1151,11 @@ class StandardTrainer:
 
         # MOSAIC memory stats (best-effort).
         try:
-            if isinstance(viz_ctx, TrainingVizMosaicContext) and viz_ctx.mosaic_mem_stats:
+            if isinstance(viz_ctx, TrainingVizMosaicContext) and viz_ctx.memblock_mem_stats:
                 mosaic_f: dict[str, float] = {}
                 t_keys: list[str] = []
                 t_vals: list[Tensor] = []
-                for k, v in viz_ctx.mosaic_mem_stats.items():
+                for k, v in viz_ctx.memblock_mem_stats.items():
                     kk = str(k)
                     if isinstance(v, (int, float)):
                         mosaic_f[kk] = float(v)
@@ -1172,7 +1172,7 @@ class StandardTrainer:
                 for kk, vv in mosaic_f.items():
                     metrics[kk] = float(vv)
 
-                metrics["mosaic_teacher_p"] = float(getattr(viz_ctx, "mosaic_teacher_p", 1.0))
+                metrics["memblock_teacher_p"] = float(getattr(viz_ctx, "memblock_teacher_p", 1.0))
 
                 def _avg(suffix: str) -> float | None:
                     vals = [float(v) for kk, v in mosaic_f.items() if str(kk).endswith(suffix)]
@@ -1195,13 +1195,13 @@ class StandardTrainer:
 
         return metrics
 
-    def _compute_mosaic_teacher_p(self, *, train: TrainConfig, step_1: int, total_steps: int) -> float:
+    def _compute_memblock_teacher_p(self, *, train: TrainConfig, step_1: int, total_steps: int) -> float:
         try:
-            warm = int(getattr(train, "mosaic_teacher_p_warmup_steps", 0) or 0)
-            cool = int(getattr(train, "mosaic_teacher_p_cooldown_steps", 0) or 0)
-            p0 = float(getattr(train, "mosaic_teacher_p_start", 1.0))
-            p1 = float(getattr(train, "mosaic_teacher_p_end", 0.0))
-            sched = str(getattr(train, "mosaic_teacher_p_schedule", "linear")).lower()
+            warm = int(getattr(train, "memblock_teacher_p_warmup_steps", 0) or 0)
+            cool = int(getattr(train, "memblock_teacher_p_cooldown_steps", 0) or 0)
+            p0 = float(getattr(train, "memblock_teacher_p_start", 1.0))
+            p1 = float(getattr(train, "memblock_teacher_p_end", 0.0))
+            sched = str(getattr(train, "memblock_teacher_p_schedule", "linear")).lower()
 
             s_eff = max(0, min(int(total_steps), int(step_1)))
             denom = max(1, int(total_steps) - warm - cool)
@@ -1454,12 +1454,12 @@ class StandardTrainer:
             buckets: set[int] = set()
             hashes: set[int] = set()
             for m in mod.modules():
-                if isinstance(m, MosaicBlockLayer):
+                if isinstance(m, MemoryBlockLayer):
                     buckets.add(int(m.memory.mem_buckets))
                     hashes.add(int(m.memory.mem_hashes))
             if buckets and hashes:
                 if len(buckets) != 1 or len(hashes) != 1:
-                    raise ValueError("Inconsistent mem_buckets/mem_hashes across MosaicBlockLayer modules.")
+                    raise ValueError("Inconsistent mem_buckets/mem_hashes across MemoryBlockLayer modules.")
                 mb = next(iter(buckets))
                 mh = next(iter(hashes))
 

@@ -1,8 +1,4 @@
-"""MOSAIC instruction set (v0)
-
-This module is MOSAIC-specific: Caramba is the substrate; MOSAIC is one
-architecture built on it. Other architectures can define their own ISAs.
-"""
+"""Instruction set for the streaming memory block (v0)."""
 
 from __future__ import annotations
 
@@ -10,7 +6,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 
-class MosaicOpcode(IntEnum):
+class MemoryOpcode(IntEnum):
     """Opcode identifiers
 
     Stable opcode IDs make “control signals” learnable and supervisable; you can
@@ -31,7 +27,7 @@ class MosaicOpcode(IntEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class MosaicISAV0:
+class MemoryISAV0:
     """ISA helper utilities
 
     Keeping ISA helpers typed and centralized makes it easier to evolve the
@@ -39,7 +35,7 @@ class MosaicISAV0:
     """
 
     def vocab_size(self) -> int:
-        return len(MosaicOpcode)
+        return len(MemoryOpcode)
 
     def validate_opcode_vocab(self, opcode_vocab: int) -> int:
         v = int(opcode_vocab)
@@ -47,7 +43,7 @@ class MosaicISAV0:
             raise ValueError(f"opcode_vocab must be >= 2, got {v}")
         max_v = self.vocab_size()
         if v > max_v:
-            raise ValueError(f"opcode_vocab must be <= {max_v} for MosaicISAV0, got {v}")
+            raise ValueError(f"opcode_vocab must be <= {max_v} for MemoryISAV0, got {v}")
         return v
 
     def name_for_id(self, opcode_id: int, *, opcode_vocab: int) -> str:
@@ -55,9 +51,9 @@ class MosaicISAV0:
         oid = int(opcode_id)
         if oid < 0 or oid >= v:
             raise ValueError(f"opcode_id out of range for opcode_vocab={v}: {oid}")
-        return str(MosaicOpcode(oid).name)
+        return str(MemoryOpcode(oid).name)
 
-    def id_for_opcode(self, opcode: MosaicOpcode, *, opcode_vocab: int) -> int:
+    def id_for_opcode(self, opcode: MemoryOpcode, *, opcode_vocab: int) -> int:
         v = self.validate_opcode_vocab(opcode_vocab)
         oid = int(opcode.value)
         if oid < 0 or oid >= v:

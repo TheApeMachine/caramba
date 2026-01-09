@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.layer.mosaic.state import MosaicState
+from caramba.layer.memory_block.state import MemoryBlockState
 
 
 class LocalMixer(nn.Module):
@@ -40,7 +40,7 @@ class LocalMixer(nn.Module):
         self.dropout = dropout
         self.conv_kernel = int(conv_kernel)
 
-    def forward(self, u: Tensor, *, state: MosaicState | None) -> tuple[Tensor, Tensor | None]:
+    def forward(self, u: Tensor, *, state: MemoryBlockState | None) -> tuple[Tensor, Tensor | None]:
         """Compute local features and updated buffer
 
         The conv buffer carries the last k−1 normalized tokens so single-token

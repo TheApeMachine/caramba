@@ -17,8 +17,8 @@ import torch
 from torch import Tensor, nn
 
 from caramba.carmath import last_write_wins
-from caramba.layer.mosaic.memory.vsa import VsaNovelty, VsaTagProjector
-from caramba.layer.mosaic.state import MosaicState
+from caramba.layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
+from caramba.layer.memory_block.state import MemoryBlockState
 
 
 @dataclass(slots=True)
@@ -71,7 +71,7 @@ class MemoryWriter:
     def write_chunk(
         self,
         u: Tensor,
-        st: MosaicState,
+        st: MemoryBlockState,
         routing: dict[str, Any],
         t0: int,
         mask: Tensor | None,
@@ -165,7 +165,7 @@ class MemoryWriter:
         self,
         *,
         u: Tensor,
-        st: MosaicState,
+        st: MemoryBlockState,
         bidx_leaf: Tensor,
         wk: Tensor,
         wt: Tensor,
@@ -229,7 +229,7 @@ class MemoryWriter:
         do = w_eta > 0
         return int(B), int(T), idx_w, gate_logit, w_eta, do
 
-    def hash_novelty(self, st: MosaicState, *, bidx: Tensor, wt: Tensor, h: int) -> tuple[Tensor, Tensor]:
+    def hash_novelty(self, st: MemoryBlockState, *, bidx: Tensor, wt: Tensor, h: int) -> tuple[Tensor, Tensor]:
         if self.vsa_novelty is None:
             raise RuntimeError("mem_vsa_enabled is True but vsa_novelty is None")
         if int(h) < 0 or int(h) >= int(self.mem_hashes):
@@ -253,7 +253,7 @@ class MemoryWriter:
         self,
         *,
         u: Tensor,
-        st: MosaicState,
+        st: MemoryBlockState,
         bidx: Tensor,
         wk: Tensor,
         wt: Tensor,
@@ -304,7 +304,7 @@ class MemoryWriter:
     def apply_events(
         self,
         *,
-        st: MosaicState,
+        st: MemoryBlockState,
         bidx: Tensor,
         wk: Tensor,
         wt: Tensor,
@@ -354,7 +354,7 @@ class MemoryWriter:
     def select_events(
         self,
         *,
-        st: MosaicState,
+        st: MemoryBlockState,
         bidx: Tensor,
         wk: Tensor,
         wt: Tensor,
@@ -407,7 +407,7 @@ class MemoryWriter:
             time_ev[sel],
         )
 
-    def ensure_mutable_state(self, st: MosaicState) -> None:
+    def ensure_mutable_state(self, st: MemoryBlockState) -> None:
         st.mem_k = st.mem_k.clone()
         st.mem_v = st.mem_v.clone()
         st.mem_tag = st.mem_tag.clone()
@@ -416,7 +416,7 @@ class MemoryWriter:
     def apply_updates(
         self,
         *,
-        st: MosaicState,
+        st: MemoryBlockState,
         b_ev: Tensor,
         bucket_ev: Tensor,
         slot_ev: Tensor,

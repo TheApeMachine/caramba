@@ -18,7 +18,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from caramba.core.event import EventEnvelope
-from caramba.layer.mosaic.isa import MosaicOpcode
+from caramba.layer.memory_block.isa import MemoryOpcode
 
 
 class _EventTraceBuilder:
@@ -57,7 +57,7 @@ class _EventTraceBuilder:
         self,
         tok: int,
         *,
-        op: int = int(MosaicOpcode.NOP),
+        op: int = int(MemoryOpcode.NOP),
         wg: int = 0,
         wu: int = 0,
         rb: list[int] | None = None,
@@ -160,7 +160,7 @@ class _EventTraceBuilder:
         *,
         # Optional supervision spans (byte indices within the JSON string)
         opcode_span: tuple[int, int] | None = None,
-        opcode: MosaicOpcode = MosaicOpcode.NOP,
+        opcode: MemoryOpcode = MemoryOpcode.NOP,
         write_gate_span: tuple[int, int] | None = None,
         reg_write_gate_span: tuple[int, int] | None = None,
         reg_slot: int | None = None,
@@ -206,7 +206,7 @@ class _EventTraceBuilder:
         rb_vec = ([int(read_bucket)] * self.mem_hashes) if read_bucket is not None else None
 
         for i, bt in enumerate(b):
-            op = int(opcode) if (opcode_span is not None and op_s <= i < op_e) else int(MosaicOpcode.NOP)
+            op = int(opcode) if (opcode_span is not None and op_s <= i < op_e) else int(MemoryOpcode.NOP)
             wg = 1 if (write_gate_span is not None and wg_s <= i < wg_e) else 0
             wu = wg
             wb = wb_vec if (write_gate_span is not None and wg_s <= i < wg_e) else None
@@ -222,7 +222,7 @@ class _EventTraceBuilder:
             self._append_token(bt, op=op, wg=wg, wu=wu, rb=rb, wb=wb, dl=int(drop_local), cd=cd, rg=rg, rs=rs)
 
         # Add delimiter with no supervision.
-        self._append_token(int(delimiter), op=int(MosaicOpcode.NOP), wg=0, wu=0, rb=None, wb=None, dl=0, cd=-100)
+        self._append_token(int(delimiter), op=int(MemoryOpcode.NOP), wg=0, wu=0, rb=None, wb=None, dl=0, cd=-100)
 
 
 class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
@@ -333,7 +333,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
             b.append_event(
                 env,
                 opcode_span=span_v,
-                opcode=MosaicOpcode.WRITE_MEM,
+                opcode=MemoryOpcode.WRITE_MEM,
                 write_gate_span=span_v,
                 reg_write_gate_span=span_v if int(self.reg_slots) > 0 else None,
                 reg_slot=(int(j) % int(self.reg_slots)) if int(self.reg_slots) > 0 else None,
@@ -420,7 +420,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
             b.append_event(
                 env_q,
                 opcode_span=span_k,
-                opcode=MosaicOpcode.READ_MEM,
+                opcode=MemoryOpcode.READ_MEM,
                 write_gate_span=None,
                 write_bucket=None,
                 read_bucket=int(bucket),
@@ -454,7 +454,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
                     b.append_event(
                         env_idle,
                         opcode_span=(0, 1),
-                        opcode=MosaicOpcode.READ_MEM,
+                        opcode=MemoryOpcode.READ_MEM,
                         read_bucket=int(bucket),
                         drop_local=1,
                     )
@@ -499,17 +499,17 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
         out = {
             "input_ids": x,
             "target_ids": y,
-            "mosaic_teacher_write_gate": wg,
-            "mosaic_teacher_write_utility": wu,
-            "mosaic_teacher_read_bucket": rb,
-            "mosaic_teacher_write_bucket": wb,
+            "memblock_teacher_write_gate": wg,
+            "memblock_teacher_write_utility": wu,
+            "memblock_teacher_read_bucket": rb,
+            "memblock_teacher_write_bucket": wb,
             "mosaic_drop_local": dl,
-            "mosaic_teacher_opcode": op,
-            "mosaic_teacher_commitment_delta": cd,
+            "memblock_teacher_opcode": op,
+            "memblock_teacher_commitment_delta": cd,
         }
         if int(self.reg_slots) > 0:
-            out["mosaic_teacher_reg_write_gate"] = torch.tensor(b.reg_write_gate[:-1], dtype=torch.float32)
-            out["mosaic_teacher_reg_sel"] = torch.tensor(b.reg_sel[:-1], dtype=torch.long)
+            out["memblock_teacher_reg_write_gate"] = torch.tensor(b.reg_write_gate[:-1], dtype=torch.float32)
+            out["memblock_teacher_reg_sel"] = torch.tensor(b.reg_sel[:-1], dtype=torch.long)
         return out
 
 

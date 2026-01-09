@@ -68,7 +68,7 @@ targets:
             - type: NestedTopology
               repeat: ${n_layers}
               layers:
-                - type: MosaicBlockLayer
+                - type: MemoryBlockLayer
                   d_model: ${d_model}
                   conv_kernel: 7
                   mlp_mult: 2.0
@@ -114,7 +114,7 @@ targets:
             - type: NestedTopology
               repeat: ${n_layers}
               layers:
-                - type: MosaicBlockLayer
+                - type: MemoryBlockLayer
                   d_model: ${d_model}
                   conv_kernel: 7
                   mlp_mult: 2.0
@@ -163,9 +163,9 @@ targets:
     dtype: float16
     telemetry_interval: 50
     offload_optimizer: true
-    mosaic_teacher_p_schedule: constant
-    mosaic_teacher_p_warmup_steps: 0
-    mosaic_teacher_p_cooldown_steps: 0
+    memblock_teacher_p_schedule: constant
+    memblock_teacher_p_warmup_steps: 0
+    memblock_teacher_p_cooldown_steps: 0
 
   - type: experiment
     name: mosaic_hyp_teacher_always
@@ -185,8 +185,8 @@ targets:
         expected: {}
         train:
           <<: *hyp_sig_train_base
-          mosaic_teacher_p_start: 1.0
-          mosaic_teacher_p_end: 1.0
+          memblock_teacher_p_start: 1.0
+          memblock_teacher_p_end: 1.0
 
   - type: experiment
     name: mosaic_hyp_teacher_never
@@ -206,8 +206,8 @@ targets:
         expected: {}
         train:
           <<: *hyp_sig_train_base
-          mosaic_teacher_p_start: 0.0
-          mosaic_teacher_p_end: 0.0
+          memblock_teacher_p_start: 0.0
+          memblock_teacher_p_end: 0.0
 
   - type: experiment
     name: mosaic_hyp_rmf_on
@@ -227,8 +227,8 @@ targets:
         expected: {}
         train:
           <<: *hyp_sig_train_base
-          mosaic_teacher_p_start: 0.5
-          mosaic_teacher_p_end: 0.5
+          memblock_teacher_p_start: 0.5
+          memblock_teacher_p_end: 0.5
 
   - type: experiment
     name: mosaic_hyp_rmf_off
@@ -248,8 +248,8 @@ targets:
         expected: {}
         train:
           <<: *hyp_sig_train_base
-          mosaic_teacher_p_start: 0.5
-          mosaic_teacher_p_end: 0.5
+          memblock_teacher_p_start: 0.5
+          memblock_teacher_p_end: 0.5
 
 entrypoints:
   default: mosaic_hyp_teacher_always

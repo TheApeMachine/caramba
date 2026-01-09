@@ -1,4 +1,4 @@
-"""MOSAIC state management
+"""Streaming memory block state management
 
 Streaming models need persistent state across decode steps; this module keeps
 that state explicit and context-scoped so generation stays reproducible and does
@@ -15,8 +15,8 @@ from torch import Tensor
 
 
 @dataclass
-class MosaicState:
-    """MOSAIC streaming state.
+class MemoryBlockState:
+    """Streaming memory block state.
 
     Holds fixed-size buffers used across decode steps: local conv buffer, multiscale
     state bank, optional registers, and set-associative memory tables.
@@ -45,7 +45,7 @@ class MosaicState:
     rmf_field: Tensor | None = None
 
 
-class MosaicStateStore:
+class MemoryBlockStateStore:
     """Context-backed state store
 
     Storing state on the caller-provided context object makes state ownership
@@ -54,30 +54,30 @@ class MosaicStateStore:
     """
 
     class Ctx(Protocol):
-        _mosaic: dict[str, MosaicState]
+        _memblock: dict[str, MemoryBlockState]
 
-    def get(self, ctx: Ctx | None, *, key: str) -> MosaicState | None:
+    def get(self, ctx: Ctx | None, *, key: str) -> MemoryBlockState | None:
         if ctx is None:
             return None
-        store = getattr(ctx, "_mosaic", None)
+        store = getattr(ctx, "_memblock", None)
         if not isinstance(store, dict):
             return None
         st = store.get(str(key))
-        return st if isinstance(st, MosaicState) else None
+        return st if isinstance(st, MemoryBlockState) else None
 
-    def set(self, ctx: Ctx | None, *, key: str, state: MosaicState) -> None:
+    def set(self, ctx: Ctx | None, *, key: str, state: MemoryBlockState) -> None:
         if ctx is None:
             return
-        store = getattr(ctx, "_mosaic", None)
+        store = getattr(ctx, "_memblock", None)
         if store is None:
             store = {}
             try:
-                setattr(ctx, "_mosaic", store)  # type: ignore[arg-type]
+                setattr(ctx, "_memblock", store)  # type: ignore[arg-type]
             except Exception as e:
-                raise RuntimeError(f"Failed to set ctx._mosaic state store: {e}") from e
+                raise RuntimeError(f"Failed to set ctx._memblock state store: {e}") from e
         if not isinstance(store, dict):
             raise TypeError(
-                f"ctx._mosaic exists but is not a dict: {type(store).__name__}. "
-                "Expected dict[str, MosaicState] for state storage."
+                f"ctx._memblock exists but is not a dict: {type(store).__name__}. "
+                "Expected dict[str, MemoryBlockState] for state storage."
             )
         store[str(key)] = state

@@ -48,8 +48,8 @@ class LayerType(str, enum.Enum):
     RNN = "RNNLayer"
     GRAPH_CONV = "GraphConvLayer"
     DENSE = "DenseLayer"
-    MOSAIC_BLOCK = "MosaicBlockLayer"
-    MOSAIC_NGRAM_CACHE = "MosaicNGramCacheLogitsLayer"
+    MEMORY_BLOCK = "MemoryBlockLayer"
+    NGRAM_CACHE = "NGramCacheLogitsLayer"
 
     @classmethod
     def from_str(cls, s: str) -> "LayerType":
@@ -63,10 +63,10 @@ class LayerType(str, enum.Enum):
 
     def py_module(self) -> str:
         """Return the submodule name for this layer type."""
-        if self == LayerType.MOSAIC_BLOCK:
-            return "mosaic.block"
-        if self == LayerType.MOSAIC_NGRAM_CACHE:
-            return "mosaic.ngram_cache"
+        if self == LayerType.MEMORY_BLOCK:
+            return "memory_block.block"
+        if self == LayerType.NGRAM_CACHE:
+            return "memory_block.ngram_cache"
         return self.name.lower()
 
 
@@ -197,16 +197,6 @@ class AttentionLayerConfig(Config):
     # (no Triton). It's primarily a manifest-friendly way to be explicit about
     # the intended device family.
     dba_train_backend: Literal["auto", "triton", "sdpa", "metal"] = "auto"
-
-    @field_validator("mode", mode="before")
-    @classmethod
-    def _coerce_mode(cls, v: object) -> object:
-        """Back-compat sugar: `mode: bottleneck` == `mode: standard` + `attn_dim`."""
-        if isinstance(v, str):
-            s = v.strip().lower()
-            if s == "bottleneck":
-                return AttentionMode.STANDARD
-        return v
 
     @property
     def head_dim(self) -> int:
@@ -363,16 +353,16 @@ class DenseLayerConfig(Config):
 
 
 # -----------------------------
-# MOSAIC (no-attention, no-KV) layers
+# Streaming memory / no-KV layers
 # -----------------------------
 
-class MosaicBlockLayerConfig(Config):
-    """Configuration for a MOSAIC block (local mixer + multiscale state + hash memory).
+class MemoryBlockLayerConfig(Config):
+    """Configuration for a streaming memory block (local mixer + multiscale state + hash memory).
 
     This is a shape-preserving streaming layer intended to be stacked repeatedly.
     """
 
-    type: Literal[LayerType.MOSAIC_BLOCK] = LayerType.MOSAIC_BLOCK
+    type: Literal[LayerType.MEMORY_BLOCK] = LayerType.MEMORY_BLOCK
 
     # Residual stream width.
     d_model: PositiveInt
@@ -501,7 +491,7 @@ class MosaicBlockLayerConfig(Config):
     gate_mem_init: float = 0.0
 
     @model_validator(mode="after")
-    def _validate_memory_aux_weights(self) -> "MosaicBlockLayerConfig":
+    def _validate_memory_aux_weights(self) -> "MemoryBlockLayerConfig":
         """Keep auxiliary weights non-negative and consistent with enable flags."""
         if self.mem_phase_weight < 0:
             raise ValueError(f"mem_phase_weight must be >= 0, got {self.mem_phase_weight!r}")
@@ -520,13 +510,13 @@ class MosaicBlockLayerConfig(Config):
         return self
 
 
-class MosaicNGramCacheLogitsLayerConfig(Config):
+class NGramCacheLogitsLayerConfig(Config):
     """Optional n-gram continuation cache mixed into logits.
 
     This layer is intended for inference-time experiments; set weight=0 to disable.
     """
 
-    type: Literal[LayerType.MOSAIC_NGRAM_CACHE] = LayerType.MOSAIC_NGRAM_CACHE
+    type: Literal[LayerType.NGRAM_CACHE] = LayerType.NGRAM_CACHE
     vocab_size: PositiveInt
     n: PositiveInt = 6
     table_size: PositiveInt = 1048576  # 2^20
@@ -550,7 +540,7 @@ LayerConfig: TypeAlias = Annotated[
     | RNNLayerConfig
     | GraphConvLayerConfig
     | DenseLayerConfig
-    | MosaicBlockLayerConfig
-    | MosaicNGramCacheLogitsLayerConfig,
+    | MemoryBlockLayerConfig
+    | NGramCacheLogitsLayerConfig,
     Field(discriminator="type"),
 ]

@@ -16,9 +16,9 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.layer.mosaic.memory.vsa import VsaTagProjector
-from caramba.layer.mosaic.memory.phase import PhaseSimilarity, PhaseTagProjector
-from caramba.layer.mosaic.state import MosaicState
+from caramba.layer.memory_block.memory.vsa import VsaTagProjector
+from caramba.layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
+from caramba.layer.memory_block.state import MemoryBlockState
 
 
 @dataclass(slots=True)
@@ -53,7 +53,7 @@ class MemoryReader:
     mem_trie_fallback_enabled: bool
     mem_trie_max_levels: int | None = None
 
-    def read(self, u: Tensor, st: MosaicState, routing: dict[str, Any]) -> Tensor:
+    def read(self, u: Tensor, st: MemoryBlockState, routing: dict[str, Any]) -> Tensor:
         """Read memory for a chunk
 
         The returned vector is a learned projection of weighted slot values,
@@ -99,7 +99,7 @@ class MemoryReader:
         B, T, _ = u.shape
         return int(B), int(T)
 
-    def gather_index_and_valid(self, st: MosaicState, routing: dict[str, Any], *, batch: int, time: int) -> tuple[Tensor, Tensor | None]:
+    def gather_index_and_valid(self, st: MemoryBlockState, routing: dict[str, Any], *, batch: int, time: int) -> tuple[Tensor, Tensor | None]:
         idx_r = routing["idx_r"]
         if idx_r.ndim != 3:
             raise ValueError(f"routing['idx_r'] must have shape (B,T,H), got {tuple(idx_r.shape)}")
@@ -115,7 +115,7 @@ class MemoryReader:
                     routing["trie_fallback_steps"] = steps.detach()
         return idx.unsqueeze(-1).unsqueeze(-1), valid_hint
 
-    def trie_fallback_index(self, st: MosaicState, *, idx: Tensor, batch: int, time: int) -> tuple[Tensor, Tensor, Tensor]:
+    def trie_fallback_index(self, st: MemoryBlockState, *, idx: Tensor, batch: int, time: int) -> tuple[Tensor, Tensor, Tensor]:
         """Fallback up trie parents when leaf bucket is empty.
 
         Args:
@@ -153,7 +153,7 @@ class MemoryReader:
             steps = steps + need.to(dtype=torch.long)
         return cur, valid, steps
 
-    def gather_bucket(self, st: MosaicState, *, idx_g: Tensor, batch: int, time: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    def gather_bucket(self, st: MemoryBlockState, *, idx_g: Tensor, batch: int, time: int) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         bk = st.mem_k.gather(dim=2, index=idx_g.expand(batch, self.mem_hashes, time, self.mem_assoc, self.mem_key_dim))
         bv = st.mem_v.gather(dim=2, index=idx_g.expand(batch, self.mem_hashes, time, self.mem_assoc, self.mem_dim))
         bt = st.mem_tag.gather(dim=2, index=idx_g.expand(batch, self.mem_hashes, time, self.mem_assoc, self.mem_tag_dim))

@@ -13509,3 +13509,2209 @@ refused.
 ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
 ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
 ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 18, in <module>
+    from caramba.config.layer import (
+ImportError: cannot import name 'MosaicBlockLayerConfig' from 'caramba.config.layer' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/layer.py). Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 18, in <module>
+    from caramba.config.layer import (
+ImportError: cannot import name 'MosaicBlockLayerConfig' from 'caramba.config.layer' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/layer.py). Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 18, in <module>
+    from caramba.config.layer import (
+ImportError: cannot import name 'MosaicBlockLayerConfig' from 'caramba.config.layer' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/layer.py). Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 18, in <module>
+    from caramba.config.layer import (
+ImportError: cannot import name 'MosaicBlockLayerConfig' from 'caramba.config.layer' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/layer.py). Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 18, in <module>
+    from caramba.config.layer import (
+ImportError: cannot import name 'MosaicBlockLayerConfig' from 'caramba.config.layer' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/layer.py). Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 18, in <module>
+    from caramba.config.layer import (
+ImportError: cannot import name 'MosaicBlockLayerConfig' from 'caramba.config.layer' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/layer.py). Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 18, in <module>
+    from caramba.config.layer import (
+ImportError: cannot import name 'MosaicBlockLayerConfig' from 'caramba.config.layer' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/layer.py). Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 202, in <module>
+    | MosaicBlockLayerConfig
+      ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'MosaicBlockLayerConfig' is not defined. Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 202, in <module>
+    | MosaicBlockLayerConfig
+      ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'MosaicBlockLayerConfig' is not defined. Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 202, in <module>
+    | MosaicBlockLayerConfig
+      ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'MosaicBlockLayerConfig' is not defined. Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 202, in <module>
+    | MosaicBlockLayerConfig
+      ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'MosaicBlockLayerConfig' is not defined. Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 202, in <module>
+    | MosaicBlockLayerConfig
+      ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'MosaicBlockLayerConfig' is not defined. Did you mean: 'MemoryBlockLayerConfig'?
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 33, in <module>
+    from caramba.config.manifest import Manifest
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/manifest.py", line 22, in <module>
+    from caramba.config.target import TargetConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/target.py", line 16, in <module>
+    from caramba.config.model import ModelConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/model.py", line 27, in <module>
+    from caramba.config.topology import TopologyConfig
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/config/topology.py", line 202, in <module>
+    | MosaicBlockLayerConfig
+      ^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'MosaicBlockLayerConfig' is not defined. Did you mean: 'MemoryBlockLayerConfig'?
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+⚠ codegraph: failed to sync to FalkorDB (best-effort): Error 61 connecting to 
+localhost:6379. Connection refused.
+✗ codegraph-sync failed: Error 61 connecting to localhost:6379. Connection 
+refused.
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 35, in <module>
+    from caramba.experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 19, in <module>
+    from caramba.benchmark.perplexity import PerplexityResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/perplexity.py", line 21, in <module>
+    from caramba.data.npy import NpyDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/__init__.py", line 10, in <module>
+    from caramba.data.auto import AutoDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/auto.py", line 13, in <module>
+    from caramba.data.config import DatasetConfig, DatasetType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/config.py", line 16, in <module>
+    from caramba.data.error import DataError, DataErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/error.py", line 11, in <module>
+    from caramba.core.error import CoreError, ErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/__init__.py", line 10, in <module>
+    from caramba.core.event_codec import EventDecoder, EventEncoder
+ImportError: cannot import name 'EventDecoder' from 'caramba.core.event_codec' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/event_codec/__init__.py). Did you mean: 'JsonEventDecoder'?
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 35, in <module>
+    from caramba.experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 19, in <module>
+    from caramba.benchmark.perplexity import PerplexityResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/perplexity.py", line 21, in <module>
+    from caramba.data.npy import NpyDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/__init__.py", line 10, in <module>
+    from caramba.data.auto import AutoDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/auto.py", line 13, in <module>
+    from caramba.data.config import DatasetConfig, DatasetType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/config.py", line 16, in <module>
+    from caramba.data.error import DataError, DataErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/error.py", line 11, in <module>
+    from caramba.core.error import CoreError, ErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/__init__.py", line 10, in <module>
+    from caramba.core.event_codec import EventDecoder, EventEncoder
+ImportError: cannot import name 'EventDecoder' from 'caramba.core.event_codec' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/event_codec/__init__.py). Did you mean: 'JsonEventDecoder'?
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 35, in <module>
+    from caramba.experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 19, in <module>
+    from caramba.benchmark.perplexity import PerplexityResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/perplexity.py", line 21, in <module>
+    from caramba.data.npy import NpyDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/__init__.py", line 10, in <module>
+    from caramba.data.auto import AutoDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/auto.py", line 13, in <module>
+    from caramba.data.config import DatasetConfig, DatasetType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/config.py", line 16, in <module>
+    from caramba.data.error import DataError, DataErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/error.py", line 11, in <module>
+    from caramba.core.error import CoreError, ErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/__init__.py", line 10, in <module>
+    from caramba.core.event_codec import EventDecoder, EventEncoder
+ImportError: cannot import name 'EventDecoder' from 'caramba.core.event_codec' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/event_codec/__init__.py). Did you mean: 'JsonEventDecoder'?
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 35, in <module>
+    from caramba.experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 19, in <module>
+    from caramba.benchmark.perplexity import PerplexityResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/perplexity.py", line 21, in <module>
+    from caramba.data.npy import NpyDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/__init__.py", line 10, in <module>
+    from caramba.data.auto import AutoDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/auto.py", line 13, in <module>
+    from caramba.data.config import DatasetConfig, DatasetType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/config.py", line 16, in <module>
+    from caramba.data.error import DataError, DataErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/error.py", line 11, in <module>
+    from caramba.core.error import CoreError, ErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/__init__.py", line 10, in <module>
+    from caramba.core.event_codec import EventDecoder, EventEncoder
+ImportError: cannot import name 'EventDecoder' from 'caramba.core.event_codec' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/event_codec/__init__.py). Did you mean: 'JsonEventDecoder'?
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 35, in <module>
+    from caramba.experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 19, in <module>
+    from caramba.benchmark.perplexity import PerplexityResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/perplexity.py", line 21, in <module>
+    from caramba.data.npy import NpyDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/__init__.py", line 10, in <module>
+    from caramba.data.auto import AutoDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/auto.py", line 13, in <module>
+    from caramba.data.config import DatasetConfig, DatasetType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/config.py", line 16, in <module>
+    from caramba.data.error import DataError, DataErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/error.py", line 11, in <module>
+    from caramba.core.error import CoreError, ErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/__init__.py", line 10, in <module>
+    from caramba.core.event_codec import EventDecoder, EventEncoder
+ImportError: cannot import name 'EventDecoder' from 'caramba.core.event_codec' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/event_codec/__init__.py). Did you mean: 'JsonEventDecoder'?
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 35, in <module>
+    from caramba.experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 19, in <module>
+    from caramba.benchmark.perplexity import PerplexityResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/perplexity.py", line 21, in <module>
+    from caramba.data.npy import NpyDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/__init__.py", line 10, in <module>
+    from caramba.data.auto import AutoDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/auto.py", line 13, in <module>
+    from caramba.data.config import DatasetConfig, DatasetType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/config.py", line 16, in <module>
+    from caramba.data.error import DataError, DataErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/error.py", line 11, in <module>
+    from caramba.core.error import CoreError, ErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/__init__.py", line 10, in <module>
+    from caramba.core.event_codec import EventDecoder, EventEncoder
+ImportError: cannot import name 'EventDecoder' from 'caramba.core.event_codec' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/event_codec/__init__.py). Did you mean: 'JsonEventDecoder'?
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 35, in <module>
+    from caramba.experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 19, in <module>
+    from caramba.benchmark.perplexity import PerplexityResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/perplexity.py", line 21, in <module>
+    from caramba.data.npy import NpyDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/__init__.py", line 10, in <module>
+    from caramba.data.auto import AutoDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/auto.py", line 13, in <module>
+    from caramba.data.config import DatasetConfig, DatasetType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/config.py", line 16, in <module>
+    from caramba.data.error import DataError, DataErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/error.py", line 11, in <module>
+    from caramba.core.error import CoreError, ErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/__init__.py", line 10, in <module>
+    from caramba.core.event_codec import EventDecoder, EventEncoder
+ImportError: cannot import name 'EventDecoder' from 'caramba.core.event_codec' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/event_codec/__init__.py). Did you mean: 'JsonEventDecoder'?
+ℹ [KERNEL] RMSNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] LayerNorm: Metal fp16 + backward (MPS)
+ℹ [KERNEL] RoPE: Metal fp16 + backward (MPS)
+ℹ [KERNEL] Attention Decode: Metal fp16 (MPS, inference)
+ℹ [KERNEL] Attention Train: Metal fp16 + backward (MPS)
+ℹ [KERNEL] SSM Scan: Metal fp16 + backward (MPS)
+ℹ [KERNEL] AdamW Master Step: Metal fused (MPS)
+ℹ [KERNEL] Lion Step: Metal fused (MPS)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/__main__.py", line 10, in <module>
+    from caramba.cli import main as cli_main
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/cli.py", line 12, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/__init__.py", line 8, in <module>
+    from caramba.api.app import app
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/api/app.py", line 35, in <module>
+    from caramba.experiment.runner import _resolve_target as _resolve_target_name
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/__init__.py", line 13, in <module>
+    from caramba.experiment.runner import ExperimentRunner
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/experiment/runner.py", line 21, in <module>
+    from caramba.runtime.engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/__init__.py", line 9, in <module>
+    from caramba.runtime.engine.torch_engine import TorchEngine
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/runtime/engine/torch_engine.py", line 17, in <module>
+    from caramba.benchmark.artifacts import ExperimentMetadata
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/__init__.py", line 15, in <module>
+    from caramba.benchmark.artifacts import ArtifactGenerator
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/artifacts.py", line 19, in <module>
+    from caramba.benchmark.perplexity import PerplexityResult
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/benchmark/perplexity.py", line 21, in <module>
+    from caramba.data.npy import NpyDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/__init__.py", line 10, in <module>
+    from caramba.data.auto import AutoDataset
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/auto.py", line 13, in <module>
+    from caramba.data.config import DatasetConfig, DatasetType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/config.py", line 16, in <module>
+    from caramba.data.error import DataError, DataErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/data/error.py", line 11, in <module>
+    from caramba.core.error import CoreError, ErrorType
+  File "/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/__init__.py", line 10, in <module>
+    from caramba.core.event_codec import EventDecoder, EventEncoder
+ImportError: cannot import name 'EventDecoder' from 'caramba.core.event_codec' (/Users/theapemachine/go/src/github.com/theapemachine/caramba/core/event_codec/__init__.py). Did you mean: 'JsonEventDecoder'?

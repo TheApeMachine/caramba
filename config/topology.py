@@ -26,8 +26,8 @@ from caramba.config.layer import (
     LinearLayerConfig,
     LoRALinearLayerConfig,
     MoELayerConfig,
-    MosaicBlockLayerConfig,
-    MosaicNGramCacheLogitsLayerConfig,
+    MemoryBlockLayerConfig,
+    NGramCacheLogitsLayerConfig,
     RMSNormLayerConfig,
     RNNLayerConfig,
     SSMLayerConfig,
@@ -199,8 +199,8 @@ NodeConfig: TypeAlias = Annotated[
     | RNNLayerConfig
     | GraphConvLayerConfig
     | DenseLayerConfig
-    | MosaicBlockLayerConfig
-    | MosaicNGramCacheLogitsLayerConfig
+    | MemoryBlockLayerConfig
+    | NGramCacheLogitsLayerConfig
     # Topologies
     | NestedTopologyConfig
     | StackedTopologyConfig

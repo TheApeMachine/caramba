@@ -1,4 +1,4 @@
-"""Optional MOSAIC n-gram cache logits mixing (PPM-lite).
+"""Optional n-gram cache logits mixing (PPM-lite).
 
 This is intended as a *practical* on-device improvement for copying/continuation:
 - Maintain a fixed-size direct-mapped table: (N-gram hash -> top-m next-token counts)
@@ -24,7 +24,7 @@ from torch import Tensor, nn
 
 logger = logging.getLogger(__name__)
 
-from caramba.config.layer import MosaicNGramCacheLogitsLayerConfig
+from caramba.config.layer import NGramCacheLogitsLayerConfig
 
 
 @dataclass
@@ -45,7 +45,7 @@ class _NGramState:
 def _get_ngram_state(ctx: object | None, key: str) -> _NGramState | None:
     if ctx is None:
         return None
-    store = getattr(ctx, "_mosaic", None)
+    store = getattr(ctx, "_memblock", None)
     if not isinstance(store, dict):
         return None
     st = store.get(key)
@@ -55,19 +55,19 @@ def _get_ngram_state(ctx: object | None, key: str) -> _NGramState | None:
 def _set_ngram_state(ctx: object | None, key: str, st: _NGramState) -> None:
     if ctx is None:
         return
-    store = getattr(ctx, "_mosaic", None)
+    store = getattr(ctx, "_memblock", None)
     if store is None:
         store = {}
         try:
-            setattr(ctx, "_mosaic", store)
+            setattr(ctx, "_memblock", store)
         except (AttributeError, TypeError) as e:
-            logger.debug(f"Failed to set _mosaic attribute on ctx: {e}", exc_info=True)
+            logger.debug(f"Failed to set _memblock attribute on ctx: {e}", exc_info=True)
             return
     if isinstance(store, dict):
         store[key] = st
 
 
-class MosaicNGramCacheLogitsLayer(nn.Module):
+class NGramCacheLogitsLayer(nn.Module):
     """N-gram cache logits mixer
 
     This layer is a small “copy bias” helper: it remembers short n-gram
@@ -75,7 +75,7 @@ class MosaicNGramCacheLogitsLayer(nn.Module):
     next tokens during inference.
     """
 
-    def __init__(self, config: MosaicNGramCacheLogitsLayerConfig) -> None:
+    def __init__(self, config: NGramCacheLogitsLayerConfig) -> None:
         super().__init__()
         self.config = config
         self.vocab_size = int(config.vocab_size)
@@ -94,7 +94,7 @@ class MosaicNGramCacheLogitsLayer(nn.Module):
             raise ValueError("top_m must be >= 1")
 
         # Stable key for ctx storage.
-        self._ctx_key = f"mosaic_ngram::{id(self)}"
+        self._ctx_key = f"ngram_cache::{id(self)}"
 
         # Rolling hash constants (uint64-like behavior in int64).
         self._base = 1315423911  # large odd constant

@@ -1,8 +1,12 @@
 version: 2
-name: mosaic_memory_smoke
+name: mosaic_train_eval
 notes: |
-  First end-to-end MOSAIC training attempt (smoke test).
-  Small model + short run, optimized for fast iteration and telemetry visibility.
+  "Mosaic" architecture (no attention/no KV cache) expressed purely via manifests.
+
+  This preset demonstrates:
+  - building the architecture from composable layer components (`MemoryBlockLayer`)
+  - training via `trainer.standard`
+  - evaluation via post-run metrics (e.g. perplexity)
 
 defaults:
   data:
@@ -10,40 +14,38 @@ defaults:
     val_frac: 0.1
   logging:
     instrument: rich
-    wandb: true
+    wandb: false
     wandb_project: mosaic
-    wandb_entity: ''
+    wandb_entity: ""
     wandb_mode: offline
-    eval_iters: 10
+    eval_iters: 50
   runtime:
     save_every: 100
 
 vars:
-  d_model: 128
-  n_layers: 2
-  vocab_size: 2048
+  d_model: 256
+  n_layers: 6
+  vocab_size: 50257
   block_size: 256
-  mem_buckets: 1024         # must match (mem_vq_codebook_size ^ mem_vq_groups)
-  mem_hashes: 2
+
+  # Training data (choose one path: local .npy tokens OR HF dataset+tokens).
+  train_tokens_path: path/to/your/train.tokens
+
+  # Evaluation dataset for metric.perplexity (HuggingFace dataset id).
+  eval_dataset: wikitext
 
 targets:
   - type: experiment
-    name: mosaic_smoke
-    description: Small MOSAIC curriculum run for first training attempt.
+    name: mosaic_train_eval
+    description: Train a no-attention/no-KV model and run evaluation metrics.
     backend: torch
     task: task.language_modeling
 
     data:
-      ref: dataset.mosaic_memory_curriculum
+      ref: dataset.tokens
       config:
+        path: ${train_tokens_path}
         block_size: ${block_size}
-        vocab_size: ${vocab_size}
-        mem_buckets: ${mem_buckets}
-        mem_hashes: ${mem_hashes}
-        n_pairs: 2
-        distractor_len: 64
-        n_items: 10000
-        seed: 1337
 
     system:
       ref: system.language_model
@@ -65,68 +67,82 @@ targets:
                     conv_kernel: 7
                     mlp_mult: 2.0
                     dropout_p: 0.0
-                    state_k: 8
+                    state_k: 16
                     state_decay_min: 0.90
                     state_decay_max: 0.999
 
                     # Memory / router
                     mem_router: vq
                     mem_vq_groups: 2
-                    mem_vq_codebook_size: 32     # 32^2 = 1024 buckets
+                    mem_vq_codebook_size: 128   # 128^2=16384 buckets
                     mem_vq_group_dim: 16
                     mem_vq_beam: 2
                     mem_write_multi: true
 
-                    mem_buckets: ${mem_buckets}
-                    mem_dim: 96
-                    mem_hashes: ${mem_hashes}
+                    mem_buckets: 16384
+                    mem_dim: 256
+                    mem_hashes: 2
                     mem_assoc: 4
                     mem_key_dim: 32
                     mem_read_temp: 1.0
                     mem_match_threshold: 0.0
                     mem_write_threshold: 0.5
-                    mem_write_eta: 0.2
+                    mem_write_eta: 0.1
 
-                    # Training dynamics
+                    # Training dynamics hooks
                     forced_read_dropout_p: 0.0
                     aux_contrastive_delta: 1
+
               - type: RMSNormLayer
                 d_model: ${d_model}
               - type: LinearLayer
                 d_in: ${d_model}
                 d_out: ${vocab_size}
 
+              # Optional inference-time n-gram cache (disabled by default via weight=0).
+              - type: NGramCacheLogitsLayer
+                vocab_size: ${vocab_size}
+                n: 6
+                table_size: 262144
+                top_m: 8
+                weight: 0.0
+
     objective:
       ref: objective.mosaic_next_token_aux
       config:
         logits_key: logits
         target_key: target_ids
-        aux_gate_weight: 0.2
-        aux_bits_weight: 0.2
-        aux_utility_weight: 0.2
-        aux_contrastive_weight: 0.2
+        aux_gate_weight: 0.1
+        aux_bits_weight: 0.1
+        aux_utility_weight: 0.1
+        aux_contrastive_weight: 0.1
 
     trainer: trainer.standard
+
+    # Post-run evaluation: these run after training completes.
+    metrics:
+      - ref: metric.perplexity
+        config:
+          dataset: ${eval_dataset}
+          block_size: ${block_size}
+          batch_size: 1
+          num_batches: 64
+
     runs:
       - id: train
         mode: train
-        exp: mosaic_smoke
+        exp: mosaic_train_eval
         seed: 1337
-        steps: 400
+        steps: 2000
         expected: {}
         train:
           phase: standard
-          batch_size: 8
+          batch_size: 16
           block_size: ${block_size}
           lr: 0.0003
-          # Note: Users on Apple Silicon can change this to 'mps' for GPU acceleration
           device: cpu
           dtype: float32
-          telemetry_interval: 1
 
-          # Stage D2: keep some teacher control for stability in a first run.
-          memblock_teacher_p_start: 1.0
-          memblock_teacher_p_end: 0.2
-          memblock_teacher_p_schedule: linear
-          memblock_teacher_p_warmup_steps: 50
-          memblock_teacher_p_cooldown_steps: 50
+entrypoints:
+  default: mosaic_train_eval
+

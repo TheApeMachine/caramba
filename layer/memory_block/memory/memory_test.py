@@ -12,11 +12,11 @@ import unittest
 import torch
 from torch import Tensor, nn
 
-from caramba.layer.mosaic.memory.reader import MemoryReader
-from caramba.layer.mosaic.memory.phase import PhaseSimilarity, PhaseTagProjector
-from caramba.layer.mosaic.memory.vsa import VsaNovelty, VsaTagProjector
-from caramba.layer.mosaic.memory.writer import MemoryWriter
-from caramba.layer.mosaic.state import MosaicState
+from caramba.layer.memory_block.memory.reader import MemoryReader
+from caramba.layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
+from caramba.layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
+from caramba.layer.memory_block.memory.writer import MemoryWriter
+from caramba.layer.memory_block.state import MemoryBlockState
 
 
 class MemoryVsaHybridTest(unittest.TestCase):
@@ -77,7 +77,7 @@ class MemoryVsaHybridTest(unittest.TestCase):
         mem_v[0, 0, bucket, 0, 0] = 1.0
         mem_v[0, 0, bucket, 1, 0] = -1.0
 
-        st = MosaicState(
+        st = MemoryBlockState(
             conv_buf=torch.zeros((B, 0, D)),
             s=torch.zeros((B, 1, D)),
             regs=None,
@@ -145,7 +145,7 @@ class MemoryVsaHybridTest(unittest.TestCase):
         mem_last[0, 0, 0, 0] = 0
         mem_tag[0, 0, 0, 0, :] = wt[0, 0, :]
 
-        st = MosaicState(
+        st = MemoryBlockState(
             conv_buf=torch.zeros((B, 0, D)),
             s=torch.zeros((B, 1, D)),
             regs=None,
@@ -239,7 +239,7 @@ class MemoryVsaHybridTest(unittest.TestCase):
         mem_v[0, 0, bucket, 0, 0] = 1.0
         mem_v[0, 0, bucket, 1, 0] = -1.0
 
-        st = MosaicState(
+        st = MemoryBlockState(
             conv_buf=torch.zeros((B, 0, D)),
             s=torch.zeros((B, 1, D)),
             regs=None,
@@ -307,7 +307,7 @@ class MemoryVsaHybridTest(unittest.TestCase):
         mem_k[0, 0, parent, 0, :] = qk[0, 0, :]
         mem_v[0, 0, parent, 0, :] = torch.tensor([1.0, 2.0, 3.0, 4.0])
 
-        st = MosaicState(
+        st = MemoryBlockState(
             conv_buf=torch.zeros((B, 0, D)),
             s=torch.zeros((B, 1, D)),
             regs=None,
@@ -380,7 +380,7 @@ class MemoryVsaHybridTest(unittest.TestCase):
         mem_k[0, 0, leaf_node, 0, :] = wk[0, 0, :]
         mem_k[0, 0, parent, 0, :] = wk[0, 0, :]
 
-        st = MosaicState(
+        st = MemoryBlockState(
             conv_buf=torch.zeros((B, 0, D)),
             s=torch.zeros((B, 1, D)),
             regs=None,

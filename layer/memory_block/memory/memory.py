@@ -1,4 +1,4 @@
-"""MOSAIC memory module
+"""Hard-addressed memory module
 
 This module implements a hard-addressed, set-associative memory: you route a
 query into buckets, perform a match within each bucket, and then read/write
@@ -12,25 +12,25 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.config.layer import MosaicBlockLayerConfig
-from caramba.layer.mosaic.memory.reader import MemoryReader
-from caramba.layer.mosaic.memory.routing import BitRouter, VqRouter
-from caramba.layer.mosaic.memory.phase import PhaseSimilarity, PhaseTagProjector
-from caramba.layer.mosaic.memory.rmf import ResonantMemoryField
-from caramba.layer.mosaic.memory.vsa import VsaNovelty, VsaTagProjector
-from caramba.layer.mosaic.memory.writer import MemoryWriter
-from caramba.layer.mosaic.state import MosaicState
+from caramba.config.layer import MemoryBlockLayerConfig
+from caramba.layer.memory_block.memory.reader import MemoryReader
+from caramba.layer.memory_block.memory.routing import BitRouter, VqRouter
+from caramba.layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
+from caramba.layer.memory_block.memory.rmf import ResonantMemoryField
+from caramba.layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
+from caramba.layer.memory_block.memory.writer import MemoryWriter
+from caramba.layer.memory_block.state import MemoryBlockState
 
 
-class MosaicMemory(nn.Module):
-    """MOSAIC memory subsystem
+class MemoryBlockMemory(nn.Module):
+    """Memory subsystem
 
     Explicit memory makes retrieval and update a first-class, inspectable part
     of the model, which is useful when you want to study credit assignment,
     storage policies, or long-horizon behavior.
     """
 
-    def __init__(self, config: MosaicBlockLayerConfig, d_model: int) -> None:
+    def __init__(self, config: MemoryBlockLayerConfig, d_model: int) -> None:
         super().__init__()
         self.config = config
         self.mem_index = str(getattr(config, "mem_index", "hash")).lower().strip()
@@ -230,7 +230,7 @@ class MosaicMemory(nn.Module):
         out.update(routing.aux)
         return out
 
-    def compute_routing_with_teacher(self, u: Tensor, st: MosaicState, teacher: dict[str, Tensor], *, collect_aux: bool) -> dict[str, Any]:
+    def compute_routing_with_teacher(self, u: Tensor, st: MemoryBlockState, teacher: dict[str, Tensor], *, collect_aux: bool) -> dict[str, Any]:
         """Compute routing with teacher-assisted RMF
 
         When teacher read buckets are available, RMF can track a successor-biased
@@ -403,7 +403,7 @@ class MosaicMemory(nn.Module):
         bucket_acc = (correct.all(dim=-1) & mask).detach().float().sum() / denom
         return group_acc_mean.to(dtype=torch.float32), bucket_acc.to(dtype=torch.float32)
 
-    def compute_routing_step(self, u: Tensor, st: MosaicState, *, collect_aux: bool) -> dict[str, Any]:
+    def compute_routing_step(self, u: Tensor, st: MemoryBlockState, *, collect_aux: bool) -> dict[str, Any]:
         """Compute routing for a single step/chunk (B,1,D), with optional RMF bias."""
         if u.ndim != 3 or int(u.size(1)) < 1:
             raise ValueError(f"u must have shape (B,T,D) with T>=1, got {tuple(u.shape)}")
@@ -429,7 +429,7 @@ class MosaicMemory(nn.Module):
         out.update(routing.aux)
         return out
 
-    def update_rmf(self, st: MosaicState, routing: dict[str, Any]) -> None:
+    def update_rmf(self, st: MemoryBlockState, routing: dict[str, Any]) -> None:
         """Update RMF state from routing outputs."""
         if self.rmf is None:
             return
@@ -445,7 +445,7 @@ class MosaicMemory(nn.Module):
             f_rms = torch.sqrt((re * re + im * im).mean(dim=1).clamp_min(0.0)).view(int(f.size(0)), 1)
             routing["rmf_field_rms"] = f_rms.detach()
 
-    def ensure_rmf_field(self, st: MosaicState, *, batch: int, device: torch.device, dtype: torch.dtype) -> Tensor:
+    def ensure_rmf_field(self, st: MemoryBlockState, *, batch: int, device: torch.device, dtype: torch.dtype) -> Tensor:
         if self.rmf is None:
             raise RuntimeError("RMF requested but rmf is None")
         f = st.rmf_field
@@ -453,13 +453,13 @@ class MosaicMemory(nn.Module):
             return f.to(dtype=dtype)
         return self.rmf.initial_field(batch=int(batch), device=device, dtype=dtype)
 
-    def read(self, u: Tensor, st: MosaicState, routing: dict[str, Any]) -> Tensor:
+    def read(self, u: Tensor, st: MemoryBlockState, routing: dict[str, Any]) -> Tensor:
         return self.reader.read(u, st, routing)
 
     def write_chunk(
         self,
         u: Tensor,
-        st: MosaicState,
+        st: MemoryBlockState,
         routing: dict[str, Any],
         t0: int,
         mask: Tensor | None,

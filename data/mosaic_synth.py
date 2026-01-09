@@ -71,7 +71,7 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         if self.vocab_size <= self.min_tok + 8:
             raise ValueError("vocab_size too small for synthetic curriculum")
 
-        # VM opcode convention (matches MosaicBlockLayerConfig.opcode_vocab default=4):
+        # VM opcode convention (matches MemoryBlockLayerConfig.opcode_vocab default=4):
         # 0: NOP, 1: READ, 2: WRITE, 3: CLEAR
         self.OP_NOP = 0
         self.OP_READ = 1
@@ -223,16 +223,16 @@ class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):
         out = {
             "input_ids": x,
             "target_ids": y,
-            "mosaic_teacher_write_gate": wg,
-            "mosaic_teacher_write_utility": wu,
-            "mosaic_teacher_read_bucket": rb,
-            "mosaic_teacher_write_bucket": wb,
+            "memblock_teacher_write_gate": wg,
+            "memblock_teacher_write_utility": wu,
+            "memblock_teacher_read_bucket": rb,
+            "memblock_teacher_write_bucket": wb,
             "mosaic_drop_local": dl,
-            "mosaic_teacher_opcode": op,
+            "memblock_teacher_opcode": op,
         }
         if self.reg_slots > 0:
-            out["mosaic_teacher_reg_write_gate"] = torch.tensor(reg_write_gate[:-1], dtype=torch.float32)
-            out["mosaic_teacher_reg_sel"] = torch.tensor(reg_sel[:-1], dtype=torch.long)
+            out["memblock_teacher_reg_write_gate"] = torch.tensor(reg_write_gate[:-1], dtype=torch.float32)
+            out["memblock_teacher_reg_sel"] = torch.tensor(reg_sel[:-1], dtype=torch.long)
         return out
 
 

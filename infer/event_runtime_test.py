@@ -48,11 +48,11 @@ class _DummyByteModel(nn.Module):
             nxt = int(self._out[next_idx]) if 0 <= next_idx < len(self._out) else 0
             logits[0, t, nxt] = 0.0
 
-        if ctx.mosaic_aux_out is not None:
+        if ctx.memblock_aux_out is not None:
             # Always predict "neutral" commitment (class=1 -> delta=0).
             aux = torch.zeros((1, T, 3), device=input_ids.device, dtype=torch.float32)
             aux[:, :, 1] = 1.0
-            ctx.mosaic_aux_out["mosaic_commitment_logits"] = aux
+            ctx.memblock_aux_out["mosaic_commitment_logits"] = aux
 
         return logits
 

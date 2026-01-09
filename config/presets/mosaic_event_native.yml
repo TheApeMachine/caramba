@@ -56,7 +56,7 @@ targets:
               - type: NestedTopology
                 repeat: ${n_layers}
                 layers:
-                  - type: MosaicBlockLayer
+                  - type: MemoryBlockLayer
                     d_model: ${d_model}
                     conv_kernel: 7
                     mlp_mult: 2.0
@@ -126,9 +126,9 @@ targets:
           dtype: float32
           telemetry_interval: 10
           viz_interval: 1
-          mosaic_teacher_p_start: 1.0
-          mosaic_teacher_p_end: 0.0
-          mosaic_teacher_p_schedule: linear
+          memblock_teacher_p_start: 1.0
+          memblock_teacher_p_end: 0.0
+          memblock_teacher_p_schedule: linear
 
 entrypoints:
   default: mosaic_event_train

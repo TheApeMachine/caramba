@@ -61,7 +61,7 @@ targets:
               - type: NestedTopology
                 repeat: ${n_layers}
                 layers:
-                  - type: MosaicBlockLayer
+                  - type: MemoryBlockLayer
                     d_model: ${d_model}
                     conv_kernel: 7
                     mlp_mult: 2.0

@@ -46,7 +46,7 @@ targets:
               - type: NestedTopology
                 repeat: 2
                 layers:
-                  - type: MosaicBlockLayer
+                  - type: MemoryBlockLayer
                     d_model: 256
                     conv_kernel: 7
                     state_k: 16

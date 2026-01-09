@@ -38,14 +38,14 @@ class InferContext:
 
     # Optional MOSAIC control plane (mirrors TrainingVizMosaicContext fields).
     # These are only used by MOSAIC layers when present.
-    mosaic_teacher: dict[str, "Tensor"] | None = None
-    mosaic_collect_aux: bool = False
-    mosaic_teacher_p: float = 1.0
-    mosaic_stats_enabled: bool = False
-    mosaic_aux_out: dict[str, "Tensor"] | None = None
+    memblock_teacher: dict[str, "Tensor"] | None = None
+    memblock_collect_aux: bool = False
+    memblock_teacher_p: float = 1.0
+    memblock_stats_enabled: bool = False
+    memblock_aux_out: dict[str, "Tensor"] | None = None
     mosaic_drop_local: "Tensor | None" = None
     # Same contract as TrainingVizMosaicContext: values may be floats or scalar tensors.
-    mosaic_mem_stats: "dict[str, float | Tensor]" = field(default_factory=dict)
+    memblock_mem_stats: "dict[str, float | Tensor]" = field(default_factory=dict)
 
     _index: int = 0
 

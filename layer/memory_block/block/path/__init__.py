@@ -1,6 +1,6 @@
-"""MOSAIC forward paths
+"""Forward paths for the streaming memory block
 
-Contains the two compute paths for MOSAIC blocks:
+Contains the two compute paths for the streaming memory block:
 - FastTrainPath: chunked training path (T>1) to reduce overhead
 - SequentialPath: exact streaming semantics path
 """
@@ -9,20 +9,20 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from torch import Tensor, nn
 
-from caramba.config.layer import MosaicBlockLayerConfig
-from caramba.layer.mosaic.state_bank import StateBank
-from caramba.layer.mosaic.memory import MosaicMemory
+from caramba.config.layer import MemoryBlockLayerConfig
+from caramba.layer.memory_block.state_bank import StateBank
+from caramba.layer.memory_block.memory import MemoryBlockMemory
 
 
 class Path(nn.Module, ABC):
-    """MOSAIC forward path
+    """Forward path
 
-    Base class for MOSAIC forward-path implementations.
+    Base class for forward-path implementations.
 
     Subclassing notes
     ---------------
     - `forward(self, *args: Tensor, **kwargs: Tensor) -> Tensor` must be implemented by
-      subclasses. It is expected to consume the MOSAIC block inputs (typically token
+      subclasses. It is expected to consume the block inputs (typically token
       activations and routing/control tensors) and return an output tensor of shape
       `(B, T, D)` on the same device/dtype as the inputs.
     - Implementations may maintain state through `self.state` / `self.memory` and should
@@ -33,7 +33,7 @@ class Path(nn.Module, ABC):
     state:
         The state bank backing the block (scan/step state updates).
     memory:
-        The MOSAIC memory module (read/write + optional RMF updates).
+        The memory module (read/write + optional RMF updates).
     gate_long, gate_mem:
         Learned gates used to combine local, long-state, and memory readouts.
     chunk_size:
@@ -50,7 +50,7 @@ class Path(nn.Module, ABC):
         self,
         *,
         state: StateBank,
-        memory: MosaicMemory,
+        memory: MemoryBlockMemory,
         gate_long: nn.Linear,
         gate_mem: nn.Linear,
         chunk_size: int,

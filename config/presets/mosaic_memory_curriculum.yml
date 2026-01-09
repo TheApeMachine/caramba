@@ -60,7 +60,7 @@ targets:
               - type: NestedTopology
                 repeat: ${n_layers}
                 layers:
-                  - type: MosaicBlockLayer
+                  - type: MemoryBlockLayer
                     d_model: ${d_model}
                     conv_kernel: 7
                     mlp_mult: 2.0
@@ -117,9 +117,9 @@ targets:
           device: cpu
           dtype: float32
           # Stage D2: scheduled sampling from teacher -> student memory control.
-          mosaic_teacher_p_start: 1.0
-          mosaic_teacher_p_end: 0.0
-          mosaic_teacher_p_schedule: linear
-          mosaic_teacher_p_warmup_steps: 200
-          mosaic_teacher_p_cooldown_steps: 200
+          memblock_teacher_p_start: 1.0
+          memblock_teacher_p_end: 0.0
+          memblock_teacher_p_schedule: linear
+          memblock_teacher_p_warmup_steps: 200
+          memblock_teacher_p_cooldown_steps: 200
 

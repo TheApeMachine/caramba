@@ -64,7 +64,7 @@ targets:
             - type: NestedTopology
               repeat: ${n_layers}
               layers:
-                - type: MosaicBlockLayer
+                - type: MemoryBlockLayer
                   d_model: ${d_model}
                   conv_kernel: 7
                   mlp_mult: 2.0
@@ -112,7 +112,7 @@ targets:
             - type: NestedTopology
               repeat: ${n_layers}
               layers:
-                - type: MosaicBlockLayer
+                - type: MemoryBlockLayer
                   d_model: ${d_model}
                   conv_kernel: 7
                   mlp_mult: 2.0
@@ -160,9 +160,9 @@ targets:
     dtype: float16
     telemetry_interval: 50
     offload_optimizer: true
-    mosaic_teacher_p_start: 0.0
-    mosaic_teacher_p_end: 0.0
-    mosaic_teacher_p_schedule: constant
+    memblock_teacher_p_start: 0.0
+    memblock_teacher_p_end: 0.0
+    memblock_teacher_p_schedule: constant
 
   - type: experiment
     name: mosaic_garbage_baseline
@@ -182,7 +182,7 @@ targets:
         expected: {}
         train:
           <<: *garbage_train_base
-          mosaic_write_warmup_steps: 0
+          memblock_write_warmup_steps: 0
 
   - type: experiment
     name: mosaic_garbage_write_warmup
@@ -202,7 +202,7 @@ targets:
         expected: {}
         train:
           <<: *garbage_train_base
-          mosaic_write_warmup_steps: 500
+          memblock_write_warmup_steps: 500
 
   - type: experiment
     name: mosaic_garbage_random_full
@@ -222,7 +222,7 @@ targets:
         expected: {}
         train:
           <<: *garbage_train_base
-          mosaic_write_warmup_steps: 0
+          memblock_write_warmup_steps: 0
 
   - type: experiment
     name: mosaic_garbage_random_full_warmup
@@ -242,7 +242,7 @@ targets:
         expected: {}
         train:
           <<: *garbage_train_base
-          mosaic_write_warmup_steps: 500
+          memblock_write_warmup_steps: 500
 
 entrypoints:
   default: mosaic_garbage_baseline

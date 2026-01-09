@@ -63,7 +63,7 @@ targets:
               - type: NestedTopology
                 repeat: ${n_layers}
                 layers:
-                  - type: MosaicBlockLayer
+                  - type: MemoryBlockLayer
                     d_model: ${d_model}
                     conv_kernel: 7
                     mlp_mult: 2.0
@@ -126,8 +126,8 @@ targets:
           telemetry_interval: 10
 
           # D1->D2 schedule: keep teacher high early, then taper.
-          mosaic_teacher_p_start: 1.0
-          mosaic_teacher_p_end: 0.0
-          mosaic_teacher_p_schedule: linear
-          mosaic_teacher_p_warmup_steps: 2000
-          mosaic_teacher_p_cooldown_steps: 2000
+          memblock_teacher_p_start: 1.0
+          memblock_teacher_p_end: 0.0
+          memblock_teacher_p_schedule: linear
+          memblock_teacher_p_warmup_steps: 2000
+          memblock_teacher_p_cooldown_steps: 2000

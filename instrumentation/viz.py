@@ -108,23 +108,23 @@ class TrainingVizMosaicContext(TrainingVizContext):
 
     # Teacher-forced memory controls (Stage D1/D2).
     # Expected keys are implementation-defined (e.g., read_bucket/write_bucket/write_gate).
-    mosaic_teacher: dict[str, Tensor] | None = None
+    memblock_teacher: dict[str, Tensor] | None = None
 
     # If true, MOSAIC layers may record aux tensors for curriculum losses.
-    mosaic_collect_aux: bool = False
+    memblock_collect_aux: bool = False
 
     # Scheduled sampling probability: probability of using teacher controls when present.
-    mosaic_teacher_p: float = 1.0
+    memblock_teacher_p: float = 1.0
 
     # If > 0, MOSAIC layers may disable writes for first N training steps.
-    mosaic_write_warmup_steps: int = 0
+    memblock_write_warmup_steps: int = 0
 
     # If true, MOSAIC layers may compute cheap scalar stats for logging.
     # This is independent of `enabled` (which controls heavy viz payloads).
-    mosaic_stats_enabled: bool = False
+    memblock_stats_enabled: bool = False
 
     # Best-effort: filled by MOSAIC layers during forward.
-    mosaic_aux_out: dict[str, Tensor] | None = None
+    memblock_aux_out: dict[str, Tensor] | None = None
 
     # Optional mask to drop local mixer contribution (forced-read dropout).
     # Expected shape: (B,T) or (T,) with values in {0,1}.
@@ -133,7 +133,7 @@ class TrainingVizMosaicContext(TrainingVizContext):
     # Accumulated MOSAIC memory stats for logging (filled by MOSAIC layers).
     # Values may be Python floats or scalar tensors; logging code is responsible
     # for converting to JSON-safe floats in a batched way.
-    mosaic_mem_stats: dict[str, float | Tensor] = field(default_factory=dict)
+    memblock_mem_stats: dict[str, float | Tensor] = field(default_factory=dict)
 
     # Opaque state store for MOSAIC layers (e.g. n-gram cache state, persistent registers).
     # This must be in __slots__ for layers to attach state to the context.

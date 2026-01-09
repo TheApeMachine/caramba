@@ -5,11 +5,11 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.layer.mosaic.block.path import Path
-from caramba.layer.mosaic.state import MosaicState
-from caramba.layer.mosaic.memory import MosaicMemory
-from caramba.layer.mosaic.state_bank import StateBank
-from caramba.layer.mosaic.isa import MosaicOpcode
+from caramba.layer.memory_block.block.path import Path
+from caramba.layer.memory_block.state import MemoryBlockState
+from caramba.layer.memory_block.memory import MemoryBlockMemory
+from caramba.layer.memory_block.state_bank import StateBank
+from caramba.layer.memory_block.isa import MemoryOpcode
 
 
 class SequentialPath(Path):
@@ -22,7 +22,7 @@ class SequentialPath(Path):
         self,
         *,
         state: StateBank,
-        memory: MosaicMemory,
+        memory: MemoryBlockMemory,
         gate_long: nn.Linear,
         gate_mem: nn.Linear,
     ) -> None:
@@ -54,7 +54,7 @@ class SequentialPath(Path):
         *,
         u: Tensor,
         local: Tensor,
-        st: MosaicState,
+        st: MemoryBlockState,
         routing: dict[str, Any],
         write_mask: Tensor | None,
         opcode_ctrl: Tensor | None,
@@ -86,7 +86,7 @@ class SequentialPath(Path):
 
         return self.finalize(u=u, local=local, parts=parts)
 
-    def steps(self, *, u: Tensor, routing: dict[str, Any], st: MosaicState):
+    def steps(self, *, u: Tensor, routing: dict[str, Any], st: MemoryBlockState):
         T = int(u.size(1))
         for t in range(T):
             u1 = u[:, t : t + 1, :]
@@ -108,7 +108,7 @@ class SequentialPath(Path):
         self,
         *,
         u: Tensor,
-        st: MosaicState,
+        st: MemoryBlockState,
         routing: dict[str, Any],
         write_mask: Tensor | None,
         opcode_ctrl: Tensor | None,
@@ -126,17 +126,17 @@ class SequentialPath(Path):
         out = {"gate_logits": torch.cat(parts["gate"], dim=1), "util_logits": torch.cat(parts["util"], dim=1)}
         return delta, out
 
-    def read_with_opcode(self, *, u: Tensor, st: MosaicState, routing: dict[str, Any], opcode_ctrl: Tensor | None, t: int) -> Tensor:
-        if isinstance(opcode_ctrl, Tensor) and int(MosaicOpcode.READ_MEM) < int(opcode_ctrl.size(-1)):
-            rd = opcode_ctrl[:, t, int(MosaicOpcode.READ_MEM)]
+    def read_with_opcode(self, *, u: Tensor, st: MemoryBlockState, routing: dict[str, Any], opcode_ctrl: Tensor | None, t: int) -> Tensor:
+        if isinstance(opcode_ctrl, Tensor) and int(MemoryOpcode.READ_MEM) < int(opcode_ctrl.size(-1)):
+            rd = opcode_ctrl[:, t, int(MemoryOpcode.READ_MEM)]
             if not (rd > 0).any().item():
                 return torch.zeros((int(u.size(0)), 1, int(self.memory.mem_dim)), device=u.device, dtype=u.dtype)
             return self.memory.read(u, st, routing) * rd.view(int(u.size(0)), 1, 1)
         return self.memory.read(u, st, routing)
 
     def write_scale(self, *, opcode_ctrl: Tensor | None, t: int, B: int) -> Tensor | None:
-        if isinstance(opcode_ctrl, Tensor) and int(MosaicOpcode.WRITE_MEM) < int(opcode_ctrl.size(-1)):
-            ws = opcode_ctrl[:, t, int(MosaicOpcode.WRITE_MEM)]
+        if isinstance(opcode_ctrl, Tensor) and int(MemoryOpcode.WRITE_MEM) < int(opcode_ctrl.size(-1)):
+            ws = opcode_ctrl[:, t, int(MemoryOpcode.WRITE_MEM)]
             return ws.view(int(B), 1)
 
         return None

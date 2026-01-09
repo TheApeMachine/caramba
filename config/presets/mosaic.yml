@@ -52,7 +52,7 @@ targets:
               - type: NestedTopology
                 repeat: ${n_layers}
                 layers:
-                  - type: MosaicBlockLayer
+                  - type: MemoryBlockLayer
                     d_model: ${d_model}
                     conv_kernel: 7
                     mlp_mult: 2.0
@@ -85,7 +85,7 @@ targets:
                 d_in: ${d_model}
                 d_out: ${vocab_size}
               # Optional inference-time n-gram cache (disabled by default via weight=0).
-              - type: MosaicNGramCacheLogitsLayer
+              - type: NGramCacheLogitsLayer
                 vocab_size: ${vocab_size}
                 n: 6
                 # Keep this modest by default; it's a fixed-size structure.

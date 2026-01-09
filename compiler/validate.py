@@ -165,12 +165,12 @@ class Validator:
             LinearLayerConfig,
             LoRALinearLayerConfig,
             DropoutLayerConfig,
-            MosaicNGramCacheLogitsLayerConfig,
+            NGramCacheLogitsLayerConfig,
         )
 
         if isinstance(layer, (LinearLayerConfig, LoRALinearLayerConfig)):
             return IO(int(layer.d_in), int(layer.d_out))
-        if isinstance(layer, MosaicNGramCacheLogitsLayerConfig):
+        if isinstance(layer, NGramCacheLogitsLayerConfig):
             v = int(layer.vocab_size)
             return IO(v, v)
         if isinstance(layer, DropoutLayerConfig):

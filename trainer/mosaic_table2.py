@@ -123,26 +123,26 @@ class Table2Telemetry:
         # Memory curriculum path: teacher bucket signals define read/query positions.
         try:
             input_ids = batch["input_ids"]
-            rb = batch["mosaic_teacher_read_bucket"]
-            wb = batch["mosaic_teacher_write_bucket"]
-            wg = batch["mosaic_teacher_write_gate"]
+            rb = batch["memblock_teacher_read_bucket"]
+            wb = batch["memblock_teacher_write_bucket"]
+            wg = batch["memblock_teacher_write_gate"]
         except KeyError as e:
             raise KeyError("Missing MOSAIC teacher signals required for Table 2 memory telemetry") from e
         if not isinstance(input_ids, Tensor):
             raise TypeError(f"batch['input_ids'] must be a Tensor, got {type(input_ids).__name__}")
         if not isinstance(rb, Tensor):
-            raise TypeError(f"batch['mosaic_teacher_read_bucket'] must be a Tensor, got {type(rb).__name__}")
+            raise TypeError(f"batch['memblock_teacher_read_bucket'] must be a Tensor, got {type(rb).__name__}")
         if not isinstance(wb, Tensor):
-            raise TypeError(f"batch['mosaic_teacher_write_bucket'] must be a Tensor, got {type(wb).__name__}")
+            raise TypeError(f"batch['memblock_teacher_write_bucket'] must be a Tensor, got {type(wb).__name__}")
         if not isinstance(wg, Tensor):
-            raise TypeError(f"batch['mosaic_teacher_write_gate'] must be a Tensor, got {type(wg).__name__}")
+            raise TypeError(f"batch['memblock_teacher_write_gate'] must be a Tensor, got {type(wg).__name__}")
         if input_ids.shape != (B, T):
             raise ValueError(f"input_ids shape mismatch: expected {(B, T)}, got {tuple(input_ids.shape)}")
         if wg.shape != (B, T):
-            raise ValueError(f"mosaic_teacher_write_gate shape mismatch: expected {(B, T)}, got {tuple(wg.shape)}")
+            raise ValueError(f"memblock_teacher_write_gate shape mismatch: expected {(B, T)}, got {tuple(wg.shape)}")
 
-        rb0 = self._first_bucket(rb, B=B, T=T, name="mosaic_teacher_read_bucket")
-        wb0 = self._first_bucket(wb, B=B, T=T, name="mosaic_teacher_write_bucket")
+        rb0 = self._first_bucket(rb, B=B, T=T, name="memblock_teacher_read_bucket")
+        wb0 = self._first_bucket(wb, B=B, T=T, name="memblock_teacher_write_bucket")
 
         # Predict next tokens.
         pred = logits.argmax(dim=-1)

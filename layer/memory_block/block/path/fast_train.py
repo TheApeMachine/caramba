@@ -4,11 +4,11 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.layer.mosaic.state_bank import StateBank
-from caramba.layer.mosaic.memory import MosaicMemory
-from caramba.layer.mosaic.block.path import Path
-from caramba.layer.mosaic.state import MosaicState
-from caramba.layer.mosaic.isa import MosaicOpcode
+from caramba.layer.memory_block.state_bank import StateBank
+from caramba.layer.memory_block.memory import MemoryBlockMemory
+from caramba.layer.memory_block.block.path import Path
+from caramba.layer.memory_block.state import MemoryBlockState
+from caramba.layer.memory_block.isa import MemoryOpcode
 
 
 class FastTrainPath(Path):
@@ -21,7 +21,7 @@ class FastTrainPath(Path):
         self,
         *,
         state: StateBank,
-        memory: MosaicMemory,
+        memory: MemoryBlockMemory,
         gate_long: nn.Linear,
         gate_mem: nn.Linear,
         chunk_size: int,
@@ -59,7 +59,7 @@ class FastTrainPath(Path):
         *,
         u: Tensor,
         local: Tensor,
-        st: MosaicState,
+        st: MemoryBlockState,
         routing: dict[str, Any],
         write_mask: Tensor | None,
         opcode_ctrl: Tensor | None,
@@ -98,7 +98,7 @@ class FastTrainPath(Path):
 
         return self.finalize(u=u, local=local, parts=parts)
 
-    def prepare_parts(self, _st: MosaicState) -> dict[str, list[Tensor]]:
+    def prepare_parts(self, _st: MemoryBlockState) -> dict[str, list[Tensor]]:
         # `_st` is intentionally unused (reserved for future state-driven partitioning).
         return {"g": [], "r": [], "gate": [], "util": []}
 
@@ -119,7 +119,7 @@ class FastTrainPath(Path):
         self,
         *,
         u: Tensor,
-        st: MosaicState,
+        st: MemoryBlockState,
         routing: dict[str, Any],
         write_mask: Tensor | None,
         opcode_ctrl: Tensor | None,
@@ -157,14 +157,14 @@ class FastTrainPath(Path):
         self,
         *,
         u: Tensor,
-        st: MosaicState,
+        st: MemoryBlockState,
         routing: dict[str, Any],
         opcode_ctrl: Tensor | None,
         t0: int,
         t1: int,
     ) -> Tensor:
-        if isinstance(opcode_ctrl, Tensor) and int(MosaicOpcode.READ_MEM) < int(opcode_ctrl.size(-1)):
-            rd = opcode_ctrl[:, t0:t1, int(MosaicOpcode.READ_MEM)]
+        if isinstance(opcode_ctrl, Tensor) and int(MemoryOpcode.READ_MEM) < int(opcode_ctrl.size(-1)):
+            rd = opcode_ctrl[:, t0:t1, int(MemoryOpcode.READ_MEM)]
 
             if not (rd > 0).any().item():
                 return torch.zeros((
@@ -178,7 +178,7 @@ class FastTrainPath(Path):
         return self.memory.read(u, st, routing)
 
     def write_scale(self, *, opcode_ctrl: Tensor | None, t0: int, t1: int) -> Tensor | None:
-        if isinstance(opcode_ctrl, Tensor) and int(MosaicOpcode.WRITE_MEM) < int(opcode_ctrl.size(-1)):
-            return opcode_ctrl[:, t0:t1, int(MosaicOpcode.WRITE_MEM)]
+        if isinstance(opcode_ctrl, Tensor) and int(MemoryOpcode.WRITE_MEM) < int(opcode_ctrl.size(-1)):
+            return opcode_ctrl[:, t0:t1, int(MemoryOpcode.WRITE_MEM)]
 
         return None

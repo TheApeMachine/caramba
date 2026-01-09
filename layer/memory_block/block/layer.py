@@ -1,8 +1,8 @@
-"""MOSAIC block layer
+"""Streaming memory block layer
 
-This module implements a streaming transformer-like block that relies on explicit
+This module implements a shape-preserving streaming block that relies on explicit
 state (local buffers, multiscale integrators, and a hard-addressed memory table)
-instead of attention and KV caches.
+instead of attention/KV caches.
 """
 
 from __future__ import annotations
@@ -15,15 +15,15 @@ from typing import Any, Protocol
 import torch
 from torch import Tensor, nn
 
-from caramba.config.layer import MosaicBlockLayerConfig
-from caramba.layer.mosaic.isa import MosaicOpcode
-from caramba.layer.mosaic.memory import MosaicMemory
-from caramba.layer.mosaic.state import MosaicState, MosaicStateStore
-from caramba.layer.mosaic.block.local_mixer import LocalMixer
-from caramba.layer.mosaic.block.norm import RmsNorm
-from caramba.layer.mosaic.block.path.fast_train import FastTrainPath
-from caramba.layer.mosaic.block.path.sequential import SequentialPath
-from caramba.layer.mosaic.block.state_bank import StateBank
+from caramba.config.layer import MemoryBlockLayerConfig
+from caramba.layer.memory_block.isa import MemoryOpcode
+from caramba.layer.memory_block.memory import MemoryBlockMemory
+from caramba.layer.memory_block.state import MemoryBlockState, MemoryBlockStateStore
+from caramba.layer.memory_block.block.local_mixer import LocalMixer
+from caramba.layer.memory_block.block.norm import RmsNorm
+from caramba.layer.memory_block.block.path.fast_train import FastTrainPath
+from caramba.layer.memory_block.block.path.sequential import SequentialPath
+from caramba.layer.memory_block.block.state_bank import StateBank
 
 
 def _mean_scalar(x: Tensor) -> Tensor:
@@ -79,25 +79,25 @@ class OpcodeControl:
         return sel.to(dtype=dtype)
 
 
-class MosaicBlockLayer(nn.Module):
-    """MOSAIC block layer
+class MemoryBlockLayer(nn.Module):
+    """Streaming memory block layer
 
     This is a shape-preserving residual block for streaming models: it takes
     (B,T,D) in and returns (B,T,D), while maintaining per-layer state in the
     caller's context so decoding can be truly incremental.
     """
 
-    def __init__(self, config: MosaicBlockLayerConfig) -> None:
+    def __init__(self, config: MemoryBlockLayerConfig) -> None:
         super().__init__()
         self.config = config
-        self.ctx_key = f"mosaic_block::{id(self)}"
-        self.state_store = MosaicStateStore()
+        self.ctx_key = f"memblock::{id(self)}"
+        self.state_store = MemoryBlockStateStore()
         self.norm = RmsNorm(eps=1e-6)
         self.d_model = int(config.d_model)
 
         self.local_mixer = self.build_local_mixer()
         self.state_bank = self.build_state_bank()
-        self.memory = MosaicMemory(config, int(self.d_model))
+        self.memory = MemoryBlockMemory(config, int(self.d_model))
 
         self.gate_long = nn.Linear(int(self.d_model), 1, bias=True)
         self.gate_mem = nn.Linear(int(self.d_model), 1, bias=True)
@@ -165,7 +165,7 @@ class MosaicBlockLayer(nn.Module):
         decay_logit = nn.Parameter(init)
         return StateBank(state_k=K, state_in=state_in, state_out=state_out, decay_logit=decay_logit)
 
-    def init_state(self, batch_size: int, device: torch.device, dtype: torch.dtype) -> MosaicState:
+    def init_state(self, batch_size: int, device: torch.device, dtype: torch.dtype) -> MemoryBlockState:
         """Initialize streaming state
 
         The state contains the minimum buffers needed to make training and
@@ -212,7 +212,7 @@ class MosaicBlockLayer(nn.Module):
             mem_last = torch.zeros(shape_l, device=device, dtype=torch.long)
         else:
             mem_last = torch.full(shape_l, -1, device=device, dtype=torch.long)
-        return MosaicState(conv_buf=conv_buf, s=s, regs=None, step=0, mem_k=mem_k, mem_v=mem_v, mem_tag=mem_tag, mem_last=mem_last)
+        return MemoryBlockState(conv_buf=conv_buf, s=s, regs=None, step=0, mem_k=mem_k, mem_v=mem_v, mem_tag=mem_tag, mem_last=mem_last)
 
     def forward(self, x: Tensor, *, ctx: Any | None = None) -> Tensor:
         """Apply the MOSAIC block
@@ -234,9 +234,9 @@ class MosaicBlockLayer(nn.Module):
         if new_buf is not None:
             st.conv_buf = new_buf
 
-        collect_aux = bool(getattr(ctx, "mosaic_collect_aux", False)) if ctx is not None else False
-        teacher = getattr(ctx, "mosaic_teacher", None) if ctx is not None else None
-        teacher_p = float(getattr(ctx, "mosaic_teacher_p", 1.0)) if ctx is not None else 0.0
+        collect_aux = bool(getattr(ctx, "memblock_collect_aux", False)) if ctx is not None else False
+        teacher = getattr(ctx, "memblock_teacher", None) if ctx is not None else None
+        teacher_p = float(getattr(ctx, "memblock_teacher_p", 1.0)) if ctx is not None else 0.0
         if (
             ctx is not None
             and isinstance(teacher, dict)
@@ -253,7 +253,7 @@ class MosaicBlockLayer(nn.Module):
         write_mask = self.resolve_write_mask(ctx, B=B, T=T, device=x.device)
         # MOSAIC write warmup: force no-writes for first N training steps.
         if ctx is not None:
-            warm = int(getattr(ctx, "mosaic_write_warmup_steps", 0) or 0)
+            warm = int(getattr(ctx, "memblock_write_warmup_steps", 0) or 0)
             step = int(getattr(ctx, "step", 0) or 0)
             if warm > 0 and step > 0 and step <= warm:
                 write_mask = torch.zeros((int(B), int(T)), device=x.device, dtype=torch.float32)
@@ -266,7 +266,7 @@ class MosaicBlockLayer(nn.Module):
         use_fast = (
             bool(self.training)
             and int(T) > 1
-            and not bool(getattr(ctx, "mosaic_stats_enabled", False))
+            and not bool(getattr(ctx, "memblock_stats_enabled", False))
             and not (bool(getattr(self.memory, "rmf_enabled", False)) and getattr(self.memory, "rmf", None) is not None)
         )
         if use_fast:
@@ -286,7 +286,7 @@ class MosaicBlockLayer(nn.Module):
         A write mask is a training-time control signal that lets you supervise
         or restrict memory writes without changing the rest of the block logic.
         """
-        teacher = getattr(ctx, "mosaic_teacher", None) if ctx is not None else None
+        teacher = getattr(ctx, "memblock_teacher", None) if ctx is not None else None
         if not (isinstance(teacher, dict) and "write_gate" in teacher):
             return None
         wg = teacher["write_gate"]
@@ -319,7 +319,7 @@ class MosaicBlockLayer(nn.Module):
         return self.opcode_head(u)
 
     class _AuxCtx(Protocol):
-        mosaic_aux_out: dict[str, Tensor] | None
+        memblock_aux_out: dict[str, Tensor] | None
 
     def save_aux(
         self,
@@ -331,33 +331,33 @@ class MosaicBlockLayer(nn.Module):
     ) -> None:
         """Save auxiliary outputs into the context
 
-        MOSAIC produces rich internal signals (gates, routing logits, stats);
+        The block produces rich internal signals (gates, routing logits, stats);
         storing them on the context keeps the layer API clean while still
         enabling debugging and research instrumentation.
         """
-        aux = getattr(ctx, "mosaic_aux_out", None)
+        aux = getattr(ctx, "memblock_aux_out", None)
         if aux is None:
             aux = {}
         if not isinstance(aux, dict):
-            raise TypeError("ctx.mosaic_aux_out must be a dict when collecting aux")
-        aux["mosaic_write_gate_logits"] = outputs["gate_logits"]
-        aux["mosaic_write_utility_logits"] = outputs["util_logits"]
+            raise TypeError("ctx.memblock_aux_out must be a dict when collecting aux")
+        aux["memblock_write_gate_logits"] = outputs["gate_logits"]
+        aux["memblock_write_utility_logits"] = outputs["util_logits"]
         if isinstance(opcode_logits, Tensor):
-            aux["mosaic_opcode_logits"] = opcode_logits
+            aux["memblock_opcode_logits"] = opcode_logits
         if "read_bit_logits" in routing:
-            aux["mosaic_read_bit_logits"] = routing["read_bit_logits"]
+            aux["memblock_read_bit_logits"] = routing["read_bit_logits"]
         if "write_bit_logits" in routing:
-            aux["mosaic_write_bit_logits"] = routing["write_bit_logits"]
+            aux["memblock_write_bit_logits"] = routing["write_bit_logits"]
         if "read_vq_logits" in routing:
-            aux["mosaic_vq_read_logits"] = routing["read_vq_logits"]
+            aux["memblock_vq_read_logits"] = routing["read_vq_logits"]
         if "write_vq_logits" in routing:
-            aux["mosaic_vq_write_logits"] = routing["write_vq_logits"]
-        ctx.mosaic_aux_out = aux
+            aux["memblock_vq_write_logits"] = routing["write_vq_logits"]
+        ctx.memblock_aux_out = aux
 
         # RMF observability: cheap scalar stats for logging.
-        if not bool(getattr(ctx, "mosaic_stats_enabled", False)):
+        if not bool(getattr(ctx, "memblock_stats_enabled", False)):
             return
-        mem_stats = getattr(ctx, "mosaic_mem_stats", None)
+        mem_stats = getattr(ctx, "memblock_mem_stats", None)
         if not isinstance(mem_stats, dict):
             return
 

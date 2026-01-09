@@ -191,11 +191,11 @@ class TrainConfig(BaseModel):
     # -----------------------------
     # Teacher mixing probability for memory actions (when teacher signals are present in batch).
     # The trainer computes a per-step p_t and passes it through ctx.
-    mosaic_teacher_p_start: Probability = 1.0
-    mosaic_teacher_p_end: Probability = 0.0
-    mosaic_teacher_p_schedule: Literal["linear", "cosine", "constant"] = "linear"
-    mosaic_teacher_p_warmup_steps: NonNegativeInt = 0
-    mosaic_teacher_p_cooldown_steps: NonNegativeInt = 0
+    memblock_teacher_p_start: Probability = 1.0
+    memblock_teacher_p_end: Probability = 0.0
+    memblock_teacher_p_schedule: Literal["linear", "cosine", "constant"] = "linear"
+    memblock_teacher_p_warmup_steps: NonNegativeInt = 0
+    memblock_teacher_p_cooldown_steps: NonNegativeInt = 0
 
     # -----------------------------
     # MOSAIC write warmup (garbage-control experiments)
@@ -206,14 +206,14 @@ class TrainConfig(BaseModel):
     # rest of learning. Default: 0 (no warmup; writes enabled immediately).
     #
     # Edge cases:
-    # - If `mosaic_write_warmup_steps` exceeds total training steps, writes will be
+    # - If `memblock_write_warmup_steps` exceeds total training steps, writes will be
     #   disabled for the entire run.
     #
-    # Interaction with `mosaic_teacher_p_warmup_steps`:
+    # Interaction with `memblock_teacher_p_warmup_steps`:
     # - Both warmups are keyed off the same global training step and run concurrently.
     # - During the overlap, teacher-mixing p_t is still scheduled as configured, but
-    #   writes remain forced-off until `mosaic_write_warmup_steps` elapses.
-    mosaic_write_warmup_steps: NonNegativeInt = 0
+    #   writes remain forced-off until `memblock_write_warmup_steps` elapses.
+    memblock_write_warmup_steps: NonNegativeInt = 0
 
     # Orchestrator settings (dynamic optimizer switching)
     orchestrator_enabled: bool = False

@@ -41,9 +41,6 @@ def _process_map() -> dict[str, ProcessFactory]:
 
     return {
         "brainstorm": cast(ProcessFactory, Brainstorm),
-        # Keep backwards-compatible manifest process naming.
-        # The new implementation lives at `caramba.ai.process.brainstorm.Brainstorm`.
-        "multiplex_chat": cast(ProcessFactory, Brainstorm),
         "platform_improve": cast(ProcessFactory, PlatformImprove),
     }
 

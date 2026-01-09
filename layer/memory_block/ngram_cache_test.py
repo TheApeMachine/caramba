@@ -7,13 +7,13 @@ from types import SimpleNamespace
 
 import torch
 
-from caramba.config.layer import LayerType, MosaicNGramCacheLogitsLayerConfig
+from caramba.config.layer import LayerType, NGramCacheLogitsLayerConfig
 
 
-class MosaicNGramCacheLogitsLayerTest(unittest.TestCase):
+class NGramCacheLogitsLayerTest(unittest.TestCase):
     def test_noop_without_ctx(self) -> None:
-        cfg = MosaicNGramCacheLogitsLayerConfig(
-            type=LayerType.MOSAIC_NGRAM_CACHE,
+        cfg = NGramCacheLogitsLayerConfig(
+            type=LayerType.NGRAM_CACHE,
             vocab_size=50,
             n=4,
             table_size=64,
@@ -27,8 +27,8 @@ class MosaicNGramCacheLogitsLayerTest(unittest.TestCase):
 
     def test_runs_with_input_ids(self) -> None:
         torch.manual_seed(0)
-        cfg = MosaicNGramCacheLogitsLayerConfig(
-            type=LayerType.MOSAIC_NGRAM_CACHE,
+        cfg = NGramCacheLogitsLayerConfig(
+            type=LayerType.NGRAM_CACHE,
             vocab_size=32,
             n=3,
             table_size=64,

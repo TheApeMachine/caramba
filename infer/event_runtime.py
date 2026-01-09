@@ -19,7 +19,7 @@ from torch import Tensor, nn
 from caramba.core.commitments import CommitmentLedger
 from caramba.core.event import EventEnvelope
 from caramba.core.event_bus import EventBus, EventHandler
-from caramba.core.event_codec import EventDecoder, EventEncoder
+from caramba.core.event_codec import JsonEventDecoder, JsonEventEncoder
 from caramba.infer.context import InferContext
 from caramba.infer.replay import ReplayBuffer
 
@@ -52,8 +52,8 @@ class GreedySampler:
 
 @dataclass(frozen=True, slots=True)
 class EventStreamCodec:
-    encoder: EventEncoder = field(default_factory=EventEncoder)
-    decoder: EventDecoder = field(default_factory=EventDecoder)
+    encoder: JsonEventEncoder = field(default_factory=JsonEventEncoder)
+    decoder: JsonEventDecoder = field(default_factory=JsonEventDecoder)
     delimiter: int = 10  # '\n'
 
     def encode_with_delimiter(self, event: EventEnvelope) -> Tensor:
@@ -98,8 +98,8 @@ class StreamModelRunner:
         B, T = input_ids.shape
         self.ctx.begin(pos_offset=int(self.pos))
         self.ctx.input_ids = input_ids
-        self.ctx.mosaic_collect_aux = bool(self.collect_aux)
-        self.ctx.mosaic_aux_out = {} if bool(self.collect_aux) else None
+        self.ctx.memblock_collect_aux = bool(self.collect_aux)
+        self.ctx.memblock_aux_out = {} if bool(self.collect_aux) else None
 
         out = self.model(input_ids, ctx=self.ctx)  # type: ignore[call-arg]
         if not isinstance(out, Tensor):
@@ -113,13 +113,13 @@ class StreamModelRunner:
         if bool(advance_pos):
             self.pos += int(T)
 
-        aux = self.ctx.mosaic_aux_out
+        aux = self.ctx.memblock_aux_out
         if not bool(self.collect_aux):
             return out, None
         if aux is None:
-            raise RuntimeError("collect_aux=True but ctx.mosaic_aux_out is None after forward")
+            raise RuntimeError("collect_aux=True but ctx.memblock_aux_out is None after forward")
         if not isinstance(aux, dict):
-            raise TypeError(f"ctx.mosaic_aux_out must be a dict when set, got {type(aux).__name__}")
+            raise TypeError(f"ctx.memblock_aux_out must be a dict when set, got {type(aux).__name__}")
         # Keep only tensor entries.
         clean: dict[str, Tensor] = {}
         for k, v in aux.items():

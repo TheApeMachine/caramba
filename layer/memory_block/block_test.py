@@ -1,4 +1,4 @@
-"""Tests for MOSAIC opcode control surface."""
+"""Tests for opcode control surface."""
 
 from __future__ import annotations
 
@@ -6,24 +6,24 @@ from dataclasses import dataclass, field
 
 import torch
 
-from caramba.config.layer import MosaicBlockLayerConfig
-from caramba.layer.mosaic.block import MosaicBlockLayer
-from caramba.layer.mosaic.isa import MosaicOpcode
-from caramba.layer.mosaic.state import MosaicState
+from caramba.config.layer import MemoryBlockLayerConfig
+from caramba.layer.memory_block.block import MemoryBlockLayer
+from caramba.layer.memory_block.isa import MemoryOpcode
+from caramba.layer.memory_block.state import MemoryBlockState
 
 
 @dataclass(slots=True)
 class _Ctx:
-    mosaic_collect_aux: bool = False
-    mosaic_stats_enabled: bool = False
-    mosaic_teacher_p: float = 1.0
-    mosaic_teacher: dict[str, torch.Tensor] | None = None
-    mosaic_aux_out: dict[str, torch.Tensor] | None = None
-    _mosaic: dict[str, MosaicState] = field(default_factory=dict)
+    memblock_collect_aux: bool = False
+    memblock_stats_enabled: bool = False
+    memblock_teacher_p: float = 1.0
+    memblock_teacher: dict[str, torch.Tensor] | None = None
+    memblock_aux_out: dict[str, torch.Tensor] | None = None
+    _memblock: dict[str, MemoryBlockState] = field(default_factory=dict)
 
 
-def _make_layer(*, d_model: int = 8) -> MosaicBlockLayer:
-    cfg = MosaicBlockLayerConfig(
+def _make_layer(*, d_model: int = 8) -> MemoryBlockLayer:
+    cfg = MemoryBlockLayerConfig(
         d_model=d_model,
         conv_kernel=3,
         mlp_mult=1.0,
@@ -48,7 +48,7 @@ def _make_layer(*, d_model: int = 8) -> MosaicBlockLayer:
         gate_long_init=-10.0,  # suppress state bank contribution
         gate_mem_init=10.0,  # amplify memory contribution
     )
-    layer = MosaicBlockLayer(cfg)
+    layer = MemoryBlockLayer(cfg)
 
     # Zero out local mixer and state bank so output is dominated by memory read.
     with torch.no_grad():
@@ -81,7 +81,7 @@ def _make_layer(*, d_model: int = 8) -> MosaicBlockLayer:
 
 def test_rmf_emits_routing_logits_and_updates_state() -> None:
     torch.manual_seed(0)
-    cfg = MosaicBlockLayerConfig(
+    cfg = MemoryBlockLayerConfig(
         d_model=8,
         conv_kernel=3,
         mlp_mult=1.0,
@@ -105,17 +105,17 @@ def test_rmf_emits_routing_logits_and_updates_state() -> None:
         rmf_eta=0.5,
         rmf_weight=1.0,
     )
-    layer = MosaicBlockLayer(cfg)
+    layer = MemoryBlockLayer(cfg)
     layer.train()
 
     B, T, D = 1, 3, 8
     x = torch.randn((B, T, D), dtype=torch.float32)
-    ctx = _Ctx(mosaic_collect_aux=True, mosaic_stats_enabled=False, mosaic_teacher_p=1.0, mosaic_teacher=None)
+    ctx = _Ctx(memblock_collect_aux=True, memblock_stats_enabled=False, memblock_teacher_p=1.0, memblock_teacher=None)
 
     y = layer(x, ctx=ctx)
     assert torch.isfinite(y).all()
-    assert isinstance(ctx.mosaic_aux_out, dict)
-    assert "mosaic_read_bit_logits" in ctx.mosaic_aux_out
+    assert isinstance(ctx.memblock_aux_out, dict)
+    assert "memblock_read_bit_logits" in ctx.memblock_aux_out
 
     st = layer.state_store.get(ctx, key=layer.ctx_key)
     assert st is not None
@@ -123,7 +123,7 @@ def test_rmf_emits_routing_logits_and_updates_state() -> None:
     assert st.rmf_field.shape[-1] == 2
 
 
-def _prefill_memory(layer: MosaicBlockLayer, ctx: _Ctx, *, B: int, device: torch.device, dtype: torch.dtype) -> None:
+def _prefill_memory(layer: MemoryBlockLayer, ctx: _Ctx, *, B: int, device: torch.device, dtype: torch.dtype) -> None:
     st = layer.init_state(B, device, dtype)
 
     # Mark slot 0 as valid and fill it with a non-zero vector.
@@ -144,10 +144,10 @@ def test_opcode_control_gates_memory_read_output() -> None:
     x = torch.zeros((B, T, D), dtype=torch.float32)
 
     ctx = _Ctx(
-        mosaic_collect_aux=False,
-        mosaic_stats_enabled=False,
-        mosaic_teacher_p=1.0,
-        mosaic_teacher={
+        memblock_collect_aux=False,
+        memblock_stats_enabled=False,
+        memblock_teacher_p=1.0,
+        memblock_teacher={
             "read_bucket": torch.zeros((B, T, layer.memory.mem_hashes), dtype=torch.long),
         },
     )
@@ -158,7 +158,7 @@ def test_opcode_control_gates_memory_read_output() -> None:
     with torch.no_grad():
         assert layer.opcode_head is not None
         layer.opcode_head.bias.zero_()
-        layer.opcode_head.bias[int(MosaicOpcode.READ_MEM)] = 10.0
+        layer.opcode_head.bias[int(MemoryOpcode.READ_MEM)] = 10.0
 
     y_read = layer(x, ctx=ctx)
     assert torch.isfinite(y_read).all()
@@ -167,7 +167,7 @@ def test_opcode_control_gates_memory_read_output() -> None:
     # Case 2: force opcode = NOP -> memory read skipped -> output near zero.
     with torch.no_grad():
         layer.opcode_head.bias.zero_()
-        layer.opcode_head.bias[int(MosaicOpcode.NOP)] = 10.0
+        layer.opcode_head.bias[int(MemoryOpcode.NOP)] = 10.0
 
     y_nop = layer(x, ctx=ctx)
     assert torch.isfinite(y_nop).all()
@@ -183,10 +183,10 @@ def test_opcode_control_uses_ste_gradients() -> None:
     x = torch.zeros((B, T, D), dtype=torch.float32)
 
     ctx = _Ctx(
-        mosaic_collect_aux=False,
-        mosaic_stats_enabled=False,
-        mosaic_teacher_p=1.0,
-        mosaic_teacher={
+        memblock_collect_aux=False,
+        memblock_stats_enabled=False,
+        memblock_teacher_p=1.0,
+        memblock_teacher={
             "read_bucket": torch.zeros((B, T, layer.memory.mem_hashes), dtype=torch.long),
         },
     )
@@ -197,7 +197,7 @@ def test_opcode_control_uses_ste_gradients() -> None:
     with torch.no_grad():
         assert layer.opcode_head is not None
         layer.opcode_head.bias.zero_()
-        layer.opcode_head.bias[int(MosaicOpcode.READ_MEM)] = 10.0
+        layer.opcode_head.bias[int(MemoryOpcode.READ_MEM)] = 10.0
 
     y = layer(x, ctx=ctx)
     loss = y.sum()

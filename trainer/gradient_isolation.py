@@ -296,7 +296,7 @@ class GradientIsolationTrainer:
                 t_data = time.perf_counter()
 
                 optimizer.zero_grad(set_to_none=True)
-                # MOSAIC aux collection requires a ctx with `mosaic_collect_aux=True`.
+                # MOSAIC aux collection requires a ctx with `memblock_collect_aux=True`.
                 # We keep this lightweight (no viz payloads) but still enable aux keys
                 # when the selected objective expects them.
                 viz_ctx = TrainingVizMosaicContext(
@@ -333,12 +333,12 @@ class GradientIsolationTrainer:
                     teacher: dict[str, Tensor] = {}
                     for k in ("read_bucket", "write_bucket", "write_gate", "clear", "write_utility"):
                         try:
-                            v = batch_td.get(f"mosaic_teacher_{k}", None)  # type: ignore[attr-defined]
+                            v = batch_td.get(f"memblock_teacher_{k}", None)  # type: ignore[attr-defined]
                         except Exception:
                             v = None
                         if isinstance(v, Tensor):
                             teacher[k] = v
-                    viz_ctx.mosaic_teacher = teacher or None
+                    viz_ctx.memblock_teacher = teacher or None
 
                     collect_aux = bool(teacher)
                     # Enable aux outputs even without teacher signals when the objective
@@ -351,7 +351,7 @@ class GradientIsolationTrainer:
                     except ImportError:
                         # MosaicNextTokenWithAuxObjective not available, skip check
                         pass
-                    viz_ctx.mosaic_collect_aux = bool(collect_aux)
+                    viz_ctx.memblock_collect_aux = bool(collect_aux)
 
                     # Call system.forward without hiding real errors.
                     forward_fn = system.forward  # type: ignore[attr-defined]
@@ -379,7 +379,7 @@ class GradientIsolationTrainer:
                     # Best-effort: merge MOSAIC aux outputs from ctx into outputs so
                     # objectives can see them even when the system doesn't attach them.
                     try:
-                        aux_out = getattr(viz_ctx, "mosaic_aux_out", None)
+                        aux_out = getattr(viz_ctx, "memblock_aux_out", None)
                         if isinstance(outputs, dict) and isinstance(aux_out, dict):
                             for k, v in aux_out.items():
                                 if (
@@ -390,7 +390,7 @@ class GradientIsolationTrainer:
                                 ):
                                     outputs[k] = v
                     except Exception as e:
-                        _warn_once("mosaic_aux_merge", f"Failed to merge ctx.mosaic_aux_out into outputs (ignoring): {e!r}")
+                        _warn_once("mosaic_aux_merge", f"Failed to merge ctx.memblock_aux_out into outputs (ignoring): {e!r}")
                     if not hasattr(objective, "loss"):
                         raise TypeError("Objective component does not expose loss()")
                     loss = objective.loss(outputs=outputs, batch=batch_td)  # type: ignore[attr-defined]
