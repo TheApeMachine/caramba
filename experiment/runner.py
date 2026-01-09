@@ -39,11 +39,13 @@ def _process_map() -> dict[str, ProcessFactory]:
     from caramba.ai.process.brainstorm import Brainstorm
     from caramba.ai.process.development import DevelopmentProcess
     from caramba.ai.process.manifest import ManifestProcess
+    from caramba.ai.process.platform_improve import PlatformImprove
 
     return {
         "brainstorm": cast(ProcessFactory, Brainstorm),
         "development": cast(ProcessFactory, DevelopmentProcess),
         "manifest": cast(ProcessFactory, ManifestProcess),
+        "platform_improve": cast(ProcessFactory, PlatformImprove),
     }
 
 

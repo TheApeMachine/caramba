@@ -40,8 +40,10 @@ output_schema:
       type: string
       description: "How to verify the improvement works (test commands, acceptance criteria)"
     files_to_touch:
-      type: string
-      description: "Comma-separated list of files that will need to be modified"
+      type: array
+      items:
+        type: string
+      description: "List of files that will need to be modified"
   required:
     - title
     - rationale

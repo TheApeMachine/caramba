@@ -29,7 +29,7 @@ class IdeaOutput(BaseModel):
     rationale: str = Field(description="Why this improvement matters and its expected impact")
     risk: str = Field(description="Potential risks and how to mitigate them")
     verification: str = Field(description="How to verify the improvement works")
-    files_to_touch: str = Field(description="Comma-separated list of files that will need to be modified")
+    files_to_touch: list[str] = Field(description="List of files that will need to be modified")
 
 
 class FileSelectionOutput(BaseModel):
