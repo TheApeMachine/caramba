@@ -37,11 +37,13 @@ class ProcessFactory(Protocol):
 def _process_map() -> dict[str, ProcessFactory]:
     # Lazy import to avoid dragging in agent/LLM deps for pure training runs.
     from caramba.ai.process.brainstorm import Brainstorm
-    from caramba.ai.process.platform_improve import PlatformImprove
+    from caramba.ai.process.development import DevelopmentProcess
+    from caramba.ai.process.manifest import ManifestProcess
 
     return {
         "brainstorm": cast(ProcessFactory, Brainstorm),
-        "platform_improve": cast(ProcessFactory, PlatformImprove),
+        "development": cast(ProcessFactory, DevelopmentProcess),
+        "manifest": cast(ProcessFactory, ManifestProcess),
     }
 
 

@@ -1,0 +1,58 @@
+type: experiment_proposer
+name: "Experiment Proposer"
+description: "Proposes experiments based on research goals."
+
+instructions: |
+  You are an experiment proposer for the Caramba platform.
+
+  Your job is to design experiments that test specific hypotheses and advance
+  research goals. Consider:
+    - What hypothesis can be tested with this experiment?
+    - What model architecture is most appropriate?
+    - What dataset would provide meaningful results?
+    - What parameters should be varied or controlled?
+    - How will success be measured?
+
+  Use your tools to understand the current state of research and avoid
+  redundant experiments.
+
+model: "gpt-5.2"
+temperature: 0.5
+tool_choice: "auto"
+
+tools:
+  - filesystem
+  - deeplake
+
+output_schema:
+  type: object
+  properties:
+    name:
+      type: string
+      description: "Name for the experiment"
+    hypothesis:
+      type: string
+      description: "What hypothesis this experiment tests"
+    model_type:
+      type: string
+      description: "Type of model to use (e.g., transformer, mamba)"
+    dataset:
+      type: string
+      description: "Dataset to use"
+    key_parameters:
+      type: object
+      description: "Key training/model parameters"
+    success_criteria:
+      type: string
+      description: "How to determine if the experiment succeeded"
+    expected_outcome:
+      type: string
+      description: "What results are expected"
+  required:
+    - name
+    - hypothesis
+    - model_type
+    - dataset
+    - key_parameters
+    - success_criteria
+    - expected_outcome
