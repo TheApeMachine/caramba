@@ -19,11 +19,12 @@ Gradients:
 
 import triton  # type: ignore[reportMissingImports]
 import triton.language as tl  # type: ignore[reportMissingImports]
+from typing import Any
 
 __all__ = ["dba_attn_bwd_preprocess", "dba_attn_bwd_dkv", "dba_attn_bwd_dq"]
 
 # Used to keep forward/backward scaling consistent when combining sem+geo logits.
-INV_SQRT2 = 0.70710678
+INV_SQRT2 = tl.constexpr(0.70710678)
 
 
 @triton.jit
@@ -51,9 +52,9 @@ def dba_attn_bwd_preprocess(
     m_start = pid_m * BLOCK_M
 
     offs_m = m_start + tl.arange(0, BLOCK_M)
-    m_mask = offs_m < T
+    m_mask: Any = offs_m < T
     dv = tl.arange(0, BLOCK_DV)
-    mv = dv < D_V
+    mv: Any = dv < D_V
 
     o = tl.load(
         out_ptr + z * stride_oz + offs_m[:, None] * stride_ot + dv[None, :] * stride_od,
@@ -136,13 +137,13 @@ def dba_attn_bwd_dkv(
     n_start = pid_n * BLOCK_N
 
     offs_n = n_start + tl.arange(0, BLOCK_N)
-    n_mask = offs_n < T
+    n_mask: Any = offs_n < T
     ds = tl.arange(0, BLOCK_DSEM)
     dg = tl.arange(0, BLOCK_DGEO)
     dv = tl.arange(0, BLOCK_DV)
-    ms = ds < D_SEM
-    mg = dg < D_GEO
-    mv = dv < D_V
+    ms: Any = ds < D_SEM
+    mg: Any = dg < D_GEO
+    mv: Any = dv < D_V
 
     k_sem = tl.load(
         k_sem_ptr + z * stride_ksz + offs_n[:, None] * stride_kst + ds[None, :] * stride_ksd,
@@ -166,7 +167,7 @@ def dba_attn_bwd_dkv(
 
     for m_start in range(0, T, BLOCK_M):
         offs_m = m_start + tl.arange(0, BLOCK_M)
-        m_mask = offs_m < T
+        m_mask: Any = offs_m < T
 
         q_sem = tl.load(
             q_sem_ptr + z * stride_qsz + offs_m[:, None] * stride_qst + ds[None, :] * stride_qsd,
@@ -201,7 +202,7 @@ def dba_attn_bwd_dkv(
             q_pos = offs_m[:, None]
             k_pos = offs_n[None, :]
             rng = tl.rand(seed + tl.full([], z, tl.uint32), q_pos * T + k_pos)
-            keep = rng < keep_prob
+            keep: Any = rng < keep_prob
             w = p * keep.to(tl.float32) * (1.0 / keep_prob)
         else:
             w = p
@@ -293,13 +294,13 @@ def dba_attn_bwd_dq(
     m_start = pid_m * BLOCK_M
 
     offs_m = m_start + tl.arange(0, BLOCK_M)
-    m_mask = offs_m < T
+    m_mask: Any = offs_m < T
     ds = tl.arange(0, BLOCK_DSEM)
     dg = tl.arange(0, BLOCK_DGEO)
     dv = tl.arange(0, BLOCK_DV)
-    ms = ds < D_SEM
-    mg = dg < D_GEO
-    mv = dv < D_V
+    ms: Any = ds < D_SEM
+    mg: Any = dg < D_GEO
+    mv: Any = dv < D_V
 
     q_sem = tl.load(
         q_sem_ptr + z * stride_qsz + offs_m[:, None] * stride_qst + ds[None, :] * stride_qsd,
@@ -325,7 +326,7 @@ def dba_attn_bwd_dq(
 
     for n_start in range(0, T, BLOCK_N):
         offs_n = n_start + tl.arange(0, BLOCK_N)
-        n_mask = offs_n < T
+        n_mask: Any = offs_n < T
 
         k_sem = tl.load(
             k_sem_ptr + z * stride_ksz + offs_n[:, None] * stride_kst + ds[None, :] * stride_ksd,
@@ -357,7 +358,7 @@ def dba_attn_bwd_dq(
             q_pos = offs_m[:, None]
             k_pos = offs_n[None, :]
             rng = tl.rand(seed + tl.full([], z, tl.uint32), q_pos * T + k_pos)
-            keep = rng < keep_prob
+            keep: Any = rng < keep_prob
             w = p * keep.to(tl.float32) * (1.0 / keep_prob)
         else:
             w = p
