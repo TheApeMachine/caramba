@@ -10,7 +10,6 @@ Forward stores per-query log-sum-exp (LSE) for backward.
 
 import triton  # type: ignore[reportMissingImports]
 import triton.language as tl  # type: ignore[reportMissingImports]
-from typing import Any
 
 __all__ = ["dba_attn_fwd"]
 
@@ -71,14 +70,14 @@ def dba_attn_fwd(
     m_start = pid_m * BLOCK_M
 
     offs_m = m_start + tl.arange(0, BLOCK_M)
-    m_mask: Any = offs_m < T
+    m_mask = (offs_m < T).to(tl.int1)  # type: ignore
 
     ds = tl.arange(0, BLOCK_DSEM)
     dg = tl.arange(0, BLOCK_DGEO)
     dv = tl.arange(0, BLOCK_DV)
-    ms: Any = ds < D_SEM
-    mg: Any = dg < D_GEO
-    mv: Any = dv < D_V
+    ms = (ds < D_SEM).to(tl.int1)  # type: ignore
+    mg = (dg < D_GEO).to(tl.int1)  # type: ignore
+    mv = (dv < D_V).to(tl.int1)  # type: ignore
 
     q_sem = tl.load(
         q_sem_ptr + z * stride_qsz + offs_m[:, None] * stride_qst + ds[None, :] * stride_qsd,
@@ -97,7 +96,7 @@ def dba_attn_fwd(
 
     for n_start in range(0, T, BLOCK_N):
         offs_n = n_start + tl.arange(0, BLOCK_N)
-        n_mask: Any = offs_n < T
+        n_mask = (offs_n < T).to(tl.int1)  # type: ignore
 
         k_sem = tl.load(
             k_sem_ptr + z * stride_ksz + offs_n[:, None] * stride_kst + ds[None, :] * stride_ksd,
@@ -135,7 +134,7 @@ def dba_attn_fwd(
             q_pos = offs_m[:, None]
             k_pos = offs_n[None, :]
             rng = tl.rand(seed + tl.full([], z, tl.uint32), q_pos * T + k_pos)
-            keep: Any = rng < keep_prob
+            keep = (rng < keep_prob).to(tl.int1)  # type: ignore
             p_num = p * keep.to(tl.float32) * (1.0 / keep_prob)
         else:
             p_num = p
