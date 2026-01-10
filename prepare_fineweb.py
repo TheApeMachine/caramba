@@ -1,210 +1,238 @@
-"""Prepare a tokenized FineWeb-style dataset as a 1D .npy array.
+"""FineWeb preparation
 
-This script exists to avoid "teacher is jacked" failures caused by tokenizer/data
-mismatch. For Llama teachers, you MUST tokenize with the matching Llama tokenizer.
+Builds tokenized `.npy` datasets from HuggingFace `datasets` sources.
 
-Example:
-  python3 prepare_fineweb.py --tokens 100M --output fineweb_100m.npy \\
-    --tokenizer llama --model-id meta-llama/Llama-3.2-1B
+Why this exists:
+- Training should not tokenize raw text on-the-fly.
+- Manifests should be able to request dataset preparation deterministically.
+- The output format must be compatible with `caramba.data.npy.NpyDataset`.
 """
 
 from __future__ import annotations
 
-import argparse
+import re
+import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Protocol
+
+import numpy as np
+from datasets import load_dataset
+from tqdm import tqdm
 
 
-def _parse_tokens(s: str) -> int:
-    t = str(s).strip().lower().replace("_", "")
-    mult = 1
-    if t.endswith("k"):
-        mult = 1_000
-        t = t[:-1]
-    elif t.endswith("m"):
-        mult = 1_000_000
-        t = t[:-1]
-    elif t.endswith("b"):
-        mult = 1_000_000_000
-        t = t[:-1]
-    n = int(float(t) * mult)
-    if n <= 0:
-        raise ValueError("tokens must be > 0")
-    return n
+class TextTokenizer(Protocol):
+    """Tokenizer protocol for dataset preparation."""
+
+    def encode(self, text: str) -> list[int]: ...
+
+    @property
+    def bos_token_id(self) -> int | None: ...
+
+    @property
+    def eos_token_id(self) -> int | None: ...
 
 
-def prepare_fineweb_npy(
-    *,
-    tokens: str,
-    output: str | Path,
-    tokenizer: str = "llama",
-    model_id: str = "meta-llama/Llama-3.2-1B",
-    dataset: str = "HuggingFaceFW/fineweb",
-    subset: str | None = None,
-    split: str = "train",
-    text_field: str = "text",
-    max_chars: int = 50_000,
-    append_eos: bool = True,
-    append_bos: bool = False,
-    overwrite: bool = False,
-) -> Path:
-    """Stream a HF dataset and write a 1D int32 token array to .npy."""
-    target_tokens = _parse_tokens(tokens)
-    out_path = Path(output)
-    if out_path.suffix.lower() != ".npy":
-        raise ValueError("output must end with .npy")
-    if out_path.exists() and not bool(overwrite):
-        return out_path
+@dataclass(frozen=True, slots=True)
+class TokenBudget:
+    """Token budget parsed from manifest strings like '100M'."""
 
-    # Imports are intentionally inside the function so the package can be imported without deps.
-    import numpy as np
+    tokens: int
 
-    tok_kind = str(tokenizer).strip().lower()
-    if tok_kind == "llama":
+
+@dataclass(slots=True)
+class FinewebNpyPreparer:
+    """FineWeb-to-NPY preparer.
+
+    Converts a streamed HuggingFace dataset split into a fixed-length token array
+    stored as `.npy` via a memory-mapped writer.
+    """
+
+    def run(
+        self,
+        *,
+        tokens: str,
+        output: str,
+        tokenizer: str,
+        model_id: str,
+        dataset: str,
+        subset: str | None,
+        split: str,
+        text_field: str,
+        max_chars: int,
+        append_eos: bool,
+        append_bos: bool,
+        overwrite: bool,
+    ) -> None:
+        out_path = self.validate_output_path(output, overwrite=bool(overwrite))
+        budget = self.parse_budget(tokens)
+        tok = self.build_tokenizer(kind=str(tokenizer), model_id=str(model_id), append_bos=bool(append_bos), append_eos=bool(append_eos))
+        ds = self.load_stream(dataset=str(dataset), subset=subset, split=str(split))
+        mm = self.open_memmap(path=out_path, n_tokens=int(budget.tokens))
+        meta = self.write_tokens(
+            mm=mm,
+            ds=ds,
+            tokenizer=tok,
+            text_field=str(text_field),
+            max_chars=int(max_chars),
+            append_bos=bool(append_bos),
+            append_eos=bool(append_eos),
+        )
+        self.write_meta(out_path=out_path, meta=meta)
+
+    def validate_output_path(self, output: str, *, overwrite: bool) -> Path:
+        p = Path(str(output))
+        if not str(p):
+            raise ValueError("output must be non-empty")
+        if p.suffix.lower() != ".npy":
+            raise ValueError(f"output must end with .npy, got {p}")
+        if p.exists() and not bool(overwrite):
+            raise FileExistsError(f"Output exists; set overwrite=true to rebuild: {p}")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if p.exists() and bool(overwrite):
+            p.unlink()
+        return p
+
+    def parse_budget(self, tokens: str) -> TokenBudget:
+        s = str(tokens).strip()
+        m = re.fullmatch(r"(\\d+)([KMB])?", s, flags=re.IGNORECASE)
+        if m is None:
+            raise ValueError(f"Invalid token budget {tokens!r}. Use forms like '100M', '500K', '1000000'.")
+        n = int(m.group(1))
+        suf = (m.group(2) or "").upper()
+        mult = {"": 1, "K": 1_000, "M": 1_000_000, "B": 1_000_000_000}[suf]
+        total = int(n * mult)
+        if total < 2:
+            raise ValueError("Token budget must be >= 2")
+        return TokenBudget(tokens=total)
+
+    def build_tokenizer(self, *, kind: str, model_id: str, append_bos: bool, append_eos: bool) -> TextTokenizer:
+        k = str(kind).strip().lower()
+        if k in {"llama", "hf", "huggingface"}:
+            return self.build_hf_tokenizer(model_id=model_id)
+        if k.startswith("tiktoken"):
+            if bool(append_bos) or bool(append_eos):
+                raise ValueError("tiktoken tokenizer does not support append_bos/append_eos in prepare_fineweb_npy")
+            enc = "cl100k_base"
+            if ":" in k:
+                enc = k.split(":", 1)[1].strip() or enc
+            return self.build_tiktoken_tokenizer(encoding=enc)
+        raise ValueError(f"Unsupported tokenizer {kind!r}. Use 'llama' or 'tiktoken[:encoding]'.")
+
+    def build_hf_tokenizer(self, *, model_id: str) -> TextTokenizer:
+        if not str(model_id).strip():
+            raise ValueError("model_id must be non-empty for tokenizer=llama")
         from transformers import AutoTokenizer
 
         tok = AutoTokenizer.from_pretrained(str(model_id), use_fast=True, trust_remote_code=False)
-        bos_id = getattr(tok, "bos_token_id", None)
-        eos_id = getattr(tok, "eos_token_id", None)
 
-        def encode(text: str) -> list[int]:
-            return list(tok.encode(text, add_special_tokens=False))
+        class _Tok:
+            def encode(self, text: str) -> list[int]:
+                return list(tok.encode(str(text), add_special_tokens=False))
 
-    elif tok_kind == "tiktoken":
+            @property
+            def bos_token_id(self) -> int | None:
+                v = getattr(tok, "bos_token_id", None)
+                return int(v) if v is not None else None
+
+            @property
+            def eos_token_id(self) -> int | None:
+                v = getattr(tok, "eos_token_id", None)
+                return int(v) if v is not None else None
+
+        return _Tok()
+
+    def build_tiktoken_tokenizer(self, *, encoding: str) -> TextTokenizer:
         import tiktoken
 
-        enc = tiktoken.get_encoding("cl100k_base")
+        enc = tiktoken.get_encoding(str(encoding))
 
-        def encode(text: str) -> list[int]:
-            return list(enc.encode(text))
-        bos_id = None
-        eos_id = None
+        class _Tok:
+            def encode(self, text: str) -> list[int]:
+                return list(enc.encode(str(text)))
 
-    else:
-        raise ValueError(f"Unsupported tokenizer={tokenizer!r} (expected 'llama' or 'tiktoken')")
+            @property
+            def bos_token_id(self) -> int | None:
+                return None
 
-    from datasets import load_dataset
+            @property
+            def eos_token_id(self) -> int | None:
+                return None
 
-    ds = load_dataset(str(dataset), subset, split=str(split), streaming=True)
+        return _Tok()
 
-    buf: list[int] = []
-    n = 0
-    report_every = max(250_000, target_tokens // 100)
+    def load_stream(self, *, dataset: str, subset: str | None, split: str):
+        if not str(dataset).strip():
+            raise ValueError("dataset must be non-empty")
+        if not str(split).strip():
+            raise ValueError("split must be non-empty")
+        return load_dataset(path=str(dataset), name=str(subset) if subset else None, split=str(split), streaming=True)
 
-    for ex in ds:
-        if not isinstance(ex, dict):
-            continue
-        raw = ex.get(str(text_field), None)
-        if not isinstance(raw, str) or not raw:
-            continue
-        txt = raw[: int(max_chars)]
-        ids = encode(txt)
-        if not ids:
-            continue
-        if append_bos and bos_id is not None:
-            buf.append(int(bos_id))
-        buf.extend(ids)
-        if append_eos and eos_id is not None:
-            buf.append(int(eos_id))
-        n = len(buf)
-        if n >= target_tokens:
-            break
-        if n // report_every != (n - len(ids)) // report_every:
-            pct = 100.0 * float(n) / float(target_tokens)
-            print(f"[prepare_fineweb] tokens={n:,}/{target_tokens:,} ({pct:.1f}%)")
+    def open_memmap(self, *, path: Path, n_tokens: int) -> np.memmap:
+        if int(n_tokens) < 2:
+            raise ValueError("n_tokens must be >= 2")
+        return np.lib.format.open_memmap(str(path), mode="w+", dtype=np.int32, shape=(int(n_tokens),))
 
-    if len(buf) < target_tokens:
-        raise RuntimeError(f"Dataset exhausted early: got {len(buf):,} tokens, expected {target_tokens:,}")
+    def write_tokens(
+        self,
+        *,
+        mm: np.memmap,
+        ds: Any,
+        tokenizer: TextTokenizer,
+        text_field: str,
+        max_chars: int,
+        append_bos: bool,
+        append_eos: bool,
+    ) -> dict[str, Any]:
+        if not str(text_field).strip():
+            raise ValueError("text_field must be non-empty")
+        if int(max_chars) < 1:
+            raise ValueError("max_chars must be >= 1")
+        if bool(append_bos) and tokenizer.bos_token_id is None:
+            raise ValueError("append_bos=true but tokenizer has no bos_token_id")
+        if bool(append_eos) and tokenizer.eos_token_id is None:
+            raise ValueError("append_eos=true but tokenizer has no eos_token_id")
 
-    arr = np.asarray(buf[:target_tokens], dtype=np.int32)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(str(out_path), arr)
-    mb = arr.nbytes / (1024 * 1024)
-    print(f"[prepare_fineweb] wrote {out_path} ({arr.shape[0]:,} tokens, {mb:.1f} MB)")
-    return out_path
+        n_total = int(mm.shape[0])
+        pos = 0
+        t0 = time.time()
+        pbar = tqdm(total=n_total, desc="prepare_fineweb_npy(tokens)", unit="tok")
+        for ex in ds:
+            if pos >= n_total:
+                break
+            if not isinstance(ex, dict):
+                raise TypeError(f"Dataset example must be a dict, got {type(ex).__name__}")
+            txt = ex.get(text_field)
+            if not isinstance(txt, str):
+                continue
+            txt = txt[: int(max_chars)]
+            ids = tokenizer.encode(txt)
+            if bool(append_bos):
+                ids = [int(tokenizer.bos_token_id), *ids]  # type: ignore[arg-type]
+            if bool(append_eos):
+                ids = [*ids, int(tokenizer.eos_token_id)]  # type: ignore[arg-type]
+            if not ids:
+                continue
+            if any((int(x) < 0) for x in ids):
+                raise ValueError("Tokenizer returned negative token id")
+            take = min(len(ids), n_total - pos)
+            mm[pos : pos + take] = np.asarray(ids[:take], dtype=np.int32)
+            pos += int(take)
+            pbar.update(int(take))
+        pbar.close()
+        if pos != n_total:
+            raise RuntimeError(
+                f"Dataset stream ended before reaching token budget: wrote={pos}, budget={n_total}. "
+                "Increase data or lower tokens budget."
+            )
+        mm.flush()
+        return {"tokens": n_total, "text_field": str(text_field), "max_chars": int(max_chars), "seconds": float(time.time() - t0)}
 
-
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Tokenize FineWeb to .npy tokens")
-    ap.add_argument("--tokens", type=str, required=True, help="How many tokens to emit (e.g. 100M, 1B).")
-    ap.add_argument("--output", type=str, required=True, help="Output .npy path (1D int32).")
-    ap.add_argument(
-        "--tokenizer",
-        type=str,
-        default="llama",
-        choices=["llama", "tiktoken"],
-        help="Tokenizer backend to use.",
-    )
-    ap.add_argument(
-        "--model-id",
-        type=str,
-        default="meta-llama/Llama-3.2-1B",
-        help="HuggingFace tokenizer model id (for --tokenizer llama).",
-    )
-    ap.add_argument(
-        "--dataset",
-        type=str,
-        default="HuggingFaceFW/fineweb",
-        help="HuggingFace dataset id to stream.",
-    )
-    ap.add_argument(
-        "--subset",
-        type=str,
-        default=None,
-        help="Optional dataset subset/config name (HF datasets 'name' argument).",
-    )
-    ap.add_argument(
-        "--split",
-        type=str,
-        default="train",
-        help="Dataset split to use (default: train).",
-    )
-    ap.add_argument(
-        "--text-field",
-        type=str,
-        default="text",
-        help="Field containing text samples (default: text).",
-    )
-    ap.add_argument(
-        "--max-chars",
-        type=int,
-        default=50_000,
-        help="Truncate very long samples for stability.",
-    )
-    ap.add_argument(
-        "--append-eos",
-        action="store_true",
-        default=True,
-        help="Append EOS token between samples when available (default: true).",
-    )
-    ap.add_argument(
-        "--no-append-eos",
-        action="store_true",
-        default=False,
-        help="Disable EOS insertion (not recommended for Llama teachers).",
-    )
-    ap.add_argument(
-        "--append-bos",
-        action="store_true",
-        default=False,
-        help="Prepend BOS token before each sample when available (default: false).",
-    )
-    args = ap.parse_args(argv)
-    _ = prepare_fineweb_npy(
-        tokens=str(args.tokens),
-        output=str(args.output),
-        tokenizer=str(args.tokenizer),
-        model_id=str(args.model_id),
-        dataset=str(args.dataset),
-        subset=(str(args.subset) if args.subset is not None else None),
-        split=str(args.split),
-        text_field=str(args.text_field),
-        max_chars=int(args.max_chars),
-        append_eos=bool(args.append_eos) and not bool(args.no_append_eos),
-        append_bos=bool(args.append_bos),
-        overwrite=True,
-    )
-    return 0
+    def write_meta(self, *, out_path: Path, meta: dict[str, Any]) -> None:
+        meta_path = out_path.with_suffix(out_path.suffix + ".meta")
+        meta_path.write_text(str(meta), encoding="utf-8")
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+# Compatibility alias expected by trainers/datasets.
+prepare_fineweb_npy = FinewebNpyPreparer().run
+
