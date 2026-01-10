@@ -50,7 +50,7 @@ class TaskQueue:
         async with self._pool.acquire() as conn:
             # We store the full A2A Task object as JSONB
             await conn.execute(
-                \"\"\"
+                """
                 CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY,
                     context_id TEXT NOT NULL,
@@ -60,7 +60,7 @@ class TaskQueue:
                     updated_at TIMESTAMP NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
-                \"\"\"
+                """
             )
 
     async def push(self, task: Task) -> str:
@@ -83,10 +83,10 @@ class TaskQueue:
 
         async with self._pool.acquire() as conn:
             await conn.execute(
-                \"\"\"
+                """
                 INSERT INTO tasks (id, context_id, state, task_data, created_at, updated_at)
                 VALUES ($1, $2, $3, $4, $5, $6)
-                \"\"\",
+                """,
                 task.id,
                 task.context_id,
                 task.status.state.name,
@@ -113,7 +113,7 @@ class TaskQueue:
             # Atomic update to claim a task
             # We look for SUBMITTED tasks to move to WORKING
             row = await conn.fetchrow(
-                \"\"\"
+                """
                 UPDATE tasks
                 SET state = $1, updated_at = $2, 
                     task_data = jsonb_set(
@@ -130,7 +130,7 @@ class TaskQueue:
                     LIMIT 1
                 )
                 RETURNING task_data
-                \"\"\",
+                """,
                 TaskState.task_state_working.name,
                 datetime.now(),
                 TaskState.task_state_working.name, # For JSON update
@@ -152,11 +152,11 @@ class TaskQueue:
 
         async with self._pool.acquire() as conn:
             await conn.execute(
-                \"\"\"
+                """
                 UPDATE tasks
                 SET state = $1, task_data = $2, updated_at = $3
                 WHERE id = $4
-                \"\"\",
+                """,
                 task.status.state.name,
                 json.dumps(task.model_dump(mode="json")),
                 datetime.now(),
