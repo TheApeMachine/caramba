@@ -48,6 +48,7 @@ class MemoryWriter:
     mem_trie_enabled: bool
     mem_trie_eta_decay: float
     mem_trie_max_levels: int | None
+    tuner: Any | None = None
 
     def __post_init__(self) -> None:
         if self.mem_vsa_enabled:
@@ -218,7 +219,13 @@ class MemoryWriter:
         idx_w = routing["idx_w"]
         gate_logit = self.mem_write_gate(u).squeeze(-1)
         p = torch.sigmoid(gate_logit)
-        m = (p > float(self.mem_write_threshold)).to(dtype=u.dtype)
+        
+        # Apply tuner scaling to thresholds
+        write_threshold = float(self.mem_write_threshold)
+        if self.tuner is not None:
+            write_threshold = write_threshold * getattr(self.tuner, "write_threshold_mult", 1.0)
+            
+        m = (p > write_threshold).to(dtype=u.dtype)
         if mask is not None:
             m = torch.where(mask >= 0, (mask > 0).to(dtype=m.dtype, device=m.device), m)
         w_eta = (float(self.mem_write_eta) * p).to(dtype=u.dtype) * m
@@ -246,7 +253,13 @@ class MemoryWriter:
         any_valid = valid.any(dim=-1)
         max_sim = sim.max(dim=-1).values
         max_sim = torch.where(any_valid, max_sim, torch.full_like(max_sim, float("-inf")))
-        novelty = self.vsa_novelty(max_sim)
+        
+        # Apply tuner scaling to novelty threshold
+        novelty_threshold = None
+        if self.tuner is not None and hasattr(self.vsa_novelty, "threshold"):
+            novelty_threshold = float(self.vsa_novelty.threshold) * getattr(self.tuner, "vsa_novelty_mult", 1.0)
+            
+        novelty = self.vsa_novelty(max_sim, threshold=novelty_threshold)
         return novelty.to(dtype=wt.dtype), max_sim.to(dtype=wt.dtype)
 
     def write_hash(

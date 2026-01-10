@@ -193,6 +193,7 @@ class ResonantRouter(nn.Module):
         coupling: float = 0.25,
         damping: float = 0.02,
         zero_diag: bool = True,
+        tuner: Any | None = None,
     ) -> None:
         super().__init__()
         self.hashes = int(hashes)
@@ -202,6 +203,7 @@ class ResonantRouter(nn.Module):
         self.damping = float(damping)
         self.num_units = int(in_dim)
         self.zero_diag = bool(zero_diag)
+        self.tuner = tuner
 
         # patterns are our "codebook" but in phase space
         self.patterns = nn.Parameter(torch.randn(self.hashes, self.buckets, self.num_units) * 0.02)
@@ -217,6 +219,17 @@ class ResonantRouter(nn.Module):
         B, T, D = tag.shape
         H = self.hashes
         device = tag.device
+
+        # Get current parameters (potentially tuned)
+        steps = self.steps
+        coupling = self.coupling
+        damping = self.damping
+        
+        if self.tuner is not None:
+            # Apply scaling factors from tuner (tuner.resonant_coupling_mult etc.)
+            coupling = coupling * getattr(self.tuner, "resonant_coupling_mult", 1.0)
+            damping = damping * getattr(self.tuner, "resonant_damping_mult", 1.0)
+            steps = steps + getattr(self.tuner, "resonant_steps_delta", 0)
 
         # Safety clamp to prevent instability
         tag = torch.nan_to_num(tag, nan=0.0, posinf=100.0, neginf=-100.0)
@@ -234,11 +247,6 @@ class ResonantRouter(nn.Module):
         y = torch.sin(tag).unsqueeze(2).expand(B, T, H, D).clone() # (B, T, H, D)
         
         # 3. Precompute Real-valued Hebbian Weights (W_r, W_i)
-        # W = (A - iB).T @ (A + iB) / D
-        #   = (A.T @ A + B.T @ B) / D  + i(A.T @ B - B.T @ A) / D
-        # W_r = (A.T @ A + B.T @ B) / D
-        # W_i = (A.T @ B - B.T @ A) / D
-        # (transpose is on K,D -> D,K)
         At = A.transpose(-1, -2) # (H, D, K)
         Bt = B_.transpose(-1, -2) # (H, D, K)
         
@@ -251,41 +259,31 @@ class ResonantRouter(nn.Module):
             Wi = Wi.masked_fill(mask, 0.0)
 
         # 4. Iterative Dynamics (Settling) using Real-Valued Components
-        # Scaling factor for K
-        scale = self.coupling / float(self.buckets)
-
-        for s_idx in range(self.steps):
-            # (Ws)_r = Wr @ x - Wi @ y
-            # (Ws)_i = Wr @ y + Wi @ x
-            # Matmul over (B*T, H, 1, D) @ (H, D, D)
+        scale = coupling / float(self.buckets)
+        
+        # For Telemetry: track energy and convergence
+        energy_history = []
+        
+        for s_idx in range(int(steps)):
             xr = x.view(-1, H, 1, D)
             yi = y.view(-1, H, 1, D)
             
-            # Real contribution to coupling
             c_r = (torch.matmul(xr, Wr) - torch.matmul(yi, Wi)).view(B, T, H, D)
-            # Imag contribution to coupling
             c_i = (torch.matmul(xr, Wi) + torch.matmul(yi, Wr)).view(B, T, H, D)
             
-            # Accumulate and damp
-            x = (x + scale * c_r) * (1.0 - self.damping)
-            y = (y + scale * c_i) * (1.0 - self.damping)
+            x = (x + scale * c_r) * (1.0 - damping)
+            y = (y + scale * c_i) * (1.0 - damping)
 
-            # Normalize to unit circle with epsilon
             mag = torch.sqrt(x**2 + y**2 + 1e-12)
             x = x / mag
             y = y / mag
             
-            if s_idx == 0:
-                self._check_nan(x, "state_x (step 0)")
+            if collect_aux and s_idx % 5 == 0:
+                # Approximate energy (squared similarity sum)
+                energy = (x**2 + y**2).mean().item()
+                energy_history.append(energy)
 
         # 5. Final Similarity calculation using real components
-        # sim = |s @ p.H| / D
-        # dot = (x + iy) @ (A - iB).T
-        #     = (x @ A.T + y @ B.T) + i(y @ A.T - x @ B.T)
-        # (|dot|^2) = (x @ A.T + y @ B.T)^2 + (y @ A.T - x @ B.T)^2
-        # sim = sqrt(...) / D
-        
-        # (B, T, H, 1, D) @ (H, D, K) -> (B, T, H, 1, K)
         xr = x.unsqueeze(-2)
         yi = y.unsqueeze(-2)
         At = A.transpose(-1, -2)
@@ -305,5 +303,18 @@ class ResonantRouter(nn.Module):
         if collect_aux:
             aux["read_resonant_logits"] = logits
             aux["write_resonant_logits"] = logits
+            
+            # Telemetry: final max similarity
+            max_sim = logits.max(dim=-1)[0].mean().item()
+            aux["resonant_final_sim"] = torch.tensor(max_sim, device=device)
+            
+            # Telemetry: Entropy of routing (how diversified are the buckets?)
+            if B * T > 1:
+                flat_idx = idx_r.view(-1)
+                counts = torch.bincount(flat_idx, minlength=self.buckets).float()
+                probs = counts / counts.sum().clamp_min(1e-9)
+                entropy = -(probs * torch.log(probs + 1e-9)).sum().item()
+                aux["resonant_bucket_entropy"] = torch.tensor(entropy, device=device)
+
         return Routing(idx_r=idx_r, idx_w=idx_w, aux=aux)
 

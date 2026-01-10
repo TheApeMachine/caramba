@@ -62,6 +62,10 @@ class MemoryBlockMemory(nn.Module):
         self.rmf_dim = int(getattr(config, "rmf_dim", 64))
         self.rmf_eta = float(getattr(config, "rmf_eta", 0.2))
         self.rmf_weight = float(getattr(config, "rmf_weight", 1.0))
+        self.mem_autotune = str(getattr(config, "mem_autotune", "off")).lower().strip()
+
+        from caramba.layer.memory_block.memory.tuner import UniversalMemoryTuner
+        self.tuner = UniversalMemoryTuner(mode=self.mem_autotune) if self.mem_autotune != "off" else None
 
         if self.mem_index not in {"hash", "trie"}:
             raise ValueError(f"mem_index must be 'hash' or 'trie', got {self.mem_index!r}")
@@ -164,6 +168,7 @@ class MemoryBlockMemory(nn.Module):
                 steps=int(getattr(self.config, "mem_resonant_steps", 20)),
                 coupling=float(getattr(self.config, "mem_resonant_coupling", 0.25)),
                 damping=float(getattr(self.config, "mem_resonant_damping", 0.02)),
+                tuner=self.tuner,
             )
         else:
             self.vq_router = VqRouter(
@@ -197,6 +202,7 @@ class MemoryBlockMemory(nn.Module):
             mem_trie_enabled=bool(self.mem_index == "trie"),
             mem_trie_fallback_enabled=bool(self.mem_trie_fallback_enabled),
             mem_trie_max_levels=self.mem_trie_max_levels,
+            tuner=self.tuner,
         )
         self.writer = MemoryWriter(
             mem_wkey=self.mem_wkey,
@@ -218,6 +224,7 @@ class MemoryBlockMemory(nn.Module):
             mem_trie_enabled=bool(self.mem_index == "trie"),
             mem_trie_eta_decay=float(self.mem_trie_eta_decay),
             mem_trie_max_levels=int(self.mem_trie_max_levels) if self.mem_trie_max_levels is not None else None,
+            tuner=self.tuner,
         )
 
     def compute_routing(self, u: Tensor, *, collect_aux: bool) -> dict[str, Any]:
@@ -488,5 +495,56 @@ class MemoryBlockMemory(nn.Module):
         *,
         write_scale: Tensor | None = None,
     ) -> Tensor:
-        return self.writer.write_chunk(u, st, routing, int(t0), mask, write_scale)
+        gate_logit = self.writer.write_chunk(u, st, routing, int(t0), mask, write_scale)
+        
+        # After write, we have a full picture of the forward pass dynamics.
+        # Collect and report health telemetry.
+        if self.tuner is not None and bool(routing.get("collect_aux", False)):
+            health = self.collect_health_telemetry(st, routing)
+            tuning_logs = self.tuner.update(health)
+            routing.update(tuning_logs)
+            routing.update(health.to_dict())
+            
+        return gate_logit
+
+    def collect_health_telemetry(self, st: MemoryBlockState, routing: dict[str, Any]) -> MemoryHealthTelemetry:
+        """Central hub for collecting all memory block health metrics."""
+        from caramba.layer.memory_block.memory.telemetry import (
+            MemoryHealthTelemetry, ResonantSettlingMetrics, VsaNoveltyMetrics
+        )
+        
+        # 1. Bucket Utilization
+        ml = st.mem_last # (B, H, K, A)
+        valid = ml >= 0
+        per_bucket_valid = valid.any(dim=-1) # (B, H, K)
+        utilization = per_bucket_valid.float().mean().item()
+        
+        # 2. Resonant Metrics (if applicable)
+        res_metrics = None
+        if "resonant_final_sim" in routing:
+            res_metrics = ResonantSettlingMetrics(
+                final_sim=float(routing["resonant_final_sim"]),
+                convergence_steps=int(routing.get("resonant_convergence_steps", 0)),
+                energy_drop=0.0, # TODO: implement if needed
+                bucket_entropy=float(routing.get("resonant_bucket_entropy", 0.0)),
+                state_drift=0.0,
+            )
+            
+        # 3. VSA Metrics
+        vsa_metrics = None
+        if "write_novelty" in routing:
+            vsa_metrics = VsaNoveltyMetrics(
+                novelty_ema=float(routing["write_novelty"].mean()),
+                write_rejection_rate=1.0 - float(routing.get("write_do", torch.tensor(0.0)).float().mean()),
+                match_confidence=float(routing.get("read_slot_sim", torch.tensor(0.0)).std().item()),
+                tag_collision_rate=0.0,
+            )
+            
+        return MemoryHealthTelemetry(
+            step=int(st.step),
+            utilization=utilization,
+            conflict_rate=0.0, # TODO: track write collisions
+            resonant=res_metrics,
+            vsa=vsa_metrics,
+        )
 

@@ -486,6 +486,8 @@ class MemoryBlockLayerConfig(Config):
     # This makes the opcode head a true (soft) control surface.
     opcodes_control_enabled: bool = False
     opcodes_control_temp: PositiveFloat = 1.0
+    # Holistic memory auto-tuning mode: "off", "monitor", "adaptive".
+    mem_autotune: str = "off"
 
     # Phase 2: Commitment lifecycle head (optional).
     # When enabled, the layer emits `mosaic_commitment_logits` (B,T,3) into ctx aux outputs.

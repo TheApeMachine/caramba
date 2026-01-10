@@ -7,7 +7,7 @@ Core philosophy alignment:
 """
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from caramba.config import NonNegativeInt, PositiveInt, Probability
 
@@ -39,9 +39,16 @@ class DefaultsRuntime(BaseModel):
     best_effort: bool = False
 
 
+class DefaultsCompute(BaseModel):
+    """Defaults for compute provisioning."""
+
+    vast_ai_api_key: str | None = Field(default=None, alias="VAST_AI_API_KEY")
+
+
 class Defaults(BaseModel):
     """Global defaults shared across all runs in a manifest."""
 
     data: DefaultsData = DefaultsData()
     logging: DefaultsLogging = DefaultsLogging()
     runtime: DefaultsRuntime = DefaultsRuntime()
+    compute: DefaultsCompute = DefaultsCompute()

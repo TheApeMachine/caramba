@@ -68,8 +68,9 @@ targets:
                     state_decay_min: 0.90
                     state_decay_max: 0.999
                     mem_router: resonant
-                    mem_resonant_steps: 10
-                    mem_resonant_coupling: 0.01
+                    mem_autotune: adaptive
+                    mem_resonant_steps: 20
+                    mem_resonant_coupling: 0.25
                     mem_resonant_damping: 0.02
                     mem_buckets: 256
                     mem_dim: 128
