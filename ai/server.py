@@ -237,8 +237,25 @@ class AgentServer:
                     # If 'description' is set to the prompt, we are good.
                     # If not, we might be executing an empty task.
                     
-                    # Let's proceed with execution attempting to use description or a placeholder.
-                    query = task.description or "Process task"
+                    # A2A Task objects might not have a 'description' attribute directly 
+                    # depending on the SDK version. We try to get it safely or fallback to history.
+                    query = getattr(task, "description", None)
+                    
+                    if not query and task.history:
+                        # Try to find the first user message in history
+                        for msg in task.history:
+                            if msg.role == Role.user:
+                                # Extract text from parts
+                                text_parts = []
+                                for part in msg.parts:
+                                    if hasattr(part.root, "text"):
+                                        text_parts.append(part.root.text)
+                                if text_parts:
+                                    query = " ".join(text_parts)
+                                    break
+                    
+                    if not query:
+                        query = "Process task"
                     
                     from uuid import uuid4
                     message = Message(

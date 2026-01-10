@@ -111,8 +111,7 @@ packages = [
     "caramba.trainer.diffusion_codegen",
     "caramba.lab",
     "caramba.lab.resonant",
-    "caramba.ai.process.development",
-    "caramba.ai.process.manifest",
+
     "resonant",
     "resonant.core",
     "resonant.core.associative_memory",
