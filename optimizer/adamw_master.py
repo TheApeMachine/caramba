@@ -108,7 +108,7 @@ class AdamWMaster(torch.optim.Optimizer):
                 if fused and isinstance(g, Tensor):
                     if p.device.type == "mps":
                         use_fused = (
-                            p.dtype == torch.float16
+                            p.dtype in (torch.float16, torch.float32)
                             and g.device.type == "mps"
                             and g.dtype == torch.float16
                             and master.device.type == "mps"

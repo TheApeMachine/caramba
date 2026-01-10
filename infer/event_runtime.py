@@ -10,7 +10,6 @@ Implements the integration layer described in the MOSAIC meeting notes:
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-import json
 from typing import Any
 
 import torch
@@ -19,7 +18,7 @@ from torch import Tensor, nn
 from caramba.core.commitments import CommitmentLedger
 from caramba.core.event import EventEnvelope
 from caramba.core.event_bus import EventBus, EventHandler
-from caramba.core.event_codec import JsonEventDecoder, JsonEventEncoder
+from caramba.core.event_codec import EventDecoder, EventEncoder
 from caramba.infer.context import InferContext
 from caramba.infer.replay import ReplayBuffer
 
@@ -52,9 +51,9 @@ class GreedySampler:
 
 @dataclass(frozen=True, slots=True)
 class EventStreamCodec:
-    encoder: JsonEventEncoder = field(default_factory=JsonEventEncoder)
-    decoder: JsonEventDecoder = field(default_factory=JsonEventDecoder)
-    delimiter: int = 10  # '\n'
+    encoder: EventEncoder = field(default_factory=EventEncoder)
+    decoder: EventDecoder = field(default_factory=EventDecoder)
+    delimiter: int = 0  # Cap'n Proto uses 0-byte as segment delimiter
 
     def encode_with_delimiter(self, event: EventEnvelope) -> Tensor:
         ids = self.encoder.encode(event).to(dtype=torch.long)
@@ -162,7 +161,7 @@ class EventResponder:
     vocab: ByteVocabulary = field(default_factory=ByteVocabulary)
     sampler: GreedySampler = field(default_factory=GreedySampler)
     max_new_tokens: int = 1024
-    json_end_byte: int = 125  # ord('}')
+    message_end_byte: int = 0  # Cap'n Proto segment delimiter
     replay: ReplayBuffer | None = None
     replay_max_len: int = 4096
 
@@ -185,9 +184,9 @@ class EventResponder:
         max_steps = int(self.max_new_tokens)
         if max_steps < 1:
             raise ValueError(f"max_new_tokens must be >= 1, got {max_steps}")
-        end_b = int(self.json_end_byte)
+        end_b = int(self.message_end_byte)
         if end_b < 0 or end_b > 255:
-            raise ValueError(f"json_end_byte must be a byte in [0,255], got {end_b}")
+            raise ValueError(f"message_end_byte must be a byte in [0,255], got {end_b}")
 
         for _ in range(max_steps):
             byte_logits = self.vocab.slice_logits(next_logits)
@@ -208,9 +207,8 @@ class EventResponder:
                 try:
                     out_ids = torch.tensor(buf, dtype=torch.long)
                     ev = self.codec.decode_bytes(out_ids)
-                except json.JSONDecodeError:
-                    continue
-                except UnicodeDecodeError:
+                except Exception:
+                    # Cap'n Proto decoding failed, continue generating
                     continue
 
                 # Maintain the same delimiter convention as training traces.
@@ -236,7 +234,7 @@ class EventResponder:
                         pass
                 return ev, aux_last
 
-        raise RuntimeError("Failed to decode a complete JSON EventEnvelope before max_new_tokens")
+        raise RuntimeError("Failed to decode a complete EventEnvelope before max_new_tokens")
 
 
 @dataclass(slots=True)

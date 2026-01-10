@@ -10,15 +10,16 @@ struct AdamWParams {
     float lr_wd; // lr * weight_decay
 };
 
-kernel void adamw_master_step_fp16(
-    device half* p                 [[ buffer(0) ]], // fp16 params (updated in-place)
-    device const half* g           [[ buffer(1) ]], // fp16 grads
-    device float* master           [[ buffer(2) ]], // fp32 master weights (updated)
-    device float* exp_avg          [[ buffer(3) ]], // fp32 m (updated)
-    device float* exp_avg_sq       [[ buffer(4) ]], // fp32 v (updated)
-    constant AdamWParams& prm      [[ buffer(5) ]],
-    uint tid                       [[ thread_position_in_threadgroup ]],
-    uint tg_id                     [[ threadgroup_position_in_grid ]]
+template <typename T>
+inline void adamw_master_step_impl(
+    device T* p,
+    device const T* g,
+    device float* master,
+    device float* exp_avg,
+    device float* exp_avg_sq,
+    constant AdamWParams& prm,
+    uint tid,
+    uint tg_id
 ) {
     constexpr uint TG = 256;
     const uint i = tg_id * TG + tid;
@@ -45,6 +46,31 @@ kernel void adamw_master_step_fp16(
     exp_avg[i] = m;
     exp_avg_sq[i] = v;
     master[i] = w;
-    p[i] = half(w);
+    p[i] = T(w);
 }
 
+kernel void adamw_master_step_fp16(
+    device half* p                 [[ buffer(0) ]],
+    device const half* g           [[ buffer(1) ]],
+    device float* master           [[ buffer(2) ]],
+    device float* exp_avg          [[ buffer(3) ]],
+    device float* exp_avg_sq       [[ buffer(4) ]],
+    constant AdamWParams& prm      [[ buffer(5) ]],
+    uint tid                       [[ thread_position_in_threadgroup ]],
+    uint tg_id                     [[ threadgroup_position_in_grid ]]
+) {
+    adamw_master_step_impl<half>(p, g, master, exp_avg, exp_avg_sq, prm, tid, tg_id);
+}
+
+kernel void adamw_master_step_fp32(
+    device float* p                [[ buffer(0) ]],
+    device const float* g          [[ buffer(1) ]],
+    device float* master           [[ buffer(2) ]],
+    device float* exp_avg          [[ buffer(3) ]],
+    device float* exp_avg_sq       [[ buffer(4) ]],
+    constant AdamWParams& prm      [[ buffer(5) ]],
+    uint tid                       [[ thread_position_in_threadgroup ]],
+    uint tg_id                     [[ threadgroup_position_in_grid ]]
+) {
+    adamw_master_step_impl<float>(p, g, master, exp_avg, exp_avg_sq, prm, tid, tg_id);
+}

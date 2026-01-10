@@ -1,18 +1,23 @@
 """Event codec package
 
-Provides stable event encoders/decoders and stream parsers for event-native systems.
-This package is the canonical home for codecs.
+Provides stable event encoders/decoders using Cap'n Proto for zero-copy serialization.
+This package is the canonical home for the event codec.
 """
 
-from caramba.core.event_codec.json_codec import JsonEventDecoder, JsonEventEncoder
-from caramba.core.event_codec.binary_codec import BinaryEventDecoder, BinaryEventEncoder
-from caramba.core.event_codec.stream_parser import BinaryStreamParser
+from caramba.core.event_codec.capnp_codec import (
+    CapnpEventDecoder,
+    CapnpEventEncoder,
+    is_capnp_available,
+)
+
+# Aliases for backward compatibility / simpler naming
+EventEncoder = CapnpEventEncoder
+EventDecoder = CapnpEventDecoder
 
 __all__ = [
-    "BinaryEventDecoder",
-    "BinaryEventEncoder",
-    "BinaryStreamParser",
-    "JsonEventDecoder",
-    "JsonEventEncoder",
+    "CapnpEventDecoder",
+    "CapnpEventEncoder",
+    "EventDecoder",
+    "EventEncoder",
+    "is_capnp_available",
 ]
-

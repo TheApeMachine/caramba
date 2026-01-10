@@ -52,6 +52,7 @@ class MemoryReader:
     mem_trie_enabled: bool
     mem_trie_fallback_enabled: bool
     mem_trie_max_levels: int | None = None
+    tuner: Any | None = None
 
     def read(self, u: Tensor, st: MemoryBlockState, routing: dict[str, Any]) -> Tensor:
         """Read memory for a chunk
@@ -71,7 +72,13 @@ class MemoryReader:
                 raise RuntimeError("mem_vsa_enabled is True but vsa_projector is None")
             qt = self.vsa_projector(qk)
             sim_vsa = self.score_vsa(bt=bt, qt=qt, valid=valid, batch=B, time=T)
-            sim_total = sim_key + float(self.mem_vsa_weight) * sim_vsa
+            
+            # Apply tuner scaling to VSA weight
+            vsa_weight = float(self.mem_vsa_weight)
+            if self.tuner is not None:
+                vsa_weight = vsa_weight * getattr(self.tuner, "vsa_novelty_mult", 1.0)
+                
+            sim_total = sim_key + vsa_weight * sim_vsa
         else:
             sim_vsa = torch.zeros_like(sim_key)
             sim_total = sim_key
@@ -172,6 +179,12 @@ class MemoryReader:
 
     def slot_weights(self, *, sim: Tensor, valid: Tensor) -> Tensor:
         any_valid = valid.any(dim=-1, keepdim=True)
-        w = torch.softmax(sim / float(max(1e-6, self.mem_read_temp)), dim=-1)
+        
+        # Lever for future expansion: read_temp_mult
+        read_temp = float(self.mem_read_temp)
+        if self.tuner is not None:
+            read_temp = read_temp * getattr(self.tuner, "read_temp_mult", 1.0)
+            
+        w = torch.softmax(sim / float(max(1e-6, read_temp)), dim=-1)
         return torch.where(any_valid, w, torch.zeros_like(w))
 

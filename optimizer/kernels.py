@@ -91,8 +91,8 @@ def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
             msg="RMSNorm on MPS requires the Metal extension to be available and loaded at startup.",
         )
         _require(
-            x.dtype == torch.float16,
-            msg=f"RMSNorm on MPS requires fp16, got dtype={x.dtype}.",
+            x.dtype in (torch.float16, torch.float32),
+            msg=f"RMSNorm on MPS requires fp16/fp32, got dtype={x.dtype}.",
         )
         if _rmsnorm_fp16 is None:
             raise RuntimeError(f"Metal RMSNorm import failed: {_METAL_IMPORT_ERROR!r}")
@@ -133,8 +133,8 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
             msg="RoPE on MPS requires the Metal extension to be available and loaded at startup.",
         )
         _require(
-            x.dtype == torch.float16,
-            msg=f"RoPE on MPS requires fp16, got dtype={x.dtype}.",
+            x.dtype in (torch.float16, torch.float32),
+            msg=f"RoPE on MPS requires fp16/fp32, got dtype={x.dtype}.",
         )
         if _rope_fp16 is None:
             raise RuntimeError(f"Metal RoPE import failed: {_METAL_IMPORT_ERROR!r}")
@@ -181,8 +181,8 @@ def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: flo
             msg="LayerNorm on MPS requires the Metal extension to be available and loaded at startup.",
         )
         _require(
-            x.dtype == torch.float16,
-            msg=f"LayerNorm on MPS requires fp16, got dtype={x.dtype}.",
+            x.dtype in (torch.float16, torch.float32),
+            msg=f"LayerNorm on MPS requires fp16/fp32, got dtype={x.dtype}.",
         )
         if _layernorm_fp16 is None:
             raise RuntimeError(f"Metal LayerNorm import failed: {_METAL_IMPORT_ERROR!r}")
@@ -332,8 +332,8 @@ def adamw_step(
             msg="AdamW step on MPS requires the Metal extension to be available and loaded at startup.",
         )
         _require(
-            p.dtype == torch.float16,
-            msg=f"AdamW step on MPS requires fp16 params, got dtype={p.dtype}.",
+            p.dtype in (torch.float16, torch.float32),
+            msg=f"AdamW step on MPS requires fp16/fp32 params, got dtype={p.dtype}.",
         )
         if _AdamWMasterStep is None:
             raise RuntimeError(f"Metal AdamW import failed: {_METAL_IMPORT_ERROR!r}")
@@ -412,8 +412,8 @@ def lion_step(
             msg="Lion step on MPS requires the Metal extension to be available and loaded at startup.",
         )
         _require(
-            p.dtype == torch.float16,
-            msg=f"Lion step on MPS requires fp16 params, got dtype={p.dtype}.",
+            p.dtype in (torch.float16, torch.float32),
+            msg=f"Lion step on MPS requires fp16/fp32 params, got dtype={p.dtype}.",
         )
         if _lion_fp16 is None:
             raise RuntimeError(f"Metal Lion import failed: {_METAL_IMPORT_ERROR!r}")

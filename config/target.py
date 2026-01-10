@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 from caramba.config.agents import AgentProcessConfig, AgentTeamConfig
 from caramba.config.benchmark import BenchmarkSpec
 from caramba.config.component import ComponentSpec
+from caramba.config.compute import ComputeConfig, LocalComputeConfig
 from caramba.config.model import ModelConfig
 from caramba.config.run import Run
 
@@ -28,6 +29,7 @@ class ExperimentTargetConfig(BaseModel):
     name: str
     description: str = ""
     backend: str = "torch"
+    compute: ComputeConfig = Field(default_factory=LocalComputeConfig)
 
     task: ComponentSpec
     data: ComponentSpec

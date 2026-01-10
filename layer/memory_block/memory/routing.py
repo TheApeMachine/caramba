@@ -175,3 +175,146 @@ class VqRouter(nn.Module):
         self.combo_cache = grids.to(dtype=torch.long)
         return self.combo_cache
 
+
+class ResonantRouter(nn.Module):
+    """Resonant iterative router
+
+    Ported from resonant.core.associative_memory. Uses phase dynamics
+    to find the best-matching bucket (attractor).
+    """
+
+    def __init__(
+        self,
+        *,
+        in_dim: int,
+        hashes: int,
+        buckets: int,
+        steps: int = 20,
+        coupling: float = 0.25,
+        damping: float = 0.02,
+        zero_diag: bool = True,
+        tuner: Any | None = None,
+    ) -> None:
+        super().__init__()
+        self.hashes = int(hashes)
+        self.buckets = int(buckets)
+        self.steps = int(steps)
+        self.coupling = float(coupling)
+        self.damping = float(damping)
+        self.num_units = int(in_dim)
+        self.zero_diag = bool(zero_diag)
+        self.tuner = tuner
+
+        # patterns are our "codebook" but in phase space
+        self.patterns = nn.Parameter(torch.randn(self.hashes, self.buckets, self.num_units) * 0.02)
+
+    def _check_nan(self, x: Tensor, name: str) -> None:
+        if not torch.isfinite(x).all():
+            print(f"!!! [ResonantRouter] {name} is NOT FINITE (NaN/Inf) !!!")
+
+    def route(self, *, tag: Tensor, collect_aux: bool) -> Routing:
+        # tag: (B, T, D)
+        if tag.ndim != 3:
+            raise ValueError(f"tag must have shape (B,T,D), got {tuple(tag.shape)}")
+        B, T, D = tag.shape
+        H = self.hashes
+        device = tag.device
+
+        # Get current parameters (potentially tuned)
+        steps = self.steps
+        coupling = self.coupling
+        damping = self.damping
+        
+        if self.tuner is not None:
+            # Apply scaling factors from tuner (tuner.resonant_coupling_mult etc.)
+            coupling = coupling * getattr(self.tuner, "resonant_coupling_mult", 1.0)
+            damping = damping * getattr(self.tuner, "resonant_damping_mult", 1.0)
+            steps = steps + getattr(self.tuner, "resonant_steps_delta", 0)
+
+        # Safety clamp to prevent instability
+        tag = torch.nan_to_num(tag, nan=0.0, posinf=100.0, neginf=-100.0)
+        tag = tag.clamp(-100.0, 100.0)
+        self._check_nan(tag, "tag (input)")
+
+        # 1. Project Patterns to Real/Imag parts (A, B)
+        # patterns is (H, K, D)
+        p_phases = self.patterns.clamp(-100.0, 100.0)
+        A = torch.cos(p_phases)  # Real: (H, K, D)
+        B_ = torch.sin(p_phases) # Imag: (H, K, D)
+
+        # 2. Project Tag to Real/Imag parts (x, y)
+        x = torch.cos(tag).unsqueeze(2).expand(B, T, H, D).clone() # (B, T, H, D)
+        y = torch.sin(tag).unsqueeze(2).expand(B, T, H, D).clone() # (B, T, H, D)
+        
+        # 3. Precompute Real-valued Hebbian Weights (W_r, W_i)
+        At = A.transpose(-1, -2) # (H, D, K)
+        Bt = B_.transpose(-1, -2) # (H, D, K)
+        
+        Wr = (torch.matmul(At, A) + torch.matmul(Bt, B_)) / float(D) # (H, D, D)
+        Wi = (torch.matmul(At, B_) - torch.matmul(Bt, A)) / float(D) # (H, D, D)
+        
+        if self.zero_diag:
+            mask = torch.eye(D, device=device, dtype=torch.bool).unsqueeze(0).expand(H, D, D)
+            Wr = Wr.masked_fill(mask, 0.0)
+            Wi = Wi.masked_fill(mask, 0.0)
+
+        # 4. Iterative Dynamics (Settling) using Real-Valued Components
+        scale = coupling / float(self.buckets)
+        
+        # For Telemetry: track energy and convergence
+        energy_history = []
+        
+        for s_idx in range(int(steps)):
+            xr = x.view(-1, H, 1, D)
+            yi = y.view(-1, H, 1, D)
+            
+            c_r = (torch.matmul(xr, Wr) - torch.matmul(yi, Wi)).view(B, T, H, D)
+            c_i = (torch.matmul(xr, Wi) + torch.matmul(yi, Wr)).view(B, T, H, D)
+            
+            x = (x + scale * c_r) * (1.0 - damping)
+            y = (y + scale * c_i) * (1.0 - damping)
+
+            mag = torch.sqrt(x**2 + y**2 + 1e-12)
+            x = x / mag
+            y = y / mag
+            
+            if collect_aux and s_idx % 5 == 0:
+                # Approximate energy (squared similarity sum)
+                energy = (x**2 + y**2).mean().item()
+                energy_history.append(energy)
+
+        # 5. Final Similarity calculation using real components
+        xr = x.unsqueeze(-2)
+        yi = y.unsqueeze(-2)
+        At = A.transpose(-1, -2)
+        Bt = B_.transpose(-1, -2)
+        
+        dot_r = (torch.matmul(xr, At) + torch.matmul(yi, Bt)).squeeze(-2) # (B, T, H, K)
+        dot_i = (torch.matmul(yi, At) - torch.matmul(xr, Bt)).squeeze(-2) # (B, T, H, K)
+        
+        sim = torch.sqrt(dot_r**2 + dot_i**2 + 1e-12) / float(D)
+        sim = sim.clamp(0.0, 1.0)
+        
+        logits = sim
+        idx_r = logits.argmax(dim=-1)
+        idx_w = idx_r
+
+        aux: dict[str, Tensor] = {}
+        if collect_aux:
+            aux["read_resonant_logits"] = logits
+            aux["write_resonant_logits"] = logits
+            
+            # Telemetry: final max similarity
+            max_sim = logits.max(dim=-1)[0].mean().item()
+            aux["resonant_final_sim"] = torch.tensor(max_sim, device=device)
+            
+            # Telemetry: Entropy of routing (how diversified are the buckets?)
+            if B * T > 1:
+                flat_idx = idx_r.view(-1)
+                counts = torch.bincount(flat_idx, minlength=self.buckets).float()
+                probs = counts / counts.sum().clamp_min(1e-9)
+                entropy = -(probs * torch.log(probs + 1e-9)).sum().item()
+                aux["resonant_bucket_entropy"] = torch.tensor(entropy, device=device)
+
+        return Routing(idx_r=idx_r, idx_w=idx_w, aux=aux)
+

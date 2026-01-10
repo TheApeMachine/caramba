@@ -37,8 +37,8 @@ class _MetalLayerNormFn(torch.autograd.Function):
     ) -> "Tensor":
         if x.device.type != "mps":
             raise RuntimeError("Metal LayerNorm requires device.type == 'mps'")
-        if x.dtype != torch.float16:
-            raise RuntimeError("Metal LayerNorm currently supports fp16 only")
+        if x.dtype not in (torch.float16, torch.float32):
+            raise RuntimeError("Metal LayerNorm currently supports fp16/fp32 only")
         if x.dim() < 1:
             raise RuntimeError("Metal LayerNorm expects x.dim() >= 1")
 
@@ -69,13 +69,13 @@ class _MetalLayerNormFn(torch.autograd.Function):
             ctx.save_for_backward(x2, mean, inv)
             return out
 
-        w2 = weight.to(device=x.device, dtype=torch.float16).contiguous()
+        w2 = weight.to(device=x.device, dtype=x.dtype).contiguous()
         if not has_bias:
             out, mean, inv = ops.layernorm_weight_forward_with_stats(x2, w2, float(eps))
             ctx.save_for_backward(x2, w2, mean, inv)
             return out
 
-        b2 = bias.to(device=x.device, dtype=torch.float16).contiguous()
+        b2 = bias.to(device=x.device, dtype=x.dtype).contiguous()
         out, mean, inv = ops.layernorm_forward_with_stats(x2, w2, b2, float(eps))
         ctx.save_for_backward(x2, w2, mean, inv)
         return out
@@ -89,15 +89,19 @@ class _MetalLayerNormFn(torch.autograd.Function):
             raise RuntimeError("Metal LayerNorm backward requires grad_out")
         if grad_out.device.type != "mps":
             raise RuntimeError("Metal LayerNorm backward requires grad_out on MPS")
-        if grad_out.dtype != torch.float16:
-            grad_out = grad_out.to(dtype=torch.float16)
+        
+        saved = ctx.saved_tensors
+        # x is always first
+        x = saved[0]
+        
+        if grad_out.dtype != x.dtype:
+            grad_out = grad_out.to(dtype=x.dtype)
         g = grad_out.contiguous()
 
         ops = load_caramba_metal_ops(verbose=False)
         has_weight = bool(getattr(ctx, "has_weight", False))
         has_bias = bool(getattr(ctx, "has_bias", False))
 
-        saved = ctx.saved_tensors
         if not has_weight:
             if len(saved) != 3:
                 raise RuntimeError("Metal LayerNorm backward: invalid saved tensor state (noweight)")
@@ -122,8 +126,8 @@ def layernorm_fp16(
     eps: float = 1e-5,
     verbose_build: bool = False,
 ) -> "Tensor":
-    """Fused LayerNorm (MPS/Metal) for fp16 tensors.
-
+    """Fused LayerNorm (MPS/Metal) for fp16/fp32 tensors.
+    
     Supports common forms:
     - (weight,bias) both provided (standard LayerNorm)
     - weight provided, bias None
@@ -131,8 +135,8 @@ def layernorm_fp16(
     """
     if x.device.type != "mps":
         raise RuntimeError("Metal LayerNorm requires device.type == 'mps'")
-    if x.dtype != torch.float16:
-        raise RuntimeError("Metal LayerNorm currently supports fp16 only")
+    if x.dtype not in (torch.float16, torch.float32):
+        raise RuntimeError("Metal LayerNorm currently supports fp16/fp32 only")
     if x.dim() < 1:
         raise RuntimeError("Metal LayerNorm expects x.dim() >= 1")
 

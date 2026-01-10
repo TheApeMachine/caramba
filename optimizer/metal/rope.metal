@@ -9,29 +9,30 @@ struct RoPEParams {
     uint seq_len;
 };
 
-// Apply RoPE in the same "half split" layout as `layer/rope.py`:
+// Apply RoPE:
 // x1 = x[..., :rot/2], x2 = x[..., rot/2:rot]
 // y1 = x1*cos - x2*sin
 // y2 = x1*sin + x2*cos
-kernel void rope_fp16(
-    device const half* x     [[ buffer(0) ]], // (B*H*T, D)
-    device const half* cos_t [[ buffer(1) ]], // (T, rot/2)
-    device const half* sin_t [[ buffer(2) ]], // (T, rot/2)
-    device half* out         [[ buffer(3) ]], // (B*H*T, D)
-    constant RoPEParams& p   [[ buffer(4) ]],
-    uint tid                 [[ thread_position_in_threadgroup ]],
-    uint tg_id               [[ threadgroup_position_in_grid ]]
+template <typename T>
+inline void rope_impl(
+    device const T* x,
+    device const T* cos_t,
+    device const T* sin_t,
+    device T* out,
+    constant RoPEParams& p,
+    uint tid,
+    uint tg_id
 ) {
     constexpr uint TG = 256;
 
     const uint vec = tg_id;
     const uint t = (p.seq_len > 0) ? (vec % p.seq_len) : 0;
 
-    device const half* xr = x + vec * p.d_model;
-    device half* yr = out + vec * p.d_model;
+    device const T* xr = x + vec * p.d_model;
+    device T* yr = out + vec * p.d_model;
 
-    device const half* c = cos_t + t * p.half_rot;
-    device const half* s = sin_t + t * p.half_rot;
+    device const T* c = cos_t + t * p.half_rot;
+    device const T* s = sin_t + t * p.half_rot;
 
     for (uint i = tid; i < p.d_model; i += TG) {
         if (i < p.half_rot) {
@@ -39,8 +40,8 @@ kernel void rope_fp16(
             const float x2 = float(xr[i + p.half_rot]);
             const float cc = float(c[i]);
             const float ss = float(s[i]);
-            yr[i] = half(x1 * cc - x2 * ss);
-            yr[i + p.half_rot] = half(x1 * ss + x2 * cc);
+            yr[i] = T(x1 * cc - x2 * ss);
+            yr[i + p.half_rot] = T(x1 * ss + x2 * cc);
         } else if (i >= p.rot_dim) {
             yr[i] = xr[i];
         }
@@ -48,25 +49,26 @@ kernel void rope_fp16(
     }
 }
 
-kernel void rope_bwd_fp16(
-    device const half* grad_y [[ buffer(0) ]], // (B*H*T, D)
-    device const half* cos_t  [[ buffer(1) ]], // (T, rot/2)
-    device const half* sin_t  [[ buffer(2) ]], // (T, rot/2)
-    device half* grad_x       [[ buffer(3) ]], // (B*H*T, D)
-    constant RoPEParams& p    [[ buffer(4) ]],
-    uint tid                  [[ thread_position_in_threadgroup ]],
-    uint tg_id                [[ threadgroup_position_in_grid ]]
+template <typename T>
+inline void rope_bwd_impl(
+    device const T* grad_y,
+    device const T* cos_t,
+    device const T* sin_t,
+    device T* grad_x,
+    constant RoPEParams& p,
+    uint tid,
+    uint tg_id
 ) {
     constexpr uint TG = 256;
 
     const uint vec = tg_id;
     const uint t = (p.seq_len > 0) ? (vec % p.seq_len) : 0;
 
-    device const half* gr = grad_y + vec * p.d_model;
-    device half* gx = grad_x + vec * p.d_model;
+    device const T* gr = grad_y + vec * p.d_model;
+    device T* gx = grad_x + vec * p.d_model;
 
-    device const half* c = cos_t + t * p.half_rot;
-    device const half* s = sin_t + t * p.half_rot;
+    device const T* c = cos_t + t * p.half_rot;
+    device const T* s = sin_t + t * p.half_rot;
 
     for (uint i = tid; i < p.d_model; i += TG) {
         if (i < p.half_rot) {
@@ -78,12 +80,58 @@ kernel void rope_bwd_fp16(
             const float gy2 = float(gr[i + p.half_rot]);
             const float cc = float(c[i]);
             const float ss = float(s[i]);
-            gx[i] = half(gy1 * cc + gy2 * ss);
-            gx[i + p.half_rot] = half(-gy1 * ss + gy2 * cc);
+            gx[i] = T(gy1 * cc + gy2 * ss);
+            gx[i + p.half_rot] = T(-gy1 * ss + gy2 * cc);
         } else if (i >= p.rot_dim) {
             gx[i] = gr[i];
         }
-        // i in [half_rot, rot_dim) is written by the corresponding i-half_rot thread.
     }
 }
 
+kernel void rope_fp16(
+    device const half* x [[ buffer(0) ]],
+    device const half* cos_t [[ buffer(1) ]],
+    device const half* sin_t [[ buffer(2) ]],
+    device half* out [[ buffer(3) ]],
+    constant RoPEParams& p [[ buffer(4) ]],
+    uint tid [[ thread_position_in_threadgroup ]],
+    uint tg_id [[ threadgroup_position_in_grid ]]) 
+{
+    rope_impl<half>(x, cos_t, sin_t, out, p, tid, tg_id);
+}
+
+kernel void rope_fp32(
+    device const float* x [[ buffer(0) ]],
+    device const float* cos_t [[ buffer(1) ]],
+    device const float* sin_t [[ buffer(2) ]],
+    device float* out [[ buffer(3) ]],
+    constant RoPEParams& p [[ buffer(4) ]],
+    uint tid [[ thread_position_in_threadgroup ]],
+    uint tg_id [[ threadgroup_position_in_grid ]]) 
+{
+    rope_impl<float>(x, cos_t, sin_t, out, p, tid, tg_id);
+}
+
+kernel void rope_bwd_fp16(
+    device const half* grad_y [[ buffer(0) ]],
+    device const half* cos_t [[ buffer(1) ]],
+    device const half* sin_t [[ buffer(2) ]],
+    device half* grad_x [[ buffer(3) ]],
+    constant RoPEParams& p [[ buffer(4) ]],
+    uint tid [[ thread_position_in_threadgroup ]],
+    uint tg_id [[ threadgroup_position_in_grid ]]) 
+{
+    rope_bwd_impl<half>(grad_y, cos_t, sin_t, grad_x, p, tid, tg_id);
+}
+
+kernel void rope_bwd_fp32(
+    device const float* grad_y [[ buffer(0) ]],
+    device const float* cos_t [[ buffer(1) ]],
+    device const float* sin_t [[ buffer(2) ]],
+    device float* grad_x [[ buffer(3) ]],
+    constant RoPEParams& p [[ buffer(4) ]],
+    uint tid [[ thread_position_in_threadgroup ]],
+    uint tg_id [[ threadgroup_position_in_grid ]]) 
+{
+    rope_bwd_impl<float>(grad_y, cos_t, sin_t, grad_x, p, tid, tg_id);
+}

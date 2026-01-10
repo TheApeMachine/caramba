@@ -34,8 +34,8 @@ class AdamWMasterStep:
     ) -> None:
         if p.device.type != "mps":
             raise RuntimeError("Metal AdamWMaster requires device.type == 'mps'")
-        if p.dtype != torch.float16 or grad.dtype != torch.float16:
-            raise RuntimeError("Metal AdamWMaster requires fp16 p/grad")
+        if p.dtype not in (torch.float16, torch.float32) or grad.dtype != p.dtype:
+            raise RuntimeError("Metal AdamWMaster requires fp16/fp32 p/grad (matching)")
         if master.dtype != torch.float32 or exp_avg.dtype != torch.float32 or exp_avg_sq.dtype != torch.float32:
             raise RuntimeError("Metal AdamWMaster requires fp32 master/exp_avg/exp_avg_sq")
         if p.shape != grad.shape:

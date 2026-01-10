@@ -100,26 +100,47 @@ static id<MTLLibrary> g_lib = nil;
 static id<MTLComputePipelineState> g_pipeline_dba_decode = nil;
 static id<MTLComputePipelineState> g_pipeline_dba_decode_null = nil;
 static id<MTLComputePipelineState> g_pipeline_rmsnorm = nil;
+static id<MTLComputePipelineState> g_pipeline_rmsnorm_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_rmsnorm_noweight = nil;
+static id<MTLComputePipelineState> g_pipeline_rmsnorm_noweight_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_rmsnorm_fwd_inv = nil;
+static id<MTLComputePipelineState> g_pipeline_rmsnorm_fwd_inv_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_rmsnorm_noweight_fwd_inv = nil;
+static id<MTLComputePipelineState> g_pipeline_rmsnorm_noweight_fwd_inv_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_rmsnorm_bwd = nil;
+static id<MTLComputePipelineState> g_pipeline_rmsnorm_bwd_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_rmsnorm_bwd_noweight = nil;
+static id<MTLComputePipelineState> g_pipeline_rmsnorm_bwd_noweight_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_rmsnorm_gradw = nil;
+static id<MTLComputePipelineState> g_pipeline_rmsnorm_gradw_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm_weight = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_weight_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm_noweight = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_noweight_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm_fwd_stats = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_fwd_stats_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm_weight_fwd_stats = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_weight_fwd_stats_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm_noweight_fwd_stats = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_noweight_fwd_stats_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm_bwd_x = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_bwd_x_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm_bwd_x_noweight = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_bwd_x_noweight_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm_gradw = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_gradw_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_layernorm_gradb = nil;
+static id<MTLComputePipelineState> g_pipeline_layernorm_gradb_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_rope = nil;
+static id<MTLComputePipelineState> g_pipeline_rope_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_rope_bwd = nil;
+static id<MTLComputePipelineState> g_pipeline_rope_bwd_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_lion = nil;
+static id<MTLComputePipelineState> g_pipeline_lion_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_adamw_master = nil;
+static id<MTLComputePipelineState> g_pipeline_adamw_master_fp32 = nil;
 static id<MTLComputePipelineState> g_pipeline_ssm_fwd = nil;
 static id<MTLComputePipelineState> g_pipeline_ssm_bwd_g = nil;
 static id<MTLComputePipelineState> g_pipeline_ssm_gradB = nil;
@@ -468,8 +489,8 @@ torch::Tensor rmsnorm(
     double eps) {
   TORCH_CHECK(x.device().is_mps(), "rmsnorm: x must be on MPS");
   TORCH_CHECK(weight.device().is_mps(), "rmsnorm: weight must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "rmsnorm: x must be fp16");
-  TORCH_CHECK(weight.dtype() == at::kHalf, "rmsnorm: weight must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "rmsnorm: x must be fp16 or fp32");
+  TORCH_CHECK(weight.dtype() == x.dtype(), "rmsnorm: weight dtype must match x");
   TORCH_CHECK(x.is_contiguous(), "rmsnorm: x must be contiguous");
   TORCH_CHECK(weight.is_contiguous(), "rmsnorm: weight must be contiguous");
   TORCH_CHECK(x.dim() >= 1, "rmsnorm: x must have dim >= 1");
@@ -483,8 +504,9 @@ torch::Tensor rmsnorm(
   TORCH_CHECK(rows * D == x.numel(), "rmsnorm: x.numel must be divisible by D");
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_rmsnorm, "rmsnorm_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_rmsnorm_fp32, "rmsnorm_fp32")
+      : ensure_pipeline(device, &g_pipeline_rmsnorm, "rmsnorm_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm: failed to get current MPS stream");
@@ -521,7 +543,7 @@ torch::Tensor rmsnorm_noweight(
     at::Tensor x, // (..., D) fp16 MPS contiguous
     double eps) {
   TORCH_CHECK(x.device().is_mps(), "rmsnorm_noweight: x must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "rmsnorm_noweight: x must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "rmsnorm_noweight: x must be fp16 or fp32");
   TORCH_CHECK(x.is_contiguous(), "rmsnorm_noweight: x must be contiguous");
   TORCH_CHECK(x.dim() >= 1, "rmsnorm_noweight: x must have dim >= 1");
 
@@ -533,8 +555,9 @@ torch::Tensor rmsnorm_noweight(
   TORCH_CHECK(rows * D == x.numel(), "rmsnorm_noweight: x.numel must be divisible by D");
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_rmsnorm_noweight, "rmsnorm_noweight_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_rmsnorm_noweight_fp32, "rmsnorm_noweight_fp32")
+      : ensure_pipeline(device, &g_pipeline_rmsnorm_noweight, "rmsnorm_noweight_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_noweight: failed to get current MPS stream");
@@ -572,8 +595,8 @@ std::vector<torch::Tensor> rmsnorm_forward_with_inv(
     double eps) {
   TORCH_CHECK(x.device().is_mps(), "rmsnorm_forward_with_inv: x must be on MPS");
   TORCH_CHECK(weight.device().is_mps(), "rmsnorm_forward_with_inv: weight must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "rmsnorm_forward_with_inv: x must be fp16");
-  TORCH_CHECK(weight.dtype() == at::kHalf, "rmsnorm_forward_with_inv: weight must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "rmsnorm_forward_with_inv: x must be fp16 or fp32");
+  TORCH_CHECK(weight.dtype() == x.dtype(), "rmsnorm_forward_with_inv: weight dtype must match x");
   TORCH_CHECK(x.is_contiguous(), "rmsnorm_forward_with_inv: x must be contiguous");
   TORCH_CHECK(weight.is_contiguous(), "rmsnorm_forward_with_inv: weight must be contiguous");
   TORCH_CHECK(x.dim() >= 1, "rmsnorm_forward_with_inv: x must have dim >= 1");
@@ -588,8 +611,9 @@ std::vector<torch::Tensor> rmsnorm_forward_with_inv(
   auto inv = torch::empty({rows}, x.options());
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_rmsnorm_fwd_inv, "rmsnorm_fwd_inv_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_rmsnorm_fwd_inv_fp32, "rmsnorm_fwd_inv_fp32")
+      : ensure_pipeline(device, &g_pipeline_rmsnorm_fwd_inv, "rmsnorm_fwd_inv_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_forward_with_inv: failed to get current MPS stream");
@@ -626,7 +650,7 @@ std::vector<torch::Tensor> rmsnorm_noweight_forward_with_inv(
     at::Tensor x, // (..., D) fp16 MPS contiguous
     double eps) {
   TORCH_CHECK(x.device().is_mps(), "rmsnorm_noweight_forward_with_inv: x must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "rmsnorm_noweight_forward_with_inv: x must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "rmsnorm_noweight_forward_with_inv: x must be fp16 or fp32");
   TORCH_CHECK(x.is_contiguous(), "rmsnorm_noweight_forward_with_inv: x must be contiguous");
   TORCH_CHECK(x.dim() >= 1, "rmsnorm_noweight_forward_with_inv: x must have dim >= 1");
 
@@ -639,8 +663,9 @@ std::vector<torch::Tensor> rmsnorm_noweight_forward_with_inv(
   auto inv = torch::empty({rows}, x.options());
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_rmsnorm_noweight_fwd_inv, "rmsnorm_noweight_fwd_inv_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_rmsnorm_noweight_fwd_inv_fp32, "rmsnorm_noweight_fwd_inv_fp32")
+      : ensure_pipeline(device, &g_pipeline_rmsnorm_noweight_fwd_inv, "rmsnorm_noweight_fwd_inv_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_noweight_forward_with_inv: failed to get current MPS stream");
@@ -682,10 +707,10 @@ torch::Tensor rmsnorm_backward_x(
   TORCH_CHECK(x.device().is_mps(), "rmsnorm_backward_x: x must be on MPS");
   TORCH_CHECK(weight.device().is_mps(), "rmsnorm_backward_x: weight must be on MPS");
   TORCH_CHECK(inv.device().is_mps(), "rmsnorm_backward_x: inv must be on MPS");
-  TORCH_CHECK(grad_y.dtype() == at::kHalf, "rmsnorm_backward_x: grad_y must be fp16");
-  TORCH_CHECK(x.dtype() == at::kHalf, "rmsnorm_backward_x: x must be fp16");
-  TORCH_CHECK(weight.dtype() == at::kHalf, "rmsnorm_backward_x: weight must be fp16");
-  TORCH_CHECK(inv.dtype() == at::kHalf, "rmsnorm_backward_x: inv must be fp16");
+  TORCH_CHECK(grad_y.dtype() == at::kHalf || grad_y.dtype() == at::kFloat, "rmsnorm_backward_x: grad_y must be fp16 or fp32");
+  TORCH_CHECK(x.dtype() == grad_y.dtype(), "rmsnorm_backward_x: x dtype must match grad_y");
+  TORCH_CHECK(weight.dtype() == x.dtype(), "rmsnorm_backward_x: weight dtype must match x");
+  TORCH_CHECK(inv.dtype() == x.dtype(), "rmsnorm_backward_x: inv dtype must match x");
   TORCH_CHECK(grad_y.is_contiguous(), "rmsnorm_backward_x: grad_y must be contiguous");
   TORCH_CHECK(x.is_contiguous(), "rmsnorm_backward_x: x must be contiguous");
   TORCH_CHECK(weight.is_contiguous(), "rmsnorm_backward_x: weight must be contiguous");
@@ -701,8 +726,9 @@ torch::Tensor rmsnorm_backward_x(
   auto grad_x = torch::empty_like(x);
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_rmsnorm_bwd, "rmsnorm_bwd_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_rmsnorm_bwd_fp32, "rmsnorm_bwd_fp32")
+      : ensure_pipeline(device, &g_pipeline_rmsnorm_bwd, "rmsnorm_bwd_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_backward_x: failed to get current MPS stream");
@@ -744,9 +770,9 @@ torch::Tensor rmsnorm_backward_x_noweight(
   TORCH_CHECK(grad_y.device().is_mps(), "rmsnorm_backward_x_noweight: grad_y must be on MPS");
   TORCH_CHECK(x.device().is_mps(), "rmsnorm_backward_x_noweight: x must be on MPS");
   TORCH_CHECK(inv.device().is_mps(), "rmsnorm_backward_x_noweight: inv must be on MPS");
-  TORCH_CHECK(grad_y.dtype() == at::kHalf, "rmsnorm_backward_x_noweight: grad_y must be fp16");
-  TORCH_CHECK(x.dtype() == at::kHalf, "rmsnorm_backward_x_noweight: x must be fp16");
-  TORCH_CHECK(inv.dtype() == at::kHalf, "rmsnorm_backward_x_noweight: inv must be fp16");
+  TORCH_CHECK(grad_y.dtype() == at::kHalf || grad_y.dtype() == at::kFloat, "rmsnorm_backward_x_noweight: grad_y must be fp16 or fp32");
+  TORCH_CHECK(x.dtype() == grad_y.dtype(), "rmsnorm_backward_x_noweight: x dtype must match grad_y");
+  TORCH_CHECK(inv.dtype() == x.dtype(), "rmsnorm_backward_x_noweight: inv dtype must match x");
   TORCH_CHECK(grad_y.is_contiguous(), "rmsnorm_backward_x_noweight: grad_y must be contiguous");
   TORCH_CHECK(x.is_contiguous(), "rmsnorm_backward_x_noweight: x must be contiguous");
   TORCH_CHECK(inv.is_contiguous(), "rmsnorm_backward_x_noweight: inv must be contiguous");
@@ -760,8 +786,9 @@ torch::Tensor rmsnorm_backward_x_noweight(
   auto grad_x = torch::empty_like(x);
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_rmsnorm_bwd_noweight, "rmsnorm_bwd_noweight_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_rmsnorm_bwd_noweight_fp32, "rmsnorm_bwd_noweight_fp32")
+      : ensure_pipeline(device, &g_pipeline_rmsnorm_bwd_noweight, "rmsnorm_bwd_noweight_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_backward_x_noweight: failed to get current MPS stream");
@@ -802,9 +829,9 @@ torch::Tensor rmsnorm_backward_w(
   TORCH_CHECK(grad_y.device().is_mps(), "rmsnorm_backward_w: grad_y must be on MPS");
   TORCH_CHECK(x.device().is_mps(), "rmsnorm_backward_w: x must be on MPS");
   TORCH_CHECK(inv.device().is_mps(), "rmsnorm_backward_w: inv must be on MPS");
-  TORCH_CHECK(grad_y.dtype() == at::kHalf, "rmsnorm_backward_w: grad_y must be fp16");
-  TORCH_CHECK(x.dtype() == at::kHalf, "rmsnorm_backward_w: x must be fp16");
-  TORCH_CHECK(inv.dtype() == at::kHalf, "rmsnorm_backward_w: inv must be fp16");
+  TORCH_CHECK(grad_y.dtype() == at::kHalf || grad_y.dtype() == at::kFloat, "rmsnorm_backward_w: grad_y must be fp16 or fp32");
+  TORCH_CHECK(x.dtype() == grad_y.dtype(), "rmsnorm_backward_w: x dtype must match grad_y");
+  TORCH_CHECK(inv.dtype() == x.dtype(), "rmsnorm_backward_w: inv dtype must match x");
   TORCH_CHECK(grad_y.is_contiguous(), "rmsnorm_backward_w: grad_y must be contiguous");
   TORCH_CHECK(x.is_contiguous(), "rmsnorm_backward_w: x must be contiguous");
   TORCH_CHECK(inv.is_contiguous(), "rmsnorm_backward_w: inv must be contiguous");
@@ -818,8 +845,9 @@ torch::Tensor rmsnorm_backward_w(
   auto grad_w = torch::empty({D}, x.options());
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_rmsnorm_gradw, "rmsnorm_gradw_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_rmsnorm_gradw_fp32, "rmsnorm_gradw_fp32")
+      : ensure_pipeline(device, &g_pipeline_rmsnorm_gradw, "rmsnorm_gradw_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_backward_w: failed to get current MPS stream");
@@ -860,9 +888,9 @@ torch::Tensor layernorm(
   TORCH_CHECK(x.device().is_mps(), "layernorm: x must be on MPS");
   TORCH_CHECK(weight.device().is_mps(), "layernorm: weight must be on MPS");
   TORCH_CHECK(bias.device().is_mps(), "layernorm: bias must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm: x must be fp16");
-  TORCH_CHECK(weight.dtype() == at::kHalf, "layernorm: weight must be fp16");
-  TORCH_CHECK(bias.dtype() == at::kHalf, "layernorm: bias must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "layernorm: x must be fp16 or fp32");
+  TORCH_CHECK(weight.dtype() == x.dtype(), "layernorm: weight dtype match x");
+  TORCH_CHECK(bias.dtype() == x.dtype(), "layernorm: bias dtype match x");
   TORCH_CHECK(x.is_contiguous(), "layernorm: x must be contiguous");
   TORCH_CHECK(weight.is_contiguous(), "layernorm: weight must be contiguous");
   TORCH_CHECK(bias.is_contiguous(), "layernorm: bias must be contiguous");
@@ -878,8 +906,9 @@ torch::Tensor layernorm(
   TORCH_CHECK(rows * D == x.numel(), "layernorm: x.numel must be divisible by D");
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm, "layernorm_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_fp32, "layernorm_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm, "layernorm_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm: failed to get current MPS stream");
@@ -919,8 +948,8 @@ torch::Tensor layernorm_weight(
     double eps) {
   TORCH_CHECK(x.device().is_mps(), "layernorm_weight: x must be on MPS");
   TORCH_CHECK(weight.device().is_mps(), "layernorm_weight: weight must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_weight: x must be fp16");
-  TORCH_CHECK(weight.dtype() == at::kHalf, "layernorm_weight: weight must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "layernorm_weight: x must be fp16 or fp32");
+  TORCH_CHECK(weight.dtype() == x.dtype(), "layernorm_weight: weight dtype match x");
   TORCH_CHECK(x.is_contiguous(), "layernorm_weight: x must be contiguous");
   TORCH_CHECK(weight.is_contiguous(), "layernorm_weight: weight must be contiguous");
   TORCH_CHECK(x.dim() >= 1, "layernorm_weight: x must have dim >= 1");
@@ -934,8 +963,9 @@ torch::Tensor layernorm_weight(
   TORCH_CHECK(rows * D == x.numel(), "layernorm_weight: x.numel must be divisible by D");
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm_weight, "layernorm_weight_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_weight_fp32, "layernorm_weight_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm_weight, "layernorm_weight_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_weight: failed to get current MPS stream");
@@ -972,7 +1002,7 @@ torch::Tensor layernorm_noweight(
     at::Tensor x, // (..., D) fp16 MPS contiguous
     double eps) {
   TORCH_CHECK(x.device().is_mps(), "layernorm_noweight: x must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_noweight: x must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "layernorm_noweight: x must be fp16 or fp32");
   TORCH_CHECK(x.is_contiguous(), "layernorm_noweight: x must be contiguous");
   TORCH_CHECK(x.dim() >= 1, "layernorm_noweight: x must have dim >= 1");
 
@@ -984,8 +1014,9 @@ torch::Tensor layernorm_noweight(
   TORCH_CHECK(rows * D == x.numel(), "layernorm_noweight: x.numel must be divisible by D");
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm_noweight, "layernorm_noweight_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_noweight_fp32, "layernorm_noweight_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm_noweight, "layernorm_noweight_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_noweight: failed to get current MPS stream");
@@ -1025,9 +1056,9 @@ std::vector<torch::Tensor> layernorm_forward_with_stats(
   TORCH_CHECK(x.device().is_mps(), "layernorm_forward_with_stats: x must be on MPS");
   TORCH_CHECK(weight.device().is_mps(), "layernorm_forward_with_stats: weight must be on MPS");
   TORCH_CHECK(bias.device().is_mps(), "layernorm_forward_with_stats: bias must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_forward_with_stats: x must be fp16");
-  TORCH_CHECK(weight.dtype() == at::kHalf, "layernorm_forward_with_stats: weight must be fp16");
-  TORCH_CHECK(bias.dtype() == at::kHalf, "layernorm_forward_with_stats: bias must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "layernorm_forward_with_stats: x must be fp16 or fp32");
+  TORCH_CHECK(weight.dtype() == x.dtype(), "layernorm_forward_with_stats: weight dtype match x");
+  TORCH_CHECK(bias.dtype() == x.dtype(), "layernorm_forward_with_stats: bias dtype match x");
   TORCH_CHECK(x.is_contiguous(), "layernorm_forward_with_stats: x must be contiguous");
   TORCH_CHECK(weight.is_contiguous(), "layernorm_forward_with_stats: weight must be contiguous");
   TORCH_CHECK(bias.is_contiguous(), "layernorm_forward_with_stats: bias must be contiguous");
@@ -1045,8 +1076,9 @@ std::vector<torch::Tensor> layernorm_forward_with_stats(
   auto inv = torch::empty({rows}, x.options());
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm_fwd_stats, "layernorm_fwd_stats_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_fwd_stats_fp32, "layernorm_fwd_stats_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm_fwd_stats, "layernorm_fwd_stats_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_forward_with_stats: failed to get current MPS stream");
@@ -1087,8 +1119,8 @@ std::vector<torch::Tensor> layernorm_weight_forward_with_stats(
     double eps) {
   TORCH_CHECK(x.device().is_mps(), "layernorm_weight_forward_with_stats: x must be on MPS");
   TORCH_CHECK(weight.device().is_mps(), "layernorm_weight_forward_with_stats: weight must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_weight_forward_with_stats: x must be fp16");
-  TORCH_CHECK(weight.dtype() == at::kHalf, "layernorm_weight_forward_with_stats: weight must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "layernorm_weight_forward_with_stats: x must be fp16 or fp32");
+  TORCH_CHECK(weight.dtype() == x.dtype(), "layernorm_weight_forward_with_stats: weight dtype match x");
   TORCH_CHECK(x.is_contiguous(), "layernorm_weight_forward_with_stats: x must be contiguous");
   TORCH_CHECK(weight.is_contiguous(), "layernorm_weight_forward_with_stats: weight must be contiguous");
   TORCH_CHECK(x.dim() >= 1, "layernorm_weight_forward_with_stats: x must have dim >= 1");
@@ -1104,8 +1136,9 @@ std::vector<torch::Tensor> layernorm_weight_forward_with_stats(
   auto inv = torch::empty({rows}, x.options());
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm_weight_fwd_stats, "layernorm_weight_fwd_stats_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_weight_fwd_stats_fp32, "layernorm_weight_fwd_stats_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm_weight_fwd_stats, "layernorm_weight_fwd_stats_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_weight_forward_with_stats: failed to get current MPS stream");
@@ -1143,7 +1176,7 @@ std::vector<torch::Tensor> layernorm_noweight_forward_with_stats(
     at::Tensor x, // (..., D) fp16 MPS contiguous
     double eps) {
   TORCH_CHECK(x.device().is_mps(), "layernorm_noweight_forward_with_stats: x must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_noweight_forward_with_stats: x must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "layernorm_noweight_forward_with_stats: x must be fp16 or fp32");
   TORCH_CHECK(x.is_contiguous(), "layernorm_noweight_forward_with_stats: x must be contiguous");
   TORCH_CHECK(x.dim() >= 1, "layernorm_noweight_forward_with_stats: x must have dim >= 1");
 
@@ -1157,8 +1190,9 @@ std::vector<torch::Tensor> layernorm_noweight_forward_with_stats(
   auto inv = torch::empty({rows}, x.options());
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm_noweight_fwd_stats, "layernorm_noweight_fwd_stats_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_noweight_fwd_stats_fp32, "layernorm_noweight_fwd_stats_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm_noweight_fwd_stats, "layernorm_noweight_fwd_stats_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_noweight_forward_with_stats: failed to get current MPS stream");
@@ -1203,11 +1237,11 @@ torch::Tensor layernorm_backward_x(
   TORCH_CHECK(weight.device().is_mps(), "layernorm_backward_x: weight must be on MPS");
   TORCH_CHECK(mean.device().is_mps(), "layernorm_backward_x: mean must be on MPS");
   TORCH_CHECK(inv.device().is_mps(), "layernorm_backward_x: inv must be on MPS");
-  TORCH_CHECK(grad_y.dtype() == at::kHalf, "layernorm_backward_x: grad_y must be fp16");
-  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_backward_x: x must be fp16");
-  TORCH_CHECK(weight.dtype() == at::kHalf, "layernorm_backward_x: weight must be fp16");
-  TORCH_CHECK(mean.dtype() == at::kHalf, "layernorm_backward_x: mean must be fp16");
-  TORCH_CHECK(inv.dtype() == at::kHalf, "layernorm_backward_x: inv must be fp16");
+  TORCH_CHECK(grad_y.dtype() == at::kHalf || grad_y.dtype() == at::kFloat, "layernorm_backward_x: grad_y must be fp16 or fp32");
+  TORCH_CHECK(x.dtype() == grad_y.dtype(), "layernorm_backward_x: x dtype match grad_y");
+  TORCH_CHECK(weight.dtype() == x.dtype(), "layernorm_backward_x: weight dtype match x");
+  TORCH_CHECK(mean.dtype() == x.dtype(), "layernorm_backward_x: mean must dtype match x");
+  TORCH_CHECK(inv.dtype() == x.dtype(), "layernorm_backward_x: inv dtype match x");
   TORCH_CHECK(grad_y.is_contiguous(), "layernorm_backward_x: grad_y must be contiguous");
   TORCH_CHECK(x.is_contiguous(), "layernorm_backward_x: x must be contiguous");
   TORCH_CHECK(weight.is_contiguous(), "layernorm_backward_x: weight must be contiguous");
@@ -1227,8 +1261,9 @@ torch::Tensor layernorm_backward_x(
   auto grad_x = torch::empty_like(x);
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm_bwd_x, "layernorm_bwd_x_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_bwd_x_fp32, "layernorm_bwd_x_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm_bwd_x, "layernorm_bwd_x_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_backward_x: failed to get current MPS stream");
@@ -1273,10 +1308,10 @@ torch::Tensor layernorm_backward_x_noweight(
   TORCH_CHECK(x.device().is_mps(), "layernorm_backward_x_noweight: x must be on MPS");
   TORCH_CHECK(mean.device().is_mps(), "layernorm_backward_x_noweight: mean must be on MPS");
   TORCH_CHECK(inv.device().is_mps(), "layernorm_backward_x_noweight: inv must be on MPS");
-  TORCH_CHECK(grad_y.dtype() == at::kHalf, "layernorm_backward_x_noweight: grad_y must be fp16");
-  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_backward_x_noweight: x must be fp16");
-  TORCH_CHECK(mean.dtype() == at::kHalf, "layernorm_backward_x_noweight: mean must be fp16");
-  TORCH_CHECK(inv.dtype() == at::kHalf, "layernorm_backward_x_noweight: inv must be fp16");
+  TORCH_CHECK(grad_y.dtype() == at::kHalf || grad_y.dtype() == at::kFloat, "layernorm_backward_x_noweight: grad_y must be fp16 or fp32");
+  TORCH_CHECK(x.dtype() == grad_y.dtype(), "layernorm_backward_x_noweight: x dtype match grad_y");
+  TORCH_CHECK(mean.dtype() == x.dtype(), "layernorm_backward_x_noweight: mean dtype match x");
+  TORCH_CHECK(inv.dtype() == x.dtype(), "layernorm_backward_x_noweight: inv dtype match x");
   TORCH_CHECK(grad_y.is_contiguous(), "layernorm_backward_x_noweight: grad_y must be contiguous");
   TORCH_CHECK(x.is_contiguous(), "layernorm_backward_x_noweight: x must be contiguous");
   TORCH_CHECK(mean.is_contiguous(), "layernorm_backward_x_noweight: mean must be contiguous");
@@ -1284,8 +1319,8 @@ torch::Tensor layernorm_backward_x_noweight(
   TORCH_CHECK(x.sizes() == grad_y.sizes(), "layernorm_backward_x_noweight: x/grad_y shape mismatch");
 
   const int64_t D = x.size(-1);
-  TORCH_CHECK(D > 0, "layernorm_backward_x_noweight: invalid last dim");
   const int64_t rows = x.numel() / D;
+  TORCH_CHECK(D > 0, "layernorm_backward_x_noweight: invalid last dim");
   TORCH_CHECK(rows * D == x.numel(), "layernorm_backward_x_noweight: x.numel must be divisible by D");
   TORCH_CHECK(mean.numel() == rows, "layernorm_backward_x_noweight: mean shape mismatch");
   TORCH_CHECK(inv.numel() == rows, "layernorm_backward_x_noweight: inv shape mismatch");
@@ -1293,8 +1328,9 @@ torch::Tensor layernorm_backward_x_noweight(
   auto grad_x = torch::empty_like(x);
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm_bwd_x_noweight, "layernorm_bwd_x_noweight_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_bwd_x_noweight_fp32, "layernorm_bwd_x_noweight_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm_bwd_x_noweight, "layernorm_bwd_x_noweight_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_backward_x_noweight: failed to get current MPS stream");
@@ -1338,10 +1374,10 @@ torch::Tensor layernorm_backward_w(
   TORCH_CHECK(x.device().is_mps(), "layernorm_backward_w: x must be on MPS");
   TORCH_CHECK(mean.device().is_mps(), "layernorm_backward_w: mean must be on MPS");
   TORCH_CHECK(inv.device().is_mps(), "layernorm_backward_w: inv must be on MPS");
-  TORCH_CHECK(grad_y.dtype() == at::kHalf, "layernorm_backward_w: grad_y must be fp16");
-  TORCH_CHECK(x.dtype() == at::kHalf, "layernorm_backward_w: x must be fp16");
-  TORCH_CHECK(mean.dtype() == at::kHalf, "layernorm_backward_w: mean must be fp16");
-  TORCH_CHECK(inv.dtype() == at::kHalf, "layernorm_backward_w: inv must be fp16");
+  TORCH_CHECK(grad_y.dtype() == at::kHalf || grad_y.dtype() == at::kFloat, "layernorm_backward_w: grad_y must be fp16 or fp32");
+  TORCH_CHECK(x.dtype() == grad_y.dtype(), "layernorm_backward_w: x dtype match grad_y");
+  TORCH_CHECK(mean.dtype() == x.dtype(), "layernorm_backward_w: mean dtype match x");
+  TORCH_CHECK(inv.dtype() == x.dtype(), "layernorm_backward_w: inv dtype match x");
   TORCH_CHECK(grad_y.is_contiguous(), "layernorm_backward_w: grad_y must be contiguous");
   TORCH_CHECK(x.is_contiguous(), "layernorm_backward_w: x must be contiguous");
   TORCH_CHECK(mean.is_contiguous(), "layernorm_backward_w: mean must be contiguous");
@@ -1358,8 +1394,9 @@ torch::Tensor layernorm_backward_w(
   auto grad_w = torch::empty({D}, x.options());
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm_gradw, "layernorm_gradw_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_gradw_fp32, "layernorm_gradw_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm_gradw, "layernorm_gradw_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_backward_w: failed to get current MPS stream");
@@ -1397,7 +1434,7 @@ torch::Tensor layernorm_backward_b(
     at::Tensor grad_y // (..., D) fp16 MPS contiguous
 ) {
   TORCH_CHECK(grad_y.device().is_mps(), "layernorm_backward_b: grad_y must be on MPS");
-  TORCH_CHECK(grad_y.dtype() == at::kHalf, "layernorm_backward_b: grad_y must be fp16");
+  TORCH_CHECK(grad_y.dtype() == at::kHalf || grad_y.dtype() == at::kFloat, "layernorm_backward_b: grad_y must be fp16 or fp32");
   TORCH_CHECK(grad_y.is_contiguous(), "layernorm_backward_b: grad_y must be contiguous");
 
   const int64_t D = grad_y.size(-1);
@@ -1408,8 +1445,9 @@ torch::Tensor layernorm_backward_b(
   auto grad_b = torch::empty({D}, grad_y.options());
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_layernorm_gradb, "layernorm_gradb_fp16");
+  id<MTLComputePipelineState> pipeline = (grad_y.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_layernorm_gradb_fp32, "layernorm_gradb_fp32")
+      : ensure_pipeline(device, &g_pipeline_layernorm_gradb, "layernorm_gradb_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_backward_b: failed to get current MPS stream");
@@ -1448,9 +1486,9 @@ torch::Tensor rope(
   TORCH_CHECK(x.device().is_mps(), "rope: x must be on MPS");
   TORCH_CHECK(cos.device().is_mps(), "rope: cos must be on MPS");
   TORCH_CHECK(sin.device().is_mps(), "rope: sin must be on MPS");
-  TORCH_CHECK(x.dtype() == at::kHalf, "rope: x must be fp16");
-  TORCH_CHECK(cos.dtype() == at::kHalf, "rope: cos must be fp16");
-  TORCH_CHECK(sin.dtype() == at::kHalf, "rope: sin must be fp16");
+  TORCH_CHECK(x.dtype() == at::kHalf || x.dtype() == at::kFloat, "rope: x must be fp16 or fp32");
+  TORCH_CHECK(cos.dtype() == x.dtype(), "rope: cos dtype must match x");
+  TORCH_CHECK(sin.dtype() == x.dtype(), "rope: sin dtype must match x");
   TORCH_CHECK(x.is_contiguous(), "rope: x must be contiguous");
   TORCH_CHECK(cos.is_contiguous(), "rope: cos must be contiguous");
   TORCH_CHECK(sin.is_contiguous(), "rope: sin must be contiguous");
@@ -1476,8 +1514,9 @@ torch::Tensor rope(
   const int64_t n_vec = B * H * T;
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_rope, "rope_fp16");
+  id<MTLComputePipelineState> pipeline = (x.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_rope_fp32, "rope_fp32")
+      : ensure_pipeline(device, &g_pipeline_rope, "rope_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rope: failed to get current MPS stream");
@@ -1520,9 +1559,9 @@ torch::Tensor rope_backward(
   TORCH_CHECK(grad_y.device().is_mps(), "rope_backward: grad_y must be on MPS");
   TORCH_CHECK(cos.device().is_mps(), "rope_backward: cos must be on MPS");
   TORCH_CHECK(sin.device().is_mps(), "rope_backward: sin must be on MPS");
-  TORCH_CHECK(grad_y.dtype() == at::kHalf, "rope_backward: grad_y must be fp16");
-  TORCH_CHECK(cos.dtype() == at::kHalf, "rope_backward: cos must be fp16");
-  TORCH_CHECK(sin.dtype() == at::kHalf, "rope_backward: sin must be fp16");
+  TORCH_CHECK(grad_y.dtype() == at::kHalf || grad_y.dtype() == at::kFloat, "rope_backward: grad_y must be fp16 or fp32");
+  TORCH_CHECK(cos.dtype() == grad_y.dtype(), "rope_backward: cos dtype must match grad_y");
+  TORCH_CHECK(sin.dtype() == grad_y.dtype(), "rope_backward: sin dtype must match grad_y");
   TORCH_CHECK(grad_y.is_contiguous(), "rope_backward: grad_y must be contiguous");
   TORCH_CHECK(cos.is_contiguous(), "rope_backward: cos must be contiguous");
   TORCH_CHECK(sin.is_contiguous(), "rope_backward: sin must be contiguous");
@@ -1548,8 +1587,9 @@ torch::Tensor rope_backward(
   const int64_t n_vec = B * H * T;
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_rope_bwd, "rope_bwd_fp16");
+  id<MTLComputePipelineState> pipeline = (grad_y.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_rope_bwd_fp32, "rope_bwd_fp32")
+      : ensure_pipeline(device, &g_pipeline_rope_bwd, "rope_bwd_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rope_backward: failed to get current MPS stream");
@@ -1595,9 +1635,9 @@ torch::Tensor lion_step(
   TORCH_CHECK(grad.device().is_mps(), "lion_step: grad must be on MPS");
   TORCH_CHECK(m.device().is_mps(), "lion_step: m must be on MPS");
 
-  TORCH_CHECK(p.dtype() == at::kHalf, "lion_step: p must be fp16");
-  TORCH_CHECK(grad.dtype() == at::kHalf, "lion_step: grad must be fp16");
-  TORCH_CHECK(m.dtype() == at::kHalf, "lion_step: m must be fp16");
+  TORCH_CHECK(p.dtype() == at::kHalf || p.dtype() == at::kFloat, "lion_step: p must be fp16 or fp32");
+  TORCH_CHECK(grad.dtype() == p.dtype(), "lion_step: grad dtype match p");
+  TORCH_CHECK(m.dtype() == p.dtype(), "lion_step: m dtype match p");
 
   TORCH_CHECK(p.is_contiguous(), "lion_step: p must be contiguous");
   TORCH_CHECK(grad.is_contiguous(), "lion_step: grad must be contiguous");
@@ -1609,8 +1649,9 @@ torch::Tensor lion_step(
   const int64_t n = p.numel();
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_lion, "lion_step_fp16");
+  id<MTLComputePipelineState> pipeline = (p.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_lion_fp32, "lion_step_fp32")
+      : ensure_pipeline(device, &g_pipeline_lion, "lion_step_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "lion_step: failed to get current MPS stream");
@@ -1662,8 +1703,8 @@ torch::Tensor adamw_master_step(
   TORCH_CHECK(exp_avg.device().is_mps(), "adamw_master_step: exp_avg must be on MPS");
   TORCH_CHECK(exp_avg_sq.device().is_mps(), "adamw_master_step: exp_avg_sq must be on MPS");
 
-  TORCH_CHECK(p.dtype() == at::kHalf, "adamw_master_step: p must be fp16");
-  TORCH_CHECK(grad.dtype() == at::kHalf, "adamw_master_step: grad must be fp16");
+  TORCH_CHECK(p.dtype() == at::kHalf || p.dtype() == at::kFloat, "adamw_master_step: p must be fp16 or fp32");
+  TORCH_CHECK(grad.dtype() == p.dtype(), "adamw_master_step: grad dtype match p");
   TORCH_CHECK(master.dtype() == at::kFloat, "adamw_master_step: master must be fp32");
   TORCH_CHECK(exp_avg.dtype() == at::kFloat, "adamw_master_step: exp_avg must be fp32");
   TORCH_CHECK(exp_avg_sq.dtype() == at::kFloat, "adamw_master_step: exp_avg_sq must be fp32");
@@ -1682,8 +1723,9 @@ torch::Tensor adamw_master_step(
   const int64_t n = p.numel();
 
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
-  id<MTLComputePipelineState> pipeline =
-      ensure_pipeline(device, &g_pipeline_adamw_master, "adamw_master_step_fp16");
+  id<MTLComputePipelineState> pipeline = (p.dtype() == at::kFloat)
+      ? ensure_pipeline(device, &g_pipeline_adamw_master_fp32, "adamw_master_step_fp32")
+      : ensure_pipeline(device, &g_pipeline_adamw_master, "adamw_master_step_fp16");
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "adamw_master_step: failed to get current MPS stream");

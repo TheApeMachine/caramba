@@ -139,3 +139,7 @@ class TrainingVizMosaicContext(TrainingVizContext):
     # This must be in __slots__ for layers to attach state to the context.
     _mosaic: dict[str, Any] | None = None
 
+    # Memory block state store (e.g. RMF, KV cache).
+    # Must be in __slots__ for MemoryBlockStateStore to attach state.
+    _memblock: dict[str, Any] | None = None
+
