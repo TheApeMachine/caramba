@@ -13,11 +13,12 @@ from torch.utils.data import Dataset
 from typing_extensions import override
 
 from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
+from caramba.data.base import Dataset as CarambaDataset
 
 _INT32_MAX = 2**31 - 1
 
 
-class NpyDataset(Dataset[TensorDictBase]):
+class NpyDataset(Dataset[TensorDictBase], CarambaDataset):
     """NumPy token dataset
 
     Loads a 1D array of token IDs from disk and serves fixed-length blocks
@@ -98,7 +99,7 @@ class NpyDataset(Dataset[TensorDictBase]):
         return (self.tokens_np.size - 1) // self.block_size
 
     @override
-    def __getitem__(self, idx: int) -> TensorDictBase:
+    def __getitem__(self, index: int) -> TensorDictBase:
         """Get training sample
 
         Extracts a token block and creates (input, target) pairs where target
@@ -106,7 +107,7 @@ class NpyDataset(Dataset[TensorDictBase]):
         autoregressive language modeling where the model predicts the next token.
         """
         # Calculate start position for non-overlapping block
-        start = idx * self.block_size
+        start = index * self.block_size
         end = start + self.block_size + 1
 
         # Slice from mmap (numpy handles uint16 correctly)
