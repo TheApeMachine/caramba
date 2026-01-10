@@ -1,0 +1,3 @@
+projectboard:
+  transport: streamable-http
+  url: "http://${CARAMBA_PROJECTBOARD_HOST:-localhost}:${CARAMBA_PROJECTBOARD_PORT:-8001}/mcp"

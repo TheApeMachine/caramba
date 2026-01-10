@@ -1,5 +1,6 @@
 type: verifier
 name: "Verifier"
+url: "http://verifier:8001"
 description: "A merge-gate verifier for agentic development changes (diff + tests)."
 
 instructions: |
@@ -18,7 +19,7 @@ instructions: |
     - Identify risky changes, missing tests, and unclear behavior
     - Provide short, actionable feedback suitable for a developer to fix
 
-model: "gpt-5.2"
+model: "openai/gpt-5.2"
 temperature: 0.0
 tool_choice: "auto"
 

@@ -9,6 +9,7 @@ Reference:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -19,8 +20,12 @@ import deeplake
 from deeplake import types
 from colbert.infra import ColBERTConfig
 from colbert.modeling.checkpoint import Checkpoint
+import uvicorn
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +67,7 @@ def _rowview_to_str_dict(row: object) -> dict[str, Any]:
 
 # Initialize FastMCP server (Docker-friendly HTTP transport)
 mcp = FastMCP("DeepLake Tools", json_response=True)
+mcp.settings.transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 
 class DeepLakeTool():
@@ -327,5 +333,23 @@ class DeepLakeMCP:
 
 
 if __name__ == "__main__":
-    # Host/port are controlled via MCP_SERVER_HOST / MCP_SERVER_PORT env vars.
-    mcp.run(transport="streamable-http")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8001)
+    parser.add_argument("--host", type=str, default="0.0.0.0")
+    args = parser.parse_args()
+
+    mcp.settings.host = args.host
+    mcp.settings.port = args.port
+
+    app = mcp.streamable_http_app()
+
+    def root(_request: Request) -> Response:
+        return JSONResponse({"status": "ok"})
+
+    def health(_request: Request) -> Response:
+        return JSONResponse({"status": "ok"})
+
+    app.add_route("/", root, methods=["GET"])
+    app.add_route("/health", health, methods=["GET"])
+
+    uvicorn.run(app, host=args.host, port=args.port)

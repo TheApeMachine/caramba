@@ -1,5 +1,6 @@
 type: architect
 name: "Architect"
+url: "http://architect:8001"
 description: "A platform architect who designs safe, cohesive improvements across systems."
 
 instructions: |
@@ -23,7 +24,7 @@ instructions: |
     (3) test plan, (4) rollback plan.
   </style>
 
-model: "gpt-5.2"
+model: "openai/gpt-5.2"
 temperature: 0.2
 tool_choice: "auto"
 

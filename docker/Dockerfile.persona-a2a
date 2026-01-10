@@ -1,60 +1,131 @@
-# Dockerfile for persona A2A servers.
+# OPTIMIZED Dockerfile for persona A2A servers
 #
-# This is a generic Dockerfile that can run any persona as an A2A server.
-# The PERSONA_FILE environment variable specifies which persona YAML to load.
-FROM python:3.12-slim
+# Key optimizations:
+# 1. Multi-stage build to separate dependency installation from runtime
+# 2. Copy ONLY required code (ai/, console/, config/personas/) - NOT the entire repo
+# 3. Install ONLY agent dependencies (no torch, transformers, or ML training code)
+# 4. Agents access code via filesystem-mcp tool when needed
+#
+# Image size: ~200-300MB instead of 2-3GB
+# Build time: ~30-60s instead of 5-10 minutes
+
+FROM python:3.12-slim AS base
 
 WORKDIR /app
 
-# Keep the virtualenv outside /app because docker-compose bind-mounts /app.
-# If the venv lived in /app, the mount would hide it and uv would try to
-# manage a host-created .venv (often with a mismatched interpreter).
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="/opt/venv/bin:${PATH}"
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv
-
-# Install system dependencies
+# System dependencies (minimal)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv (same pattern as other docker images)
+# Install uv (package manager)
 ADD https://astral.sh/uv/install.sh /uv-installer.sh
-RUN sh /uv-installer.sh && rm /uv-installer.sh
-# Make uv available to non-root users (don't rely on /root/.local/bin).
-RUN mv /root/.local/bin/uv /usr/local/bin/uv
+RUN sh /uv-installer.sh && rm /uv-installer.sh && \
+    mv /root/.local/bin/uv /usr/local/bin/uv
 
-# Copy dependency files (for better Docker caching)
-COPY pyproject.toml uv.lock ./
+# ============================================================================
+# Stage 1: Install dependencies
+# ============================================================================
+FROM base AS deps
 
-# Install Python dependencies (locked) without building local project.
-# The project build needs sources like README.md and ./ai which are copied later.
-RUN python3.12 -m venv /opt/venv \
-	&& . /opt/venv/bin/activate \
-    && uv sync --frozen --no-install-project
+# Create virtual environment
+RUN python3.12 -m venv /opt/venv
 
-# Copy application code
-COPY . .
+# Install ONLY agent dependencies (not the full caramba ML stack)
+# This excludes: torch (2GB), transformers (1GB), and all training/inference code
+RUN . /opt/venv/bin/activate && uv pip install \
+    --no-cache-dir \
+    "google-adk[a2a]==1.22.0" \
+    "a2a-sdk[postgresql]==0.3.22" \
+    "litellm==1.80.11" \
+    "pydantic==2.12.5" \
+    "pydantic-yaml==1.6.0" \
+    "uvicorn==0.40.0" \
+    "fastapi==0.123.10" \
+    "httpx==0.28.1" \
+    "rich==14.2.0" \
+    "PyYAML==6.0.3" \
+    "networkx==3.6.1" \
+    "mcp[cli]==1.25.0" \
+    "click==8.3.1" \
+    "starlette>=0.37.0" \
+    "jsonschema-pydantic==0.6" \
+    "asyncpg>=0.29.0" \
+    "sqlalchemy[asyncio]>=2.0.0"
 
-# Install the local project now that sources are present.
-RUN . /opt/venv/bin/activate \
-    && uv sync --frozen
+# ============================================================================
+# Stage 2: Runtime image with minimal code
+# ============================================================================
+FROM base
 
-# Create non-root user for security
-RUN groupadd -r appuser \
-    && useradd -r -g appuser -u 1000 -m -d /home/appuser -s /bin/bash appuser
-RUN chown -R appuser:appuser /app
-RUN mkdir -p /home/appuser/.cache/uv && chown -R appuser:appuser /home/appuser
+# Copy virtual environment from deps stage
+COPY --from=deps /opt/venv /opt/venv
 
-ENV HOME=/home/appuser
-ENV UV_CACHE_DIR=/home/appuser/.cache/uv
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV CARAMBA_ROOT=/app
+
+# Copy ONLY the code needed to run agents (NOT the entire repository!)
+# Total: ~100-200 files instead of 10,000+
+
+# Create caramba package structure
+RUN mkdir -p caramba/ai caramba/console caramba/config config/personas config/teams
+
+# 1. Agent framework (new modular structure)
+COPY ai/__init__.py ./caramba/ai/
+COPY ai/types.py ./caramba/ai/
+COPY ai/persona.py ./caramba/ai/
+COPY ai/team.py ./caramba/ai/
+COPY ai/agent.py ./caramba/ai/
+COPY ai/connection.py ./caramba/ai/
+COPY ai/executor.py ./caramba/ai/
+COPY ai/retry.py ./caramba/ai/
+COPY ai/root.py ./caramba/ai/
+COPY ai/lead.py ./caramba/ai/
+COPY ai/server.py ./caramba/ai/
+COPY ai/entrypoint.py ./caramba/ai/
+COPY ai/task_store.py ./caramba/ai/
+COPY ai/session_store.py ./caramba/ai/
+COPY ai/push_notifications.py ./caramba/ai/
+
+# 2. MCP client/server utilities
+COPY ai/mcp/ ./caramba/ai/mcp/
+
+# 3. Extensions (optional utilities)
+COPY ai/extensions/ ./caramba/ai/extensions/
+
+# 4. Tools (MCP tool implementations)
+COPY ai/tools/ ./caramba/ai/tools/
+
+# 5. Console/logging utilities
+COPY console/ ./caramba/console/
+
+# Note: config/personas/ and config/teams/ are mounted from host at runtime
+# The volume mount is: ./config:/app/config:ro
+
+# Create package markers (including config module)
+RUN touch caramba/__init__.py caramba/config/__init__.py
+
+# Note: config/personas/ is mounted from host at /app/config/personas/
+# not /app/caramba/config/personas/, so the PERSONA_FILE env var points to /app/config/personas/*.yml
+
+# Security: non-root user
+RUN groupadd -r appuser && \
+    useradd -r -g appuser -u 1000 -m -d /home/appuser appuser && \
+    chown -R appuser:appuser /app
 
 USER appuser
 
-# Health check
+# Health check (A2A agent card endpoint)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
     CMD curl --fail http://localhost:8001/.well-known/agent-card.json || exit 1
 
-# Run the A2A server (PERSONA_FILE env var must be set)
-# Use the prebuilt venv directly; don't let uv touch /app/.venv at runtime.
-CMD ["python", "-m", "ai.a2a_server"]
+# Run the A2A server via entrypoint
+# Environment variables:
+#   PERSONA_TYPE: The persona type (e.g., "root", "research_lead", "developer")
+#   AGENT_ROLE: "root", "lead", or "worker" (default: "worker")
+#   PORT: Port to bind to (default: 8001, root uses 9000)
+#   TEAM_CONFIG: Team configuration name (default: "default")
+CMD ["python", "-m", "caramba.ai.entrypoint"]

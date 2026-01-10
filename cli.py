@@ -127,6 +127,37 @@ def tui_cmd(url: str, log: str | None, steps: int, output: str) -> None:
     app.run()
 
 
+@cli.command("agent")
+@click.argument("persona", type=str)
+@click.option("--host", type=str, default="0.0.0.0", show_default=True)
+@click.option("--port", type=int, default=8001, show_default=True)
+@click.option("--team-config", type=str, default="default", show_default=True, help="Team config name.")
+@click.option("--root", is_flag=True, default=False, help="Run as root agent (port 9000 default).")
+@click.option("--lead", is_flag=True, default=False, help="Run as team lead agent.")
+def agent_cmd(persona: str, host: str, port: int, team_config: str, root: bool, lead: bool) -> None:
+    """Start an AI agent server.
+
+    PERSONA is the persona type (e.g. 'root', 'research_lead', 'developer').
+
+    Examples:
+        caramba agent root --root                     # Root agent on port 9000
+        caramba agent research_lead --lead --port 8002  # Team lead
+        caramba agent developer --port 8003           # Regular agent
+    """
+    from ai import run_root_server, run_lead_server, run_agent_server
+
+    if root or persona == "root":
+        actual_port = 9000 if port == 8001 else port
+        logger.info(f"Starting root agent on {host}:{actual_port}")
+        run_root_server(host=host, port=actual_port, team_config=team_config)
+    elif lead:
+        logger.info(f"Starting lead agent '{persona}' on {host}:{port}")
+        run_lead_server(persona, host=host, port=port, team_config=team_config)
+    else:
+        logger.info(f"Starting agent '{persona}' on {host}:{port}")
+        run_agent_server(persona, host=host, port=port)
+
+
 @cli.command("codegraph-sync")
 @click.argument("repo_root", type=click.Path(exists=True, file_okay=False, path_type=Path), default=".")
 @click.option("--graph", type=str, default="caramba_code", show_default=True, help="FalkorDB graph name.")

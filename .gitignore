@@ -40,3 +40,4 @@ artifacts/ai/brainstorm.jsonl
 tmp/
 *.npy
 *.npy.meta
+ADK.txt

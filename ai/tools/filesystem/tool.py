@@ -3,7 +3,7 @@
 Run this as a standalone server:
     python -m ai.tools.filesystem.tool
 
-Then connect to it via MCP SSE at http://localhost:8001/sse
+Then connect to it via MCP StreamableHTTP at http://localhost:8001/mcp
 """
 
 from __future__ import annotations
@@ -15,9 +15,11 @@ from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 # Initialize FastMCP server
 mcp = FastMCP("Filesystem Tool", json_response=True)
+mcp.settings.transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 
 def _allowed_roots() -> list[Path]:
@@ -260,7 +262,7 @@ if __name__ == "__main__":
     mcp.settings.host = args.host
     mcp.settings.port = args.port
 
-    app = mcp.sse_app()
+    app = mcp.streamable_http_app()
 
     def root(_request: Request) -> Response:
         return JSONResponse({"status": "ok"})

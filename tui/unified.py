@@ -739,12 +739,41 @@ class CarambaApp(App[None]):
                         data = response.json()
                         root_info = data.get("root", {})
                         root_name = root_info.get("name", "Root")
+                        teams = data.get("teams", {})
                         sub_agents = data.get("sub_agents", {})
+
+                        if isinstance(teams, dict) and teams:
+                            sidebar.set_root_teams(
+                                root_name,
+                                AgentStatus.HEALTHY if root_healthy else AgentStatus.UNHEALTHY,
+                                teams,
+                            )
+                            for _, tinfo in teams.items():
+                                agents = tinfo.get("agents", {}) if isinstance(tinfo, dict) else {}
+                                if not isinstance(agents, dict):
+                                    continue
+                                for agent_name, info in agents.items():
+                                    if not isinstance(info, dict):
+                                        continue
+                                    healthy = info.get("healthy", False)
+                                    error = info.get("error", "")
+                                    sidebar.update_sub_agent_status(
+                                        agent_name,
+                                        AgentStatus.HEALTHY if healthy else AgentStatus.UNHEALTHY,
+                                        error if not healthy else "",
+                                    )
+                            return
+                        lead_children: dict[str, list[str]] = {}
+                        for lead_name, info in sub_agents.items():
+                            sub = info.get("sub_agents", {}) if isinstance(info, dict) else {}
+                            if isinstance(sub, dict) and sub:
+                                lead_children[lead_name] = list(sub.keys())
 
                         sidebar.set_root_agent(
                             root_name,
                             AgentStatus.HEALTHY if root_healthy else AgentStatus.UNHEALTHY,
                             list(sub_agents.keys()),
+                            lead_children if lead_children else None,
                         )
 
                         for name, info in sub_agents.items():
@@ -755,6 +784,18 @@ class CarambaApp(App[None]):
                                 AgentStatus.HEALTHY if healthy else AgentStatus.UNHEALTHY,
                                 error if not healthy else "",
                             )
+                            nested = info.get("sub_agents", {}) if isinstance(info, dict) else {}
+                            if isinstance(nested, dict) and nested:
+                                for member_name, member_info in nested.items():
+                                    if not isinstance(member_info, dict):
+                                        continue
+                                    m_ok = member_info.get("healthy", False)
+                                    m_err = member_info.get("error", "")
+                                    sidebar.update_sub_agent_status(
+                                        member_name,
+                                        AgentStatus.HEALTHY if m_ok else AgentStatus.UNHEALTHY,
+                                        m_err if not m_ok else "",
+                                    )
                         return
                 except Exception:
                     pass

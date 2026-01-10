@@ -4,7 +4,7 @@ graphiti:
 
 paper:
   transport: streamable-http
-  url: "http://${CARAMBA_PAPER_HOST:-localhost}:${CARAMBA_PAPER_PORT:-8001}/mcp"
+  url: "http://${CARAMBA_PAPER_HOST:-localhost}:${CARAMBA_PAPER_PORT:-8003}/mcp"
 
 deeplake:
   transport: streamable-http

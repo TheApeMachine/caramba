@@ -1,0 +1,35 @@
+# Default agent teams
+#
+# Defines the initial team topology for the agent system. Teams allow the Root agent
+# to delegate to team leads, and team leads to orchestrate domain experts. A persona
+# may appear in multiple teams to encourage cross-team collaboration.
+
+teams:
+  research_team:
+    lead: research_lead
+    members:
+      - ml_expert
+      - mathematician
+      - catalyst
+      - researcher
+      - data_scientist
+
+  project_team:
+    lead: project_manager
+    members:
+      - product_owner
+      - architect
+
+  development_team:
+    lead: product_owner
+    members:
+      - architect
+      - developer
+      - tester
+      - reviewer
+
+  writing_team:
+    lead: writer
+    members:
+      - reviewer
+      - researcher

@@ -1,5 +1,6 @@
 type: reviewer
 name: "Reviewer"
+url: "http://reviewer:8001"
 description: "A critical reviewer who provides constructive feedback on papers."
 
 instructions: |
@@ -32,7 +33,7 @@ instructions: |
     rollout plan that updates all dependents in the same change. Default to rejecting unsafe changes.
   </structural-reality>
 
-model: "gpt-5.2"
+model: "openai/gpt-5.2"
 temperature: 0.0
 tool_choice: "auto"
 

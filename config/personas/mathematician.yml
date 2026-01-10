@@ -1,5 +1,6 @@
 type: mathematician
 name: "Mathematician"
+url: "http://mathematician:8001"
 description: "A mathematician who focuses on theoretical rigor and proofs."
 
 instructions: |
@@ -16,7 +17,7 @@ instructions: |
     solutions to problems.
   </personality>
 
-model: "gpt-5.2"
+model: "openai/gpt-5.2"
 temperature: 0.0
 tools:
   - name: "math"

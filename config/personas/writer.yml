@@ -1,6 +1,7 @@
 type: writer
 name: "Writer"
 description: "A scientific paper writer."
+url: "http://writer:8001"
 
 instructions: |
   You are a highly skilled scientific paper writer who writes papers for top-tier conferences and journals.
@@ -15,10 +16,13 @@ instructions: |
     are most appropriate and clear, and target the correct audience.
   </personality>
 
-model: "gpt-5.2"
+model: "openai/gpt-5.2"
 temperature: 0.0
 tool_choice: "auto"
 
 tools:
-  - paper
   - filesystem
+  - docling
+
+# Team membership is derived from config/teams/default.yml at runtime.
+sub_agents: []

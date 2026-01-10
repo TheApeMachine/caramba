@@ -10,11 +10,23 @@ This provides a modern chat-like interface with:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 from urllib.parse import urlparse, urlunparse
+from uuid import uuid4
 
 import httpx
+from a2a.client import A2ACardResolver, A2AClient
+from a2a.types import (
+    Message,
+    MessageSendParams,
+    SendStreamingMessageRequest,
+    SendStreamingMessageSuccessResponse,
+    Task,
+    TaskArtifactUpdateEvent,
+    TaskStatusUpdateEvent,
+)
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -24,7 +36,7 @@ from textual.binding import Binding
 from caramba.tui.styles import TUI_CSS
 from caramba.tui.viewport import Viewport
 from caramba.tui.input_bar import InputBar
-from caramba.tui.sidebars import ExpertsSidebar, ToolsSidebar, StatusBar, ExpertStatus, AgentStatus, AgentDetailModal, ToolDetailModal
+from caramba.tui.sidebars import ExpertsSidebar, ToolsSidebar, StatusBar, ExpertStatus, AgentStatus, AgentDetailModal, ToolDetailModal, log_agent_event
 from caramba.tui.command_palette import CommandPalette, HelpScreen
 from caramba.tui.commands import Command
 
@@ -75,6 +87,9 @@ class RootChatApp(App):
         self._input_bar: InputBar | None = None
         self._status_bar: StatusBar | None = None
         self._is_streaming = False
+        # Conversation context tracking for session persistence
+        self._context_id: str = uuid4().hex  # Single conversation context
+        self._task_id: str | None = None  # Current task ID from last response
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -142,6 +157,9 @@ class RootChatApp(App):
 
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
+                # Indicate refresh without changing list layout.
+                self._experts_sidebar.update_root_status(AgentStatus.CHECKING, "")
+
                 # First, check root agent health
                 # Try /health first, fall back to /.well-known/agent-card.json
                 try:
@@ -174,16 +192,51 @@ class RootChatApp(App):
                         # Expected format: {"root": {...}, "sub_agents": {"name": {"healthy": bool, "error": "..."}, ...}}
                         root_info = data.get("root", {})
                         root_name = root_info.get("name", "Root")
+                        teams_data = data.get("teams", {})
                         sub_agents_data = data.get("sub_agents", {})
+
+                        # Prefer team-centric view when available.
+                        if isinstance(teams_data, dict) and teams_data:
+                            self._experts_sidebar.set_root_teams(
+                                root_name,
+                                AgentStatus.HEALTHY if root_healthy else AgentStatus.UNHEALTHY,
+                                teams_data,
+                                root_error_msg,
+                            )
+                            # Populate agent health for all members (may appear multiple times).
+                            for _, tinfo in teams_data.items():
+                                agents = tinfo.get("agents", {}) if isinstance(tinfo, dict) else {}
+                                if not isinstance(agents, dict):
+                                    continue
+                                for agent_name, info in agents.items():
+                                    if not isinstance(info, dict):
+                                        continue
+                                    healthy = info.get("healthy", False)
+                                    error = info.get("error", "")
+                                    if error and len(error) > 30:
+                                        error = error[:27] + "..."
+                                    self._experts_sidebar.update_sub_agent_status(
+                                        agent_name,
+                                        AgentStatus.HEALTHY if healthy else AgentStatus.UNHEALTHY,
+                                        error if not healthy else "",
+                                    )
+                            return
 
                         # Extract sub-agent names
                         sub_agent_names = list(sub_agents_data.keys())
+                        # Build one more level: lead -> member list (if provided by server)
+                        lead_children: dict[str, list[str]] = {}
+                        for lead_name, info in sub_agents_data.items():
+                            sub = info.get("sub_agents", {}) if isinstance(info, dict) else {}
+                            if isinstance(sub, dict) and sub:
+                                lead_children[lead_name] = list(sub.keys())
 
                         # Set root agent with sub-agents
                         self._experts_sidebar.set_root_agent(
                             root_name,
                             AgentStatus.HEALTHY if root_healthy else AgentStatus.UNHEALTHY,
                             sub_agent_names,
+                            lead_children if lead_children else None,
                             root_error_msg,
                         )
 
@@ -204,6 +257,22 @@ class RootChatApp(App):
                                 AgentStatus.HEALTHY if healthy else AgentStatus.UNHEALTHY,
                                 error if not healthy else "",
                             )
+
+                            # Update nested members if present.
+                            nested = info.get("sub_agents", {}) if isinstance(info, dict) else {}
+                            if isinstance(nested, dict) and nested:
+                                for member_name, member_info in nested.items():
+                                    if not isinstance(member_info, dict):
+                                        continue
+                                    m_ok = member_info.get("healthy", False)
+                                    m_err = member_info.get("error", "")
+                                    if m_err and len(m_err) > 30:
+                                        m_err = m_err[:27] + "..."
+                                    self._experts_sidebar.update_sub_agent_status(
+                                        member_name,
+                                        AgentStatus.HEALTHY if m_ok else AgentStatus.UNHEALTHY,
+                                        m_err if not m_ok else "",
+                                    )
                         return
 
                     elif response.status_code == 404:
@@ -225,7 +294,13 @@ class RootChatApp(App):
                         return
 
                 except Exception:
-                    pass
+                    # Don't wipe the sidebar on transient failures; keep last known tree
+                    # and just reflect root health.
+                    self._experts_sidebar.update_root_status(
+                        AgentStatus.HEALTHY if root_healthy else AgentStatus.UNHEALTHY,
+                        root_error_msg,
+                    )
+                    return
 
                 # Fallback: just show root agent without hierarchy info
                 self._experts_sidebar.set_root_agent(
@@ -322,41 +397,158 @@ class RootChatApp(App):
 
     @work(exclusive=True)
     async def stream_root_response(self, user_message: str) -> None:
-        """Stream response from root agent via SSE."""
+        """Stream response from root agent via A2A."""
         if not self._viewport:
             return
 
         self._is_streaming = True
+
+        # Log the user message
+        log_agent_event("Root", "message", f"User: {user_message[:200]}")
 
         # Show root agent as working
         if self._experts_sidebar:
             self._experts_sidebar.set_root_activity(ExpertStatus.RESPONDING)
 
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                # Start the streaming message
+            base_url = get_base_url(self.root_agent_url)
+            async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as httpx_client:
                 self._viewport.hide_thinking()
-                stream_msg = self._viewport.start_streaming()
+                self._viewport.start_streaming()
 
-                async with client.stream(
-                    "POST",
-                    f"{self.root_agent_url}/chat",
-                    json={"message": user_message},
-                    headers={"Accept": "text/event-stream"},
-                ) as response:
-                    response.raise_for_status()
+                card = await A2ACardResolver(httpx_client, base_url).get_agent_card()
+                # Force the client to use the URL the user connected to, even if the
+                # AgentCard.url is set to an internal container address.
+                client = A2AClient(httpx_client=httpx_client, agent_card=card, url=base_url)
 
-                    async for line in response.aiter_lines():
-                        if line.startswith("data: "):
-                            data_str = line[6:]  # Remove "data: " prefix
-                            try:
-                                data = json.loads(data_str)
-                                await self.handle_stream_event(data)
-                            except json.JSONDecodeError:
-                                # Handle plain text chunks
-                                self._viewport.stream_token(data_str)
+                payload: dict[str, Any] = {
+                    "message": {
+                        "role": "user",
+                        "parts": [{"kind": "text", "text": user_message}],
+                        "messageId": uuid4().hex,
+                        "contextId": self._context_id,  # Preserve conversation context
+                    }
+                }
+                # Include task_id if we have one from a previous response
+                if self._task_id:
+                    payload["message"]["taskId"] = self._task_id
 
-                # End streaming
+                request = SendStreamingMessageRequest(
+                    id=uuid4().hex,
+                    params=MessageSendParams(**payload),
+                )
+
+                async for chunk in client.send_message_streaming(request):
+                    root = getattr(chunk, "root", None)
+                    if not isinstance(root, SendStreamingMessageSuccessResponse):
+                        continue
+
+                    event = root.result
+
+                    if isinstance(event, Message):
+                        # Message-only response: render parts and finish.
+                        for p in event.parts:
+                            part_root = getattr(p, "root", None)
+                            if getattr(part_root, "kind", None) == "text":
+                                text = getattr(part_root, "text", "")
+                                if text:
+                                    self._viewport.stream_token(str(text))
+                        continue
+
+                    if isinstance(event, TaskStatusUpdateEvent):
+                        # Capture task ID for conversation continuity
+                        if hasattr(event, "task_id") and event.task_id:
+                            self._task_id = event.task_id
+                        if hasattr(event, "context_id") and event.context_id:
+                            self._context_id = event.context_id
+
+                        # Clear task_id if task reached terminal state so next message creates new task
+                        state = getattr(event.status, "state", None)
+                        if state in ("completed", "failed", "canceled"):
+                            self._task_id = None
+
+                        msg = getattr(event.status, "message", None)
+                        parts = getattr(msg, "parts", None) if msg is not None else None
+                        if parts:
+                            for p in parts:
+                                part_root = getattr(p, "root", None)
+                                if getattr(part_root, "kind", None) == "text":
+                                    text = getattr(part_root, "text", "")
+                                    if text:
+                                        # Check if this is a tool call notification
+                                        if text.startswith("Calling tool:"):
+                                            tool_name = text.replace("Calling tool:", "").strip()
+                                            if self._tools_sidebar:
+                                                self._tools_sidebar.add_tool_call(tool_name, "Root")
+                                            log_agent_event("Root", "tool_call", f"Calling: {tool_name}")
+                                            if self._experts_sidebar:
+                                                self._experts_sidebar.set_root_activity(ExpertStatus.CONSULTING)
+                                        else:
+                                            # Regular text - show in viewport
+                                            self._viewport.stream_token(str(text))
+                                            log_agent_event("Root", "message", text[:200])
+                                            if self._experts_sidebar:
+                                                self._experts_sidebar.set_root_activity(ExpertStatus.RESPONDING)
+
+                                            # Detect delegation to sub-agents
+                                            self._detect_delegation(text)
+                        continue
+
+                    if isinstance(event, TaskArtifactUpdateEvent):
+                        artifact = getattr(event, "artifact", None)
+                        parts = getattr(artifact, "parts", None) if artifact is not None else None
+                        if parts:
+                            for p in parts:
+                                part_root = getattr(p, "root", None)
+                                if getattr(part_root, "kind", None) == "text":
+                                    text = getattr(part_root, "text", "")
+                                    if text:
+                                        self._viewport.stream_token(str(text))
+                        continue
+
+                    if isinstance(event, Task):
+                        # Capture task ID for conversation continuity
+                        if event.id:
+                            self._task_id = event.id
+                        if event.context_id:
+                            self._context_id = event.context_id
+
+                        # Clear task_id if task reached terminal state so next message creates new task
+                        status = getattr(event, "status", None)
+                        state = getattr(status, "state", None) if status else None
+                        if state in ("completed", "failed", "canceled"):
+                            self._task_id = None
+                            # Mark any pending tool calls as complete
+                            if self._tools_sidebar:
+                                self._tools_sidebar.mark_tool_complete(success=(state == "completed"))
+
+                        # Optional snapshots; ignore unless they carry a status message.
+                        msg = getattr(status, "message", None) if status is not None else None
+                        parts = getattr(msg, "parts", None) if msg is not None else None
+                        if parts:
+                            for p in parts:
+                                part_root = getattr(p, "root", None)
+                                if getattr(part_root, "kind", None) == "text":
+                                    text = getattr(part_root, "text", "")
+                                    if text:
+                                        # Check if this is a tool call notification
+                                        if text.startswith("Calling tool:"):
+                                            tool_name = text.replace("Calling tool:", "").strip()
+                                            if self._tools_sidebar:
+                                                self._tools_sidebar.add_tool_call(tool_name, "Root")
+                                            log_agent_event("Root", "tool_call", f"Calling: {tool_name}")
+                                            if self._experts_sidebar:
+                                                self._experts_sidebar.set_root_activity(ExpertStatus.CONSULTING)
+                                        else:
+                                            self._viewport.stream_token(str(text))
+                                            log_agent_event("Root", "message", text[:200])
+                                            if self._experts_sidebar:
+                                                self._experts_sidebar.set_root_activity(ExpertStatus.RESPONDING)
+
+                                            # Detect delegation to sub-agents
+                                            self._detect_delegation(text)
+                        continue
+
                 self._viewport.end_streaming()
 
                 # Mark root agent as done
@@ -395,54 +587,55 @@ class RootChatApp(App):
             # Clear all activity indicators after a short delay
             self.set_timer(2.0, self._clear_activity_indicators)
 
-    async def handle_stream_event(self, event: dict[str, Any]) -> None:
-        """Handle a single stream event from the root agent."""
-        event_type = event.get("type")
-
-        if event_type == "text" and self._viewport:
-            text = event.get("text", "")
-            self._viewport.stream_token(text)
-
-        elif event_type == "tool_call" and self._tools_sidebar:
-            tool_name = event.get("name", "unknown")
-            agent_name = event.get("agent", "root")
-            tool_args = event.get("args")
-            self._tools_sidebar.add_tool_call(tool_name, agent_name, tool_args)
-
-        elif event_type == "tool_result" and self._tools_sidebar:
-            success = event.get("success", True)
-            result = event.get("response") or event.get("result")
-            error = event.get("error")
-            self._tools_sidebar.mark_tool_complete(success, result, error)
-
-        elif event_type == "expert_consulting" and self._experts_sidebar:
-            expert_name = event.get("expert", "")
-            self._experts_sidebar.update_agent_activity(
-                expert_name, ExpertStatus.CONSULTING
-            )
-
-        elif event_type == "expert_responding" and self._experts_sidebar:
-            expert_name = event.get("expert", "")
-            self._experts_sidebar.update_agent_activity(
-                expert_name, ExpertStatus.RESPONDING
-            )
-
-        elif event_type == "expert_done" and self._experts_sidebar:
-            expert_name = event.get("expert", "")
-            self._experts_sidebar.update_agent_activity(
-                expert_name, ExpertStatus.DONE
-            )
-
-        elif event_type == "expert_error" and self._experts_sidebar:
-            expert_name = event.get("expert", "")
-            self._experts_sidebar.update_agent_activity(
-                expert_name, ExpertStatus.ERROR
-            )
-
     def _clear_activity_indicators(self) -> None:
         """Clear all activity indicators after request completes."""
         if self._experts_sidebar:
             self._experts_sidebar.clear_all_activity()
+
+    def _detect_delegation(self, text: str) -> None:
+        """Detect delegation messages and update sub-agent activity indicators."""
+        if not self._experts_sidebar:
+            return
+
+        text_lower = text.lower()
+
+        # Common delegation patterns
+        delegation_patterns = [
+            ("project manager", "project_manager"),
+            ("project_manager", "project_manager"),
+            ("product owner", "product_owner"),
+            ("product_owner", "product_owner"),
+            ("research lead", "research_lead"),
+            ("research_lead", "research_lead"),
+            ("architect", "architect"),
+            ("developer", "developer"),
+            ("writer", "writer"),
+            ("reviewer", "reviewer"),
+            ("tester", "tester"),
+            ("ml expert", "ml_expert"),
+            ("ml_expert", "ml_expert"),
+            ("mathematician", "mathematician"),
+            ("data scientist", "data_scientist"),
+            ("data_scientist", "data_scientist"),
+            ("catalyst", "catalyst"),
+            ("researcher", "researcher"),
+        ]
+
+        # Check for delegation indicators
+        is_delegation = any(phrase in text_lower for phrase in [
+            "delegated", "requested", "asked", "assigned", "sent to",
+            "i've delegated", "i've requested", "i've asked", "i've assigned",
+            "delegating to", "asking", "requesting from",
+        ])
+
+        if is_delegation:
+            for display_name, agent_name in delegation_patterns:
+                if display_name in text_lower:
+                    # Update the agent's activity indicator
+                    self._experts_sidebar.update_agent_activity(agent_name, ExpertStatus.WAITING)
+                    # Also log the delegation
+                    log_agent_event(agent_name, "delegation", f"Received task from Root")
+                    break
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -468,11 +661,14 @@ class RootChatApp(App):
         self.push_screen(HelpScreen())
 
     def action_clear_chat(self) -> None:
-        """Clear the chat viewport."""
+        """Clear the chat viewport and reset conversation context."""
         if self._viewport:
             self._viewport.clear_messages()
         if self._experts_sidebar:
             self._experts_sidebar.clear_all_activity()
+        # Reset conversation context for a fresh start
+        self._context_id = uuid4().hex
+        self._task_id = None
         if self._tools_sidebar:
             self._tools_sidebar.clear_tools()
 
@@ -502,7 +698,7 @@ class RootChatApp(App):
         if in_input:
             # Move to agents sidebar
             if self._experts_sidebar:
-                widgets = self._experts_sidebar._get_agent_widgets()
+                widgets = self._experts_sidebar._get_nav_widgets()
                 if widgets:
                     widgets[0].focus()
                     return
@@ -547,14 +743,14 @@ class RootChatApp(App):
                     return
             # Fallback to agents
             if self._experts_sidebar:
-                widgets = self._experts_sidebar._get_agent_widgets()
+                widgets = self._experts_sidebar._get_nav_widgets()
                 if widgets:
                     widgets[-1].focus()
                     return
         elif in_tools:
             # Move to agents sidebar
             if self._experts_sidebar:
-                widgets = self._experts_sidebar._get_agent_widgets()
+                widgets = self._experts_sidebar._get_nav_widgets()
                 if widgets:
                     widgets[-1].focus()
                     return
@@ -588,52 +784,48 @@ class RootChatApp(App):
         status: str,
     ) -> None:
         """Show the tool detail modal."""
-        # Remove any existing modals
-        try:
-            existing = self.query_one(ToolDetailModal)
-            existing.remove()
-        except Exception:
-            pass
-        try:
-            existing = self.query_one(AgentDetailModal)
-            existing.remove()
-        except Exception:
-            pass
+        # Remove any existing modals - use query() to get all instances
+        for modal in self.query(ToolDetailModal):
+            modal.remove()
+        for modal in self.query(AgentDetailModal):
+            modal.remove()
 
-        # Create and mount new modal
+        # Create and mount new modal with unique ID based on timestamp
+        from time import time
         modal = ToolDetailModal(
             tool_name,
             agent_name,
             args,
             result,
             status,
-            id="tool-detail-modal",
+            id=f"tool-detail-modal-{int(time() * 1000)}",
         )
         self.mount(modal)
         modal.focus()
 
     def show_agent_details(self, agent_name: str, is_root: bool) -> None:
         """Show the agent detail modal."""
-        # Remove any existing modal
-        try:
-            existing = self.query_one(AgentDetailModal)
-            existing.remove()
-        except Exception:
-            pass
+        # Remove any existing modals - use query() to get all instances
+        for modal in self.query(AgentDetailModal):
+            modal.remove()
+        for modal in self.query(ToolDetailModal):
+            modal.remove()
 
-        # Create and mount new modal
-        modal = AgentDetailModal(agent_name, is_root, id="agent-detail-modal")
+        # Create and mount new modal with unique ID based on timestamp
+        from time import time
+        modal_id = f"agent-detail-modal-{int(time() * 1000)}"
+        modal = AgentDetailModal(agent_name, is_root, id=modal_id)
         self.mount(modal)
         modal.focus()
 
         # Fetch agent details
-        self.fetch_agent_details(agent_name, is_root)
+        self.fetch_agent_details(agent_name, is_root, modal_id)
 
     @work(exclusive=False)
-    async def fetch_agent_details(self, agent_name: str, is_root: bool) -> None:
+    async def fetch_agent_details(self, agent_name: str, is_root: bool, modal_id: str) -> None:
         """Fetch detailed information about an agent from root."""
         try:
-            modal = self.query_one("#agent-detail-modal", AgentDetailModal)
+            modal = self.query_one(f"#{modal_id}", AgentDetailModal)
         except Exception:
             return  # Modal was closed
 

@@ -32,10 +32,22 @@ class ExpertStatus(Enum):
     """Activity status of an expert agent during a task."""
 
     IDLE = "idle"
-    CONSULTING = "consulting"
-    RESPONDING = "responding"
+    CONSULTING = "consulting"      # Using a tool / delegating
+    RESPONDING = "responding"      # Generating a response
+    THINKING = "thinking"          # Processing / reasoning
+    WAITING = "waiting"            # Waiting for sub-agent response
     DONE = "done"
     ERROR = "error"
+
+
+@dataclass
+class AgentLogEntry:
+    """A single log entry for an agent."""
+    
+    timestamp: datetime
+    event_type: str  # "message", "tool_call", "tool_result", "delegation", "error"
+    content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -48,6 +60,45 @@ class AgentNode:
     children: list["AgentNode"] = field(default_factory=list)
     url: str = ""
     last_check: datetime | None = None
+    log: list[AgentLogEntry] = field(default_factory=list)
+
+
+# Global agent log storage
+_agent_logs: dict[str, list[AgentLogEntry]] = {}
+
+
+def log_agent_event(
+    agent_name: str,
+    event_type: str,
+    content: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Log an event for an agent."""
+    if agent_name not in _agent_logs:
+        _agent_logs[agent_name] = []
+    
+    entry = AgentLogEntry(
+        timestamp=datetime.now(),
+        event_type=event_type,
+        content=content,
+        metadata=metadata or {},
+    )
+    _agent_logs[agent_name].append(entry)
+    
+    # Keep only last 100 entries per agent
+    if len(_agent_logs[agent_name]) > 100:
+        _agent_logs[agent_name] = _agent_logs[agent_name][-100:]
+
+
+def get_agent_log(agent_name: str) -> list[AgentLogEntry]:
+    """Get the log entries for an agent."""
+    return _agent_logs.get(agent_name, [])
+
+
+def clear_agent_log(agent_name: str) -> None:
+    """Clear the log for an agent."""
+    if agent_name in _agent_logs:
+        _agent_logs[agent_name] = []
 
 
 class AgentWidget(Static, can_focus=True):
@@ -66,6 +117,10 @@ class AgentWidget(Static, can_focus=True):
 
     AgentWidget.sub-agent {
         padding-left: 3;
+    }
+
+    AgentWidget.member-agent {
+        padding-left: 6;
     }
 
     AgentWidget.healthy {
@@ -90,6 +145,14 @@ class AgentWidget(Static, can_focus=True):
 
     AgentWidget.activity-responding {
         background: rgba(59, 130, 246, 0.2);
+    }
+
+    AgentWidget.activity-thinking {
+        background: rgba(168, 85, 247, 0.2);
+    }
+
+    AgentWidget.activity-waiting {
+        background: rgba(34, 211, 238, 0.2);
     }
 
     AgentWidget:focus {
@@ -124,18 +187,23 @@ class AgentWidget(Static, can_focus=True):
         agent_name: str,
         *,
         is_root: bool = False,
+        indent_level: int = 1,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.agent_name = agent_name
         self.is_root = is_root
+        self.indent_level = indent_level
         self._last_update = datetime.now()
 
     def on_mount(self) -> None:
         if self.is_root:
             self.add_class("root-agent")
         else:
-            self.add_class("sub-agent")
+            if self.indent_level >= 2:
+                self.add_class("member-agent")
+            else:
+                self.add_class("sub-agent")
         self._update_display()
 
     def action_select_agent(self) -> None:
@@ -160,7 +228,7 @@ class AgentWidget(Static, can_focus=True):
         for s in ExpertStatus:
             self.remove_class(f"activity-{s.value}")
         # Add current activity class if active
-        if status in (ExpertStatus.CONSULTING, ExpertStatus.RESPONDING):
+        if status in (ExpertStatus.CONSULTING, ExpertStatus.RESPONDING, ExpertStatus.THINKING, ExpertStatus.WAITING):
             self.add_class(f"activity-{status.value}")
         self._update_display()
 
@@ -182,9 +250,13 @@ class AgentWidget(Static, can_focus=True):
         # Activity indicator (shown if active)
         activity_suffix = ""
         if self.activity_status == ExpertStatus.CONSULTING:
-            activity_suffix = " [yellow]⟳[/]"
+            activity_suffix = " [yellow]🔧[/]"  # Tool use / delegating
         elif self.activity_status == ExpertStatus.RESPONDING:
-            activity_suffix = " [blue]◉[/]"
+            activity_suffix = " [blue]💬[/]"    # Generating response
+        elif self.activity_status == ExpertStatus.THINKING:
+            activity_suffix = " [magenta]🧠[/]"  # Reasoning
+        elif self.activity_status == ExpertStatus.WAITING:
+            activity_suffix = " [cyan]⏳[/]"    # Waiting for sub-agent
         elif self.activity_status == ExpertStatus.DONE:
             activity_suffix = " [green]✓[/]"
         elif self.activity_status == ExpertStatus.ERROR:
@@ -210,7 +282,9 @@ class AgentWidget(Static, can_focus=True):
         # Auto-generate message if not provided
         if not message:
             if status == AgentStatus.CHECKING:
-                message = "checking..."
+                # Keep the row height stable during periodic refresh.
+                # The yellow icon is enough feedback; avoid adding a second line.
+                message = ""
             elif status == AgentStatus.UNHEALTHY:
                 message = "not responding"
             elif status == AgentStatus.UNKNOWN:
@@ -299,19 +373,61 @@ class ExpertsSidebar(Vertical, can_focus=True):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._root_agent: AgentWidget | None = None
-        self._sub_agents: dict[str, AgentWidget] = {}
-        self._agent_order: list[str] = []  # Track order for navigation
+        # Agent widgets may appear multiple times (agent belongs to multiple teams).
+        self._agent_widgets: dict[str, list[AgentWidget]] = {}
+        self._team_widgets: dict[str, Static] = {}
+        self._nav_widgets: list[Static] = []
+        self._teams_signature: tuple[tuple[str, tuple[str, ...]], ...] | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("🤖 Agents", classes="sidebar-header")
         with VerticalScroll(classes="agents-list", id="agents-scroll"):
             yield Static("[dim]Connecting to agents...[/]", classes="empty-state", id="agents-empty")
 
+    def _reset_widgets(self) -> None:
+        """Clear all non-root widgets before rebuilding."""
+        # Remove existing team and agent widgets
+        for widgets in self._agent_widgets.values():
+            for w in widgets:
+                try:
+                    w.remove()
+                except Exception:
+                    pass
+        for w in self._team_widgets.values():
+            try:
+                w.remove()
+            except Exception:
+                pass
+        self._agent_widgets.clear()
+        self._team_widgets.clear()
+        self._nav_widgets = [self._root_agent] if self._root_agent else []
+        self._teams_signature = None
+
+    @staticmethod
+    def _team_signature(teams: dict[str, dict[str, Any]]) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        """Build a stable signature for team structure (ids + member lists)."""
+        items: list[tuple[str, tuple[str, ...]]] = []
+        for team_id in sorted(teams.keys()):
+            info = teams.get(team_id) or {}
+            members = info.get("members", [])
+            if not isinstance(members, list):
+                members = []
+            clean = tuple(str(m).strip() for m in members if isinstance(m, str) and m.strip())
+            items.append((team_id, clean))
+        return tuple(items)
+
+    @staticmethod
+    def _set_health_classes(widget: Static, status: AgentStatus) -> None:
+        for s in AgentStatus:
+            widget.remove_class(s.value)
+        widget.add_class(status.value)
+
     def set_root_agent(
         self,
         name: str,
         status: AgentStatus = AgentStatus.UNKNOWN,
         sub_agents: list[str] | None = None,
+        sub_agent_children: dict[str, list[str]] | None = None,
         message: str = "",
     ) -> None:
         """Set the root agent and its sub-agents."""
@@ -330,31 +446,99 @@ class ExpertsSidebar(Vertical, can_focus=True):
             agents_scroll.mount(self._root_agent)
         self._root_agent.set_health(status, message)
 
-        # Build agent order for navigation (root first, then sub-agents)
-        self._agent_order = [name]
+        # Reset and rebuild below root.
+        self._reset_widgets()
+        self._nav_widgets = [self._root_agent]
 
         # Add sub-agents
         if sub_agents:
             for sub_name in sub_agents:
-                self._agent_order.append(sub_name)
-                if sub_name not in self._sub_agents:
-                    widget = AgentWidget(sub_name, is_root=False, id=f"agent-{sub_name}")
-                    self._sub_agents[sub_name] = widget
-                    agents_scroll.mount(widget)
+                widget = AgentWidget(sub_name, is_root=False, indent_level=1, id=f"agent-{sub_name}")
+                self._agent_widgets.setdefault(sub_name, []).append(widget)
+                agents_scroll.mount(widget)
+                self._nav_widgets.append(widget)
 
-    def _get_agent_widgets(self) -> list[AgentWidget]:
-        """Get all agent widgets in order."""
-        widgets: list[AgentWidget] = []
-        if self._root_agent:
-            widgets.append(self._root_agent)
-        for name in self._agent_order[1:]:  # Skip root (already added)
-            if name in self._sub_agents:
-                widgets.append(self._sub_agents[name])
-        return widgets
+                # Add second-level agents (team members) under this lead.
+                if sub_agent_children and sub_name in sub_agent_children:
+                    for member in sub_agent_children.get(sub_name, []):
+                        m = AgentWidget(
+                            member,
+                            is_root=False,
+                            indent_level=2,
+                            id=f"agent-{sub_name}-{member}",
+                        )
+                        self._agent_widgets.setdefault(member, []).append(m)
+                        agents_scroll.mount(m)
+                        self._nav_widgets.append(m)
+
+    def set_root_teams(
+        self,
+        name: str,
+        status: AgentStatus,
+        teams: dict[str, dict[str, Any]],
+        message: str = "",
+    ) -> None:
+        """Render Root -> Team -> Agents hierarchy."""
+        agents_scroll = self.query_one("#agents-scroll", VerticalScroll)
+        try:
+            empty = self.query_one("#agents-empty")
+            empty.remove()
+        except Exception:
+            pass
+
+        if self._root_agent is None:
+            self._root_agent = AgentWidget(name, is_root=True, id="root-agent")
+            agents_scroll.mount(self._root_agent)
+        self._root_agent.set_health(status, message)
+
+        sig = self._team_signature(teams)
+        # If structure is unchanged, avoid rebuilding (prevents flicker/jumps).
+        if self._teams_signature == sig and self._team_widgets:
+            for team_id, w in self._team_widgets.items():
+                info = teams.get(team_id) or {}
+                t_status = AgentStatus.HEALTHY if info.get("healthy", False) else AgentStatus.UNHEALTHY
+                self._set_health_classes(w, t_status)
+            return
+
+        self._reset_widgets()
+        self._teams_signature = sig
+        self._nav_widgets = [self._root_agent]
+
+        def humanize(team_id: str) -> str:
+            return team_id.replace("_", " ").strip().title()
+
+        for team_id in sorted(teams.keys()):
+            info = teams.get(team_id) or {}
+            team_name = humanize(team_id)
+            t_status = AgentStatus.HEALTHY if info.get("healthy", False) else AgentStatus.UNHEALTHY
+            w = Static(f"[dim]📁 {team_name}[/]", id=f"team-{team_id}", classes="sidebar-item")
+            self._set_health_classes(w, t_status)
+            agents_scroll.mount(w)
+            self._team_widgets[team_id] = w
+            self._nav_widgets.append(w)
+
+            members = info.get("members", [])
+            if not isinstance(members, list):
+                members = []
+            for member in members:
+                if not isinstance(member, str) or not member.strip():
+                    continue
+                aw = AgentWidget(
+                    member.strip(),
+                    is_root=False,
+                    indent_level=2,
+                    id=f"agent-{team_id}-{member.strip()}",
+                )
+                self._agent_widgets.setdefault(member.strip(), []).append(aw)
+                agents_scroll.mount(aw)
+                self._nav_widgets.append(aw)
+
+    def _get_nav_widgets(self) -> list[Static]:
+        return [w for w in self._nav_widgets if w is not None]
 
     def action_focus_next_agent(self) -> None:
         """Focus the next agent in the list."""
-        widgets = self._get_agent_widgets()
+        widgets = self._get_nav_widgets()
         if not widgets:
             return
 
@@ -370,7 +554,7 @@ class ExpertsSidebar(Vertical, can_focus=True):
 
     def action_focus_previous_agent(self) -> None:
         """Focus the previous agent in the list."""
-        widgets = self._get_agent_widgets()
+        widgets = self._get_nav_widgets()
         if not widgets:
             return
 
@@ -395,8 +579,8 @@ class ExpertsSidebar(Vertical, can_focus=True):
 
     def update_sub_agent_status(self, name: str, status: AgentStatus, message: str = "") -> None:
         """Update a sub-agent's health status."""
-        if name in self._sub_agents:
-            self._sub_agents[name].set_health(status, message)
+        for w in self._agent_widgets.get(name, []):
+            w.set_health(status, message)
 
     def update_agent_activity(self, name: str, activity: str | ExpertStatus) -> None:
         """Update an agent's activity status (consulting, responding, etc.)."""
@@ -405,8 +589,8 @@ class ExpertsSidebar(Vertical, can_focus=True):
             self._root_agent.set_activity(activity)
             return
         # Check sub-agents
-        if name in self._sub_agents:
-            self._sub_agents[name].set_activity(activity)
+        for w in self._agent_widgets.get(name, []):
+            w.set_activity(activity)
 
     def update_expert_status(self, name: str, status: ExpertStatus) -> None:
         """Backward-compatible alias for updating expert activity status."""
@@ -416,12 +600,13 @@ class ExpertsSidebar(Vertical, can_focus=True):
         """Mark all agents as 'checking' during a status refresh."""
         if self._root_agent:
             self._root_agent.set_health(AgentStatus.CHECKING)
-        for widget in self._sub_agents.values():
-            widget.set_health(AgentStatus.CHECKING)
+        for widgets in self._agent_widgets.values():
+            for widget in widgets:
+                widget.set_health(AgentStatus.CHECKING)
 
     def get_sub_agent_names(self) -> list[str]:
         """Get list of sub-agent names."""
-        return list(self._sub_agents.keys())
+        return list(self._agent_widgets.keys())
 
     def set_root_activity(self, activity: ExpertStatus) -> None:
         """Set the root agent's activity status."""
@@ -432,8 +617,9 @@ class ExpertsSidebar(Vertical, can_focus=True):
         """Clear all activity indicators (reset to idle)."""
         if self._root_agent:
             self._root_agent.set_activity(ExpertStatus.IDLE)
-        for widget in self._sub_agents.values():
-            widget.set_activity(ExpertStatus.IDLE)
+        for widgets in self._agent_widgets.values():
+            for widget in widgets:
+                widget.set_activity(ExpertStatus.IDLE)
 
 
 class ToolCallWidget(Static, can_focus=True):
@@ -890,16 +1076,6 @@ class AgentDetailModal(Vertical):
             lines.append(f"[red]{error}[/]")
             lines.append("")
 
-        # Last response (if any)
-        last_response = details.get("last_response", "")
-        if last_response:
-            lines.append("[bold #A78BFA]Last Response:[/]")
-            # Truncate long responses
-            if len(last_response) > 500:
-                last_response = last_response[:500] + "..."
-            lines.append(f"[dim]{last_response}[/]")
-            lines.append("")
-
         # Activity
         activity = details.get("activity", "idle")
         lines.append(f"[bold #A78BFA]Activity:[/] {activity}")
@@ -908,6 +1084,47 @@ class AgentDetailModal(Vertical):
         agent_type = details.get("type", "")
         if agent_type:
             lines.append(f"[bold #A78BFA]Type:[/] {agent_type}")
+        lines.append("")
+
+        # Agent Log / Conversation History
+        agent_log = get_agent_log(self.agent_name)
+        if agent_log:
+            lines.append("[bold #A78BFA]━━━ Activity Log ━━━[/]")
+            lines.append("")
+            
+            for entry in agent_log[-20:]:  # Show last 20 entries
+                time_str = entry.timestamp.strftime("%H:%M:%S")
+                
+                # Format based on event type
+                if entry.event_type == "message":
+                    icon = "💬"
+                    color = "white"
+                elif entry.event_type == "tool_call":
+                    icon = "🔧"
+                    color = "yellow"
+                elif entry.event_type == "tool_result":
+                    icon = "✅"
+                    color = "green"
+                elif entry.event_type == "delegation":
+                    icon = "📤"
+                    color = "cyan"
+                elif entry.event_type == "error":
+                    icon = "❌"
+                    color = "red"
+                else:
+                    icon = "•"
+                    color = "dim"
+                
+                # Truncate long content
+                content = entry.content
+                if len(content) > 100:
+                    content = content[:100] + "..."
+                
+                lines.append(f"[dim]{time_str}[/] {icon} [{color}]{content}[/]")
+        else:
+            lines.append("[bold #A78BFA]━━━ Activity Log ━━━[/]")
+            lines.append("")
+            lines.append("[dim]No activity recorded yet[/]")
 
         self._content.update("\n".join(lines))
 
