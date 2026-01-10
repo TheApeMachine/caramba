@@ -9,6 +9,8 @@ from starlette.responses import JSONResponse, Response
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
+from mcp.server.transport_security import TransportSecuritySettings
+
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
 from crawl4ai import AdaptiveCrawler, AdaptiveConfig
 from crawl4ai.content_filter_strategy import BM25ContentFilter, PruningContentFilter
@@ -16,6 +18,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 logger = logging.getLogger(__name__)
 mcp = FastMCP("mcp-crawl4ai")
+mcp.settings.transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 
 class CrawlResult(BaseModel):
@@ -208,7 +211,7 @@ if __name__ == "__main__":
     mcp.settings.host = args.host
     mcp.settings.port = args.port
 
-    app = mcp.sse_app()
+    app = mcp.streamable_http_app()
 
     def root(_request: Request) -> Response:
         return JSONResponse({"status": "ok"})

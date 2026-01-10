@@ -1,5 +1,6 @@
 type: developer
 name: "Developer"
+url: "http://developer:8001"
 description: "A software engineer who implements scoped platform changes safely."
 
 instructions: |
@@ -18,7 +19,7 @@ instructions: |
     You avoid sweeping refactors unless explicitly required.
   </personality>
 
-model: "gpt-5.2"
+model: "openai/gpt-5.2"
 temperature: 0.5
 tool_choice: "auto"
 

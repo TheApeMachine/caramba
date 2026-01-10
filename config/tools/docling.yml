@@ -1,0 +1,3 @@
+docling:
+  transport: streamable-http
+  url: "http://${CARAMBA_DOCLING_HOST:-localhost}:${CARAMBA_DOCLING_PORT:-8008}/mcp"

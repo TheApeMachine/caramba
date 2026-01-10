@@ -1,5 +1,87 @@
-"""ai module
+"""AI Agent System for Caramba.
 
-Contains the AI agent features for the caramba project.
-These enable automated research, brainstorming, and more.
+This package provides a multi-agent system using Google's Agent Development Kit (ADK)
+with A2A (Agent-to-Agent) protocol for inter-agent communication and MCP (Model Context
+Protocol) for tool integration.
+
+Architecture:
+- Root agent: The only agent that communicates with users, delegates to team leads
+- Teams: Groups of specialized agents under a lead (defined in config/teams/)
+- Personas: Agent configurations loaded from YAML (defined in config/personas/)
+
+Key Components:
+- Agent: ADK agent wrapper with persona configuration
+- RootAgent: Orchestrator that delegates to team leads
+- LeadAgent: Team lead that delegates to members
+- AgentServer: A2A-compatible HTTP server for agents
+- ConnectionManager: Manages connections to remote agents
+- ADKAgentExecutor: Bridges ADK with A2A protocol
 """
+from caramba.ai.agent import Agent, AgentFactory
+from caramba.ai.connection import ConnectionManager, RemoteAgent
+from caramba.ai.executor import ADKAgentExecutor, StreamingExecutor
+from caramba.ai.lead import LeadAgent
+from caramba.ai.persona import PersonaLoader, persona_to_agent_card
+from caramba.ai.root import RootAgent
+from caramba.ai.server import (
+    AgentServer,
+    run_root_server,
+    run_lead_server,
+    run_agent_server,
+)
+from caramba.ai.session_store import (
+    DatabaseSessionService,
+    get_shared_session_service,
+)
+from .retry import (
+    calculate_backoff,
+    http_get_json_with_retry,
+    http_get_with_retry,
+    retry_async,
+)
+from .team import TeamLoader, TeamRegistry
+from .types import (
+    AgentHealth,
+    AgentState,
+    PersonaConfig,
+    TeamConfig,
+    TeamHealth,
+)
+
+__all__ = [
+    # Core agent classes
+    "Agent",
+    "AgentFactory",
+    "RootAgent",
+    "LeadAgent",
+    # Execution
+    "ADKAgentExecutor",
+    "StreamingExecutor",
+    # Server
+    "AgentServer",
+    "run_root_server",
+    "run_lead_server",
+    "run_agent_server",
+    # Connections
+    "ConnectionManager",
+    "RemoteAgent",
+    # Configuration
+    "PersonaLoader",
+    "TeamLoader",
+    "TeamRegistry",
+    "persona_to_agent_card",
+    # Types
+    "AgentHealth",
+    "AgentState",
+    "PersonaConfig",
+    "TeamConfig",
+    "TeamHealth",
+    # Retry utilities
+    "calculate_backoff",
+    "http_get_json_with_retry",
+    "http_get_with_retry",
+    "retry_async",
+    # Session persistence
+    "DatabaseSessionService",
+    "get_shared_session_service",
+]

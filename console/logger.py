@@ -38,6 +38,7 @@ CARAMBA_THEME = Theme(
         "metric": "#7aa2f7",  # Sky blue - metrics/numbers
         "path": "italic #73daca",  # Teal - file paths
         "step": "#ff9e64",  # Orange - step/progress indicators
+        "trace": "dim #91d7e3",  # Light blue - trace messages
     }
 )
 
@@ -56,6 +57,10 @@ class Logger:
     # ─────────────────────────────────────────────────────────────────────
     # Basic Logging
     # ─────────────────────────────────────────────────────────────────────
+
+    def trace(self, message: str) -> None:
+        """Log a trace message (light blue ⚙)."""
+        self.console.print(f"[trace]⚙[/trace] {message}")
 
     def log(self, message: str) -> None:
         """Log a generic message."""

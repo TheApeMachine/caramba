@@ -158,12 +158,6 @@ class MessageBubble(Vertical):
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="message-box"):
-            with Horizontal(classes="message-header"):
-                yield Static(f"[bold]{self.sender}[/bold]", classes="message-sender")
-                yield Static(
-                    self.timestamp.strftime("%H:%M"),
-                    classes="message-time",
-                )
             if self.message_type == MessageType.THINKING:
                 yield Static(
                     "[dim italic]Thinking[/dim italic] [yellow]•••[/yellow]",

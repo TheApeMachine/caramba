@@ -1,10 +1,10 @@
 """Code graph tool (FalkorDB-backed).
 
-Run this as a standalone MCP SSE server:
+Run this as a standalone MCP Streamable HTTP server:
     python -m ai.tools.codegraph.tool
 
-Then connect to it via MCP SSE at:
-    http://localhost:<port>/sse
+Then connect to it via MCP Streamable HTTP at:
+    http://localhost:<port>/mcp
 """
 from __future__ import annotations
 
@@ -14,12 +14,14 @@ from typing import Any
 
 from falkordb import FalkorDB, Graph
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 import uvicorn
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 
 mcp = FastMCP("CodeGraph Tool", json_response=True)
+mcp.settings.transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 
 _WRITE_KEYWORDS = re.compile(
@@ -201,7 +203,7 @@ if __name__ == "__main__":
     mcp.settings.host = args.host
     mcp.settings.port = args.port
 
-    app = mcp.sse_app()
+    app = mcp.streamable_http_app()
 
     def root(_request: Request) -> Response:
         return JSONResponse({"status": "ok"})

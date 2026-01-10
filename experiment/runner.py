@@ -17,34 +17,10 @@ from caramba.config.agents import AgentProcessConfig
 from caramba.config.manifest import Manifest
 from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
 from caramba.console import logger
-
 from caramba.runtime.engine import TorchEngine
 from caramba.runtime.readiness import check_target_readiness, format_readiness_report
-
-
-if TYPE_CHECKING:
-    from caramba.ai.agent import Agent
-    from caramba.ai.process import Process
-
-
-class ProcessFactory(Protocol):
-    """Protocol for process constructors that take agents and process config."""
-
-    def __call__(self, *, agents: dict[str, Agent], process: AgentProcessConfig) -> Process: ...
-
-
-@lru_cache(maxsize=1)
-def _process_map() -> dict[str, ProcessFactory]:
-    # Lazy import to avoid dragging in agent/LLM deps for pure training runs.
-    from caramba.ai.process.brainstorm import Brainstorm
-    from caramba.ai.process.development import DevelopmentProcess
-    from caramba.ai.process.manifest import ManifestProcess
-
-    return {
-        "brainstorm": cast(ProcessFactory, Brainstorm),
-        "development": cast(ProcessFactory, DevelopmentProcess),
-        "manifest": cast(ProcessFactory, ManifestProcess),
-    }
+from caramba.ai.agent import Agent
+from caramba.ai.persona import PersonaLoader
 
 
 def _resolve_target(manifest: Manifest, target: str | None) -> str:
@@ -114,37 +90,24 @@ class ExperimentRunner:
     ) -> dict[str, Path]:
         target = self._find_target(target_name)
         if isinstance(target, ProcessTargetConfig):
-            from caramba.ai.agent import Agent
-            from caramba.ai.persona import Persona
-
             process_type = target.process.type
-            processmap = _process_map()
-            if process_type not in processmap:
-                raise ValueError(
-                    f"Unknown process type '{process_type}'. Available: {', '.join(sorted(processmap))}"
-                )
 
             # Build agents from the declared team mapping (role_key -> persona yaml name).
-            personas_dir = Path("config/personas")
+            loader = PersonaLoader()
             agents: dict[str, Agent] = {}
             for role_key, persona_name in target.team.root.items():
-                persona_path = personas_dir / f"{persona_name}.yml"
-                if not persona_path.exists():
-                    raise FileNotFoundError(
-                        f"Persona file not found for role '{role_key}': {persona_path} "
-                        f"(persona_name='{persona_name}')"
-                    )
                 try:
-                    persona = Persona.from_yaml(persona_path)
+                    persona = loader.load(persona_name)
+                except FileNotFoundError as e:
+                    raise FileNotFoundError(
+                        f"Persona file not found for role '{role_key}': {e}"
+                    ) from e
                 except Exception as e:
                     raise RuntimeError(
-                        f"Failed to load persona '{persona_name}' from {persona_path}: {e}"
+                        f"Failed to load persona '{persona_name}': {e}"
                     ) from e
                 agents[role_key] = Agent(persona=persona)
 
-            process = processmap[process_type](agents=agents, process=target.process)
-
-            asyncio.run(process.run())
             return {}
 
         assert isinstance(target, ExperimentTargetConfig)

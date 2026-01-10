@@ -14,6 +14,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from caramba.core.event import EventEnvelope
+from caramba.core.task_queue import TaskQueue
 
 
 class EventHandler(ABC):
@@ -33,6 +34,11 @@ class EventBus:
     _queue: list[tuple[int, float, int, EventEnvelope]] = field(default_factory=list)
     _subs: defaultdict[str, list[EventHandler]] = field(default_factory=lambda: defaultdict(list))
     _max_queue_size: int = 100000  # Maximum pending events before rejecting
+    _task_queue: TaskQueue | None = None
+
+    def set_task_queue(self, queue: TaskQueue) -> None:
+        """Set the backend task queue for asynchronous dispatch."""
+        self._task_queue = queue
 
     def subscribe(self, event_type: str, handler: EventHandler) -> None:
         et = str(event_type)
@@ -63,6 +69,22 @@ class EventBus:
         ts = float(event.ts)
         self._seq += 1
         heapq.heappush(self._queue, (pri, ts, int(self._seq), event))
+
+    async def publish_async(self, event: EventEnvelope) -> str | None:
+        """Publish an event asynchronously to the task queue if available.
+
+        If a task queue is configured, this pushes the event as a task.
+        Otherwise, it falls back to the synchronous local queue.
+
+        Returns:
+            The task ID if pushed to queue, else None.
+        """
+        if self._task_queue:
+            return await self._task_queue.push(event.type, event.to_json_dict())
+        
+        # Fallback to local sync queue (wrapper around sync publish)
+        self.publish(event)
+        return None
 
     def pending(self) -> int:
         return len(self._queue)

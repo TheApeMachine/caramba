@@ -1,43 +1,152 @@
-"""Persona is a YAML based configuration for an agent."""
+"""Persona management for loading agent configurations.
+
+Loads persona definitions from YAML files and creates AgentCard instances
+for A2A protocol compatibility.
+"""
 from __future__ import annotations
 
-from typing import Any
-from pydantic import BaseModel, Field
 from pathlib import Path
-from pydantic_yaml import parse_yaml_file_as
+import yaml
+from a2a.types import AgentCard, AgentCapabilities, AgentSkill
+
+from caramba.ai.types import PersonaConfig
 
 
-class ToolRef(BaseModel):
-    """Tool reference used in persona YAML.
+class PersonaLoader:
+    """Loads and manages agent personas from YAML configuration files.
 
-    Supports the common format:
-      tools:
-        - name: "filesystem"
+    Provides a central registry of all available personas and their
+    configurations, enabling dynamic agent creation based on role.
     """
 
-    name: str = Field(default="", description="Tool/server name")
+    def __init__(self, personas_dir: str | Path | None = None) -> None:
+        """Initialize the persona loader.
+
+        Args:
+            personas_dir: Path to directory containing persona YAML files.
+                         Defaults to config/personas, checking multiple locations.
+        """
+        if personas_dir is None:
+            # Check multiple possible locations (Docker mount, local dev, package)
+            candidates = [
+                Path("/app/config/personas"),  # Docker volume mount
+                Path(__file__).parent.parent / "config" / "personas",  # Package-relative
+                Path.cwd() / "config" / "personas",  # Working directory
+            ]
+            for candidate in candidates:
+                if candidate.exists():
+                    personas_dir = candidate
+                    break
+            else:
+                # Default to package-relative if none exist
+                personas_dir = Path(__file__).parent.parent / "config" / "personas"
+        self.personas_dir = Path(personas_dir)
+        self._cache: dict[str, PersonaConfig] = {}
+
+    def load(self, persona_type: str) -> PersonaConfig:
+        """Load a persona configuration by type.
+
+        Args:
+            persona_type: The persona type (filename without extension).
+
+        Returns:
+            The loaded PersonaConfig.
+
+        Raises:
+            FileNotFoundError: If the persona file doesn't exist.
+            ValueError: If the YAML is invalid.
+        """
+        if persona_type in self._cache:
+            return self._cache[persona_type]
+
+        path = self.personas_dir / f"{persona_type}.yml"
+        if not path.exists():
+            raise FileNotFoundError(f"Persona not found: {path}")
+
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid persona file: {path}")
+
+        config = PersonaConfig.from_yaml(data)
+        self._cache[persona_type] = config
+        return config
+
+    def load_all(self) -> dict[str, PersonaConfig]:
+        """Load all available personas.
+
+        Returns:
+            Dictionary mapping persona type to PersonaConfig.
+        """
+        if not self.personas_dir.exists():
+            return {}
+
+        for path in self.personas_dir.glob("*.yml"):
+            persona_type = path.stem
+            if persona_type not in self._cache:
+                self.load(persona_type)
+
+        return self._cache.copy()
+
+    def get_names(self) -> list[str]:
+        """Get all available persona names.
+
+        Returns:
+            List of persona type names.
+        """
+        if not self.personas_dir.exists():
+            return []
+        return [p.stem for p in self.personas_dir.glob("*.yml")]
 
 
-class Persona(BaseModel):
-    """Persona is a YAML based configuration for an agent."""
-    type: str = Field(default="", description="Stable identifier for the persona (YAML `type:`)")
-    name: str = Field(default="", description="Name of the agent persona")
-    description: str = Field(default="", description="Description of the agent persona")
-    instructions: str = Field(default="", description="System instructions for the agent")
-    model: str = Field(default="", description="Model identifier to use for this persona")
-    temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Sampling temperature (0.0-2.0)")
-    # List of MCP tool server names / toolset names enabled for this persona.
-    # (Matches `config/personas/*.yml`.)
-    tools: list[str | ToolRef] = Field(
-        default_factory=list,
-        description="List of MCP tool server names enabled for this persona",
+def persona_to_agent_card(config: PersonaConfig, base_url: str) -> AgentCard:
+    """Convert a PersonaConfig to an A2A AgentCard.
+
+    Args:
+        config: The persona configuration.
+        base_url: The base URL where this agent is hosted.
+
+    Returns:
+        An A2A-compatible AgentCard.
+    """
+    # AgentCapabilities uses snake_case in the a2a library
+    # Enable streaming and push notifications for async operations
+    capabilities = AgentCapabilities(
+        streaming=config.capabilities.get("streaming", True),
+        push_notifications=config.capabilities.get("push_notifications", True),
     )
-    # Optional list of sub-agent names (for A2A delegation).
-    # Empty by default; only root persona will have sub-agents initially.
-    sub_agents: list[str] = Field(default_factory=list, description="List of sub-agent persona names (A2A)")
-    output_schema: dict[str, Any] = Field(default_factory=dict, description="JSON schema for structured output")
 
-    @staticmethod
-    def from_yaml(yaml_path: Path) -> Persona:
-        """Load a persona from a YAML file."""
-        return parse_yaml_file_as(Persona, yaml_path)
+    skills = []
+    if config.capabilities.get("skills"):
+        for skill_data in config.capabilities["skills"]:
+            skills.append(
+                AgentSkill(
+                    id=skill_data.get("id", "chat"),
+                    name=skill_data.get("name", "chat"),
+                    description=skill_data.get("description", ""),
+                    tags=skill_data.get("tags", []),
+                    examples=skill_data.get("examples", []),
+                )
+            )
+    else:
+        skills.append(
+            AgentSkill(
+                id="chat",
+                name="chat",
+                description=config.description,
+                tags=["chat"],
+                examples=[],
+            )
+        )
+
+    return AgentCard(
+        name=config.name,
+        description=config.description,
+        url=config.url or base_url,
+        version=config.version,
+        capabilities=capabilities,
+        skills=skills,
+        default_input_modes=["text", "text/plain"],
+        default_output_modes=["text", "text/plain"],
+    )

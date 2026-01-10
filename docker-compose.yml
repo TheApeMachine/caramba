@@ -32,6 +32,23 @@ services:
       retries: 5
       start_period: 10s
 
+  postgres-projectboard:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=projectboard
+      - POSTGRES_PASSWORD=projectboard
+      - POSTGRES_DB=projectboard
+    ports:
+      - "5433:5432"  # Expose on 5433 to avoid conflicts
+    volumes:
+      - projectboard_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U projectboard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   graphiti-mcp:
     image: zepai/knowledge-graph-mcp:standalone
     env_file:
@@ -118,8 +135,29 @@ services:
     volumes:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
+      - ./research:/app/research:ro
     environment:
-      - FILESYSTEM_ALLOWED_ROOTS=/app/artifacts,/app/config
+      - FILESYSTEM_ALLOWED_ROOTS=/app/artifacts,/app/config,/app/research
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  docling-mcp:
+    build:
+      context: .
+      dockerfile: ai/tools/docling/Dockerfile
+    ports:
+      - "8008:8001"
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./config:/app/config:ro
+      - ./docs:/app/docs:ro
+      - ./research:/app/research:ro
+    environment:
+      - DOCLING_ALLOWED_ROOTS=/app/artifacts,/app/config,/app/docs,/app/research
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
@@ -157,7 +195,41 @@ services:
       start_period: 15s
       retries: 3
 
+  projectboard-mcp:
+    build:
+      context: .
+      dockerfile: ai/tools/projectboard/Dockerfile
+    depends_on:
+      postgres-projectboard:
+        condition: service_healthy
+    ports:
+      - "8007:8001"
+    environment:
+      - PROJECTBOARD_DATABASE_URL=postgresql://projectboard:projectboard@postgres-projectboard:5432/projectboard
+    command:
+      [
+        "python",
+        "-m",
+        "ai.tools.projectboard.tool",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8001"
+      ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
   # Persona A2A servers (expert agents)
+  # Environment variables:
+  #   PERSONA_TYPE: Name of persona (matches config/personas/*.yml without extension)
+  #   AGENT_ROLE: "root", "lead", or "worker" (default: worker)
+  #   PORT: Server port (default: 8001)
+  #   TEAM_CONFIG: Team configuration (default: "default")
+  
   architect:
     build:
       context: .
@@ -169,7 +241,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/architect.yml
+      - PERSONA_TYPE=architect
+      - AGENT_ROLE=worker
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -181,6 +254,8 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -199,7 +274,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/developer.yml
+      - PERSONA_TYPE=developer
+      - AGENT_ROLE=worker
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -211,6 +287,8 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -229,7 +307,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/research_lead.yml
+      - PERSONA_TYPE=research_lead
+      - AGENT_ROLE=lead
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -241,6 +320,8 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -259,7 +340,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/writer.yml
+      - PERSONA_TYPE=writer
+      - AGENT_ROLE=worker
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -271,6 +353,148 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  product-owner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./config:/app/config:ro
+    environment:
+      - PERSONA_TYPE=product_owner
+      - AGENT_ROLE=lead
+      - PORT=8001
+      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
+      - CARAMBA_GRAPHITI_PORT=8000
+      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
+      - CARAMBA_DEEPLAKE_PORT=8001
+      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
+      - CARAMBA_FILESYSTEM_PORT=8001
+      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
+      - CARAMBA_CODEGRAPH_PORT=8001
+      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
+      - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
+      - CARAMBA_DOCLING_HOST=docling-mcp
+      - CARAMBA_DOCLING_PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  tester:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./config:/app/config:ro
+    environment:
+      - PERSONA_TYPE=tester
+      - AGENT_ROLE=worker
+      - PORT=8001
+      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
+      - CARAMBA_GRAPHITI_PORT=8000
+      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
+      - CARAMBA_DEEPLAKE_PORT=8001
+      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
+      - CARAMBA_FILESYSTEM_PORT=8001
+      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
+      - CARAMBA_CODEGRAPH_PORT=8001
+      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
+      - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
+      - CARAMBA_DOCLING_HOST=docling-mcp
+      - CARAMBA_DOCLING_PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  researcher:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./config:/app/config:ro
+    environment:
+      - PERSONA_TYPE=researcher
+      - AGENT_ROLE=worker
+      - PORT=8001
+      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
+      - CARAMBA_GRAPHITI_PORT=8000
+      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
+      - CARAMBA_DEEPLAKE_PORT=8001
+      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
+      - CARAMBA_FILESYSTEM_PORT=8001
+      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
+      - CARAMBA_CODEGRAPH_PORT=8001
+      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
+      - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
+      - CARAMBA_DOCLING_HOST=docling-mcp
+      - CARAMBA_DOCLING_PORT=8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  data-scientist:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.persona-a2a
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./config:/app/config:ro
+    environment:
+      - PERSONA_TYPE=data_scientist
+      - AGENT_ROLE=worker
+      - PORT=8001
+      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
+      - CARAMBA_GRAPHITI_PORT=8000
+      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
+      - CARAMBA_DEEPLAKE_PORT=8001
+      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
+      - CARAMBA_FILESYSTEM_PORT=8001
+      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
+      - CARAMBA_CODEGRAPH_PORT=8001
+      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
+      - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
+      - CARAMBA_DOCLING_HOST=docling-mcp
+      - CARAMBA_DOCLING_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -289,7 +513,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/mathematician.yml
+      - PERSONA_TYPE=mathematician
+      - AGENT_ROLE=worker
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -301,6 +526,8 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -319,7 +546,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/ml_expert.yml
+      - PERSONA_TYPE=ml_expert
+      - AGENT_ROLE=worker
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -331,6 +559,8 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -349,7 +579,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/reviewer.yml
+      - PERSONA_TYPE=reviewer
+      - AGENT_ROLE=worker
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -361,6 +592,8 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -379,7 +612,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/verifier.yml
+      - PERSONA_TYPE=verifier
+      - AGENT_ROLE=worker
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -391,96 +625,8 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
-      interval: 10s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
-
-  knowledge-curator:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.persona-a2a
-    env_file:
-      - path: .env
-        required: true
-    volumes:
-      - ./artifacts:/app/artifacts
-      - ./config:/app/config:ro
-    environment:
-      - PERSONA_FILE=config/personas/knowledge_curator.yml
-      - PORT=8001
-      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
-      - CARAMBA_GRAPHITI_PORT=8000
-      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
-      - CARAMBA_DEEPLAKE_PORT=8001
-      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
-      - CARAMBA_FILESYSTEM_PORT=8001
-      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
-      - CARAMBA_CODEGRAPH_PORT=8001
-      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
-      - CARAMBA_WEBCRAWL_PORT=8001
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
-      interval: 10s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
-
-  context-compactor:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.persona-a2a
-    env_file:
-      - path: .env
-        required: true
-    volumes:
-      - ./artifacts:/app/artifacts
-      - ./config:/app/config:ro
-    environment:
-      - PERSONA_FILE=config/personas/context_compactor.yml
-      - PORT=8001
-      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
-      - CARAMBA_GRAPHITI_PORT=8000
-      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
-      - CARAMBA_DEEPLAKE_PORT=8001
-      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
-      - CARAMBA_FILESYSTEM_PORT=8001
-      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
-      - CARAMBA_CODEGRAPH_PORT=8001
-      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
-      - CARAMBA_WEBCRAWL_PORT=8001
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
-      interval: 10s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
-
-  note-taker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.persona-a2a
-    env_file:
-      - path: .env
-        required: true
-    volumes:
-      - ./artifacts:/app/artifacts
-      - ./config:/app/config:ro
-    environment:
-      - PERSONA_FILE=config/personas/note_taker.yml
-      - PORT=8001
-      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
-      - CARAMBA_GRAPHITI_PORT=8000
-      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
-      - CARAMBA_DEEPLAKE_PORT=8001
-      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
-      - CARAMBA_FILESYSTEM_PORT=8001
-      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
-      - CARAMBA_CODEGRAPH_PORT=8001
-      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
-      - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -499,7 +645,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/catalyst.yml
+      - PERSONA_TYPE=catalyst
+      - AGENT_ROLE=worker
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -511,6 +658,8 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -518,7 +667,7 @@ services:
       start_period: 15s
       retries: 3
 
-  feature-analyst:
+  project-manager:
     build:
       context: .
       dockerfile: docker/Dockerfile.persona-a2a
@@ -529,7 +678,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/feature_analyst.yml
+      - PERSONA_TYPE=project_manager
+      - AGENT_ROLE=lead
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -541,96 +691,8 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
-      interval: 10s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
-
-  code-reviewer:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.persona-a2a
-    env_file:
-      - path: .env
-        required: true
-    volumes:
-      - ./artifacts:/app/artifacts
-      - ./config:/app/config:ro
-    environment:
-      - PERSONA_FILE=config/personas/code_reviewer.yml
-      - PORT=8001
-      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
-      - CARAMBA_GRAPHITI_PORT=8000
-      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
-      - CARAMBA_DEEPLAKE_PORT=8001
-      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
-      - CARAMBA_FILESYSTEM_PORT=8001
-      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
-      - CARAMBA_CODEGRAPH_PORT=8001
-      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
-      - CARAMBA_WEBCRAWL_PORT=8001
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
-      interval: 10s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
-
-  experiment-proposer:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.persona-a2a
-    env_file:
-      - path: .env
-        required: true
-    volumes:
-      - ./artifacts:/app/artifacts
-      - ./config:/app/config:ro
-    environment:
-      - PERSONA_FILE=config/personas/experiment_proposer.yml
-      - PORT=8001
-      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
-      - CARAMBA_GRAPHITI_PORT=8000
-      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
-      - CARAMBA_DEEPLAKE_PORT=8001
-      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
-      - CARAMBA_FILESYSTEM_PORT=8001
-      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
-      - CARAMBA_CODEGRAPH_PORT=8001
-      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
-      - CARAMBA_WEBCRAWL_PORT=8001
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
-      interval: 10s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
-
-  results-analyzer:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.persona-a2a
-    env_file:
-      - path: .env
-        required: true
-    volumes:
-      - ./artifacts:/app/artifacts
-      - ./config:/app/config:ro
-    environment:
-      - PERSONA_FILE=config/personas/results_analyzer.yml
-      - PORT=8001
-      - CARAMBA_GRAPHITI_HOST=graphiti-mcp
-      - CARAMBA_GRAPHITI_PORT=8000
-      - CARAMBA_DEEPLAKE_HOST=deeplake-mcp
-      - CARAMBA_DEEPLAKE_PORT=8001
-      - CARAMBA_FILESYSTEM_HOST=filesystem-mcp
-      - CARAMBA_FILESYSTEM_PORT=8001
-      - CARAMBA_CODEGRAPH_HOST=codegraph-mcp
-      - CARAMBA_CODEGRAPH_PORT=8001
-      - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
-      - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -650,7 +712,8 @@ services:
       - ./artifacts:/app/artifacts
       - ./config:/app/config:ro
     environment:
-      - PERSONA_FILE=config/personas/root.yml
+      - PERSONA_TYPE=root
+      - AGENT_ROLE=root
       - PORT=8001
       - CARAMBA_GRAPHITI_HOST=graphiti-mcp
       - CARAMBA_GRAPHITI_PORT=8000
@@ -662,25 +725,15 @@ services:
       - CARAMBA_CODEGRAPH_PORT=8001
       - CARAMBA_WEBCRAWL_HOST=webcrawl-mcp
       - CARAMBA_WEBCRAWL_PORT=8001
+      - CARAMBA_PROJECTBOARD_HOST=projectboard-mcp
+      - CARAMBA_PROJECTBOARD_PORT=8001
     ports:
       - "9000:8001"  # Expose root agent to host for TUI
     depends_on:
-      - architect
-      - developer
       - research-lead
+      - project-manager
+      - product-owner
       - writer
-      - mathematician
-      - ml-expert
-      - reviewer
-      - verifier
-      - knowledge-curator
-      - context-compactor
-      - note-taker
-      - catalyst
-      - feature-analyst
-      - code-reviewer
-      - experiment-proposer
-      - results-analyzer
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/.well-known/agent-card.json"]
       interval: 10s
@@ -690,4 +743,6 @@ services:
 
 volumes:
   falkordb_data:
+    driver: local
+  projectboard_data:
     driver: local

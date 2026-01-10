@@ -19,6 +19,8 @@ from typing import Any, cast
 import copy
 import re
 import torch
+from torch.utils.data import DataLoader, Dataset
+import torch.nn.functional as F
 
 from caramba.carmath import autocast_dtype_str, weight_dtype, weight_dtype_str, token_budget_batch_size, safe_perplexity_from_nll
 from caramba.config.defaults import Defaults
@@ -52,9 +54,6 @@ from caramba.trainer.checkpointers import CheckPointer
 from caramba.trainer.steppers import Stepper
 from caramba.data.datasets.builder import TokenDatasetBuilder
 from caramba.runtime.tensordict_utils import TensorDictBase, collate_tensordict
-from torch.utils.data import DataLoader
-import torch.nn.functional as F
-
 
 class _ManifestShim:
     """Minimal manifest view for the upcycling pipeline."""
@@ -223,7 +222,7 @@ class _UpcycleSession:
                 logger.warning("Failed to load resume state, continuing without resume")
                 self._resume_state = None
 
-    def _teacher_sanity_check(self, train: TrainConfig, *, _allow_rebuild: bool = True) -> None:
+    def _teacher_sanity_check(self, train: TrainConfig) -> None:
         """Fail fast if the teacher or dataset is obviously broken."""
         if train.teacher_ckpt is None:
             logger.error("Teacher sanity check skipped: teacher_ckpt is required")
@@ -234,68 +233,10 @@ class _UpcycleSession:
 
         # Use the target's configured dataset path (groups[].data).
         data_path = str(self.group.data)
-        prepare_cfg = self.data_config.get("prepare", None)
-        if prepare_cfg is not None and not isinstance(prepare_cfg, dict):
-            prepare_cfg = None
 
-        def _maybe_prepare(*, overwrite: bool) -> None:
-            if prepare_cfg is None:
-                return
-            kind = str(prepare_cfg.get("type", "fineweb")).lower().strip()
-            if kind not in {"fineweb", "fineweb_npy"}:
-                raise ValueError(f"Unsupported data.config.prepare.type={kind!r}")
-            # Import locally so training can run without dataset deps unless requested.
-            from caramba.prepare_fineweb import prepare_fineweb_npy
-
-            # Manifest-driven defaults: fall back to manifest defaults.data.tokenizer.
-            tok = str(prepare_cfg.get("tokenizer", getattr(self.defaults.data, "tokenizer", "llama")))
-            # Default model_id: use teacher checkpoint for llama unless overridden.
-            model_id = str(prepare_cfg.get("model_id", train.teacher_ckpt or "meta-llama/Llama-3.2-1B"))
-            if model_id.startswith("hf://"):
-                model_id = model_id[5:]
-            ds_id = str(prepare_cfg.get("dataset", "HuggingFaceFW/fineweb"))
-            subset = prepare_cfg.get("subset", None)
-            subset_s = str(subset) if isinstance(subset, str) and subset else None
-            split = str(prepare_cfg.get("split", "train"))
-            text_field = str(prepare_cfg.get("text_field", "text"))
-            max_chars = int(prepare_cfg.get("max_chars", 50_000))
-            append_eos = bool(prepare_cfg.get("append_eos", True))
-            append_bos = bool(prepare_cfg.get("append_bos", False))
-            token_budget = str(prepare_cfg.get("tokens", "100M"))
-            logger.info(
-                f"Preparing dataset (manifest-driven): {ds_id} split={split} tokenizer={tok} → {data_path}"
-            )
-            prepare_fineweb_npy(
-                tokens=token_budget,
-                output=data_path,
-                tokenizer=tok,
-                model_id=model_id,
-                dataset=ds_id,
-                subset=subset_s,
-                split=split,
-                text_field=text_field,
-                max_chars=max_chars,
-                append_eos=append_eos,
-                append_bos=append_bos,
-                overwrite=bool(overwrite),
-            )
-        try:
-            dataset = TokenDatasetBuilder.build(path=data_path, block_size=int(train.block_size))
-        except Exception as e:
-            # If the dataset doesn't exist yet, and a prepare config is present, build it now.
-            if prepare_cfg is not None:
-                _maybe_prepare(overwrite=False)
-                dataset = TokenDatasetBuilder.build(path=data_path, block_size=int(train.block_size))
-            else:
-                logger.error(f"Teacher sanity check skipped: failed to load dataset {data_path!r}: {e}")
-                return
-
-        loader: DataLoader[TensorDictBase] = DataLoader(
-            dataset,
-            batch_size=int(getattr(train, "teacher_sanity_batch_size", 1)),
-            shuffle=False,
-            drop_last=True,
-            collate_fn=collate_tensordict,
+        dataset = TokenDatasetBuilder.build(
+            path=Path(data_path),
+            block_size=int(train.block_size),
         )
 
         # Resolve vocab size from teacher embeddings (tied or untied).
@@ -315,6 +256,13 @@ class _UpcycleSession:
         max_ppl_ratio = float(getattr(train, "teacher_sanity_max_ppl_ratio_vs_ref", 1.25))
         max_nll_delta = float(getattr(train, "teacher_sanity_max_nll_delta_vs_ref", 0.25))
         ref_fail_fast = bool(getattr(train, "teacher_sanity_reference_fail_fast", True))
+
+        loader: DataLoader[TensorDictBase] = DataLoader(
+            dataset,
+            batch_size=int(train.batch_size),
+            shuffle=False,
+            collate_fn=collate_tensordict,
+        )
 
         self.teacher.eval()
         total_loss = 0.0
@@ -439,17 +387,6 @@ class _UpcycleSession:
                         logger.warning(f"teacher_sanity_reference=hf failed (skipping): {e}")
 
         if ppl > max_ppl:
-            # Optional self-healing: if a manifest prepare config is present, regenerate the dataset
-            # once (overwrite) and retry the sanity check. This keeps the workflow fully
-            # manifest-driven: users run one command and the manifest declares how to produce data.
-            if prepare_cfg is not None and _allow_rebuild and bool(prepare_cfg.get("rebuild_on_failure", True)):
-                logger.warning(
-                    f"Teacher sanity failed (ppl={ppl:.3f} > {max_ppl:.3f}); rebuilding dataset per manifest and retrying once..."
-                )
-                _maybe_prepare(overwrite=True)
-                # Re-run once with rebuild disabled to avoid loops.
-                return self._teacher_sanity_check(train, _allow_rebuild=False)
-
             raise ValueError(
                 f"Teacher sanity check failed: teacher perplexity={ppl:.3f} exceeds max_ppl={max_ppl:.3f}. "
                 "This commonly indicates the dataset tokens do not match the teacher tokenizer "
