@@ -5,7 +5,7 @@ notes: |
   
   Both targets use synthetic datasets (no file paths required). To use real token
   datasets with auto-download/prepare, use `dataset.tokens` with a `prepare:` config
-  (see `data/token_dataset.py` for prepare options).
+  (see `data/tokens.py` for prepare options).
 defaults:
   data:
     tokenizer: tiktoken

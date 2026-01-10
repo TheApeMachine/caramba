@@ -71,7 +71,7 @@ class TorchEngine:
         self.registry.register(
             backend="torch",
             ref="dataset.tokens",
-            python="caramba.data.token_dataset:TokenDataset",
+            python="caramba.data.tokens:TokenDataset",
         )
         self.registry.register(
             backend="torch",
