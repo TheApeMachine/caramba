@@ -1268,7 +1268,7 @@ class StandardTrainer:
                         )
                         fused_opt = False
 
-                    use_master = (device.type == "mps" and dtype == torch.float16) or (
+                    use_master = (device.type == "mps" and dtype in (torch.float16, torch.float32)) or (
                         device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
                     )
                     if use_master:
@@ -1289,7 +1289,7 @@ class StandardTrainer:
                             raise RuntimeError(
                                 "AdamW fused optimizer requested but unsupported for this device/dtype.\n"
                                 f"device={device.type} dtype={dtype}\n"
-                                "Supported: MPS fp16, CUDA fp16/bf16."
+                                "Supported: MPS fp16/fp32, CUDA fp16/bf16."
                             )
 
                 logger.info(f"optimizer=adamw fused=false backend=torch_adamw device={device.type} dtype={dtype}")

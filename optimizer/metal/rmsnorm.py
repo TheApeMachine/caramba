@@ -36,8 +36,8 @@ class _MetalRMSNormFn(torch.autograd.Function):
     ) -> "Tensor":
         if x.device.type != "mps":
             raise RuntimeError("Metal RMSNorm requires device.type == 'mps'")
-        if x.dtype != torch.float16:
-            raise RuntimeError("Metal RMSNorm currently supports fp16 only")
+        if x.dtype not in (torch.float16, torch.float32):
+            raise RuntimeError("Metal RMSNorm currently supports fp16/fp32 only")
 
         x2 = x.contiguous()
         ops = load_caramba_metal_ops(verbose=bool(verbose_build))
@@ -47,7 +47,7 @@ class _MetalRMSNormFn(torch.autograd.Function):
             ctx.save_for_backward(x2, inv)
             return out
 
-        w2 = weight.to(device=x.device, dtype=torch.float16).contiguous()
+        w2 = weight.to(device=x.device, dtype=x.dtype).contiguous()
         out, inv = ops.rmsnorm_forward_with_inv(x2, w2, float(eps))
         ctx.save_for_backward(x2, w2, inv)
         return out
@@ -61,11 +61,14 @@ class _MetalRMSNormFn(torch.autograd.Function):
             raise RuntimeError("Metal RMSNorm backward requires grad_out")
         if grad_out.device.type != "mps":
             raise RuntimeError("Metal RMSNorm backward requires grad_out on MPS")
-        if grad_out.dtype != torch.float16:
-            grad_out = grad_out.to(dtype=torch.float16)
+        
+        saved = ctx.saved_tensors
+        # Ensure grad matches input dtype
+        target_dtype = saved[0].dtype
+        if grad_out.dtype != target_dtype:
+            grad_out = grad_out.to(dtype=target_dtype)
         g = grad_out.contiguous()
 
-        saved = ctx.saved_tensors
         ops = load_caramba_metal_ops(verbose=False)
         if len(saved) == 2:
             x, inv = saved
@@ -86,17 +89,17 @@ def rmsnorm_fp16(
     eps: float = 1e-6,
     verbose_build: bool = False,
 ) -> "Tensor":
-    """Fused RMSNorm (MPS/Metal) for fp16 tensors.
+    """Fused RMSNorm (MPS/Metal) for fp16/fp32 tensors.
 
     Args:
-        x: (..., D) fp16 tensor on MPS (contiguous required)
-        weight: (D,) fp16 tensor on MPS, or None for no affine scale
+        x: (..., D) fp16/fp32 tensor on MPS (contiguous required)
+        weight: (D,) fp16/fp32 tensor on MPS, or None for no affine scale
         eps: epsilon for numerical stability
     """
     if x.device.type != "mps":
         raise RuntimeError("Metal RMSNorm requires device.type == 'mps'")
-    if x.dtype != torch.float16:
-        raise RuntimeError("Metal RMSNorm currently supports fp16 only")
+    if x.dtype not in (torch.float16, torch.float32):
+        raise RuntimeError("Metal RMSNorm currently supports fp16/fp32 only")
 
     needs_grad = bool(x.requires_grad) or (weight is not None and bool(weight.requires_grad))
     if not needs_grad:
@@ -106,7 +109,7 @@ def rmsnorm_fp16(
         if weight is None:
             return ops.rmsnorm_noweight(x2, float(eps))
 
-        w2 = weight.to(device=x.device, dtype=torch.float16).contiguous()
+        w2 = weight.to(device=x.device, dtype=x.dtype).contiguous()
         return ops.rmsnorm(x2, w2, float(eps))
 
     y = _MetalRMSNormFn.apply(x, weight, float(eps), bool(verbose_build))

@@ -37,12 +37,12 @@ class _MetalRoPEFn(torch.autograd.Function):
     ) -> "Tensor":
         if x.device.type != "mps":
             raise RuntimeError("Metal RoPE requires device.type == 'mps'")
-        if x.dtype != torch.float16:
-            raise RuntimeError("Metal RoPE currently supports fp16 only")
+        if x.dtype not in (torch.float16, torch.float32):
+            raise RuntimeError("Metal RoPE currently supports fp16/fp32 only")
 
         x2 = x.contiguous()
-        cos2 = cos.to(device=x.device, dtype=torch.float16).contiguous()
-        sin2 = sin.to(device=x.device, dtype=torch.float16).contiguous()
+        cos2 = cos.to(device=x.device, dtype=x.dtype).contiguous()
+        sin2 = sin.to(device=x.device, dtype=x.dtype).contiguous()
 
         ops = load_caramba_metal_ops(verbose=bool(verbose_build))
 
@@ -59,11 +59,14 @@ class _MetalRoPEFn(torch.autograd.Function):
             raise RuntimeError("Metal RoPE backward requires grad_out")
         if grad_out.device.type != "mps":
             raise RuntimeError("Metal RoPE backward requires grad_out on MPS")
-        if grad_out.dtype != torch.float16:
-            grad_out = grad_out.to(dtype=torch.float16)
+        
+        # Ensure grad matches saved cos/sin dtype (which matched x)
+        (cos, sin) = ctx.saved_tensors
+        target_dtype = cos.dtype
+        if grad_out.dtype != target_dtype:
+            grad_out = grad_out.to(dtype=target_dtype)
         g = grad_out.contiguous()
 
-        (cos, sin) = ctx.saved_tensors
         rot_dim = int(getattr(ctx, "rot_dim"))
         ops = load_caramba_metal_ops(verbose=False)
         grad_x = ops.rope_backward(g, cos, sin, rot_dim)
@@ -78,7 +81,7 @@ def rope_fp16(
     rot_dim: int,
     verbose_build: bool = False,
 ) -> Tensor:
-    """Apply RoPE using the Metal extension (fp16).
+    """Apply RoPE using the Metal extension (fp16/fp32).
 
     Uses the "half split" layout from `layer/rope.py`:
     - x: (B, H, T, D)
@@ -86,13 +89,13 @@ def rope_fp16(
     """
     if x.device.type != "mps":
         raise RuntimeError("Metal RoPE requires device.type == 'mps'")
-    if x.dtype != torch.float16:
-        raise RuntimeError("Metal RoPE currently supports fp16 only")
+    if x.dtype not in (torch.float16, torch.float32):
+        raise RuntimeError("Metal RoPE currently supports fp16/fp32 only")
 
     if not bool(x.requires_grad):
         x2 = x.contiguous()
-        cos2 = cos.to(device=x.device).to(torch.float16).contiguous()
-        sin2 = sin.to(device=x.device).to(torch.float16).contiguous()
+        cos2 = cos.to(device=x.device, dtype=x.dtype).contiguous()
+        sin2 = sin.to(device=x.device, dtype=x.dtype).contiguous()
 
         ops = load_caramba_metal_ops(verbose=bool(verbose_build))
 

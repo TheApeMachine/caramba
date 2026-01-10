@@ -94,6 +94,8 @@ packages = [
     "caramba.experiment",
     "caramba.infer",
     "caramba.instrumentation",
+    "caramba.initializers",
+    "caramba.initializers.dba",
     "caramba.layer",
     "caramba.loader",
     "caramba.adapter",

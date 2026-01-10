@@ -30,8 +30,8 @@ def lion_fp16(
 ) -> Tensor:
     if p.device.type != "mps":
         raise RuntimeError("Metal Lion requires device.type == 'mps'")
-    if p.dtype != torch.float16 or grad.dtype != torch.float16 or m.dtype != torch.float16:
-        raise RuntimeError("Metal Lion currently supports fp16 tensors only")
+    if p.dtype not in (torch.float16, torch.float32) or grad.dtype != p.dtype or m.dtype != p.dtype:
+        raise RuntimeError("Metal Lion currently supports fp16/fp32 tensors only (matching)")
     if p.shape != grad.shape or p.shape != m.shape:
         raise RuntimeError(
             f"Metal Lion requires matching shapes for p/grad/m, got p={tuple(p.shape)}, grad={tuple(grad.shape)}, m={tuple(m.shape)}"

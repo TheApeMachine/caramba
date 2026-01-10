@@ -1,0 +1,121 @@
+version: 2
+name: mosaic_resonant
+notes: |
+  Table 2 Row D: ICL-like few-shot rule induction with distractors.
+  Adapted with Resonant Router (PhaseAssociativeMemory logic).
+
+defaults:
+  data:
+    tokenizer: tiktoken
+    val_frac: 0.1
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: mosaic
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    save_every: 100
+
+vars:
+  d_model: 256
+  n_layers: 6
+  vocab_size: 8192
+  block_size: 512
+  mem_buckets: 4096
+  mem_hashes: 2
+
+targets:
+  - type: experiment
+    name: mosaic_icl_rule_induction_resonant
+    description: Train MOSAIC on ICL-like synthetic rule induction traces with Resonant Router.
+    backend: torch
+    task: task.language_modeling
+
+    data:
+      ref: dataset.icl_rule_induction
+      config:
+        block_size: ${block_size}
+        vocab_size: ${vocab_size}
+        n_demos: 4
+        gap_bins: [0, 16, 64, 256]
+        demo_distractors: 8
+        n_items: 200000
+        seed: 1337
+
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: MemoryBlockLayer
+                    d_model: ${d_model}
+                    conv_kernel: 7
+                    mlp_mult: 2.0
+                    dropout_p: 0.0
+                    state_k: 8
+                    state_decay_min: 0.90
+                    state_decay_max: 0.999
+                    mem_router: resonant
+                    mem_resonant_steps: 10
+                    mem_resonant_coupling: 0.01
+                    mem_resonant_damping: 0.02
+                    mem_buckets: 256
+                    mem_dim: 128
+                    mem_hashes: 1
+                    mem_assoc: 4
+                    mem_key_dim: 256
+                    mem_read_temp: 1.0
+                    mem_match_threshold: 0.0
+                    mem_write_threshold: 0.5
+                    mem_write_eta: 0.2
+                    forced_read_dropout_p: 0.0
+              - type: RMSNormLayer
+                d_model: ${d_model}
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+
+    objective:
+      ref: objective.next_token_ce
+      config:
+        logits_key: logits
+        target_key: target_ids
+
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: mosaic_resonant
+        seed: 1337
+        steps: 2000
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 16
+          block_size: ${block_size}
+          lr: 2.0e-5
+          device: mps
+          dtype: float32
+          grad_clip_norm: 1.0
+          telemetry_interval: 10
+          layer_telemetry_interval: 100
+          viz_interval: 100
+          viz_tokens: 32
+          viz_channels: 64
+          viz_heads: 4
+          viz_topk: 16
+
+entrypoints:
+  default: mosaic_icl_rule_induction_resonant

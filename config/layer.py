@@ -399,12 +399,17 @@ class MemoryBlockLayerConfig(Config):
     # Router can be:
     # - "bits": learned SimHash-style sign bits (default; very cheap)
     # - "vq": product-quantized VQ routing (learned discrete router; more stable/fuzzy)
-    mem_router: Literal["bits", "vq"] = "bits"
+    # - "resonant": iterative phase-dynamics settling (more stable addressing)
+    mem_router: Literal["bits", "vq", "resonant"] = "bits"
     # VQ router parameters (used when mem_router="vq").
     mem_vq_groups: PositiveInt = 2          # G
     mem_vq_codebook_size: PositiveInt = 256 # K
     mem_vq_group_dim: PositiveInt = 16      # dim per group
     mem_vq_beam: PositiveInt = 1            # neighbor reads: top-k codes per group (beam^G buckets)
+    # Resonant router parameters (used when mem_router="resonant").
+    mem_resonant_steps: PositiveInt = 20
+    mem_resonant_coupling: PositiveFloat = 0.25
+    mem_resonant_damping: Probability = 0.02
     # When enabled, write to more than one candidate bucket (constant factor).
     mem_write_multi: bool = False
 

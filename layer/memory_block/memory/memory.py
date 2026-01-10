@@ -14,7 +14,7 @@ from torch import Tensor, nn
 
 from caramba.config.layer import MemoryBlockLayerConfig
 from caramba.layer.memory_block.memory.reader import MemoryReader
-from caramba.layer.memory_block.memory.routing import BitRouter, VqRouter
+from caramba.layer.memory_block.memory.routing import BitRouter, VqRouter, ResonantRouter
 from caramba.layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
 from caramba.layer.memory_block.memory.rmf import ResonantMemoryField
 from caramba.layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
@@ -153,8 +153,18 @@ class MemoryBlockMemory(nn.Module):
 
         self.bit_router: BitRouter | None = None
         self.vq_router: VqRouter | None = None
+        self.resonant_router: ResonantRouter | None = None
         if self.mem_router == "bits":
             self.bit_router = BitRouter(in_dim=int(self.mem_key_dim), hashes=int(self.mem_hashes), buckets=int(self.mem_buckets))
+        elif self.mem_router == "resonant":
+            self.resonant_router = ResonantRouter(
+                in_dim=int(self.mem_key_dim),
+                hashes=int(self.mem_hashes),
+                buckets=int(self.mem_buckets),
+                steps=int(getattr(self.config, "mem_resonant_steps", 20)),
+                coupling=float(getattr(self.config, "mem_resonant_coupling", 0.25)),
+                damping=float(getattr(self.config, "mem_resonant_damping", 0.02)),
+            )
         else:
             self.vq_router = VqRouter(
                 in_dim=int(self.mem_key_dim),
@@ -222,6 +232,10 @@ class MemoryBlockMemory(nn.Module):
             if self.bit_router is None:
                 raise RuntimeError("bit_router is None but mem_router='bits'")
             routing = self.bit_router.route(tag=tag, collect_aux=collect_aux)
+        elif self.mem_router == "resonant":
+            if self.resonant_router is None:
+                raise RuntimeError("resonant_router is None but mem_router='resonant'")
+            routing = self.resonant_router.route(tag=tag, collect_aux=collect_aux)
         else:
             if self.vq_router is None:
                 raise RuntimeError("vq_router is None but mem_router='vq'")
@@ -263,6 +277,10 @@ class MemoryBlockMemory(nn.Module):
             if self.bit_router is None:
                 raise RuntimeError("bit_router is None but mem_router='bits'")
             r = self.bit_router.route(tag=tag, collect_aux=collect_aux)
+        elif self.mem_router == "resonant":
+            if self.resonant_router is None:
+                raise RuntimeError("resonant_router is None but mem_router='resonant'")
+            r = self.resonant_router.route(tag=tag, collect_aux=collect_aux)
         else:
             if self.vq_router is None:
                 raise RuntimeError("vq_router is None but mem_router='vq'")
@@ -420,6 +438,10 @@ class MemoryBlockMemory(nn.Module):
             if self.bit_router is None:
                 raise RuntimeError("bit_router is None but mem_router='bits'")
             routing = self.bit_router.route(tag=tag, collect_aux=collect_aux)
+        elif self.mem_router == "resonant":
+            if self.resonant_router is None:
+                raise RuntimeError("resonant_router is None but mem_router='resonant'")
+            routing = self.resonant_router.route(tag=tag, collect_aux=collect_aux)
         else:
             if self.vq_router is None:
                 raise RuntimeError("vq_router is None but mem_router='vq'")
