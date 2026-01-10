@@ -6,6 +6,8 @@ datasets without changing training code.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from abc import ABC, abstractmethod
 
 
@@ -18,7 +20,7 @@ class Dataset(ABC):
     """
 
     @abstractmethod
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         """Initialize dataset
 
         Each dataset implementation defines its own initialization parameters,
@@ -28,7 +30,7 @@ class Dataset(ABC):
         pass
 
     @abstractmethod
-    def __len__(self):
+    def __len__(self) -> int:
         """Get dataset length
 
         Returns the number of samples available, enabling DataLoaders to
@@ -37,7 +39,7 @@ class Dataset(ABC):
         pass
 
     @abstractmethod
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int) -> Any:
         """Get sample by index
 
         Returns a single sample at the given index, allowing DataLoaders to
