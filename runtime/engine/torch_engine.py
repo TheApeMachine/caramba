@@ -286,7 +286,7 @@ class TorchEngine:
             except Exception as e:
                 logger.warning(f"Benchmarks failed: {e}")
 
-        # Metrics/evaluators (best-effort).
+        # Metrics/evaluators.
         if target.metrics and isinstance(result, dict):
             models: dict[str, nn.Module] = {}
             if "teacher" in result and "student" in result:

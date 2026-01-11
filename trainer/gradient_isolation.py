@@ -195,8 +195,8 @@ class GradientIsolationTrainer:
                 if isinstance(m, nn.Module):
                     system_any.module = dist_ctx.wrap_model(m)
             except Exception as e:
-                logger.warning(f"GradientIsolationTrainer: [best-effort] failed to wrap system module for distributed training: {e}")
-                # Best-effort: continue without distributed wrapping if it fails.
+                logger.warning(f"GradientIsolationTrainer: failed to wrap system module for distributed training: {e}")
+                # Continue without distributed wrapping if it fails.
 
         # Apply scope after moving to device (so params exist and are typed).
         scope_stats = apply_trainable_scope(
@@ -315,7 +315,7 @@ class GradientIsolationTrainer:
                 ):
                     if not hasattr(system, "forward"):
                         raise TypeError("System component does not expose forward()")
-                    # Best-effort: attach MOSAIC-friendly fields onto ctx when present in batch.
+                    # Attach MOSAIC-friendly fields onto ctx when present in batch.
                     from collections.abc import Mapping
                     if isinstance(batch_td, Mapping):
                         inp = batch_td.get("input_ids", None)
@@ -364,7 +364,7 @@ class GradientIsolationTrainer:
                         )
                     except Exception as e:
                         _warn_once("system_forward_signature", f"Failed to introspect system.forward (ignoring): {e!r}")
-                        accepts_ctx = True  # best-effort default
+                        accepts_ctx = True  # default
                     if accepts_ctx:
                         try:
                             outputs = forward_fn(batch_td, ctx=viz_ctx)
@@ -377,7 +377,7 @@ class GradientIsolationTrainer:
                     else:
                         outputs = forward_fn(batch_td)
 
-                    # Best-effort: merge MOSAIC aux outputs from ctx into outputs so
+                    # Merge MOSAIC aux outputs from ctx into outputs so
                     # objectives can see them even when the system doesn't attach them.
                     try:
                         aux_out = getattr(viz_ctx, "memblock_aux_out", None)
@@ -418,7 +418,10 @@ class GradientIsolationTrainer:
                                 sum(1 for k in outputs.keys() if isinstance(k, str) and k.startswith("mosaic_"))
                             )
                     except Exception as e:
-                        logger.warning(f"GradientIsolationTrainer: [best-effort] failed to merge MOSAIC aux outputs: {e}")
+                        logger.warning(
+                            "GradientIsolationTrainer: failed to count MOSAIC aux keys in metrics collection: "
+                            f"{e}"
+                        )
                     if hasattr(objective, "metrics"):
                         try:
                             extra = objective.metrics(  # type: ignore[attr-defined]
@@ -577,5 +580,5 @@ class GradientIsolationTrainer:
         try:
             save_plan(plan_path, plan, payload=payload)
         except Exception as e:
-            logger.warning(f"GradientIsolationTrainer: [best-effort] failed to save runtime plan: {e}")
+            logger.warning(f"GradientIsolationTrainer: failed to save runtime plan: {e}")
         return plan

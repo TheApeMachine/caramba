@@ -7,6 +7,7 @@ improve invariance under paraphrase and distractors.
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from typing import Any
@@ -16,6 +17,8 @@ from torch import Tensor, nn
 
 from caramba.optimizer.metal.resonant_update import MetalResonantPhaseUpdate
 from caramba.optimizer.resonant_update_triton import ResonantPhaseUpdateTriton
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,7 +224,14 @@ class ResonantRouter(nn.Module):
 
     def _check_nan(self, x: Tensor, name: str) -> None:
         if not torch.isfinite(x).all():
-            print(f"!!! [ResonantRouter] {name} is NOT FINITE (NaN/Inf) !!!")
+            non_finite = int((~torch.isfinite(x)).sum().item())
+            _logger.warning(
+                "ResonantRouter: %s has non-finite values (non_finite=%s shape=%s dtype=%s)",
+                name,
+                non_finite,
+                tuple(x.shape),
+                x.dtype,
+            )
 
     def _derived_from_patterns(self, *, device: torch.device, D: int, H: int) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Derived tensors for resonant routing.
@@ -314,6 +324,12 @@ class ResonantRouter(nn.Module):
         B_h = B_
 
         for s_idx in range(int(steps)):
+            x_prev: Tensor | None = None
+            y_prev: Tensor | None = None
+            if collect_aux and (s_idx % 5) == 0:
+                x_prev = x
+                y_prev = y
+
             # Compute u = P z (K-dim), where P = A + iB and z = x + iy:
             # u_r = x @ A^T - y @ B^T
             # u_i = y @ A^T + x @ B^T
@@ -325,8 +341,6 @@ class ResonantRouter(nn.Module):
             y_t = y.transpose(0, 1)
             u_r_t = torch.bmm(x_t, At_h) - torch.bmm(y_t, Bt_h)  # (H,BT,K)
             u_i_t = torch.bmm(y_t, At_h) + torch.bmm(x_t, Bt_h)  # (H,BT,K)
-            u_r = u_r_t.transpose(0, 1).contiguous()  # (BT,H,K)
-            u_i = u_i_t.transpose(0, 1).contiguous()  # (BT,H,K)
 
             # v = P^H u (D-dim):
             # v_r = u_r @ A + u_i @ B
@@ -383,8 +397,10 @@ class ResonantRouter(nn.Module):
                 x = x / mag
                 y = y / mag
 
-            if collect_aux and (s_idx % 5) == 0:
-                energy_history.append(float((x * x + y * y).mean().item()))
+            if x_prev is not None and y_prev is not None:
+                # Track per-iteration change magnitude (more informative than ~1.0 normalization energy).
+                delta = ((x - x_prev).pow(2) + (y - y_prev).pow(2)).mean()
+                energy_history.append(float(delta.item()))
 
         # 5. Final Similarity calculation using real components
         xr = x.unsqueeze(-2)  # (BT,H,1,D)

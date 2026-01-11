@@ -9,6 +9,7 @@ Implements the integration layer described in the MOSAIC meeting notes:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -21,6 +22,8 @@ from caramba.core.event_bus import EventBus, EventHandler
 from caramba.core.event_codec import EventDecoder, EventEncoder
 from caramba.infer.context import InferContext
 from caramba.infer.replay import ReplayBuffer
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,8 +209,16 @@ class EventResponder:
             try:
                 out_ids = torch.tensor(buf, dtype=torch.long)
                 ev = self.codec.decode_bytes(out_ids)
-            except Exception:
-                # Cap'n Proto decoding failed (e.g. incomplete message), continue generating
+            except Exception as e:
+                # Cap'n Proto decoding failed (e.g. incomplete message), continue generating.
+                # Log at debug level for diagnosability.
+                _logger.debug(
+                    "EventResponder: decode_bytes failed (len=%s, head=%s): %s",
+                    len(buf),
+                    buf[:8],
+                    e,
+                    exc_info=True,
+                )
                 continue
 
             # If we reach here, decoding succeeded.
@@ -229,9 +240,11 @@ class EventResponder:
                     if int(seq.numel()) > max_len:
                         seq = seq[-max_len:]
                     self.replay.add(seq)
-                except Exception:
-                    # Best-effort: replay should never break inference.
-                    pass
+                except Exception as e:
+                    # Replay should never break inference.
+                    _logger.warning(
+                        "EventResponder: failed to add replay sequence: %s", e, exc_info=True
+                    )
             return ev, aux_last
 
         raise RuntimeError("Failed to decode a complete EventEnvelope before max_new_tokens")

@@ -14,6 +14,12 @@ def test_vast_ai_compute_config():
     assert cfg.gpu_name == "H100"
     assert cfg.max_price_per_hr == 2.5
 
+
+def test_vast_ai_zero_price() -> None:
+    with pytest.raises(ValidationError):
+        VastAIComputeConfig(max_price_per_hr=0.0)
+
+
 def test_compute_config_union():
     # Test discriminators
     adapter = TypeAdapter(ComputeConfig)

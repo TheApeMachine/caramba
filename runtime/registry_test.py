@@ -53,7 +53,7 @@ def test_construct_prefers_kwargs_then_falls_back_to_positional() -> None:
     assert isinstance(obj, Dummy)
     assert obj.kwargs["x"] == 1
 
-    # For class types, implementation prefers dict-style first (best-effort), then kwargs.
+    # For class types, implementation prefers dict-style first, then kwargs.
     obj2 = _construct(Dummy, {"y": 2})
     assert isinstance(obj2, Dummy)
 

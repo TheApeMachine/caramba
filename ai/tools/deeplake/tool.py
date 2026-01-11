@@ -27,7 +27,7 @@ from starlette.responses import JSONResponse, Response
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-logger = logging.getLogger(__name__)
+from caramba.console import logger as _logger
 
 
 def _rowview_to_str_dict(row: object) -> dict[str, Any]:
@@ -58,7 +58,7 @@ def _rowview_to_str_dict(row: object) -> dict[str, Any]:
             try:
                 out_row[sk] = row[k]  # type: ignore[index]
             except Exception:
-                # Best-effort; skip columns we can't read.
+                # Non-critical; skip columns we can't read.
                 continue
         return out_row
 
@@ -212,7 +212,7 @@ class DeepLakeTool():
 
         for idx, it in enumerate(items):
             if not isinstance(it, dict):
-                logger.warning(f"Skipping non-dict item at index {idx}: {repr(it)}")
+                _logger.warning(f"Skipping non-dict item at index {idx}: {repr(it)}")
                 continue
 
             ids.append(str(it.get("id", "")))
@@ -255,10 +255,10 @@ def _cleanup_deeplake_tool() -> None:
             if hasattr(_DEEPLAKE_TOOL, 'ds') and _DEEPLAKE_TOOL.ds is not None:
                 try:
                     _DEEPLAKE_TOOL.ds.commit()
-                except Exception:
-                    pass  # Best-effort cleanup
-        except Exception:
-            pass  # Best-effort cleanup
+                except Exception as e:
+                    _logger.error(f"Failed to commit DeepLake dataset: {e}")
+        except Exception as e:
+            _logger.error(f"Failed to cleanup DeepLake tool: {e}")
         _DEEPLAKE_TOOL = None
 
 

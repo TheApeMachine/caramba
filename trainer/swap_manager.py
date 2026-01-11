@@ -4,8 +4,7 @@ This is a small abstraction for:
 - optimizer state offload/reload
 - (future) activation checkpoint policy selection
 
-The default behavior is best-effort and safe: if anything fails, training should
-continue using the normal path.
+This component controls optimizer state staging/offload policies.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ import torch
 
 @dataclass(frozen=True, slots=True)
 class SwapManager:
-    """Best-effort optimizer state staging."""
+    """Optimizer state staging."""
 
     offload_optimizer: bool = False
     offload_device: str = "cpu"

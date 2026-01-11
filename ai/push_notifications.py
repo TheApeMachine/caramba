@@ -20,6 +20,26 @@ from a2a.types import (
 _logger = logging.getLogger(__name__)
 
 
+def _extract_credential_token(cred: Any) -> str | None:
+    """Normalize a credential representation to a bearer token string.
+
+    The A2A SDKs may represent credentials as:
+    - a string token
+    - a dict with keys "key" or "token"
+    - an object with attributes "key" or "token"
+    """
+    if cred is None:
+        return None
+    if isinstance(cred, str):
+        return cred
+    if isinstance(cred, dict):
+        val = cred.get("key") or cred.get("token")
+        return str(val) if val else None
+
+    val = getattr(cred, "key", None) or getattr(cred, "token", None)
+    return str(val) if val else None
+
+
 class InMemoryPushNotificationConfigStore(PushNotificationConfigStore):
     """In-memory storage for push notification configurations."""
 
@@ -121,20 +141,9 @@ class HttpPushNotificationSender(PushNotificationSender):
                     # Add authentication if configured
                     if config.authentication:
                         for cred in config.authentication.credentials or []:
-                            # A2A SDKs differ in how credentials are represented (string vs object).
-                            # Normalize to a string token if present.
-                            key: str | None = None
-                            if isinstance(cred, str):
-                                key = cred
-                            elif isinstance(cred, dict):
-                                val = cred.get("key") or cred.get("token")
-                                key = str(val) if val else None
-                            else:
-                                val = getattr(cred, "key", None) or getattr(cred, "token", None)
-                                key = str(val) if val else None
-
-                            if key:
-                                headers["Authorization"] = f"Bearer {key}"
+                            token = _extract_credential_token(cred)
+                            if token is not None:
+                                headers["Authorization"] = f"Bearer {token}"
                                 break
 
                     _logger.info(

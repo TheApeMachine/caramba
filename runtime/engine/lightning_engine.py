@@ -101,11 +101,17 @@ class LightningEngine:
             )
 
             # Setup Trainer
+            if train_cfg.device == "cpu":
+                devices: int | str = 1
+                accelerator: str = "cpu"
+            else:
+                devices = "auto"
+                accelerator = "auto"
             trainer = L.Trainer(
                 max_steps=run.steps,
-                devices=1 if train_cfg.device != "cpu" else 0,
-                accelerator="auto" if train_cfg.device != "cpu" else "cpu",
-                precision="16-mixed" if train_cfg.use_amp else "32-true",
+                devices=devices,
+                accelerator=accelerator,
+                precision="16-mixed" if getattr(train_cfg, "use_amp", False) else "32-true",
                 default_root_dir=str(Path("runs") / target.name / str(run.id))
             )
 

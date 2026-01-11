@@ -24,7 +24,7 @@ def _try_summary_writer() -> object | None:
 
 @dataclass
 class TensorBoardWriter:
-    """Best-effort TensorBoard logger."""
+    """TensorBoard logger."""
 
     out_dir: Path
     enabled: bool = True

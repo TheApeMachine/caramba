@@ -73,9 +73,9 @@ class MetalResonantPhaseUpdateFn(torch.autograd.Function):
     ) -> tuple[Tensor | None, ...]:
         x, y, diag, a, b, inv_r = ctx.saved_tensors
         ops = load_caramba_metal_resonant_ops(verbose=False)
-        scale = float(getattr(ctx, "scale"))
-        damping = float(getattr(ctx, "damping"))
-        zero_diag = bool(getattr(ctx, "zero_diag"))
+        scale = float(ctx.scale)
+        damping = float(ctx.damping)
+        zero_diag = bool(ctx.zero_diag)
 
         gx, gy, gvr, gvi = ops.resonant_update_backward_fp32(
             grad_xo.contiguous(),

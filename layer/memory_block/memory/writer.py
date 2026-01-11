@@ -49,8 +49,15 @@ class MemoryWriter:
     mem_trie_eta_decay: float
     mem_trie_max_levels: int | None
     tuner_mode: str = "off"
+    _tuner_cache_mode: str | None = None
+    _tuner_cache: Any | None = None
 
     def __post_init__(self) -> None:
+        allowed_tuner_modes = {"off", "monitor", "adaptive"}
+        if str(self.tuner_mode) not in allowed_tuner_modes:
+            raise ValueError(
+                f"Invalid tuner_mode={self.tuner_mode!r}; expected one of {sorted(allowed_tuner_modes)!r}"
+            )
         if self.mem_vsa_enabled:
             if self.vsa_projector is None:
                 raise ValueError("mem_vsa_enabled is True but vsa_projector is None")
@@ -68,6 +75,19 @@ class MemoryWriter:
                     "mem_trie_enabled requires mem_table_buckets == 2 * mem_buckets - 1, "
                     f"got mem_table_buckets={int(self.mem_table_buckets)} mem_buckets={int(self.mem_buckets)}"
                 )
+
+    def _get_tuner(self) -> Any | None:
+        mode = str(self.tuner_mode)
+        if mode == "off":
+            self._tuner_cache_mode = mode
+            self._tuner_cache = None
+            return None
+        if self._tuner_cache is None or self._tuner_cache_mode != mode:
+            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+
+            self._tuner_cache = get_shared_tuner(mode=mode)
+            self._tuner_cache_mode = mode
+        return self._tuner_cache
 
     def write_chunk(
         self,
@@ -225,9 +245,8 @@ class MemoryWriter:
         
         # Apply tuner scaling to thresholds
         write_threshold = float(self.mem_write_threshold)
-        if self.tuner_mode != "off":
-            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
-            tuner = get_shared_tuner(mode=self.tuner_mode)
+        tuner = self._get_tuner()
+        if tuner is not None:
             write_threshold = write_threshold * getattr(tuner, "write_threshold_mult", 1.0)
             
         m = (p > write_threshold).to(dtype=u.dtype)
@@ -265,9 +284,8 @@ class MemoryWriter:
         
         # Apply tuner scaling to novelty threshold
         novelty_threshold = None
-        if self.tuner_mode != "off" and hasattr(self.vsa_novelty, "threshold"):
-            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
-            tuner = get_shared_tuner(mode=self.tuner_mode)
+        tuner = self._get_tuner()
+        if tuner is not None and hasattr(self.vsa_novelty, "threshold"):
             novelty_threshold = float(self.vsa_novelty.threshold) * getattr(tuner, "vsa_novelty_mult", 1.0)
             
         novelty = self.vsa_novelty(max_sim, threshold=novelty_threshold)

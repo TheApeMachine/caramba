@@ -57,6 +57,8 @@ class Logger:
         self.console = Console(theme=CARAMBA_THEME)
         self._live_display: Live | None = None
         self._live_renderable: Panel | None = None
+        self._tuner_panel: Panel | None = None
+        self._health_panel: Panel | None = None
 
     # ─────────────────────────────────────────────────────────────────────
     # Basic Logging
@@ -353,7 +355,7 @@ class Logger:
                 speed_style = "success"
                 arrow = "↑"
             elif velocity < 0:
-                speed_style = "amber"
+                speed_style = "warning"
                 arrow = "↓"
             else:
                 speed_style = "muted"
@@ -388,7 +390,7 @@ class Logger:
             self._live_display.start()
         
         # Update display with both panels if health exists
-        if hasattr(self, '_health_panel') and self._health_panel is not None:
+        if self._health_panel is not None:
             from rich.console import Group
             combined = Group(self._tuner_panel, self._health_panel)
             self._live_display.update(combined)
@@ -401,10 +403,6 @@ class Logger:
         Args:
             metrics: Dict with 'accuracy', 'loss_variance', 'utilization', 'objective'
         """
-        from rich.table import Table
-        from rich.panel import Panel
-        from rich.text import Text
-        
         table = Table(
             show_header=False,
             border_style="muted",

@@ -108,7 +108,7 @@ class TeacherOutputCache:
             try:
                 self._access_order.remove(key)
             except ValueError:
-                # Could happen if the access list got out of sync (best-effort LRU).
+                # Could happen if the access list got out of sync.
                 logger.error(f"Failed to remove key from access order, continuing: {key}")
             self._access_order.append(key)
             outs = self._cache[key]

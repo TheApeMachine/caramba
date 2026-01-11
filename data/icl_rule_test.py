@@ -51,7 +51,7 @@ def test_table2_telemetry_memory_path_runs_with_teacher_signals() -> None:
 
     # Fake logits predicting the targets (perfect model) so accuracy should be 1 at read positions.
     B, T = batch_td["target_ids"].shape
-    V = int(256)
+    V = 256
     logits = torch.zeros((B, T, V), dtype=torch.float32)
     logits.scatter_(2, batch_td["target_ids"].unsqueeze(-1), 1.0)
     out = Table2Telemetry().compute(outputs={"logits": logits}, batch=batch_td)

@@ -7,7 +7,7 @@ manifest-driven without hard-coding MNIST or torchvision.
 """
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 import numpy as np
 import torch

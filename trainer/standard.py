@@ -43,6 +43,7 @@ from caramba.instrumentation.training_metrics import update_training_metrics
 from caramba.instrumentation.wandb_writer import WandBWriter
 from caramba.layer.attention import AttentionLayer
 from caramba.layer.memory_block.block import MemoryBlockLayer
+from caramba.layer.memory_block.memory.tuner import reset_shared_tuner
 from caramba.runtime.plan import RuntimePlan
 from caramba.runtime.tensordict_utils import (
     TensorDictBase,
@@ -124,7 +125,7 @@ class _LayerStatsCollector:
         self.shapes: dict[int, list[int]] = {}
 
     def observe(self, idx: int, y: Tensor) -> None:
-        # Best-effort; keep overhead bounded.
+        # Collect lightweight stats; keep overhead bounded.
         try:
             z = y.detach().float()
             ms = float((z * z).mean().item())
@@ -342,7 +343,6 @@ class StandardTrainer:
         device = torch.device(train.device)
         
         # Reset shared tuner for new training runs
-        from caramba.layer.memory_block.memory.tuner import reset_shared_tuner
         reset_shared_tuner()
 
         dist_ctx: DistributedContext | None = None
@@ -365,7 +365,7 @@ class StandardTrainer:
             except Exception as e:
                 raise RuntimeError("Failed to check if this is the main process") from e
 
-        # W&B writer: truly best-effort. Never crash training if it fails.
+        # W&B writer.
         wandb_writer: WandBWriter | None = None
         if bool(getattr(defaults.logging, "wandb", False)):
             is_main = True
@@ -411,7 +411,7 @@ class StandardTrainer:
         if hasattr(system, "to"):
             system.to(device=device, dtype=dtype)  # type: ignore[attr-defined]
 
-        # CUDA perf knobs (best-effort).
+        # CUDA perf knobs.
         #
         # TF32 is safe and commonly enabled on Ampere+ for faster fp32 matmuls
         # (many reductions / softmax stats run in fp32 even when weights are bf16).
@@ -479,7 +479,7 @@ class StandardTrainer:
             except Exception as e:
                 raise RuntimeError("Failed to enable activation checkpointing") from e
 
-        # Optional torch.compile (best-effort, but if requested and it fails, raise).
+        # Optional torch.compile (if requested and it fails, raise).
         #
         # NOTE: torch.compile's "reduce-overhead" mode uses CUDA graphs. When we invoke the
         # model multiple times per optimizer step (gradient accumulation), CUDA-graph output
@@ -572,7 +572,7 @@ class StandardTrainer:
         # Precompute static-ish memory numbers once.
         param_mb = _bytes_to_mb(self._param_bytes(system))
 
-        # Emit run metadata once (best-effort).
+        # Emit run metadata once.
         try:
             run_logger.log_event(
                 type="telemetry",
@@ -718,7 +718,7 @@ class StandardTrainer:
 
                     layer_stats.begin_step(step_1)
 
-                    # Optional profiling (best-effort, but if enabled and it fails, raise).
+                    # Optional profiling (if enabled and it fails, raise).
                     did_profile_first = bool(profile_every > 0 and (step_1 % profile_every) == 0)
                     # Stream microbatches: avoid staging the full accumulation window on GPU.
                     # This reduces peak VRAM and host overhead, and can enable larger microbatches
@@ -998,7 +998,7 @@ class StandardTrainer:
         objective_loss: Any,
     ) -> tuple[object, Tensor]:
         with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
-            # Attach MOSAIC-friendly fields onto the ctx (best-effort).
+            # Attach MOSAIC-friendly fields onto the ctx.
             inp = None
             try:
                 inp = batch_td.get("input_ids", None)  # type: ignore[attr-defined]
@@ -1043,7 +1043,7 @@ class StandardTrainer:
 
             outputs = forward_caller(batch_td, ctx_to_pass)
 
-            # Best-effort: merge MOSAIC aux outputs from ctx into outputs.
+            # Merge MOSAIC aux outputs from ctx into outputs.
             try:
                 aux_out = getattr(viz_ctx, "memblock_aux_out", None)
                 if isinstance(outputs, dict) and isinstance(aux_out, dict):
@@ -1102,7 +1102,7 @@ class StandardTrainer:
         lr_base = float(getattr(train, "lr", lr))
         lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
 
-        # Grad norm (best-effort).
+        # Grad norm.
         grad_norm = 0.0
         try:
             grad_norm = float(global_grad_norm_l2(system))  # type: ignore[arg-type]
@@ -1134,7 +1134,7 @@ class StandardTrainer:
             "ms_opt": float(optim_time_s * 1000.0),
         }
 
-        # Objective extra metrics (best-effort).
+        # Objective extra metrics.
         if outputs_last is not None and loss_last is not None and last_batch_td is not None:
             try:
                 extra = call_objective_metrics(outputs=outputs_last, batch_td=last_batch_td, loss=loss_last)
@@ -1143,7 +1143,7 @@ class StandardTrainer:
             except Exception as e:
                 raise RuntimeError("Failed to compute objective metrics") from e
 
-        # Table 2 telemetry (best-effort).
+        # Table 2 telemetry.
         if last_batch_td is not None:
             try:
                 has_table2_bin = isinstance(last_batch_td.get("table2_bin", None), Tensor)  # type: ignore[attr-defined]
@@ -1175,7 +1175,7 @@ class StandardTrainer:
             except Exception as e:
                 raise RuntimeError("Failed to compute Table 2 telemetry") from e
 
-        # Token throughput (best-effort, for token-LM style datasets).
+        # Token throughput (for token-LM style datasets).
         if last_batch_td is not None:
             try:
                 y = last_batch_td.get("target_ids", None)  # type: ignore[attr-defined]
@@ -1184,7 +1184,7 @@ class StandardTrainer:
             except Exception as e:
                 raise RuntimeError("Failed to compute token throughput") from e
 
-        # Memory footprint estimates (MiB) (best-effort).
+        # Memory footprint estimates (MiB).
         metrics["mem_params_mb"] = float(param_mb)
         try:
             metrics["mem_grads_mb"] = float(_bytes_to_mb(self._grad_bytes(system)))
@@ -1198,7 +1198,7 @@ class StandardTrainer:
         if kernel_events_estimate is not None:
             metrics["kernel_events_estimate"] = float(kernel_events_estimate)
 
-        # MOSAIC memory stats (best-effort).
+        # MOSAIC memory stats.
         try:
             if isinstance(viz_ctx, TrainingVizMosaicContext) and viz_ctx.memblock_mem_stats:
                 mosaic_f: dict[str, float] = {}

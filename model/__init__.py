@@ -197,7 +197,7 @@ class Model(nn.Module):
 
     @property
     def vocab_size(self) -> int | None:
-        """Best-effort vocabulary size for token models."""
+        """Vocabulary size for token models (when available)."""
         emb = self.embedder.token_embedding
         if emb is None:
             logger.error("Failed to get vocab size, continuing: embedder.token_embedding is None")

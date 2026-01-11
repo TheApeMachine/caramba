@@ -1,7 +1,10 @@
 """Cap'n Proto event codec
 
-Encodes/decodes EventEnvelope using Cap'n Proto for zero-copy serialization.
-This provides significant performance improvements over JSON for high-throughput
+Encodes/decodes EventEnvelope using Cap'n Proto.
+
+Cap'n Proto can enable zero-copy serialization in principle, but this implementation
+still performs some copies (e.g., JSON payload serialization and tensor dtype casts).
+It can still reduce overhead versus pure JSON in many cases for high-throughput
 event processing.
 """
 
@@ -73,7 +76,8 @@ class CapnpEventEncoder:
         if not buf:
             raise ValueError("Cap'n Proto serialization produced empty bytes")
 
-        return torch.tensor(list(buf), dtype=torch.long)
+        mv = memoryview(buf)
+        return torch.frombuffer(mv, dtype=torch.uint8).to(torch.long)
 
     def encode_many(self, events: Sequence[EventEnvelope]) -> list[Tensor]:
         return [self.encode(e) for e in events]
@@ -119,8 +123,12 @@ class CapnpEventDecoder:
         schema = _get_schema()
 
         # Convert tensor to bytes
-        vals = ids.detach().cpu().to(dtype=torch.int64).tolist()
-        raw = bytes(int(v) & 0xFF for v in vals)
+        cpu = ids.detach().cpu()
+        if cpu.numel() <= 0:
+            raise ValueError("Cannot decode empty tensor")
+        if cpu.min().item() < 0 or cpu.max().item() > 255:
+            raise ValueError("Cap'n Proto byte tensor values must be in [0, 255]")
+        raw = cpu.to(dtype=torch.uint8).contiguous().numpy().tobytes()
 
         # Deserialize Cap'n Proto message (from_bytes returns context manager)
         with schema.EventEnvelope.from_bytes(raw) as msg:

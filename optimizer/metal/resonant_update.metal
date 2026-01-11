@@ -41,7 +41,7 @@ kernel void resonant_update_fwd_fp32(
   const float b = y[gid] * one_minus + p.scale * ci;
   // Some Metal toolchains don’t expose `rsqrt` as an identifier here.
   // Use a portable form instead.
-  const float inv_r = 1.0f / sqrt(a * a + b * b + 1e-12f);
+  const float inv_r = 1.0f / sqrt(a * a + b * b + 1e-6f);
 
   xo[gid] = a * inv_r;
   yo[gid] = b * inv_r;

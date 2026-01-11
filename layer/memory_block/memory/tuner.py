@@ -9,9 +9,6 @@ from __future__ import annotations
 import math
 from typing import Any
 
-import torch
-from torch import nn
-
 from caramba.layer.memory_block.memory.telemetry import MemoryHealthTelemetry
 
 
@@ -282,12 +279,12 @@ class UniversalMemoryTuner:
         
         # 2. ACCURACY (Performace)
         # Scale: 0-100 points
-        if hasattr(self, 'accuracy_ema') and self.accuracy_ema is not None:
+        if self.accuracy_ema is not None:
             objective += 100.0 * self.accuracy_ema
         
         # 3. LOSS STABILITY (Reliability)
         # Scale: -50 to 0 points
-        if hasattr(self, 'loss_variance_ema') and self.loss_variance_ema is not None:
+        if self.loss_variance_ema is not None:
             # Lower variance is better
             objective -= 50.0 * self.loss_variance_ema
         

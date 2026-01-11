@@ -239,7 +239,7 @@ class MemoryBlockMemory(nn.Module):
 
     @property
     def tuner(self) -> "UniversalMemoryTuner | None":
-        """Best-effort access to the shared memory tuner.
+        """Access to the shared memory tuner.
 
         Some integration tests and instrumentation expect `mem.tuner` to exist.
         Internally we use a shared singleton; this property returns the current
@@ -521,9 +521,6 @@ class MemoryBlockMemory(nn.Module):
     ) -> Tensor:
         gate_logit = self.writer.write_chunk(u, st, routing, int(t0), mask, write_scale)
         
-        # After write, we have a full picture of the forward pass dynamics.
-        # Collect and report health telemetry.
-        # Only update tuner ONCE per global step (shared across all layers).
         # After write, we have a full picture of the forward pass dynamics.
         # Collect and report health telemetry.
         # Only update tuner ONCE per global step (shared across all layers).

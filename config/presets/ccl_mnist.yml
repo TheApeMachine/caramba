@@ -80,7 +80,5 @@ targets:
           phase: standard
           batch_size: 1
           block_size: 1
-          lr: 0.001
           device: cpu
           dtype: float32
-

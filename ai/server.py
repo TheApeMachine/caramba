@@ -144,20 +144,20 @@ class AgentServer:
 
     async def _run_background_worker(self) -> None:
         """Run background worker to process pending tasks from the queue.
-        
+
         This acts as the consumer for async A2A tasks.
         """
         _logger.info(f"TRACING [Worker] Starting background worker for {self.agent_name}")
-        
+
         # We need to access the underlying TaskQueue if using DatabaseTaskStore
         from a2a.server.tasks import DatabaseTaskStore
         from caramba.core.task_queue import TaskQueue
 
         queue: TaskQueue | None = None
-        
+
         # If we have a DB task store, we can use its engine to create a TaskQueue helper
         if isinstance(self.task_store, DatabaseTaskStore):
-            # Hack: we reconstruct TaskQueue from engine URL if possible, 
+            # Hack: we reconstruct TaskQueue from engine URL if possible,
             # or we rely on TaskQueue having been initialized as a singleton.
             # But core.task_queue.TaskQueue takes a DSN string.
             # Let's try to get the DSN from environment or connection.
@@ -167,7 +167,7 @@ class AgentServer:
                 queue = TaskQueue(dsn)
                 await queue.connect()
                 _logger.info(f"TRACING [Worker] Connected to TaskQueue at {dsn.split('@')[-1]}")
-        
+
         if not queue:
             _logger.warning("TRACING [Worker] No TaskQueue available (in-memory mode?), background processing disabled")
             return
@@ -178,69 +178,69 @@ class AgentServer:
                 task = await queue.pop()
                 if task:
                     _logger.info(f"TRACING [Worker] Popped task {task.id} for processing")
-                    
+
                     # Create a context for execution
                     # We need to bridge Task -> RequestContext -> Executor
                     from a2a.server.agent_execution import RequestContext
                     from a2a.server.events import EventQueue
                     from a2a.types import Message, Part, TextPart, Role
-                    
+
                     # Create a dummy event queue that pushes updates back to the queue/push notifications
                     # But wait, logic is: Executor -> EventQueue -> TaskUpdater -> TaskStore
                     # We need an EventQueue that writes to our TaskStore/PushSender
-                    
+
                     # We can use our exiting push_sender logic by creating a custom event queue
                     # or by manually handling updates.
-                    
+
                     # The Executor expects an EventQueue.
                     # a2a.server.events.InMemoryEventQueue is simple but doesn't persist.
                     # We need to ensure updates go to DB and Push Notifications.
-                    
+
                     # Ideally we use the same mechanism as the HTTP handler.
                     # Let's construct a context and run it.
-                    
+
                     # Extract the user message from the task history
                     # The task object from queue should have the initial message
                     # But 'task.status.message' is the *status* message, not necessarily the input.
-                    # A2A tasks don't store the *input* message directly on the task object 
+                    # A2A tasks don't store the *input* message directly on the task object
                     # except maybe in history or context.
-                    
+
                     # However, new_task(message) was called. Task ID is linked.
-                    # If the task was created via send_message(..., task_id=None), 
+                    # If the task was created via send_message(..., task_id=None),
                     # the Message object was passed.
-                    
+
                     # When we pushed to queue, we stored the Task object.
-                    # Wait, the Task object *itself* doesn't strictly contain the input prompt 
+                    # Wait, the Task object *itself* doesn't strictly contain the input prompt
                     # unless it was added to the history or strictly defined.
-                    
+
                     # Let's look at how connection.py sends it:
                     # message = Message(..., task_id=None)
                     # client.send_message(message)
-                    # The server receives 'message'. 
+                    # The server receives 'message'.
                     # If blocking=False, DefaultRequestHandler calls 'new_task(message)'
                     # and saves it.
-                    
-                    # Does 'new_task' save the message content? 
+
+                    # Does 'new_task' save the message content?
                     # Usually it sets the task description or first history item.
                     # Let's assume we can recover the input from the task data or we treat this
                     # as a limitation and fix connection.py to explicit send input.
-                    
-                    # Actually, A2A Task object has 'description' or we check 
+
+                    # Actually, A2A Task object has 'description' or we check
                     # if we can find the message in the task store?
                     # No, the task store only stores the Task.
-                    
+
                     # workaround: The input message might be lost if not stored in task!
                     # BUT, for now, let's assume we can't easily get the *original* message content
-                    # if it's not on the Task object. 
+                    # if it's not on the Task object.
                     # Checking a2a.types.Task: has 'id', 'context_id', 'status', 'description', 'artifacts', 'sub_tasks'.
-                    
+
                     # If 'description' is set to the prompt, we are good.
                     # If not, we might be executing an empty task.
-                    
-                    # A2A Task objects might not have a 'description' attribute directly 
+
+                    # A2A Task objects might not have a 'description' attribute directly
                     # depending on the SDK version. We try to get it safely or fallback to history.
                     query = getattr(task, "description", None)
-                    
+
                     if not query and task.history:
                         # Try to find the first user message in history
                         for msg in task.history:
@@ -254,10 +254,10 @@ class AgentServer:
                                 if text_parts:
                                     query = " ".join(text_parts)
                                     break
-                    
+
                     if not query:
                         query = "Process task"
-                    
+
                     from uuid import uuid4
                     message = Message(
                         message_id=str(uuid4()),
@@ -266,7 +266,7 @@ class AgentServer:
                         context_id=task.context_id,
                         task_id=task.id,
                     )
-                    
+
                     from a2a.types import MessageSendParams
                     context = RequestContext(
                         request=MessageSendParams(message=message),
@@ -274,13 +274,13 @@ class AgentServer:
                         context_id=task.context_id,
                         task=task,
                     )
-                    
+
                     # Custom EventQueue that delegates to our TaskStore and PushSender
                     class WorkerEventQueue(EventQueue):
                         def __init__(self, store, sender):
                             self.store = store
                             self.sender = sender
-                            
+
                         async def enqueue_event(self, event: Any) -> None:
                             # We only care about Task events for updates
                             from a2a.types import Task
@@ -295,19 +295,19 @@ class AgentServer:
                                     _logger.error(f"TRACING [Worker] Push failed: {e}")
 
                     event_queue = WorkerEventQueue(self.task_store, self.push_sender)
-                    
+
                     # Execute!
                     _logger.info(f"TRACING [Worker] Executing task {task.id} with prompt length {len(query)}")
-                    
-                    # Fire and forget execution? No, we should await it to not block the worker 
-                    # but we want concurrency. 
+
+                    # Fire and forget execution? No, we should await it to not block the worker
+                    # but we want concurrency.
                     # Ideally we spawn a task for execution so the worker can pop the next one.
                     asyncio.create_task(self.executor.execute(context, event_queue))
-                    
+
                 else:
                     # Queue empty, wait a bit
                     await asyncio.sleep(1.0)
-                    
+
             except Exception as e:
                 _logger.error(f"TRACING [Worker] Error in worker loop: {e}", exc_info=True)
                 await asyncio.sleep(5.0)
@@ -450,7 +450,7 @@ class AgentServer:
                     "tools": persona.tools,
                 })
             except FileNotFoundError:
-                pass  # Persona not found by type, continue to fallback
+                _logger.error(f"Persona not found by type: {name}", exc_info=True)
 
             # Fallback: search all personas by display name
             for persona_name in self.agent.persona_loader.get_names():
@@ -467,8 +467,9 @@ class AgentServer:
                             "model": persona.model,
                             "tools": persona.tools,
                         })
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.error(f"Failed to load persona {persona_name}: {e}", exc_info=True)
+                    return JSONResponse({"error": str(e)}, status_code=404)
 
         return JSONResponse({"error": "agent not found"}, status_code=404)
 
@@ -540,7 +541,7 @@ class AgentServer:
         config = uvicorn.Config(app, host=self.host, port=self.port)
         server = uvicorn.Server(config)
         await server.serve()
-        
+
         # Cleanup
         if self._worker_task:
             self._worker_task.cancel()
@@ -575,7 +576,7 @@ async def create_root_server(
         # Root agent service name is 'root-agent' in docker-compose
         webhook_port = os.environ.get("PORT", "8001")
         webhook_url = f"http://root-agent:{webhook_port}"
-        
+
         _logger.info(f"Configuring RootAgent with webhook URL: {webhook_url}")
         root = RootAgent(client, team_config, webhook_base_url=webhook_url)
         return AgentServer(root, host, port)
@@ -646,7 +647,7 @@ async def create_lead_server(
         # Service names use hyphens, persona types use underscores
         service_name = persona_type.replace("_", "-")
         webhook_url = f"http://{service_name}:{port}"
-        
+
         _logger.info(f"Configuring LeadAgent {persona_type} with webhook URL: {webhook_url}")
         lead = LeadAgent(persona_type, client, team_config, webhook_base_url=webhook_url)
         return AgentServer(
@@ -685,7 +686,7 @@ def run_lead_server(
             # Construct internal webhook URL
             service_name = persona_type.replace("_", "-")
             webhook_url = f"http://{service_name}:{port}"
-            
+
             lead = LeadAgent(persona_type, client, team_config, webhook_base_url=webhook_url)
             server = AgentServer(
                 lead, host, port,

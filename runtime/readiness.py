@@ -6,7 +6,6 @@ quantization, plotting) against what the current environment can provide.
 Policy:
 - Missing *performance* backends (Metal/Triton) are **errors** by default.
 - Non-critical visualization deps (matplotlib) are **warnings**.
-- A higher-level "best effort" mode may downgrade perf errors to warnings.
 """
 
 from __future__ import annotations
@@ -153,8 +152,6 @@ def _probe_flag(value: object) -> bool:
 def check_target_readiness(
     manifest: Manifest,
     target: ExperimentTargetConfig,
-    *,
-    best_effort: bool = False,
 ) -> ReadinessReport:
     """Compute readiness issues for an experiment target."""
     report = ReadinessReport()
@@ -191,8 +188,9 @@ def check_target_readiness(
                 )
             )
         elif not _probe_flag(metal_build_tools_available):
-            issue = ReadinessIssue(
-                kind="warning" if best_effort else "error",
+            report.errors.append(
+                ReadinessIssue(
+                    kind="error",
                 code="metal_build_tools_missing",
                 message=(
                     "Metal build tools are not available (missing `metal`/`metallib` in the active Xcode toolchain); "
@@ -206,22 +204,23 @@ def check_target_readiness(
                     "  - `xcrun -sdk macosx --find metal`\n"
                     "  - `xcrun -sdk macosx --find metallib`"
                 ),
+                )
             )
-            (report.warnings if best_effort else report.errors).append(issue)
 
     # Triton fused decode is used for quantized caches on CUDA.
     wants_q4 = any(k.startswith("q4") or k == "q4_0" for k in cache_kinds)
     if "cuda" in devices and wants_q4:
         if not _probe_flag(triton_supported):
-            issue = ReadinessIssue(
-                kind="warning" if best_effort else "error",
-                code="triton_missing",
-                message=(
-                    "Triton is not available; fused decoupled decode for quantized KV caches cannot run "
-                    "and the run would fall back to unoptimized PyTorch."
-                ),
+            report.errors.append(
+                ReadinessIssue(
+                    kind="error",
+                    code="triton_missing",
+                    message=(
+                        "Triton is not available; fused decoupled decode for quantized KV caches cannot run "
+                        "and the run would fall back to unoptimized PyTorch."
+                    ),
+                )
             )
-            (report.warnings if best_effort else report.errors).append(issue)
 
     return report
 

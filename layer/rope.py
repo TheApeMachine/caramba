@@ -90,9 +90,12 @@ class RotaryEmbedding(nn.Module):
                             inv_scaled,
                             torch.where(wavelen < high_wavelen, inv_freq, inv_mid),
                         )
-                except Exception:
-                    # Best-effort: if malformed, keep vanilla RoPE.
-                    pass
+                except Exception as e:
+                    raise ValueError(
+                        "Invalid rope_scaling configuration. "
+                        "Fix the manifest (rope_scaling.factor/low_freq_factor/high_freq_factor/"
+                        "original_max_position_embeddings must be valid positive numbers)."
+                    ) from e
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self._cos_sin_cache: dict[tuple[str, str], tuple[torch.Tensor, torch.Tensor]] = (
             {}

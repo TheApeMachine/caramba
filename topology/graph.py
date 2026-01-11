@@ -82,7 +82,7 @@ def _build_op(op: str, cfg: dict[str, Any]) -> nn.Module:
 
 
 def _call_op(mod: nn.Module, args: list[Tensor], *, ctx: object | None) -> object:
-    """Call a node op with best-effort adapters.
+    """Call a node op with argument adapters.
 
     Adapters we apply:
     - Pass `ctx=...` if the op accepts it

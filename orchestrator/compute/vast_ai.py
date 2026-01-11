@@ -4,8 +4,8 @@ Handles searching for, provisioning, and decommissioning GPU instances on Vast.a
 """
 from __future__ import annotations
 
+import asyncio
 import os
-import time
 from typing import Any
 
 from caramba.config.compute import VastAIComputeConfig
@@ -44,14 +44,14 @@ class VastAIClient:
         logger.success(f"Instance {instance_id} is being provisioned.")
         return instance_id
 
-    def wait_for_ssh(self, instance_id: str, timeout: int = 300) -> str | None:
+    async def wait_for_ssh(self, instance_id: str, timeout: int = 300) -> str | None:
         """Wait for the instance to be ready and return the SSH connection string."""
         logger.info(f"Waiting for instance {instance_id} to be SSH-ready...")
         
         # poll vastai.get_instance(instance_id) until status is 'running' and has an IP
         
         # Mocking readiness
-        time.sleep(1) 
+        await asyncio.sleep(1)
         ssh_str = "root@123.45.67.89 -p 12345"
         logger.success(f"Instance {instance_id} is ready at {ssh_str}")
         return ssh_str
@@ -64,12 +64,39 @@ class VastAIClient:
         
         logger.success(f"Instance {instance_id} destroyed.")
 
-    def run_lifecycle(self, config: VastAIComputeConfig) -> str | None:
-        """Full lifecycle: find, provision, and return connection info."""
+    async def run_lifecycle_async(self, config: VastAIComputeConfig) -> str | None:
+        """Full lifecycle: find, provision, wait for SSH, and return connection info."""
         offer = self.find_best_offer(config)
         if not offer:
             logger.error("No suitable Vast.ai offers found.")
             return None
-            
-        instance_id = self.provision_instance(offer["id"], config)
-        return self.wait_for_ssh(instance_id)
+
+        instance_id: str | None = None
+        try:
+            instance_id = self.provision_instance(offer["id"], config)
+            ssh = await self.wait_for_ssh(instance_id)
+            if not ssh:
+                logger.error(f"Instance {instance_id} did not become SSH-ready.")
+                self.decommission_instance(instance_id)
+                return None
+            return ssh
+        except Exception as e:
+            logger.error(f"Vast.ai lifecycle failed: {e}")
+            if instance_id is not None:
+                try:
+                    self.decommission_instance(instance_id)
+                except Exception as e2:
+                    logger.warning(f"Failed to decommission instance {instance_id} after lifecycle failure: {e2}")
+            return None
+
+    def run_lifecycle(self, config: VastAIComputeConfig) -> str | None:
+        """Synchronous wrapper around `run_lifecycle_async`.
+
+        NOTE: If you're already inside an asyncio event loop, call and await
+        `run_lifecycle_async` directly.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.run_lifecycle_async(config))
+        raise RuntimeError("run_lifecycle() cannot be called from a running event loop; use await run_lifecycle_async(...)")

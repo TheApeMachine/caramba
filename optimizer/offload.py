@@ -2,7 +2,7 @@
 
 On CUDA, optimizer offload implies PCIe transfers. On Apple Silicon (UMA), the
 physical memory is shared, but PyTorch still models CPU vs MPS tensors as
-distinct devices. Offloading here is therefore best-effort: it can reduce MPS
+distinct devices. Offloading is therefore a trade-off: it can reduce MPS
 allocations at the cost of device transfers.
 
 This module provides a simple policy hook for trainers.

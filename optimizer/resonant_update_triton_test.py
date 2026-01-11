@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from caramba.optimizer.runtime import triton_supported
@@ -10,9 +11,9 @@ class TestTritonResonantUpdate:
 
     def test_backward_matches_pytorch_reference(self) -> None:
         if not torch.cuda.is_available():
-            return
+            pytest.skip("CUDA not available")
         if not triton_supported():
-            return
+            pytest.skip("Triton not supported")
 
         torch.manual_seed(0)
         BT, H, D = 8, 2, 32
@@ -31,7 +32,10 @@ class TestTritonResonantUpdate:
         xo, yo = upd.forward(x=x, y=y, vr=vr, vi=vi, diag=diag, scale=scale, damping=damping, zero_diag=zero_diag)
         loss_m = (xo.pow(2) + yo.pow(2)).mean()
         loss_m.backward()
-        assert x.grad is not None and y.grad is not None and vr.grad is not None and vi.grad is not None
+        assert x.grad is not None, "x.grad is None"
+        assert y.grad is not None, "y.grad is None"
+        assert vr.grad is not None, "vr.grad is None"
+        assert vi.grad is not None, "vi.grad is None"
         gx_m = x.grad.detach().clone()
         gy_m = y.grad.detach().clone()
         gvr_m = vr.grad.detach().clone()

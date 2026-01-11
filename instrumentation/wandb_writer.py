@@ -1,6 +1,6 @@
 """Weights & Biases logging integration.
 
-W&B is optional. This module provides a best-effort wrapper that:
+This module provides a wrapper that:
 - Initializes a run (when `wandb` is installed and enabled)
 - Logs scalar metrics with a consistent key namespace
 - Never crashes training if W&B is unavailable or misconfigured
@@ -64,7 +64,7 @@ def _auto_wandb_mode() -> str:
 
 
 def _serialize_cfg(obj: object) -> dict[str, object]:
-    """Best-effort config serialization for W&B init config."""
+    """Config serialization for W&B init config."""
 
     if obj is None:
         return {}
@@ -108,7 +108,7 @@ def _serialize_cfg(obj: object) -> dict[str, object]:
 
 @dataclass
 class WandBWriter:
-    """Best-effort W&B writer for scalar metrics."""
+    """W&B writer for scalar metrics."""
 
     out_dir: Path
     enabled: bool = True
@@ -159,7 +159,7 @@ class WandBWriter:
                 mode = _auto_wandb_mode()
             cfg = _serialize_cfg(self.config)
             # W&B is quite chatty by default and can corrupt rich progress output.
-            # Best-effort: disable W&B console logging if supported.
+            # Disable W&B console logging if supported.
             settings = None
             try:
                 Settings = getattr(wandb, "Settings", None)
@@ -185,7 +185,7 @@ class WandBWriter:
             self.run = None
             return
 
-        # Log run URL for convenience (best-effort).
+        # Log run URL for convenience.
         try:
             if self.run is not None and getattr(self.run, "url", None):
                 from caramba.console import logger as console_logger

@@ -60,7 +60,7 @@ class TestWeightNowcaster(unittest.TestCase):
         self.assertIn("num_nodes_tracked", stats)
         self.assertGreater(int(stats["num_nodes_tracked"]), 0)
 
-        # Optimizer step should have advanced by horizon (best-effort)
+        # Optimizer step should have advanced by horizon.
         p0 = next(model.parameters())
         st2 = opt.state.get(p0, {})
         step2 = st2.get("step")

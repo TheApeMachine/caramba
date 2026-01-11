@@ -718,7 +718,7 @@ class WeightNowcaster:
                         st[k] = 0
 
     def _advance_optimizer_steps_if_supported(self, opt: torch.optim.Optimizer, horizon: int) -> None:
-        # Best-effort: advance per-parameter `step` counters (Adam/AdamW bias correction),
+        # Advance per-parameter `step` counters (Adam/AdamW bias correction) when supported,
         # without inventing moment trajectories.
         h = int(horizon)
         if h <= 0:
@@ -743,7 +743,7 @@ class WeightNowcaster:
                         st["step"] = v + torch.as_tensor(h, device=v.device, dtype=v.dtype)
 
     def _sync_ema_model(self, ema_model: nn.Module) -> None:
-        # Best-effort: copy model params to ema_model by name.
+        # Copy model params to ema_model by name.
         src = dict(self.model.named_parameters())
         with torch.no_grad():
             for name, p_ema in ema_model.named_parameters():

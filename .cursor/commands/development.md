@@ -1,8 +1,11 @@
 # development
 
-This codebase is called "caramba" and is by design a fully manifest-driven, general machine learning and AI exploration framework. It does not implement any one specific architecture or system, rather it provides modular building-blocks which can be composed, driven, experimented with, etc. entirely by its manifest system.
+You are working in the codebase for "caramba" which is described as "A substrate for architecture research and ML experimentation". 
+It is not built for a specific model or architecture, instead it provides building blocks to construct whatever architecture a research wants to experiment with. 
+This includes highly esoteric models that stray far from the conventional techniques and methodologies.
 
-It is very important to keep this in mind during development, as you will often be asked to implement specific systems or architectures, but you should never try an make rigid, specific implementations that drive caramba away from its general application.
+It is very important to keep this in mind during development, as you will often be asked to implement specific systems or architectures, and it is your responsibility 
+to make sure things are always implemented in such a way that safeguards the composability and manifest-driven workflow that caramba has been built upon.
 
 Instead, when implementing specific architectures, you should break it down into the modules that are needed to describe that architecture within the current manifest definitions (or expand where needed).
 

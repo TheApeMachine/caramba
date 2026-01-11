@@ -21,9 +21,6 @@ defaults:
     eval_iters: 50
   runtime:
     save_every: 1000
-    # best_effort enables warnings instead of hard failures when optional
-    # performance backends are missing (e.g. Triton/Metal).
-    best_effort: true
 
 vars:
   # --- Data (FineWeb-Edu "v29" suite) ---

@@ -31,7 +31,7 @@ class TestParameterExplorer(unittest.TestCase):
         explorer.direction = 1.0
         
         # Should clamp to max
-        _delta = explorer.step(improved=True)
+        explorer.step(improved=True)
         self.assertEqual(explorer.value, 10.0)
         
 
@@ -100,12 +100,12 @@ class TestUniversalMemoryTuner(unittest.TestCase):
             tuner.update(tel)
         
         # At least one parameter should have changed
-        changed = (
-            tuner.resonant_coupling_mult != initial_coupling or
-            tuner.resonant_damping_mult != tuner.explorers["damping"].value or
-            tuner.vsa_novelty_mult != tuner.explorers["novelty"].value
-        )
-        self.assertTrue(changed, "Parameters should explore after warmup")
+        changed_conditions = [
+            tuner.resonant_coupling_mult != initial_coupling,
+            tuner.resonant_damping_mult != tuner.explorers["damping"].value,
+            tuner.vsa_novelty_mult != tuner.explorers["novelty"].value,
+        ]
+        self.assertTrue(any(changed_conditions), "Parameters should explore after warmup")
 
     def test_objective_function_computed(self):
         tuner = UniversalMemoryTuner(mode="adaptive")

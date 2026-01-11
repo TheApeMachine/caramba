@@ -3,7 +3,7 @@ name: lightning-vastai-demo
 
 defaults:
   compute:
-    VAST_AI_API_KEY: "your-api-key-here"
+    VAST_AI_API_KEY: "your-api-key-here"  # replace with your real key; do not commit
 
 targets:
   - name: remote-lightning-experiment

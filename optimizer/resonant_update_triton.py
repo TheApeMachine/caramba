@@ -140,8 +140,6 @@ class ResonantPhaseUpdateTritonFn(torch.autograd.Function):
         kb[grid](
             grad_xo.contiguous(),
             grad_yo.contiguous(),
-            x,
-            y,
             diag,
             gvr,
             gvi,

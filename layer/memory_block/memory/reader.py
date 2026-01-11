@@ -53,6 +53,21 @@ class MemoryReader:
     mem_trie_fallback_enabled: bool
     mem_trie_max_levels: int | None = None
     tuner_mode: str = "off"
+    _tuner_cache_mode: str | None = None
+    _tuner_cache: Any | None = None
+
+    def _get_tuner(self) -> Any | None:
+        mode = str(self.tuner_mode)
+        if mode == "off":
+            self._tuner_cache_mode = mode
+            self._tuner_cache = None
+            return None
+        if self._tuner_cache is None or self._tuner_cache_mode != mode:
+            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+
+            self._tuner_cache = get_shared_tuner(mode=mode)
+            self._tuner_cache_mode = mode
+        return self._tuner_cache
 
     def read(self, u: Tensor, st: MemoryBlockState, routing: dict[str, Any]) -> Tensor:
         """Read memory for a chunk
@@ -75,9 +90,8 @@ class MemoryReader:
             
             # Apply tuner scaling to VSA weight
             vsa_weight = float(self.mem_vsa_weight)
-            if self.tuner_mode != "off":
-                from caramba.layer.memory_block.memory.tuner import get_shared_tuner
-                tuner = get_shared_tuner(mode=self.tuner_mode)
+            tuner = self._get_tuner()
+            if tuner is not None:
                 vsa_weight = vsa_weight * getattr(tuner, "vsa_novelty_mult", 1.0)
                 
             sim_total = sim_key + vsa_weight * sim_vsa
@@ -184,9 +198,8 @@ class MemoryReader:
         
         # Lever for future expansion: read_temp_mult
         read_temp = float(self.mem_read_temp)
-        if self.tuner_mode != "off":
-            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
-            tuner = get_shared_tuner(mode=self.tuner_mode)
+        tuner = self._get_tuner()
+        if tuner is not None:
             read_temp = read_temp * getattr(tuner, "read_temp_mult", 1.0)
             
         w = torch.softmax(sim / float(max(1e-6, read_temp)), dim=-1)

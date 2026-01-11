@@ -113,18 +113,12 @@ class ExperimentRunner:
             return {}
 
         assert isinstance(target, ExperimentTargetConfig)
-        best_effort = bool(getattr(getattr(self.manifest.defaults, "runtime", object()), "best_effort", False))
-        readiness = check_target_readiness(self.manifest, target, best_effort=best_effort)
+        readiness = check_target_readiness(self.manifest, target)
         if readiness.errors:
             raise RuntimeError(
                 "Runtime readiness check failed:\n" + format_readiness_report(readiness)
             )
         for w in readiness.warnings:
-            # Best-effort mode: warn loudly when performance backends are missing.
-            if best_effort and w.code in {"metal_build_tools_missing", "triton_missing"}:
-                logger.fallback_warning(
-                    "WARNING: Running unoptimized PyTorch fallback for DBA Decode. Performance will be degraded."
-                )
             logger.warning(w.message)
 
         # Handle remote compute provisioning
@@ -143,10 +137,15 @@ class ExperimentRunner:
             logger.info(f"Instance ready. Remote run not fully implemented, continuing locally for demonstration.")
 
         # Engine selection
-        if target.backend == "lightning":
+        backend = str(target.backend)
+        if backend == "lightning":
             engine = LightningEngine()
-        else:
+        elif backend in {"torch", "pt"}:
             engine = TorchEngine()
+        else:
+            raise ValueError(
+                f"Unsupported target.backend={backend!r}; expected one of 'lightning', 'torch', 'pt'"
+            )
 
         logger.header("Target", f"{target.name} ({target.type}) • backend={target.backend}")
         return cast(dict[str, Path], engine.run_experiment(self.manifest, target))

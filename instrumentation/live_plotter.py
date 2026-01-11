@@ -25,7 +25,7 @@ def _try_import_pyplot() -> Any | None:
 
 @dataclass
 class LivePlotter:
-    """Best-effort matplotlib live plotter for scalar time series."""
+    """Matplotlib live plotter for scalar time series."""
 
     enabled: bool = False
     title: str = "caramba training"

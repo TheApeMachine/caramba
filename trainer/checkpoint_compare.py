@@ -32,7 +32,7 @@ def _lower_and_validate_model_config(payload: dict[str, Any]) -> ModelConfig:
 
 
 def _extract_state_dict(obj: object) -> dict[str, torch.Tensor]:
-    """Best-effort checkpoint container parsing.
+    """Checkpoint container parsing.
 
     Supports:
     - raw state_dict: {param_name: Tensor, ...}

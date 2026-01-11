@@ -36,7 +36,7 @@ def _require_tensor(d: Mapping[str, Any], key: str, *, where: str) -> Tensor:
 
 
 def _maybe_get(obj: object, key: str) -> object | None:
-    """Best-effort Mapping/TensorDict getter.
+    """Mapping/TensorDict getter.
 
     `TensorDictBase` is dict-like but not necessarily a `dict`, so we can't rely on
     `isinstance(x, dict)` checks when reading optional keys.

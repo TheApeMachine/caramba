@@ -4,9 +4,7 @@ JSONL is great for scalars, but dense arrays (activations, gradients, weights)
 can be too large to reasonably embed in JSON. HDF5 provides a compact, indexed
 format for storing these arrays alongside scalar logs.
 
-This module is dependency-gated:
-- If `h5py` is not installed, imports still succeed and the store disables itself.
-- Failures are best-effort: training must never crash due to logging.
+This module stores dense arrays for later analysis.
 """
 
 from __future__ import annotations
@@ -52,7 +50,7 @@ def _try_import_h5py() -> _H5pyModule | None:
 
 
 def _to_numpy(x: object) -> object:
-    """Best-effort conversion of tensors to CPU numpy arrays without torch import."""
+    """Convert tensor-like objects to CPU numpy arrays."""
 
     # torch.Tensor: has detach/cpu/numpy
     try:
@@ -139,7 +137,7 @@ class H5Store:
             g_step = root.require_group(str(int(step)))
             for name, value in arrays.items():
                 key = str(name)
-                # Skip if dataset already exists (best-effort, avoid churn).
+                # Skip if dataset already exists (avoid churn).
                 try:
                     existing = getattr(g_step, "get", None)
                     if callable(existing) and existing(key) is not None:

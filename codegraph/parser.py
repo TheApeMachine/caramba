@@ -140,7 +140,7 @@ def _import_targets(node: ast.AST) -> Iterable[str]:
 
 
 def _expr_name(expr: ast.AST) -> str:
-    """Best-effort string name for an expression (for calls/bases)."""
+    """Stable string name for an expression (for calls/bases)."""
     if isinstance(expr, ast.Name):
         return expr.id
     if isinstance(expr, ast.Attribute):
@@ -185,7 +185,7 @@ class _CallCollector(ast.NodeVisitor):
 
 
 class _TypeHintCollector(ast.NodeVisitor):
-    """Best-effort local type bindings from simple assignments.
+    """Local type bindings from simple assignments.
 
     We only use deterministic, syntax-local signals:
     - x = SomeClass(...)
@@ -261,14 +261,14 @@ class _TypeHintCollector(ast.NodeVisitor):
 
 
 def parse_python_file(repo_root: Path, file_path: Path) -> tuple[list[Node], list[Edge]]:
-    """Parse one python file into nodes/edges (deterministic, best-effort)."""
+    """Parse one python file into nodes/edges (deterministic)."""
     rel = str(file_path.relative_to(repo_root)).replace("\\", "/")
     module = _module_name_from_rel(rel)
 
     try:
         txt = file_path.read_text(encoding="utf-8", errors="replace")
-    except Exception as e:
-        logger.warning(f"Codegraph: Failed to read {file_path}: {e}")
+    except OSError as e:
+        logger.warning("Codegraph: Failed to read %s: %s", file_path, e)
         txt = ""
     tree = _safe_parse(txt, filename=rel)
     if tree is None:

@@ -1,8 +1,7 @@
 """Small helpers for safe, dependency-light instrumentation.
 
 Instrumentation should never be able to break training. This module provides
-best-effort utilities (time, JSON coercion) that avoid raising exceptions and
-keep the caller logic clean.
+utility functions (time, JSON coercion) for structured logging.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ def _json_fallback(obj: object) -> str:
 
 
 def coerce_jsonable(value: Any) -> Any:
-    """Best-effort conversion of common numeric types to JSON-friendly values.
+    """Convert common numeric types to JSON-friendly values.
 
     Why this exists:
     - PyTorch / numpy scalars can appear in metrics dicts.

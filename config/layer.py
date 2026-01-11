@@ -487,7 +487,7 @@ class MemoryBlockLayerConfig(Config):
     opcodes_control_enabled: bool = False
     opcodes_control_temp: PositiveFloat = 1.0
     # Holistic memory auto-tuning mode: "off", "monitor", "adaptive".
-    mem_autotune: str = "off"
+    mem_autotune: Literal["off", "monitor", "adaptive"] = "off"
     # Auto-tuning console visualization (performance-focused gauge).
     mem_autotune_viz: bool = False
     mem_autotune_viz_interval: PositiveInt = 100

@@ -4,8 +4,8 @@
 			"name": "Mac",
 			"includePath": [
 				"${workspaceFolder}/**",
-				"/Users/theapemachine/go/src/github.com/theapemachine/caramba/.venv/lib/python3.12/site-packages/torch/include",
-				"/Users/theapemachine/go/src/github.com/theapemachine/caramba/.venv/lib/python3.12/site-packages/torch/include/torch/csrc/api/include",
+				"${workspaceFolder}/.venv/lib/python3.12/site-packages/torch/include",
+				"${workspaceFolder}/.venv/lib/python3.12/site-packages/torch/include/torch/csrc/api/include",
 				"/usr/local/include",
 				"/Library/Developer/CommandLineTools/usr/include/c++/v1"
 			],

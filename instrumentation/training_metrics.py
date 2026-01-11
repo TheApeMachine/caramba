@@ -5,11 +5,9 @@ without threading ctx through the forward pass.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from threading import Lock
 
 
-@dataclass
 class TrainingMetrics:
     """Thread-safe container for current training step metrics."""
     
@@ -19,19 +17,19 @@ class TrainingMetrics:
     _step: int = 0
     
     def __init__(self) -> None:
-        object.__setattr__(self, '_lock', Lock())
-        object.__setattr__(self, '_loss', None)
-        object.__setattr__(self, '_accuracy', None)
-        object.__setattr__(self, '_step', 0)
+        self._lock = Lock()
+        self._loss = None
+        self._accuracy = None
+        self._step = 0
     
     def update(self, *, step: int, loss: float | None = None, accuracy: float | None = None) -> None:
         """Update metrics (called by trainer after each step)."""
         with self._lock:
-            object.__setattr__(self, '_step', step)
+            self._step = step
             if loss is not None:
-                object.__setattr__(self, '_loss', loss)
+                self._loss = loss
             if accuracy is not None:
-                object.__setattr__(self, '_accuracy', accuracy)
+                self._accuracy = accuracy
     
     @property
     def loss(self) -> float | None:

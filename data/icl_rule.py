@@ -133,6 +133,10 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
             raise ValueError("Invalid token span")
         return int(self.min_tok) + int((int(x) - int(self.min_tok) + int(delta)) % span)
 
+    def _bucket_for(self, x: int) -> int:
+        """Map token -> teacher bucket index in [0, mem_buckets)."""
+        return int((int(x) - int(self.min_tok)) % int(self.mem_buckets))
+
     def __getitem__(self, idx: int) -> dict[str, Tensor]:
         rng = random.Random(int(self.seed) + int(idx))
 
@@ -166,11 +170,6 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
 
         bld = _IclBuilder()
 
-        def bucket_for(x: int) -> int:
-            # Map token -> teacher bucket index in [0, mem_buckets).
-            # Keep it simple and deterministic; the router is allowed to learn something else.
-            return int((int(x) - int(self.min_tok)) % int(self.mem_buckets))
-
         # Demonstrations: DEMO x IS y.
         for x in demos_x:
             y = self._apply_rule(x, delta=int(delta))
@@ -178,7 +177,7 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
             bld.append(x)
             # Write at the "IS" position: it predicts y next.
             if self.emit_mem_teacher:
-                bld.append(self.T_IS, wg=1.0, wb=bucket_for(int(x)))
+                bld.append(self.T_IS, wg=1.0, wb=self._bucket_for(int(x)))
             else:
                 bld.append(self.T_IS)
             bld.append(y)
@@ -194,7 +193,7 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
         bld.append(xq)
         # Read at the "?" position: it predicts yq next.
         if self.emit_mem_teacher:
-            bld.append(self.T_Q, b=int(bin_idx), rb=bucket_for(int(xq)))
+            bld.append(self.T_Q, b=int(bin_idx), rb=self._bucket_for(int(xq)))
         else:
             bld.append(self.T_Q, b=int(bin_idx))  # attribute accuracy of next token to this gap bin
         bld.append(yq)

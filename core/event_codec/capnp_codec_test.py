@@ -64,7 +64,7 @@ def test_capnp_batch():
 
     decoded = decoder.decode_padded(ids, mask)
     assert len(decoded) == 3
-    for i, (orig, dec) in enumerate(zip(events, decoded)):
+    for orig, dec in zip(events, decoded, strict=True):
         assert dec.type == orig.type
         assert dec.sender == orig.sender
         assert dec.payload == orig.payload

@@ -33,7 +33,18 @@ def xcrun_find(tool: str) -> str:
 
     Ensures we use the same toolchain as the active developer directory.
     """
-    out = subprocess.check_output(["xcrun", "-sdk", "macosx", "--find", str(tool)], stderr=subprocess.STDOUT)
+    try:
+        out = subprocess.check_output(
+            ["xcrun", "-sdk", "macosx", "--find", str(tool)],
+            stderr=subprocess.STDOUT,
+        )
+    except subprocess.CalledProcessError as e:
+        msg = (e.output or b"").decode("utf-8", errors="replace").strip()
+        raise RuntimeError(
+            "Failed to resolve Xcode toolchain via xcrun.\n\n"
+            f"Tool: {tool!r}\n"
+            f"xcrun output:\n{msg}\n"
+        ) from e
     p = out.decode("utf-8", errors="replace").strip()
     if not p:
         raise RuntimeError(f"xcrun returned empty path for tool {tool!r}")
@@ -43,11 +54,10 @@ def xcrun_find(tool: str) -> str:
 def compile_resonant_metallib(*, out_dir: Path, verbose: bool) -> Path:
     """Compile resonant Metal shaders -> metallib in `out_dir`."""
     src = this_dir() / "resonant_update.metal"
+    if not src.exists():
+        raise FileNotFoundError(f"resonant_update.metal not found at {src}")
     air = out_dir / "resonant_update.air"
     metallib = out_dir / "caramba_resonant_ops.metallib"
-
-    metal = xcrun_find("metal")
-    metallib_tool = xcrun_find("metallib")
 
     if metallib.exists():
         mt = metallib.stat().st_mtime
@@ -55,6 +65,9 @@ def compile_resonant_metallib(*, out_dir: Path, verbose: bool) -> Path:
             return metallib
 
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    metal = xcrun_find("metal")
+    metallib_tool = xcrun_find("metallib")
 
     cmd = [metal, "-c", str(src), "-o", str(air)]
     explicit_arch = os.environ.get("CARAMBA_METAL_AIR_ARCH")
@@ -119,7 +132,13 @@ def load_caramba_metal_resonant_ops(*, verbose: bool = False) -> Any:
 
     try:
         name = "caramba_metal_resonant_ops"
-        build_dir = Path(ce._get_build_directory(name, verbose=verbose))
+        base_build_dir = Path(
+            os.environ.get(
+                "TORCH_EXTENSIONS_DIR",
+                str(Path.home() / ".cache" / "torch_extensions"),
+            )
+        ).expanduser()
+        build_dir = base_build_dir / name
         compile_resonant_metallib(out_dir=build_dir, verbose=verbose)
         src_ops = str(this_dir() / "resonant_ops.mm")
         mod = ce.load(

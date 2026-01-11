@@ -33,7 +33,6 @@ import os
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Tuple, Optional, List
 
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
@@ -48,7 +47,7 @@ def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
-def load_mnist(root: Path) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def load_mnist(root: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Returns:
       x_train: (60000, 28, 28) float32 in [0,1]
@@ -227,7 +226,7 @@ def decode_tokens_to_image(
 @dataclass
 class SparseCounts:
     total: int
-    counts: Dict[int, int]  # token -> count
+    counts: dict[int, int]  # token -> count
 
 
 @dataclass
@@ -243,12 +242,12 @@ class ClassModel:
 
     # Context tables (sparse)
     # mid context: (left1, up1)
-    mid: Dict[int, SparseCounts]
+    mid: dict[int, SparseCounts]
     # full context: (left1, up1, upleft)
-    full: Optional[Dict[int, SparseCounts]]
+    full: dict[int, SparseCounts] | None
 
 
-def _update_sparse(table: Dict[int, SparseCounts], key: int, token: int) -> None:
+def _update_sparse(table: dict[int, SparseCounts], key: int, token: int) -> None:
     ent = table.get(key)
     if ent is None:
         table[key] = SparseCounts(total=1, counts={token: 1})
@@ -263,7 +262,7 @@ def train_class_models(
     K: int,
     alpha: float,
     use_full: bool = True,
-) -> List[ClassModel]:
+) -> list[ClassModel]:
     """
     Trains 10 class-conditional models by counting token occurrences in contexts.
     tokens: (N, Ht, Wt) uint16
@@ -275,7 +274,7 @@ def train_class_models(
     base = K + 1
     BOS = K  # boundary token
 
-    models: List[ClassModel] = []
+    models: list[ClassModel] = []
     for _ in range(num_classes):
         models.append(
             ClassModel(
@@ -292,7 +291,7 @@ def train_class_models(
 
     Ht, Wt = tokens.shape[1], tokens.shape[2]
 
-    for grid, y in tqdm(zip(tokens, labels), total=tokens.shape[0], desc="Training context models"):
+    for grid, y in tqdm(zip(tokens, labels, strict=True), total=tokens.shape[0], desc="Training context models"):
         m = models[int(y)]
 
         # Unigram update using bincount (fast)
@@ -324,7 +323,7 @@ def train_class_models(
     return models
 
 
-def _prob_sparse(ent: Optional[SparseCounts], token: int, alpha: float, alphaK: float, K: int) -> float:
+def _prob_sparse(ent: SparseCounts | None, token: int, alpha: float, alphaK: float, K: int) -> float:
     if ent is None:
         # alpha / (0 + alphaK) = 1/K
         return 1.0 / float(K)
@@ -387,7 +386,7 @@ def loglik_image_under_model(
 
 
 def predict(
-    models: List[ClassModel],
+    models: list[ClassModel],
     grid: np.ndarray,
     lam_full: float,
     lam_mid: float,
@@ -405,9 +404,8 @@ def predict(
 # -----------------------------
 
 def _sample_from_sparse_dirichlet_smoothed(
-    ent: Optional[SparseCounts],
+    ent: SparseCounts | None,
     rng: np.random.Generator,
-    alpha: float,
     alphaK: float,
     K: int,
 ) -> int:
@@ -484,10 +482,9 @@ def sample_token_grid(
         # renormalize weights for mid+uni
         s = lam_mid + lam_uni
         lam_mid2 = lam_mid / s
-        lam_uni2 = lam_uni / s
         lam_full2 = 0.0
     else:
-        lam_full2, lam_mid2, lam_uni2 = lam_full, lam_mid, lam_uni
+        lam_full2, lam_mid2 = lam_full, lam_mid
 
     for i in range(Ht):
         for j in range(Wt):
@@ -502,9 +499,9 @@ def sample_token_grid(
             if model.use_full and full is not None and r < lam_full2:
                 key_full = key_mid * base + ul
                 ent_full = full.get(key_full)
-                t = _sample_from_sparse_dirichlet_smoothed(ent_full, rng, alpha, alphaK, K)
+                t = _sample_from_sparse_dirichlet_smoothed(ent_full, rng, alphaK, K)
             elif r < (lam_full2 + lam_mid2):
-                t = _sample_from_sparse_dirichlet_smoothed(ent_mid, rng, alpha, alphaK, K)
+                t = _sample_from_sparse_dirichlet_smoothed(ent_mid, rng, alphaK, K)
             else:
                 t = _sample_from_unigram(uni, uni_total, rng, alphaK, K)
 
@@ -613,7 +610,7 @@ def main() -> None:
     lam_uni = float(args.lam_uni)
 
     correct = 0
-    for grid, y in tqdm(zip(test_tokens, y_test), total=test_tokens.shape[0], desc="Evaluating"):
+    for grid, y in tqdm(zip(test_tokens, y_test, strict=True), total=test_tokens.shape[0], desc="Evaluating"):
         yhat = predict(models, grid, lam_full=lam_full, lam_mid=lam_mid, lam_uni=lam_uni)
         correct += int(yhat == int(y))
     acc = correct / float(test_tokens.shape[0])

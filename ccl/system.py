@@ -7,13 +7,14 @@ as other Caramba systems (e.g., can be returned from a trainer and inspected).
 """
 
 from dataclasses import dataclass
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 import torch
 from torch import Tensor, nn
 
-from caramba.ccl.context_counts import ClassCountsModel, ContextTemplate, predict_class
+from caramba.ccl.context_counts import ClassCountsModel, ContextTemplate, loglik_grids
 from caramba.ccl.patch_vq import PatchKMeansVQ
 
 
@@ -79,23 +80,17 @@ class CCLSystem(nn.Module):
         images = _as_numpy_images(x)
         tokens = self.codec.tokenize(images, centers=self.centers, batch_size=int(self.tokenize_batch_size))
         # logits = log p(x|class)
-        b = int(tokens.shape[0])
-        c = int(len(self.models))
-        logits = np.empty((b, c), dtype=np.float32)
-        from caramba.ccl.context_counts import loglik_grid
-        for i in range(b):
-            grid = tokens[i]
-            for j, m in enumerate(self.models):
-                logits[i, j] = float(loglik_grid(m, grid))
-        return {"logits": torch.from_numpy(logits)}
+        logits = np.stack([loglik_grids(m, tokens) for m in self.models], axis=1).astype(
+            np.float32, copy=False
+        )
+        return {"logits": torch.as_tensor(logits, device=self._dummy.device)}
 
     @torch.no_grad()
     def predict(self, images: object) -> Tensor:
         """Predict class indices (contiguous 0..C-1) for a batch of images."""
         arr = _as_numpy_images(images)
         tokens = self.codec.tokenize(arr, centers=self.centers, batch_size=int(self.tokenize_batch_size))
-        out = np.empty((int(tokens.shape[0]),), dtype=np.int64)
-        for i in range(int(tokens.shape[0])):
-            out[i] = int(predict_class(self.models, tokens[i]))
-        return torch.from_numpy(out)
+        scores = np.stack([loglik_grids(m, tokens) for m in self.models], axis=1)
+        out = np.asarray(np.argmax(scores, axis=1), dtype=np.int64)
+        return torch.as_tensor(out, device=self._dummy.device)
 

@@ -42,7 +42,7 @@ class FastTrainPath(Path):
         """
         _ = args
         if kwargs:
-            # Best-effort support: if the caller passes the `run(...)` kwargs, return delta.
+            # If the caller passes the `run(...)` kwargs, return delta.
             delta, _out = self.run(  # type: ignore[arg-type]
                 u=kwargs["u"],
                 local=kwargs["local"],

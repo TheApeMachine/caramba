@@ -71,7 +71,11 @@ class VsaNovelty(nn.Module):
     def forward(self, max_sim: Tensor, *, threshold: float | None = None) -> Tensor:
         if not isinstance(max_sim, Tensor):
             raise TypeError(f"max_sim must be a Tensor, got {type(max_sim).__name__}")
+        if threshold is not None and not isinstance(threshold, (int, float)):
+            raise TypeError("threshold must be a float or None")
         t = float(threshold) if threshold is not None else float(self.threshold)
+        if t < 0.0 or t > 1.0:
+            raise ValueError(f"threshold must be in [0, 1], got {t}")
         x = (max_sim - t) * float(self.beta)
         novelty = 1.0 - torch.sigmoid(x)
         return novelty.clamp(0.0, 1.0).to(dtype=max_sim.dtype)

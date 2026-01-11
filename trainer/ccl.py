@@ -111,7 +111,7 @@ def _split_train_val(ds: Dataset[Any], *, val_frac: float) -> tuple[Subset[Any],
     n_val = int(round(float(n) * float(val_frac)))
     n_val = max(1, min(n - 1, n_val)) if n > 1 else 0
     n_train = int(n - n_val)
-    train = Subset(ds, range(0, n_train))
+    train = Subset(ds, range(n_train))
     val = Subset(ds, range(n_train, n))
     return train, val
 
@@ -370,7 +370,7 @@ class CCLTrainer:
         logger.info(f"CCL eval_accuracy={acc:.4f} (n={total})")
 
         # -----------------------------
-        # 4) Optional generation (best-effort).
+        # 4) Optional generation.
         # -----------------------------
         if bool(self.generate):
             try:

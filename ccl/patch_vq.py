@@ -7,7 +7,6 @@ It implements a simple minibatch k-means suitable for learning a patch codebook.
 """
 
 from dataclasses import dataclass
-from typing import Iterable
 
 import numpy as np
 
@@ -75,7 +74,7 @@ def _minibatch_kmeans(
     x = np.asarray(x, dtype=np.float32)
     if x.ndim != 2:
         raise ValueError(f"Expected x as (N,D), got {x.shape}")
-    n, d = x.shape
+    n, _ = x.shape
     if n <= 0:
         raise ValueError("x is empty")
     if k <= 0 or k > n:
@@ -119,7 +118,7 @@ def _tokenize_batch(
     """Tokenize images into a grid of patch IDs (N,Ht,Wt) int32."""
     x = _ensure_nchw(images_nchw)
     n, c, h, w = x.shape
-    k, d = centers.shape
+    _k, d = centers.shape
     if int(d) != int(c * patch * patch):
         raise ValueError("Center dimensionality does not match patch shape")
     out_h = (h - patch) // stride + 1
@@ -165,8 +164,6 @@ def _decode_grid(
     grid: np.ndarray,
     centers: np.ndarray,
     *,
-    out_h: int,
-    out_w: int,
     channels: int,
     patch: int,
     stride: int,
@@ -235,8 +232,6 @@ class PatchKMeansVQ:
         return _decode_grid(
             np.asarray(grid),
             np.asarray(centers, dtype=np.float32),
-            out_h=int(grid.shape[0]),
-            out_w=int(grid.shape[1]),
             channels=int(channels),
             patch=int(self.patch),
             stride=int(self.stride),

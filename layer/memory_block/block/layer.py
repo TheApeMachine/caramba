@@ -16,6 +16,7 @@ import torch
 from torch import Tensor, nn
 
 from caramba.config.layer import MemoryBlockLayerConfig
+from caramba.instrumentation.training_metrics import get_training_metrics
 from caramba.layer.memory_block.isa import MemoryOpcode
 from caramba.layer.memory_block.memory import MemoryBlockMemory
 from caramba.layer.memory_block.state import MemoryBlockState, MemoryBlockStateStore
@@ -240,7 +241,6 @@ class MemoryBlockLayer(nn.Module):
         step = int(getattr(ctx, "step", 0) or 0)
         if ctx is None:
             # If ctx is missing (performance mode), try to get step from global metrics
-            from caramba.instrumentation.training_metrics import get_training_metrics
             metrics = get_training_metrics()
             # Note: metrics.step is usually valid, defaulting to 0 if not set.
             # If metrics.step is 0, we might truly be at step 0 (warmup), which is fine.
@@ -251,7 +251,8 @@ class MemoryBlockLayer(nn.Module):
         # This ensures the tuner has data to display.
         if bool(getattr(self.config, "mem_autotune_viz", False)):
             viz_interval = int(getattr(self.config, "mem_autotune_viz_interval", 100))
-            if step <= 5 or (step > 0 and step % viz_interval == 0):
+            warmup_threshold = int(getattr(self.config, "mem_autotune_viz_warmup", 5))
+            if step <= warmup_threshold or (step > 0 and step % viz_interval == 0):
                 collect_aux = True
             
         teacher = getattr(ctx, "memblock_teacher", None) if ctx is not None else None
@@ -274,13 +275,11 @@ class MemoryBlockLayer(nn.Module):
             routing["_last_loss"] = ctx._last_loss
         
         # Pass training metrics from context to routing (for tuner)
-        if ctx is not None and hasattr(ctx, 'train_accuracy'):
-            if ctx.train_accuracy is not None:
-                routing["train_accuracy"] = ctx.train_accuracy
-            if hasattr(ctx, 'train_loss') and ctx.train_loss is not None:
-                routing["train_loss"] = ctx.train_loss
-            if hasattr(ctx, 'train_loss_variance') and ctx.train_loss_variance is not None:
-                routing["train_loss_variance"] = ctx.train_loss_variance
+        if ctx is not None:
+            for name in ("train_accuracy", "train_loss", "train_loss_variance"):
+                val = getattr(ctx, name, None)
+                if val is not None:
+                    routing[name] = val
         
         if ctx is not None and isinstance(teacher, dict):
             self.memory.apply_teacher_overrides(routing, teacher, p=float(teacher_p))

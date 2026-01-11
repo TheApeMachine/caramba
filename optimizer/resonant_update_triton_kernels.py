@@ -85,8 +85,6 @@ if not TYPE_CHECKING and triton_supported():
         def resonant_update_bwd(
             grad_xo_ptr,
             grad_yo_ptr,
-            x_ptr,
-            y_ptr,
             diag_ptr,
             grad_vr_ptr,
             grad_vi_ptr,
@@ -110,8 +108,6 @@ if not TYPE_CHECKING and triton_supported():
 
             gxo = tl.load(grad_xo_ptr + offs, mask=m, other=0.0).to(tl.float32)
             gyo = tl.load(grad_yo_ptr + offs, mask=m, other=0.0).to(tl.float32)
-            x = tl.load(x_ptr + offs, mask=m, other=0.0).to(tl.float32)
-            y = tl.load(y_ptr + offs, mask=m, other=0.0).to(tl.float32)
             a = tl.load(a_ptr + offs, mask=m, other=0.0).to(tl.float32)
             b = tl.load(b_ptr + offs, mask=m, other=0.0).to(tl.float32)
             inv_r = tl.load(inv_r_ptr + offs, mask=m, other=0.0).to(tl.float32)

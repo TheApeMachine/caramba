@@ -9,7 +9,7 @@ notes: >
 defaults:
   data: { tokenizer: tiktoken, val_frac: 0.0 }
   logging: { instrument: rich, wandb: false, wandb_project: "", wandb_entity: "", eval_iters: 0 }
-  runtime: { save_every: 200, best_effort: false }
+  runtime: { save_every: 200 }
 
 vars:
   # Single source of truth for both dataset slicing and training loop.

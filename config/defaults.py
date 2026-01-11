@@ -34,9 +34,6 @@ class DefaultsRuntime(BaseModel):
     """Defaults for runtime/execution behaviors."""
 
     save_every: PositiveInt = 100
-    # If true, allow "best effort" fallbacks for optional perf backends (Metal/Triton),
-    # but log high-visibility warnings when acceleration is unavailable.
-    best_effort: bool = False
 
 
 class DefaultsCompute(BaseModel):

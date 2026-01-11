@@ -20,5 +20,5 @@ class DictCoercion:
 
     @staticmethod
     def as_dict(x: Any) -> dict[str, Any]:
-        """Best-effort conversion from dataset row to dict."""
+        """Conversion from dataset row to dict (dict rows only)."""
         return x if isinstance(x, dict) else {}

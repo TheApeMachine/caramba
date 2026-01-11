@@ -6,6 +6,7 @@ import torch
 from torch import Tensor, nn
 
 from caramba.core.event import EventEnvelope
+from caramba.core.event_codec import EventEncoder
 from caramba.infer.context import InferContext
 from caramba.infer.event_runtime import CommitmentModeB, EventResponder, StreamModelRunner
 
@@ -23,6 +24,18 @@ class _DummyByteModel(nn.Module):
         self._vocab_size = int(vocab_size)
         self._started = False
         self._emitted = 0
+
+    def _compute_idx(self, t: int, T: int, ctx: InferContext) -> int:
+        """Compute output-byte index for prompt vs generation phases."""
+        if T > 1:
+            # Prompt phase: remember prompt length and only emit at the very end.
+            self._prompt_len = T
+            return 0 if t == T - 1 else -1
+
+        # Generation phase: ctx.pos_offset points at the current absolute position.
+        if not hasattr(self, "_prompt_len"):
+            self._prompt_len = 0
+        return int(ctx.pos_offset) - int(self._prompt_len) + 1
 
     def forward(self, input_ids: Tensor, ctx: InferContext) -> Tensor:
         if input_ids.ndim != 2:
@@ -46,27 +59,13 @@ class _DummyByteModel(nn.Module):
         
         # So when ctx.pos_offset is 0, we want to predict out_bytes[0] at the end of the prompt.
         # The prompt length is P. The last logit of the prompt (at T-1) should predict out_bytes[0].
-        prompt_len = 71 # Approximate prompt length, but let's be more dynamic.
-        
         for t in range(T):
             # idx is what this position should predict.
             # position P in the sequence should predict out_bytes[0] if prompt length is P.
             # position is ctx.pos_offset + t.
             # We don't know the exact prompt length yet, but we know when we are generating.
             # Generating happens when T=1 and pos > 0.
-            
-            if T > 1: # Prompt phase
-                if not hasattr(self, "_prompt_len"):
-                    self._prompt_len = T
-                idx = -1 # Predict nothing special except at the very end
-                if t == T - 1:
-                    idx = 0
-            else: # Generation phase
-                # l, _ = forward(prompt) [pos 0 to P-1] -> next_logits predict tok1 at P.
-                # Here ctx.pos_offset = P. We want to predict tok2 (idx 1).
-                # idx = pos - P + 1? No.
-                # If pos = P, idx = (P - P) + 1 = 1. Correct.
-                idx = int(ctx.pos_offset) - getattr(self, "_prompt_len", 0) + 1
+            idx = self._compute_idx(t, T, ctx)
             
             nxt = int(self._out[idx]) if 0 <= idx < len(self._out) else 0
             logits[0, t, nxt] = 0.0
@@ -78,9 +77,6 @@ class _DummyByteModel(nn.Module):
             ctx.memblock_aux_out["mosaic_commitment_logits"] = aux
 
         return logits
-
-
-from caramba.core.event_codec import EventEncoder
 
 
 class EventRuntimeTest(unittest.TestCase):

@@ -457,7 +457,7 @@ python3.12 -m caramba codegraph-sync .
 
 ### Git hook auto-sync (recommended)
 
-This repo includes best-effort hooks under `.githooks/`:
+This repo includes git hooks under `.githooks/`:
 - `post-commit`: sync changed `*.py` files after every commit
 - `pre-push`: sync changed `*.py` files before every push
 

@@ -8,18 +8,18 @@ mixture interpolation (contexts + unigram).
 """
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 import numpy as np
 
 
-Offset2D = Tuple[int, int]  # (di, dj)
+Offset2D = tuple[int, int]  # (di, dj)
 
 
 @dataclass
 class SparseCounts:
     total: int
-    counts: Dict[int, int]  # token -> count
+    counts: dict[int, int]  # token -> count
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,10 +29,6 @@ class ContextTemplate:
     name: str
     offsets: tuple[Offset2D, ...]
     weight: float
-
-    def key_base(self, token: int, base: int, pos: int) -> int:
-        # Not used; kept for future expansion.
-        return int(token) * (base**pos)
 
 
 @dataclass
@@ -83,7 +79,9 @@ def _ctx_key(
     return int(key)
 
 
-def _prob_sparse(ent: Optional[SparseCounts], tok: int, *, alpha: float, alpha_k: float, k: int) -> float:
+def _prob_sparse(
+    ent: SparseCounts | None, tok: int, *, alpha: float, alpha_k: float, k: int
+) -> float:
     if ent is None:
         return 1.0 / float(k)
     c = int(ent.counts.get(int(tok), 0))
@@ -225,6 +223,26 @@ def loglik_grid(
     return float(ll)
 
 
+def loglik_grids(
+    model: ClassCountsModel,
+    grids: np.ndarray,
+) -> np.ndarray:
+    """Compute log-likelihoods for a batch of grids under a model.
+
+    Args:
+        model: A class-conditional model.
+        grids: Token grids with shape (N,Ht,Wt).
+    """
+    g = np.asarray(grids)
+    if g.ndim != 3:
+        raise ValueError(f"grids must be (N,Ht,Wt), got {g.shape}")
+    n = int(g.shape[0])
+    out = np.empty((n,), dtype=np.float32)
+    for i in range(n):
+        out[i] = float(loglik_grid(model, g[i]))
+    return out
+
+
 def predict_class(
     models: Sequence[ClassCountsModel],
     grid: np.ndarray,
@@ -257,7 +275,7 @@ def sample_grid(
     w_ctx = [w / s for w in w_ctx]
     w_uni = w_uni / s
 
-    def sample_from_sparse(ent: Optional[SparseCounts]) -> int:
+    def sample_from_sparse(ent: SparseCounts | None) -> int:
         if ent is None or ent.total <= 0:
             return int(rng.integers(0, k))
         total = int(ent.total)

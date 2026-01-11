@@ -60,15 +60,15 @@ class PendingTask:
 
 class PendingTaskManager:
     """Manages pending async tasks and their callbacks.
-    
+
     When a task update is received via push notification, the manager
     looks up the callback and invokes it.
     """
-    
+
     def __init__(self) -> None:
         self._pending: dict[str, PendingTask] = {}
         self._lock = asyncio.Lock()
-    
+
     async def register(
         self,
         task_id: str,
@@ -84,17 +84,17 @@ class PendingTaskManager:
                 context_id=context_id,
                 callback=callback,
             )
-    
+
     async def handle_update(self, task: Task) -> bool:
         """Handle a task update from a push notification.
-        
+
         Returns True if the task was found and handled.
         """
         async with self._lock:
             pending = self._pending.get(task.id)
             if not pending:
                 return False
-            
+
             # If terminal state, remove from pending
             if task.status.state in (
                 TaskState.completed,
@@ -102,7 +102,7 @@ class PendingTaskManager:
                 TaskState.canceled,
             ):
                 del self._pending[task.id]
-        
+
         # Invoke callback outside lock
         if pending.callback:
             try:
@@ -113,13 +113,13 @@ class PendingTaskManager:
                 _logger.error(f"TRACING [Callback] Error in task callback for {task.id}: {e}", exc_info=True)
         else:
             _logger.warning(f"TRACING [Callback] No callback registered for task {task.id}")
-        
+
         return True
-    
+
     def get_pending(self, task_id: str) -> PendingTask | None:
         """Get a pending task by ID."""
         return self._pending.get(task_id)
-    
+
     def list_pending(self) -> list[PendingTask]:
         """List all pending tasks."""
         return list(self._pending.values())
@@ -139,13 +139,13 @@ def get_pending_task_manager() -> PendingTaskManager:
 
 async def handle_task_notification(task: Task) -> bool:
     """Handle an incoming task notification from a push webhook.
-    
+
     This should be called by the webhook endpoint when a task update
     is received.
-    
+
     Args:
         task: The task update from the notification.
-        
+
     Returns:
         True if the task was found and handled.
     """
@@ -209,7 +209,7 @@ class RemoteAgent:
         """
         _logger.info(f"Sending message to {self.name} at {self.url}")
         _logger.debug(f"Message: {text[:200]}...")
-        
+
         message = Message(
             role=Role.user,
             parts=[Part(root=TextPart(text=text))],
@@ -276,11 +276,11 @@ class RemoteAgent:
         callback: TaskCallback | None = None,
     ) -> str:
         """Send a message asynchronously (fire-and-forget).
-        
+
         The task will be submitted and a task ID returned immediately.
         When the task updates, a push notification will be sent to the
         webhook_url. The callback will be invoked when updates are received.
-        
+
         Args:
             text: The message text.
             webhook_url: URL to receive push notifications.
@@ -288,22 +288,22 @@ class RemoteAgent:
             task_id: Optional task ID to continue.
             message_id: Optional message ID.
             callback: Optional callback for task updates.
-            
+
         Returns:
             The task ID for tracking.
         """
         _logger.info(f"TRACING [Generic] Sending async message to agent='{self.name}' url='{self.url}'")
         _logger.info(f"TRACING [Generic] Webhook params: url='{webhook_url}'")
         _logger.debug(f"TRACING [Generic] Message preview: {text[:200]}...")
-        
+
         msg_id = message_id or str(uuid.uuid4())
         new_task_id = task_id or str(uuid.uuid4())
         ctx_id = context_id or str(uuid.uuid4())
-        
+
         # Task ID for the message: only set if explicitly provided (continuation)
         # If None, server will create a new task
         msg_task_id = task_id if task_id else None
-        
+
         message = Message(
             role=Role.user,
             parts=[Part(root=TextPart(text=text))],
@@ -311,7 +311,7 @@ class RemoteAgent:
             context_id=ctx_id,
             task_id=msg_task_id,
         )
-        
+
         # Configure for non-blocking with push notifications
         config = MessageSendConfiguration(
             blocking=False,
@@ -320,7 +320,7 @@ class RemoteAgent:
                 token=new_task_id,  # Use task ID as token for verification
             ),
         )
-        
+
         # Register the pending task before sending
         await _pending_tasks.register(
             task_id=new_task_id,
@@ -329,7 +329,7 @@ class RemoteAgent:
             callback=callback,
         )
         _logger.info(f"TRACING [Generic] Registered pending task: id='{new_task_id}' agent='{self.name}' has_callback={callback is not None}")
-        
+
         try:
             # Send non-blocking - just get initial task acknowledgment
             _logger.info(f"TRACING [Generic] Initiating client.send_message stream...")
@@ -362,7 +362,7 @@ class RemoteAgent:
         except Exception as e:
             _logger.error(f"TRACING [Generic] Error submitting async task to {self.name}: {e}", exc_info=True)
             # Still return task ID so caller can track
-        
+
         return new_task_id
 
     async def check_health(self) -> AgentHealth:
@@ -465,7 +465,7 @@ class ConnectionManager:
             Exception: If connection fails.
         """
         _logger.info(f"Connecting to agent at {url}")
-        
+
         if self._httpx_client is None:
             _logger.error("ConnectionManager._httpx_client is None!")
             raise RuntimeError("ConnectionManager must be used as async context")
@@ -537,15 +537,23 @@ class ConnectionManager:
         Returns:
             Dictionary mapping agent name to health status.
         """
-        tasks = [agent.check_health() for agent in self._connections.values()]
+        # Create tuples of (agent, task) to maintain association
+        agent_tasks = [(agent, agent.check_health()) for agent in self._connections.values()]
+        tasks = [task for _, task in agent_tasks]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         health: dict[str, AgentHealth] = {}
-        for result in results:
+        for (agent, _), result in zip(agent_tasks, results):
             if isinstance(result, AgentHealth):
                 health[result.name] = result
             elif isinstance(result, Exception):
                 # Handle exceptions from failed health checks
-                pass
+                _logger.error(f"Failed to check health of {agent.name}: {result}", exc_info=True)
+                health[agent.name] = AgentHealth(
+                    name=agent.name,
+                    healthy=False,
+                    error=str(result),
+                    url=agent.url,
+                )
 
         return health

@@ -109,7 +109,7 @@ class RootAgent:
     async def _on_task_update(self, task: Task) -> None:
         """Handle updates for delegated tasks."""
         _logger.info(f"RootAgent received update for task {task.id}: {task.status.state}")
-        
+
         # Update local tracking
         if task.id in self._delegated_tasks:
             self._delegated_tasks[task.id].update({
@@ -224,10 +224,10 @@ class RootAgent:
     def _root_instruction(self, context: ReadonlyContext) -> str:
         """Build instruction for the root agent."""
         current_lead = self._check_state(context)
-        
+
         # Use instructions from YAML
         base_instruction = self.config.instructions
-        
+
         # Add dynamic state information
         return f"""{base_instruction}
 
@@ -283,8 +283,8 @@ Current active lead: {current_lead['active_lead']}
                         t.name for t in self.team_loader.get_teams_for_agent(lead_type)
                     ],
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.error(f"Failed to load persona {lead_type}: {e}", exc_info=True)
 
         return result
 
@@ -336,10 +336,10 @@ Current active lead: {current_lead['active_lead']}
         # Send message and wait for response
         # Use callback URL from config or default
         webhook_url = f"{self.webhook_base_url}/webhook/task"
-        
+
         # Send message asynchronously
         _logger.info(f"Sending async message to {agent.name} with webhook {webhook_url}")
-        
+
         task_id = await agent.send_message_async(
             text=message,
             webhook_url=webhook_url,
@@ -347,7 +347,7 @@ Current active lead: {current_lead['active_lead']}
             task_id=task_id,
             callback=self._on_task_update,
         )
-        
+
         # Track the delegated task
         self._delegated_tasks[task_id] = {
             "agent": agent.name,
@@ -360,7 +360,7 @@ Current active lead: {current_lead['active_lead']}
         lead_context["task_id"] = task_id
         lead_contexts[agent.name] = lead_context
         state["lead_contexts"] = lead_contexts
-        
+
         return [{
             "status": "submitted",
             "task_id": task_id,

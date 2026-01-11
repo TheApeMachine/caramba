@@ -239,7 +239,7 @@ def _resolve_cache_kind(
                 pass
         return chosen
 
-    # Best-effort micro-benchmark: prefill + a few decode steps.
+    # Micro-benchmark: prefill + a few decode steps.
     best_kind = candidates[0]
     best_tps = -1.0
 

@@ -37,7 +37,7 @@ class RunLogger:
 
     Why this exists:
     - Training loops should emit structured metrics for later analysis.
-    - Logging must be best-effort: failures should never crash training.
+    - Logging is part of the runtime surface area and must be reliable.
     - JSONL is easy to stream, tail, and parse incrementally.
     """
 
@@ -89,7 +89,7 @@ class RunLogger:
         try:
             self._fh.write(line + "\n")
         except Exception as e:
-            # Best-effort: disable after failure to avoid repeated exceptions.
+            # Disable after failure to avoid repeated exceptions.
             from caramba.console import logger as console_logger
             console_logger.warning(f"RunLogger: Write failed, disabling: {e}")
             self.enabled = False
@@ -169,7 +169,7 @@ class RunLogger:
     def h5_write_step(self, *, step: int, arrays: dict[str, object]) -> None:
         """Write dense arrays to the HDF5 store under this step.
 
-        This is a best-effort hook used by future instrumentation:
+        This is a hook used by future instrumentation:
         activations, gradients, histograms, etc.
         """
 

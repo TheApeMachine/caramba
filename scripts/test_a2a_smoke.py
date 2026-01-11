@@ -46,7 +46,7 @@ async def test_root_agent_card() -> bool:
 
 
 def _docker_healthcheck_compose_service(service: str) -> tuple[bool, str]:
-    """Best-effort docker compose health check from the host.
+    """Docker compose health check from the host.
 
     This avoids trying to hit `http://<service>:8001` from the host (which only works
     inside the compose network).

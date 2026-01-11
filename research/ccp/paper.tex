@@ -828,7 +828,7 @@ MOSAIC's state bank is similar in spirit but differs by: (i) using multiple fixe
 
 \subsection{Memory-Augmented Neural Networks}
 
-The \textbf{Neural Turing Machine} \cite{graves2014ntm} and \textbf{Differentiable Neural Computer} \cite{graves2016dnc} pioneered neural networks with external memory, but use soft attention-based addressing. The \textbf{Sparse DNC} \cite{rae2016sparse} introduced LSH-based sparse addressing. \textbf{Wormhole connections} \cite{gulcehre2018wormhole} proposed discrete shortcut paths to improve gradient flow in MANNs, addressing similar challenges to our hard addressing approach.
+The \textbf{Neural Turing Machine} \cite{graves2014ntm} and \textbf{Differentiable Neural Computer} \cite{graves2016dnc} pioneered neural networks with external memory, but use soft attention-based addressing. The \textbf{Sparse DNC} \cite{rae2016sparse} introduced LSH-based sparse addressing. \textbf{Wormhole connections} \cite{gulcehre2017wormhole} proposed discrete shortcut paths to improve gradient flow in MANNs, addressing similar challenges to our hard addressing approach.
 
 MOSAIC differs by using hard-addressed hash tables with $O(1)$ lookup and no attention, making addressing fundamentally discrete.
 
