@@ -123,7 +123,7 @@ class TrainingVizMosaicContext(TrainingVizContext):
     # This is independent of `enabled` (which controls heavy viz payloads).
     memblock_stats_enabled: bool = False
 
-    # Best-effort: filled by MOSAIC layers during forward.
+    # Filled by MOSAIC layers during forward.
     memblock_aux_out: dict[str, Tensor] | None = None
 
     # Optional mask to drop local mixer contribution (forced-read dropout).
@@ -138,4 +138,14 @@ class TrainingVizMosaicContext(TrainingVizContext):
     # Opaque state store for MOSAIC layers (e.g. n-gram cache state, persistent registers).
     # This must be in __slots__ for layers to attach state to the context.
     _mosaic: dict[str, Any] | None = None
+
+    # Memory block state store (e.g. RMF, KV cache).
+    # Must be in __slots__ for MemoryBlockStateStore to attach state.
+    _memblock: dict[str, Any] | None = None
+    
+    # Training metrics for tuner optimization
+    train_accuracy: float | None = None
+    train_loss: float | None = None
+    train_loss_variance: float | None = None
+    _last_loss: float | None = None
 

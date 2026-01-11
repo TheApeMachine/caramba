@@ -4,22 +4,28 @@ This module implements a hard-addressed, set-associative memory: you route a
 query into buckets, perform a match within each bucket, and then read/write
 values with explicit update rules instead of implicit “memory in weights”.
 """
-
 from __future__ import annotations
 
-from typing import Any
-
+import math
+from typing import Any, TYPE_CHECKING
 import torch
 from torch import Tensor, nn
+import torch.nn.functional as F
 
+from caramba.console import logger
 from caramba.config.layer import MemoryBlockLayerConfig
 from caramba.layer.memory_block.memory.reader import MemoryReader
-from caramba.layer.memory_block.memory.routing import BitRouter, VqRouter
+from caramba.layer.memory_block.memory.routing import BitRouter, VqRouter, ResonantRouter
 from caramba.layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
 from caramba.layer.memory_block.memory.rmf import ResonantMemoryField
 from caramba.layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
 from caramba.layer.memory_block.memory.writer import MemoryWriter
 from caramba.layer.memory_block.state import MemoryBlockState
+from caramba.layer.memory_block.memory.telemetry import MemoryHealthTelemetry
+
+if TYPE_CHECKING:
+    from caramba.layer.memory_block.memory.tuner import UniversalMemoryTuner
+
 
 
 class MemoryBlockMemory(nn.Module):
@@ -62,6 +68,14 @@ class MemoryBlockMemory(nn.Module):
         self.rmf_dim = int(getattr(config, "rmf_dim", 64))
         self.rmf_eta = float(getattr(config, "rmf_eta", 0.2))
         self.rmf_weight = float(getattr(config, "rmf_weight", 1.0))
+        self.mem_autotune = str(getattr(config, "mem_autotune", "off")).lower().strip()
+
+        # Use shared tuner singleton (all layers share one tuner for coordinated optimization).
+        # We don't store the instance to avoid stale references after reset; see `tuner` property below.
+        
+        # Loss tracking for tuner metrics
+        self.loss_history: list[float] = []
+        self.loss_history_size = 20
 
         if self.mem_index not in {"hash", "trie"}:
             raise ValueError(f"mem_index must be 'hash' or 'trie', got {self.mem_index!r}")
@@ -153,8 +167,19 @@ class MemoryBlockMemory(nn.Module):
 
         self.bit_router: BitRouter | None = None
         self.vq_router: VqRouter | None = None
+        self.resonant_router: ResonantRouter | None = None
         if self.mem_router == "bits":
             self.bit_router = BitRouter(in_dim=int(self.mem_key_dim), hashes=int(self.mem_hashes), buckets=int(self.mem_buckets))
+        elif self.mem_router == "resonant":
+            self.resonant_router = ResonantRouter(
+                in_dim=int(self.mem_key_dim),
+                hashes=int(self.mem_hashes),
+                buckets=int(self.mem_buckets),
+                steps=int(getattr(self.config, "mem_resonant_steps", 20)),
+                coupling=float(getattr(self.config, "mem_resonant_coupling", 0.25)),
+                damping=float(getattr(self.config, "mem_resonant_damping", 0.02)),
+                tuner_mode=self.mem_autotune,
+            )
         else:
             self.vq_router = VqRouter(
                 in_dim=int(self.mem_key_dim),
@@ -187,6 +212,7 @@ class MemoryBlockMemory(nn.Module):
             mem_trie_enabled=bool(self.mem_index == "trie"),
             mem_trie_fallback_enabled=bool(self.mem_trie_fallback_enabled),
             mem_trie_max_levels=self.mem_trie_max_levels,
+            tuner_mode=self.mem_autotune,
         )
         self.writer = MemoryWriter(
             mem_wkey=self.mem_wkey,
@@ -208,7 +234,22 @@ class MemoryBlockMemory(nn.Module):
             mem_trie_enabled=bool(self.mem_index == "trie"),
             mem_trie_eta_decay=float(self.mem_trie_eta_decay),
             mem_trie_max_levels=int(self.mem_trie_max_levels) if self.mem_trie_max_levels is not None else None,
+            tuner_mode=self.mem_autotune,
         )
+
+    @property
+    def tuner(self) -> "UniversalMemoryTuner | None":
+        """Access to the shared memory tuner.
+
+        Some integration tests and instrumentation expect `mem.tuner` to exist.
+        Internally we use a shared singleton; this property returns the current
+        shared tuner instance (or None if autotune is off).
+        """
+        if str(self.mem_autotune).lower().strip() in {"", "off", "disabled", "none"}:
+            return None
+        from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+
+        return get_shared_tuner(mode=str(self.mem_autotune))
 
     def compute_routing(self, u: Tensor, *, collect_aux: bool) -> dict[str, Any]:
         """Compute routing indices for a sequence
@@ -222,6 +263,10 @@ class MemoryBlockMemory(nn.Module):
             if self.bit_router is None:
                 raise RuntimeError("bit_router is None but mem_router='bits'")
             routing = self.bit_router.route(tag=tag, collect_aux=collect_aux)
+        elif self.mem_router == "resonant":
+            if self.resonant_router is None:
+                raise RuntimeError("resonant_router is None but mem_router='resonant'")
+            routing = self.resonant_router.route(tag=tag, collect_aux=collect_aux)
         else:
             if self.vq_router is None:
                 raise RuntimeError("vq_router is None but mem_router='vq'")
@@ -263,6 +308,10 @@ class MemoryBlockMemory(nn.Module):
             if self.bit_router is None:
                 raise RuntimeError("bit_router is None but mem_router='bits'")
             r = self.bit_router.route(tag=tag, collect_aux=collect_aux)
+        elif self.mem_router == "resonant":
+            if self.resonant_router is None:
+                raise RuntimeError("resonant_router is None but mem_router='resonant'")
+            r = self.resonant_router.route(tag=tag, collect_aux=collect_aux)
         else:
             if self.vq_router is None:
                 raise RuntimeError("vq_router is None but mem_router='vq'")
@@ -420,6 +469,10 @@ class MemoryBlockMemory(nn.Module):
             if self.bit_router is None:
                 raise RuntimeError("bit_router is None but mem_router='bits'")
             routing = self.bit_router.route(tag=tag, collect_aux=collect_aux)
+        elif self.mem_router == "resonant":
+            if self.resonant_router is None:
+                raise RuntimeError("resonant_router is None but mem_router='resonant'")
+            routing = self.resonant_router.route(tag=tag, collect_aux=collect_aux)
         else:
             if self.vq_router is None:
                 raise RuntimeError("vq_router is None but mem_router='vq'")
@@ -466,5 +519,143 @@ class MemoryBlockMemory(nn.Module):
         *,
         write_scale: Tensor | None = None,
     ) -> Tensor:
-        return self.writer.write_chunk(u, st, routing, int(t0), mask, write_scale)
+        gate_logit = self.writer.write_chunk(u, st, routing, int(t0), mask, write_scale)
+        
+        # After write, we have a full picture of the forward pass dynamics.
+        # Collect and report health telemetry.
+        # Only update tuner ONCE per global step (shared across all layers).
+        if self.mem_autotune != "off" and bool(routing.get("collect_aux", False)):
+            from caramba.layer.memory_block.memory.tuner import should_update_tuner, get_shared_tuner
+            from caramba.instrumentation.training_metrics import get_training_metrics
+            
+            # Get global step from training_metrics singleton (reliable even when ctx is None)
+            metrics = get_training_metrics()
+            global_step = metrics.step if metrics.step > 0 else int(routing.get("global_step", st.step))
+            
+            # Only the first layer to reach this step updates the tuner
+            if should_update_tuner(global_step):
+                tuner = get_shared_tuner(mode=self.mem_autotune)
+                health = self.collect_health_telemetry(st, routing)
+                tuning_logs = tuner.update(health)
+                routing.update(tuning_logs)
+                routing.update(health.to_dict())
+            
+            # --- Visualization (Performance-Focused) ---
+            # Guard entire visualization block with config flag.
+            if bool(getattr(self.config, "mem_autotune_viz", False)):
+                # Default to every 100 internal steps per block.
+                # ALSO trigger during warmup (steps 0-5) to show activity.
+                interval = int(getattr(self.config, "mem_autotune_viz_interval", 100))
+                if (global_step <= 5) or (global_step > 0 and global_step % interval == 0):
+                    tuner = get_shared_tuner(mode=self.mem_autotune)
+                    logger.tuner_status(tuner.get_viz_data())
+                    logger.health_bars(tuner.get_health_metrics())
+            
+        return gate_logit
+
+    def collect_health_telemetry(self, st: MemoryBlockState, routing: dict[str, Any]) -> MemoryHealthTelemetry:
+        """Central hub for collecting all memory block health metrics."""
+        from caramba.layer.memory_block.memory.telemetry import (
+            MemoryHealthTelemetry, ResonantSettlingMetrics, VsaNoveltyMetrics
+        )
+        
+        # 1. Utilization sensors
+        #
+        # IMPORTANT:
+        # - "table utilization" (occupancy over ALL buckets) is extremely slow-moving when
+        #   mem_buckets is large, and makes the tuner objective effectively constant early on.
+        # - For tuning, we instead use a fast-moving proxy: fraction of positions that fired a write.
+        ml = st.mem_last  # (B, H, K, A)
+        valid = ml >= 0
+        per_bucket_valid = valid.any(dim=-1)  # (B, H, K)
+        table_utilization = per_bucket_valid.float().mean().item()
+
+        write_fire_frac = 0.0
+        wd = routing.get("write_do", None)
+        if isinstance(wd, torch.Tensor):
+            # write_do: (B,T) boolean-ish
+            try:
+                write_fire_frac = float(wd.detach().float().mean().item())
+            except Exception:
+                write_fire_frac = 0.0
+
+        # Use write_fire_frac as the primary utilization signal for the tuner.
+        utilization = float(write_fire_frac)
+        
+        # 2. Resonant Metrics (if applicable)
+        res_metrics = None
+        if "resonant_final_sim" in routing:
+            res_metrics = ResonantSettlingMetrics(
+                final_sim=float(routing["resonant_final_sim"]),
+                convergence_steps=int(routing.get("resonant_convergence_steps", 0)),
+                energy_drop=0.0, # TODO: implement if needed
+                bucket_entropy=float(routing.get("resonant_bucket_entropy", 0.0)),
+                state_drift=0.0,
+            )
+            
+        # 3. VSA Metrics
+        vsa_metrics = None
+        if "write_novelty" in routing:
+            vsa_metrics = VsaNoveltyMetrics(
+                novelty_ema=float(routing["write_novelty"].mean()),
+                write_rejection_rate=1.0 - float(routing.get("write_do", torch.tensor(0.0)).float().mean()),
+                match_confidence=float(routing.get("read_slot_sim", torch.tensor(0.0)).std().item()),
+                tag_collision_rate=0.0,
+            )
+        
+        # 4. Training Metrics (from global singleton - zero overhead, no ctx needed)
+        from caramba.instrumentation.training_metrics import get_training_metrics
+        metrics = get_training_metrics()
+        current_loss = metrics.loss
+        
+        if current_loss is not None:
+            self.loss_history.append(float(current_loss))
+            if len(self.loss_history) > self.loss_history_size:
+                self.loss_history.pop(0)
+        
+        # Compute metrics from loss history
+        loss = None
+        loss_variance = None
+        # Prefer a memory-specific "accuracy" signal (teacher routing agreement) when present.
+        # Fallback to global training accuracy otherwise.
+        accuracy = None
+        for k in ("read_teacher_agree_free", "read_teacher_agree", "vq_read_group_acc", "vq_write_group_acc"):
+            v = routing.get(k, None)
+            if isinstance(v, torch.Tensor):
+                try:
+                    x = float(v.detach().float().mean().item())
+                except Exception:
+                    continue
+                if math.isfinite(x):
+                    accuracy = x
+                    break
+        if accuracy is None:
+            accuracy = metrics.accuracy
+        
+        if len(self.loss_history) > 0:
+            loss = self.loss_history[-1]  # Most recent loss
+        if len(self.loss_history) >= 2:
+            import statistics
+            loss_variance = float(statistics.variance(self.loss_history))
+        
+
+        tel = MemoryHealthTelemetry(
+            step=int(st.step),
+            utilization=utilization,
+            conflict_rate=0.0, # TODO: track write collisions
+            accuracy=accuracy,
+            loss=loss,
+            loss_variance=loss_variance,
+            resonant=res_metrics,
+            vsa=vsa_metrics,
+        )
+        # Aux visibility: keep slow-moving sensors available for logging.
+        try:
+            tel.aux["table_utilization"] = float(table_utilization)
+            tel.aux["write_fire_frac"] = float(write_fire_frac)
+            if "write_threshold_eff" in routing and isinstance(routing["write_threshold_eff"], torch.Tensor):
+                tel.aux["write_threshold_eff"] = float(routing["write_threshold_eff"].detach().float().item())
+        except Exception:
+            pass
+        return tel
 

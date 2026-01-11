@@ -1,0 +1,84 @@
+version: 2
+name: ccl_mnist
+notes: "Constructive Compression Learning (CCL) on MNIST via HF datasets (no gradient descent)."
+
+defaults:
+  data:
+    val_frac: 0.1
+  logging:
+    instrument: rich
+    wandb: false
+  runtime:
+    save_every: 0
+
+targets:
+  - type: experiment
+    name: ccl_mnist_demo
+    description: "Learn a patch codec + class-conditional context model; classify by codelength."
+    backend: torch
+
+    task: task.supervised_classification
+
+    data:
+      ref: dataset.hf_image_classification
+      config:
+        dataset: mnist
+        split: train
+        grayscale: true
+        normalize_01: true
+        input_key: inputs
+        target_key: targets
+
+    # For trainer.ccl, the trained model is produced by the trainer and returned as `system`.
+    # This `system` slot is still required by the manifest schema; it documents intent.
+    system:
+      ref: system.ccl
+      config: {}
+
+    objective: objective.none
+
+    trainer:
+      ref: trainer.ccl
+      config:
+        k: 256
+        patch: 4
+        stride: 2
+        alpha: 0.5
+        seed: 0
+
+        # Optional: evaluate on HF test split (recommended).
+        eval_data:
+          ref: dataset.hf_image_classification
+          config:
+            dataset: mnist
+            split: test
+            grayscale: true
+            normalize_01: true
+            input_key: inputs
+            target_key: targets
+
+        # Iteration knobs (keep these small for smoke runs).
+        max_train: 60000
+        max_eval: 10000
+        image_pool: 2048
+        sample_patches: 200000
+        kmeans_max_iter: 200
+        kmeans_batch_size: 4096
+        tokenize_batch_size: 256
+
+        generate: true
+        n_gen_per_class: 8
+
+    runs:
+      - id: fit
+        mode: train
+        exp: ccl_mnist
+        seed: 0
+        steps: 1
+        expected: {}
+        train:
+          phase: standard
+          batch_size: 1
+          block_size: 1
+          device: cpu
+          dtype: float32

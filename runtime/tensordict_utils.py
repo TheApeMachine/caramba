@@ -26,7 +26,7 @@ __all__ = [
 
 
 def _infer_batch_size(d: Mapping[str, Any]) -> list[int]:
-    """Best-effort batch size inference for TensorDict construction."""
+    """Heuristic batch size inference for TensorDict construction."""
     b0: int | None = None
     for v in d.values():
         if isinstance(v, Tensor) and v.dim() >= 1:

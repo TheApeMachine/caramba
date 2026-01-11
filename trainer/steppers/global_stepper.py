@@ -21,14 +21,11 @@ from caramba.runtime.tensordict_utils import TensorDictBase
 
 
 def _sync_device(device: torch.device) -> None:
-    """Best-effort synchronize for more accurate wall timings."""
-    try:
-        if device.type == "cuda":
-            torch.cuda.synchronize(device=device)
-        elif device.type == "mps" and hasattr(torch, "mps"):
-            torch.mps.synchronize()  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    """Synchronize for more accurate wall timings."""
+    if device.type == "cuda":
+        torch.cuda.synchronize(device=device)
+    elif device.type == "mps" and hasattr(torch, "mps"):
+        torch.mps.synchronize()  # type: ignore[attr-defined]
 
 
 def _has_diffusion_head(student: nn.Module) -> bool:

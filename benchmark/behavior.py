@@ -412,7 +412,7 @@ def _assign_attention_viz_ids(model: nn.Module) -> None:
 
 
 def _find_anchor_token_index(tokens: list[str], *, anchor: str) -> int | None:
-    """Best-effort: find the first token index that contains `anchor`."""
+    """Find the first token index that contains `anchor`."""
     if not anchor:
         return None
     for i, t in enumerate(tokens):

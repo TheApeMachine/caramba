@@ -66,6 +66,11 @@ class TorchEngine:
             ref="trainer.diffusion_codegen",
             python="caramba.trainer.diffusion_codegen.trainer:DiffusionCodegenTrainer",
         )
+        self.registry.register(
+            backend="torch",
+            ref="trainer.ccl",
+            python="caramba.trainer.ccl:CCLTrainer",
+        )
 
         # Datasets
         self.registry.register(
@@ -118,6 +123,11 @@ class TorchEngine:
             ref="dataset.tensors",
             python="caramba.data.tensors:TensorFilesDataset",
         )
+        self.registry.register(
+            backend="torch",
+            ref="dataset.hf_image_classification",
+            python="caramba.data.hf_image_classification:HFImageClassificationDataset",
+        )
 
         # Systems
         self.registry.register(
@@ -150,6 +160,11 @@ class TorchEngine:
             ref="system.diffusion_codegen",
             python="caramba.model.diffusion_codegen_system:DiffusionCodegenSystem",
         )
+        self.registry.register(
+            backend="torch",
+            ref="system.ccl",
+            python="caramba.ccl.system:CCLSystem",
+        )
 
         # Objectives
         self.registry.register(
@@ -181,6 +196,11 @@ class TorchEngine:
             backend="torch",
             ref="objective.classification_ce",
             python="caramba.trainer.objectives:KeyedCrossEntropyObjective",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="objective.none",
+            python="caramba.trainer.objectives:ZeroObjective",
         )
 
         # Metrics/evaluators
@@ -266,7 +286,7 @@ class TorchEngine:
             except Exception as e:
                 logger.warning(f"Benchmarks failed: {e}")
 
-        # Metrics/evaluators (best-effort).
+        # Metrics/evaluators.
         if target.metrics and isinstance(result, dict):
             models: dict[str, nn.Module] = {}
             if "teacher" in result and "student" in result:

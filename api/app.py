@@ -134,7 +134,7 @@ def _resolve_model_config(manifest: Manifest, target: str) -> tuple[str, ModelCo
 
 
 def _target_info(manifest: Manifest, target: object) -> dict[str, object]:
-    """Best-effort metadata for a manifest target.
+    """Metadata for a manifest target.
 
     This is used by the UI to avoid calling model-only endpoints for process-only targets.
     """
@@ -282,12 +282,13 @@ async def _stop_run(rec: RunRecord, *, timeout_s: float = 5.0) -> bool:
     proc = rec.proc
     pid = int(rec.pid)
     if proc is None:
-        # best-effort by pid
+        # Terminate by PID when we don't own the process handle.
         try:
             os.kill(pid, signal.SIGTERM)
         except ProcessLookupError:
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"StopRun: Failed to terminate process {pid}: {e}")
             return False
         return True
 

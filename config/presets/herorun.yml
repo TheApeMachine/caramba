@@ -20,8 +20,6 @@ defaults:
   runtime:
     # Checkpoints are written by the trainer into `runs/<target.name>/`.
     save_every: ${save_every}
-    # Fail fast on missing optional performance backends (cluster runs).
-    best_effort: false
 
 vars:
   # ----- Dataset -----

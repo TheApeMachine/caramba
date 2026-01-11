@@ -102,7 +102,7 @@ class BenchmarkContext:
         model.eval()
         out = ContextResult(model_name=str(model_name))
 
-        # Best-effort vocab size detection for random token fallback.
+        # Heuristic vocab size detection for random token fallback.
         vocab_size = getattr(model, "vocab_size", None)
         if vocab_size is None:
             cfg = getattr(model, "config", None)

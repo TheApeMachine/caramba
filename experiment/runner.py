@@ -17,7 +17,9 @@ from caramba.config.agents import AgentProcessConfig
 from caramba.config.manifest import Manifest
 from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
 from caramba.console import logger
-from caramba.runtime.engine import TorchEngine
+from caramba.runtime.engine.torch_engine import TorchEngine
+from caramba.runtime.engine.lightning_engine import LightningEngine
+from caramba.orchestrator.compute.vast_ai import VastAIClient
 from caramba.runtime.readiness import check_target_readiness, format_readiness_report
 from caramba.ai.agent import Agent
 from caramba.ai.persona import PersonaLoader
@@ -111,22 +113,41 @@ class ExperimentRunner:
             return {}
 
         assert isinstance(target, ExperimentTargetConfig)
-        best_effort = bool(getattr(getattr(self.manifest.defaults, "runtime", object()), "best_effort", False))
-        readiness = check_target_readiness(self.manifest, target, best_effort=best_effort)
+        readiness = check_target_readiness(self.manifest, target)
         if readiness.errors:
             raise RuntimeError(
                 "Runtime readiness check failed:\n" + format_readiness_report(readiness)
             )
         for w in readiness.warnings:
-            # Best-effort mode: warn loudly when performance backends are missing.
-            if best_effort and w.code in {"metal_build_tools_missing", "triton_missing"}:
-                logger.fallback_warning(
-                    "WARNING: Running unoptimized PyTorch fallback for DBA Decode. Performance will be degraded."
-                )
             logger.warning(w.message)
 
-        engine = TorchEngine()
-        logger.header("Target", f"{target.name} ({target.type})")
+        # Handle remote compute provisioning
+        if hasattr(target, "compute") and target.compute.type == "vast_ai":
+            logger.header("Remote Provisioning", f"Vast.ai ({target.compute.gpu_name})")
+            client = VastAIClient(api_key=getattr(self.manifest.defaults.compute, "vast_ai_api_key", None))
+            ssh_str = client.run_lifecycle(target.compute)
+            if not ssh_str:
+                raise RuntimeError("Failed to provision Vast.ai instance.")
+            
+            # In a full implementation, we would now:
+            # 1. Sync the codebase to the remote instance (via ssh_str)
+            # 2. Trigger the run remotely via SSH
+            # 3. Stream back logs
+            # 4. client.decommission_instance(...)
+            logger.info(f"Instance ready. Remote run not fully implemented, continuing locally for demonstration.")
+
+        # Engine selection
+        backend = str(target.backend)
+        if backend == "lightning":
+            engine = LightningEngine()
+        elif backend in {"torch", "pt"}:
+            engine = TorchEngine()
+        else:
+            raise ValueError(
+                f"Unsupported target.backend={backend!r}; expected one of 'lightning', 'torch', 'pt'"
+            )
+
+        logger.header("Target", f"{target.name} ({target.type}) • backend={target.backend}")
         return cast(dict[str, Path], engine.run_experiment(self.manifest, target))
 
     def run_all(self, *, manifest_path: Path | None = None) -> dict[str, dict[str, Path]]:

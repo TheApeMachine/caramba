@@ -156,9 +156,10 @@ class ArtifactGenerator:
                 try:
                     bpath = self._write_latex_behavior_table(behavior=behavior)
                     generated["behavior_cases_table.tex"] = bpath
-                except Exception:
-                    # Best-effort: never fail the run due to LaTeX formatting.
-                    pass
+                except Exception as e:
+                    # Non-critical: do not fail the run due to LaTeX formatting.
+                    from caramba.console import logger
+                    logger.warning(f"ArtifactGenerator: Failed to write LaTeX behavior table: {e}")
 
         return generated
 
@@ -705,7 +706,7 @@ class ArtifactGenerator:
                         p2.write_bytes(path.read_bytes())
                         paths["latency_tokens_per_sec.png"] = p2
                     except Exception:
-                        # Best-effort only; keep primary chart.
+                        # Non-critical: keep primary chart.
                         pass
 
             plt.close()
@@ -807,7 +808,7 @@ class ArtifactGenerator:
                     plt.close()
                     paths["accuracy_by_task.png"] = p
             except Exception:
-                # Best-effort only.
+                # Non-critical.
                 pass
 
         # Context sweep plots (compat with paper names).

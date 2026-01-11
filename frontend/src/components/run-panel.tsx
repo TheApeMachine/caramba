@@ -226,7 +226,7 @@ export function RunPanel() {
 						return next;
 					});
 				} catch {
-					// ignore; badges are best-effort
+					// ignore; badges are non-critical
 				}
 
 				setTargetsLoading(false);

@@ -127,7 +127,7 @@ def test_no_decoupled_attention_skips_perf_backend_checks(monkeypatch) -> None:
 
     m = _default_manifest()
     t = _non_decoupled_target(device="mps")
-    rep = readiness.check_target_readiness(m, t, best_effort=False)
+    rep = readiness.check_target_readiness(m, t)
     assert rep.errors == []
 
 
@@ -139,11 +139,11 @@ def test_mps_unavailable_is_error_when_decoupled_and_fp16_cache(monkeypatch) -> 
     t = _decoupled_target(device="mps", benchmarks=[b])
     m = _default_manifest()
 
-    rep = readiness.check_target_readiness(m, t, best_effort=False)
+    rep = readiness.check_target_readiness(m, t)
     assert any(i.code == "mps_unavailable" for i in rep.errors)
 
 
-def test_metal_build_tools_missing_is_error_or_warning_based_on_best_effort(monkeypatch) -> None:
+def test_metal_build_tools_missing_is_error(monkeypatch) -> None:
     monkeypatch.setattr(readiness, "metal_supported", True)
     monkeypatch.setattr(readiness, "metal_build_tools_available", False)
 
@@ -151,25 +151,19 @@ def test_metal_build_tools_missing_is_error_or_warning_based_on_best_effort(monk
     t = _decoupled_target(device="mps", benchmarks=[b])
     m = _default_manifest()
 
-    rep_err = readiness.check_target_readiness(m, t, best_effort=False)
-    assert any(i.code == "metal_build_tools_missing" for i in rep_err.errors)
-
-    rep_warn = readiness.check_target_readiness(m, t, best_effort=True)
-    assert any(i.code == "metal_build_tools_missing" for i in rep_warn.warnings)
+    rep = readiness.check_target_readiness(m, t)
+    assert any(i.code == "metal_build_tools_missing" for i in rep.errors)
 
 
-def test_triton_missing_for_cuda_q4_is_error_or_warning(monkeypatch) -> None:
+def test_triton_missing_for_cuda_q4_is_error(monkeypatch) -> None:
     monkeypatch.setattr(readiness, "triton_supported", False)
 
     b = BenchmarkSpec(id="mem", config=MemoryBenchmarkConfig(quantization_modes=["q4_0"]))
     t = _decoupled_target(device="cuda", benchmarks=[b])
     m = _default_manifest()
 
-    rep_err = readiness.check_target_readiness(m, t, best_effort=False)
-    assert any(i.code == "triton_missing" for i in rep_err.errors)
-
-    rep_warn = readiness.check_target_readiness(m, t, best_effort=True)
-    assert any(i.code == "triton_missing" for i in rep_warn.warnings)
+    rep = readiness.check_target_readiness(m, t)
+    assert any(i.code == "triton_missing" for i in rep.errors)
 
 
 def test_format_readiness_report_formats_both_errors_and_warnings() -> None:

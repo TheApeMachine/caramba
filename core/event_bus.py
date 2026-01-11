@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from caramba.core.event import EventEnvelope
 from caramba.core.task_queue import TaskQueue
+from a2a.types import Task, TaskState, TaskStatus
 
 
 class EventHandler(ABC):
@@ -80,7 +81,17 @@ class EventBus:
             The task ID if pushed to queue, else None.
         """
         if self._task_queue:
-            return await self._task_queue.push(event.type, event.to_json_dict())
+            task = Task(
+                id=str(event.id),
+                context_id=str(event.sender),
+                status=TaskStatus(
+                    state=TaskState.submitted,
+                    message=None,
+                    timestamp=None,
+                ),
+                metadata={"event": event.to_json_dict()},
+            )
+            return await self._task_queue.push(task)
         
         # Fallback to local sync queue (wrapper around sync publish)
         self.publish(event)

@@ -205,6 +205,20 @@ data:
     block_size: 2048
 ```
 
+For image-classification style datasets via HuggingFace `datasets`, use:
+
+```yaml
+data:
+  ref: dataset.hf_image_classification
+  config:
+    dataset: mnist
+    split: train
+    grayscale: true
+    normalize_01: true
+    input_key: inputs
+    target_key: targets
+```
+
 #### System Configuration
 
 ```yaml
@@ -315,6 +329,10 @@ train:
 | `standard` | End-to-end training | `trainer.standard` |
 | `blockwise` | Layer-by-layer distillation | `trainer.upcycle` |
 | `global` | Full model fine-tuning | `trainer.upcycle` |
+
+Some trainers are **non-gradient** and only use `runs[0]` as an execution envelope
+(output directory, seed, etc.). For example, `trainer.ccl` ignores `steps` and
+does not require an `objective` beyond `objective.none`.
 
 ---
 

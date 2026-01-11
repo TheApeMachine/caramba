@@ -127,7 +127,7 @@ class LanguageModelSystem:
                 if isinstance(result, tuple) and len(result) == 2:
                     features, logits = result
                     out = {"features": features, "logits": logits, "_system": self.module}
-                    # Best-effort: attach MOSAIC aux outputs when present on ctx.
+                    # Attach MOSAIC aux outputs when present on ctx.
                     aux = getattr(ctx, "memblock_aux_out", None) if ctx is not None else None
                     if isinstance(aux, dict):
                         for k, v in aux.items():

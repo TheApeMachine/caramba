@@ -39,7 +39,7 @@ class ExperimentGroup:
         self.runs = list(target.runs)
         self.benchmarks = target.benchmarks
 
-        # Best-effort "data" string for benchmarking / reporting.
+        # Derived "data" string for benchmarking / reporting.
         p = target.data.config.get("path", None)
         self.data = str(p) if p is not None else str(target.data.ref)
 

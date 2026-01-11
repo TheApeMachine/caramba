@@ -19,7 +19,6 @@ defaults:
     eval_iters: 0
   runtime:
     save_every: ${save_every}
-    best_effort: false
 
 vars:
   # ----- Dataset -----

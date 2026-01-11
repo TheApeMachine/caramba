@@ -39,9 +39,11 @@ from caramba.config.train import TrainConfig, TrainPhase
 from caramba.console import logger
 from caramba.instrumentation import RunLogger
 from caramba.instrumentation.viz import TrainingVizMosaicContext
+from caramba.instrumentation.training_metrics import update_training_metrics
 from caramba.instrumentation.wandb_writer import WandBWriter
 from caramba.layer.attention import AttentionLayer
 from caramba.layer.memory_block.block import MemoryBlockLayer
+from caramba.layer.memory_block.memory.tuner import reset_shared_tuner
 from caramba.runtime.plan import RuntimePlan
 from caramba.runtime.tensordict_utils import (
     TensorDictBase,
@@ -123,7 +125,7 @@ class _LayerStatsCollector:
         self.shapes: dict[int, list[int]] = {}
 
     def observe(self, idx: int, y: Tensor) -> None:
-        # Best-effort; keep overhead bounded.
+        # Collect lightweight stats; keep overhead bounded.
         try:
             z = y.detach().float()
             ms = float((z * z).mean().item())
@@ -264,6 +266,10 @@ class StandardTrainer:
         self._checkpoint_dir_override = checkpoint_dir
         self._runtime_plan_builder = runtime_plan_builder or RuntimePlanBuilder()
         self._train_dataloader_builder = train_dataloader_builder or TrainDataLoaderBuilder()
+        # Track loss from previous step for memory tuner metrics
+        self._last_step_loss: float | None = None
+        # Track accuracy from previous step for memory tuner metrics
+        self._last_step_accuracy: float | None = None
 
     def run(
         self,
@@ -335,8 +341,11 @@ class StandardTrainer:
     ) -> None:
         torch.manual_seed(run.seed)
         device = torch.device(train.device)
+        
+        # Reset shared tuner for new training runs
+        reset_shared_tuner()
 
-        dist_ctx: object | None = None
+        dist_ctx: DistributedContext | None = None
         dist_strategy = str(getattr(train, "distributed_strategy", "none")).lower()
         if dist_strategy != "none":
             try:
@@ -356,7 +365,7 @@ class StandardTrainer:
             except Exception as e:
                 raise RuntimeError("Failed to check if this is the main process") from e
 
-        # W&B writer: truly best-effort. Never crash training if it fails.
+        # W&B writer.
         wandb_writer: WandBWriter | None = None
         if bool(getattr(defaults.logging, "wandb", False)):
             is_main = True
@@ -402,7 +411,7 @@ class StandardTrainer:
         if hasattr(system, "to"):
             system.to(device=device, dtype=dtype)  # type: ignore[attr-defined]
 
-        # CUDA perf knobs (best-effort).
+        # CUDA perf knobs.
         #
         # TF32 is safe and commonly enabled on Ampere+ for faster fp32 matmuls
         # (many reductions / softmax stats run in fp32 even when weights are bf16).
@@ -470,7 +479,7 @@ class StandardTrainer:
             except Exception as e:
                 raise RuntimeError("Failed to enable activation checkpointing") from e
 
-        # Optional torch.compile (best-effort, but if requested and it fails, raise).
+        # Optional torch.compile (if requested and it fails, raise).
         #
         # NOTE: torch.compile's "reduce-overhead" mode uses CUDA graphs. When we invoke the
         # model multiple times per optimizer step (gradient accumulation), CUDA-graph output
@@ -563,7 +572,7 @@ class StandardTrainer:
         # Precompute static-ish memory numbers once.
         param_mb = _bytes_to_mb(self._param_bytes(system))
 
-        # Emit run metadata once (best-effort).
+        # Emit run metadata once.
         try:
             run_logger.log_event(
                 type="telemetry",
@@ -677,6 +686,11 @@ class StandardTrainer:
                         max_heads=int(getattr(train, "viz_heads", 4) or 4),
                         topk=int(getattr(train, "viz_topk", 8) or 8),
                     )
+                    
+                    # Initialize with loss from previous step for memory tuner
+                    viz_ctx._last_loss = self._last_step_loss
+                    # Initialize with accuracy from previous step for memory tuner
+                    viz_ctx.train_accuracy = self._last_step_accuracy
 
                     viz_ctx.memblock_teacher_p = self._compute_memblock_teacher_p(
                         train=train, step_1=step_1, total_steps=int(run.steps)
@@ -704,7 +718,7 @@ class StandardTrainer:
 
                     layer_stats.begin_step(step_1)
 
-                    # Optional profiling (best-effort, but if enabled and it fails, raise).
+                    # Optional profiling (if enabled and it fails, raise).
                     did_profile_first = bool(profile_every > 0 and (step_1 % profile_every) == 0)
                     # Stream microbatches: avoid staging the full accumulation window on GPU.
                     # This reduces peak VRAM and host overhead, and can enable larger microbatches
@@ -787,7 +801,8 @@ class StandardTrainer:
                             )
                             loss_sum += loss_last.detach().float()
                             (loss_last / float(accum_steps)).backward()
-
+                        
+                        # Always track the last batch for metrics computation
                         last_batch_td = mb
 
                     t_data1 = time.perf_counter()
@@ -901,6 +916,14 @@ class StandardTrainer:
 
                         loss_val_live = float(metrics.get("loss", metrics.get("train_loss", 0.0)))
                         last_table2_metrics = dict(metrics)
+                        
+                        # Update persistent accuracy (loss is already updated after forward pass)
+                        # Filter out -1 values which indicate bins with no samples
+                        acc_vals = [v for k, v in metrics.items() if k.startswith("acc/bin_") and v >= 0]
+                        if acc_vals:
+                            self._last_step_accuracy = float(sum(acc_vals) / len(acc_vals))
+                            # Update global metrics singleton with accuracy
+                            update_training_metrics(step=step_1, accuracy=self._last_step_accuracy)
 
                         run_logger.log_metrics(
                             run_id=str(run.id),
@@ -975,7 +998,7 @@ class StandardTrainer:
         objective_loss: Any,
     ) -> tuple[object, Tensor]:
         with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
-            # Attach MOSAIC-friendly fields onto the ctx (best-effort).
+            # Attach MOSAIC-friendly fields onto the ctx.
             inp = None
             try:
                 inp = batch_td.get("input_ids", None)  # type: ignore[attr-defined]
@@ -1020,7 +1043,7 @@ class StandardTrainer:
 
             outputs = forward_caller(batch_td, ctx_to_pass)
 
-            # Best-effort: merge MOSAIC aux outputs from ctx into outputs.
+            # Merge MOSAIC aux outputs from ctx into outputs.
             try:
                 aux_out = getattr(viz_ctx, "memblock_aux_out", None)
                 if isinstance(outputs, dict) and isinstance(aux_out, dict):
@@ -1039,6 +1062,12 @@ class StandardTrainer:
 
             if not isinstance(loss, Tensor):
                 raise TypeError(f"Objective.loss must return a Tensor, got {type(loss).__name__}")
+            
+            # Store loss for next step's memory layer tuner
+            self._last_step_loss = float(loss.detach())
+            
+            # Update global metrics singleton (zero overhead, no ctx needed)
+            update_training_metrics(step=viz_ctx.step, loss=self._last_step_loss)
 
             return outputs, loss
 
@@ -1058,7 +1087,7 @@ class StandardTrainer:
         loss_sum: Tensor,
         loss_last: Tensor | None,
         outputs_last: object | None,
-        last_batch_td: TensorDictBase,
+        last_batch_td: TensorDictBase | None,
         call_objective_metrics: Any,
         table2: Table2Telemetry,
         viz_ctx: TrainingVizMosaicContext,
@@ -1073,7 +1102,7 @@ class StandardTrainer:
         lr_base = float(getattr(train, "lr", lr))
         lr_mult = (lr / lr_base) if lr_base > 0 else 1.0
 
-        # Grad norm (best-effort).
+        # Grad norm.
         grad_norm = 0.0
         try:
             grad_norm = float(global_grad_norm_l2(system))  # type: ignore[arg-type]
@@ -1105,8 +1134,8 @@ class StandardTrainer:
             "ms_opt": float(optim_time_s * 1000.0),
         }
 
-        # Objective extra metrics (best-effort).
-        if outputs_last is not None and loss_last is not None:
+        # Objective extra metrics.
+        if outputs_last is not None and loss_last is not None and last_batch_td is not None:
             try:
                 extra = call_objective_metrics(outputs=outputs_last, batch_td=last_batch_td, loss=loss_last)
                 if isinstance(extra, dict):
@@ -1114,28 +1143,48 @@ class StandardTrainer:
             except Exception as e:
                 raise RuntimeError("Failed to compute objective metrics") from e
 
-        # Table 2 telemetry (best-effort).
-        try:
-            has_table2_bin = isinstance(last_batch_td.get("table2_bin", None), Tensor)  # type: ignore[attr-defined]
-            has_mem_teacher = (
-                isinstance(last_batch_td.get("memblock_teacher_read_bucket", None), Tensor)  # type: ignore[attr-defined]
-                and isinstance(last_batch_td.get("memblock_teacher_write_bucket", None), Tensor)  # type: ignore[attr-defined]
-                and isinstance(last_batch_td.get("memblock_teacher_write_gate", None), Tensor)  # type: ignore[attr-defined]
-            )
-            if (has_table2_bin or has_mem_teacher) and (outputs_last is not None):
-                metrics.update(table2.compute(outputs=outputs_last, batch=last_batch_td))
-        except Exception as e:
-            raise RuntimeError("Failed to compute Table 2 telemetry") from e
+        # Table 2 telemetry.
+        if last_batch_td is not None:
+            try:
+                has_table2_bin = isinstance(last_batch_td.get("table2_bin", None), Tensor)  # type: ignore[attr-defined]
+                has_mem_teacher = (
+                    isinstance(last_batch_td.get("memblock_teacher_read_bucket", None), Tensor)  # type: ignore[attr-defined]
+                    and isinstance(last_batch_td.get("memblock_teacher_write_bucket", None), Tensor)  # type: ignore[attr-defined]
+                    and isinstance(last_batch_td.get("memblock_teacher_write_gate", None), Tensor)  # type: ignore[attr-defined]
+                )
+                # Debug scalars: help diagnose "all -1" / "no reads" situations quickly in W&B.
+                if has_table2_bin:
+                    tb2 = last_batch_td.get("table2_bin", None)  # type: ignore[attr-defined]
+                    if isinstance(tb2, Tensor):
+                        valid = (tb2.detach() >= 0)
+                        metrics["table2/valid_frac"] = float(valid.float().mean().item()) if tb2.numel() > 0 else 0.0
+                        metrics["table2/valid_count"] = float(valid.float().sum().item())
+                if has_mem_teacher:
+                    rb2 = last_batch_td.get("memblock_teacher_read_bucket", None)  # type: ignore[attr-defined]
+                    wb2 = last_batch_td.get("memblock_teacher_write_bucket", None)  # type: ignore[attr-defined]
+                    wg2 = last_batch_td.get("memblock_teacher_write_gate", None)  # type: ignore[attr-defined]
+                    if isinstance(rb2, Tensor) and rb2.numel() > 0:
+                        metrics["mem/teacher_read_frac"] = float((rb2.detach() >= 0).float().mean().item())
+                    if isinstance(wb2, Tensor) and wb2.numel() > 0:
+                        metrics["mem/teacher_write_bucket_frac"] = float((wb2.detach() >= 0).float().mean().item())
+                    if isinstance(wg2, Tensor) and wg2.numel() > 0:
+                        metrics["mem/teacher_write_gate_mean"] = float(wg2.detach().float().mean().item())
+                        metrics["mem/teacher_write_gate_fire_frac"] = float((wg2.detach().float() > 0.5).float().mean().item())
+                if (has_table2_bin or has_mem_teacher) and (outputs_last is not None):
+                    metrics.update(table2.compute(outputs=outputs_last, batch=last_batch_td))
+            except Exception as e:
+                raise RuntimeError("Failed to compute Table 2 telemetry") from e
 
-        # Token throughput (best-effort, for token-LM style datasets).
-        try:
-            y = last_batch_td.get("target_ids", None)  # type: ignore[attr-defined]
-            if isinstance(y, Tensor):
-                metrics["tok_s"] = float(y.numel() * int(accum_steps)) / float(max(1e-9, step_time_s))
-        except Exception as e:
-            raise RuntimeError("Failed to compute token throughput") from e
+        # Token throughput (for token-LM style datasets).
+        if last_batch_td is not None:
+            try:
+                y = last_batch_td.get("target_ids", None)  # type: ignore[attr-defined]
+                if isinstance(y, Tensor):
+                    metrics["tok_s"] = float(y.numel() * int(accum_steps)) / float(max(1e-9, step_time_s))
+            except Exception as e:
+                raise RuntimeError("Failed to compute token throughput") from e
 
-        # Memory footprint estimates (MiB) (best-effort).
+        # Memory footprint estimates (MiB).
         metrics["mem_params_mb"] = float(param_mb)
         try:
             metrics["mem_grads_mb"] = float(_bytes_to_mb(self._grad_bytes(system)))
@@ -1149,7 +1198,7 @@ class StandardTrainer:
         if kernel_events_estimate is not None:
             metrics["kernel_events_estimate"] = float(kernel_events_estimate)
 
-        # MOSAIC memory stats (best-effort).
+        # MOSAIC memory stats.
         try:
             if isinstance(viz_ctx, TrainingVizMosaicContext) and viz_ctx.memblock_mem_stats:
                 mosaic_f: dict[str, float] = {}
@@ -1268,7 +1317,7 @@ class StandardTrainer:
                         )
                         fused_opt = False
 
-                    use_master = (device.type == "mps" and dtype == torch.float16) or (
+                    use_master = (device.type == "mps" and dtype in (torch.float16, torch.float32)) or (
                         device.type == "cuda" and dtype in (torch.float16, torch.bfloat16)
                     )
                     if use_master:
@@ -1289,7 +1338,7 @@ class StandardTrainer:
                             raise RuntimeError(
                                 "AdamW fused optimizer requested but unsupported for this device/dtype.\n"
                                 f"device={device.type} dtype={dtype}\n"
-                                "Supported: MPS fp16, CUDA fp16/bf16."
+                                "Supported: MPS fp16/fp32, CUDA fp16/bf16."
                             )
 
                 logger.info(f"optimizer=adamw fused=false backend=torch_adamw device={device.type} dtype={dtype}")

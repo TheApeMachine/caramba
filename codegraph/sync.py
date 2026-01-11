@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 
 from falkordb import FalkorDB, Graph
 
-from caramba.console import logger
 from caramba.codegraph.parser import Edge, Node
 
 
@@ -34,8 +33,11 @@ def _graph_name(default: str = "caramba_code") -> str:
 
 
 def _delete_file_scope(g: Graph, *, file: str) -> None:
-    # Best-effort: remove all nodes anchored to this file.
-    # (This also removes relationships for those nodes.)
+    """Remove all nodes anchored to a file.
+
+    This deletes both nodes and their relationships to ensure a clean upsert
+    of the file's current structure.
+    """
     g.query("MATCH (n) WHERE n.file = $file DETACH DELETE n", {"file": file})
 
 
@@ -87,7 +89,6 @@ def sync_files_to_falkordb(
     port: int | None = None,
     password: str | None = None,
     reset: bool = False,
-    best_effort: bool = True,
 ) -> dict[str, Any]:
     """Sync parsed nodes/edges into FalkorDB.
 
@@ -97,45 +98,39 @@ def sync_files_to_falkordb(
 
     Note: `repo_root` is reserved for future use (e.g., incremental sync by repo scope).
     """
-    try:
-        client = _connect_falkordb(uri=uri, host=host, port=port, password=password)
-        gname = graph or _graph_name()
-        g = Graph(client, gname)
+    client = _connect_falkordb(uri=uri, host=host, port=port, password=password)
+    gname = graph or _graph_name()
+    g = Graph(client, gname)
 
-        if reset:
-            g.query("MATCH (n) DETACH DELETE n")
+    if reset:
+        g.query("MATCH (n) DETACH DELETE n")
 
-        # If a file list is provided, scope deletes to those files. Otherwise assume full rebuild.
-        # Use batch delete to avoid N+1 query pattern.
-        if files:
-            _delete_files_batch(g, files=sorted(set(files)))
+    # If a file list is provided, scope deletes to those files. Otherwise assume full rebuild.
+    # Use batch delete to avoid N+1 query pattern.
+    if files:
+        _delete_files_batch(g, files=sorted(set(files)))
 
-        by_label: dict[str, list[Node]] = defaultdict(list)
-        for n in nodes:
-            by_label[n.label].append(n)
+    by_label: dict[str, list[Node]] = defaultdict(list)
+    for n in nodes:
+        by_label[n.label].append(n)
 
-        # Upsert nodes by label
-        for label, items in by_label.items():
-            _upsert_nodes(g, label, items)
+    # Upsert nodes by label
+    for label, items in by_label.items():
+        _upsert_nodes(g, label, items)
 
-        by_rel: dict[str, list[Edge]] = defaultdict(list)
-        for e in edges:
-            by_rel[e.rel].append(e)
+    by_rel: dict[str, list[Edge]] = defaultdict(list)
+    for e in edges:
+        by_rel[e.rel].append(e)
 
-        for rel, items in by_rel.items():
-            _upsert_edges(g, rel, items)
+    for rel, items in by_rel.items():
+        _upsert_edges(g, rel, items)
 
-        return {
-            "ok": True,
-            "graph": gname,
-            "nodes": len(nodes),
-            "edges": len(edges),
-            "files": len(files or []),
-            "reset": bool(reset),
-        }
-    except Exception as e:
-        if not best_effort:
-            raise
-        logger.warning(f"codegraph: failed to sync to FalkorDB (best-effort): {e}")
-        return {"ok": False, "error": str(e), "best_effort": True}
+    return {
+        "ok": True,
+        "graph": gname,
+        "nodes": len(nodes),
+        "edges": len(edges),
+        "files": len(files or []),
+        "reset": bool(reset),
+    }
 

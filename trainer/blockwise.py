@@ -108,7 +108,7 @@ class TeacherOutputCache:
             try:
                 self._access_order.remove(key)
             except ValueError:
-                # Could happen if the access list got out of sync (best-effort LRU).
+                # Could happen if the access list got out of sync.
                 logger.error(f"Failed to remove key from access order, continuing: {key}")
             self._access_order.append(key)
             outs = self._cache[key]
@@ -341,9 +341,8 @@ class BlockwiseTrainer:
             with self._teacher_trace:
                 try:
                     _ = self.teacher(x)
-                except TraceStop:
-                    # logger.warning("Teacher trace stopped, continuing")
-                    pass
+                except TraceStop as e:
+                    logger.trace(f"BlockwiseTrainer: Teacher forward stopped correctly: {e}")
 
         outputs = list(self._teacher_trace.outputs)
         self._teacher_trace.max_outputs = None
@@ -369,16 +368,14 @@ class BlockwiseTrainer:
                 with self._student_trace:
                     try:
                         _ = self.student(x)
-                    except TraceStop:
-                        # logger.warning("Student trace stopped, continuing")
-                        pass
+                    except TraceStop as e:
+                        logger.trace(f"BlockwiseTrainer: Student forward (AMP) stopped correctly: {e}")
         else:
             with self._student_trace:
                 try:
                     _ = self.student(x)
-                except TraceStop:
-                    # logger.warning("Student trace stopped, continuing")
-                    pass
+                except TraceStop as e:
+                    logger.trace(f"BlockwiseTrainer: Student forward stopped correctly: {e}")
 
         outputs = list(self._student_trace.outputs)
         self._student_trace.max_outputs = None

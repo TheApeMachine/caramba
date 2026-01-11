@@ -199,7 +199,7 @@ class ContextBenchmarkConfig(BaseModel):
     # Chunk size for prefill. Actual chunk size may be reduced dynamically to
     # keep attention mask materialization bounded.
     chunk_size: PositiveInt = 1024
-    # Upper bound on (t_q * t_k) for any attention mask block (best-effort).
+    # Upper bound on (t_q * t_k) for any attention mask block (conservative bound).
     max_mask_elems: PositiveInt = 16_000_000
     batch_size: PositiveInt = 1
     # Decode benchmark after prefill.

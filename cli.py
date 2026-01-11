@@ -178,12 +178,6 @@ def agent_cmd(persona: str, host: str, port: int, team_config: str, root: bool, 
     help="Relative file path(s) to sync (repeatable). If omitted, scans all *.py under repo_root.",
 )
 @click.option("--reset", is_flag=True, default=False, help="Wipe the entire graph before ingesting.")
-@click.option(
-    "--best-effort/--strict",
-    default=True,
-    show_default=True,
-    help="In best-effort mode, failures won't break hooks/CI.",
-)
 def codegraph_sync_cmd(
     repo_root: Path,
     graph: str,
@@ -193,7 +187,6 @@ def codegraph_sync_cmd(
     falkordb_password: str | None,
     files: tuple[str, ...],
     reset: bool,
-    best_effort: bool,
 ) -> None:
     """Parse Python code and sync a structural graph into FalkorDB."""
     # Allow users to disable this (useful for hooks).
@@ -211,7 +204,6 @@ def codegraph_sync_cmd(
             port=falkordb_port,
             password=falkordb_password,
             reset=bool(reset),
-            best_effort=bool(best_effort),
         )
 
         if result.get("ok"):

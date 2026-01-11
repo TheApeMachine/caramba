@@ -106,6 +106,9 @@ def initialize_kernels() -> KernelRegistry:
             from caramba.optimizer.metal.attention_jit import load_caramba_metal_attention_ops
 
             _ = load_caramba_metal_attention_ops(verbose=False)
+            from caramba.optimizer.metal.resonant_jit import load_caramba_metal_resonant_ops
+
+            _ = load_caramba_metal_resonant_ops(verbose=False)
             metal_ops_loaded = True
         except Exception as e:
             raise RuntimeError(
@@ -206,6 +209,7 @@ def initialize_kernels() -> KernelRegistry:
             logger.info("[KERNEL] Attention Decode: Metal fp16 (MPS, inference)")
             logger.info("[KERNEL] Attention Train: Metal fp16 + backward (MPS)")
             logger.info("[KERNEL] SSM Scan: Metal fp16 + backward (MPS)")
+            logger.info("[KERNEL] Resonant Update: Metal fp32 + backward (MPS)")
             logger.info("[KERNEL] AdamW Master Step: Metal fused (MPS)")
             logger.info("[KERNEL] Lion Step: Metal fused (MPS)")
         if _REGISTRY.cuda_available:
@@ -217,6 +221,7 @@ def initialize_kernels() -> KernelRegistry:
             logger.info("[KERNEL] RMSNorm: Triton fused forward+backward (CUDA)")
             logger.info("[KERNEL] LayerNorm: Triton fused forward+backward (CUDA)")
             logger.info("[KERNEL] RoPE: Triton forward+backward (CUDA)")
+            logger.info("[KERNEL] Resonant Update: Triton fp32 + backward (CUDA)")
             logger.info("[KERNEL] AdamW Master Step: Triton fused (CUDA)")
 
     return _REGISTRY

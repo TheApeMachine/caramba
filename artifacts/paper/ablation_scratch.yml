@@ -22,7 +22,6 @@ defaults:
     eval_iters: 50
   runtime:
     save_every: 1000
-    best_effort: true
 
 vars:
   # --- Data (FineWeb-Edu "v29" suite) ---

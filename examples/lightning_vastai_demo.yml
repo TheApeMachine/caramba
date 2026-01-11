@@ -1,0 +1,53 @@
+version: 2
+name: lightning-vastai-demo
+
+defaults:
+  compute:
+    VAST_AI_API_KEY: "your-api-key-here"  # replace with your real key; do not commit
+
+targets:
+  - name: remote-lightning-experiment
+    type: experiment
+    backend: lightning
+    
+    # Remote compute provisioning
+    compute:
+      type: vast_ai
+      gpu_name: "RTX 4090"
+      max_price_per_hr: 0.8
+      max_duration_hrs: 1.0
+      ephemeral: true
+
+    task:
+      ref: task.language_modeling
+    
+    data:
+      ref: dataset.tokens
+      config:
+        path: "data/sample_tokens.npy"
+        block_size: 128
+    
+    system:
+      ref: system.language_model
+      config:
+        model:
+          topology:
+            type: SequentialTopology
+            layers: [] # Minimal for demo
+    
+    objective:
+      ref: objective.next_token_ce
+    
+    trainer:
+      ref: trainer.standard
+    
+    runs:
+      - id: run-0
+        seed: 42
+        steps: 10
+        train:
+          phase: standard
+          batch_size: 4
+          block_size: 128
+          lr: 1e-4
+          device: cuda

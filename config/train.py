@@ -158,7 +158,7 @@ class TrainConfig(BaseModel):
     distributed_strategy: str = "none"  # none|ddp|fsdp
     distributed_backend: str = "nccl"  # nccl|gloo
 
-    # Telemetry/profiling (best-effort; should not crash training).
+    # Telemetry/profiling (optional; enabled explicitly via config).
     telemetry_interval: PositiveInt = 10
     profile_every: NonNegativeInt = 0
     profile_record_shapes: bool = False

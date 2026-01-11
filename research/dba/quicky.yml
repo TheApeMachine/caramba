@@ -20,7 +20,6 @@ defaults:
   runtime:
     # Schema requires positive; checkpoint_compare does no training anyway.
     save_every: 1
-    best_effort: true
 
 vars:
   # --- Checkpoints (you'll drop these into research/dba/) ---

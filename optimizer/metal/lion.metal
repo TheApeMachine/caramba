@@ -9,13 +9,14 @@ struct LionParams {
     float weight_decay;
 };
 
-kernel void lion_step_fp16(
-    device half* p           [[ buffer(0) ]],
-    device const half* g     [[ buffer(1) ]],
-    device half* m           [[ buffer(2) ]],
-    constant LionParams& prm [[ buffer(3) ]],
-    uint tid                 [[ thread_position_in_threadgroup ]],
-    uint tg_id               [[ threadgroup_position_in_grid ]]
+template <typename T>
+inline void lion_step_impl(
+    device T* p,
+    device const T* g,
+    device T* m,
+    constant LionParams& prm,
+    uint tid,
+    uint tg_id
 ) {
     constexpr uint TG = 256;
     const uint i = tg_id * TG + tid;
@@ -34,7 +35,28 @@ kernel void lion_step_fp16(
     const float s = (m1 > 0.0f) ? 1.0f : ((m1 < 0.0f) ? -1.0f : 0.0f);
     const float p1 = p0 - prm.lr * s;
 
-    p[i] = half(p1);
-    m[i] = half(m1);
+    p[i] = T(p1);
+    m[i] = T(m1);
 }
 
+kernel void lion_step_fp16(
+    device half* p           [[ buffer(0) ]],
+    device const half* g     [[ buffer(1) ]],
+    device half* m           [[ buffer(2) ]],
+    constant LionParams& prm [[ buffer(3) ]],
+    uint tid                 [[ thread_position_in_threadgroup ]],
+    uint tg_id               [[ threadgroup_position_in_grid ]]
+) {
+    lion_step_impl<half>(p, g, m, prm, tid, tg_id);
+}
+
+kernel void lion_step_fp32(
+    device float* p          [[ buffer(0) ]],
+    device const float* g    [[ buffer(1) ]],
+    device float* m          [[ buffer(2) ]],
+    constant LionParams& prm [[ buffer(3) ]],
+    uint tid                 [[ thread_position_in_threadgroup ]],
+    uint tg_id               [[ threadgroup_position_in_grid ]]
+) {
+    lion_step_impl<float>(p, g, m, prm, tid, tg_id);
+}

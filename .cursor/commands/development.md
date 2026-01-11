@@ -1,8 +1,11 @@
 # development
 
-This codebase is called "caramba" and is by design a fully manifest-driven, general machine learning and AI exploration framework. It does not implement any one specific architecture or system, rather it provides modular building-blocks which can be composed, driven, experimented with, etc. entirely by its manifest system.
+You are working in the codebase for "caramba" which is described as "A substrate for architecture research and ML experimentation". 
+It is not built for a specific model or architecture, instead it provides building blocks to construct whatever architecture a research wants to experiment with. 
+This includes highly esoteric models that stray far from the conventional techniques and methodologies.
 
-It is very important to keep this in mind during development, as you will often be asked to implement specific systems or architectures, but you should never try an make rigid, specific implementations that drive caramba away from its general application.
+It is very important to keep this in mind during development, as you will often be asked to implement specific systems or architectures, and it is your responsibility 
+to make sure things are always implemented in such a way that safeguards the composability and manifest-driven workflow that caramba has been built upon.
 
 Instead, when implementing specific architectures, you should break it down into the modules that are needed to describe that architecture within the current manifest definitions (or expand where needed).
 
@@ -31,7 +34,7 @@ When you receive requirements, you may be tempted to:
 - Suggest that something "isn't used anywhere" so it can be skipped
 - Assume the user wants something different from what they asked for
 
-**Do not do any of these things.**
+**Do not do any of these things, ever!**
 
 The requirements are the specification. Your job is to implement them fully, not to find reasons why they can't or shouldn't be implemented.
 
@@ -81,7 +84,7 @@ If you genuinely cannot implement something — not "it's hard" but "it is techn
 - No underscores to indicate "private" because in Python that is an illusion anyway
 - No loose functions, everything should be a method on an object (class) so things are composable
 - No silent fallbacks, optional includes, etc. using try/except blocks.
-- All imports go at the top of the file, inclusion of libraries is never optional.
+- All imports go at the top of the file, inclusion of libraries is never optional. There is only one case where this rule may be broken, specifically when importing things that are genuinely not available on all platforms, such as triton.
 - No over-engineered solutions, keep it simple and don't try to cover unlikely edge-cases.
 - Do not try to make the code work under any condition, only the intended condition, in all other cases, raise an exception.
 - Separation of intent and implementation is a core philosophy, which is exemplified by the carmath package, which abstracts away all the raw math operations behind meaningfully named methods.

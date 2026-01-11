@@ -1,6 +1,6 @@
 """Native tool building (scaffold + registry).
 
-This is a best-effort, local mechanism:
+This is a local mechanism:
 - The model can emit a ToolDefinition event (EventEnvelope.type == "ToolDefinition")
 - We validate the definition and scaffold a new tool under ai/tools/generated/<name>/
 - We publish ToolRegistered / ToolRejected events to the EventBus

@@ -416,25 +416,23 @@ class _UpcycleSession:
         if auto_resume:
             try:
                 latest = self.checkpointer.latest(ctx=self._ctx(), run_id=str(run.id), phase=phase_name)
-            except Exception:
-                latest = None
+            except Exception as e:
+                raise RuntimeError(f"Failed to resolve latest checkpoint (run_id={run.id} phase={phase_name})") from e
             if latest is not None and latest.exists():
                 # If a final checkpoint exists, optionally skip this phase entirely.
                 if skip_if_final and latest.name.endswith("_final.pt"):
                     logger.warning(f"Skipping run '{run.id}' ({phase_name}): found final checkpoint {latest}")
                     try:
                         self._resume_state = self.checkpointer.load_resume(ctx=self._ctx(), path=latest)
-                    except Exception:
-                        # Best-effort: even if resume parsing fails, continue to next run.
-                        logger.warning("Failed to load final checkpoint state, continuing")
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to load final checkpoint state: {latest}") from e
                     return
                 # Otherwise resume from the latest checkpoint and continue.
                 if self._resume_state is None:
                     try:
                         self._resume_state = self.checkpointer.load_resume(ctx=self._ctx(), path=latest)
-                    except Exception:
-                        logger.warning("Failed to auto-resume checkpoint, continuing without resume")
-                        self._resume_state = None
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to auto-resume checkpoint: {latest}") from e
 
         torch.manual_seed(run.seed)
         self.inst = self._build_instrumentation(run)

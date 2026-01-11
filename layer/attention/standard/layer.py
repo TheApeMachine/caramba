@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
+import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
@@ -97,6 +98,8 @@ class StandardAttentionLayer(AttentionBase):
         return bool(
             self.training
             and qh.device.type in ("cuda", "mps")
+            # MPS custom kernel limitation: only supports fp16. Fallback to SDPA for float32.
+            and not (qh.dtype == torch.float32 and qh.device.type == "mps")
             and mask is None
             and cache is None
             and q_chunk is None

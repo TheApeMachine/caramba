@@ -7,7 +7,7 @@ Core philosophy alignment:
 """
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from caramba.config import NonNegativeInt, PositiveInt, Probability
 
@@ -34,9 +34,12 @@ class DefaultsRuntime(BaseModel):
     """Defaults for runtime/execution behaviors."""
 
     save_every: PositiveInt = 100
-    # If true, allow "best effort" fallbacks for optional perf backends (Metal/Triton),
-    # but log high-visibility warnings when acceleration is unavailable.
-    best_effort: bool = False
+
+
+class DefaultsCompute(BaseModel):
+    """Defaults for compute provisioning."""
+
+    vast_ai_api_key: str | None = Field(default=None, alias="VAST_AI_API_KEY")
 
 
 class Defaults(BaseModel):
@@ -45,3 +48,4 @@ class Defaults(BaseModel):
     data: DefaultsData = DefaultsData()
     logging: DefaultsLogging = DefaultsLogging()
     runtime: DefaultsRuntime = DefaultsRuntime()
+    compute: DefaultsCompute = DefaultsCompute()

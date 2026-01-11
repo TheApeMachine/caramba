@@ -2,7 +2,7 @@
 
 This module builds a deterministic structural graph for Python code:
 - modules, classes, functions, methods
-- imports, inheritance, ownership, basic call edges (best-effort)
+- imports, inheritance, ownership, basic call edges (static approximation)
 """
 
 from __future__ import annotations

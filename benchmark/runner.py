@@ -211,7 +211,7 @@ class BenchmarkRunner:
                                 logger.warning("Benchmark requested teacher model, but none is available (skipping).")
                             else:
                                 teacher_context = benchmark.run(teacher, "teacher")
-                                # Report last decode-tps at max context (best-effort).
+                                # Report last decode-tps at max context.
                                 try:
                                     decode = teacher_context.decode
                                     xs = [

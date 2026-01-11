@@ -1,7 +1,7 @@
 # #!/bin/sh
 # set -eu
 
-# # Best-effort: never block pushes.
+# # Hook policy: do not block pushes.
 # if [ -n "${CARAMBA_SKIP_CODEGRAPH_SYNC:-}" ]; then
 #   exit 0
 # fi
@@ -46,13 +46,13 @@
 
 #   if [ "${full}" -eq 1 ] || [ ! -s "${tmp}" ]; then
 #     echo "mode=full"
-#     "${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort --falkordb-uri "${FALKOR_URI}"
+#     "${PY}" -m caramba codegraph-sync "${ROOT}" --falkordb-uri "${FALKOR_URI}"
 #   else
 #     echo "mode=incremental"
 #     # uniq
 #     awk '!seen[$0]++' "${tmp}" | while IFS= read -r f; do
 #       [ -z "${f}" ] && continue
-#       "${PY}" -m caramba codegraph-sync "${ROOT}" --best-effort --falkordb-uri "${FALKOR_URI}" --file "${f}"
+#       "${PY}" -m caramba codegraph-sync "${ROOT}" --falkordb-uri "${FALKOR_URI}" --file "${f}"
 #     done
 #   fi
 #   rm -f "${tmp}" >/dev/null 2>&1 || true
