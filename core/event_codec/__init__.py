@@ -7,7 +7,6 @@ This package is the canonical home for the event codec.
 from caramba.core.event_codec.capnp_codec import (
     CapnpEventDecoder,
     CapnpEventEncoder,
-    is_capnp_available,
 )
 
 # Aliases for backward compatibility / simpler naming
@@ -19,5 +18,4 @@ __all__ = [
     "CapnpEventEncoder",
     "EventDecoder",
     "EventEncoder",
-    "is_capnp_available",
 ]

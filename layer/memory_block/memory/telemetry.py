@@ -44,6 +44,11 @@ class MemoryHealthTelemetry:
     utilization: float = 0.0    # % of buckets with at least one non-empty slot
     conflict_rate: float = 0.0  # % of writes that update an existing non-empty slot
     
+    # Training metrics (for tuner objective)
+    accuracy: float | None = None      # Current accuracy
+    loss: float | None = None          # Current loss
+    loss_variance: float | None = None # Recent loss variance (stability)
+    
     # Nested component metrics
     resonant: ResonantSettlingMetrics | None = None
     vsa: VsaNoveltyMetrics | None = None

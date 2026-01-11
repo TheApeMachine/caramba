@@ -31,7 +31,7 @@ When you receive requirements, you may be tempted to:
 - Suggest that something "isn't used anywhere" so it can be skipped
 - Assume the user wants something different from what they asked for
 
-**Do not do any of these things.**
+**Do not do any of these things, ever!**
 
 The requirements are the specification. Your job is to implement them fully, not to find reasons why they can't or shouldn't be implemented.
 
@@ -81,7 +81,7 @@ If you genuinely cannot implement something — not "it's hard" but "it is techn
 - No underscores to indicate "private" because in Python that is an illusion anyway
 - No loose functions, everything should be a method on an object (class) so things are composable
 - No silent fallbacks, optional includes, etc. using try/except blocks.
-- All imports go at the top of the file, inclusion of libraries is never optional.
+- All imports go at the top of the file, inclusion of libraries is never optional. There is only one case where this rule may be broken, specifically when importing things that are genuinely not available on all platforms, such as triton.
 - No over-engineered solutions, keep it simple and don't try to cover unlikely edge-cases.
 - Do not try to make the code work under any condition, only the intended condition, in all other cases, raise an exception.
 - Separation of intent and implementation is a core philosophy, which is exemplified by the carmath package, which abstracts away all the raw math operations behind meaningfully named methods.

@@ -48,7 +48,7 @@ class MemoryWriter:
     mem_trie_enabled: bool
     mem_trie_eta_decay: float
     mem_trie_max_levels: int | None
-    tuner: Any | None = None
+    tuner_mode: str = "off"
 
     def __post_init__(self) -> None:
         if self.mem_vsa_enabled:
@@ -84,10 +84,13 @@ class MemoryWriter:
         `no_grad` to avoid autograd tracking and in-place versioning issues.
         """
         B, T, idx_w, gate_logit, w_eta, do = self.prepare(u, routing, mask=mask, write_scale=write_scale)
-        if not bool(do.any()):
-            return gate_logit
+        # Always expose "write_do" when collecting aux so tuner/telemetry can
+        # see "no writes happened" and react.
         if bool(routing.get("collect_aux", False)):
             routing["write_do"] = do.detach()
+            routing["write_eta"] = w_eta.detach()
+        if not bool(do.any()):
+            return gate_logit
 
         # Memory writes are runtime state updates, not part of the differentiable path.
         # Doing them under autograd causes in-place versioning errors (esp. on MPS).
@@ -222,8 +225,10 @@ class MemoryWriter:
         
         # Apply tuner scaling to thresholds
         write_threshold = float(self.mem_write_threshold)
-        if self.tuner is not None:
-            write_threshold = write_threshold * getattr(self.tuner, "write_threshold_mult", 1.0)
+        if self.tuner_mode != "off":
+            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+            tuner = get_shared_tuner(mode=self.tuner_mode)
+            write_threshold = write_threshold * getattr(tuner, "write_threshold_mult", 1.0)
             
         m = (p > write_threshold).to(dtype=u.dtype)
         if mask is not None:
@@ -234,6 +239,10 @@ class MemoryWriter:
                 raise ValueError(f"write_scale must have shape (B,T)={(B,T)}, got {tuple(write_scale.shape)}")
             w_eta = w_eta * write_scale.to(dtype=u.dtype, device=u.device)
         do = w_eta > 0
+        if bool(routing.get("collect_aux", False)):
+            # Debuggable gating signals
+            routing["write_gate_p"] = p.detach()
+            routing["write_threshold_eff"] = torch.tensor(write_threshold, device=u.device, dtype=u.dtype)
         return int(B), int(T), idx_w, gate_logit, w_eta, do
 
     def hash_novelty(self, st: MemoryBlockState, *, bidx: Tensor, wt: Tensor, h: int) -> tuple[Tensor, Tensor]:
@@ -256,8 +265,10 @@ class MemoryWriter:
         
         # Apply tuner scaling to novelty threshold
         novelty_threshold = None
-        if self.tuner is not None and hasattr(self.vsa_novelty, "threshold"):
-            novelty_threshold = float(self.vsa_novelty.threshold) * getattr(self.tuner, "vsa_novelty_mult", 1.0)
+        if self.tuner_mode != "off" and hasattr(self.vsa_novelty, "threshold"):
+            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+            tuner = get_shared_tuner(mode=self.tuner_mode)
+            novelty_threshold = float(self.vsa_novelty.threshold) * getattr(tuner, "vsa_novelty_mult", 1.0)
             
         novelty = self.vsa_novelty(max_sim, threshold=novelty_threshold)
         return novelty.to(dtype=wt.dtype), max_sim.to(dtype=wt.dtype)

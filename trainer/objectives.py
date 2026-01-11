@@ -57,6 +57,27 @@ def _maybe_get(obj: object, key: str) -> object | None:
     return None
 
 
+class ZeroObjective:
+    """No-op objective.
+
+    Useful for trainers that don't use gradient descent (e.g., CCL) but still
+    need to satisfy the manifest schema's `objective:` slot.
+    """
+
+    def __init__(self) -> None:
+        pass
+
+    def loss(self, *, outputs: TensorDict, batch: TensorDict) -> Tensor:
+        _ = outputs
+        _ = batch
+        return torch.zeros((), dtype=torch.float32)
+
+    def metrics(self, *, outputs: TensorDict, batch: TensorDict, loss: Tensor) -> MetricDict:
+        _ = outputs
+        _ = batch
+        return {"loss": float(loss.detach())}
+
+
 class KeyedMSEObjective:
     """Mean squared error objective for regression-like tasks."""
 

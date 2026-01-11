@@ -26,8 +26,20 @@ class _IclBuilder:
     """
     tokens: list[int] = field(default_factory=list)
     bins: list[int] = field(default_factory=list)
+    # Optional MOSAIC teacher signals (aligned to tokens list).
+    write_gate: list[float] = field(default_factory=list)   # 0/1
+    write_bucket: list[int] = field(default_factory=list)   # bucket index or -1
+    read_bucket: list[int] = field(default_factory=list)    # bucket index or -1
 
-    def append(self, tok: int, *, b: int = -1) -> None:
+    def append(
+        self,
+        tok: int,
+        *,
+        b: int = -1,
+        wg: float = 0.0,
+        wb: int = -1,
+        rb: int = -1,
+    ) -> None:
         """Append token with bin label
 
         Adds a token to the sequence along with its evaluation bin, where
@@ -36,6 +48,9 @@ class _IclBuilder:
         """
         self.tokens.append(int(tok))
         self.bins.append(int(b))
+        self.write_gate.append(float(wg))
+        self.write_bucket.append(int(wb))
+        self.read_bucket.append(int(rb))
 
 
 class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
@@ -55,6 +70,8 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
         gap_bins: list[int],
         demo_distractors: int,
         seed: int,
+        emit_mem_teacher: bool,
+        mem_buckets: int,
     ) -> None:
         """Initialize ICL rule induction dataset
 
@@ -69,6 +86,8 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
         self.gap_bins = [int(x) for x in gap_bins]
         self.demo_distractors = int(demo_distractors)
         self.seed = int(seed)
+        self.emit_mem_teacher = bool(emit_mem_teacher)
+        self.mem_buckets = int(mem_buckets)
 
         if self.n_items <= 0:
             raise ValueError(f"n_items must be > 0, got {self.n_items}")
@@ -84,6 +103,8 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
             raise ValueError("gap_bins must be >= 0")
         if self.demo_distractors < 0:
             raise ValueError(f"demo_distractors must be >= 0, got {self.demo_distractors}")
+        if self.mem_buckets <= 0:
+            raise ValueError(f"mem_buckets must be > 0, got {self.mem_buckets}")
 
         # Reserve low tokens as protocol markers.
         self.T_PAD = 0
@@ -145,12 +166,21 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
 
         bld = _IclBuilder()
 
+        def bucket_for(x: int) -> int:
+            # Map token -> teacher bucket index in [0, mem_buckets).
+            # Keep it simple and deterministic; the router is allowed to learn something else.
+            return int((int(x) - int(self.min_tok)) % int(self.mem_buckets))
+
         # Demonstrations: DEMO x IS y.
         for x in demos_x:
             y = self._apply_rule(x, delta=int(delta))
             bld.append(self.T_DEMO)
             bld.append(x)
-            bld.append(self.T_IS)
+            # Write at the "IS" position: it predicts y next.
+            if self.emit_mem_teacher:
+                bld.append(self.T_IS, wg=1.0, wb=bucket_for(int(x)))
+            else:
+                bld.append(self.T_IS)
             bld.append(y)
             for _ in range(int(self.demo_distractors)):
                 bld.append(rng.randrange(int(self.min_tok), int(self.vocab_size)))
@@ -162,7 +192,11 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
         # Query: QUERY x ? y
         bld.append(self.T_QUERY)
         bld.append(xq)
-        bld.append(self.T_Q, b=int(bin_idx))  # attribute accuracy of next token to this gap bin
+        # Read at the "?" position: it predicts yq next.
+        if self.emit_mem_teacher:
+            bld.append(self.T_Q, b=int(bin_idx), rb=bucket_for(int(xq)))
+        else:
+            bld.append(self.T_Q, b=int(bin_idx))  # attribute accuracy of next token to this gap bin
         bld.append(yq)
 
         # Pad/truncate to block_size+1.
@@ -173,15 +207,23 @@ class _IclRuleInductionTorchDataset(Dataset[dict[str, Tensor]]):
         else:
             bld.tokens = bld.tokens[:need]
             bld.bins = bld.bins[:need]
+            bld.write_gate = bld.write_gate[:need]
+            bld.write_bucket = bld.write_bucket[:need]
+            bld.read_bucket = bld.read_bucket[:need]
 
         x = torch.tensor(bld.tokens[:-1], dtype=torch.long)
         y = torch.tensor(bld.tokens[1:], dtype=torch.long)
         tb = torch.tensor(bld.bins[:-1], dtype=torch.long)
-        return {
+        out: dict[str, Tensor] = {
             "input_ids": x,
             "target_ids": y,
             "table2_bin": tb,
         }
+        if self.emit_mem_teacher:
+            out["memblock_teacher_write_gate"] = torch.tensor(bld.write_gate[:-1], dtype=torch.float32)
+            out["memblock_teacher_write_bucket"] = torch.tensor(bld.write_bucket[:-1], dtype=torch.long)
+            out["memblock_teacher_read_bucket"] = torch.tensor(bld.read_bucket[:-1], dtype=torch.long)
+        return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,6 +242,9 @@ class IclRuleInductionDataset:
     n_demos: int = 4
     gap_bins: list[int] = field(default_factory=lambda: [0, 16, 64, 256])
     demo_distractors: int = 8
+    # Optional: emit MOSAIC teacher signals so memory telemetry + teacher forcing can work.
+    emit_mem_teacher: bool = False
+    mem_buckets: int = 4096
 
     def build(self) -> Dataset[dict[str, Tensor]]:
         """Build ICL rule induction dataset
@@ -215,5 +260,7 @@ class IclRuleInductionDataset:
             gap_bins=list(self.gap_bins),
             demo_distractors=int(self.demo_distractors),
             seed=int(self.seed),
+            emit_mem_teacher=bool(self.emit_mem_teacher),
+            mem_buckets=int(self.mem_buckets),
         )
 

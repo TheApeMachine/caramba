@@ -121,8 +121,20 @@ class HttpPushNotificationSender(PushNotificationSender):
                     # Add authentication if configured
                     if config.authentication:
                         for cred in config.authentication.credentials or []:
-                            if cred.key:
-                                headers["Authorization"] = f"Bearer {cred.key}"
+                            # A2A SDKs differ in how credentials are represented (string vs object).
+                            # Normalize to a string token if present.
+                            key: str | None = None
+                            if isinstance(cred, str):
+                                key = cred
+                            elif isinstance(cred, dict):
+                                val = cred.get("key") or cred.get("token")
+                                key = str(val) if val else None
+                            else:
+                                val = getattr(cred, "key", None) or getattr(cred, "token", None)
+                                key = str(val) if val else None
+
+                            if key:
+                                headers["Authorization"] = f"Bearer {key}"
                                 break
 
                     _logger.info(

@@ -14,6 +14,9 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
+from caramba.optimizer.metal.resonant_update import MetalResonantPhaseUpdate
+from caramba.optimizer.resonant_update_triton import ResonantPhaseUpdateTriton
+
 
 @dataclass(frozen=True, slots=True)
 class Routing:
@@ -193,7 +196,7 @@ class ResonantRouter(nn.Module):
         coupling: float = 0.25,
         damping: float = 0.02,
         zero_diag: bool = True,
-        tuner: Any | None = None,
+        tuner_mode: str = "off",
     ) -> None:
         super().__init__()
         self.hashes = int(hashes)
@@ -203,14 +206,56 @@ class ResonantRouter(nn.Module):
         self.damping = float(damping)
         self.num_units = int(in_dim)
         self.zero_diag = bool(zero_diag)
-        self.tuner = tuner
+        self.tuner_mode = tuner_mode
 
         # patterns are our "codebook" but in phase space
         self.patterns = nn.Parameter(torch.randn(self.hashes, self.buckets, self.num_units) * 0.02)
+        # Perf: cache diagonal mask per-device (avoid realloc each forward).
+        self._zero_diag_mask_cache: dict[str, Tensor] = {}
+        # Perf: cache derived tensors from patterns (fp32) keyed by (device, patterns_version).
+        # This eliminates recomputing A/B and related projections when patterns are unchanged.
+        self._patterns_cache: dict[str, tuple[int, Tensor, Tensor, Tensor, Tensor, Tensor]] = {}
+        # Fused pointwise update kernels (max performance on accelerators).
+        self._update_cuda: ResonantPhaseUpdateTriton | None = ResonantPhaseUpdateTriton() if torch.cuda.is_available() else None
+        self._update_mps: MetalResonantPhaseUpdate | None = MetalResonantPhaseUpdate() if torch.backends.mps.is_available() else None
 
     def _check_nan(self, x: Tensor, name: str) -> None:
         if not torch.isfinite(x).all():
             print(f"!!! [ResonantRouter] {name} is NOT FINITE (NaN/Inf) !!!")
+
+    def _derived_from_patterns(self, *, device: torch.device, D: int, H: int) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Derived tensors for resonant routing.
+
+        Computes:
+        - A, B_: (H, K, D) real/imag patterns
+        - At, Bt: (H, D, K) transposes
+        - diag: (H, D) diagonal of W for zero-diag correction
+        """
+        if self.patterns.ndim != 3:
+            raise ValueError(f"patterns must have shape (H,K,D), got {tuple(self.patterns.shape)}")
+        if int(self.patterns.shape[0]) != int(H) or int(self.patterns.shape[2]) != int(D):
+            raise ValueError(
+                f"patterns shape mismatch: expected H={H} D={D}, got {tuple(self.patterns.shape)}"
+            )
+        ver = int(getattr(self.patterns, "_version", 0))
+        key = f"{device.type}:{device.index}:{int(H)}:{int(D)}"
+        cached = self._patterns_cache.get(key, None)
+        if cached is not None and int(cached[0]) == ver:
+            # (ver, A, B, At, Bt, diag)
+            _, A, B_, At, Bt, diag = cached
+            if A.device == device:
+                return A, B_, At, Bt, diag
+
+        p_phases = self.patterns.to(device=device, dtype=torch.float32).clamp(-100.0, 100.0)
+        A = torch.cos(p_phases)
+        B_ = torch.sin(p_phases)
+        At = A.transpose(-1, -2).contiguous()
+        Bt = B_.transpose(-1, -2).contiguous()
+        # diag(W) where W = P^H P / D and P = A + iB: diag = sum_k |P_k,i|^2 / D
+        diag = ((A * A + B_ * B_).sum(dim=1) / float(D)).contiguous()  # (H,D)
+
+        self._patterns_cache[key] = (ver, A, B_, At, Bt, diag)
+        return A, B_, At, Bt, diag
 
     def route(self, *, tag: Tensor, collect_aux: bool) -> Routing:
         # tag: (B, T, D)
@@ -221,81 +266,137 @@ class ResonantRouter(nn.Module):
         device = tag.device
 
         # Get current parameters (potentially tuned)
-        steps = self.steps
+        base_steps = self.steps
+        steps = base_steps
         coupling = self.coupling
         damping = self.damping
         
-        if self.tuner is not None:
+        if self.tuner_mode != "off":
+            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+            tuner = get_shared_tuner(mode=self.tuner_mode)
+            
             # Apply scaling factors from tuner (tuner.resonant_coupling_mult etc.)
-            coupling = coupling * getattr(self.tuner, "resonant_coupling_mult", 1.0)
-            damping = damping * getattr(self.tuner, "resonant_damping_mult", 1.0)
-            steps = steps + getattr(self.tuner, "resonant_steps_delta", 0)
+            coupling = coupling * getattr(tuner, "resonant_coupling_mult", 1.0)
+            damping = damping * getattr(tuner, "resonant_damping_mult", 1.0)
+            steps = steps + getattr(tuner, "resonant_steps_delta", 0)
+            # Hard runtime guard: never allow tuning to explode step count.
+            # This keeps autotune from causing multi-hour regressions.
+            steps = int(max(1, min(int(steps), int(base_steps) + 5)))
 
-        # Safety clamp to prevent instability
-        tag = torch.nan_to_num(tag, nan=0.0, posinf=100.0, neginf=-100.0)
-        tag = tag.clamp(-100.0, 100.0)
-        self._check_nan(tag, "tag (input)")
+        # Safety clamp to prevent instability.
+        # IMPORTANT: run resonant routing math in fp32 for numerical stability,
+        # even when the broader model runs in fp16. This targets precision where
+        # it matters (attractor settling) without requiring fp32 everywhere.
+        tag_f = tag.to(dtype=torch.float32)
+        tag_f = torch.nan_to_num(tag_f, nan=0.0, posinf=100.0, neginf=-100.0)
+        tag_f = tag_f.clamp(-100.0, 100.0)
+        self._check_nan(tag_f, "tag (input)")
 
-        # 1. Project Patterns to Real/Imag parts (A, B)
-        # patterns is (H, K, D)
-        p_phases = self.patterns.clamp(-100.0, 100.0)
-        A = torch.cos(p_phases)  # Real: (H, K, D)
-        B_ = torch.sin(p_phases) # Imag: (H, K, D)
+        # 1. Derived tensors from patterns (fp32), cached by parameter version.
+        A, B_, At, Bt, diag = self._derived_from_patterns(device=device, D=int(D), H=int(H))
 
-        # 2. Project Tag to Real/Imag parts (x, y)
-        x = torch.cos(tag).unsqueeze(2).expand(B, T, H, D).clone() # (B, T, H, D)
-        y = torch.sin(tag).unsqueeze(2).expand(B, T, H, D).clone() # (B, T, H, D)
-        
-        # 3. Precompute Real-valued Hebbian Weights (W_r, W_i)
-        At = A.transpose(-1, -2) # (H, D, K)
-        Bt = B_.transpose(-1, -2) # (H, D, K)
-        
-        Wr = (torch.matmul(At, A) + torch.matmul(Bt, B_)) / float(D) # (H, D, D)
-        Wi = (torch.matmul(At, B_) - torch.matmul(Bt, A)) / float(D) # (H, D, D)
-        
-        if self.zero_diag:
-            mask = torch.eye(D, device=device, dtype=torch.bool).unsqueeze(0).expand(H, D, D)
-            Wr = Wr.masked_fill(mask, 0.0)
-            Wi = Wi.masked_fill(mask, 0.0)
+        # 2. Project Tag to Real/Imag parts (x, y) and flatten BT for faster bmm.
+        bt = int(B) * int(T)
+        x = torch.cos(tag_f).unsqueeze(2).expand(int(B), int(T), int(H), int(D)).reshape(bt, int(H), int(D)).contiguous()
+        y = torch.sin(tag_f).unsqueeze(2).expand(int(B), int(T), int(H), int(D)).reshape(bt, int(H), int(D)).contiguous()
 
         # 4. Iterative Dynamics (Settling) using Real-Valued Components
         scale = coupling / float(self.buckets)
         
         # For Telemetry: track energy and convergence
-        energy_history = []
+        # Avoid Python overhead unless aux is requested.
+        energy_history: list[float] = []
         
-        for s_idx in range(int(steps)):
-            xr = x.view(-1, H, 1, D)
-            yi = y.view(-1, H, 1, D)
-            
-            c_r = (torch.matmul(xr, Wr) - torch.matmul(yi, Wi)).view(B, T, H, D)
-            c_i = (torch.matmul(xr, Wi) + torch.matmul(yi, Wr)).view(B, T, H, D)
-            
-            x = (x + scale * c_r) * (1.0 - damping)
-            y = (y + scale * c_i) * (1.0 - damping)
+        # Helper views for batched matmul: (H,D,K) etc.
+        At_h = At  # (H,D,K)
+        Bt_h = Bt
+        A_h = A  # (H,K,D)
+        B_h = B_
 
-            mag = torch.sqrt(x**2 + y**2 + 1e-12)
-            x = x / mag
-            y = y / mag
-            
-            if collect_aux and s_idx % 5 == 0:
-                # Approximate energy (squared similarity sum)
-                energy = (x**2 + y**2).mean().item()
-                energy_history.append(energy)
+        for s_idx in range(int(steps)):
+            # Compute u = P z (K-dim), where P = A + iB and z = x + iy:
+            # u_r = x @ A^T - y @ B^T
+            # u_i = y @ A^T + x @ B^T
+            # Use true batched matmul (bmm) to avoid broadcasting overhead.
+            # Shapes:
+            #   x_t,y_t: (H, BT, D)
+            #   At,Bt:   (H, D, K)
+            x_t = x.transpose(0, 1)
+            y_t = y.transpose(0, 1)
+            u_r_t = torch.bmm(x_t, At_h) - torch.bmm(y_t, Bt_h)  # (H,BT,K)
+            u_i_t = torch.bmm(y_t, At_h) + torch.bmm(x_t, Bt_h)  # (H,BT,K)
+            u_r = u_r_t.transpose(0, 1).contiguous()  # (BT,H,K)
+            u_i = u_i_t.transpose(0, 1).contiguous()  # (BT,H,K)
+
+            # v = P^H u (D-dim):
+            # v_r = u_r @ A + u_i @ B
+            # v_i = u_i @ A - u_r @ B
+            #   u_r_t,u_i_t: (H, BT, K)
+            #   A,B:         (H, K, D)
+            v_r_t = torch.bmm(u_r_t, A_h) + torch.bmm(u_i_t, B_h)  # (H,BT,D)
+            v_i_t = torch.bmm(u_i_t, A_h) - torch.bmm(u_r_t, B_h)  # (H,BT,D)
+            v_r = v_r_t.transpose(0, 1).contiguous()  # (BT,H,D)
+            v_i = v_i_t.transpose(0, 1).contiguous()  # (BT,H,D)
+
+            if device.type == "cuda":
+                if self._update_cuda is None:
+                    raise RuntimeError(
+                        "CUDA resonant update requested but CUDA/Triton update implementation is unavailable.\n"
+                        "Fix: ensure CUDA is available and Triton is installed."
+                    )
+                x, y = self._update_cuda.forward(
+                    x=x,
+                    y=y,
+                    vr=v_r,
+                    vi=v_i,
+                    diag=diag,
+                    scale=float(scale),
+                    damping=float(damping),
+                    zero_diag=bool(self.zero_diag),
+                )
+            elif device.type == "mps":
+                if self._update_mps is None:
+                    raise RuntimeError(
+                        "MPS resonant update requested but Metal update implementation is unavailable.\n"
+                        "Fix: ensure MPS is available and the Metal extension can be built."
+                    )
+                x, y = self._update_mps.forward(
+                    x=x,
+                    y=y,
+                    vr=v_r,
+                    vi=v_i,
+                    diag=diag,
+                    scale=float(scale),
+                    damping=float(damping),
+                    zero_diag=bool(self.zero_diag),
+                )
+            else:
+                # CPU path: use torch pointwise ops.
+                c_r = v_r / float(D)
+                c_i = v_i / float(D)
+                if self.zero_diag:
+                    c_r = c_r - diag.unsqueeze(0) * x
+                    c_i = c_i - diag.unsqueeze(0) * y
+                x = x * (1.0 - damping) + float(scale) * c_r
+                y = y * (1.0 - damping) + float(scale) * c_i
+                mag = torch.sqrt(x * x + y * y + 1e-12)
+                x = x / mag
+                y = y / mag
+
+            if collect_aux and (s_idx % 5) == 0:
+                energy_history.append(float((x * x + y * y).mean().item()))
 
         # 5. Final Similarity calculation using real components
-        xr = x.unsqueeze(-2)
+        xr = x.unsqueeze(-2)  # (BT,H,1,D)
         yi = y.unsqueeze(-2)
-        At = A.transpose(-1, -2)
-        Bt = B_.transpose(-1, -2)
-        
-        dot_r = (torch.matmul(xr, At) + torch.matmul(yi, Bt)).squeeze(-2) # (B, T, H, K)
-        dot_i = (torch.matmul(yi, At) - torch.matmul(xr, Bt)).squeeze(-2) # (B, T, H, K)
-        
-        sim = torch.sqrt(dot_r**2 + dot_i**2 + 1e-12) / float(D)
+
+        dot_r = (torch.matmul(xr, At) + torch.matmul(yi, Bt)).squeeze(-2)  # (BT,H,K)
+        dot_i = (torch.matmul(yi, At) - torch.matmul(xr, Bt)).squeeze(-2)  # (BT,H,K)
+
+        sim = torch.sqrt(dot_r * dot_r + dot_i * dot_i + 1e-12) / float(D)
         sim = sim.clamp(0.0, 1.0)
-        
-        logits = sim
+
+        logits = sim.view(int(B), int(T), int(H), int(self.buckets))
         idx_r = logits.argmax(dim=-1)
         idx_w = idx_r
 

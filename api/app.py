@@ -287,7 +287,8 @@ async def _stop_run(rec: RunRecord, *, timeout_s: float = 5.0) -> bool:
             os.kill(pid, signal.SIGTERM)
         except ProcessLookupError:
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"StopRun: Failed to terminate process {pid} (best-effort): {e}")
             return False
         return True
 

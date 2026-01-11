@@ -45,6 +45,8 @@ targets:
         demo_distractors: 8
         n_items: 200000
         seed: 1337
+        emit_mem_teacher: true
+        mem_buckets: ${mem_buckets}
 
     system:
       ref: system.language_model

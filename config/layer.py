@@ -488,6 +488,9 @@ class MemoryBlockLayerConfig(Config):
     opcodes_control_temp: PositiveFloat = 1.0
     # Holistic memory auto-tuning mode: "off", "monitor", "adaptive".
     mem_autotune: str = "off"
+    # Auto-tuning console visualization (performance-focused gauge).
+    mem_autotune_viz: bool = False
+    mem_autotune_viz_interval: PositiveInt = 100
 
     # Phase 2: Commitment lifecycle head (optional).
     # When enabled, the layer emits `mosaic_commitment_logits` (B,T,3) into ctx aux outputs.

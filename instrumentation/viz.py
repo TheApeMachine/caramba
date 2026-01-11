@@ -142,4 +142,10 @@ class TrainingVizMosaicContext(TrainingVizContext):
     # Memory block state store (e.g. RMF, KV cache).
     # Must be in __slots__ for MemoryBlockStateStore to attach state.
     _memblock: dict[str, Any] | None = None
+    
+    # Training metrics for tuner optimization
+    train_accuracy: float | None = None
+    train_loss: float | None = None
+    train_loss_variance: float | None = None
+    _last_loss: float | None = None
 

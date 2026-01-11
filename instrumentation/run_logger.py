@@ -64,8 +64,10 @@ class RunLogger:
 
         try:
             self.out_dir.mkdir(parents=True, exist_ok=True)
-        except Exception:
+        except Exception as e:
             # If we can't create dirs, disable logging but don't crash.
+            from caramba.console import logger as console_logger
+            console_logger.warning(f"RunLogger: Failed to create out_dir {self.out_dir}: {e}")
             self.enabled = False
             return
 
@@ -75,7 +77,9 @@ class RunLogger:
             # needs to stay open for the lifetime of the logger. The close() method
             # handles cleanup, and __exit__ ensures cleanup on context manager usage.
             self._fh = open(self.path, "a", encoding="utf-8", buffering=1)
-        except Exception:
+        except Exception as e:
+            from caramba.console import logger as console_logger
+            console_logger.warning(f"RunLogger: Failed to open {self.path}: {e}")
             self.enabled = False
             self._fh = None
 
@@ -84,13 +88,15 @@ class RunLogger:
             return
         try:
             self._fh.write(line + "\n")
-        except Exception:
+        except Exception as e:
             # Best-effort: disable after failure to avoid repeated exceptions.
+            from caramba.console import logger as console_logger
+            console_logger.warning(f"RunLogger: Write failed, disabling: {e}")
             self.enabled = False
             try:
                 self._fh.close()
-            except Exception:
-                pass
+            except Exception as close_e:
+                console_logger.warning(f"RunLogger: Close failed after write failure: {close_e}")
             self._fh = None
 
     def log_event(
@@ -143,12 +149,14 @@ class RunLogger:
             return
         try:
             self._fh.flush()
-        except Exception:
-            pass
+        except Exception as e:
+            from caramba.console import logger as console_logger
+            console_logger.warning(f"RunLogger: Flush failed: {e}")
         try:
             self._fh.close()
-        except Exception:
-            pass
+        except Exception as e:
+            from caramba.console import logger as console_logger
+            console_logger.warning(f"RunLogger: Close failed: {e}")
         self._fh = None
         self.h5.close()
 

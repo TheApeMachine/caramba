@@ -156,9 +156,10 @@ class ArtifactGenerator:
                 try:
                     bpath = self._write_latex_behavior_table(behavior=behavior)
                     generated["behavior_cases_table.tex"] = bpath
-                except Exception:
+                except Exception as e:
                     # Best-effort: never fail the run due to LaTeX formatting.
-                    pass
+                    from caramba.console import logger
+                    logger.warning(f"ArtifactGenerator: Failed to write LaTeX behavior table: {e}")
 
         return generated
 

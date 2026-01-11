@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from a2a.server.tasks import TaskStore
+from caramba.ai.task.store import TaskStore
 from caramba.console import logger
 
 
@@ -32,7 +32,7 @@ class TaskWorker:
         while True:
             await asyncio.sleep(1)
             logger.trace("Polling for pending tasks")
-            tasks = await self.task_store.list_tasks(tenant=self.tenant)
+            tasks = [t async for t in self.task_store.list_tasks(tenant=self.tenant)]
             logger.trace(f"Found {len(tasks)} pending tasks")
 
             for task in tasks:

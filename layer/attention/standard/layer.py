@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
+import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 

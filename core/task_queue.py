@@ -78,8 +78,8 @@ class TaskQueue:
         now = datetime.now()
         
         # Ensure task is in SUBMITTED state if not specified
-        if task.status.state == TaskState.task_state_unspecified:
-             task.status.state = TaskState.task_state_submitted
+        if task.status.state == TaskState.unknown:
+            task.status.state = TaskState.submitted
 
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -131,10 +131,10 @@ class TaskQueue:
                 )
                 RETURNING task_data
                 """,
-                TaskState.task_state_working.name,
+                TaskState.working.name,
                 datetime.now(),
-                TaskState.task_state_working.name, # For JSON update
-                TaskState.task_state_submitted.name,
+                TaskState.working.name, # For JSON update
+                TaskState.submitted.name,
             )
             
             if row:

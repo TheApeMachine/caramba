@@ -9,8 +9,10 @@ Training runs produce lots of output. This logger makes it readable with:
 from __future__ import annotations
 
 from typing import Any, Generator
+from contextlib import contextmanager
 
 from rich.console import Console
+from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -53,6 +55,8 @@ class Logger:
     def __init__(self) -> None:
         """Initialize with the caramba theme."""
         self.console = Console(theme=CARAMBA_THEME)
+        self._live_display: Live | None = None
+        self._live_renderable: Panel | None = None
 
     # ─────────────────────────────────────────────────────────────────────
     # Basic Logging
@@ -322,6 +326,221 @@ class Logger:
         self.console.print(
             f"  [muted]{model}:[/muted] [metric]{value:.2f}[/metric]{unit}"
         )
+
+    def tuner_status(self, metrics: dict[str, Any]) -> None:
+        """Lightweight visualization of auto-tuning status.
+        
+        Args:
+            metrics: Dict containing 'actual', 'target', and 'velocity' for levers.
+        """
+        table = Table(
+            show_header=True, 
+            header_style="info", 
+            border_style="muted",
+            box=None,
+            padding=(0, 2)
+        )
+        table.add_column("Parameter", style="muted", width=25)
+        table.add_column("Value", justify="right", style="metric", width=12)
+        table.add_column("Momentum", justify="right", width=15)
+
+        for name, data in metrics.items():
+            actual = data.get("actual", 0.0)
+            velocity = data.get("velocity", 0.0)
+            
+            # Choose color based on velocity direction
+            if velocity > 0:
+                speed_style = "success"
+                arrow = "↑"
+            elif velocity < 0:
+                speed_style = "amber"
+                arrow = "↓"
+            else:
+                speed_style = "muted"
+                arrow = "•"
+
+            # Format values
+            actual_str = f"{actual:.3f}" if isinstance(actual, float) else str(actual)
+            speed_str = f"[{speed_style}]{arrow} {abs(velocity):.4f}[/{speed_style}]"
+            
+            table.add_row(name, actual_str, speed_str)
+
+        panel = Panel(
+            table,
+            title="MEM TUNER",
+            title_align="left",
+            border_style="muted",
+            padding=(0, 1),
+            expand=False
+        )
+        
+        # Store tuner panel separately
+        self._tuner_panel = panel
+        
+        # Auto-start Live display on first call if not already active
+        if self._live_display is None:
+            self._live_display = Live(
+                panel,
+                console=self.console,
+                refresh_per_second=4,
+                transient=False,
+            )
+            self._live_display.start()
+        
+        # Update display with both panels if health exists
+        if hasattr(self, '_health_panel') and self._health_panel is not None:
+            from rich.console import Group
+            combined = Group(self._tuner_panel, self._health_panel)
+            self._live_display.update(combined)
+        else:
+            self._live_display.update(panel)
+    
+    def health_bars(self, metrics: dict[str, float]) -> None:
+        """Display health metrics as color-coded bars.
+        
+        Args:
+            metrics: Dict with 'accuracy', 'loss_variance', 'utilization', 'objective'
+        """
+        from rich.table import Table
+        from rich.panel import Panel
+        from rich.text import Text
+        
+        table = Table(
+            show_header=False,
+            border_style="muted",
+            box=None,
+            padding=(0, 1),
+            expand=False
+        )
+        table.add_column("Metric", style="muted", width=18)
+        table.add_column("Bar", width=40)
+        table.add_column("Value", justify="right", width=10)
+        
+        def make_bar(value: float, max_val: float, reverse: bool = False) -> Text:
+            """Create a color-coded health bar.
+            
+            Args:
+                value: Current value
+                max_val: Maximum value for scaling (defines the '100% range')
+                reverse: If True, low value = high health (e.g., loss)
+            """
+            # Normalize to 0.0 - 1.0 range based on max_val
+            norm_val = max(0.0, min(1.0, value / max_val))
+            
+            # Determine "Health Percentage" (0.0 = Dead/Red, 1.0 = Full/Green)
+            if reverse:
+                # For loss: 0 is 100% healthy, max_val is 0% healthy
+                health_pct = 1.0 - norm_val
+            else:
+                # For accuracy: 1.0 is 100% healthy
+                health_pct = norm_val
+
+            # Determine color based on health
+            if health_pct > 0.8:
+                color = "bold green"     # Excellent
+            elif health_pct > 0.5:
+                color = "green"          # Good
+            elif health_pct > 0.3:
+                color = "yellow"         # Warning
+            else:
+                color = "red"            # Critical
+                
+            bar_width = 25
+            filled_len = int(health_pct * bar_width)
+            empty_len = bar_width - filled_len
+            
+            # Create composite text: Colored filled part + Dim empty part
+            bar_text = Text()
+            bar_text.append("█" * filled_len, style=color)
+            bar_text.append("░" * empty_len, style="dim #444444")
+            return bar_text
+        
+        # Accuracy (0-1 scale)
+        acc = metrics.get("accuracy", 0.0)
+        table.add_row(
+            "Accuracy",
+            make_bar(acc, 1.0, reverse=False),
+            f"{acc:.3f}"
+        )
+        
+        # Loss Variance (0-10 scale, lower is better)
+        loss_var = metrics.get("loss_variance", 0.0)
+        table.add_row(
+            "Loss Stability",
+            make_bar(loss_var, 10.0, reverse=True),
+            f"{loss_var:.3f}"
+        )
+        
+        # Utilization (0-1 scale, ~0.5 is ideal)
+        util = metrics.get("utilization", 0.0)
+        # Map to health: 0.5 = perfect, further away = worse
+        util_health = 1.0 - abs(util - 0.5) * 2.0
+        table.add_row(
+            "Memory Usage",
+            make_bar(util_health, 1.0, reverse=False),
+            f"{util:.3f}"
+        )
+        
+        # Objective (normalize to 0-100 scale)
+        obj = metrics.get("objective", 0.0)
+        obj_normalized = max(0.0, min(1.0, obj / 100.0))
+        table.add_row(
+            "Overall Health",
+            make_bar(obj_normalized, 1.0, reverse=False),
+            f"{obj:.1f}"
+        )
+        
+        panel = Panel(
+            table,
+            title="SYSTEM HEALTH",
+            title_align="left",
+            border_style="cyan",
+            padding=(0, 1),
+            expand=False
+        )
+        
+        # Store health panel separately
+        self._health_panel = panel
+        
+        # Update Live display with both panels if tuner exists
+        if self._live_display is not None and hasattr(self, '_tuner_panel') and self._tuner_panel is not None:
+            from rich.console import Group
+            combined = Group(self._tuner_panel, self._health_panel)
+            self._live_display.update(combined)
+        elif self._live_display is not None:
+            self._live_display.update(panel)
+        else:
+            # Print directly if Live not started yet
+            self.console.print(panel)
+
+    @contextmanager
+    def live_display(self):
+        """Context manager for Live display updates.
+        
+        Usage:
+            with logger.live_display():
+                # Calls to tuner_status() will update in place
+                logger.tuner_status(metrics)
+        """
+        if self._live_display is not None:
+            # Already in a live display context, just yield
+            yield
+            return
+            
+        self._live_display = Live(
+            "",
+            console=self.console,
+            refresh_per_second=4,
+            transient=False,
+        )
+        try:
+            self._live_display.start()
+            yield
+        finally:
+            if self._live_display is not None:
+                self._live_display.stop()
+            self._live_display = None
+            self._live_renderable = None
 
     def artifacts_summary(self, artifacts: dict[str, Any]) -> None:
         """Display a summary of generated artifacts."""

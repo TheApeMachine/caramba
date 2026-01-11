@@ -66,15 +66,12 @@ class Table2Telemetry:
 
         # Generic binned accuracy path (for non-memory Table 2 rows, e.g. ICL-style tasks):
         # Provide `table2_bin` as (B,T) int64 with -1 for ignore.
-        try:
-            tb = batch["table2_bin"]
-        except KeyError:
-            tb = None
+        tb = batch.get("table2_bin", None)  # type: ignore[attr-defined]
+        out_generic: dict[str, float] | None = None
+        has_valid_bins = False
         if isinstance(tb, Tensor):
             if tb.shape != (B, T):
                 raise ValueError(f"table2_bin shape mismatch: expected {(B, T)}, got {tuple(tb.shape)}")
-            # Keep telemetry on-device to avoid host sync stalls (especially on MPS).
-            # We only materialize small (n_bins,) tensors on CPU at the very end.
             bins = tb.detach().long()
             pred_c = logits.argmax(dim=-1).detach().long()
             tgt_c = target.detach().long()
@@ -83,20 +80,18 @@ class Table2Telemetry:
             if n_bins < 1:
                 raise ValueError(f"n_bins must be >= 1, got {n_bins}")
 
-            # Vectorized bin counting
             valid_mask = bins >= 0
-            if bool(valid_mask.any()):
+            has_valid_bins = bool(valid_mask.any())
+            if has_valid_bins:
                 max_bin = int(bins[valid_mask].max().item())
                 if max_bin >= n_bins:
                     raise ValueError(f"table2_bin out of range: max={max_bin} for n_bins={n_bins}")
 
-            # Flatten and filter valid bins
             bins_flat = bins[valid_mask].to(dtype=torch.long)
             pred_flat = pred_c[valid_mask]
             tgt_flat = tgt_c[valid_mask]
             correct_flat = (pred_flat == tgt_flat).to(dtype=torch.long)
 
-            # Count totals and corrects per bin using scatter_add
             total_tensor = torch.zeros(n_bins, dtype=torch.long, device=bins.device)
             correct_tensor = torch.zeros(n_bins, dtype=torch.long, device=bins.device)
             total_tensor.scatter_add_(0, bins_flat, torch.ones_like(bins_flat))
@@ -105,7 +100,7 @@ class Table2Telemetry:
             total = total_tensor.detach().cpu().tolist()
             correct = correct_tensor.detach().cpu().tolist()
 
-            out_generic: dict[str, float] = {}
+            out_generic = {}
             worst_generic: float | None = None
             for i in range(n_bins):
                 if total[i] > 0:
@@ -118,7 +113,8 @@ class Table2Telemetry:
 
             out_generic["acc/worst_bin"] = float(worst_generic) if worst_generic is not None else -1.0
             out_generic["collision/wrong_item_read_rate"] = -1.0
-            return out_generic
+            if has_valid_bins:
+                return out_generic
 
         # Memory curriculum path: teacher bucket signals define read/query positions.
         try:
@@ -127,7 +123,9 @@ class Table2Telemetry:
             wb = batch["memblock_teacher_write_bucket"]
             wg = batch["memblock_teacher_write_gate"]
         except KeyError as e:
-            raise KeyError("Missing MOSAIC teacher signals required for Table 2 memory telemetry") from e
+            if out_generic is not None:
+                return out_generic
+            raise KeyError("Missing `table2_bin` and MOSAIC teacher signals required for Table 2 telemetry.") from e
         if not isinstance(input_ids, Tensor):
             raise TypeError(f"batch['input_ids'] must be a Tensor, got {type(input_ids).__name__}")
         if not isinstance(rb, Tensor):
@@ -144,12 +142,10 @@ class Table2Telemetry:
         rb0 = self._first_bucket(rb, B=B, T=T, name="memblock_teacher_read_bucket")
         wb0 = self._first_bucket(wb, B=B, T=T, name="memblock_teacher_write_bucket")
 
-        # Predict next tokens.
         pred = logits.argmax(dim=-1)
         if pred.shape != (B, T):
             raise RuntimeError("argmax produced wrong shape for predictions")
 
-        # Move small tensors to CPU for cheap Python-side bookkeeping.
         pred_c = pred.detach().cpu().long()
         tgt_c = target.detach().cpu().long()
         rb_c = rb0.detach().cpu().long()
@@ -165,34 +161,46 @@ class Table2Telemetry:
         reads_total = 0
         wrong_item = 0
 
+        # NOTE: This path must be fast. In our curricula, teacher signals are sparse:
+        # - writes occur at a handful of positions (e.g. n_demos)
+        # - reads occur at a handful of positions (often 1)
+        # Avoid scanning the full T dimension in Python.
         for b in range(int(B)):
+            # Collect write positions and buckets.
+            write_pos = (wg_c[b] > 0.5).nonzero(as_tuple=False).view(-1)
             last_write_pos: dict[int, int] = {}
-            for t in range(int(T)):
-                if float(wg_c[b, t].item()) > 0.5:
-                    buck = int(wb_c[b, t].item())
-                    if buck >= 0:
-                        last_write_pos[buck] = int(t)
+            for t_idx in write_pos.tolist():
+                buck = int(wb_c[b, int(t_idx)].item())
+                if buck >= 0:
+                    # If multiple writes hit same bucket, the last one wins.
+                    last_write_pos[buck] = int(t_idx)
 
-                buck_r = int(rb_c[b, t].item())
-                if buck_r >= 0:
-                    wp = last_write_pos.get(buck_r)
-                    if wp is None:
-                        # A read request without any prior write is a data contract violation.
-                        raise ValueError(f"Read requested for bucket={buck_r} but no prior write exists in sample")
-                    dist = int(t) - int(wp)
-                    if dist < 0:
-                        raise ValueError("Computed negative distance for read vs write positions")
-                    bin_idx = min(int(dist * n_bins // max(1, int(T))), n_bins - 1)
-                    total[bin_idx] += 1
+            # Collect read positions.
+            read_pos = (rb_c[b] >= 0).nonzero(as_tuple=False).view(-1)
+            for t_idx in read_pos.tolist():
+                t_int = int(t_idx)
+                buck_r = int(rb_c[b, t_int].item())
+                if buck_r < 0:
+                    continue
+                wp = last_write_pos.get(buck_r)
+                if wp is None:
+                    # Some datasets may label reads for buckets that were not written
+                    # in the same sample. Treat these as "no-op" for telemetry.
+                    continue
+                dist = int(t_int) - int(wp)
+                if dist < 0:
+                    # If the last write occurs after this read position, ignore.
+                    continue
+                bin_idx = min(int(dist * n_bins // max(1, int(T))), n_bins - 1)
+                total[bin_idx] += 1
 
-                    pred_tok = int(pred_c[b, t].item())
-                    tgt_tok = int(tgt_c[b, t].item())
-                    ok = pred_tok == tgt_tok
-                    if ok:
-                        correct[bin_idx] += 1
-                    else:
-                        wrong_item += 1
-                    reads_total += 1
+                pred_tok = int(pred_c[b, t_int].item())
+                tgt_tok = int(tgt_c[b, t_int].item())
+                if pred_tok == tgt_tok:
+                    correct[bin_idx] += 1
+                else:
+                    wrong_item += 1
+                reads_total += 1
 
         out: dict[str, float] = {}
         worst: float | None = None
@@ -206,12 +214,7 @@ class Table2Telemetry:
                 worst = acc if worst is None else float(min(worst, acc))
 
         out["acc/worst_bin"] = float(worst) if worst is not None else -1.0
-
-        if reads_total > 0:
-            out["collision/wrong_item_read_rate"] = float(wrong_item) / float(reads_total)
-        else:
-            out["collision/wrong_item_read_rate"] = -1.0
-
+        out["collision/wrong_item_read_rate"] = (float(wrong_item) / float(reads_total)) if reads_total > 0 else -1.0
         return out
 
     @staticmethod

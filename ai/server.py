@@ -248,7 +248,8 @@ class AgentServer:
                                 # Extract text from parts
                                 text_parts = []
                                 for part in msg.parts:
-                                    if hasattr(part.root, "text"):
+                                    # Only TextPart guarantees a .text attribute in the A2A types.
+                                    if isinstance(part.root, TextPart):
                                         text_parts.append(part.root.text)
                                 if text_parts:
                                     query = " ".join(text_parts)
@@ -266,9 +267,12 @@ class AgentServer:
                         task_id=task.id,
                     )
                     
+                    from a2a.types import MessageSendParams
                     context = RequestContext(
-                        message=message,
-                        current_task=task,
+                        request=MessageSendParams(message=message),
+                        task_id=task.id,
+                        context_id=task.context_id,
+                        task=task,
                     )
                     
                     # Custom EventQueue that delegates to our TaskStore and PushSender

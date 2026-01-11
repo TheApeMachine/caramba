@@ -76,8 +76,9 @@ def _serialize_cfg(obj: object) -> dict[str, object]:
             out = dump()
             if isinstance(out, dict):
                 return coerce_jsonable(out)
-    except Exception:
-        pass
+    except Exception as e:
+        from caramba.console import logger as console_logger
+        console_logger.warning(f"WandBWriter: Failed to dump config: {e}")
 
     # Dataclasses.
     try:
@@ -85,8 +86,9 @@ def _serialize_cfg(obj: object) -> dict[str, object]:
 
         if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
             return coerce_jsonable(dataclasses.asdict(obj))
-    except Exception:
-        pass
+    except Exception as e:
+        from caramba.console import logger as console_logger
+        console_logger.warning(f"WandBWriter: Failed to dump dataclass config: {e}")
 
     # Plain dict.
     if isinstance(obj, dict):
@@ -97,8 +99,9 @@ def _serialize_cfg(obj: object) -> dict[str, object]:
         d = getattr(obj, "__dict__", None)
         if isinstance(d, dict):
             return coerce_jsonable({str(k): v for k, v in d.items()})
-    except Exception:
-        pass
+    except Exception as e:
+        from caramba.console import logger as console_logger
+        console_logger.warning(f"WandBWriter: Failed to dump __dict__ config: {e}")
 
     return {"repr": repr(obj)}
 
@@ -129,18 +132,17 @@ class WandBWriter:
 
         wandb = _try_import_wandb()
         if wandb is None:
-            try:
-                print("[wandb] disabled: python package `wandb` is not installed", file=sys.stderr)
-            except Exception:
-                pass
+            from caramba.console import logger as console_logger
+            console_logger.warning("WandBWriter: disabled: python package `wandb` is not installed")
             self.enabled = False
             return
 
         try:
             self.out_dir.mkdir(parents=True, exist_ok=True)
-        except Exception:
+        except Exception as e:
+            from caramba.console import logger as console_logger
+            console_logger.warning(f"WandBWriter: Failed to create out_dir {self.out_dir}: {e}")
             # If we can't create output dir, still allow wandb (dir is optional).
-            pass
 
         try:
             name = self.run_name
@@ -148,10 +150,8 @@ class WandBWriter:
                 name = self.out_dir.name or None
             mode = str(self.mode or "online").strip().lower()
             if mode in ("disabled", "off", "false", "0", "none"):
-                try:
-                    print(f"[wandb] disabled: mode={mode!r}", file=sys.stderr)
-                except Exception:
-                    pass
+                from caramba.console import logger as console_logger
+                console_logger.info(f"WandBWriter: disabled (mode={mode!r})")
                 self.enabled = False
                 self.run = None
                 return
@@ -179,10 +179,8 @@ class WandBWriter:
                 settings=settings,
             )
         except Exception as e:
-            try:
-                print(f"[wandb] disabled: wandb.init failed: {e}", file=sys.stderr)
-            except Exception:
-                pass
+            from caramba.console import logger as console_logger
+            console_logger.warning(f"WandBWriter: wandb.init failed: {e}")
             self.enabled = False
             self.run = None
             return
@@ -190,8 +188,8 @@ class WandBWriter:
         # Log run URL for convenience (best-effort).
         try:
             if self.run is not None and getattr(self.run, "url", None):
-                # Avoid importing rich logger here; stderr is fine for a one-liner.
-                print(f"[wandb] run: {self.run.url}", file=sys.stderr)
+                from caramba.console import logger as console_logger
+                console_logger.info(f"WandBWriter: run URL: {self.run.url}")
         except Exception:
             pass
 
@@ -216,11 +214,8 @@ class WandBWriter:
             self._consecutive_failures = 0
         except Exception as e:
             self._consecutive_failures += 1
-            # Log the failure details (best-effort, to stderr).
-            try:
-                print(f"[wandb] log failure ({self._consecutive_failures}/{self.max_consecutive_failures}): {e}", file=sys.stderr)
-            except Exception:
-                pass
+            from caramba.console import logger as console_logger
+            console_logger.warning(f"WandBWriter: log failure ({self._consecutive_failures}/{self.max_consecutive_failures}): {e}")
             # Only disable after exceeding the threshold.
             if self._consecutive_failures >= self.max_consecutive_failures:
                 self.enabled = False
@@ -232,8 +227,9 @@ class WandBWriter:
             return
         try:
             self.run.finish()
-        except Exception:
-            pass
+        except Exception as e:
+            from caramba.console import logger as console_logger
+            console_logger.warning(f"WandBWriter: finish failed: {e}")
         self.run = None
         self._last_step = None
 

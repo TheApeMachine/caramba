@@ -32,8 +32,7 @@ NOTES.md
 *.out
 *.toc
 *.synctex.gz
-artifacts/mosaic/CONTEXT.md
-artifacts/ai/brainstorm.jsonl
+artifacts/
 .cache/
 .tmp/
 *.pt
@@ -41,3 +40,4 @@ tmp/
 *.npy
 *.npy.meta
 ADK.txt
+research/dba/runs100k.zip

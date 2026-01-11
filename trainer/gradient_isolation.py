@@ -194,8 +194,9 @@ class GradientIsolationTrainer:
                 m = getattr(system_any, "module", None)
                 if isinstance(m, nn.Module):
                     system_any.module = dist_ctx.wrap_model(m)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"GradientIsolationTrainer: [best-effort] failed to wrap system module for distributed training: {e}")
+                # Best-effort: continue without distributed wrapping if it fails.
 
         # Apply scope after moving to device (so params exist and are typed).
         scope_stats = apply_trainable_scope(
@@ -416,8 +417,8 @@ class GradientIsolationTrainer:
                             metrics["mosaic_aux_keys"] = float(
                                 sum(1 for k in outputs.keys() if isinstance(k, str) and k.startswith("mosaic_"))
                             )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"GradientIsolationTrainer: [best-effort] failed to merge MOSAIC aux outputs: {e}")
                     if hasattr(objective, "metrics"):
                         try:
                             extra = objective.metrics(  # type: ignore[attr-defined]
@@ -575,7 +576,6 @@ class GradientIsolationTrainer:
         )
         try:
             save_plan(plan_path, plan, payload=payload)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"GradientIsolationTrainer: [best-effort] failed to save runtime plan: {e}")
         return plan
-

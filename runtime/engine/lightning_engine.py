@@ -9,6 +9,7 @@ import torch
 from typing import Any, cast
 from pathlib import Path
 from datetime import datetime
+from torch.utils.data import Dataset
 
 from caramba.config.manifest import Manifest
 from caramba.config.target import ExperimentTargetConfig
@@ -74,7 +75,7 @@ class LightningEngine:
             return {"target": target.name}
 
         # Build components via registry
-        dataset_comp = self.registry.build(target.data, backend="torch")
+        dataset_comp = cast(Dataset[Any], self.registry.build(target.data, backend="torch"))
         system = self.registry.build(target.system, backend="torch")
         objective = self.registry.build(target.objective, backend="torch")
 

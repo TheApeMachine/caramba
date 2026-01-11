@@ -267,7 +267,8 @@ def parse_python_file(repo_root: Path, file_path: Path) -> tuple[list[Node], lis
 
     try:
         txt = file_path.read_text(encoding="utf-8", errors="replace")
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Codegraph: Failed to read {file_path}: {e}")
         txt = ""
     tree = _safe_parse(txt, filename=rel)
     if tree is None:

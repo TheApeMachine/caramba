@@ -5,6 +5,7 @@ import torch
 from caramba.config.layer import MemoryBlockLayerConfig, LayerType
 from caramba.layer.memory_block.memory.memory import MemoryBlockMemory
 from caramba.layer.memory_block.state import MemoryBlockState
+from caramba.layer.memory_block.memory.tuner import UniversalMemoryTuner
 
 
 class TestMemoryAutotuneIntegration(unittest.TestCase):
@@ -24,8 +25,10 @@ class TestMemoryAutotuneIntegration(unittest.TestCase):
         )
         
         mem = MemoryBlockMemory(config, D)
-        self.assertIsNotNone(mem.tuner)
-        self.assertEqual(mem.tuner.mode, "adaptive")
+        tuner = mem.tuner
+        self.assertIsNotNone(tuner)
+        assert isinstance(tuner, UniversalMemoryTuner)
+        self.assertEqual(tuner.mode, "adaptive")
         
         u = torch.randn((B, T, D))
         st = MemoryBlockState(

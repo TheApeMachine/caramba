@@ -43,6 +43,8 @@ targets:
         demo_distractors: 8
         n_items: 200000
         seed: 1337
+        emit_mem_teacher: true
+        mem_buckets: 256
 
     system:
       ref: system.language_model
@@ -69,6 +71,8 @@ targets:
                     state_decay_max: 0.999
                     mem_router: resonant
                     mem_autotune: adaptive
+                    mem_autotune_viz: true
+                    mem_autotune_viz_interval: 10
                     mem_resonant_steps: 20
                     mem_resonant_coupling: 0.25
                     mem_resonant_damping: 0.02

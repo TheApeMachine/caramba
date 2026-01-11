@@ -14,6 +14,7 @@ from pathlib import Path
 import torch
 from torch import Tensor
 import capnp
+from typing import Any, cast
 from caramba.core.event import EventEnvelope
 
 
@@ -24,7 +25,9 @@ def _load_schema():
     if not schema_path.exists():
         raise FileNotFoundError(f"Cap'n Proto schema not found: {schema_path}")
 
-    return capnp.load(str(schema_path))
+    # capnp stubs are incomplete; cast to satisfy type checkers.
+    capnp_any = cast(Any, capnp)
+    return capnp_any.load(str(schema_path))
 
 
 # Lazy-load schema to avoid import-time errors
