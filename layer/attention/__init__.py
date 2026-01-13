@@ -6,16 +6,11 @@ mechanisms without rewriting model wiring.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from torch import nn
+from torch import nn, Tensor
 
 from caramba.config.layer import AttentionLayerConfig, AttentionMode
-
-if TYPE_CHECKING:
-    from torch import Tensor
-    from caramba.cache.decoupled import DecoupledLayerKVCache
-    from caramba.cache.layer import LayerKVCache
-
+from caramba.cache.decoupled import DecoupledLayerKVCache
+from caramba.cache.layer import LayerKVCache
 
 class AttentionLayer(nn.Module):
     """Attention layer factory

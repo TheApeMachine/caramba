@@ -14,19 +14,25 @@ from caramba.config import Config
 
 
 class InitializerType(str, enum.Enum):
-    DEFAULT = "DefaultInitializer"
+    """Types of initializers available for model construction"""
+    UPCYCLE = "UpcycleInitializer"
 
     @staticmethod
     def module_name() -> str:
         return "caramba.trainer.initializers"
 
 
-class DefaultInitializerConfig(Config):
-    type: Literal[InitializerType.DEFAULT] = InitializerType.DEFAULT
+class UpcycleInitializerConfig(Config):
+    """Configuration for upcycle initializer
+
+    Loads pretrained teacher checkpoint and initializes student model with
+    architecture surgery for knowledge distillation.
+    """
+    type: Literal[InitializerType.UPCYCLE] = InitializerType.UPCYCLE
 
 
 InitializerConfig: TypeAlias = Annotated[
-    DefaultInitializerConfig,
+    UpcycleInitializerConfig,
     Field(discriminator="type"),
 ]
 

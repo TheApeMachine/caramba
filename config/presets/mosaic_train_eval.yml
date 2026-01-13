@@ -5,7 +5,7 @@ notes: |
 
   This preset demonstrates:
   - building the architecture from composable layer components (`MemoryBlockLayer`)
-  - training via `trainer.standard`
+  - training via `trainer.train`
   - evaluation via post-run metrics (e.g. perplexity)
 
 defaults:
@@ -117,7 +117,7 @@ targets:
         aux_utility_weight: 0.1
         aux_contrastive_weight: 0.1
 
-    trainer: trainer.standard
+    trainer: trainer.train
 
     # Post-run evaluation: these run after training completes.
     metrics:
@@ -145,4 +145,3 @@ targets:
 
 entrypoints:
   default: mosaic_train_eval
-

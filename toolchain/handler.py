@@ -35,13 +35,13 @@ class ToolchainHandler(EventHandler):
     def handle(self, event: EventEnvelope) -> None:
         if str(event.type) != str(self.tool_definition_type):
             return
-        payload = ToolDefinitionPayload.from_json(event.payload)
+        payload = ToolDefinitionPayload.from_bytes(event.payload)
         artifact = self.registry.register(payload)
         result = self.tester.run_tests(artifact)
         self.bus.publish(
             EventEnvelope(
                 type=str(self.tool_test_result_type),
-                payload=result.to_json(),
+                payload=result.to_bytes(),
                 sender=str(event.sender),
                 priority=int(event.priority),
             )

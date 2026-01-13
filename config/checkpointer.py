@@ -14,19 +14,23 @@ from caramba.config import Config
 
 
 class CheckPointerType(str, enum.Enum):
-    DEFAULT = "DefaultCheckPointer"
+    DEFAULT = "StepwiseCheckPointer"
 
     @staticmethod
     def module_name() -> str:
-        return "caramba.trainer.checkpointers"
+        return "caramba.trainer.checkpointer"
+
+    def py_module(self) -> str:
+        """Return the Python module name for this checkpointer type."""
+        return "stepwise"
 
 
-class DefaultCheckPointerConfig(Config):
+class StepwiseCheckPointerConfig(Config):
     type: Literal[CheckPointerType.DEFAULT] = CheckPointerType.DEFAULT
 
 
 CheckPointerConfig: TypeAlias = Annotated[
-    DefaultCheckPointerConfig,
+    StepwiseCheckPointerConfig,
     Field(discriminator="type"),
 ]
 

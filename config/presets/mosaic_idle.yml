@@ -94,7 +94,7 @@ targets:
         aux_utility_weight: 0.1
         aux_contrastive_weight: 0.0
 
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -150,4 +150,3 @@ targets:
 entrypoints:
   default: mosaic_train
   idle: idle
-

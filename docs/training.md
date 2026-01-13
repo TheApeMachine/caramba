@@ -21,16 +21,16 @@ caramba provides three training modes:
 
 | Mode | Trainer | Use Case |
 |------|---------|----------|
-| **Standard** | `trainer.standard` | Training from scratch or fine-tuning |
-| **Upcycle** | `trainer.upcycle` | Architecture surgery + distillation |
+| **Standard** | `trainer.train` | Training from scratch or fine-tuning |
+| **Upcycle** | `trainer.train` | Architecture surgery + distillation |
 | **Orchestrated** | Built into runs | Dynamic optimizer switching |
 
-Each mode is selected by the `trainer` field and configured in `train`:
+Training mode is selected by `train.phase` (and optional orchestrator flags):
 
 ```yaml
 targets:
   - type: experiment
-    trainer: trainer.standard  # or trainer.upcycle
+    trainer: trainer.train
     runs:
       - id: train
         train:
@@ -47,7 +47,7 @@ End-to-end training from scratch or fine-tuning an existing model.
 ### Basic Configuration
 
 ```yaml
-trainer: trainer.standard
+trainer: trainer.train
 
 runs:
   - id: train
@@ -109,9 +109,9 @@ vars:
   n_layers: 4
 
 targets:
-  - type: experiment
-    name: baseline
-    trainer: trainer.standard
+	  - type: experiment
+	    name: baseline
+	    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -158,7 +158,7 @@ Architecture surgery that converts a pretrained model to a new architecture whil
 ### Upcycle Configuration
 
 ```yaml
-trainer: trainer.upcycle
+trainer: trainer.train
 
 runs:
   # Phase 1: Blockwise distillation
@@ -268,7 +268,7 @@ vars:
 targets:
   - type: experiment
     name: upcycle
-    trainer: trainer.upcycle
+    trainer: trainer.train
 
     system:
       ref: system.language_model
@@ -602,8 +602,8 @@ This runs with:
 
 | Mode | Trainer | Phases | Use Case |
 |------|---------|--------|----------|
-| Standard | `trainer.standard` | `standard` | From-scratch training |
-| Upcycle | `trainer.upcycle` | `blockwise` → `global` | Architecture surgery |
+| Standard | `trainer.train` | `standard` | From-scratch training |
+| Upcycle | `trainer.train` | `blockwise` → `global` | Architecture surgery |
 | Orchestrated | Any + flags | Any | Adaptive optimization |
 
 ---

@@ -16,7 +16,7 @@ from caramba.config.benchmark import AccuracyBenchmarkConfig
 from caramba.console import logger
 from caramba.data.tokenizers.builder import TokenizerBuilder
 
-from caramba.collector.measurement.accuracy.result import AccuracyResult
+from caramba.trainer.collector.measurement.accuracy.result import AccuracyResult
 
 from caramba.eval.logprob.scorer import LogprobScorer
 from caramba.eval.logprob.completion.full_sequence import LogprobCompletionFullSequence
@@ -31,7 +31,7 @@ class BenchmarkAccuracy:
     def __init__(self, config: AccuracyBenchmarkConfig, device: torch.device) -> None:
         self.config = config
         self.device = device
-        self.tokenizer = TokenizerBuilder().build(self.config.tokenizer)
+        self.tokenizer = TokenizerBuilder().build_tokenizer(self.config.tokenizer)
         self._output_dir: Path | None = None
 
     def run(

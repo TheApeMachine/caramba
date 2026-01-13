@@ -302,7 +302,7 @@ class BehaviorBenchmark:
             logger.info("Attention dump enabled, but no matching cases selected.")
             return
 
-        tok = TokenizerBuilder().build(self.config.tokenizer)
+        tok = TokenizerBuilder().build_tokenizer(self.config.tokenizer)
         max_tokens = int(getattr(self.config, "dump_attention_max_tokens", 96))
         max_heads = int(getattr(self.config, "dump_attention_max_heads", 4))
         anchor = str(getattr(self.config, "dump_attention_anchor", "A7"))

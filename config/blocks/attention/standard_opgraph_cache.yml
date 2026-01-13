@@ -1,0 +1,164 @@
+# Standard attention as an OpGraphLayer using a Caramba KV cache.
+#
+# Intended for inference decode (where `ctx` is an InferContext and the caller
+# provides/maintains caches). This graph always consumes `ctx.next_cache()`.
+#
+# Expected vars:
+# - d_model, n_heads, n_kv_heads, group_size
+# - q_dim, kv_dim, qkv_dim
+# - rope_base, dropout_p
+# NOTE: for prefill (T > 1) you likely want to provide `ctx.attn_mask`.
+type: OpGraphLayer
+d_in: ${d_model}
+d_out: ${d_model}
+cache_fields:
+  - name: k
+    dim: ${kv_dim}
+  - name: v
+    dim: ${kv_dim}
+graph:
+  inputs: [x]
+  nodes:
+    - id: qkv_proj
+      op: LinearLayer
+      in: x
+      out: qkv
+      config:
+        d_in: ${d_model}
+        d_out: ${qkv_dim}
+        bias: false
+
+    - id: split_qkv
+      op: SplitSizesOperation
+      in: qkv
+      out: [q_lin, k_lin, v_lin]
+      config:
+        split_sizes:
+          - ${q_dim}
+          - ${kv_dim}
+          - ${kv_dim}
+        dim: -1
+
+    - id: q_heads
+      op: ViewAsHeadsOperation
+      in: q_lin
+      out: q0
+      config:
+        num_heads: ${n_heads}
+
+    - id: k_heads_new
+      op: ViewAsHeadsOperation
+      in: k_lin
+      out: k0
+      config:
+        num_heads: ${n_kv_heads}
+
+    - id: v_heads_new
+      op: ViewAsHeadsOperation
+      in: v_lin
+      out: v0
+      config:
+        num_heads: ${n_kv_heads}
+
+    - id: pos_offset
+      op: InferCtxPosOffsetOperation
+      in: infer_ctx
+      out: start_pos
+      config: {}
+
+    - id: rope
+      op: ApplyRoPEOperation
+      in: [q0, k0, start_pos]
+      out: [q1, k1]
+      config:
+        base: ${rope_base}
+        variant: both
+
+    - id: next_cache
+      op: InferCtxNextCacheOperation
+      in: infer_ctx
+      out: cache0
+      config: {}
+
+    - id: k_cache
+      op: MergeHeadsOperation
+      in: k1
+      out: k_cache
+      config: {}
+
+    - id: v_cache
+      op: MergeHeadsOperation
+      in: v0
+      out: v_cache
+      config: {}
+
+    - id: cache_write
+      op: KVCacheWriteOperation
+      in: [cache0, k_cache, v_cache]
+      out: [cache1, cache_old_pos]
+      config: {}
+
+    - id: cache_read
+      op: KVCacheReadOperation
+      in: cache1
+      out: [k_all_lin, v_all_lin]
+      config: {}
+
+    - id: k_heads_all
+      op: ViewAsHeadsOperation
+      in: k_all_lin
+      out: k2
+      config:
+        num_heads: ${n_kv_heads}
+
+    - id: v_heads_all
+      op: ViewAsHeadsOperation
+      in: v_all_lin
+      out: v2
+      config:
+        num_heads: ${n_kv_heads}
+
+    - id: gqa_repeat_k
+      op: RepeatInterleaveOperation
+      in: k2
+      out: k3
+      config:
+        repeats: ${group_size}
+        dim: 1
+
+    - id: gqa_repeat_v
+      op: RepeatInterleaveOperation
+      in: v2
+      out: v3
+      config:
+        repeats: ${group_size}
+        dim: 1
+
+    - id: mask
+      op: InferCtxAttnMaskOperation
+      in: infer_ctx
+      out: mask
+      config: {}
+
+    - id: attn
+      op: SDPAOperation
+      in: [q1, k3, v3, mask]
+      out: out
+      config:
+        dropout_p: ${dropout_p}
+        is_causal: false
+
+    - id: merge
+      op: MergeHeadsOperation
+      in: out
+      out: merged
+      config: {}
+
+    - id: out_proj
+      op: LinearLayer
+      in: merged
+      out: y
+      config:
+        d_in: ${q_dim}
+        d_out: ${d_model}
+        bias: false

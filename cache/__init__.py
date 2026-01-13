@@ -69,6 +69,7 @@ def make_quantspec(kind: str, dim: int, qblock: int) -> QuantSpec:
 # Import after types are defined to avoid circular imports
 from caramba.cache.decoupled import DecoupledLayerKVCache
 from caramba.cache.layer import LayerKVCache
+from caramba.cache.multi import CacheFieldSpec, MultiKVCache
 
 
 class Cache:
@@ -133,3 +134,14 @@ class Cache:
             )
             for _ in range(n_layers)
         ]
+
+
+__all__ = [
+    "QuantSpec",
+    "make_quantspec",
+    "LayerKVCache",
+    "DecoupledLayerKVCache",
+    "CacheFieldSpec",
+    "MultiKVCache",
+    "Cache",
+]

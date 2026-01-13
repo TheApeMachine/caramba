@@ -2,15 +2,20 @@
 
 Encodes/decodes EventEnvelope using Cap'n Proto.
 
-Cap'n Proto can enable zero-copy serialization in principle, but this implementation
-still performs some copies (e.g., JSON payload serialization and tensor dtype casts).
-It can still reduce overhead versus pure JSON in many cases for high-throughput
-event processing.
+Cap'n Proto can enable zero-copy *buffer views* in principle. This codec is written
+to avoid unnecessary copies when moving bytes around (for example, decoding via a
+NumPy view instead of materializing a new `bytes` object).
+
+However, some copies are unavoidable depending on usage:
+- The schema stores payloads as opaque bytes. If `EventEnvelope.payload` is not
+  already bytes-like, we serialize it to UTF-8 JSON (encoding allocates).
+- If you need "token ids" as `torch.long` (common for embedding layers), converting
+  raw bytes (`uint8`) to `int64` necessarily allocates/copies.
 """
 
 from __future__ import annotations
 
-import json
+import warnings
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
@@ -47,10 +52,27 @@ def _get_schema():
 class CapnpEventEncoder:
     """Cap'n Proto event encoder.
 
-    Converts EventEnvelope to Cap'n Proto bytes and returns them as a 1D int64 tensor.
+    Converts EventEnvelope to Cap'n Proto bytes and returns them as a 1D token tensor.
     """
 
-    def encode(self, event: EventEnvelope) -> Tensor:
+    def _payload_to_bytes(self, payload: Any) -> bytes:
+        """Convert an EventEnvelope payload to schema bytes.
+
+        This codec is Cap'n Proto-only: payloads must already be bytes-like.
+        """
+        if payload is None:
+            return b""
+        if isinstance(payload, (bytes, bytearray)):
+            return bytes(payload)
+        if isinstance(payload, memoryview):
+            return payload.tobytes()
+        raise TypeError(
+            "CapnpEventEncoder: payload must be bytes-like (bytes|bytearray|memoryview). "
+            f"Got {type(payload).__name__}."
+        )
+
+    def encode_bytes(self, event: EventEnvelope) -> bytes:
+        """Encode an event to Cap'n Proto wire bytes."""
         if not isinstance(event, EventEnvelope):
             raise TypeError(f"Expected EventEnvelope, got {type(event).__name__}")
 
@@ -67,17 +89,38 @@ class CapnpEventEncoder:
         msg.commitmentDelta = int(event.commitment_delta)
         msg.commitmentId = str(event.commitment_id) if event.commitment_id else ""
 
-        # Serialize payload to JSON bytes
-        payload_bytes = json.dumps(event.payload, ensure_ascii=False).encode("utf-8")
-        msg.payload = payload_bytes
+        # Payload is schema Data (opaque bytes)
+        msg.payload = self._payload_to_bytes(event.payload)
 
         # Serialize to bytes
         buf = msg.to_bytes()
         if not buf:
             raise ValueError("Cap'n Proto serialization produced empty bytes")
+        return buf
 
+    def encode_uint8(self, event: EventEnvelope) -> Tensor:
+        """Encode an event to a 1D byte tensor (`torch.uint8`)."""
+        buf = self.encode_bytes(event)
         mv = memoryview(buf)
-        return torch.frombuffer(mv, dtype=torch.uint8).to(torch.long)
+        # Avoid noisy global warnings; callers can `.clone()` if they need ownership.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"The given buffer is not writable.*",
+                category=UserWarning,
+            )
+            return torch.frombuffer(mv, dtype=torch.uint8)
+
+    def encode(self, event: EventEnvelope, *, dtype: torch.dtype = torch.long) -> Tensor:
+        """Encode an event to a 1D token tensor.
+
+        - `dtype=torch.uint8` returns a byte-level view (no dtype conversion copy).
+        - `dtype=torch.long` (default) allocates/copies as required by most embedding layers.
+        """
+        u8 = self.encode_uint8(event)
+        if dtype == torch.uint8:
+            return u8
+        return u8.to(dtype)
 
     def encode_many(self, events: Sequence[EventEnvelope]) -> list[Tensor]:
         return [self.encode(e) for e in events]
@@ -122,19 +165,25 @@ class CapnpEventDecoder:
 
         schema = _get_schema()
 
-        # Convert tensor to bytes
-        cpu = ids.detach().cpu()
+        # Convert tensor to a CPU uint8 contiguous buffer.
+        cpu = ids.detach()
+        if cpu.device.type != "cpu":
+            cpu = cpu.cpu()
         if cpu.numel() <= 0:
             raise ValueError("Cannot decode empty tensor")
-        if cpu.min().item() < 0 or cpu.max().item() > 255:
-            raise ValueError("Cap'n Proto byte tensor values must be in [0, 255]")
-        raw = cpu.to(dtype=torch.uint8).contiguous().numpy().tobytes()
+        if cpu.dtype == torch.uint8:
+            u8 = cpu
+        else:
+            if cpu.min().item() < 0 or cpu.max().item() > 255:
+                raise ValueError("Cap'n Proto byte tensor values must be in [0, 255]")
+            u8 = cpu.to(dtype=torch.uint8)
+        u8 = u8.contiguous()
 
-        # Deserialize Cap'n Proto message (from_bytes returns context manager)
-        with schema.EventEnvelope.from_bytes(raw) as msg:
-            # Parse payload from JSON bytes
-            payload_bytes = bytes(msg.payload)
-            payload = json.loads(payload_bytes.decode("utf-8")) if payload_bytes else None
+        # Deserialize Cap'n Proto message (from_bytes returns context manager).
+        # We pass a NumPy view to avoid an extra `.tobytes()` allocation.
+        with schema.EventEnvelope.from_bytes(u8.numpy()) as msg:
+            # msg.payload is a memoryview (zero-copy).
+            payload = msg.payload.tobytes() if msg.payload else b""
 
             # Handle optional fields
             budget_ms = int(msg.budgetMs) if msg.budgetMs >= 0 else None

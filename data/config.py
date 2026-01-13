@@ -7,7 +7,8 @@ easier to validate settings and catch errors before training starts.
 from __future__ import annotations
 
 from enum import Enum
-from pydantic import BaseModel, ConfigDict
+from typing import Any
+from pydantic import BaseModel, ConfigDict, field_validator
 import json
 from pathlib import Path
 from datasets import load_dataset, IterableDatasetDict, IterableDataset
@@ -41,4 +42,30 @@ class DatasetConfig(BaseModel):
     type: DatasetType
     source: str
     tokens: int
+    tokenizer: str | None = None
+    block_size: int | None = None
     err: DataError | None = None
+
+    @field_validator("tokens", mode="before")
+    @classmethod
+    def parse_human_readable_number(cls, v: Any) -> int:
+        if isinstance(v, int):
+            return v
+        if isinstance(v, str):
+            v = v.lower().strip()
+            multiplier = 1
+            if v.endswith("k"):
+                multiplier = 1_000
+                v = v[:-1]
+            elif v.endswith("m"):
+                multiplier = 1_000_000
+                v = v[:-1]
+            elif v.endswith("b"):
+                multiplier = 1_000_000_000
+                v = v[:-1]
+            
+            try:
+                return int(float(v) * multiplier)
+            except ValueError:
+                raise ValueError(f"Could not parse token count: {v}")
+        return v

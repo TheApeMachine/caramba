@@ -13,10 +13,11 @@ async def test_root_agent_async_dispatch():
     """Verify RootAgent dispatches tasks asynchronously."""
     # Mock dependencies
     mock_client = AsyncMock()
-    
+
     # Create RootAgent with mocked dependencies
     with patch("caramba.ai.root.PersonaLoader") as mock_loader, \
-         patch("caramba.ai.root.TeamLoader") as mock_team_loader:
+         patch("caramba.ai.root.TeamLoader") as mock_team_loader, \
+         patch("caramba.ai.root.RootAgent._init_lead_connections", return_value=None):
         
         # Setup mocks
         mock_persona = MagicMock()
@@ -76,9 +77,10 @@ async def test_lead_agent_async_dispatch():
     """Verify LeadAgent dispatches tasks asynchronously."""
     # Mock dependencies
     mock_client = AsyncMock()
-    
+
     with patch("caramba.ai.lead.PersonaLoader") as mock_loader, \
-         patch("caramba.ai.lead.TeamLoader") as mock_team_loader:
+         patch("caramba.ai.lead.TeamLoader") as mock_team_loader, \
+         patch("caramba.ai.lead.LeadAgent._init_member_connections", return_value=None):
         
         mock_persona = MagicMock()
         mock_persona.name = "research_lead"

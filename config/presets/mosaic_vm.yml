@@ -111,7 +111,7 @@ targets:
         aux_state_decay_weight: 0.01
         aux_contrastive_weight: 0.0
 
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train

@@ -137,7 +137,7 @@ targets:
                 d_out: ${vocab_size}
                 bias: false
     objective: objective.next_token_ce
-    trainer: trainer.upcycle
+    trainer: trainer.train
     runs:
       - id: blockwise
         mode: train
@@ -354,7 +354,7 @@ targets:
                 d_out: ${vocab_size}
                 bias: false
     objective: objective.next_token_ce
-    trainer: trainer.upcycle
+    trainer: trainer.train
     runs:
       - id: blockwise
         mode: train
@@ -505,7 +505,7 @@ targets:
                 bias: false
     objective: objective.next_token_ce
     trainer:
-      ref: trainer.upcycle_eval
+      ref: trainer.train
       config:
         teacher_ckpt: hf://meta-llama/Llama-3.2-1B
         # Produced by exp_svd's finetune run (orchestrated global)

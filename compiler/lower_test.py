@@ -135,7 +135,7 @@ class LowerTest(unittest.TestCase):
                                     d_out: 128
                                     bias: true
                         objective: objective.next_token_ce
-                        trainer: trainer.standard
+                        trainer: trainer.train
                         runs:
                           - id: r
                             mode: train

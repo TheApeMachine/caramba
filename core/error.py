@@ -13,6 +13,7 @@ class ErrorType(Enum):
     """Type of error"""
     DATA_ERROR = "data error"
     CHECKPOINT_ERROR = "checkpoint error"
+    LAYER_STATS_ERROR = "layer stats error"
     UNKNOWN = "unknown"
 
 class Error(Exception):

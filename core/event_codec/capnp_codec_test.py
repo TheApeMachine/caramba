@@ -17,7 +17,7 @@ def test_capnp_roundtrip():
     event = EventEnvelope(
         type="TestMessage",
         sender="test_agent",
-        payload={"text": "Hello, Cap'n Proto!", "count": 42},
+        payload=b"hello",
         priority=5,
         budget_ms=100,
         commitment_delta=1,
@@ -53,9 +53,9 @@ def test_capnp_batch():
     decoder = EventDecoder()
 
     events = [
-        EventEnvelope(type="Msg1", sender="a", payload={"x": 1}),
-        EventEnvelope(type="Msg2", sender="b", payload={"y": 2}),
-        EventEnvelope(type="Msg3", sender="c", payload={"z": 3}),
+        EventEnvelope(type="Msg1", sender="a", payload=b"a"),
+        EventEnvelope(type="Msg2", sender="b", payload=b"b"),
+        EventEnvelope(type="Msg3", sender="c", payload=b"c"),
     ]
 
     ids, mask = encoder.encode_padded(events)
@@ -68,3 +68,15 @@ def test_capnp_batch():
         assert dec.type == orig.type
         assert dec.sender == orig.sender
         assert dec.payload == orig.payload
+
+
+def test_capnp_strict_payload_requires_bytes() -> None:
+    """Non-bytes payloads are rejected at the envelope boundary."""
+    from caramba.core.event_codec import EventEncoder
+
+    encoder = EventEncoder()
+    with pytest.raises(TypeError):
+        _ = EventEnvelope(type="Msg", sender="a", payload={"x": 1})  # type: ignore[arg-type]
+
+    ids = encoder.encode(EventEnvelope(type="Msg", sender="a", payload=b"x"))
+    assert ids.ndim == 1 and ids.numel() > 0

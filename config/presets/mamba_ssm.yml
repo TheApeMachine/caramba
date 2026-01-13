@@ -65,7 +65,7 @@ targets:
             d_in: ${table2_d_model}
             d_out: ${table2_vocab_size}
   objective: objective.next_token_ce
-  trainer: trainer.standard
+  trainer: trainer.train
   runs:
   - id: train_ssm
     mode: train
@@ -128,7 +128,7 @@ targets:
             d_in: ${table2_d_model}
             d_out: ${table2_vocab_size}
   objective: objective.next_token_ce
-  trainer: trainer.standard
+  trainer: trainer.train
   runs:
   - id: train
     mode: train

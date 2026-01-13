@@ -38,18 +38,23 @@ class TorchEngine:
         # Trainers
         self.registry.register(
             backend="torch",
-            ref="trainer.upcycle",
-            python="caramba.trainer.upcycle:UpcycleTrainer",
-        )
-        self.registry.register(
-            backend="torch",
-            ref="trainer.upcycle_eval",
-            python="caramba.trainer.upcycle_eval:UpcycleEvalTrainer",
+            ref="trainer.train",
+            python="caramba.trainer.trainer:Trainer",
         )
         self.registry.register(
             backend="torch",
             ref="trainer.standard",
-            python="caramba.trainer.standard:StandardTrainer",
+            python="caramba.trainer.trainer:Trainer",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="trainer.upcycle",
+            python="caramba.trainer.trainer:Trainer",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="trainer.upcycle_eval",
+            python="caramba.trainer.trainer:Trainer",
         )
         self.registry.register(
             backend="torch",
@@ -330,4 +335,3 @@ class TorchEngine:
             if r.train is not None:
                 return r.train
         return object()
-

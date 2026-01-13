@@ -163,6 +163,12 @@ class TrainConfig(BaseModel):
     profile_every: NonNegativeInt = 0
     profile_record_shapes: bool = False
 
+    # Debugging (disabled by default; may reduce throughput substantially).
+    # - debug_microbatches: emit per-microbatch stage logs from the training loop
+    # - debug_microbatch_sync: synchronize device at stage boundaries for accurate timings
+    debug_microbatches: bool = False
+    debug_microbatch_sync: bool = False
+
     # Lightweight viz payloads (optional; disabled by default for performance).
     # When enabled, attention layers may copy small downsampled tensors back to CPU.
     viz_interval: NonNegativeInt = 0

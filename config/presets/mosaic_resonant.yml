@@ -41,6 +41,7 @@ targets:
         n_demos: 4
         gap_bins: [0, 16, 64, 256]
         demo_distractors: 8
+        query_from_demos: true
         n_items: 200000
         seed: 1337
         emit_mem_teacher: true
@@ -70,12 +71,14 @@ targets:
                     state_decay_min: 0.90
                     state_decay_max: 0.999
                     mem_router: resonant
+                    mem_differentiable_writes: true
                     mem_autotune: adaptive
                     mem_autotune_viz: true
                     mem_autotune_viz_interval: 10
                     mem_resonant_steps: 20
                     mem_resonant_coupling: 0.25
                     mem_resonant_damping: 0.02
+                    mem_differentiable_writes: false
                     mem_buckets: 256
                     mem_dim: 128
                     mem_hashes: 1
@@ -93,12 +96,18 @@ targets:
                 d_out: ${vocab_size}
 
     objective:
-      ref: objective.next_token_ce
+      # IMPORTANT: Resonant routing needs control-surface supervision (teacher signals)
+      # to learn reliable write/read behavior on Table 2 curricula.
+      ref: objective.mosaic_next_token_aux
       config:
         logits_key: logits
         target_key: target_ids
+        aux_gate_weight: 0.2
+        aux_bits_weight: 0.2
+        aux_utility_weight: 0.2
+        aux_contrastive_weight: 0.2
 
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -110,9 +119,15 @@ targets:
           phase: standard
           batch_size: 16
           block_size: ${block_size}
-          lr: 2.0e-5
+          # Match other MOSAIC presets: resonant needs a non-tiny LR to learn quickly.
+          lr: 3.0e-4
           device: mps
           dtype: float32
+          # Force teacher routing (especially reads) for this curriculum.
+          # Resonant routing is trained via aux losses; letting it go free too early
+          # results in "all-zero" Table 2 accuracy.
+          memblock_teacher_p_schedule: constant
+          memblock_teacher_p_start: 1.0
           grad_clip_norm: 1.0
           telemetry_interval: 10
           layer_telemetry_interval: 100

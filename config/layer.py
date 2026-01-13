@@ -7,11 +7,12 @@ automatically deserialize into the correct config class.
 from __future__ import annotations
 
 import enum
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Any, Literal, TypeAlias
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from caramba.config import Config, PositiveFloat, PositiveInt, Probability
+from caramba.config.kvcache import KVCacheTensorConfig
 
 
 class AttentionMode(str, enum.Enum):
@@ -50,6 +51,7 @@ class LayerType(str, enum.Enum):
     DENSE = "DenseLayer"
     MEMORY_BLOCK = "MemoryBlockLayer"
     NGRAM_CACHE = "NGramCacheLogitsLayer"
+    OP_GRAPH = "OpGraphLayer"
 
     @classmethod
     def from_str(cls, s: str) -> "LayerType":
@@ -113,6 +115,36 @@ class DropoutLayerConfig(Config):
 
     type: Literal[LayerType.DROPOUT] = LayerType.DROPOUT
     p: Probability = 0.0
+
+
+class OpGraphLayerConfig(Config):
+    """A single-stream layer implemented as a named-port op graph.
+
+    This is the bridge between manifest-defined operation graphs and the
+    standard Tensor->Tensor topology stack. The graph itself is provided as a
+    free-form payload (validated at build time) to avoid config import cycles.
+    """
+
+    type: Literal[LayerType.OP_GRAPH] = LayerType.OP_GRAPH
+    d_in: PositiveInt
+    d_out: PositiveInt
+    graph: dict[str, Any] = Field(default_factory=dict)
+    input_key: str = "x"
+    output_key: str = "y"
+    # Optional cache contract: when present, generation will allocate one cache
+    # object for this op-graph "layer" so the graph can consume it via ctx.
+    cache_fields: list["OpGraphCacheFieldConfig"] = Field(default_factory=list)
+
+
+class OpGraphCacheFieldConfig(BaseModel):
+    """Cache field spec for OpGraphLayer.
+
+    If cfg is omitted, generation-level cache settings apply.
+    """
+
+    name: str
+    dim: PositiveInt
+    cfg: KVCacheTensorConfig | None = None
 
 
 class AttentionLayerConfig(Config):
@@ -465,6 +497,21 @@ class MemoryBlockLayerConfig(Config):
     # Contrastive auxiliary (InfoNCE-like) that makes memory reads predictive of future hidden state.
     aux_contrastive_delta: PositiveInt = 1
 
+    # Training-only: enable differentiable memory writes.
+    #
+    # Why this exists:
+    # - The memory tables live in the per-step runtime state (`MemoryBlockState`).
+    # - Updating those tables with in-place ops under autograd frequently triggers
+    #   versioning errors (especially on MPS), so the writer historically ran under
+    #   `torch.no_grad()`.
+    # - For Table 2 / associative recall curricula, we *need* gradients to flow
+    #   through write→read so the model can learn what to store.
+    #
+    # Warning:
+    # - This can be expensive when `mem_buckets` is large (the tables become part
+    #   of the autograd graph). Prefer small tables for differentiable training.
+    mem_differentiable_writes: bool = False
+
     # -----------------------------
     # dVM Registers / Opcodes (optional)
     # -----------------------------
@@ -541,6 +588,7 @@ LayerConfig: TypeAlias = Annotated[
     | LayerNormLayerConfig
     | RMSNormLayerConfig
     | DropoutLayerConfig
+    | OpGraphLayerConfig
     | AttentionLayerConfig
     | SwiGLULayerConfig
     | GLULayerConfig

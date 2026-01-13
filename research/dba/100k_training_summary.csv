@@ -1,0 +1,12 @@
+metric,baseline,dba_sem8geo32
+final_loss,2.671405792236328,
+final_ppl,14.460283064583116,
+final_grad_norm,0.2677885890007019,
+mean_throughput_tok_s,24039.156642410984,
+total_tokens_B,6.5536,
+dba_mean_grad,,0.32113070291191104
+dba_std_grad,,0.14144809142859568
+baseline_mean_grad,0.23896421289891004,
+baseline_std_grad,0.09211905847662472,
+dba_steps_clipped,,111.0
+baseline_steps_clipped,79.0,

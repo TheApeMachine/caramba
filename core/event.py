@@ -1,12 +1,13 @@
 """Event primitives.
 
 The project is moving toward an event-native external interface:
-- The atomic interaction unit is an EventEnvelope (JSON contract).
+- The atomic interaction unit is an EventEnvelope (binary contract).
 - Internally, models can still operate on discrete steps (tokens) as VM time.
 """
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -16,11 +17,11 @@ import uuid
 
 @dataclass(frozen=True, slots=True)
 class EventEnvelope:
-    """A minimal JSON-serializable event envelope.
+    """A minimal binary event envelope.
 
     Required fields (v0):
     - type:     event type identifier (e.g. "Message", "ToolResult", "Wake", "Idle")
-    - payload:  JSON-serializable payload
+    - payload:  opaque bytes payload (typically a Cap'n Proto-encoded payload struct)
     - sender:   stable sender identity (agent/persona/user id)
 
     Optional fields (v0):
@@ -33,7 +34,7 @@ class EventEnvelope:
     """
 
     type: str
-    payload: Any
+    payload: bytes
     sender: str
     priority: int = 0
     budget_ms: int | None = None
@@ -43,7 +44,27 @@ class EventEnvelope:
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     ts: float = field(default_factory=time.time)
 
+    def __post_init__(self) -> None:
+        p = self.payload
+        if isinstance(p, bytes):
+            return
+        if isinstance(p, bytearray):
+            object.__setattr__(self, "payload", bytes(p))
+            return
+        if isinstance(p, memoryview):
+            object.__setattr__(self, "payload", p.tobytes())
+            return
+        raise TypeError(
+            "EventEnvelope.payload must be bytes-like (bytes|bytearray|memoryview). "
+            f"Got {type(p).__name__}."
+        )
+
     def to_json_dict(self) -> dict[str, Any]:
+        """A JSON-safe representation for logs/metadata.
+
+        Note: This is not the canonical event representation anymore. The canonical
+        representation is binary: `EventEnvelope` + Cap'n Proto payload bytes.
+        """
         cd = int(self.commitment_delta)
         if cd not in (-1, 0, 1):
             raise ValueError(f"EventEnvelope.commitment_delta must be in {{-1, 0, 1}}, got {cd}")
@@ -53,7 +74,7 @@ class EventEnvelope:
             "type": str(self.type),
             "sender": str(self.sender),
             "priority": int(self.priority),
-            "payload": self.payload,
+            "payload_b64": base64.b64encode(self.payload).decode("ascii"),
             "commitment_delta": cd,
         }
         if self.budget_ms is not None:
@@ -70,17 +91,23 @@ class EventEnvelope:
         if not isinstance(obj, Mapping):
             raise TypeError(f"Expected Mapping for EventEnvelope, got {type(obj).__name__}")
 
-        missing = [k for k in ("type", "payload", "sender") if k not in obj]
+        missing = [k for k in ("type", "payload_b64", "sender") if k not in obj]
         if missing:
             raise KeyError(f"Missing required EventEnvelope fields: {missing}")
 
         etype = obj["type"]
         sender = obj["sender"]
-        payload = obj["payload"]
+        payload_b64 = obj["payload_b64"]
         if not isinstance(etype, str) or not etype.strip():
             raise ValueError("EventEnvelope.type must be a non-empty string")
         if not isinstance(sender, str) or not sender.strip():
             raise ValueError("EventEnvelope.sender must be a non-empty string")
+        if not isinstance(payload_b64, str):
+            raise TypeError("EventEnvelope.payload_b64 must be a string")
+        try:
+            payload = base64.b64decode(payload_b64.encode("ascii"), validate=True)
+        except Exception as e:
+            raise ValueError("EventEnvelope.payload_b64 must be valid base64") from e
 
         priority = obj.get("priority", 0)
         budget_ms = obj.get("budget_ms", None)

@@ -31,10 +31,10 @@ from caramba.config.run import Run
 from caramba.config.target import ExperimentTargetConfig
 from caramba.config.train import TrainConfig, TrainPhase
 from caramba.config.collector import DefaultCollectorConfig
-from caramba.config.checkpointer import DefaultCheckPointerConfig
-from caramba.config.initializer import DefaultInitializerConfig
+from caramba.trainer.checkpointer.phase import PhaseCheckPointer
+from caramba.config.initializer import UpcycleInitializerConfig
 from caramba.config.verifier import DefaultVerifierConfig
-from caramba.config.stepper import DefaultStepperConfig
+from caramba.config.stepper import PhaseDispatcherConfig
 from caramba.console import logger
 from caramba.instrumentation import Instrumentation, generate_analysis_png
 from caramba.config.instrumentation import (
@@ -110,6 +110,9 @@ class UpcycleTrainer:
             defaults=manifest.defaults,
             model=model_cfg,
         )
+
+        # Create checkpointer with manifest and target context
+        checkpointer = PhaseCheckPointer(manifest=manifest, target=target)
 
         # Build a Group object for the existing collector/checkpointer layout.
         data_path = target.data.config.get("path", "")
@@ -193,7 +196,7 @@ class _UpcycleSession:
         self.inst: Instrumentation | None = None
         self._resume_state: dict[str, object] | None = None
 
-        self.initializer: Initializer = cast(Initializer, DefaultInitializerConfig().build())
+        self.initializer: Initializer = cast(Initializer, UpcycleInitializerConfig().build())
         self.teacher, self.student = self.initializer.init_models(
             train,
             UpcycleInitContext(
@@ -212,8 +215,7 @@ class _UpcycleSession:
 
         self.verifier: Verifier = cast(Verifier, DefaultVerifierConfig().build())
         self.collector: Collector = cast(Collector, DefaultCollectorConfig().build())
-        self.checkpointer: CheckPointer = cast(CheckPointer, DefaultCheckPointerConfig().build())
-        self.stepper: Stepper = cast(Stepper, DefaultStepperConfig().build())
+        self.stepper: Stepper = cast(Stepper, PhaseDispatcherConfig().build())
 
         if resume_from is not None:
             try:

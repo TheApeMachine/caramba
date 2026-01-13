@@ -84,7 +84,7 @@ class CcpDemoTrainer:
         return {"trace": out_dir / "trace.jsonl"}
 
     def publish_tool(self, bus: EventBus, validity: ValidityGate, trace: TraceWriter, payload: ToolDefinitionPayload) -> None:
-        ev = EventEnvelope(type="ToolDefinition", payload=payload.to_json(), sender="ccp_demo")
+        ev = EventEnvelope(type="ToolDefinition", payload=payload.to_bytes(), sender="ccp_demo")
         validity.validate_event(ev)
         self.append_trace(trace, kind="ToolDefinition", payload=payload.to_json())
         bus.publish(ev)

@@ -12,7 +12,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 import torch
 from torch import Tensor, nn
@@ -20,6 +20,7 @@ from torch import Tensor, nn
 from caramba.console import logger
 from caramba.cache.decoupled import DecoupledLayerKVCache
 from caramba.cache.layer import LayerKVCache
+from caramba.cache.multi import CacheFieldSpec, MultiKVCache
 from caramba.config.kvcache import (
     KVCacheKind,
     KVCacheTensorConfig,
@@ -27,7 +28,7 @@ from caramba.config.kvcache import (
     KVCachePolicyConfig,
     KVCachePolicyDecoupledConfig,
 )
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from caramba.config.layer import AttentionLayerConfig, AttentionMode, OpGraphLayerConfig
 
 from caramba.infer.cache_policy import (
     estimate_kvcache_bytes,
@@ -44,6 +45,7 @@ from caramba.infer.cache_plan import (
 )
 from caramba.infer.context import InferContext
 from caramba.layer.attention import AttentionLayer
+from caramba.layer.op_graph import OpGraphLayer
 
 
 @dataclass
@@ -315,6 +317,8 @@ def count_attention_layers(model: nn.Module) -> int:
     for module in model.modules():
         if isinstance(module, AttentionLayer):
             count += 1
+        elif isinstance(module, OpGraphLayer) and getattr(module.config, "cache_fields", None):
+            count += 1
     return count
 
 
@@ -343,21 +347,59 @@ def create_caches(
     cache_residual_len: int = 0,
     cache_policy: KVCacheConfig | None = None,
     fp16_prefix_layers: int = 0,
-) -> list[LayerKVCache | DecoupledLayerKVCache]:
+) -> list[LayerKVCache | DecoupledLayerKVCache | MultiKVCache]:
     """Create KV caches for all attention layers.
 
     Inspects the model to find attention layers, then creates the
-    appropriate cache type for each: LayerKVCache for standard/GQA,
-    DecoupledLayerKVCache for DBA.
+    appropriate cache type for each:
+    - LayerKVCache for standard/GQA AttentionLayer
+    - DecoupledLayerKVCache for DBA AttentionLayer
+    - MultiKVCache for OpGraphLayer blocks that declare cache_fields
     """
-    configs = get_attention_configs(model)
-    caches: list[LayerKVCache | DecoupledLayerKVCache] = []
+    caches: list[LayerKVCache | DecoupledLayerKVCache | MultiKVCache] = []
 
-    for i, cfg in enumerate(configs):
+    # Preserve legacy cache ordering: module traversal order.
+    consumers: list[tuple[str, AttentionLayerConfig | OpGraphLayerConfig]] = []
+    for module in model.modules():
+        if isinstance(module, AttentionLayer):
+            consumers.append(("attention", module.config))
+        elif isinstance(module, OpGraphLayer) and getattr(module.config, "cache_fields", None):
+            consumers.append(("op_graph", module.config))
+
+    for i, (kind, obj) in enumerate(consumers):
         kind_i = cache_kind
         if int(fp16_prefix_layers) > 0 and i < int(fp16_prefix_layers):
             kind_i = KVCacheKind.FP16
 
+        if kind == "op_graph":
+            cfg = cast(OpGraphLayerConfig, obj)
+            fields = []
+            for f in list(getattr(cfg, "cache_fields", [])):
+                base_cfg = getattr(f, "cfg", None)
+                if base_cfg is None:
+                    base_cfg = KVCacheTensorConfig(
+                        kind=kind_i,
+                        qblock=int(cache_qblock),
+                        residual_len=int(cache_residual_len),
+                    )
+                if kind_i == KVCacheKind.FP16 and base_cfg.kind != KVCacheKind.FP16:
+                    base_cfg = KVCacheTensorConfig(
+                        kind=KVCacheKind.FP16,
+                        qblock=int(base_cfg.qblock),
+                        residual_len=int(base_cfg.residual_len),
+                    )
+                fields.append(CacheFieldSpec(name=str(f.name), dim=int(f.dim), cfg=base_cfg))
+            caches.append(
+                MultiKVCache(
+                    batch_size=int(batch_size),
+                    max_seq_len=int(max_seq_len),
+                    fields=fields,
+                    device=device,
+                )
+            )
+            continue
+
+        cfg = cast(AttentionLayerConfig, obj)
         if cfg.mode == AttentionMode.DECOUPLED:
             sem_dim = cfg.sem_dim if cfg.sem_dim is not None else cfg.d_model
             geo_dim = cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model
@@ -614,7 +656,7 @@ class Generator:
         self.lm_head = lm_head
         self.device = device or torch.device("cpu")
 
-        self._caches: list[LayerKVCache | DecoupledLayerKVCache] | None = None
+        self._caches: list[LayerKVCache | DecoupledLayerKVCache | MultiKVCache] | None = None
         self._ctx: InferContext | None = None
         self._pos: int = 0
         self._has_diffusion = has_diffusion_head(model)

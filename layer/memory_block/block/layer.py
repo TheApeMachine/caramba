@@ -236,7 +236,7 @@ class MemoryBlockLayer(nn.Module):
             st.conv_buf = new_buf
 
         collect_aux = bool(getattr(ctx, "memblock_collect_aux", False)) if ctx is not None else False
-        
+
         # Determine current step
         step = int(getattr(ctx, "step", 0) or 0)
         if ctx is None:
@@ -245,7 +245,7 @@ class MemoryBlockLayer(nn.Module):
             # Note: metrics.step is usually valid, defaulting to 0 if not set.
             # If metrics.step is 0, we might truly be at step 0 (warmup), which is fine.
             step = metrics.step
-        
+
         # --- Visibility Refinement ---
         # Force collect_aux if visualization is enabled and we are in warmup or on an interval.
         # This ensures the tuner has data to display.
@@ -254,7 +254,7 @@ class MemoryBlockLayer(nn.Module):
             warmup_threshold = int(getattr(self.config, "mem_autotune_viz_warmup", 5))
             if step <= warmup_threshold or (step > 0 and step % viz_interval == 0):
                 collect_aux = True
-            
+
         teacher = getattr(ctx, "memblock_teacher", None) if ctx is not None else None
         teacher_p = float(getattr(ctx, "memblock_teacher_p", 1.0)) if ctx is not None else 0.0
         if (
@@ -269,18 +269,21 @@ class MemoryBlockLayer(nn.Module):
             routing = self.memory.compute_routing(u, collect_aux=collect_aux)
         routing["collect_aux"] = bool(collect_aux)
         routing["global_step"] = step
-        
+        routing["differentiable_writes"] = bool(
+            bool(self.training) and bool(getattr(self.config, "mem_differentiable_writes", False))
+        )
+
         # Pass loss from viz_ctx to routing (for tuner)
         if ctx is not None and hasattr(ctx, '_last_loss'):
             routing["_last_loss"] = ctx._last_loss
-        
+
         # Pass training metrics from context to routing (for tuner)
         if ctx is not None:
             for name in ("train_accuracy", "train_loss", "train_loss_variance"):
                 val = getattr(ctx, name, None)
                 if val is not None:
                     routing[name] = val
-        
+
         if ctx is not None and isinstance(teacher, dict):
             self.memory.apply_teacher_overrides(routing, teacher, p=float(teacher_p))
         write_mask = self.resolve_write_mask(ctx, B=B, T=T, device=x.device)
@@ -292,15 +295,30 @@ class MemoryBlockLayer(nn.Module):
                 write_mask = torch.zeros((int(B), int(T)), device=x.device, dtype=torch.float32)
         opcode_ctrl = self.compute_opcode_control(u, collect_aux=collect_aux)
 
-        # Fast path is a training-only optimization, but it does not currently
-        # model per-step RMF updates (which are stateful and order-dependent).
-        # When RMF is enabled, prefer the exact sequential path so RMF state
-        # (st.rmf_field) is updated and observable after forward.
+        # Fast path is a training-only optimization that now supports:
+        # - Parallel chunk processing (high performance)
+        # - Causal processing within chunks for differentiable writes
+        # - Teacher forcing (no causality needed when teacher provides routing)
+        #
+        # Fast path supports:
+        # - Parallel chunk processing (high performance)
+        # - Causal processing within chunks for differentiable writes
+        # - Teacher forcing (routing provided externally, no causality needed)
+        #
+        # Only disable fast path when:
+        # - RMF is enabled (requires sequential state updates), or
+        # - Teacher signals present but teacher forcing inactive (<50%)
+        #   (causality matters for learning but fast path breaks it)
+        teacher_p = float(getattr(ctx, "memblock_teacher_p", 0.0)) if ctx is not None else 0.0
+        has_teacher_signals = isinstance(teacher, dict) and (("read_bucket" in teacher) or ("write_gate" in teacher))
+
         use_fast = (
             bool(self.training)
             and int(T) > 1
             and not bool(getattr(ctx, "memblock_stats_enabled", False))
             and not (bool(getattr(self.memory, "rmf_enabled", False)) and getattr(self.memory, "rmf", None) is not None)
+            # Disable fast path only when teacher signals present but teacher forcing is inactive
+            and not (has_teacher_signals and teacher_p <= 0.5)
         )
         if use_fast:
             delta, outputs = self.fast_path.run(u=u, local=local, st=st, routing=routing, write_mask=write_mask, opcode_ctrl=opcode_ctrl)

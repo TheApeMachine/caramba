@@ -41,8 +41,11 @@ targets:
         n_demos: 4
         gap_bins: [0, 16, 64, 256]
         demo_distractors: 8
+        query_from_demos: true
         n_items: 200000
         seed: 1337
+        emit_mem_teacher: true
+        mem_buckets: ${mem_buckets}
 
     system:
       ref: system.language_model
@@ -96,7 +99,7 @@ targets:
         logits_key: logits
         target_key: target_ids
 
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train

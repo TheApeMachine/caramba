@@ -8,6 +8,7 @@ from pathlib import Path
 from caramba.ai.tools.builder import ToolBuilderHandler
 from caramba.core.event import EventEnvelope
 from caramba.core.event_bus import EventBus, EventHandler
+from caramba.core.event_codec.payloads import encode_tool_definition_payload
 
 
 class _Recorder(EventHandler):
@@ -31,12 +32,12 @@ class ToolBuilderTest(unittest.TestCase):
             bus.publish(
                 EventEnvelope(
                     type="ToolDefinition",
-                    payload={
-                        "name": "my_tool",
-                        "description": "desc",
-                        "implementation": "def run():\n    return 1\n",
-                        "requirements": ["requests==2.31.0"],
-                    },
+                    payload=encode_tool_definition_payload(
+                        name="my_tool",
+                        description="desc",
+                        implementation="def run():\n    return 1\n",
+                        requirements=["requests==2.31.0"],
+                    ),
                     sender="agent",
                 )
             )

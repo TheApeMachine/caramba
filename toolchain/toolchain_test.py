@@ -52,7 +52,7 @@ class ToolchainTest(unittest.TestCase):
             capabilities=ToolCapabilities(),
             requirements=[],
         )
-        bus.publish(EventEnvelope(type="ToolDefinition", payload=payload.to_json(), sender="agent"))
+        bus.publish(EventEnvelope(type="ToolDefinition", payload=payload.to_bytes(), sender="agent"))
         _ = bus.drain()
         self.assertTrue(rec.events)
         self.assertEqual(rec.events[-1].type, "ToolTestResult")

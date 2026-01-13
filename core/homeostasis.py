@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from caramba.core.event import EventEnvelope
+from caramba.core.event_codec.payloads import encode_impulse_payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,11 +122,11 @@ class HomeostaticLoop:
 
         # Priority is proportional to urgency; keep it integer for envelopes.
         priority = round(max_urg * 1000.0)
-        payload = {
-            "metrics": {str(k): float(v) for k, v in metrics.items()},
-            "signals": [s.to_json() for s in signals],
-            "max_urgency": float(max_urg),
-        }
+        payload = encode_impulse_payload(
+            metrics={str(k): float(v) for k, v in metrics.items()},
+            signals=[s.to_json() for s in signals],
+            max_urgency=float(max_urg),
+        )
         return EventEnvelope(
             type="Impulse",
             payload=payload,

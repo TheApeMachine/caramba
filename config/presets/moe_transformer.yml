@@ -63,7 +63,7 @@ targets:
             d_in: ${d_model}
             d_out: ${vocab_size}
   objective: objective.next_token_ce
-  trainer: trainer.standard
+  trainer: trainer.train
   runs:
   - id: train_moe
     mode: train

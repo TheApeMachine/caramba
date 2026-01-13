@@ -449,6 +449,39 @@ Basic linear projection:
 |-----------|------|---------|-------------|
 | `p` | float | required | Dropout probability |
 
+### OpGraph Layer
+
+Execute a named-port operation graph as a single Tensor → Tensor layer.
+
+The graph gets an implicit `infer_ctx` input key containing the `InferContext`
+passed through `ctx=...` during generation (or `null` if not provided).
+
+```yaml
+- type: OpGraphLayer
+  d_in: 512
+  d_out: 512
+  input_key: x
+  output_key: y
+  graph:
+    inputs: [x]
+    nodes:
+      - id: scale
+        op: ScaleOperation
+        in: x
+        out: y
+        config:
+          scale: 2.0
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `d_in` | int | required | Input dimension |
+| `d_out` | int | required | Output dimension |
+| `input_key` | str | `"x"` | Graph input port key |
+| `output_key` | str | `"y"` | Graph output port key |
+| `graph` | object | required | GraphTopology-like payload (`nodes`, optional `inputs`) |
+| `cache_fields` | list | `[]` | Optional cache field specs (enables KV-cache allocation) |
+
 ---
 
 ## Diffusion Head
@@ -513,6 +546,7 @@ pip install diffusers
 | `LayerNormLayer` | Layer normalization | `d_model`, `eps` |
 | `LinearLayer` | Linear projection | `d_in`, `d_out`, `bias` |
 | `DropoutLayer` | Dropout | `p` |
+| `OpGraphLayer` | Op graph layer | `graph`, `d_in`, `d_out` |
 | `LoRALinearLayer` | LoRA-wrapped linear | `d_in`, `d_out`, `rank` |
 | `DiffusionNextTokenHead` | Diffusion token prediction | `embed_dim`, `cfg` |
 

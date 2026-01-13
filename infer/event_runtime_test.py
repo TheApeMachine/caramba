@@ -7,6 +7,7 @@ from torch import Tensor, nn
 
 from caramba.core.event import EventEnvelope
 from caramba.core.event_codec import EventEncoder
+from caramba.core.event_codec.payloads import decode_message_payload, encode_message_payload
 from caramba.infer.context import InferContext
 from caramba.infer.event_runtime import CommitmentModeB, EventResponder, StreamModelRunner
 
@@ -82,7 +83,7 @@ class _DummyByteModel(nn.Module):
 class EventRuntimeTest(unittest.TestCase):
     def test_event_responder_decodes_event_and_provides_aux(self) -> None:
         out_event = EventEnvelope(
-            type="Message", payload={"text": "ok"}, sender="agent", id="out", ts=0.0
+            type="Message", payload=encode_message_payload(text="ok"), sender="agent", id="out", ts=0.0
         )
         encoder = EventEncoder()
         out_bytes = encoder.encode(out_event).tolist()
@@ -91,12 +92,14 @@ class EventRuntimeTest(unittest.TestCase):
         runner = StreamModelRunner(model=model, ctx=InferContext(caches=[]), collect_aux=True)
         responder = EventResponder(runner=runner, max_new_tokens=2048)
 
-        inbound = EventEnvelope(type="Message", payload={"text": "hi"}, sender="user", id="in", ts=0.0)
+        inbound = EventEnvelope(
+            type="Message", payload=encode_message_payload(text="hi"), sender="user", id="in", ts=0.0
+        )
         ev, aux = responder.respond(inbound)
 
         self.assertEqual(ev.type, "Message")
         self.assertEqual(ev.sender, "agent")
-        self.assertEqual(ev.payload, {"text": "ok"})
+        self.assertEqual(decode_message_payload(ev.payload), "ok")
         self.assertIsNotNone(aux)
         assert aux is not None
         self.assertIn("mosaic_commitment_logits", aux)

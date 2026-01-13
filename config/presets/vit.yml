@@ -64,7 +64,7 @@ targets:
             d_in: ${d_model}
             d_out: ${num_classes}
   objective: objective.next_token_ce
-  trainer: trainer.standard
+  trainer: trainer.train
   runs:
   - id: train_vit
     mode: train

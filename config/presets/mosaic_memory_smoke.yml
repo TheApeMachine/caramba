@@ -106,7 +106,7 @@ targets:
         aux_utility_weight: 0.2
         aux_contrastive_weight: 0.2
 
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train

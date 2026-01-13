@@ -39,7 +39,7 @@ targets:
       ref: objective.next_token_ce
     
     trainer:
-      ref: trainer.standard
+      ref: trainer.train
     
     runs:
       - id: run-0

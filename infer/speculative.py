@@ -19,6 +19,7 @@ from torch import Tensor, nn
 
 from caramba.cache.decoupled import DecoupledLayerKVCache
 from caramba.cache.layer import LayerKVCache
+from caramba.cache.multi import MultiKVCache
 from caramba.config.kvcache import KVCacheKind
 from caramba.infer.cache_policy import choose_cache_kind
 from caramba.infer.context import InferContext
@@ -207,8 +208,8 @@ class SpeculativeGenerator:
         self.draft_lm_head = draft_lm_head
         self.device = device or torch.device("cpu")
 
-        self._target_caches: list[LayerKVCache | DecoupledLayerKVCache] | None = None
-        self._draft_caches: list[LayerKVCache | DecoupledLayerKVCache] | None = None
+        self._target_caches: list[LayerKVCache | DecoupledLayerKVCache | MultiKVCache] | None = None
+        self._draft_caches: list[LayerKVCache | DecoupledLayerKVCache | MultiKVCache] | None = None
         self._target_ctx: InferContext | None = None
         self._draft_ctx: InferContext | None = None
         self._pos: int = 0
@@ -349,7 +350,7 @@ class SpeculativeGenerator:
         return hidden
 
     def _rollback(
-        self, caches: list[LayerKVCache | DecoupledLayerKVCache], new_pos: int
+        self, caches: list[LayerKVCache | DecoupledLayerKVCache | MultiKVCache], new_pos: int
     ) -> None:
         """Truncate all caches to a previous position."""
         for cache in caches:

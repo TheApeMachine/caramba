@@ -68,7 +68,7 @@ def _decoupled_target(*, device: str, benchmarks: list[BenchmarkSpec] | None) ->
         data=ComponentSpec(ref="dataset.tokens", config={"path": "x.tokens", "block_size": 4}),
         system=ComponentSpec(ref="system.language_model", config={"model": model_payload}),
         objective=ComponentSpec(ref="objective.next_token_ce"),
-        trainer=ComponentSpec(ref="trainer.standard"),
+        trainer=ComponentSpec(ref="trainer.train"),
         runs=[run],
         benchmarks=benchmarks,
     )
@@ -97,7 +97,7 @@ def _non_decoupled_target(*, device: str) -> ExperimentTargetConfig:
         data=ComponentSpec(ref="dataset.tokens", config={"path": "x.tokens", "block_size": 4}),
         system=ComponentSpec(ref="system.language_model", config={"model": model_payload}),
         objective=ComponentSpec(ref="objective.next_token_ce"),
-        trainer=ComponentSpec(ref="trainer.standard"),
+        trainer=ComponentSpec(ref="trainer.train"),
         runs=[run],
         benchmarks=None,
     )
@@ -174,4 +174,3 @@ def test_format_readiness_report_formats_both_errors_and_warnings() -> None:
     txt = readiness.format_readiness_report(rep)
     assert "ERROR [e] bad" in txt
     assert "WARN [w] meh" in txt
-

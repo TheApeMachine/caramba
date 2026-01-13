@@ -166,6 +166,7 @@ class Validator:
             LoRALinearLayerConfig,
             DropoutLayerConfig,
             NGramCacheLogitsLayerConfig,
+            OpGraphLayerConfig,
         )
 
         if isinstance(layer, (LinearLayerConfig, LoRALinearLayerConfig)):
@@ -175,6 +176,8 @@ class Validator:
             return IO(v, v)
         if isinstance(layer, DropoutLayerConfig):
             return IO()
+        if isinstance(layer, OpGraphLayerConfig):
+            return IO(int(layer.d_in), int(layer.d_out))
         d_model = getattr(layer, "d_model", None)
         if d_model is not None:
             d = int(d_model)

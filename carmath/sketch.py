@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
-from caramba.optimizer.runtime import triton_supported
+from caramba.kernel.runtime import triton_supported
 
 # Optional Triton bindings (populated only when available)
 triton = None  # type: ignore[assignment]
@@ -277,4 +277,3 @@ def sketch_dot5(
         return out[0], out[1], out[2], out[3], out[4]
 
     return _sketch_dot5_torch(w, w_prev, u, g, idx)
-

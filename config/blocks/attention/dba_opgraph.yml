@@ -1,0 +1,169 @@
+# Decoupled bottleneck attention (DBA) as an OpGraphLayer.
+#
+# This matches the core paper semantics:
+# - Separate semantic and geometric Q/K projections
+# - Optional RoPE on the geometric path only
+# - Q is scaled per-path by 1/sqrt(head_dim) via InvSqrtDimScaleOperation
+# - SDPA runs with scale=1.0 over concat([q_sem_scaled, q_geo_scaled]) and concat([k_sem, k_geo])
+#
+# Expected vars:
+# - d_model, n_heads
+# - sem_dim, geo_dim, attn_dim (v_dim)
+# - rope_base, dropout_p, is_causal
+type: OpGraphLayer
+d_in: ${d_model}
+d_out: ${d_model}
+graph:
+  inputs: [x]
+  nodes:
+    - id: q_proj
+      op: LinearLayer
+      in: x
+      out: q_lin
+      config:
+        d_in: ${d_model}
+        d_out: ${attn_dim}
+        bias: false
+
+    - id: k_proj
+      op: LinearLayer
+      in: x
+      out: k_lin
+      config:
+        d_in: ${d_model}
+        d_out: ${attn_dim}
+        bias: false
+
+    - id: split_q
+      op: SplitSizesOperation
+      in: q_lin
+      out: [q_sem_lin, q_geo_lin]
+      config:
+        split_sizes:
+          - ${sem_dim}
+          - ${geo_dim}
+        dim: -1
+
+    - id: split_k
+      op: SplitSizesOperation
+      in: k_lin
+      out: [k_sem_lin, k_geo_lin]
+      config:
+        split_sizes:
+          - ${sem_dim}
+          - ${geo_dim}
+        dim: -1
+
+    - id: v_proj
+      op: LinearLayer
+      in: x
+      out: v_lin
+      config:
+        d_in: ${d_model}
+        d_out: ${attn_dim}
+        bias: false
+
+    - id: q_sem
+      op: ViewAsHeadsOperation
+      in: q_sem_lin
+      out: q_sem0
+      config:
+        num_heads: ${n_heads}
+
+    - id: k_sem
+      op: ViewAsHeadsOperation
+      in: k_sem_lin
+      out: k_sem0
+      config:
+        num_heads: ${n_heads}
+
+    - id: q_geo
+      op: ViewAsHeadsOperation
+      in: q_geo_lin
+      out: q_geo0
+      config:
+        num_heads: ${n_heads}
+
+    - id: k_geo
+      op: ViewAsHeadsOperation
+      in: k_geo_lin
+      out: k_geo0
+      config:
+        num_heads: ${n_heads}
+
+    - id: v
+      op: ViewAsHeadsOperation
+      in: v_lin
+      out: v0
+      config:
+        num_heads: ${n_heads}
+
+    - id: pos_offset
+      op: InferCtxPosOffsetOperation
+      in: infer_ctx
+      out: start_pos
+      config: {}
+
+    - id: rope_geo
+      op: ApplyRoPEOperation
+      in: [q_geo0, k_geo0, start_pos]
+      out: [q_geo1, k_geo1]
+      config:
+        base: ${rope_base}
+        variant: both
+
+    - id: q_sem_scale
+      op: InvSqrtDimScaleOperation
+      in: q_sem0
+      out: q_sem_s
+      config: {}
+
+    - id: q_geo_scale
+      op: InvSqrtDimScaleOperation
+      in: q_geo1
+      out: q_geo_s
+      config: {}
+
+    - id: q_cat
+      op: ConcatOperation
+      in: [q_sem_s, q_geo_s]
+      out: q_cat
+      config:
+        dim: -1
+
+    - id: k_cat
+      op: ConcatOperation
+      in: [k_sem0, k_geo1]
+      out: k_cat
+      config:
+        dim: -1
+
+    - id: mask
+      op: InferCtxAttnMaskOperation
+      in: infer_ctx
+      out: mask
+      config: {}
+
+    - id: attn
+      op: SDPAOperation
+      in: [q_cat, k_cat, v0, mask]
+      out: out
+      config:
+        dropout_p: ${dropout_p}
+        is_causal: ${is_causal}
+        scale: 1.0
+
+    - id: merge
+      op: MergeHeadsOperation
+      in: out
+      out: merged
+      config: {}
+
+    - id: out_proj
+      op: LinearLayer
+      in: merged
+      out: y
+      config:
+        d_in: ${attn_dim}
+        d_out: ${d_model}
+        bias: false

@@ -15,7 +15,8 @@ from caramba.config.mode import Mode
 from caramba.config.run import Run
 from caramba.config.target import ExperimentTargetConfig
 from caramba.config.train import TrainConfig, TrainPhase
-from caramba.trainer.standard import StandardTrainer
+from caramba.trainer.standard_stepper import StandardTrainStepper
+from caramba.trainer.stepper import TrainSession
 
 
 class TinyDataset(Dataset):
@@ -69,22 +70,22 @@ def _target_and_run(*, steps: int, train: TrainConfig) -> tuple[ExperimentTarget
         data=ComponentSpec(ref="dataset.tokens", config={"path": "x.tokens", "block_size": 4}),
         system=ComponentSpec(ref="system.generic", config={"model": {"type": "TransformerModel", "topology": {"type": "StackedTopology", "layers": [{"type": "LinearLayer", "d_in": 2, "d_out": 2, "bias": True}]}}}),
         objective=ComponentSpec(ref="objective.mse"),
-        trainer=ComponentSpec(ref="trainer.standard"),
+        trainer=ComponentSpec(ref="trainer.train"),
         runs=[r],
     )
     return t, r
 
 
 def test_parse_dtype_mapping() -> None:
-    tr = StandardTrainer()
-    assert tr._parse_dtype("float32") == torch.float32
-    assert tr._parse_dtype("float16") == torch.float16
-    assert tr._parse_dtype("bfloat16") == torch.bfloat16
-    assert tr._parse_dtype("unknown") == torch.float32
+    stepper = StandardTrainStepper()
+    assert stepper._parse_dtype("float32") == torch.float32
+    assert stepper._parse_dtype("float16") == torch.float16
+    assert stepper._parse_dtype("bfloat16") == torch.bfloat16
+    assert stepper._parse_dtype("unknown") == torch.float32
 
 
 def test_load_or_create_runtime_plan_reuses_cached_plan(tmp_path: Path) -> None:
-    tr = StandardTrainer()
+    stepper = StandardTrainStepper()
     train = TrainConfig(
         phase=TrainPhase.STANDARD,
         batch_size=8,
@@ -96,13 +97,13 @@ def test_load_or_create_runtime_plan_reuses_cached_plan(tmp_path: Path) -> None:
         auto_batch_ref_block_size=512,
         auto_batch_min=2,
     )
-    plan1 = tr._load_or_create_runtime_plan(
+    plan1 = stepper._load_or_create_runtime_plan(
         checkpoint_dir=tmp_path,
         device=torch.device("cpu"),
         train=train,
         system_cfg={"model": {"type": "TransformerModel", "topology": {"type": "StackedTopology", "layers": []}}},
     )
-    plan2 = tr._load_or_create_runtime_plan(
+    plan2 = stepper._load_or_create_runtime_plan(
         checkpoint_dir=tmp_path,
         device=torch.device("cpu"),
         train=train,
@@ -113,7 +114,7 @@ def test_load_or_create_runtime_plan_reuses_cached_plan(tmp_path: Path) -> None:
 
 
 def test_run_single_minimal_executes_training_loop_and_writes_checkpoint(tmp_path: Path) -> None:
-    tr = StandardTrainer(checkpoint_dir=str(tmp_path))
+    stepper = StandardTrainStepper()
     ds_comp = DatasetComponent(TinyDataset(64))
     system = DummySystem()
     objective = DummyObjective()
@@ -132,21 +133,22 @@ def test_run_single_minimal_executes_training_loop_and_writes_checkpoint(tmp_pat
     )
     target, run = _target_and_run(steps=2, train=train)
 
-    # Run directly to avoid registry wiring; this still covers almost all trainer logic.
     from caramba.instrumentation.run_logger import RunLogger
 
-    rl = RunLogger(tmp_path, filename="train.jsonl", enabled=True)
-    tr._run_single(
-        defaults=defaults,
-        target=target,
-        run=run,
-        train=train,
-        dataset_comp=ds_comp,
-        system=system,
-        objective=objective,
-        checkpoint_dir=tmp_path,
-        run_logger=rl,
-    )
+    with RunLogger(tmp_path, filename="train.jsonl", enabled=True) as rl:
+        stepper.run(
+            TrainSession(
+                defaults=defaults,
+                target=target,
+                run=run,
+                train=train,
+                dataset_comp=ds_comp,
+                system=system,
+                objective=objective,
+                checkpoint_dir=tmp_path,
+                run_logger=rl,
+            )
+        )
 
     # Check that checkpoint exists.
     ckpt = tmp_path / "r_standard_final.pt"
@@ -154,7 +156,7 @@ def test_run_single_minimal_executes_training_loop_and_writes_checkpoint(tmp_pat
 
 
 def test_run_single_unknown_optimizer_raises(tmp_path: Path) -> None:
-    tr = StandardTrainer(checkpoint_dir=str(tmp_path))
+    stepper = StandardTrainStepper()
     ds_comp = DatasetComponent(TinyDataset(32))
     system = DummySystem()
     objective = DummyObjective()
@@ -171,23 +173,25 @@ def test_run_single_unknown_optimizer_raises(tmp_path: Path) -> None:
     target, run = _target_and_run(steps=1, train=train)
     from caramba.instrumentation.run_logger import RunLogger
 
-    rl = RunLogger(tmp_path, filename="train.jsonl", enabled=True)
     with pytest.raises(ValueError, match="Unknown optimizer"):
-        tr._run_single(
-            defaults=defaults,
-            target=target,
-            run=run,
-            train=train,
-            dataset_comp=ds_comp,
-            system=system,
-            objective=objective,
-            checkpoint_dir=tmp_path,
-            run_logger=rl,
-        )
+        with RunLogger(tmp_path, filename="train.jsonl", enabled=True) as rl:
+            stepper.run(
+                TrainSession(
+                    defaults=defaults,
+                    target=target,
+                    run=run,
+                    train=train,
+                    dataset_comp=ds_comp,
+                    system=system,
+                    objective=objective,
+                    checkpoint_dir=tmp_path,
+                    run_logger=rl,
+                )
+            )
 
 
 def test_run_single_distributed_init_failure_is_wrapped(tmp_path: Path, monkeypatch) -> None:
-    tr = StandardTrainer(checkpoint_dir=str(tmp_path))
+    stepper = StandardTrainStepper()
     ds_comp = DatasetComponent(TinyDataset(32))
     system = DummySystem()
     objective = DummyObjective()
@@ -213,17 +217,18 @@ def test_run_single_distributed_init_failure_is_wrapped(tmp_path: Path, monkeypa
 
     from caramba.instrumentation.run_logger import RunLogger
 
-    rl = RunLogger(tmp_path, filename="train.jsonl", enabled=True)
     with pytest.raises(RuntimeError, match="Failed to initialize distributed training"):
-        tr._run_single(
-            defaults=defaults,
-            target=target,
-            run=run,
-            train=train,
-            dataset_comp=ds_comp,
-            system=system,
-            objective=objective,
-            checkpoint_dir=tmp_path,
-            run_logger=rl,
-        )
-
+        with RunLogger(tmp_path, filename="train.jsonl", enabled=True) as rl:
+            stepper.run(
+                TrainSession(
+                    defaults=defaults,
+                    target=target,
+                    run=run,
+                    train=train,
+                    dataset_comp=ds_comp,
+                    system=system,
+                    objective=objective,
+                    checkpoint_dir=tmp_path,
+                    run_logger=rl,
+                )
+            )

@@ -33,7 +33,7 @@ def test_planner_formats_experiment_target_with_topology(tmp_path: Path) -> None
                 "                d_out: 8",
                 "                bias: true",
                 "    objective: objective.next_token_ce",
-                "    trainer: trainer.standard",
+                "    trainer: trainer.train",
                 "    runs: []",
             ]
         )
@@ -81,4 +81,3 @@ def test_planner_formats_process_target(tmp_path: Path) -> None:
     assert "process.type=discussion name=discuss" in txt
     assert "team:" in txt
     assert "- developer: developer" in txt
-

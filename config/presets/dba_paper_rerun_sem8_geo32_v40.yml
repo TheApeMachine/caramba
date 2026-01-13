@@ -124,7 +124,7 @@ targets:
                 d_out: ${vocab_size}
                 bias: false
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -159,4 +159,3 @@ targets:
 entrypoints:
   baseline: "target:a100_fw1b_l22_baseline_s1337_paper_sem8geo32v40"
   decoupled: "target:a100_fw1b_l22_decoupled_s1337_paper_sem8geo32v40"
-

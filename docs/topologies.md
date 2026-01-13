@@ -451,7 +451,7 @@ system:
               activation: gelu
 
           - id: fuse
-            op: python:caramba.topology.ops:Concat
+            op: python:caramba.operation.shape:ConcatOperation
             in: [t, v]
             out: fused
             config:

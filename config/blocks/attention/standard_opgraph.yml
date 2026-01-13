@@ -1,0 +1,120 @@
+# Standard (SDPA/GQA) attention as an OpGraphLayer.
+#
+# Intended for training or full-sequence forward passes (no KV cache).
+#
+# Expected vars (example names; you can choose your own and substitute here):
+# - d_model: model width
+# - n_heads: number of query heads
+# - n_kv_heads: number of KV heads (GQA); set == n_heads for MHA
+# - group_size: n_heads / n_kv_heads (1 for MHA)
+# - q_dim: total Q projection dim (usually d_model or attn_dim)
+# - kv_dim: total K/V projection dim (n_kv_heads * head_dim)
+# - qkv_dim: q_dim + 2 * kv_dim
+# - rope_base: RoPE base (e.g. 10000.0)
+# - dropout_p: attention dropout
+# - is_causal: true for autoregressive models
+type: OpGraphLayer
+d_in: ${d_model}
+d_out: ${d_model}
+graph:
+  inputs: [x]
+  nodes:
+    - id: qkv_proj
+      op: LinearLayer
+      in: x
+      out: qkv
+      config:
+        d_in: ${d_model}
+        d_out: ${qkv_dim}
+        bias: false
+
+    - id: split_qkv
+      op: SplitSizesOperation
+      in: qkv
+      out: [q_lin, k_lin, v_lin]
+      config:
+        split_sizes:
+          - ${q_dim}
+          - ${kv_dim}
+          - ${kv_dim}
+        dim: -1
+
+    - id: q_heads
+      op: ViewAsHeadsOperation
+      in: q_lin
+      out: q0
+      config:
+        num_heads: ${n_heads}
+
+    - id: k_heads
+      op: ViewAsHeadsOperation
+      in: k_lin
+      out: k0
+      config:
+        num_heads: ${n_kv_heads}
+
+    - id: v_heads
+      op: ViewAsHeadsOperation
+      in: v_lin
+      out: v0
+      config:
+        num_heads: ${n_kv_heads}
+
+    - id: pos_offset
+      op: InferCtxPosOffsetOperation
+      in: infer_ctx
+      out: start_pos
+      config: {}
+
+    - id: rope
+      op: ApplyRoPEOperation
+      in: [q0, k0, start_pos]
+      out: [q1, k1]
+      config:
+        base: ${rope_base}
+        variant: both
+
+    - id: gqa_repeat_k
+      op: RepeatInterleaveOperation
+      in: k1
+      out: k2
+      config:
+        repeats: ${group_size}
+        dim: 1
+
+    - id: gqa_repeat_v
+      op: RepeatInterleaveOperation
+      in: v0
+      out: v1
+      config:
+        repeats: ${group_size}
+        dim: 1
+
+    - id: mask
+      op: InferCtxAttnMaskOperation
+      in: infer_ctx
+      out: mask
+      config: {}
+
+    - id: attn
+      op: SDPAOperation
+      in: [q1, k2, v1, mask]
+      out: out
+      config:
+        dropout_p: ${dropout_p}
+        is_causal: ${is_causal}
+
+    - id: merge
+      op: MergeHeadsOperation
+      in: out
+      out: merged
+      config: {}
+
+    - id: out_proj
+      op: LinearLayer
+      in: merged
+      out: y
+      config:
+        d_in: ${q_dim}
+        d_out: ${d_model}
+        bias: false

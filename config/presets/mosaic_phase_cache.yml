@@ -70,7 +70,7 @@ targets:
                 d_out: 256
                 bias: false
     objective: objective.mosaic_next_token_aux
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -88,4 +88,3 @@ targets:
 
 entrypoints:
   default: mosaic_phase_cache_smoke
-

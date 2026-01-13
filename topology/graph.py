@@ -8,6 +8,8 @@ keys and writing tensors back to named keys.
 from __future__ import annotations
 
 import importlib
+import inspect
+from functools import lru_cache
 from typing import Any
 
 from pydantic import TypeAdapter
@@ -45,6 +47,7 @@ def _build_op(op: str, cfg: dict[str, Any]) -> nn.Module:
     - `python:module:Symbol` where Symbol constructs an nn.Module
     - `torch.nn.<OpName>` shorthand: just pass `<OpName>` (e.g. Linear, Conv2d)
     - Caramba layer config types: pass the LayerType value (e.g. LinearLayer, Conv2dLayer)
+    - Caramba operation types: pass an Operation class name exported by `caramba.operation`
     """
     s = str(op)
     if s.startswith("python:"):
@@ -69,6 +72,16 @@ def _build_op(op: str, cfg: dict[str, Any]) -> nn.Module:
         layer_cfg = TypeAdapter(LayerConfig).validate_python({"type": s, **dict(cfg)})
         return layer_cfg.build()  # type: ignore[attr-defined]
 
+    # Caramba operations (manifest-friendly building blocks).
+    try:
+        import caramba.operation as _ops
+
+        sym = getattr(_ops, s, None)
+        if isinstance(sym, type) and issubclass(sym, nn.Module):
+            return sym(**cfg)  # type: ignore[call-arg]
+    except Exception:
+        pass
+
     # Torch built-ins (nn.Linear, nn.Conv2d, etc.)
     if hasattr(nn, s):
         cls = getattr(nn, s)
@@ -81,14 +94,74 @@ def _build_op(op: str, cfg: dict[str, Any]) -> nn.Module:
     )
 
 
-def _call_op(mod: nn.Module, args: list[Tensor], *, ctx: object | None) -> object:
+@lru_cache(maxsize=512)
+def _forward_param_names(cls: type[nn.Module]) -> tuple[str, ...] | None:
+    """Best-effort extraction of forward() param names for signature-based calls."""
+    try:
+        sig = inspect.signature(cls.forward)
+    except (TypeError, ValueError):
+        return None
+
+    params = list(sig.parameters.values())
+    if params and params[0].name == "self":
+        params = params[1:]
+
+    names: list[str] = []
+    for p in params:
+        # ctx is supplied out-of-band by GraphTopology/OpGraphLayer.
+        if p.name == "ctx":
+            continue
+        if p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            return None
+        if p.kind == inspect.Parameter.POSITIONAL_ONLY:
+            return None
+        names.append(str(p.name))
+
+    return tuple(names)
+
+
+def _call_op_signature_fallback(mod: nn.Module, args: list[Any], *, ctx: object | None) -> object | None:
+    """Attempt calling an op by mapping args to forward() param names."""
+    names = _forward_param_names(type(mod))
+    if not names:
+        return None
+    if len(args) > len(names):
+        return None
+    kwargs = {k: v for k, v in zip(list(names)[: len(args)], args, strict=True)}
+    if ctx is not None:
+        try:
+            return mod(**kwargs, ctx=ctx)
+        except TypeError:
+            pass
+    try:
+        return mod(**kwargs)
+    except TypeError:
+        return None
+
+
+def _call_op(mod: nn.Module, arg_names: list[str], args: list[Any], *, ctx: object | None) -> object:
     """Call a node op with argument adapters.
 
-    Adapters we apply:
-    - Pass `ctx=...` if the op accepts it
+    Adapters we apply (in order):
+    - Prefer keyword calls using graph port names (`in:` keys) so operation-style
+      modules can use keyword-only signatures (e.g. `forward(*, x=...)`).
+    - Pass `ctx=...` if the op accepts it.
+    - Fall back to positional calls.
     - If the op doesn't accept multiple positional inputs, fall back to passing
-      a single tuple (useful for layers like GraphConv that expect (x, adj))
+      a single tuple (useful for layers like GraphConv that expect (x, adj)).
     """
+    if arg_names and len(arg_names) == len(args):
+        kwargs = {k: v for k, v in zip(arg_names, args, strict=True)}
+        if ctx is not None:
+            try:
+                return mod(**kwargs, ctx=ctx)
+            except TypeError:
+                pass
+        try:
+            return mod(**kwargs)
+        except TypeError:
+            pass
+
     if ctx is not None:
         try:
             return mod(*args, ctx=ctx) if len(args) != 1 else mod(args[0], ctx=ctx)
@@ -98,6 +171,9 @@ def _call_op(mod: nn.Module, args: list[Tensor], *, ctx: object | None) -> objec
     try:
         return mod(*args) if len(args) != 1 else mod(args[0])
     except TypeError:
+        out = _call_op_signature_fallback(mod, args, ctx=ctx)
+        if out is not None:
+            return out
         if len(args) <= 1:
             raise
         # Fallback: pack inputs into a single tuple.
@@ -177,7 +253,7 @@ class GraphTopology(nn.Module):
                     )
                 args.append(v)
             mod = self.modules_by_id[n.id]
-            out = _call_op(mod, args, ctx=ctx)
+            out = _call_op(mod, ins, args, ctx=ctx)
             if len(outs) == 1:
                 if isinstance(out, tuple):
                     out = unwrap_output(out)
@@ -197,4 +273,3 @@ class GraphTopology(nn.Module):
                     streams[k] = v
 
         return as_tensordict(streams)
-

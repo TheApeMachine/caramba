@@ -17,11 +17,13 @@ import torch.nn.functional as F
 from caramba.cache import make_quantspec
 from caramba.cache.decoupled import DecoupledLayerKVCache
 from caramba.cache.layer import LayerKVCache
+from caramba.cache.multi import CacheFieldSpec, MultiKVCache
 from caramba.config.kvcache import KVCacheKind
 from caramba.config.kvcache import KVCacheTensorConfig
 from caramba.config.layer import AttentionLayerConfig, AttentionMode
 from caramba.infer.context import InferContext
 from caramba.layer.attention import AttentionLayer
+from caramba.layer.op_graph import OpGraphLayer
 
 
 @dataclass(frozen=True)
@@ -91,12 +93,22 @@ def estimate_kvcache_bytes(
 
     total = 0
     configs: list[AttentionLayerConfig] = []
+    extra_dims: list[int] = []
     modules_fn = getattr(model, "modules", None)
     if modules_fn is None or not callable(modules_fn):
         return 0
     for m in modules_fn():  # type: ignore[union-attr]
         if isinstance(m, AttentionLayer):
             configs.append(m.config)
+        elif isinstance(m, OpGraphLayer):
+            fields = getattr(m.config, "cache_fields", None)
+            if not fields:
+                continue
+            for f in list(fields):
+                try:
+                    extra_dims.append(int(getattr(f, "dim")))
+                except Exception:
+                    continue
 
     for cfg in configs:
         if cfg.mode == AttentionMode.DECOUPLED:
@@ -150,6 +162,19 @@ def estimate_kvcache_bytes(
                 qblock=qblock,
                 residual_len=residual_len,
             )
+
+    # OpGraphLayer declared cache fields: treat each field as an independent cache tensor.
+    for dim in extra_dims:
+        if dim <= 0:
+            continue
+        total += _bytes_per_cache_tensor(
+            kind=kind,
+            batch_size=batch_size,
+            max_seq_len=max_seq_len,
+            dim=int(dim),
+            qblock=qblock,
+            residual_len=residual_len,
+        )
     return int(total)
 
 
@@ -162,52 +187,69 @@ def _create_caches_for_kind(
     qblock: int,
     residual_len: int,
     device: torch.device,
-) -> list[LayerKVCache | DecoupledLayerKVCache]:
+) -> list[LayerKVCache | DecoupledLayerKVCache | MultiKVCache]:
     tensor_cfg = KVCacheTensorConfig(kind=kind, qblock=int(qblock), residual_len=int(residual_len))
-    caches: list[LayerKVCache | DecoupledLayerKVCache] = []
+    caches: list[LayerKVCache | DecoupledLayerKVCache | MultiKVCache] = []
     modules_fn = getattr(model, "modules", None)
     if modules_fn is None or not callable(modules_fn):
         return caches
     for m in modules_fn():  # type: ignore[union-attr]
-        if not isinstance(m, AttentionLayer):
+        if isinstance(m, AttentionLayer):
+            cfg = m.config
+            if cfg.mode == AttentionMode.DECOUPLED:
+                sem_dim = int(cfg.sem_dim if cfg.sem_dim is not None else cfg.d_model)
+                geo_dim = int(cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model)
+                v_dim = int(cfg.v_dim)
+                sem_cfg = tensor_cfg
+                geo_cfg = tensor_cfg
+                v_cfg = tensor_cfg
+                if kind in (KVCacheKind.Q4_0, KVCacheKind.NF4):
+                    geo_cfg = KVCacheTensorConfig(
+                        kind=KVCacheKind.Q8_0,
+                        qblock=int(qblock),
+                        residual_len=int(residual_len),
+                    )
+                caches.append(
+                    DecoupledLayerKVCache(
+                        batch_size=batch_size,
+                        max_seq_len=max_seq_len,
+                        k_sem_dim=sem_dim,
+                        k_geo_dim=geo_dim,
+                        v_dim=v_dim,
+                        k_sem_cfg=sem_cfg,
+                        k_geo_cfg=geo_cfg,
+                        v_cfg=v_cfg,
+                        device=device,
+                    )
+                )
+            else:
+                kv_dim = int(cfg.kv_heads * cfg.head_dim)
+                caches.append(
+                    LayerKVCache(
+                        batch_size=batch_size,
+                        max_seq_len=max_seq_len,
+                        k_dim=kv_dim,
+                        v_dim=kv_dim,
+                        k_cfg=tensor_cfg,
+                        v_cfg=tensor_cfg,
+                        device=device,
+                    )
+                )
             continue
-        cfg = m.config
-        if cfg.mode == AttentionMode.DECOUPLED:
-            sem_dim = int(cfg.sem_dim if cfg.sem_dim is not None else cfg.d_model)
-            geo_dim = int(cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model)
-            v_dim = int(cfg.v_dim)
-            sem_cfg = tensor_cfg
-            geo_cfg = tensor_cfg
-            v_cfg = tensor_cfg
-            if kind in (KVCacheKind.Q4_0, KVCacheKind.NF4):
-                geo_cfg = KVCacheTensorConfig(
-                    kind=KVCacheKind.Q8_0,
-                    qblock=int(qblock),
-                    residual_len=int(residual_len),
-                )
+
+        if isinstance(m, OpGraphLayer):
+            fields = getattr(m.config, "cache_fields", None)
+            if not fields:
+                continue
+            specs = [
+                CacheFieldSpec(name=str(f.name), dim=int(f.dim), cfg=tensor_cfg)
+                for f in list(fields)
+            ]
             caches.append(
-                DecoupledLayerKVCache(
-                    batch_size=batch_size,
-                    max_seq_len=max_seq_len,
-                    k_sem_dim=sem_dim,
-                    k_geo_dim=geo_dim,
-                    v_dim=v_dim,
-                    k_sem_cfg=sem_cfg,
-                    k_geo_cfg=geo_cfg,
-                    v_cfg=v_cfg,
-                    device=device,
-                )
-            )
-        else:
-            kv_dim = int(cfg.kv_heads * cfg.head_dim)
-            caches.append(
-                LayerKVCache(
-                    batch_size=batch_size,
-                    max_seq_len=max_seq_len,
-                    k_dim=kv_dim,
-                    v_dim=kv_dim,
-                    k_cfg=tensor_cfg,
-                    v_cfg=tensor_cfg,
+                MultiKVCache(
+                    batch_size=int(batch_size),
+                    max_seq_len=int(max_seq_len),
+                    fields=specs,
                     device=device,
                 )
             )
@@ -436,4 +478,3 @@ def choose_cache_kind(
         residual_len=residual_len,
     )
     return CachePolicyChoice(kind=fallback_kind, estimated_bytes=int(est))
-

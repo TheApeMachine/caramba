@@ -1,0 +1,29 @@
+
+\begin{table}[t]
+\centering
+\caption{100K Training Results: Standard Attention vs Decoupled Bottleneck Attention (DBA).
+Both models trained on FineWeb-20B with identical hyperparameters on A100-80GB.}
+\label{tab:100k-results}
+\begin{tabular}{lccr}
+\toprule
+\textbf{Metric} & \textbf{Baseline} & \textbf{DBA} & \textbf{$\Delta$} \\
+\midrule
+\multicolumn{4}{l}{\textit{Model Quality (100K steps, 6.6B tokens)}} \\
+Final Loss & 2.6714 & 2.6789 & +0.0075 \\
+Final Perplexity & 14.46 & 14.57 & +0.8\% \\
+\midrule
+\multicolumn{4}{l}{\textit{Static Efficiency (Storage \& Training)}} \\
+Total Parameters & 1.337B & 1.198B & $-$10.4\% \\
+Attention Params/Layer & 16.8M & 10.5M & $-$37.5\% \\
+Optimizer State & 15.3 GB & 13.7 GB & $-$10.4\% \\
+\midrule
+\multicolumn{4}{l}{\textit{Dynamic Efficiency (Inference)}} \\
+KV Cache / Token & 4096 & 2560 & $-$37.5\% \\
+Throughput (tok/s) & 24.0K & 25.0K & +4.0\% \\
+\midrule
+\multicolumn{4}{l}{\textit{Training Dynamics}} \\
+Mean Grad Norm & 0.304 & 0.322 & +0.018 \\
+Grad Norm Std & 0.179 & 0.094 & -0.085 \\
+\bottomrule
+\end{tabular}
+\end{table}

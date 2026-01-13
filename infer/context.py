@@ -13,6 +13,7 @@ import torch
 
 from caramba.cache.decoupled import DecoupledLayerKVCache
 from caramba.cache.layer import LayerKVCache
+from caramba.cache.multi import MultiKVCache
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -27,7 +28,7 @@ class InferContext:
     ensure_consumed() validates all caches were used.
     """
 
-    caches: list[LayerKVCache | DecoupledLayerKVCache]
+    caches: list[LayerKVCache | DecoupledLayerKVCache | MultiKVCache]
     pos_offset: int = 0
     attn_mask: "Tensor | None" = None
     q_chunk: int | None = None
@@ -68,7 +69,7 @@ class InferContext:
         self.q_chunk = q_chunk
         self.local_window = local_window
 
-    def next_cache(self) -> LayerKVCache | DecoupledLayerKVCache:
+    def next_cache(self) -> LayerKVCache | DecoupledLayerKVCache | MultiKVCache:
         """Get the next cache in traversal order.
 
         Each attention layer calls this to get its cache. The order must

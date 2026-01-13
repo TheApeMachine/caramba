@@ -8,34 +8,43 @@ notes: >
   Run on M4 Max 128GB with custom Metal kernels.
   Architecture matches A100 1B runs per-layer, just shallower (12L vs 22L ≈ 550M params).
 
-defaults:
-  data:
-    tokenizer: tiktoken:gpt2
-    val_frac: 0.0
-  logging:
-    instrument: rich
-    wandb: true
-    wandb_project: dba-paper
-    wandb_entity: ''
-    wandb_mode: online
-    eval_iters: 0
-  runtime:
-    save_every: ${save_every}
+instrumentation:
+  logger:
+    type: rich
+  metrics:
+    hdf5:
+      enabled: false
+    tensorboard:
+      enabled: false
+    wandb:
+      enabled: true
+      project: ${ENV:wandb_project}
+      entity: ${ENV:wandb_entity}
+      mode: ${ENV:wandb_mode}
+      eval_iters: ${ENV:eval_iters}
+    liveplot:
+      enabled: false
+    jsonl:
+      enabled: false
 
-vars:
+variables:
   # ----- Dataset -----
-  dataset: HuggingFaceFW/fineweb
-  tokens: 100m
-  block_size: 2048
+  datasets:
+    - repo: HuggingFaceFW/fineweb
+      tokens: 100m
+      tokenizer: tiktoken:gpt2
+      value_fraction: 0.0
+      block_size: 2048
 
   # ----- Model (12-layer, same per-layer arch as 1B) -----
-  d_model: 2048
-  n_layers: 12
-  n_heads: 32
-  n_kv_heads_gqa: 4  # 8:1 ratio for GQA
-  d_ff: 4096
-  vocab_size: 50304
-  rope_base: 10000.0
+  model:
+    d_model: 2048
+    n_layers: 12
+    n_heads: 32
+    n_kv_heads_gqa: 4  # 8:1 ratio for GQA
+    d_ff: 4096
+    vocab_size: 50304
+    rope_base: 10000.0
 
   # ----- DBA bottleneck dims (same per-head as 1B) -----
   # Sem=16/head, Geo=32/head, Total=48/head
@@ -44,22 +53,31 @@ vars:
   attn_dim: 1536
 
   # ----- Training (M4 Max optimized) -----
-  steps: 5000
-  steps_extended: 10000
-  device: mps
-  dtype: float16
-  batch_size: 8
-  grad_accum: 2
-  lr: 3.0e-4
-  lr_decoupled: 2.0e-4  # Lower LR for decoupled to prevent loss spikes after warmup
-  lr_2e4: 2.0e-4
-  lr_4e4: 4.0e-4
-  weight_decay: 0.1
-  optimizer: adamw
-  fused_optimizer: true  # Custom Metal AdamW kernel
-  scheduler: cosine
-  warmup_steps: 500
-  save_every: 500
+  trainer:
+    type: stepwise
+    steps: 5000
+    steps_extended: 10000
+    device: mps
+    dtype: float16
+    batch_size: 8
+    grad_accum: 2
+    lr: 3.0e-4
+    lr_decoupled: 2.0e-4
+    lr_2e4: 2.0e-4
+    lr_4e4: 4.0e-4
+    optimizer:
+      type: adamw
+      betas: [0.9, 0.999]
+      eps: 1e-8
+      weight_decay: 0.1
+      fused: true
+    scheduler:
+      type: cosine
+      warmup_steps: 500
+      min_lr_ratio: 0.1
+      auto_resume: false
+      total_steps: 10000
+    save_every: 500
 
 # =============================================================================
 # TOPOLOGY ANCHORS (YAML anchors to avoid repetition)
@@ -69,6 +87,7 @@ vars:
 x-token-dataset: &token_dataset
   dataset: ${dataset}
   tokens: ${tokens}
+  tokenizer: ${tokenizer}
   block_size: ${block_size}
 
 # Shared embedder
@@ -100,6 +119,74 @@ x-final-layers: &final_layers
       d_in: ${d_model}
       d_out: ${vocab_size}
       bias: false
+
+# Shared OpGraph attention blocks
+#
+# NOTE: standard_opgraph.yml uses a packed QKV projection, so the projection dims
+# must be provided explicitly. These are constants for this preset's fixed
+# dims (d_model=2048, n_heads=32, n_kv_heads_gqa=4, attn_dim=1536).
+x-attn-standard-opgraph: &attn_standard_opgraph
+  !include
+    path: ../blocks/attention/standard_opgraph.yml
+    vars:
+      n_kv_heads: ${n_heads}
+      group_size: 1
+      q_dim: ${d_model}
+      kv_dim: ${d_model}
+      qkv_dim: 6144
+      dropout_p: 0.0
+      is_causal: true
+
+x-attn-bottleneck-opgraph: &attn_bottleneck_opgraph
+  !include
+    path: ../blocks/attention/standard_opgraph.yml
+    vars:
+      n_kv_heads: ${n_heads}
+      group_size: 1
+      q_dim: ${attn_dim}
+      kv_dim: ${attn_dim}
+      qkv_dim: 4608
+      dropout_p: 0.0
+      is_causal: true
+
+x-attn-gqa-opgraph: &attn_gqa_opgraph
+  !include
+    path: ../blocks/attention/standard_opgraph.yml
+    vars:
+      n_kv_heads: ${n_kv_heads_gqa}
+      group_size: 8
+      q_dim: ${d_model}
+      kv_dim: 256
+      qkv_dim: 2560
+      dropout_p: 0.0
+      is_causal: true
+
+x-attn-decoupled-opgraph: &attn_decoupled_opgraph
+  !include
+    path: ../blocks/attention/dba_opgraph.yml
+    vars:
+      dropout_p: 0.0
+      is_causal: true
+
+x-attn-decoupled-tieqk-opgraph: &attn_decoupled_tieqk_opgraph
+  !include
+    path: ../blocks/attention/dba_opgraph_tieqk.yml
+    vars:
+      dropout_p: 0.0
+      is_causal: true
+
+x-attn-decoupled-null-opgraph: &attn_decoupled_null_opgraph
+  !include
+    path: ../blocks/attention/dba_opgraph_null.yml
+    vars:
+      dropout_p: 0.0
+
+x-attn-decoupled-norope-opgraph: &attn_decoupled_norope_opgraph
+  !include
+    path: ../blocks/attention/dba_opgraph_norope.yml
+    vars:
+      dropout_p: 0.0
+      is_causal: true
 
 # Shared training config base
 x-train-base: &train_base
@@ -154,18 +241,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_standard_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -203,18 +283,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_standard_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -252,18 +325,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_standard_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -304,19 +370,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        attn_dim: ${attn_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_bottleneck_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -354,19 +412,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        attn_dim: ${attn_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_bottleneck_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -404,19 +454,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        attn_dim: ${attn_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_bottleneck_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -457,26 +499,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        dba_train_backend: metal
-                        attn_dim: ${attn_dim}
-                        sem_dim: ${sem_dim}
-                        geo_dim: ${geo_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        rope_semantic: false
-                        tie_qk: false
-                        null_attn: false
-                        decoupled_gate: false
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_decoupled_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -515,26 +542,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        dba_train_backend: metal
-                        attn_dim: ${attn_dim}
-                        sem_dim: ${sem_dim}
-                        geo_dim: ${geo_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        rope_semantic: false
-                        tie_qk: false
-                        null_attn: false
-                        decoupled_gate: false
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_decoupled_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -573,26 +585,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        dba_train_backend: metal
-                        attn_dim: ${attn_dim}
-                        sem_dim: ${sem_dim}
-                        geo_dim: ${geo_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        rope_semantic: false
-                        tie_qk: false
-                        null_attn: false
-                        decoupled_gate: false
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_decoupled_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -634,19 +631,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        n_kv_heads: ${n_kv_heads_gqa}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_gqa_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -684,19 +673,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        n_kv_heads: ${n_kv_heads_gqa}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_gqa_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -734,19 +715,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        n_kv_heads: ${n_kv_heads_gqa}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_gqa_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -787,18 +760,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_standard_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -836,18 +802,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_standard_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -888,18 +847,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_standard_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -938,26 +890,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        dba_train_backend: metal
-                        attn_dim: ${attn_dim}
-                        sem_dim: ${sem_dim}
-                        geo_dim: ${geo_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        rope_semantic: false
-                        tie_qk: false
-                        null_attn: false
-                        decoupled_gate: false
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_decoupled_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -1000,26 +937,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        dba_train_backend: metal
-                        attn_dim: ${attn_dim}
-                        sem_dim: ${sem_dim}
-                        geo_dim: ${geo_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        rope_semantic: false
-                        tie_qk: false
-                        null_attn: true  # ABLATION: null token ON
-                        decoupled_gate: false
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_decoupled_null_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -1058,26 +980,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        dba_train_backend: metal
-                        attn_dim: ${attn_dim}
-                        sem_dim: ${sem_dim}
-                        geo_dim: ${geo_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        rope_semantic: false
-                        tie_qk: true  # ABLATION: tie Q-K projections
-                        null_attn: false
-                        decoupled_gate: false
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_decoupled_tieqk_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -1116,24 +1023,11 @@ targets:
                       - type: RMSNormLayer
                         d_model: ${d_model}
                         eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        dba_train_backend: metal
-                        attn_dim: ${attn_dim}
-                        sem_dim: ${sem_dim}
-                        geo_dim: ${geo_dim}
-                        rope_enabled: false  # ABLATION: no RoPE at all
-                        tie_qk: false
-                        null_attn: false
-                        decoupled_gate: false
-                        is_causal: true
-                        dropout_p: 0.0
+                      - *attn_decoupled_norope_opgraph
                   - *ffn_block
               - *final_layers
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train

@@ -20,7 +20,7 @@ class Wrapper:
 def test_engine_registers_builtin_components_and_can_build_some() -> None:
     e = TorchEngine()
     # Should be able to build a built-in trainer and objective via the registry.
-    trainer = e.registry.build(ComponentSpec(ref="trainer.standard"), backend="torch")
+    trainer = e.registry.build(ComponentSpec(ref="trainer.train"), backend="torch")
     assert hasattr(trainer, "run")
 
     obj = e.registry.build(ComponentSpec(ref="objective.mse"), backend="torch")
@@ -46,7 +46,7 @@ def test_first_train_returns_first_train_config() -> None:
         data=ComponentSpec(ref="dataset.tokens", config={"path": "x.tokens", "block_size": 4}),
         system=ComponentSpec(ref="system.generic", config={"model": {"type": "TransformerModel", "topology": {"type": "StackedTopology", "layers": []}}}),
         objective=ComponentSpec(ref="objective.mse"),
-        trainer=ComponentSpec(ref="trainer.standard"),
+        trainer=ComponentSpec(ref="trainer.train"),
         runs=[r1, r2],
     )
     got = TorchEngine._first_train(target)
@@ -71,9 +71,8 @@ def test_first_train_returns_object_when_no_train_configs() -> None:
             },
         ),
         objective=ComponentSpec(ref="objective.mse"),
-        trainer=ComponentSpec(ref="trainer.standard"),
+        trainer=ComponentSpec(ref="trainer.train"),
         runs=[r1, r2],
     )
     got = TorchEngine._first_train(target)
     assert type(got) is object
-

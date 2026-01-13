@@ -76,7 +76,7 @@ def run_eval_verify(
     Runs all test cases against both teacher and student models,
     returning an aggregate summary of their performance.
     """
-    tokenizer = TokenizerBuilder().build(cfg.tokenizer)
+    tokenizer = TokenizerBuilder().build_tokenizer(cfg.tokenizer)
     teacher.eval()
     student.eval()
 

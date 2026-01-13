@@ -32,7 +32,7 @@ def test_lower_manifest_lowers_language_model_topology_repeat() -> None:
             },
         ),
         objective=ComponentSpec(ref="objective.next_token_ce"),
-        trainer=ComponentSpec(ref="trainer.standard"),
+        trainer=ComponentSpec(ref="trainer.train"),
         runs=[run],
     )
     m = Manifest(version=2, defaults=Defaults(), targets=[t])
@@ -66,7 +66,7 @@ def test_lower_manifest_lowers_graph_topology_payload() -> None:
             },
         ),
         objective=ComponentSpec(ref="objective.mse"),
-        trainer=ComponentSpec(ref="trainer.standard"),
+        trainer=ComponentSpec(ref="trainer.train"),
         runs=[run],
     )
     m = Manifest(version=2, defaults=Defaults(), targets=[t])
@@ -77,4 +77,3 @@ def test_lower_manifest_lowers_graph_topology_payload() -> None:
     # Ensure aliasing kept keys as "in"/"out" in the dumped payload.
     assert topo["nodes"][0]["in"] == "x"
     assert topo["nodes"][0]["out"] == "y"
-

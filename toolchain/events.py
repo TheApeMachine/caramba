@@ -9,6 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from caramba.core.event_codec.payloads import (
+    decode_toolchain_definition_payload,
+    decode_toolchain_test_result_payload,
+    encode_toolchain_definition_payload,
+    encode_toolchain_test_result_payload,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ToolCapabilities:
@@ -40,6 +47,15 @@ class ToolCapabilities:
             process=bool(obj.get("process", False)),
             clock=bool(obj.get("clock", False)),
         )
+
+    def to_bytes(self) -> dict[str, bool]:
+        # Used by ToolDefinitionPayload.to_bytes()
+        return {
+            "filesystem": bool(self.filesystem),
+            "network": bool(self.network),
+            "process": bool(self.process),
+            "clock": bool(self.clock),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +122,40 @@ class ToolDefinitionPayload:
         payload.validate()
         return payload
 
+    def to_bytes(self) -> bytes:
+        self.validate()
+        return encode_toolchain_definition_payload(
+            name=self.name,
+            version=self.version,
+            description=self.description,
+            entrypoint=self.entrypoint,
+            code=self.code,
+            tests=self.tests,
+            capabilities=self.capabilities.to_bytes(),
+            requirements=self.requirements,
+        )
+
+    @staticmethod
+    def from_bytes(payload: bytes) -> "ToolDefinitionPayload":
+        name, version, desc, entrypoint, code, tests, caps, reqs = decode_toolchain_definition_payload(payload)
+        out = ToolDefinitionPayload(
+            name=name,
+            version=version,
+            description=desc,
+            entrypoint=entrypoint,
+            code=code,
+            tests=tests,
+            capabilities=ToolCapabilities(
+                filesystem=bool(caps.get("filesystem", False)),
+                network=bool(caps.get("network", False)),
+                process=bool(caps.get("process", False)),
+                clock=bool(caps.get("clock", False)),
+            ),
+            requirements=reqs,
+        )
+        out.validate()
+        return out
+
 
 @dataclass(frozen=True, slots=True)
 class ToolTestResultPayload:
@@ -127,4 +177,14 @@ class ToolTestResultPayload:
             "ok": bool(self.ok),
             "output": str(self.output),
         }
+
+    def to_bytes(self) -> bytes:
+        return encode_toolchain_test_result_payload(
+            name=self.name, version=self.version, ok=bool(self.ok), output=self.output
+        )
+
+    @staticmethod
+    def from_bytes(payload: bytes) -> "ToolTestResultPayload":
+        name, version, ok, output = decode_toolchain_test_result_payload(payload)
+        return ToolTestResultPayload(name=name, version=version, ok=ok, output=output)
 

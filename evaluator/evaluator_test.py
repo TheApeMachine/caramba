@@ -11,7 +11,7 @@ from caramba.toolchain.events import ToolCapabilities, ToolDefinitionPayload
 class EvaluatorTest(unittest.TestCase):
     def test_validity_gate(self) -> None:
         g = ValidityGate()
-        ev = EventEnvelope(type="X", payload={"a": 1}, sender="s")
+        ev = EventEnvelope(type="X", payload=b"", sender="s")
         g.validate_event(ev)
 
     def test_policy_gate_rejects_network(self) -> None:

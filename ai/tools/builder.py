@@ -19,6 +19,11 @@ from typing import Any
 
 from caramba.core.event import EventEnvelope
 from caramba.core.event_bus import EventBus, EventHandler
+from caramba.core.event_codec.payloads import (
+    decode_tool_definition_payload,
+    encode_tool_registered_payload,
+    encode_tool_rejected_payload,
+)
 
 
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -32,22 +37,14 @@ class ToolDefinition:
     requirements: list[str] | None = None
 
     @staticmethod
-    def from_payload(payload: Any) -> "ToolDefinition":
-        if not isinstance(payload, dict):
-            raise TypeError(f"ToolDefinition payload must be a dict, got {type(payload).__name__}")
-        name = payload.get("name")
-        desc = payload.get("description", "")
-        impl = payload.get("implementation", "")
-        reqs = payload.get("requirements", None)
-        if not isinstance(name, str):
-            raise TypeError("ToolDefinition.name must be a string")
-        if not isinstance(desc, str):
-            raise TypeError("ToolDefinition.description must be a string")
-        if not isinstance(impl, str):
-            raise TypeError("ToolDefinition.implementation must be a string")
-        if reqs is not None and not (isinstance(reqs, list) and all(isinstance(x, str) for x in reqs)):
-            raise TypeError("ToolDefinition.requirements must be a list[str] when provided")
-        return ToolDefinition(name=name.strip(), description=desc.strip(), implementation=impl, requirements=reqs)
+    def from_payload_bytes(payload: bytes) -> "ToolDefinition":
+        name, desc, impl, reqs = decode_tool_definition_payload(payload)
+        return ToolDefinition(
+            name=name.strip(),
+            description=desc.strip(),
+            implementation=impl,
+            requirements=reqs,
+        )
 
     def validate(self) -> list[str]:
         errs: list[str] = []
@@ -72,7 +69,7 @@ class ToolBuilderHandler(EventHandler):
             return
 
         try:
-            td = ToolDefinition.from_payload(event.payload)
+            td = ToolDefinition.from_payload_bytes(event.payload)
             errs = td.validate()
             if errs:
                 raise ValueError("; ".join(errs))
@@ -107,7 +104,7 @@ class ToolBuilderHandler(EventHandler):
             self.bus.publish(
                 EventEnvelope(
                     type="ToolRegistered",
-                    payload={"name": td.name, "path": str(tool_dir)},
+                    payload=encode_tool_registered_payload(name=td.name, path=str(tool_dir)),
                     sender=str(event.sender),
                     priority=int(event.priority),
                 )
@@ -116,7 +113,7 @@ class ToolBuilderHandler(EventHandler):
             self.bus.publish(
                 EventEnvelope(
                     type="ToolRejected",
-                    payload={"error": f"{type(e).__name__}: {e}"},
+                    payload=encode_tool_rejected_payload(error=f"{type(e).__name__}: {e}"),
                     sender=str(event.sender),
                     priority=int(event.priority),
                 )

@@ -1,6 +1,6 @@
 """Event trace dataset
 
-Converts JSON event envelopes into token sequences for training, bridging the
+Converts Cap'n Proto event envelopes into token sequences for training, bridging the
 gap between high-level events and low-level token processing. Produces
 next-token pairs along with teacher signals for MOSAIC memory operations,
 enabling models to learn when and how to interact with external memory.
@@ -9,15 +9,22 @@ enabling models to learn when and how to interact with external memory.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 import random
-from typing import Any
 
 import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
 from caramba.core.event import EventEnvelope
+from caramba.core.event_codec import EventEncoder
+from caramba.core.event_codec.payloads import (
+    encode_idle_payload,
+    encode_memory_answer_payload,
+    encode_memory_query_payload,
+    encode_memory_write_payload,
+    encode_message_payload,
+    encode_noise_payload,
+)
 from caramba.layer.memory_block.isa import MemoryOpcode
 
 
@@ -41,6 +48,8 @@ class _EventTraceBuilder:
         self.reg_slots = int(reg_slots)
         if self.reg_slots < 0:
             raise ValueError(f"reg_slots must be >= 0, got {self.reg_slots}")
+
+        self._encoder = EventEncoder()
 
         self.tokens: list[int] = []
         self.opcodes: list[int] = []
@@ -97,125 +106,62 @@ class _EventTraceBuilder:
             else:
                 self.reg_sel.append(-1)
 
-    def _json_bytes(self, env: EventEnvelope) -> bytes:
-        """Serialize event to bytes
-
-        Converts an event envelope to a deterministic JSON byte string, which
-        becomes the token sequence. The deterministic encoding ensures the same
-        event always produces the same tokens.
-        """
-        s = json.dumps(env.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-        b = s.encode("utf-8")
+    def _event_bytes(self, env: EventEnvelope) -> bytes:
+        """Serialize an event envelope to bytes (Cap'n Proto)."""
+        b = self._encoder.encode_bytes(env)
         if not b:
-            raise ValueError("Event JSON serialization produced empty bytes")
+            raise ValueError("Event Cap'n Proto serialization produced empty bytes")
         return b
-
-    @staticmethod
-    def _span_for_int_field(s: str, *, field: str, value: int) -> tuple[int, int]:
-        """Find integer field span
-
-        Locates a specific integer field in JSON and returns its byte position,
-        enabling supervision signals to target specific parts of the event
-        representation (e.g., marking where memory writes occur).
-        """
-        needle = f"\"{field}\":{int(value)}"
-        pos = s.find(needle)
-        if pos < 0:
-            raise ValueError(f"Failed to locate field {field!r} in JSON")
-        start = pos + len(f"\"{field}\":")
-        end = start + len(str(int(value)))
-        if s[start:end] != str(int(value)):
-            raise ValueError("Field span mismatch when locating integer literal")
-        return start, end
-
-    @staticmethod
-    def _span_for_str_field(s: str, *, field: str, value: str) -> tuple[int, int]:
-        """Find string field span
-
-        Locates a specific string field in JSON and returns its byte position,
-        similar to integer field spans but handling string values that may
-        contain special characters.
-        """
-        if not isinstance(field, str) or not field.strip():
-            raise ValueError("field must be a non-empty string")
-        if not isinstance(value, str):
-            raise TypeError(f"value must be a string, got {type(value).__name__}")
-        if value == "":
-            raise ValueError("value must be non-empty for deterministic span location")
-        if any(c in value for c in ('"', "\\", "\n", "\r", "\t")):
-            raise ValueError("String span value contains characters that break deterministic JSON matching")
-        needle = f"\"{field}\":\"{value}\""
-        pos = s.find(needle)
-        if pos < 0:
-            raise ValueError(f"Failed to locate field {field!r} in JSON")
-        start = pos + len(f"\"{field}\":\"")
-        end = start + len(value)
-        if s[start:end] != value:
-            raise ValueError("Field span mismatch when locating string literal")
-        return start, end
 
     def append_event(
         self,
         env: EventEnvelope,
         *,
-        # Optional supervision spans (byte indices within the JSON string)
-        opcode_span: tuple[int, int] | None = None,
-        opcode: MemoryOpcode = MemoryOpcode.NOP,
-        write_gate_span: tuple[int, int] | None = None,
-        reg_write_gate_span: tuple[int, int] | None = None,
+        opcode: MemoryOpcode | None = None,
+        write_gate: bool = False,
+        reg_write_gate: bool = False,
         reg_slot: int | None = None,
         write_bucket: int | None = None,
         read_bucket: int | None = None,
         drop_local: int = 0,
-        commitment_span: tuple[int, int] | None = None,
-        commitment_delta: int = 0,
+        teacher_commitment_delta: int | None = None,
         delimiter: int = 10,  # '\n'
     ) -> None:
         """Append event with supervision
 
-        Converts an event to tokens and adds supervision signals at specific
-        byte positions, enabling the model to learn which tokens trigger
-        memory operations, write gates, and other control mechanisms.
+        Converts an event to tokens and adds supervision signals at a fixed
+        per-event position (event-level supervision).
         """
-        b = self._json_bytes(env)
+        b = self._event_bytes(env)
+        # Event-level supervision anchor: first byte of the event.
+        # This keeps supervision stable under truncation/padding.
+        pos = 0
 
-        op_s, op_e = opcode_span if opcode_span is not None else (0, 0)
-        wg_s, wg_e = write_gate_span if write_gate_span is not None else (0, 0)
-        rg_s, rg_e = reg_write_gate_span if reg_write_gate_span is not None else (0, 0)
-        cd_s, cd_e = commitment_span if commitment_span is not None else (0, 0)
-
-        if opcode_span is not None and not (0 <= op_s <= op_e <= len(b)):
-            raise ValueError("opcode_span out of range")
-        if write_gate_span is not None and not (0 <= wg_s <= wg_e <= len(b)):
-            raise ValueError("write_gate_span out of range")
-        if reg_write_gate_span is not None and not (0 <= rg_s <= rg_e <= len(b)):
-            raise ValueError("reg_write_gate_span out of range")
-        if commitment_span is not None and not (0 <= cd_s <= cd_e <= len(b)):
-            raise ValueError("commitment_span out of range")
-        if commitment_span is not None:
-            cd_i = int(commitment_delta)
+        if teacher_commitment_delta is not None:
+            cd_i = int(teacher_commitment_delta)
             if cd_i not in (-1, 0, 1):
-                raise ValueError(f"commitment_delta must be in {{-1,0,1}} when commitment_span is provided, got {cd_i}")
-        if reg_write_gate_span is not None:
+                raise ValueError(f"teacher_commitment_delta must be in {{-1,0,1}}, got {cd_i}")
+        if reg_write_gate:
             if int(self.reg_slots) <= 0:
-                raise ValueError("reg_write_gate_span provided but reg_slots == 0")
+                raise ValueError("reg_write_gate requested but reg_slots == 0")
             if reg_slot is None:
-                raise ValueError("reg_write_gate_span provided but reg_slot is None")
+                raise ValueError("reg_write_gate requested but reg_slot is None")
 
         wb_vec = ([int(write_bucket)] * self.mem_hashes) if write_bucket is not None else None
         rb_vec = ([int(read_bucket)] * self.mem_hashes) if read_bucket is not None else None
 
         for i, bt in enumerate(b):
-            op = int(opcode) if (opcode_span is not None and op_s <= i < op_e) else int(MemoryOpcode.NOP)
-            wg = 1 if (write_gate_span is not None and wg_s <= i < wg_e) else 0
+            active = (i == pos)
+            op = int(opcode) if (active and opcode is not None) else int(MemoryOpcode.NOP)
+            wg = 1 if (active and bool(write_gate)) else 0
             wu = wg
-            wb = wb_vec if (write_gate_span is not None and wg_s <= i < wg_e) else None
-            rb = rb_vec if (opcode_span is not None and op_s <= i < op_e and rb_vec is not None) else None
-            cd = int(commitment_delta) if (commitment_span is not None and cd_s <= i < cd_e) else -100
-            rg = 1 if (reg_write_gate_span is not None and rg_s <= i < rg_e) else 0
+            wb = wb_vec if (active and bool(write_gate)) else None
+            rb = rb_vec if (active and opcode is not None and rb_vec is not None) else None
+            cd = int(teacher_commitment_delta) if (active and teacher_commitment_delta is not None) else -100
+            rg = 1 if (active and bool(reg_write_gate)) else 0
             if rg > 0:
                 if reg_slot is None:
-                    raise ValueError("reg_slot must be provided when reg_write_gate_span is active")
+                    raise ValueError("reg_slot must be provided when reg_write_gate is active")
                 rs = int(reg_slot)
             else:
                 rs = -1
@@ -321,21 +267,17 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
             env = EventEnvelope(
                 type="MemoryWrite",
                 sender="dataset",
-                payload={"key": int(k), "value": int(v)},
+                payload=encode_memory_write_payload(key=int(k), value=int(v)),
                 priority=0,
                 id=f"{idx:08x}{j:02x}w",
                 ts=ts0 + float(j) * 0.001,
             )
-            js = json.dumps(env.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-            # Write at the value literal.
-            span_v = b._span_for_int_field(js, field="value", value=int(v))
             bucket = self._bucket_for_key(k)
             b.append_event(
                 env,
-                opcode_span=span_v,
                 opcode=MemoryOpcode.WRITE_MEM,
-                write_gate_span=span_v,
-                reg_write_gate_span=span_v if int(self.reg_slots) > 0 else None,
+                write_gate=True,
+                reg_write_gate=(int(self.reg_slots) > 0),
                 reg_slot=(int(j) % int(self.reg_slots)) if int(self.reg_slots) > 0 else None,
                 write_bucket=int(bucket),
                 read_bucket=None,
@@ -347,7 +289,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
                 env_d = EventEnvelope(
                     type="Noise",
                     sender="dataset",
-                    payload={"tok": int(noise)},
+                    payload=encode_noise_payload(tok=int(noise)),
                     priority=0,
                     id=f"{idx:08x}{j:02x}d{dj:02x}",
                     ts=ts0 + 0.1 + float(j) * 0.001 + float(dj) * 1e-6,
@@ -363,65 +305,55 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
                 env_open = EventEnvelope(
                     type="Message",
                     sender="agent",
-                    payload={"text": txt_open},
+                    payload=encode_message_payload(text=txt_open),
                     priority=0,
                     commitment_delta=+1,
                     commitment_id=cid,
                     id=f"{idx:08x}{j:02x}co",
                     ts=ts0 + 0.5 + float(j) * 0.001,
                 )
-                js_open = json.dumps(env_open.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-                span_open = b._span_for_str_field(js_open, field="text", value=txt_open)
-                b.append_event(env_open, commitment_span=span_open, commitment_delta=+1)
+                b.append_event(env_open, teacher_commitment_delta=+1)
 
                 txt_work = "Working on it"
                 env_work = EventEnvelope(
                     type="Message",
                     sender="agent",
-                    payload={"text": txt_work},
+                    payload=encode_message_payload(text=txt_work),
                     priority=0,
                     commitment_delta=0,
                     commitment_id=cid,
                     id=f"{idx:08x}{j:02x}cw",
                     ts=ts0 + 0.6 + float(j) * 0.001,
                 )
-                js_work = json.dumps(env_work.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-                span_work = b._span_for_str_field(js_work, field="text", value=txt_work)
-                b.append_event(env_work, commitment_span=span_work, commitment_delta=0)
+                b.append_event(env_work, teacher_commitment_delta=0)
 
                 txt_close = "Here is the content"
                 env_close = EventEnvelope(
                     type="Message",
                     sender="agent",
-                    payload={"text": txt_close},
+                    payload=encode_message_payload(text=txt_close),
                     priority=0,
                     commitment_delta=-1,
                     commitment_id=cid,
                     id=f"{idx:08x}{j:02x}cc",
                     ts=ts0 + 0.7 + float(j) * 0.001,
                 )
-                js_close = json.dumps(env_close.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-                span_close = b._span_for_str_field(js_close, field="text", value=txt_close)
-                b.append_event(env_close, commitment_span=span_close, commitment_delta=-1)
+                b.append_event(env_close, teacher_commitment_delta=-1)
 
         # Query phase.
         for j, (k, v) in enumerate(zip(keys, vals, strict=True)):
             env_q = EventEnvelope(
                 type="MemoryQuery",
                 sender="dataset",
-                payload={"key": int(k)},
+                payload=encode_memory_query_payload(key=int(k)),
                 priority=0,
                 id=f"{idx:08x}{j:02x}q",
                 ts=ts0 + 1.0 + float(j) * 0.001,
             )
-            jsq = json.dumps(env_q.to_json_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-            span_k = b._span_for_int_field(jsq, field="key", value=int(k))
             bucket = self._bucket_for_key(k)
             b.append_event(
                 env_q,
-                opcode_span=span_k,
                 opcode=MemoryOpcode.READ_MEM,
-                write_gate_span=None,
                 write_bucket=None,
                 read_bucket=int(bucket),
                 drop_local=1,
@@ -430,7 +362,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
             env_a = EventEnvelope(
                 type="MemoryAnswer",
                 sender="dataset",
-                payload={"value": int(v)},
+                payload=encode_memory_answer_payload(value=int(v)),
                 priority=0,
                 id=f"{idx:08x}{j:02x}a",
                 ts=ts0 + 1.5 + float(j) * 0.001,
@@ -445,15 +377,16 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
                     env_idle = EventEnvelope(
                         type="Idle",
                         sender="dataset",
-                        payload={"i": int(r)},
+                        payload=encode_idle_payload(
+                            ts=ts0 + 2.0 + float(j) * 0.001 + float(r) * 1e-6,
+                            metrics={"i": float(r)},
+                        ),
                         priority=0,
                         id=f"{idx:08x}{j:02x}s{r:02x}",
                         ts=ts0 + 2.0 + float(j) * 0.001 + float(r) * 1e-6,
                     )
-                    # Apply READ_MEM supervision to the first byte of the JSON.
                     b.append_event(
                         env_idle,
-                        opcode_span=(0, 1),
                         opcode=MemoryOpcode.READ_MEM,
                         read_bucket=int(bucket),
                         drop_local=1,
@@ -461,7 +394,7 @@ class _MosaicEventTraceTorchDataset(Dataset[dict[str, Tensor]]):
                     env_a = EventEnvelope(
                         type="MemoryAnswer",
                         sender="dataset",
-                        payload={"value": int(v)},
+                        payload=encode_memory_answer_payload(value=int(v)),
                         priority=0,
                         id=f"{idx:08x}{j:02x}sa{r:02x}",
                         ts=ts0 + 2.5 + float(j) * 0.001 + float(r) * 1e-6,

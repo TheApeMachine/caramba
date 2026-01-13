@@ -3,7 +3,7 @@
 This trainer generalizes blockwise/adapters-only training by allowing a manifest
 to define which parameters are trainable via regex patterns over parameter names.
 
-It reuses the StandardTrainer loop but freezes parameters outside the scope.
+It reuses the Trainer loop but freezes parameters outside the scope.
 """
 
 from __future__ import annotations

@@ -60,7 +60,7 @@ targets:
               d_ff: ${d_ff}
               bias: false
   objective: objective.next_token_ce
-  trainer: trainer.standard
+  trainer: trainer.train
   runs:
   - id: default
     mode: train

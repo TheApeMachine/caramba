@@ -69,7 +69,7 @@ targets:
             d_out: ${vocab_size}
             bias: false
   objective: objective.next_token_ce
-  trainer: trainer.upcycle
+  trainer: trainer.train
   runs:
   - id: blockwise
     mode: train

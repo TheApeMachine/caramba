@@ -113,6 +113,20 @@ vars:
 
 ---
 
+## Includes
+
+Large manifests can be split into reusable YAML fragments with `!include`:
+
+```yaml
+topology:
+  layers:
+    - !include config/blocks/attention/standard_opgraph.yml
+```
+
+Include paths are resolved relative to the including file and must stay within the project root (directory containing `pyproject.toml` or `.git`).
+
+---
+
 ## Defaults
 
 The `defaults` section sets experiment-wide defaults for three concerns:
@@ -165,7 +179,7 @@ targets:
     data: { ... }
     system: { ... }
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs: [ ... ]
     benchmarks: [ ... ]
 ```
@@ -326,9 +340,9 @@ train:
 
 | Phase | Description | Trainer |
 |-------|-------------|---------|
-| `standard` | End-to-end training | `trainer.standard` |
-| `blockwise` | Layer-by-layer distillation | `trainer.upcycle` |
-| `global` | Full model fine-tuning | `trainer.upcycle` |
+| `standard` | End-to-end training | `trainer.train` |
+| `blockwise` | Layer-by-layer distillation | `trainer.train` |
+| `global` | Full model fine-tuning | `trainer.train` |
 
 Some trainers are **non-gradient** and only use `runs[0]` as an execution envelope
 (output directory, seed, etc.). For example, `trainer.ccl` ignores `steps` and
@@ -608,7 +622,7 @@ targets:
                 d_out: ${vocab_size}
 
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
 
     runs:
       - id: train

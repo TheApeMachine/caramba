@@ -7,21 +7,35 @@ This includes highly esoteric models that stray far from the conventional techni
 It is very important to keep this in mind during development, as you will often be asked to implement specific systems or architectures, and it is your responsibility 
 to make sure things are always implemented in such a way that safeguards the composability and manifest-driven workflow that caramba has been built upon.
 
-Instead, when implementing specific architectures, you should break it down into the modules that are needed to describe that architecture within the current manifest definitions (or expand where needed).
-
 # Caramba Framework — Mandatory Development Rules
 
-This document defines non-negotiable rules for all development work on the caramba framework. These rules are not suggestions. They are not starting points for discussion. They are the specification.
+* These are the non-negotiable rules for all development work on the caramba framework. 
+* These rules are not suggestions.
+* These rules are not guidelines, they are the rules which count from implementation through review.
+* They are not starting points for discussion.
+* They are the specification.
 
-Be very clear on the fact that caramba is not a toy, or a "development" implementation of what it wants to be. It is very much positioned as a production-grade, seriously usable research tool that sits right at the cutting-edge of advanced machine-learning and AI research, often dealing with radically new concepts and ideas.
+* caramba is not a toy, or a "development" implementation. 
+* caramba is a production-grade research tool that sits right at the cutting-edge of advanced machine-learning and AI research.
+* caramba must at all times guarantee to be the best possible research substrate it can be, and enable its users by providing best-in-class building blocks.
 
-Never think that just because some previous implementation exists in a certain way, you are obligated to work within those as a form of constraint. A framework as complex as this will naturally be in flux when it comes to how things are best implemented, and if it would genuinely improve the framework, you should always consider if upgrading the existing implementations first, such that integrating new implementations results in a overall system that is even better aligned with the core design philosophies.
+---
+
+## Part 0: Preparing for Development
+
+Before you even begin thinking of writing any code, you must follow a specific preparation ritual:
+
+- Map out the impact radius of the code you are going to touch, making sure you understand the dependencies for a clean integration.
+- Consider at all times whether the current code is ready to receive your changes, or if it should be refactored first.
+- Existing code is not untouchable, the only thing that matters is that the entire code-base adheres to the rules, and we are all responsible for this.
+- Make sure you genuinely understand the code you are writing, and any libraries you need to use.
+- Be mindful that as a language model, your knowledge has a cut-off date, so it is always best to refresh your understanding using a web-search.
 
 ---
 
 ## Part 1: Behavioral Requirements
 
-### Do Not Negotiate With Yourself
+###Never Negotiate With Yourself
 
 When you receive requirements, you may be tempted to:
 
@@ -36,7 +50,8 @@ When you receive requirements, you may be tempted to:
 
 **Do not do any of these things, ever!**
 
-The requirements are the specification. Your job is to implement them fully, not to find reasons why they can't or shouldn't be implemented.
+Remember that the requirements are the specification. 
+Your job is to implement them fully, not to find reasons why they can't or shouldn't be implemented.
 
 ### No Incremental Approaches
 
@@ -44,8 +59,9 @@ The requirements are the specification. Your job is to implement them fully, not
 
 - You are not allowed to use TODO as an implementation
 - You are not allowed to use "simplified" implementations, only the best counts
+- You are not allowed to use "good enough for now" or "works for ...," you do not know what our users will throw at the platform, it needs to be prepared  
 - You are not allowed to take shortcuts of any kind
-- There is no "phase 2." There is no "follow-up PR." There is only done or not done.
+- There is no "phase 2," there is no "follow-up PR," there is only done or not done
 
 ### No Excuses
 
@@ -75,19 +91,56 @@ If you genuinely cannot implement something — not "it's hard" but "it is techn
 
 ### File Size Limits
 
-- **Maximum 300 lines per file** — No exceptions
+- **100 lines of code per file is beautiful, 200 lines becomes suspicious, more than 300 lines should be an exception, anything else will be rejected** — No exceptions
 - If a file approaches this limit, split it before it reaches it
 - If you are modifying a file that already exceeds 300 lines, refactor it as part of your change
+- Follow the conventions of the codebase, for example when it comes to structure:
+
+```
+- Top-level package (generic)
+  |_ Module (scoped)
+    |_ Specialized (implementation details)
+```
+
+You will find that the directory structure and class names mirror or echo each other, so:
+
+```
+- operation
+  - __init__.py (re-exports)
+  - base.py (class Operation(nn.Module))
+  |_ math
+    - __init__.py (re-exports)
+    - base.py (class MathOperation(Operation)
+    |_ add.py (class AddOperation(MathOperation))
+```
+
+- In general, everything should follow this pattern and structure
+- There should be no loose functions, everything is a method on a class
+- We use a "builder" instead of a "factory" in cases where you want to conditionally select a specialized implementation
+
+
+```
+- operation
+  - __init__.py (re-exports)
+  - base.py (class Operation(nn.Module))
+  - builder.py (class OperationBuilder)
+  |_ math
+    - __init__.py (re-exports)
+    - base.py (class MathOperation(Operation)
+    - builder.py (class MathOperationBuilder(OperationBuilder))
+    |_ add.py (class AddOperation(MathOperation))
+```
 
 ### Style Guide
 
-- No underscores to indicate "private" because in Python that is an illusion anyway
+- No underscores to indicate "private" even though it is the convention, it is stylistically abrasive to us
 - No loose functions, everything should be a method on an object (class) so things are composable
-- No silent fallbacks, optional includes, etc. using try/except blocks.
-- All imports go at the top of the file, inclusion of libraries is never optional. There is only one case where this rule may be broken, specifically when importing things that are genuinely not available on all platforms, such as triton.
-- No over-engineered solutions, keep it simple and don't try to cover unlikely edge-cases.
-- Do not try to make the code work under any condition, only the intended condition, in all other cases, raise an exception.
-- Separation of intent and implementation is a core philosophy, which is exemplified by the carmath package, which abstracts away all the raw math operations behind meaningfully named methods.
+- In most cases there is exactly one class per file, having exactly one responsibility, and wider functionality is built through composition
+- No silent fallbacks, optional includes, etc. using try/except blocks, try/except is for throwing exceptions, and in caramba we always prefer to fail fast
+- All imports go at the top of the file, inclusion of libraries is only optional in very specific platform specific cases, such as triton or metal availability
+- No over-engineered solutions, keep it simple and don't try to cover unlikely edge-cases
+- Do not try to make the code work under any condition, only the intended condition, in all other cases, raise an exception
+- Separation of intent and implementation is a core philosophy, which is explained further below
 - Every module, class, and method should have a docstring, using the following format:
   """<what it is>
 
@@ -104,14 +157,13 @@ If you genuinely cannot implement something — not "it's hard" but "it is techn
   to better performance on new data.
   """
 
-  Think of each docstring as a mini-tutorial, helping people who are new to certain things
-  learn and get better understanding.
+  Think of each docstring as a mini-tutorial, helping people who are new to certain things learn about caramba, but also machine learning itself.
 
 ### Method Size Limits
 
-- **Maximum 30 lines per method/function** — Excluding docstrings and type definitions
-- If a method is approaching this limit, extract helper methods
-- Each method should do one thing
+- **Keep things minimal, deal with single concerns and responsibilities, and compose methods when needed**
+- Write the most elegant code you can come up with
+- In general a method is a few lines only, when you find you need more than that, it is a good indication you are doing to much, and need to break out to methods, or even composed classes
 
 ### Separation of Concerns
 
@@ -174,11 +226,35 @@ def process_attention(q, k, v, mask, rope, cache, config):
 - If an element or component becomes too large to fit within a single file, the breaking out should be done within a sub-directory using the root name of that component or element, an non-stuttering filenames.
   Example:
 
+```
   trainer
   |_ steppers
      |_ blockwise.py
      |_ global.py
      |_ default.py
+  |_ collectors
+     |_ metrics
+     |_ checkpoints
+```
+
+The above is a simplified representation to give you a simplified concept for a training loop:
+
+```
+class Trainer:
+    def __init__(self, metric_collector=MetricCollector(), checkpoint_collector=CheckpointCollector()):
+        self.mettric_collector = metric_collector
+        self.checkpoint_collector = checkpoint_collector
+
+    def run(self):
+        for i in range(self.steps):
+          ...
+          results = ...
+          self.metric_collector(step_result)
+          self.checkpoint_collecotor(results)
+```
+
+This should make it clear what we mean when we talk about composition. 
+The larger feature becomes just a thin orchestrator of the composed objects it owns.
 
 ### Type Hints
 
@@ -205,8 +281,24 @@ if kernel_available:
 else:
     result = slow_fallback(x)  # NO — There is no fallback
 
-# REQUIRED — This is the only acceptable pattern
-result = fast_kernel(x)  # If it fails, it fails. Fix the root cause.
+# FORBIDDEN — Absolutely never do this
+try:
+    result = fast_kernel(x)
+except Exception:
+    Pass  # NO
+
+
+# REQUIRED — These are the only acceptable pattern
+try:
+    result = fast_kernel(x)  # If it fails, it fails. Fix the root cause.
+except Exception as e:
+    logger.error("It's all wrong, look: {e})
+    # Continue, but expose the error loudly, this is less preferred than just raising the error
+
+try:
+    result = fast_kernel(x)  # If it fails, it fails. Fix the root cause.
+except Exception as e:
+    raise ValueError("wrong")
 ```
 
 ### Exceptions Must Be Raised
@@ -301,6 +393,8 @@ debug_mode = config.debug.enabled
 
 ### Why No Environment Variables
 
+In caramba, the manifest is the single source of truth.
+
 Environment variables create shadow configuration that:
 - Competes with the manifest
 - Is invisible when reviewing configurations
@@ -310,10 +404,9 @@ Environment variables create shadow configuration that:
 
 ### No Optional Performance Flags
 
-There are no flags to enable or disable performance features. The framework needs
-to understand what platform it is running on, and what is available, then select the
-absolute most performant path possible. If there is a more performant path that has not
-been implemented yet, it should be implement right away.
+There are no granular flags to enable or disable performance features. 
+The framework needs to understand what platform it is running on, and what is available, then select the absolute most performant path possible. 
+If there is a more performant path that has not been implemented yet, it should be implemented right away.
 
 ```python
 # FORBIDDEN
@@ -324,6 +417,12 @@ enable_metal_acceleration: bool = True  # This implies it can be disabled
 # There is no flag. The fast path is the only path.
 # The system detects capabilities and uses maximum performance automatically.
 ```
+
+There should however be a single flag `apples_to_apples` which must guarantee the following:
+
+1. All runs within a manifest that has `apples_to_apples` set to true are indeed scientifically comparable with each other
+2. Anything that alters the model behavior and is unpredictable and unrepeatable is deactivated (so no dynamic auto-tuning for example)
+3. The compiler will fail hard if anything is discovered that compromises the comparability of the runs defined in the manifest
 
 ### Capability Detection at Initialization
 
@@ -375,6 +474,7 @@ A kernel is not "done" until it has:
 - [ ] Backward pass
 - [ ] CUDA/Triton implementation
 - [ ] Metal implementation
+- [ ] ZERO compromises on performance and/or completeness
 - [ ] Tests verifying numerical correctness against PyTorch reference
 - [ ] Tests verifying gradients via `torch.autograd.gradcheck`
 

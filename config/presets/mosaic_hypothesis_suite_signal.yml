@@ -175,7 +175,7 @@ targets:
     data: *hyp_sig_data
     system: *hyp_sig_system_rmf_on
     objective: *hyp_sig_objective
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -196,7 +196,7 @@ targets:
     data: *hyp_sig_data
     system: *hyp_sig_system_rmf_on
     objective: *hyp_sig_objective
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -217,7 +217,7 @@ targets:
     data: *hyp_sig_data
     system: *hyp_sig_system_rmf_on
     objective: *hyp_sig_objective
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -238,7 +238,7 @@ targets:
     data: *hyp_sig_data
     system: *hyp_sig_system_rmf_off
     objective: *hyp_sig_objective
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -253,4 +253,3 @@ targets:
 
 entrypoints:
   default: mosaic_hyp_teacher_always
-

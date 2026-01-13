@@ -24,7 +24,7 @@ def test_torch_engine_run_experiment_dry_run_short_circuits() -> None:
         data=ComponentSpec(ref="dataset.tokens", config={"path": "x.tokens", "block_size": 4}),
         system=ComponentSpec(ref="system.generic", config={"model": {"type": "TransformerModel", "topology": {"type": "StackedTopology", "layers": []}}}),
         objective=ComponentSpec(ref="objective.mse"),
-        trainer=ComponentSpec(ref="trainer.standard"),
+        trainer=ComponentSpec(ref="trainer.train"),
         runs=[],
     )
     r = e.run_experiment(m, t, dry_run=True)
@@ -48,7 +48,7 @@ def test_torch_engine_run_experiment_runs_metrics_best_effort(monkeypatch) -> No
 
     # Force trainer build to our dummy, and metrics build per-ref.
     def fake_build(spec, *, backend):
-        if spec.ref == "trainer.standard":
+        if spec.ref == "trainer.train":
             return DummyTrainer()
         if spec.ref == "metric.good":
             return GoodMetric()
@@ -67,7 +67,7 @@ def test_torch_engine_run_experiment_runs_metrics_best_effort(monkeypatch) -> No
         data=ComponentSpec(ref="dataset.tokens", config={"path": "x.tokens", "block_size": 4}),
         system=ComponentSpec(ref="system.generic", config={"model": {"type": "TransformerModel", "topology": {"type": "StackedTopology", "layers": []}}}),
         objective=ComponentSpec(ref="objective.mse"),
-        trainer=ComponentSpec(ref="trainer.standard"),
+        trainer=ComponentSpec(ref="trainer.train"),
         runs=[run],
         metrics=[ComponentSpec(ref="metric.good"), ComponentSpec(ref="metric.bad"), ComponentSpec(ref="metric.missing")],
     )
@@ -76,4 +76,3 @@ def test_torch_engine_run_experiment_runs_metrics_best_effort(monkeypatch) -> No
     # Should not raise even when metrics fail to build or run.
     out = e.run_experiment(m, t, dry_run=False)
     assert isinstance(out, dict)
-

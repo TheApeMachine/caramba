@@ -174,7 +174,7 @@ targets:
                 d_out: ${vocab_size}
 
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
 
     # Training runs
     runs:

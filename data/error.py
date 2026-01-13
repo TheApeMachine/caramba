@@ -24,6 +24,7 @@ class DataErrorType(Enum):
     DATASET_DOWNLOAD_FAILED = "dataset download failed"
     DATASET_LOAD_FAILED = "dataset load failed"
     DATASET_UNSUPPORTED = "dataset unsupported"
+    DATASET_UNSUPPORTED_TOKENIZER = "dataset unsupported tokenizer"
 
 
 class DataError(CoreError):

@@ -102,7 +102,7 @@ targets:
         aux_bits_weight: 0.1
         aux_utility_weight: 0.1
         aux_contrastive_weight: 0.1
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -117,4 +117,3 @@ targets:
           lr: 0.0003
           device: cpu
           dtype: float32
-

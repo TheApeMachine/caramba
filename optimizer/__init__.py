@@ -1,31 +1,40 @@
-"""Optimizer module: quantization and accelerator kernels.
+"""Optimizer compatibility layer.
 
-This package provides low-level optimizations for inference:
-- Quantization: q8_0, q4_0, nf4 formats for KV-cache compression
-- Triton kernels: Fused decoupled attention for CUDA
+The caramba codebase is transitioning from the historical `caramba.optimizer`
+namespace to `caramba.kernel` (which holds the actual implementations for
+quantization and accelerator kernels).
 
-Caramba kernel policy:
-- Fast path or exception (no silent fallbacks)
-- Capability detection + validation at startup
+This package keeps legacy import paths working while the refactor is in
+progress, without duplicating implementations.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from caramba.optimizer.quantizer import Quantizer as Quantizer
+    from caramba.kernel.quantizer import Quantizer as Quantizer
 
-__all__ = ["Quantizer"]
-
-# Initialize kernel registry at package import so any missing/invalid kernel backends
-# fail loudly before training/inference begins.
-from caramba.optimizer.kernel_registry import KERNELS as _KERNELS  # noqa: F401
+__all__ = [
+    "Quantizer",
+    "KERNELS",
+    "initialize_kernels",
+]
 
 
 def __getattr__(name: str) -> Any:
-    # Lazy import to avoid circular imports (e.g. optimizer <-> cache).
+    """Lazily forward optimizer symbols to `caramba.kernel`."""
     if name == "Quantizer":
-        from caramba.optimizer.quantizer import Quantizer
+        from caramba.kernel.quantizer import Quantizer
 
         return Quantizer
+    if name == "KERNELS":
+        from caramba.kernel.kernel_registry import KERNELS
+
+        return KERNELS
+    if name == "initialize_kernels":
+        from caramba.kernel.kernel_registry import initialize_kernels
+
+        return initialize_kernels
     raise AttributeError(name)
+

@@ -41,3 +41,5 @@ tmp/
 *.npy.meta
 ADK.txt
 research/dba/runs100k.zip
+research/dba/a100_fw1b_l22_baseline_s42_paper/sem8geo32v40/chunk_aa
+chunk*

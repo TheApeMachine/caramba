@@ -4,6 +4,7 @@ import unittest
 
 from caramba.core.commitments import CommitmentLedger
 from caramba.core.event import EventEnvelope
+from caramba.core.event_codec.payloads import encode_idle_payload, encode_message_payload
 
 
 class CommitmentLedgerTest(unittest.TestCase):
@@ -11,7 +12,7 @@ class CommitmentLedgerTest(unittest.TestCase):
         led = CommitmentLedger()
         ev = EventEnvelope(
             type="Message",
-            payload={"text": "I will do it"},
+            payload=encode_message_payload(text="I will do it"),
             sender="agent",
             commitment_delta=+1,
             commitment_id=None,
@@ -27,7 +28,7 @@ class CommitmentLedgerTest(unittest.TestCase):
         led = CommitmentLedger()
         open1 = EventEnvelope(
             type="Message",
-            payload={"text": "open1"},
+            payload=encode_message_payload(text="open1"),
             sender="agent",
             commitment_delta=+1,
             commitment_id="c1",
@@ -36,7 +37,7 @@ class CommitmentLedgerTest(unittest.TestCase):
         )
         open2 = EventEnvelope(
             type="Message",
-            payload={"text": "open2"},
+            payload=encode_message_payload(text="open2"),
             sender="agent",
             commitment_delta=+1,
             commitment_id="c2",
@@ -48,7 +49,7 @@ class CommitmentLedgerTest(unittest.TestCase):
 
         close = EventEnvelope(
             type="Message",
-            payload={"text": "done"},
+            payload=encode_message_payload(text="done"),
             sender="agent",
             commitment_delta=-1,
             commitment_id=None,
@@ -66,7 +67,7 @@ class CommitmentLedgerTest(unittest.TestCase):
         led.apply(
             EventEnvelope(
                 type="Message",
-                payload={"text": "open"},
+                payload=encode_message_payload(text="open"),
                 sender="agent",
                 commitment_delta=+1,
                 commitment_id="c1",
@@ -77,7 +78,7 @@ class CommitmentLedgerTest(unittest.TestCase):
         led.apply(
             EventEnvelope(
                 type="Idle",
-                payload={},
+                payload=encode_idle_payload(ts=2.0, metrics={}),
                 sender="agent",
                 commitment_delta=0,
                 id="e2",
@@ -92,7 +93,7 @@ class CommitmentLedgerTest(unittest.TestCase):
             led.apply(
                 EventEnvelope(
                     type="Message",
-                    payload={"text": "close"},
+                    payload=encode_message_payload(text="close"),
                     sender="agent",
                     commitment_delta=-1,
                     commitment_id=None,

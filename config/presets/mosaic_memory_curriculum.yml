@@ -101,7 +101,7 @@ targets:
         aux_utility_weight: 0.2
         aux_contrastive_weight: 0.2
 
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -122,4 +122,3 @@ targets:
           memblock_teacher_p_schedule: linear
           memblock_teacher_p_warmup_steps: 200
           memblock_teacher_p_cooldown_steps: 200
-

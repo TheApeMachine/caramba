@@ -11,12 +11,13 @@ class Resolver:
     """
     Resolver expands ${var} references in manifest payloads.
     """
-    def __init__(self, vars: Mapping[str, object]) -> None:
+    def __init__(self, vars: Mapping[str, object], *, allow_unknown: bool = False) -> None:
         """
         __init__ initializes the variable resolver.
         """
         super().__init__()
         self._vars: dict[str, object] = dict(vars)
+        self._allow_unknown = bool(allow_unknown)
         self._cache: dict[str, object] = {}
         self._resolving: set[str] = set()
         self._pattern = re.compile(r"\$\{([A-Za-z0-9_]+)\}")
@@ -61,6 +62,8 @@ class Resolver:
         if name in self._resolving:
             raise ValueError(f"Cycle detected in manifest vars: {name}")
         if name not in self._vars:
+            if self._allow_unknown:
+                return f"${{{name}}}"
             raise ValueError(f"Unknown manifest variable: {name}")
 
         self._resolving.add(name)

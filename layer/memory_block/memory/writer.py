@@ -98,10 +98,15 @@ class MemoryWriter:
         mask: Tensor | None,
         write_scale: Tensor | None,
     ) -> Tensor:
-        """Write a chunk of tokens
+        """Write a chunk of tokens.
 
-        Writes update runtime state (the memory tables), so they run under
-        `no_grad` to avoid autograd tracking and in-place versioning issues.
+        By default, writes update runtime state (the memory tables) under
+        `torch.no_grad()` to avoid autograd tracking and in-place versioning
+        issues (especially on MPS).
+
+        When `routing["differentiable_writes"]=True`, we instead update tables
+        using *out-of-place* ops so gradients can flow through write→read within
+        the same forward pass (needed for Table 2 / associative recall).
         """
         B, T, idx_w, gate_logit, w_eta, do = self.prepare(u, routing, mask=mask, write_scale=write_scale)
         # Always expose "write_do" when collecting aux so tuner/telemetry can
@@ -112,22 +117,24 @@ class MemoryWriter:
         if not bool(do.any()):
             return gate_logit
 
-        # Memory writes are runtime state updates, not part of the differentiable path.
-        # Doing them under autograd causes in-place versioning errors (esp. on MPS).
-        with torch.no_grad():
-            # Clone mutable state ONCE per chunk write.
-            # (Trie mode writes to multiple nodes; cloning per node explodes allocations.)
-            self.ensure_mutable_state(st)
+        differentiable = bool(routing.get("differentiable_writes", False))
 
-            wk = self.mem_wkey(u)
-            if self.mem_vsa_enabled:
-                wt = cast(VsaTagProjector, self.vsa_projector)(wk)
-            else:
-                wt = torch.zeros((B, T, int(self.mem_tag_dim)), device=u.device, dtype=wk.dtype)
-            v = self.mem_value(u)
-            pos = torch.nonzero(do, as_tuple=False)
-            b_ev_all = pos[:, 0]
-            t_ev_all = pos[:, 1]
+        # Pre-compute common variables used by both code paths
+        wk = self.mem_wkey(u)
+        if self.mem_vsa_enabled:
+            wt = cast(VsaTagProjector, self.vsa_projector)(wk)
+        else:
+            wt = torch.zeros((B, T, int(self.mem_tag_dim)), device=u.device, dtype=wk.dtype)
+        v = self.mem_value(u)
+        pos = torch.nonzero(do, as_tuple=False)
+        b_ev_all = pos[:, 0]
+        t_ev_all = pos[:, 1]
+
+        # Debug: ensure b_ev_all and t_ev_all are 1D
+        if b_ev_all.dim() != 1 or t_ev_all.dim() != 1:
+            raise ValueError(f"b_ev_all or t_ev_all is not 1D: b_ev_all.shape={b_ev_all.shape}, t_ev_all.shape={t_ev_all.shape}")
+
+        def _do_write() -> tuple[Tensor, Tensor]:
 
             novelty_sum = torch.zeros((B, T), device=u.device, dtype=u.dtype)
             max_sim_sum = torch.zeros((B, T), device=u.device, dtype=u.dtype)
@@ -158,6 +165,7 @@ class MemoryWriter:
                         w_eta=(w_eta * novelty_h),
                         h=int(h),
                         t0=int(t0),
+                        differentiable=differentiable,
                     )
                 else:
                     self.write_hash(
@@ -172,12 +180,230 @@ class MemoryWriter:
                         w_eta=(w_eta * novelty_h),
                         h=int(h),
                         t0=int(t0),
+                        differentiable=differentiable,
                     )
-            if bool(routing.get("collect_aux", False)):
-                denom = float(max(1, int(self.mem_hashes)))
-                routing["write_novelty"] = (novelty_sum / denom).detach()
-                routing["write_max_sim_vsa"] = (max_sim_sum / denom).detach()
+            return novelty_sum, max_sim_sum
+
+        if differentiable:
+            # Differentiable mode: use lazy cloning + batched out-of-place updates
+            novelty_sum, max_sim_sum = _do_write()
+        else:
+            # Runtime-state update mode: use original approach for now
+            with torch.no_grad():
+                # Clone mutable state ONCE per chunk write.
+                # (Trie mode writes to multiple nodes; cloning per node explodes allocations.)
+                self.ensure_mutable_state(st)
+                novelty_sum, max_sim_sum = _do_write()
+
+        if bool(routing.get("collect_aux", False)):
+            denom = float(max(1, int(self.mem_hashes)))
+            routing["write_novelty"] = (novelty_sum / denom).detach()
+            routing["write_max_sim_vsa"] = (max_sim_sum / denom).detach()
         return gate_logit
+
+    def _do_write_inplace(
+        self,
+        u: Tensor,
+        st: MemoryBlockState,
+        routing: dict[str, Any],
+        b_ev_all: Tensor,
+        t_ev_all: Tensor,
+        t0: int,
+    ) -> tuple[Tensor, Tensor]:
+        """In-place write operations with minimal memory overhead."""
+        B, T = int(u.size(0)), int(u.size(1))
+        wk = self.mem_wkey(u)
+        if self.mem_vsa_enabled:
+            wt = cast(VsaTagProjector, self.vsa_projector)(wk)
+        else:
+            wt = torch.zeros((B, T, int(self.mem_tag_dim)), device=u.device, dtype=wk.dtype)
+        v = self.mem_value(u)
+
+        novelty_sum = torch.zeros((B, T), device=u.device, dtype=u.dtype)
+        max_sim_sum = torch.zeros((B, T), device=u.device, dtype=u.dtype)
+
+        # Process all hashes in a single batched operation
+        for h in range(int(self.mem_hashes)):
+            bidx_leaf = routing["idx_w"][:, :, h]
+            if self.mem_trie_enabled:
+                bidx0 = self.trie_leaf_to_node(bidx_leaf)
+            else:
+                bidx0 = bidx_leaf
+
+            if self.mem_vsa_enabled:
+                novelty_h, max_sim_h = self.hash_novelty(st, bidx=bidx0, wt=wt, h=int(h))
+            else:
+                novelty_h = torch.ones((B, T), device=u.device, dtype=u.dtype)
+                max_sim_h = torch.zeros((B, T), device=u.device, dtype=u.dtype)
+            novelty_sum = novelty_sum + novelty_h
+            max_sim_sum = max_sim_sum + max_sim_h
+
+            # Vectorized in-place updates for all events in this hash
+            self._apply_hash_updates_inplace(
+                st=st,
+                bidx=bidx0,
+                wk=wk,
+                wt=wt,
+                v=v,
+                novelty_h=novelty_h,
+                b_ev_all=b_ev_all,
+                t_ev_all=t_ev_all,
+                h=int(h),
+                t0=int(t0),
+            )
+
+        return novelty_sum, max_sim_sum
+
+    def _apply_hash_updates_inplace(
+        self,
+        *,
+        st: MemoryBlockState,
+        bidx: Tensor,
+        wk: Tensor,
+        wt: Tensor,
+        v: Tensor,
+        novelty_h: Tensor,
+        b_ev_all: Tensor,
+        t_ev_all: Tensor,
+        h: int,
+        t0: int,
+    ) -> None:
+        """Apply batched in-place updates for a single hash with sparse operations."""
+        # Filter events for this hash that actually need updates (novelty > 0)
+        try:
+            valid_events = (novelty_h[b_ev_all, t_ev_all] > 0)
+        except IndexError as e:
+            # Debug: print tensor shapes if indexing fails
+            print(f"DEBUG: novelty_h.shape={novelty_h.shape}, b_ev_all.shape={b_ev_all.shape}, t_ev_all.shape={t_ev_all.shape}")
+            print(f"DEBUG: b_ev_all={b_ev_all}, t_ev_all={t_ev_all}")
+            raise e
+
+        if not valid_events.any():
+            return
+
+        b_ev = b_ev_all[valid_events]
+        t_ev = t_ev_all[valid_events]
+
+        # Get bucket indices for these events
+        try:
+            if bidx.ndim == 2:
+                bucket_ev = bidx[b_ev, t_ev].to(dtype=torch.long)
+            else:  # bidx.ndim == 3, shape (B, T, K)
+                bucket_ev = bidx[b_ev, t_ev, h].to(dtype=torch.long)
+        except IndexError as e:
+            print(f"DEBUG: bidx.shape={bidx.shape}, b_ev.shape={b_ev.shape}, t_ev.shape={t_ev.shape}, h={h}")
+            raise e
+
+        # Only compute slot selection for events that pass the novelty threshold
+        slot_ev, use_update = self._choose_slots_batched(
+            st=st, b_ev=b_ev, bucket_ev=bucket_ev, wk=wk, wt=wt, t_ev=t_ev, h=h
+        )
+
+        if len(b_ev) == 0:
+            return
+
+        # Compute update values only for valid events
+        eta_ev = novelty_h[b_ev, t_ev] * self.mem_write_eta
+        wk_ev = wk[b_ev, t_ev, :]
+        wt_ev = wt[b_ev, t_ev, :]
+        v_ev = v[b_ev, t_ev, :]
+        time_ev = (int(st.step) + int(t0)) + t_ev.to(torch.long)
+
+        # Apply sparse in-place updates - only update locations that actually change
+        h_idx = int(h)
+
+        # For update operations (use_update=True): blend old and new values
+        update_mask = use_update.view(-1, 1).expand(-1, self.mem_dim)
+        curv = st.mem_v[b_ev, h_idx, bucket_ev, slot_ev, :]
+        newv = torch.where(update_mask, (1.0 - eta_ev.view(-1, 1)) * curv + eta_ev.view(-1, 1) * v_ev, v_ev)
+
+        # Sparse updates: only modify memory locations that are actually being written to
+        # This reduces memory bandwidth compared to full tensor operations
+        st.mem_k[b_ev, h_idx, bucket_ev, slot_ev, :] = wk_ev
+        st.mem_v[b_ev, h_idx, bucket_ev, slot_ev, :] = newv
+        st.mem_tag[b_ev, h_idx, bucket_ev, slot_ev, :] = wt_ev
+        st.mem_last[b_ev, h_idx, bucket_ev, slot_ev] = time_ev
+
+    def _choose_slots_batched(
+        self,
+        *,
+        st: MemoryBlockState,
+        b_ev: Tensor,
+        bucket_ev: Tensor,
+        wk: Tensor,
+        wt: Tensor,
+        t_ev: Tensor,
+        h: int,
+    ) -> tuple[Tensor, Tensor]:
+        """Choose slots for batched events using vectorized operations."""
+        h_idx = int(h)
+        # Gather current memory state for all events at once
+        bk_w = st.mem_k[b_ev, h_idx, bucket_ev, :, :]  # (N_events, mem_assoc, mem_key_dim)
+        bl_w = st.mem_last[b_ev, h_idx, bucket_ev, :]   # (N_events, mem_assoc)
+
+        # Compute similarities for all events at once
+        wk_ev = wk[b_ev, t_ev, :]  # (N_events, mem_key_dim)
+        sim_w = torch.einsum('nd, nad -> na', wk_ev, bk_w) * (1.0 / math.sqrt(float(self.mem_key_dim)))
+        sim_w = sim_w.masked_fill(bl_w < 0, float("-inf"))
+
+        # Find best slots
+        best_sim, best_slot = sim_w.max(dim=-1)
+        has_empty = (bl_w < 0).any(dim=-1)
+        first_empty = (bl_w < 0).to(torch.int64).argmax(dim=-1)
+        lru_slot = bl_w.argmin(dim=-1)
+
+        repl_slot = torch.where(has_empty, first_empty, lru_slot)
+        use_update = (best_sim >= float(self.mem_match_threshold)) & has_empty
+        slot_ev = torch.where(use_update, best_slot, repl_slot).to(dtype=torch.long)
+
+        return slot_ev, use_update
+
+    def apply_single_event(
+        self,
+        *,
+        st: MemoryBlockState,
+        b_ev: int,
+        t_ev: int,
+        bucket_idx: int,
+        wk: Tensor,
+        wt: Tensor,
+        v: Tensor,
+        w_eta: Tensor,
+        slot: int,
+        use_update: bool,
+        h: int,
+        t0: int,
+        differentiable: bool,
+    ) -> None:
+        """Apply a single write event."""
+        eta_ev = float(w_eta[b_ev, t_ev])
+        wk_ev = wk[b_ev, t_ev, :]
+        wt_ev = wt[b_ev, t_ev, :]
+        v_ev = v[b_ev, t_ev, :]
+        time_ev = int(st.step) + int(t0) + int(t_ev)
+
+        # Apply the update
+        h_idx = int(h)
+        curv = st.mem_v[b_ev, h_idx, bucket_idx, slot, :]
+        if use_update:
+            newv = (1.0 - eta_ev) * curv + eta_ev * v_ev
+        else:
+            newv = v_ev
+
+        if differentiable:
+            # Out-of-place updates for gradient flow - convert indices to tensors
+            idx_tuple = (torch.tensor(b_ev), torch.tensor(h_idx), torch.tensor(bucket_idx), torch.tensor(slot))
+            st.mem_k = st.mem_k.index_put(idx_tuple, wk_ev)
+            st.mem_v = st.mem_v.index_put(idx_tuple, newv)
+            st.mem_tag = st.mem_tag.index_put(idx_tuple, wt_ev)
+            with torch.no_grad():
+                st.mem_last[b_ev, h_idx, bucket_idx, slot] = time_ev
+        else:
+            # In-place updates
+            st.mem_k[b_ev, h_idx, bucket_idx, slot, :] = wk_ev
+            st.mem_v[b_ev, h_idx, bucket_idx, slot, :] = newv
+            st.mem_tag[b_ev, h_idx, bucket_idx, slot, :] = wt_ev
+            st.mem_last[b_ev, h_idx, bucket_idx, slot] = time_ev
 
     def trie_leaf_to_node(self, bidx_leaf: Tensor) -> Tensor:
         """Map leaf bucket ids (0..L-1) to trie node indices (base..base+L-1)."""
@@ -199,6 +425,7 @@ class MemoryWriter:
         w_eta: Tensor,
         h: int,
         t0: int,
+        differentiable: bool,
     ) -> None:
         """Write to leaf node and its ancestors with geometric eta decay."""
         leaves = int(self.mem_buckets)
@@ -220,6 +447,7 @@ class MemoryWriter:
                 w_eta=eta,
                 h=int(h),
                 t0=int(t0),
+                differentiable=differentiable,
             )
             if int(_level) >= int(max_depth):
                 break
@@ -305,32 +533,45 @@ class MemoryWriter:
         w_eta: Tensor,
         h: int,
         t0: int,
+        differentiable: bool,
     ) -> None:
-        B, T = int(u.size(0)), int(u.size(1))
-        mk = st.mem_k[:, h, :, :, :]
-        ml = st.mem_last[:, h, :, :]
-        idxk = bidx.to(dtype=torch.long).unsqueeze(-1).unsqueeze(-1).expand(B, T, self.mem_assoc, self.mem_key_dim)
-        idxl = bidx.to(dtype=torch.long).unsqueeze(-1).expand(B, T, self.mem_assoc)
-        bk_w = mk.gather(dim=1, index=idxk)
-        bl_w = ml.gather(dim=1, index=idxl)
-        valid_w = bl_w >= 0
-        sim_w = (bk_w * wk.unsqueeze(2)).sum(dim=-1) * (1.0 / math.sqrt(float(self.mem_key_dim)))
-        sim_w = sim_w.masked_fill(~valid_w, float("-inf"))
-        slot, use_update = self.choose_slot(sim_w=sim_w, bl_w=bl_w, valid_w=valid_w)
-        self.apply_events(
-            st=st,
-            bidx=bidx,
-            wk=wk,
-            wt=wt,
-            v=v,
-            w_eta=w_eta,
-            b_ev_all=b_ev_all,
-            t_ev_all=t_ev_all,
-            slot=slot,
-            use_update=use_update,
-            h=int(h),
-            t0=int(t0),
-        )
+        # Process each write event individually (not batched)
+        for i in range(len(b_ev_all)):
+            b_ev = int(b_ev_all[i])
+            t_ev = int(t_ev_all[i])
+
+            # Get bucket index for this event
+            bucket_idx = int(bidx[b_ev, t_ev])
+
+            # Gather memory state for this specific bucket
+            bk_w = st.mem_k[b_ev, h, bucket_idx, :, :]  # (mem_assoc, mem_key_dim)
+            bl_w = st.mem_last[b_ev, h, bucket_idx, :]   # (mem_assoc,)
+            wk_ev = wk[b_ev, t_ev, :]  # (mem_key_dim,)
+
+            # Compute similarities
+            sim_w = (bk_w * wk_ev).sum(dim=-1) * (1.0 / math.sqrt(float(self.mem_key_dim)))
+            valid_w = bl_w >= 0
+            sim_w = sim_w.masked_fill(~valid_w, float("-inf"))
+
+            # Choose slot for this event
+            slot, use_update = self.choose_slot(sim_w=sim_w, bl_w=bl_w, valid_w=valid_w)
+
+            # Apply the write event
+            self.apply_single_event(
+                st=st,
+                b_ev=b_ev,
+                t_ev=t_ev,
+                bucket_idx=bucket_idx,
+                wk=wk,
+                wt=wt,
+                v=v,
+                w_eta=w_eta,
+                slot=int(slot),
+                use_update=bool(use_update),
+                h=int(h),
+                t0=int(t0),
+                differentiable=differentiable,
+            )
 
     def choose_slot(self, *, sim_w: Tensor, bl_w: Tensor, valid_w: Tensor) -> tuple[Tensor, Tensor]:
         best_slot = sim_w.argmax(dim=-1)
@@ -358,6 +599,7 @@ class MemoryWriter:
         use_update: Tensor,
         h: int,
         t0: int,
+        differentiable: bool,
     ) -> None:
         pack = self.select_events(
             st=st,
@@ -391,6 +633,7 @@ class MemoryWriter:
             upd_ev=upd_ev,
             time_ev=time_ev,
             h=int(h),
+            differentiable=differentiable,
         )
 
     def select_events(
@@ -409,12 +652,12 @@ class MemoryWriter:
         t0: int,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         bucket_ev = bidx[b_ev_all, t_ev_all].to(dtype=torch.long)
-        slot_ev = slot[b_ev_all, t_ev_all].to(dtype=torch.long)
+        slot_ev = slot.to(dtype=torch.long)  # slot is already indexed by event
         eta_ev = w_eta[b_ev_all, t_ev_all].to(dtype=wk.dtype)
         wk_ev = wk[b_ev_all, t_ev_all, :].to(dtype=wk.dtype)
         wt_ev = wt[b_ev_all, t_ev_all, :].to(dtype=wk.dtype)
         v_ev = v[b_ev_all, t_ev_all, :].to(dtype=wk.dtype)
-        upd_ev = use_update[b_ev_all, t_ev_all]
+        upd_ev = use_update  # use_update is already indexed by event
         time_ev = (int(st.step) + int(t0)) + t_ev_all.to(torch.long)
         return bucket_ev, slot_ev, eta_ev, wk_ev, wt_ev, v_ev, upd_ev, time_ev
 
@@ -469,12 +712,24 @@ class MemoryWriter:
         upd_ev: Tensor,
         time_ev: Tensor,
         h: int,
+        differentiable: bool,
     ) -> None:
-        curv = st.mem_v[b_ev, int(h), bucket_ev, slot_ev, :]
+        h_idx = torch.full_like(b_ev, int(h), dtype=torch.long)
+        curv = st.mem_v[b_ev, h_idx, bucket_ev, slot_ev, :]
         eta_view = eta_ev.view(-1, 1)
         newv = torch.where(upd_ev.view(-1, 1), (1.0 - eta_view) * curv + eta_view * v_ev, v_ev)
-        st.mem_k[b_ev, int(h), bucket_ev, slot_ev, :] = wk_ev
-        st.mem_v[b_ev, int(h), bucket_ev, slot_ev, :] = newv
-        st.mem_tag[b_ev, int(h), bucket_ev, slot_ev, :] = wt_ev
-        st.mem_last[b_ev, int(h), bucket_ev, slot_ev] = time_ev.to(dtype=torch.long)
+
+        if differentiable:
+            # Out-of-place updates: keep autograd happy.
+            st.mem_k = st.mem_k.index_put((b_ev, h_idx, bucket_ev, slot_ev), wk_ev)
+            st.mem_v = st.mem_v.index_put((b_ev, h_idx, bucket_ev, slot_ev), newv)
+            st.mem_tag = st.mem_tag.index_put((b_ev, h_idx, bucket_ev, slot_ev), wt_ev)
+            # mem_last is an int64 runtime bookkeeping tensor; keep it out of autograd.
+            with torch.no_grad():
+                st.mem_last[b_ev, h_idx, bucket_ev, slot_ev] = time_ev.to(dtype=torch.long)
+        else:
+            st.mem_k[b_ev, h_idx, bucket_ev, slot_ev, :] = wk_ev
+            st.mem_v[b_ev, h_idx, bucket_ev, slot_ev, :] = newv
+            st.mem_tag[b_ev, h_idx, bucket_ev, slot_ev, :] = wt_ev
+            st.mem_last[b_ev, h_idx, bucket_ev, slot_ev] = time_ev.to(dtype=torch.long)
 

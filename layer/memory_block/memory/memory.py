@@ -596,10 +596,17 @@ class MemoryBlockMemory(nn.Module):
         # 3. VSA Metrics
         vsa_metrics = None
         if "write_novelty" in routing:
+            # Calculate match confidence, handling case where tensor has insufficient degrees of freedom
+            read_slot_sim = routing.get("read_slot_sim", torch.tensor(0.0))
+            if read_slot_sim.numel() > 1:
+                match_confidence = float(read_slot_sim.std().item())
+            else:
+                match_confidence = 0.0
+
             vsa_metrics = VsaNoveltyMetrics(
                 novelty_ema=float(routing["write_novelty"].mean()),
                 write_rejection_rate=1.0 - float(routing.get("write_do", torch.tensor(0.0)).float().mean()),
-                match_confidence=float(routing.get("read_slot_sim", torch.tensor(0.0)).std().item()),
+                match_confidence=match_confidence,
                 tag_collision_rate=0.0,
             )
         

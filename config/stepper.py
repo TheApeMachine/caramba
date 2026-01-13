@@ -15,19 +15,25 @@ from caramba.config import Config
 
 
 class StepperType(str, enum.Enum):
-    DEFAULT = "DefaultStepper"
+    """Types of steppers available for training coordination"""
+    PHASE_DISPATCHER = "PhaseDispatcherStepper"
 
     @staticmethod
     def module_name() -> str:
         return "caramba.trainer.steppers"
 
 
-class DefaultStepperConfig(Config):
-    type: Literal[StepperType.DEFAULT] = StepperType.DEFAULT
+class PhaseDispatcherConfig(Config):
+    """Configuration for phase dispatcher stepper
+
+    The phase dispatcher routes training to appropriate phase-specific
+    steppers based on the training phase (blockwise, global, orchestrated).
+    """
+    type: Literal[StepperType.PHASE_DISPATCHER] = StepperType.PHASE_DISPATCHER
 
 
 StepperConfig: TypeAlias = Annotated[
-    DefaultStepperConfig,
+    PhaseDispatcherConfig,
     Field(discriminator="type"),
 ]
 

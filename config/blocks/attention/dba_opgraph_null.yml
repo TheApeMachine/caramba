@@ -1,0 +1,246 @@
+# DBA with a learned null KV token injected as the first key/value.
+#
+# This requires an explicit causal mask because the extra null token shifts
+# key indices (i.e. `is_causal: true` alone is insufficient).
+#
+# Expected vars:
+# - d_model, n_heads
+# - sem_dim, geo_dim, attn_dim (v_dim)
+# - rope_base, dropout_p
+type: OpGraphLayer
+d_in: ${d_model}
+d_out: ${d_model}
+graph:
+  inputs: [x]
+  nodes:
+    - id: q_proj
+      op: LinearLayer
+      in: x
+      out: q_lin
+      config:
+        d_in: ${d_model}
+        d_out: ${attn_dim}
+        bias: false
+
+    - id: k_proj
+      op: LinearLayer
+      in: x
+      out: k_lin
+      config:
+        d_in: ${d_model}
+        d_out: ${attn_dim}
+        bias: false
+
+    - id: split_q
+      op: SplitSizesOperation
+      in: q_lin
+      out: [q_sem_lin, q_geo_lin]
+      config:
+        split_sizes:
+          - ${sem_dim}
+          - ${geo_dim}
+        dim: -1
+
+    - id: split_k
+      op: SplitSizesOperation
+      in: k_lin
+      out: [k_sem_lin, k_geo_lin]
+      config:
+        split_sizes:
+          - ${sem_dim}
+          - ${geo_dim}
+        dim: -1
+
+    - id: v_proj
+      op: LinearLayer
+      in: x
+      out: v_lin
+      config:
+        d_in: ${d_model}
+        d_out: ${attn_dim}
+        bias: false
+
+    - id: q_sem
+      op: ViewAsHeadsOperation
+      in: q_sem_lin
+      out: q_sem0
+      config:
+        num_heads: ${n_heads}
+
+    - id: k_sem
+      op: ViewAsHeadsOperation
+      in: k_sem_lin
+      out: k_sem0
+      config:
+        num_heads: ${n_heads}
+
+    - id: q_geo
+      op: ViewAsHeadsOperation
+      in: q_geo_lin
+      out: q_geo0
+      config:
+        num_heads: ${n_heads}
+
+    - id: k_geo
+      op: ViewAsHeadsOperation
+      in: k_geo_lin
+      out: k_geo0
+      config:
+        num_heads: ${n_heads}
+
+    - id: v
+      op: ViewAsHeadsOperation
+      in: v_lin
+      out: v0
+      config:
+        num_heads: ${n_heads}
+
+    - id: pos_offset
+      op: InferCtxPosOffsetOperation
+      in: infer_ctx
+      out: start_pos
+      config: {}
+
+    - id: rope_geo
+      op: ApplyRoPEOperation
+      in: [q_geo0, k_geo0, start_pos]
+      out: [q_geo1, k_geo1]
+      config:
+        base: ${rope_base}
+        variant: both
+
+    # Learned null K/V in merged space, then reshaped into heads (no RoPE).
+    - id: null_k_sem_lin
+      op: ParameterOperation
+      in: x
+      out: null_k_sem_lin
+      config:
+        shape:
+          - 1
+          - 1
+          - ${sem_dim}
+        init: normal
+        expand_batch: true
+
+    - id: null_k_geo_lin
+      op: ParameterOperation
+      in: x
+      out: null_k_geo_lin
+      config:
+        shape:
+          - 1
+          - 1
+          - ${geo_dim}
+        init: normal
+        expand_batch: true
+
+    - id: null_v_lin
+      op: ParameterOperation
+      in: x
+      out: null_v_lin
+      config:
+        shape:
+          - 1
+          - 1
+          - ${attn_dim}
+        init: normal
+        expand_batch: true
+
+    - id: null_k_sem
+      op: ViewAsHeadsOperation
+      in: null_k_sem_lin
+      out: null_k_sem
+      config:
+        num_heads: ${n_heads}
+
+    - id: null_k_geo
+      op: ViewAsHeadsOperation
+      in: null_k_geo_lin
+      out: null_k_geo
+      config:
+        num_heads: ${n_heads}
+
+    - id: null_v
+      op: ViewAsHeadsOperation
+      in: null_v_lin
+      out: null_v
+      config:
+        num_heads: ${n_heads}
+
+    - id: k_sem_with_null
+      op: ConcatOperation
+      in: [null_k_sem, k_sem0]
+      out: k_sem1
+      config:
+        dim: 2
+
+    - id: k_geo_with_null
+      op: ConcatOperation
+      in: [null_k_geo, k_geo1]
+      out: k_geo2
+      config:
+        dim: 2
+
+    - id: v_with_null
+      op: ConcatOperation
+      in: [null_v, v0]
+      out: v1
+      config:
+        dim: 2
+
+    - id: q_sem_scale
+      op: InvSqrtDimScaleOperation
+      in: q_sem0
+      out: q_sem_s
+      config: {}
+
+    - id: q_geo_scale
+      op: InvSqrtDimScaleOperation
+      in: q_geo1
+      out: q_geo_s
+      config: {}
+
+    - id: q_cat
+      op: ConcatOperation
+      in: [q_sem_s, q_geo_s]
+      out: q_cat
+      config:
+        dim: -1
+
+    - id: k_cat
+      op: ConcatOperation
+      in: [k_sem1, k_geo2]
+      out: k_cat
+      config:
+        dim: -1
+
+    - id: causal
+      op: CausalMaskLikeOperation
+      in: [q_cat, k_cat]
+      out: mask
+      config:
+        diagonal: 2
+
+    - id: attn
+      op: SDPAOperation
+      in: [q_cat, k_cat, v1, mask]
+      out: out
+      config:
+        dropout_p: ${dropout_p}
+        is_causal: false
+        scale: 1.0
+
+    - id: merge
+      op: MergeHeadsOperation
+      in: out
+      out: merged
+      config: {}
+
+    - id: out_proj
+      op: LinearLayer
+      in: merged
+      out: y
+      config:
+        d_in: ${attn_dim}
+        d_out: ${d_model}
+        bias: false

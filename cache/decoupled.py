@@ -13,6 +13,7 @@ import torch
 from caramba.cache.tensor import SeqCacheTensor
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from caramba.config.kvcache import KVCacheTensorConfig
 
 
@@ -103,6 +104,21 @@ class DecoupledLayerKVCache:
             self.v.get(dtype=dtype),
         )
 
+    def get_slice(
+        self,
+        start: int,
+        end: int,
+        *,
+        dtype: torch.dtype = torch.float16,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Retrieve a slice of cached tokens as (k_sem, k_geo, v)."""
+
+        return (
+            self.k_sem.get_slice(start, end, dtype=dtype),
+            self.k_geo.get_slice(start, end, dtype=dtype),
+            self.v.get_slice(start, end, dtype=dtype),
+        )
+
     def truncate(self, new_pos: int) -> None:
         """Rollback all caches to a previous position."""
         self.k_sem.truncate(new_pos)
@@ -110,3 +126,37 @@ class DecoupledLayerKVCache:
         self.v.truncate(new_pos)
         if not (self.k_sem.pos == self.k_geo.pos == self.v.pos):
             raise RuntimeError("Decoupled cache desync after truncate")
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        """Stable field ordering for generic cache ops."""
+
+        return ("k_sem", "k_geo", "v")
+
+    def append_many(self, items: "Mapping[str, torch.Tensor]") -> int:
+        """Generic append API for graph-composed ops."""
+
+        want = {"k_sem", "k_geo", "v"}
+        if set(items.keys()) != want:
+            extra = sorted(set(items.keys()) - want)
+            missing = sorted(want - set(items.keys()))
+            raise KeyError(f"DecoupledLayerKVCache.append_many mismatch (missing={missing}, extra={extra})")
+        return self.append(items["k_sem"], items["k_geo"], items["v"])
+
+    def get_many(self, *, dtype: torch.dtype = torch.float16) -> dict[str, torch.Tensor]:
+        """Generic get API for graph-composed ops."""
+
+        k_sem, k_geo, v = self.get(dtype=dtype)
+        return {"k_sem": k_sem, "k_geo": k_geo, "v": v}
+
+    def get_slice_many(
+        self,
+        start: int,
+        end: int,
+        *,
+        dtype: torch.dtype = torch.float16,
+    ) -> dict[str, torch.Tensor]:
+        """Generic slice API for graph-composed ops."""
+
+        k_sem, k_geo, v = self.get_slice(start, end, dtype=dtype)
+        return {"k_sem": k_sem, "k_geo": k_geo, "v": v}

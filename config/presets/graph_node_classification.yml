@@ -36,7 +36,7 @@ targets:
         logits_key: logits
         labels_key: labels
 
-    trainer: trainer.standard
+    trainer: trainer.train
 
     runs:
       - id: train
@@ -52,4 +52,3 @@ targets:
           lr: 0.01
           device: cpu
           dtype: float32
-

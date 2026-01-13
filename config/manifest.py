@@ -13,13 +13,14 @@ import json
 import os
 from pathlib import Path
 
-import yaml
 from pydantic import BaseModel, Field, field_validator
 
 from caramba.config import PositiveInt
 from caramba.config.defaults import Defaults
+from caramba.config.yaml_include import load_yaml
 from caramba.config.resolve import Resolver
 from caramba.config.target import TargetConfig
+from caramba.manifest.template_compiler import TemplateManifestCompiler
 
 
 class Manifest(BaseModel):
@@ -70,7 +71,7 @@ class Manifest(BaseModel):
             case ".json":
                 payload = json.loads(text)
             case ".yml" | ".yaml":
-                payload = yaml.safe_load(text)
+                payload = load_yaml(path)
             case s:
                 raise ValueError(f"Unsupported format '{s}'")
 
@@ -79,13 +80,20 @@ class Manifest(BaseModel):
         if not isinstance(payload, dict):
             raise ValueError(f"Manifest payload must be a dict, got {type(payload)!r}")
 
-        # Process variable substitution
-        vars_payload = payload.pop("vars", None)
-        if vars_payload is not None:
-            if not isinstance(vars_payload, dict):
-                raise ValueError(
-                    f"Manifest vars must be a dict, got {type(vars_payload)!r}"
-                )
-            payload = Resolver(vars_payload).resolve(payload)
+        if "defaults" in payload:
+            # Config-manifest schema (stable): supports `vars` interpolation.
+            vars_payload = payload.pop("vars", None)
+            if vars_payload is not None:
+                if not isinstance(vars_payload, dict):
+                    raise ValueError(
+                        f"Manifest vars must be a dict, got {type(vars_payload)!r}"
+                    )
+                payload = Resolver(vars_payload).resolve(payload)
+            return cls.model_validate(payload)
+
+        if "variables" in payload:
+            # Template-manifest schema: `variables` + optional `instrumentation`.
+            compiled = TemplateManifestCompiler().compile(payload)
+            return cls.model_validate(compiled)
 
         return cls.model_validate(payload)

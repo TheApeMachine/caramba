@@ -20,9 +20,9 @@ from caramba.config.benchmark import ContextBenchmarkConfig
 from caramba.config.kvcache import KVCacheKind
 from caramba.infer.context import InferContext
 from caramba.infer.generate import create_caches
-from collector.measurement.context.result import ContextResult
-from collector.measurement.context.sweep import ContextSweepMeasurement
-from collector.measurement.context.decode import ContextDecodeMeasurement
+from caramba.trainer.collector.measurement.context.result import ContextResult
+from caramba.trainer.collector.measurement.context.sweep import ContextSweepMeasurement
+from caramba.trainer.collector.measurement.context.decode import ContextDecodeMeasurement
 
 from caramba.console.logger import Logger
 logger: Logger = Logger()

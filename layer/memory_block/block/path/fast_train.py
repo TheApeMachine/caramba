@@ -67,12 +67,33 @@ class FastTrainPath(Path):
         parts = self.prepare_parts(st)
         s = st.s
 
+        # Check if we need causal processing within chunks
+        differentiable_writes = bool(routing.get("differentiable_writes", False))
+
         for t0, t1, u_c, routing_c in self.chunks(u=u, routing=routing):
-            g_c, s = self.state.scan(u_c, s0=s)
-            parts["g"].append(g_c)
-            parts["util"].append(self.memory.mem_utility_head(u_c).squeeze(-1))
-            parts["r"].append(
-                self.read_with_opcode(
+            if differentiable_writes:
+                # Process chunk tokens sequentially to maintain write→read causality
+                self.process_chunk_causally(
+                    u_c=u_c,
+                    routing_c=routing_c,
+                    st=st,
+                    parts=parts,
+                    write_mask=write_mask,
+                    opcode_ctrl=opcode_ctrl,
+                    t0=t0,
+                    s=s,
+                )
+            else:
+                # Standard parallel processing for performance
+                g_c, s = self.state.scan(u_c, s0=s)
+                parts["g"].append(g_c)
+
+                # Batch utility computation across the chunk
+                util_c = self.memory.mem_utility_head(u_c).squeeze(-1)
+                parts["util"].append(util_c)
+
+                # Read operation (potentially can be batched further)
+                r_c = self.read_with_opcode(
                     u=u_c,
                     st=st,
                     routing=routing_c,
@@ -80,9 +101,10 @@ class FastTrainPath(Path):
                     t0=t0,
                     t1=t1,
                 )
-            )
-            parts["gate"].append(
-                self.write_chunk(
+                parts["r"].append(r_c)
+
+                # Write operation (now optimized for in-place updates)
+                gate_c = self.write_chunk(
                     u=u_c,
                     st=st,
                     routing=routing_c,
@@ -91,7 +113,7 @@ class FastTrainPath(Path):
                     t0=t0,
                     t1=t1,
                 )
-            )
+                parts["gate"].append(gate_c)
 
         st.s = s.detach()
         st.step += int(u.size(1))
@@ -182,3 +204,77 @@ class FastTrainPath(Path):
             return opcode_ctrl[:, t0:t1, int(MemoryOpcode.WRITE_MEM)]
 
         return None
+
+    def process_chunk_causally(
+        self,
+        *,
+        u_c: Tensor,
+        routing_c: dict[str, Any],
+        st: MemoryBlockState,
+        parts: dict[str, list[Tensor]],
+        write_mask: Tensor | None,
+        opcode_ctrl: Tensor | None,
+        t0: int,
+        s: Tensor,
+    ) -> None:
+        """Process a chunk of tokens sequentially to maintain write→read causality.
+
+        This is used when differentiable writes require causal dependencies within chunks.
+        Optimized to batch operations where possible while maintaining causality.
+        """
+        B, T_chunk, _ = u_c.shape
+
+        # Pre-compute utility heads for the entire chunk (doesn't depend on causality)
+        util_all = self.memory.mem_utility_head(u_c).squeeze(-1)
+
+        # Prepare accumulators for this chunk
+        g_accum = []
+        r_accum = []
+        gate_accum = []
+
+        for t_rel in range(T_chunk):
+            # Process one token at a time within the chunk
+            u_t = u_c[:, t_rel:t_rel+1, :]
+            t_abs = t0 + t_rel
+
+            # Extract routing for this single token
+            routing_t: dict[str, Any] = {}
+            for k, v in routing_c.items():
+                if isinstance(v, Tensor) and v.ndim >= 2 and int(v.size(1)) == T_chunk:
+                    routing_t[k] = v[:, t_rel:t_rel+1]
+                else:
+                    routing_t[k] = v
+
+            # State scan for this token
+            g_t, s = self.state.step(u_t.squeeze(1), s=s)
+            g_accum.append(g_t.unsqueeze(1))
+
+            # Read (now can see previous writes in this chunk)
+            r_t = self.read_with_opcode(
+                u=u_t,
+                st=st,
+                routing=routing_t,
+                opcode_ctrl=opcode_ctrl,
+                t0=t_abs,
+                t1=t_abs+1,
+            )
+            r_accum.append(r_t)
+
+            # Write (affects future reads in this chunk)
+            mask_t = write_mask[:, t_abs:t_abs+1] if isinstance(write_mask, Tensor) else None
+            gate_t = self.write_chunk(
+                u=u_t,
+                st=st,
+                routing=routing_t,
+                write_mask=mask_t,
+                opcode_ctrl=opcode_ctrl,
+                t0=t_abs,
+                t1=t_abs+1,
+            )
+            gate_accum.append(gate_t)
+
+        # Concatenate results for this chunk
+        parts["g"].append(torch.cat(g_accum, dim=1))
+        parts["r"].append(torch.cat(r_accum, dim=1))
+        parts["gate"].append(torch.cat(gate_accum, dim=1))
+        parts["util"].append(util_all)  # Use pre-computed utilities

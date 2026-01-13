@@ -6,6 +6,7 @@ targets.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pydantic import ValidationError
+from unittest.mock import patch
 
 from caramba.config.manifest import Manifest
 
@@ -65,7 +67,7 @@ class ManifestTest(unittest.TestCase):
                         "                d_out: 128",
                         "                bias: true",
                         "    objective: objective.next_token_ce",
-                        "    trainer: trainer.standard",
+                        "    trainer: trainer.train",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -137,6 +139,189 @@ class ManifestTest(unittest.TestCase):
                 "platform_optimizations",
             )
 
+    def test_load_yaml_manifest_with_include(self) -> None:
+        """test loading a YAML manifest that uses !include fragments."""
+        with tempfile.TemporaryDirectory() as tmp:
+            layer_path = Path(tmp) / "layer.yml"
+            layer_path.write_text(
+                "\n".join(
+                    [
+                        "type: LinearLayer",
+                        "d_in: ${d_model}",
+                        "d_out: ${d_model}",
+                        "bias: true",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            path = Path(tmp) / "m.yml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "version: 2",
+                        "name: test",
+                        'notes: "x"',
+                        "vars:",
+                        "  d_model: 128",
+                        "defaults:",
+                        "  logging:",
+                        "    wandb: false",
+                        "    wandb_project: \"\"",
+                        "    wandb_entity: \"\"",
+                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
+                        "  runtime: { save_every: 100 }",
+                        "targets:",
+                        "  - type: experiment",
+                        "    name: exp",
+                        "    description: d",
+                        "    backend: torch",
+                        "    task: task.language_modeling",
+                        "    data:",
+                        "      ref: dataset.tokens",
+                        "      config: { path: 'x.tokens', block_size: 4 }",
+                        "    system:",
+                        "      ref: system.language_model",
+                        "      config:",
+                        "        model:",
+                        "          type: TransformerModel",
+                        "          topology:",
+                        "            type: StackedTopology",
+                        "            layers:",
+                        "              - !include layer.yml",
+                        "    objective: objective.next_token_ce",
+                        "    trainer: trainer.train",
+                        "    runs:",
+                        "      - id: r",
+                        "        mode: train",
+                        "        exp: e",
+                        "        seed: 1",
+                        "        steps: 2",
+                        "        expected: {}",
+                        "        train:",
+                        "          phase: standard",
+                        "          batch_size: 1",
+                        "          block_size: 4",
+                        "          lr: 0.001",
+                        "          device: cpu",
+                        "          dtype: float32",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            m = Manifest.from_path(path)
+            self.assertEqual(m.version, 2)
+            self.assertEqual(len(m.targets), 1)
+            t0 = m.targets[0]
+            assert t0.type == "experiment"
+            model_payload = t0.system.config["model"]
+            layer0 = model_payload["topology"]["layers"][0]
+            self.assertEqual(layer0["type"], "LinearLayer")
+            self.assertEqual(layer0["d_in"], 128)
+            self.assertEqual(layer0["d_out"], 128)
+
+    def test_load_yaml_manifest_with_include_vars_override(self) -> None:
+        """!include supports per-include local vars for reusable YAML blocks."""
+        with tempfile.TemporaryDirectory() as tmp:
+            layer_path = Path(tmp) / "layer.yml"
+            layer_path.write_text(
+                "\n".join(
+                    [
+                        "type: LinearLayer",
+                        "d_in: ${d_in}",
+                        "d_out: ${d_out}",
+                        "bias: false",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            path = Path(tmp) / "m.yml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "version: 2",
+                        "name: test",
+                        'notes: \"x\"',
+                        "vars:",
+                        "  d_model: 128",
+                        "defaults:",
+                        "  logging:",
+                        "    wandb: false",
+                        "    wandb_project: \"\"",
+                        "    wandb_entity: \"\"",
+                        "  data: { tokenizer: tiktoken, val_frac: 0.1 }",
+                        "  runtime: { save_every: 100 }",
+                        "targets:",
+                        "  - type: experiment",
+                        "    name: exp",
+                        "    description: d",
+                        "    backend: torch",
+                        "    task: task.language_modeling",
+                        "    data:",
+                        "      ref: dataset.tokens",
+                        "      config: { path: 'x.tokens', block_size: 4 }",
+                        "    system:",
+                        "      ref: system.language_model",
+                        "      config:",
+                        "        model:",
+                        "          type: TransformerModel",
+                        "          topology:",
+                        "            type: StackedTopology",
+                        "            layers:",
+                        "              - !include",
+                        "                  path: layer.yml",
+                        "                  vars:",
+                        "                    d_in: ${d_model}",
+                        "                    d_out: 256",
+                        "    objective: objective.next_token_ce",
+                        "    trainer: trainer.train",
+                        "    runs:",
+                        "      - id: r",
+                        "        mode: train",
+                        "        exp: e",
+                        "        seed: 1",
+                        "        steps: 2",
+                        "        expected: {}",
+                        "        train:",
+                        "          phase: standard",
+                        "          batch_size: 1",
+                        "          block_size: 4",
+                        "          lr: 0.001",
+                        "          device: cpu",
+                        "          dtype: float32",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            m = Manifest.from_path(path)
+            t0 = m.targets[0]
+            assert t0.type == "experiment"
+            layer0 = t0.system.config["model"]["topology"]["layers"][0]
+            self.assertEqual(layer0["type"], "LinearLayer")
+            self.assertEqual(layer0["d_in"], 128)
+            self.assertEqual(layer0["d_out"], 256)
+
+    def test_load_dba_paper_local_preset(self) -> None:
+        """Preset manifests should load with OpGraph attention includes."""
+        repo_root = Path(__file__).resolve().parents[1]
+        path = repo_root / "config" / "presets" / "dba_paper_local.yml"
+        with patch.dict(
+            os.environ,
+            {
+                "wandb_project": "test",
+                "wandb_entity": "",
+                "wandb_mode": "offline",
+                "eval_iters": "0",
+            },
+            clear=False,
+        ):
+            m = Manifest.from_path(path)
+        self.assertEqual(m.version, 2)
+        self.assertGreater(len(m.targets), 0)
+
     def test_load_yaml_manifest_with_paper_collect_artifacts(self) -> None:
         """Process targets can run non-agent utility workflows (paper artifact collection)."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -206,7 +391,7 @@ class ManifestTest(unittest.TestCase):
                         "                d_out: 128",
                         "                bias: true",
                         "    objective: objective.next_token_ce",
-                        "    trainer: trainer.standard",
+                        "    trainer: trainer.train",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -271,7 +456,7 @@ class ManifestTest(unittest.TestCase):
                         "                d_out: 128",
                         "                bias: true",
                         "    objective: objective.next_token_ce",
-                        "    trainer: trainer.standard",
+                        "    trainer: trainer.train",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -332,7 +517,7 @@ class ManifestTest(unittest.TestCase):
                         "                d_out: 128",
                         "                bias: true",
                         "    objective: objective.next_token_ce",
-                        "    trainer: trainer.standard",
+                        "    trainer: trainer.train",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -406,7 +591,7 @@ class ManifestTest(unittest.TestCase):
                         "                d_out: 128",
                         "                bias: true",
                         "    objective: objective.next_token_ce",
-                        "    trainer: trainer.standard",
+                        "    trainer: trainer.train",
                         "    runs:",
                         "      - id: r",
                         "        mode: train",
@@ -479,7 +664,7 @@ class ManifestTest(unittest.TestCase):
                             },
                         },
                         "objective": "objective.next_token_ce",
-                        "trainer": "trainer.standard",
+                        "trainer": "trainer.train",
                         "runs": [{"id": "r", "mode": "train", "exp": "e", "seed": 1, "steps": 2, "expected": {}}],
                     }
                 ],
@@ -527,7 +712,7 @@ class ManifestTest(unittest.TestCase):
                         "                d_out: \"${d_out}\"",
                         "                bias: true",
                         "    objective: objective.next_token_ce",
-                        "    trainer: trainer.standard",
+                        "    trainer: trainer.train",
                         "    runs: []",
                     ]
                 ),
@@ -575,7 +760,7 @@ class ManifestTest(unittest.TestCase):
                         "              - type: LinearLayer",
                         "                config: { d_in: 128, d_out: 128 }",
                         "    objective: objective.next_token_ce",
-                        "    trainer: trainer.standard",
+                        "    trainer: trainer.train",
                         "    runs: []",
                     ]
                 ),

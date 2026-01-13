@@ -3,7 +3,7 @@ name: dba_paper_rerun
 notes: >
   Single-manifest rerun for the DBA paper's primary A100 comparison:
   baseline (standard attention) vs decoupled bottleneck attention (DBA).
-  IMPORTANT: `trainer.standard` writes checkpoints to `runs/<target.name>/`.
+  IMPORTANT: `trainer.train` writes checkpoints to `runs/<target.name>/`.
   Targets are named to match the paper-style run directory names.
 
 defaults:
@@ -136,7 +136,7 @@ targets:
                 d_out: ${vocab_size}
                 bias: false
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train
@@ -240,7 +240,7 @@ targets:
                 d_out: ${vocab_size}
                 bias: false
     objective: objective.next_token_ce
-    trainer: trainer.standard
+    trainer: trainer.train
     runs:
       - id: train
         mode: train

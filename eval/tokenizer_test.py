@@ -11,7 +11,7 @@ import caramba.data.tokenizers.huggingface as hf
 
 
 def test_build_tokenizer_tiktoken() -> None:
-    tok = TokenizerBuilder().build(TiktokenTokenizerConfig(encoding="cl100k_base"))
+    tok = TokenizerBuilder().build_tokenizer(TiktokenTokenizerConfig(encoding="cl100k_base"))
     ids = tok.encode("hello")
     assert isinstance(ids, list)
     assert all(isinstance(i, int) for i in ids)
@@ -36,7 +36,7 @@ def test_build_tokenizer_llama_uses_transformers_autotokenizer(monkeypatch: pyte
 
     monkeypatch.setattr(hf.AutoTokenizer, "from_pretrained", staticmethod(_from_pretrained), raising=True)
 
-    tok = TokenizerBuilder().build(LlamaTokenizerConfig(model_id="meta-llama/Llama-3.2-1B"))
+    tok = TokenizerBuilder().build_tokenizer(LlamaTokenizerConfig(model_id="meta-llama/Llama-3.2-1B"))
     assert tok.encode("hi") == [1, 2, 3]
     assert tok.decode([1, 2, 3]) == "ok"
 
@@ -55,7 +55,7 @@ def test_build_tokenizer_code_bpe(tmp_path: Path) -> None:
     )
     trainer.train(data_dir=str(data_dir), output_file=str(out_file))
 
-    tok = TokenizerBuilder().build(CodeBpeTokenizerConfig(tokenizer_file=str(out_file)))
+    tok = TokenizerBuilder().build_tokenizer(CodeBpeTokenizerConfig(tokenizer_file=str(out_file)))
     ids = tok.encode("def foo():\n    return 1\n")
     assert isinstance(ids, list)
     assert all(isinstance(i, int) for i in ids)

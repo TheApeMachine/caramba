@@ -6,6 +6,8 @@ SeqCacheTensors and keeps them synchronized.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import torch
 
 from caramba.cache.tensor import SeqCacheTensor
@@ -71,9 +73,58 @@ class LayerKVCache:
         """Retrieve all cached K and V tensors."""
         return self.k.get(dtype=dtype), self.v.get(dtype=dtype)
 
+    def get_slice(
+        self,
+        start: int,
+        end: int,
+        *,
+        dtype: torch.dtype = torch.float16,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Retrieve a slice of cached tokens as (k, v)."""
+
+        return self.k.get_slice(start, end, dtype=dtype), self.v.get_slice(start, end, dtype=dtype)
+
     def truncate(self, new_pos: int) -> None:
         """Rollback both caches to a previous position."""
         self.k.truncate(new_pos)
         self.v.truncate(new_pos)
         if self.k.pos != self.v.pos:
             raise RuntimeError("K/V cache desync after truncate")
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        """Stable field ordering for generic cache ops."""
+
+        return ("k", "v")
+
+    def append_many(self, items: Mapping[str, torch.Tensor]) -> int:
+        """Generic append API for graph-composed ops."""
+
+        try:
+            k = items["k"]
+            v = items["v"]
+        except KeyError as e:
+            raise KeyError("LayerKVCache.append_many requires keys {'k','v'}") from e
+        if set(items.keys()) != {"k", "v"}:
+            extra = sorted(set(items.keys()) - {"k", "v"})
+            missing = sorted({"k", "v"} - set(items.keys()))
+            raise KeyError(f"LayerKVCache.append_many mismatch (missing={missing}, extra={extra})")
+        return self.append(k, v)
+
+    def get_many(self, *, dtype: torch.dtype = torch.float16) -> dict[str, torch.Tensor]:
+        """Generic get API for graph-composed ops."""
+
+        k, v = self.get(dtype=dtype)
+        return {"k": k, "v": v}
+
+    def get_slice_many(
+        self,
+        start: int,
+        end: int,
+        *,
+        dtype: torch.dtype = torch.float16,
+    ) -> dict[str, torch.Tensor]:
+        """Generic slice API for graph-composed ops."""
+
+        k, v = self.get_slice(start, end, dtype=dtype)
+        return {"k": k, "v": v}

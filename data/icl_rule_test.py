@@ -53,7 +53,13 @@ def test_table2_telemetry_memory_path_runs_with_teacher_signals() -> None:
     B, T = batch_td["target_ids"].shape
     V = 256
     logits = torch.zeros((B, T, V), dtype=torch.float32)
-    logits.scatter_(2, batch_td["target_ids"].unsqueeze(-1), 1.0)
+    # target_ids is masked with -100 on non-supervised positions; only scatter supervised query positions.
+    tb = batch_td["table2_bin"]
+    m = tb >= 0
+    if bool(torch.any(m).detach().item()):
+        y = batch_td["target_ids"][m].long().clamp_min(0).clamp_max(V - 1)
+        logits[m] = 0.0
+        logits[m].scatter_(1, y.unsqueeze(-1), 1.0)
     out = Table2Telemetry().compute(outputs={"logits": logits}, batch=batch_td)
     assert "acc/worst_bin" in out
     assert "collision/wrong_item_read_rate" in out

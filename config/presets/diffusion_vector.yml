@@ -34,7 +34,7 @@ targets:
         pred_key: pred_eps
         target_key: eps
 
-    trainer: trainer.standard
+  trainer: trainer.train
 
     runs:
       - id: train
@@ -50,4 +50,3 @@ targets:
           lr: 0.0005
           device: cpu
           dtype: float32
-

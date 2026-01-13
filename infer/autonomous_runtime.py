@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from caramba.core.event import EventEnvelope
 from caramba.core.event_bus import EventBus
 from caramba.core.homeostasis import HomeostaticLoop
+from caramba.core.event_codec.payloads import encode_idle_payload
 
 MetricsFn = Callable[[], Mapping[str, float]]
 ConsolidateFn = Callable[[], dict[str, float] | None]
@@ -81,7 +82,7 @@ class AutonomousRuntime:
         self.bus.publish(
             EventEnvelope(
                 type=str(self.idle_event_type),
-                payload={"metrics": metrics_f, "ts": float(time.time())},
+                payload=encode_idle_payload(ts=float(time.time()), metrics=metrics_f),
                 sender=str(self.sender),
                 priority=0,
             )
