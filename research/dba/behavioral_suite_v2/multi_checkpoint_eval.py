@@ -1042,10 +1042,18 @@ def main() -> int:
     else:
         print("\nSkipping tokenizer load (mock mode)")
 
-    # Import suite components
-    from .generator import generate_suite
-    from .runner import EvalRunner, EvalConfig
-    from .visualizer import ResultsVisualizer, generate_html_report
+    # Import suite components (support both module and direct execution)
+    # Check if we're running as a module or as a script
+    if __package__:
+        # Running as module (e.g., python -m behavioral_suite_v2.multi_checkpoint_eval)
+        from .generator import generate_suite
+        from .runner import EvalRunner, EvalConfig
+        from .visualizer import ResultsVisualizer, generate_html_report
+    else:
+        # Running as script (e.g., python behavioral_suite_v2/multi_checkpoint_eval.py)
+        from generator import generate_suite
+        from runner import EvalRunner, EvalConfig
+        from visualizer import ResultsVisualizer, generate_html_report
 
     # Generate test suite
     print("\n--- Generating test suite ---")
@@ -1071,7 +1079,10 @@ def main() -> int:
 
     if args.use_mock:
         # Use mock models for testing the pipeline
-        from .runner import MockModel
+        try:
+            from .runner import MockModel
+        except ImportError:
+            from caramba.research.dba.runner import MockModel
         print("Using mock models (--use-mock specified)")
         for spec in specs:
             # Vary accuracy by model type for interesting results
