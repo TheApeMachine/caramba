@@ -39,23 +39,35 @@ def _extract_state_dict(obj: object) -> dict[str, torch.Tensor]:
     - {"system_state_dict": ...}
     - {"model_state_dict": ...}
     - {"state_dict": ...}
+
+    Also strips torch.compile's '_orig_mod.' prefix if present.
     """
+    sd: dict[str, torch.Tensor] | None = None
+
     if isinstance(obj, dict):
         # Raw state dict (most common for safetensors / some .pt dumps).
         if obj and all(isinstance(v, torch.Tensor) for v in obj.values()):
-            return cast(dict[str, torch.Tensor], obj)
+            sd = cast(dict[str, torch.Tensor], obj)
+        else:
+            for k in ("system_state_dict", "model_state_dict", "state_dict"):
+                if k in obj:
+                    candidate = obj.get(k)
+                    if isinstance(candidate, dict) and all(isinstance(v, torch.Tensor) for v in candidate.values()):
+                        sd = cast(dict[str, torch.Tensor], candidate)
+                        break
+                    raise TypeError(f"Checkpoint key {k!r} exists but is not a tensor state_dict")
 
-        for k in ("system_state_dict", "model_state_dict", "state_dict"):
-            if k in obj:
-                sd = obj.get(k)
-                if isinstance(sd, dict) and all(isinstance(v, torch.Tensor) for v in sd.values()):
-                    return cast(dict[str, torch.Tensor], sd)
-                raise TypeError(f"Checkpoint key {k!r} exists but is not a tensor state_dict")
+    if sd is None:
+        raise TypeError(
+            "Unsupported checkpoint format. Expected a state_dict-like dict or a dict containing "
+            "one of: system_state_dict, model_state_dict, state_dict."
+        )
 
-    raise TypeError(
-        "Unsupported checkpoint format. Expected a state_dict-like dict or a dict containing "
-        "one of: system_state_dict, model_state_dict, state_dict."
-    )
+    # Strip torch.compile prefix if present (checkpoints saved with compile_model=true)
+    if any(k.startswith("_orig_mod.") for k in sd.keys()):
+        sd = {k.replace("_orig_mod.", "", 1): v for k, v in sd.items()}
+
+    return sd
 
 
 def _safe_load_checkpoint(

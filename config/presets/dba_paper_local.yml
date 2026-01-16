@@ -24,8 +24,8 @@ defaults:
 
 vars:
   # ----- Dataset -----
-  dataset: HuggingFaceFW/fineweb
-  tokens: 100m
+  dataset: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_1b.npy
+  tokens: 1b
   block_size: 2048
 
   # ----- Model (12-layer, same per-layer arch as 1B) -----
@@ -33,42 +33,51 @@ vars:
   n_layers: 12
   n_heads: 32
   n_kv_heads_gqa: 4  # 8:1 ratio for GQA
-  d_ff: 4096
+  d_ff: 5632
   vocab_size: 50304
   rope_base: 10000.0
 
   # ----- DBA bottleneck dims (same per-head as 1B) -----
-  # Sem=16/head, Geo=32/head, Total=48/head
-  sem_dim: 512
+  # Sem=8/head, Geo=32/head, Total=40/head
+  sem_dim: 256
   geo_dim: 1024
-  attn_dim: 1536
+  attn_dim: 1280
 
-  # ----- Training (M4 Max optimized) -----
-  steps: 5000
+  # ----- Training (matches baseline runs) -----
+  steps: 10000
   steps_extended: 10000
-  device: mps
-  dtype: float16
-  batch_size: 8
-  grad_accum: 2
-  lr: 3.0e-4
-  lr_decoupled: 2.0e-4  # Lower LR for decoupled to prevent loss spikes after warmup
+  device: cuda
+  dtype: bfloat16
+  batch_size: 4
+  grad_accum: 4
+  lr: 1.0e-4
+  lr_decoupled: 1.0e-4
   lr_2e4: 2.0e-4
   lr_4e4: 4.0e-4
   weight_decay: 0.1
   optimizer: adamw
-  fused_optimizer: true  # Custom Metal AdamW kernel
+  fused_optimizer: true
+  grad_clip_norm: 1.0
   scheduler: cosine
-  warmup_steps: 500
-  save_every: 500
+  warmup_steps: 1000
+  save_every: 1000
+
+  # Memory and performance optimizations
+  activation_checkpointing: true
+  activation_checkpoint_threshold_mb: 128.0
+
+  # Data loading optimizations
+  num_workers: 4
+  pin_memory: true  # MPS benefits from pinned memory
+  prefetch_factor: 4
 
 # =============================================================================
 # TOPOLOGY ANCHORS (YAML anchors to avoid repetition)
 # =============================================================================
 
-# Shared token dataset config (auto-download)
+# Shared token dataset config (pre-tokenized .npy)
 x-token-dataset: &token_dataset
-  dataset: ${dataset}
-  tokens: ${tokens}
+  path: ${dataset}
   block_size: ${block_size}
 
 # Shared embedder
@@ -119,314 +128,315 @@ x-train-base: &train_base
   skip_if_final: false
   auto_batch_size: false
   compile_model: false
+  compile_mode: ""
 
 # =============================================================================
 # TARGETS
 # =============================================================================
 
 targets:
-  # ===========================================================================
-  # BASELINE (Standard Attention) - 3 seeds
-  # ===========================================================================
-  - type: experiment
-    name: mac_fw1b_l12_baseline_s1337
-    description: "Baseline: standard attention, seed 1337"
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config: *token_dataset
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          tied_embeddings: false
-          embedder: *embedder
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: ResidualTopology
-                    layers:
-                      - type: RMSNormLayer
-                        d_model: ${d_model}
-                        eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
-                  - *ffn_block
-              - *final_layers
-    objective: objective.next_token_ce
-    trainer: trainer.standard
-    runs:
-      - id: train
-        mode: train
-        exp: local_baseline
-        seed: 1337
-        steps: ${steps}
-        expected: {attn_mode: standard}
-        train:
-          <<: *train_base
-          lr: ${lr}
+  # # ===========================================================================
+  # # BASELINE (Standard Attention) - 3 seeds
+  # # ===========================================================================
+  # - type: experiment
+  #   name: mac_fw1b_l12_baseline_s1337
+  #   description: "Baseline: standard attention, seed 1337"
+  #   backend: torch
+  #   task: task.language_modeling
+  #   data:
+  #     ref: dataset.tokens
+  #     config: *token_dataset
+  #   system:
+  #     ref: system.language_model
+  #     config:
+  #       model:
+  #         type: TransformerModel
+  #         tied_embeddings: false
+  #         embedder: *embedder
+  #         topology:
+  #           type: StackedTopology
+  #           layers:
+  #             - type: NestedTopology
+  #               repeat: ${n_layers}
+  #               layers:
+  #                 - type: ResidualTopology
+  #                   layers:
+  #                     - type: RMSNormLayer
+  #                       d_model: ${d_model}
+  #                       eps: 1e-5
+  #                     - type: AttentionLayer
+  #                       d_model: ${d_model}
+  #                       n_heads: ${n_heads}
+  #                       mode: standard
+  #                       rope_enabled: true
+  #                       rope_base: ${rope_base}
+  #                       is_causal: true
+  #                       dropout_p: 0.0
+  #                 - *ffn_block
+  #             - *final_layers
+  #   objective: objective.next_token_ce
+  #   trainer: trainer.standard
+  #   runs:
+  #     - id: train
+  #       mode: train
+  #       exp: local_baseline
+  #       seed: 1337
+  #       steps: ${steps}
+  #       expected: {attn_mode: standard}
+  #       train:
+  #         <<: *train_base
+  #         lr: ${lr}
 
-  - type: experiment
-    name: mac_fw1b_l12_baseline_s1338
-    description: "Baseline: standard attention, seed 1338"
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config: *token_dataset
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          tied_embeddings: false
-          embedder: *embedder
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: ResidualTopology
-                    layers:
-                      - type: RMSNormLayer
-                        d_model: ${d_model}
-                        eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
-                  - *ffn_block
-              - *final_layers
-    objective: objective.next_token_ce
-    trainer: trainer.standard
-    runs:
-      - id: train
-        mode: train
-        exp: local_baseline
-        seed: 1338
-        steps: ${steps}
-        expected: {attn_mode: standard}
-        train:
-          <<: *train_base
-          lr: ${lr}
+  # - type: experiment
+  #   name: mac_fw1b_l12_baseline_s1338
+  #   description: "Baseline: standard attention, seed 1338"
+  #   backend: torch
+  #   task: task.language_modeling
+  #   data:
+  #     ref: dataset.tokens
+  #     config: *token_dataset
+  #   system:
+  #     ref: system.language_model
+  #     config:
+  #       model:
+  #         type: TransformerModel
+  #         tied_embeddings: false
+  #         embedder: *embedder
+  #         topology:
+  #           type: StackedTopology
+  #           layers:
+  #             - type: NestedTopology
+  #               repeat: ${n_layers}
+  #               layers:
+  #                 - type: ResidualTopology
+  #                   layers:
+  #                     - type: RMSNormLayer
+  #                       d_model: ${d_model}
+  #                       eps: 1e-5
+  #                     - type: AttentionLayer
+  #                       d_model: ${d_model}
+  #                       n_heads: ${n_heads}
+  #                       mode: standard
+  #                       rope_enabled: true
+  #                       rope_base: ${rope_base}
+  #                       is_causal: true
+  #                       dropout_p: 0.0
+  #                 - *ffn_block
+  #             - *final_layers
+  #   objective: objective.next_token_ce
+  #   trainer: trainer.standard
+  #   runs:
+  #     - id: train
+  #       mode: train
+  #       exp: local_baseline
+  #       seed: 1338
+  #       steps: ${steps}
+  #       expected: {attn_mode: standard}
+  #       train:
+  #         <<: *train_base
+  #         lr: ${lr}
 
-  - type: experiment
-    name: mac_fw1b_l12_baseline_s1339
-    description: "Baseline: standard attention, seed 1339"
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config: *token_dataset
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          tied_embeddings: false
-          embedder: *embedder
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: ResidualTopology
-                    layers:
-                      - type: RMSNormLayer
-                        d_model: ${d_model}
-                        eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
-                  - *ffn_block
-              - *final_layers
-    objective: objective.next_token_ce
-    trainer: trainer.standard
-    runs:
-      - id: train
-        mode: train
-        exp: local_baseline
-        seed: 1339
-        steps: ${steps}
-        expected: {attn_mode: standard}
-        train:
-          <<: *train_base
-          lr: ${lr}
+  # - type: experiment
+  #   name: mac_fw1b_l12_baseline_s1339
+  #   description: "Baseline: standard attention, seed 1339"
+  #   backend: torch
+  #   task: task.language_modeling
+  #   data:
+  #     ref: dataset.tokens
+  #     config: *token_dataset
+  #   system:
+  #     ref: system.language_model
+  #     config:
+  #       model:
+  #         type: TransformerModel
+  #         tied_embeddings: false
+  #         embedder: *embedder
+  #         topology:
+  #           type: StackedTopology
+  #           layers:
+  #             - type: NestedTopology
+  #               repeat: ${n_layers}
+  #               layers:
+  #                 - type: ResidualTopology
+  #                   layers:
+  #                     - type: RMSNormLayer
+  #                       d_model: ${d_model}
+  #                       eps: 1e-5
+  #                     - type: AttentionLayer
+  #                       d_model: ${d_model}
+  #                       n_heads: ${n_heads}
+  #                       mode: standard
+  #                       rope_enabled: true
+  #                       rope_base: ${rope_base}
+  #                       is_causal: true
+  #                       dropout_p: 0.0
+  #                 - *ffn_block
+  #             - *final_layers
+  #   objective: objective.next_token_ce
+  #   trainer: trainer.standard
+  #   runs:
+  #     - id: train
+  #       mode: train
+  #       exp: local_baseline
+  #       seed: 1339
+  #       steps: ${steps}
+  #       expected: {attn_mode: standard}
+  #       train:
+  #         <<: *train_base
+  #         lr: ${lr}
 
-  # ===========================================================================
-  # BOTTLENECK (Non-decoupled, single bottleneck) - 3 seeds
-  # ===========================================================================
-  - type: experiment
-    name: mac_fw1b_l12_bottleneck_s1337
-    description: "Bottleneck: single low-rank attention, seed 1337"
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config: *token_dataset
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          tied_embeddings: false
-          embedder: *embedder
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: ResidualTopology
-                    layers:
-                      - type: RMSNormLayer
-                        d_model: ${d_model}
-                        eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        attn_dim: ${attn_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
-                  - *ffn_block
-              - *final_layers
-    objective: objective.next_token_ce
-    trainer: trainer.standard
-    runs:
-      - id: train
-        mode: train
-        exp: local_bottleneck
-        seed: 1337
-        steps: ${steps}
-        expected: {attn_mode: bottleneck}
-        train:
-          <<: *train_base
-          lr: ${lr}
+  # # ===========================================================================
+  # # BOTTLENECK (Non-decoupled, single bottleneck) - 3 seeds
+  # # ===========================================================================
+  # - type: experiment
+  #   name: mac_fw1b_l12_bottleneck_s1337
+  #   description: "Bottleneck: single low-rank attention, seed 1337"
+  #   backend: torch
+  #   task: task.language_modeling
+  #   data:
+  #     ref: dataset.tokens
+  #     config: *token_dataset
+  #   system:
+  #     ref: system.language_model
+  #     config:
+  #       model:
+  #         type: TransformerModel
+  #         tied_embeddings: false
+  #         embedder: *embedder
+  #         topology:
+  #           type: StackedTopology
+  #           layers:
+  #             - type: NestedTopology
+  #               repeat: ${n_layers}
+  #               layers:
+  #                 - type: ResidualTopology
+  #                   layers:
+  #                     - type: RMSNormLayer
+  #                       d_model: ${d_model}
+  #                       eps: 1e-5
+  #                     - type: AttentionLayer
+  #                       d_model: ${d_model}
+  #                       n_heads: ${n_heads}
+  #                       mode: standard
+  #                       attn_dim: ${attn_dim}
+  #                       rope_enabled: true
+  #                       rope_base: ${rope_base}
+  #                       is_causal: true
+  #                       dropout_p: 0.0
+  #                 - *ffn_block
+  #             - *final_layers
+  #   objective: objective.next_token_ce
+  #   trainer: trainer.standard
+  #   runs:
+  #     - id: train
+  #       mode: train
+  #       exp: local_bottleneck
+  #       seed: 1337
+  #       steps: ${steps}
+  #       expected: {attn_mode: bottleneck}
+  #       train:
+  #         <<: *train_base
+  #         lr: ${lr}
 
-  - type: experiment
-    name: mac_fw1b_l12_bottleneck_s1338
-    description: "Bottleneck: single low-rank attention, seed 1338"
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config: *token_dataset
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          tied_embeddings: false
-          embedder: *embedder
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: ResidualTopology
-                    layers:
-                      - type: RMSNormLayer
-                        d_model: ${d_model}
-                        eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        attn_dim: ${attn_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
-                  - *ffn_block
-              - *final_layers
-    objective: objective.next_token_ce
-    trainer: trainer.standard
-    runs:
-      - id: train
-        mode: train
-        exp: local_bottleneck
-        seed: 1338
-        steps: ${steps}
-        expected: {attn_mode: bottleneck}
-        train:
-          <<: *train_base
-          lr: ${lr}
+  # - type: experiment
+  #   name: mac_fw1b_l12_bottleneck_s1338
+  #   description: "Bottleneck: single low-rank attention, seed 1338"
+  #   backend: torch
+  #   task: task.language_modeling
+  #   data:
+  #     ref: dataset.tokens
+  #     config: *token_dataset
+  #   system:
+  #     ref: system.language_model
+  #     config:
+  #       model:
+  #         type: TransformerModel
+  #         tied_embeddings: false
+  #         embedder: *embedder
+  #         topology:
+  #           type: StackedTopology
+  #           layers:
+  #             - type: NestedTopology
+  #               repeat: ${n_layers}
+  #               layers:
+  #                 - type: ResidualTopology
+  #                   layers:
+  #                     - type: RMSNormLayer
+  #                       d_model: ${d_model}
+  #                       eps: 1e-5
+  #                     - type: AttentionLayer
+  #                       d_model: ${d_model}
+  #                       n_heads: ${n_heads}
+  #                       mode: standard
+  #                       attn_dim: ${attn_dim}
+  #                       rope_enabled: true
+  #                       rope_base: ${rope_base}
+  #                       is_causal: true
+  #                       dropout_p: 0.0
+  #                 - *ffn_block
+  #             - *final_layers
+  #   objective: objective.next_token_ce
+  #   trainer: trainer.standard
+  #   runs:
+  #     - id: train
+  #       mode: train
+  #       exp: local_bottleneck
+  #       seed: 1338
+  #       steps: ${steps}
+  #       expected: {attn_mode: bottleneck}
+  #       train:
+  #         <<: *train_base
+  #         lr: ${lr}
 
-  - type: experiment
-    name: mac_fw1b_l12_bottleneck_s1339
-    description: "Bottleneck: single low-rank attention, seed 1339"
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config: *token_dataset
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          tied_embeddings: false
-          embedder: *embedder
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: ResidualTopology
-                    layers:
-                      - type: RMSNormLayer
-                        d_model: ${d_model}
-                        eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        attn_dim: ${attn_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
-                  - *ffn_block
-              - *final_layers
-    objective: objective.next_token_ce
-    trainer: trainer.standard
-    runs:
-      - id: train
-        mode: train
-        exp: local_bottleneck
-        seed: 1339
-        steps: ${steps}
-        expected: {attn_mode: bottleneck}
-        train:
-          <<: *train_base
-          lr: ${lr}
+  # - type: experiment
+  #   name: mac_fw1b_l12_bottleneck_s1339
+  #   description: "Bottleneck: single low-rank attention, seed 1339"
+  #   backend: torch
+  #   task: task.language_modeling
+  #   data:
+  #     ref: dataset.tokens
+  #     config: *token_dataset
+  #   system:
+  #     ref: system.language_model
+  #     config:
+  #       model:
+  #         type: TransformerModel
+  #         tied_embeddings: false
+  #         embedder: *embedder
+  #         topology:
+  #           type: StackedTopology
+  #           layers:
+  #             - type: NestedTopology
+  #               repeat: ${n_layers}
+  #               layers:
+  #                 - type: ResidualTopology
+  #                   layers:
+  #                     - type: RMSNormLayer
+  #                       d_model: ${d_model}
+  #                       eps: 1e-5
+  #                     - type: AttentionLayer
+  #                       d_model: ${d_model}
+  #                       n_heads: ${n_heads}
+  #                       mode: standard
+  #                       attn_dim: ${attn_dim}
+  #                       rope_enabled: true
+  #                       rope_base: ${rope_base}
+  #                       is_causal: true
+  #                       dropout_p: 0.0
+  #                 - *ffn_block
+  #             - *final_layers
+  #   objective: objective.next_token_ce
+  #   trainer: trainer.standard
+  #   runs:
+  #     - id: train
+  #       mode: train
+  #       exp: local_bottleneck
+  #       seed: 1339
+  #       steps: ${steps}
+  #       expected: {attn_mode: bottleneck}
+  #       train:
+  #         <<: *train_base
+  #         lr: ${lr}
 
   # ===========================================================================
   # DECOUPLED (DBA: sem+geo split) - 3 seeds
@@ -461,7 +471,7 @@ targets:
                         d_model: ${d_model}
                         n_heads: ${n_heads}
                         mode: decoupled
-                        dba_train_backend: metal
+                        dba_train_backend: triton
                         attn_dim: ${attn_dim}
                         sem_dim: ${sem_dim}
                         geo_dim: ${geo_dim}
@@ -519,7 +529,7 @@ targets:
                         d_model: ${d_model}
                         n_heads: ${n_heads}
                         mode: decoupled
-                        dba_train_backend: metal
+                        dba_train_backend: triton
                         attn_dim: ${attn_dim}
                         sem_dim: ${sem_dim}
                         geo_dim: ${geo_dim}
@@ -577,7 +587,7 @@ targets:
                         d_model: ${d_model}
                         n_heads: ${n_heads}
                         mode: decoupled
-                        dba_train_backend: metal
+                        dba_train_backend: triton
                         attn_dim: ${attn_dim}
                         sem_dim: ${sem_dim}
                         geo_dim: ${geo_dim}
@@ -860,118 +870,6 @@ targets:
           lr: ${lr_4e4}
 
   # ===========================================================================
-  # EXTENDED TRAINING (10k steps, seed 1337)
-  # ===========================================================================
-  - type: experiment
-    name: mac_fw1b_l12_baseline_10k_s1337
-    description: "Extended: baseline at 10k steps"
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config: *token_dataset
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          tied_embeddings: false
-          embedder: *embedder
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: ResidualTopology
-                    layers:
-                      - type: RMSNormLayer
-                        d_model: ${d_model}
-                        eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: standard
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        is_causal: true
-                        dropout_p: 0.0
-                  - *ffn_block
-              - *final_layers
-    objective: objective.next_token_ce
-    trainer: trainer.standard
-    runs:
-      - id: train
-        mode: train
-        exp: local_baseline_10k
-        seed: 1337
-        steps: ${steps_extended}
-        expected: {attn_mode: standard}
-        train:
-          <<: *train_base
-          lr: ${lr}
-          warmup_steps: 1000  # Scale warmup for longer run
-
-  - type: experiment
-    name: mac_fw1b_l12_decoupled_10k_s1337
-    description: "Extended: DBA decoupled at 10k steps"
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config: *token_dataset
-    system:
-      ref: system.language_model
-      config:
-        model:
-          type: TransformerModel
-          tied_embeddings: false
-          embedder: *embedder
-          topology:
-            type: StackedTopology
-            layers:
-              - type: NestedTopology
-                repeat: ${n_layers}
-                layers:
-                  - type: ResidualTopology
-                    layers:
-                      - type: RMSNormLayer
-                        d_model: ${d_model}
-                        eps: 1e-5
-                      - type: AttentionLayer
-                        d_model: ${d_model}
-                        n_heads: ${n_heads}
-                        mode: decoupled
-                        dba_train_backend: metal
-                        attn_dim: ${attn_dim}
-                        sem_dim: ${sem_dim}
-                        geo_dim: ${geo_dim}
-                        rope_enabled: true
-                        rope_base: ${rope_base}
-                        rope_semantic: false
-                        tie_qk: false
-                        null_attn: false
-                        decoupled_gate: false
-                        is_causal: true
-                        dropout_p: 0.0
-                  - *ffn_block
-              - *final_layers
-    objective: objective.next_token_ce
-    trainer: trainer.standard
-    runs:
-      - id: train
-        mode: train
-        exp: local_decoupled_10k
-        seed: 1337
-        steps: ${steps_extended}
-        expected: {attn_mode: decoupled, null_attn: false, tie_qk: false}
-        train:
-          <<: *train_base
-          lr: ${lr_decoupled}
-          grad_clip_norm: 1.0
-          warmup_steps: 1000  # Scale warmup for longer run
-
-  # ===========================================================================
   # DBA ABLATIONS (seed 1337)
   # ===========================================================================
   - type: experiment
@@ -1004,7 +902,7 @@ targets:
                         d_model: ${d_model}
                         n_heads: ${n_heads}
                         mode: decoupled
-                        dba_train_backend: metal
+                        dba_train_backend: triton
                         attn_dim: ${attn_dim}
                         sem_dim: ${sem_dim}
                         geo_dim: ${geo_dim}
@@ -1062,7 +960,7 @@ targets:
                         d_model: ${d_model}
                         n_heads: ${n_heads}
                         mode: decoupled
-                        dba_train_backend: metal
+                        dba_train_backend: triton
                         attn_dim: ${attn_dim}
                         sem_dim: ${sem_dim}
                         geo_dim: ${geo_dim}
@@ -1120,7 +1018,7 @@ targets:
                         d_model: ${d_model}
                         n_heads: ${n_heads}
                         mode: decoupled
-                        dba_train_backend: metal
+                        dba_train_backend: triton
                         attn_dim: ${attn_dim}
                         sem_dim: ${sem_dim}
                         geo_dim: ${geo_dim}
@@ -1141,6 +1039,64 @@ targets:
         seed: 1337
         steps: ${steps}
         expected: {attn_mode: decoupled, rope: false}
+        train:
+          <<: *train_base
+          lr: ${lr_decoupled}
+          grad_clip_norm: 1.0
+
+  - type: experiment
+    name: mac_fw1b_l12_decoupled_gate_s1337
+    description: "DBA ablation: gate enabled"
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config: *token_dataset
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder: *embedder
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        mode: decoupled
+                        dba_train_backend: triton
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_base}
+                        rope_semantic: false
+                        tie_qk: false
+                        null_attn: false
+                        decoupled_gate: true  # ABLATION: gate enabled
+                        is_causal: true
+                        dropout_p: 0.0
+                  - *ffn_block
+              - *final_layers
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: local_decoupled_gate
+        seed: 1337
+        steps: ${steps}
+        expected: {attn_mode: decoupled, gate: true}
         train:
           <<: *train_base
           lr: ${lr_decoupled}
@@ -1169,11 +1125,8 @@ entrypoints:
   baseline_lr2e4: "target:mac_fw1b_l12_baseline_lr2e4_s1337"
   baseline_lr4e4: "target:mac_fw1b_l12_baseline_lr4e4_s1337"
 
-  # Extended training
-  baseline_10k: "target:mac_fw1b_l12_baseline_10k_s1337"
-  decoupled_10k: "target:mac_fw1b_l12_decoupled_10k_s1337"
-
   # DBA ablations
   decoupled_null: "target:mac_fw1b_l12_decoupled_null_s1337"
   decoupled_tieqk: "target:mac_fw1b_l12_decoupled_tieqk_s1337"
   decoupled_norope: "target:mac_fw1b_l12_decoupled_norope_s1337"
+  decoupled_gate: "target:mac_fw1b_l12_decoupled_gate_s1337"

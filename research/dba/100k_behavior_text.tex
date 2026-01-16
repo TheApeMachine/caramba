@@ -1,0 +1,25 @@
+% Suggested text for behavioral results section
+
+To evaluate whether DBA's architectural compression affects model behavior, we constructed
+an extended behavioral probe suite spanning 15 cognitive categories with 117 test cases,
+including exact copy tasks, few-shot learning, distractor filtering, logical reasoning,
+arithmetic, sequence completion, world knowledge, semantic understanding, format preservation,
+long-context retrieval, robustness to rephrasing, edge cases, nuanced attention patterns,
+instruction following, and consistency across equivalent prompts.
+
+Results demonstrate \textbf{behavioral parity} between DBA and baseline (Table~\ref{tab:behavior-summary}).
+Overall accuracy is nearly identical (27.4\% vs 26.5\%), with DBA passing 32 tests compared
+to baseline's 31. In head-to-head comparison on tests where the models diverge, DBA wins
+7 to baseline's 6. Category-level analysis shows each architecture winning 2 categories
+with 11 ties.
+
+Notably, DBA shows improved performance on reasoning tasks (+20\% absolute) and world
+knowledge (+16.7\%), while baseline performs better on distractor filtering ($-$12.5\%)
+and exact copy tasks ($-$14.3\%). The copy task deficit appears related to DBA's tendency
+toward continuation rather than termination---a generation behavior rather than a
+representational limitation.
+
+These results support our central claim: \textbf{DBA achieves 37.5\% KV-cache reduction
+while preserving behavioral capabilities}. The architectural bottleneck successfully
+compresses the attention representation without degrading the model's ability to perform
+diverse cognitive tasks.

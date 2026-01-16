@@ -69,8 +69,21 @@ class TrainConfig(BaseModel):
 
     # Upcycle initialization knobs (student only).
     # - "svd": initialize DBA Q/K projections via (randomized) SVD of teacher Q/K.
-    # - "random": keep student's randomly-initialized DBA Q/K projections (control for Experiment 1).
-    dba_init: Literal["svd", "random"] = "svd"
+    # - "random": random init for DBA Q/K, but still copy V/O from teacher.
+    # - "fresh": complete random init for ALL DBA projections (routing hypothesis).
+    #            Use this when testing whether pretrained FFN/embeddings can learn
+    #            to work with an entirely new attention mechanism.
+    dba_init: Literal["svd", "random", "fresh"] = "svd"
+
+    # Trainable scope for gradient isolation (used with trainer.gradient_isolation).
+    # Regex patterns matching parameter names that should be trainable.
+    # All other parameters will be frozen.
+    # Example: [".*attention.*"] trains only attention layers.
+    trainable_scope: list[str] | None = None
+
+    # Frozen scope (optional override for trainable_scope).
+    # Parameters matching these patterns are frozen even if they match trainable_scope.
+    frozen_scope: list[str] | None = None
 
     # Teacher sanity checks (upcycling safety).
     # These run once per target, immediately after loading the teacher checkpoint,

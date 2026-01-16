@@ -13,6 +13,7 @@ from torch import Tensor, nn
 from caramba.adapter.schema import SchemaLoader, StateDictSchema
 from caramba.config.layer import AttentionMode
 from caramba.initializers.dba.base import DBAInitializer
+from caramba.initializers.dba.fresh import DBAFresh, init_fresh_linear
 from caramba.initializers.dba.random import DBARandom
 from caramba.initializers.dba.svd import DBASVD
 from caramba.layer.attention import AttentionLayer
@@ -41,14 +42,22 @@ class AdapterStateDictTransformer:
 
     @staticmethod
     def buildDbaInitializer(*, dba_init: str) -> DBAInitializer:
-        """Build a DBA initializer policy."""
+        """Build a DBA initializer policy.
+
+        Available policies:
+            - "svd": Initialize DBA Q/K from SVD decomposition of teacher Q/K (preserves patterns)
+            - "random": Random init for Q/K, but still copy V/O from teacher
+            - "fresh": Complete random init for all projections (routing hypothesis)
+        """
 
         s = str(dba_init).lower().strip()
         if s == "svd":
             return DBASVD()
         if s == "random":
             return DBARandom()
-        raise ValueError(f"Unsupported dba_init={dba_init!r} (expected 'svd' or 'random')")
+        if s == "fresh":
+            return DBAFresh()
+        raise ValueError(f"Unsupported dba_init={dba_init!r} (expected 'svd', 'random', or 'fresh')")
 
     def apply(self, *, model: nn.Module, state_dict: dict[str, Tensor]) -> None:
         """Apply state_dict weights to the model."""
@@ -181,7 +190,11 @@ class AdapterStateDictTransformer:
         o: Tensor,
         attn_prefix: str,
     ) -> None:
-        """Load decoupled attention using DBA initializer for Q/K and copying V/O."""
+        """Load decoupled attention using DBA initializer for Q/K.
+
+        For SVD/random init: copies V/O from teacher, initializes Q/K via policy.
+        For fresh init: initializes ALL projections randomly (routing hypothesis).
+        """
 
         if attn.q_sem is None or attn.k_sem is None:
             raise ValueError("DBA attention missing semantic projections (q_sem/k_sem)")
@@ -193,7 +206,20 @@ class AdapterStateDictTransformer:
         sem_dim = int(attn.q_sem.out_features)
         geo_dim = int(attn.q_geo.out_features)
 
-        self.copyVO(attn=attn, v=v, o=o)
+        # Fresh mode: initialize ALL projections randomly (full replacement)
+        # This is the routing hypothesis approach - don't copy anything from teacher
+        if isinstance(self.dba_initializer, DBAFresh):
+            # V projection: normal Xavier scale
+            init_fresh_linear(attn.v_proj, seed=f"{attn_prefix}.v", suffix="v", scale=1.0)
+            # O projection: small scale (GPT-2 style) to avoid disrupting residual stream
+            # The pretrained norms expect attention outputs to be in a certain range;
+            # starting with small outputs lets the model gradually learn routing.
+            init_fresh_linear(attn.out_proj, seed=f"{attn_prefix}.o", suffix="o", scale=0.02)
+        else:
+            # SVD/random mode: copy V/O from teacher
+            self.copyVO(attn=attn, v=v, o=o)
+
+        # Initialize Q/K semantic and geometric projections via the selected policy
         self.dba_initializer.initialize(
             sem_weight=attn.q_sem.weight,
             geo_weight=attn.q_geo.weight,
@@ -210,6 +236,8 @@ class AdapterStateDictTransformer:
             geo_dim=geo_dim,
             seed=f"{attn_prefix}.k",
         )
+
+        # Reset gate to neutral (0.5 semantic/geometric mix)
         if attn.decoupled_gate_logit is not None:
             attn.decoupled_gate_logit.data.zero_()
 

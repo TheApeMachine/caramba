@@ -7,5 +7,6 @@
         "source.fixAll.biome": "explicit"
     },
     "makefile.configureOnOpen": false,
-    "typescript.autoClosingTags": false
+    "typescript.autoClosingTags": false,
+    "git.ignoreLimitWarning": true
 }

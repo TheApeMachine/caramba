@@ -24,6 +24,9 @@ dependencies = [
     # Runtime deps are intentionally constrained (not fully pinned).
     # Reproducible installs are provided by `uv.lock` (see `make install` / `uv sync`).
     "torch>=2.0",
+    "mlx",
+    "mlx-lm",
+    "lm-eval",
     "numpy>=1.24",
     "tiktoken>=0.5",
     "datasets>=2.0",

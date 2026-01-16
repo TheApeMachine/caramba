@@ -150,6 +150,10 @@ class LanguageModelSystem:
     def parameters(self):
         return self.module.parameters()
 
+    def named_parameters(self):
+        """Return named parameters for gradient isolation trainer."""
+        return self.module.named_parameters()
+
     def state_dict(self):
         return self.module.state_dict()
 

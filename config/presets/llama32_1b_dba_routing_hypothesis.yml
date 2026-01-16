@@ -1,0 +1,580 @@
+version: 2
+name: llama32_1b_dba_routing_hypothesis
+notes: >
+  Routing Hypothesis Experiment: Test whether attention is primarily a routing mechanism.
+
+  Hypothesis: If attention is just routing, then a pretrained model's FFN layers and
+  embeddings already contain all the "knowledge" - the attention layers only decide
+  which information flows where. Therefore, we should be able to:
+
+  1. Take a pretrained Llama model
+  2. Replace ALL attention layers with fresh, randomly-initialized DBA layers
+  3. Freeze the FFN layers and embeddings (they already have the knowledge)
+  4. Train ONLY the new DBA layers on language modeling
+  5. Recover most of the original model's performance
+
+  If successful, this validates that:
+  - Attention is indeed primarily a routing mechanism
+  - DBA can learn effective routing patterns from scratch
+  - The semantic/geometric decomposition emerges naturally during training
+
+  Key differences from SVD/random experiments:
+  - dba_init: fresh (ALL DBA projections randomly initialized, including V and O)
+  - trainable_scope: only attention layers (FFN/embeddings frozen)
+  - No blockwise distillation phase (no teacher matching - pure LM loss)
+  - Direct global training on next-token prediction
+
+defaults:
+  data:
+    tokenizer: llama
+    val_frac: 0.05
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-routing-hypothesis
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    save_every: 500
+
+vars:
+  # Llama 3.2 1B topology
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  head_dim: 64
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+  rope_theta: 500000.0
+  rope_scaling:
+    rope_type: llama3
+    factor: 32.0
+    low_freq_factor: 1.0
+    high_freq_factor: 4.0
+    original_max_position_embeddings: 8192
+
+  # DBA dimensions - moderate compression for routing experiment
+  # Larger dims give DBA more expressiveness to learn routing patterns
+  sem_dim: 256
+  geo_dim: 512
+  attn_dim: 768
+
+  # Training config
+  batch_size: 1
+  block_size: 2048
+  grad_accum: 1  # Reduced from 16 - MLX holds computation graphs in memory
+  num_workers: 0
+  pin_memory: false
+  prefetch_factor: 2
+
+  # More steps for fresh training (learning from scratch needs more time)
+  routing_steps: 5000
+  # Lower LR for fresh init stability (attention outputs start near zero)
+  routing_lr: 0.0001
+
+  # Dataset path (Llama-tokenized FineWeb)
+  # Run `make prepare-llama-data` first to create this dataset
+  dataset_path: artifacts/datasets/fineweb_llama/fineweb_llama_1b.npy
+
+targets:
+  # Main experiment: Fresh DBA with frozen FFN/embeddings
+  - type: experiment
+    name: exp_routing_fresh
+    description: "Routing hypothesis: fresh DBA, frozen FFN/embeddings, LM loss only."
+    backend: mlx
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_scaling: ${rope_scaling}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+
+    # Use gradient isolation trainer to freeze everything except attention
+    trainer:
+      ref: trainer.gradient_isolation
+      config:
+        # Only train attention-related parameters
+        # This regex matches all DBA projection weights and gate parameters
+        trainable_scope:
+          - ".*q_sem.*"
+          - ".*k_sem.*"
+          - ".*q_geo.*"
+          - ".*k_geo.*"
+          - ".*v_proj.*"
+          - ".*out_proj.*"
+          - ".*decoupled_gate.*"
+          - ".*rotary.*"
+        # Explicitly freeze FFN and embeddings (redundant but clear)
+        frozen_scope:
+          - ".*w_gate_up.*"
+          - ".*w_down.*"
+          - ".*token_embedding.*"
+
+    runs:
+      - id: routing_train
+        mode: train
+        exp: dba_routing
+        seed: 42
+        steps: ${routing_steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${routing_lr}
+          device: mps
+          dtype: float32
+          num_workers: ${num_workers}
+          pin_memory: ${pin_memory}
+          prefetch_factor: ${prefetch_factor}
+
+          # CRITICAL: Fresh initialization - no teacher weight transfer
+          dba_init: fresh
+          teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+
+          # Skip teacher sanity checks (we're not trying to match teacher)
+          teacher_sanity_check: false
+
+          gradient_accumulation_steps: ${grad_accum}
+          grad_clip_norm: 1.0
+
+          optimizer: adamw
+          weight_decay: 0.01
+          fused_optimizer: false
+
+          # Disable AMP for fresh init stability (fp16 can overflow with random weights)
+          use_amp: false
+
+          # LR warmup is important for fresh training
+          scheduler: cosine
+          warmup_steps: 500
+          min_lr_ratio: 0.1
+
+    benchmarks:
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_1b.npy
+          block_size: 2048
+          batch_size: 1
+          num_batches: 100
+        models: [teacher, student]
+        repeats: 1
+
+  # MLX variant: Same experiment but using MLX backend (faster on Apple Silicon)
+  - type: experiment
+    name: exp_routing_fresh_mlx
+    description: "Routing hypothesis with MLX backend (Apple Silicon optimized)."
+    backend: mlx
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_scaling: ${rope_scaling}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.gradient_isolation
+      config:
+        trainable_scope:
+          - ".*q_sem.*"
+          - ".*k_sem.*"
+          - ".*q_geo.*"
+          - ".*k_geo.*"
+          - ".*v_proj.*"
+          - ".*out_proj.*"
+          - ".*decoupled_gate.*"
+          - ".*rotary.*"
+        frozen_scope:
+          - ".*w_gate_up.*"
+          - ".*w_down.*"
+          - ".*token_embedding.*"
+    runs:
+      - id: routing_train_mlx
+        mode: train
+        exp: dba_routing_mlx
+        seed: 42
+        steps: ${routing_steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${routing_lr}
+          device: gpu  # MLX uses unified memory
+          dtype: float32
+          num_workers: ${num_workers}
+          pin_memory: false
+          prefetch_factor: ${prefetch_factor}
+          dba_init: fresh
+          teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+          teacher_sanity_check: false
+          gradient_accumulation_steps: ${grad_accum}
+          grad_clip_norm: 1.0
+          optimizer: adamw
+          weight_decay: 0.01
+          fused_optimizer: false
+          use_amp: false
+          scheduler: cosine
+          warmup_steps: 500
+          min_lr_ratio: 0.1
+
+  # Control experiment: Same setup but with SVD init (for comparison)
+  - type: experiment
+    name: exp_routing_svd_control
+    description: "Control: SVD-initialized DBA with same frozen FFN setup."
+    backend: mlx
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_scaling: ${rope_scaling}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.gradient_isolation
+      config:
+        trainable_scope:
+          - ".*q_sem.*"
+          - ".*k_sem.*"
+          - ".*q_geo.*"
+          - ".*k_geo.*"
+          - ".*v_proj.*"
+          - ".*out_proj.*"
+          - ".*decoupled_gate.*"
+          - ".*rotary.*"
+        frozen_scope:
+          - ".*w_gate_up.*"
+          - ".*w_down.*"
+          - ".*token_embedding.*"
+    runs:
+      - id: routing_train_svd
+        mode: train
+        exp: dba_routing_svd
+        seed: 42
+        steps: ${routing_steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${routing_lr}
+          device: mps
+          dtype: auto
+          num_workers: ${num_workers}
+          pin_memory: ${pin_memory}
+          prefetch_factor: ${prefetch_factor}
+
+          # SVD initialization (preserves some teacher patterns)
+          dba_init: svd
+          teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+          teacher_sanity_check: false
+
+          gradient_accumulation_steps: ${grad_accum}
+          grad_clip_norm: 1.0
+
+          optimizer: adamw
+          weight_decay: 0.01
+          fused_optimizer: false
+
+          use_amp: true
+          amp_dtype: auto
+
+          scheduler: cosine
+          warmup_steps: 200
+          min_lr_ratio: 0.1
+    benchmarks:
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_1b.npy
+          block_size: 2048
+          batch_size: 1
+          num_batches: 100
+        models: [teacher, student]
+        repeats: 1
+
+  # Ablation: What if we also unfreeze FFN? (tests whether FFN really has the knowledge)
+  - type: experiment
+    name: exp_routing_unfrozen_ffn
+    description: "Ablation: fresh DBA with unfrozen FFN (full fine-tuning control)."
+    backend: mlx
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_scaling: ${rope_scaling}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.gradient_isolation
+      config:
+        # Train everything except embeddings
+        trainable_scope:
+          - ".*attention.*"
+          - ".*q_sem.*"
+          - ".*k_sem.*"
+          - ".*q_geo.*"
+          - ".*k_geo.*"
+          - ".*v_proj.*"
+          - ".*out_proj.*"
+          - ".*decoupled_gate.*"
+          - ".*rotary.*"
+          - ".*w_gate_up.*"
+          - ".*w_down.*"
+          - ".*norm.*"
+        # Only freeze embeddings
+        frozen_scope:
+          - ".*token_embedding.*"
+    runs:
+      - id: routing_train_unfrozen
+        mode: train
+        exp: dba_routing_unfrozen
+        seed: 42
+        steps: ${routing_steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: 0.0001  # Lower LR when training more params
+          device: mps
+          dtype: auto
+          num_workers: ${num_workers}
+          pin_memory: ${pin_memory}
+          prefetch_factor: ${prefetch_factor}
+
+          dba_init: fresh
+          teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+          teacher_sanity_check: false
+
+          gradient_accumulation_steps: ${grad_accum}
+          grad_clip_norm: 1.0
+
+          optimizer: adamw
+          weight_decay: 0.01
+          fused_optimizer: false
+
+          use_amp: true
+          amp_dtype: auto
+
+          scheduler: cosine
+          warmup_steps: 200
+          min_lr_ratio: 0.1
+    benchmarks:
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_1b.npy
+          block_size: 2048
+          batch_size: 1
+          num_batches: 100
+        models: [teacher, student]
+        repeats: 1

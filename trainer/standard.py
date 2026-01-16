@@ -492,6 +492,20 @@ class StandardTrainer:
                 m = getattr(system_any, "module", None)
                 if isinstance(m, nn.Module):
                     compile_mode = str(getattr(runtime_plan, "compile_mode", "default"))
+
+                    # Suppress confusing CUDA-specific warnings on MPS
+                    if device.type == "mps":
+                        import warnings
+                        warnings.filterwarnings(
+                            "ignore",
+                            message=".*Not enough SMs to use max_autotune_gemm mode.*",
+                            category=UserWarning
+                        )
+                        if compile_mode in ("max-autotune", "max-autotune-no-cudagraphs"):
+                            logger.info(
+                                f"torch.compile mode '{compile_mode}' on MPS - expect CUDA-optimized warnings "
+                                "to be suppressed for cleaner logging."
+                            )
                     if device.type == "cuda":
                         accum_steps_cfg = max(1, int(getattr(train, "gradient_accumulation_steps", 1) or 1))
                         if compile_mode == "reduce-overhead" and int(accum_steps_cfg) > 1:
@@ -509,6 +523,7 @@ class StandardTrainer:
                                 f"gradient_accumulation_steps={accum_steps_cfg} requires avoiding CUDA-graph output reuse."
                             )
                     try:
+                        logger.info(f"Compiling model with torch.compile (mode={compile_mode}) - this may take 30-60 seconds...")
                         system_any.module = torch.compile(m, mode=str(compile_mode))
                     except Exception as e:
                         # If the runtime doesn't recognize a mode (older PyTorch), fall back to default.
@@ -521,9 +536,15 @@ class StandardTrainer:
                         else:
                             raise
                     compiled = True
-                    logger.info(
-                        f"torch.compile enabled (mode={compile_mode}) for {target.name}:{run.id}"
-                    )
+                    if device.type == "mps":
+                        logger.success(
+                            f"torch.compile enabled (mode={compile_mode}) for {target.name}:{run.id} - "
+                            "optimized for Apple Silicon MPS backend"
+                        )
+                    else:
+                        logger.success(
+                            f"torch.compile enabled (mode={compile_mode}) for {target.name}:{run.id}"
+                        )
                 else:
                     logger.info(
                         f"torch.compile requested but no nn.Module found on system.module "

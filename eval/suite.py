@@ -202,6 +202,37 @@ def _run_case(
                 teacher_answer=str(t_int),
                 student_answer=str(s_int),
             )
+        case "float_greedy":
+            if not isinstance(case.answer, (int, float)):
+                raise TypeError(
+                    f"Case {case.id!r}: expected answer to be int or float for float_greedy, "
+                    f"got {type(case.answer).__name__}"
+                )
+            t_text = _greedy_generate(
+                model=teacher,
+                prompt_ids=prompt_ids,
+                tokenizer=tokenizer,
+                device=device,
+                max_new_tokens=max_new_tokens,
+                context_window=context_window,
+            )
+            s_text = _greedy_generate(
+                model=student,
+                prompt_ids=prompt_ids,
+                tokenizer=tokenizer,
+                device=device,
+                max_new_tokens=max_new_tokens,
+                context_window=context_window,
+            )
+            t_float = _extract_first_float(t_text)
+            s_float = _extract_first_float(s_text)
+            return EvalCaseResult(
+                case_id=case.id,
+                teacher_ok=(abs(t_float - float(case.answer)) < 1e-6),
+                student_ok=(abs(s_float - float(case.answer)) < 1e-6),
+                teacher_answer=str(t_float),
+                student_answer=str(s_float),
+            )
         case "exact_match_greedy":
             if not isinstance(case.answer, str):
                 raise TypeError(
@@ -263,6 +294,14 @@ def _extract_first_int(text: str) -> int:
     if m is None:
         return 0
     return int(m.group(0))
+
+
+def _extract_first_float(text: str) -> float:
+    """Extract the first float from text, defaulting to 0.0."""
+    m = re.search(r"-?\d+(?:\.\d+)?", str(text))
+    if m is None:
+        return 0.0
+    return float(m.group(0))
 
 
 def _pick_choice_by_logprob(

@@ -1,0 +1,285 @@
+# DBA Behavioral Test Suite v2 Configuration
+# ==========================================
+
+suite:
+  name: "DBA Behavioral Evaluation Suite v2"
+  version: "2.0.0"
+  description: "Comprehensive behavioral probes with randomization and adversarial tests"
+
+generation:
+  seed: 42
+  default_tests_per_category: 30
+  stratified_sampling: true
+  difficulty_levels: [easy, medium, hard]
+
+  # Position randomization for copy-style tasks
+  position_distribution:
+    start: 0.33
+    middle: 0.34
+    end: 0.33
+
+categories:
+  copy_tasks:
+    enabled: true
+    count: 30
+    description: "Raw memorization fidelity"
+    difficulty_weights:
+      easy: 0.4      # 3-5 tokens
+      medium: 0.35   # 6-10 tokens
+      hard: 0.25     # 11-20 tokens
+
+  fewshot_learning:
+    enabled: true
+    count: 35
+    description: "In-context pattern recognition"
+    subcategories:
+      - simple_transform     # uppercase, prefix, suffix
+      - pattern_completion   # sequences, mappings
+      - arithmetic_patterns  # increment, double, square
+      - string_manipulation  # reverse, swap, duplicate
+
+  distractor_tests:
+    enabled: true
+    count: 40
+    description: "Attention focus under interference"
+    subcategories:
+      - explicit_distractors     # "Ignore: X, Y, Z"
+      - implicit_distractors     # Earlier examples as noise
+      - typo_distractors         # Similar-looking alternatives
+      - semantic_distractors     # Related concepts
+      - positional_distractors   # Target at various positions
+
+  reasoning:
+    enabled: true
+    count: 30
+    description: "Logical inference"
+    subcategories:
+      - comparisons
+      - transitive
+      - negation
+      - conditionals
+      - set_membership
+
+  arithmetic:
+    enabled: true
+    count: 25
+    description: "Numerical reasoning"
+    operations: [add, sub, mul, div]
+    digit_ranges:
+      easy: [1, 10]
+      medium: [10, 100]
+      hard: [100, 1000]
+
+  sequences:
+    enabled: true
+    count: 25
+    description: "Pattern extrapolation"
+    types:
+      - arithmetic    # +n sequences
+      - geometric     # *n sequences
+      - fibonacci     # sum of previous two
+      - alternating   # periodic patterns
+      - letters       # A, B, C, ...
+
+  world_knowledge:
+    enabled: true
+    count: 20
+    description: "Factual recall"
+    domains:
+      - geography     # capitals, countries
+      - science       # formulas, constants
+      - common_sense  # days/week, months/year
+
+  semantic:
+    enabled: true
+    count: 25
+    description: "Meaning comprehension"
+    subcategories:
+      - synonyms
+      - antonyms
+      - category_membership
+      - analogies
+
+  format_preservation:
+    enabled: true
+    count: 25
+    description: "Structural fidelity"
+    formats:
+      - json
+      - csv
+      - table
+      - list
+      - brackets
+      - xml
+
+  long_context:
+    enabled: true
+    count: 30
+    description: "Context window utilization"
+    context_lengths: [256, 512, 1024, 2048]
+    retrieval_positions:
+      - early       # First 10% of context
+      - middle      # Middle 20%
+      - late        # Last 10%
+      - scattered   # Information spread throughout
+
+  robustness:
+    enabled: true
+    count: 20
+    description: "Consistency under variation"
+    variations:
+      - rephrasing
+      - case_changes
+      - whitespace
+      - punctuation
+
+  edge_cases:
+    enabled: true
+    count: 20
+    description: "Boundary conditions"
+    cases:
+      - single_char
+      - single_digit
+      - zero_values
+      - negative_numbers
+      - large_numbers
+      - repeated_elements
+      - empty_like
+
+  attention_probes:
+    enabled: true
+    count: 40
+    description: "Diagnostics for attention patterns"
+    subcategories:
+      - fine_discrimination   # Might favor high-rank
+      - subtle_differences    # Typo detection
+      - focus_under_noise     # Might favor low-rank
+      - positional_recency    # Recent vs distant
+      - binding               # Entity-attribute association
+      - cross_reference       # Relational attention
+      - order_sensitivity     # First/last retrieval
+      - count_interference    # Count specific items among noise
+
+  instruction_following:
+    enabled: true
+    count: 25
+    description: "Instruction adherence"
+    instructions:
+      - return_first
+      - return_last
+      - count_items
+      - transform_case
+      - reverse
+      - filter
+      - extract
+
+  consistency_checks:
+    enabled: true
+    count: 20
+    description: "Same capability, different format"
+    capabilities:
+      - addition
+      - copy
+      - comparison
+      - retrieval
+
+  # NEW CATEGORIES
+  adversarial:
+    enabled: true
+    count: 50
+    description: "Prompt injection and robustness attacks"
+    attack_types:
+      - instruction_injection   # "Ignore previous, do X"
+      - delimiter_confusion     # Confusing prompt boundaries
+      - format_hijacking        # Attempting to change output format
+      - context_poisoning       # Planting false information
+      - attention_stealing      # Trying to redirect attention
+      - repetition_induction    # Trying to cause loops
+      - encoding_attacks        # Base64, rot13, etc.
+      - jailbreak_patterns      # Common jailbreak structures
+
+  binding_tests:
+    enabled: true
+    count: 30
+    description: "Entity-attribute binding under interference"
+    complexity_levels:
+      - two_entities       # A has X, B has Y. What has A?
+      - three_entities     # Add C with Z
+      - attribute_swap     # A had X, now has Y
+      - nested_binding     # A's friend is B who has X
+      - temporal_binding   # Before/after states
+
+  multi_hop:
+    enabled: true
+    count: 25
+    description: "Multi-step reasoning chains"
+    hop_counts: [2, 3, 4]
+    types:
+      - transitive_chains   # A>B, B>C, C>D => A>D
+      - fact_chains         # Combining multiple facts
+      - arithmetic_chains   # Multi-step calculations
+      - reference_chains    # X has what Y has, Y has what Z has
+
+scoring:
+  binary_metrics:
+    - exact_match
+    - content_match
+    - prefix_match
+    - choice_correct
+
+  soft_scoring:
+    enabled: true
+    scale: [-1, 0, 1, 2, 3]
+    criteria:
+      3: "Exact match"
+      2: "Content correct, minor format differences"
+      1: "Content present but buried"
+      0: "Wrong content or distractor contamination"
+      -1: "Radical failure (loops, garbage)"
+
+  diagnostics:
+    repetition_detection:
+      min_phrase_length: 2
+      min_repeats: 3
+    distractor_detection:
+      enabled: true
+    attention_metrics:
+      entropy: true
+      sparsity: true
+      peak_positions: true
+
+visualization:
+  attention_heatmaps:
+    enabled: true
+    shared_colorbar: true
+    vmin: 0.0
+    vmax: 1.0  # Fixed scale for comparison
+    colormap: "viridis"
+    layers_to_plot: [0, 4, 8, 12, 16, 20]  # Sample layers
+    heads_to_plot: "all"
+
+  comparison_charts:
+    enabled: true
+    types:
+      - per_category_accuracy
+      - head_to_head_matrix
+      - failure_mode_breakdown
+      - soft_score_distribution
+      - attention_pattern_comparison
+
+  output_formats:
+    - png
+    - pdf
+    - html  # Interactive dashboard
+
+output:
+  base_dir: "./results"
+  timestamp_dirs: true
+  artifacts:
+    - test_cases.json           # Generated test suite
+    - raw_outputs.json          # Model outputs
+    - scores.json               # All scoring metrics
+    - attention_data.npz        # Attention matrices (compressed)
+    - summary_report.md         # Human-readable summary
+    - detailed_report.html      # Full interactive report
+    - latex_tables.tex          # For paper

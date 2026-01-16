@@ -1,0 +1,18 @@
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Critical distractor rejection tests (100k checkpoints). These tests measure the model's ability to ignore misleading context.}
+\label{tab:distractor_tests_100k}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Test} & \textbf{Baseline} & \textbf{DBA} & \textbf{Winner} \\
+\midrule
+Passkey + distractors & 0 & 3 & \textbf{DBA} \\
+Long passkey + noise & 0 & 3 & \textbf{DBA} \\
+Sequence + distractors & 3 & 3 & Tie \\
+Comparison (2 > 6) & 0 & 3 & \textbf{DBA} \\
+Comparison (6 < 2) & 0 & 3 & \textbf{DBA} \\
+\bottomrule
+\end{tabular}
+\end{table}

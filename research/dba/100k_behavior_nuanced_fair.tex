@@ -1,0 +1,26 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Complete nuanced behavioral evaluation (100k checkpoints, 73 test cases). Scoring: 3=exact match, 2=content correct with format additions, 1=content present but buried, 0=wrong content, -1=radical failure (loops/garbage).}
+\label{tab:behavior_nuanced_100k}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Score Level} & \multicolumn{2}{c}{\textbf{Baseline}} & \multicolumn{2}{c}{\textbf{DBA (sem8/geo32)}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5}
+ & Count & \% & Count & \% \\
+\midrule
+Exact Match (3) & 11 & 15.1\% & 13 & 17.8\% \\
+Content Correct (2) & 3 & 4.1\% & 8 & 11.0\% \\
+Content Buried (1) & 11 & 15.1\% & 7 & 9.6\% \\
+Wrong Content (0) & 48 & 65.8\% & 43 & 58.9\% \\
+Radical Failure (-1) & 0 & 0.0\% & 2 & 2.7\% \\
+\midrule
+Total Score & \multicolumn{2}{c}{50} & \multicolumn{2}{c}{60} \\
+Average Score & \multicolumn{2}{c}{0.68} & \multicolumn{2}{c}{0.82} \\
+Normalized (0--100) & \multicolumn{2}{c}{42.1} & \multicolumn{2}{c}{45.5} \\
+\midrule
+Head-to-Head Wins & \multicolumn{2}{c}{9} & \multicolumn{2}{c}{9} \\
+Ties & \multicolumn{4}{c}{55} \\
+\bottomrule
+\end{tabular}
+\end{table}

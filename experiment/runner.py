@@ -19,6 +19,7 @@ from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig, T
 from caramba.console import logger
 from caramba.runtime.engine.torch_engine import TorchEngine
 from caramba.runtime.engine.lightning_engine import LightningEngine
+from caramba.runtime.engine import get_mlx_engine
 from caramba.orchestrator.compute.vast_ai import VastAIClient
 from caramba.runtime.readiness import check_target_readiness, format_readiness_report
 from caramba.ai.agent import Agent
@@ -142,9 +143,11 @@ class ExperimentRunner:
             engine = LightningEngine()
         elif backend in {"torch", "pt"}:
             engine = TorchEngine()
+        elif backend == "mlx":
+            engine = get_mlx_engine()
         else:
             raise ValueError(
-                f"Unsupported target.backend={backend!r}; expected one of 'lightning', 'torch', 'pt'"
+                f"Unsupported target.backend={backend!r}; expected one of 'lightning', 'torch', 'pt', 'mlx'"
             )
 
         logger.header("Target", f"{target.name} ({target.type}) • backend={target.backend}")

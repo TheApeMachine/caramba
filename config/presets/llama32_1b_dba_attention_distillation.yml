@@ -1,0 +1,401 @@
+version: 2
+name: llama32_1b_dba_attention_distillation
+notes: >
+  Attention Distillation Experiment: Train DBA to mimic teacher's attention patterns.
+
+  Key insight: DBA doesn't need to know which dimensions are semantic vs geometric.
+  The distillation loss just says "make your attention weights match the teacher's."
+  DBA figures out on its own how to decompose the routing into semantic vs geometric
+  paths to reproduce the target pattern.
+
+  Loss = distill_alpha * MSE(A_dba, A_teacher) + lm_alpha * CrossEntropy(logits, targets)
+
+  Benefits over pure LM loss:
+  - Much faster convergence (teacher provides "hints" about where to look)
+  - DBA learns the "known route" that FFN layers expect
+  - Natural decomposition emerges from the bottleneck
+
+defaults:
+  data:
+    tokenizer: llama
+    val_frac: 0.05
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-attention-distillation
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    save_every: 500
+
+vars:
+  # Llama 3.2 1B topology
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  head_dim: 64
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+  rope_theta: 500000.0
+  rope_scaling:
+    rope_type: llama3
+    factor: 32.0
+    low_freq_factor: 1.0
+    high_freq_factor: 4.0
+    original_max_position_embeddings: 8192
+
+  # DBA dimensions
+  sem_dim: 256
+  geo_dim: 512
+  attn_dim: 768
+
+  # Training config
+  batch_size: 1
+  block_size: 2048
+  grad_accum: 1
+
+  # Distillation training
+  distill_steps: 2000  # Fewer steps needed with distillation
+  distill_lr: 0.0003   # Can use higher LR with distillation guidance
+
+  # Loss weights
+  distill_alpha: 1.0   # Weight for attention pattern matching
+  lm_alpha: 0.1        # Weight for language modeling
+
+  # Dataset path (Llama-tokenized FineWeb)
+  # Run `make prepare-llama-data` first to create this dataset
+  dataset_path: artifacts/datasets/fineweb_llama/fineweb_llama_1b.npy
+
+targets:
+  # Main experiment: Attention distillation
+  - type: experiment
+    name: exp_attention_distill
+    description: "Attention distillation: train DBA to match teacher attention patterns."
+    backend: mlx
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_scaling: ${rope_scaling}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+
+    trainer:
+      ref: trainer.attention_distillation
+      config:
+        trainable_scope:
+          - ".*q_sem.*"
+          - ".*k_sem.*"
+          - ".*q_geo.*"
+          - ".*k_geo.*"
+          - ".*v_proj.*"
+          - ".*out_proj.*"
+          - ".*decoupled_gate.*"
+        frozen_scope:
+          - ".*w_gate_up.*"
+          - ".*w_down.*"
+          - ".*token_embedding.*"
+
+    runs:
+      - id: distill_train
+        mode: train
+        exp: dba_attention_distill
+        seed: 42
+        steps: ${distill_steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${distill_lr}
+          device: mps
+          dtype: float32
+
+          # Teacher model for distillation
+          teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+
+          # DBA initialization
+          dba_init: fresh
+
+          # Distillation loss weights
+          distill_alpha: ${distill_alpha}
+          lm_alpha: ${lm_alpha}
+
+          # Enable attention distillation mode
+          attention_distillation: true
+
+          gradient_accumulation_steps: ${grad_accum}
+          grad_clip_norm: 1.0
+
+          optimizer: adamw
+          weight_decay: 0.01
+          fused_optimizer: false
+          use_amp: false
+
+          scheduler: cosine
+          warmup_steps: 200
+          min_lr_ratio: 0.1
+
+  # Ablation: Pure distillation (no LM loss)
+  - type: experiment
+    name: exp_pure_distill
+    description: "Pure attention distillation without LM loss."
+    backend: mlx
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_scaling: ${rope_scaling}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.attention_distillation
+      config:
+        trainable_scope:
+          - ".*q_sem.*"
+          - ".*k_sem.*"
+          - ".*q_geo.*"
+          - ".*k_geo.*"
+          - ".*v_proj.*"
+          - ".*out_proj.*"
+          - ".*decoupled_gate.*"
+        frozen_scope:
+          - ".*w_gate_up.*"
+          - ".*w_down.*"
+          - ".*token_embedding.*"
+    runs:
+      - id: pure_distill_train
+        mode: train
+        exp: dba_pure_distill
+        seed: 42
+        steps: ${distill_steps}
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${distill_lr}
+          device: mps
+          dtype: float32
+          teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+          dba_init: fresh
+          # Pure distillation: only attention matching, no LM loss
+          distill_alpha: 1.0
+          lm_alpha: 0.0
+          attention_distillation: true
+          gradient_accumulation_steps: ${grad_accum}
+          grad_clip_norm: 1.0
+          optimizer: adamw
+          weight_decay: 0.01
+          fused_optimizer: false
+          use_amp: false
+          scheduler: cosine
+          warmup_steps: 200
+          min_lr_ratio: 0.1
+
+  # Dual Attention: Learn the decomposition by running both in parallel
+  - type: experiment
+    name: exp_dual_attention
+    description: "Dual attention: run original and DBA in parallel to learn decomposition."
+    backend: mlx
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        rope_scaling: ${rope_scaling}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.dual_attention
+      config:
+        trainable_scope:
+          - ".*student.*attention.*"
+        frozen_scope:
+          - ".*teacher.*"
+          - ".*w_gate_up.*"
+          - ".*w_down.*"
+          - ".*token_embedding.*"
+    runs:
+      - id: dual_train
+        mode: train
+        exp: dba_dual_attention
+        seed: 42
+        steps: 5000
+        expected: {phase: standard}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: 0.0003
+          device: mps
+          dtype: float32
+          teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+          dba_init: fresh
+          # Dual attention loss weights
+          output_match_alpha: 1.0
+          lm_alpha: 0.01
+          dual_attention: true
+          gradient_accumulation_steps: ${grad_accum}
+          grad_clip_norm: 1.0
+          optimizer: adamw
+          weight_decay: 0.01
+          fused_optimizer: false
+          use_amp: false
+          scheduler: cosine
+          warmup_steps: 500
+          min_lr_ratio: 0.1

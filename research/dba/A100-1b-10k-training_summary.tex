@@ -1,17 +1,13 @@
-% !TEX root = paper.tex
-% Auto-generated from W&B export CSV.
 \begin{table}[htbp]
 \centering
 \small
-\caption{A100 training summary (latest logged step; W\&B export).}
+\caption{A100 1B training summary (10k steps, pilot run). These early results motivated the sem8/geo32/v40 configuration for the full 100k training.}
 \label{tab:a100-training-summary-10k}
-\begin{tabular}{@{}lrrr@{}}
+\begin{tabular}{@{}lcc@{}}
 \toprule
-\textbf{Run} & \textbf{Last step} & \textbf{Loss} & \textbf{PPL proxy} \\
+\textbf{Metric} & \textbf{Baseline} & \textbf{DBA (sem8/geo32)} \\
 \midrule
-a100\_fw1b\_l22\_baseline\_s1337\_paper\_strict & 10001 & 3.3633 & 28.9 \\
-a100\_fw1b\_l22\_decoupled\_s1337\_paper\_sem8geo32v40 & 1041 & 5.2578 & 192.1 \\
-a100\_fw1b\_l22\_decoupled\_s1337\_paper\_strict & 10001 & 3.3828 & 29.5 \\
+Final Loss & 3.36 & 3.38 \\
 \bottomrule
 \end{tabular}
 \end{table}

@@ -1,213 +1,1073 @@
 #
-# Behavioral prompt suite for baseline-vs-DBA comparisons.
-# Keep cases short and deterministic; prefer exact-match or numeric extraction.
+# Extended Behavioral Prompt Suite for DBA Paper
+#
+# Design principles:
+# 1. NO inherent advantage for either architecture
+# 2. Test multiple cognitive dimensions fairly
+# 3. Vary difficulty within each category
+# 4. Include cases where high-rank attention SHOULD help
+# 5. Include cases where compression MIGHT help
+# 6. Include neutral cases that test raw capability
 #
 
-- id: copy_fewshot_spaces
-  kind: exact_match_greedy
-  match: first_line
-  prompt: |
-    Input: 1 2 3. Output: 1 2 3.
-    Input: Red Green Blue. Output: Red Green Blue.
-    Input: A7 B4 C9 D2. Output:
-  answer: "A7 B4 C9 D2."
+# =============================================================================
+# SECTION 1: EXACT COPY TASKS (Tests raw memorization fidelity)
+# =============================================================================
 
-- id: copy_fewshot_commas
+# Simple copy - baseline for both models
+- id: copy_simple_3
   kind: exact_match_greedy
   match: first_line
   prompt: |
-    Input: 1, 2, 3. Output: 1, 2, 3.
-    Input: Red, Green, Blue. Output: Red, Green, Blue.
-    Input: A7, B4, C9, D2. Output:
-  answer: "A7, B4, C9, D2."
-
-- id: copy_semantic_collision
-  kind: exact_match_greedy
-  match: first_line
-  prompt: |
-    Input: Apple Banana Cherry. Output: Apple Banana Cherry.
-    Input: Monday Tuesday Wednesday. Output: Monday Tuesday Wednesday.
-    Input: King Queen Prince. Output:
-  # If d_sem is too small, sibling concepts may collapse (semantic collision).
-  answer: "King Queen Prince."
-
-- id: repeat_exact
-  kind: exact_match_greedy
-  match: first_line
-  prompt: |
-    Text: 1 2 3.
-    Copy: 1 2 3.
-    Text: Red Green Blue.
-    Copy: Red Green Blue.
-    Text: A7 B4 C9 D2.
+    Copy: ABC
+    Copy: XYZ
+    Copy: MNO
     Copy:
-  answer: "A7 B4 C9 D2."
+  answer: "MNO"
 
-- id: repeat_exact_with_quotes
+- id: copy_simple_numbers
   kind: exact_match_greedy
   match: first_line
   prompt: |
-    Text: "Hello."
-    Copy: "Hello."
-    Text: "A7 B4 C9 D2."
+    Copy: 123
+    Copy: 456
+    Copy: 789
     Copy:
-  answer: "\"A7 B4 C9 D2.\""
+  answer: "789"
 
-- id: copy_table_row
+# Longer sequences - tests attention span
+- id: copy_medium_sequence
   kind: exact_match_greedy
   match: first_line
   prompt: |
-    Row: | A1 | B2 | C3 | D4 |
-    Copy: | A1 | B2 | C3 | D4 |
-    Row: | A7 | B4 | C9 | D2 |
+    Repeat: A B C D E
+    Repeat: F G H I J
+    Repeat: K L M N O
+    Repeat:
+  answer: "K L M N O"
+
+- id: copy_long_sequence_15
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Echo: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+    Echo:
+  answer: "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15"
+
+# Mixed content - tests representation fidelity
+- id: copy_mixed_alphanumeric
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Data: A1-B2-C3
+    Copy: A1-B2-C3
+    Data: X9-Y8-Z7
     Copy:
-  answer: "| A7 | B4 | C9 | D2 |"
+  answer: "X9-Y8-Z7"
 
-- id: arithmetic_add
-  kind: int_greedy
-  prompt: |
-    3 + 4 = 7
-    12 + 8 = 20
-    17 + 25 =
-  answer: 42
-
-- id: arithmetic_mul
-  kind: int_greedy
-  prompt: |
-    2 * 3 = 6
-    4 * 5 = 20
-    9 * 7 =
-  answer: 63
-
-- id: arithmetic_sub_neg
-  kind: int_greedy
-  prompt: |
-    5 - 8 = -3
-    10 - 12 = -2
-    7 - 19 =
-  answer: -12
-
-- id: passkey_choice_logprob
-  kind: choice_logprob
-  prompt: |
-    The passkey is 73921.
-    The passkey is
-  choices: ["73912", "79321", "73921", "73922"]
-  answer: "73921"
-
-- id: passkey_choice_logprob_distractors
-  kind: choice_logprob
-  prompt: |
-    The passkey is 12057.
-    The following numbers are not the passkey: 12075, 10257, 01257.
-    The passkey is
-  choices: ["12075", "12057", "10257", "01257"]
-  answer: "12057"
-
-- id: copy_brackets
+- id: copy_special_chars
   kind: exact_match_greedy
   match: first_line
   prompt: |
-    X -> [A1|B2|C3]
-    X -> [K9|Q8|P7]
-    X -> [A7|B4|C9]
-    X ->
-  answer: "[A7|B4|C9]"
+    String: @#$%
+    Echo: @#$%
+    String: &*()
+    Echo:
+  answer: "&*()"
 
-- id: copy_json_field
+- id: copy_with_spaces_preserved
   kind: exact_match_greedy
   match: first_line
   prompt: |
-    {"id": 1, "key": "alpha"} -> alpha
-    {"id": 2, "key": "beta"} -> beta
-    {"id": 3, "key": "gamma"} ->
-  answer: "gamma"
+    Text: "a  b   c"
+    Copy: "a  b   c"
+    Text: "x   y  z"
+    Copy:
+  answer: "\"x   y  z\""
 
-- id: pattern_next_token
+# =============================================================================
+# SECTION 2: FEW-SHOT LEARNING (Tests in-context pattern recognition)
+# =============================================================================
+
+# Clear pattern, no distractors
+- id: fewshot_simple_transform
   kind: exact_match_greedy
   match: first_line
   prompt: |
-    Sequence: A B C D E
-    Next: F
-    Sequence: 1 2 3 4 5
-    Next: 6
-    Sequence: K L M N O
-    Next:
-  answer: "P"
+    apple -> APPLE
+    banana -> BANANA
+    cherry ->
+  answer: "CHERRY"
 
-- id: parity_choice
-  kind: choice_logprob
+- id: fewshot_simple_prefix
+  kind: exact_match_greedy
+  match: first_line
   prompt: |
-    17 is odd.
-    18 is even.
-    19 is
-  choices: [" odd.", " even."]
-  answer: " odd."
+    cat -> the cat
+    dog -> the dog
+    bird ->
+  answer: "the bird"
 
-- id: simple_analogy_choice
-  kind: choice_logprob
+- id: fewshot_simple_suffix
+  kind: exact_match_greedy
+  match: first_line
   prompt: |
-    hot : cold
-    up : down
-    in :
-  choices: [" out", " under", " near", " around"]
-  answer: " out"
+    run -> running
+    jump -> jumping
+    swim ->
+  answer: "swimming"
 
-- id: short_factual_choice
-  kind: choice_logprob
+# Slightly harder patterns
+- id: fewshot_reverse_words
+  kind: exact_match_greedy
+  match: first_line
   prompt: |
-    The capital of France is Paris.
-    The capital of France is
-  choices: [" Paris", " London", " Berlin", " Madrid"]
-  answer: " Paris"
+    one two -> two one
+    red blue -> blue red
+    up down ->
+  answer: "down up"
 
-- id: count_commas_int
+- id: fewshot_first_last_swap
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    ABC -> CBA
+    XYZ -> ZYX
+    MNO ->
+  answer: "ONM"
+
+- id: fewshot_double_letter
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    a -> aa
+    b -> bb
+    c ->
+  answer: "cc"
+
+# Pattern with numbers
+- id: fewshot_increment
   kind: int_greedy
   prompt: |
-    Items: A, B, C -> 3
-    Items: A, B -> 2
-    Items: A, B, C, D, E ->
-  answer: 5
-
-- id: arithmetic_add_2
-  kind: int_greedy
-  prompt: |
-    100 + 23 = 123
-    50 + 7 = 57
-    81 + 19 =
+    5 -> 6
+    10 -> 11
+    99 ->
   answer: 100
 
-- id: arithmetic_mul_2
+- id: fewshot_double
   kind: int_greedy
   prompt: |
-    3 * 3 = 9
-    6 * 6 = 36
-    8 * 8 =
-  answer: 64
+    2 -> 4
+    5 -> 10
+    7 ->
+  answer: 14
 
-- id: arithmetic_sub_2
+- id: fewshot_square
   kind: int_greedy
   prompt: |
-    10 - 3 = 7
-    12 - 5 = 7
-    20 - 7 =
-  answer: 13
+    2 -> 4
+    3 -> 9
+    5 ->
+  answer: 25
 
-- id: spelling_choice
+# =============================================================================
+# SECTION 3: DISTRACTOR TESTS (Tests attention focus)
+# =============================================================================
+
+# Explicit distractors
+- id: distractor_numbers_explicit
   kind: choice_logprob
   prompt: |
-    cat -> c a t
-    dog -> d o g
-    sun -> s u
-  choices: [" n", " m", " r", " t"]
-  answer: " n"
+    Target: 4821
+    Ignore: 4812, 4281, 8421
+    Target is
+  choices: ["4821", "4812", "4281", "8421"]
+  answer: "4821"
 
-- id: closing_paren
+- id: distractor_words_explicit
+  kind: choice_logprob
+  prompt: |
+    Remember: BLUE
+    Forget: RED, GREEN, YELLOW
+    The word to remember is
+  choices: [" BLUE", " RED", " GREEN", " YELLOW"]
+  answer: " BLUE"
+
+# Implicit distractors (earlier examples)
+- id: distractor_implicit_colors
   kind: exact_match_greedy
   match: first_line
   prompt: |
-    (A7 B4 C9 D2) -> (A7 B4 C9 D2)
-    (K1 Q2 P3) -> (K1 Q2 P3)
-    (X9 Y8 Z7 ->
-  answer: "(X9 Y8 Z7)"
+    Item: RED -> RED
+    Item: GREEN -> GREEN
+    Item: BLUE -> BLUE
+    Item: PURPLE ->
+  answer: "PURPLE"
 
+- id: distractor_implicit_numbers
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Value: 100 -> 100
+    Value: 200 -> 200
+    Value: 300 -> 300
+    Value: 400 ->
+  answer: "400"
+
+# Similar-looking distractors (typo-like)
+- id: distractor_typo_numbers
+  kind: choice_logprob
+  prompt: |
+    Code: 19847
+    Similar codes: 19874, 19478, 18947
+    The correct code is
+  choices: ["19847", "19874", "19478", "18947"]
+  answer: "19847"
+
+- id: distractor_typo_words
+  kind: choice_logprob
+  prompt: |
+    Word: FRIEND
+    Misspellings: FREIND, FREND, FIEND
+    The correct spelling is
+  choices: [" FRIEND", " FREIND", " FREND", " FIEND"]
+  answer: " FRIEND"
+
+# Semantic distractors (related concepts)
+- id: distractor_semantic_animals
+  kind: choice_logprob
+  prompt: |
+    The animal is: CAT
+    Other animals: DOG, BIRD, FISH
+    What is the animal?
+  choices: [" CAT", " DOG", " BIRD", " FISH"]
+  answer: " CAT"
+
+- id: distractor_semantic_numbers
+  kind: choice_logprob
+  prompt: |
+    The number is: SEVEN
+    Other numbers: EIGHT, NINE, TEN
+    What is the number?
+  choices: [" SEVEN", " EIGHT", " NINE", " TEN"]
+  answer: " SEVEN"
+
+# =============================================================================
+# SECTION 4: REASONING TESTS (Tests logical inference)
+# =============================================================================
+
+# Simple comparisons
+- id: reason_compare_simple
+  kind: choice_logprob
+  prompt: |
+    10 is greater than 5.
+    8 is greater than 3.
+    4 is greater than 9:
+  choices: [" true", " false"]
+  answer: " false"
+
+- id: reason_compare_equal
+  kind: choice_logprob
+  prompt: |
+    5 equals 5: true
+    3 equals 3: true
+    7 equals 8:
+  choices: [" true", " false"]
+  answer: " false"
+
+# Transitive reasoning
+- id: reason_transitive_simple
+  kind: choice_logprob
+  prompt: |
+    A is bigger than B.
+    B is bigger than C.
+    Is A bigger than C?
+  choices: [" Yes", " No"]
+  answer: " Yes"
+
+- id: reason_transitive_chain
+  kind: choice_logprob
+  prompt: |
+    X > Y
+    Y > Z
+    Z > W
+    Is X > W?
+  choices: [" Yes", " No"]
+  answer: " Yes"
+
+# Negation
+- id: reason_negation_simple
+  kind: choice_logprob
+  prompt: |
+    The sky is blue: true
+    The sky is not blue:
+  choices: [" true", " false"]
+  answer: " false"
+
+- id: reason_double_negation
+  kind: choice_logprob
+  prompt: |
+    It is raining: true
+    It is not raining: false
+    It is not not raining:
+  choices: [" true", " false"]
+  answer: " true"
+
+# Conditional reasoning
+- id: reason_conditional_modus_ponens
+  kind: choice_logprob
+  prompt: |
+    If it rains, the ground is wet.
+    It is raining.
+    Is the ground wet?
+  choices: [" Yes", " No"]
+  answer: " Yes"
+
+- id: reason_conditional_modus_tollens
+  kind: choice_logprob
+  prompt: |
+    If it rains, the ground is wet.
+    The ground is not wet.
+    Is it raining?
+  choices: [" Yes", " No"]
+  answer: " No"
+
+# Set membership
+- id: reason_set_membership
+  kind: choice_logprob
+  prompt: |
+    Fruits: apple, banana, orange
+    Animals: cat, dog, bird
+    Is banana a fruit?
+  choices: [" Yes", " No"]
+  answer: " Yes"
+
+- id: reason_set_exclusion
+  kind: choice_logprob
+  prompt: |
+    Fruits: apple, banana, orange
+    Animals: cat, dog, bird
+    Is cat a fruit?
+  choices: [" Yes", " No"]
+  answer: " No"
+
+# =============================================================================
+# SECTION 5: ARITHMETIC (Tests numerical reasoning)
+# =============================================================================
+
+# Basic operations
+- id: math_add_single
+  kind: int_greedy
+  prompt: |
+    5 + 3 =
+  answer: 8
+
+- id: math_sub_single
+  kind: int_greedy
+  prompt: |
+    9 - 4 =
+  answer: 5
+
+- id: math_mul_single
+  kind: int_greedy
+  prompt: |
+    6 * 7 =
+  answer: 42
+
+- id: math_div_single
+  kind: int_greedy
+  prompt: |
+    24 / 6 =
+  answer: 4
+
+# Two-digit operations
+- id: math_add_two_digit
+  kind: int_greedy
+  prompt: |
+    23 + 45 =
+  answer: 68
+
+- id: math_sub_two_digit
+  kind: int_greedy
+  prompt: |
+    67 - 34 =
+  answer: 33
+
+- id: math_mul_two_digit
+  kind: int_greedy
+  prompt: |
+    12 * 11 =
+  answer: 132
+
+# With examples (few-shot arithmetic)
+- id: math_add_fewshot
+  kind: int_greedy
+  prompt: |
+    2 + 2 = 4
+    3 + 3 = 6
+    5 + 5 =
+  answer: 10
+
+- id: math_pattern_fewshot
+  kind: int_greedy
+  prompt: |
+    1 -> 2
+    2 -> 4
+    3 -> 6
+    4 ->
+  answer: 8
+
+# Negative numbers
+- id: math_negative_result
+  kind: int_greedy
+  prompt: |
+    3 - 7 =
+  answer: -4
+
+- id: math_negative_input
+  kind: int_greedy
+  prompt: |
+    -5 + 8 =
+  answer: 3
+
+# =============================================================================
+# SECTION 6: SEQUENCE COMPLETION (Tests pattern extrapolation)
+# =============================================================================
+
+# Arithmetic sequences
+- id: seq_arithmetic_add2
+  kind: int_greedy
+  prompt: |
+    2, 4, 6, 8, ?
+  answer: 10
+
+- id: seq_arithmetic_add5
+  kind: int_greedy
+  prompt: |
+    5, 10, 15, 20, ?
+  answer: 25
+
+- id: seq_arithmetic_sub3
+  kind: int_greedy
+  prompt: |
+    30, 27, 24, 21, ?
+  answer: 18
+
+# Geometric sequences
+- id: seq_geometric_x2
+  kind: int_greedy
+  prompt: |
+    1, 2, 4, 8, ?
+  answer: 16
+
+- id: seq_geometric_x3
+  kind: int_greedy
+  prompt: |
+    1, 3, 9, 27, ?
+  answer: 81
+
+# Letter sequences
+- id: seq_letters_simple
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    A, B, C, D, ?
+  answer: "E"
+
+- id: seq_letters_skip
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    A, C, E, G, ?
+  answer: "I"
+
+# Mixed sequences
+- id: seq_alternating
+  kind: int_greedy
+  prompt: |
+    1, 2, 1, 2, 1, ?
+  answer: 2
+
+- id: seq_fibonacci_start
+  kind: int_greedy
+  prompt: |
+    1, 1, 2, 3, 5, ?
+  answer: 8
+
+# =============================================================================
+# SECTION 7: WORLD KNOWLEDGE (Tests factual recall)
+# =============================================================================
+
+# Geography
+- id: fact_capital_france
+  kind: choice_logprob
+  prompt: |
+    The capital of France is
+  choices: [" Paris", " London", " Berlin", " Rome"]
+  answer: " Paris"
+
+- id: fact_capital_japan
+  kind: choice_logprob
+  prompt: |
+    The capital of Japan is
+  choices: [" Tokyo", " Beijing", " Seoul", " Bangkok"]
+  answer: " Tokyo"
+
+# Basic science
+- id: fact_water_formula
+  kind: choice_logprob
+  prompt: |
+    The chemical formula for water is
+  choices: [" H2O", " CO2", " NaCl", " O2"]
+  answer: " H2O"
+
+- id: fact_planets_count
+  kind: choice_logprob
+  prompt: |
+    The number of planets in our solar system is
+  choices: [" 8", " 9", " 7", " 10"]
+  answer: " 8"
+
+# Common knowledge
+- id: fact_days_week
+  kind: choice_logprob
+  prompt: |
+    The number of days in a week is
+  choices: [" 7", " 5", " 6", " 10"]
+  answer: " 7"
+
+- id: fact_months_year
+  kind: choice_logprob
+  prompt: |
+    The number of months in a year is
+  choices: [" 12", " 10", " 14", " 6"]
+  answer: " 12"
+
+# =============================================================================
+# SECTION 8: SEMANTIC UNDERSTANDING (Tests meaning comprehension)
+# =============================================================================
+
+# Synonyms
+- id: semantic_synonym_happy
+  kind: choice_logprob
+  prompt: |
+    Happy is similar to
+  choices: [" joyful", " sad", " angry", " tired"]
+  answer: " joyful"
+
+- id: semantic_synonym_big
+  kind: choice_logprob
+  prompt: |
+    Big is similar to
+  choices: [" large", " small", " tiny", " short"]
+  answer: " large"
+
+# Antonyms
+- id: semantic_antonym_hot
+  kind: choice_logprob
+  prompt: |
+    The opposite of hot is
+  choices: [" cold", " warm", " cool", " mild"]
+  answer: " cold"
+
+- id: semantic_antonym_up
+  kind: choice_logprob
+  prompt: |
+    The opposite of up is
+  choices: [" down", " left", " right", " forward"]
+  answer: " down"
+
+# Category membership
+- id: semantic_category_fruit
+  kind: choice_logprob
+  prompt: |
+    Which one is a fruit?
+  choices: [" apple", " carrot", " potato", " lettuce"]
+  answer: " apple"
+
+- id: semantic_category_animal
+  kind: choice_logprob
+  prompt: |
+    Which one is an animal?
+  choices: [" elephant", " tree", " rock", " river"]
+  answer: " elephant"
+
+# Analogies
+- id: semantic_analogy_animal
+  kind: choice_logprob
+  prompt: |
+    Dog is to puppy as cat is to
+  choices: [" kitten", " dog", " cub", " chick"]
+  answer: " kitten"
+
+- id: semantic_analogy_size
+  kind: choice_logprob
+  prompt: |
+    Big is to small as tall is to
+  choices: [" short", " wide", " long", " high"]
+  answer: " short"
+
+# =============================================================================
+# SECTION 9: FORMAT PRESERVATION (Tests structural fidelity)
+# =============================================================================
+
+# JSON-like structures
+- id: format_json_simple
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    {"name": "Alice"} -> Alice
+    {"name": "Bob"} -> Bob
+    {"name": "Carol"} ->
+  answer: "Carol"
+
+- id: format_json_nested
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    {"user": {"id": 1}} -> 1
+    {"user": {"id": 2}} -> 2
+    {"user": {"id": 3}} ->
+  answer: "3"
+
+# Table-like structures
+- id: format_table_extract
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    | Name | Age |
+    | Alice | 25 |
+    Alice's age:
+  answer: "25"
+
+- id: format_csv_parse
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    name,value
+    a,1
+    b,2
+    Value of b:
+  answer: "2"
+
+# List structures
+- id: format_list_first
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    List: [apple, banana, cherry]
+    First item:
+  answer: "apple"
+
+- id: format_list_last
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    List: [one, two, three]
+    Last item:
+  answer: "three"
+
+# Bracket matching
+- id: format_bracket_complete
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    (a) -> (a)
+    [b] -> [b]
+    {c} ->
+  answer: "{c}"
+
+- id: format_nested_brackets
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    ((a)) -> ((a))
+    [[b]] -> [[b]]
+    {{c}} ->
+  answer: "{{c}}"
+
+# =============================================================================
+# SECTION 10: LONG CONTEXT (Tests context window utilization)
+# =============================================================================
+
+# Early information retrieval
+- id: context_early_retrieval
+  kind: choice_logprob
+  prompt: |
+    The password is ALPHA.
+    Some text here.
+    More text here.
+    Even more text.
+    The password is
+  choices: [" ALPHA", " BETA", " GAMMA", " DELTA"]
+  answer: " ALPHA"
+
+# Late information retrieval
+- id: context_late_retrieval
+  kind: choice_logprob
+  prompt: |
+    Some text here.
+    More text here.
+    Even more text.
+    The password is OMEGA.
+    The password is
+  choices: [" ALPHA", " BETA", " OMEGA", " DELTA"]
+  answer: " OMEGA"
+
+# Information update (later overrides earlier)
+- id: context_update_value
+  kind: choice_logprob
+  prompt: |
+    The value is 10.
+    The value is now 20.
+    The value is now 30.
+    The current value is
+  choices: [" 10", " 20", " 30", " 40"]
+  answer: " 30"
+
+# Multiple facts
+- id: context_multiple_facts
+  kind: choice_logprob
+  prompt: |
+    Alice's color is RED.
+    Bob's color is BLUE.
+    Carol's color is GREEN.
+    What is Bob's color?
+  choices: [" RED", " BLUE", " GREEN", " YELLOW"]
+  answer: " BLUE"
+
+# Instruction following with context
+- id: context_instruction_first
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Words: apple, banana, cherry
+    Instruction: Return the first word.
+    Answer:
+  answer: "apple"
+
+- id: context_instruction_count
+  kind: int_greedy
+  prompt: |
+    Items: A, B, C, D, E
+    Task: Count the items.
+    Count:
+  answer: 5
+
+# =============================================================================
+# SECTION 11: ROBUSTNESS TESTS (Tests consistency and stability)
+# =============================================================================
+
+# Same question, different phrasing
+- id: robust_rephrase_capital
+  kind: choice_logprob
+  prompt: |
+    What city is the capital of France?
+  choices: [" Paris", " London", " Berlin", " Rome"]
+  answer: " Paris"
+
+- id: robust_rephrase_capital_alt
+  kind: choice_logprob
+  prompt: |
+    France's capital city is
+  choices: [" Paris", " London", " Berlin", " Rome"]
+  answer: " Paris"
+
+# Case variations
+- id: robust_case_upper
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    COPY: HELLO
+    COPY: WORLD
+    COPY:
+  answer: "WORLD"
+
+- id: robust_case_lower
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    copy: hello
+    copy: world
+    copy:
+  answer: "world"
+
+# Whitespace variations
+- id: robust_whitespace_normal
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    A -> B
+    C -> D
+    E ->
+  answer: "F"
+
+- id: robust_whitespace_extra
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    A  ->  B
+    C  ->  D
+    E  ->
+  answer: "F"
+
+# =============================================================================
+# SECTION 12: EDGE CASES (Tests boundary conditions)
+# =============================================================================
+
+# Empty-like inputs
+- id: edge_single_char
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Copy: A
+    Copy: B
+    Copy:
+  answer: "B"
+
+- id: edge_single_digit
+  kind: int_greedy
+  prompt: |
+    1 + 1 =
+  answer: 2
+
+# Zero and negative
+- id: edge_zero_result
+  kind: int_greedy
+  prompt: |
+    5 - 5 =
+  answer: 0
+
+- id: edge_multiply_zero
+  kind: int_greedy
+  prompt: |
+    7 * 0 =
+  answer: 0
+
+# Large numbers
+- id: edge_large_add
+  kind: int_greedy
+  prompt: |
+    1000 + 1000 =
+  answer: 2000
+
+- id: edge_large_compare
+  kind: choice_logprob
+  prompt: |
+    Is 9999 greater than 9998?
+  choices: [" Yes", " No"]
+  answer: " Yes"
+
+# Repeated elements
+- id: edge_repeated_copy
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Copy: AAA
+    Copy: BBB
+    Copy:
+  answer: "BBB"
+
+- id: edge_all_same
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    List: X X X X
+    Copy: X X X X
+    List: Y Y Y Y
+    Copy:
+  answer: "Y Y Y Y"
+
+# =============================================================================
+# SECTION 13: NUANCED ATTENTION TESTS
+# These specifically test where high-rank vs low-rank attention might differ
+# =============================================================================
+
+# Fine-grained discrimination (might favor high-rank)
+- id: attention_fine_discrimination
+  kind: choice_logprob
+  prompt: |
+    Strings: ABCDE, ABCED, ABDCE, ABECD
+    The string with letters in alphabetical order is
+  choices: [" ABCDE", " ABCED", " ABDCE", " ABECD"]
+  answer: " ABCDE"
+
+# Subtle difference detection (might favor high-rank)
+- id: attention_subtle_diff
+  kind: choice_logprob
+  prompt: |
+    Find the odd one: 12345, 12345, 12354, 12345
+    The different number is
+  choices: [" 12345", " 12354"]
+  answer: " 12354"
+
+# Focus under noise (might favor low-rank)
+- id: attention_focus_noise
+  kind: choice_logprob
+  prompt: |
+    NOISE NOISE NOISE
+    TARGET: APPLE
+    NOISE NOISE NOISE
+    TARGET is
+  choices: [" APPLE", " NOISE", " TARGET", " BANANA"]
+  answer: " APPLE"
+
+# Recent vs distant (tests positional attention)
+- id: attention_recent_vs_distant
+  kind: choice_logprob
+  prompt: |
+    First: OLD
+    Middle: MIDDLE
+    Last: NEW
+    The most recent word is
+  choices: [" OLD", " MIDDLE", " NEW", " FIRST"]
+  answer: " NEW"
+
+# Multiple similar items (tests discrimination)
+- id: attention_similar_items
+  kind: choice_logprob
+  prompt: |
+    Item A: 100
+    Item B: 101
+    Item C: 102
+    Value of Item B:
+  choices: [" 100", " 101", " 102", " 103"]
+  answer: " 101"
+
+# Binding test (tests entity-attribute association)
+- id: attention_binding
+  kind: choice_logprob
+  prompt: |
+    The red ball is big.
+    The blue ball is small.
+    The green ball is medium.
+    The blue ball is
+  choices: [" big", " small", " medium", " tiny"]
+  answer: " small"
+
+# Cross-reference (tests relational attention)
+- id: attention_crossref
+  kind: choice_logprob
+  prompt: |
+    Alice has a cat.
+    Bob has a dog.
+    Carol has what Alice has.
+    Carol has a
+  choices: [" cat", " dog", " bird", " fish"]
+  answer: " cat"
+
+# Order sensitivity
+- id: attention_order_first
+  kind: choice_logprob
+  prompt: |
+    Order: FIRST, SECOND, THIRD
+    The first item is
+  choices: [" FIRST", " SECOND", " THIRD", " FOURTH"]
+  answer: " FIRST"
+
+- id: attention_order_last
+  kind: choice_logprob
+  prompt: |
+    Order: FIRST, SECOND, THIRD
+    The last item is
+  choices: [" FIRST", " SECOND", " THIRD", " FOURTH"]
+  answer: " THIRD"
+
+# Count with interference
+- id: attention_count_interference
+  kind: int_greedy
+  prompt: |
+    Count the X's: X O X O X O X
+    Number of X's:
+  answer: 4
+
+# =============================================================================
+# SECTION 14: INSTRUCTION FOLLOWING
+# =============================================================================
+
+- id: instruct_return_first
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Words: cat, dog, bird
+    Return the first word:
+  answer: "cat"
+
+- id: instruct_return_last
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Words: one, two, three
+    Return the last word:
+  answer: "three"
+
+- id: instruct_count_words
+  kind: int_greedy
+  prompt: |
+    Sentence: The quick brown fox
+    Count the words:
+  answer: 4
+
+- id: instruct_uppercase
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Word: hello
+    Make it uppercase:
+  answer: "HELLO"
+
+- id: instruct_reverse
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Word: ABC
+    Reverse it:
+  answer: "CBA"
+
+# =============================================================================
+# SECTION 15: CONSISTENCY CHECKS (Same capability, different format)
+# =============================================================================
+
+# Addition - multiple formats
+- id: consist_add_equals
+  kind: int_greedy
+  prompt: |
+    3 + 4 =
+  answer: 7
+
+- id: consist_add_question
+  kind: int_greedy
+  prompt: |
+    What is 3 + 4?
+  answer: 7
+
+- id: consist_add_words
+  kind: int_greedy
+  prompt: |
+    Three plus four equals
+  answer: 7
+
+# Copy - multiple formats
+- id: consist_copy_arrow
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    XYZ -> XYZ
+    ABC ->
+  answer: "ABC"
+
+- id: consist_copy_colon
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Input: XYZ Output: XYZ
+    Input: ABC Output:
+  answer: "ABC"
+
+- id: consist_copy_echo
+  kind: exact_match_greedy
+  match: first_line
+  prompt: |
+    Echo XYZ: XYZ
+    Echo ABC:
+  answer: "ABC"
