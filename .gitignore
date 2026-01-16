@@ -41,8 +41,15 @@ tmp/
 *.npy.meta
 ADK.txt
 research/dba/runs100k.zip
+research/dba/100k_runs/
+research/dba/10k_runs/
+research/dba/100k_data/
 *.npz
 *.zip
 debug*
 artifacts/dba*
 train.jsonl
+research/dba/figs/
+research/dba/behavioral_results/
+research/dba/dba_checkpoint_benchmark/
+results/

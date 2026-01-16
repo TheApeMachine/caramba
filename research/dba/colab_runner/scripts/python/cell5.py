@@ -4,11 +4,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Set up paths
-os.chdir("/content/caramba/research/dba")
-sys.path.insert(0, "/content/caramba")
-sys.path.insert(0, "/content/caramba/research/dba")
-
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 output_dir = Path(DRIVE_RESULTS_DIR) / f"behavioral_{timestamp}"
 output_dir.mkdir(parents=True, exist_ok=True)
@@ -21,8 +16,12 @@ print("\n" + "="*70)
 print("Starting benchmark...")
 print("="*70 + "\n")
 
-# Run script directly - avoid module resolution issues
-!cd /content/caramba/research/dba && PYTHONPATH=/content/caramba:/content/caramba/research/dba python behavioral_suite_v2/multi_checkpoint_eval.py \
+# Change to the correct directory using Colab magic
+# This is more reliable than cd in a shell command
+%cd /content/caramba/research/dba
+
+# Run as module - Python will find behavioral_suite_v2 in the current directory
+!python -m behavioral_suite_v2.multi_checkpoint_eval \
     --checkpoint-files {ckpt_args} \
     --output-dir "{output_dir}" \
     --tests-per-category {TESTS_PER_CATEGORY} \

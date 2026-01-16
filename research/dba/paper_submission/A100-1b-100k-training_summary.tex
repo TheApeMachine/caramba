@@ -1,0 +1,16 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{A100 1B training summary (100k steps, seed 42).}
+\label{tab:a100-training-summary-100k}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Metric} & \textbf{Baseline} & \textbf{DBA (sem8/geo32)} \\
+\midrule
+Final Loss & 2.6714 & 2.6789 \\
+Final PPL & 14.46 & 14.57 \\
+Mean Throughput (tok/s) & 23676 & 25004 \\
+\textit{Training throughput} & \multicolumn{2}{c}{\textit{No regression (+5.6\%)}} \\
+\bottomrule
+\end{tabular}
+\end{table}
