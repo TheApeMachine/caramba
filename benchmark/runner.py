@@ -14,6 +14,7 @@ from torch import nn
 from caramba.benchmark.artifacts import ArtifactGenerator, ExperimentMetadata
 from caramba.benchmark.accuracy import BenchmarkAccuracy, AccuracyResult
 from caramba.benchmark.behavior import BehaviorBenchmark, BehaviorResult
+from caramba.benchmark.behavioral_v2 import BenchmarkBehavioralV2, BehavioralV2Result
 from caramba.benchmark.context import BenchmarkContext, ContextResult
 from caramba.benchmark.latency import LatencyBenchmark, LatencyResult
 from caramba.benchmark.memory import MemoryBenchmark, MemoryResult
@@ -23,6 +24,7 @@ from caramba.config.benchmark import (
     BenchmarkSuite,
     BenchmarkType,
     BehaviorBenchmarkConfig,
+    BehavioralV2BenchmarkConfig,
     ContextBenchmarkConfig,
     LatencyBenchmarkConfig,
     MemoryBenchmarkConfig,
@@ -69,6 +71,7 @@ class BenchmarkRunner:
         teacher_memory: MemoryResult | None = None
         student_memory: MemoryResult | None = None
         behavior: BehaviorResult | None = None
+        behavioral_v2: BehavioralV2Result | None = None
         teacher_accuracy: AccuracyResult | None = None
         student_accuracy: AccuracyResult | None = None
         teacher_context: ContextResult | None = None
@@ -203,6 +206,25 @@ class BenchmarkRunner:
                                 "student", float(result.student_accuracy) * 100.0, "% acc"
                             )
 
+                    case BenchmarkType.BEHAVIORAL_V2:
+                        assert isinstance(spec.config, BehavioralV2BenchmarkConfig)
+                        if teacher is None or student is None:
+                            logger.warning("Behavioral v2 benchmark requires both teacher and student (skipping).")
+                        else:
+                            benchmark = BenchmarkBehavioralV2(spec.config, self.device)
+                            result = benchmark.run(
+                                teacher=teacher,
+                                student=student,
+                                output_dir=self.output_dir,
+                            )
+                            behavioral_v2 = result
+                            logger.metric(
+                                "teacher", result.teacher_exact_rate * 100.0, "% exact"
+                            )
+                            logger.metric(
+                                "student", result.student_exact_rate * 100.0, "% exact"
+                            )
+
                     case BenchmarkType.CONTEXT:
                         assert isinstance(spec.config, ContextBenchmarkConfig)
                         benchmark = BenchmarkContext(spec.config, self.device)
@@ -279,6 +301,7 @@ class BenchmarkRunner:
             teacher_accuracy=teacher_accuracy,
             student_accuracy=student_accuracy,
             behavior=behavior,
+            behavioral_v2=behavioral_v2,
             teacher_context=teacher_context,
             student_context=student_context,
             formats=self.suite.formats,

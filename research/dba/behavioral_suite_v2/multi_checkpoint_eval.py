@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import copy
 import os
 import platform
 import re
@@ -417,9 +418,17 @@ def get_model_config_from_dims(dims: dict[str, Any]) -> dict[str, Any]:
         }
     else:
         raise ValueError(f"Unknown model type: {model_type}")
+    topology_layers = copy.deepcopy(base_topology_layers)
 
-    topology_layers = base_topology_layers.copy()
-    topology_layers[0]["layers"][0]["layers"][1] = attn_config
+    # Safety check for deep nested structure
+    try:
+        topology_layers[0]["layers"][0]["layers"][1] = attn_config
+    except (IndexError, TypeError, KeyError) as e:
+        raise RuntimeError(
+            f"Failed to set attn_config in topology structure. "
+            f"Structure at topology_layers[0]['layers'][0]['layers'] is "
+            f"{type(topology_layers[0]['layers'][0]['layers'])}: {topology_layers[0]['layers'][0]['layers']}"
+        ) from e
 
     return {
         "type": "TransformerModel",
@@ -552,8 +561,17 @@ def get_model_config(model_type: str, n_layers: int = 12) -> dict[str, Any]:
         raise ValueError(f"Unknown model type: {model_type}")
 
     # Insert attention config
-    topology_layers = base_topology_layers.copy()
-    topology_layers[0]["layers"][0]["layers"][1] = attn_config
+    topology_layers = copy.deepcopy(base_topology_layers)
+    
+    # Safety check for deep nested structure
+    try:
+        topology_layers[0]["layers"][0]["layers"][1] = attn_config
+    except (IndexError, TypeError, KeyError) as e:
+        raise RuntimeError(
+            f"Failed to set attn_config in topology structure. "
+            f"Structure at topology_layers[0]['layers'][0]['layers'] is "
+            f"{type(topology_layers[0]['layers'][0]['layers'])}: {topology_layers[0]['layers'][0]['layers']}"
+        ) from e
 
     return {
         "type": "TransformerModel",
@@ -797,26 +815,36 @@ class MultiCheckpointModelWrapper:
 def open_in_browser(filepath: Path) -> bool:
     """Open a file in the default web browser."""
     filepath = filepath.resolve()
-    url = f"file://{filepath}"
+    url = filepath.as_uri()
 
     print(f"\nOpening results in browser: {url}")
 
+    # Try webbrowser first (cross-platform)
+    try:
+        if webbrowser.open(url):
+            return True
+    except Exception:
+        pass
+
+    # Fallbacks for specific systems if webbrowser fails
     try:
         system = platform.system().lower()
-
         if system == "darwin":
             subprocess.run(["open", str(filepath)], check=True)
+            return True
         elif system == "linux":
             try:
                 subprocess.run(["xdg-open", str(filepath)], check=True)
+                return True
             except (subprocess.CalledProcessError, FileNotFoundError):
-                webbrowser.open(url)
+                pass
         elif system == "windows":
-            os.startfile(str(filepath))
-        else:
-            webbrowser.open(url)
+            # Only use startfile on Windows where it's actually available
+            if hasattr(os, "startfile"):
+                os.startfile(str(filepath))
+                return True
 
-        return True
+        return False
 
     except Exception as e:
         print(f"Could not open browser: {e}")
@@ -1051,9 +1079,9 @@ def main() -> int:
         from .visualizer import ResultsVisualizer, generate_html_report
     else:
         # Running as script (e.g., python behavioral_suite_v2/multi_checkpoint_eval.py)
-        from generator import generate_suite
-        from runner import EvalRunner, EvalConfig
-        from visualizer import ResultsVisualizer, generate_html_report
+        from caramba.research.dba.behavioral_suite_v2.generator import generate_suite
+        from caramba.research.dba.behavioral_suite_v2.runner import EvalRunner, EvalConfig
+        from caramba.research.dba.behavioral_suite_v2.visualizer import ResultsVisualizer, generate_html_report
 
     # Generate test suite
     print("\n--- Generating test suite ---")
@@ -1082,7 +1110,7 @@ def main() -> int:
         try:
             from .runner import MockModel
         except ImportError:
-            from caramba.research.dba.runner import MockModel
+            from caramba.research.dba.behavioral_suite_v2.runner import MockModel
         print("Using mock models (--use-mock specified)")
         for spec in specs:
             # Vary accuracy by model type for interesting results

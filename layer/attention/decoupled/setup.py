@@ -42,6 +42,7 @@ class DecoupledSetup:
     k_sem_null: nn.Parameter | None
     k_geo_null: nn.Parameter | None
     v_null: nn.Parameter | None
+    _triton_warned: bool
 
 
     def init_decoupled(self, config: AttentionLayerConfig) -> None:
@@ -126,4 +127,6 @@ class DecoupledSetup:
         else:
             self.decoupled_gate_logit = None
             self.decoupled_gate_proj = None
+
+        self._triton_warned = False
 

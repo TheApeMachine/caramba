@@ -88,6 +88,7 @@ class ArtifactGenerator:
         teacher_accuracy: AccuracyResult | None = None,
         student_accuracy: AccuracyResult | None = None,
         behavior: BehaviorResult | None = None,
+        behavioral_v2: "object | None" = None,  # BehavioralV2Result, avoiding circular import
         teacher_context: ContextResult | None = None,
         student_context: ContextResult | None = None,
         formats: list[str] | None = None,

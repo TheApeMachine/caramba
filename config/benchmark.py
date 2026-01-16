@@ -28,6 +28,7 @@ class BenchmarkType(str, enum.Enum):
     ACCURACY = "accuracy"
     GENERATION = "generation"
     BEHAVIOR = "behavior"
+    BEHAVIORAL_V2 = "behavioral_v2"
     CONTEXT = "context"
 
 
@@ -180,6 +181,42 @@ class BehaviorBenchmarkConfig(BaseModel):
     dump_attention_paper_tag: str | None = None
 
 
+class BehavioralV2BenchmarkConfig(BaseModel):
+    """Run the v2 behavioral test suite with template-based generation.
+
+    This is the expanded behavioral evaluation framework supporting:
+    - 500+ parameterized test cases across 18 categories
+    - Template-based generation with randomization
+    - Teacher vs student comparison with match quality tracking
+    - Optional downstream HF tasks (winogrande, arc_easy, etc.)
+    """
+
+    type: Literal[BenchmarkType.BEHAVIORAL_V2] = BenchmarkType.BEHAVIORAL_V2
+    tokenizer: TokenizerConfig = Field(default_factory=lambda: TiktokenTokenizerConfig(encoding="gpt2"))
+
+    # Test generation settings
+    seed: PositiveInt = 42
+    tests_per_category: PositiveInt = 30
+    # Override counts for specific categories (e.g., {"copy_tasks": 50, "reasoning": 20})
+    category_counts: dict[str, int] | None = None
+    # Categories to include (None = all). Use to focus on specific test types.
+    categories: list[str] | None = None
+
+    # Downstream HF tasks (optional, integrated with behavioral suite)
+    # Available: winogrande, arc_easy, arc_challenge, hellaswag, piqa, boolq
+    downstream_tasks: list[str] | None = None
+    downstream_limit: PositiveInt | None = None  # Limit samples per downstream task
+
+    # Generation settings
+    max_new_tokens: PositiveInt = 32
+    context_window: PositiveInt | None = None
+
+    # Output settings
+    stream_live: bool = True
+    stream_every: PositiveInt = 10
+    log_file: str | None = "behavioral_v2_log.txt"
+
+
 class ContextBenchmarkConfig(BaseModel):
     """Long-context stability + decode-at-context throughput.
 
@@ -220,6 +257,7 @@ BenchmarkConfig = (
     | AccuracyBenchmarkConfig
     | GenerationBenchmarkConfig
     | BehaviorBenchmarkConfig
+    | BehavioralV2BenchmarkConfig
     | ContextBenchmarkConfig
 )
 

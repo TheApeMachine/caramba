@@ -222,16 +222,27 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         # "metal" is a manifest-friendly alias for the SDPA-style path on MPS.
         force_sdpa = (dba_backend == "sdpa" or dba_backend == "metal")
         force_triton = (dba_backend == "triton")
-        if (
-            (not force_sdpa)
-            and q_chunk is None
+        is_triton_eligible = (
+            q_chunk is None
             and local_window is None
             and mask is None
             and cache is None
             and x.device.type == "cuda"
             and self.training
             and not null_enabled
-        ):
+        )
+
+        if force_triton and not is_triton_eligible and not self._triton_warned:
+            self._triton_warned = True
+            warnings.warn(
+                "dba_train_backend='triton' requested, but Triton training kernel is not eligible "
+                "for this call; falling back to SDPA. Eligibility requires: training=True, "
+                "device=cuda, no q_chunk/local_window/mask/cache, and null_attn disabled.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+        if (not force_sdpa) and is_triton_eligible:
             # Select DBA training backend. Default to Triton for deterministic behavior.
             # - "triton": Triton FlashAttention kernel (default, deterministic)
             # - "sdpa": PyTorch scaled_dot_product_attention
@@ -267,14 +278,6 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                     geo_scale=float(geo_scale),
                     dropout_p=float(dropout_p),
                 )
-        elif force_triton and self.training:
-            warnings.warn(
-                "dba_train_backend='triton' requested, but Triton training kernel is not eligible "
-                "for this call; falling back to SDPA. Eligibility requires: training=True, "
-                "device=cuda, no q_chunk/local_window/mask/cache, and null_attn disabled.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
         elif q_chunk is None and local_window is None:
             q_cat = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)
             k_cat = torch.cat([ksh, kgh], dim=-1)

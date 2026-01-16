@@ -50,6 +50,7 @@ from . import attention_probes
 from . import instruction_following
 from . import consistency_checks
 from . import adversarial
+from . import adversarial_extended
 from . import binding_tests
 from . import multi_hop
 
@@ -71,6 +72,7 @@ ALL_TEMPLATES = {
     "instruction_following": instruction_following.TEMPLATES,
     "consistency_checks": consistency_checks.TEMPLATES,
     "adversarial": adversarial.TEMPLATES,
+    "adversarial_extended": adversarial_extended.TEMPLATES,
     "binding_tests": binding_tests.TEMPLATES,
     "multi_hop": multi_hop.TEMPLATES,
 }
@@ -104,6 +106,7 @@ __all__ = [
     "instruction_following",
     "consistency_checks",
     "adversarial",
+    "adversarial_extended",
     "binding_tests",
     "multi_hop",
 ]

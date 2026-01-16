@@ -398,6 +398,32 @@ targets:
           stream_every: 10  # Print every 10th example (reduce to 1 for all)
         models: [teacher, student]
 
+      - id: behavioral_v2
+        config:
+          type: behavioral_v2
+          tokenizer:
+            type: tiktoken
+            encoding: gpt2
+          # Test generation settings
+          seed: 42
+          tests_per_category: 30
+          # Optionally focus on specific categories:
+          # categories: [copy_tasks, fewshot_learning, reasoning, arithmetic]
+          # Override counts for specific categories:
+          # category_counts:
+          #   copy_tasks: 50
+          #   reasoning: 20
+          # Include downstream HF tasks in the same run:
+          downstream_tasks: [winogrande, arc_easy]
+          downstream_limit: 100  # Limit samples per task for faster runs
+          # Generation settings
+          max_new_tokens: 32
+          context_window: 2048
+          # Output settings
+          stream_live: true
+          stream_every: 10
+        models: [teacher, student]
+
       - id: context_sweep
         config:
           type: context

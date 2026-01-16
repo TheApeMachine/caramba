@@ -99,6 +99,7 @@ class EvalResults:
                         "flags": {
                             "repetition_loop": score.flags.repetition_loop,
                             "distractor_contamination": score.flags.distractor_contamination,
+                            "empty_output": score.flags.empty_output,
                             "format_continuation": score.flags.format_continuation,
                         },
                     }

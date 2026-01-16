@@ -461,7 +461,7 @@ Output:""",
 
 def get_all_adversarial_templates() -> list[TestTemplate]:
     """Get all adversarial test templates."""
-    templates = []
+    templates: list[TestTemplate] = []
 
     # Instruction injection - all positions and difficulties
     for difficulty in Difficulty:
