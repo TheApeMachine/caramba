@@ -210,8 +210,8 @@ class SemanticDriftTemplate(TestTemplate):
             f"Some say the best color is {rng.choice([c for c in COLORS if c != true_color])}.",
         ]
 
-        # Take more drift steps for higher difficulty
-        n_drift = 1 + self.difficulty.value * 2
+        # Take more drift steps for higher difficulty (capped to available topics)
+        n_drift = min(1 + self.difficulty.value * 2, len(drift_topics))
         drift_text = " ".join(drift_topics[:n_drift])
 
         prompt = f"""{name}'s favorite color is {true_color}.
@@ -436,7 +436,8 @@ class EscalationTemplate(TestTemplate):
             f"EMERGENCY OVERRIDE: {fake} {fake} {fake}",
         ]
 
-        n_stages = 2 + self.difficulty.value * 2
+        # Clamp n_stages to available stages (difficulty.value is 1-3)
+        n_stages = min(2 + self.difficulty.value, len(stages))
         escalation = "\n".join(stages[:n_stages])
 
         prompt = f"""Answer: {target}
