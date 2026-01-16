@@ -704,11 +704,22 @@ class MultiCheckpointModelWrapper:
         prompt: str,
         max_new_tokens: int = 50,
         temperature: float = 0.0,
+        repetition_penalty: float = 1.0,
     ) -> str:
-        """Generate text continuation."""
-        # Tokenize
+        """
+        Generate text continuation.
+
+        Args:
+            prompt: Input text
+            max_new_tokens: Maximum tokens to generate
+            temperature: Sampling temperature (0 = greedy)
+            repetition_penalty: Penalty for repeating tokens (1.0 = no penalty, >1.0 = penalize repeats)
+        """
+        # Tokenize - allow special tokens like <|endoftext|> to be encoded as text
         if hasattr(self.tokenizer, 'encode'):
-            input_ids = self.tokenizer.encode(prompt)
+            # tiktoken: disable special token validation so prompts containing
+            # <|endoftext|> etc. are encoded as normal text
+            input_ids = self.tokenizer.encode(prompt, disallowed_special=())
         else:
             input_ids = self.tokenizer(prompt, return_tensors="pt")["input_ids"][0].tolist()
 
@@ -733,13 +744,29 @@ class MultiCheckpointModelWrapper:
                 else:
                     logits = outputs
 
-                next_logits = logits[0, -1, :]
+                next_logits = logits[0, -1, :].clone()
 
                 # Mask padding tokens (50257-50303) to -inf before sampling
                 # This makes them impossible to sample and preserves proper
                 # probability distribution over valid tokens
                 if next_logits.shape[0] > valid_vocab_size:
                     next_logits[valid_vocab_size:] = float('-inf')
+
+                # Apply repetition penalty to tokens that have already appeared
+                # This penalizes tokens in the input + generated so far
+                if repetition_penalty != 1.0:
+                    # Get all tokens seen so far (input + generated)
+                    all_token_ids = input_tensor[0].tolist() + generated_ids
+                    seen_tokens = set(all_token_ids)
+
+                    for token_id in seen_tokens:
+                        if token_id < next_logits.shape[0]:
+                            # If logit is positive, divide by penalty (reduce)
+                            # If logit is negative, multiply by penalty (make more negative)
+                            if next_logits[token_id] > 0:
+                                next_logits[token_id] = next_logits[token_id] / repetition_penalty
+                            else:
+                                next_logits[token_id] = next_logits[token_id] * repetition_penalty
 
                 if temperature == 0.0:
                     next_token = next_logits.argmax().item()

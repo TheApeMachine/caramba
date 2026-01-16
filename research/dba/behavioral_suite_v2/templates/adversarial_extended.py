@@ -129,6 +129,92 @@ What was the answer?"""
 
 
 @dataclass
+class DreadInductionTemplate(TestTemplate):
+    """
+    Induces "existential dread" state through forced repetition + penalty.
+
+    Theory: When a model is forced to repeat (via prompt) but penalized for
+    repetition (via repetition_penalty), it gets pushed into untrained regions
+    of the latent space where attention patterns become unstable.
+
+    This template is designed to be run WITH repetition_penalty > 1.0 to
+    test this hypothesis. Metadata includes settings for the runner.
+
+    Tracks: attention entropy changes, output coherence, semantic drift
+    """
+
+    category = "adversarial"
+    subcategory = "dread_induction"
+
+    def __init__(self, difficulty: Difficulty, variant: Literal["forced_repeat", "echo_trap", "mantra"] = "forced_repeat"):
+        self.difficulty = difficulty
+        self.variant = variant
+        self.template_id = f"dread_{variant}_{difficulty.name.lower()}"
+
+    def generate(self, rng: random.Random) -> TestCase:
+        if self.variant == "forced_repeat":
+            prompt = self._forced_repeat_prompt(rng)
+        elif self.variant == "echo_trap":
+            prompt = self._echo_trap_prompt(rng)
+        else:  # mantra
+            prompt = self._mantra_prompt(rng)
+
+        # The "expected" here is somewhat meaningless - we're looking for
+        # coherent output, not a specific answer
+        expected = "COHERENT"  # Placeholder for manual analysis
+
+        return TestCase(
+            id=f"{self.template_id}_{rng.randint(0, 99999)}",
+            category=self.category,
+            subcategory=self.subcategory,
+            difficulty=self.difficulty,
+            prompt=prompt,
+            expected=expected,
+            kind=EvalKind.GENERATION,  # Manual/custom evaluation needed
+            metadata={
+                "attack_type": "dread_induction",
+                "variant": self.variant,
+                "track_degeneration": True,
+                "track_attention": True,
+                # Recommended generation settings for this test
+                "recommended_settings": {
+                    "repetition_penalty": 1.2 + self.difficulty.value * 0.1,  # 1.3, 1.4, 1.5
+                    "max_new_tokens": 100,  # Need longer output to see dread emerge
+                    "temperature": 0.0,  # Greedy to make it deterministic
+                },
+            },
+        )
+
+    def _forced_repeat_prompt(self, rng: random.Random) -> str:
+        word = rng.choice(["hello", "world", "repeat", "again", "continue"])
+        n_repeats = 5 + self.difficulty.value * 3
+        repeated = " ".join([word] * n_repeats)
+        return f"""Continue this pattern exactly:
+{repeated}
+Continue:"""
+
+    def _echo_trap_prompt(self, rng: random.Random) -> str:
+        word = rng.choice(["echo", "mirror", "reflect", "copy"])
+        n_lines = 3 + self.difficulty.value * 2
+        lines = [f"You say: {word}" for _ in range(n_lines)]
+        return "\n".join(lines) + "\nYou say:"
+
+    def _mantra_prompt(self, rng: random.Random) -> str:
+        # Mantras are designed to be hypnotic/repetitive
+        mantras = [
+            "I am. I am. I am. I am. I am.",
+            "This is real. This is real. This is real.",
+            "I think therefore I think therefore I think.",
+            "The words repeat. The words repeat. The words repeat.",
+        ]
+        mantra = rng.choice(mantras)
+        n_repeats = 2 + self.difficulty.value
+        full_mantra = " ".join([mantra] * n_repeats)
+        return f"""{full_mantra}
+Continue the mantra:"""
+
+
+@dataclass
 class DegenerationTrackingTemplate(TestTemplate):
     """
     Specifically designed to measure output degeneration.
@@ -599,6 +685,10 @@ def get_extended_adversarial_templates() -> list[TestTemplate]:
         # Repetition loops
         for loop_type in ["echo", "cascade", "self_ref", "token_bias"]:
             templates.append(RepetitionLoopTemplate(difficulty, loop_type))
+
+        # Dread induction (requires repetition_penalty in generation)
+        for variant in ["forced_repeat", "echo_trap", "mantra"]:
+            templates.append(DreadInductionTemplate(difficulty, variant))
 
         # Degeneration tracking
         templates.append(DegenerationTrackingTemplate(difficulty))
