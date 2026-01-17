@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from collector.measurement.context.base import ContextMeasurement
+from caramba.collector.measurement.context.base import ContextMeasurement
 
 
 @dataclass

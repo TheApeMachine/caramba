@@ -71,6 +71,11 @@ class TorchEngine:
             ref="trainer.ccl",
             python="caramba.trainer.ccl:CCLTrainer",
         )
+        self.registry.register(
+            backend="torch",
+            ref="trainer.multi_checkpoint_compare",
+            python="caramba.trainer.multi_checkpoint_compare:MultiCheckpointCompareTrainer",
+        )
 
         # Datasets
         self.registry.register(
@@ -245,20 +250,15 @@ class TorchEngine:
 
         # Optional benchmark suite.
         #
-        # - Upcycle targets return {"teacher", "student"}.
-        # - Standard scratch targets return {"system"}; treat that as "student" for benchmarks.
-        if target.benchmarks and isinstance(result, dict) and (
-            ("teacher" in result and "student" in result) or ("system" in result)
-        ):
-            teacher = self._as_module(result["teacher"]) if "teacher" in result else None
-            student = (
-                self._as_module(result["student"])
-                if "student" in result
-                else self._as_module(result["system"])
-            )
+        # Result formats:
+        # - Multi-checkpoint: {"models": dict[str, Module], "baseline_name": str, ...}
+        # - Upcycle targets: {"teacher", "student"}
+        # - Standard scratch: {"system"}; treat that as "student" for benchmarks.
+        if target.benchmarks and isinstance(result, dict):
             device = result.get("device", torch.device("cpu"))
             if not isinstance(device, torch.device):
                 device = torch.device(str(device))
+
             suite = BenchmarkSuite(
                 benchmarks=target.benchmarks,
                 output_dir=str(
@@ -276,15 +276,44 @@ class TorchEngine:
                 teacher_checkpoint=str(
                     getattr(getattr(self._first_train(target), "teacher_ckpt", None), "__str__", lambda: "")()
                 ),
-                student_config=str(target.system.config.get("model", {}).get("type", "")),
+                student_config=str(target.system.config.get("model", {}).get("type", "") if hasattr(target, "system") and target.system else ""),
                 device=str(device),
                 notes=str(getattr(manifest, "notes", "") or ""),
             )
-            runner = BenchmarkRunner(suite, device, metadata)
-            try:
-                artifacts.update(runner.run(teacher, student))
-            except Exception as e:
-                logger.warning(f"Benchmarks failed: {e}")
+
+            # Multi-model format: {"models": dict[str, Module], "baseline_name": str}
+            if "models" in result and isinstance(result["models"], dict):
+                from caramba.benchmark.multi_model_runner import MultiModelBenchmarkRunner
+
+                models_dict = result["models"]
+                # Convert to nn.Module dict
+                models: dict[str, nn.Module] = {}
+                for name, m in models_dict.items():
+                    if m is not None:  # Skip None (dry_run placeholders)
+                        models[name] = self._as_module(m)
+
+                baseline_name = result.get("baseline_name")
+                runner = MultiModelBenchmarkRunner(suite, device, metadata, baseline_name)
+                try:
+                    artifacts.update(runner.run(models))
+                except Exception as e:
+                    logger.warning(f"Multi-model benchmarks failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            # Legacy 2-model format: {"teacher", "student"} or {"system"}
+            elif ("teacher" in result and "student" in result) or ("system" in result):
+                teacher = self._as_module(result["teacher"]) if "teacher" in result else None
+                student = (
+                    self._as_module(result["student"])
+                    if "student" in result
+                    else self._as_module(result["system"])
+                )
+                runner = BenchmarkRunner(suite, device, metadata)
+                try:
+                    artifacts.update(runner.run(teacher, student))
+                except Exception as e:
+                    logger.warning(f"Benchmarks failed: {e}")
 
         # Metrics/evaluators.
         if target.metrics and isinstance(result, dict):

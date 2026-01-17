@@ -128,6 +128,10 @@ packages = [
     "resonant",
     "resonant.core",
     "resonant.core.associative_memory",
+    "collector",
+    "collector.measurement",
+    "collector.measurement.accuracy",
+    "collector.measurement.context",
 ]
 
 [tool.setuptools.package-dir]
@@ -144,10 +148,8 @@ caramba = [
 [tool.pyright]
 include = ["."]
 exclude = [".venv", "**/__pycache__", "*.egg-info"]
-# The `caramba` package in this repo is the *repository directory* itself, so
-# type checkers need the parent directory on the import path to resolve
-# `import caramba.*` correctly.
-extraPaths = [".."]
+# The project root (caramba/) is the import root. Top-level packages like
+# `collector` and `caramba` are resolved relative to here.
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 reportMissingImports = "warning"

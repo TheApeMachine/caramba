@@ -98,6 +98,14 @@ real:
 		$(CHECKPOINT) \
 		tokenizer.model
 
+benchmark10k:
+	. .venv/bin/activate \
+	&& python3.12 -m caramba research/dba/benchmark10k.yml
+
+benchmark100k:
+	. .venv/bin/activate \
+	&& python3.12 -m caramba research/dba/benchmark100k.yml
+
 benchmark:
 	@echo "Running behavioral benchmark..."
 	@echo "NOTE: For mock testing, use 'make benchmark-mock' instead"

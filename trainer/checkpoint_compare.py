@@ -67,7 +67,77 @@ def _extract_state_dict(obj: object) -> dict[str, torch.Tensor]:
     if any(k.startswith("_orig_mod.") for k in sd.keys()):
         sd = {k.replace("_orig_mod.", "", 1): v for k, v in sd.items()}
 
+    # Convert separate q_proj/k_proj/v_proj to fused qkv_proj if present.
+    # Checkpoints before commit fd9ca98 (Jan 9, 2026) used separate projections;
+    # the current StandardAttentionLayer uses a fused qkv_proj.
+    sd = _convert_separate_qkv_to_fused(sd)
+
     return sd
+
+
+def _convert_separate_qkv_to_fused(sd: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """Convert separate q_proj/k_proj/v_proj weights to fused qkv_proj.
+
+    Before commit fd9ca98, StandardAttentionLayer used:
+        q_proj: nn.Linear(d_model, attn_dim)
+        k_proj: nn.Linear(d_model, kv_dim)
+        v_proj: nn.Linear(d_model, kv_dim)
+
+    After fd9ca98, it uses:
+        qkv_proj: nn.Linear(d_model, attn_dim + 2*kv_dim)
+
+    This function detects old-style checkpoints and converts them.
+    """
+    # Find all q_proj.weight keys (not bias, handle separately)
+    q_weight_keys = [k for k in sd if k.endswith(".q_proj.weight")]
+
+    if not q_weight_keys:
+        return sd  # No conversion needed
+
+    new_sd = dict(sd)
+    converted = 0
+
+    for q_key in q_weight_keys:
+        # Extract the layer prefix: e.g., "topology.layers.0.layers.0.layers.1"
+        prefix = q_key[:-len(".q_proj.weight")]
+
+        k_key = f"{prefix}.k_proj.weight"
+        v_key = f"{prefix}.v_proj.weight"
+        qkv_key = f"{prefix}.qkv_proj.weight"
+
+        if k_key not in sd or v_key not in sd:
+            continue  # Incomplete set, skip
+
+        # Concatenate: [Q; K; V] along output dimension (dim 0)
+        q_w = sd[q_key]
+        k_w = sd[k_key]
+        v_w = sd[v_key]
+        qkv_w = torch.cat([q_w, k_w, v_w], dim=0)
+
+        new_sd[qkv_key] = qkv_w
+        del new_sd[q_key]
+        del new_sd[k_key]
+        del new_sd[v_key]
+
+        # Handle bias if present
+        q_bias_key = f"{prefix}.q_proj.bias"
+        k_bias_key = f"{prefix}.k_proj.bias"
+        v_bias_key = f"{prefix}.v_proj.bias"
+        qkv_bias_key = f"{prefix}.qkv_proj.bias"
+
+        if q_bias_key in sd and k_bias_key in sd and v_bias_key in sd:
+            qkv_b = torch.cat([sd[q_bias_key], sd[k_bias_key], sd[v_bias_key]], dim=0)
+            new_sd[qkv_bias_key] = qkv_b
+            del new_sd[q_bias_key]
+            del new_sd[k_bias_key]
+            del new_sd[v_bias_key]
+
+        converted += 1
+
+    if converted > 0:
+        logger.info(f"  Converted {converted} separate Q/K/V projections to fused qkv_proj")
+
+    return new_sd
 
 
 def _safe_load_checkpoint(

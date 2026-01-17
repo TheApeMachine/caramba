@@ -26,6 +26,21 @@ from caramba.eval.nuanced import score_output, NuancedFlags
 from caramba.data.tokenizers.builder import TokenizerBuilder
 from caramba.instrumentation.viz import TrainingVizContext
 from caramba.layer.attention import AttentionLayer
+from caramba.benchmark.attention_multi_model import (
+    render_multi_model_attention_comparison,
+    MultiModelAttentionVisualizer,
+)
+from research.dba.behavioral_suite_v2.weighted_scoring import (
+    WeightedScorer,
+    WeightedModelSummary,
+    MatchType,
+    classify_match_type,
+    MATCH_SCORES,
+    DIFFICULTY_WEIGHTS,
+)
+from research.dba.behavioral_suite_v2.weighted_visualizer import (
+    generate_all_weighted_visualizations,
+)
 
 try:
     import numpy as np  # type: ignore
@@ -52,6 +67,15 @@ class BehaviorMeasurement:
     student_flags: dict | None = None  # Diagnostic flags
     teacher_notes: str = ""
     student_notes: str = ""
+
+    # Weighted scoring (hard/soft with difficulty weighting)
+    expected_answer: str = ""  # For weighted scoring reference
+    teacher_match_type: MatchType | None = None  # NONE, CONTAINED, EXACT
+    student_match_type: MatchType | None = None  # NONE, CONTAINED, EXACT
+    teacher_raw_score: float = 0.0  # 0.0, 0.5, or 1.0
+    student_raw_score: float = 0.0  # 0.0, 0.5, or 1.0
+    difficulty_weight: float = 1.0  # 1.0 (easy), 2.0 (medium), 3.0 (hard)
+    student_weighted_score: float = 0.0  # student_raw_score × difficulty_weight
 
 
 @dataclass
@@ -129,6 +153,222 @@ class BehaviorResult:
         """Number of cases where student output contained distractors."""
         return sum(1 for m in self.measurements
                   if m.student_flags and m.student_flags.get("distractor_contamination", False))
+
+    # Weighted scoring metrics (hard/soft)
+    @property
+    def teacher_hard_accuracy(self) -> float:
+        """Fraction of cases where teacher got EXACT match."""
+        valid = [m for m in self.measurements if m.teacher_match_type is not None]
+        if not valid:
+            return 0.0
+        return sum(1 for m in valid if m.teacher_match_type == MatchType.EXACT) / len(valid)
+
+    @property
+    def teacher_soft_accuracy(self) -> float:
+        """Fraction of cases where teacher got EXACT or CONTAINED match."""
+        valid = [m for m in self.measurements if m.teacher_match_type is not None]
+        if not valid:
+            return 0.0
+        return sum(1 for m in valid if m.teacher_match_type in (MatchType.EXACT, MatchType.CONTAINED)) / len(valid)
+
+    @property
+    def student_hard_accuracy(self) -> float:
+        """Fraction of cases where student got EXACT match."""
+        valid = [m for m in self.measurements if m.student_match_type is not None]
+        if not valid:
+            return 0.0
+        return sum(1 for m in valid if m.student_match_type == MatchType.EXACT) / len(valid)
+
+    @property
+    def student_soft_accuracy(self) -> float:
+        """Fraction of cases where student got EXACT or CONTAINED match."""
+        valid = [m for m in self.measurements if m.student_match_type is not None]
+        if not valid:
+            return 0.0
+        return sum(1 for m in valid if m.student_match_type in (MatchType.EXACT, MatchType.CONTAINED)) / len(valid)
+
+    @property
+    def student_weighted_accuracy(self) -> float:
+        """Student weighted accuracy (weighted_score_sum / max_weighted_score_sum)."""
+        valid = [m for m in self.measurements if m.teacher_match_type is not None]
+        if not valid:
+            return 0.0
+        weighted_sum = sum(m.student_weighted_score for m in valid)
+        max_weighted_sum = sum(m.difficulty_weight for m in valid)  # max score = 1.0 × weight
+        return weighted_sum / max_weighted_sum if max_weighted_sum > 0 else 0.0
+
+    @property
+    def weighted_score_summary(self) -> dict[str, Any]:
+        """Summary of weighted scoring metrics."""
+        valid = [m for m in self.measurements if m.teacher_match_type is not None]
+        if not valid:
+            return {
+                "total_tests": 0,
+                "teacher_hard_accuracy": 0.0,
+                "teacher_soft_accuracy": 0.0,
+                "student_hard_accuracy": 0.0,
+                "student_soft_accuracy": 0.0,
+                "student_weighted_accuracy": 0.0,
+            }
+
+        n = len(valid)
+        t_exact = sum(1 for m in valid if m.teacher_match_type == MatchType.EXACT)
+        t_contained = sum(1 for m in valid if m.teacher_match_type == MatchType.CONTAINED)
+        s_exact = sum(1 for m in valid if m.student_match_type == MatchType.EXACT)
+        s_contained = sum(1 for m in valid if m.student_match_type == MatchType.CONTAINED)
+
+        weighted_sum = sum(m.student_weighted_score for m in valid)
+        max_weighted_sum = sum(m.difficulty_weight for m in valid)
+
+        # Breakdown by difficulty
+        easy = [m for m in valid if m.difficulty_weight == 1.0]
+        medium = [m for m in valid if m.difficulty_weight == 2.0]
+        hard = [m for m in valid if m.difficulty_weight == 3.0]
+
+        return {
+            "total_tests": n,
+            "teacher_exact_count": t_exact,
+            "teacher_contained_count": t_contained,
+            "teacher_none_count": n - t_exact - t_contained,
+            "student_exact_count": s_exact,
+            "student_contained_count": s_contained,
+            "student_none_count": n - s_exact - s_contained,
+            "teacher_hard_accuracy": t_exact / n,
+            "teacher_soft_accuracy": (t_exact + t_contained) / n,
+            "student_hard_accuracy": s_exact / n,
+            "student_soft_accuracy": (s_exact + s_contained) / n,
+            "student_weighted_score_sum": weighted_sum,
+            "student_weighted_score_max": max_weighted_sum,
+            "student_weighted_accuracy": weighted_sum / max_weighted_sum if max_weighted_sum > 0 else 0.0,
+            "difficulty_breakdown": {
+                "easy": {"count": len(easy), "student_exact": sum(1 for m in easy if m.student_match_type == MatchType.EXACT)},
+                "medium": {"count": len(medium), "student_exact": sum(1 for m in medium if m.student_match_type == MatchType.EXACT)},
+                "hard": {"count": len(hard), "student_exact": sum(1 for m in hard if m.student_match_type == MatchType.EXACT)},
+            },
+        }
+
+
+@dataclass
+class BehaviorMultiMeasurement:
+    """Measurement for a single case across N models."""
+    case_id: str
+    expected: str
+    prompt: str = ""
+
+    # Per-model results: {model_name: output_str}
+    model_outputs: dict[str, str] = field(default_factory=dict)
+
+    # Per-model match types: {model_name: MatchType}
+    model_match_types: dict[str, MatchType] = field(default_factory=dict)
+
+    # Per-model raw scores: {model_name: float (0.0, 0.5, 1.0)}
+    model_raw_scores: dict[str, float] = field(default_factory=dict)
+
+    # Difficulty weight (based on baseline performance)
+    difficulty_weight: float = 1.0
+
+    # Per-model weighted scores: {model_name: weighted_score}
+    model_weighted_scores: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class BehaviorMultiResult:
+    """Results for N-model behavior benchmark with weighted scoring."""
+    benchmark_id: str
+    baseline_name: str = ""
+    measurements: list[BehaviorMultiMeasurement] = field(default_factory=list)
+
+    # Model names in order
+    model_names: list[str] = field(default_factory=list)
+
+    @property
+    def total_tests(self) -> int:
+        return len(self.measurements)
+
+    def get_hard_accuracy(self, model_name: str) -> float:
+        """Fraction of EXACT matches for a model."""
+        valid = [m for m in self.measurements if model_name in m.model_match_types]
+        if not valid:
+            return 0.0
+        exact = sum(1 for m in valid if m.model_match_types.get(model_name) == MatchType.EXACT)
+        return exact / len(valid)
+
+    def get_soft_accuracy(self, model_name: str) -> float:
+        """Fraction of EXACT or CONTAINED matches for a model."""
+        valid = [m for m in self.measurements if model_name in m.model_match_types]
+        if not valid:
+            return 0.0
+        ok = sum(1 for m in valid if m.model_match_types.get(model_name) in (MatchType.EXACT, MatchType.CONTAINED))
+        return ok / len(valid)
+
+    def get_weighted_accuracy(self, model_name: str) -> float:
+        """Weighted accuracy for a model (sum of weighted_scores / max possible)."""
+        valid = [m for m in self.measurements if model_name in m.model_weighted_scores]
+        if not valid:
+            return 0.0
+        weighted_sum = sum(m.model_weighted_scores.get(model_name, 0.0) for m in valid)
+        max_sum = sum(m.difficulty_weight for m in valid)  # max score = 1.0 × weight
+        return weighted_sum / max_sum if max_sum > 0 else 0.0
+
+    def get_weighted_summary(self) -> dict[str, Any]:
+        """Get comprehensive weighted scoring summary."""
+        summary = {
+            "total_tests": self.total_tests,
+            "baseline_name": self.baseline_name,
+            "models": {},
+        }
+
+        # Difficulty distribution
+        easy = sum(1 for m in self.measurements if m.difficulty_weight == 1.0)
+        medium = sum(1 for m in self.measurements if m.difficulty_weight == 2.0)
+        hard = sum(1 for m in self.measurements if m.difficulty_weight == 3.0)
+        summary["difficulty_distribution"] = {"easy": easy, "medium": medium, "hard": hard}
+
+        for model_name in self.model_names:
+            valid = [m for m in self.measurements if model_name in m.model_match_types]
+            n = len(valid)
+            if n == 0:
+                continue
+
+            exact = sum(1 for m in valid if m.model_match_types.get(model_name) == MatchType.EXACT)
+            contained = sum(1 for m in valid if m.model_match_types.get(model_name) == MatchType.CONTAINED)
+            none_count = n - exact - contained
+
+            weighted_sum = sum(m.model_weighted_scores.get(model_name, 0.0) for m in valid)
+            max_sum = sum(m.difficulty_weight for m in valid)
+
+            summary["models"][model_name] = {
+                "exact_count": exact,
+                "contained_count": contained,
+                "none_count": none_count,
+                "hard_accuracy": exact / n,
+                "soft_accuracy": (exact + contained) / n,
+                "weighted_score_sum": weighted_sum,
+                "weighted_score_max": max_sum,
+                "weighted_accuracy": weighted_sum / max_sum if max_sum > 0 else 0.0,
+            }
+
+        return summary
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "benchmark_id": self.benchmark_id,
+            "baseline_name": self.baseline_name,
+            "model_names": self.model_names,
+            "weighted_summary": self.get_weighted_summary(),
+            "measurements": [
+                {
+                    "case_id": m.case_id,
+                    "expected": m.expected,
+                    "difficulty_weight": m.difficulty_weight,
+                    "model_match_types": {k: v.name for k, v in m.model_match_types.items()},
+                    "model_raw_scores": m.model_raw_scores,
+                    "model_weighted_scores": m.model_weighted_scores,
+                }
+                for m in self.measurements
+            ],
+        }
 
 
 class BehaviorBenchmark:
@@ -238,6 +478,17 @@ class BehaviorBenchmark:
                     "format_continuation": s_flags.format_continuation,
                 }
 
+                # Weighted scoring (hard/soft with difficulty weighting)
+                expected = str(case.answer)
+                m.expected_answer = expected
+                m.teacher_match_type = classify_match_type(m.teacher_answer, expected)
+                m.student_match_type = classify_match_type(m.student_answer, expected)
+                m.teacher_raw_score = MATCH_SCORES[m.teacher_match_type]
+                m.student_raw_score = MATCH_SCORES[m.student_match_type]
+                # Difficulty weight based on teacher's performance
+                m.difficulty_weight = DIFFICULTY_WEIGHTS[m.teacher_match_type]
+                m.student_weighted_score = m.student_raw_score * m.difficulty_weight
+
             out.measurements.append(m)
             prompt_full = case.prompt if case else "[prompt not found]"
             expected_full = str(case.answer) if case else "?"
@@ -310,12 +561,27 @@ class BehaviorBenchmark:
                 f"student [metric]{s_correct}[/metric]/[metric]{total}[/metric] "
                 f"([success]{s_correct / total * 100:.1f}%[/success])"
             )
+            # Print weighted scoring summary if available
+            ws = out.weighted_score_summary
+            if ws.get("total_tests", 0) > 0:
+                logger.console.print(
+                    f"[highlight]━━━ Weighted Scores:[/highlight] "
+                    f"hard [metric]{ws['student_hard_accuracy'] * 100:.1f}%[/metric] │ "
+                    f"soft [metric]{ws['student_soft_accuracy'] * 100:.1f}%[/metric] │ "
+                    f"weighted [metric]{ws['student_weighted_accuracy'] * 100:.1f}%[/metric]"
+                )
             logger.console.print()
 
         # Write log file
         if log_file and log_lines:
             log_lines.append(f"{'=' * 80}")
             log_lines.append(f"SUMMARY: teacher {t_correct}/{total} ({t_correct/total*100:.1f}%) │ student {s_correct}/{total} ({s_correct/total*100:.1f}%)")
+            # Add weighted scoring to log
+            ws = out.weighted_score_summary
+            if ws.get("total_tests", 0) > 0:
+                log_lines.append(f"WEIGHTED: hard={ws['student_hard_accuracy']*100:.1f}% │ soft={ws['student_soft_accuracy']*100:.1f}% │ weighted={ws['student_weighted_accuracy']*100:.1f}%")
+                log_lines.append(f"  Teacher: EXACT={ws['teacher_exact_count']} CONTAINED={ws['teacher_contained_count']} NONE={ws['teacher_none_count']}")
+                log_lines.append(f"  Student: EXACT={ws['student_exact_count']} CONTAINED={ws['student_contained_count']} NONE={ws['student_none_count']}")
             log_lines.append(f"{'=' * 80}")
 
             log_path = Path(log_file)
@@ -360,6 +626,227 @@ class BehaviorBenchmark:
                 )
 
         return out
+
+    def run_multi(
+        self,
+        *,
+        models: dict[str, nn.Module],
+        benchmark_id: str,
+        output_dir: Path | None = None,
+        baseline_name: str | None = None,
+    ) -> BehaviorMultiResult:
+        """Run behavior benchmark on N models with weighted scoring.
+
+        Args:
+            models: Dict mapping model names to nn.Module instances
+            benchmark_id: Identifier for this benchmark run
+            output_dir: Optional directory to save results
+            baseline_name: Name of baseline model for difficulty weighting (default: first model)
+
+        Returns:
+            BehaviorMultiResult with per-model weighted scores
+        """
+        from caramba.data.tokenizers.builder import TokenizerBuilder
+
+        stream_live = bool(getattr(self.config, "stream_live", False))
+        max_chars = int(getattr(self.config, "print_max_chars", 160))
+        log_file = getattr(self.config, "log_file", None)
+
+        model_names = list(models.keys())
+        if baseline_name is None and model_names:
+            baseline_name = model_names[0]
+
+        # Set all models to eval mode
+        for model in models.values():
+            model.eval()
+
+        # Load test cases
+        cases = self._load_cases()
+        case_by_id = {str(c.id): c for c in cases}
+
+        # Build tokenizer
+        tok = TokenizerBuilder().build(self.config.tokenizer)
+
+        # Create result
+        out = BehaviorMultiResult(
+            benchmark_id=str(benchmark_id),
+            baseline_name=baseline_name,
+            model_names=model_names,
+        )
+
+        if stream_live:
+            logger.console.print()
+            logger.console.print(f"[highlight]━━━ Behavior Benchmark (Multi): {benchmark_id} ━━━[/highlight]")
+            logger.console.print(f"[muted]Models: {', '.join(model_names)} | Baseline: {baseline_name}[/muted]")
+            logger.console.print()
+
+        # Run each case
+        for i, case in enumerate(cases):
+            cid = str(case.id)
+            expected = str(case.answer)
+            prompt = str(case.prompt)
+
+            # Create measurement
+            m = BehaviorMultiMeasurement(
+                case_id=cid,
+                expected=expected,
+                prompt=prompt,
+            )
+
+            # Tokenize prompt
+            prompt_ids = tok.encode(prompt)
+
+            # Run each model
+            for model_name, model in models.items():
+                with torch.no_grad():
+                    # Generate output (simple greedy)
+                    input_ids = torch.tensor([prompt_ids], device=self.device, dtype=torch.long)
+                    for _ in range(int(self.config.max_new_tokens)):
+                        logits = model(input_ids)
+                        if isinstance(logits, tuple):
+                            logits = logits[0]
+                        next_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)
+                        if next_token.item() == 0:  # EOS
+                            break
+                        input_ids = torch.cat([input_ids, next_token], dim=-1)
+                        if self.config.context_window and input_ids.shape[1] > self.config.context_window:
+                            break
+
+                    # Decode output
+                    generated_ids = input_ids[0, len(prompt_ids):].tolist()
+                    output = tok.decode(generated_ids)
+
+                m.model_outputs[model_name] = output
+
+                # Classify match type
+                match_type = classify_match_type(output, expected)
+                m.model_match_types[model_name] = match_type
+                m.model_raw_scores[model_name] = MATCH_SCORES[match_type]
+
+            # Set difficulty weight based on baseline performance
+            baseline_match = m.model_match_types.get(baseline_name, MatchType.NONE)
+            m.difficulty_weight = DIFFICULTY_WEIGHTS[baseline_match]
+
+            # Compute weighted scores for all models
+            for model_name in model_names:
+                raw_score = m.model_raw_scores.get(model_name, 0.0)
+                m.model_weighted_scores[model_name] = raw_score * m.difficulty_weight
+
+            out.measurements.append(m)
+
+            # Live streaming
+            if stream_live and (i + 1) % 10 == 0:
+                logger.console.print(f"  [{i + 1}/{len(cases)}] {cid}")
+
+        # Print summary
+        if stream_live:
+            logger.console.print()
+            logger.console.print(f"[highlight]━━━ Weighted Scoring Summary ━━━[/highlight]")
+            ws = out.get_weighted_summary()
+            dist = ws.get("difficulty_distribution", {})
+            logger.console.print(
+                f"[muted]Difficulty distribution: easy={dist.get('easy', 0)} "
+                f"medium={dist.get('medium', 0)} hard={dist.get('hard', 0)}[/muted]"
+            )
+            for model_name in model_names:
+                model_stats = ws.get("models", {}).get(model_name, {})
+                logger.console.print(
+                    f"  {model_name}: "
+                    f"hard=[metric]{model_stats.get('hard_accuracy', 0) * 100:.1f}%[/metric] │ "
+                    f"soft=[metric]{model_stats.get('soft_accuracy', 0) * 100:.1f}%[/metric] │ "
+                    f"weighted=[metric]{model_stats.get('weighted_accuracy', 0) * 100:.1f}%[/metric]"
+                )
+            logger.console.print()
+
+        # Save results
+        if output_dir:
+            self._save_multi_results(out, output_dir)
+
+        # Optional attention dump for N models
+        if bool(getattr(self.config, "dump_attention", False)):
+            try:
+                dump_attention_multi_model(
+                    models=models,
+                    cases=cases,
+                    case_ids=getattr(self.config, "dump_attention_case_ids", None),
+                    benchmark_id=str(benchmark_id),
+                    output_dir=output_dir or Path("."),
+                    device=self.device,
+                    tokenizer_config=self.config.tokenizer,
+                    max_tokens=int(getattr(self.config, "dump_attention_max_tokens", 96)),
+                    max_heads=int(getattr(self.config, "dump_attention_max_heads", 4)),
+                    anchor=str(getattr(self.config, "dump_attention_anchor", "A7")),
+                )
+            except Exception as e:
+                logger.warning(f"Multi-model attention dump failed (continuing): {e!r}")
+
+        return out
+
+    def _save_multi_results(
+        self,
+        result: BehaviorMultiResult,
+        output_dir: Path,
+    ) -> None:
+        """Save multi-model results to output directory."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save JSON summary
+        summary_path = output_dir / "behavior_multi_weighted.json"
+        with open(summary_path, "w") as f:
+            json.dump(result.to_dict(), f, indent=2)
+        logger.path(str(summary_path), "behavior_multi_weighted")
+
+        # Save CSV summary
+        csv_path = output_dir / "behavior_multi_weighted.csv"
+        ws = result.get_weighted_summary()
+        models_data = ws.get("models", {})
+        with open(csv_path, "w") as f:
+            if models_data:
+                # Header
+                f.write("model,exact_count,contained_count,none_count,hard_accuracy,soft_accuracy,weighted_accuracy\n")
+                for model_name, stats in models_data.items():
+                    f.write(
+                        f"{model_name},"
+                        f"{stats.get('exact_count', 0)},"
+                        f"{stats.get('contained_count', 0)},"
+                        f"{stats.get('none_count', 0)},"
+                        f"{stats.get('hard_accuracy', 0):.4f},"
+                        f"{stats.get('soft_accuracy', 0):.4f},"
+                        f"{stats.get('weighted_accuracy', 0):.4f}\n"
+                    )
+        logger.path(str(csv_path), "behavior_multi_csv")
+
+        # Generate visualizations
+        # Convert BehaviorMultiResult to WeightedModelSummary format for visualization
+        if models_data:
+            try:
+                summaries: dict[str, WeightedModelSummary] = {}
+                for model_name, stats in models_data.items():
+                    summaries[model_name] = WeightedModelSummary(
+                        model_name=model_name,
+                        baseline_name=result.baseline_name,
+                        total_tests=result.total_tests,
+                        exact_count=stats.get("exact_count", 0),
+                        contained_count=stats.get("contained_count", 0),
+                        none_count=stats.get("none_count", 0),
+                        raw_score_sum=stats.get("exact_count", 0) + 0.5 * stats.get("contained_count", 0),
+                        raw_score_max=float(result.total_tests),
+                        hard_accuracy=stats.get("hard_accuracy", 0.0),
+                        soft_accuracy=stats.get("soft_accuracy", 0.0),
+                        weighted_score_sum=stats.get("weighted_score_sum", 0.0),
+                        weighted_score_max=stats.get("weighted_score_max", 0.0),
+                        weighted_accuracy=stats.get("weighted_accuracy", 0.0),
+                    )
+
+                viz_paths = generate_all_weighted_visualizations(
+                    summaries=summaries,
+                    output_dir=output_dir,
+                    prefix="behavior_",
+                )
+                for name, path in viz_paths.items():
+                    logger.path(str(path), f"viz_{name}")
+            except Exception as e:
+                logger.warning(f"Failed to generate weighted visualizations: {e!r}")
 
     def _dump_attention(
         self,
@@ -501,6 +988,141 @@ class BehaviorBenchmark:
                     case_id=str(cid),
                     tag=str(paper_tag),
                 )
+
+
+def dump_attention_multi_model(
+    *,
+    models: dict[str, nn.Module],
+    cases: list[EvalCase],
+    case_ids: list[str] | None,
+    benchmark_id: str,
+    output_dir: Path,
+    device: torch.device,
+    tokenizer_config: dict,
+    max_tokens: int = 96,
+    max_heads: int = 4,
+    anchor: str = "A7",
+) -> dict[str, Path]:
+    """Dump attention patterns for N models and generate comparison visualizations.
+
+    This is the N-model extension of _dump_attention() that works with
+    arbitrary models instead of just teacher/student pairs.
+
+    Args:
+        models: Dict mapping model names to nn.Module instances
+        cases: List of EvalCase objects with prompts
+        case_ids: Specific case IDs to dump (None = all cases)
+        benchmark_id: Benchmark identifier for output directory
+        output_dir: Base output directory
+        device: Device to run models on
+        tokenizer_config: Tokenizer configuration dict
+        max_tokens: Maximum tokens to include in attention dump
+        max_heads: Maximum heads to visualize per model
+        anchor: Anchor string to find split point
+
+    Returns:
+        Dict mapping artifact names to file paths.
+    """
+    out_base = Path(output_dir)
+    out_dir = out_base / "attention_dump" / str(benchmark_id)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    case_by_id = {str(c.id): c for c in cases}
+    tok = TokenizerBuilder().build(tokenizer_config)
+
+    # Determine which cases to process
+    if case_ids is None:
+        case_ids = list(case_by_id.keys())
+
+    if not case_ids:
+        logger.info("No cases selected for attention dump.")
+        return {}
+
+    all_artifacts: dict[str, Path] = {}
+
+    for cid in case_ids:
+        case = case_by_id.get(cid)
+        if case is None:
+            continue
+
+        case_dir = out_dir / str(cid)
+        case_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save case metadata
+        meta = {
+            "case_id": str(cid),
+            "kind": str(getattr(case, "kind", "")),
+            "prompt": str(case.prompt),
+            "expected": case.answer,
+            "models": list(models.keys()),
+        }
+        (case_dir / "case.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+        prompt_ids = tok.encode(case.prompt)
+        if not prompt_ids:
+            continue
+
+        # Per-token strings for axis labels
+        token_strs = [tok.decode([i]) for i in prompt_ids[:max_tokens]]
+        token_strs = [s.replace("\n", "\\n") for s in token_strs]
+        (case_dir / "tokens.json").write_text(json.dumps(token_strs, indent=2), encoding="utf-8")
+
+        # Find split point (exemplar vs target region)
+        split_idx = _find_anchor_token_index(token_strs, anchor=anchor)
+        split = int(split_idx if split_idx is not None else len(token_strs) // 2)
+
+        # Run all models and collect attention events
+        model_events: dict[str, dict] = {}
+        model_summaries: dict[str, dict] = {}
+
+        for model_name, model in models.items():
+            model_dir = case_dir / model_name
+            model_dir.mkdir(parents=True, exist_ok=True)
+
+            _assign_attention_viz_ids(model)
+            ctx = TrainingVizContext(
+                enabled=True,
+                step=0,
+                max_tokens=int(max_tokens),
+                max_heads=int(max_heads),
+            )
+            x = torch.tensor([prompt_ids], device=device, dtype=torch.long)
+            with torch.no_grad():
+                _ = model(x, ctx=ctx)  # type: ignore[call-arg]
+
+            event = ctx.to_event()
+            model_events[model_name] = event
+            (model_dir / "attn.json").write_text(json.dumps(event, indent=2), encoding="utf-8")
+
+            # Compute attention mass summary
+            summary = _attention_mass_summary(event, split=int(split), tokens=token_strs)
+            model_summaries[model_name] = summary
+            (model_dir / "mass.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+            # Render individual model plots
+            _render_attention_pngs(
+                model_dir=model_dir,
+                event=event,
+                tokens=token_strs,
+                split=int(split),
+                case_id=str(cid),
+                model_tag=str(model_name),
+            )
+
+        # Render N-model comparison plots
+        artifacts = render_multi_model_attention_comparison(
+            model_events=model_events,
+            tokens=token_strs,
+            split=int(split),
+            case_id=str(cid),
+            output_dir=case_dir,
+            max_heads=max_heads,
+        )
+
+        for name, path in artifacts.items():
+            all_artifacts[f"{cid}_{name}"] = path
+
+    return all_artifacts
 
 
 def _assign_attention_viz_ids(model: nn.Module) -> None:
@@ -803,9 +1425,13 @@ def _render_attention_comparison_pngs(
 
         fig = plt.figure(figsize=(min(28.0, 0.18 * max(tk_t, tk_s) * 2 + 4.0), min(10.0, 0.28 * max(L_t, L_s) + 3.0)))
 
+        # CRITICAL: Use shared normalization for fair visual comparison.
+        # Attention weights are probabilities in [0, 1], so normalize to this range.
+        vmin, vmax = 0.0, 1.0
+
         # Teacher heatmap (left).
         ax1 = fig.add_subplot(1, 2, 1)
-        im1 = ax1.imshow(teacher_M, aspect="auto", interpolation="nearest", cmap="viridis")
+        im1 = ax1.imshow(teacher_M, aspect="auto", interpolation="nearest", cmap="viridis", vmin=vmin, vmax=vmax)
         ax1.axvline(split2 - 0.5, color="w", linewidth=1.5, alpha=0.9)
         ax1.set_title(f"Teacher • final-query attention by layer")
         ax1.set_xlabel("key position (prompt tokens)")
@@ -817,7 +1443,7 @@ def _render_attention_comparison_pngs(
 
         # Student heatmap (right).
         ax2 = fig.add_subplot(1, 2, 2)
-        im2 = ax2.imshow(student_M, aspect="auto", interpolation="nearest", cmap="viridis")
+        im2 = ax2.imshow(student_M, aspect="auto", interpolation="nearest", cmap="viridis", vmin=vmin, vmax=vmax)
         ax2.axvline(split2 - 0.5, color="w", linewidth=1.5, alpha=0.9)
         ax2.set_title(f"Student • final-query attention by layer")
         ax2.set_xlabel("key position (prompt tokens)")

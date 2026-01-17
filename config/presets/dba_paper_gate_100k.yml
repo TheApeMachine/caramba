@@ -1,0 +1,179 @@
+version: 2
+name: dba_paper_gate_100k
+notes: >
+  DBA+gate 100k run: EXACTLY matches the sem8geo32v40 100k run except with
+  decoupled_gate=true. This is the "gated DBA" ablation at scale.
+
+  APPLES-TO-APPLES with: a100_fw1b_l22_decoupled_s42_paper_sem8geo32v40
+
+  Key config (from that run's train.jsonl):
+    - lr_base: 0.0002 (2e-4)
+    - grad_accum: 4
+    - batch_size: 8
+    - seq_len: 2048
+    - seed: 42
+    - steps: 100000
+    - warmup_steps: 2000
+    - dtype: bfloat16
+    - compile_mode: default
+    - grad_clip_norm: 1.0
+
+  DBA dims (sem8/geo32/v40):
+    - sem_dim: 256 (8 per head * 32 heads)
+    - geo_dim: 1024 (32 per head * 32 heads)
+    - attn_dim: 1280 (40 per head * 32 heads)
+
+defaults:
+  data:
+    tokenizer: tiktoken:gpt2
+    val_frac: 0.0
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-paper
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 0
+  runtime:
+    save_every: ${save_every}
+
+vars:
+  # ----- Dataset -----
+  dataset_path: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_20b.npy
+  block_size: 2048
+
+  # ----- Model (Llama-1B-ish, EXACT MATCH) -----
+  d_model: 2048
+  n_layers: 22
+  n_heads: 32
+  d_ff: 4096
+  vocab_size: 50304
+  rope_base: 10000.0
+
+  # ----- DBA bottleneck dims (sem8/geo32/v40, EXACT MATCH) -----
+  sem_dim: 256
+  geo_dim: 1024
+  attn_dim: 1280
+
+  # ----- Training (EXACT MATCH from 100k run logs) -----
+  steps: 100000
+  seed: 42
+  device: cuda
+  dtype: bfloat16
+  batch_size: 8
+  grad_accum: 4
+  num_workers: 8
+  prefetch_factor: 4
+  pin_memory: true
+  lr: 2.0e-4
+  weight_decay: 0.1
+  optimizer: adamw
+  fused_optimizer: true
+  scheduler: cosine
+  warmup_steps: 2000
+  save_every: 1000
+
+targets:
+  # ---------------------------------------------------------------------------
+  # DBA+gate: ONLY difference is decoupled_gate: true
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: a100_fw1b_l22_decoupled_gate_s42_paper_sem8geo32v40
+    description: "DBA+gate 100k: identical to ungated 100k run except decoupled_gate=true."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        mode: decoupled
+                        # EXACT MATCH: use sdpa backend like the 100k run
+                        dba_train_backend: sdpa
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_base}
+                        rope_semantic: false
+                        tie_qk: false
+                        null_attn: false
+                        # *** THE ONLY DIFFERENCE: GATE ENABLED ***
+                        decoupled_gate: true
+                        is_causal: true
+                        dropout_p: 0.0
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: paper_decoupled_gate_sem8geo32v40
+        seed: ${seed}
+        steps: ${steps}
+        expected: {}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr}
+          device: ${device}
+          dtype: ${dtype}
+          gradient_accumulation_steps: ${grad_accum}
+          grad_clip_norm: 1.0
+          optimizer: ${optimizer}
+          weight_decay: ${weight_decay}
+          fused_optimizer: ${fused_optimizer}
+          scheduler: ${scheduler}
+          warmup_steps: ${warmup_steps}
+          min_lr_ratio: 0.0
+          auto_resume: false
+          skip_if_final: false
+          auto_batch_size: false
+          compile_model: true
+          # EXACT MATCH: use default compile mode like the 100k run
+          compile_mode: default
+          profile_every: 0
+          profile_record_shapes: false
+
+entrypoints:
+  gate: "target:a100_fw1b_l22_decoupled_gate_s42_paper_sem8geo32v40"

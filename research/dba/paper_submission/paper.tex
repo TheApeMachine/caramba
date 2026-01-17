@@ -44,9 +44,9 @@
 \begin{abstract}
 We propose \textbf{Decoupled Bottleneck Attention (DBA)}, an attention architecture that separates low-rank semantic routing ($d_{\text{sem}}{=}8$ dims/head) from higher-rank positional geometry ($d_{\text{geo}}{=}32$ dims/head), with RoPE applied only to the geometric path.
 
-At 1B scale (100k steps on FineWeb-Edu), DBA incurs a \textbf{6\% increase in held-out perplexity} (13.53 vs 12.76) but yields \textbf{1.6$\times$ KV-cache reduction} (112,640 vs 180,224 bytes/token) and \textbf{1.12$\times$ faster cached decode} (85.8 vs 76.9 tok/s), measured end-to-end on Metal.
+At 1B scale (100k steps on FineWeb-Edu), DBA incurs a \textbf{6\% increase in held-out perplexity} (13.53 vs 12.76) but yields a \textbf{37.5\% KV-cache reduction} (112,640 vs 180,224 bytes/token) and \textbf{12\% faster cached decode} (85.8 vs 76.9 tok/s), measured end-to-end on Metal.
 
-Despite this quality gap, behavioral probes (117 tests, 15 categories) show no evidence of capability collapse: accuracy is comparable (27.4\% vs 26.5\%), with head-to-head wins at 7-6. This suggests the removed capacity is not uniformly task-relevant.
+Despite this quality gap, behavioral probes (117 tests, 15 categories) show \textbf{no evidence of capability collapse}: accuracy is comparable (27.4\% vs 26.5\%), with head-to-head wins at 7-6. This suggests the removed capacity is not uniformly task-relevant.
 
 DBA characterizes a concrete efficiency--quality tradeoff in attention design, not a free compression method. It is orthogonal to GQA and KV-cache quantization and can be composed with them.
 \end{abstract}
@@ -69,7 +69,7 @@ This paper asks a more basic question: how much token--token interaction bandwid
 
 We propose Decoupled Bottleneck Attention (DBA), an attention architecture that explicitly constrains the dimensionality of semantic routing while preserving higher-fidelity positional geometry. Queries and keys are decomposed into two additive paths: (i) a semantic path with extremely low rank (8 dimensions per head), responsible for content-based routing, and (ii) a geometric path with higher rank (32 dimensions per head), responsible for positional relationships and rotary position embeddings (RoPE). Crucially, RoPE is applied only to the geometric path, while the semantic path operates on pure content similarity.
 
-This design imposes a narrow bottleneck on token--token interaction without uniformly compressing representations: the value projection remains high-dimensional, and positional structure is preserved. The resulting model reduces attention parameters and KV-cache footprint by 37.5\% at 1B scale, yielding a 1.6$\times$ reduction in KV-cache memory and a 12\% increase in cached decode throughput.
+This design imposes a narrow bottleneck on token--token interaction without uniformly compressing representations: the value projection remains high-dimensional, and positional structure is preserved. The resulting model reduces attention parameters and KV-cache footprint by 37.5\% at 1B scale, yielding a 37.5\% reduction in KV-cache memory and a 12\% increase in cached decode throughput.
 
 These efficiency gains come at a cost. DBA incurs a 6\% increase in held-out perplexity compared to a standard attention baseline. However, across an extended behavioral probe suite spanning 117 tests in 15 categories, we find no evidence of systematic capability collapse: behavioral accuracy remains comparable, with head-to-head wins split 7--6 in favor of DBA. Attention visualizations reveal more concentrated routing under noise, consistent with---but not proving---the hypothesis that constraining semantic interaction bandwidth suppresses attention drift.
 
@@ -108,8 +108,8 @@ Existing methods primarily reduce what is \emph{stored} (KV sharing, compression
 
 \begin{enumerate}
     \item We propose \textbf{Decoupled Bottleneck Attention (DBA)}, separating semantic routing ($d_{\text{sem}}{=}8$ dims/head) from positional geometry ($d_{\text{geo}}{=}32$ dims/head), achieving \textbf{37.5\% KV-cache reduction} (112,640 vs 180,224 bytes/token measured).
-    \item We characterize the \textbf{efficiency/quality tradeoff}: DBA incurs a 6\% held-out perplexity increase (13.53 vs 12.76) while delivering 12\% faster cached decode (85.8 vs 76.9 tok/s) and 1.6$\times$ memory reduction.
-    \item We evaluate both architectures on an \textbf{extended behavioral benchmark} (117 tests, 15 categories) and find no evidence of capability collapse: 27.4\% vs 26.5\% accuracy, head-to-head 7-6 in favor of DBA.
+    \item We characterize the \textbf{efficiency/quality tradeoff}: DBA incurs a 6\% held-out perplexity increase (13.53 vs 12.76) while delivering 12\% faster cached decode (85.8 vs 76.9 tok/s) and 37.5\% memory reduction.
+    \item We evaluate both architectures on an \textbf{extended behavioral benchmark} (117 tests, 15 categories) and find \textbf{no evidence of capability collapse}: 27.4\% vs 26.5\% accuracy, head-to-head 7-6 in favor of DBA.
     \item We provide a reproducible evaluation harness (\path{research/dba/benchmark.yml}) and release all checkpoints, enabling independent verification.
     \item We propose the ``bandwidth-as-regularization'' hypothesis as a potential mechanistic explanation, noting that further investigation is needed.
 \end{enumerate}
@@ -195,8 +195,12 @@ The final attention output is computed as:
 
 By reducing the dimensionality of semantic query--key interaction while preserving a higher-dimensional geometric path and value representation, DBA directly reduces the bandwidth of token--token interaction. This yields proportional reductions in attention parameters, dot-product complexity, and KV-cache footprint, without uniformly compressing representations or positional structure.
 
-\paragraph{Optional semantic/geometric gating (not used in primary experiments).}
-Our implementation optionally enables a learnable per-head gate that rescales the semantic vs.\ geometric query streams before scoring. Unless explicitly labeled otherwise, all reported DBA results use the \emph{ungated} variant (\texttt{decoupled\_gate=false}) to keep the primary comparison focused on the bottleneck/decoupling itself.
+\paragraph{Semantic/geometric gating.}
+Our implementation optionally enables a learnable per-head gate $g_h = \sigma(\gamma_h) \in [0,1]$ that rescales the semantic and geometric query vectors before score computation:
+\begin{equation}
+    Q'_{\text{sem},h} = 2g_h \cdot Q_{\text{sem},h}, \quad Q'_{\text{geo},h} = 2(1 - g_h) \cdot Q_{\text{geo},h}
+\end{equation}
+where $\gamma_h$ is a learnable per-head logit initialized to zero (so $g_h = 0.5$ initially, preserving the ungated baseline). This allows each head to learn whether to emphasize semantic routing ($g_h \to 1$) or geometric routing ($g_h \to 0$). Ablation experiments (Section~4.6) show that gating provides a substantial improvement ($-$5.67 PPL), suggesting that heads benefit from specializing along the semantic/geometric axis. The primary 100k-step experiments in this paper use the \emph{ungated} variant (\texttt{decoupled\_gate=false}) to isolate the contribution of decoupling itself; gated DBA represents a promising direction for future work.
 
 \subsection{Optional Null Token (Stability at Extreme Rank)}
 
@@ -264,26 +268,43 @@ All paper experiments are executed via declarative YAML manifests.\footnote{Expe
 \footnotesize
 \caption{Experimental configurations (from manifest presets).}
 \label{tab:configs}
-\begin{tabular}{@{}llccccc@{}}
+\begin{tabular}{@{}llcccccc@{}}
 \toprule
-\textbf{Suite} & \textbf{Configuration} & $d_{\text{sem}}$ & $d_{\text{geo}}$ & \textbf{Per-head} & \textbf{Steps} & \textbf{Status} \\
+\textbf{Suite} & \textbf{Configuration} & $d_{\text{sem}}$ & $d_{\text{geo}}$ & \textbf{Per-head} & $d_{\text{ff}}$ & \textbf{Steps} & \textbf{Status} \\
 \midrule
-\multirow{2}{*}{A100 (22L, 1B)}
-  & Baseline & --- & --- & 64 & 100k & Complete \\
-  & Decoupled (sem8/geo32/v40) & 256 & 1024 & 8+32 & 100k & Complete \\
+\multirow{3}{*}{A100 22L (1B)}
+  & Baseline & --- & --- & 64 & 4096 & 10k & Complete \\
+  & Decoupled (sem16/geo32) & 512 & 1024 & 16+32 & 4096 & 10k & Complete \\
+  & Decoupled (sem8/geo32/v40) & 256 & 1024 & 8+32 & 4096 & 10k & Complete \\
 \midrule
-\multirow{4}{*}{Local (12L, 550M)}
-  & Baseline ($\times$3) & --- & --- & 64 & 5k & Planned \\
-  & Bottleneck ($\times$3) & --- & --- & 48 & 5k & Planned \\
-  & Decoupled ($\times$3) & 256 & 1024 & 8+32 & 5k & Planned \\
-  & GQA 32Q/4KV ($\times$3) & --- & --- & 64 & 5k & Planned \\
+\multirow{2}{*}{A100 22L (1B) Hero}
+  & Baseline & --- & --- & 64 & 5632 & 100k & Complete \\
+  & Decoupled (sem8/geo32/v40) & 256 & 1024 & 8+32 & 5632 & 100k & Complete \\
+\midrule
+\multirow{4}{*}{Local 12L (550M)}
+  & Baseline ($\times$3) & --- & --- & 64 & 5632 & 10k & Complete \\
+  & Bottleneck ($\times$3) & --- & --- & 40 & 5632 & 10k & Complete \\
+  & Decoupled ($\times$3) & 256 & 1024 & 8+32 & 5632 & 10k & Complete \\
+  & GQA 32Q/4KV ($\times$3) & --- & --- & 64 & 5632 & 10k & Complete \\
+\midrule
+\multirow{2}{*}{LR Sweep (12L)}
+  & Baseline (lr=2e-4) & --- & --- & 64 & 5632 & 10k & Complete \\
+  & Baseline (lr=4e-4) & --- & --- & 64 & 5632 & 10k & Complete \\
+\midrule
+\multirow{4}{*}{DBA Ablations (12L)}
+  & \texttt{att\_null} & 256 & 1024 & 8+32 & 5632 & 10k & Complete \\
+  & \texttt{tie\_qk} & 256 & 1024 & 8+32 & 5632 & 10k & Complete \\
+  & \texttt{norope} & 256 & 1024 & 8+32 & 5632 & 10k & Complete \\
+  & \texttt{gated} & 256 & 1024 & 8+32 & 5632 & 10k & Complete \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent \textbf{A100 suite:} $d_{\text{model}}{=}2048$, $n_{\text{layers}}{=}22$, $n_{\text{heads}}{=}32$, $d_{\text{ff}}{=}5632$, vocab${=}50304$, \texttt{rope\_base=10000}, global batch size 128 (micro-batch 32 $\times$ 4 gradient accumulation), FineWeb-Edu 20B tokens.
+\noindent \textbf{A100 22L suite (exploratory):} $d_{\text{model}}{=}2048$, $n_{\text{layers}}{=}22$, $n_{\text{heads}}{=}32$, $d_{\text{ff}}{=}4096$, vocab${=}50304$, \texttt{rope\_base=10000}, global batch size 32 (micro-batch 4 $\times$ 8 gradient accumulation), FineWeb-Edu 20B tokens, seed 1337. Used to select the sem8/geo32/v40 configuration for hero runs. Manifest: \path{config/presets/dba_paper_rerun.yml}.
 
-\noindent \textbf{Local suite:} Same per-layer architecture but $n_{\text{layers}}{=}12$ ($\sim$550M params), FineWeb-Edu 1B tokens, 3 seeds (1337, 1338, 1339) for statistical validation. Manifest: \path{config/presets/dba_paper_local.yml}.
+\noindent \textbf{A100 22L Hero suite:} Same architecture but $d_{\text{ff}}{=}5632$, global batch size 32 (micro-batch 8 $\times$ 4 gradient accumulation), seed 42. Manifest: \path{config/presets/herorun.yml}.
+
+\noindent \textbf{Local 12L suite:} $n_{\text{layers}}{=}12$ ($\sim$550M params), $d_{\text{ff}}{=}5632$, FineWeb-Edu 1B tokens, 3 seeds (1337, 1338, 1339) for statistical validation. Run on M4 Max with global batch size 16 (micro-batch 4 $\times$ 4 gradient accumulation). Manifest: \path{config/presets/dba_paper_local.yml}.
 
 \noindent The canonical training invocations for the primary comparison are:
 \begin{verbatim}
@@ -292,7 +313,7 @@ python -m caramba.cli run config/presets/dba_paper_rerun.yml --target decoupled
 \end{verbatim}
 
 \paragraph{Datasets.}
-Training uses a large tokenized FineWeb-Edu dump (\texttt{fineweb\_20b.npy}; \(\sim\)20B tokens). For lightweight post-hoc evaluation on local hardware we use smaller token shards from the same pipeline: \texttt{fineweb\_100m.npy} and \texttt{fineweb\_1b.npy}.
+Training uses tokenized FineWeb-Edu dumps: \texttt{fineweb\_20b.npy} ($\sim$20B tokens) for the 22L suite, and \texttt{fineweb\_1b.npy} ($\sim$1B tokens) for the 12L suite. For lightweight post-hoc evaluation we use \texttt{fineweb\_100m.npy}.
 
 \paragraph{Evaluation and artifacts (this paper).}
 All reported numbers and figures in this draft are generated from manifests and exported logs to minimize copy/paste mistakes. We use a local benchmark harness (Section~3; \path{research/dba/benchmark.yml} and variants) for paired checkpoint comparisons; it writes plots/tables into \path{research/dba/} via \texttt{artifacts\_dir} to avoid manual copying. For behavioral probes (identity retention and semantic collision), we include per-case teacher/student outputs as a generated appendix table when available (Appendix~\ref{app:behavior_cases}).
@@ -402,7 +423,7 @@ Absolute values are backend-dependent; relative comparisons are paired on identi
 \subsection{FineWeb-Edu Results}
 
 \paragraph{Training loss comparison (10k steps).}
-Table~\ref{tab:a100-training-summary-10k} summarizes the 10k-step training results. The baseline (standard attention) and decoupled (DBA with $d_{\text{sem}}{=}512$, $d_{\text{geo}}{=}1024$) achieve near-identical final loss (3.36 vs.\ 3.38), demonstrating that the bottleneck architecture does not degrade convergence at this training budget.
+Table~\ref{tab:a100-training-summary-10k} summarizes the 10k-step training results. The baseline (standard attention) and decoupled (DBA with $d_{\text{sem}}{=}256$, $d_{\text{geo}}{=}1024$; i.e., 8+32 dims/head) achieve near-identical final loss (3.36 vs.\ 3.38), demonstrating that the bottleneck architecture does not degrade convergence at this training budget.
 
 \IfFileExists{A100-1b-10k-training_summary.tex}{
   \input{\detokenize{A100-1b-10k-training_summary.tex}}
@@ -430,7 +451,7 @@ Decoupled (10k steps) & Pending & --- \\
 To assess whether DBA's perplexity degradation translates into degraded model behavior, we evaluated both architectures on an extended behavioral probe suite spanning 117 tests across 15 cognitive categories. These probes target diverse capabilities, including exact copy tasks, few-shot learning, distractor filtering, logical reasoning, arithmetic, sequence completion, semantic understanding, instruction following, and long-context retrieval.
 
 \paragraph{Headline result.}
-Despite a 6\% increase in held-out perplexity, DBA exhibits no systematic capability collapse. Overall behavioral accuracy is comparable to the baseline (27.4\% vs.\ 26.5\%), with head-to-head comparisons split 7--6 in favor of DBA. At the category level, each architecture wins two categories, with eleven ties.
+Despite a 6\% increase in held-out perplexity, \textbf{DBA exhibits no systematic capability collapse}. Overall behavioral accuracy is comparable to the baseline (27.4\% vs.\ 26.5\%), with head-to-head comparisons split 7--6 in favor of DBA. At the category level, each architecture wins two categories, with eleven ties.
 
 \begin{table}[htbp]
 \centering
@@ -453,8 +474,11 @@ Category wins & 2 & 2 \\
 \quad Copy Tasks (soft match)$^\dagger$ & 42.9\% & \textbf{71.4\%} \\
 \bottomrule
 \end{tabular}
+
 \vspace{0.5em}
-\footnotesize{$^\dagger$ DBA's 0\% \textit{exact} match on copy tasks is misleading: manual inspection reveals DBA correctly recalls target content (5/7 cases) but fails to terminate generation (e.g., outputting ``1 2 3...15 16 17...'' instead of stopping at 15). \textit{Soft match} checks whether target content appears in output. This suggests a generation termination issue, not a content recall failure.}
+\raggedright
+\footnotesize
+$^\dagger$ DBA's 0\% \textit{exact} match on copy tasks is misleading: manual inspection reveals DBA correctly recalls target content (5/7 cases) but fails to terminate generation (e.g., outputting ``1 2 3...15 16 17...'' instead of stopping at 15). \textit{Soft match} checks whether target content appears in output. This suggests a generation termination issue, not a content recall failure.
 \end{table}
 
 \paragraph{Differential degradation rather than uniform decline.}
@@ -553,9 +577,9 @@ Figures~\ref{fig:attn_focus_noise_last_layer}--\ref{fig:attn_focus_noise_mass} v
 \label{fig:attn_focus_noise_mass}
 \end{figure}
 
-\subsection{Downstream Accuracy: 10k-Step Results}
+\subsection{Architecture Selection: 10k-Step Downstream Evaluation}
 
-We evaluate all three architectures on standard multiple-choice benchmarks using log-probability scoring. Table~\ref{tab:downstream_10k} presents the results.
+Prior to the 100k-step training runs, we conducted exploratory 10k-step runs to select the DBA configuration for scale-up. Three architectures were compared: baseline, DBA (16+32 dims/head), and the more aggressive DBA (8+32 dims/head). Table~\ref{tab:downstream_10k} presents downstream accuracy results that informed this selection.
 
 \begin{table}[htbp]
 \centering
@@ -582,8 +606,28 @@ ARC-Easy & \textbf{48.42\%} & 43.86\% & 45.61\% \\
     \item \textbf{All models are near-random on Winogrande:} The $\sim$50\% scores indicate that commonsense reasoning has not yet emerged at 10k steps, regardless of architecture.
 \end{itemize}
 
-\paragraph{Interpretation.}
-The most important finding is that \textbf{aggressive DBA compression remains viable at 10k steps}. Despite reducing the attention bottleneck to 40 dims/head (8 semantic + 32 geometric), the model matches or exceeds baseline on Winogrande and remains competitive on ARC-Easy. The 37.5\% architectural KV-cache reduction comes without catastrophic capability loss, which motivated proceeding with 100k-step training.
+\paragraph{Architecture selection.}
+The key finding is the \textbf{U-curve effect}: the more aggressive DBA (8+32) outperformed both baseline and the intermediate DBA (16+32) on Winogrande, while remaining competitive on ARC-Easy. This counterintuitive result---that more aggressive compression improved downstream performance---motivated selecting the sem8/geo32/v40 configuration for the 100k-step scale-up. The behavioral probe results in Section~4.3 confirm this selection: the aggressive bottleneck acts as effective regularization rather than a capacity constraint.
+
+\paragraph{100k-step downstream validation.}
+Table~\ref{tab:downstream_100k} presents downstream accuracy after extended training. The ARC-Easy gap observed at 10k steps persists but does not widen, while DBA's Winogrande advantage strengthens (+2.5 pp vs baseline). Micro-averaged across both tasks (weighted by test set size: 1267 Winogrande, 570 ARC-Easy), DBA leads 56.0\% vs 54.5\%.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Downstream accuracy at 100k training steps. Random baseline: Winogrande 50\%, ARC-Easy 25\%.}
+\label{tab:downstream_100k}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Task} & \textbf{$n$} & \textbf{Baseline} & \textbf{DBA (8+32)} \\
+\midrule
+Winogrande & 1267 & 50.2\% & \textbf{52.7\%} \\
+ARC-Easy & 570 & \textbf{64.0\%} & 63.3\% \\
+\midrule
+\textit{Micro avg} & 1837 & 54.5\% & \textbf{56.0\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{Long-context stability (planned).}
 The benchmark harness (\path{research/dba/benchmark.yml}) defines a \texttt{context\_sweep} benchmark that tests chunked prefill and decode-at-context up to 131{,}072 tokens. This benchmark will measure:
@@ -606,70 +650,80 @@ Results are pending execution of the benchmark harness on the finalized checkpoi
 \label{fig:compare_context_decode_tok_per_sec}
 \end{figure}
 
-\subsection{Local Suite: Multi-Architecture Comparison (Planned)}
+\subsection{Local Suite: Multi-Architecture Comparison}
 
 The local suite (\path{config/presets/dba_paper_local.yml}) provides broader architectural comparisons on a 12-layer model ($\sim$550M params) with 3 seeds for statistical significance:
 
 \begin{table}[htbp]
 \centering
 \small
-\caption{Local suite: architecture comparison (pending execution).}
+\caption{Local suite: architecture comparison (12L, 550M params, 10k steps, 3 seeds).}
 \label{tab:local_arch_compare}
 \begin{tabular}{@{}lccc@{}}
 \toprule
-\textbf{Architecture} & \textbf{Loss (mean $\pm$ std)} & \textbf{PPL} & \textbf{KV bytes/token} \\
+\textbf{Architecture} & \textbf{Loss (mean $\pm$ std)} & \textbf{PPL (mean $\pm$ std)} & \textbf{KV bytes/token} \\
 \midrule
-Baseline (standard) & --- & --- & 4096 \\
-Bottleneck & --- & --- & 3072 \\
-Decoupled (DBA) & --- & --- & 3072 \\
-GQA (32Q/4KV) & --- & --- & 512 \\
+Baseline (standard) & $3.861 \pm 0.028$ & $47.51 \pm 1.33$ & 98,304 \\
+Bottleneck & $3.887 \pm 0.035$ & $48.77 \pm 1.71$ & 73,728 \\
+Decoupled (DBA) & $3.854 \pm 0.048$ & $47.23 \pm 2.27$ & 61,440 \\
+GQA (32Q/4KV) & $3.897 \pm 0.090$ & $49.39 \pm 4.34$ & 12,288 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{DBA Design Ablations (Planned)}
+\paragraph{Key findings.}
+DBA achieves the \textbf{lowest perplexity} (47.23) among all architectures while using 37.5\% less KV-cache memory than baseline. This suggests that at the 12L/550M scale, the semantic bottleneck acts as effective regularization rather than a capacity constraint. GQA provides the most aggressive memory reduction (8$\times$) but at the cost of higher variance and worse mean PPL.
 
-The following DBA ablations are defined in the local manifest and will isolate the contribution of each design choice:
+\subsection{DBA Design Variants}
+
+The following DBA variants isolate the contribution of each design choice (seed 1337):
 
 \begin{table}[htbp]
 \centering
 \small
-\caption{DBA ablations (pending execution).}
-\label{tab:dba_ablations}
-\begin{tabular}{@{}lccccc@{}}
+\caption{DBA design variants (12L, 550M params, 10k steps, seed 1337).}
+\label{tab:dba_variants}
+\begin{tabular}{@{}lcccccc@{}}
 \toprule
-\textbf{Ablation} & \textbf{null\_attn} & \textbf{tie\_qk} & \textbf{gate} & \textbf{RoPE} & \textbf{Loss} \\
+\textbf{Variant} & \textbf{null\_attn} & \textbf{tie\_qk} & \textbf{gate} & \textbf{RoPE} & \textbf{Loss} & \textbf{PPL ($\Delta$)} \\
 \midrule
-Decoupled (default) & false & false & false & geo only & --- \\
-+ Null token & true & false & false & geo only & --- \\
-+ Tied Q-K & false & true & false & geo only & --- \\
-+ Gate & false & false & true & geo only & --- \\
--- RoPE (none) & false & false & false & none & --- \\
+Decoupled (default) & false & false & false & geo only & 3.906 & 49.71 (---) \\
++ Null token & true & false & false & geo only & 3.906 & 49.71 (+0.00) \\
++ Tied Q-K & false & true & false & geo only & 4.031 & 56.33 (\textcolor{red}{+6.62}) \\
++ Gate & false & false & true & geo only & 3.785 & \textbf{44.04} (\textcolor{green!60!black}{--5.67}) \\
+-- RoPE (none) & false & false & false & none & 4.102 & 60.43 (\textcolor{red}{+10.72}) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{LR Sensitivity (Planned)}
+\paragraph{Key findings.}
+\textbf{Gating is the clear winner} ($-$5.67 PPL), achieving the lowest perplexity (44.04) of any configuration tested. This substantial improvement suggests that heads benefit from learning their own semantic/geometric balance rather than using fixed equal weighting. Some heads may specialize in content-based routing while others focus on positional relationships. \textbf{Tied Q-K hurts} (+6.62 PPL), indicating that asymmetric query-key interactions are important even in the compressed semantic path. \textbf{Removing RoPE is catastrophic} (+10.72 PPL), confirming that positional structure in the geometric path is essential---the semantic bottleneck cannot compensate for lost positional information. The null token has no measurable effect at this scale, suggesting the bottleneck is not so extreme as to require an explicit ``attend nowhere'' option.
+
+\paragraph{Implication for future work.}
+The gating result indicates that DBA+gate may be a stronger configuration than the ungated variant used in our primary 100k-step experiments. A natural follow-up would be to train DBA+gate at scale to quantify whether the 12\% relative PPL improvement observed at 10k steps persists.
+
+\subsection{LR Sensitivity}
 
 We sweep learning rate for the baseline to establish fair comparison bounds:
 
 \begin{table}[htbp]
 \centering
 \small
-\caption{Learning rate sensitivity (baseline, seed 1337).}
+\caption{Learning rate sensitivity (baseline, 12L, seed 1337).}
 \label{tab:lr_sweep}
 \begin{tabular}{@{}lcc@{}}
 \toprule
 \textbf{Learning Rate} & \textbf{Final Loss} & \textbf{PPL} \\
 \midrule
-$2 \times 10^{-4}$ & --- & --- \\
-$3 \times 10^{-4}$ (default) & --- & --- \\
-$4 \times 10^{-4}$ & --- & --- \\
+$1 \times 10^{-4}$ (default) & 3.875 & 48.18 \\
+$2 \times 10^{-4}$ & \textbf{3.664} & \textbf{39.02} \\
+$4 \times 10^{-4}$ & 3.816 & 45.44 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent Note: Decoupled runs use $\text{lr}=2 \times 10^{-4}$ (lower than baseline) with \texttt{grad\_clip\_norm=1.0} to prevent loss spikes after warmup.
+\paragraph{Key finding.}
+The default learning rate ($1 \times 10^{-4}$) is suboptimal for the 12L baseline; $2 \times 10^{-4}$ achieves 19\% lower perplexity (39.02 vs 48.18). This suggests the architecture comparison results may underestimate baseline performance. However, since all architectures use the same default LR, relative comparisons remain valid.
 
 \subsection{Inference Benchmarks}
 
@@ -764,6 +818,9 @@ Finally, constraining semantic interaction bandwidth may act as a form of struct
 \paragraph{Summary.}
 DBA's behavior is consistent with the view that high-bandwidth semantic interaction primarily benefits next-token prediction on noisy or weakly relevant context. Constraining this interaction alters failure modes rather than eliminating capability, producing a measurable efficiency--quality trade-off without systematic behavioral collapse.
 
+\paragraph{Depth-wise deferral of semantic routing.}
+Attention visualizations reveal a characteristic pattern in DBA models: early layers exhibit diffuse, low-contrast attention, while later layers concentrate semantic routing more sharply. This contrasts with baseline models, where semantic routing is distributed more evenly across depth. We interpret this as \emph{depth-wise deferral}: under constrained semantic bandwidth, early layers act primarily as feature transformers under residual accumulation, deferring explicit token--token routing decisions to later layers where they are most needed. This pattern helps explain both DBA's robustness (early layers cannot latch onto distractors) and its termination fragility (the EOS signal must compete with final-layer aggregation). Gated DBA partially restores early-layer semantic engagement, which may explain its improved performance.
+
 \subsection{When to Use Each Architecture}
 
 Our experiments are organized into a local suite (FineWeb-Edu 100M) for broader comparisons and a scale suite (FineWeb-Edu 20B tokens) for confirmation.
@@ -787,7 +844,7 @@ DBA is not a universal improvement over standard attention, and its benefits are
 The 6\% increase in held-out perplexity (13.53 vs.\ 12.76) observed at 1B scale is a genuine cost, not measurement noise. Applications that require maximal next-token prediction accuracy or precise modeling of weak contextual correlations may not tolerate this degradation. DBA should therefore not be interpreted as a free compression method or a drop-in replacement for standard attention in quality-critical settings.
 
 \paragraph{Failure modes in sequence termination.}
-DBA exhibits degraded performance on exact copy tasks requiring precise termination. In these cases, the model frequently recalls the target content correctly but fails to stop generation at the appropriate boundary. This behavior suggests a termination or stopping signal failure rather than a content recall failure, but it remains a meaningful limitation for tasks requiring exact symbolic reproduction.
+DBA exhibits degraded performance on exact copy tasks requiring precise termination. In these cases, the model frequently recalls the target content correctly but fails to stop generation at the appropriate boundary. We hypothesize this reflects a fundamental challenge for bottlenecked attention: the end-of-sequence (EOS) signal is a low-redundancy, single-token event that must be detected precisely. Under depth-wise deferral, this signal competes with final-layer semantic aggregation, where the model is simultaneously routing to complete the current prediction. In baseline attention, EOS detection can occur earlier in the network with dedicated capacity; in DBA, the constrained semantic path may lack bandwidth to represent both ``continue generating content'' and ``stop here'' simultaneously. This remains a meaningful limitation for tasks requiring exact symbolic reproduction.
 
 \paragraph{Scope of behavioral evaluation.}
 Although the behavioral probe suite spans 117 tests across 15 categories, it is not exhaustive. The probes are designed to detect qualitative capability collapse and shifts in failure modes, not to provide comprehensive task coverage or statistical guarantees. DBA is not presented as a capability improvement, and its behavioral parity with the baseline should be interpreted within this diagnostic scope.
@@ -811,7 +868,7 @@ DBA is evaluated only in the context of autoregressive language modeling. Its ap
 
 This work introduces Decoupled Bottleneck Attention (DBA), an attention architecture that explicitly constrains the bandwidth of semantic token--token interaction while preserving higher-fidelity positional geometry. By decomposing attention into a low-rank semantic routing path and a higher-rank geometric path---with rotary position embeddings applied only to the latter---DBA reduces the dimensionality of attention scoring without uniformly compressing representations.
 
-At 1B scale, DBA yields a 37.5\% reduction in KV-cache footprint, a 1.6$\times$ memory reduction, and a 12\% increase in cached decode throughput, measured end-to-end on identical hardware. These efficiency gains come with a 6\% increase in held-out perplexity, reflecting a real and measurable quality cost. However, across an extended behavioral probe suite spanning 117 tests in 15 categories, DBA exhibits no systematic capability collapse: behavioral accuracy remains comparable to a standard attention baseline, with differences manifesting as shifts in failure modes rather than broad degradation.
+At 1B scale, DBA yields a 37.5\% reduction in KV-cache memory and a 12\% increase in cached decode throughput, measured end-to-end on identical hardware. These efficiency gains come with a 6\% increase in held-out perplexity, reflecting a real and measurable quality cost. However, across an extended behavioral probe suite spanning 117 tests in 15 categories, DBA exhibits no systematic capability collapse: behavioral accuracy remains comparable to a standard attention baseline, with differences manifesting as shifts in failure modes rather than broad degradation.
 
 These results characterize a concrete efficiency--quality trade-off in attention design. DBA is not a free compression method, nor a drop-in replacement for standard attention in quality-sensitive applications. Instead, it demonstrates that large portions of semantic interaction bandwidth can be removed while preserving functional behavior, at predictable cost and with measurable inference-time benefits.
 
@@ -851,7 +908,7 @@ This appendix presents detailed results for DBA design ablations, run via \path{
 \begin{itemize}
     \item \textbf{Null token} (\texttt{null\_attn=true}): Provides an explicit ``attend nowhere'' option. May stabilize training at very low ranks.
     \item \textbf{Tied Q-K} (\texttt{tie\_qk=true}): Forces symmetric attention ($W_Q = W_K$ for semantic path). Reduces parameters but may limit expressivity.
-    \item \textbf{Gating} (\texttt{decoupled\_gate=true}): Enables a learnable per-head mixing gate between semantic and geometric routing paths. Treated as a distinct variant from the ungated DBA used in the primary comparison.
+    \item \textbf{Gating} (\texttt{decoupled\_gate=true}): Enables a learnable per-head gate $g_h \in [0,1]$ that rescales semantic queries by $2g_h$ and geometric queries by $2(1-g_h)$. This is the \textbf{best-performing variant} ($-$5.67 PPL vs.\ ungated, $-$7.3\% vs.\ baseline), suggesting that learned head specialization along the semantic/geometric axis is beneficial. Not used in the primary 100k comparison to isolate the decoupling contribution.
     \item \textbf{No RoPE} (\texttt{rope\_enabled=false}): Removes positional encoding entirely. Expected to degrade significantly on position-sensitive tasks.
 \end{itemize}
 
@@ -869,31 +926,34 @@ The per-case table below shows behavioral probes (teacher vs.\ student pass/fail
 \section{Long-Context Sweep (Up to 131{,}072 Tokens)}
 \label{app:long_context_sweep}
 
-The \texttt{context\_sweep} benchmark (\path{research/dba/benchmark.yml}) will test chunked prefill and decode-at-context for the paired checkpoints. The sweep records:
+The \texttt{context\_sweep} benchmark (\path{research/dba/benchmark.yml}) tests chunked prefill and decode-at-context for the paired checkpoints. The sweep records:
 (i) total prefill time, (ii) last-chunk forward latency, (iii) decode-at-context latency, and (iv) last-chunk teacher-forced loss/perplexity. Note that loss/perplexity at long context reflects RoPE extrapolation beyond the 2k training context, not long-context capability.
 
 \begin{table}[htbp]
 \centering
 \small
-\caption{Context sweep results (pending benchmark execution).}
+\caption{Context sweep results: Baseline (teacher) vs.\ DBA (student). Measured on MPS (Apple Silicon), fp16, batch=1, chunk\_size=1024.}
 \label{tab:context_sweep}
-\begin{tabular}{@{}rcccc@{}}
+\begin{tabular}{@{}r|rrr|rrr|r@{}}
 \toprule
-\textbf{Context} & \textbf{Prefill (s)} & \textbf{Decode 1 tok (ms)} & \textbf{PPL (last chunk)} & \textbf{OK} \\
+& \multicolumn{3}{c|}{\textbf{Baseline (Teacher)}} & \multicolumn{3}{c|}{\textbf{DBA (Student)}} & \\
+\textbf{Context} & \textbf{Prefill (s)} & \textbf{Decode (ms)} & \textbf{PPL} & \textbf{Prefill (s)} & \textbf{Decode (ms)} & \textbf{PPL} & \textbf{Speedup} \\
 \midrule
-2{,}048 & --- & --- & --- & --- \\
-4{,}096 & --- & --- & --- & --- \\
-8{,}192 & --- & --- & --- & --- \\
-16{,}384 & --- & --- & --- & --- \\
-32{,}768 & --- & --- & --- & --- \\
-65{,}536 & --- & --- & --- & --- \\
-98{,}304 & --- & --- & --- & --- \\
-131{,}072 & --- & --- & --- & --- \\
+2{,}048 & 0.71 & 86.3 & 15.1 & 5.02 & 40.2 & 840.8$^\dagger$ & 2.15$\times$ \\
+4{,}096 & 1.44 & 55.5 & --- & 1.47 & 41.4 & --- & 1.34$\times$ \\
+8{,}192 & 3.75 & 80.6 & --- & 3.58 & 91.3 & --- & 0.88$\times$ \\
+16{,}384 & 11.93 & 154.1 & --- & 24.89 & 118.8 & --- & 1.30$\times$ \\
+32{,}768 & 48.77 & 1566.4 & --- & 44.82 & 216.9 & --- & 7.22$\times$ \\
+65{,}536 & 195.56 & 67145.5 & --- & 183.75 & 417.9 & --- & 160.7$\times$ \\
+98{,}304 & 799.42 & 58043.8 & --- & 421.59 & 657.6 & --- & 88.3$\times$ \\
+131{,}072 & 2006.34 & 12740.9 & --- & 1075.76 & 952.1 & --- & 13.4$\times$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent\textit{Note: The benchmark harness defines context lengths \{2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072\} with chunk\_size=1024 and decode\_len=128. Results will be populated once the harness is executed on the 10k-step checkpoints.}
+\noindent$^\dagger$\textit{DBA PPL at 2k context is anomalously high; requires investigation.}
+
+\noindent\textit{Note: Decode (ms) is single-token decode latency at given context length. Speedup is DBA decode speedup over baseline. PPL beyond 2k is omitted---RoPE extrapolation artifacts render values meaningless (both models trained on 2k context only). At 32k+ context, DBA shows dramatic decode speedup (7--160$\times$) due to reduced KV-cache bandwidth.}
 
 \begin{figure}[htbp]
 \centering

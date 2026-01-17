@@ -28,6 +28,17 @@ from research.dba.behavioral_suite_v2.scoring import (
     MatchQuality,
     classify_match,
 )
+from research.dba.behavioral_suite_v2.weighted_scoring import (
+    WeightedScorer,
+    WeightedModelSummary,
+    MatchType,
+    classify_match_type,
+    MATCH_SCORES,
+    DIFFICULTY_WEIGHTS,
+)
+from research.dba.behavioral_suite_v2.weighted_visualizer import (
+    generate_all_weighted_visualizations,
+)
 
 
 @dataclass
@@ -80,6 +91,75 @@ class BehavioralV2Result:
             "teacher_by_category": self.teacher_by_category,
             "student_by_category": self.student_by_category,
             "downstream_results": self.downstream_results,
+        }
+
+
+@dataclass
+class BehavioralV2MultiResult:
+    """Results from multi-model behavioral v2 evaluation."""
+
+    # Per-model summaries: {model_name: summary_dict}
+    model_summaries: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    # Per-model category breakdowns: {model_name: {category: stats}}
+    model_by_category: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
+
+    # Pairwise comparisons: list of {model_a, model_b, wins_a, wins_b, ties}
+    pairwise_comparisons: list[dict[str, Any]] = field(default_factory=list)
+
+    # Downstream task results (if any): {model_name: results}
+    downstream_results: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    # Raw scorer for detailed analysis
+    scorer: BehavioralScorer | None = None
+
+    # Baseline model name for delta calculations
+    baseline_name: str | None = None
+
+    # Weighted scoring summaries: {model_name: WeightedModelSummary}
+    weighted_summaries: dict[str, WeightedModelSummary] = field(default_factory=dict)
+
+    # Weighted scorer for detailed analysis
+    weighted_scorer: WeightedScorer | None = None
+
+    def get_exact_rate(self, model_name: str) -> float:
+        """Get exact match rate for a model."""
+        return self.model_summaries.get(model_name, {}).get("exact_match_rate", 0.0)
+
+    def get_partial_or_better_rate(self, model_name: str) -> float:
+        """Get partial or better match rate for a model."""
+        return self.model_summaries.get(model_name, {}).get("partial_or_better_rate", 0.0)
+
+    def get_hard_accuracy(self, model_name: str) -> float:
+        """Get hard accuracy (EXACT only) for a model from weighted scoring."""
+        if model_name in self.weighted_summaries:
+            return self.weighted_summaries[model_name].hard_accuracy
+        return 0.0
+
+    def get_soft_accuracy(self, model_name: str) -> float:
+        """Get soft accuracy (EXACT + CONTAINED) for a model from weighted scoring."""
+        if model_name in self.weighted_summaries:
+            return self.weighted_summaries[model_name].soft_accuracy
+        return 0.0
+
+    def get_weighted_accuracy(self, model_name: str) -> float:
+        """Get weighted accuracy (difficulty-adjusted) for a model."""
+        if model_name in self.weighted_summaries:
+            return self.weighted_summaries[model_name].weighted_accuracy
+        return 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary (excluding scorer)."""
+        return {
+            "model_summaries": self.model_summaries,
+            "model_by_category": self.model_by_category,
+            "pairwise_comparisons": self.pairwise_comparisons,
+            "downstream_results": self.downstream_results,
+            "baseline_name": self.baseline_name,
+            "weighted_summaries": {
+                name: summary.to_dict()
+                for name, summary in self.weighted_summaries.items()
+            },
         }
 
 
@@ -179,6 +259,148 @@ class BenchmarkBehavioralV2:
         # Save results if output dir provided
         if output_dir:
             self._save_results(result, scorer, output_dir)
+
+        return result
+
+    def run_multi(
+        self,
+        models: dict[str, nn.Module],
+        output_dir: Path | None = None,
+        baseline_name: str | None = None,
+    ) -> BehavioralV2MultiResult:
+        """Run behavioral evaluation on N models.
+
+        Args:
+            models: Dict mapping model names to nn.Module instances
+            output_dir: Optional directory to save results
+            baseline_name: Name of baseline model for comparisons (default: first model)
+
+        Returns:
+            BehavioralV2MultiResult with per-model summaries and pairwise comparisons
+        """
+        for model in models.values():
+            model.eval()
+
+        model_names = list(models.keys())
+        if baseline_name is None and model_names:
+            baseline_name = model_names[0]
+
+        # Generate test suite
+        logger.info(f"Generating test suite (seed={self.config.seed})...")
+        suite = generate_suite(
+            seed=self.config.seed,
+            tests_per_category=self.config.tests_per_category,
+            category_counts=self.config.category_counts,
+        )
+
+        # Filter categories if specified
+        tests = suite.tests
+        if self.config.categories:
+            tests = [t for t in tests if t.category in self.config.categories]
+            logger.info(f"Filtered to {len(tests)} tests in categories: {self.config.categories}")
+
+        logger.info(f"Running {len(tests)} behavioral tests on {len(models)} models...")
+
+        # Create scorer
+        scorer = BehavioralScorer()
+
+        # Register all tests
+        for test in tests:
+            scorer.add_test(test.id, expected=test.expected, prompt=test.prompt)
+
+        # Run inference on all models
+        count = 0
+        for test in tests:
+            count += 1
+            if self.config.stream_live and count % self.config.stream_every == 0:
+                logger.info(f"  [{count}/{len(tests)}] {test.id}")
+
+            # Tokenize prompt
+            prompt_tokens = self.tokenizer.encode(test.prompt)
+
+            # Get output from each model
+            for model_name, model in models.items():
+                output = self._generate(model, prompt_tokens)
+                scorer.add_output(test.id, model_name, output)
+
+        # Get per-model summaries
+        model_summaries: dict[str, dict[str, Any]] = {}
+        model_by_category: dict[str, dict[str, dict[str, Any]]] = {}
+
+        for model_name in model_names:
+            summary = scorer.get_model_summary(model_name)
+            model_summaries[model_name] = summary
+            model_by_category[model_name] = self._compute_category_breakdown(scorer, model_name, tests)
+
+            # Log metrics
+            logger.metric(
+                f"{model_name}_exact",
+                summary["exact_match_rate"] * 100,
+                "%"
+            )
+
+        # Pairwise comparisons
+        pairwise_comparisons: list[dict[str, Any]] = []
+        for i, model_a in enumerate(model_names):
+            for model_b in model_names[i + 1:]:
+                comparison = scorer.compare_models(model_a, model_b)
+                pairwise_comparisons.append({
+                    "model_a": model_a,
+                    "model_b": model_b,
+                    **comparison,
+                })
+
+        # Compute weighted scores (hard/soft with difficulty weighting)
+        weighted_scorer = WeightedScorer(baseline_name=baseline_name)
+        weighted_summaries: dict[str, WeightedModelSummary] = {}
+
+        # Register all tests with the weighted scorer
+        for test in tests:
+            weighted_scorer.add_test(test.id, expected=test.expected, category=test.category)
+
+        # Add outputs from the existing scorer
+        for test_id, test_result in scorer.tests.items():
+            for model_id, match_result in test_result.results.items():
+                weighted_scorer.add_output(test_id, model_id, match_result.actual)
+
+        # Get weighted summaries for all models (including baseline for reference)
+        for model_name in model_names:
+            weighted_summaries[model_name] = weighted_scorer.get_model_summary(model_name)
+
+            # Log weighted metrics
+            ws = weighted_summaries[model_name]
+            logger.metric(f"{model_name}_hard", ws.hard_accuracy * 100, "%")
+            logger.metric(f"{model_name}_soft", ws.soft_accuracy * 100, "%")
+            logger.metric(f"{model_name}_weighted", ws.weighted_accuracy * 100, "%")
+
+        # Log baseline difficulty distribution
+        baseline_summary = weighted_scorer.get_baseline_summary()
+        if baseline_summary.get("total_tests", 0) > 0:
+            dist = baseline_summary.get("difficulty_distribution", {})
+            logger.info(
+                f"Difficulty distribution (by {baseline_name}): "
+                f"easy={dist.get('easy', 0)} medium={dist.get('medium', 0)} hard={dist.get('hard', 0)}"
+            )
+
+        # Run downstream tasks if configured
+        downstream_results: dict[str, dict[str, Any]] = {}
+        if self.config.downstream_tasks:
+            downstream_results = self._run_downstream_tasks_multi(models)
+
+        result = BehavioralV2MultiResult(
+            model_summaries=model_summaries,
+            model_by_category=model_by_category,
+            pairwise_comparisons=pairwise_comparisons,
+            downstream_results=downstream_results,
+            scorer=scorer,
+            baseline_name=baseline_name,
+            weighted_summaries=weighted_summaries,
+            weighted_scorer=weighted_scorer,
+        )
+
+        # Save results if output dir provided
+        if output_dir:
+            self._save_multi_results(result, scorer, output_dir, weighted_scorer)
 
         return result
 
@@ -286,6 +508,44 @@ class BenchmarkBehavioralV2:
 
         return results
 
+    def _run_downstream_tasks_multi(
+        self,
+        models: dict[str, nn.Module],
+    ) -> dict[str, dict[str, Any]]:
+        """Run downstream HF tasks on N models."""
+        from caramba.config.benchmark import AccuracyBenchmarkConfig
+        from caramba.benchmark.accuracy import BenchmarkAccuracy
+
+        results: dict[str, dict[str, Any]] = {}
+
+        # Create accuracy config for downstream tasks
+        acc_config = AccuracyBenchmarkConfig(
+            tasks=self.config.downstream_tasks,
+            tokenizer=self.config.tokenizer,
+            limit=self.config.downstream_limit,
+            context_window=self.config.context_window,
+            stream_live=self.config.stream_live,
+            stream_every=self.config.stream_every,
+        )
+
+        benchmark = BenchmarkAccuracy(acc_config, self.device)
+
+        logger.info(f"Running downstream tasks: {self.config.downstream_tasks}")
+
+        for model_name, model in models.items():
+            model_result = benchmark.run(model, model_name)
+            results[model_name] = {
+                "micro_accuracy": model_result.micro_accuracy,
+                "tasks": {t.task_name: t.accuracy for t in model_result.tasks},
+            }
+            logger.metric(
+                f"{model_name}_downstream",
+                model_result.micro_accuracy * 100,
+                "%"
+            )
+
+        return results
+
     def _save_results(
         self,
         result: BehavioralV2Result,
@@ -345,3 +605,116 @@ class BenchmarkBehavioralV2:
                         f.write(f"  First line: {match_result.first_line[:100]}\n")
 
             logger.path(str(log_path), "behavioral_v2_log")
+
+    def _save_multi_results(
+        self,
+        result: BehavioralV2MultiResult,
+        scorer: BehavioralScorer,
+        output_dir: Path,
+        weighted_scorer: WeightedScorer | None = None,
+    ) -> None:
+        """Save multi-model results to output directory."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save summary
+        summary_path = output_dir / "behavioral_v2_multi_summary.json"
+        with open(summary_path, "w") as f:
+            json.dump(result.to_dict(), f, indent=2)
+        logger.path(str(summary_path), "behavioral_v2_multi_summary")
+
+        # Save detailed results
+        detailed_path = output_dir / "behavioral_v2_multi_detailed.json"
+        with open(detailed_path, "w") as f:
+            json.dump(scorer.to_dict(), f, indent=2)
+        logger.path(str(detailed_path), "behavioral_v2_multi_detailed")
+
+        # Save weighted scoring results
+        if weighted_scorer is not None:
+            weighted_path = output_dir / "behavioral_v2_weighted_scores.json"
+            with open(weighted_path, "w") as f:
+                json.dump(weighted_scorer.to_dict(), f, indent=2)
+            logger.path(str(weighted_path), "behavioral_v2_weighted_scores")
+
+            # Save weighted scoring CSV summary
+            self._save_weighted_csv(result, output_dir)
+
+            # Generate weighted scoring visualizations
+            if result.weighted_summaries:
+                try:
+                    viz_paths = generate_all_weighted_visualizations(
+                        summaries=result.weighted_summaries,
+                        output_dir=output_dir,
+                        prefix="behavioral_v2_",
+                    )
+                    for name, path in viz_paths.items():
+                        logger.path(str(path), f"viz_{name}")
+                except Exception as e:
+                    logger.warning(f"Failed to generate weighted visualizations: {e!r}")
+
+        # Save pairwise interesting cases for baseline comparisons
+        model_names = list(result.model_summaries.keys())
+        if result.baseline_name and result.baseline_name in model_names:
+            for model_name in model_names:
+                if model_name == result.baseline_name:
+                    continue
+                try:
+                    interesting = scorer.get_interesting_cases(result.baseline_name, model_name)
+                    interesting_path = output_dir / f"behavioral_v2_interesting_{result.baseline_name}_vs_{model_name}.json"
+                    with open(interesting_path, "w") as f:
+                        json.dump(interesting, f, indent=2)
+                except Exception:
+                    pass
+
+        # Write log file if configured
+        if self.config.log_file:
+            log_path = output_dir / f"multi_{self.config.log_file}"
+            with open(log_path, "w") as f:
+                f.write("Behavioral V2 Multi-Model Evaluation Log\n")
+                f.write("=" * 80 + "\n\n")
+
+                f.write(f"Models: {', '.join(model_names)}\n")
+                f.write(f"Baseline: {result.baseline_name}\n\n")
+
+                for model_name, summary in result.model_summaries.items():
+                    f.write(f"\n{model_name} Summary:\n")
+                    for k, v in summary.items():
+                        f.write(f"  {k}: {v}\n")
+
+                f.write("\n" + "=" * 80 + "\n")
+                f.write("Pairwise Comparisons\n")
+                f.write("=" * 80 + "\n\n")
+
+                for comp in result.pairwise_comparisons:
+                    f.write(f"{comp['model_a']} vs {comp['model_b']}:\n")
+                    f.write(f"  Wins A: {comp.get('wins_a', 'N/A')}\n")
+                    f.write(f"  Wins B: {comp.get('wins_b', 'N/A')}\n")
+                    f.write(f"  Ties: {comp.get('ties', 'N/A')}\n\n")
+
+            logger.path(str(log_path), "behavioral_v2_multi_log")
+
+    def _save_weighted_csv(
+        self,
+        result: BehavioralV2MultiResult,
+        output_dir: Path,
+    ) -> None:
+        """Save weighted scoring summary as CSV."""
+        csv_path = output_dir / "behavioral_v2_weighted_summary.csv"
+
+        with open(csv_path, "w") as f:
+            # Header
+            f.write("model,exact_count,contained_count,none_count,hard_accuracy,soft_accuracy,weighted_accuracy,weighted_score_sum,weighted_score_max\n")
+
+            for model_name, ws in result.weighted_summaries.items():
+                f.write(
+                    f"{model_name},"
+                    f"{ws.exact_count},"
+                    f"{ws.contained_count},"
+                    f"{ws.none_count},"
+                    f"{ws.hard_accuracy:.4f},"
+                    f"{ws.soft_accuracy:.4f},"
+                    f"{ws.weighted_accuracy:.4f},"
+                    f"{ws.weighted_score_sum:.2f},"
+                    f"{ws.weighted_score_max:.2f}\n"
+                )
+
+        logger.path(str(csv_path), "behavioral_v2_weighted_csv")

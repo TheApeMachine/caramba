@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from collector.measurement.context.sweep import ContextSweepMeasurement
-from collector.measurement.context.decode import ContextDecodeMeasurement
+from caramba.collector.measurement.context.sweep import ContextSweepMeasurement
+from caramba.collector.measurement.context.decode import ContextDecodeMeasurement
 
 
 @dataclass

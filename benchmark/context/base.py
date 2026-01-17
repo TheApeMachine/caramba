@@ -149,6 +149,9 @@ class BenchmarkContext:
             last_chunk_ms = 0.0
             last_loss = float("nan")
             last_ppl = float("inf")
+            # Accumulated loss across ALL chunks (proper perplexity metric).
+            total_loss_sum = 0.0
+            total_tokens = 0
             ok = True
             last_logits: Tensor | None = None
             t0 = time.perf_counter()
@@ -170,16 +173,20 @@ class BenchmarkContext:
                         _sync(self.device)
                         tce = time.perf_counter()
 
+                        # Accumulate loss across ALL chunks for proper perplexity.
+                        chunk_loss_sum = F.cross_entropy(
+                            logits.reshape(-1, logits.size(-1)),
+                            y.reshape(-1),
+                            reduction="sum",
+                        )
+                        total_loss_sum += float(chunk_loss_sum.detach().float().cpu().item())
+                        total_tokens += y.numel()
+
                         if pos + ch >= int(ctx_len):
                             last_chunk_ms = float((tce - tcs) * 1000.0)
                             last_logits = cast(Tensor, logits)
-                            # Compute loss on last chunk only for final position metrics.
-                            loss_sum = F.cross_entropy(
-                                last_logits.reshape(-1, last_logits.size(-1)),
-                                y.reshape(-1),
-                                reduction="sum",
-                            )
-                            last_loss = float(loss_sum.detach().float().cpu().item()) / float(max(1, y.numel()))
+                            # Legacy: loss on last chunk only (for debugging/comparison).
+                            last_loss = float(chunk_loss_sum.detach().float().cpu().item()) / float(max(1, y.numel()))
                             last_ppl = float(math.exp(last_loss)) if last_loss < 20 else float("inf")
 
                         pos += ch
@@ -188,6 +195,10 @@ class BenchmarkContext:
                 ok = False
 
             t1 = time.perf_counter()
+
+            # Compute accumulated loss/ppl across all chunks.
+            avg_loss = total_loss_sum / max(1, total_tokens) if total_tokens > 0 else float("nan")
+            avg_ppl = float(math.exp(avg_loss)) if (not math.isnan(avg_loss) and avg_loss < 20) else float("inf")
 
             # Measure single-token decode latency at full context length.
             decode_one_ms = float("nan")
@@ -216,6 +227,8 @@ class BenchmarkContext:
                     prefill_last_chunk_ms=float(last_chunk_ms),
                     decode_one_ms=float(decode_one_ms),
                     decode_one_tok_per_s=float(decode_one_tps),
+                    loss=float(avg_loss),
+                    ppl=float(avg_ppl),
                     loss_last_chunk=float(last_loss),
                     ppl_last_chunk=float(last_ppl),
                     ok=bool(ok),
