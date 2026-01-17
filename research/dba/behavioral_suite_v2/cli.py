@@ -422,37 +422,68 @@ class CarambaModelWrapper:
         prompt: str,
         choices: list[str],
     ) -> dict[str, float]:
-        """Get log probabilities for each choice token."""
+        """
+        Get log probabilities for each choice.
+        
+        Computes the conditional log probability of the full choice string
+        by teacher-forcing each token and summing the per-token logprobs.
+        This correctly handles multi-token answers.
+        """
+        # Tokenize the prompt
         if hasattr(self.tokenizer, 'encode'):
-            input_ids = self.tokenizer.encode(prompt)
+            prompt_ids = self.tokenizer.encode(prompt)
         else:
-            input_ids = self.tokenizer(prompt, return_tensors="pt")["input_ids"][0].tolist()
-
-        input_tensor = torch.tensor([input_ids], dtype=torch.long, device=self.device)
-
-        with torch.no_grad():
-            outputs = self.model(input_tensor)
-
-            if isinstance(outputs, tuple):
-                logits = outputs[0]
-            elif hasattr(outputs, 'logits'):
-                logits = outputs.logits
-            else:
-                logits = outputs
-
-            last_logits = logits[0, -1, :]
-            log_probs = torch.log_softmax(last_logits, dim=-1)
+            prompt_ids = self.tokenizer(prompt, return_tensors="pt")["input_ids"][0].tolist()
+        
+        prompt_len = len(prompt_ids)
 
         result = {}
         for choice in choices:
+            # Tokenize the choice
             if hasattr(self.tokenizer, 'encode'):
                 choice_ids = self.tokenizer.encode(choice)
             else:
                 choice_ids = self.tokenizer(choice, add_special_tokens=False)["input_ids"]
+            
+            if not choice_ids:
+                continue
+            
+            # Create full sequence: prompt + choice tokens
+            full_ids = prompt_ids + list(choice_ids)
+            
+            # Truncate from the front if needed
+            if len(full_ids) > self.max_length:
+                excess = len(full_ids) - self.max_length
+                full_ids = full_ids[excess:]
+                effective_prompt_len = max(0, prompt_len - excess)
+            else:
+                effective_prompt_len = prompt_len
+            
+            input_tensor = torch.tensor([full_ids], dtype=torch.long, device=self.device)
 
-            if choice_ids:
-                token_id = choice_ids[0]
-                result[choice] = log_probs[token_id].item()
+            with torch.no_grad():
+                outputs = self.model(input_tensor)
+
+                if isinstance(outputs, tuple):
+                    logits = outputs[0]
+                elif hasattr(outputs, 'logits'):
+                    logits = outputs.logits
+                else:
+                    logits = outputs
+
+                # logits shape: [batch, seq_len, vocab_size]
+                all_logits = logits[0]  # [seq_len, vocab_size]
+                all_log_probs = torch.log_softmax(all_logits, dim=-1)
+                
+                # Sum logprobs for each choice token
+                # Position i's logits predict token at position i+1
+                total_logprob = 0.0
+                for i, token_id in enumerate(choice_ids):
+                    pred_pos = effective_prompt_len - 1 + i
+                    if pred_pos >= 0 and pred_pos < all_log_probs.shape[0]:
+                        total_logprob += all_log_probs[pred_pos, token_id].item()
+                
+                result[choice] = total_logprob
 
         return result
 

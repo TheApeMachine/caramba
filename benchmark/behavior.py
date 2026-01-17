@@ -360,7 +360,9 @@ class BehaviorMultiResult:
             "measurements": [
                 {
                     "case_id": m.case_id,
+                    "prompt": m.prompt,
                     "expected": m.expected,
+                    "model_outputs": m.model_outputs,
                     "difficulty_weight": m.difficulty_weight,
                     "model_match_types": {k: v.name for k, v in m.model_match_types.items()},
                     "model_raw_scores": m.model_raw_scores,
@@ -790,11 +792,126 @@ class BehaviorBenchmark:
         """Save multi-model results to output directory."""
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save JSON summary
+        # Save JSON summary (comprehensive, includes all data)
         summary_path = output_dir / "behavior_multi_weighted.json"
         with open(summary_path, "w") as f:
             json.dump(result.to_dict(), f, indent=2)
         logger.path(str(summary_path), "behavior_multi_weighted")
+
+        # Save comprehensive markdown log for paper/analysis
+        md_path = output_dir / "behavior_multi_detailed.md"
+        with open(md_path, "w") as f:
+            f.write(f"# Behavior Benchmark Results: {result.benchmark_id}\n\n")
+            f.write(f"**Models:** {', '.join(result.model_names)}\n\n")
+            f.write(f"**Baseline:** {result.baseline_name}\n\n")
+            f.write(f"**Total Tests:** {result.total_tests}\n\n")
+
+            # Summary table
+            ws = result.get_weighted_summary()
+            dist = ws.get("difficulty_distribution", {})
+            f.write("## Summary\n\n")
+            f.write(f"**Difficulty Distribution:** Easy={dist.get('easy', 0)}, Medium={dist.get('medium', 0)}, Hard={dist.get('hard', 0)}\n\n")
+
+            f.write("| Model | Exact | Contained | None | Hard Acc | Soft Acc | Weighted Acc |\n")
+            f.write("|-------|-------|-----------|------|----------|----------|-------------|\n")
+            models_data = ws.get("models", {})
+            for model_name, stats in models_data.items():
+                f.write(
+                    f"| {model_name} | {stats.get('exact_count', 0)} | "
+                    f"{stats.get('contained_count', 0)} | {stats.get('none_count', 0)} | "
+                    f"{stats.get('hard_accuracy', 0) * 100:.1f}% | "
+                    f"{stats.get('soft_accuracy', 0) * 100:.1f}% | "
+                    f"{stats.get('weighted_accuracy', 0) * 100:.1f}% |\n"
+                )
+            f.write("\n---\n\n")
+
+            # Per-case detailed results
+            f.write("## Detailed Results by Case\n\n")
+            for i, m in enumerate(result.measurements):
+                f.write(f"### Case {i + 1}: `{m.case_id}`\n\n")
+                f.write(f"**Difficulty Weight:** {m.difficulty_weight} ({'Easy' if m.difficulty_weight == 1.0 else 'Medium' if m.difficulty_weight == 2.0 else 'Hard'})\n\n")
+
+                f.write("**Prompt:**\n```\n")
+                f.write(m.prompt)
+                f.write("\n```\n\n")
+
+                f.write(f"**Expected:** `{m.expected}`\n\n")
+
+                f.write("**Model Outputs:**\n\n")
+                f.write("| Model | Output | Match | Score | Weighted |\n")
+                f.write("|-------|--------|-------|-------|----------|\n")
+                for model_name in result.model_names:
+                    output = m.model_outputs.get(model_name, "<no output>")
+                    match_type = m.model_match_types.get(model_name, MatchType.NONE)
+                    raw_score = m.model_raw_scores.get(model_name, 0.0)
+                    weighted_score = m.model_weighted_scores.get(model_name, 0.0)
+                    # Escape pipes in output for markdown table
+                    output_escaped = output.replace("|", "\\|").replace("\n", " ")[:60]
+                    if len(output) > 60:
+                        output_escaped += "..."
+                    f.write(f"| {model_name} | `{output_escaped}` | {match_type.name} | {raw_score} | {weighted_score:.1f} |\n")
+                f.write("\n")
+
+                # Full outputs (not truncated)
+                f.write("<details>\n<summary>Full Model Outputs</summary>\n\n")
+                for model_name in result.model_names:
+                    output = m.model_outputs.get(model_name, "<no output>")
+                    match_type = m.model_match_types.get(model_name, MatchType.NONE)
+                    f.write(f"**{model_name}** ({match_type.name}):\n```\n{output}\n```\n\n")
+                f.write("</details>\n\n")
+                f.write("---\n\n")
+
+        logger.path(str(md_path), "behavior_multi_markdown")
+
+        # Save detailed human-readable log with full prompts and outputs
+        log_path = output_dir / "behavior_multi_detailed.log"
+        with open(log_path, "w") as f:
+            f.write("=" * 100 + "\n")
+            f.write(f"BEHAVIOR BENCHMARK (MULTI-MODEL): {result.benchmark_id}\n")
+            f.write(f"Models: {', '.join(result.model_names)}\n")
+            f.write(f"Baseline: {result.baseline_name}\n")
+            f.write("=" * 100 + "\n\n")
+
+            for i, m in enumerate(result.measurements):
+                f.write(f"[{i + 1}/{len(result.measurements)}] Case: {m.case_id}\n")
+                f.write("-" * 80 + "\n")
+                f.write(f"PROMPT:\n{m.prompt}\n")
+                f.write("-" * 80 + "\n")
+                f.write(f"EXPECTED: {m.expected}\n")
+                f.write("-" * 80 + "\n")
+                f.write(f"Difficulty weight: {m.difficulty_weight}\n\n")
+
+                for model_name in result.model_names:
+                    output = m.model_outputs.get(model_name, "<no output>")
+                    match_type = m.model_match_types.get(model_name, MatchType.NONE)
+                    raw_score = m.model_raw_scores.get(model_name, 0.0)
+                    weighted_score = m.model_weighted_scores.get(model_name, 0.0)
+
+                    status = "✓" if match_type in (MatchType.EXACT, MatchType.CONTAINED) else "✗"
+                    f.write(f"  [{status}] {model_name}:\n")
+                    f.write(f"      Output: {output!r}\n")
+                    f.write(f"      Match: {match_type.name} | Raw: {raw_score} | Weighted: {weighted_score}\n")
+                f.write("\n" + "=" * 100 + "\n\n")
+
+            # Summary
+            ws = result.get_weighted_summary()
+            f.write("SUMMARY\n")
+            f.write("=" * 100 + "\n")
+            dist = ws.get("difficulty_distribution", {})
+            f.write(f"Difficulty distribution: easy={dist.get('easy', 0)} medium={dist.get('medium', 0)} hard={dist.get('hard', 0)}\n\n")
+            models_data = ws.get("models", {})
+            for model_name, stats in models_data.items():
+                f.write(
+                    f"  {model_name}: "
+                    f"EXACT={stats.get('exact_count', 0)} "
+                    f"CONTAINED={stats.get('contained_count', 0)} "
+                    f"NONE={stats.get('none_count', 0)} | "
+                    f"hard={stats.get('hard_accuracy', 0) * 100:.1f}% "
+                    f"soft={stats.get('soft_accuracy', 0) * 100:.1f}% "
+                    f"weighted={stats.get('weighted_accuracy', 0) * 100:.1f}%\n"
+                )
+            f.write("=" * 100 + "\n")
+        logger.path(str(log_path), "behavior_multi_detailed_log")
 
         # Save CSV summary
         csv_path = output_dir / "behavior_multi_weighted.csv"
@@ -815,6 +932,46 @@ class BehaviorBenchmark:
                         f"{stats.get('weighted_accuracy', 0):.4f}\n"
                     )
         logger.path(str(csv_path), "behavior_multi_csv")
+
+        # Generate LaTeX table
+        latex_path = output_dir / "behavior_multi_table.tex"
+        with open(latex_path, "w") as f:
+            f.write("% Auto-generated LaTeX table for behavior benchmark results\n")
+            f.write("\\begin{table}[htbp]\n")
+            f.write("\\centering\n")
+            f.write("\\caption{Behavioral Test Results (Weighted Scoring)}\n")
+            f.write("\\label{tab:behavior-weighted}\n")
+            f.write("\\begin{tabular}{lrrrrrrr}\n")
+            f.write("\\toprule\n")
+            f.write("Model & Exact & Cont. & None & Hard & Soft & Weighted \\\\\n")
+            f.write("\\midrule\n")
+
+            # Find best for each metric to bold
+            best_hard = max((s.get("hard_accuracy", 0), n) for n, s in models_data.items())[1]
+            best_soft = max((s.get("soft_accuracy", 0), n) for n, s in models_data.items())[1]
+            best_weighted = max((s.get("weighted_accuracy", 0), n) for n, s in models_data.items())[1]
+
+            for model_name, stats in models_data.items():
+                hard_str = f"{stats.get('hard_accuracy', 0) * 100:.1f}\\%"
+                soft_str = f"{stats.get('soft_accuracy', 0) * 100:.1f}\\%"
+                weighted_str = f"{stats.get('weighted_accuracy', 0) * 100:.1f}\\%"
+
+                if model_name == best_hard:
+                    hard_str = f"\\textbf{{{hard_str}}}"
+                if model_name == best_soft:
+                    soft_str = f"\\textbf{{{soft_str}}}"
+                if model_name == best_weighted:
+                    weighted_str = f"\\textbf{{{weighted_str}}}"
+
+                f.write(
+                    f"{model_name} & {stats.get('exact_count', 0)} & "
+                    f"{stats.get('contained_count', 0)} & {stats.get('none_count', 0)} & "
+                    f"{hard_str} & {soft_str} & {weighted_str} \\\\\n"
+                )
+            f.write("\\bottomrule\n")
+            f.write("\\end{tabular}\n")
+            f.write("\\end{table}\n")
+        logger.path(str(latex_path), "behavior_multi_latex")
 
         # Generate visualizations
         # Convert BehaviorMultiResult to WeightedModelSummary format for visualization
@@ -1300,7 +1457,7 @@ def _render_attention_pngs(
             ax.set_xticks(list(range(tk)))
             ax.set_xticklabels([t if len(t) <= 6 else t[:6] + "…" for t in tokens[:tk]], rotation=90, fontsize=7)
         fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02, label="attention weight")
-        fig.tight_layout()
+        fig.set_constrained_layout(True)
         fig.savefig(model_dir / "attn_style1_layer_by_token.png", dpi=200)
         plt.close(fig)
     except Exception:
@@ -1322,8 +1479,8 @@ def _render_attention_pngs(
         ax.set_ylabel("attention mass (final query token)")
         ax.set_title(f"{case_id} • {model_tag} • final-query attention mass vs depth")
         ax.grid(True, alpha=0.25)
-        ax.legend(loc="best")
-        fig.tight_layout()
+        ax.legend(loc="upper right")
+        fig.set_constrained_layout(True)
         fig.savefig(model_dir / "attn_style1b_mass_by_layer.png", dpi=200)
         plt.close(fig)
     except Exception:
@@ -1348,7 +1505,7 @@ def _render_attention_pngs(
             ax.set_xticks([])
             ax.set_yticks([])
         fig.suptitle(f"{case_id} • {model_tag} • last sampled layer heads (tq×tk)", y=1.02)
-        fig.tight_layout()
+        fig.set_constrained_layout(True)
         fig.savefig(model_dir / "attn_style2_last_layer_heads.png", dpi=200, bbox_inches="tight")
         plt.close(fig)
     except Exception:
@@ -1454,7 +1611,7 @@ def _render_attention_comparison_pngs(
         fig.colorbar(im2, ax=ax2, fraction=0.03, pad=0.02, label="attention weight")
 
         fig.suptitle(f"{case_id} • Teacher vs Student Attention Heatmaps", y=1.02)
-        fig.tight_layout()
+        fig.set_constrained_layout(True)
         fig.savefig(case_dir / "comparison_heatmap.png", dpi=200)
         plt.close(fig)
     except Exception:
@@ -1485,8 +1642,8 @@ def _render_attention_comparison_pngs(
         ax.set_ylabel("attention mass (final query token)")
         ax.set_title(f"{case_id} • Teacher vs Student Attention Mass vs Depth")
         ax.grid(True, alpha=0.25)
-        ax.legend(loc="best", fontsize=9)
-        fig.tight_layout()
+        ax.legend(loc="upper right", fontsize=9)
+        fig.set_constrained_layout(True)
         fig.savefig(case_dir / "comparison_mass_by_layer.png", dpi=200)
         plt.close(fig)
     except Exception:
@@ -1560,7 +1717,7 @@ def _render_attention_comparison_pngs(
                 ax2.set_yticks([])
 
             fig.suptitle(f"{case_id} • Teacher vs Student Last Layer Heads (tq×tk)", y=0.98, fontsize=12)
-            fig.tight_layout(rect=[0, 0, 1, 0.96])
+            fig.set_constrained_layout(True)
             fig.savefig(case_dir / "comparison_last_layer_heads.png", dpi=200, bbox_inches="tight")
             plt.close(fig)
     except Exception:

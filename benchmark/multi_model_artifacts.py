@@ -145,7 +145,14 @@ class MultiModelArtifactGenerator:
             logger.warning("matplotlib not available, skipping PNG generation")
 
         if "latex" in formats:
-            paths = self._write_latex_tables(metadata, summary)
+            paths = self._write_latex_tables(
+                metadata, summary,
+                perplexity_results=perplexity_results,
+                latency_results=latency_results,
+                memory_results=memory_results,
+                accuracy_results=accuracy_results,
+                context_results=context_results,
+            )
             generated.update(paths)
 
         return generated
@@ -508,7 +515,7 @@ class MultiModelArtifactGenerator:
                 bars[idx].set_edgecolor("gold")
                 bars[idx].set_linewidth(3)
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
         path = self.output_dir / "comparison_summary.png"
         plt.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
@@ -544,10 +551,10 @@ class MultiModelArtifactGenerator:
         ax.set_xlabel("Context Length (tokens)", fontsize=12)
         ax.set_ylabel("Tokens/Second", fontsize=12)
         ax.set_title("Throughput vs Context Length", fontsize=14, fontweight="bold")
-        ax.legend(loc="best")
+        ax.legend(loc="upper right")
         ax.grid(True, alpha=0.3)
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
         path = self.output_dir / "latency_vs_context.png"
         plt.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
@@ -583,10 +590,10 @@ class MultiModelArtifactGenerator:
         ax.set_xlabel("Sequence Length (tokens)", fontsize=12)
         ax.set_ylabel("KV-Cache Memory (MB)", fontsize=12)
         ax.set_title("Memory vs Context Length", fontsize=14, fontweight="bold")
-        ax.legend(loc="best")
+        ax.legend(loc="upper right")
         ax.grid(True, alpha=0.3)
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
         path = self.output_dir / "memory_vs_context.png"
         plt.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
@@ -647,7 +654,7 @@ class MultiModelArtifactGenerator:
         handles.append(pareto_patch)
         ax.legend(handles=handles, loc="upper right")
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
         path = self.output_dir / "pareto_frontier.png"
         plt.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
@@ -715,7 +722,7 @@ class MultiModelArtifactGenerator:
         ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.0))
         ax.set_title("Multi-Dimensional Comparison\n(normalized, 100% = best)", fontsize=14, fontweight="bold", pad=20)
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
         path = self.output_dir / "radar_comparison.png"
         plt.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
@@ -783,7 +790,7 @@ class MultiModelArtifactGenerator:
 
         ax.set_title("Metrics Comparison Heatmap", fontsize=14, fontweight="bold", pad=10)
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
         path = self.output_dir / "metrics_heatmap.png"
         plt.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
@@ -853,7 +860,7 @@ class MultiModelArtifactGenerator:
 
         ax.set_title("Rankings by Metric\n(#1 = best)", fontsize=14, fontweight="bold", pad=20)
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
         path = self.output_dir / "rankings_table.png"
         plt.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
@@ -924,10 +931,10 @@ class MultiModelArtifactGenerator:
         ax.set_xticks(x)
         ax.set_xticklabels(compare_models, fontsize=11)
         ax.axhline(y=0, color="black", linestyle="-", linewidth=0.5)
-        ax.legend(loc="best")
+        ax.legend(loc="upper right")
         ax.grid(axis="y", alpha=0.3)
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
         path = self.output_dir / "deltas_from_baseline.png"
         plt.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
         plt.close()
@@ -937,14 +944,26 @@ class MultiModelArtifactGenerator:
         self,
         metadata: ExperimentMetadata,
         summary: MultiModelComparisonSummary,
+        perplexity_results: dict[str, PerplexityResult] | None = None,
+        latency_results: dict[str, LatencyResult] | None = None,
+        memory_results: dict[str, MemoryResult] | None = None,
+        accuracy_results: dict[str, AccuracyResult] | None = None,
+        context_results: dict[str, ContextResult] | None = None,
     ) -> dict[str, Path]:
-        """Write LaTeX tables for paper inclusion."""
+        """Write comprehensive LaTeX tables for paper inclusion."""
+        generated: dict[str, Path] = {}
+
+        # ========================================================================
+        # 1. MAIN COMPARISON TABLE (tables.tex)
+        # ========================================================================
         lines = [
             "% Auto-generated LaTeX tables for multi-model comparison",
             f"% Generated: {datetime.now().isoformat()}",
             f"% Experiment: {metadata.name}",
             "",
-            "% Main comparison table",
+            "% ============================================================================",
+            "% MAIN COMPARISON TABLE",
+            "% ============================================================================",
             "\\begin{table}[htbp]",
             "\\centering",
             "\\caption{Multi-model benchmark comparison}",
@@ -961,11 +980,10 @@ class MultiModelArtifactGenerator:
         # Perplexity row
         if summary.perplexities:
             vals = [f"{summary.perplexities.get(m, 0):.2f}" for m in summary.model_names]
-            # Bold the best
             best_idx = summary.perplexity_rankings.index(summary.perplexity_rankings[0]) if summary.perplexity_rankings else -1
             if best_idx >= 0:
                 vals[best_idx] = f"\\textbf{{{vals[best_idx]}}}"
-            lines.append(f"Perplexity (↓) & {' & '.join(vals)} \\\\")
+            lines.append(f"Perplexity ($\\downarrow$) & {' & '.join(vals)} \\\\")
 
         # Throughput row
         if summary.throughputs:
@@ -973,7 +991,7 @@ class MultiModelArtifactGenerator:
             best_idx = summary.throughput_rankings.index(summary.throughput_rankings[0]) if summary.throughput_rankings else -1
             if best_idx >= 0:
                 vals[best_idx] = f"\\textbf{{{vals[best_idx]}}}"
-            lines.append(f"Tokens/sec (↑) & {' & '.join(vals)} \\\\")
+            lines.append(f"Tokens/sec ($\\uparrow$) & {' & '.join(vals)} \\\\")
 
         # Memory row
         if summary.kv_bytes_per_token:
@@ -981,12 +999,12 @@ class MultiModelArtifactGenerator:
             best_idx = summary.memory_rankings.index(summary.memory_rankings[0]) if summary.memory_rankings else -1
             if best_idx >= 0:
                 vals[best_idx] = f"\\textbf{{{vals[best_idx]}}}"
-            lines.append(f"KV Bytes/tok (↓) & {' & '.join(vals)} \\\\")
+            lines.append(f"KV Bytes/tok ($\\downarrow$) & {' & '.join(vals)} \\\\")
 
         # Efficiency row
         if summary.efficiency_scores:
             vals = [f"{summary.efficiency_scores.get(m, 0):.2f}" for m in summary.model_names]
-            lines.append(f"Efficiency & {' & '.join(vals)} \\\\")
+            lines.append(f"Efficiency Score & {' & '.join(vals)} \\\\")
 
         lines.extend([
             "\\bottomrule",
@@ -998,7 +1016,9 @@ class MultiModelArtifactGenerator:
         # Add deltas table if baseline exists
         if summary.baseline_name and summary.perplexity_deltas:
             lines.extend([
-                "% Deltas from baseline table",
+                "% ============================================================================",
+                "% DELTAS FROM BASELINE TABLE",
+                "% ============================================================================",
                 "\\begin{table}[htbp]",
                 "\\centering",
                 f"\\caption{{Improvements vs baseline ({summary.baseline_name})}}",
@@ -1012,24 +1032,387 @@ class MultiModelArtifactGenerator:
 
             if summary.perplexity_deltas:
                 vals = [f"{summary.perplexity_deltas.get(m, 0):+.2f}" for m in compare_models]
-                lines.append(f"PPL Δ & {' & '.join(vals)} \\\\")
+                lines.append(f"PPL $\\Delta$ & {' & '.join(vals)} \\\\")
 
             if summary.speedups:
                 vals = [f"{(summary.speedups.get(m, 1) - 1) * 100:+.1f}\\%" for m in compare_models]
                 lines.append(f"Speedup & {' & '.join(vals)} \\\\")
 
             if summary.memory_reductions:
-                vals = [f"{summary.memory_reductions.get(m, 1):.2f}×" for m in compare_models]
+                vals = [f"{summary.memory_reductions.get(m, 1):.2f}$\\times$" for m in compare_models]
                 lines.append(f"Mem. reduction & {' & '.join(vals)} \\\\")
 
             lines.extend([
                 "\\bottomrule",
                 "\\end{tabular}",
                 "\\end{table}",
+                "",
             ])
 
         path = self.output_dir / "tables.tex"
         with open(path, "w") as f:
             f.write("\n".join(lines))
+        generated["tables.tex"] = path
 
-        return {"tables.tex": path}
+        # ========================================================================
+        # 2. DETAILED PERPLEXITY TABLE (table_perplexity.tex)
+        # ========================================================================
+        if perplexity_results:
+            ppl_lines = [
+                "% Detailed perplexity results",
+                "\\begin{table}[htbp]",
+                "\\centering",
+                "\\caption{Perplexity Results (FineWeb validation)}",
+                "\\label{tab:perplexity-detailed}",
+                "\\begin{tabular}{lrrrr}",
+                "\\toprule",
+                "Model & Perplexity & Loss & Tokens & Batches \\\\",
+                "\\midrule",
+            ]
+            for name in summary.model_names:
+                if name in perplexity_results:
+                    r = perplexity_results[name]
+                    ppl_lines.append(f"{name} & {r.perplexity:.2f} & {r.loss:.4f} & {r.num_tokens:,} & {r.num_batches} \\\\")
+            ppl_lines.extend([
+                "\\bottomrule",
+                "\\end{tabular}",
+                "\\end{table}",
+            ])
+            path = self.output_dir / "table_perplexity.tex"
+            with open(path, "w") as f:
+                f.write("\n".join(ppl_lines))
+            generated["table_perplexity.tex"] = path
+
+        # ========================================================================
+        # 3. LATENCY/THROUGHPUT TABLE (table_latency.tex)
+        # ========================================================================
+        if latency_results:
+            lat_lines = [
+                "% Latency and throughput results",
+                "\\begin{table}[htbp]",
+                "\\centering",
+                "\\caption{Throughput by Context Length}",
+                "\\label{tab:latency-detailed}",
+                "\\begin{tabular}{l" + "r" * len(summary.model_names) + "}",
+                "\\toprule",
+                "Context & " + " & ".join(summary.model_names) + " \\\\",
+                " & " + " & ".join(["(tok/s)"] * len(summary.model_names)) + " \\\\",
+                "\\midrule",
+            ]
+
+            # Collect all unique prompt lengths
+            all_prompt_lens: set[int] = set()
+            for r in latency_results.values():
+                for m in r.measurements:
+                    all_prompt_lens.add(m.prompt_len)
+
+            for prompt_len in sorted(all_prompt_lens):
+                row_vals = []
+                for name in summary.model_names:
+                    if name in latency_results:
+                        r = latency_results[name]
+                        tps_vals = [m.tokens_per_second for m in r.measurements if m.prompt_len == prompt_len]
+                        if tps_vals:
+                            avg_tps = np.mean(tps_vals)
+                            row_vals.append(f"{avg_tps:.0f}")
+                        else:
+                            row_vals.append("--")
+                    else:
+                        row_vals.append("--")
+                lat_lines.append(f"{prompt_len} & {' & '.join(row_vals)} \\\\")
+
+            lat_lines.extend([
+                "\\bottomrule",
+                "\\end{tabular}",
+                "\\end{table}",
+            ])
+            path = self.output_dir / "table_latency.tex"
+            with open(path, "w") as f:
+                f.write("\n".join(lat_lines))
+            generated["table_latency.tex"] = path
+
+            # Also create a summary latency table
+            lat_summary_lines = [
+                "% Latency summary",
+                "\\begin{table}[htbp]",
+                "\\centering",
+                "\\caption{Latency Summary}",
+                "\\label{tab:latency-summary}",
+                "\\begin{tabular}{lrrr}",
+                "\\toprule",
+                "Model & Avg Tok/s & TTFT (ms) & Prefill (ms) \\\\",
+                "\\midrule",
+            ]
+            for name in summary.model_names:
+                if name in latency_results:
+                    r = latency_results[name]
+                    avg_tps = r.avg_tokens_per_second
+                    avg_ttft = r.avg_time_to_first_token_ms
+                    avg_prefill = np.mean([m.prefill_time_ms for m in r.measurements]) if r.measurements else 0
+                    lat_summary_lines.append(f"{name} & {avg_tps:.0f} & {avg_ttft:.1f} & {avg_prefill:.1f} \\\\")
+            lat_summary_lines.extend([
+                "\\bottomrule",
+                "\\end{tabular}",
+                "\\end{table}",
+            ])
+            path = self.output_dir / "table_latency_summary.tex"
+            with open(path, "w") as f:
+                f.write("\n".join(lat_summary_lines))
+            generated["table_latency_summary.tex"] = path
+
+        # ========================================================================
+        # 4. MEMORY TABLE (table_memory.tex)
+        # ========================================================================
+        if memory_results:
+            mem_lines = [
+                "% Memory efficiency results",
+                "\\begin{table}[htbp]",
+                "\\centering",
+                "\\caption{KV-Cache Memory by Sequence Length}",
+                "\\label{tab:memory-detailed}",
+                "\\begin{tabular}{l" + "r" * len(summary.model_names) + "}",
+                "\\toprule",
+                "Seq Len & " + " & ".join(summary.model_names) + " \\\\",
+                " & " + " & ".join(["(MB)"] * len(summary.model_names)) + " \\\\",
+                "\\midrule",
+            ]
+
+            # Collect all unique sequence lengths
+            all_seq_lens: set[int] = set()
+            for r in memory_results.values():
+                for m in r.measurements:
+                    all_seq_lens.add(m.seq_len)
+
+            for seq_len in sorted(all_seq_lens):
+                row_vals = []
+                for name in summary.model_names:
+                    if name in memory_results:
+                        r = memory_results[name]
+                        mem_vals = [m.kvcache_memory_mb for m in r.measurements if m.seq_len == seq_len]
+                        if mem_vals:
+                            avg_mem = np.mean(mem_vals)
+                            row_vals.append(f"{avg_mem:.1f}")
+                        else:
+                            row_vals.append("--")
+                    else:
+                        row_vals.append("--")
+                mem_lines.append(f"{seq_len} & {' & '.join(row_vals)} \\\\")
+
+            mem_lines.extend([
+                "\\bottomrule",
+                "\\end{tabular}",
+                "\\end{table}",
+            ])
+            path = self.output_dir / "table_memory.tex"
+            with open(path, "w") as f:
+                f.write("\n".join(mem_lines))
+            generated["table_memory.tex"] = path
+
+            # KV bytes per token table
+            kv_lines = [
+                "% KV-cache bytes per token",
+                "\\begin{table}[htbp]",
+                "\\centering",
+                "\\caption{KV-Cache Bytes per Token}",
+                "\\label{tab:kv-bytes}",
+                "\\begin{tabular}{lrr}",
+                "\\toprule",
+                "Model & Bytes/Token & Reduction \\\\",
+                "\\midrule",
+            ]
+            baseline_bytes = summary.kv_bytes_per_token.get(summary.baseline_name, 0) if summary.baseline_name else 0
+            for name in summary.model_names:
+                bytes_per_tok = summary.kv_bytes_per_token.get(name, 0)
+                if baseline_bytes > 0 and name != summary.baseline_name:
+                    reduction = baseline_bytes / bytes_per_tok if bytes_per_tok > 0 else 0
+                    kv_lines.append(f"{name} & {bytes_per_tok:.0f} & {reduction:.2f}$\\times$ \\\\")
+                else:
+                    kv_lines.append(f"{name} & {bytes_per_tok:.0f} & -- \\\\")
+            kv_lines.extend([
+                "\\bottomrule",
+                "\\end{tabular}",
+                "\\end{table}",
+            ])
+            path = self.output_dir / "table_kv_bytes.tex"
+            with open(path, "w") as f:
+                f.write("\n".join(kv_lines))
+            generated["table_kv_bytes.tex"] = path
+
+        # ========================================================================
+        # 5. ACCURACY TABLE (table_accuracy.tex)
+        # ========================================================================
+        if accuracy_results:
+            acc_lines = [
+                "% Downstream task accuracy",
+                "\\begin{table}[htbp]",
+                "\\centering",
+                "\\caption{Downstream Task Accuracy}",
+                "\\label{tab:accuracy}",
+            ]
+
+            # Collect all tasks
+            all_tasks: set[str] = set()
+            for r in accuracy_results.values():
+                for t in r.tasks:
+                    all_tasks.add(t.task)
+            all_tasks_sorted = sorted(all_tasks)
+
+            acc_lines.append(f"\\begin{{tabular}}{{l{'r' * len(summary.model_names)}}}")
+            acc_lines.append("\\toprule")
+            acc_lines.append("Task & " + " & ".join(summary.model_names) + " \\\\")
+            acc_lines.append("\\midrule")
+
+            for task in all_tasks_sorted:
+                row_vals = []
+                task_accs = []
+                for name in summary.model_names:
+                    if name in accuracy_results:
+                        r = accuracy_results[name]
+                        task_result = next((t for t in r.tasks if t.task == task), None)
+                        if task_result:
+                            task_accs.append((name, task_result.accuracy))
+                            row_vals.append(f"{task_result.accuracy * 100:.1f}\\%")
+                        else:
+                            row_vals.append("--")
+                    else:
+                        row_vals.append("--")
+
+                # Bold the best
+                if task_accs:
+                    best_name = max(task_accs, key=lambda x: x[1])[0]
+                    for i, name in enumerate(summary.model_names):
+                        if name == best_name:
+                            row_vals[i] = f"\\textbf{{{row_vals[i]}}}"
+
+                acc_lines.append(f"{task} & {' & '.join(row_vals)} \\\\")
+
+            # Add micro accuracy row
+            acc_lines.append("\\midrule")
+            micro_vals = []
+            micro_accs = []
+            for name in summary.model_names:
+                if name in accuracy_results:
+                    r = accuracy_results[name]
+                    micro_accs.append((name, r.micro_accuracy))
+                    micro_vals.append(f"{r.micro_accuracy * 100:.1f}\\%")
+                else:
+                    micro_vals.append("--")
+            if micro_accs:
+                best_name = max(micro_accs, key=lambda x: x[1])[0]
+                for i, name in enumerate(summary.model_names):
+                    if name == best_name:
+                        micro_vals[i] = f"\\textbf{{{micro_vals[i]}}}"
+            acc_lines.append(f"\\textit{{Average}} & {' & '.join(micro_vals)} \\\\")
+
+            acc_lines.extend([
+                "\\bottomrule",
+                "\\end{tabular}",
+                "\\end{table}",
+            ])
+            path = self.output_dir / "table_accuracy.tex"
+            with open(path, "w") as f:
+                f.write("\n".join(acc_lines))
+            generated["table_accuracy.tex"] = path
+
+        # ========================================================================
+        # 6. RANKINGS TABLE (table_rankings.tex)
+        # ========================================================================
+        rank_lines = [
+            "% Model rankings by metric",
+            "\\begin{table}[htbp]",
+            "\\centering",
+            "\\caption{Model Rankings by Metric}",
+            "\\label{tab:rankings}",
+            f"\\begin{{tabular}}{{l{'c' * len(summary.model_names)}}}",
+            "\\toprule",
+            "Metric & " + " & ".join(summary.model_names) + " \\\\",
+            "\\midrule",
+        ]
+
+        if summary.perplexity_rankings:
+            row_vals = []
+            for name in summary.model_names:
+                rank = summary.get_rank(name, "perplexity")
+                row_vals.append(f"\\#{rank}" if rank else "--")
+            rank_lines.append(f"Perplexity & {' & '.join(row_vals)} \\\\")
+
+        if summary.throughput_rankings:
+            row_vals = []
+            for name in summary.model_names:
+                rank = summary.get_rank(name, "throughput")
+                row_vals.append(f"\\#{rank}" if rank else "--")
+            rank_lines.append(f"Throughput & {' & '.join(row_vals)} \\\\")
+
+        if summary.memory_rankings:
+            row_vals = []
+            for name in summary.model_names:
+                rank = summary.get_rank(name, "memory")
+                row_vals.append(f"\\#{rank}" if rank else "--")
+            rank_lines.append(f"Memory Eff. & {' & '.join(row_vals)} \\\\")
+
+        if summary.accuracy_rankings:
+            row_vals = []
+            for name in summary.model_names:
+                rank = summary.get_rank(name, "accuracy")
+                row_vals.append(f"\\#{rank}" if rank else "--")
+            rank_lines.append(f"Accuracy & {' & '.join(row_vals)} \\\\")
+
+        rank_lines.extend([
+            "\\bottomrule",
+            "\\end{tabular}",
+            "\\end{table}",
+        ])
+        path = self.output_dir / "table_rankings.tex"
+        with open(path, "w") as f:
+            f.write("\n".join(rank_lines))
+        generated["table_rankings.tex"] = path
+
+        # ========================================================================
+        # 7. CONTEXT SWEEP TABLE (table_context_sweep.tex)
+        # ========================================================================
+        if context_results:
+            ctx_lines = [
+                "% Context sweep results",
+                "\\begin{table}[htbp]",
+                "\\centering",
+                "\\caption{Decode Throughput by Context Length}",
+                "\\label{tab:context-sweep}",
+                f"\\begin{{tabular}}{{r{'r' * len(summary.model_names)}}}",
+                "\\toprule",
+                "Context & " + " & ".join(summary.model_names) + " \\\\",
+                "(tokens) & " + " & ".join(["(tok/s)"] * len(summary.model_names)) + " \\\\",
+                "\\midrule",
+            ]
+
+            # Collect all context lengths
+            all_ctx_lens: set[int] = set()
+            for r in context_results.values():
+                for m in r.decode:
+                    all_ctx_lens.add(m.seq_len)
+
+            for ctx_len in sorted(all_ctx_lens):
+                row_vals = []
+                for name in summary.model_names:
+                    if name in context_results:
+                        r = context_results[name]
+                        tps_vals = [m.decode_tok_per_s for m in r.decode if m.seq_len == ctx_len and m.ok]
+                        if tps_vals:
+                            avg_tps = np.mean(tps_vals)
+                            row_vals.append(f"{avg_tps:.0f}")
+                        else:
+                            row_vals.append("--")
+                    else:
+                        row_vals.append("--")
+                ctx_lines.append(f"{ctx_len:,} & {' & '.join(row_vals)} \\\\")
+
+            ctx_lines.extend([
+                "\\bottomrule",
+                "\\end{tabular}",
+                "\\end{table}",
+            ])
+            path = self.output_dir / "table_context_sweep.tex"
+            with open(path, "w") as f:
+                f.write("\n".join(ctx_lines))
+            generated["table_context_sweep.tex"] = path
+
+        return generated

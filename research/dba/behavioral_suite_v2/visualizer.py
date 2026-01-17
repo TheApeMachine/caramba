@@ -116,7 +116,7 @@ class AttentionVisualizer:
         if title:
             fig.suptitle(title, fontsize=14)
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
 
         if output_path:
             plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -170,7 +170,7 @@ class AttentionVisualizer:
         fig.colorbar(im, ax=axes, orientation='vertical', fraction=0.02, pad=0.04)
 
         fig.suptitle(f"{model_name} - Attention by Layer (averaged over heads)", fontsize=14)
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
 
         if output_path:
             plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -235,7 +235,7 @@ class ResultsVisualizer:
         ax.legend()
         ax.set_ylim(0, 1.1)
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
 
         if output_path:
             plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -297,7 +297,7 @@ class ResultsVisualizer:
         ax.set_xlabel('Opponent')
         ax.set_ylabel('Model')
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
 
         if output_path:
             plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -349,7 +349,7 @@ class ResultsVisualizer:
         ax.set_xticklabels(models)
         ax.legend(loc='upper right', bbox_to_anchor=(1.15, 1))
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
 
         if output_path:
             plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -392,7 +392,7 @@ class ResultsVisualizer:
         ax.set_xticklabels(models)
         ax.legend()
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
 
         if output_path:
             plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -508,7 +508,7 @@ class ResultsVisualizer:
         ax.grid(True, alpha=0.3)
 
         # Legend
-        ax.legend(loc='lower left', fontsize=9)
+        ax.legend(loc='upper right', fontsize=9)
 
         # Add annotation explaining the plot
         ax.text(
@@ -522,7 +522,7 @@ class ResultsVisualizer:
             alpha=0.7,
         )
 
-        plt.tight_layout()
+        fig.set_constrained_layout(True)
 
         if output_path:
             plt.savefig(output_path, dpi=150, bbox_inches='tight')

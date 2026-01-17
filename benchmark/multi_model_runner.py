@@ -165,22 +165,11 @@ class MultiModelBenchmarkRunner:
 
                     case BenchmarkType.ACCURACY:
                         assert isinstance(spec.config, AccuracyBenchmarkConfig)
-                        benchmark = BenchmarkAccuracy(spec.config, self.device)
-
-                        for model_name in models_to_run:
-                            if model_name not in models:
-                                logger.warning(
-                                    f"Model '{model_name}' not found, skipping"
-                                )
-                                continue
-                            model = models[model_name]
-                            result = benchmark.run(
-                                model, model_name, output_dir=self.output_dir
-                            )
-                            accuracy_results[model_name] = result
-                            logger.metric(
-                                model_name, result.micro_accuracy * 100.0, "% micro-acc"
-                            )
+                        # Run all models per task before moving to next task
+                        # This is better for comparison and easier to debug
+                        accuracy_results = self._run_accuracy_task_first(
+                            spec.config, models, models_to_run
+                        )
 
                     case BenchmarkType.BEHAVIORAL_V2:
                         assert isinstance(spec.config, BehavioralV2BenchmarkConfig)

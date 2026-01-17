@@ -496,11 +496,11 @@ class BenchmarkBehavioralV2:
 
         results["teacher"] = {
             "micro_accuracy": teacher_result.micro_accuracy,
-            "tasks": {t.task_name: t.accuracy for t in teacher_result.tasks},
+            "tasks": {t.task: t.accuracy for t in teacher_result.tasks},
         }
         results["student"] = {
             "micro_accuracy": student_result.micro_accuracy,
-            "tasks": {t.task_name: t.accuracy for t in student_result.tasks},
+            "tasks": {t.task: t.accuracy for t in student_result.tasks},
         }
 
         logger.metric("teacher_downstream", teacher_result.micro_accuracy * 100, "%")
@@ -536,7 +536,7 @@ class BenchmarkBehavioralV2:
             model_result = benchmark.run(model, model_name)
             results[model_name] = {
                 "micro_accuracy": model_result.micro_accuracy,
-                "tasks": {t.task_name: t.accuracy for t in model_result.tasks},
+                "tasks": {t.task: t.accuracy for t in model_result.tasks},
             }
             logger.metric(
                 f"{model_name}_downstream",
@@ -718,3 +718,94 @@ class BenchmarkBehavioralV2:
                 )
 
         logger.path(str(csv_path), "behavioral_v2_weighted_csv")
+
+        # Save LaTeX table
+        latex_path = output_dir / "behavioral_v2_table.tex"
+        with open(latex_path, "w") as f:
+            f.write("% Auto-generated LaTeX table for behavioral_v2 benchmark results\n")
+            f.write("\\begin{table}[htbp]\n")
+            f.write("\\centering\n")
+            f.write("\\caption{Behavioral V2 Test Results (Weighted Scoring)}\n")
+            f.write("\\label{tab:behavioral-v2}\n")
+            f.write("\\begin{tabular}{lrrrrrrr}\n")
+            f.write("\\toprule\n")
+            f.write("Model & Exact & Cont. & None & Hard & Soft & Weighted \\\\\n")
+            f.write("\\midrule\n")
+
+            # Find best for each metric to bold
+            model_names = list(result.weighted_summaries.keys())
+            best_hard = max((ws.hard_accuracy, n) for n, ws in result.weighted_summaries.items())[1]
+            best_soft = max((ws.soft_accuracy, n) for n, ws in result.weighted_summaries.items())[1]
+            best_weighted = max((ws.weighted_accuracy, n) for n, ws in result.weighted_summaries.items())[1]
+
+            for model_name, ws in result.weighted_summaries.items():
+                hard_str = f"{ws.hard_accuracy * 100:.1f}\\%"
+                soft_str = f"{ws.soft_accuracy * 100:.1f}\\%"
+                weighted_str = f"{ws.weighted_accuracy * 100:.1f}\\%"
+
+                if model_name == best_hard:
+                    hard_str = f"\\textbf{{{hard_str}}}"
+                if model_name == best_soft:
+                    soft_str = f"\\textbf{{{soft_str}}}"
+                if model_name == best_weighted:
+                    weighted_str = f"\\textbf{{{weighted_str}}}"
+
+                f.write(
+                    f"{model_name} & {ws.exact_count} & "
+                    f"{ws.contained_count} & {ws.none_count} & "
+                    f"{hard_str} & {soft_str} & {weighted_str} \\\\\n"
+                )
+            f.write("\\bottomrule\n")
+            f.write("\\end{tabular}\n")
+            f.write("\\end{table}\n")
+        logger.path(str(latex_path), "behavioral_v2_latex")
+
+        # Save detailed markdown log
+        md_path = output_dir / "behavioral_v2_detailed.md"
+        with open(md_path, "w") as f:
+            f.write("# Behavioral V2 Benchmark Results\n\n")
+            f.write(f"**Models:** {', '.join(result.weighted_summaries.keys())}\n\n")
+            f.write(f"**Baseline:** {result.baseline_name}\n\n")
+
+            # Summary table
+            f.write("## Summary\n\n")
+            f.write("| Model | Exact | Contained | None | Hard Acc | Soft Acc | Weighted Acc |\n")
+            f.write("|-------|-------|-----------|------|----------|----------|-------------|\n")
+            for model_name, ws in result.weighted_summaries.items():
+                f.write(
+                    f"| {model_name} | {ws.exact_count} | {ws.contained_count} | {ws.none_count} | "
+                    f"{ws.hard_accuracy * 100:.1f}% | {ws.soft_accuracy * 100:.1f}% | "
+                    f"{ws.weighted_accuracy * 100:.1f}% |\n"
+                )
+            f.write("\n")
+
+            # Difficulty breakdown if available
+            if hasattr(list(result.weighted_summaries.values())[0], 'by_difficulty'):
+                f.write("## Difficulty Breakdown\n\n")
+                f.write("| Model | Easy | Medium | Hard |\n")
+                f.write("|-------|------|--------|------|\n")
+                for model_name, ws in result.weighted_summaries.items():
+                    easy = ws.by_difficulty.get("easy", None)
+                    medium = ws.by_difficulty.get("medium", None)
+                    hard = ws.by_difficulty.get("hard", None)
+                    easy_acc = f"{easy.accuracy * 100:.1f}%" if easy else "--"
+                    medium_acc = f"{medium.accuracy * 100:.1f}%" if medium else "--"
+                    hard_acc = f"{hard.accuracy * 100:.1f}%" if hard else "--"
+                    f.write(f"| {model_name} | {easy_acc} | {medium_acc} | {hard_acc} |\n")
+                f.write("\n")
+
+            # Downstream results if available
+            if result.downstream_results:
+                f.write("## Downstream Task Results\n\n")
+                for model_name, dr in result.downstream_results.items():
+                    f.write(f"### {model_name}\n\n")
+                    f.write(f"**Micro Accuracy:** {dr.get('micro_accuracy', 0) * 100:.1f}%\n\n")
+                    tasks = dr.get("tasks", {})
+                    if tasks:
+                        f.write("| Task | Accuracy |\n")
+                        f.write("|------|----------|\n")
+                        for task_name, acc in tasks.items():
+                            f.write(f"| {task_name} | {acc * 100:.1f}% |\n")
+                        f.write("\n")
+
+        logger.path(str(md_path), "behavioral_v2_markdown")

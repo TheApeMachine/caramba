@@ -169,19 +169,13 @@ class MultiModelAttentionVisualizer:
             else:
                 ax.set_xticklabels([])
 
-        # Add shared colorbar
-        fig.colorbar(
-            im,
-            ax=axes,
-            orientation='vertical',
-            fraction=0.02,
-            pad=0.02,
-            label='attention weight'
-        )
+        # Add shared colorbar on the right side (outside the plot area)
+        fig.subplots_adjust(right=0.88)
+        cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
+        fig.colorbar(im, cax=cbar_ax, orientation='vertical', label='attention weight')
 
         fig_title = title or f"{case_id} • N-Model Attention Heatmaps (final query, mean over heads)"
-        fig.suptitle(fig_title, fontsize=12, y=1.02)
-        fig.tight_layout()
+        fig.suptitle(fig_title, fontsize=12, y=0.98)
         fig.savefig(output_path, dpi=200, bbox_inches='tight')
         plt.close(fig)
 
@@ -280,19 +274,13 @@ class MultiModelAttentionVisualizer:
                 ax.set_xticks([])
                 ax.set_yticks([])
 
-        # Add shared colorbar
-        fig.colorbar(
-            im,
-            ax=axes.ravel().tolist(),
-            orientation='vertical',
-            fraction=0.02,
-            pad=0.02,
-            label='attention weight'
-        )
+        # Add shared colorbar on the right side (outside the plot area)
+        fig.subplots_adjust(right=0.88)
+        cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
+        fig.colorbar(im, cax=cbar_ax, orientation='vertical', label='attention weight')
 
         fig_title = title or f"{case_id} • N-Model Last Layer Heads (normalized to [0,1])"
-        fig.suptitle(fig_title, y=1.02, fontsize=12)
-        fig.tight_layout(rect=[0, 0, 0.95, 0.96])
+        fig.suptitle(fig_title, y=0.98, fontsize=12)
         fig.savefig(output_path, dpi=200, bbox_inches='tight')
         plt.close(fig)
 
@@ -366,12 +354,12 @@ class MultiModelAttentionVisualizer:
         ax.set_xlabel("layer (sampled attention modules)")
         ax.set_ylabel("attention mass (final query token)")
         ax.grid(True, alpha=0.25)
-        ax.legend(loc='best', fontsize=9, ncol=2)
+        ax.legend(loc='upper right', fontsize=9, ncol=2)
 
         fig_title = title or f"{case_id} • N-Model Attention Mass vs Depth"
         ax.set_title(fig_title, fontsize=12)
-        fig.tight_layout()
-        fig.savefig(output_path, dpi=200)
+        fig.set_constrained_layout(True)
+        fig.savefig(output_path, dpi=200, bbox_inches='tight')
         plt.close(fig)
 
     def _extract_layer_attention(self, event: dict[str, Any]) -> list[np.ndarray]:

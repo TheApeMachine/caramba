@@ -434,29 +434,64 @@ class EvaluableModel:
         prompt: str,
         choices: list[str],
     ) -> dict[str, float]:
-        """Get log probabilities for each choice."""
+        """
+        Get log probabilities for each choice.
+        
+        Computes the conditional log probability of the full choice string
+        by teacher-forcing each token and summing the per-token logprobs.
+        This correctly handles multi-token answers.
+        """
         logprobs = {}
 
-        inputs = self.tokenizer(
+        # Tokenize the prompt
+        prompt_inputs = self.tokenizer(
             prompt,
             return_tensors="pt",
             truncation=True,
             max_length=self.max_length,
         ).to(self.device)
-
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            # Get logits for the last position
-            last_logits = outputs.logits[0, -1, :]
-            log_probs = torch.log_softmax(last_logits, dim=-1)
+        
+        prompt_ids = prompt_inputs['input_ids']
+        prompt_len = prompt_ids.shape[1]
 
         for choice in choices:
-            # Tokenize just the choice
+            # Tokenize the choice (without special tokens)
             choice_ids = self.tokenizer.encode(choice, add_special_tokens=False)
-            if choice_ids:
-                # Use first token of choice
-                token_id = choice_ids[0]
-                logprobs[choice] = log_probs[token_id].item()
+            
+            if not choice_ids:
+                continue
+            
+            # Create full sequence: prompt + choice tokens
+            choice_tensor = torch.tensor([choice_ids], dtype=torch.long, device=self.device)
+            full_ids = torch.cat([prompt_ids, choice_tensor], dim=1)
+            
+            # Truncate if needed
+            if full_ids.shape[1] > self.max_length:
+                full_ids = full_ids[:, -self.max_length:]
+                # Adjust prompt_len if truncation affected it
+                effective_prompt_len = max(0, prompt_len - (prompt_ids.shape[1] + len(choice_ids) - self.max_length))
+            else:
+                effective_prompt_len = prompt_len
+            
+            with torch.no_grad():
+                outputs = self.model(full_ids)
+                # outputs.logits shape: [batch, seq_len, vocab_size]
+                all_logits = outputs.logits[0]  # [seq_len, vocab_size]
+                
+                # Compute log probabilities for each position
+                all_log_probs = torch.log_softmax(all_logits, dim=-1)
+                
+                # Sum logprobs for each choice token
+                # Position i's logits predict token at position i+1
+                # So the logits at position (prompt_len - 1) predict the first choice token
+                total_logprob = 0.0
+                for i, token_id in enumerate(choice_ids):
+                    # The position that predicts this token
+                    pred_pos = effective_prompt_len - 1 + i
+                    if pred_pos >= 0 and pred_pos < all_log_probs.shape[0]:
+                        total_logprob += all_log_probs[pred_pos, token_id].item()
+                
+                logprobs[choice] = total_logprob
 
         return logprobs
 

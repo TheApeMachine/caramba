@@ -25,8 +25,12 @@ class TiktokenTokenizer(Tokenizer):
         self._enc = tiktoken.get_encoding(str(encoding))
 
     def encode(self, text: str) -> list[int]:
-        """Convert text to token IDs using tiktoken."""
-        return list(self._enc.encode(str(text)))
+        """Convert text to token IDs using tiktoken.
+
+        Allows special tokens to appear in text (e.g., <|endoftext|>) since
+        benchmark prompts may contain them as literal test content.
+        """
+        return list(self._enc.encode(str(text), allowed_special="all"))
 
     def decode(self, ids: Sequence[int]) -> str:
         """Convert token IDs to text using tiktoken."""

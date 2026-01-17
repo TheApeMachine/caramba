@@ -65,47 +65,74 @@ class CopySimpleTemplate(TestTemplate):
         return formats.get(self.format_style, f"Copy: {item}" if with_answer else "Copy:")
 
     def generate(self, rng: random.Random) -> TestCase:
-        # Generate 3 examples + 1 query
-        items = [self._generate_item(rng) for _ in range(4)]
-        target = items[-1]
-
-        # Create examples based on target position
+        """
+        Generate a copy test case that tests recall from a specific position.
+        
+        The target_position determines which position in the examples should
+        be recalled:
+        - START: Query asks to recall the first item shown
+        - MIDDLE: Query asks to recall a middle item  
+        - END: Query asks to recall the last item shown
+        
+        The prompt structure uses explicit position cues so the model knows
+        which item to recall based on the query.
+        """
+        # Generate distinct items
+        items = [self._generate_item(rng) for _ in range(3)]
+        
+        # Determine which item is the target based on position
         if self.target_position == TargetPosition.START:
-            examples = items[:3]
-            query_item = items[0]
+            target_idx = 0
+            query_position = "first"
         elif self.target_position == TargetPosition.END:
-            examples = items[:3]
-            query_item = items[-1]
+            target_idx = 2  # Last of the 3 examples
+            query_position = "third"
         else:  # MIDDLE
-            examples = [items[0], items[2], items[1]]  # Swap to put "target pattern" in middle
-            query_item = items[-1]
-
-        # Build prompt
-        lines = []
-        for item in examples:
-            lines.append(self._format_line(item))
-            lines.append(self._format_line(item))  # Answer line
-
-        # Actually, let's do it differently - standard few-shot format
-        lines = []
-        for i, item in enumerate(items[:-1]):
-            lines.append(f"{self._get_prefix()}{item}")
-        lines.append(f"{self._get_prefix()}")
-
-        prompt = "\n".join([
-            f"{self._get_prefix()}{items[0]}",
-            f"{self._get_prefix()}{items[1]}",
-            f"{self._get_prefix()}{items[2]}",
-            f"{self._get_prefix()}",
-        ])
-
+            target_idx = 1
+            query_position = "second"
+        
+        target = items[target_idx]
+        position_labels = ["first", "second", "third"]
+        
+        if self.format_style == "arrow":
+            # Arrow format: "first -> X", "second -> Y", query: "first ->"
+            lines = []
+            for i, item in enumerate(items):
+                lines.append(f"{position_labels[i]} -> {item}")
+            lines.append(f"{query_position} ->")
+        elif self.format_style == "copy":
+            # Copy format with position cues
+            lines = [
+                f"Item 1: {items[0]}",
+                f"Item 2: {items[1]}",  
+                f"Item 3: {items[2]}",
+                f"Copy item {target_idx + 1}:",
+            ]
+        elif self.format_style == "echo":
+            # Echo format with position markers
+            lines = []
+            for i, item in enumerate(items):
+                lines.append(f"[{i+1}] {item}")
+            lines.append(f"Echo [{target_idx + 1}]:")
+        else:  # repeat
+            # Repeat format with explicit position query
+            lines = [
+                f"A: {items[0]}",
+                f"B: {items[1]}",
+                f"C: {items[2]}",
+            ]
+            query_label = ["A", "B", "C"][target_idx]
+            lines.append(f"Repeat {query_label}:")
+        
+        prompt = "\n".join(lines)
+        
         return TestCase(
             id=f"{self.template_id}_{rng.randint(0, 99999)}",
             category=self.category,
             subcategory=self.subcategory,
             difficulty=self.difficulty,
             prompt=prompt,
-            expected=items[2],  # Copy last shown item
+            expected=target,  # Expect the item at target_position
             kind=EvalKind.EXACT_MATCH_GREEDY,
             target_position=self.target_position,
         )

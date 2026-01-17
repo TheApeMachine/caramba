@@ -335,7 +335,7 @@ def plot_attention_diff(
     clean_layer = clean_attention[layer_idx, head_idx]
     attacked_layer = attacked_attention[layer_idx, head_idx]
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
 
     # Common colorbar range
     vmin = min(clean_layer.min(), attacked_layer.min())
@@ -376,7 +376,6 @@ def plot_attention_diff(
     plt.colorbar(im3, ax=axes[2], label="Δ Attention")
 
     fig.suptitle(f"{title}\nLayer {layer_idx}, Head {head_idx}", fontsize=12)
-    plt.tight_layout()
 
     if output_path:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
@@ -418,7 +417,7 @@ def plot_layer_summary(
     attacked_entropy = -np.sum(attacked_trimmed * np.log(attacked_trimmed + eps), axis=-1).mean(axis=(1, 2))
     entropy_diff = attacked_entropy - clean_entropy
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10), constrained_layout=True)
 
     # Layer difference magnitude
     axes[0, 0].bar(range(n_layers), layer_diff_means)
@@ -480,8 +479,6 @@ Most Affected Layers: {attention_diff.affected_layers[:5]}
     axes[1, 1].axis('off')
     axes[1, 1].set_title("Summary")
 
-    plt.tight_layout()
-
     if output_path:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
         plt.close()
@@ -508,7 +505,7 @@ def plot_token_attention_profile(
 
     n_tokens = len(analysis.tokens)
 
-    fig, axes = plt.subplots(2, 1, figsize=(max(12, n_tokens * 0.3), 8))
+    fig, axes = plt.subplots(2, 1, figsize=(max(12, n_tokens * 0.3), 8), constrained_layout=True)
 
     # Attention received
     colors_received = ['red' if i in analysis.critical_tokens else
@@ -539,7 +536,6 @@ def plot_token_attention_profile(
     axes[1].set_xticklabels(analysis.tokens, rotation=45, ha='right', fontsize=7)
 
     fig.suptitle(title, fontsize=12)
-    plt.tight_layout()
 
     if output_path:
         plt.savefig(output_path, dpi=150, bbox_inches='tight')
