@@ -62,8 +62,8 @@ vars:
   dtype: bfloat16
   batch_size: 8
   grad_accum: 4
-  num_workers: 1
-  prefetch_factor: 4
+  num_workers: 8
+  prefetch_factor: 1
   pin_memory: true
   lr: 3.0e-4
   weight_decay: 0.1
@@ -159,6 +159,11 @@ targets:
           device: ${device}
           dtype: ${dtype}
           gradient_accumulation_steps: ${grad_accum}
+          # DataLoader performance knobs (vars above were previously unused unless
+          # threaded into the TrainConfig here).
+          num_workers: ${num_workers}
+          prefetch_factor: ${prefetch_factor}
+          pin_memory: ${pin_memory}
           grad_clip_norm: 1.0
           optimizer: ${optimizer}
           weight_decay: ${weight_decay}
