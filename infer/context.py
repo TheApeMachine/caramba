@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from caramba.cache.decoupled import DecoupledLayerKVCache
-from caramba.cache.layer import LayerKVCache
+from cache.decoupled import DecoupledLayerKVCache
+from cache.layer import LayerKVCache
 
 if TYPE_CHECKING:
     from torch import Tensor

@@ -5,8 +5,8 @@ import math
 import torch
 from torch import nn
 
-from caramba.orchestrator.orchestrator import DecisionBoundary, Orchestrator, OrchestratorConfig
-from caramba.orchestrator.telemetry import TelemetrySnapshot
+from orchestrator.orchestrator import DecisionBoundary, Orchestrator, OrchestratorConfig
+from orchestrator.telemetry import TelemetrySnapshot
 
 
 def test_orchestrator_safety_baseline_triggers() -> None:

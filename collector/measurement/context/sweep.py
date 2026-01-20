@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from caramba.collector.measurement.context.base import ContextMeasurement
+from collector.measurement.context.base import ContextMeasurement
 
 
 @dataclass
@@ -35,3 +35,14 @@ class ContextSweepMeasurement(ContextMeasurement):
     loss_last_chunk: float  # Legacy: final chunk only
     ppl_last_chunk: float   # Legacy: final chunk only
     ok: bool
+
+    # ------------------------------------------------------------------
+    # Optional telemetry (best-effort; may be None on some platforms)
+    # ------------------------------------------------------------------
+    rss_mb_before: float | None = None
+    rss_mb_after: float | None = None
+    mps_allocated_mb_before: float | None = None
+    mps_allocated_mb_after: float | None = None
+    mps_driver_allocated_mb_before: float | None = None
+    mps_driver_allocated_mb_after: float | None = None
+    mps_recommended_max_mb: float | None = None

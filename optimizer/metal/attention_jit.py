@@ -13,7 +13,7 @@ import subprocess
 import sys
 from typing import Any
 
-from caramba.optimizer.runtime import metal_supported, metal_build_tools_available
+from optimizer.runtime import metal_supported, metal_build_tools_available
 
 
 def _this_dir() -> Path:

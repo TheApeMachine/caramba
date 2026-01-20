@@ -32,15 +32,15 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import Tensor, nn
 
-from caramba.console import logger
-from caramba.orchestrator.strategy import (
+from console import logger
+from orchestrator.strategy import (
     DEFAULT_PORTFOLIO,
     Strategy,
     StrategyBundle,
     StrategyState,
     create_strategy,
 )
-from caramba.orchestrator.telemetry import TelemetrySnapshot, TelemetryStream, TrainingPhase
+from orchestrator.telemetry import TelemetrySnapshot, TelemetryStream, TrainingPhase
 
 if TYPE_CHECKING:
     pass
@@ -552,11 +552,18 @@ class Orchestrator:
         eval_fn: Any,
     ) -> EvaluationResult:
         """Evaluate a candidate strategy on short horizon."""
-        # Create strategy
-        strategy = create_strategy(bundle, self.model)
+        # IMPORTANT:
+        # When evaluating the *current* strategy, reuse the existing instance instead
+        # of constructing a fresh optimizer/scheduler. On some backends (notably MPS),
+        # repeatedly constructing new optimizer objects can trigger backend compilation/
+        # graph-caching failures even though the already-running strategy is stable.
+        if bundle.name == current_strategy.name:
+            strategy = current_strategy
+        else:
+            strategy = create_strategy(bundle, self.model)
 
         # Copy optimizer state if same family (warm start)
-        if bundle.optimizer_family == current_strategy.bundle.optimizer_family:
+        if strategy is not current_strategy and bundle.optimizer_family == current_strategy.bundle.optimizer_family:
             try:
                 strategy.optimizer.load_state_dict(current_strategy.optimizer.state_dict())
             except Exception:

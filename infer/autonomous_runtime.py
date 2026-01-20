@@ -15,9 +15,9 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
-from caramba.core.event import EventEnvelope
-from caramba.core.event_bus import EventBus
-from caramba.core.homeostasis import HomeostaticLoop
+from core.event import EventEnvelope
+from core.event_bus import EventBus
+from core.homeostasis import HomeostaticLoop
 
 MetricsFn = Callable[[], Mapping[str, float]]
 ConsolidateFn = Callable[[], dict[str, float] | None]

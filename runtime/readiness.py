@@ -18,12 +18,12 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
-from caramba.config.benchmark import LatencyBenchmarkConfig, MemoryBenchmarkConfig
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
-from caramba.config.manifest import Manifest
-from caramba.config.model import ModelConfig
-from caramba.config.target import ExperimentTargetConfig
-from caramba.optimizer.runtime import (
+from config.benchmark import LatencyBenchmarkConfig, MemoryBenchmarkConfig
+from config.layer import AttentionLayerConfig, AttentionMode
+from config.manifest import Manifest
+from config.model import ModelConfig
+from config.target import ExperimentTargetConfig
+from optimizer.runtime import (
     metal_build_tools_available,
     metal_supported,
     triton_supported,

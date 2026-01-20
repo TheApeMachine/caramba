@@ -297,8 +297,8 @@ class ModelLoader:
                     break
 
         if self.model_class is None:
-            print(f"  No model class provided, returning state dict")
-            return state
+            print(f"  No model class provided, returning None (state dict not usable without model class)")
+            return None  # type: ignore[reportReturnType]  # State dict cannot be returned as Module
 
         # Instantiate model and load weights
         model = self.model_class(**self.model_config)
@@ -319,7 +319,7 @@ class ModelLoader:
         state = load_file(checkpoint.path, device=self.device)
 
         if self.model_class is None:
-            return state
+            return None  # type: ignore[reportReturnType]  # State dict cannot be returned as Module
 
         model = self.model_class(**self.model_config)
         model.load_state_dict(state, strict=False)
@@ -405,15 +405,20 @@ class EvaluableModel:
         ).to(self.device)
 
         with torch.no_grad():
+            # Type checker doesn't know that model has generate method, but HuggingFace models do
+            generate_method = getattr(self.model, 'generate', None)
+            if generate_method is None:
+                raise AttributeError("Model does not have a generate method")
+
             if temperature == 0.0:
-                outputs = self.model.generate(
+                outputs = generate_method(
                     **inputs,
                     max_new_tokens=max_new_tokens,
                     do_sample=False,
                     pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
                 )
             else:
-                outputs = self.model.generate(
+                outputs = generate_method(
                     **inputs,
                     max_new_tokens=max_new_tokens,
                     do_sample=True,
@@ -436,7 +441,7 @@ class EvaluableModel:
     ) -> dict[str, float]:
         """
         Get log probabilities for each choice.
-        
+
         Computes the conditional log probability of the full choice string
         by teacher-forcing each token and summing the per-token logprobs.
         This correctly handles multi-token answers.
@@ -450,21 +455,21 @@ class EvaluableModel:
             truncation=True,
             max_length=self.max_length,
         ).to(self.device)
-        
+
         prompt_ids = prompt_inputs['input_ids']
         prompt_len = prompt_ids.shape[1]
 
         for choice in choices:
             # Tokenize the choice (without special tokens)
             choice_ids = self.tokenizer.encode(choice, add_special_tokens=False)
-            
+
             if not choice_ids:
                 continue
-            
+
             # Create full sequence: prompt + choice tokens
             choice_tensor = torch.tensor([choice_ids], dtype=torch.long, device=self.device)
             full_ids = torch.cat([prompt_ids, choice_tensor], dim=1)
-            
+
             # Truncate if needed
             if full_ids.shape[1] > self.max_length:
                 full_ids = full_ids[:, -self.max_length:]
@@ -472,15 +477,15 @@ class EvaluableModel:
                 effective_prompt_len = max(0, prompt_len - (prompt_ids.shape[1] + len(choice_ids) - self.max_length))
             else:
                 effective_prompt_len = prompt_len
-            
+
             with torch.no_grad():
                 outputs = self.model(full_ids)
                 # outputs.logits shape: [batch, seq_len, vocab_size]
                 all_logits = outputs.logits[0]  # [seq_len, vocab_size]
-                
+
                 # Compute log probabilities for each position
                 all_log_probs = torch.log_softmax(all_logits, dim=-1)
-                
+
                 # Sum logprobs for each choice token
                 # Position i's logits predict token at position i+1
                 # So the logits at position (prompt_len - 1) predict the first choice token
@@ -490,7 +495,7 @@ class EvaluableModel:
                     pred_pos = effective_prompt_len - 1 + i
                     if pred_pos >= 0 and pred_pos < all_log_probs.shape[0]:
                         total_logprob += all_log_probs[pred_pos, token_id].item()
-                
+
                 logprobs[choice] = total_logprob
 
         return logprobs

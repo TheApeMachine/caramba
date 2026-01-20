@@ -14,9 +14,9 @@ from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from caramba.config.train import TrainConfig
-from caramba.runtime.tensordict_utils import to_device
-from caramba.trainer.diffusion_codegen.train_context import TrainingContext
+from config.train import TrainConfig
+from runtime.tensordict_utils import to_device
+from trainer.diffusion_codegen.train_context import TrainingContext
 
 
 @dataclass(frozen=True, slots=True)

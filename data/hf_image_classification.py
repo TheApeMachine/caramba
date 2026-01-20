@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 
 class _HFImageClsDataset(Dataset[TensorDictBase]):

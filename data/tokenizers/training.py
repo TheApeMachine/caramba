@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Protocol, Sequence
 
-from caramba.data.tokenizers.encoding import Encoding
+from data.tokenizers.encoding import Encoding
 
 class TrainingTokenizer(Protocol):
     """Protocol for training-grade tokenizers used in datasets/training code."""

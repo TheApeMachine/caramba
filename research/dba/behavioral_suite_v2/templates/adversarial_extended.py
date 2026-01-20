@@ -49,7 +49,7 @@ class RepetitionLoopTemplate(TestTemplate):
     category = "adversarial"
     subcategory = "repetition_loop"
 
-    def __init__(self, difficulty: Difficulty, loop_type: Literal["echo", "cascade", "self_ref", "token_bias"] = "echo"):
+    def __init__(self, difficulty: Difficulty, loop_type: str = "echo"):
         self.difficulty = difficulty
         self.loop_type = loop_type
         self.template_id = f"rep_loop_{loop_type}_{difficulty.name.lower()}"
@@ -146,7 +146,7 @@ class DreadInductionTemplate(TestTemplate):
     category = "adversarial"
     subcategory = "dread_induction"
 
-    def __init__(self, difficulty: Difficulty, variant: Literal["forced_repeat", "echo_trap", "mantra"] = "forced_repeat"):
+    def __init__(self, difficulty: Difficulty, variant: str = "forced_repeat"):
         self.difficulty = difficulty
         self.variant = variant
         self.template_id = f"dread_{variant}_{difficulty.name.lower()}"

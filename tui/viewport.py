@@ -15,7 +15,7 @@ from textual.containers import VerticalScroll
 from textual.widgets import Static
 from textual.reactive import reactive
 
-from caramba.tui.message import (
+from tui.message import (
     MessageBubble,
     MessageType,
     StreamingMessage,

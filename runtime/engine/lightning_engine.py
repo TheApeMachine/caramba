@@ -11,10 +11,10 @@ from pathlib import Path
 from datetime import datetime
 from torch.utils.data import Dataset
 
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig
-from caramba.runtime.registry import ComponentRegistry
-from caramba.console import logger
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig
+from runtime.registry import ComponentRegistry
+from console import logger
 
 class CarambaLightningModule(L.LightningModule):
     """Bridges Caramba System and Objective to Lightning."""
@@ -38,13 +38,13 @@ class CarambaLightningModule(L.LightningModule):
     def training_step(self, batch: dict[str, Any], batch_idx: int) -> torch.Tensor:
         outputs = self.forward(batch)
         loss = self.objective.loss(outputs=outputs, batch=batch)
-        
+
         self.log("train_loss", loss, prog_bar=True)
         if hasattr(self.objective, "metrics"):
             metrics = self.objective.metrics(outputs=outputs, batch=batch, loss=loss)
             if metrics:
                 self.log_dict(metrics, prog_bar=True)
-        
+
         return loss
 
     def configure_optimizers(self):
@@ -117,7 +117,7 @@ class LightningEngine:
 
             logger.info(f"Starting Lightning training for run {run.id}...")
             trainer.fit(lightning_model, train_loader)
-            
+
             results[run.id] = {
                 "system": system,
                 "trainer": trainer

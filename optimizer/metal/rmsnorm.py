@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import torch
 
-from caramba.optimizer.runtime import metal_supported
+from optimizer.runtime import metal_supported
 
 from .jit import load_caramba_metal_ops
 
@@ -61,7 +61,7 @@ class _MetalRMSNormFn(torch.autograd.Function):
             raise RuntimeError("Metal RMSNorm backward requires grad_out")
         if grad_out.device.type != "mps":
             raise RuntimeError("Metal RMSNorm backward requires grad_out on MPS")
-        
+
         saved = ctx.saved_tensors
         # Ensure grad matches input dtype
         target_dtype = saved[0].dtype

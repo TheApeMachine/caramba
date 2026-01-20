@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from falkordb import FalkorDB, Graph
 
-from caramba.codegraph.parser import Edge, Node
+from codegraph.parser import Edge, Node
 
 
 def _connect_falkordb(

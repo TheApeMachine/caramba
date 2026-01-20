@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 
 def _skip_if_no_cuda_triton() -> None:
@@ -12,7 +12,7 @@ def _skip_if_no_cuda_triton() -> None:
     if not triton_supported():
         pytest.skip("Triton is not available")
     try:
-        from caramba.optimizer.kernels_ssm import selective_scan_triton
+        from optimizer.kernels_ssm import selective_scan_triton
     except Exception as e:
         pytest.skip(f"failed to import selective_scan_triton: {e}")
     if selective_scan_triton is None:
@@ -52,7 +52,7 @@ def test_triton_ssm_scan_forward_matches_reference(dtype: torch.dtype) -> None:
     C = torch.randn(Bsz, T, D_state, device=device, dtype=dtype)
     D = torch.randn(D_inner, device=device, dtype=dtype)
 
-    from caramba.optimizer.fused_ssm import fused_selective_scan
+    from optimizer.fused_ssm import fused_selective_scan
 
     y_triton = fused_selective_scan(x, dt, A, B, C, D)
     y_ref = _reference_scan(
@@ -82,7 +82,7 @@ def test_triton_ssm_scan_backward_matches_reference(dtype: torch.dtype) -> None:
     C0 = torch.randn(Bsz, T, D_state, device=device, dtype=dtype, requires_grad=True)
     D0 = torch.randn(D_inner, device=device, dtype=dtype, requires_grad=True)
 
-    from caramba.optimizer.fused_ssm import fused_selective_scan
+    from optimizer.fused_ssm import fused_selective_scan
 
     y_m = fused_selective_scan(x0, dt0, A0, B0, C0, D0)
     loss_m = (y_m.float() ** 2).mean()

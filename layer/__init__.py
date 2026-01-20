@@ -13,8 +13,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.carmath import neg_inf
-from caramba.config.layer import LayerConfig
+from carmath import neg_inf
+from config.layer import LayerConfig
 
 
 class Layer(nn.Module):

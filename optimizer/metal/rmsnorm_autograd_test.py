@@ -15,7 +15,7 @@ class TestMetalRMSNormAutograd:
         eps = 1e-6
 
         # Metal
-        from caramba.optimizer.metal.rmsnorm import rmsnorm_fp16
+        from optimizer.metal.rmsnorm import rmsnorm_fp16
 
         y_m = rmsnorm_fp16(x=x, weight=w, eps=eps, verbose_build=False)
         loss_m = (y_m.float() ** 2).mean()

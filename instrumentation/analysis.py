@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from caramba.console import logger
+from console import logger
 
 
 def _try_import_pyplot() -> Any | None:

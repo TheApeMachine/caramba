@@ -6,7 +6,7 @@ from __future__ import annotations
 import unittest
 from typing import Any, cast
 
-from caramba.config.resolve import Resolver
+from config.resolve import Resolver
 
 
 class TestResolver(unittest.TestCase):

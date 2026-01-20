@@ -15,7 +15,7 @@ class TestMetalResonantUpdateAutograd:
 
         torch.manual_seed(0)
 
-        from caramba.optimizer.metal.resonant_update import MetalResonantPhaseUpdate
+        from optimizer.metal.resonant_update import MetalResonantPhaseUpdate
 
         upd = MetalResonantPhaseUpdate()
         scenarios: list[tuple[tuple[int, int, int], float, float, bool]] = [

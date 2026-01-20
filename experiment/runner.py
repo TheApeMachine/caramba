@@ -12,18 +12,18 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from caramba.compiler import Compiler
-from caramba.config.agents import AgentProcessConfig
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
-from caramba.console import logger
-from caramba.runtime.engine.torch_engine import TorchEngine
-from caramba.runtime.engine.lightning_engine import LightningEngine
-from caramba.runtime.engine import get_mlx_engine
-from caramba.orchestrator.compute.vast_ai import VastAIClient
-from caramba.runtime.readiness import check_target_readiness, format_readiness_report
-from caramba.ai.agent import Agent
-from caramba.ai.persona import PersonaLoader
+from compiler import Compiler
+from config.agents import AgentProcessConfig
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
+from console import logger
+from runtime.engine.torch_engine import TorchEngine
+from runtime.engine.lightning_engine import LightningEngine
+from runtime.engine import get_mlx_engine
+from orchestrator.compute.vast_ai import VastAIClient
+from runtime.readiness import check_target_readiness, format_readiness_report
+from ai.agent import Agent
+from ai.persona import PersonaLoader
 
 
 def _resolve_target(manifest: Manifest, target: str | None) -> str:
@@ -129,7 +129,7 @@ class ExperimentRunner:
             ssh_str = client.run_lifecycle(target.compute)
             if not ssh_str:
                 raise RuntimeError("Failed to provision Vast.ai instance.")
-            
+
             # In a full implementation, we would now:
             # 1. Sync the codebase to the remote instance (via ssh_str)
             # 2. Trigger the run remotely via SSH

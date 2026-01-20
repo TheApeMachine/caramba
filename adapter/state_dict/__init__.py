@@ -6,6 +6,6 @@ composing a schema (data) and policy objects (behavior).
 
 from __future__ import annotations
 
-from caramba.adapter.state_dict.transformer import AdapterStateDictTransformer
+from adapter.state_dict.transformer import AdapterStateDictTransformer
 
 __all__ = ["AdapterStateDictTransformer"]

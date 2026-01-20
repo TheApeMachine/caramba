@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from torch import Tensor
 
-from caramba.loader.checkpoint.base import Checkpoint, StateDict
-from caramba.loader.checkpoint.error import CheckpointError, CheckpointErrorType
+from loader.checkpoint.base import Checkpoint, StateDict
+from loader.checkpoint.error import CheckpointError, CheckpointErrorType
 
 if TYPE_CHECKING:
-    from caramba.loader.checkpoint.builder import CheckpointBuilder
+    from loader.checkpoint.builder import CheckpointBuilder
 
 
 class CheckpointSharded(Checkpoint):
@@ -25,7 +25,7 @@ class CheckpointSharded(Checkpoint):
     """
     def __init__(self, builder: CheckpointBuilder | None = None) -> None:
         if builder is None:
-            from caramba.loader.checkpoint.builder import CheckpointBuilder as CB
+            from loader.checkpoint.builder import CheckpointBuilder as CB
             self.builder = CB()
         else:
             self.builder = builder

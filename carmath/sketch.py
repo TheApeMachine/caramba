@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 # Optional Triton bindings (populated only when available)
 triton = None  # type: ignore[assignment]

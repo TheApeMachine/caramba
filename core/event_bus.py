@@ -13,8 +13,8 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from caramba.core.event import EventEnvelope
-from caramba.core.task_queue import TaskQueue
+from core.event import EventEnvelope
+from core.task_queue import TaskQueue
 from a2a.types import Task, TaskState, TaskStatus
 
 
@@ -92,7 +92,7 @@ class EventBus:
                 metadata={"event": event.to_json_dict()},
             )
             return await self._task_queue.push(task)
-        
+
         # Fallback to local sync queue (wrapper around sync publish)
         self.publish(event)
         return None

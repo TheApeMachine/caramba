@@ -15,7 +15,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 class _SingleGraphDataset(Dataset[TensorDictBase]):
     """Single graph dataset implementation

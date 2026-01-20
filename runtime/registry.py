@@ -11,7 +11,7 @@ import importlib
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from caramba.config.component import ComponentSpec
+from config.component import ComponentSpec
 
 
 def _import_symbol(path: str) -> object:

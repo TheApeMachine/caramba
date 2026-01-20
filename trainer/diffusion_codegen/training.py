@@ -16,18 +16,18 @@ from typing import Any
 import torch
 from torch import nn
 
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig
-from caramba.config.train import TrainConfig, TrainPhase
-from caramba.console import logger
-from caramba.diffusion.schedule import NoiseSchedule
-from caramba.trainer.diffusion_codegen.checkpoints import CheckpointManager
-from caramba.trainer.diffusion_codegen.ema import ExponentialMovingAverage
-from caramba.trainer.diffusion_codegen.optim import OptimizerFactory
-from caramba.trainer.diffusion_codegen.train_context import TrainingContext
-from caramba.trainer.diffusion_codegen.train_loader import LoaderFactory
-from caramba.trainer.diffusion_codegen.train_sampling import SamplingDuringTraining
-from caramba.trainer.diffusion_codegen.train_stepper import StepSettings, TrainStepper
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig
+from config.train import TrainConfig, TrainPhase
+from console import logger
+from diffusion.schedule import NoiseSchedule
+from trainer.diffusion_codegen.checkpoints import CheckpointManager
+from trainer.diffusion_codegen.ema import ExponentialMovingAverage
+from trainer.diffusion_codegen.optim import OptimizerFactory
+from trainer.diffusion_codegen.train_context import TrainingContext
+from trainer.diffusion_codegen.train_loader import LoaderFactory
+from trainer.diffusion_codegen.train_sampling import SamplingDuringTraining
+from trainer.diffusion_codegen.train_stepper import StepSettings, TrainStepper
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,9 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 from huggingface_hub import snapshot_download
 
-from caramba.core.platform import Platform
-from caramba.loader.checkpoint.base import Checkpoint
-from caramba.loader.checkpoint.error import CheckpointError, CheckpointErrorType
+from core.platform import Platform
+from loader.checkpoint.base import Checkpoint
+from loader.checkpoint.error import CheckpointError, CheckpointErrorType
 
 
 class HFCheckpoint(Checkpoint):

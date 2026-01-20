@@ -12,13 +12,13 @@ Benchmark types:
 """
 from __future__ import annotations
 
-from caramba.benchmark.artifacts import ArtifactGenerator
-from caramba.benchmark.accuracy.base import BenchmarkAccuracy
-from caramba.benchmark.behavioral_v2 import BenchmarkBehavioralV2
-from caramba.benchmark.latency import LatencyBenchmark
-from caramba.benchmark.memory import MemoryBenchmark
-from caramba.benchmark.perplexity import PerplexityBenchmark
-from caramba.benchmark.runner import BenchmarkRunner
+from .artifacts import ArtifactGenerator
+from .accuracy.base import BenchmarkAccuracy
+from .behavioral_v2 import BenchmarkBehavioralV2
+from .latency import LatencyBenchmark
+from .memory import MemoryBenchmark
+from .perplexity import PerplexityBenchmark
+from .runner import BenchmarkRunner
 
 __all__ = [
     "BenchmarkRunner",

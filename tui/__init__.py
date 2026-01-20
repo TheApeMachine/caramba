@@ -9,12 +9,12 @@ Usage:
     caramba tui --url http://localhost:9000 --log runs/train.jsonl
 """
 
-from caramba.tui.unified import CarambaApp, ChatView, TrainingView, BuilderView
-from caramba.tui.unified import main
-from caramba.tui.app import RootChatApp
-from caramba.tui.sidebars import AgentStatus, ExpertStatus, AgentNode, AgentDetailModal, ToolDetailModal
-from caramba.tui.training_dashboard import TrainingDashboard, TrainingMetrics
-from caramba.tui.manifest_builder import ManifestBuilder, ManifestConfig, LayerConfig
+from tui.unified import CarambaApp, ChatView, TrainingView, BuilderView
+from tui.unified import main
+from tui.app import RootChatApp
+from tui.sidebars import AgentStatus, ExpertStatus, AgentNode, AgentDetailModal, ToolDetailModal
+from tui.training_dashboard import TrainingDashboard, TrainingMetrics
+from tui.manifest_builder import ManifestBuilder, ManifestConfig, LayerConfig
 
 __all__ = [
     # Unified TUI (primary entrypoint)

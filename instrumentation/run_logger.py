@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from caramba.instrumentation.hdf5_store import H5Store
-from caramba.instrumentation.utils import coerce_jsonable, dumps_json, now_s
+from instrumentation.hdf5_store import H5Store
+from instrumentation.utils import coerce_jsonable, dumps_json, now_s
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +66,7 @@ class RunLogger:
             self.out_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             # If we can't create dirs, disable logging but don't crash.
-            from caramba.console import logger as console_logger
+            from console import logger as console_logger
             console_logger.warning(f"RunLogger: Failed to create out_dir {self.out_dir}: {e}")
             self.enabled = False
             return
@@ -78,7 +78,7 @@ class RunLogger:
             # handles cleanup, and __exit__ ensures cleanup on context manager usage.
             self._fh = open(self.path, "a", encoding="utf-8", buffering=1)
         except Exception as e:
-            from caramba.console import logger as console_logger
+            from console import logger as console_logger
             console_logger.warning(f"RunLogger: Failed to open {self.path}: {e}")
             self.enabled = False
             self._fh = None
@@ -90,7 +90,7 @@ class RunLogger:
             self._fh.write(line + "\n")
         except Exception as e:
             # Disable after failure to avoid repeated exceptions.
-            from caramba.console import logger as console_logger
+            from console import logger as console_logger
             console_logger.warning(f"RunLogger: Write failed, disabling: {e}")
             self.enabled = False
             try:
@@ -150,12 +150,12 @@ class RunLogger:
         try:
             self._fh.flush()
         except Exception as e:
-            from caramba.console import logger as console_logger
+            from console import logger as console_logger
             console_logger.warning(f"RunLogger: Flush failed: {e}")
         try:
             self._fh.close()
         except Exception as e:
-            from caramba.console import logger as console_logger
+            from console import logger as console_logger
             console_logger.warning(f"RunLogger: Close failed: {e}")
         self._fh = None
         self.h5.close()

@@ -23,8 +23,22 @@ targets:
   data:
     ref: dataset.tokens
     config:
-      path: fineweb_100m.npy
+      path: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_100m.npy
       block_size: ${block_size}
+      prepare:
+        type: fineweb
+        # Token budget to (re)generate when missing or mismatched.
+        tokens: 100M
+        tokenizer: llama
+        model_id: meta-llama/Llama-3.2-1B
+        dataset: HuggingFaceFW/fineweb
+        subset: null
+        split: train
+        text_field: text
+        max_chars: 50000
+        append_eos: true
+        append_bos: false
+        rebuild_on_failure: true
   system:
     ref: system.language_model
     config:
@@ -94,6 +108,8 @@ targets:
       # Enable fp16 weights on MPS so Metal kernels can be used.
       dtype: auto
       teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+      # Explicit for clarity (DefaultInitializer would default to svd).
+      dba_init: svd
       gradient_accumulation_steps: 16
       orchestrator_enabled: true
       orchestrator_max_loss_increase: 2.0
@@ -125,6 +141,7 @@ targets:
       lr: ${global_lr}
       device: mps
       dtype: auto
+      dba_init: svd
       gradient_accumulation_steps: 16
       orchestrator_enabled: true
       orchestrator_max_loss_increase: 2.0
@@ -143,6 +160,57 @@ targets:
     models:
     - teacher
     - student
+    repeats: 1
+
+  - id: behavior_sanity
+    config:
+      type: behavior
+      tokenizer:
+        type: llama
+        model_id: meta-llama/Llama-3.2-1B
+      cases_file: research/dba/behavior_cases.yml
+      max_new_tokens: 32
+      context_window: 2048
+      stream_live: true
+      stream_every: 1
+      # Paper-style attention dumps (same mechanism as checkpoint benchmarks).
+      dump_attention: true
+      dump_attention_max_tokens: 96
+      dump_attention_max_heads: 4
+      dump_attention_anchor: ""
+      dump_attention_paper_dir: research/dba/figs/attention
+      dump_attention_paper_tag: llama32_aggressive_gated
+    models: [teacher, student]
+    repeats: 1
+
+  - id: behavioral_v2
+    config:
+      type: behavioral_v2
+      tokenizer:
+        type: llama
+        model_id: meta-llama/Llama-3.2-1B
+      seed: 42
+      tests_per_category: 30
+      max_new_tokens: 32
+      context_window: 2048
+      stream_live: true
+      stream_every: 10
+      log_file: multi_behavioral_v2_log.txt
+    models: [teacher, student]
+    repeats: 1
+
+  - id: downstream_accuracy
+    config:
+      type: accuracy
+      tasks: [winogrande, arc_easy, boolq, hellaswag]
+      tokenizer:
+        type: llama
+        model_id: meta-llama/Llama-3.2-1B
+      context_window: 2048
+      stream_live: true
+      stream_every: 10
+      log_file: accuracy_log.txt
+    models: [teacher, student]
     repeats: 1
   - id: latency
     config:
@@ -185,6 +253,21 @@ targets:
     models:
     - teacher
     - student
+    repeats: 1
+
+  - id: context_sweep
+    config:
+      type: context
+      dataset: fineweb_100m.npy
+      context_lengths: [2048, 4096, 8192, 16384, 32768, 65536]
+      chunk_size: 1024
+      # Conservative cap on attention mask materialization during chunked prefill.
+      max_mask_elems: 32000000
+      batch_size: 1
+      decode_len: 128
+      decode_warmup: 8
+      cache_kind: fp16
+    models: [teacher, student]
     repeats: 1
 - type: process
   name: code_graph_sync

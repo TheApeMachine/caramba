@@ -17,7 +17,7 @@ from torch import Tensor, nn
 
 from pathlib import Path
 
-from caramba.data.tokenizers.hf_json import HfJsonTokenizer
+from data.tokenizers.hf_json import HfJsonTokenizer
 
 
 class TimestepEmbedding(nn.Module):

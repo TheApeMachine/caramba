@@ -17,17 +17,23 @@ from typing import Any
 import torch
 from torch import nn
 
-from caramba.config.benchmark import BehavioralV2BenchmarkConfig
-from caramba.console import logger
-from caramba.data.tokenizers.builder import TokenizerBuilder
+from config.benchmark import BehavioralV2BenchmarkConfig
+from console import logger
+from data.tokenizers.builder import TokenizerBuilder
+
+# Logprob scoring for choice_logprob tests (more reliable for base LMs).
+from eval.logprob.completion.full_sequence import LogprobCompletionFullSequence
+from eval.logprob.completion.windowed import LogprobCompletionWindowed
 
 # Import the v2 behavioral suite
 from research.dba.behavioral_suite_v2 import generate_suite, GeneratedSuite
+
 from research.dba.behavioral_suite_v2.scoring import (
     BehavioralScorer,
     MatchQuality,
     classify_match,
 )
+
 from research.dba.behavioral_suite_v2.weighted_scoring import (
     WeightedScorer,
     WeightedModelSummary,
@@ -36,9 +42,12 @@ from research.dba.behavioral_suite_v2.weighted_scoring import (
     MATCH_SCORES,
     DIFFICULTY_WEIGHTS,
 )
+
 from research.dba.behavioral_suite_v2.weighted_visualizer import (
     generate_all_weighted_visualizations,
 )
+
+from benchmark.stats import mcnemar_exact_pvalue, paired_bootstrap_delta_ci, wilson_ci
 
 
 @dataclass
@@ -188,8 +197,8 @@ class BenchmarkBehavioralV2:
         # Generate test suite
         logger.info(f"Generating test suite (seed={self.config.seed})...")
         suite = generate_suite(
-            seed=self.config.seed,
-            tests_per_category=self.config.tests_per_category,
+            seed=int(self.config.seed),
+            tests_per_category=int(self.config.tests_per_category),
             category_counts=self.config.category_counts,
         )
 
@@ -206,30 +215,96 @@ class BenchmarkBehavioralV2:
 
         # Register all tests
         for test in tests:
-            scorer.add_test(test.id, expected=test.expected, prompt=test.prompt)
+            scorer.add_test(test.id, expected=str(test.expected), prompt=test.prompt)
+
+        # Track continuous scoring where available (e.g. logprob margin for choice tasks).
+        choice_margins: dict[str, dict[str, float]] = {}  # {test_id: {model_id: margin}}
 
         # Run inference on both models
         count = 0
         for test in tests:
             count += 1
-            if self.config.stream_live and count % self.config.stream_every == 0:
+            if self.config.stream_live and count % int(self.config.stream_every) == 0:
                 logger.info(f"  [{count}/{len(tests)}] {test.id}")
 
             # Tokenize prompt
             prompt_tokens = self.tokenizer.encode(test.prompt)
 
-            # Get teacher output
-            teacher_output = self._generate(teacher, prompt_tokens)
+            # Get teacher output (respect test kind)
+            teacher_output, t_margin = self._run_test(teacher, test, prompt_tokens)
             scorer.add_output(test.id, "teacher", teacher_output)
+            if t_margin is not None:
+                choice_margins.setdefault(str(test.id), {})["teacher"] = float(t_margin)
 
             # Get student output
-            student_output = self._generate(student, prompt_tokens)
+            student_output, s_margin = self._run_test(student, test, prompt_tokens)
             scorer.add_output(test.id, "student", student_output)
+            if s_margin is not None:
+                choice_margins.setdefault(str(test.id), {})["student"] = float(s_margin)
 
         # Get summaries
         teacher_summary = scorer.get_model_summary("teacher")
         student_summary = scorer.get_model_summary("student")
         comparison = scorer.compare_models("teacher", "student")
+
+        # Add confidence intervals / significance so small deltas are interpretable.
+        n = int(comparison.get("total_tests", 0) or 0)
+        t_exact = int(teacher_summary.get("exact_match_count", 0) or 0)
+        s_exact = int(student_summary.get("exact_match_count", 0) or 0)
+        t_ci = wilson_ci(t_exact, n) if n > 0 else wilson_ci(0, 0)
+        s_ci = wilson_ci(s_exact, n) if n > 0 else wilson_ci(0, 0)
+
+        # Paired correctness vectors for EXACT.
+        a_ok: list[float] = []
+        b_ok: list[float] = []
+        b_cnt = 0  # teacher ok, student no
+        c_cnt = 0  # teacher no, student ok
+        for tid, tcase in scorer.tests.items():
+            tr = tcase.results.get("teacher")
+            sr = tcase.results.get("student")
+            if tr is None or sr is None:
+                continue
+            ta = 1.0 if tr.quality == MatchQuality.EXACT else 0.0
+            sa = 1.0 if sr.quality == MatchQuality.EXACT else 0.0
+            a_ok.append(sa)
+            b_ok.append(ta)
+            if ta == 1.0 and sa == 0.0:
+                b_cnt += 1
+            if ta == 0.0 and sa == 1.0:
+                c_cnt += 1
+
+        delta_ci = paired_bootstrap_delta_ci(a_ok, b_ok) if a_ok else paired_bootstrap_delta_ci([], [])
+        mcnemar_p = mcnemar_exact_pvalue(b_cnt, c_cnt)
+
+        # Choice-logprob margin comparison (student - teacher).
+        margin_pairs: list[tuple[float, float]] = []
+        for _tid, mm in choice_margins.items():
+            if "teacher" in mm and "student" in mm:
+                margin_pairs.append((float(mm["student"]), float(mm["teacher"])))
+        margin_stats: dict[str, Any] | None = None
+        if margin_pairs:
+            ms = [x for (x, _y) in margin_pairs]
+            mt = [y for (_x, y) in margin_pairs]
+            mci = paired_bootstrap_delta_ci(ms, mt)
+            margin_stats = {
+                "n": len(margin_pairs),
+                "student_minus_teacher_mean": float(mci.delta),
+                "student_minus_teacher_ci95": [float(mci.low), float(mci.high)],
+            }
+
+        comparison = dict(comparison)
+        comparison["exact_ci95"] = {
+            "teacher": [float(t_ci.low), float(t_ci.high)],
+            "student": [float(s_ci.low), float(s_ci.high)],
+        }
+        comparison["exact_student_minus_teacher"] = {
+            "delta": float(delta_ci.delta),
+            "ci95": [float(delta_ci.low), float(delta_ci.high)],
+            "mcnemar_p": float(mcnemar_p),
+            "discordant": {"teacher_yes_student_no": int(b_cnt), "teacher_no_student_yes": int(c_cnt)},
+        }
+        if margin_stats is not None:
+            comparison["choice_logprob_margin"] = margin_stats
 
         # Log key metrics
         logger.metric("teacher_exact", teacher_summary["exact_match_rate"] * 100, "%")
@@ -288,8 +363,8 @@ class BenchmarkBehavioralV2:
         # Generate test suite
         logger.info(f"Generating test suite (seed={self.config.seed})...")
         suite = generate_suite(
-            seed=self.config.seed,
-            tests_per_category=self.config.tests_per_category,
+            seed=int(self.config.seed),
+            tests_per_category=int(self.config.tests_per_category),
             category_counts=self.config.category_counts,
         )
 
@@ -306,13 +381,15 @@ class BenchmarkBehavioralV2:
 
         # Register all tests
         for test in tests:
-            scorer.add_test(test.id, expected=test.expected, prompt=test.prompt)
+            scorer.add_test(test.id, expected=str(test.expected), prompt=test.prompt)
+
+        choice_margins: dict[str, dict[str, float]] = {}
 
         # Run inference on all models
         count = 0
         for test in tests:
             count += 1
-            if self.config.stream_live and count % self.config.stream_every == 0:
+            if self.config.stream_live and count % int(self.config.stream_every) == 0:
                 logger.info(f"  [{count}/{len(tests)}] {test.id}")
 
             # Tokenize prompt
@@ -320,8 +397,10 @@ class BenchmarkBehavioralV2:
 
             # Get output from each model
             for model_name, model in models.items():
-                output = self._generate(model, prompt_tokens)
+                output, margin = self._run_test(model, test, prompt_tokens)
                 scorer.add_output(test.id, model_name, output)
+                if margin is not None:
+                    choice_margins.setdefault(str(test.id), {})[str(model_name)] = float(margin)
 
         # Get per-model summaries
         model_summaries: dict[str, dict[str, Any]] = {}
@@ -344,19 +423,50 @@ class BenchmarkBehavioralV2:
         for i, model_a in enumerate(model_names):
             for model_b in model_names[i + 1:]:
                 comparison = scorer.compare_models(model_a, model_b)
-                pairwise_comparisons.append({
-                    "model_a": model_a,
-                    "model_b": model_b,
-                    **comparison,
-                })
+                # Add paired exact delta CI + McNemar for interpretability.
+                a_ok: list[float] = []
+                b_ok: list[float] = []
+                b_cnt = 0
+                c_cnt = 0
+                for _tid, tcase in scorer.tests.items():
+                    ra = tcase.results.get(model_a)
+                    rb = tcase.results.get(model_b)
+                    if ra is None or rb is None:
+                        continue
+                    xa = 1.0 if ra.quality == MatchQuality.EXACT else 0.0
+                    xb = 1.0 if rb.quality == MatchQuality.EXACT else 0.0
+                    a_ok.append(xa)
+                    b_ok.append(xb)
+                    if xb == 1.0 and xa == 0.0:
+                        b_cnt += 1
+                    if xb == 0.0 and xa == 1.0:
+                        c_cnt += 1
+                dci = paired_bootstrap_delta_ci(a_ok, b_ok) if a_ok else paired_bootstrap_delta_ci([], [])
+                mp = mcnemar_exact_pvalue(b_cnt, c_cnt)
+                pairwise_comparisons.append(
+                    {
+                        "model_a": model_a,
+                        "model_b": model_b,
+                        **comparison,
+                        "exact_model_a_minus_model_b": {
+                            "delta": float(dci.delta),
+                            "ci95": [float(dci.low), float(dci.high)],
+                            "mcnemar_p": float(mp),
+                            "discordant": {
+                                "model_b_yes_model_a_no": int(b_cnt),
+                                "model_b_no_model_a_yes": int(c_cnt),
+                            },
+                        },
+                    }
+                )
 
         # Compute weighted scores (hard/soft with difficulty weighting)
-        weighted_scorer = WeightedScorer(baseline_name=baseline_name)
+        weighted_scorer = WeightedScorer(baseline_name=baseline_name or "")
         weighted_summaries: dict[str, WeightedModelSummary] = {}
 
         # Register all tests with the weighted scorer
         for test in tests:
-            weighted_scorer.add_test(test.id, expected=test.expected, category=test.category)
+            weighted_scorer.add_test(test.id, expected=str(test.expected), category=test.category)
 
         # Add outputs from the existing scorer
         for test_id, test_result in scorer.tests.items():
@@ -405,33 +515,161 @@ class BenchmarkBehavioralV2:
         return result
 
     def _generate(self, model: nn.Module, prompt_tokens: list[int]) -> str:
-        """Generate output from a model given prompt tokens."""
-        # Convert to tensor
+        """Generate output from a model given prompt tokens.
+
+        OPTIMIZED: Uses KV-cache when available for O(1) decode steps instead
+        of O(n) full-context forward passes.
+        """
+        # Try to use Generator with KV-cache for faster generation
+        try:
+            return self._generate_with_cache(model, prompt_tokens)
+        except Exception:
+            # Fallback to simple generation if cache doesn't work
+            return self._generate_simple(model, prompt_tokens)
+
+    def _tokenizer_vocab_size(self) -> int | None:
+        # TokenizerBuilder outputs wrappers; tiktoken wrapper stores _enc.n_vocab.
+        for attr in ("n_vocab", "vocab_size"):
+            if hasattr(self.tokenizer, attr):
+                try:
+                    return int(getattr(self.tokenizer, attr))
+                except Exception:
+                    pass
+        if hasattr(self.tokenizer, "_enc"):
+            try:
+                return int(getattr(getattr(self.tokenizer, "_enc"), "n_vocab"))
+            except Exception:
+                return None
+        return None
+
+    def _choice_pick_and_margin(
+        self, *, model: nn.Module, prompt_ids: list[int], choices: list[str], expected: str
+    ) -> tuple[str, float | None]:
+        """Pick best choice by logprob and compute margin (correct - best_other)."""
+        tok = self.tokenizer
+        if not choices:
+            return "", None
+        vv = self._tokenizer_vocab_size()
+        ctxw = int(self.config.context_window) if self.config.context_window is not None else None
+        completion = (
+            LogprobCompletionWindowed(
+                model=model, device=self.device, context_window=int(ctxw), valid_vocab_size=vv
+            )
+            if ctxw is not None
+            else LogprobCompletionFullSequence(model=model, device=self.device, valid_vocab_size=vv)
+        )
+        choice_ids = [tok.encode(str(c)) for c in choices]
+        scores = completion.score_batch(prompt_ids=prompt_ids, completions_ids=choice_ids)
+        scored = list(zip([str(c) for c in choices], [float(s) for s in scores]))
+        scored.sort(key=lambda t: t[1], reverse=True)
+        picked = scored[0][0]
+        # Margin: logp(correct) - max(logp(other))
+        correct_lp = None
+        best_other = None
+        for c, lp in scored:
+            if c == str(expected):
+                correct_lp = float(lp)
+            else:
+                best_other = float(lp) if best_other is None else max(best_other, float(lp))
+        if correct_lp is None or best_other is None:
+            return picked, None
+        return picked, float(correct_lp - best_other)
+
+    def _run_test(
+        self,
+        model: nn.Module,
+        test: Any,
+        prompt_tokens: list[int],
+    ) -> tuple[str, float | None]:
+        """Run a single v2 test, respecting its eval kind.
+
+        Returns (output_text, optional_margin). The optional margin is used for
+        choice_logprob cases (correct-vs-best-other logprob).
+        """
+        kind = getattr(test, "kind", None)
+        kind_s = str(getattr(kind, "value", kind))
+        expected = test.expected
+
+        if kind_s == "choice_logprob":
+            choices = list(getattr(test, "choices", []) or [])
+            picked, margin = self._choice_pick_and_margin(
+                model=model,
+                prompt_ids=prompt_tokens,
+                choices=choices,
+                expected=str(expected),
+            )
+            return str(picked), margin
+
+        # For generation-like tasks, we still use greedy generation (the scoring
+        # logic is robust to extra tokens via answer-span extraction).
+        out = self._generate(model, prompt_tokens)
+        return str(out), None
+
+    def _generate_with_cache(self, model: nn.Module, prompt_tokens: list[int]) -> str:
+        """Generate using KV-cache for faster decoding."""
+        from infer.generate import Generator, GenerateConfig, sample_next_token
+
         input_ids = torch.tensor([prompt_tokens], device=self.device)
 
-        # Generate
+        gen_config = GenerateConfig(
+            max_new_tokens=int(self.config.max_new_tokens),
+            temperature=0.0,  # Greedy
+            max_seq_len=(int(self.config.context_window) if self.config.context_window else 2048),
+        )
+
+        generator = Generator(model, config=gen_config, device=self.device)
+        generated_tokens = []
+        vv = self._tokenizer_vocab_size()
+
         with torch.no_grad():
-            # Simple greedy generation
-            for _ in range(self.config.max_new_tokens):
+            # Prefill: process entire prompt at once
+            logits = generator.prefill(input_ids)
+
+            # Decode: each step is O(1) with KV-cache
+            for _ in range(int(self.config.max_new_tokens)):
+                if vv is not None and int(getattr(logits, "shape", [0])[-1]) > int(vv):
+                    logits = logits[..., : int(vv)]
+                next_token = sample_next_token(logits, temperature=0.0)
+
+                # Check for EOS
+                if next_token.item() == 0:
+                    break
+
+                generated_tokens.append(next_token.item())
+                logits = generator.decode_step(next_token)
+
+                # Context limit check
+                if self.config.context_window and (len(prompt_tokens) + len(generated_tokens)) > self.config.context_window:
+                    break
+
+        return self.tokenizer.decode(generated_tokens)
+
+    def _generate_simple(self, model: nn.Module, prompt_tokens: list[int]) -> str:
+        """Simple generation without KV-cache (fallback)."""
+        input_ids = torch.tensor([prompt_tokens], device=self.device)
+        vv = self._tokenizer_vocab_size()
+
+        with torch.no_grad():
+            for _ in range(int(self.config.max_new_tokens)):
                 logits = model(input_ids)
                 if isinstance(logits, tuple):
                     logits = logits[0]
+                elif hasattr(logits, "logits"):
+                    logits = logits.logits
 
-                # Get last token logits
                 next_logits = logits[:, -1, :]
+                if vv is not None and int(next_logits.shape[-1]) > int(vv):
+                    next_logits = next_logits[..., : int(vv)]
                 next_token = next_logits.argmax(dim=-1, keepdim=True)
 
-                # Check for EOS (assume token 0 or handle gracefully)
                 if next_token.item() == 0:
                     break
 
                 input_ids = torch.cat([input_ids, next_token], dim=-1)
 
-                # Apply context window limit if specified
                 if self.config.context_window and input_ids.shape[1] > self.config.context_window:
                     break
 
-        # Decode only the generated part
         generated_ids = input_ids[0, len(prompt_tokens):].tolist()
         return self.tokenizer.decode(generated_ids)
 
@@ -472,14 +710,14 @@ class BenchmarkBehavioralV2:
         student: nn.Module,
     ) -> dict[str, Any]:
         """Run downstream HF tasks (winogrande, arc_easy, etc.)."""
-        from caramba.config.benchmark import AccuracyBenchmarkConfig
-        from caramba.benchmark.accuracy import BenchmarkAccuracy
+        from config.benchmark import AccuracyBenchmarkConfig
+        from benchmark.accuracy import BenchmarkAccuracy
 
         results = {}
 
         # Create accuracy config for downstream tasks
         acc_config = AccuracyBenchmarkConfig(
-            tasks=self.config.downstream_tasks,
+            tasks=self.config.downstream_tasks or [],
             tokenizer=self.config.tokenizer,
             limit=self.config.downstream_limit,
             context_window=self.config.context_window,
@@ -513,14 +751,14 @@ class BenchmarkBehavioralV2:
         models: dict[str, nn.Module],
     ) -> dict[str, dict[str, Any]]:
         """Run downstream HF tasks on N models."""
-        from caramba.config.benchmark import AccuracyBenchmarkConfig
-        from caramba.benchmark.accuracy import BenchmarkAccuracy
+        from config.benchmark import AccuracyBenchmarkConfig
+        from benchmark.accuracy import BenchmarkAccuracy
 
         results: dict[str, dict[str, Any]] = {}
 
         # Create accuracy config for downstream tasks
         acc_config = AccuracyBenchmarkConfig(
-            tasks=self.config.downstream_tasks,
+            tasks=self.config.downstream_tasks or [],
             tokenizer=self.config.tokenizer,
             limit=self.config.downstream_limit,
             context_window=self.config.context_window,

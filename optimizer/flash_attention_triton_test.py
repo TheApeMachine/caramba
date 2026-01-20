@@ -6,7 +6,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 
 def _skip_if_no_cuda_triton() -> None:
@@ -30,7 +30,7 @@ def test_triton_flash_attention_forward_matches_sdpa(dtype: torch.dtype, causal:
     k = torch.randn((B, H, T, D), device=device, dtype=dtype).contiguous()
     v = torch.randn((B, H, T, D), device=device, dtype=dtype).contiguous()
 
-    from caramba.optimizer.flash_attention_triton import FlashAttention
+    from optimizer.flash_attention_triton import FlashAttention
 
     y = FlashAttention().run(q=q, k=k, v=v, causal=causal, scale=scale, dropout_p=0.0)
     y_ref = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=bool(causal), scale=scale)
@@ -51,7 +51,7 @@ def test_triton_flash_attention_backward_matches_sdpa(dtype: torch.dtype, causal
     k0 = torch.randn((B, H, T, D), device=device, dtype=dtype, requires_grad=True).contiguous()
     v0 = torch.randn((B, H, T, D), device=device, dtype=dtype, requires_grad=True).contiguous()
 
-    from caramba.optimizer.flash_attention_triton import FlashAttention
+    from optimizer.flash_attention_triton import FlashAttention
 
     y = FlashAttention().run(q=q0, k=k0, v=v0, causal=causal, scale=scale, dropout_p=0.0)
     loss = (y.float() ** 2).mean()
@@ -91,7 +91,7 @@ def test_triton_flash_attention_dropout_is_deterministic_given_seed() -> None:
     k = torch.randn((B, H, T, D), device=device, dtype=dtype, requires_grad=True).contiguous()
     v = torch.randn((B, H, T, D), device=device, dtype=dtype, requires_grad=True).contiguous()
 
-    from caramba.optimizer.flash_attention_triton import FlashAttention
+    from optimizer.flash_attention_triton import FlashAttention
 
     seed = 12345
     y0 = FlashAttention().run(q=q, k=k, v=v, causal=True, scale=scale, dropout_p=dropout_p, seed=seed)

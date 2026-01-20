@@ -15,8 +15,8 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.optimizer.metal.resonant_update import MetalResonantPhaseUpdate
-from caramba.optimizer.resonant_update_triton import ResonantPhaseUpdateTriton
+from optimizer.metal.resonant_update import MetalResonantPhaseUpdate
+from optimizer.resonant_update_triton import ResonantPhaseUpdateTriton
 
 _logger = logging.getLogger(__name__)
 
@@ -280,11 +280,11 @@ class ResonantRouter(nn.Module):
         steps = base_steps
         coupling = self.coupling
         damping = self.damping
-        
+
         if self.tuner_mode != "off":
-            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+            from layer.memory_block.memory.tuner import get_shared_tuner
             tuner = get_shared_tuner(mode=self.tuner_mode)
-            
+
             # Apply scaling factors from tuner (tuner.resonant_coupling_mult etc.)
             coupling = coupling * getattr(tuner, "resonant_coupling_mult", 1.0)
             damping = damping * getattr(tuner, "resonant_damping_mult", 1.0)
@@ -312,11 +312,11 @@ class ResonantRouter(nn.Module):
 
         # 4. Iterative Dynamics (Settling) using Real-Valued Components
         scale = coupling / float(self.buckets)
-        
+
         # For Telemetry: track energy and convergence
         # Avoid Python overhead unless aux is requested.
         energy_history: list[float] = []
-        
+
         # Helper views for batched matmul: (H,D,K) etc.
         At_h = At  # (H,D,K)
         Bt_h = Bt
@@ -420,11 +420,11 @@ class ResonantRouter(nn.Module):
         if collect_aux:
             aux["read_resonant_logits"] = logits
             aux["write_resonant_logits"] = logits
-            
+
             # Telemetry: final max similarity
             max_sim = logits.max(dim=-1)[0].mean().item()
             aux["resonant_final_sim"] = torch.tensor(max_sim, device=device)
-            
+
             # Telemetry: Entropy of routing (how diversified are the buckets?)
             if B * T > 1:
                 flat_idx = idx_r.view(-1)

@@ -10,8 +10,8 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from caramba.carmath.sketch import stable_int_hash
-from caramba.initializers.dba.base import DBAInitializer
+from carmath.sketch import stable_int_hash
+from initializers.dba.base import DBAInitializer
 
 
 class DBARandom(DBAInitializer):

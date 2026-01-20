@@ -12,7 +12,7 @@ from typing import cast
 import torch
 from torch import Tensor, nn
 
-from caramba.config.layer import AttentionLayerConfig
+from config.layer import AttentionLayerConfig
 
 
 class DecoupledMemorySummarizer:

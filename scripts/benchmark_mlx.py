@@ -21,8 +21,8 @@ except ImportError:
     sys.exit(1)
 
 # Local imports
-from caramba.layer.mlx.transformer import DBATransformer
-from caramba.scripts.infer_mlx import load_model, load_tokenizer
+from layer.mlx.transformer import DBATransformer
+from scripts.infer_mlx import load_model, load_tokenizer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

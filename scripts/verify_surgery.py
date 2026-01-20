@@ -15,7 +15,7 @@ from mlx.utils import tree_flatten
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from caramba.layer.mlx.standard_attention import TeacherModel
+from layer.mlx.standard_attention import TeacherModel
 
 
 def main():

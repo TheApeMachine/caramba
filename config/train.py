@@ -12,7 +12,7 @@ import enum
 from typing import Literal
 from pydantic import BaseModel
 
-from caramba.config import (
+from config import (
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
@@ -32,6 +32,40 @@ class TrainPhase(str, enum.Enum):
     BLOCKWISE = "blockwise"
     GLOBAL = "global"
     STANDARD = "standard"
+
+
+class UAAConfig(BaseModel):
+    """Utility-Aligned Attention (UAA) training configuration."""
+
+    enabled: bool = False
+
+    # Loss weight for attention alignment (added to LM loss).
+    lambda_att: NonNegativeFloat = 0.05
+
+    # Utility distribution smoothing to avoid zeros/log(0).
+    epsilon: PositiveFloat = 1e-3
+
+    # How often (in optimizer steps) to compute utilities + alignment.
+    # Setting > 1 reduces overhead (teacher passes) but makes the signal sparser.
+    every_steps: PositiveInt = 1
+
+    # Teacher source:
+    # - "init": teacher is a frozen copy of the student at step 0
+    # - "ckpt": teacher is loaded from `train.teacher_ckpt` (must be set)
+    teacher: Literal["init", "ckpt"] = "init"
+
+    # Which query token to align attention for.
+    # Current implementation supports aligning the last position in the block.
+    query_position: Literal["last"] = "last"
+
+    # Which attention layers/heads to align.
+    # Layer indices refer to the trainer-assigned `_viz_index` order over AttentionLayer modules.
+    layers: list[NonNegativeInt] = []
+    heads: list[NonNegativeInt] = []
+
+    # Counterfactual method for utility estimation (teacher-side).
+    # Current implementation supports zeroing the input embedding at the sampled token index.
+    counterfactual: Literal["embed_zero"] = "embed_zero"
 
 
 class TrainConfig(BaseModel):
@@ -66,6 +100,15 @@ class TrainConfig(BaseModel):
     teacher_ckpt: str | None = None
     teacher_rope_base: PositiveFloat | None = None
     teacher_rope_dim: PositiveInt | None = None
+
+    # -----------------------------
+    # Utility-Aligned Attention (UAA) (optional; research)
+    # -----------------------------
+    # When enabled, the trainer adds an auxiliary loss that aligns selected attention
+    # heads to a counterfactual token-utility distribution computed by a frozen teacher.
+    #
+    # Manifests should configure this under `train.uaa`.
+    uaa: UAAConfig | None = None
 
     # Upcycle initialization knobs (student only).
     # - "svd": initialize DBA Q/K projections via (randomized) SVD of teacher Q/K.
@@ -140,6 +183,21 @@ class TrainConfig(BaseModel):
     use_amp: bool = False
     amp_dtype: str = "float16"
     gradient_accumulation_steps: PositiveInt = 1
+    # MPS stability vs speed:
+    # - If true, force student weights to fp32 on MPS (much slower, but stable).
+    # - If false (default), keep weights as configured (typically fp16 via dtype=auto).
+    mps_force_fp32_weights: bool = False
+    # MPS speed knob for huge-vocab CE:
+    # If true, avoid materializing fp32 logits just to compute cross-entropy.
+    # This is significantly faster (and lower-memory) for large vocabularies.
+    # If you see NaNs/instability, set this back to false.
+    mps_fast_ce: bool = False
+
+    # MPS AMP behavior:
+    # By default we disable fp16 autocast on MPS when no GradScaler is available
+    # (to avoid fp16 overflow/NaNs). Set this to true to keep fp16 autocast enabled
+    # for speed anyway.
+    mps_allow_fp16_autocast_without_gradscaler: bool = False
     # Gradient clipping (L2 norm). 0 disables.
     #
     # Relationship to `blockwise_grad_clip_norm`:

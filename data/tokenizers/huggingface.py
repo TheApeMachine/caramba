@@ -7,7 +7,7 @@ from __future__ import annotations
 from transformers import AutoTokenizer
 from typing import Sequence
 
-from caramba.data.tokenizers.base import Tokenizer
+from data.tokenizers.base import Tokenizer
 
 
 class HuggingfaceTokenizer(Tokenizer):

@@ -302,7 +302,7 @@ class TeacherModel(nn.Module):
         x = self.embed_tokens(input_ids)
 
         new_cache = []
-        all_attn_weights = [] if return_attention else None
+        all_attn_weights: list[mx.array] | None = [] if return_attention else None
 
         for i, layer in enumerate(self.layers):
             layer_cache = cache[i] if cache is not None else None
@@ -312,6 +312,8 @@ class TeacherModel(nn.Module):
             if cache is not None:
                 new_cache.append(updated_cache)
             if return_attention:
+                assert all_attn_weights is not None  # Type narrowing
+                assert attn_weights is not None  # Should be non-None when return_weights=True
                 all_attn_weights.append(attn_weights)
 
         x = self.norm(x)

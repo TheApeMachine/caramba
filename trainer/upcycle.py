@@ -22,38 +22,38 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
 
-from caramba.carmath import autocast_dtype_str, weight_dtype, weight_dtype_str, token_budget_batch_size, safe_perplexity_from_nll
-from caramba.config.defaults import Defaults
-from caramba.config.group import Group
-from caramba.config.manifest import Manifest
-from caramba.config.model import ModelConfig
-from caramba.config.run import Run
-from caramba.config.target import ExperimentTargetConfig
-from caramba.config.train import TrainConfig, TrainPhase
-from caramba.config.collector import DefaultCollectorConfig
-from caramba.config.checkpointer import DefaultCheckPointerConfig
-from caramba.config.initializer import DefaultInitializerConfig
-from caramba.config.verifier import DefaultVerifierConfig
-from caramba.config.stepper import DefaultStepperConfig
-from caramba.console import logger
-from caramba.instrumentation import Instrumentation, generate_analysis_png
-from caramba.config.instrumentation import (
+from carmath import autocast_dtype_str, weight_dtype, weight_dtype_str, token_budget_batch_size, safe_perplexity_from_nll
+from config.defaults import Defaults
+from config.group import Group
+from config.manifest import Manifest
+from config.model import ModelConfig
+from config.run import Run
+from config.target import ExperimentTargetConfig
+from config.train import TrainConfig, TrainPhase
+from config.collector import DefaultCollectorConfig
+from config.checkpointer import DefaultCheckPointerConfig
+from config.initializer import DefaultInitializerConfig
+from config.verifier import DefaultVerifierConfig
+from config.stepper import DefaultStepperConfig
+from console import logger
+from instrumentation import Instrumentation, generate_analysis_png
+from config.instrumentation import (
     InstrumentationConfig,
     TensorBoardConfig,
     WandBConfig,
     LivePlotConfig,
     JSONLConfig,
 )
-from caramba.runtime import RuntimePlan, load_plan, make_plan_key, save_plan
-from caramba.trainer.upcycle_init_context import UpcycleInitContext
-from caramba.trainer.upcycle_context import UpcycleContext
-from caramba.trainer.initializers import Initializer
-from caramba.trainer.collectors import Collector
-from caramba.trainer.verifiers import Verifier
-from caramba.trainer.checkpointers import CheckPointer
-from caramba.trainer.steppers import Stepper
-from caramba.data.datasets.builder import TokenDatasetBuilder
-from caramba.runtime.tensordict_utils import TensorDictBase, collate_tensordict
+from runtime import RuntimePlan, load_plan, make_plan_key, save_plan
+from trainer.upcycle_init_context import UpcycleInitContext
+from trainer.upcycle_context import UpcycleContext
+from trainer.initializers import Initializer
+from trainer.collectors import Collector
+from trainer.verifiers import Verifier
+from trainer.checkpointers import CheckPointer
+from trainer.steppers import Stepper
+from data.datasets.builder import TokenDatasetBuilder
+from runtime.tensordict_utils import TensorDictBase, collate_tensordict
 
 class _ManifestShim:
     """Minimal manifest view for the upcycling pipeline."""
@@ -241,7 +241,7 @@ class _UpcycleSession:
 
         # Resolve vocab size from teacher embeddings (tied or untied).
         try:
-            from caramba.benchmark.utils import get_model_vocab_size
+            from benchmark.utils import get_model_vocab_size
 
             vocab_size = int(get_model_vocab_size(self.teacher, default=32000))
         except Exception:

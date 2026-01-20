@@ -8,8 +8,8 @@ from typing import Any
 import torch
 from torch.utils.data import DataLoader
 
-from caramba.config.train import TrainConfig
-from caramba.runtime.tensordict_utils import collate_tensordict
+from config.train import TrainConfig
+from runtime.tensordict_utils import collate_tensordict
 
 
 @dataclass(frozen=True, slots=True)

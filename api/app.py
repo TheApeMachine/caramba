@@ -30,10 +30,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from caramba.config.manifest import Manifest
-from caramba.config.model import ModelConfig
-from caramba.experiment.runner import _resolve_target as _resolve_target_name
-from caramba.console import logger
+from config.manifest import Manifest
+from config.model import ModelConfig
+from experiment.runner import _resolve_target as _resolve_target_name
+from console import logger
 
 _REPO_ROOT = Path(__file__).resolve().parent
 
@@ -170,7 +170,7 @@ def _walk_model_topology(node: object) -> list[object]:
     # Important: use the same module path as ModelConfig's parsing types.
     # `config.*` and `caramba.config.*` can be distinct modules at runtime, which
     # breaks isinstance checks and causes the UI to think there is only 1 layer.
-    from caramba.config.topology import GraphTopologyConfig
+    from config.topology import GraphTopologyConfig
 
     if isinstance(node, GraphTopologyConfig):
         return []
@@ -487,7 +487,7 @@ def create_app() -> FastAPI:
         mp = _resolve_manifest_path(path)
         sys_ref, cfg = _resolve_model_config(manifest, target)
 
-        from caramba.config.layer import AttentionLayerConfig
+        from config.layer import AttentionLayerConfig
 
         nodes = _walk_model_topology(cfg.topology)
         attn_layers = [n for n in nodes if isinstance(n, AttentionLayerConfig)]
@@ -523,7 +523,7 @@ def create_app() -> FastAPI:
         mp = _resolve_manifest_path(path)
         sys_ref, cfg = _resolve_model_config(manifest, target)
 
-        from caramba.config.layer import AttentionLayerConfig
+        from config.layer import AttentionLayerConfig
 
         nodes = _walk_model_topology(cfg.topology)
         attn_cfgs = [n for n in nodes if isinstance(n, AttentionLayerConfig)]

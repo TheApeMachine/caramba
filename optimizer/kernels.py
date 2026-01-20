@@ -18,9 +18,8 @@ from typing import Any, TypeVar, cast
 import torch
 from torch import Tensor
 import torch.nn.functional as F
-from torch._dynamo import disable as _dynamo_disable
 
-from caramba.optimizer.kernel_registry import KERNELS
+from optimizer.kernel_registry import KERNELS
 
 
 def _require(cond: bool, *, msg: str) -> None:
@@ -31,14 +30,15 @@ def _require(cond: bool, *, msg: str) -> None:
 _F = TypeVar("_F", bound=Callable[..., object])
 
 
-def _dynamo_disable_typed(fn: _F) -> _F:
-    """Typed wrapper for `torch._dynamo.disable`.
+def _typed(fn: _F) -> _F:
+    """Typed no-op decorator.
 
-    basedpyright can lose decorated function signatures otherwise, and treat
-    decorated callables as `disable(...)` at import sites.
+    We avoid `torch.compiler.disable` here because it causes graph breaks at
+    every callsite (see `TORCH_LOGS=+dynamo`), which can materially reduce
+    throughput (tok/s) and increase Dynamo resume complexity.
     """
 
-    return cast(_F, _dynamo_disable(fn))
+    return cast(_F, fn)
 
 
 # ---- Optional backend imports (top-level; errors raised on use) ----
@@ -54,7 +54,7 @@ _AdamWMasterStep: Any | None = None
 _lion_fp16: Any | None = None
 
 try:
-    from caramba.optimizer.metal import (
+    from optimizer.metal import (
         AdamWMasterStep as _AdamWMasterStep,
         MetalSSMSelectiveScan as _MetalSSMSelectiveScan,
         dba_decode_fp16 as _dba_decode_fp16,
@@ -73,16 +73,16 @@ _fused_selective_scan: Any | None = None
 _adamw_triton_master_step: Any | None = None
 
 try:
-    from caramba.optimizer.adamw_triton import adamw_triton_master_step as _adamw_triton_master_step
-    from caramba.optimizer.fused_ssm import fused_selective_scan as _fused_selective_scan
-    from caramba.optimizer.layernorm_triton import layernorm_triton as _layernorm_triton
-    from caramba.optimizer.rmsnorm_triton import rmsnorm_triton as _rmsnorm_triton
-    from caramba.optimizer.rope_triton import rope_triton as _rope_triton
+    from optimizer.adamw_triton import adamw_triton_master_step as _adamw_triton_master_step
+    from optimizer.fused_ssm import fused_selective_scan as _fused_selective_scan
+    from optimizer.layernorm_triton import layernorm_triton as _layernorm_triton
+    from optimizer.rmsnorm_triton import rmsnorm_triton as _rmsnorm_triton
+    from optimizer.rope_triton import rope_triton as _rope_triton
 except Exception as e:
     _TRITON_IMPORT_ERROR = e
 
 
-@_dynamo_disable_typed
+@_typed
 def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     """RMSNorm: y = x * rsqrt(mean(x^2) + eps) * weight."""
     if x.device.type == "mps":
@@ -119,7 +119,7 @@ def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     return y
 
 
-@_dynamo_disable_typed
+@_typed
 def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     """Apply RoPE using cos/sin tables for the sequence window.
 
@@ -169,7 +169,7 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     return torch.cat([y1, y2, x_pass], dim=-1)
 
 
-@_dynamo_disable_typed
+@_typed
 def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: float) -> Tensor:
     """LayerNorm over the last dimension.
 
@@ -205,7 +205,7 @@ def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: flo
     return F.layer_norm(x, normalized_shape=(D,), weight=weight, bias=bias, eps=float(eps))
 
 
-@_dynamo_disable_typed
+@_typed
 def attention_decode(
     *,
     q_sem: Tensor,
@@ -260,7 +260,7 @@ def attention_decode(
     )
 
 
-@_dynamo_disable_typed
+@_typed
 def scan(
     *,
     x: Tensor,
@@ -308,7 +308,7 @@ def scan(
     )
 
 
-@_dynamo_disable_typed
+@_typed
 def adamw_step(
     *,
     p: Tensor,

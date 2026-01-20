@@ -6,8 +6,8 @@ from typing import Protocol
 
 from torch import nn
 
-from caramba.config.train import TrainConfig
-from caramba.trainer.upcycle_init_context import UpcycleInitContext
+from config.train import TrainConfig
+from trainer.upcycle_init_context import UpcycleInitContext
 
 
 class Initializer(Protocol):

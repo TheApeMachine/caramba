@@ -13,9 +13,9 @@ from pathlib import Path
 import time
 from typing import Any
 
-from caramba.config.kvcache import KVCacheKind
-from caramba.console import logger
-from caramba.runtime.plan import make_plan_key
+from config.kvcache import KVCacheKind
+from console import logger
+from runtime.plan import make_plan_key
 
 
 def _stable_json(obj: object) -> str:

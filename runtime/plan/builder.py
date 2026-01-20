@@ -13,13 +13,13 @@ from typing import Any
 
 import torch
 
-from caramba.carmath import (
+from carmath import (
     autocast_dtype_str,
     token_budget_batch_size,
     weight_dtype_str,
 )
-from caramba.config.train import TrainConfig
-from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
+from config.train import TrainConfig
+from runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
 
 
 class RuntimePlanBuilder:

@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from caramba.console import logger
-from caramba.optimizer.runtime import triton_supported
+from console import logger
+from optimizer.runtime import triton_supported
 
 __all__ = ["adamw_master_step"]
 

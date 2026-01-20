@@ -11,7 +11,7 @@ import math
 import torch
 from torch import Tensor, nn
 
-from caramba.carmath import leaky_integrator_scan
+from carmath import leaky_integrator_scan
 
 
 class StateBank(nn.Module):

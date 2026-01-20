@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from caramba.ai.tools.builder import ToolBuilderHandler
-from caramba.core.event import EventEnvelope
-from caramba.core.event_bus import EventBus, EventHandler
+from .builder import ToolBuilderHandler
+from core.event import EventEnvelope
+from core.event_bus import EventBus, EventHandler
 
 
 class _Recorder(EventHandler):

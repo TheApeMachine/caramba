@@ -16,9 +16,29 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from caramba.config.eval import EvalCase, EvalThresholds, EvalVerifyConfig
-from caramba.data.tokenizers.base import Tokenizer
-from caramba.data.tokenizers.builder import TokenizerBuilder
+from config.eval import EvalCase, EvalThresholds, EvalVerifyConfig
+from data.tokenizers.base import Tokenizer
+from data.tokenizers.builder import TokenizerBuilder
+
+
+def _tokenizer_vocab_size(tokenizer: Tokenizer) -> int | None:
+    """Best-effort tokenizer vocab size.
+
+    Used to mask padded model vocab slots (e.g. 50304 vs 50257) so scoring and
+    greedy generation operate over the real token space.
+    """
+    for attr in ("n_vocab", "vocab_size"):
+        if hasattr(tokenizer, attr):
+            try:
+                return int(getattr(tokenizer, attr))
+            except Exception:
+                pass
+    if hasattr(tokenizer, "_enc"):
+        try:
+            return int(getattr(getattr(tokenizer, "_enc"), "n_vocab"))
+        except Exception:
+            return None
+    return None
 
 
 class EvalCaseResult:
@@ -322,6 +342,7 @@ def _pick_choice_by_logprob(
             model=model,
             prompt_ids=prompt_ids,
             completion_ids=tokenizer.encode(str(choice)),
+            tokenizer=tokenizer,
             device=device,
             context_window=context_window,
         )
@@ -337,6 +358,7 @@ def _score_completion_logprob(
     model: nn.Module,
     prompt_ids: list[int],
     completion_ids: list[int],
+    tokenizer: Tokenizer,
     device: torch.device,
     context_window: int | None,
 ) -> float:
@@ -351,6 +373,7 @@ def _score_completion_logprob(
             model=model,
             prompt_ids=prompt_ids,
             completion_ids=completion_ids,
+            tokenizer=tokenizer,
             device=device,
             context_window=int(context_window),
         )
@@ -362,6 +385,16 @@ def _score_completion_logprob(
         raise ValueError(f"Expected logits (B,T,V), got {logits.shape}")
     if int(logits.shape[1]) != len(seq):
         raise ValueError("Unexpected logits length mismatch")
+
+    vv = _tokenizer_vocab_size(tokenizer)
+    if vv is not None:
+        if int(logits.shape[-1]) < int(vv):
+            raise ValueError(
+                "Model returned logits with vocab smaller than tokenizer vocab "
+                f"(logits_vocab={int(logits.shape[-1])}, tokenizer_vocab={int(vv)})."
+            )
+        if int(logits.shape[-1]) > int(vv):
+            logits = logits[..., : int(vv)]
 
     logp = F.log_softmax(logits[:, :-1, :], dim=-1)
     target = x[:, 1:]
@@ -380,6 +413,7 @@ def _score_completion_logprob_windowed(
     model: nn.Module,
     prompt_ids: list[int],
     completion_ids: list[int],
+    tokenizer: Tokenizer,
     device: torch.device,
     context_window: int,
 ) -> float:
@@ -390,6 +424,7 @@ def _score_completion_logprob_windowed(
     seq = prompt_ids + completion_ids
     total = 0.0
     start_k = len(prompt_ids)
+    vv = _tokenizer_vocab_size(tokenizer)
     for k in range(start_k, len(seq)):
         ctx = seq[max(0, k - context_window) : k]
         if not ctx:
@@ -397,7 +432,15 @@ def _score_completion_logprob_windowed(
         x = torch.tensor([ctx], device=device, dtype=torch.long)
         logits = model(x)
         next_id = int(seq[k])
-        lp = F.log_softmax(logits[0, -1, :], dim=-1)
+        v = logits[0, -1, :]
+        if vv is not None and int(v.shape[0]) < int(vv):
+            raise ValueError(
+                "Model returned logits with vocab smaller than tokenizer vocab "
+                f"(logits_vocab={int(v.shape[0])}, tokenizer_vocab={int(vv)})."
+            )
+        if vv is not None and int(v.shape[0]) > int(vv):
+            v = v[: int(vv)]
+        lp = F.log_softmax(v, dim=-1)
         total += float(lp[next_id])
     return float(total)
 
@@ -413,12 +456,16 @@ def _greedy_generate(
 ) -> str:
     """Generate tokens greedily (argmax at each step)."""
     ids = list(prompt_ids)
+    vv = _tokenizer_vocab_size(tokenizer)
     for _ in range(int(max_new_tokens)):
         ctx = ids
         if context_window is not None:
             ctx = ids[-int(context_window) :]
         x = torch.tensor([ctx], device=device, dtype=torch.long)
         logits = model(x)
-        next_id = int(torch.argmax(logits[0, -1, :]).item())
+        v = logits[0, -1, :]
+        if vv is not None and int(v.shape[0]) > int(vv):
+            v = v[: int(vv)]
+        next_id = int(torch.argmax(v).item())
         ids.append(next_id)
     return tokenizer.decode(ids[len(prompt_ids) :])

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
-from caramba.console import logger
-from caramba.optimizer.runtime import triton_supported
+from console import logger
+from optimizer.runtime import triton_supported
 
 __all__ = ["selective_scan_triton"]
 
@@ -17,7 +17,7 @@ selective_scan_triton: Callable | None = None
 
 if not TYPE_CHECKING and triton_supported():
     try:  # pyright: ignore[reportUnreachable]
-        from caramba.optimizer.ssm_triton import selective_scan_triton as _selective_scan_triton
+        from optimizer.ssm_triton import selective_scan_triton as _selective_scan_triton
     except Exception as e:
         logger.error(f"Failed to import Triton SSM kernels, continuing: {type(e).__name__}: {e}")
     else:

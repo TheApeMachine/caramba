@@ -458,7 +458,7 @@ The `DiffusionNextTokenHead` adds diffusion-based token prediction on top of aut
 ### Configuration
 
 ```python
-from caramba.layer.diffusion_head import DiffusionNextTokenHead, DiffusionHeadConfig
+layer.diffusion_head import DiffusionNextTokenHead, DiffusionHeadConfig
 
 config = DiffusionHeadConfig(
     enabled=True,
@@ -523,8 +523,8 @@ pip install diffusers
 While manifests are the primary interface, layers can be used directly:
 
 ```python
-from caramba.layer.attention import AttentionLayer
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
+layer.attention import AttentionLayer
+config.layer import AttentionLayerConfig, AttentionMode
 
 config = AttentionLayerConfig(
     d_model=512,

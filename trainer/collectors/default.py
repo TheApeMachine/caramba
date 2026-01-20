@@ -9,12 +9,12 @@ from typing import cast
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 
-from caramba.config.collector import DefaultCollectorConfig
-from caramba.config.train import TrainConfig
-from caramba.data.datasets.builder import TokenDatasetBuilder
-from caramba.carmath import train_val_counts
-from caramba.trainer.upcycle_context import UpcycleContext
-from caramba.runtime.tensordict_utils import TensorDictBase, collate_tensordict
+from config.collector import DefaultCollectorConfig
+from config.train import TrainConfig
+from data.datasets.builder import TokenDatasetBuilder
+from carmath import train_val_counts
+from trainer.upcycle_context import UpcycleContext
+from runtime.tensordict_utils import TensorDictBase, collate_tensordict
 
 
 def _resolve_data_path(spec: str) -> Path:

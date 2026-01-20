@@ -15,16 +15,16 @@ from typing import Any, Protocol
 import torch
 from torch import Tensor, nn
 
-from caramba.config.layer import MemoryBlockLayerConfig
-from caramba.instrumentation.training_metrics import get_training_metrics
-from caramba.layer.memory_block.isa import MemoryOpcode
-from caramba.layer.memory_block.memory import MemoryBlockMemory
-from caramba.layer.memory_block.state import MemoryBlockState, MemoryBlockStateStore
-from caramba.layer.memory_block.block.local_mixer import LocalMixer
-from caramba.layer.memory_block.block.norm import RmsNorm
-from caramba.layer.memory_block.block.path.fast_train import FastTrainPath
-from caramba.layer.memory_block.block.path.sequential import SequentialPath
-from caramba.layer.memory_block.block.state_bank import StateBank
+from config.layer import MemoryBlockLayerConfig
+from instrumentation.training_metrics import get_training_metrics
+from layer.memory_block.isa import MemoryOpcode
+from layer.memory_block.memory import MemoryBlockMemory
+from layer.memory_block.state import MemoryBlockState, MemoryBlockStateStore
+from layer.memory_block.block.local_mixer import LocalMixer
+from layer.memory_block.block.norm import RmsNorm
+from layer.memory_block.block.path.fast_train import FastTrainPath
+from layer.memory_block.block.path.sequential import SequentialPath
+from layer.memory_block.block.state_bank import StateBank
 
 
 def _mean_scalar(x: Tensor) -> Tensor:
@@ -236,7 +236,7 @@ class MemoryBlockLayer(nn.Module):
             st.conv_buf = new_buf
 
         collect_aux = bool(getattr(ctx, "memblock_collect_aux", False)) if ctx is not None else False
-        
+
         # Determine current step
         step = int(getattr(ctx, "step", 0) or 0)
         if ctx is None:
@@ -245,7 +245,7 @@ class MemoryBlockLayer(nn.Module):
             # Note: metrics.step is usually valid, defaulting to 0 if not set.
             # If metrics.step is 0, we might truly be at step 0 (warmup), which is fine.
             step = metrics.step
-        
+
         # --- Visibility Refinement ---
         # Force collect_aux if visualization is enabled and we are in warmup or on an interval.
         # This ensures the tuner has data to display.
@@ -254,7 +254,7 @@ class MemoryBlockLayer(nn.Module):
             warmup_threshold = int(getattr(self.config, "mem_autotune_viz_warmup", 5))
             if step <= warmup_threshold or (step > 0 and step % viz_interval == 0):
                 collect_aux = True
-            
+
         teacher = getattr(ctx, "memblock_teacher", None) if ctx is not None else None
         teacher_p = float(getattr(ctx, "memblock_teacher_p", 1.0)) if ctx is not None else 0.0
         if (
@@ -269,18 +269,18 @@ class MemoryBlockLayer(nn.Module):
             routing = self.memory.compute_routing(u, collect_aux=collect_aux)
         routing["collect_aux"] = bool(collect_aux)
         routing["global_step"] = step
-        
+
         # Pass loss from viz_ctx to routing (for tuner)
         if ctx is not None and hasattr(ctx, '_last_loss'):
             routing["_last_loss"] = ctx._last_loss
-        
+
         # Pass training metrics from context to routing (for tuner)
         if ctx is not None:
             for name in ("train_accuracy", "train_loss", "train_loss_variance"):
                 val = getattr(ctx, name, None)
                 if val is not None:
                     routing[name] = val
-        
+
         if ctx is not None and isinstance(teacher, dict):
             self.memory.apply_teacher_overrides(routing, teacher, p=float(teacher_p))
         write_mask = self.resolve_write_mask(ctx, B=B, T=T, device=x.device)

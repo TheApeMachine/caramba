@@ -6,10 +6,10 @@ making it easy to work with graph-level prediction tasks.
 from __future__ import annotations
 
 from torch.utils.data import Dataset
-from caramba.runtime.tensordict_utils import TensorDictBase
+from runtime.tensordict_utils import TensorDictBase
 from torch import Tensor
 
-from caramba.runtime.tensordict_utils import as_tensordict
+from runtime.tensordict_utils import as_tensordict
 
 
 class SingleGraphDataset(Dataset[TensorDictBase]):

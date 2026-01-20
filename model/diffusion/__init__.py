@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from torch import Tensor, nn
 
-from caramba.config.layers.diffusion import DiffusionLayerConfig
+from config.layers.diffusion import DiffusionLayerConfig
 
 
 class DiffusionModel(nn.Module):

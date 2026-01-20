@@ -216,70 +216,6 @@ x-dummy-run: &dummy_run
       device: ${device}
       dtype: ${dtype}
 
-# Benchmark suite for pairwise comparisons (legacy)
-x-benchmark-suite: &benchmark_suite
-  - id: ppl_fineweb
-    config:
-      type: perplexity
-      dataset: ${dataset_path}
-      block_size: ${block_size}
-      batch_size: 1
-      num_batches: 50
-    models: [teacher, student]
-
-  - id: ppl_fineweb_deeper
-    config:
-      type: perplexity
-      dataset: ${dataset_path}
-      block_size: ${block_size}
-      batch_size: 1
-      num_batches: 200
-    models: [teacher, student]
-
-  - id: latency_cached
-    config:
-      type: latency
-      prompt_lengths: [128, 512, 1024, 2048]
-      generation_lengths: [128]
-      batch_sizes: [1]
-      warmup_runs: 2
-      timed_runs: 5
-      use_cache: true
-      cache_kind: fp16
-    models: [teacher, student]
-
-  - id: latency_cached_long_prompt
-    config:
-      type: latency
-      prompt_lengths: [2048, 4096, 8192]
-      generation_lengths: [64]
-      batch_sizes: [1]
-      warmup_runs: 1
-      timed_runs: 3
-      use_cache: true
-      cache_kind: fp16
-    models: [teacher, student]
-
-  - id: memory_kv
-    config:
-      type: memory
-      sequence_lengths: [512, 1024, 2048, 4096]
-      batch_sizes: [1]
-      measure_peak: true
-      measure_kvcache: true
-      quantization_modes: [fp16]
-    models: [teacher, student]
-
-  - id: memory_kv_long
-    config:
-      type: memory
-      sequence_lengths: [2048, 4096, 8192, 16384]
-      batch_sizes: [1]
-      measure_peak: true
-      measure_kvcache: true
-      quantization_modes: [fp16]
-    models: [teacher, student]
-
 # =============================================================================
 # Multi-checkpoint benchmark suite for N-way comparison
 # =============================================================================
@@ -325,34 +261,6 @@ x-multi-benchmark-suite: &multi_benchmark_suite
       measure_peak: true
       measure_kvcache: true
       quantization_modes: [fp16]
-    models: [baseline, sem16, sem8]
-
-  - id: behavioral_v2
-    config:
-      type: behavioral_v2
-      tokenizer:
-        type: tiktoken
-        encoding: gpt2
-      seed: 1337
-      tests_per_category: 30
-      downstream_tasks: [winogrande, arc_easy]
-      downstream_limit: 100
-      max_new_tokens: 32
-      context_window: 2048
-      stream_live: true
-      stream_every: 10
-    models: [baseline, sem16, sem8]
-
-  - id: downstream_accuracy
-    config:
-      type: accuracy
-      tasks: [winogrande, arc_easy, boolq, hellaswag]
-      tokenizer:
-        type: tiktoken
-        encoding: gpt2
-      context_window: 2048
-      stream_live: true
-      stream_every: 10
     models: [baseline, sem16, sem8]
 
   - id: behavior_sanity
@@ -488,19 +396,7 @@ x-multi-benchmark-suite: &multi_benchmark_suite
       dump_attention_anchor: ""
       dump_attention_paper_dir: research/dba/figs/attention
       dump_attention_paper_tag: dba_10k
-    models: [teacher, student]
-
-  - id: downstream_accuracy
-    config:
-      type: accuracy
-      tasks: [winogrande, arc_easy]
-      tokenizer:
-        type: tiktoken
-        encoding: gpt2
-      context_window: 2048
-      stream_live: true
-      stream_every: 10
-    models: [teacher, student]
+    models: [baseline, sem16, sem8]
 
   - id: behavioral_v2
     config:
@@ -510,14 +406,37 @@ x-multi-benchmark-suite: &multi_benchmark_suite
         encoding: gpt2
       seed: 1337
       tests_per_category: 30
-      downstream_tasks: [winogrande, arc_easy]
-      downstream_limit: 100
       max_new_tokens: 32
       context_window: 2048
       stream_live: true
       stream_every: 10
-    models: [teacher, student]
+    models: [baseline, sem16, sem8]
 
+  - id: downstream_accuracy
+    config:
+      type: accuracy
+      tasks: [winogrande, arc_easy, boolq, hellaswag]
+      tokenizer:
+        type: tiktoken
+        encoding: gpt2
+      context_window: 2048
+      stream_live: true
+      stream_every: 10
+    models: [baseline, sem16, sem8]
+
+  - id: context_sweep
+    config:
+      type: context
+      dataset: ${dataset_path}
+      context_lengths: [2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072]
+      chunk_size: 1024
+      max_mask_elems: 32000000
+      batch_size: 1
+      decode_len: 128
+      decode_warmup: 8
+      cache_kind: fp16
+    models: [baseline, sem16, sem8]
+  
 # =============================================================================
 # TARGETS
 # =============================================================================
@@ -562,111 +481,5 @@ targets:
     runs: *dummy_run
     benchmarks: *multi_benchmark_suite
 
-  # ===========================================================================
-  # LEGACY: Pairwise comparisons (kept for backward compatibility)
-  # ===========================================================================
-  # ---------------------------------------------------------------------------
-  # Comparison 1: Baseline vs Decoupled (sem16/geo32)
-  # ---------------------------------------------------------------------------
-  - type: experiment
-    name: baseline_vs_sem16
-    description: "Compare baseline vs DBA decoupled (sem16/geo32/v48)."
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
-    system:
-      ref: system.language_model
-      config:
-        model: *decoupled_sem16_model
-    objective: objective.next_token_ce
-    trainer:
-      ref: trainer.checkpoint_compare
-      config:
-        teacher_ckpt: ${baseline_ckpt}
-        student_ckpt: ${decoupled_sem16_ckpt}
-        device: ${device}
-        dtype: ${dtype}
-        strict: false
-        unsafe_pickle_load: false
-        teacher_model: *baseline_model
-    runs: *dummy_run
-    benchmarks: *benchmark_suite
-
-  # ---------------------------------------------------------------------------
-  # Comparison 2: Baseline vs sem8/geo32/v40 (selected config)
-  # ---------------------------------------------------------------------------
-  - type: experiment
-    name: baseline_vs_sem8
-    description: "Compare baseline vs DBA sem8/geo32/v40 (selected config)."
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
-    system:
-      ref: system.language_model
-      config:
-        model: *decoupled_sem8_model
-    objective: objective.next_token_ce
-    trainer:
-      ref: trainer.checkpoint_compare
-      config:
-        teacher_ckpt: ${baseline_ckpt}
-        student_ckpt: ${sem8geo32v40_ckpt}
-        device: ${device}
-        dtype: ${dtype}
-        strict: false
-        unsafe_pickle_load: false
-        teacher_model: *baseline_model
-    runs: *dummy_run
-    benchmarks: *benchmark_suite
-
-  # ---------------------------------------------------------------------------
-  # Comparison 3: sem16/geo32 vs sem8/geo32/v40
-  # ---------------------------------------------------------------------------
-  - type: experiment
-    name: sem16_vs_sem8
-    description: "Compare DBA sem16/geo32 vs sem8/geo32/v40."
-    backend: torch
-    task: task.language_modeling
-    data:
-      ref: dataset.tokens
-      config:
-        path: ${dataset_path}
-        block_size: ${block_size}
-    system:
-      ref: system.language_model
-      config:
-        model: *decoupled_sem8_model
-    objective: objective.next_token_ce
-    trainer:
-      ref: trainer.checkpoint_compare
-      config:
-        teacher_ckpt: ${decoupled_sem16_ckpt}
-        student_ckpt: ${sem8geo32v40_ckpt}
-        device: ${device}
-        dtype: ${dtype}
-        strict: false
-        unsafe_pickle_load: false
-        teacher_model: *decoupled_sem16_model
-    runs: *dummy_run
-    benchmarks: *benchmark_suite
-
 entrypoints:
-  # Default: run the multi-checkpoint N-way comparison
   default: "target:multi_checkpoint_compare"
-  # Aliases
-  multi: "target:multi_checkpoint_compare"
-  multi_checkpoint_compare: "target:multi_checkpoint_compare"
-  # Legacy pairwise comparisons
-  baseline_vs_sem16: "target:baseline_vs_sem16"
-  baseline_vs_sem8: "target:baseline_vs_sem8"
-  sem16_vs_sem8: "target:sem16_vs_sem8"
-  # Run all pairwise (old default)
-  all_pairwise: "target:baseline_vs_sem16,target:baseline_vs_sem8,target:sem16_vs_sem8"

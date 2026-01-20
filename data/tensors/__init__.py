@@ -14,18 +14,18 @@ import numpy as np
 from safetensors import safe_open
 from torch.utils.data import Dataset
 
-from caramba.data.transforms import Compose
-from caramba.data.transforms.add_mask import AddMask
-from caramba.data.transforms.cast_dtype import CastDtype, _dtype_from_str
-from caramba.data.transforms.gaussian_noise import GaussianNoise
-from caramba.data.transforms.rename_keys import RenameKeys
-from caramba.data.transforms.token_shift import TokenShift
-from caramba.data.tensors.dataset import TensorFilesDataset as _TensorFilesDataset
-from caramba.data.tensors.npy_source import NpySource
-from caramba.data.tensors.safetensors_source import SafeTensorsSource
-from caramba.data.tensors.source import TensorSource
-from caramba.data.tensors.utils import is_npy, is_safetensors
-from caramba.runtime.tensordict_utils import TensorDictBase
+from data.transforms import Compose
+from data.transforms.add_mask import AddMask
+from data.transforms.cast_dtype import CastDtype, _dtype_from_str
+from data.transforms.gaussian_noise import GaussianNoise
+from data.transforms.rename_keys import RenameKeys
+from data.transforms.token_shift import TokenShift
+from data.tensors.dataset import TensorFilesDataset as _TensorFilesDataset
+from data.tensors.npy_source import NpySource
+from data.tensors.safetensors_source import SafeTensorsSource
+from data.tensors.source import TensorSource
+from data.tensors.utils import is_npy, is_safetensors
+from runtime.tensordict_utils import TensorDictBase
 
 
 @dataclass(frozen=True, slots=True)

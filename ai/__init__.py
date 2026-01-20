@@ -17,19 +17,19 @@ Key Components:
 - ConnectionManager: Manages connections to remote agents
 - ADKAgentExecutor: Bridges ADK with A2A protocol
 """
-from caramba.ai.agent import Agent, AgentFactory
-from caramba.ai.connection import ConnectionManager, RemoteAgent
-from caramba.ai.executor import ADKAgentExecutor, StreamingExecutor
-from caramba.ai.lead import LeadAgent
-from caramba.ai.persona import PersonaLoader, persona_to_agent_card
-from caramba.ai.root import RootAgent
-from caramba.ai.server import (
+from ai.agent import Agent, AgentFactory
+from ai.connection import ConnectionManager, RemoteAgent
+from ai.executor import ADKAgentExecutor, StreamingExecutor
+from ai.lead import LeadAgent
+from ai.persona import PersonaLoader, persona_to_agent_card
+from ai.root import RootAgent
+from ai.server import (
     AgentServer,
     run_root_server,
     run_lead_server,
     run_agent_server,
 )
-from caramba.ai.session_store import (
+from ai.session_store import (
     DatabaseSessionService,
     get_shared_session_service,
 )

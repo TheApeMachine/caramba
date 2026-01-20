@@ -9,6 +9,6 @@ from __future__ import annotations
 
 __all__ = ["parse_repo", "sync_files_to_falkordb"]
 
-from caramba.codegraph.parser import parse_repo
-from caramba.codegraph.sync import sync_files_to_falkordb
+from codegraph.parser import parse_repo
+from codegraph.sync import sync_files_to_falkordb
 

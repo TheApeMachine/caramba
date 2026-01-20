@@ -11,13 +11,13 @@ from typing import Any
 
 import torch
 from torch import Tensor, nn
-from caramba.console import logger
+from console import logger
 
-from caramba.compiler.lower import Lowerer
-from caramba.compiler.validate import Validator
-from caramba.config.model import ModelConfig
-from caramba.model import Model
-from caramba.initializers.registry import InitializerRegistry
+from compiler.lower import Lowerer
+from compiler.validate import Validator
+from config.model import ModelConfig
+from model import Model
+from initializers.registry import InitializerRegistry
 
 
 @dataclass

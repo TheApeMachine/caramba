@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 
 def _skip_if_no_cuda_triton() -> None:
@@ -60,7 +60,7 @@ def test_triton_adamw_master_step_matches_reference(dtype: torch.dtype) -> None:
     eps = 1e-8
     lr_wd = 1e-4
 
-    from caramba.optimizer.adamw_triton import adamw_triton_master_step
+    from optimizer.adamw_triton import adamw_triton_master_step
 
     adamw_triton_master_step(
         p=p,

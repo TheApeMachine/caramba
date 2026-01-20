@@ -53,7 +53,7 @@ class ModelProtocol(Protocol):
 @dataclass
 class EvalConfig:
     """Configuration for evaluation run."""
-    max_new_tokens: int = 50
+    max_new_tokens: int = 16
     temperature: float = 0.0
     capture_attention: bool = True
     attention_layers: list[int] | None = None  # None = all layers
@@ -222,14 +222,13 @@ class EvalRunner:
 
         # Generate output based on test kind
         if test.kind == EvalKind.CHOICE_LOGPROB:
-            # For choice tasks, get logprobs
-            logprobs = model.get_choice_logprobs(test.prompt, test.choices)
-            # Also get the greedy generation for display
-            output_text = model.generate(
-                test.prompt,
-                max_new_tokens=self.config.max_new_tokens,
-                temperature=self.config.temperature,
-            )
+            # For choice tasks, score via logprob argmax (generation is unnecessary and can be misleading).
+            choices = test.choices or []
+            logprobs = model.get_choice_logprobs(test.prompt, choices) if choices else {}
+            if logprobs:
+                output_text = max(logprobs.items(), key=lambda kv: kv[1])[0]
+            else:
+                output_text = ""
         else:
             logprobs = None
             output_text = model.generate(

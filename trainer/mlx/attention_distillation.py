@@ -25,10 +25,10 @@ import mlx.optimizers as optim
 from mlx.utils import tree_flatten, tree_map, tree_unflatten
 import numpy as np
 
-from caramba.adapter.mlx.surgery import AttentionSurgeryMLX
-from caramba.console import logger
-from caramba.layer.mlx.transformer import DBATransformer
-from caramba.layer.mlx.standard_attention import TeacherModel
+from adapter.mlx.surgery import AttentionSurgeryMLX
+from console import logger
+from layer.mlx.transformer import DBATransformer
+from layer.mlx.standard_attention import TeacherModel
 
 
 @dataclass
@@ -274,7 +274,10 @@ class AttentionDistillationTrainer:
                 # Gradient clipping
                 if self.config.grad_clip_norm > 0:
                     flat_grads = tree_flatten(grads)
-                    total_norm_sq = sum(mx.sum(g * g) for _, g in flat_grads)
+                    total_norm_sq = mx.array(0.0)
+                    for _, g in flat_grads:
+                        if isinstance(g, mx.array):
+                            total_norm_sq = total_norm_sq + mx.sum(g * g)
                     total_norm = mx.sqrt(total_norm_sq)
                     clip_coef = mx.minimum(
                         mx.array(1.0),
@@ -368,11 +371,14 @@ class AttentionDistillationTrainer:
             )
 
             # Attention distillation loss
-            distill_loss = attention_distill_loss(
-                student_attn,
-                teacher_attn,
-                layer_indices=self.config.distill_layers,
-            )
+            if student_attn is None or teacher_attn is None:
+                distill_loss = mx.array(0.0)
+            else:
+                distill_loss = attention_distill_loss(
+                    student_attn,
+                    teacher_attn,
+                    layer_indices=self.config.distill_layers,
+                )
 
             # Combined loss
             total_loss = (
@@ -413,10 +419,17 @@ def load_teacher_from_llama(weights_path: str | Path) -> TeacherModel:
     weights_path = Path(weights_path)
 
     # Load weights
-    if weights_path.suffix == ".safetensors":
-        weights = mx.load(str(weights_path))
+    loaded = mx.load(str(weights_path))
+    if isinstance(loaded, dict):
+        weights: dict[str, mx.array] = loaded
+    elif isinstance(loaded, tuple) and len(loaded) >= 1:
+        # Handle tuple return (dict, metadata)
+        if isinstance(loaded[0], dict):
+            weights = loaded[0]
+        else:
+            raise ValueError(f"Expected dict in tuple, got {type(loaded[0])}")
     else:
-        weights = dict(mx.load(str(weights_path)))
+        raise ValueError(f"Unexpected return type from mx.load: {type(loaded)}")
 
     # Create teacher model with Llama 3.2 1B config (GQA: 32 Q heads, 8 KV heads)
     teacher = TeacherModel(
@@ -430,7 +443,7 @@ def load_teacher_from_llama(weights_path: str | Path) -> TeacherModel:
     )
 
     # Build weight mapping from Llama names to our model names
-    weight_map = {}
+    weight_map: dict[str, mx.array] = {}
 
     # Token embeddings
     if "model.embed_tokens.weight" in weights:

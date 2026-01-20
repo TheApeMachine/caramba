@@ -16,7 +16,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.config.layer import SSMLayerConfig
+from config.layer import SSMLayerConfig
 
 
 class _SelectiveScan:
@@ -199,12 +199,12 @@ class SSMLayer(nn.Module):
 
         # Selective Scan Path (best available kernel)
         if x.device.type == "mps" and x.dtype == torch.float16:
-            from caramba.optimizer.metal import MetalSSMSelectiveScan
+            from optimizer.metal import MetalSSMSelectiveScan
 
             scan = MetalSSMSelectiveScan()
             y = scan.run(x=x, dt=dt, A=A, B=B_vals, C=C, D=D_skip)
         elif x.device.type == "cuda":
-            from caramba.optimizer.fused_ssm import fused_selective_scan
+            from optimizer.fused_ssm import fused_selective_scan
 
             y = fused_selective_scan(x, dt, A, B_vals, C, D_skip)
         else:

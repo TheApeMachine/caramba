@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from caramba.collector.measurement.context.base import ContextMeasurement
+from collector.measurement.context.base import ContextMeasurement
 
 
 @dataclass
@@ -28,3 +28,12 @@ class ContextDecodeMeasurement(ContextMeasurement):
     decode_total_ms: float
     decode_tok_per_s: float
     ok: bool
+
+    # Optional telemetry (best-effort; may be None on some platforms)
+    rss_mb_before: float | None = None
+    rss_mb_after: float | None = None
+    mps_allocated_mb_before: float | None = None
+    mps_allocated_mb_after: float | None = None
+    mps_driver_allocated_mb_before: float | None = None
+    mps_driver_allocated_mb_after: float | None = None
+    mps_recommended_max_mb: float | None = None

@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import Tensor
 
-from caramba.console import logger
-from caramba.optimizer.runtime import triton_supported
+from console import logger
+from optimizer.runtime import triton_supported
 
 
 # Keep this module importable on non-CUDA installs (e.g., MPS-only laptops).
@@ -30,12 +30,12 @@ flash_attn_bwd_dkv: object | None = None
 flash_attn_bwd_dq: object | None = None
 
 if not TYPE_CHECKING and triton_supported():
-    from caramba.optimizer.flash_attention_triton_kernels_bwd import (
+    from optimizer.flash_attention_triton_kernels_bwd import (
         flash_attn_bwd_dkv,
         flash_attn_bwd_dq,
         flash_attn_bwd_preprocess,
     )
-    from caramba.optimizer.flash_attention_triton_kernels_fwd import flash_attn_fwd
+    from optimizer.flash_attention_triton_kernels_fwd import flash_attn_fwd
 
 _TRITON_DEBUG: bool = False
 

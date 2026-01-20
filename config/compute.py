@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Annotated, Literal, TypeAlias
 from pydantic import BaseModel, Field
 
-from caramba.config import PositiveFloat, PositiveInt
+from config import PositiveFloat, PositiveInt
 
 
 class LocalComputeConfig(BaseModel):

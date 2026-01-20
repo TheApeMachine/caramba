@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from caramba.config.layers.diffusion import (
+from config.layers.diffusion import (
     DiffusionLayerConfig,
     DiffusionLayerType,
 )

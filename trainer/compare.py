@@ -14,8 +14,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.config.verify import CompareThreshold
-from caramba.model.trace import Trace
+from config.verify import CompareThreshold
+from model.trace import Trace
 
 
 @dataclass

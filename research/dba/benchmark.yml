@@ -413,9 +413,6 @@ targets:
           # category_counts:
           #   copy_tasks: 50
           #   reasoning: 20
-          # Include downstream HF tasks in the same run:
-          downstream_tasks: [winogrande, arc_easy]
-          downstream_limit: 100  # Limit samples per task for faster runs
           # Generation settings
           max_new_tokens: 32
           context_window: 2048

@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 from tensordict import TensorDict
 
-from caramba.runtime.tensordict_utils import TensorDictBase, to_device
+from runtime.tensordict_utils import TensorDictBase, to_device
 
 
 def test_to_device_preserves_tensordict_type() -> None:

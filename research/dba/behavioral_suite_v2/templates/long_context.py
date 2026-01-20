@@ -67,7 +67,8 @@ class EarlyRetrievalTemplate(TestTemplate):
         rng.shuffle(fillers)
         filler_text = " ".join(fillers[:filler_lines])
 
-        prompt = f"{key_fact} {filler_text} What is {name}'s favorite color?"
+        # Schema-completion style for base models
+        prompt = f"{key_fact} {filler_text}\nName: {name}\nFavorite color:"
         expected = color
 
         return TestCase(
@@ -124,7 +125,8 @@ class LateRetrievalTemplate(TestTemplate):
         location = rng.choice(locations)
 
         key_fact = f"The {item} is in the {location}."
-        prompt = f"{filler_text} {key_fact} Where is the {item}?"
+        # Schema-completion style for base models
+        prompt = f"{filler_text} {key_fact}\nItem: {item}\nLocation:"
         expected = location
 
         return TestCase(
@@ -193,7 +195,8 @@ class MiddleRetrievalTemplate(TestTemplate):
         number = rng.randint(100, 999)
         key_fact = f"{name}'s employee ID is {number}."
 
-        prompt = f"{filler_text_before} {key_fact} {filler_text_after} What is {name}'s employee ID?"
+        # Schema-completion style for base models
+        prompt = f"{filler_text_before} {key_fact} {filler_text_after}\nEmployee: {name}\nID:"
         expected = str(number)
 
         return TestCase(
@@ -225,7 +228,8 @@ class ValueUpdateTemplate(TestTemplate):
             initial = rng.randint(10, 50)
             delta1 = rng.randint(5, 15)
             final = initial + delta1
-            prompt = f"The {variable} starts at {initial}. Then it increases by {delta1}. What is the final {variable}?"
+            # Pattern-completion style: show examples then query
+            prompt = f"start=10, +5 -> final=15\nstart=20, +10 -> final=30\nstart={initial}, +{delta1} -> final="
             expected = str(final)
 
         elif difficulty == Difficulty.MEDIUM:
@@ -288,19 +292,19 @@ class MultiFactRetrievalTemplate(TestTemplate):
         rng.shuffle(facts)
 
         if difficulty == Difficulty.EASY:
-            # Single fact question
+            # Single fact question (schema-style)
             target_name = names[0]
-            prompt = " ".join(facts) + f" Where does {target_name} live?"
+            prompt = " ".join(facts) + f"\nPerson: {target_name}\nCity:"
             expected = cities[0]
         elif difficulty == Difficulty.MEDIUM:
-            # Job question
+            # Job question (schema-style)
             target_name = names[1]
-            prompt = " ".join(facts) + f" What is {target_name}'s job?"
+            prompt = " ".join(facts) + f"\nPerson: {target_name}\nJob:"
             expected = jobs[1]
         else:
-            # Cross-reference question
+            # Cross-reference question (schema-style)
             target_city = cities[0]
-            prompt = " ".join(facts) + f" Who lives in {target_city}?"
+            prompt = " ".join(facts) + f"\nCity: {target_city}\nResident:"
             expected = names[0]
 
         return TestCase(
@@ -326,27 +330,42 @@ class InstructionFirstTemplate(TestTemplate):
         difficulty = rng.choice(list(Difficulty))
 
         if difficulty == Difficulty.EASY:
-            words = rng.sample(["apple", "banana", "cherry", "date"], 3)
-            instruction = "Return only the first word from the list below."
-            content = ", ".join(words)
-            expected = words[0]
+            # Few-shot first extraction
+            pool1 = rng.sample(["apple", "banana", "cherry", "date"], 3)
+            pool2 = rng.sample(["dog", "cat", "bird", "fish"], 3)
+            pool3 = rng.sample(["red", "blue", "green", "yellow"], 3)
+            prompt = (
+                f"List: {', '.join(pool1)}\nFirst: {pool1[0]}\n"
+                f"List: {', '.join(pool2)}\nFirst: {pool2[0]}\n"
+                f"List: {', '.join(pool3)}\nFirst:"
+            )
+            expected = pool3[0]
         elif difficulty == Difficulty.MEDIUM:
-            words = rng.sample(["elephant", "giraffe", "hippo", "zebra", "lion"], 4)
-            instruction = "Return only the last word from the list below."
-            filler = "This is a list of animals commonly found in zoos."
-            content = f"{filler} {', '.join(words)}"
-            expected = words[-1]
+            # Few-shot last extraction with filler
+            animals = rng.sample(["elephant", "giraffe", "hippo", "zebra", "lion"], 4)
+            filler = "Animals: " + ", ".join(animals) + ". These are zoo animals."
+            pool1 = rng.sample(["north", "south", "east", "west"], 3)
+            pool2 = rng.sample(["gold", "silver", "bronze"], 3)
+            prompt = (
+                f"List: {', '.join(pool1)}\nLast: {pool1[-1]}\n"
+                f"{filler}\n"
+                f"List: {', '.join(pool2)}\nLast:"
+            )
+            expected = pool2[-1]
         else:
-            numbers = [str(rng.randint(10, 99)) for _ in range(5)]
-            instruction = "Return the sum of all numbers in the list below."
-            filler = "Here are some randomly generated numbers for analysis."
-            content = f"{filler} {', '.join(numbers)}"
-            expected = str(sum(int(n) for n in numbers))
-
-        prompt = f"{instruction}\n\n{content}"
+            # Few-shot sum calculation
+            nums1 = [rng.randint(10, 30) for _ in range(3)]
+            nums2 = [rng.randint(10, 30) for _ in range(3)]
+            nums3 = [rng.randint(10, 30) for _ in range(4)]
+            prompt = (
+                f"{', '.join(map(str, nums1))} -> sum={sum(nums1)}\n"
+                f"{', '.join(map(str, nums2))} -> sum={sum(nums2)}\n"
+                f"{', '.join(map(str, nums3))} -> sum="
+            )
+            expected = str(sum(nums3))
 
         return TestCase(
-            id=f"context_instruct_{difficulty.value}",
+            id=f"context_pattern_{difficulty.value}",
             category=self.category,
             subcategory=self.subcategory,
             difficulty=difficulty,
@@ -354,7 +373,7 @@ class InstructionFirstTemplate(TestTemplate):
             expected=expected,
             kind=EvalKind.GENERATION,
             target_position=TargetPosition.START,
-            metadata={"type": "instruction_first"},
+            metadata={"type": "pattern_first"},
         )
 
 

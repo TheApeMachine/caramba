@@ -11,8 +11,8 @@ from typing import cast
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.topology import StackedTopologyConfig
-from caramba.topology.utils import activation_checkpoint, should_activation_checkpoint, unwrap_output
+from config.topology import StackedTopologyConfig
+from topology.utils import activation_checkpoint, should_activation_checkpoint, unwrap_output
 
 
 class StackedTopology(nn.Module):

@@ -19,8 +19,8 @@ import platform
 
 import torch
 
-from caramba.console import logger
-from caramba.optimizer.runtime import (
+from console import logger
+from optimizer.runtime import (
     metal_build_tools_available,
     metal_supported,
     triton_supported,
@@ -100,13 +100,13 @@ def initialize_kernels() -> KernelRegistry:
             ),
         )
         try:
-            from caramba.optimizer.metal.jit import load_caramba_metal_ops
+            from optimizer.metal.jit import load_caramba_metal_ops
 
             _ = load_caramba_metal_ops(verbose=False)
-            from caramba.optimizer.metal.attention_jit import load_caramba_metal_attention_ops
+            from optimizer.metal.attention_jit import load_caramba_metal_attention_ops
 
             _ = load_caramba_metal_attention_ops(verbose=False)
-            from caramba.optimizer.metal.resonant_jit import load_caramba_metal_resonant_ops
+            from optimizer.metal.resonant_jit import load_caramba_metal_resonant_ops
 
             _ = load_caramba_metal_resonant_ops(verbose=False)
             metal_ops_loaded = True
@@ -128,28 +128,28 @@ def initialize_kernels() -> KernelRegistry:
             ),
         )
         # Validate that required Triton decode kernels are importable/defined.
-        from caramba.optimizer.kernels_decoupled import (
+        from optimizer.kernels_decoupled import (
             kv_decode_partition_stats_decoupled_q4q8q4,
             kv_decode_reduce_partitions,
             kv_decode_update_decoupled_q4q8q4,
         )
-        from caramba.optimizer.flash_attention_triton_kernels_bwd import (
+        from optimizer.flash_attention_triton_kernels_bwd import (
             flash_attn_bwd_dkv,
             flash_attn_bwd_dq,
             flash_attn_bwd_preprocess,
         )
-        from caramba.optimizer.flash_attention_triton_kernels_fwd import flash_attn_fwd
-        from caramba.optimizer.dba_attention_triton_kernels_bwd import (
+        from optimizer.flash_attention_triton_kernels_fwd import flash_attn_fwd
+        from optimizer.dba_attention_triton_kernels_bwd import (
             dba_attn_bwd_dkv,
             dba_attn_bwd_dq,
             dba_attn_bwd_preprocess,
         )
-        from caramba.optimizer.dba_attention_triton_kernels_fwd import dba_attn_fwd
-        from caramba.optimizer.kernels_ssm import selective_scan_triton
-        from caramba.optimizer.rmsnorm_triton_kernels import rmsnorm_fwd, rmsnorm_bwd_x, rmsnorm_bwd_x_noweight, rmsnorm_bwd_w
-        from caramba.optimizer.layernorm_triton_kernels import layernorm_fwd, layernorm_bwd_x, layernorm_gradw, layernorm_gradb
-        from caramba.optimizer.rope_triton_kernels import rope_fwd, rope_bwd
-        from caramba.optimizer.adamw_triton_kernels import adamw_master_step
+        from optimizer.dba_attention_triton_kernels_fwd import dba_attn_fwd
+        from optimizer.kernels_ssm import selective_scan_triton
+        from optimizer.rmsnorm_triton_kernels import rmsnorm_fwd, rmsnorm_bwd_x, rmsnorm_bwd_x_noweight, rmsnorm_bwd_w
+        from optimizer.layernorm_triton_kernels import layernorm_fwd, layernorm_bwd_x, layernorm_gradw, layernorm_gradb
+        from optimizer.rope_triton_kernels import rope_fwd, rope_bwd
+        from optimizer.adamw_triton_kernels import adamw_master_step
 
         missing = [
             name

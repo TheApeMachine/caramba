@@ -122,12 +122,15 @@ def fit_kmeans_codebook(
         n_clusters=K,
         random_state=seed,
         batch_size=batch_size,
-        n_init=1,
+        n_init=1,  # type: ignore[reportArgumentType]  # sklearn accepts int, type stubs are incorrect
         max_iter=max_iter,
         verbose=0,
     )
     km.fit(patches)
-    centers = km.cluster_centers_.astype(np.float32)
+    cluster_centers = getattr(km, "cluster_centers_", None)
+    if cluster_centers is None:
+        raise RuntimeError("KMeans clustering failed")
+    centers = np.asarray(cluster_centers, dtype=np.float32)
     return centers
 
 

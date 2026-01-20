@@ -5,7 +5,7 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.diffusion.samplers import DdimSampler, DdpmSampler, GuidanceConfig
+from diffusion.samplers import DdimSampler, DdpmSampler, GuidanceConfig
 
 VOCAB_SIZE = 8
 

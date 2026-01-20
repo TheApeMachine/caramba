@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from caramba.runtime.tensordict_utils import TensorDictBase
+from runtime.tensordict_utils import TensorDictBase
 
 
 class Transform(Protocol):

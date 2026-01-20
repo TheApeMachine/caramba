@@ -86,25 +86,34 @@ def classify_match_type(output: str, expected: str) -> MatchType:
     if first_line == expected_clean:
         return MatchType.EXACT
 
-    # CONTAINED: Expected appears anywhere in output
-    # For short expected values (<=3 chars), require word boundary to avoid false positives
+    # CONTAINED: Expected appears with controlled leeway.
+    # For numeric expected values, avoid degenerate "counting"/lists like "1 2 3 ... 8".
+    if re.fullmatch(r"[+-]?\d+", expected_clean):
+        # If the model wrote the number somewhere, only treat it as SOFT if:
+        # - there's exactly one integer token in the first line, OR
+        # - the line looks like an equation/answer statement (contains '=' or 'answer'/'is'),
+        #   which catches "2 + 2 = 4" and "answer is 4" but rejects pure number lists.
+        ints = re.findall(r"[+-]?\d+", first_line)
+        if expected_clean not in ints:
+            return MatchType.NONE
+        if len(ints) == 1:
+            return MatchType.CONTAINED
+        low = first_line.lower()
+        if ("=" in first_line) or ("answer" in low) or (" is " in low):
+            return MatchType.CONTAINED
+        return MatchType.NONE
+
+    # For short non-numeric expected values (<=3 chars), require token boundary.
     if len(expected_clean) <= 3:
-        # Check word boundaries - expected should appear as isolated token
         pattern = r'(?:^|[\s\[\(\{,;:])' + re.escape(expected_clean) + r'(?:[\s\]\)\},;:.]|$)'
         if re.search(pattern, output_clean):
             return MatchType.CONTAINED
-        # Also check if it's in the word list of first line
-        words = first_line.split()
-        if expected_clean in words:
-            return MatchType.CONTAINED
-        # Check if first line starts with expected (common for numeric answers)
+        # Keep "starts with" for cases like "Yes" vs "Yes." etc.
         if first_line.startswith(expected_clean) and (
-            len(first_line) == len(expected_clean) or
-            not first_line[len(expected_clean)].isalnum()
+            len(first_line) == len(expected_clean) or not first_line[len(expected_clean)].isalnum()
         ):
             return MatchType.CONTAINED
     else:
-        # For longer expected values, simple containment check
         if expected_clean in output_clean:
             return MatchType.CONTAINED
 

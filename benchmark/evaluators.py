@@ -10,9 +10,9 @@ from typing import Any
 
 import torch
 
-from caramba.benchmark.latency import LatencyBenchmark
-from caramba.benchmark.memory import MemoryBenchmark
-from caramba.config.benchmark import LatencyBenchmarkConfig, MemoryBenchmarkConfig
+from benchmark.latency import LatencyBenchmark
+from benchmark.memory import MemoryBenchmark
+from config.benchmark import LatencyBenchmarkConfig, MemoryBenchmarkConfig
 
 
 @dataclass(frozen=True, slots=True)

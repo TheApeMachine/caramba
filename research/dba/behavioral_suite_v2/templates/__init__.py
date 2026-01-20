@@ -47,10 +47,12 @@ from . import long_context
 from . import robustness
 from . import edge_cases
 from . import attention_probes
-from . import instruction_following
+from . import pattern_completion
+# Note: instruction_following.py replaced with pattern_completion.py for base-model-friendly prompts
 from . import consistency_checks
 from . import adversarial
 from . import adversarial_extended
+from . import paired_curve
 from . import binding_tests
 from . import multi_hop
 
@@ -69,10 +71,11 @@ ALL_TEMPLATES = {
     "robustness": robustness.TEMPLATES,
     "edge_cases": edge_cases.TEMPLATES,
     "attention_probes": attention_probes.TEMPLATES,
-    "instruction_following": instruction_following.TEMPLATES,
+    "pattern_completion": pattern_completion.TEMPLATES,
     "consistency_checks": consistency_checks.TEMPLATES,
     "adversarial": adversarial.TEMPLATES,
     "adversarial_extended": adversarial_extended.TEMPLATES,
+    "paired_curve": paired_curve.TEMPLATES,
     "binding_tests": binding_tests.TEMPLATES,
     "multi_hop": multi_hop.TEMPLATES,
 }
@@ -103,7 +106,7 @@ __all__ = [
     "robustness",
     "edge_cases",
     "attention_probes",
-    "instruction_following",
+    "pattern_completion",
     "consistency_checks",
     "adversarial",
     "adversarial_extended",

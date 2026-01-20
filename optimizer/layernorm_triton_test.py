@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 
 def _skip_if_no_cuda_triton() -> None:
@@ -26,7 +26,7 @@ def test_triton_layernorm_forward_matches_reference(dtype: torch.dtype) -> None:
     w = torch.randn(D, device=device, dtype=dtype)
     b = torch.randn(D, device=device, dtype=dtype)
 
-    from caramba.optimizer.layernorm_triton import layernorm_triton
+    from optimizer.layernorm_triton import layernorm_triton
 
     y = layernorm_triton(x=x, weight=w, bias=b, eps=eps)
     y_ref = torch.nn.functional.layer_norm(
@@ -52,7 +52,7 @@ def test_triton_layernorm_backward_matches_reference(dtype: torch.dtype) -> None
     w0 = torch.randn(D, device=device, dtype=dtype, requires_grad=True)
     b0 = torch.randn(D, device=device, dtype=dtype, requires_grad=True)
 
-    from caramba.optimizer.layernorm_triton import layernorm_triton
+    from optimizer.layernorm_triton import layernorm_triton
 
     y = layernorm_triton(x=x0, weight=w0, bias=b0, eps=eps)
     loss = (y.float() ** 2).mean()
@@ -96,7 +96,7 @@ def test_triton_layernorm_weight_only_backward_matches_reference(dtype: torch.dt
     x0 = torch.randn(B, T, D, device=device, dtype=dtype, requires_grad=True)
     w0 = torch.randn(D, device=device, dtype=dtype, requires_grad=True)
 
-    from caramba.optimizer.layernorm_triton import layernorm_triton
+    from optimizer.layernorm_triton import layernorm_triton
 
     y = layernorm_triton(x=x0, weight=w0, bias=None, eps=eps)
     loss = (y.float() ** 2).mean()
@@ -135,7 +135,7 @@ def test_triton_layernorm_noweight_backward_matches_reference(dtype: torch.dtype
 
     x0 = torch.randn(B, T, D, device=device, dtype=dtype, requires_grad=True)
 
-    from caramba.optimizer.layernorm_triton import layernorm_triton
+    from optimizer.layernorm_triton import layernorm_triton
 
     y = layernorm_triton(x=x0, weight=None, bias=None, eps=eps)
     loss = (y.float() ** 2).mean()

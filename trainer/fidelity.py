@@ -15,7 +15,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.runtime.tensordict_utils import TensorDictBase
+from runtime.tensordict_utils import TensorDictBase
 
 @dataclass
 class FidelityResult:

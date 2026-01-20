@@ -1,4 +1,4 @@
-.PHONY: install install-all test paper discussion brainstorm brainstorm-full ingest platform tui mosaic-smoke benchmark local surgery distill dual prepare-llama-data convert-safetensors verify-surgery infer colab-dispatch colab-dispatch-quick colab-notebook
+.PHONY: install install-all test paper discussion brainstorm brainstorm-full ingest platform tui mosaic-smoke benchmark local surgery distill dual prepare-llama-data convert-safetensors verify-surgery infer colab-dispatch colab-dispatch-quick colab-notebook benchmark10k benchmark100k benchmark_ablations benchmark_gated
 
 install:
 	python3.12 -m venv .venv
@@ -105,6 +105,14 @@ benchmark10k:
 benchmark100k:
 	. .venv/bin/activate \
 	&& python3.12 -m caramba research/dba/benchmark100k.yml
+
+benchmark_ablations:
+	. .venv/bin/activate \
+	&& python3.12 -m caramba research/dba/benchmark_ablations.yml
+
+benchmark_gated:
+	. .venv/bin/activate \
+	&& python3.12 -m caramba research/dba/benchmark-gated.yml
 
 benchmark:
 	@echo "Running behavioral benchmark..."

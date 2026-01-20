@@ -22,7 +22,7 @@ def main() -> None:
         sys.exit(1)
 
     # Import here to avoid import errors during Docker build
-    from caramba.ai import run_root_server, run_lead_server, run_agent_server
+    from ai import run_root_server, run_lead_server, run_agent_server
 
     if agent_role == "root" or persona_type == "root":
         print(f"Starting ROOT agent on {host}:{port}")

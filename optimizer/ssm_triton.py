@@ -11,8 +11,8 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from caramba.optimizer.ssm_triton_kernels_bwd import ssm_scan_block_bwd
-from caramba.optimizer.ssm_triton_kernels_fwd import ssm_scan_block_fwd
+from optimizer.ssm_triton_kernels_bwd import ssm_scan_block_bwd
+from optimizer.ssm_triton_kernels_fwd import ssm_scan_block_fwd
 
 
 def _cdiv(n: int, d: int) -> int:

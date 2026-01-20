@@ -10,3 +10,12 @@ class LogprobCompletion(Protocol):
 
     def score(self, *, prompt_ids: list[int], completion_ids: list[int]) -> float: ...
 
+    def score_batch(
+        self, *, prompt_ids: list[int], completions_ids: list[list[int]]
+    ) -> list[float]:
+        """Batch score multiple completions (optional optimization).
+
+        If not implemented, scorer will fall back to sequential scoring.
+        """
+        ...
+

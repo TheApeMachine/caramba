@@ -10,8 +10,8 @@ from typing import Any
 
 import torch
 
-from caramba.benchmark.perplexity import PerplexityBenchmark
-from caramba.config.benchmark import PerplexityBenchmarkConfig
+from benchmark.perplexity import PerplexityBenchmark
+from config.benchmark import PerplexityBenchmarkConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +23,7 @@ class PerplexityMetric:
     batch_size: int = 1
     num_batches: int | None = None
     stride: int | None = None
+    valid_vocab_size: int | None = None
 
     def run(
         self, *, model: torch.nn.Module, device: torch.device, name: str = "model"
@@ -33,6 +34,7 @@ class PerplexityMetric:
             batch_size=int(self.batch_size),
             num_batches=self.num_batches,
             stride=self.stride,
+            valid_vocab_size=self.valid_vocab_size,
         )
         bench = PerplexityBenchmark(cfg, device)
         r = bench.run(model, name)

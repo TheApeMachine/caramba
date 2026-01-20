@@ -108,7 +108,7 @@ def main() -> None:
         sys.exit(1)
 
     # Import trainer
-    from caramba.trainer.mlx.routing_hypothesis import run_routing_hypothesis_mlx
+    from trainer.mlx.routing_hypothesis import run_routing_hypothesis_mlx
 
     # Run experiment
     run_routing_hypothesis_mlx(

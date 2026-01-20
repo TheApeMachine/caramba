@@ -11,7 +11,7 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.layer import LoRALinearLayerConfig
+from config.layer import LoRALinearLayerConfig
 
 
 class LoRALinearLayer(nn.Module):
@@ -47,7 +47,7 @@ class LoRALinearLayer(nn.Module):
 
         # Base linear layer (typically frozen during training)
         self.linear = nn.Linear(self.d_in, self.d_out, bias=config.bias)
-        
+
         # LoRA adapters
         self.lora_A = nn.Parameter(torch.zeros((self.d_in, self.r)))
         self.lora_B = nn.Parameter(torch.zeros((self.r, self.d_out)))
@@ -85,9 +85,9 @@ class LoRALinearLayer(nn.Module):
         """
         # x: (..., d_in)
         result = self.linear(x)
-        
+
         # Apply LoRA path
         # (..., d_in) @ (d_in, r) @ (r, d_out) -> (..., d_out)
         adapter = (self.lora_dropout(x) @ self.lora_A) @ self.lora_B
-        
+
         return result + adapter * self.scaling

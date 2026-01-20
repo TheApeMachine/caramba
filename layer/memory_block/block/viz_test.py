@@ -3,8 +3,8 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import torch
-from caramba.config.layer import MemoryBlockLayerConfig
-from caramba.layer.memory_block.block.layer import MemoryBlockLayer
+from config.layer import MemoryBlockLayerConfig
+from layer.memory_block.block.layer import MemoryBlockLayer
 
 from dataclasses import dataclass, field
 
@@ -30,7 +30,7 @@ class TestVisualizationConfig(unittest.TestCase):
         self.cfg.mem_autotune_viz = False
         x = torch.randn(1, 1, 128)
         ctx = MockCtx(step=0)
-        
+
         dummy_routing = {
             "idx_r": torch.zeros(1, 1, 1, dtype=torch.long),
             "idx_w": torch.zeros(1, 1, 1, dtype=torch.long),
@@ -45,7 +45,7 @@ class TestVisualizationConfig(unittest.TestCase):
         """Verify that during warmup (steps 0-5), collect_aux is forced to True."""
         self.cfg.mem_autotune_viz = True
         x = torch.randn(1, 1, 128)
-        
+
         dummy_routing = {
             "idx_r": torch.zeros(1, 1, 1, dtype=torch.long),
             "idx_w": torch.zeros(1, 1, 1, dtype=torch.long),
@@ -63,7 +63,7 @@ class TestVisualizationConfig(unittest.TestCase):
         self.cfg.mem_autotune_viz = True
         self.cfg.mem_autotune_viz_interval = 10
         x = torch.randn(1, 1, 128)
-        
+
         dummy_routing = {
             "idx_r": torch.zeros(1, 1, 1, dtype=torch.long),
             "idx_w": torch.zeros(1, 1, 1, dtype=torch.long),
@@ -92,24 +92,24 @@ class TestVisualizationConfig(unittest.TestCase):
         # 1. Enabled + Interval 1
         self.cfg.mem_autotune_viz = True
         self.cfg.mem_autotune_viz_interval = 1
-        
+
         ctx = MockCtx(step=1)
         x = torch.randn(1, 1, 128)
-        
-        from caramba.layer.memory_block.memory.tuner import UniversalMemoryTuner
+
+        from layer.memory_block.memory.tuner import UniversalMemoryTuner
         tuner = UniversalMemoryTuner(mode="adaptive")
-        
+
         dummy_routing = {
             "idx_r": torch.zeros(1, 1, 1, dtype=torch.long),
             "idx_w": torch.zeros(1, 1, 1, dtype=torch.long),
             "collect_aux": True
         }
-        
+
         with patch("caramba.layer.memory_block.memory.tuner.get_shared_tuner", return_value=tuner):
             with patch.object(self.layer.memory, 'collect_health_telemetry') as mock_tel:
-                from caramba.layer.memory_block.memory.telemetry import MemoryHealthTelemetry
+                from layer.memory_block.memory.telemetry import MemoryHealthTelemetry
                 mock_tel.return_value = MemoryHealthTelemetry(utilization=0.5)
-                
+
                 with patch.object(self.layer.memory, 'compute_routing', return_value=dummy_routing):
                     self.layer(x, ctx=ctx)
                     self.assertTrue(mock_tuner_status.called)

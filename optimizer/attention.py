@@ -17,10 +17,10 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch._dynamo import is_compiling as _dynamo_is_compiling
 
-from caramba.optimizer.kernel_registry import KERNELS
-from caramba.console import logger
-from caramba.optimizer.flash_attention_triton import FlashAttention
-from caramba.optimizer.metal.attention_training import MetalAttentionTraining
+from optimizer.kernel_registry import KERNELS
+from console import logger
+from optimizer.flash_attention_triton import FlashAttention
+from optimizer.metal.attention_training import MetalAttentionTraining
 
 
 class AttentionTraining:

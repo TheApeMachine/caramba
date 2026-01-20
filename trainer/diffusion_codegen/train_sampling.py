@@ -10,11 +10,11 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from caramba.console import logger
-from caramba.diffusion.samplers import DdimSampler, DdpmSampler, GuidanceConfig
-from caramba.trainer.diffusion_codegen.ema import ExponentialMovingAverage
-from caramba.trainer.diffusion_codegen.prompt import PromptEncoder
-from caramba.trainer.diffusion_codegen.train_context import TrainingContext
+from console import logger
+from diffusion.samplers import DdimSampler, DdpmSampler, GuidanceConfig
+from trainer.diffusion_codegen.ema import ExponentialMovingAverage
+from trainer.diffusion_codegen.prompt import PromptEncoder
+from trainer.diffusion_codegen.train_context import TrainingContext
 
 
 @dataclass(frozen=True, slots=True)

@@ -12,11 +12,11 @@ import unittest
 import torch
 from torch import Tensor, nn
 
-from caramba.layer.memory_block.memory.reader import MemoryReader
-from caramba.layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
-from caramba.layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
-from caramba.layer.memory_block.memory.writer import MemoryWriter
-from caramba.layer.memory_block.state import MemoryBlockState
+from layer.memory_block.memory.reader import MemoryReader
+from layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
+from layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
+from layer.memory_block.memory.writer import MemoryWriter
+from layer.memory_block.state import MemoryBlockState
 
 
 class MemoryVsaHybridTest(unittest.TestCase):

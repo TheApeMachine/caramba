@@ -19,7 +19,7 @@ import yaml
 from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 from google.adk.tools.mcp_tool.mcp_session_manager import SseConnectionParams
 
-from caramba.console import logger
+from console import logger
 
 
 ENV_PATTERN = re.compile(r"\$\{([A-Za-z0-9_]+)(?::-(.*?))?\}")

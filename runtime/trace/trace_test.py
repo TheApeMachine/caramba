@@ -4,9 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from caramba.runtime.trace.reader import TraceReader
-from caramba.runtime.trace.replay import ReplayRunner
-from caramba.runtime.trace.writer import TraceWriter
+from runtime.trace.reader import TraceReader
+from runtime.trace.replay import ReplayRunner
+from runtime.trace.writer import TraceWriter
 
 
 class TraceTest(unittest.TestCase):

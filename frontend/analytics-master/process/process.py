@@ -57,7 +57,7 @@ def threat_matcher():
     ti_combine = threat_collect()
 
     # Read raw network data
-    df_data = pd.read_csv(data, error_bad_lines=False, keep_default_na=False, na_values=[''], header=0,
+    df_data = pd.read_csv(data, on_bad_lines='skip', keep_default_na=False, na_values=[''], header=0,
                           names=['datetime', 'source', 'target'], parse_dates=True)
 
     # Timestamp stuff: Use GMT in your datasets; just makes everything better
@@ -84,7 +84,7 @@ def threat_matcher():
     enriched['tgt_hit'] = np.where(enriched['target'] == enriched['actor'], 'true', '')
 
     # Remove "actor" field
-    enriched = enriched.drop('actor', 1)
+    enriched = enriched.drop(columns=['actor'])
 
     # Reformat datetime field into epoch time
     enriched['EventTime'] = enriched['datetime'].apply(lambda dates: dates.strftime('%s%Z'))

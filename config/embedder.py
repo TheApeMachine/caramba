@@ -11,7 +11,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, Field
 
-from caramba.config import PositiveInt
+from config import PositiveInt
 
 
 class EmbedderType(str, enum.Enum):

@@ -5,6 +5,6 @@ which is the baseline most other attention ideas are compared against.
 """
 from __future__ import annotations
 
-from caramba.layer.attention.standard.layer import StandardAttentionLayer
+from .layer import StandardAttentionLayer
 
 __all__ = ["StandardAttentionLayer"]

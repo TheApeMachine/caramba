@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.runtime.tensordict_utils import as_tensordict
-from caramba.trainer.objectives import (
+from runtime.tensordict_utils import as_tensordict
+from trainer.objectives import (
     KeyedCrossEntropyObjective,
     KeyedMSEObjective,
     NextTokenCrossEntropyObjective,

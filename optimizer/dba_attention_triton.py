@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 import torch
 from torch import Tensor
 
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 
 # Keep this module importable on non-CUDA installs (e.g., MPS-only laptops).
@@ -28,12 +28,37 @@ dba_attn_bwd_dkv: object | None = None
 dba_attn_bwd_dq: object | None = None
 
 if not TYPE_CHECKING and triton_supported():
-    from caramba.optimizer.dba_attention_triton_kernels_bwd import (
+    from optimizer.dba_attention_triton_kernels_bwd import (
         dba_attn_bwd_dkv,
         dba_attn_bwd_dq,
         dba_attn_bwd_preprocess,
     )
-    from caramba.optimizer.dba_attention_triton_kernels_fwd import dba_attn_fwd
+    from optimizer.dba_attention_triton_kernels_fwd import dba_attn_fwd
+
+
+def _dynamo_leaf(fn: Any) -> Any:
+    """Keep op in graph but don't trace internals.
+
+    `torch._dynamo.disable` introduces a graph break, which can significantly
+    hurt performance (tokens/sec) when called many times per step.
+
+    Prefer `torch._dynamo.allow_in_graph` when available: Dynamo treats the
+    function as a leaf op (no tracing into it), but it stays inside the compiled
+    graph. This also avoids SymPy/xreplace issues triggered by tracing custom
+    autograd/Triton plumbing on some PyTorch builds.
+    """
+
+    try:
+        import torch._dynamo as _dynamo  # type: ignore
+
+        allow = getattr(_dynamo, "allow_in_graph", None)
+        if callable(allow):
+            return allow(fn)
+    except Exception:
+        pass
+
+    # Fallback: no-op if allow_in_graph is unavailable.
+    return fn
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,6 +384,7 @@ class _DBAAttnFn(torch.autograd.Function):
 class DecoupledAttentionTraining:
     """DBA full-sequence attention training kernel (CUDA Triton)."""
 
+    @_dynamo_leaf
     def run(
         self,
         *,

@@ -6,11 +6,11 @@ Provides a safe, test-driven lifecycle for tools:
 - tool acceptance is gated by deterministic unit test results
 """
 
-from caramba.toolchain.events import ToolCapabilities, ToolDefinitionPayload, ToolTestResultPayload
-from caramba.toolchain.handler import ToolchainHandler
-from caramba.toolchain.registry import ToolRegistry
-from caramba.toolchain.sandbox import ToolSandbox
-from caramba.toolchain.test_runner import ToolTestRunner
+from toolchain.events import ToolCapabilities, ToolDefinitionPayload, ToolTestResultPayload
+from toolchain.handler import ToolchainHandler
+from toolchain.registry import ToolRegistry
+from toolchain.sandbox import ToolSandbox
+from toolchain.test_runner import ToolTestRunner
 
 __all__ = [
     "ToolCapabilities",

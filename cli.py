@@ -8,11 +8,11 @@ import click
 from pathlib import Path
 import uvicorn
 
-from caramba.console import logger
-from caramba.api.app import app
-from caramba.experiment.runner import run_from_manifest_path
-from caramba.codegraph.parser import parse_repo
-from caramba.codegraph.sync import sync_files_to_falkordb
+from console import logger
+from api.app import app
+from experiment.runner import run_from_manifest_path
+from codegraph.parser import parse_repo
+from codegraph.sync import sync_files_to_falkordb
 
 
 class CarambaCLI(click.Group):
@@ -116,7 +116,7 @@ def tui_cmd(url: str, log: str | None, steps: int, output: str) -> None:
     Example:
         caramba tui --url http://localhost:9000 --log runs/train.jsonl
     """
-    from caramba.tui.unified import CarambaApp
+    from tui.unified import CarambaApp
 
     app = CarambaApp(
         root_agent_url=url,

@@ -13,8 +13,8 @@ import numpy as np
 import torch
 from torch import nn
 
-from caramba.benchmark.perplexity import PerplexityBenchmark, PerplexityResult
-from caramba.config.benchmark import PerplexityBenchmarkConfig
+from benchmark.perplexity import PerplexityBenchmark, PerplexityResult
+from config.benchmark import PerplexityBenchmarkConfig
 
 
 class DummyLMModel(nn.Module):
@@ -176,6 +176,71 @@ class TestPerplexityBenchmark(unittest.TestCase):
 
         expected_tokens = self.batch_size * self.block_size * result.num_batches
         self.assertEqual(result.num_tokens, expected_tokens)
+
+    def test_vocab_guard_raises_on_tokenizer_mismatch(self) -> None:
+        """Perplexity should fail fast if dataset token IDs exceed model vocab.
+
+        This prevents meaningless 'comparisons' when the dataset was tokenized
+        with a different tokenizer than the evaluated model.
+        """
+        # Create a dataset that includes a token ID outside the model vocab.
+        bad_vocab_size = 16
+        data = np.zeros(256, dtype=np.uint16)
+        data[0] = np.uint16(bad_vocab_size + 1)  # out of range
+        np.save(self.dataset_path, data)
+
+        config = PerplexityBenchmarkConfig(
+            dataset=str(self.dataset_path),
+            block_size=8,
+            batch_size=1,
+            num_batches=1,
+        )
+        model = DummyLMModel(vocab_size=bad_vocab_size)
+        model.eval()
+
+        benchmark = PerplexityBenchmark(config, self.device)
+        with self.assertRaises(ValueError):
+            _ = benchmark.run(model, "test_model")
+
+    def test_valid_vocab_size_masks_padded_logits_for_fairness(self) -> None:
+        """If model vocab is padded, valid_vocab_size should slice logits for fair CE.
+
+        We construct a model whose padded logits dominate probability mass. Without
+        slicing, CE is huge; with slicing to valid vocab, CE matches ln(V_valid).
+        """
+        import numpy as np
+
+        valid_vocab = 16
+        padded_vocab = 32
+        # Tokens are all within valid vocab.
+        data = np.random.randint(0, valid_vocab, size=512, dtype=np.uint16)
+        np.save(self.dataset_path, data)
+
+        class PaddedLogitsModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.vocab_size = padded_vocab
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                b, t = x.shape
+                logits = torch.zeros((b, t, padded_vocab), dtype=torch.float32, device=x.device)
+                # Make padded region overwhelmingly likely if not masked.
+                logits[..., valid_vocab:] = 100.0
+                return logits
+
+        model = PaddedLogitsModel().eval()
+
+        cfg = PerplexityBenchmarkConfig(
+            dataset=str(self.dataset_path),
+            block_size=32,
+            batch_size=2,
+            num_batches=2,
+            valid_vocab_size=valid_vocab,
+        )
+        r = PerplexityBenchmark(cfg, self.device).run(model, "m")
+
+        # With logits sliced to valid vocab and uniform over valid tokens => loss ≈ ln(V_valid).
+        self.assertAlmostEqual(r.loss, math.log(valid_vocab), places=3)
 
 
 if __name__ == "__main__":

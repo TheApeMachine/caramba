@@ -4,7 +4,7 @@ Provides stable event encoders/decoders using Cap'n Proto for zero-copy serializ
 This package is the canonical home for the event codec.
 """
 
-from caramba.core.event_codec.capnp_codec import (
+from core.event_codec.capnp_codec import (
     CapnpEventDecoder,
     CapnpEventEncoder,
 )

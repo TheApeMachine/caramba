@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 from torch import nn
-from caramba.initializers.base import Initializer
+from initializers.base import Initializer
 
 class GPT2Initializer(Initializer):
     """Initializes weights with standard GPT-2 style scaling.

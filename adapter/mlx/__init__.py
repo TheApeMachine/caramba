@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from caramba.adapter.mlx.surgery import AttentionSurgeryMLX
+from adapter.mlx.surgery import AttentionSurgeryMLX
 
 __all__ = ["AttentionSurgeryMLX"]

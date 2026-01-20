@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from caramba.data.tensors.source import TensorSource
+from data.tensors.source import TensorSource
 
 
 class NpySource:

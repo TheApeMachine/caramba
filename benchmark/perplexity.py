@@ -16,11 +16,11 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
-from caramba.console import logger
-from caramba.config.benchmark import PerplexityBenchmarkConfig
-from caramba.data.npy import NpyDataset
-from caramba.benchmark.utils import get_model_vocab_size
-from caramba.runtime.tensordict_utils import TensorDictBase, collate_tensordict
+from console import logger
+from config.benchmark import PerplexityBenchmarkConfig
+from data.npy import NpyDataset
+from benchmark.utils import get_model_vocab_size
+from runtime.tensordict_utils import TensorDictBase, collate_tensordict
 
 
 @dataclass
@@ -75,7 +75,17 @@ class PerplexityBenchmark:
         """
         model.eval()
         loader = self._get_loader()
-        vocab_size = get_model_vocab_size(model, default=32000)
+        model_vocab_size = get_model_vocab_size(model, default=32000)
+        effective_vocab_size = (
+            int(self.config.valid_vocab_size)
+            if getattr(self.config, "valid_vocab_size", None) is not None
+            else int(model_vocab_size)
+        )
+        if int(effective_vocab_size) > int(model_vocab_size):
+            raise ValueError(
+                "PerplexityBenchmark: valid_vocab_size exceeds model vocab_size "
+                f"(valid_vocab_size={effective_vocab_size}, model_vocab_size={model_vocab_size})."
+            )
 
         total_loss = 0.0
         total_tokens = 0
@@ -90,21 +100,10 @@ class PerplexityBenchmark:
                 # Fail fast if the dataset token IDs exceed the model vocab.
                 # This frequently indicates a tokenizer mismatch (e.g. GPT-family tokens
                 # evaluated with a Llama-family model), which makes perplexity meaningless.
+                # OPTIMIZED: Stay on GPU until final .item() to avoid sync overhead.
                 try:
-                    # NOTE: on MPS, reductions on int64 (torch.long) can raise for some ops.
-                    # We only need this check for control-flow, so do it on CPU to avoid
-                    # spamming warnings and to keep the guard effective on all backends.
-                    mx = int(
-                        torch.maximum(
-                            x.detach().to(device="cpu").max(),
-                            y.detach().to(device="cpu").max(),
-                        ).item()
-                    )
-                    if mx >= int(vocab_size):
-                        raise ValueError(
-                            f"Dataset token IDs exceed model vocab: max_id={mx}, vocab_size={vocab_size}. "
-                            "This usually means the dataset was tokenized with a different tokenizer than the model."
-                        )
+                    # Compute max on GPU, only transfer final scalar to CPU
+                    mx = int(max(x.max().item(), y.max().item()))
                 except Exception as e:
                     # If max() fails for some reason, continue and let cross_entropy raise.
                     if not warned_max_failed:
@@ -113,8 +112,30 @@ class PerplexityBenchmark:
                             f"Max() failed in vocab guard ({type(e).__name__}: {e}); "
                             "continuing and letting cross_entropy raise"
                         )
+                else:
+                    if mx >= int(effective_vocab_size):
+                        raise ValueError(
+                            f"Dataset token IDs exceed effective vocab: max_id={mx}, "
+                            f"valid_vocab_size={effective_vocab_size} (model_vocab_size={model_vocab_size}). "
+                            "This usually means the dataset was tokenized with a different tokenizer than the "
+                            "one implied by valid_vocab_size (or the model)."
+                        )
 
                 logits = model(x)
+                if isinstance(logits, tuple):
+                    logits = logits[0]
+                elif hasattr(logits, "logits"):
+                    logits = logits.logits
+                logits = cast(Tensor, logits)
+                # If model vocab is padded (e.g. 50304 vs tokenizer 50257), slice logits
+                # so loss is computed over the *real* token space for fair comparison.
+                if int(logits.size(-1)) < int(effective_vocab_size):
+                    raise ValueError(
+                        "Model returned logits with vocab smaller than effective vocab "
+                        f"(logits_vocab={int(logits.size(-1))}, effective_vocab_size={effective_vocab_size})."
+                    )
+                if int(logits.size(-1)) > int(effective_vocab_size):
+                    logits = logits[..., : int(effective_vocab_size)]
 
                 loss = F.cross_entropy(
                     logits.view(-1, logits.size(-1)),

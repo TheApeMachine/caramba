@@ -10,8 +10,28 @@ import logging
 import math
 import torch
 from torch import nn
+from collections.abc import Callable
+from typing import TypeVar, cast
 
 log = logging.getLogger(__name__)
+
+_F = TypeVar("_F", bound=Callable[..., object])
+
+
+def _dynamo_disable_typed(fn: _F) -> _F:
+    """Typed wrapper for `torch._dynamo.disable`.
+
+    Using `@torch._dynamo.disable` directly can cause some type checkers
+    (basedpyright) to lose the decorated function signature, which then makes
+    keyword calls (e.g. target_len=...) look invalid.
+    """
+
+    try:
+        import torch._dynamo as _dynamo  # type: ignore
+
+        return cast(_F, _dynamo.disable(fn))
+    except Exception:
+        return cast(_F, fn)
 
 
 class RotaryEmbedding(nn.Module):
@@ -97,9 +117,11 @@ class RotaryEmbedding(nn.Module):
                         "original_max_position_embeddings must be valid positive numbers)."
                     ) from e
         self.register_buffer("inv_freq", inv_freq, persistent=False)
-        self._cos_sin_cache: dict[tuple[str, str], tuple[torch.Tensor, torch.Tensor]] = (
-            {}
-        )
+        # Tensor cache (preferred over Python dict for torch.compile compatibility).
+        # These buffers are populated lazily on first use for the current device/dtype.
+        self.register_buffer("_cos_cached", torch.empty((0, self.rot_dim // 2)), persistent=False)
+        self.register_buffer("_sin_cached", torch.empty((0, self.rot_dim // 2)), persistent=False)
+        self._cached_len: int = 0
 
     @staticmethod
     def _next_pow2(n: int) -> int:
@@ -113,40 +135,53 @@ class RotaryEmbedding(nn.Module):
             return 0
         return 1 << (n - 1).bit_length()
 
+    @_dynamo_disable_typed
+    def _ensure_cache(self, *, target_len: int, device: torch.device, dtype: torch.dtype) -> None:
+        """(Re)build cos/sin cache up to `target_len`.
+
+        This runs outside torch.compile tracing to avoid Dynamo/SymPy issues.
+        """
+        target_len = int(target_len)
+        if target_len <= int(self._cached_len):
+            return
+
+        start = int(self._cached_len)
+        t = torch.arange(start, target_len, device=device, dtype=torch.float32)
+        inv = self.inv_freq.to(device=device, dtype=torch.float32)
+        freqs = torch.outer(t, inv)
+        cos_new = torch.cos(freqs).to(dtype=dtype)
+        sin_new = torch.sin(freqs).to(dtype=dtype)
+
+        if int(self._cached_len) == 0:
+            self._cos_cached = cos_new
+            self._sin_cached = sin_new
+        else:
+            self._cos_cached = torch.cat([self._cos_cached, cos_new], dim=0)
+            self._sin_cached = torch.cat([self._sin_cached, sin_new], dim=0)
+        self._cached_len = int(self._cos_cached.size(0))
+
     def _cos_sin(
         self, seq_len: int, device: torch.device, dtype: torch.dtype
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Get cached cos/sin tables
+        """Get cached cos/sin tables.
 
         The cache grows geometrically so the common “one token at a time” decode
         path stays dominated by attention compute, not by cache maintenance.
         """
-        seq_len = int(seq_len)
-        key = (str(device), str(dtype))
-        cached = self._cos_sin_cache.get(key)
+        seq_len_i = int(seq_len)
 
-        if cached is None:
-            cached_len = 0
-            cos_cached = torch.empty((0, self.rot_dim // 2), device=device, dtype=dtype)
-            sin_cached = torch.empty((0, self.rot_dim // 2), device=device, dtype=dtype)
-        else:
-            cos_cached, sin_cached = cached
-            cached_len = int(cos_cached.size(0))
+        # Ensure cache tensors live on the right device/dtype.
+        # Note: buffers will typically follow the module, but this keeps correctness
+        # for cases where rotate is called before `.to(device/dtype)`.
+        if self._cos_cached.device != device or self._cos_cached.dtype != dtype:
+            self._cos_cached = self._cos_cached.to(device=device, dtype=dtype)
+            self._sin_cached = self._sin_cached.to(device=device, dtype=dtype)
 
-        if cached_len < seq_len:
-            target_len = self._next_pow2(seq_len)
-            start = cached_len
-            t = torch.arange(start, target_len, device=device, dtype=torch.float32)
-            inv = self.inv_freq.to(device=device, dtype=torch.float32)
-            freqs = torch.outer(t, inv)
-            cos_new = torch.cos(freqs).to(dtype=dtype)
-            sin_new = torch.sin(freqs).to(dtype=dtype)
+        if int(self._cached_len) < seq_len_i:
+            self._ensure_cache(target_len=self._next_pow2(seq_len_i), device=device, dtype=dtype)
 
-            cos_cached = torch.cat([cos_cached, cos_new], dim=0)
-            sin_cached = torch.cat([sin_cached, sin_new], dim=0)
-            self._cos_sin_cache[key] = (cos_cached, sin_cached)
-
-        return (cos_cached[:seq_len], sin_cached[:seq_len])
+        # Slice cached tables.
+        return (self._cos_cached[:seq_len_i], self._sin_cached[:seq_len_i])
 
     def rotate(self, x: torch.Tensor, pos_offset: int = 0) -> torch.Tensor:
         """Apply rotary embedding rotation
@@ -164,6 +199,6 @@ class RotaryEmbedding(nn.Module):
         cos = cos[pos_offset : pos_offset + T]
         sin = sin[pos_offset : pos_offset + T]
 
-        from caramba.optimizer.kernels import rope_apply
+        from optimizer.kernels import rope_apply
 
         return rope_apply(x=x, cos=cos, sin=sin, rot_dim=int(self.rot_dim))

@@ -284,7 +284,7 @@ Please, follow the instructions in the [repository](https://github.com/meta-llam
 
 To download Original checkpoints, see the example command below leveraging `huggingface-cli`:
 
-```bash
+```
 huggingface-cli download meta-llama/Llama-3.2-1B --include "original/*" --local-dir Llama-3.2-1B
 ```
 

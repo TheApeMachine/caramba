@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from caramba.core.event import EventEnvelope
+from core.event import EventEnvelope
 
 
 @dataclass(slots=True)

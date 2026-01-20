@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from caramba.config import PositiveInt
-from caramba.config.mode import Mode
-from caramba.config.train import TrainConfig
-from caramba.config.verify import VerifyConfig
+from config import PositiveInt
+from config.mode import Mode
+from config.train import TrainConfig
+from config.verify import VerifyConfig
 
 
 class Run(BaseModel):

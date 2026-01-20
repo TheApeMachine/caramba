@@ -20,7 +20,7 @@ from typing import Protocol, cast
 import torch
 from torch import Tensor
 
-from caramba.optimizer.kernels import adamw_step as _adamw_step
+from optimizer.kernels import adamw_step as _adamw_step
 
 
 class _AdamWStepFn(Protocol):

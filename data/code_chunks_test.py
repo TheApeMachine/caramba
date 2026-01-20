@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from caramba.data.code_chunks import CodeChunksDataset
-from caramba.data.tokenizers.bpe import CodeBpeTokenizer
+from data.code_chunks import CodeChunksDataset
+from data.tokenizers.bpe import CodeBpeTokenizer
 
 
 class TestCodeChunksDataset:

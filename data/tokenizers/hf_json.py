@@ -13,8 +13,8 @@ from typing import Sequence
 
 from tokenizers import Tokenizer as HFTokenizer
 
-from caramba.data.tokenizers.encoding import Encoding
-from caramba.data.tokenizers.training import TrainingTokenizer
+from data.tokenizers.encoding import Encoding
+from data.tokenizers.training import TrainingTokenizer
 
 
 @dataclass(frozen=True, slots=True)

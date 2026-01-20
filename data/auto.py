@@ -10,10 +10,10 @@ from typing import cast
 
 from torch.utils.data import Dataset
 
-from caramba.data.config import DatasetConfig, DatasetType
-from caramba.data.npy import NpyDataset
-from caramba.console.logger import Logger
-from caramba.runtime.tensordict_utils import TensorDictBase
+from data.config import DatasetConfig, DatasetType
+from data.npy import NpyDataset
+from console.logger import Logger
+from runtime.tensordict_utils import TensorDictBase
 
 logger: Logger = Logger()
 

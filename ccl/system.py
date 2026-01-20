@@ -14,8 +14,8 @@ import numpy as np
 import torch
 from torch import Tensor, nn
 
-from caramba.ccl.context_counts import ClassCountsModel, ContextTemplate, loglik_grids
-from caramba.ccl.patch_vq import PatchKMeansVQ
+from ccl.context_counts import ClassCountsModel, ContextTemplate, loglik_grids
+from ccl.patch_vq import PatchKMeansVQ
 
 
 def _as_numpy_images(x: object) -> np.ndarray:

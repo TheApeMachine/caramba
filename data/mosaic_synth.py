@@ -14,7 +14,7 @@ from typing import Dict
 import torch
 from torch.utils.data import Dataset
 
-from caramba.runtime.tensordict_utils import TensorDictBase
+from runtime.tensordict_utils import TensorDictBase
 
 
 class _MosaicMemoryCurriculumDataset(Dataset[TensorDictBase]):

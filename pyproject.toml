@@ -141,6 +141,7 @@ caramba = "."
 caramba = [
     "config/presets/*.yml",
     "config/benchmarks/*.yml",
+    "research/**/manifests/*.yml",
     "optimizer/metal/*.metal",
     "optimizer/metal/*.mm",
 ]

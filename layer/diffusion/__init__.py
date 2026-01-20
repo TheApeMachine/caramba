@@ -11,7 +11,7 @@ from typing import Protocol
 import torch
 from torch import Tensor, nn
 
-from caramba.config.layers.diffusion import DiffusionLayerConfig
+from config.layers.diffusion import DiffusionLayerConfig
 
 
 class DiffusionDenoiser(Protocol):

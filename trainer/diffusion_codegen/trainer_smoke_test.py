@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from caramba.config.component import ComponentSpec
-from caramba.config.defaults import Defaults
-from caramba.config.manifest import Manifest
-from caramba.config.mode import Mode
-from caramba.config.run import Run
-from caramba.config.target import ExperimentTargetConfig
-from caramba.config.train import TrainConfig, TrainPhase
-from caramba.runtime.engine.torch_engine import TorchEngine
+from config.component import ComponentSpec
+from config.defaults import Defaults
+from config.manifest import Manifest
+from config.mode import Mode
+from config.run import Run
+from config.target import ExperimentTargetConfig
+from config.train import TrainConfig, TrainPhase
+from runtime.engine.torch_engine import TorchEngine
 
 
 class TestDiffusionCodegenTrainerSmoke:

@@ -10,14 +10,14 @@ from torch import Tensor, nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-from caramba.config.run import Run
-from caramba.console import logger
-from caramba.carmath import autocast_dtype, safe_perplexity_from_nll
-from caramba.trainer.collectors import Collector
-from caramba.trainer.checkpointers import CheckPointer
-from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
-from caramba.trainer.upcycle_context import UpcycleContext
-from caramba.runtime.tensordict_utils import TensorDictBase
+from config.run import Run
+from console import logger
+from carmath import autocast_dtype, safe_perplexity_from_nll
+from trainer.collectors import Collector
+from trainer.checkpointers import CheckPointer
+from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
+from trainer.upcycle_context import UpcycleContext
+from runtime.tensordict_utils import TensorDictBase
 
 
 def _sync_device(device: torch.device) -> None:
@@ -41,7 +41,12 @@ def _get_diffusion_loss_weight(student: nn.Module) -> float:
 
 
 def _compute_loss(
-    student: nn.Module, x: Tensor, y: Tensor, has_diffusion: bool
+    student: nn.Module,
+    x: Tensor,
+    y: Tensor,
+    has_diffusion: bool,
+    *,
+    mps_fast_ce: bool = False,
 ) -> tuple[Tensor, Tensor, Tensor | None]:
     def _tensor_stats(name: str, t: Tensor) -> str:
         try:
@@ -72,9 +77,11 @@ def _compute_loss(
                 f"- {_tensor_stats('logits', logits)}\n"
                 "This is a hard failure under the kernel policy (no silent fallback paths)."
             )
-        # IMPORTANT: compute CE in fp32 for numerical stability (esp. MPS + 128k vocab).
-        logits_f = logits.float()
-        ce_loss = F.cross_entropy(logits_f.view(-1, logits_f.shape[-1]), y.reshape(-1))
+        # Default: compute CE in fp32 for numerical stability.
+        # MPS fast path: avoid materializing fp32 logits for huge vocab (speed/memory win).
+        use_fast = bool(mps_fast_ce) and logits.device.type == "mps"
+        logits_ce = logits if use_fast else logits.float()
+        ce_loss = F.cross_entropy(logits_ce.view(-1, logits_ce.shape[-1]), y.reshape(-1))
         diff_loss_val: Tensor = student.diffusion_loss(features, y)  # type: ignore[attr-defined]
         loss = ce_loss + _get_diffusion_loss_weight(student) * diff_loss_val
         if not torch.isfinite(loss.detach()).all():
@@ -92,12 +99,13 @@ def _compute_loss(
             f"- {_tensor_stats('logits', logits)}\n"
             "This is a hard failure under the kernel policy (no silent fallback paths)."
         )
-    logits_f = logits.float()
-    ce_loss = F.cross_entropy(logits_f.view(-1, logits_f.shape[-1]), y.reshape(-1))
+    use_fast = bool(mps_fast_ce) and logits.device.type == "mps"
+    logits_ce = logits if use_fast else logits.float()
+    ce_loss = F.cross_entropy(logits_ce.view(-1, logits_ce.shape[-1]), y.reshape(-1))
     if not torch.isfinite(ce_loss.detach()).all():
         raise RuntimeError(
             "Non-finite CE loss detected.\n"
-            f"- {_tensor_stats('logits_f', logits_f)}\n"
+            f"- {_tensor_stats('logits_ce', logits_ce)}\n"
             f"- {_tensor_stats('ce_loss', ce_loss)}"
         )
     return ce_loss, ce_loss, None
@@ -110,6 +118,7 @@ def _eval_global_loss(
     dist_ctx: object | None,
     loader: DataLoader[TensorDictBase],
     max_batches: int = 2,
+    mps_fast_ce: bool = False,
 ) -> dict[str, float]:
     was_training = student.training
     student.eval()
@@ -130,15 +139,17 @@ def _eval_global_loss(
                 result = student.forward(x, return_features=True)  # type: ignore[call-arg]
                 features: Tensor = result[0]  # type: ignore[index]
                 logits: Tensor = result[1]  # type: ignore[index]
-                logits_f = logits.float()
-                ce = F.cross_entropy(logits_f.view(-1, logits_f.shape[-1]), y.reshape(-1))
+                use_fast = bool(mps_fast_ce) and logits.device.type == "mps"
+                logits_ce = logits if use_fast else logits.float()
+                ce = F.cross_entropy(logits_ce.view(-1, logits_ce.shape[-1]), y.reshape(-1))
                 diff = student.diffusion_loss(features, y)  # type: ignore[attr-defined]
                 loss = ce + float(diff_weight) * diff
                 total_diff += float(diff)
             else:
                 logits = student.forward(x)
-                logits_f = logits.float()
-                ce = F.cross_entropy(logits_f.view(-1, logits_f.shape[-1]), y.reshape(-1))
+                use_fast = bool(mps_fast_ce) and logits.device.type == "mps"
+                logits_ce = logits if use_fast else logits.float()
+                ce = F.cross_entropy(logits_ce.view(-1, logits_ce.shape[-1]), y.reshape(-1))
                 loss = ce
             total_loss += float(loss)
             total_ce += float(ce)
@@ -183,7 +194,7 @@ def _build_optimizer(train, params) -> Optimizer:
     if opt_name == "sgd":
         return torch.optim.SGD(params, lr=float(train.lr), weight_decay=float(weight_decay))
     if opt_name == "lion":
-        from caramba.optimizer.lion import Lion
+        from optimizer.lion import Lion
 
         return Lion(params, lr=float(train.lr), weight_decay=float(weight_decay), fused=bool(fused_opt))
     raise ValueError(f"Unknown optimizer {opt_name!r}")
@@ -222,9 +233,23 @@ class GlobalStepper:
             except Exception:
                 logger.warning("Failed to create GradScaler; disabling autocast.")
                 scaler = None
-        if use_amp and ctx.device.type == "mps" and scaler is None and amp_dtype == torch.float16:
-            logger.warning("Disabling fp16 autocast on MPS (no GradScaler); using fp32 math for stability.")
+        # Metal kernels on MPS currently require fp16/fp32 (bf16 is rejected).
+        if use_amp and ctx.device.type == "mps" and amp_dtype == torch.bfloat16:
+            logger.warning("Disabling bf16 autocast on MPS (Metal kernels require fp16/fp32); using fp32 math.")
             use_amp = False
+        if use_amp and ctx.device.type == "mps" and scaler is None and amp_dtype == torch.float16:
+            if bool(getattr(train, "mps_allow_fp16_autocast_without_gradscaler", False)):
+                logger.warning("Enabling fp16 autocast on MPS without GradScaler (speed; may be unstable).")
+            else:
+                logger.warning("Disabling fp16 autocast on MPS (no GradScaler); using fp32 math for stability.")
+                use_amp = False
+        if ctx.device.type == "mps" and bool(getattr(train, "mps_force_fp32_weights", False)):
+            try:
+                if any(p.dtype in (torch.float16, torch.bfloat16) for p in ctx.student.parameters()):
+                    logger.warning("Upcasting student weights to float32 on MPS for stability / Metal kernel compatibility.")
+                    ctx.student.to(dtype=torch.float32)
+            except Exception as e:
+                logger.warning(f"Failed to upcast student to float32 on MPS: {e}")
 
         scheduler = build_lr_scheduler(
             optimizer,
@@ -282,13 +307,25 @@ class GlobalStepper:
                             enabled=autocast_enabled,
                         ):
                             tf0 = time.perf_counter()
-                            loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                            loss, ce_loss, diff_loss = _compute_loss(
+                                ctx.student,
+                                x,
+                                y,
+                                has_diffusion,
+                                mps_fast_ce=bool(getattr(train, "mps_fast_ce", False)),
+                            )
                             tf1 = time.perf_counter()
                     except TypeError:
                         logger.warning("Failed to autocast loss computation; disabling autocast.")
                         autocast_enabled = False
                         tf0 = time.perf_counter()
-                        loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                        loss, ce_loss, diff_loss = _compute_loss(
+                            ctx.student,
+                            x,
+                            y,
+                            has_diffusion,
+                            mps_fast_ce=bool(getattr(train, "mps_fast_ce", False)),
+                        )
                         tf1 = time.perf_counter()
 
                     # Accumulate gradients on scaled loss, but log unscaled averages.
@@ -312,7 +349,7 @@ class GlobalStepper:
                 grad_norm_post = 0.0
                 grad_clip = float(getattr(train, "grad_clip_norm", 0.0))
                 try:
-                    from caramba.carmath import global_grad_norm_l2
+                    from carmath import global_grad_norm_l2
 
                     grad_norm = float(global_grad_norm_l2(ctx.student))
                 except Exception:
@@ -326,7 +363,7 @@ class GlobalStepper:
                             scaler.unscale_(optimizer)
                         torch.nn.utils.clip_grad_norm_(ctx.student.parameters(), max_norm=float(grad_clip))
                         try:
-                            from caramba.carmath import global_grad_norm_l2
+                            from carmath import global_grad_norm_l2
 
                             grad_norm_post = float(global_grad_norm_l2(ctx.student))
                         except Exception:

@@ -10,13 +10,14 @@ from __future__ import annotations
 import gc
 import logging
 from dataclasses import dataclass, field
+from typing import cast
 
 
 import torch
 from torch import nn
 
-from caramba.benchmark.utils import get_model_vocab_size
-from caramba.config.benchmark import MemoryBenchmarkConfig
+from benchmark.utils import get_model_vocab_size
+from config.benchmark import MemoryBenchmarkConfig
 from caramba.layer.attention import AttentionLayer, AttentionMode
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,11 @@ class MemoryResult:
             return 0.0
         return max(m.peak_memory_mb for m in self.measurements)
 
+    @property
+    def peak_allocated_mb(self) -> float:
+        """Backwards-compatible alias for peak_memory_mb."""
+        return self.peak_memory_mb
+
 
 class MemoryBenchmark:
     """Measures memory usage including KV-cache analysis.
@@ -136,10 +142,13 @@ class MemoryBenchmark:
 
         for module in model.modules():
             if isinstance(module, AttentionLayer):
+                # Type assertion to help type checker narrow the type
+                attn_layer = cast(AttentionLayer, module)
                 n_layers += 1
-                layer_n_kv_heads = module.n_kv_heads
-                layer_head_dim = module.head_dim
-                layer_mode = module.mode.value
+                # Explicit type conversions to satisfy type checker
+                layer_n_kv_heads = int(attn_layer.n_kv_heads)
+                layer_head_dim = int(attn_layer.head_dim)
+                layer_mode = str(attn_layer.mode.value)
 
                 # Validate consistency across layers
                 if n_kv_heads is None:
@@ -164,11 +173,12 @@ class MemoryBenchmark:
                     )
 
                 # Extract DBA dimensions
-                if module.mode == AttentionMode.DECOUPLED:
-                    cfg = module.config
-                    layer_sem_dim = cfg.sem_dim
-                    layer_geo_dim = cfg.geo_dim
-                    layer_v_dim = cfg.v_dim
+                if attn_layer.mode == AttentionMode.DECOUPLED:
+                    cfg = attn_layer.config
+                    # Convert to int | None explicitly
+                    layer_sem_dim = int(cfg.sem_dim) if cfg.sem_dim is not None else None
+                    layer_geo_dim = int(cfg.geo_dim) if cfg.geo_dim is not None else None
+                    layer_v_dim = int(cfg.v_dim) if cfg.v_dim is not None else None
 
                     if sem_dim is None:
                         sem_dim = layer_sem_dim
@@ -261,7 +271,7 @@ class MemoryBenchmark:
         else:
             model_memory = 0.0
 
-        vocab_size = self._get_vocab_size(model)
+        vocab_size = self._resolve_effective_vocab_size(model)
 
         input_ids = torch.randint(
             0,
@@ -310,14 +320,18 @@ class MemoryBenchmark:
 
         for module in model.modules():
             if isinstance(module, AttentionLayer):
+                # Type assertion to help type checker narrow the type
+                attn_layer = cast(AttentionLayer, module)
                 n_layers += 1
-                kv_dim = module.n_kv_heads * module.head_dim
+                # Explicit type conversions to satisfy type checker
+                kv_dim = int(attn_layer.n_kv_heads) * int(attn_layer.head_dim)
 
-                if module.mode == AttentionMode.DECOUPLED:
-                    cfg = module.config
-                    if cfg.sem_dim and cfg.geo_dim:
-                        dba_k_dim = cfg.sem_dim + cfg.geo_dim
-                        dba_v_dim = cfg.v_dim
+                if attn_layer.mode == AttentionMode.DECOUPLED:
+                    cfg = attn_layer.config
+                    if cfg.sem_dim is not None and cfg.geo_dim is not None:
+                        # Convert to int explicitly
+                        dba_k_dim = int(cfg.sem_dim) + int(cfg.geo_dim)
+                        dba_v_dim = int(cfg.v_dim) if cfg.v_dim is not None else None
 
         bytes_per_elem = {
             "fp16": 2.0,
@@ -331,16 +345,29 @@ class MemoryBenchmark:
 
         if dba_k_dim is not None:
             actual_v_dim = dba_v_dim if dba_v_dim is not None else kv_dim
-            k_bytes = n_layers * batch_size * seq_len * dba_k_dim * bytes_per_elem
-            v_bytes = n_layers * batch_size * seq_len * actual_v_dim * bytes_per_elem
+            k_bytes = float(n_layers * batch_size * seq_len * dba_k_dim * bytes_per_elem)
+            v_bytes = float(n_layers * batch_size * seq_len * actual_v_dim * bytes_per_elem)
             total_bytes = k_bytes + v_bytes
         else:
-            total_bytes = (
+            total_bytes = float(
                 2 * n_layers * batch_size * seq_len * kv_dim * bytes_per_elem
             )
 
-        return total_bytes / (1024 * 1024)
+        return float(total_bytes / (1024 * 1024))
 
     def _get_vocab_size(self, model: nn.Module) -> int:
         """Get vocab size from model."""
         return get_model_vocab_size(model, default=32000)
+
+    def _resolve_effective_vocab_size(self, model: nn.Module) -> int:
+        model_vocab = int(self._get_vocab_size(model))
+        vv = getattr(self.config, "valid_vocab_size", None)
+        if vv is None:
+            return model_vocab
+        eff = int(vv)
+        if eff > model_vocab:
+            raise ValueError(
+                "MemoryBenchmark: valid_vocab_size exceeds model vocab_size "
+                f"(valid_vocab_size={eff}, model_vocab_size={model_vocab})."
+            )
+        return eff

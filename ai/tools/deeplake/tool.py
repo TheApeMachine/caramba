@@ -27,7 +27,8 @@ from starlette.responses import JSONResponse, Response
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from caramba.console import logger as _logger
+from console import logger
+_logger = logger
 
 
 def _rowview_to_str_dict(row: object) -> dict[str, Any]:
@@ -107,10 +108,10 @@ class DeepLakeTool():
         """Get the arguments for the tool."""
         return ["-m", "ai.tools.deeplake"]
 
-    def open_or_create(self, *, create_if_missing: bool) -> deeplake.Dataset:
+    def open_or_create(self, *, create_if_missing: bool) -> deeplake.core.dataset.Dataset:
         """Open or create the DeepLake dataset."""
         try:
-            ds = deeplake.open(self.dataset_uri)
+            ds = deeplake.core.dataset.Dataset(self.dataset_uri)
         except Exception as e:
             # Check if this is a missing dataset error
             error_msg = str(e).lower()

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Tuple, Union
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.layer import DenseLayerConfig
+from config.layer import DenseLayerConfig
 
 if TYPE_CHECKING:
     from tensordict import TensorDictBase
@@ -40,8 +40,8 @@ class DenseLayer(nn.Module):
             self.norm = nn.LayerNorm(config.d_out)
         elif config.normalization == "rms_norm":
             # Avoid circular import if possible, or use simple implementation
-            from caramba.layer.rms_norm import RMSNormLayer
-            from caramba.config.layer import RMSNormLayerConfig
+            from layer.rms_norm import RMSNormLayer
+            from config.layer import RMSNormLayerConfig
             self.norm = RMSNormLayer(RMSNormLayerConfig(d_model=config.d_out))
 
         self.act: nn.Module | None = None

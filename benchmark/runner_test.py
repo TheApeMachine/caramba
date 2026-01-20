@@ -11,9 +11,9 @@ import numpy as np
 import torch
 from torch import nn
 
-from caramba.benchmark.artifacts import ExperimentMetadata
-from caramba.benchmark.runner import BenchmarkRunner, QuickBenchmark
-from caramba.config.benchmark import (
+from benchmark.artifacts import ExperimentMetadata
+from benchmark.runner import BenchmarkRunner, QuickBenchmark
+from config.benchmark import (
     BenchmarkSpec,
     BenchmarkSuite,
     BenchmarkType,

@@ -369,7 +369,7 @@ class AdamWStrategy(Strategy):
         except Exception:
             has_fp16 = False
         if has_fp16 and next(self.model.parameters()).device.type == "mps":
-            from caramba.optimizer.adamw_master import AdamWMaster
+            from optimizer.adamw_master import AdamWMaster
 
             return AdamWMaster(
                 self.model.parameters(),
@@ -434,7 +434,7 @@ class LionStrategy(Strategy):
     """Lion optimizer strategy (optionally using fused MPS path)."""
 
     def _create_optimizer(self) -> Optimizer:
-        from caramba.optimizer.lion import Lion
+        from optimizer.lion import Lion
 
         # Use fused path when it can actually run (MPS fp16).
         fused = False

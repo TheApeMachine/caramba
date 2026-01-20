@@ -13,7 +13,7 @@ import random
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .templates.base import TestCase, TestTemplate, Difficulty, TargetPosition
 from .templates import ALL_TEMPLATES
@@ -172,6 +172,7 @@ class SuiteGenerator:
                 seed = self.rng.randint(0, 1000000)
                 template_rng = random.Random(seed)
                 test = template.generate(template_rng)
+                test.prompt = test.prompt.strip() + "\n\nAnswer:"
                 test.seed = seed
                 test.template_id = f"{category}_{template.__class__.__name__}"
                 tests.append(test)
@@ -181,7 +182,7 @@ class SuiteGenerator:
 
 def load_all_templates() -> dict[str, list[TestTemplate]]:
     """Load all templates from template modules."""
-    return ALL_TEMPLATES
+    return cast(dict[str, list[TestTemplate]], ALL_TEMPLATES)
 
 
 def generate_suite(

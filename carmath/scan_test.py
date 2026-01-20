@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from caramba.carmath.scan import leaky_integrator_scan
+from carmath.scan import leaky_integrator_scan
 
 
 def test_leaky_integrator_scan_accepts_common_decay_shapes() -> None:

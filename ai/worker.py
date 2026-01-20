@@ -9,8 +9,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from caramba.ai.task.store import TaskStore
-from caramba.console import logger
+from .task.store import TaskStore
+from console import logger
 
 
 class TaskWorker:

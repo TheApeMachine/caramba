@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from caramba.instrumentation.analysis import generate_analysis_png
+from instrumentation.analysis import generate_analysis_png
 
 
 def test_generate_analysis_png_best_effort(tmp_path: Path) -> None:

@@ -10,7 +10,7 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.layer import RMSNormLayerConfig
+from config.layer import RMSNormLayerConfig
 
 
 class RMSNormLayer(nn.Module):
@@ -56,6 +56,6 @@ class RMSNormLayer(nn.Module):
         if int(x.shape[-1]) != int(self.d_model):
             raise ValueError(f"Expected x last dim {int(self.d_model)}, got {x.shape}")
 
-        from caramba.optimizer.kernels import rmsnorm
+        from optimizer.kernels import rmsnorm
 
         return rmsnorm(x=x, weight=self.weight, eps=float(self.eps))

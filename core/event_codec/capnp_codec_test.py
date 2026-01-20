@@ -3,12 +3,12 @@
 import pytest
 import torch
 
-from caramba.core.event import EventEnvelope
+from core.event import EventEnvelope
 
 
 def test_capnp_roundtrip():
     """Test encode/decode roundtrip for Cap'n Proto codec."""
-    from caramba.core.event_codec import EventEncoder, EventDecoder
+    from core.event_codec import EventEncoder, EventDecoder
 
     encoder = EventEncoder()
     decoder = EventDecoder()
@@ -47,7 +47,7 @@ def test_capnp_roundtrip():
 
 def test_capnp_batch():
     """Test batch encode/decode for Cap'n Proto codec."""
-    from caramba.core.event_codec import EventEncoder, EventDecoder
+    from core.event_codec import EventEncoder, EventDecoder
 
     encoder = EventEncoder()
     decoder = EventDecoder()

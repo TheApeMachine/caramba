@@ -14,12 +14,14 @@ from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
 
-from caramba.benchmark.latency import LatencyResult
-from caramba.benchmark.memory import MemoryResult
-from caramba.benchmark.perplexity import PerplexityResult
-from caramba.benchmark.behavior import BehaviorResult
-from caramba.benchmark.accuracy import AccuracyResult
-from caramba.benchmark.context import ContextResult
+from .latency import LatencyResult
+from .memory import MemoryResult
+from .perplexity import PerplexityResult
+from .behavior import BehaviorResult
+from .accuracy import AccuracyResult
+from .context import ContextResult
+from benchmark.stats import mcnemar_exact_pvalue, paired_bootstrap_delta_ci, wilson_ci
+from research.dba.behavioral_suite_v2.weighted_scoring import MatchType
 
 
 @dataclass
@@ -157,9 +159,11 @@ class ArtifactGenerator:
                 try:
                     bpath = self._write_latex_behavior_table(behavior=behavior)
                     generated["behavior_cases_table.tex"] = bpath
+                    spath = self._write_latex_behavior_summary_table(metadata=metadata, behavior=behavior)
+                    generated[spath.name] = spath
                 except Exception as e:
                     # Non-critical: do not fail the run due to LaTeX formatting.
-                    from caramba.console import logger
+                    from console import logger
                     logger.warning(f"ArtifactGenerator: Failed to write LaTeX behavior table: {e}")
 
         return generated
@@ -232,6 +236,228 @@ class ArtifactGenerator:
         lines.append("")
 
         path.write_text("\n".join(lines), encoding="utf-8")
+        return path
+
+    def _write_latex_behavior_summary_table(
+        self, *, metadata: ExperimentMetadata, behavior: BehaviorResult
+    ) -> Path:
+        """Write a HARD/SOFT/WEIGHTED summary table (overall + by category).
+
+        Also writes machine-readable companions (CSV/JSON).
+        """
+        path = self.output_dir / "behavior_results_100k_generated.tex"
+
+        def _category(case_id: str) -> str:
+            cid = str(case_id)
+            pref = cid.split("_", 1)[0] if "_" in cid else cid
+            m = {
+                "copy": "Copy",
+                "fewshot": "Few-shot",
+                "distractor": "Distractors",
+                "reason": "Reasoning",
+                "math": "Arithmetic",
+                "seq": "Sequences",
+                "fact": "World knowledge",
+                "semantic": "Semantics",
+                "format": "Format",
+                "context": "Context",
+                "robust": "Robustness",
+                "edge": "Edge cases",
+                "attention": "Attention probes",
+                "instruct": "Instruction",
+                "consist": "Consistency",
+            }
+            return m.get(pref, pref)
+
+        def _is_exact(mt: object | None) -> bool:
+            if mt is None:
+                return False
+            if isinstance(mt, MatchType):
+                return mt == MatchType.EXACT
+            return str(getattr(mt, "name", mt)) == "EXACT"
+
+        def _is_contained(mt: object | None) -> bool:
+            if mt is None:
+                return False
+            if isinstance(mt, MatchType):
+                return mt == MatchType.CONTAINED
+            return str(getattr(mt, "name", mt)) == "CONTAINED"
+
+        # Collect per-case rows.
+        rows: list[dict[str, object]] = []
+        for m in behavior.measurements:
+            cat = _category(str(getattr(m, "case_id", "")))
+            t_mt = getattr(m, "teacher_match_type", None)
+            s_mt = getattr(m, "student_match_type", None)
+            dw = float(getattr(m, "difficulty_weight", 1.0) or 1.0)
+            t_raw = float(getattr(m, "teacher_raw_score", 0.0) or 0.0)
+            s_raw = float(getattr(m, "student_raw_score", 0.0) or 0.0)
+
+            # Fallback raw scores if not set but match types exist.
+            if t_raw == 0.0 and _is_exact(t_mt):
+                t_raw = 1.0
+            if t_raw == 0.0 and _is_contained(t_mt):
+                t_raw = 0.5
+            if s_raw == 0.0 and _is_exact(s_mt):
+                s_raw = 1.0
+            if s_raw == 0.0 and _is_contained(s_mt):
+                s_raw = 0.5
+
+            rows.append(
+                {
+                    "cat": cat,
+                    "t_hard": 1.0 if _is_exact(t_mt) else 0.0,
+                    "s_hard": 1.0 if _is_exact(s_mt) else 0.0,
+                    "t_soft": 1.0 if (_is_exact(t_mt) or _is_contained(t_mt)) else 0.0,
+                    "s_soft": 1.0 if (_is_exact(s_mt) or _is_contained(s_mt)) else 0.0,
+                    "dw": dw,
+                    "t_w": t_raw * dw,
+                    "s_w": s_raw * dw,
+                }
+            )
+
+        by_cat: dict[str, list[dict[str, object]]] = {}
+        for r in rows:
+            by_cat.setdefault(str(r["cat"]), []).append(r)
+
+        def _fmt_pct(x: float) -> str:
+            return f"{100.0 * float(x):.1f}\\%"
+
+        def _acc(xs: list[dict[str, object]], key: str) -> float:
+            if not xs:
+                return 0.0
+            return float(sum(float(v[key]) for v in xs)) / float(len(xs))
+
+        def _wacc(xs: list[dict[str, object]], key: str) -> float:
+            if not xs:
+                return 0.0
+            num = float(sum(float(v[key]) for v in xs))
+            den = float(sum(float(v["dw"]) for v in xs))
+            return num / den if den > 0 else 0.0
+
+        cats = sorted(by_cat.keys(), key=lambda c: len(by_cat[c]), reverse=True)
+        overall = rows
+
+        baseline_label = "Baseline"
+        student_label = "DBA"
+        # Use metadata.student_config as a human hint if it looks informative.
+        try:
+            sc = str(getattr(metadata, "student_config", "")).strip()
+            if sc and sc.lower() not in {"student", "dba"}:
+                student_label = "DBA"
+        except Exception:
+            pass
+
+        lines: list[str] = []
+        lines.append(r"% Auto-generated. Do not edit by hand.")
+        lines.append(r"\begin{table}[htbp]")
+        lines.append(r"\centering")
+        lines.append(r"\small")
+        lines.append(r"\caption{Behavioral benchmark results (auto-generated; HARD/SOFT/WEIGHTED).}")
+        lines.append(r"\label{tab:behavior_results_100k}")
+        lines.append(r"\begin{tabular}{@{}lrrrrr@{}}")
+        lines.append(r"\toprule")
+        lines.append(
+            rf"\textbf{{Category}} & \textbf{{{baseline_label} hard}} & \textbf{{{student_label} hard}} & "
+            rf"\textbf{{{baseline_label} soft}} & \textbf{{{student_label} soft}} & \textbf{{{student_label} weighted}} \\"
+        )
+        lines.append(r"\midrule")
+        lines.append(
+            rf"\textbf{{Overall}} & "
+            rf"{_fmt_pct(_acc(overall, 't_hard'))} & {_fmt_pct(_acc(overall, 's_hard'))} & "
+            rf"{_fmt_pct(_acc(overall, 't_soft'))} & {_fmt_pct(_acc(overall, 's_soft'))} & "
+            rf"{_fmt_pct(_wacc(overall, 's_w'))} \\"
+        )
+        lines.append(r"\midrule")
+        for c in cats:
+            xs = by_cat[c]
+            lines.append(
+                rf"{self._latex_escape(c)} & "
+                rf"{_fmt_pct(_acc(xs, 't_hard'))} & {_fmt_pct(_acc(xs, 's_hard'))} & "
+                rf"{_fmt_pct(_acc(xs, 't_soft'))} & {_fmt_pct(_acc(xs, 's_soft'))} & "
+                rf"{_fmt_pct(_wacc(xs, 's_w'))} \\"
+            )
+        lines.append(r"\bottomrule")
+        lines.append(r"\end{tabular}")
+        lines.append(r"\end{table}")
+        lines.append("")
+
+        path.write_text("\n".join(lines), encoding="utf-8")
+
+        # Machine-readable companions.
+        try:
+            (self.output_dir / "behavior_summary.json").write_text(
+                json.dumps(
+                    {
+                        "overall": {
+                            "teacher_hard": _acc(overall, "t_hard"),
+                            "student_hard": _acc(overall, "s_hard"),
+                            "teacher_soft": _acc(overall, "t_soft"),
+                            "student_soft": _acc(overall, "s_soft"),
+                            "student_weighted": _wacc(overall, "s_w"),
+                            "n": len(overall),
+                        },
+                        "by_category": {
+                            c: {
+                                "teacher_hard": _acc(by_cat[c], "t_hard"),
+                                "student_hard": _acc(by_cat[c], "s_hard"),
+                                "teacher_soft": _acc(by_cat[c], "t_soft"),
+                                "student_soft": _acc(by_cat[c], "s_soft"),
+                                "student_weighted": _wacc(by_cat[c], "s_w"),
+                                "n": len(by_cat[c]),
+                            }
+                            for c in cats
+                        },
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+        try:
+            csv_path = self.output_dir / "behavior_summary.csv"
+            with open(csv_path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(
+                    [
+                        "category",
+                        "n",
+                        "baseline_hard",
+                        "dba_hard",
+                        "baseline_soft",
+                        "dba_soft",
+                        "dba_weighted",
+                    ]
+                )
+                w.writerow(
+                    [
+                        "Overall",
+                        len(overall),
+                        _acc(overall, "t_hard"),
+                        _acc(overall, "s_hard"),
+                        _acc(overall, "t_soft"),
+                        _acc(overall, "s_soft"),
+                        _wacc(overall, "s_w"),
+                    ]
+                )
+                for c in cats:
+                    xs = by_cat[c]
+                    w.writerow(
+                        [
+                            c,
+                            len(xs),
+                            _acc(xs, "t_hard"),
+                            _acc(xs, "s_hard"),
+                            _acc(xs, "t_soft"),
+                            _acc(xs, "s_soft"),
+                            _wacc(xs, "s_w"),
+                        ]
+                    )
+        except Exception:
+            pass
+
         return path
 
     def _compute_summary(
@@ -317,6 +543,9 @@ class ArtifactGenerator:
                     "benchmark_id": str(behavior.benchmark_id),
                     "teacher_accuracy": float(behavior.teacher_accuracy),
                     "student_accuracy": float(behavior.student_accuracy),
+                    "teacher_ci95": None,
+                    "student_ci95": None,
+                    "student_minus_teacher": None,
                     "cases": [
                         {
                             "case_id": str(m.case_id),
@@ -351,6 +580,31 @@ class ArtifactGenerator:
             },
             "generated_at": datetime.now().isoformat(),
         }
+
+        # Add paired CI/significance for behavior if present.
+        if behavior is not None and behavior.measurements:
+            n = len(behavior.measurements)
+            t_ok = sum(1 for m in behavior.measurements if bool(m.teacher_ok))
+            s_ok = sum(1 for m in behavior.measurements if bool(m.student_ok))
+            t_ci = wilson_ci(int(t_ok), int(n))
+            s_ci = wilson_ci(int(s_ok), int(n))
+            a = [1.0 if bool(m.student_ok) else 0.0 for m in behavior.measurements]
+            b = [1.0 if bool(m.teacher_ok) else 0.0 for m in behavior.measurements]
+            dci = paired_bootstrap_delta_ci(a, b)
+            b_cnt = sum(1 for m in behavior.measurements if bool(m.teacher_ok) and not bool(m.student_ok))
+            c_cnt = sum(1 for m in behavior.measurements if (not bool(m.teacher_ok)) and bool(m.student_ok))
+            mp = mcnemar_exact_pvalue(int(b_cnt), int(c_cnt))
+            report["behavior"]["teacher_ci95"] = [float(t_ci.low), float(t_ci.high)]
+            report["behavior"]["student_ci95"] = [float(s_ci.low), float(s_ci.high)]
+            report["behavior"]["student_minus_teacher"] = {
+                "delta": float(dci.delta),
+                "ci95": [float(dci.low), float(dci.high)],
+                "mcnemar_p": float(mp),
+                "discordant": {
+                    "teacher_yes_student_no": int(b_cnt),
+                    "teacher_no_student_yes": int(c_cnt),
+                },
+            }
 
         with open(path, "w") as f:
             json.dump(report, f, indent=2)
@@ -560,6 +814,73 @@ class ArtifactGenerator:
                     writer.writerow([getattr(m, name) for name in field_names])
             paths["context_decode_student.csv"] = path
 
+        # Consolidated context diagnostics (single file): makes it easier to see
+        # throughput cliffs vs memory pressure vs context length.
+        if (teacher_context is not None and teacher_context.decode) or (
+            student_context is not None and student_context.decode
+        ):
+            path = self.output_dir / "context_diagnostics.csv"
+            field_names = [
+                "model",
+                "context_len",
+                "ok",
+                # throughput
+                "decode_tok_per_s",
+                "decode_total_ms",
+                "decode_len",
+                # prefill
+                "prefill_total_s",
+                "decode_one_ms",
+                # loss/ppl (from sweep)
+                "loss",
+                "ppl",
+                # telemetry
+                "rss_mb_before",
+                "rss_mb_after",
+                "mps_allocated_mb_before",
+                "mps_allocated_mb_after",
+                "mps_driver_allocated_mb_before",
+                "mps_driver_allocated_mb_after",
+                "mps_recommended_max_mb",
+            ]
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(field_names)
+
+                def _write_rows(ctx: ContextResult) -> None:
+                    # Index sweep by ctx_len for loss/ppl/decode_one.
+                    sweep_by = {int(m.context_len): m for m in ctx.sweep}
+                    for d in sorted(ctx.decode, key=lambda m: int(m.context_len)):
+                        s = sweep_by.get(int(d.context_len))
+                        writer.writerow(
+                            [
+                                ctx.model_name,
+                                int(d.context_len),
+                                int(bool(d.ok)),
+                                float(d.decode_tok_per_s),
+                                float(d.decode_total_ms),
+                                int(d.decode_len),
+                                float(d.prefill_total_s),
+                                float(getattr(s, "decode_one_ms", float("nan"))) if s is not None else float("nan"),
+                                float(getattr(s, "loss", float("nan"))) if s is not None else float("nan"),
+                                float(getattr(s, "ppl", float("nan"))) if s is not None else float("nan"),
+                                getattr(d, "rss_mb_before", None),
+                                getattr(d, "rss_mb_after", None),
+                                getattr(d, "mps_allocated_mb_before", None),
+                                getattr(d, "mps_allocated_mb_after", None),
+                                getattr(d, "mps_driver_allocated_mb_before", None),
+                                getattr(d, "mps_driver_allocated_mb_after", None),
+                                getattr(d, "mps_recommended_max_mb", None),
+                            ]
+                        )
+
+                if teacher_context is not None and teacher_context.decode:
+                    _write_rows(teacher_context)
+                if student_context is not None and student_context.decode:
+                    _write_rows(student_context)
+
+            paths["context_diagnostics.csv"] = path
+
         return paths
 
     def _generate_charts(
@@ -607,14 +928,12 @@ class ArtifactGenerator:
         colors = ["#3498db", "#e74c3c"]
         bars = ax.bar(models, values, color=colors)
         ax.set_ylabel("Perplexity ↓")
-        ax.set_title("Language Modeling Quality")
         ax.bar_label(bars, fmt="%.2f")
 
         ax = axes[1]
         values = [summary.teacher_tokens_per_sec, summary.student_tokens_per_sec]
         bars = ax.bar(models, values, color=colors)
         ax.set_ylabel("Tokens/Second ↑")
-        ax.set_title(f"Throughput ({summary.speedup:.2f}x speedup)")
         ax.bar_label(bars, fmt="%.0f")
 
         ax = axes[2]
@@ -624,12 +943,11 @@ class ArtifactGenerator:
         ]
         bars = ax.bar(models, values, color=colors)
         ax.set_ylabel("KV-Cache (MB/token) ↓")
-        ax.set_title(f"Memory ({summary.memory_reduction:.1f}x reduction)")
         ax.bar_label(bars, fmt="%.6f")
 
         plt.tight_layout()
         path = self.output_dir / "summary.png"
-        plt.savefig(path, dpi=150, bbox_inches="tight")
+        plt.savefig(path, dpi=150, bbox_inches="tight", pad_inches=0.02)
         plt.close()
         paths["summary.png"] = path
 
@@ -639,12 +957,11 @@ class ArtifactGenerator:
             vals = [summary.teacher_perplexity, summary.student_perplexity]
             bars = ax.bar(models, vals, color=colors)
             ax.set_ylabel("Perplexity ↓")
-            ax.set_title("Held-out Perplexity")
             ax.bar_label(bars, fmt="%.2f")
             ax.grid(True, axis="y", alpha=0.2)
             plt.tight_layout()
             p2 = self.output_dir / "perplexity.png"
-            plt.savefig(p2, dpi=200, bbox_inches="tight")
+            plt.savefig(p2, dpi=200, bbox_inches="tight", pad_inches=0.02)
             plt.close()
             paths["perplexity.png"] = p2
 
@@ -691,15 +1008,11 @@ class ArtifactGenerator:
                     )
                     ax.set_xlabel("Prompt Length (tokens)")
                     ax.set_ylabel("Tokens/Second")
-                    ax.set_title(
-                        f"Throughput vs Context Length "
-                        f"(gen_len={ref_gen_len}, batch={ref_batch})"
-                    )
                     ax.legend()
                     ax.grid(True, alpha=0.3)
 
                     path = self.output_dir / "latency_vs_context.png"
-                    plt.savefig(path, dpi=150, bbox_inches="tight")
+                    plt.savefig(path, dpi=150, bbox_inches="tight", pad_inches=0.02)
                     paths["latency_vs_context.png"] = path
                     # Compatibility name used by the paper draft.
                     p2 = self.output_dir / "latency_tokens_per_sec.png"
@@ -750,13 +1063,12 @@ class ArtifactGenerator:
                 )
                 ax.set_xlabel("Sequence Length (tokens)")
                 ax.set_ylabel("KV-Cache Memory (MB)")
-                ax.set_title("Memory Scaling with Context Length")
                 ax.legend()
                 ax.grid(True, alpha=0.3)
                 ax.set_xscale("log", base=2)
 
                 path = self.output_dir / "memory_scaling.png"
-                plt.savefig(path, dpi=150, bbox_inches="tight")
+                plt.savefig(path, dpi=150, bbox_inches="tight", pad_inches=0.02)
                 paths["memory_scaling.png"] = path
 
                 plt.close()
@@ -769,13 +1081,12 @@ class ArtifactGenerator:
             colors = ["#3498db", "#e74c3c"]
             bars = ax.bar(models, vals, color=colors)
             ax.set_ylabel("Accuracy (%) ↑")
-            ax.set_title(f"Behavior suite • {behavior.benchmark_id}")
             ax.set_ylim(0, 100)
             ax.bar_label(bars, fmt="%.1f")
             ax.grid(True, axis="y", alpha=0.2)
             plt.tight_layout()
             path = self.output_dir / "behavior_accuracy.png"
-            plt.savefig(path, dpi=200, bbox_inches="tight")
+            plt.savefig(path, dpi=200, bbox_inches="tight", pad_inches=0.02)
             plt.close()
             paths["behavior_accuracy.png"] = path
 
@@ -789,7 +1100,7 @@ class ArtifactGenerator:
                 smap = {t.task: t for t in (student_accuracy.tasks if student_accuracy else [])}
                 tasks = sorted(set(tmap.keys()) | set(smap.keys()))
                 if tasks:
-                    fig, ax = plt.subplots(figsize=(max(6, 1.2 * len(tasks)), 4))
+                    fig, ax = plt.subplots(figsize=(max(6.0, 1.2 * len(tasks)), 4))
                     x = list(range(len(tasks)))
                     tw = 0.38
                     tv = [float(tmap[k].accuracy) * 100.0 if k in tmap else 0.0 for k in tasks]
@@ -799,13 +1110,12 @@ class ArtifactGenerator:
                     ax.set_xticks(x)
                     ax.set_xticklabels(tasks, rotation=30, ha="right")
                     ax.set_ylabel("Accuracy (%) ↑")
-                    ax.set_title("Downstream task accuracy")
                     ax.set_ylim(0, 100)
                     ax.grid(True, axis="y", alpha=0.2)
                     ax.legend()
                     plt.tight_layout()
                     p = self.output_dir / "accuracy_by_task.png"
-                    plt.savefig(p, dpi=200, bbox_inches="tight")
+                    plt.savefig(p, dpi=200, bbox_inches="tight", pad_inches=0.02)
                     plt.close()
                     paths["accuracy_by_task.png"] = p
             except Exception:
@@ -823,11 +1133,10 @@ class ArtifactGenerator:
             ax.set_xscale("log", base=2)
             ax.set_xlabel("Context length (tokens)")
             ax.set_ylabel("Decode 1 token (ms)")
-            ax.set_title(f"Decode-at-context ({name})")
             ax.grid(True, alpha=0.3)
             plt.tight_layout()
             p = self.output_dir / f"context_decode_one_ms_{name}.png"
-            plt.savefig(p, dpi=200, bbox_inches="tight")
+            plt.savefig(p, dpi=200, bbox_inches="tight", pad_inches=0.02)
             plt.close()
             return p
 
@@ -846,12 +1155,11 @@ class ArtifactGenerator:
             ax.set_xscale("log", base=2)
             ax.set_xlabel("Context length (tokens)")
             ax.set_ylabel("Decode throughput (tok/s)")
-            ax.set_title("Cached decode throughput vs context")
             ax.grid(True, alpha=0.3)
             ax.legend()
             plt.tight_layout()
             p = self.output_dir / "compare_context_decode_tok_per_sec.png"
-            plt.savefig(p, dpi=200, bbox_inches="tight")
+            plt.savefig(p, dpi=200, bbox_inches="tight", pad_inches=0.02)
             plt.close()
             return p
 
@@ -880,6 +1188,78 @@ class ArtifactGenerator:
             )
             if p is not None:
                 paths["compare_context_decode_tok_per_sec.png"] = p
+
+        # Diagnostics plot: throughput + memory pressure (MPS) overlay.
+        # This helps explain "radical" sweep curves: cliffs often coincide with
+        # driver memory approaching recommended max.
+        try:
+            if teacher_context is not None and student_context is not None:
+                ta = [m for m in teacher_context.decode if m.ok]
+                tb = [m for m in student_context.decode if m.ok]
+                if ta and tb:
+                    # Only plot memory series if present (MPS).
+                    has_mem = any(getattr(m, "mps_driver_allocated_mb_after", None) is not None for m in (ta + tb))
+                    if has_mem:
+                        ta = sorted(ta, key=lambda m: int(m.context_len))
+                        tb = sorted(tb, key=lambda m: int(m.context_len))
+                        fig, ax1 = plt.subplots(figsize=(8.2, 4.6))
+                        ax2 = ax1.twinx()
+
+                        x1 = [int(m.context_len) for m in ta]
+                        y1 = [float(m.decode_tok_per_s) for m in ta]
+                        x2 = [int(m.context_len) for m in tb]
+                        y2 = [float(m.decode_tok_per_s) for m in tb]
+
+                        ax1.plot(x1, y1, "o-", color="#3498db", label="Teacher tok/s")
+                        ax1.plot(x2, y2, "o-", color="#e74c3c", label="Student (DBA) tok/s")
+                        ax1.set_xscale("log", base=2)
+                        ax1.set_xlabel("Context length (tokens)")
+                        ax1.set_ylabel("Decode throughput (tok/s)")
+
+                        m1 = [getattr(m, "mps_driver_allocated_mb_after", None) for m in ta]
+                        m2 = [getattr(m, "mps_driver_allocated_mb_after", None) for m in tb]
+                        # Replace None with NaN so matplotlib can skip.
+                        m1p = [float(v) if v is not None else float("nan") for v in m1]
+                        m2p = [float(v) if v is not None else float("nan") for v in m2]
+                        ax2.plot(x1, m1p, "--", color="#3498db", alpha=0.55, label="Teacher MPS driver MB")
+                        ax2.plot(x2, m2p, "--", color="#e74c3c", alpha=0.55, label="Student MPS driver MB")
+                        ax2.set_ylabel("MPS driver allocated (MB)")
+
+                        # Recommended max (if present anywhere).
+                        recs = [
+                            float(v)
+                            for v in (
+                                [getattr(m, "mps_recommended_max_mb", None) for m in ta]
+                                + [getattr(m, "mps_recommended_max_mb", None) for m in tb]
+                            )
+                            if v is not None
+                        ]
+                        if recs:
+                            rmax = max(recs)
+                            ax2.axhline(rmax, color="black", alpha=0.2, linewidth=1.0)
+                            ax2.text(
+                                0.02,
+                                0.97,
+                                f"recommended max ≈ {rmax:.0f} MB",
+                                transform=ax2.transAxes,
+                                va="top",
+                                fontsize=9,
+                                alpha=0.7,
+                            )
+
+                        ax1.grid(True, alpha=0.25)
+                        # Merge legends.
+                        h1, l1 = ax1.get_legend_handles_labels()
+                        h2, l2 = ax2.get_legend_handles_labels()
+                        ax1.legend(h1 + h2, l1 + l2, loc="best", fontsize=8)
+                        plt.tight_layout()
+                        pdiag = self.output_dir / "context_sweep_diagnostics.png"
+                        plt.savefig(pdiag, dpi=200, bbox_inches="tight", pad_inches=0.02)
+                        plt.close()
+                        paths["context_sweep_diagnostics.png"] = pdiag
+        except Exception:
+            # Non-critical.
+            pass
 
         return paths
 

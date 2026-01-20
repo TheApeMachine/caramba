@@ -149,3 +149,34 @@ class TrainingVizMosaicContext(TrainingVizContext):
     train_loss_variance: float | None = None
     _last_loss: float | None = None
 
+
+@dataclass(slots=True)
+class TrainingUAAContext(TrainingVizMosaicContext):
+    """Training context for Utility-Aligned Attention (UAA).
+
+    This context is used to request and hold differentiable attention probability
+    slices from selected attention layers/heads for use in an auxiliary loss.
+
+    Important:
+    - Unlike `TrainingVizContext`, the stored tensors here are meant to stay on-device
+      and participate in autograd (no CPU conversion / detaching).
+    - This is separate from visualization to keep overhead bounded and explicit.
+    """
+
+    # Whether UAA capture/loss is enabled for this step/microbatch.
+    uaa_enabled: bool = False
+
+    # Which attention layer indices (by `_viz_index`) to capture from.
+    # Convention: indices are assigned by the trainer's module discovery.
+    uaa_layers: tuple[int, ...] = ()
+
+    # Which head indices to capture (per-layer head indices, 0..n_heads-1).
+    uaa_heads: tuple[int, ...] = ()
+
+    # Which query position to align for (e.g. last token index).
+    uaa_query_index: int = -1
+
+    # Captured attention probabilities:
+    #   layer_idx -> (B, H_sel, T_k) probabilities over key positions.
+    uaa_attn: dict[int, Tensor] = field(default_factory=dict)
+

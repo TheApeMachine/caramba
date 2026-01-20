@@ -16,9 +16,9 @@ from dataclasses import dataclass, field
 import torch
 from torch import nn
 
-from caramba.benchmark.utils import get_model_vocab_size
-from caramba.config.benchmark import LatencyBenchmarkConfig
-from caramba.infer.generate import GenerateConfig, Generator, sample_next_token
+from benchmark.utils import get_model_vocab_size
+from config.benchmark import LatencyBenchmarkConfig
+from infer.generate import GenerateConfig, Generator, sample_next_token
 
 
 @dataclass
@@ -119,7 +119,7 @@ class LatencyBenchmark:
         This is the baseline/worst-case measurement. TTFT is measured as
         prefill + first decode step for consistency with cached mode.
         """
-        vocab_size = self._get_vocab_size(model)
+        vocab_size = self._resolve_effective_vocab_size(model)
 
         input_ids = torch.randint(
             0,
@@ -225,7 +225,7 @@ class LatencyBenchmark:
         Uses the Generator class for proper cache management. Cache allocation
         is done before timing to measure steady-state inference cost.
         """
-        vocab_size = self._get_vocab_size(model)
+        vocab_size = self._resolve_effective_vocab_size(model)
 
         input_ids = torch.randint(
             0,
@@ -331,3 +331,23 @@ class LatencyBenchmark:
     def _get_vocab_size(self, model: nn.Module) -> int:
         """Get vocab size from model."""
         return get_model_vocab_size(model, default=32000)
+
+    def _resolve_effective_vocab_size(self, model: nn.Module) -> int:
+        """Resolve the effective vocab size used for test token generation.
+
+        If config.valid_vocab_size is set, we use that so padded model vocabs
+        (e.g. 50304) don't change the test token distribution relative to the
+        real tokenizer vocab (e.g. 50257). This makes teacher/student latency
+        inputs more comparable.
+        """
+        model_vocab = int(self._get_vocab_size(model))
+        vv = getattr(self.config, "valid_vocab_size", None)
+        if vv is None:
+            return model_vocab
+        eff = int(vv)
+        if eff > model_vocab:
+            raise ValueError(
+                "LatencyBenchmark: valid_vocab_size exceeds model vocab_size "
+                f"(valid_vocab_size={eff}, model_vocab_size={model_vocab})."
+            )
+        return eff

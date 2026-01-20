@@ -5,10 +5,10 @@ import unittest
 import torch
 from torch import nn
 
-from caramba.infer.consolidation import ReplayConsolidator
-from caramba.infer.context import InferContext
-from caramba.infer.event_runtime import StreamModelRunner
-from caramba.infer.replay import ReplayBuffer
+from infer.consolidation import ReplayConsolidator
+from infer.context import InferContext
+from infer.event_runtime import StreamModelRunner
+from infer.replay import ReplayBuffer
 
 
 class _ToyLM(nn.Module):

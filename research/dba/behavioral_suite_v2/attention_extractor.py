@@ -110,9 +110,11 @@ class AttentionExtractor:
                     )
             elif hasattr(module, 'attention_weights'):
                 # Some modules store attention as an attribute
-                self.attention_weights.append(
-                    module.attention_weights.detach().cpu()
-                )
+                attn_weights = getattr(module, 'attention_weights', None)
+                if attn_weights is not None and isinstance(attn_weights, torch.Tensor):
+                    self.attention_weights.append(
+                        attn_weights.detach().cpu()
+                    )
 
         return hook
 
@@ -203,20 +205,29 @@ class HuggingFaceAttentionExtractor(AttentionExtractor):
         model_type = getattr(self.model.config, 'model_type', None)
 
         if model_type == 'llama':
-            self.attention_modules = [
-                f'model.layers.{i}.self_attn'
-                for i in range(self.model.config.num_hidden_layers)
-            ]
+            num_layers = getattr(self.model.config, 'num_hidden_layers', None)
+            if num_layers is not None:
+                num_layers_int: int = int(num_layers)  # type: ignore[reportArgumentType]
+                self.attention_modules = [
+                    f'model.layers.{i}.self_attn'
+                    for i in range(num_layers_int)
+                ]
         elif model_type == 'gpt2':
-            self.attention_modules = [
-                f'transformer.h.{i}.attn'
-                for i in range(self.model.config.n_layer)
-            ]
+            n_layer = getattr(self.model.config, 'n_layer', None)
+            if n_layer is not None:
+                n_layer_int: int = int(n_layer)  # type: ignore[reportArgumentType]
+                self.attention_modules = [
+                    f'transformer.h.{i}.attn'
+                    for i in range(n_layer_int)
+                ]
         elif model_type == 'gpt_neo':
-            self.attention_modules = [
-                f'transformer.h.{i}.attn.attention'
-                for i in range(self.model.config.num_layers)
-            ]
+            num_layers = getattr(self.model.config, 'num_layers', None)
+            if num_layers is not None:
+                num_layers_int: int = int(num_layers)  # type: ignore[reportArgumentType]
+                self.attention_modules = [
+                    f'transformer.h.{i}.attn.attention'
+                    for i in range(num_layers_int)
+                ]
         # Add more model types as needed
 
 

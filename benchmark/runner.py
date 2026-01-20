@@ -6,20 +6,22 @@ artifacts (CSV, JSON, PNG, LaTeX).
 """
 from __future__ import annotations
 
+import math
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
 from torch import nn
 
-from caramba.benchmark.artifacts import ArtifactGenerator, ExperimentMetadata
-from caramba.benchmark.accuracy import BenchmarkAccuracy, AccuracyResult
-from caramba.benchmark.behavior import BehaviorBenchmark, BehaviorResult
-from caramba.benchmark.behavioral_v2 import BenchmarkBehavioralV2, BehavioralV2Result
-from caramba.benchmark.context import BenchmarkContext, ContextResult
-from caramba.benchmark.latency import LatencyBenchmark, LatencyResult
-from caramba.benchmark.memory import MemoryBenchmark, MemoryResult
-from caramba.benchmark.perplexity import PerplexityBenchmark, PerplexityResult
-from caramba.config.benchmark import (
+from benchmark.artifacts import ArtifactGenerator, ExperimentMetadata
+from benchmark.accuracy import BenchmarkAccuracy, AccuracyResult
+from benchmark.behavior import BehaviorBenchmark, BehaviorResult
+from benchmark.behavioral_v2 import BenchmarkBehavioralV2, BehavioralV2Result
+from benchmark.context import BenchmarkContext, ContextResult
+from benchmark.latency import LatencyBenchmark, LatencyResult
+from benchmark.memory import MemoryBenchmark, MemoryResult
+from benchmark.perplexity import PerplexityBenchmark, PerplexityResult
+from config.benchmark import (
     AccuracyBenchmarkConfig,
     BenchmarkSuite,
     BenchmarkType,
@@ -30,7 +32,7 @@ from caramba.config.benchmark import (
     MemoryBenchmarkConfig,
     PerplexityBenchmarkConfig,
 )
-from caramba.console import logger
+from console import logger
 
 
 class BenchmarkRunner:
@@ -64,18 +66,151 @@ class BenchmarkRunner:
         """
         logger.header("Benchmarks", f"{len(self.suite.benchmarks)} configured")
 
-        teacher_perplexity: PerplexityResult | None = None
-        student_perplexity: PerplexityResult | None = None
-        teacher_latency: LatencyResult | None = None
-        student_latency: LatencyResult | None = None
-        teacher_memory: MemoryResult | None = None
-        student_memory: MemoryResult | None = None
+        # NOTE: repeats are intended for statistical confidence; we aggregate
+        # repeats rather than cherry-picking "best" runs.
+        teacher_perplexity_runs: list[PerplexityResult] = []
+        student_perplexity_runs: list[PerplexityResult] = []
+        teacher_latency_runs: list[LatencyResult] = []
+        student_latency_runs: list[LatencyResult] = []
+        teacher_memory_runs: list[MemoryResult] = []
+        student_memory_runs: list[MemoryResult] = []
         behavior: BehaviorResult | None = None
         behavioral_v2: BehavioralV2Result | None = None
         teacher_accuracy: AccuracyResult | None = None
         student_accuracy: AccuracyResult | None = None
-        teacher_context: ContextResult | None = None
-        student_context: ContextResult | None = None
+        teacher_accuracy_runs: list[AccuracyResult] = []
+        student_accuracy_runs: list[AccuracyResult] = []
+        teacher_context_runs: list[ContextResult] = []
+        student_context_runs: list[ContextResult] = []
+
+        def _gc_and_empty_cache() -> None:
+            try:
+                import gc
+
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if self.device.type == "cuda":
+                    torch.cuda.empty_cache()
+                elif self.device.type == "mps":
+                    torch.mps.empty_cache()
+            except Exception:
+                pass
+
+        def _try_move_model(model: nn.Module | None, device: torch.device) -> None:
+            if model is None:
+                return
+            try:
+                model.to(device)
+            except Exception as e:
+                logger.warning(f"Failed to move model to {device}: {e!r}")
+
+        def _merge_perplexity(runs: list[PerplexityResult]) -> PerplexityResult | None:
+            if not runs:
+                return None
+            model_name = runs[0].model_name
+            total_tokens = int(sum(int(r.num_tokens) for r in runs))
+            total_batches = int(sum(int(r.num_batches) for r in runs))
+            if total_tokens <= 0:
+                return PerplexityResult(
+                    model_name=model_name,
+                    perplexity=float("inf"),
+                    loss=float("inf"),
+                    num_tokens=0,
+                    num_batches=total_batches,
+                )
+            total_loss = float(sum(float(r.loss) * float(r.num_tokens) for r in runs))
+            avg_loss = total_loss / float(total_tokens)
+            ppl = math.exp(avg_loss) if avg_loss < 20 else float("inf")
+            return PerplexityResult(
+                model_name=model_name,
+                perplexity=float(ppl),
+                loss=float(avg_loss),
+                num_tokens=total_tokens,
+                num_batches=total_batches,
+            )
+
+        def _merge_latency(runs: list[LatencyResult]) -> LatencyResult | None:
+            if not runs:
+                return None
+            out = LatencyResult(model_name=runs[0].model_name)
+            for r in runs:
+                out.measurements.extend(r.measurements)
+            return out
+
+        def _merge_memory(runs: list[MemoryResult]) -> MemoryResult | None:
+            if not runs:
+                return None
+            out = MemoryResult(model_name=runs[0].model_name)
+            out.kvcache_analysis = runs[0].kvcache_analysis
+
+            # Ensure KV-cache analysis is consistent across repeats.
+            if out.kvcache_analysis is not None:
+                ref = asdict(out.kvcache_analysis)
+                for r in runs[1:]:
+                    if r.kvcache_analysis is None:
+                        raise ValueError(
+                            "Memory benchmark repeats produced inconsistent kvcache_analysis "
+                            f"(expected present for {out.model_name})."
+                        )
+                    if asdict(r.kvcache_analysis) != ref:
+                        raise ValueError(
+                            "Memory benchmark repeats produced inconsistent kvcache_analysis "
+                            f"for {out.model_name}."
+                        )
+
+            for r in runs:
+                out.measurements.extend(r.measurements)
+            return out
+
+        def _merge_accuracy(runs: list[AccuracyResult]) -> AccuracyResult | None:
+            if not runs:
+                return None
+            model_name = runs[0].model_name
+            # Aggregate by (task, split) summing correct/total; recompute accuracy.
+            agg: dict[tuple[str, str], dict[str, float]] = {}
+            for r in runs:
+                for t in r.tasks:
+                    key = (str(t.task), str(t.split))
+                    item = agg.setdefault(
+                        key,
+                        {"correct": 0.0, "total": 0.0, "elapsed_sum": 0.0, "n": 0.0},
+                    )
+                    item["correct"] += float(int(t.correct))
+                    item["total"] += float(int(t.total))
+                    item["elapsed_sum"] += float(getattr(t, "elapsed_seconds", 0.0))
+                    item["n"] += 1.0
+
+            out = AccuracyResult(model_name=str(model_name))
+            from collector.measurement.accuracy.task import TaskAccuracy
+
+            for (task, split), v in sorted(agg.items()):
+                tot = int(v["total"])
+                cor = int(v["correct"])
+                acc = float(cor) / float(tot) if tot > 0 else 0.0
+                elapsed = float(v["elapsed_sum"] / max(1.0, v["n"]))
+                out.tasks.append(
+                    TaskAccuracy(
+                        task=str(task),
+                        split=str(split),
+                        accuracy=float(acc),
+                        correct=int(cor),
+                        total=int(tot),
+                        samples=[],
+                        elapsed_seconds=float(elapsed),
+                    )
+                )
+            return out
+
+        def _merge_context(runs: list[ContextResult]) -> ContextResult | None:
+            if not runs:
+                return None
+            out = ContextResult(model_name=str(runs[0].model_name))
+            for r in runs:
+                out.sweep.extend(r.sweep)
+                out.decode.extend(r.decode)
+            return out
 
         for spec in self.suite.benchmarks:
             logger.subheader(f"{spec.id} ({spec.config.type})")
@@ -91,11 +226,7 @@ class BenchmarkRunner:
                                 logger.warning("Benchmark requested teacher model, but none is available (skipping).")
                             else:
                                 result = benchmark.run(teacher, "teacher")
-                                if (
-                                    teacher_perplexity is None
-                                    or result.perplexity < teacher_perplexity.perplexity
-                                ):
-                                    teacher_perplexity = result
+                                teacher_perplexity_runs.append(result)
                                 logger.metric("teacher", result.perplexity, " ppl")
 
                         if "student" in spec.models:
@@ -103,24 +234,27 @@ class BenchmarkRunner:
                                 logger.warning("Benchmark requested student model, but none is available (skipping).")
                             else:
                                 result = benchmark.run(student, "student")
-                                if (
-                                    student_perplexity is None
-                                    or result.perplexity < student_perplexity.perplexity
-                                ):
-                                    student_perplexity = result
+                                student_perplexity_runs.append(result)
                                 logger.metric("student", result.perplexity, " ppl")
 
                     case BenchmarkType.LATENCY:
                         assert isinstance(spec.config, LatencyBenchmarkConfig)
                         benchmark = LatencyBenchmark(spec.config, self.device)
+                        # Latency is resource-sensitive: isolate the active model on the accelerator.
+                        cpu = torch.device("cpu")
 
                         if "teacher" in spec.models:
                             if teacher is None:
                                 logger.warning("Benchmark requested teacher model, but none is available (skipping).")
                             else:
+                                # Move student away (if present) while benchmarking teacher.
+                                if student is not None and student is not teacher:
+                                    _try_move_model(student, cpu)
+                                    _gc_and_empty_cache()
+                                _try_move_model(teacher, self.device)
+                                _gc_and_empty_cache()
                                 result = benchmark.run(teacher, "teacher")
-                                if teacher_latency is None:
-                                    teacher_latency = result
+                                teacher_latency_runs.append(result)
                                 logger.metric(
                                     "teacher", result.avg_tokens_per_second, " tok/s"
                                 )
@@ -129,24 +263,39 @@ class BenchmarkRunner:
                             if student is None:
                                 logger.warning("Benchmark requested student model, but none is available (skipping).")
                             else:
+                                # Move teacher away (if present) while benchmarking student.
+                                if teacher is not None and teacher is not student:
+                                    _try_move_model(teacher, cpu)
+                                    _gc_and_empty_cache()
+                                _try_move_model(student, self.device)
+                                _gc_and_empty_cache()
                                 result = benchmark.run(student, "student")
-                                if student_latency is None:
-                                    student_latency = result
+                                student_latency_runs.append(result)
                                 logger.metric(
                                     "student", result.avg_tokens_per_second, " tok/s"
                                 )
+                        # Restore both models to the benchmark device for subsequent benchmarks.
+                        _try_move_model(teacher, self.device)
+                        _try_move_model(student, self.device)
+                        _gc_and_empty_cache()
 
                     case BenchmarkType.MEMORY:
                         assert isinstance(spec.config, MemoryBenchmarkConfig)
                         benchmark = MemoryBenchmark(spec.config, self.device)
+                        # Memory is extremely resource-sensitive: isolate the active model on the accelerator.
+                        cpu = torch.device("cpu")
 
                         if "teacher" in spec.models:
                             if teacher is None:
                                 logger.warning("Benchmark requested teacher model, but none is available (skipping).")
                             else:
+                                if student is not None and student is not teacher:
+                                    _try_move_model(student, cpu)
+                                    _gc_and_empty_cache()
+                                _try_move_model(teacher, self.device)
+                                _gc_and_empty_cache()
                                 result = benchmark.run(teacher, "teacher")
-                                if teacher_memory is None:
-                                    teacher_memory = result
+                                teacher_memory_runs.append(result)
                                 if result.kvcache_analysis:
                                     logger.metric(
                                         "teacher",
@@ -158,15 +307,23 @@ class BenchmarkRunner:
                             if student is None:
                                 logger.warning("Benchmark requested student model, but none is available (skipping).")
                             else:
+                                if teacher is not None and teacher is not student:
+                                    _try_move_model(teacher, cpu)
+                                    _gc_and_empty_cache()
+                                _try_move_model(student, self.device)
+                                _gc_and_empty_cache()
                                 result = benchmark.run(student, "student")
-                                if student_memory is None:
-                                    student_memory = result
+                                student_memory_runs.append(result)
                                 if result.kvcache_analysis:
                                     kv_bytes = (
                                         result.kvcache_analysis.bytes_per_token_dba_fp16
                                         or result.kvcache_analysis.bytes_per_token_fp16
                                     )
                                     logger.metric("student", kv_bytes, " bytes/tok")
+                        # Restore both models to the benchmark device for subsequent benchmarks.
+                        _try_move_model(teacher, self.device)
+                        _try_move_model(student, self.device)
+                        _gc_and_empty_cache()
 
                     case BenchmarkType.ACCURACY:
                         assert isinstance(spec.config, AccuracyBenchmarkConfig)
@@ -176,15 +333,17 @@ class BenchmarkRunner:
                             if teacher is None:
                                 logger.warning("Benchmark requested teacher model, but none is available (skipping).")
                             else:
-                                teacher_accuracy = benchmark.run(teacher, "teacher", output_dir=self.output_dir)
-                                logger.metric("teacher", teacher_accuracy.micro_accuracy * 100.0, "% micro-acc")
+                                r = benchmark.run(teacher, "teacher", output_dir=self.output_dir)
+                                teacher_accuracy_runs.append(r)
+                                logger.metric("teacher", r.micro_accuracy * 100.0, "% micro-acc")
 
                         if "student" in spec.models:
                             if student is None:
                                 logger.warning("Benchmark requested student model, but none is available (skipping).")
                             else:
-                                student_accuracy = benchmark.run(student, "student", output_dir=self.output_dir)
-                                logger.metric("student", student_accuracy.micro_accuracy * 100.0, "% micro-acc")
+                                r = benchmark.run(student, "student", output_dir=self.output_dir)
+                                student_accuracy_runs.append(r)
+                                logger.metric("student", r.micro_accuracy * 100.0, "% micro-acc")
 
                     case BenchmarkType.BEHAVIOR:
                         assert isinstance(spec.config, BehaviorBenchmarkConfig)
@@ -228,11 +387,21 @@ class BenchmarkRunner:
                     case BenchmarkType.CONTEXT:
                         assert isinstance(spec.config, ContextBenchmarkConfig)
                         benchmark = BenchmarkContext(spec.config, self.device)
+                        # Context sweep is memory-sensitive: avoid keeping a second 1B model
+                        # resident on the accelerator. Best-effort isolate by moving the
+                        # non-active model to CPU and clearing backend caches.
+                        cpu = torch.device("cpu")
+
                         if "teacher" in spec.models:
                             if teacher is None:
                                 logger.warning("Benchmark requested teacher model, but none is available (skipping).")
                             else:
+                                # Move student away (if present) while sweeping teacher.
+                                if student is not None and student is not teacher:
+                                    _try_move_model(student, cpu)
+                                    _gc_and_empty_cache()
                                 teacher_context = benchmark.run(teacher, "teacher")
+                                teacher_context_runs.append(teacher_context)
                                 # Report last decode-tps at max context.
                                 try:
                                     decode = teacher_context.decode
@@ -259,7 +428,15 @@ class BenchmarkRunner:
                             if student is None:
                                 logger.warning("Benchmark requested student model, but none is available (skipping).")
                             else:
+                                # Move teacher away (if present) while sweeping student.
+                                if teacher is not None and teacher is not student:
+                                    _try_move_model(teacher, cpu)
+                                    _gc_and_empty_cache()
+                                # Ensure student is on the benchmark device (if we moved it earlier).
+                                _try_move_model(student, self.device)
+                                _gc_and_empty_cache()
                                 student_context = benchmark.run(student, "student")
+                                student_context_runs.append(student_context)
                                 try:
                                     decode = student_context.decode
                                     xs = [
@@ -282,10 +459,27 @@ class BenchmarkRunner:
                                                 f"(from student_context.decode / m.decode_tok_per_s): {e!r}"
                                             )
 
+                        # Restore both models to the benchmark device for subsequent benchmarks.
+                        # (Best-effort; does not fail the run if a move isn't supported.)
+                        _try_move_model(teacher, self.device)
+                        _try_move_model(student, self.device)
+                        _gc_and_empty_cache()
+
                     case _:
                         logger.warning(
                             f"skipping unsupported benchmark type: {spec.config.type}"
                         )
+
+        teacher_perplexity = _merge_perplexity(teacher_perplexity_runs)
+        student_perplexity = _merge_perplexity(student_perplexity_runs)
+        teacher_latency = _merge_latency(teacher_latency_runs)
+        student_latency = _merge_latency(student_latency_runs)
+        teacher_memory = _merge_memory(teacher_memory_runs)
+        student_memory = _merge_memory(student_memory_runs)
+        teacher_accuracy = _merge_accuracy(teacher_accuracy_runs)
+        student_accuracy = _merge_accuracy(student_accuracy_runs)
+        teacher_context = _merge_context(teacher_context_runs)
+        student_context = _merge_context(student_context_runs)
 
         # Generate artifacts
         logger.info("Generating artifacts...")

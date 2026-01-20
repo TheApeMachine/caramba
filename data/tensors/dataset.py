@@ -9,9 +9,9 @@ from typing import Any
 
 from torch.utils.data import Dataset
 
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
-from caramba.data.transforms import Compose
-from caramba.data.tensors.source import TensorSource
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
+from data.transforms import Compose
+from data.tensors.source import TensorSource
 
 
 class TensorFilesDataset(Dataset[TensorDictBase]):

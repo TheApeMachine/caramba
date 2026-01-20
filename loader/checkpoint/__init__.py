@@ -8,12 +8,12 @@ without caring where they came from.
 
 from __future__ import annotations
 
-from caramba.loader.checkpoint.base import Checkpoint
-from caramba.loader.checkpoint.builder import CheckpointBuilder
-from caramba.loader.checkpoint.hf import HFCheckpoint
-from caramba.loader.checkpoint.pytorch import CheckpointPytorch
-from caramba.loader.checkpoint.safetensors import CheckpointSafetensors
-from caramba.loader.checkpoint.sharded import CheckpointSharded
+from loader.checkpoint.base import Checkpoint
+from loader.checkpoint.builder import CheckpointBuilder
+from loader.checkpoint.hf import HFCheckpoint
+from loader.checkpoint.pytorch import CheckpointPytorch
+from loader.checkpoint.safetensors import CheckpointSafetensors
+from loader.checkpoint.sharded import CheckpointSharded
 
 __all__ = [
     "Checkpoint",

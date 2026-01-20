@@ -13,7 +13,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from caramba.optimizer.adamw_triton_kernels import adamw_master_step
+from optimizer.adamw_triton_kernels import adamw_master_step
 
 
 def _cdiv(n: int, d: int) -> int:

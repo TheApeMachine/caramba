@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 import uuid
 
-from caramba.core.event import EventEnvelope
+from core.event import EventEnvelope
 
 
 @dataclass(frozen=True, slots=True)

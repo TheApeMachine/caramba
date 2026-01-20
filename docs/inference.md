@@ -25,7 +25,7 @@ caramba's inference system provides:
 - **Speculative decoding** — Draft-verify acceleration
 
 ```python
-from caramba.infer import Generator, GenerateConfig, generate
+infer import Generator, GenerateConfig, generate
 
 # Quick generation
 output_ids = generate(model, input_ids, max_new_tokens=64)
@@ -48,7 +48,7 @@ output_ids = generator.generate(input_ids)
 ### Basic Usage
 
 ```python
-from caramba.infer import generate, GenerateConfig
+infer import generate, GenerateConfig
 
 # Stateless generation (simplest)
 output_ids = generate(
@@ -74,7 +74,7 @@ output_ids = generate(model, input_ids, config=config)
 For multi-turn generation or session reuse:
 
 ```python
-from caramba.infer import Generator, GenerateConfig
+infer import Generator, GenerateConfig
 
 config = GenerateConfig(
     max_new_tokens=128,
@@ -135,8 +135,8 @@ caramba supports multiple cache quantization levels:
 ### Configuring Cache
 
 ```python
-from caramba.infer import GenerateConfig
-from caramba.config.kvcache import KVCacheKind
+infer import GenerateConfig
+config.kvcache import KVCacheKind
 
 config = GenerateConfig(
     cache_kind=KVCacheKind.FP16,  # or "fp16"
@@ -157,8 +157,8 @@ With Decoupled Bottleneck Attention, cache compression is even more dramatic:
 ### Manual Cache Configuration
 
 ```python
-from caramba.cache import LayerKVCache, DecoupledLayerKVCache
-from caramba.config.kvcache import KVCacheTensorConfig, KVCacheKind
+cache import LayerKVCache, DecoupledLayerKVCache
+config.kvcache import KVCacheTensorConfig, KVCacheKind
 
 # Standard cache
 cache = LayerKVCache(
@@ -271,7 +271,7 @@ Accelerate inference by using a smaller draft model to propose tokens, then veri
 ### Basic Speculative Decoding
 
 ```python
-from caramba.infer import SpeculativeGenerator, SpeculativeConfig
+infer import SpeculativeGenerator, SpeculativeConfig
 
 config = SpeculativeConfig(
     spec_k=4,              # Draft 4 tokens per step
@@ -383,7 +383,7 @@ config = GenerateConfig(
 
 ```python
 import torch
-from caramba.infer import Generator, GenerateConfig
+infer import Generator, GenerateConfig
 
 # Load model
 model = load_model("path/to/checkpoint")
@@ -431,7 +431,7 @@ for i, text in enumerate(tokenizer.batch_decode(output_ids)):
 ### Streaming Generation
 
 ```python
-from caramba.infer import Generator
+infer import Generator
 
 generator = Generator(model, config=config, device="mps")
 

@@ -7,9 +7,9 @@ and optimization.
 """
 from __future__ import annotations
 
-from caramba.data.auto import AutoDataset
-from caramba.data.npy import NpyDataset
-from caramba.data.tokens import TokenDataset
-from caramba.data.datasets.builder import TokenDatasetBuilder
+from data.auto import AutoDataset
+from data.npy import NpyDataset
+from data.tokens import TokenDataset
+from data.datasets.builder import TokenDatasetBuilder
 
 __all__ = ["NpyDataset", "TokenDataset", "AutoDataset", "TokenDatasetBuilder"]

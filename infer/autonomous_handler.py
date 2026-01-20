@@ -11,10 +11,10 @@ from typing import Protocol
 
 from torch import Tensor
 
-from caramba.core.commitments import CommitmentLedger
-from caramba.core.event import EventEnvelope
-from caramba.core.event_bus import EventBus, EventHandler
-from caramba.infer.event_runtime import CommitmentModeB, EventResponder
+from core.commitments import CommitmentLedger
+from core.event import EventEnvelope
+from core.event_bus import EventBus, EventHandler
+from infer.event_runtime import CommitmentModeB, EventResponder
 
 
 class Consolidator(Protocol):

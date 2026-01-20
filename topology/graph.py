@@ -15,11 +15,11 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.compiler.validate import Validator
-from caramba.config.layer import LayerConfig, LayerType
-from caramba.config.topology import GraphNodeConfig, GraphTopologyConfig
-from caramba.topology.utils import unwrap_output
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
+from compiler.validate import Validator
+from config.layer import LayerConfig, LayerType
+from config.topology import GraphNodeConfig, GraphTopologyConfig
+from topology.utils import unwrap_output
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 
 def _as_list(x: str | list[str]) -> list[str]:

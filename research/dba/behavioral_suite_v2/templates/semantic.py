@@ -3,6 +3,9 @@ Semantic understanding templates.
 
 Tests meaning comprehension including synonyms, antonyms, analogies,
 and category membership.
+
+NOTE: These templates use CHOICE_LOGPROB scoring for clean capability measurement.
+Each test provides MCQ-style choices to eliminate decoder confounds.
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ from .base import (
 
 
 class SynonymTemplate(TestTemplate):
-    """Find synonyms for words."""
+    """Find synonyms for words - MCQ format."""
 
     category = "semantic"
     subcategory = "synonym"
@@ -48,17 +51,23 @@ class SynonymTemplate(TestTemplate):
         ],
     }
 
+    # Non-synonyms for distractors
+    DISTRACTORS = ["terrible", "enormous", "frozen", "ancient", "silent", "rapid", "gentle", "fierce"]
+
     def generate(self, rng: random.Random) -> TestCase:
         difficulty = rng.choice(list(Difficulty))
         word, synonyms = rng.choice(self.SYNONYMS[difficulty])
-        expected = rng.choice(synonyms)
+        correct = rng.choice(synonyms)
 
-        formats = [
-            f"What is a synonym for '{word}'?",
-            f"Give a synonym for: {word}",
-            f"Another word for '{word}' is",
-        ]
-        prompt = rng.choice(formats)
+        # Build choices: correct answer + distractors
+        distractors = [d for d in self.DISTRACTORS if d not in synonyms and d != word]
+        selected_distractors = rng.sample(distractors, min(3, len(distractors)))
+
+        choices = [f" {correct}"] + [f" {d}" for d in selected_distractors]
+        rng.shuffle(choices)
+
+        prompt = f"What is a synonym for '{word}'? Options: {', '.join(c.strip() for c in choices)}\nAnswer:"
+        expected = f" {correct}"
 
         return TestCase(
             id=f"semantic_syn_{word}",
@@ -67,14 +76,15 @@ class SynonymTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"word": word, "valid_answers": synonyms, "type": "synonym"},
         )
 
 
 class AntonymTemplate(TestTemplate):
-    """Find antonyms for words."""
+    """Find antonyms for words - MCQ format."""
 
     category = "semantic"
     subcategory = "antonym"
@@ -105,17 +115,23 @@ class AntonymTemplate(TestTemplate):
         ],
     }
 
+    # Non-antonyms for distractors
+    DISTRACTORS = ["similar", "related", "equal", "moderate", "average", "typical", "normal", "usual"]
+
     def generate(self, rng: random.Random) -> TestCase:
         difficulty = rng.choice(list(Difficulty))
         word, antonyms = rng.choice(self.ANTONYMS[difficulty])
-        expected = rng.choice(antonyms)
+        correct = rng.choice(antonyms)
 
-        formats = [
-            f"What is the opposite of '{word}'?",
-            f"Give an antonym for: {word}",
-            f"The opposite of '{word}' is",
-        ]
-        prompt = rng.choice(formats)
+        # Build choices: correct answer + distractors
+        distractors = [d for d in self.DISTRACTORS if d not in antonyms and d != word]
+        selected_distractors = rng.sample(distractors, min(3, len(distractors)))
+
+        choices = [f" {correct}"] + [f" {d}" for d in selected_distractors]
+        rng.shuffle(choices)
+
+        prompt = f"What is the opposite of '{word}'? Options: {', '.join(c.strip() for c in choices)}\nAnswer:"
+        expected = f" {correct}"
 
         return TestCase(
             id=f"semantic_ant_{word}",
@@ -124,14 +140,15 @@ class AntonymTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"word": word, "valid_answers": antonyms, "type": "antonym"},
         )
 
 
 class AnalogyTemplate(TestTemplate):
-    """Word analogies: A is to B as C is to ?"""
+    """Word analogies: A is to B as C is to ? - MCQ format."""
 
     category = "semantic"
     subcategory = "analogy"
@@ -160,17 +177,21 @@ class AnalogyTemplate(TestTemplate):
         ],
     }
 
+    DISTRACTORS = ["run", "walk", "speak", "think", "grow", "sleep", "work", "play"]
+
     def generate(self, rng: random.Random) -> TestCase:
         difficulty = rng.choice(list(Difficulty))
         a, b, c, d = rng.choice(self.ANALOGIES[difficulty])
 
-        formats = [
-            f"{a} is to {b} as {c} is to ?",
-            f"{a}:{b} :: {c}:?",
-            f"Complete the analogy: {a} is to {b} as {c} is to what?",
-        ]
-        prompt = rng.choice(formats)
-        expected = d
+        # Build choices: correct answer + distractors
+        distractors = [x for x in self.DISTRACTORS if x != d]
+        selected_distractors = rng.sample(distractors, min(3, len(distractors)))
+
+        choices = [f" {d}"] + [f" {x}" for x in selected_distractors]
+        rng.shuffle(choices)
+
+        prompt = f"{a} is to {b} as {c} is to? Options: {', '.join(c.strip() for c in choices)}\nAnswer:"
+        expected = f" {d}"
 
         return TestCase(
             id=f"semantic_analogy_{a}_{c}",
@@ -179,14 +200,15 @@ class AnalogyTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"analogy": [a, b, c, d], "type": "analogy"},
         )
 
 
 class CategoryMembershipTemplate(TestTemplate):
-    """Identify category membership."""
+    """Identify category membership - MCQ format."""
 
     category = "semantic"
     subcategory = "category"
@@ -210,22 +232,34 @@ class CategoryMembershipTemplate(TestTemplate):
         if difficulty == Difficulty.EASY:
             # What category does X belong to?
             item = rng.choice(members)
-            prompt = f"What category does '{item}' belong to? (e.g., fruit, animal, color)"
-            expected = category_name
+            category_options = list(self.CATEGORIES.keys())
+            choices = [f" {category_name}"] + [f" {c}" for c in rng.sample([c for c in category_options if c != category_name], 3)]
+            rng.shuffle(choices)
+            prompt = f"What category does '{item}' belong to? Options: {', '.join(c.strip() for c in choices)}\nAnswer:"
+            expected = f" {category_name}"
         elif difficulty == Difficulty.MEDIUM:
-            # Give an example of category X
-            prompt = f"Give an example of a {category_name}:"
-            expected = rng.choice(members)
+            # Give an example of category X - choose from options
+            correct = rng.choice(members)
+            # Get items from other categories as distractors
+            other_items = []
+            for other_cat, other_members in self.CATEGORIES.items():
+                if other_cat != category_name:
+                    other_items.extend(other_members)
+            distractors = rng.sample(other_items, 3)
+            choices = [f" {correct}"] + [f" {d}" for d in distractors]
+            rng.shuffle(choices)
+            prompt = f"Which is a {category_name}? Options: {', '.join(c.strip() for c in choices)}\nAnswer:"
+            expected = f" {correct}"
         else:
             # Which doesn't belong?
             items = rng.sample(members, 3)
             # Pick outlier from different category
             other_cat = rng.choice([c for c in self.CATEGORIES.keys() if c != category_name])
             outlier = rng.choice(self.CATEGORIES[other_cat])
-            all_items = items + [outlier]
-            rng.shuffle(all_items)
-            prompt = f"Which word doesn't belong with the others: {', '.join(all_items)}?"
-            expected = outlier
+            choices = [f" {outlier}"] + [f" {i}" for i in items]
+            rng.shuffle(choices)
+            prompt = f"Which word doesn't belong with the others? Options: {', '.join(c.strip() for c in choices)}\nAnswer:"
+            expected = f" {outlier}"
 
         return TestCase(
             id=f"semantic_cat_{category_name}",
@@ -234,14 +268,15 @@ class CategoryMembershipTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"category": category_name, "type": "category"},
         )
 
 
 class SentimentTemplate(TestTemplate):
-    """Identify sentiment of text."""
+    """Identify sentiment of text - MCQ format."""
 
     category = "semantic"
     subcategory = "sentiment"
@@ -284,8 +319,9 @@ class SentimentTemplate(TestTemplate):
             sentiment = rng.choice(["neutral", "positive", "negative"])
 
         sentence = rng.choice(self.SENTENCES[sentiment])
-        prompt = f"What is the sentiment of this sentence (positive/negative/neutral)?\n\"{sentence}\""
-        expected = sentiment
+        choices = [" positive", " negative", " neutral"]
+        prompt = f'What is the sentiment of this sentence?\n"{sentence}"\nOptions: positive, negative, neutral\nAnswer:'
+        expected = f" {sentiment}"
 
         return TestCase(
             id=f"semantic_sentiment_{sentiment}",
@@ -294,14 +330,15 @@ class SentimentTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"sentiment": sentiment, "type": "sentiment"},
         )
 
 
 class WordAssociationTemplate(TestTemplate):
-    """Word association - what word is related?"""
+    """Word association - what word is related? MCQ format."""
 
     category = "semantic"
     subcategory = "association"
@@ -317,12 +354,22 @@ class WordAssociationTemplate(TestTemplate):
         ("doctor", ["hospital", "medicine", "patient", "health"]),
     ]
 
+    DISTRACTORS = ["table", "window", "carpet", "ceiling", "wall", "floor", "door", "lamp"]
+
     def generate(self, rng: random.Random) -> TestCase:
         difficulty = rng.choice(list(Difficulty))
         word, associations = rng.choice(self.ASSOCIATIONS)
-        expected = rng.choice(associations)
+        correct = rng.choice(associations)
 
-        prompt = f"What word is commonly associated with '{word}'?"
+        # Build choices: correct answer + distractors
+        distractors = [d for d in self.DISTRACTORS if d not in associations]
+        selected_distractors = rng.sample(distractors, min(3, len(distractors)))
+
+        choices = [f" {correct}"] + [f" {d}" for d in selected_distractors]
+        rng.shuffle(choices)
+
+        prompt = f"What word is commonly associated with '{word}'? Options: {', '.join(c.strip() for c in choices)}\nAnswer:"
+        expected = f" {correct}"
 
         return TestCase(
             id=f"semantic_assoc_{word}",
@@ -331,7 +378,8 @@ class WordAssociationTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"word": word, "valid_answers": associations, "type": "association"},
         )

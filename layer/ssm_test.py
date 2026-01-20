@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from caramba.layer.ssm import _SelectiveScan
+from layer.ssm import _SelectiveScan
 
 
 class TestSelectiveScan:

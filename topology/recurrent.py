@@ -8,7 +8,7 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.topology import RecurrentTopologyConfig
+from config.topology import RecurrentTopologyConfig
 
 
 class RecurrentTopology(nn.Module):

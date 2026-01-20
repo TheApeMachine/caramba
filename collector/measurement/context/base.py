@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import Any
 
-from caramba.collector.measurement.base import Measurement
+from collector.measurement.base import Measurement
 
 
 class ContextMeasurement(Measurement):

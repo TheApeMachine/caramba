@@ -11,7 +11,7 @@ from unittest.mock import patch
 from rich.console import Console
 from rich.progress import Progress
 
-from caramba.console.logger import Logger, get_logger, CARAMBA_THEME
+from console.logger import Logger, get_logger, CARAMBA_THEME
 
 
 def strip_ansi(text: str) -> str:

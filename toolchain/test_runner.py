@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from caramba.toolchain.events import ToolTestResultPayload
-from caramba.toolchain.registry import ToolArtifact
-from caramba.toolchain.sandbox import ToolSandbox
+from toolchain.events import ToolTestResultPayload
+from toolchain.registry import ToolArtifact
+from toolchain.sandbox import ToolSandbox
 
 
 @dataclass(slots=True)

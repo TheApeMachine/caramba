@@ -5,6 +5,7 @@ and evaluation logic for a single accuracy benchmark task.
 """
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
@@ -12,10 +13,10 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from caramba.collector.measurement.accuracy.task import TaskAccuracy
-from caramba.eval.logprob.scorer import LogprobScorer
-from caramba.benchmark.accuracy.utils import TextNormalization
-from caramba.console import logger
+from collector.measurement.accuracy.task import TaskAccuracy, AccuracySample
+from eval.logprob.scorer import LogprobScorer
+from benchmark.accuracy.utils import TextNormalization
+from console import logger
 
 
 class BenchmarkAccuracyTask(ABC):
@@ -77,7 +78,9 @@ class BenchmarkAccuracyTask(ABC):
         total = 0
         split_name = "validation"
         shown = 0
+        shown = 0
         sample_rows: list[list[str]] = []
+        all_samples: list[AccuracySample] = []
         log_lines: list[str] = []
 
         def _tr(s: str, mx: int = max_chars) -> str:
@@ -97,6 +100,9 @@ class BenchmarkAccuracyTask(ABC):
             log_lines.append(f"TASK: {self.name} | MODEL: {model_name}")
             log_lines.append(f"{'=' * 80}")
             log_lines.append("")
+
+        # Track timing for speed comparison
+        start_time = time.perf_counter()
 
         with torch.no_grad():
             for prompt, choices, gold, split in self.iter_examples(split="validation"):
@@ -156,10 +162,28 @@ class BenchmarkAccuracyTask(ABC):
                             ]
                         )
                         shown += 1
+
+                # Collect for return object (capture everything)
+                all_samples.append(AccuracySample(
+                    prompt=prompt,
+                    gold=str(gold),
+                    pred=str(pred),
+                    ok=ok
+                ))
+
+                # Always collect all samples for artifacts if we are logging
+                # If nprint was limited, we might miss some in sample_rows if we relied only on that
+                # But sample_rows seems to be controlled by nprint.
+                # Let's decouple comprehensive logging from console printing.
+                # We'll just capture EVERYTHING into sample_rows if we want full logs,
+                # but `sample_rows` is used for the console table which might get too big.
+                # Let's add a separate list for all samples.
                 if limit is not None and total >= int(limit):
                     break
 
         acc = float(correct) / float(total) if total > 0 else 0.0
+        elapsed = time.perf_counter() - start_time
+        examples_per_sec = total / elapsed if elapsed > 0 else 0.0
 
         # Final summary for live streaming
         if stream_live:
@@ -167,13 +191,15 @@ class BenchmarkAccuracyTask(ABC):
             logger.console.print(
                 f"  [highlight]━━━ {self.name} complete:[/highlight] "
                 f"[metric]{correct}[/metric]/[metric]{total}[/metric] = "
-                f"[success]{acc * 100.0:.2f}%[/success] accuracy"
+                f"[success]{acc * 100.0:.2f}%[/success] accuracy "
+                f"[muted]({elapsed:.1f}s, {examples_per_sec:.1f} ex/s)[/muted]"
             )
             logger.console.print()
 
         # Write log file (append mode to accumulate across models)
         if log_file and log_lines:
             log_lines.append(f"SUMMARY: {correct}/{total} = {acc * 100:.2f}%")
+            log_lines.append(f"TIME: {elapsed:.2f}s ({examples_per_sec:.2f} examples/sec)")
             log_lines.append("")
             log_lines.append("")
 
@@ -186,6 +212,7 @@ class BenchmarkAccuracyTask(ABC):
             logger.info(f"Accuracy log appended to: {log_path}")
 
         logger.metric(str(model_name), acc * 100.0, "% acc")
+        logger.metric(f"{model_name}_time", elapsed, "s")
         if sample_rows:
             logger.table(
                 title=f"Accuracy examples • {self.name} • {model_name}",
@@ -198,4 +225,6 @@ class BenchmarkAccuracyTask(ABC):
             accuracy=float(acc),
             correct=int(correct),
             total=int(total),
+            samples=all_samples,
+            elapsed_seconds=float(elapsed),
         )

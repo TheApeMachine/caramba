@@ -9,7 +9,7 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.layer import LayerNormLayerConfig
+from config.layer import LayerNormLayerConfig
 
 
 class LayerNormLayer(nn.Module):
@@ -45,7 +45,7 @@ class LayerNormLayer(nn.Module):
         Normalizing per token (across the last dimension) is a strong default
         for transformer blocks because it does not depend on sequence length.
         """
-        from caramba.optimizer.kernels import layernorm
+        from optimizer.kernels import layernorm
 
         return layernorm(
             x=x,

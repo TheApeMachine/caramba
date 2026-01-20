@@ -20,12 +20,12 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.compiler.lower import Lowerer
-from caramba.compiler.validate import Validator
-from caramba.config.model import ModelConfig
-from caramba.config.topology import GraphTopologyConfig
-from caramba.model import Model
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
+from compiler.lower import Lowerer
+from compiler.validate import Validator
+from config.model import ModelConfig
+from config.topology import GraphTopologyConfig
+from model import Model
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 
 @dataclass

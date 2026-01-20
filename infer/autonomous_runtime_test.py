@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from caramba.core.event import EventEnvelope
-from caramba.core.event_bus import EventBus, EventHandler
-from caramba.core.homeostasis import DriveBand, HomeostaticLoop, IntrinsicDrive
-from caramba.infer.autonomous_runtime import AutonomousRuntime
+from core.event import EventEnvelope
+from core.event_bus import EventBus, EventHandler
+from core.homeostasis import DriveBand, HomeostaticLoop, IntrinsicDrive
+from infer.autonomous_runtime import AutonomousRuntime
 
 
 class _Recorder(EventHandler):

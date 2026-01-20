@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError, TypeAdapter
-from caramba.config.compute import LocalComputeConfig, VastAIComputeConfig, ComputeConfig
-from caramba.config.target import ExperimentTargetConfig
+from config.compute import LocalComputeConfig, VastAIComputeConfig, ComputeConfig
+from config.target import ExperimentTargetConfig
 
 def test_local_compute_config():
     cfg = LocalComputeConfig(device="cuda")
@@ -25,7 +25,7 @@ def test_compute_config_union():
     adapter = TypeAdapter(ComputeConfig)
     cfg1 = adapter.validate_python({"type": "local", "device": "mps"})
     assert isinstance(cfg1, LocalComputeConfig)
-    
+
     cfg2 = adapter.validate_python({"type": "vast_ai", "gpu_name": "L4"})
     assert isinstance(cfg2, VastAIComputeConfig)
 
@@ -33,7 +33,7 @@ def test_invalid_compute_config():
     adapter = TypeAdapter(ComputeConfig)
     with pytest.raises(ValidationError):
         adapter.validate_python({"type": "unknown"})
-    
+
     with pytest.raises(ValidationError):
         # max_price_per_hr must be positive
         VastAIComputeConfig(max_price_per_hr=-1.0)

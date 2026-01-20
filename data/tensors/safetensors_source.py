@@ -10,7 +10,7 @@ from pathlib import Path
 
 from torch import Tensor
 
-from caramba.data.tensors.source import TensorSource
+from data.tensors.source import TensorSource
 
 
 class SafeTensorsSource:

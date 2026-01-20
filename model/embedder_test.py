@@ -7,8 +7,8 @@ from __future__ import annotations
 import unittest
 
 import torch
-from caramba.model.embedder import Embedder
-from caramba.config.embedder import (
+from model.embedder import Embedder
+from config.embedder import (
     EmbedderType,
     NoEmbedderConfig,
     TokenEmbedderConfig,

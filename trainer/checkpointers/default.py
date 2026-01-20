@@ -7,9 +7,9 @@ from pathlib import Path
 import torch
 from torch.optim import Optimizer
 
-from caramba.config.checkpointer import DefaultCheckPointerConfig
-from caramba.console import logger
-from caramba.trainer.upcycle_context import UpcycleContext
+from config.checkpointer import DefaultCheckPointerConfig
+from console import logger
+from trainer.upcycle_context import UpcycleContext
 
 
 class DefaultCheckPointer:

@@ -8,11 +8,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from caramba.benchmark.perplexity import PerplexityResult
-from caramba.benchmark.latency import LatencyResult
-from caramba.benchmark.memory import MemoryResult
-from caramba.benchmark.accuracy import AccuracyResult
-from caramba.benchmark.context import ContextResult
+from benchmark.perplexity import PerplexityResult
+from benchmark.latency import LatencyResult
+from benchmark.memory import MemoryResult
+from benchmark.accuracy import AccuracyResult
+from benchmark.context import ContextResult
+
+import numpy as np
 
 
 @dataclass
@@ -324,6 +326,13 @@ def build_comparison_summary(
             if isinstance(br, dict):
                 behav_exact[name] = br.get("exact_match_rate", 0.0)
                 behav_partial[name] = br.get("partial_or_better_rate", 0.0)
+
+    avg_ctx_tps: dict[str, float] = {}
+    if context_results:
+        for name, r in context_results.items():
+            valid_decode = [m.decode_tok_per_s for m in r.decode if m.ok]
+            if valid_decode:
+                avg_ctx_tps[name] = float(np.mean(valid_decode))
 
     # Compute rankings
     ppl_rankings = compute_rankings(perplexities, lower_is_better=True)

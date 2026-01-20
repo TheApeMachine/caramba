@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from caramba.trainer.train_dataloader.builder import TrainDataLoaderBuilder
+from trainer.train_dataloader.builder import TrainDataLoaderBuilder
 
 __all__ = ["TrainDataLoaderBuilder"]
 

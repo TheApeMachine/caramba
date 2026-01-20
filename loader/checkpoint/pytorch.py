@@ -11,9 +11,9 @@ from pathlib import Path
 import torch
 from torch import Tensor
 
-from caramba.core.platform import Platform
-from caramba.loader.checkpoint.base import Checkpoint, StateDict
-from caramba.loader.checkpoint.error import CheckpointError, CheckpointErrorType
+from core.platform import Platform
+from loader.checkpoint.base import Checkpoint, StateDict
+from loader.checkpoint.error import CheckpointError, CheckpointErrorType
 
 
 class CheckpointPytorch(Checkpoint):

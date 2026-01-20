@@ -15,9 +15,9 @@ from typing import Any
 import torch
 from torch.utils.data import Dataset
 
-from caramba.data.tokenizers.training import TrainingTokenizer
-from caramba.data.tokenizers.hf_json import HfJsonTokenizer
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
+from data.tokenizers.training import TrainingTokenizer
+from data.tokenizers.hf_json import HfJsonTokenizer
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 
 class CodeChunksTorchDataset(Dataset[TensorDictBase]):

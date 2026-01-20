@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from caramba.data.tokenizers.bpe import CodeBpeTokenizer
+from data.tokenizers.bpe import CodeBpeTokenizer
 
 
 class TestCodeBpeTokenizer:

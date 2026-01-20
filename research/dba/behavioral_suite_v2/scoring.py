@@ -13,9 +13,70 @@ Match levels:
 from __future__ import annotations
 
 import re
+import string
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any
+
+ANSWER_ANCHOR = "Answer:"
+
+def _extract_answer_span(output: str, prompt: str) -> str:
+    """
+    Extract the model's intended answer span.
+    Priority:
+      1) text after the last 'Answer:' in output if prompt contains it
+      2) otherwise: first non-empty line
+    """
+    out = output.strip("\n")
+    if not out:
+        return ""
+
+    if ANSWER_ANCHOR in prompt:
+        idx = out.rfind(ANSWER_ANCHOR)
+        if idx != -1:
+            span = out[idx + len(ANSWER_ANCHOR):]
+            # take only up to first newline (answer should be one line)
+            span = span.split("\n", 1)[0]
+            return span.strip()
+
+    # fallback: first non-empty line
+    for line in out.splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return ""
+
+_TRAIL_PUNCT = set(".;,!?:")  # keep quotes/brackets sometimes meaningful
+
+def _normalize_span(span: str) -> str:
+    # Trim common trailing punctuation and whitespace
+    s = span.strip()
+    while s and s[-1] in _TRAIL_PUNCT:
+        s = s[:-1].rstrip()
+    return s
+
+_INT_RE = re.compile(r"^[+-]?\d+$")
+
+def _parse_int_strict(span: str) -> int | None:
+    """
+    Strict integer parse: span must be essentially just an integer token.
+    Disallows '8 apples', 'the answer is 8', etc. (because extraction should handle that).
+    """
+    s = _normalize_span(span)
+    if _INT_RE.match(s):
+        try:
+            return int(s)
+        except ValueError:
+            return None
+    return None
+
+def _token_equal(expected: str, got: str) -> bool:
+    """
+    Whole-token equality for short strings: prevents '8' matching inside '789' or '18,' etc.
+    """
+    e = expected.strip()
+    g = got.strip()
+    return e == g
 
 
 class MatchQuality(IntEnum):
@@ -85,79 +146,67 @@ def classify_match(
     """
     Classify match quality between output and expected answer.
 
-    Args:
-        output: Raw model output
-        expected: Expected answer
-        prompt: Original prompt (for distractor detection)
-
-    Returns:
-        Tuple of (match_quality, diagnostic_flags, first_line)
+    Uses two-phase scoring:
+    1) Extract answer span after 'Answer:' anchor (or first line fallback)
+    2) Perform strict, type-aware matching on the extracted span.
     """
     flags = DiagnosticFlags()
 
     actual = output.strip()
     expected_clean = str(expected).strip()
 
-    # Extract first line for comparison
+    # Original full output first line for diagnostics
     first_line = actual.split('\n')[0].strip() if actual else ""
 
-    # Check for empty output
     if not actual:
         flags.empty_output = True
         return MatchQuality.NONE, flags, first_line
 
-    # Check for repetition loop
     if _detect_repetition_loop(actual):
         flags.repetition_loop = True
         return MatchQuality.NONE, flags, first_line
 
-    # Check for distractor contamination
     if prompt and _detect_distractor_contamination(actual, prompt, expected_clean):
         flags.distractor_contamination = True
         return MatchQuality.NONE, flags, first_line
 
-    # EXACT: Full output matches expected exactly
-    if actual == expected_clean:
+    # NEW: extract answer span and normalize it
+    span = _normalize_span(_extract_answer_span(actual, prompt))
+
+    if not span:
+        return MatchQuality.NONE, flags, first_line
+
+    # If expected is an int, do strict int matching on the span, with a
+    # SOFT/CONTAINED-like fallback for equation-style outputs (base LMs often emit
+    # "2 + 2 = 4"). Reject degenerate numeric lists like "1 2 3 4 5 6 7 8".
+    if _INT_RE.match(expected_clean):
+        got_i = _parse_int_strict(span)
+        if got_i is not None:
+            exp_i = int(expected_clean)
+            if got_i == exp_i:
+                return MatchQuality.EXACT, flags, first_line
+        exp_i = int(expected_clean)
+        ints = re.findall(r"[+-]?\d+", span)
+        if str(exp_i) not in ints:
+            return MatchQuality.NONE, flags, first_line
+        # If multiple integers appear, only accept if the span looks like an equation/answer statement.
+        if len(ints) > 1:
+            low = span.lower()
+            if ("=" not in span) and ("answer" not in low) and (" is " not in low):
+                return MatchQuality.NONE, flags, first_line
+        # Otherwise accept as PARTIAL (soft) for numeric tasks.
+        return MatchQuality.PARTIAL, flags, first_line
+
+    # Otherwise string matching on the extracted span
+    if _token_equal(expected_clean, span):
         return MatchQuality.EXACT, flags, first_line
 
-    # EXACT: First line matches expected exactly
-    if first_line == expected_clean:
-        return MatchQuality.EXACT, flags, first_line
-
-    # PARTIAL: Expected is prefix of output (output has suffix tokens)
-    if actual.startswith(expected_clean):
-        return MatchQuality.PARTIAL, flags, first_line
-
-    # PARTIAL: Expected is suffix of output (output has prefix tokens)
-    if actual.endswith(expected_clean):
-        return MatchQuality.PARTIAL, flags, first_line
-
-    # PARTIAL: First line starts with expected
-    if first_line.startswith(expected_clean):
-        return MatchQuality.PARTIAL, flags, first_line
-
-    # PARTIAL: First line ends with expected
-    if first_line.endswith(expected_clean):
-        return MatchQuality.PARTIAL, flags, first_line
-
-    # PARTIAL: Expected found somewhere in output (with both prefix and suffix)
-    # But be careful with very short expected values - require word boundaries
-    if expected_clean in actual:
-        # For short expected values (<=3 chars), require it appears as a distinct token
-        # not just embedded in random garbage
-        if len(expected_clean) <= 3:
-            # Check if it appears at start of first line or as isolated word
-            words = first_line.split()
-            if expected_clean in words or first_line.startswith(expected_clean):
-                return MatchQuality.PARTIAL, flags, first_line
-            # Also check full output for word boundary
-            if re.search(r'(?:^|\s)' + re.escape(expected_clean) + r'(?:\s|$)', actual):
-                return MatchQuality.PARTIAL, flags, first_line
-            # Short string embedded in garbage - don't count as partial
-        else:
+    # Allow PARTIAL only for genuinely long expected strings (copy tasks)
+    # and only within the span (not the whole completion).
+    if len(expected_clean) >= 8:
+        if span.startswith(expected_clean) or span.endswith(expected_clean) or expected_clean in span:
             return MatchQuality.PARTIAL, flags, first_line
 
-    # NONE: Expected not found
     return MatchQuality.NONE, flags, first_line
 
 
@@ -752,7 +801,19 @@ class Scorer:
         choices: list[str] | None = None,
     ) -> TestScore:
         """Score using new system but return old-style TestScore."""
-        quality, flags, first_line = classify_match(output.output_text, expected, prompt)
+        scored_text = output.output_text
+        scored_by = "generation"
+        choice_correct = False
+
+        # For CHOICE_LOGPROB-style tests, prefer logprob argmax over free-form generation.
+        # This matches the intent of these templates and avoids penalizing models for
+        # verbose generations when the underlying choice probability is correct.
+        if choices and output.logprobs:
+            scored_by = "logprob"
+            scored_text = max(output.logprobs.items(), key=lambda kv: kv[1])[0]
+            choice_correct = scored_text.strip() == str(expected).strip()
+
+        quality, flags, first_line = classify_match(scored_text, expected, prompt)
 
         # Map new quality to old soft score
         quality_to_soft = {
@@ -772,12 +833,13 @@ class Scorer:
             test_id=output.test_id,
             exact_match=(quality == MatchQuality.EXACT),
             content_match=(quality >= MatchQuality.PARTIAL),
-            prefix_match=output.output_text.strip().startswith(expected.strip()),
+            prefix_match=scored_text.strip().startswith(expected.strip()),
             soft_score=soft,
-            soft_notes=f"Quality: {quality.name}",
+            soft_notes=f"Quality: {quality.name} ({scored_by})",
             flags=flags,
+            choice_correct=choice_correct,
             expected=expected,
-            actual=output.output_text,
+            actual=scored_text,
         )
 
 

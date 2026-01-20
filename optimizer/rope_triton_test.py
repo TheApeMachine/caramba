@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 
 def _skip_if_no_cuda_triton() -> None:
@@ -42,7 +42,7 @@ def test_triton_rope_forward_matches_reference(dtype: torch.dtype) -> None:
     cos = torch.cos(freqs).to(dtype).contiguous()
     sin = torch.sin(freqs).to(dtype).contiguous()
 
-    from caramba.optimizer.rope_triton import rope_triton
+    from optimizer.rope_triton import rope_triton
 
     y = rope_triton(x=x, cos=cos, sin=sin, rot_dim=rot)
     y_ref = _rope_ref(x=x.to(torch.float32), cos=cos.to(torch.float32), sin=sin.to(torch.float32), rot=rot).to(dtype)
@@ -65,7 +65,7 @@ def test_triton_rope_backward_matches_reference(dtype: torch.dtype) -> None:
     cos = torch.cos(freqs).to(dtype).contiguous()
     sin = torch.sin(freqs).to(dtype).contiguous()
 
-    from caramba.optimizer.rope_triton import rope_triton
+    from optimizer.rope_triton import rope_triton
 
     y = rope_triton(x=x0, cos=cos, sin=sin, rot_dim=rot)
     loss = (y.float() ** 2).mean()

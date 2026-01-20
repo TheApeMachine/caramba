@@ -11,8 +11,8 @@ from typing import cast
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.topology import SequentialTopologyConfig
-from caramba.topology.utils import activation_checkpoint, should_activation_checkpoint
+from config.topology import SequentialTopologyConfig
+from topology.utils import activation_checkpoint, should_activation_checkpoint
 
 
 class SequentialTopology(nn.Module):

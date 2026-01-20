@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from caramba.adapter.schema.base import (
+from adapter.schema.base import (
     AttentionSchema,
     BlockSchema,
     EmbedderSchema,

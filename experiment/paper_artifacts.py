@@ -14,8 +14,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig, ProcessTargetConfig
 
 
 class ConfigurationError(Exception):

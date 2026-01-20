@@ -59,7 +59,7 @@ References:
 - AdaGC: https://arxiv.org/abs/2502.11034
 - CDAT: https://arxiv.org/abs/2407.06183
 """
-from caramba.orchestrator.strategy import (
+from orchestrator.strategy import (
     Strategy,
     StrategyBundle,
     StrategyState,
@@ -67,34 +67,34 @@ from caramba.orchestrator.strategy import (
     create_strategy,
     DEFAULT_PORTFOLIO,
 )
-from caramba.orchestrator.telemetry import (
+from orchestrator.telemetry import (
     TelemetryStream,
     TelemetrySnapshot,
     SpikeDetector,
     TrainingPhase,
 )
-from caramba.orchestrator.orchestrator import (
+from orchestrator.orchestrator import (
     Orchestrator,
     OrchestratorConfig,
     DecisionBoundary,
 )
-from caramba.orchestrator.wrappers import (
+from orchestrator.wrappers import (
     AdaGC,
     GradientSmoother,
     GradientNoiseInjector,
 )
-from caramba.orchestrator.swats import (
+from orchestrator.swats import (
     SWATS,
     SWATSConfig,
     SWATSStrategy,
 )
-from caramba.orchestrator.pidao import (
+from orchestrator.pidao import (
     PIDAO,
     PIDAOConfig,
     PIDAOStrategy,
     AdaptivePIDAO,
 )
-from caramba.orchestrator.nowcast import (
+from orchestrator.nowcast import (
     WeightNowcaster,
     NowcastConfig,
 )

@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.layer.memory_block.state import MemoryBlockState
+from layer.memory_block.state import MemoryBlockState
 
 
 class LocalMixer(nn.Module):
@@ -32,7 +32,7 @@ class LocalMixer(nn.Module):
         super().__init__()
         if int(conv_kernel) < 1:
             raise ValueError("conv_kernel must be >= 1")
-            
+
         self.conv = conv
         self.gate_proj = gate_proj
         self.mlp_up = mlp_up

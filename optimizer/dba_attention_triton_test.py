@@ -6,7 +6,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 
 def _skip_if_no_cuda_triton() -> None:
@@ -34,7 +34,7 @@ def test_triton_dba_attention_forward_matches_sdpa(dtype: torch.dtype, causal: b
     k_geo = torch.randn((B, H, T, D_geo), device=device, dtype=dtype).contiguous()
     v = torch.randn((B, H, T, D_v), device=device, dtype=dtype).contiguous()
 
-    from caramba.optimizer.dba_attention_triton import DecoupledAttentionTraining
+    from optimizer.dba_attention_triton import DecoupledAttentionTraining
 
     y = DecoupledAttentionTraining().run(
         q_sem=q_sem,
@@ -72,7 +72,7 @@ def test_triton_dba_attention_backward_matches_sdpa(dtype: torch.dtype, causal: 
     k_geo0 = torch.randn((B, H, T, D_geo), device=device, dtype=dtype, requires_grad=True).contiguous()
     v0 = torch.randn((B, H, T, D_v), device=device, dtype=dtype, requires_grad=True).contiguous()
 
-    from caramba.optimizer.dba_attention_triton import DecoupledAttentionTraining
+    from optimizer.dba_attention_triton import DecoupledAttentionTraining
 
     y = DecoupledAttentionTraining().run(
         q_sem=q_sem0,
@@ -140,7 +140,7 @@ def test_triton_dba_attention_dropout_is_deterministic_given_seed() -> None:
     k_geo = torch.randn((B, H, T, D_geo), device=device, dtype=dtype).contiguous()
     v = torch.randn((B, H, T, D_v), device=device, dtype=dtype).contiguous()
 
-    from caramba.optimizer.dba_attention_triton import DecoupledAttentionTraining
+    from optimizer.dba_attention_triton import DecoupledAttentionTraining
 
     seed = 12345
     y0 = DecoupledAttentionTraining().run(

@@ -7,21 +7,22 @@ initialize parameters that do not exist in the teacher checkpoint.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 import torch
 from torch import Tensor, nn
 
-from caramba.adapter.schema import SchemaLoader, StateDictSchema
-from caramba.config.layer import AttentionMode
-from caramba.initializers.dba.base import DBAInitializer
-from caramba.initializers.dba.fresh import DBAFresh, init_fresh_linear
-from caramba.initializers.dba.random import DBARandom
-from caramba.initializers.dba.svd import DBASVD
-from caramba.layer.attention import AttentionLayer
-from caramba.layer.linear import LinearLayer
-from caramba.layer.rms_norm import RMSNormLayer
-from caramba.layer.swiglu import SwiGLULayer
-from caramba.loader.state_reader import StateReader
-from caramba.model.embedder import Embedder
+from adapter.schema import SchemaLoader, StateDictSchema
+from config.layer import AttentionMode
+from initializers.dba.base import DBAInitializer
+from initializers.dba.fresh import DBAFresh, init_fresh_linear
+from initializers.dba.random import DBARandom
+from initializers.dba.svd import DBASVD
+from layer.attention import AttentionLayer
+from layer.linear import LinearLayer
+from layer.rms_norm import RMSNormLayer
+from layer.swiglu import SwiGLULayer
+from loader.state_reader import StateReader
+from model.embedder import Embedder
 
 
 class AdapterStateDictTransformer:
@@ -73,12 +74,18 @@ class AdapterStateDictTransformer:
         self.loadEmbedder(state=state, embedder=embedder)
         self.loadBlocks(state=state, attn=attn, mlp=mlp, norms=norms)
         self.loadFinalNorm(state=state, norms=norms)
-        self.loadHead(state=state, head=head)
+        self.loadHead(state=state, head=head, embedder=embedder)
 
     def key(self, *parts: str) -> str:
         """Build a full key from schema parts."""
-
-        return ".".join([str(self.schema.prefix)] + [p for p in parts if str(p)])
+        prefix = str(self.schema.prefix)
+        cleaned = [str(p) for p in parts if str(p)]
+        # Some call sites build intermediate prefixes (e.g. `attn_prefix`) using `key()`
+        # and then pass them back into `key()` again. If `cleaned[0]` already includes
+        # the schema prefix (e.g. "model.layers.0.self_attn"), avoid duplicating it.
+        if cleaned and (cleaned[0] == prefix or cleaned[0].startswith(prefix + ".")):
+            return ".".join(cleaned)
+        return ".".join([prefix] + cleaned)
 
     def layerPrefix(self, *, i: int) -> str:
         """Return the per-layer prefix."""
@@ -144,14 +151,47 @@ class AdapterStateDictTransformer:
             raise ValueError("RMSNormLayer is missing weight parameter")
         layer.weight.data.copy_(state.get(str(key)))
 
-    def loadHead(self, *, state: StateReader, head: LinearLayer | None) -> None:
-        """Load explicit LM head weight if present."""
+    def loadHead(self, *, state: StateReader, head: LinearLayer | None, embedder: Embedder) -> None:
+        """Load explicit LM head weight if present.
+
+        Notes:
+        - Some Llama checkpoints omit `lm_head.weight` because weights are tied to the
+          token embedding matrix. In that case we fall back to copying the token
+          embedding weights into the head when the model declares an explicit head.
+        """
 
         if head is None:
             return
         if self.schema.head is None:
             raise ValueError("Schema has no head but model has a head")
-        head.linear.weight.data.copy_(state.get(self.key(self.schema.head.weight)))
+        primary_key = self.key(self.schema.head.weight)
+        try:
+            w = state.get(primary_key)
+        except (KeyError, ValueError):
+            # Fallbacks for common Llama checkpoint conventions.
+            fallback_keys = [
+                "lm_head.weight",
+                "model.lm_head.weight",
+                "output.weight",
+                "model.output.weight",
+            ]
+            w2 = None
+            for fk in fallback_keys:
+                try:
+                    w2 = state.get(fk)
+                    break
+                except (KeyError, ValueError):
+                    continue
+            if w2 is not None:
+                w = w2
+            else:
+                # Final fallback: tie to embeddings when teacher omits the head.
+                tok = getattr(embedder, "token_embedding", None)
+                if tok is None or getattr(tok, "weight", None) is None:
+                    raise ValueError(f"Missing state_dict key: {primary_key}")
+                head.linear.weight.data.copy_(tok.weight.data)
+                return
+        head.linear.weight.data.copy_(w)
 
     def loadAttention(self, *, state: StateReader, layer_prefix: str, attn: AttentionLayer) -> None:
         """Load attention weights."""
@@ -194,6 +234,10 @@ class AdapterStateDictTransformer:
 
         For SVD/random init: copies V/O from teacher, initializes Q/K via policy.
         For fresh init: initializes ALL projections randomly (routing hypothesis).
+
+        Note: For GQA models, Q and K have different dimensions:
+        - Q uses n_heads (full head count)
+        - K uses n_kv_heads (may be smaller)
         """
 
         if attn.q_sem is None or attn.k_sem is None:
@@ -203,8 +247,13 @@ class AdapterStateDictTransformer:
         if attn.v_proj is None or attn.out_proj is None:
             raise ValueError("DBA attention missing v_proj/out_proj")
 
-        sem_dim = int(attn.q_sem.out_features)
-        geo_dim = int(attn.q_geo.out_features)
+        # Q dimensions (n_heads based)
+        sem_q_dim = int(attn.q_sem.out_features)
+        geo_q_dim = int(attn.q_geo.out_features)
+
+        # K dimensions (n_kv_heads based - may be smaller for GQA)
+        sem_kv_dim = int(attn.k_sem.out_features)
+        geo_kv_dim = int(attn.k_geo.out_features)
 
         # Fresh mode: initialize ALL projections randomly (full replacement)
         # This is the routing hypothesis approach - don't copy anything from teacher
@@ -219,21 +268,23 @@ class AdapterStateDictTransformer:
             # SVD/random mode: copy V/O from teacher
             self.copyVO(attn=attn, v=v, o=o)
 
-        # Initialize Q/K semantic and geometric projections via the selected policy
+        # Initialize Q semantic and geometric projections (uses full n_heads)
         self.dba_initializer.initialize(
             sem_weight=attn.q_sem.weight,
             geo_weight=attn.q_geo.weight,
             teacher_weight=q,
-            sem_dim=sem_dim,
-            geo_dim=geo_dim,
+            sem_dim=sem_q_dim,
+            geo_dim=geo_q_dim,
             seed=f"{attn_prefix}.q",
         )
+
+        # Initialize K semantic and geometric projections (uses n_kv_heads)
         self.dba_initializer.initialize(
             sem_weight=attn.k_sem.weight,
             geo_weight=attn.k_geo.weight,
             teacher_weight=k,
-            sem_dim=sem_dim,
-            geo_dim=geo_dim,
+            sem_dim=sem_kv_dim,
+            geo_dim=geo_kv_dim,
             seed=f"{attn_prefix}.k",
         )
 
@@ -297,29 +348,59 @@ class AdapterStateDictTransformer:
     def findEmbedder(self, *, model: nn.Module) -> Embedder:
         """Find Embedder module."""
 
+        # NOTE: We intentionally avoid `isinstance(m, Embedder)` here.
+        #
+        # The CLI sometimes loads the codebase under both module roots:
+        #   - `model.*` / `layer.*`
+        #   - `caramba.model.*` / `caramba.layer.*`
+        #
+        # That can produce duplicate class objects with the same name, causing
+        # `isinstance` checks to fail even though the module is correct.
         for _name, m in model.named_modules():
-            if isinstance(m, Embedder):
-                return m
-        raise ValueError("No Embedder found in model")
+            if type(m).__name__ == "Embedder" and hasattr(m, "token_embedding"):
+                return cast(Embedder, m)
+        raise ValueError("No Embedder found in model (module path mismatch?)")
 
     def findHead(self, *, model: nn.Module) -> LinearLayer | None:
         """Find an explicit head if present."""
 
-        heads = [m for _name, m in model.named_modules() if isinstance(m, LinearLayer)]
+        heads: list[LinearLayer] = []
+        for _name, m in model.named_modules():
+            if type(m).__name__ == "LinearLayer" and hasattr(m, "linear"):
+                heads.append(cast(LinearLayer, m))
         return heads[-1] if heads else None
 
     def findAttn(self, *, model: nn.Module) -> list[AttentionLayer]:
         """Find attention layers."""
 
-        return [m for _name, m in model.named_modules() if isinstance(m, AttentionLayer)]
+        attn: list[AttentionLayer] = []
+        for _name, m in model.named_modules():
+            n = type(m).__name__
+            if n in {"AttentionLayer", "StandardAttentionLayer", "DecoupledAttentionLayer"}:
+                attn.append(cast(AttentionLayer, m))
+                continue
+            # Fallback for factory-returned subclasses / alias modules.
+            if hasattr(m, "mode") and hasattr(m, "out_proj") and (
+                hasattr(m, "qkv_proj") or (hasattr(m, "q_sem") and hasattr(m, "q_geo"))
+            ):
+                attn.append(cast(AttentionLayer, m))
+        return attn
 
     def findMlp(self, *, model: nn.Module) -> list[SwiGLULayer]:
         """Find MLP layers."""
 
-        return [m for _name, m in model.named_modules() if isinstance(m, SwiGLULayer)]
+        mlp: list[SwiGLULayer] = []
+        for _name, m in model.named_modules():
+            if type(m).__name__ == "SwiGLULayer" and hasattr(m, "w_gate_up") and hasattr(m, "w_down"):
+                mlp.append(cast(SwiGLULayer, m))
+        return mlp
 
     def findNorms(self, *, model: nn.Module) -> list[RMSNormLayer]:
         """Find RMSNorm layers."""
 
-        return [m for _name, m in model.named_modules() if isinstance(m, RMSNormLayer)]
+        norms: list[RMSNormLayer] = []
+        for _name, m in model.named_modules():
+            if type(m).__name__ == "RMSNormLayer" and hasattr(m, "weight") and hasattr(m, "eps"):
+                norms.append(cast(RMSNormLayer, m))
+        return norms
 

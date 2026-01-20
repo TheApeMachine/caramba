@@ -6,14 +6,14 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from caramba.optimizer.runtime import metal_supported
+from optimizer.runtime import metal_supported
 
 
 def _skip_if_no_metal_attention_extension() -> None:
     if not torch.backends.mps.is_available():
         pytest.skip("torch.backends.mps is not available")
     try:
-        from caramba.optimizer.metal.attention_jit import load_caramba_metal_attention_ops
+        from optimizer.metal.attention_jit import load_caramba_metal_attention_ops
 
         _ = load_caramba_metal_attention_ops(verbose=False)
     except Exception as e:
@@ -35,7 +35,7 @@ def test_metal_attention_training_forward_matches_sdpa(causal: bool) -> None:
     k = torch.randn((B, H, T, D), device=device, dtype=dtype).contiguous()
     v = torch.randn((B, H, T, D), device=device, dtype=dtype).contiguous()
 
-    from caramba.optimizer.metal.attention_training import MetalAttentionTraining
+    from optimizer.metal.attention_training import MetalAttentionTraining
 
     y = MetalAttentionTraining().run(q=q, k=k, v=v, causal=causal, scale=scale, dropout_p=0.0)
     y_ref = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=0.0, is_causal=bool(causal), scale=scale)
@@ -57,7 +57,7 @@ def test_metal_attention_training_backward_matches_sdpa(causal: bool) -> None:
     k0 = torch.randn((B, H, T, D), device=device, dtype=dtype, requires_grad=True).contiguous()
     v0 = torch.randn((B, H, T, D), device=device, dtype=dtype, requires_grad=True).contiguous()
 
-    from caramba.optimizer.metal.attention_training import MetalAttentionTraining
+    from optimizer.metal.attention_training import MetalAttentionTraining
 
     y = MetalAttentionTraining().run(q=q0, k=k0, v=v0, causal=causal, scale=scale, dropout_p=0.0)
     loss = (y.float() ** 2).mean()
@@ -98,7 +98,7 @@ def test_metal_attention_training_dropout_is_deterministic_given_seed() -> None:
     k = torch.randn((B, H, T, D), device=device, dtype=dtype).contiguous()
     v = torch.randn((B, H, T, D), device=device, dtype=dtype).contiguous()
 
-    from caramba.optimizer.metal.attention_training import MetalAttentionTraining
+    from optimizer.metal.attention_training import MetalAttentionTraining
 
     seed = 12345
     y0 = MetalAttentionTraining().run(q=q, k=k, v=v, causal=True, scale=scale, dropout_p=dropout_p, seed=seed)

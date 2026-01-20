@@ -12,8 +12,8 @@ import json
 from pathlib import Path
 from datasets import load_dataset, IterableDatasetDict, IterableDataset
 
-from caramba.data.transforms import Transform
-from caramba.data.error import DataError, DataErrorType
+from data.transforms import Transform
+from data.error import DataError, DataErrorType
 
 
 class DatasetType(Enum):

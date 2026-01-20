@@ -25,44 +25,53 @@ from torch.utils.data import DataLoader
 from torch.utils.hooks import RemovableHandle
 from torch.profiler import ProfilerActivity, profile
 
-from caramba.carmath import (
+from carmath import (
     autocast_dtype,
     global_grad_norm_l2,
     safe_perplexity_from_nll,
 )
-from caramba.compiler.plan import Planner
-from caramba.config.defaults import Defaults
-from caramba.config.manifest import Manifest
-from caramba.config.run import Run
-from caramba.config.target import ExperimentTargetConfig
-from caramba.config.train import TrainConfig, TrainPhase
-from caramba.console import logger
-from caramba.instrumentation import RunLogger
-from caramba.instrumentation.viz import TrainingVizMosaicContext
-from caramba.instrumentation.training_metrics import update_training_metrics
-from caramba.instrumentation.wandb_writer import WandBWriter
-from caramba.layer.attention import AttentionLayer
-from caramba.layer.memory_block.block import MemoryBlockLayer
-from caramba.layer.memory_block.memory.tuner import reset_shared_tuner
-from caramba.runtime.plan import RuntimePlan
-from caramba.runtime.tensordict_utils import (
+from compiler.plan import Planner
+from config.defaults import Defaults
+from config.manifest import Manifest
+from config.run import Run
+from config.target import ExperimentTargetConfig
+from config.train import TrainConfig, TrainPhase
+from console import logger
+from instrumentation import RunLogger
+try:
+    # Newer builds export UAA context alongside MOSAIC viz context.
+    from instrumentation.viz import TrainingUAAContext as _TrainingUAAContext, TrainingVizMosaicContext
+    _HAS_UAA_CTX = True
+except Exception:  # pragma: no cover
+    # Backward-compat: older deployments may not have UAA context in instrumentation.viz.
+    from instrumentation.viz import TrainingVizMosaicContext  # type: ignore
+    _TrainingUAAContext = None  # type: ignore[assignment]
+    _HAS_UAA_CTX = False
+from instrumentation.training_metrics import update_training_metrics
+from instrumentation.wandb_writer import WandBWriter
+from layer.attention import AttentionLayer
+from layer.memory_block.block import MemoryBlockLayer
+from layer.memory_block.memory.tuner import reset_shared_tuner
+from runtime.plan import RuntimePlan
+from runtime.tensordict_utils import (
     TensorDictBase,
     as_tensordict,
     to_device,
 )
-from caramba.trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
-from caramba.trainer.mosaic_table2 import Table2SummaryWriter, Table2Telemetry
-from caramba.trainer.swap_manager import SwapManager
-from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
-from caramba.trainer.distributed import (
+from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
+from trainer.mosaic_table2 import Table2SummaryWriter, Table2Telemetry
+from trainer.swap_manager import SwapManager
+from trainer.objectives import MosaicNextTokenWithAuxObjective
+from trainer.uaa import UAAState
+from trainer.distributed import (
     DistributedConfig,
     DistributedContext,
     DistributedStrategy,
 )
-from caramba.optimizer.adamw_master import AdamWMaster
-from caramba.optimizer.lion import Lion
-from caramba.runtime.plan.builder import RuntimePlanBuilder
-from caramba.trainer.train_dataloader.builder import TrainDataLoaderBuilder
+from optimizer.adamw_master import AdamWMaster
+from optimizer.lion import Lion
+from runtime.plan.builder import RuntimePlanBuilder
+from trainer.train_dataloader.builder import TrainDataLoaderBuilder
 
 
 class _Engine(Protocol):
@@ -341,7 +350,7 @@ class StandardTrainer:
     ) -> None:
         torch.manual_seed(run.seed)
         device = torch.device(train.device)
-        
+
         # Reset shared tuner for new training runs
         reset_shared_tuner()
 
@@ -411,6 +420,62 @@ class StandardTrainer:
         if hasattr(system, "to"):
             system.to(device=device, dtype=dtype)  # type: ignore[attr-defined]
 
+        # Optional UAA teacher: must be created before wrapping/compiling the student.
+        uaa_state: UAAState | None = None
+        uaa_cfg = getattr(train, "uaa", None)
+        if uaa_cfg is not None and bool(getattr(uaa_cfg, "enabled", False)):
+            if not _HAS_UAA_CTX:
+                logger.warning(
+                    "UAA is enabled in the manifest, but this build does not provide TrainingUAAContext. "
+                    "Disabling UAA for this run to avoid import/type issues."
+                )
+                uaa_cfg = None
+                uaa_state = None
+            else:
+                system_any = cast(Any, system)
+                student_mod = getattr(system_any, "module", None)
+                if not isinstance(student_mod, nn.Module):
+                    raise TypeError("UAA requires system.module to be an nn.Module.")
+
+                teacher_mode = str(getattr(uaa_cfg, "teacher", "init"))
+                if teacher_mode == "init":
+                    # Avoid deepcopy() on nn.Module graphs with custom factory __new__/__init__
+                    # (it can trigger constructor calls with missing args). Instead, build a
+                    # fresh module of the same type/config and load weights.
+                    cfg = getattr(student_mod, "config", None)
+                    if cfg is None:
+                        raise TypeError("UAA teacher=init requires student_mod.config to exist (ModelConfig).")
+                    teacher_mod = type(student_mod)(cfg)  # type: ignore[call-arg]
+                    teacher_mod.load_state_dict(student_mod.state_dict(), strict=True)
+                elif teacher_mode == "ckpt":
+                    ckpt = getattr(train, "teacher_ckpt", None)
+                    if not isinstance(ckpt, str) or not ckpt:
+                        raise ValueError("UAA teacher=ckpt requires train.teacher_ckpt to be set.")
+                    if str(ckpt).startswith("hf://"):
+                        raise ValueError("UAA teacher=ckpt does not support hf:// checkpoints (use init for now).")
+                    cfg = getattr(student_mod, "config", None)
+                    if cfg is None:
+                        raise TypeError("UAA teacher=ckpt requires student_mod.config to exist (ModelConfig).")
+                    teacher_mod = type(student_mod)(cfg)  # type: ignore[call-arg]
+                    payload = torch.load(str(ckpt), map_location="cpu")
+                    if isinstance(payload, dict) and "system_state_dict" in payload:
+                        state = payload["system_state_dict"]
+                    else:
+                        state = payload
+                    if not isinstance(state, dict):
+                        raise TypeError("UAA teacher checkpoint must be a state_dict or contain system_state_dict.")
+                    missing, unexpected = teacher_mod.load_state_dict(state, strict=False)
+                    if missing or unexpected:
+                        logger.warning(
+                            "UAA teacher checkpoint load had mismatches; continuing with strict=False.\n"
+                            f"missing={len(missing)} unexpected={len(unexpected)}"
+                        )
+                else:
+                    raise ValueError(f"Unknown UAA teacher mode: {teacher_mode!r}")
+
+                teacher_mod = teacher_mod.to(device=device, dtype=dtype)
+                uaa_state = UAAState(teacher=teacher_mod, cfg=cast(Any, uaa_cfg))
+
         # CUDA perf knobs.
         #
         # TF32 is safe and commonly enabled on Ampere+ for faster fp32 matmuls
@@ -441,6 +506,7 @@ class StandardTrainer:
 
         # torch.compile status (set later; must be defined for telemetry).
         compiled = False
+        compiled_orig_module: nn.Module | None = None
 
         loader = self._build_loader(
             dataset_comp=dataset_comp,
@@ -491,6 +557,7 @@ class StandardTrainer:
                 system_any = cast(Any, system)
                 m = getattr(system_any, "module", None)
                 if isinstance(m, nn.Module):
+                    compiled_orig_module = m
                     compile_mode = str(getattr(runtime_plan, "compile_mode", "default"))
 
                     # Suppress confusing CUDA-specific warnings on MPS
@@ -524,7 +591,26 @@ class StandardTrainer:
                             )
                     try:
                         logger.info(f"Compiling model with torch.compile (mode={compile_mode}) - this may take 30-60 seconds...")
-                        system_any.module = torch.compile(m, mode=str(compile_mode))
+                        # Use static-shape compilation when possible.
+                        #
+                        # The Dynamo/Inductor stack can hit internal SymPy errors on some builds when
+                        # dynamic-shape machinery is enabled (e.g. AttributeError: 'int' object has no
+                        # attribute 'xreplace'). Our training shapes are intended to be static
+                        # (fixed block_size), so prefer dynamic=False when supported.
+                        try:
+                            # Extra safety: disable Dynamo dynamic-shape machinery globally if available.
+                            # This avoids SymPy-based shape substitutions that can crash with `.xreplace`
+                            # on some builds, while matching our fixed block_size training regime.
+                            try:
+                                import torch._dynamo as _dynamo  # type: ignore
+
+                                if hasattr(_dynamo, "config") and hasattr(_dynamo.config, "dynamic_shapes"):
+                                    _dynamo.config.dynamic_shapes = False  # type: ignore[attr-defined]
+                            except Exception:
+                                pass
+                            system_any.module = torch.compile(m, mode=str(compile_mode), dynamic=False)
+                        except TypeError:
+                            system_any.module = torch.compile(m, mode=str(compile_mode))
                     except Exception as e:
                         # If the runtime doesn't recognize a mode (older PyTorch), fall back to default.
                         if str(compile_mode) == "max-autotune-no-cudagraphs":
@@ -532,7 +618,10 @@ class StandardTrainer:
                                 "torch.compile mode 'max-autotune-no-cudagraphs' failed; falling back to 'default'. "
                                 f"Error: {type(e).__name__}: {e}"
                             )
-                            system_any.module = torch.compile(m, mode="default")
+                            try:
+                                system_any.module = torch.compile(m, mode="default", dynamic=False)
+                            except TypeError:
+                                system_any.module = torch.compile(m, mode="default")
                         else:
                             raise
                     compiled = True
@@ -552,6 +641,27 @@ class StandardTrainer:
                     )
             except Exception as e:
                 raise RuntimeError("Failed to compile model") from e
+
+        # Helper: if we hit the known Dynamo/SymPy `.xreplace` crash during the first compiled
+        # execution, fall back to eager (so the run continues).
+        def _maybe_fallback_from_xreplace(exc: BaseException) -> bool:
+            nonlocal compiled
+            if (not compiled) or compiled_orig_module is None:
+                return False
+            msg = f"{type(exc).__name__}: {exc}"
+            if "xreplace" not in msg:
+                return False
+            try:
+                system_any = cast(Any, system)
+                system_any.module = compiled_orig_module
+                compiled = False
+                logger.fallback_warning(
+                    "WARNING: torch.compile hit internal Dynamo/SymPy error (xreplace). "
+                    "Falling back to eager execution to keep the run alive."
+                )
+                return True
+            except Exception:
+                return False
 
         optimizer = self._build_optimizer(
             system=system,
@@ -699,15 +809,40 @@ class StandardTrainer:
                     viz_interval = max(0, int(getattr(train, "viz_interval", 0) or 0))
                     viz_enabled = bool(viz_interval > 0 and (step_1 % viz_interval) == 0)
 
-                    viz_ctx = TrainingVizMosaicContext(
-                        enabled=bool(viz_enabled),
-                        step=int(step_1),
-                        max_tokens=int(getattr(train, "viz_tokens", 16) or 16),
-                        max_channels=int(getattr(train, "viz_channels", 32) or 32),
-                        max_heads=int(getattr(train, "viz_heads", 4) or 4),
-                        topk=int(getattr(train, "viz_topk", 8) or 8),
-                    )
-                    
+                    if uaa_state is not None and uaa_cfg is not None and bool(getattr(uaa_cfg, "enabled", False)) and _HAS_UAA_CTX:
+                        # Default to a single layer/head unless explicitly specified (avoid accidental "capture all").
+                        uaa_layers = tuple(int(x) for x in (getattr(uaa_cfg, "layers", None) or []) if int(x) >= 0)
+                        uaa_heads = tuple(int(x) for x in (getattr(uaa_cfg, "heads", None) or []) if int(x) >= 0)
+                        if not uaa_layers:
+                            uaa_layers = (0,)
+                        if not uaa_heads:
+                            uaa_heads = (0,)
+                        every = max(1, int(getattr(uaa_cfg, "every_steps", 1) or 1))
+                        uaa_enabled_step = bool((step_1 % every) == 0)
+
+                        # _TrainingUAAContext is only available when _HAS_UAA_CTX is True.
+                        viz_ctx = cast(Any, _TrainingUAAContext)(
+                            enabled=bool(viz_enabled),
+                            step=int(step_1),
+                            max_tokens=int(getattr(train, "viz_tokens", 16) or 16),
+                            max_channels=int(getattr(train, "viz_channels", 32) or 32),
+                            max_heads=int(getattr(train, "viz_heads", 4) or 4),
+                            topk=int(getattr(train, "viz_topk", 8) or 8),
+                            uaa_enabled=bool(uaa_enabled_step),
+                            uaa_layers=uaa_layers,
+                            uaa_heads=uaa_heads,
+                            uaa_query_index=-1,
+                        )
+                    else:
+                        viz_ctx = TrainingVizMosaicContext(
+                            enabled=bool(viz_enabled),
+                            step=int(step_1),
+                            max_tokens=int(getattr(train, "viz_tokens", 16) or 16),
+                            max_channels=int(getattr(train, "viz_channels", 32) or 32),
+                            max_heads=int(getattr(train, "viz_heads", 4) or 4),
+                            topk=int(getattr(train, "viz_topk", 8) or 8),
+                        )
+
                     # Initialize with loss from previous step for memory tuner
                     viz_ctx._last_loss = self._last_step_loss
                     # Initialize with accuracy from previous step for memory tuner
@@ -803,26 +938,62 @@ class StandardTrainer:
                                         viz_ctx=viz_ctx,
                                         forward_caller=forward_caller,
                                         objective_loss=call_objective_loss,
+                                        uaa_state=uaa_state,
                                     )
                                     loss_sum += loss_last.detach().float()
                                     (loss_last / float(accum_steps)).backward()
                                 prof = prof_ctx
                                 did_profiled = True
                             except Exception as e:
-                                raise RuntimeError("Failed to profile") from e
+                                if _maybe_fallback_from_xreplace(e):
+                                    # Retry once in eager mode.
+                                    outputs_last, loss_last = self._forward_loss(
+                                        batch_td=mb,
+                                        device=device,
+                                        use_amp=use_amp,
+                                        amp_dtype=amp_dtype,
+                                        viz_ctx=viz_ctx,
+                                        forward_caller=forward_caller,
+                                        objective_loss=call_objective_loss,
+                                        uaa_state=uaa_state,
+                                    )
+                                    loss_sum += loss_last.detach().float()
+                                    (loss_last / float(accum_steps)).backward()
+                                    prof = None
+                                    did_profiled = True
+                                else:
+                                    raise RuntimeError("Failed to profile") from e
                         else:
-                            outputs_last, loss_last = self._forward_loss(
-                                batch_td=mb,
-                                device=device,
-                                use_amp=use_amp,
-                                amp_dtype=amp_dtype,
-                                viz_ctx=viz_ctx,
-                                forward_caller=forward_caller,
-                                objective_loss=call_objective_loss,
-                            )
-                            loss_sum += loss_last.detach().float()
-                            (loss_last / float(accum_steps)).backward()
-                        
+                            try:
+                                outputs_last, loss_last = self._forward_loss(
+                                    batch_td=mb,
+                                    device=device,
+                                    use_amp=use_amp,
+                                    amp_dtype=amp_dtype,
+                                    viz_ctx=viz_ctx,
+                                    forward_caller=forward_caller,
+                                    objective_loss=call_objective_loss,
+                                    uaa_state=uaa_state,
+                                )
+                                loss_sum += loss_last.detach().float()
+                                (loss_last / float(accum_steps)).backward()
+                            except Exception as e:
+                                if _maybe_fallback_from_xreplace(e):
+                                    outputs_last, loss_last = self._forward_loss(
+                                        batch_td=mb,
+                                        device=device,
+                                        use_amp=use_amp,
+                                        amp_dtype=amp_dtype,
+                                        viz_ctx=viz_ctx,
+                                        forward_caller=forward_caller,
+                                        objective_loss=call_objective_loss,
+                                        uaa_state=uaa_state,
+                                    )
+                                    loss_sum += loss_last.detach().float()
+                                    (loss_last / float(accum_steps)).backward()
+                                else:
+                                    raise
+
                         # Always track the last batch for metrics computation
                         last_batch_td = mb
 
@@ -937,7 +1108,7 @@ class StandardTrainer:
 
                         loss_val_live = float(metrics.get("loss", metrics.get("train_loss", 0.0)))
                         last_table2_metrics = dict(metrics)
-                        
+
                         # Update persistent accuracy (loss is already updated after forward pass)
                         # Filter out -1 values which indicate bins with no samples
                         acc_vals = [v for k, v in metrics.items() if k.startswith("acc/bin_") and v >= 0]
@@ -1017,6 +1188,7 @@ class StandardTrainer:
         viz_ctx: TrainingVizMosaicContext,
         forward_caller: _ForwardCaller,
         objective_loss: Any,
+        uaa_state: UAAState | None,
     ) -> tuple[object, Tensor]:
         with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
             # Attach MOSAIC-friendly fields onto the ctx.
@@ -1060,7 +1232,8 @@ class StandardTrainer:
             # torch.compile is enabled, and can also trigger per-layer instrumentation checks.
             #
             # We only pass ctx when we are actually collecting aux signals or running viz.
-            ctx_to_pass: object | None = viz_ctx if (bool(viz_ctx.enabled) or bool(collect_aux)) else None
+            uaa_enabled = bool(getattr(viz_ctx, "uaa_enabled", False))
+            ctx_to_pass: object | None = viz_ctx if (bool(viz_ctx.enabled) or bool(collect_aux) or uaa_enabled) else None
 
             outputs = forward_caller(batch_td, ctx_to_pass)
 
@@ -1081,12 +1254,32 @@ class StandardTrainer:
 
             loss = objective_loss(outputs=outputs, batch_td=batch_td)
 
+            # Optional UAA auxiliary loss (student-side; teacher is frozen).
+            if (
+                _HAS_UAA_CTX
+                and uaa_state is not None
+                and isinstance(outputs, dict)
+                and (_TrainingUAAContext is not None)
+                and isinstance(viz_ctx, _TrainingUAAContext)
+            ):
+                try:
+                    uaa_loss = uaa_state.compute_loss(
+                        ctx=cast(Any, viz_ctx),
+                        batch=batch_td,
+                        student_outputs=outputs,
+                        step_1=int(viz_ctx.step),
+                    )
+                    if isinstance(uaa_loss, Tensor):
+                        loss = loss + uaa_loss
+                except Exception as e:
+                    raise RuntimeError(f"Failed to compute UAA loss: {type(e).__name__}: {e}") from e
+
             if not isinstance(loss, Tensor):
                 raise TypeError(f"Objective.loss must return a Tensor, got {type(loss).__name__}")
-            
+
             # Store loss for next step's memory layer tuner
             self._last_step_loss = float(loss.detach())
-            
+
             # Update global metrics singleton (zero overhead, no ctx needed)
             update_training_metrics(step=viz_ctx.step, loss=self._last_step_loss)
 
@@ -1163,6 +1356,15 @@ class StandardTrainer:
                     metrics.update({str(k): float(v) for k, v in extra.items()})
             except Exception as e:
                 raise RuntimeError("Failed to compute objective metrics") from e
+
+        # UAA metrics (if present).
+        if isinstance(outputs_last, dict):
+            try:
+                v = outputs_last.get("uaa/attn_kl", None)
+                if isinstance(v, Tensor) and int(v.numel()) == 1:
+                    metrics["uaa/attn_kl"] = float(v.detach().float().reshape(()))
+            except Exception as e:
+                raise RuntimeError("Failed to extract UAA metrics") from e
 
         # Table 2 telemetry.
         if last_batch_td is not None:

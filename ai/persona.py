@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 
-from caramba.ai.types import PersonaConfig
+from ai.types import PersonaConfig
 
 
 class PersonaLoader:

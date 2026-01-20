@@ -4,11 +4,11 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.layer.memory_block.state_bank import StateBank
-from caramba.layer.memory_block.memory import MemoryBlockMemory
-from caramba.layer.memory_block.block.path import Path
-from caramba.layer.memory_block.state import MemoryBlockState
-from caramba.layer.memory_block.isa import MemoryOpcode
+from layer.memory_block.state_bank import StateBank
+from layer.memory_block.memory import MemoryBlockMemory
+from layer.memory_block.block.path import Path
+from layer.memory_block.state import MemoryBlockState
+from layer.memory_block.isa import MemoryOpcode
 
 
 class FastTrainPath(Path):

@@ -10,8 +10,8 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.topology import BranchingTopologyConfig
-from caramba.topology.utils import unwrap_output
+from config.topology import BranchingTopologyConfig
+from topology.utils import unwrap_output
 
 
 class BranchingTopology(nn.Module):

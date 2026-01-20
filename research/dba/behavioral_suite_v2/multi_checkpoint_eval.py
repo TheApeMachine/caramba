@@ -562,7 +562,7 @@ def get_model_config(model_type: str, n_layers: int = 12) -> dict[str, Any]:
 
     # Insert attention config
     topology_layers = copy.deepcopy(base_topology_layers)
-    
+
     # Safety check for deep nested structure
     try:
         topology_layers[0]["layers"][0]["layers"][1] = attn_config
@@ -591,7 +591,7 @@ def get_model_config(model_type: str, n_layers: int = 12) -> dict[str, Any]:
 def _setup_caramba_imports():
     """Set up imports for caramba package.
 
-    The caramba code uses internal imports like 'from caramba.console import logger',
+    The caramba code uses internal imports like 'from console import logger',
     so we need to make the root directory importable as 'caramba'. This creates a
     package-like structure using types.ModuleType.
     """
@@ -624,11 +624,11 @@ def load_model(
     """
     _setup_caramba_imports()
 
-    from caramba.model import Model
-    from caramba.config.model import ModelConfig
-    from caramba.compiler.lower import Lowerer
-    from caramba.compiler.validate import Validator
-    from caramba.carmath import weight_dtype
+    from model import Model
+    from config.model import ModelConfig
+    from compiler.lower import Lowerer
+    from compiler.validate import Validator
+    from carmath import weight_dtype
 
     # Load state dict first to infer dimensions
     raw_checkpoint = torch.load(
@@ -728,10 +728,12 @@ class MultiCheckpointModelWrapper:
 
         generated_ids = []
 
-        # Tiktoken GPT-2 has 50257 valid tokens (0-50256).
-        # Model vocab is padded to 50304 for HW efficiency.
-        # Mask invalid token logits to -inf before sampling to make them impossible.
-        valid_vocab_size = 50257
+        # Mask logits beyond tokenizer vocab (caramba vocab is often padded, e.g., 50304 vs 50257).
+        valid_vocab_size = None
+        if hasattr(self.tokenizer, "n_vocab"):
+            valid_vocab_size = int(self.tokenizer.n_vocab)
+        elif hasattr(self.tokenizer, "vocab_size"):
+            valid_vocab_size = int(self.tokenizer.vocab_size)
 
         with torch.no_grad():
             for _ in range(max_new_tokens):
@@ -749,7 +751,7 @@ class MultiCheckpointModelWrapper:
                 # Mask padding tokens (50257-50303) to -inf before sampling
                 # This makes them impossible to sample and preserves proper
                 # probability distribution over valid tokens
-                if next_logits.shape[0] > valid_vocab_size:
+                if valid_vocab_size is not None and next_logits.shape[0] > valid_vocab_size:
                     next_logits[valid_vocab_size:] = float('-inf')
 
                 # Apply repetition penalty to tokens that have already appeared
@@ -800,37 +802,116 @@ class MultiCheckpointModelWrapper:
         prompt: str,
         choices: list[str],
     ) -> dict[str, float]:
-        """Get log probabilities for each choice token."""
-        if hasattr(self.tokenizer, 'encode'):
-            input_ids = self.tokenizer.encode(prompt)
-        else:
-            input_ids = self.tokenizer(prompt, return_tensors="pt")["input_ids"][0].tolist()
+        """
+        Get conditional log probabilities for each choice.
 
-        input_tensor = torch.tensor([input_ids], dtype=torch.long, device=self.device)
+        Computes log p(choice | prompt) by teacher-forcing the choice tokens and
+        summing per-token logprobs. Falls back to a fast single-token path when
+        all choices are single-token.
+        """
+        if not choices:
+            return {}
+
+        # Tokenize prompt
+        if hasattr(self.tokenizer, "encode"):
+            # Allow prompts containing special-token-looking strings.
+            prompt_ids = self.tokenizer.encode(prompt, disallowed_special=())
+        else:
+            prompt_ids = self.tokenizer(prompt, return_tensors="pt")["input_ids"][0].tolist()
+
+        if not prompt_ids:
+            prompt_ids = [0]
+
+        # Tokenize choices
+        choice_token_lists: list[list[int]] = []
+        for choice in choices:
+            if hasattr(self.tokenizer, "encode"):
+                choice_ids = self.tokenizer.encode(choice, disallowed_special=())
+            else:
+                choice_ids = self.tokenizer(choice, add_special_tokens=False)["input_ids"]
+            choice_token_lists.append(list(choice_ids) if choice_ids else [])
+
+        # Determine tokenizer vocab size to mask padded model logits (e.g., 50304 vs 50257).
+        valid_vocab_size = None
+        if hasattr(self.tokenizer, "n_vocab"):
+            valid_vocab_size = int(self.tokenizer.n_vocab)
+        elif hasattr(self.tokenizer, "vocab_size"):
+            valid_vocab_size = int(self.tokenizer.vocab_size)
+
+        max_choice_len = max((len(ids) for ids in choice_token_lists if ids), default=0)
+        if max_choice_len == 0:
+            return {}
+
+        # Fast path: all choices are single-token => only need the next-token distribution.
+        if max_choice_len == 1 and all(len(ids) in (0, 1) for ids in choice_token_lists):
+            input_ids = prompt_ids[-self.max_length:]
+            input_tensor = torch.tensor([input_ids], dtype=torch.long, device=self.device)
+
+            with torch.no_grad():
+                outputs = self.model(input_tensor)
+
+                if isinstance(outputs, tuple):
+                    logits = outputs[0]
+                elif hasattr(outputs, "logits"):
+                    logits = outputs.logits
+                else:
+                    logits = outputs
+
+                next_logits = logits[0, -1, :].clone()
+                if valid_vocab_size is not None and next_logits.shape[0] > valid_vocab_size:
+                    next_logits[valid_vocab_size:] = float("-inf")
+                log_probs = torch.log_softmax(next_logits, dim=-1)
+
+            result_dict: dict[str, float] = {}
+            for choice, choice_ids in zip(choices, choice_token_lists):
+                if choice_ids:
+                    result_dict[choice] = log_probs[choice_ids[0]].item()
+            return result_dict
+
+        # Multi-token path: truncate prompt to fit longest choice so all choices share context.
+        max_prompt_len = max(self.max_length - max_choice_len, 1)
+        prompt_ids = prompt_ids[-max_prompt_len:]
+        prompt_len = len(prompt_ids)
+
+        seqs: list[list[int]] = []
+        seq_lens: list[int] = []
+        for choice_ids in choice_token_lists:
+            full = prompt_ids + choice_ids
+            seqs.append(full)
+            seq_lens.append(len(full))
+
+        max_len = max(seq_lens)
+        padded = [seq + [0] * (max_len - len(seq)) for seq in seqs]
+        batch_input = torch.tensor(padded, dtype=torch.long, device=self.device)
 
         with torch.no_grad():
-            outputs = self.model(input_tensor)
+            outputs = self.model(batch_input)
 
             if isinstance(outputs, tuple):
                 logits = outputs[0]
-            elif hasattr(outputs, 'logits'):
+            elif hasattr(outputs, "logits"):
                 logits = outputs.logits
             else:
                 logits = outputs
 
-            last_logits = logits[0, -1, :]
-            log_probs = torch.log_softmax(last_logits, dim=-1)
+            if valid_vocab_size is not None and logits.shape[-1] > valid_vocab_size:
+                logits = logits.clone()
+                logits[..., valid_vocab_size:] = float("-inf")
 
-        result = {}
-        for choice in choices:
-            if hasattr(self.tokenizer, 'encode'):
-                choice_ids = self.tokenizer.encode(choice)
-            else:
-                choice_ids = self.tokenizer(choice, add_special_tokens=False)["input_ids"]
+            log_probs = torch.log_softmax(logits, dim=-1)  # [batch, seq, vocab]
 
-            if choice_ids:
-                token_id = choice_ids[0]
-                result[choice] = log_probs[token_id].item()
+        result: dict[str, float] = {}
+        for i, (choice, choice_ids) in enumerate(zip(choices, choice_token_lists)):
+            if not choice_ids:
+                continue
+            total = 0.0
+            for j, token_id in enumerate(choice_ids):
+                pred_pos = (prompt_len - 1) + j
+                if pred_pos < 0 or pred_pos >= log_probs.shape[1]:
+                    total = float("-inf")
+                    break
+                total += log_probs[i, pred_pos, token_id].item()
+            result[choice] = total
 
         return result
 
@@ -1106,9 +1187,9 @@ def main() -> int:
         from .visualizer import ResultsVisualizer, generate_html_report
     else:
         # Running as script (e.g., python behavioral_suite_v2/multi_checkpoint_eval.py)
-        from caramba.research.dba.behavioral_suite_v2.generator import generate_suite
-        from caramba.research.dba.behavioral_suite_v2.runner import EvalRunner, EvalConfig
-        from caramba.research.dba.behavioral_suite_v2.visualizer import ResultsVisualizer, generate_html_report
+        from research.dba.behavioral_suite_v2.generator import generate_suite
+        from research.dba.behavioral_suite_v2.runner import EvalRunner, EvalConfig
+        from research.dba.behavioral_suite_v2.visualizer import ResultsVisualizer, generate_html_report
 
     # Generate test suite
     print("\n--- Generating test suite ---")
@@ -1137,7 +1218,7 @@ def main() -> int:
         try:
             from .runner import MockModel
         except ImportError:
-            from caramba.research.dba.behavioral_suite_v2.runner import MockModel
+            from research.dba.behavioral_suite_v2.runner import MockModel
         print("Using mock models (--use-mock specified)")
         for spec in specs:
             # Vary accuracy by model type for interesting results

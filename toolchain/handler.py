@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from caramba.core.event import EventEnvelope
-from caramba.core.event_bus import EventBus, EventHandler
-from caramba.toolchain.events import ToolDefinitionPayload
-from caramba.toolchain.registry import ToolRegistry
-from caramba.toolchain.test_runner import ToolTestRunner
+from core.event import EventEnvelope
+from core.event_bus import EventBus, EventHandler
+from toolchain.events import ToolDefinitionPayload
+from toolchain.registry import ToolRegistry
+from toolchain.test_runner import ToolTestRunner
 
 
 @dataclass(slots=True)

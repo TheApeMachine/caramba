@@ -24,8 +24,8 @@ import math
 import torch
 from torch import Tensor, nn
 
-from caramba.carmath.sketch import stable_int_hash
-from caramba.initializers.dba.base import DBAInitializer
+from carmath.sketch import stable_int_hash
+from initializers.dba.base import DBAInitializer
 
 
 class DBAFresh(DBAInitializer):

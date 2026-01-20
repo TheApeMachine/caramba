@@ -480,6 +480,14 @@ python3 -m caramba manifest.yml --target quick
 
 caramba includes ready-to-use presets in `config/presets/`:
 
+### Research manifests (project-local)
+
+For ongoing research projects, keep manifests alongside the project under:
+
+- `research/<project>/manifests/`
+
+This keeps experiment definitions close to the paper/artifacts they produce, and avoids turning `config/presets/` into a dumping ground for one-off research runs.
+
 ### Language Modeling
 
 | Preset                     | Architecture       | Description                   |

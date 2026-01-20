@@ -233,7 +233,19 @@ class ResultsVisualizer:
         ax.set_xticks(x)
         ax.set_xticklabels(categories, rotation=45, ha='right')
         ax.legend()
-        ax.set_ylim(0, 1.1)
+        # Set y-limits based on the metric scale.
+        if metric.endswith("_rate"):
+            ax.set_ylim(0, 1.1)
+        elif metric == "soft_score_avg":
+            soft_min = min(int(s) for s in SoftScore)
+            soft_max = max(int(s) for s in SoftScore)
+            ax.set_ylim(soft_min - 0.2, soft_max + 0.2)
+        else:
+            data_min = float(np.nanmin(data)) if data.size else 0.0
+            data_max = float(np.nanmax(data)) if data.size else 1.0
+            span = data_max - data_min
+            pad = 0.05 * span if span > 0 else 0.1
+            ax.set_ylim(data_min - pad, data_max + pad)
 
         fig.set_constrained_layout(True)
 
@@ -450,10 +462,10 @@ class ResultsVisualizer:
         colors = plt.cm.tab10(np.linspace(0, 1, len(models)))
 
         for i, (model, x, y) in enumerate(zip(models, x_values, y_values)):
-            marker = 's' if pareto_mask[i] else 'o'
-            size = 150 if pareto_mask[i] else 100
+            marker = '*' if pareto_mask[i] else 'o'
+            size = 200 if pareto_mask[i] else 100
             edgecolor = 'gold' if pareto_mask[i] else 'black'
-            linewidth = 3 if pareto_mask[i] else 1
+            linewidth = 2 if pareto_mask[i] else 1
 
             ax.scatter(
                 x, y,
@@ -513,7 +525,7 @@ class ResultsVisualizer:
         # Add annotation explaining the plot
         ax.text(
             0.98, 0.02,
-            "★ = Pareto-optimal (not dominated)",
+            "* = Pareto-optimal (not dominated)",
             transform=ax.transAxes,
             fontsize=8,
             ha='right',

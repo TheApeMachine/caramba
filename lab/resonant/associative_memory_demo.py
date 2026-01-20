@@ -13,9 +13,9 @@ from typing import Any
 
 import numpy as np
 
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig
-from caramba.console import logger
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig
+from console import logger
 from resonant.core import PhaseAssociativeMemory
 
 

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from caramba.core.event import EventEnvelope
-from caramba.evaluator.policy import PolicyConfig, PolicyGate
-from caramba.evaluator.validity import ValidityGate
-from caramba.toolchain.events import ToolCapabilities, ToolDefinitionPayload
+from core.event import EventEnvelope
+from evaluator.policy import PolicyConfig, PolicyGate
+from evaluator.validity import ValidityGate
+from toolchain.events import ToolCapabilities, ToolDefinitionPayload
 
 
 class EvaluatorTest(unittest.TestCase):

@@ -230,7 +230,8 @@ def parse_behavior_log(log_path: str) -> list[TestResult]:
         teacher_match = re.search(r'TEACHER ([✓✗]):\n(.*?)\n\nSTUDENT', test_content, re.DOTALL)
         student_match = re.search(r'STUDENT ([✓✗]):\n(.*?)(?:\n\n|\n*$)', test_content, re.DOTALL)
 
-        if all([prompt_match, expected_match, teacher_match, student_match]):
+        # Type narrowing: check each match individually
+        if prompt_match is not None and expected_match is not None and teacher_match is not None and student_match is not None:
             result = TestResult(
                 name=test_name,
                 prompt=prompt_match.group(1).strip(),

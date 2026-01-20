@@ -17,14 +17,14 @@ from typing import Any, cast
 import torch
 from torch import nn
 
-from caramba.adapter.state_dict import AdapterStateDictTransformer
-from caramba.carmath import weight_dtype
-from caramba.config.model import ModelConfig
-from caramba.console import logger
-from caramba.loader.checkpoint import CheckpointBuilder
-from caramba.loader.hf import HFLoader
-from caramba.model import Model
-from caramba.trainer.initializers.default import _make_teacher_model_config
+from adapter.state_dict import AdapterStateDictTransformer
+from carmath import weight_dtype
+from config.model import ModelConfig
+from console import logger
+from loader.checkpoint import CheckpointBuilder
+from loader.hf import HFLoader
+from model import Model
+from trainer.initializers.default import _make_teacher_model_config
 
 
 class UpcycleEvalTrainer:

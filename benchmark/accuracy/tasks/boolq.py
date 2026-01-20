@@ -10,8 +10,8 @@ from typing import Any
 
 from datasets import load_dataset
 
-from caramba.benchmark.accuracy.tasks.base import BenchmarkAccuracyTask
-from caramba.benchmark.accuracy.utils import DictCoercion, TextNormalization
+from benchmark.accuracy.tasks.base import BenchmarkAccuracyTask
+from benchmark.accuracy.utils import DictCoercion, TextNormalization
 
 
 class BenchmarkAccuracyTaskBoolq(BenchmarkAccuracyTask):

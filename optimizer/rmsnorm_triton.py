@@ -11,7 +11,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from caramba.optimizer.rmsnorm_triton_kernels import rmsnorm_bwd_w, rmsnorm_bwd_x, rmsnorm_bwd_x_noweight, rmsnorm_fwd
+from optimizer.rmsnorm_triton_kernels import rmsnorm_bwd_w, rmsnorm_bwd_x, rmsnorm_bwd_x_noweight, rmsnorm_fwd
 
 
 def _cdiv(n: int, d: int) -> int:

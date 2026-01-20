@@ -31,10 +31,10 @@ import mlx.optimizers as optim
 from mlx.utils import tree_flatten, tree_map
 import numpy as np
 
-from caramba.adapter.mlx.surgery import AttentionSurgeryMLX
-from caramba.console import logger
-from caramba.layer.mlx.transformer import DBATransformer
-from caramba.layer.mlx.standard_attention import TeacherModel
+from adapter.mlx.surgery import AttentionSurgeryMLX
+from console import logger
+from layer.mlx.transformer import DBATransformer
+from layer.mlx.standard_attention import TeacherModel
 
 
 @dataclass
@@ -208,8 +208,15 @@ class DualAttentionModel(nn.Module):
             x_dba = out_dba
 
         # Compute DBA logits
-        h_dba = self.student.norm(x_dba)
-        logits_dba = self.student.lm_head(h_dba)
+        if self.student.norm is not None:
+            h_dba = self.student.norm(x_dba)
+        else:
+            h_dba = x_dba
+        if self.student.lm_head is not None:
+            logits_dba = self.student.lm_head(h_dba)
+        else:
+            # Tied embeddings: use transpose of embedding matrix
+            logits_dba = h_dba @ self.student.embed_tokens.weight.T
 
         return logits_dba, layer_outputs
 
@@ -311,7 +318,10 @@ class DualAttentionTrainer:
                 # Gradient clipping
                 if self.config.grad_clip_norm > 0:
                     flat_grads = tree_flatten(grads)
-                    total_norm_sq = sum(mx.sum(g * g) for _, g in flat_grads)
+                    total_norm_sq = mx.array(0.0)
+                    for _, g in flat_grads:
+                        if isinstance(g, mx.array):
+                            total_norm_sq = total_norm_sq + mx.sum(g * g)
                     total_norm = mx.sqrt(total_norm_sq)
                     clip_coef = mx.minimum(
                         mx.array(1.0),
@@ -472,9 +482,10 @@ def run_dual_attention_training(
     teacher_weights_path: str,
     data_path: str,
     *,
-    sem_dim: int = 256,
-    geo_dim: int = 512,
-    v_dim: int = 768,
+    sem_head_dim: int = 8,
+    sem_init_scale: float = 0.1,
+    out_proj_scale: float = 0.02,
+    decoupled_gate: bool = True,
     max_steps: int = 5000,
     lr: float = 1e-4,
     output_match_alpha: float = 1.0,
@@ -486,7 +497,7 @@ def run_dual_attention_training(
     This trains DBA to match the original attention output, learning
     the optimal semantic/geometric decomposition in the process.
     """
-    from caramba.trainer.mlx.attention_distillation import load_teacher_from_llama
+    from trainer.mlx.attention_distillation import load_teacher_from_llama
 
     logger.header("Dual Attention Training Experiment")
 
@@ -498,9 +509,10 @@ def run_dual_attention_training(
 
     # Create surgery adapter
     surgery = AttentionSurgeryMLX(
-        sem_dim=sem_dim,
-        geo_dim=geo_dim,
-        v_dim=v_dim,
+        sem_head_dim=sem_head_dim,
+        sem_init_scale=sem_init_scale,
+        out_proj_scale=out_proj_scale,
+        decoupled_gate=decoupled_gate,
     )
 
     # Load teacher weights and create student
@@ -525,9 +537,10 @@ def run_dual_attention_training(
         "Teacher params": f"{teacher_params:,}",
         "Student total params": f"{total_params:,}",
         "Student trainable params": f"{trainable_params:,}",
-        "Semantic dim": sem_dim,
-        "Geometric dim": geo_dim,
-        "Value dim": v_dim,
+        "Semantic head dim": sem_head_dim,
+        "Sem init scale": sem_init_scale,
+        "Out proj scale": out_proj_scale,
+        "Decoupled gate": decoupled_gate,
     }, title="Model Config")
 
     # Config

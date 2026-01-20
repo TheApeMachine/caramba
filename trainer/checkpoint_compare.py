@@ -16,12 +16,12 @@ from typing import Any, cast
 
 import torch
 
-from caramba.carmath import weight_dtype
-from caramba.compiler.lower import Lowerer
-from caramba.compiler.validate import Validator
-from caramba.config.model import ModelConfig
-from caramba.console import logger
-from caramba.model import Model
+from carmath import weight_dtype
+from compiler.lower import Lowerer
+from compiler.validate import Validator
+from config.model import ModelConfig
+from console import logger
+from model import Model
 
 
 def _lower_and_validate_model_config(payload: dict[str, Any]) -> ModelConfig:

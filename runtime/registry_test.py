@@ -5,8 +5,8 @@ from typing import Any, Optional
 
 import pytest
 
-from caramba.config.component import ComponentSpec
-from caramba.runtime.registry import ComponentRegistry, _construct, _import_symbol
+from config.component import ComponentSpec
+from runtime.registry import ComponentRegistry, _construct, _import_symbol
 
 
 class Dummy:

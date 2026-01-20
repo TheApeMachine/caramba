@@ -12,19 +12,19 @@ import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
-from caramba.console import logger
-from caramba.config.layer import MemoryBlockLayerConfig
-from caramba.layer.memory_block.memory.reader import MemoryReader
-from caramba.layer.memory_block.memory.routing import BitRouter, VqRouter, ResonantRouter
-from caramba.layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
-from caramba.layer.memory_block.memory.rmf import ResonantMemoryField
-from caramba.layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
-from caramba.layer.memory_block.memory.writer import MemoryWriter
-from caramba.layer.memory_block.state import MemoryBlockState
-from caramba.layer.memory_block.memory.telemetry import MemoryHealthTelemetry
+from console import logger
+from config.layer import MemoryBlockLayerConfig
+from layer.memory_block.memory.reader import MemoryReader
+from layer.memory_block.memory.routing import BitRouter, VqRouter, ResonantRouter
+from layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
+from layer.memory_block.memory.rmf import ResonantMemoryField
+from layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
+from layer.memory_block.memory.writer import MemoryWriter
+from layer.memory_block.state import MemoryBlockState
+from layer.memory_block.memory.telemetry import MemoryHealthTelemetry
 
 if TYPE_CHECKING:
-    from caramba.layer.memory_block.memory.tuner import UniversalMemoryTuner
+    from layer.memory_block.memory.tuner import UniversalMemoryTuner
 
 
 
@@ -72,7 +72,7 @@ class MemoryBlockMemory(nn.Module):
 
         # Use shared tuner singleton (all layers share one tuner for coordinated optimization).
         # We don't store the instance to avoid stale references after reset; see `tuner` property below.
-        
+
         # Loss tracking for tuner metrics
         self.loss_history: list[float] = []
         self.loss_history_size = 20
@@ -247,7 +247,7 @@ class MemoryBlockMemory(nn.Module):
         """
         if str(self.mem_autotune).lower().strip() in {"", "off", "disabled", "none"}:
             return None
-        from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+        from layer.memory_block.memory.tuner import get_shared_tuner
 
         return get_shared_tuner(mode=str(self.mem_autotune))
 
@@ -520,18 +520,18 @@ class MemoryBlockMemory(nn.Module):
         write_scale: Tensor | None = None,
     ) -> Tensor:
         gate_logit = self.writer.write_chunk(u, st, routing, int(t0), mask, write_scale)
-        
+
         # After write, we have a full picture of the forward pass dynamics.
         # Collect and report health telemetry.
         # Only update tuner ONCE per global step (shared across all layers).
         if self.mem_autotune != "off" and bool(routing.get("collect_aux", False)):
-            from caramba.layer.memory_block.memory.tuner import should_update_tuner, get_shared_tuner
-            from caramba.instrumentation.training_metrics import get_training_metrics
-            
+            from layer.memory_block.memory.tuner import should_update_tuner, get_shared_tuner
+            from instrumentation.training_metrics import get_training_metrics
+
             # Get global step from training_metrics singleton (reliable even when ctx is None)
             metrics = get_training_metrics()
             global_step = metrics.step if metrics.step > 0 else int(routing.get("global_step", st.step))
-            
+
             # Only the first layer to reach this step updates the tuner
             if should_update_tuner(global_step):
                 tuner = get_shared_tuner(mode=self.mem_autotune)
@@ -539,7 +539,7 @@ class MemoryBlockMemory(nn.Module):
                 tuning_logs = tuner.update(health)
                 routing.update(tuning_logs)
                 routing.update(health.to_dict())
-            
+
             # --- Visualization (Performance-Focused) ---
             # Guard entire visualization block with config flag.
             if bool(getattr(self.config, "mem_autotune_viz", False)):
@@ -550,15 +550,15 @@ class MemoryBlockMemory(nn.Module):
                     tuner = get_shared_tuner(mode=self.mem_autotune)
                     logger.tuner_status(tuner.get_viz_data())
                     logger.health_bars(tuner.get_health_metrics())
-            
+
         return gate_logit
 
     def collect_health_telemetry(self, st: MemoryBlockState, routing: dict[str, Any]) -> MemoryHealthTelemetry:
         """Central hub for collecting all memory block health metrics."""
-        from caramba.layer.memory_block.memory.telemetry import (
+        from layer.memory_block.memory.telemetry import (
             MemoryHealthTelemetry, ResonantSettlingMetrics, VsaNoveltyMetrics
         )
-        
+
         # 1. Utilization sensors
         #
         # IMPORTANT:
@@ -581,7 +581,7 @@ class MemoryBlockMemory(nn.Module):
 
         # Use write_fire_frac as the primary utilization signal for the tuner.
         utilization = float(write_fire_frac)
-        
+
         # 2. Resonant Metrics (if applicable)
         res_metrics = None
         if "resonant_final_sim" in routing:
@@ -592,7 +592,7 @@ class MemoryBlockMemory(nn.Module):
                 bucket_entropy=float(routing.get("resonant_bucket_entropy", 0.0)),
                 state_drift=0.0,
             )
-            
+
         # 3. VSA Metrics
         vsa_metrics = None
         if "write_novelty" in routing:
@@ -602,17 +602,17 @@ class MemoryBlockMemory(nn.Module):
                 match_confidence=float(routing.get("read_slot_sim", torch.tensor(0.0)).std().item()),
                 tag_collision_rate=0.0,
             )
-        
+
         # 4. Training Metrics (from global singleton - zero overhead, no ctx needed)
-        from caramba.instrumentation.training_metrics import get_training_metrics
+        from instrumentation.training_metrics import get_training_metrics
         metrics = get_training_metrics()
         current_loss = metrics.loss
-        
+
         if current_loss is not None:
             self.loss_history.append(float(current_loss))
             if len(self.loss_history) > self.loss_history_size:
                 self.loss_history.pop(0)
-        
+
         # Compute metrics from loss history
         loss = None
         loss_variance = None
@@ -631,13 +631,13 @@ class MemoryBlockMemory(nn.Module):
                     break
         if accuracy is None:
             accuracy = metrics.accuracy
-        
+
         if len(self.loss_history) > 0:
             loss = self.loss_history[-1]  # Most recent loss
         if len(self.loss_history) >= 2:
             import statistics
             loss_variance = float(statistics.variance(self.loss_history))
-        
+
 
         tel = MemoryHealthTelemetry(
             step=int(st.step),

@@ -287,7 +287,7 @@ If you see import errors after optimization:
 1. **Check if module is truly needed:**
    ```bash
    # Search for imports in agent code
-   grep -r "from caramba.layer" ai/
+   grep -r "layer" ai/
    ```
 
 2. **If needed, add to Dockerfile:**

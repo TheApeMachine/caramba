@@ -88,7 +88,7 @@ train:
 Runtime plans are cached in `caramba/runtime/plan/` (see `caramba/runtime/plan/__init__.py`):
 
 ```python
-from caramba.runtime.plan import RuntimePlan, load_plan, save_plan
+runtime.plan import RuntimePlan, load_plan, save_plan
 
 # Plans keyed by signature
 plan = load_plan(signature)
@@ -149,7 +149,7 @@ Automatic activation when:
 ### Force-Building Metal Extension
 
 ```python
-from caramba.optimizer.metal.jit import load_caramba_metal_ops
+optimizer.metal.jit import load_caramba_metal_ops
 
 # Build and load Metal extension
 ops = load_caramba_metal_ops(verbose=True)
@@ -192,8 +192,8 @@ For NVIDIA GPUs, caramba uses Triton kernels for fused operations.
 ### Decoupled Attention Decode
 
 ```python
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
-from caramba.optimizer.fused_attention import fused_decode_available
+optimizer.triton_runtime import TRITON_AVAILABLE
+optimizer.fused_attention import fused_decode_available
 
 if TRITON_AVAILABLE and fused_decode_available(cache, "cuda"):
     # Will use fused kernel automatically
@@ -215,7 +215,7 @@ Features:
 Check availability:
 
 ```python
-from caramba.optimizer.triton_runtime import TRITON_AVAILABLE
+optimizer.triton_runtime import TRITON_AVAILABLE
 print(f"Triton available: {TRITON_AVAILABLE}")
 ```
 
@@ -413,7 +413,7 @@ See [Training Guide → Orchestrated Training](training.md#orchestrated-training
 ### Check What's Being Used
 
 ```python
-from caramba.optimizer.runtime import (
+optimizer.runtime import (
     TRITON_AVAILABLE,
     METAL_AVAILABLE,
     get_backend_info,

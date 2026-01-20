@@ -9,9 +9,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from torch import Tensor, nn
 
-from caramba.config.layer import MemoryBlockLayerConfig
-from caramba.layer.memory_block.state_bank import StateBank
-from caramba.layer.memory_block.memory import MemoryBlockMemory
+from config.layer import MemoryBlockLayerConfig
+from layer.memory_block.state_bank import StateBank
+from layer.memory_block.memory import MemoryBlockMemory
 
 
 class Path(nn.Module, ABC):

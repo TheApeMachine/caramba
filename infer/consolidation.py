@@ -8,9 +8,9 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from caramba.infer.event_runtime import StreamModelRunner
-from caramba.infer.replay import ReplayBuffer
-from caramba.trainer.online import OnlineLearner
+from infer.event_runtime import StreamModelRunner
+from infer.replay import ReplayBuffer
+from trainer.online import OnlineLearner
 
 
 @dataclass(slots=True)

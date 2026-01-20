@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import torch
 
-from caramba.optimizer.runtime import metal_supported
+from optimizer.runtime import metal_supported
 
 from .jit import load_caramba_metal_ops
 
@@ -59,7 +59,7 @@ class _MetalRoPEFn(torch.autograd.Function):
             raise RuntimeError("Metal RoPE backward requires grad_out")
         if grad_out.device.type != "mps":
             raise RuntimeError("Metal RoPE backward requires grad_out on MPS")
-        
+
         # Ensure grad matches saved cos/sin dtype (which matched x)
         (cos, sin) = ctx.saved_tensors
         target_dtype = cos.dtype

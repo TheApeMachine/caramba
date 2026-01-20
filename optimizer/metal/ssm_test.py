@@ -3,14 +3,14 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import metal_supported
+from optimizer.runtime import metal_supported
 
 
 def _skip_if_no_metal_extension() -> None:
     if not torch.backends.mps.is_available():
         pytest.skip("torch.backends.mps is not available")
     try:
-        from caramba.optimizer.metal.jit import load_caramba_metal_ops
+        from optimizer.metal.jit import load_caramba_metal_ops
 
         _ = load_caramba_metal_ops(verbose=False)
     except Exception as e:
@@ -51,7 +51,7 @@ def test_metal_ssm_scan_forward_matches_reference() -> None:
     C = torch.randn(Bsz, T, D_state, device=device, dtype=dtype)
     D = torch.randn(D_inner, device=device, dtype=dtype)
 
-    from caramba.optimizer.metal import MetalSSMSelectiveScan
+    from optimizer.metal import MetalSSMSelectiveScan
 
     y_metal = MetalSSMSelectiveScan().run(x=x, dt=dt, A=A, B=B, C=C, D=D, verbose_build=False)
 
@@ -84,7 +84,7 @@ def test_metal_ssm_scan_backward_matches_reference() -> None:
     C0 = torch.randn(Bsz, T, D_state, device=device, dtype=dtype, requires_grad=True)
     D0 = torch.randn(D_inner, device=device, dtype=dtype, requires_grad=True)
 
-    from caramba.optimizer.metal import MetalSSMSelectiveScan
+    from optimizer.metal import MetalSSMSelectiveScan
 
     y_m = MetalSSMSelectiveScan().run(x=x0, dt=dt0, A=A0, B=B0, C=C0, D=D0, verbose_build=False)
     loss_m = (y_m.float() ** 2).mean()

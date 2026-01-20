@@ -10,7 +10,7 @@ from typing import Any, Protocol
 import torch
 from torch import Tensor
 
-from caramba.optimizer.metal.resonant_jit import load_caramba_metal_resonant_ops
+from optimizer.metal.resonant_jit import load_caramba_metal_resonant_ops
 
 
 class AutogradContext(Protocol):

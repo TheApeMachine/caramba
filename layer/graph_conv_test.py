@@ -1,8 +1,8 @@
 
 import unittest
 import torch
-from caramba.layer.graph_conv import GraphConvLayer
-from caramba.config.layer import GraphConvLayerConfig
+from layer.graph_conv import GraphConvLayer
+from config.layer import GraphConvLayerConfig
 
 class TestGraphConvLayer(unittest.TestCase):
     def test_gcn_forward(self):
@@ -12,14 +12,14 @@ class TestGraphConvLayer(unittest.TestCase):
             kind="gcn"
         )
         layer = GraphConvLayer(cfg)
-        
+
         # 5 nodes
         x = torch.randn(5, 16)
         # Random adjacency
         adj = torch.eye(5)
         adj[0, 1] = 1.0
         adj[1, 0] = 1.0
-        
+
         out = layer((x, adj))
         self.assertEqual(out.shape, (5, 8))
 
@@ -30,10 +30,10 @@ class TestGraphConvLayer(unittest.TestCase):
             kind="gcn"
         )
         layer = GraphConvLayer(cfg)
-        
+
         x = torch.randn(5, 16)
         adj = torch.eye(5).to_sparse()
-        
+
         out = layer((x, adj))
         self.assertEqual(out.shape, (5, 8))
 
@@ -46,11 +46,11 @@ class TestGraphConvLayer(unittest.TestCase):
             concat=True
         )
         layer = GraphConvLayer(cfg)
-        
+
         # 5 nodes
         x = torch.randn(5, 16)
         adj = torch.eye(5)
-        
+
         out = layer((x, adj))
         # With concat=True, out is heads * (out_features // heads) = out_features
         # Wait, implementation says: head_dim = out_features // heads

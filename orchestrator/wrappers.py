@@ -19,7 +19,7 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.orchestrator.strategy import GradientWrapper
+from orchestrator.strategy import GradientWrapper
 
 
 class AdaGC(GradientWrapper):

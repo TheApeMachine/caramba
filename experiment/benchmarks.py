@@ -8,14 +8,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from caramba.benchmark.artifacts import ExperimentMetadata
-from caramba.benchmark.runner import BenchmarkRunner
-from caramba.config.benchmark import BenchmarkSuite
-from caramba.console import logger
+from benchmark.artifacts import ExperimentMetadata
+from benchmark.runner import BenchmarkRunner
+from config.benchmark import BenchmarkSuite
+from console import logger
 
 if TYPE_CHECKING:
-    from caramba.experiment.group import ExperimentGroup
-    from caramba.config.manifest import Manifest
+    from experiment.group import ExperimentGroup
+    from config.manifest import Manifest
 
 class ExperimentBenchmarks:
     """Orchestrates benchmarks for an experiment."""

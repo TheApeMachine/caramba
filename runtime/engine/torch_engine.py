@@ -11,13 +11,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig
-from caramba.runtime.registry import ComponentRegistry
-from caramba.benchmark.artifacts import ExperimentMetadata
-from caramba.benchmark.runner import BenchmarkRunner
-from caramba.config.benchmark import BenchmarkSuite
-from caramba.console import logger
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig
+from runtime.registry import ComponentRegistry
+from benchmark.artifacts import ExperimentMetadata
+from benchmark.runner import BenchmarkRunner
+from config.benchmark import BenchmarkSuite
+from console import logger
 import torch
 from torch import nn
 
@@ -75,6 +75,16 @@ class TorchEngine:
             backend="torch",
             ref="trainer.multi_checkpoint_compare",
             python="caramba.trainer.multi_checkpoint_compare:MultiCheckpointCompareTrainer",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="trainer.surgery_compare",
+            python="caramba.trainer.surgery_compare:SurgeryCompareTrainer",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="trainer.surgery_export",
+            python="caramba.trainer.surgery_export:SurgeryExportTrainer",
         )
 
         # Datasets
@@ -283,7 +293,7 @@ class TorchEngine:
 
             # Multi-model format: {"models": dict[str, Module], "baseline_name": str}
             if "models" in result and isinstance(result["models"], dict):
-                from caramba.benchmark.multi_model_runner import MultiModelBenchmarkRunner
+                from benchmark.multi_model_runner import MultiModelBenchmarkRunner
 
                 models_dict = result["models"]
                 # Convert to nn.Module dict
@@ -317,12 +327,12 @@ class TorchEngine:
 
         # Metrics/evaluators.
         if target.metrics and isinstance(result, dict):
-            models: dict[str, nn.Module] = {}
+            metrics_models: dict[str, nn.Module] = {}
             if "teacher" in result and "student" in result:
-                models["teacher"] = self._as_module(result["teacher"])
-                models["student"] = self._as_module(result["student"])
+                metrics_models["teacher"] = self._as_module(result["teacher"])
+                metrics_models["student"] = self._as_module(result["student"])
             elif "system" in result:
-                models["system"] = self._as_module(result["system"])
+                metrics_models["system"] = self._as_module(result["system"])
 
             device = result.get("device", torch.device("cpu"))
             if not isinstance(device, torch.device):
@@ -334,7 +344,7 @@ class TorchEngine:
                 except Exception as e:
                     logger.warning(f"Failed to build metric {spec.ref}: {e}")
                     continue
-                for name, model in models.items():
+                for name, model in metrics_models.items():
                     if hasattr(metric, "run"):
                         try:
                             m = cast(Any, metric).run(model=model, device=device, name=name)

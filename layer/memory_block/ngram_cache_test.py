@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import torch
 
-from caramba.config.layer import LayerType, NGramCacheLogitsLayerConfig
+from config.layer import LayerType, NGramCacheLogitsLayerConfig
 
 
 class NGramCacheLogitsLayerTest(unittest.TestCase):

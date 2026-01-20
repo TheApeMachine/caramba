@@ -8,7 +8,7 @@ from __future__ import annotations
 import tiktoken
 from typing import Sequence
 
-from caramba.data.tokenizers.base import Tokenizer
+from data.tokenizers.base import Tokenizer
 
 class TiktokenTokenizer(Tokenizer):
     """Tiktoken-based tokenizer implementation.

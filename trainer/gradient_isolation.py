@@ -18,23 +18,23 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Subset
 
-from caramba.carmath import (
+from carmath import (
     autocast_dtype,
     autocast_dtype_str,
     token_budget_batch_size,
     train_val_counts,
     weight_dtype_str,
 )
-from caramba.config.defaults import Defaults
-from caramba.config.manifest import Manifest
-from caramba.config.run import Run
-from caramba.config.target import ExperimentTargetConfig
-from caramba.config.train import TrainConfig, TrainPhase
-from caramba.console import logger
-from caramba.instrumentation import RunLogger
-from caramba.instrumentation.viz import TrainingVizMosaicContext
-from caramba.runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
+from config.defaults import Defaults
+from config.manifest import Manifest
+from config.run import Run
+from config.target import ExperimentTargetConfig
+from config.train import TrainConfig, TrainPhase
+from console import logger
+from instrumentation import RunLogger
+from instrumentation.viz import TrainingVizMosaicContext
+from runtime.plan import RuntimePlan, load_plan, make_plan_key, save_plan
+from runtime.tensordict_utils import TensorDictBase, as_tensordict, collate_tensordict, to_device
 
 
 class _Engine(Protocol):
@@ -161,7 +161,7 @@ class GradientIsolationTrainer:
         dist_strategy = str(getattr(train, "distributed_strategy", "none")).lower()
         if dist_strategy != "none":
             try:
-                from caramba.trainer.distributed import DistributedConfig, DistributedContext, DistributedStrategy
+                from trainer.distributed import DistributedConfig, DistributedContext, DistributedStrategy
 
                 cfg = DistributedConfig(
                     strategy=DistributedStrategy(dist_strategy),
@@ -239,7 +239,7 @@ class GradientIsolationTrainer:
                 weight_decay=float(weight_decay),
             )
         elif opt_name == "lion":
-            from caramba.optimizer.lion import Lion
+            from optimizer.lion import Lion
 
             optimizer = Lion(
                 system.parameters(),  # type: ignore[arg-type]
@@ -250,7 +250,7 @@ class GradientIsolationTrainer:
         else:
             raise ValueError(f"Unknown optimizer {opt_name!r}")
 
-        from caramba.trainer.swap_manager import SwapManager
+        from trainer.swap_manager import SwapManager
 
         swap = SwapManager(
             offload_optimizer=bool(getattr(train, "offload_optimizer", False)),
@@ -345,7 +345,7 @@ class GradientIsolationTrainer:
                     # Enable aux outputs even without teacher signals when the objective
                     # expects MOSAIC aux keys (e.g. contrastive/self-supervised aux).
                     try:
-                        from caramba.trainer.objectives import MosaicNextTokenWithAuxObjective
+                        from trainer.objectives import MosaicNextTokenWithAuxObjective
 
                         if isinstance(objective, MosaicNextTokenWithAuxObjective):
                             collect_aux = True

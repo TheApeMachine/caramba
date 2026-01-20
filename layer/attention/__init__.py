@@ -6,15 +6,15 @@ mechanisms without rewriting model wiring.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from torch import nn
 
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from config.layer import AttentionLayerConfig, AttentionMode
 
 if TYPE_CHECKING:
     from torch import Tensor
-    from caramba.cache.decoupled import DecoupledLayerKVCache
-    from caramba.cache.layer import LayerKVCache
+    from cache.decoupled import DecoupledLayerKVCache
+    from cache.layer import LayerKVCache
 
 
 class AttentionLayer(nn.Module):
@@ -78,7 +78,17 @@ class AttentionLayer(nn.Module):
     ) -> tuple["Tensor", "Tensor", "Tensor"]:
         raise NotImplementedError
 
-    def __new__(cls, config: AttentionLayerConfig) -> "AttentionLayer":
+    def __new__(cls, config: AttentionLayerConfig | None = None, **kwargs: Any) -> "AttentionLayer":
+        # Support both construction styles:
+        #  1) AttentionLayer(cfg) where cfg is an AttentionLayerConfig
+        #  2) AttentionLayer(**cfg_dict) where kwargs are the config payload (minus `type`)
+        if config is None:
+            if not kwargs:
+                raise TypeError("AttentionLayer requires a config (AttentionLayerConfig) or keyword config fields.")
+            config = AttentionLayerConfig.model_validate({"type": "AttentionLayer", **dict(kwargs)})
+        elif kwargs:
+            raise TypeError("AttentionLayer received both config and kwargs; provide only one.")
+
         if cls is AttentionLayer:
             if config.mode == AttentionMode.DECOUPLED:
                 from .decoupled.layer import DecoupledAttentionLayer
@@ -92,6 +102,33 @@ class AttentionLayer(nn.Module):
             # can't express this factory pattern cleanly.
             return super().__new__(impl_cls)  # type: ignore[arg-type, return-value]
         return super().__new__(cls)
+
+    def __init__(self, config: AttentionLayerConfig | None = None, **kwargs: Any) -> None:
+        """Initialize the concrete attention layer chosen by `__new__`.
+
+        Why this exists:
+        - `AttentionLayer.__new__` returns an instance of a concrete subclass.
+        - Python then calls `AttentionLayer.__init__` (not the subclass `__init__`)
+          because the call site was `AttentionLayer(cfg)`.
+        - Without this shim, initialization falls through to `nn.Module.__init__`,
+          which doesn't accept `config` and triggers confusing downstream errors.
+        """
+        if config is None:
+            if not kwargs:
+                raise TypeError("AttentionLayer requires a config (AttentionLayerConfig) or keyword config fields.")
+            config = AttentionLayerConfig.model_validate({"type": "AttentionLayer", **dict(kwargs)})
+        elif kwargs:
+            raise TypeError("AttentionLayer received both config and kwargs; provide only one.")
+
+        if type(self) is AttentionLayer:
+            # The factory should never be instantiated directly.
+            raise TypeError("AttentionLayer is a factory and must be constructed via AttentionLayer(config).")
+
+        # Delegate initialization to the concrete subclass returned by __new__.
+        impl_init = getattr(type(self), "__init__", None)
+        if impl_init is None or impl_init is AttentionLayer.__init__:
+            raise TypeError(f"Concrete attention layer {type(self).__name__} does not define __init__(config).")
+        impl_init(self, config)  # type: ignore[misc]
 
     # Type hint only; concrete subclasses implement the actual forward.
     def forward(  # type: ignore[override]

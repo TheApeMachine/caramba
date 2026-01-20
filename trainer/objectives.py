@@ -18,9 +18,9 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from caramba.runtime.tensordict_utils import TensorDictBase
+from runtime.tensordict_utils import TensorDictBase
 
-from caramba.trainer.chunked_cross_entropy import ChunkedCELossConfig, chunked_linear_cross_entropy
+from trainer.chunked_cross_entropy import ChunkedCELossConfig, chunked_linear_cross_entropy
 
 TensorDict = TensorDictBase
 MetricDict = dict[str, float]

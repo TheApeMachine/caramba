@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from caramba.runtime.trace.schema import TraceEvent
+from runtime.trace.schema import TraceEvent
 
 
 @dataclass(slots=True)

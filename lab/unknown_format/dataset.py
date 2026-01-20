@@ -10,9 +10,9 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
-from caramba.lab.unknown_format.format_family import FormatFamily, FormatSpec
-from caramba.lab.unknown_format.oracle import FormatOracle, Record
-from caramba.lab.unknown_format.test_gen import ToolTestGenerator
+from lab.unknown_format.format_family import FormatFamily, FormatSpec
+from lab.unknown_format.oracle import FormatOracle, Record
+from lab.unknown_format.test_gen import ToolTestGenerator
 
 
 @dataclass(frozen=True, slots=True)

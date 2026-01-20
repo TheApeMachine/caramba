@@ -6,7 +6,7 @@ from typing import Tuple
 import torch
 from torch import nn
 
-from caramba.trainer.gradient_isolation import apply_trainable_scope
+from trainer.gradient_isolation import apply_trainable_scope
 
 
 def test_apply_trainable_scope_freezes_and_unfreezes_by_regex() -> None:

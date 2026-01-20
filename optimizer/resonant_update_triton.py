@@ -11,8 +11,8 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from caramba.optimizer.runtime import triton_supported
-from caramba.optimizer.resonant_update_triton_kernels import resonant_update_bwd, resonant_update_fwd
+from optimizer.runtime import triton_supported
+from optimizer.resonant_update_triton_kernels import resonant_update_bwd, resonant_update_fwd
 
 
 def _require(cond: bool, *, msg: str) -> None:

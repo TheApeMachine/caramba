@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor, nn
 
-from caramba.data.tokenizers.training import TrainingTokenizer
+from data.tokenizers.training import TrainingTokenizer
 
 
 @dataclass(frozen=True, slots=True)

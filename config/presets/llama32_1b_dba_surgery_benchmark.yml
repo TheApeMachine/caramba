@@ -1,0 +1,272 @@
+version: 2
+name: llama32_1b_dba_surgery_benchmark
+notes: >
+  Benchmark-only manifest (PyTorch) for baseline vs surgically modified Llama 3.2 1B.
+  This matches the "baseline vs DBA" benchmarking style but compares only two models:
+  - baseline: standard attention checkpoint exported by llama32_1b_dba_surgery_export.yml
+  - surgery:  DBA/decoupled attention checkpoint exported by llama32_1b_dba_surgery_export.yml
+
+defaults:
+  data:
+    tokenizer: llama
+    val_frac: 0.0
+  logging:
+    instrument: rich
+    wandb: false
+    wandb_project: ''
+    wandb_entity: ''
+    wandb_mode: disabled
+    eval_iters: 0
+  runtime:
+    save_every: 1
+
+vars:
+  # ---- Export outputs (from llama32_1b_dba_surgery_export.yml) ----
+  export_dir: artifacts/surgery/llama32_1b_fresh
+  baseline_ckpt: ${export_dir}/baseline.pt
+  surgery_ckpt: ${export_dir}/surgery.pt
+
+  # ---- Dataset (must be llama-tokenized) ----
+  # Recommended: generate via `make prepare-llama-data` (or use your own).
+  dataset_path: artifacts/datasets/fineweb_llama/train.npy
+  block_size: 2048
+
+  # ---- Runtime ----
+  device: mps
+  dtype: float16
+
+  # ---- Llama 3.2 1B architecture ----
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+  rope_base: 500000.0
+  sem_dim: 128
+  geo_dim: 256
+
+x-llama32-baseline-model: &baseline_model
+  type: TransformerModel
+  tied_embeddings: false
+  embedder:
+    type: token
+    vocab_size: ${vocab_size}
+    d_model: ${d_model}
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                n_kv_heads: ${n_kv_heads}
+                mode: standard
+                rope_enabled: true
+                rope_base: ${rope_base}
+                is_causal: true
+                dropout_p: 0.0
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: SwiGLULayer
+                d_model: ${d_model}
+                d_ff: ${d_ff}
+                bias: false
+      - type: RMSNormLayer
+        d_model: ${d_model}
+        eps: 1e-5
+      - type: LinearLayer
+        d_in: ${d_model}
+        d_out: ${vocab_size}
+        bias: false
+
+x-llama32-surgery-model: &surgery_model
+  type: TransformerModel
+  tied_embeddings: false
+  embedder:
+    type: token
+    vocab_size: ${vocab_size}
+    d_model: ${d_model}
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                n_kv_heads: ${n_kv_heads}
+                mode: decoupled
+                sem_dim: ${sem_dim}
+                geo_dim: ${geo_dim}
+                rope_enabled: true
+                rope_base: ${rope_base}
+                is_causal: true
+                dropout_p: 0.0
+                decoupled_gate: true
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: SwiGLULayer
+                d_model: ${d_model}
+                d_ff: ${d_ff}
+                bias: false
+      - type: RMSNormLayer
+        d_model: ${d_model}
+        eps: 1e-5
+      - type: LinearLayer
+        d_in: ${d_model}
+        d_out: ${vocab_size}
+        bias: false
+
+x-dummy-run: &dummy_run
+  - id: eval
+    mode: train
+    exp: benchmark_only
+    seed: 42
+    steps: 1
+    expected: {phase: standard}
+    train:
+      phase: standard
+      batch_size: 1
+      block_size: ${block_size}
+      lr: 1.0e-9
+      device: ${device}
+      dtype: ${dtype}
+
+targets:
+  - type: experiment
+    name: benchmark
+    description: "Benchmark baseline vs DBA-surgery checkpoint pair."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      # unused by the trainer; keep aligned with the surgery model
+      ref: system.language_model
+      config:
+        model: *surgery_model
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.multi_checkpoint_compare
+      config:
+        checkpoints:
+          - name: baseline
+            checkpoint: ${baseline_ckpt}
+            model_config: *baseline_model
+            is_baseline: true
+          - name: surgery
+            checkpoint: ${surgery_ckpt}
+            model_config: *surgery_model
+        device: ${device}
+        dtype: ${dtype}
+        strict: false
+        unsafe_pickle_load: false
+    runs: *dummy_run
+    benchmarks:
+      - id: ppl
+        config:
+          type: perplexity
+          dataset: ${dataset_path}
+          block_size: ${block_size}
+          batch_size: 1
+          num_batches: 200
+        models: [baseline, surgery]
+      - id: latency_cached
+        config:
+          type: latency
+          prompt_lengths: [128, 512, 1024, 2048, 4096]
+          generation_lengths: [128]
+          batch_sizes: [1]
+          warmup_runs: 2
+          timed_runs: 5
+          use_cache: true
+          cache_kind: fp16
+        models: [baseline, surgery]
+      - id: memory_kv
+        config:
+          type: memory
+          sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
+          batch_sizes: [1]
+          measure_peak: true
+          measure_kvcache: true
+          quantization_modes: [fp16]
+        models: [baseline, surgery]
+      - id: behavior_sanity
+        config:
+          type: behavior
+          tokenizer:
+            type: llama
+            model_id: meta-llama/Llama-3.2-1B
+          cases_file: research/dba/behavior_cases.yml
+          max_new_tokens: 32
+          context_window: 2048
+          dump_attention: true
+          dump_attention_max_tokens: 96
+          dump_attention_max_heads: 4
+          dump_attention_anchor: ""
+          dump_attention_paper_dir: artifacts/surgery/figs/attention
+          dump_attention_paper_tag: llama32_surgery
+        models: [baseline, surgery]
+      - id: behavioral_v2
+        config:
+          type: behavioral_v2
+          tokenizer:
+            type: llama
+            model_id: meta-llama/Llama-3.2-1B
+          seed: 42
+          tests_per_category: 30
+          max_new_tokens: 32
+          context_window: 2048
+          stream_live: true
+          stream_every: 10
+        models: [baseline, surgery]
+      - id: downstream_accuracy
+        config:
+          type: accuracy
+          tasks: [winogrande, arc_easy]
+          tokenizer:
+            type: llama
+            model_id: meta-llama/Llama-3.2-1B
+          context_window: 2048
+          stream_live: true
+          stream_every: 10
+        models: [baseline, surgery]
+      - id: context_sweep
+        config:
+          type: context
+          dataset: ${dataset_path}
+          context_lengths: [2048, 4096, 8192, 16384, 32768]
+          chunk_size: 1024
+          max_mask_elems: 32000000
+          batch_size: 1
+          decode_len: 128
+          decode_warmup: 8
+          cache_kind: fp16
+        models: [baseline, surgery]
+
+entrypoints:
+  default: "target:benchmark"
+

@@ -21,8 +21,8 @@ from typing import Any, Callable, Literal
 import torch
 from torch import Tensor, nn
 
-from caramba.carmath.sketch import sketch_dot5, stride_sketch_indices
-from caramba.optimizer.runtime import triton_supported
+from carmath.sketch import sketch_dot5, stride_sketch_indices
+from optimizer.runtime import triton_supported
 
 log = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ This package exposes the FastAPI application used by the CLI `serve` command.
 
 from __future__ import annotations
 
-from caramba.api.app import app
+from api.app import app
 
 __all__ = ["app"]
 

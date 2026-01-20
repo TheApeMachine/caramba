@@ -8,8 +8,8 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from caramba.config.layers.diffusion import DiffusionLayerConfig
-from caramba.layer.diffusion import DiffusionDenoiser, DiffusionLayer
+from config.layers.diffusion import DiffusionLayerConfig
+from layer.diffusion import DiffusionDenoiser, DiffusionLayer
 
 
 class DdimSampler(DiffusionLayer):

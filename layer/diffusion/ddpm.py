@@ -11,8 +11,8 @@ from typing import cast
 import torch
 from torch import Tensor
 
-from caramba.config.layers.diffusion.ddpm import DDPMLayerConfig
-from caramba.layer.diffusion import DiffusionDenoiser, DiffusionLayer
+from config.layers.diffusion.ddpm import DDPMLayerConfig
+from layer.diffusion import DiffusionDenoiser, DiffusionLayer
 
 
 class DdpmSampler(DiffusionLayer):

@@ -5,7 +5,7 @@ Implements the custom errors for the core module.
 from __future__ import annotations
 from enum import Enum
 
-from caramba.console.logger import Logger
+from console.logger import Logger
 logger: Logger = Logger()
 
 

@@ -5,10 +5,10 @@ import unittest
 import torch
 from torch import Tensor, nn
 
-from caramba.core.event import EventEnvelope
-from caramba.core.event_codec import EventEncoder
-from caramba.infer.context import InferContext
-from caramba.infer.event_runtime import CommitmentModeB, EventResponder, StreamModelRunner
+from core.event import EventEnvelope
+from core.event_codec import EventEncoder
+from infer.context import InferContext
+from infer.event_runtime import CommitmentModeB, EventResponder, StreamModelRunner
 
 
 class _DummyByteModel(nn.Module):
@@ -56,7 +56,7 @@ class _DummyByteModel(nn.Module):
         # 1. forward(prompt) -> get next_logits
         # 2. tok = sample(next_logits)
         # 3. while ... forward(tok) -> next_logits
-        
+
         # So when ctx.pos_offset is 0, we want to predict out_bytes[0] at the end of the prompt.
         # The prompt length is P. The last logit of the prompt (at T-1) should predict out_bytes[0].
         for t in range(T):
@@ -66,7 +66,7 @@ class _DummyByteModel(nn.Module):
             # We don't know the exact prompt length yet, but we know when we are generating.
             # Generating happens when T=1 and pos > 0.
             idx = self._compute_idx(t, T, ctx)
-            
+
             nxt = int(self._out[idx]) if 0 <= idx < len(self._out) else 0
             logits[0, t, nxt] = 0.0
 

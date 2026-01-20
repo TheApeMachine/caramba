@@ -11,7 +11,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field, field_validator, model_validator
 
-from caramba.config import Config, PositiveFloat, PositiveInt, Probability
+from config import Config, PositiveFloat, PositiveInt, Probability
 
 
 class AttentionMode(str, enum.Enum):

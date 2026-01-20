@@ -17,8 +17,8 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from caramba.core.event import EventEnvelope
-from caramba.layer.memory_block.isa import MemoryOpcode
+from core.event import EventEnvelope
+from layer.memory_block.isa import MemoryOpcode
 
 
 class _EventTraceBuilder:

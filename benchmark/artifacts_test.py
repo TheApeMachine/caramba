@@ -9,14 +9,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from caramba.benchmark.artifacts import (
+from .artifacts import (
     ArtifactGenerator,
     ComparisonSummary,
     ExperimentMetadata,
 )
-from caramba.benchmark.latency import LatencyMeasurement, LatencyResult
-from caramba.benchmark.memory import KVCacheAnalysis, MemoryMeasurement, MemoryResult
-from caramba.benchmark.perplexity import PerplexityResult
+from .latency import LatencyMeasurement, LatencyResult
+from .memory import KVCacheAnalysis, MemoryMeasurement, MemoryResult
+from .perplexity import PerplexityResult
+from .behavior import BehaviorResult, BehaviorMeasurement
+from research.dba.behavioral_suite_v2.weighted_scoring import MatchType
+from collector.measurement.context.result import ContextResult
+from collector.measurement.context.sweep import ContextSweepMeasurement
 
 
 class TestExperimentMetadata(unittest.TestCase):
@@ -270,6 +274,52 @@ class TestArtifactGenerator(unittest.TestCase):
         self.assertIn("\\end{table}", content)
         self.assertIn("Perplexity", content)
 
+    def test_generate_behavior_summary_latex_table(self) -> None:
+        """Behavior summary LaTeX is generated when behavior is present."""
+        behavior = BehaviorResult(
+            benchmark_id="b",
+            measurements=[
+                BehaviorMeasurement(
+                    case_id="math_add_single",
+                    teacher_ok=False,
+                    student_ok=True,
+                    teacher_answer="1",
+                    student_answer="2",
+                    teacher_match_type=MatchType.NONE,
+                    student_match_type=MatchType.EXACT,
+                    teacher_raw_score=0.0,
+                    student_raw_score=1.0,
+                    difficulty_weight=3.0,
+                    student_weighted_score=3.0,
+                ),
+                BehaviorMeasurement(
+                    case_id="copy_simple_3",
+                    teacher_ok=True,
+                    student_ok=True,
+                    teacher_answer="MNO",
+                    student_answer="MNO",
+                    teacher_match_type=MatchType.EXACT,
+                    student_match_type=MatchType.CONTAINED,
+                    teacher_raw_score=1.0,
+                    student_raw_score=0.5,
+                    difficulty_weight=1.0,
+                    student_weighted_score=0.5,
+                ),
+            ],
+        )
+
+        paths = self.generator.generate_all(
+            metadata=self.metadata,
+            behavior=behavior,
+            formats=["latex"],
+        )
+
+        self.assertIn("behavior_results_100k_generated.tex", paths)
+        tex_path = paths["behavior_results_100k_generated.tex"]
+        self.assertTrue(tex_path.exists())
+        content = tex_path.read_text()
+        self.assertIn("\\label{tab:behavior_results_100k}", content)
+
     def test_generate_all_formats(self) -> None:
         """All formats are generated when requested."""
         paths = self.generator.generate_all(
@@ -288,6 +338,98 @@ class TestArtifactGenerator(unittest.TestCase):
         self.assertIn("latency.csv", paths)
         self.assertIn("memory.csv", paths)
         self.assertIn("tables.tex", paths)
+
+    def test_generate_context_sweep_csv_includes_telemetry_fields(self) -> None:
+        """Context CSV headers include optional telemetry when present."""
+        ctx = ContextResult(
+            model_name="teacher",
+            sweep=[
+                ContextSweepMeasurement(
+                    context_len=128,
+                    chunk_size_used=32,
+                    batch_size=1,
+                    prefill_total_s=0.1,
+                    prefill_last_chunk_ms=1.0,
+                    decode_one_ms=2.0,
+                    decode_one_tok_per_s=500.0,
+                    loss=1.0,
+                    ppl=2.0,
+                    loss_last_chunk=1.0,
+                    ppl_last_chunk=2.0,
+                    ok=True,
+                    rss_mb_before=123.0,
+                    rss_mb_after=124.0,
+                    mps_allocated_mb_before=10.0,
+                    mps_allocated_mb_after=11.0,
+                    mps_driver_allocated_mb_before=20.0,
+                    mps_driver_allocated_mb_after=21.0,
+                    mps_recommended_max_mb=64_000.0,
+                )
+            ],
+            decode=[],
+        )
+        paths = self.generator.generate_all(
+            metadata=self.metadata,
+            teacher_context=ctx,
+            formats=["csv"],
+        )
+        self.assertIn("context_sweep_teacher.csv", paths)
+        content = paths["context_sweep_teacher.csv"].read_text()
+        self.assertIn("rss_mb_before", content)
+        self.assertIn("mps_allocated_mb_before", content)
+
+    def test_generate_context_diagnostics_csv(self) -> None:
+        """Consolidated context diagnostics CSV is generated."""
+        ctx = ContextResult(
+            model_name="teacher",
+            sweep=[
+                ContextSweepMeasurement(
+                    context_len=128,
+                    chunk_size_used=32,
+                    batch_size=1,
+                    prefill_total_s=0.1,
+                    prefill_last_chunk_ms=1.0,
+                    decode_one_ms=2.0,
+                    decode_one_tok_per_s=500.0,
+                    loss=1.0,
+                    ppl=2.0,
+                    loss_last_chunk=1.0,
+                    ppl_last_chunk=2.0,
+                    ok=True,
+                )
+            ],
+            decode=[],
+        )
+        # Add decode measurement with telemetry (fields are optional but should carry through).
+        from collector.measurement.context.decode import ContextDecodeMeasurement
+
+        ctx.decode.append(
+            ContextDecodeMeasurement(
+                context_len=128,
+                chunk_size_used=32,
+                batch_size=1,
+                decode_len=8,
+                decode_warmup=1,
+                prefill_total_s=0.1,
+                decode_total_ms=10.0,
+                decode_tok_per_s=800.0,
+                ok=True,
+                rss_mb_before=123.0,
+                rss_mb_after=124.0,
+                mps_driver_allocated_mb_after=42.0,
+                mps_recommended_max_mb=1024.0,
+            )
+        )
+
+        paths = self.generator.generate_all(
+            metadata=self.metadata,
+            teacher_context=ctx,
+            formats=["csv"],
+        )
+        self.assertIn("context_diagnostics.csv", paths)
+        content = paths["context_diagnostics.csv"].read_text()
+        self.assertIn("decode_tok_per_s", content)
+        self.assertIn("mps_driver_allocated_mb_after", content)
 
     def test_summary_computation(self) -> None:
         """Summary is computed correctly from results."""

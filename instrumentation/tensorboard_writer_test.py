@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from caramba.instrumentation.tensorboard_writer import TensorBoardWriter
+from instrumentation.tensorboard_writer import TensorBoardWriter
 
 
 def test_tensorboard_writer_best_effort_no_crash(tmp_path: Path) -> None:

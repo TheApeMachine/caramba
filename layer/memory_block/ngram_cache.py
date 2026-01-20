@@ -24,7 +24,7 @@ from torch import Tensor, nn
 
 logger = logging.getLogger(__name__)
 
-from caramba.config.layer import NGramCacheLogitsLayerConfig
+from config.layer import NGramCacheLogitsLayerConfig
 
 
 @dataclass

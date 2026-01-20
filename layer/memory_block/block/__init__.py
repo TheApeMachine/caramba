@@ -4,7 +4,7 @@ This package exposes the block layer while keeping the implementation split into
 small, composable submodules.
 """
 
-from caramba.layer.memory_block.block.layer import MemoryBlockLayer
+from layer.memory_block.block.layer import MemoryBlockLayer
 
 __all__ = ["MemoryBlockLayer"]
 

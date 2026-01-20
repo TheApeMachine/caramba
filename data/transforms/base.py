@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from caramba.runtime.tensordict_utils import TensorDictBase
-from caramba.data.transforms.compose import Compose
+from runtime.tensordict_utils import TensorDictBase
+from data.transforms.compose import Compose
 
 
 class Transform(ABC):

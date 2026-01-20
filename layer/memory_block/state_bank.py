@@ -6,7 +6,7 @@ configs still import it from `caramba.layer.memory_block.state_bank`.
 
 from __future__ import annotations
 
-from caramba.layer.memory_block.block.state_bank import StateBank
+from layer.memory_block.block.state_bank import StateBank
 
 __all__ = ["StateBank"]
 

@@ -45,10 +45,10 @@ from textual.widgets import (
 import yaml
 
 # Import existing components
-from caramba.tui.styles import TUI_CSS
-from caramba.tui.viewport import Viewport
-from caramba.tui.input_bar import InputBar
-from caramba.tui.sidebars import (
+from tui.styles import TUI_CSS
+from tui.viewport import Viewport
+from tui.input_bar import InputBar
+from tui.sidebars import (
     ExpertsSidebar,
     ToolsSidebar,
     StatusBar,
@@ -57,14 +57,14 @@ from caramba.tui.sidebars import (
     AgentDetailModal,
     ToolDetailModal,
 )
-from caramba.tui.command_palette import CommandPalette, HelpScreen
-from caramba.tui.commands import Command
+from tui.command_palette import CommandPalette, HelpScreen
+from tui.commands import Command
 
 # Import training dashboard components
-from caramba.tui.training_dashboard import TrainingMetrics, MetricPlot, MetricsPanel, TimingBar
+from tui.training_dashboard import TrainingMetrics, MetricPlot, MetricsPanel, TimingBar
 
 # Import manifest builder components
-from caramba.tui.manifest_builder import (
+from tui.manifest_builder import (
     ManifestConfig,
     LayerConfig,
     LayerListItem,

@@ -6,14 +6,14 @@ experiment with different preprocessing pipelines without changing data code.
 """
 from __future__ import annotations
 
-from caramba.data.transforms.add_mask import AddMask
-from caramba.data.transforms.cast_dtype import CastDtype
-from caramba.data.transforms.compose import Compose
-from caramba.data.transforms.gaussian_noise import GaussianNoise
-from caramba.data.transforms.graph_batch import GraphBatch
-from caramba.data.transforms.rename_keys import RenameKeys
-from caramba.data.transforms.token_shift import TokenShift
-from caramba.data.transforms.base import Transform
+from data.transforms.add_mask import AddMask
+from data.transforms.cast_dtype import CastDtype
+from data.transforms.compose import Compose
+from data.transforms.gaussian_noise import GaussianNoise
+from data.transforms.graph_batch import GraphBatch
+from data.transforms.rename_keys import RenameKeys
+from data.transforms.token_shift import TokenShift
+from data.transforms.base import Transform
 
 
 __all__ = [

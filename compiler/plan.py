@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from caramba.config.layer import LayerConfig
-from caramba.config.manifest import Manifest
-from caramba.config.model import ModelConfig
-from caramba.config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
-from caramba.config.topology import GraphTopologyConfig, NodeConfig, TopologyConfig
+from config.layer import LayerConfig
+from config.manifest import Manifest
+from config.model import ModelConfig
+from config.target import ExperimentTargetConfig, ProcessTargetConfig, TargetConfig
+from config.topology import GraphTopologyConfig, NodeConfig, TopologyConfig
 
 
 class Planner:

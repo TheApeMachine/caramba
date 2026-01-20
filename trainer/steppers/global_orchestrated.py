@@ -10,14 +10,14 @@ import time
 from torch import Tensor
 from torch.amp.grad_scaler import GradScaler
 
-from caramba.config.run import Run
-from caramba.console import logger
-from caramba.carmath import global_grad_norm_l2, autocast_dtype, safe_perplexity_from_nll
-from caramba.trainer.collectors import Collector
-from caramba.trainer.checkpointers import CheckPointer
-from caramba.trainer.upcycle_context import UpcycleContext
-from caramba.trainer.steppers.global_stepper import _compute_loss, _has_diffusion_head
-from caramba.runtime.tensordict_utils import TensorDictBase
+from config.run import Run
+from console import logger
+from carmath import global_grad_norm_l2, autocast_dtype, safe_perplexity_from_nll
+from trainer.collectors import Collector
+from trainer.checkpointers import CheckPointer
+from trainer.upcycle_context import UpcycleContext
+from trainer.steppers.global_stepper import _compute_loss, _has_diffusion_head
+from runtime.tensordict_utils import TensorDictBase
 
 
 class GlobalOrchestratedStepper:
@@ -31,7 +31,7 @@ class GlobalOrchestratedStepper:
         save_every: int,
         resume_state: dict[str, object] | None,
     ) -> None:
-        from caramba.orchestrator import (
+        from orchestrator import (
             DecisionBoundary,
             Orchestrator,
             OrchestratorConfig,
@@ -39,7 +39,7 @@ class GlobalOrchestratedStepper:
             DEFAULT_PORTFOLIO,
             StrategyBundle,
         )
-        from caramba.orchestrator.wrappers import AdaGC
+        from orchestrator.wrappers import AdaGC
 
         if run.train is None:
             raise ValueError(f"Run {run.id} has no train config.")
@@ -62,21 +62,29 @@ class GlobalOrchestratedStepper:
             except Exception:
                 logger.warning("Failed to create GradScaler; disabling autocast.")
                 scaler = None
+        # Metal kernels on MPS currently require fp16/fp32 (bf16 is rejected).
+        if use_amp and ctx.device.type == "mps" and amp_dtype == torch.bfloat16:
+            logger.warning("Disabling bf16 autocast on MPS (Metal kernels require fp16/fp32); using fp32 math.")
+            use_amp = False
         # MPS has no GradScaler; fp16 autocast is prone to overflow -> NaNs.
-        # Prefer bf16 autocast for stability.
+        # Note: our Metal kernel policy requires fp16/fp32 (bf16 is rejected), so we
+        # fall back to fp32 math on MPS instead of switching to bf16 autocast.
         if use_amp and ctx.device.type == "mps" and scaler is None and amp_dtype == torch.float16:
-            logger.warning("Switching MPS autocast from fp16 -> bf16 (no GradScaler).")
-            amp_dtype = torch.bfloat16
+            if bool(getattr(train, "mps_allow_fp16_autocast_without_gradscaler", False)):
+                logger.warning("Enabling fp16 autocast on MPS without GradScaler (speed; may be unstable).")
+            else:
+                logger.warning("Disabling fp16 autocast on MPS (no GradScaler); using fp32 math for stability.")
+                use_amp = False
 
-        # MPS: fp16 *weights* + AdamW-style updates is a common source of NaNs (no fp32 master weights).
-        # Upcast weights to bf16 for stable optimization while keeping model structure unchanged.
-        if ctx.device.type == "mps":
+        # MPS: optionally force fp32 weights for stability (slow).
+        # Keep fp16 weights by default for Metal kernel throughput.
+        if ctx.device.type == "mps" and bool(getattr(train, "mps_force_fp32_weights", False)):
             try:
-                if any(p.dtype == torch.float16 for p in ctx.student.parameters()):
-                    logger.warning("Upcasting student weights to bfloat16 for MPS training stability.")
-                    ctx.student.to(dtype=torch.bfloat16)
+                if any(p.dtype in (torch.float16, torch.bfloat16) for p in ctx.student.parameters()):
+                    logger.warning("Upcasting student weights to float32 on MPS for stability / Metal kernel compatibility.")
+                    ctx.student.to(dtype=torch.float32)
             except Exception as e:
-                logger.warning(f"Failed to upcast student to bfloat16 on MPS: {e}")
+                logger.warning(f"Failed to upcast student to float32 on MPS: {e}")
 
         def _first_nonfinite_param() -> str | None:
             for name, p in ctx.student.named_parameters():
@@ -155,11 +163,21 @@ class GlobalOrchestratedStepper:
         with torch.no_grad():
             try:
                 with torch.autocast(device_type=ctx.device.type, dtype=amp_dtype, enabled=bool(use_amp)):
-                    t_loss0, _t_ce0, _t_diff0 = _compute_loss(ctx.teacher, x0, y0, has_diffusion_teacher)
-                    s_loss0, _s_ce0, _s_diff0 = _compute_loss(ctx.student, x0, y0, has_diffusion)
+                    mps_fast_ce = bool(getattr(train, "mps_fast_ce", False))
+                    t_loss0, _t_ce0, _t_diff0 = _compute_loss(
+                        ctx.teacher, x0, y0, has_diffusion_teacher, mps_fast_ce=mps_fast_ce
+                    )
+                    s_loss0, _s_ce0, _s_diff0 = _compute_loss(
+                        ctx.student, x0, y0, has_diffusion, mps_fast_ce=mps_fast_ce
+                    )
             except TypeError:
-                t_loss0, _t_ce0, _t_diff0 = _compute_loss(ctx.teacher, x0, y0, has_diffusion_teacher)
-                s_loss0, _s_ce0, _s_diff0 = _compute_loss(ctx.student, x0, y0, has_diffusion)
+                mps_fast_ce = bool(getattr(train, "mps_fast_ce", False))
+                t_loss0, _t_ce0, _t_diff0 = _compute_loss(
+                    ctx.teacher, x0, y0, has_diffusion_teacher, mps_fast_ce=mps_fast_ce
+                )
+                s_loss0, _s_ce0, _s_diff0 = _compute_loss(
+                    ctx.student, x0, y0, has_diffusion, mps_fast_ce=mps_fast_ce
+                )
 
         teacher_loss0 = float(t_loss0.item())
         student_loss0 = float(s_loss0.item())
@@ -208,12 +226,24 @@ class GlobalOrchestratedStepper:
                     try:
                         with torch.autocast(device_type=ctx.device.type, dtype=amp_dtype, enabled=autocast_enabled):
                             tf0 = time.perf_counter()
-                            loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                            loss, ce_loss, diff_loss = _compute_loss(
+                                ctx.student,
+                                x,
+                                y,
+                                has_diffusion,
+                                mps_fast_ce=bool(getattr(train, "mps_fast_ce", False)),
+                            )
                             tf1 = time.perf_counter()
                     except TypeError:
                         autocast_enabled = False
                         tf0 = time.perf_counter()
-                        loss, ce_loss, diff_loss = _compute_loss(ctx.student, x, y, has_diffusion)
+                        loss, ce_loss, diff_loss = _compute_loss(
+                            ctx.student,
+                            x,
+                            y,
+                            has_diffusion,
+                            mps_fast_ce=bool(getattr(train, "mps_fast_ce", False)),
+                        )
                         tf1 = time.perf_counter()
 
                     loss_sum += float(loss.detach().item())
@@ -291,8 +321,10 @@ class GlobalOrchestratedStepper:
                             by = b["target_ids"].to(device=ctx.device)
                             strategy.zero_grad()
                             with torch.autocast(device_type=ctx.device.type, dtype=amp_dtype, enabled=use_amp):
-                                logits = ctx.student(bx).float()
-                                batch_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), by.view(-1))
+                                logits = ctx.student(bx)
+                                use_fast = bool(getattr(train, "mps_fast_ce", False)) and logits.device.type == "mps"
+                                logits_ce = logits if use_fast else logits.float()
+                                batch_loss = F.cross_entropy(logits_ce.view(-1, logits_ce.size(-1)), by.view(-1))
                             batch_loss.backward()
                             gn = global_grad_norm_l2(ctx.student)
                             strategy.step(batch_loss, scaler=scaler)
@@ -308,8 +340,10 @@ class GlobalOrchestratedStepper:
                                 for vb in val_loader:
                                     vx = vb["input_ids"].to(ctx.device)
                                     vy = vb["target_ids"].to(ctx.device)
-                                    vlogits = ctx.student(vx).float()
-                                    vloss = F.cross_entropy(vlogits.view(-1, vlogits.size(-1)), vy.view(-1))
+                                    vlogits = ctx.student(vx)
+                                    use_fast = bool(getattr(train, "mps_fast_ce", False)) and vlogits.device.type == "mps"
+                                    vlogits_ce = vlogits if use_fast else vlogits.float()
+                                    vloss = F.cross_entropy(vlogits_ce.view(-1, vlogits_ce.size(-1)), vy.view(-1))
                                     total += float(vloss.item())
                                     count += 1
                                     if count >= 3:

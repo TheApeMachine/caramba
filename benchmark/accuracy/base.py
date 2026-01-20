@@ -12,17 +12,18 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from caramba.config.benchmark import AccuracyBenchmarkConfig
-from caramba.console import logger
-from caramba.data.tokenizers.builder import TokenizerBuilder
+from config.benchmark import AccuracyBenchmarkConfig
+from console import logger
+from data.tokenizers.builder import TokenizerBuilder
 
-from caramba.collector.measurement.accuracy.result import AccuracyResult
+from collector.measurement.accuracy.result import AccuracyResult
 
-from caramba.eval.logprob.scorer import LogprobScorer
-from caramba.eval.logprob.completion.full_sequence import LogprobCompletionFullSequence
-from caramba.eval.logprob.completion.windowed import LogprobCompletionWindowed
+from eval.logprob.scorer import LogprobScorer
+from eval.logprob.completion.full_sequence import LogprobCompletionFullSequence
+from eval.logprob.completion.windowed import LogprobCompletionWindowed
+from benchmark.utils import get_model_vocab_size
 
-from caramba.benchmark.accuracy.tasks.builder import BenchmarkAccuracyTaskBuilder
+from benchmark.accuracy.tasks.builder import BenchmarkAccuracyTaskBuilder
 
 
 class BenchmarkAccuracy:
@@ -45,12 +46,41 @@ class BenchmarkAccuracy:
         self._output_dir = output_dir
         out = AccuracyResult(model_name=str(model_name))
 
+        # Determine tokenizer vocab size for fair scoring when model vocab is padded.
+        tok_vocab: int | None = None
+        for attr in ("n_vocab", "vocab_size"):
+            if hasattr(self.tokenizer, attr):
+                try:
+                    tok_vocab = int(getattr(self.tokenizer, attr))
+                    break
+                except Exception:
+                    tok_vocab = None
+        if tok_vocab is None and hasattr(self.tokenizer, "_enc"):
+            try:
+                tok_vocab = int(getattr(getattr(self.tokenizer, "_enc"), "n_vocab"))
+            except Exception:
+                tok_vocab = None
+
+        if tok_vocab is not None:
+            mv = int(get_model_vocab_size(model, default=0))
+            if mv > 0 and mv < int(tok_vocab):
+                raise ValueError(
+                    "Accuracy benchmark tokenizer/model vocab mismatch: "
+                    f"tokenizer_vocab={int(tok_vocab)} > model_vocab={mv}. "
+                    "This likely indicates evaluating with the wrong tokenizer."
+                )
+
         # Build completion scorer (windowed or full-sequence)
         ctxw = int(self.config.context_window) if self.config.context_window is not None else None
         completion = (
-            LogprobCompletionWindowed(model=model, device=self.device, context_window=int(ctxw))
+            LogprobCompletionWindowed(
+                model=model,
+                device=self.device,
+                context_window=int(ctxw),
+                valid_vocab_size=tok_vocab,
+            )
             if ctxw is not None
-            else LogprobCompletionFullSequence(model=model, device=self.device)
+            else LogprobCompletionFullSequence(model=model, device=self.device, valid_vocab_size=tok_vocab)
         )
         scorer = LogprobScorer(tokenizer=self.tokenizer, completion=completion)
 

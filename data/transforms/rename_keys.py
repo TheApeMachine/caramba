@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 
 @dataclass(frozen=True, slots=True)

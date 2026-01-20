@@ -13,9 +13,9 @@ This package provides:
 """
 from __future__ import annotations
 
-from caramba.trainer.blockwise import BlockwiseTrainer
-from caramba.trainer.distill import DistillLoss
-from caramba.trainer.distributed import (
+from trainer.blockwise import BlockwiseTrainer
+from trainer.distill import DistillLoss
+from trainer.distributed import (
     DistributedConfig,
     DistributedContext,
     DistributedStrategy,
@@ -24,8 +24,8 @@ from caramba.trainer.distributed import (
     is_distributed,
     is_main_process,
 )
-from caramba.trainer.standard import StandardTrainer
-from caramba.trainer.upcycle import UpcycleTrainer
+from trainer.standard import StandardTrainer
+from trainer.upcycle import UpcycleTrainer
 
 __all__ = [
     "BlockwiseTrainer",

@@ -33,12 +33,12 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header
 from textual.binding import Binding
 
-from caramba.tui.styles import TUI_CSS
-from caramba.tui.viewport import Viewport
-from caramba.tui.input_bar import InputBar
-from caramba.tui.sidebars import ExpertsSidebar, ToolsSidebar, StatusBar, ExpertStatus, AgentStatus, AgentDetailModal, ToolDetailModal, log_agent_event
-from caramba.tui.command_palette import CommandPalette, HelpScreen
-from caramba.tui.commands import Command
+from tui.styles import TUI_CSS
+from tui.viewport import Viewport
+from tui.input_bar import InputBar
+from tui.sidebars import ExpertsSidebar, ToolsSidebar, StatusBar, ExpertStatus, AgentStatus, AgentDetailModal, ToolDetailModal, log_agent_event
+from tui.command_palette import CommandPalette, HelpScreen
+from tui.commands import Command
 
 # Default polling interval for agent health checks (seconds)
 HEALTH_CHECK_INTERVAL = 10.0

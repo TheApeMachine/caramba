@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from caramba.runtime.tensordict_utils import TensorDictBase, as_tensordict
+from runtime.tensordict_utils import TensorDictBase, as_tensordict
 
 
 def _dtype_from_str(s: str) -> torch.dtype:

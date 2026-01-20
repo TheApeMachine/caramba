@@ -5,8 +5,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from caramba.data.auto import AutoDataset
-from caramba.data.config import DatasetConfig, DatasetType
+from data.auto import AutoDataset
+from data.config import DatasetConfig, DatasetType
 
 
 def test_build_token_dataset_npy_file(tmp_path: Path) -> None:

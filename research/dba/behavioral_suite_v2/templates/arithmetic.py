@@ -3,6 +3,10 @@ Arithmetic templates.
 
 Tests numerical reasoning with addition, subtraction, multiplication,
 division, and more complex operations.
+
+NOTE: These templates use CHOICE_LOGPROB scoring for clean capability measurement.
+For integer results, choices include the correct answer plus nearby wrong answers
+to test precise numerical reasoning without decoder confounds.
 """
 from __future__ import annotations
 
@@ -16,6 +20,39 @@ from .base import (
     TargetPosition,
     EvalKind,
 )
+
+
+def _generate_int_choices(correct: int, rng: random.Random, num_distractors: int = 3) -> list[str]:
+    """Generate integer choice set with correct answer and plausible distractors."""
+    distractors = set()
+
+    # Add off-by-one errors
+    distractors.add(correct + 1)
+    distractors.add(correct - 1)
+
+    # Add off-by-ten errors (common arithmetic mistakes)
+    distractors.add(correct + 10)
+    distractors.add(correct - 10)
+
+    # Add some random nearby values
+    for _ in range(10):
+        offset = rng.randint(-20, 20)
+        if offset != 0:
+            distractors.add(correct + offset)
+
+    # Remove the correct answer if it accidentally got added
+    distractors.discard(correct)
+
+    # Sample the required number of distractors
+    distractors = list(distractors)
+    rng.shuffle(distractors)
+    selected_distractors = distractors[:num_distractors]
+
+    # Build choices with leading space for token alignment
+    choices = [f" {correct}"] + [f" {d}" for d in selected_distractors]
+    rng.shuffle(choices)
+
+    return choices
 
 
 class AdditionTemplate(TestTemplate):
@@ -39,13 +76,13 @@ class AdditionTemplate(TestTemplate):
 
         result = a + b
 
-        formats = [
-            f"{a} + {b} =",
-            f"What is {a} plus {b}?",
-            f"Calculate: {a} + {b}",
-        ]
-        prompt = rng.choice(formats)
-        expected = str(result)
+        # Pure few-shot equation format for base models
+        ex1 = (rng.randint(1, 9), rng.randint(1, 9))
+        ex2 = (rng.randint(1, 9), rng.randint(1, 9))
+        prompt = f"{ex1[0]} + {ex1[1]} = {ex1[0] + ex1[1]}\n{ex2[0]} + {ex2[1]} = {ex2[0] + ex2[1]}\n{a} + {b} ="
+
+        choices = _generate_int_choices(result, rng)
+        expected = f" {result}"
 
         return TestCase(
             id=f"math_add_{a}_{b}",
@@ -54,7 +91,8 @@ class AdditionTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"operands": [a, b], "operation": "add"},
         )
@@ -82,13 +120,13 @@ class SubtractionTemplate(TestTemplate):
 
         result = a - b
 
-        formats = [
-            f"{a} - {b} =",
-            f"What is {a} minus {b}?",
-            f"Calculate: {a} - {b}",
-        ]
-        prompt = rng.choice(formats)
-        expected = str(result)
+        # Pure few-shot equation format for base models
+        ex1 = (rng.randint(5, 15), rng.randint(1, 5))
+        ex2 = (rng.randint(10, 20), rng.randint(1, 10))
+        prompt = f"{ex1[0]} - {ex1[1]} = {ex1[0] - ex1[1]}\n{ex2[0]} - {ex2[1]} = {ex2[0] - ex2[1]}\n{a} - {b} ="
+
+        choices = _generate_int_choices(result, rng)
+        expected = f" {result}"
 
         return TestCase(
             id=f"math_sub_{a}_{b}",
@@ -97,7 +135,8 @@ class SubtractionTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"operands": [a, b], "operation": "sub"},
         )
@@ -124,13 +163,13 @@ class MultiplicationTemplate(TestTemplate):
 
         result = a * b
 
-        formats = [
-            f"{a} × {b} =",
-            f"{a} * {b} =",
-            f"What is {a} times {b}?",
-        ]
-        prompt = rng.choice(formats)
-        expected = str(result)
+        # Pure few-shot equation format for base models
+        ex1 = (rng.randint(2, 9), rng.randint(2, 9))
+        ex2 = (rng.randint(2, 9), rng.randint(2, 9))
+        prompt = f"{ex1[0]} * {ex1[1]} = {ex1[0] * ex1[1]}\n{ex2[0]} * {ex2[1]} = {ex2[0] * ex2[1]}\n{a} * {b} ="
+
+        choices = _generate_int_choices(result, rng)
+        expected = f" {result}"
 
         return TestCase(
             id=f"math_mul_{a}_{b}",
@@ -139,7 +178,8 @@ class MultiplicationTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"operands": [a, b], "operation": "mul"},
         )
@@ -167,13 +207,17 @@ class DivisionTemplate(TestTemplate):
             result = rng.randint(10, 25)
             a = b * result
 
-        formats = [
-            f"{a} ÷ {b} =",
-            f"{a} / {b} =",
-            f"What is {a} divided by {b}?",
-        ]
-        prompt = rng.choice(formats)
-        expected = str(result)
+        # Pure few-shot equation format for base models
+        ex1_b = rng.randint(2, 9)
+        ex1_r = rng.randint(1, 9)
+        ex1_a = ex1_b * ex1_r
+        ex2_b = rng.randint(2, 9)
+        ex2_r = rng.randint(1, 9)
+        ex2_a = ex2_b * ex2_r
+        prompt = f"{ex1_a} / {ex1_b} = {ex1_r}\n{ex2_a} / {ex2_b} = {ex2_r}\n{a} / {b} ="
+
+        choices = _generate_int_choices(result, rng)
+        expected = f" {result}"
 
         return TestCase(
             id=f"math_div_{a}_{b}",
@@ -182,7 +226,8 @@ class DivisionTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"operands": [a, b], "operation": "div"},
         )
@@ -211,15 +256,16 @@ class ChainedOperationsTemplate(TestTemplate):
                 prompt = f"{a} + {b} - {c} ="
             else:
                 result = a * b + c
-                prompt = f"{a} × {b} + {c} ="
+                prompt = f"{a} * {b} + {c} ="
         else:
             # More complex: (a + b) * c
             a, b = rng.randint(2, 10), rng.randint(2, 10)
             c = rng.randint(2, 5)
             result = (a + b) * c
-            prompt = f"({a} + {b}) × {c} ="
+            prompt = f"({a} + {b}) * {c} ="
 
-        expected = str(result)
+        choices = _generate_int_choices(result, rng)
+        expected = f" {result}"
 
         return TestCase(
             id=f"math_chain_{difficulty.value}",
@@ -228,7 +274,8 @@ class ChainedOperationsTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"operation": "chained"},
         )
@@ -270,7 +317,8 @@ class WordProblemTemplate(TestTemplate):
             ]
 
         prompt, result = rng.choice(templates)
-        expected = str(result)
+        choices = _generate_int_choices(result, rng)
+        expected = f" {result}"
 
         return TestCase(
             id=f"math_word_{difficulty.value}",
@@ -279,7 +327,8 @@ class WordProblemTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
             metadata={"type": "word_problem"},
         )
@@ -305,20 +354,23 @@ class ComparisonArithmeticTemplate(TestTemplate):
             c, d = rng.randint(2, 9), rng.randint(2, 9)
             left = a * b
             right = c * d
-            prompt = f"Which is larger: {a} × {b} or {c} × {d}?"
+            prompt = f"Which is larger: {a} * {b} or {c} * {d}?"
         else:
             a, b, c = rng.randint(2, 10), rng.randint(2, 10), rng.randint(1, 5)
             d, e = rng.randint(5, 15), rng.randint(2, 8)
             left = a + b * c
             right = d * e
-            prompt = f"Which is larger: {a} + {b} × {c} or {d} × {e}?"
+            prompt = f"Which is larger: {a} + {b} * {c} or {d} * {e}?"
 
+        # Use clear first/second/equal choices
         if left > right:
-            expected = "first" if rng.random() < 0.5 else f"{left}"
+            expected = " first"
         elif right > left:
-            expected = "second" if rng.random() < 0.5 else f"{right}"
+            expected = " second"
         else:
-            expected = "equal"
+            expected = " equal"
+
+        choices = [" first", " second", " equal"]
 
         return TestCase(
             id=f"math_compare_{difficulty.value}",
@@ -327,9 +379,10 @@ class ComparisonArithmeticTemplate(TestTemplate):
             difficulty=difficulty,
             prompt=prompt,
             expected=expected,
-            kind=EvalKind.GENERATION,
+            kind=EvalKind.CHOICE_LOGPROB,
+            choices=choices,
             target_position=TargetPosition.END,
-            metadata={"type": "comparison"},
+            metadata={"type": "comparison", "left_value": left, "right_value": right},
         )
 
 

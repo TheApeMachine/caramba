@@ -4,18 +4,18 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Iterable, TypeGuard
 
-from caramba.config.model import ModelConfig
-from caramba.config.layer import (
+from config.model import ModelConfig
+from config.layer import (
     AttentionLayerConfig,
     AttentionMode,
     DropoutLayerConfig,
     LayerConfig,
     LinearLayerConfig,
 )
-from caramba.config.topology import GraphTopologyConfig, NodeConfig, TopologyConfig
-from caramba.console import logger
+from config.topology import GraphTopologyConfig, NodeConfig, TopologyConfig
+from console import logger
 
-from caramba.compiler.plan import Planner
+from compiler.plan import Planner
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,7 +161,7 @@ class Validator:
         ) if self.is_topology(node) else self.infer_layer_io(node)  # type: ignore[arg-type]
 
     def infer_layer_io(self, layer: LayerConfig) -> IO:
-        from caramba.config.layer import (
+        from config.layer import (
             LinearLayerConfig,
             LoRALinearLayerConfig,
             DropoutLayerConfig,

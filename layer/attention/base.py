@@ -13,15 +13,15 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.carmath import neg_inf
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
-from caramba.console import logger
-from caramba.layer.attention import AttentionLayer
-from caramba.layer.rope import RotaryEmbedding
+from carmath import neg_inf
+from config.layer import AttentionLayerConfig, AttentionMode
+from console import logger
+from . import AttentionLayer
+from ..rope import RotaryEmbedding
 
 if TYPE_CHECKING:
-    from caramba.cache.decoupled import DecoupledLayerKVCache
-    from caramba.cache.layer import LayerKVCache
+    from cache.decoupled import DecoupledLayerKVCache
+    from cache.layer import LayerKVCache
 
 
 # Error message constants (keep exact wording for tests/log searchability).
@@ -42,7 +42,7 @@ def _get_infer_context_type() -> type:
         # Import from the `caramba` package namespace. Importing `infer.context`
         # would create/resolve a different module, causing `isinstance(ctx, InferContext)`
         # checks to fail and KV caches to never be consumed.
-        from caramba.infer.context import InferContext
+        from infer.context import InferContext
 
         _InferContext = InferContext
     return _InferContext

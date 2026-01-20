@@ -22,13 +22,13 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, Subset
 
-from caramba.ccl.context_counts import ContextTemplate, predict_class, train_class_counts_models
-from caramba.ccl.patch_vq import PatchKMeansVQ
-from caramba.ccl.system import CCLSystem
-from caramba.config.defaults import Defaults
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig
-from caramba.console import logger
+from ccl.context_counts import ContextTemplate, predict_class, train_class_counts_models
+from ccl.patch_vq import PatchKMeansVQ
+from ccl.system import CCLSystem
+from config.defaults import Defaults
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig
+from console import logger
 
 
 class _Engine(Protocol):
@@ -204,7 +204,7 @@ class CCLTrainer:
         eval_ds: Dataset[Any]
         if isinstance(self.eval_data, dict) and self.eval_data.get("ref"):
             # Build nested ComponentSpec-like dict (ref, impl, config).
-            from caramba.config.component import ComponentSpec
+            from config.component import ComponentSpec
 
             eval_spec = ComponentSpec.model_validate(self.eval_data)
             eval_comp = engine.registry.build(eval_spec, backend=str(target.backend))
@@ -374,7 +374,7 @@ class CCLTrainer:
         # -----------------------------
         if bool(self.generate):
             try:
-                from caramba.ccl.context_counts import sample_grid
+                from ccl.context_counts import sample_grid
                 import matplotlib.pyplot as plt  # type: ignore
             except Exception as e:
                 logger.warning(f"CCL generation skipped (missing deps): {type(e).__name__}: {e}")

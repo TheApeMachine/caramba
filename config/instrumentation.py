@@ -10,7 +10,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field
 
-from caramba.config import Config
+from config import Config
 
 
 class InstrumentationType(str, enum.Enum):

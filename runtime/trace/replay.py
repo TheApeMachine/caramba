@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from caramba.runtime.trace.reader import TraceReader
-from caramba.runtime.trace.schema import TraceEvent
+from runtime.trace.reader import TraceReader
+from runtime.trace.schema import TraceEvent
 
 
 @dataclass(slots=True)

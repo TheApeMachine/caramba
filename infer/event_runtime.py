@@ -16,12 +16,12 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.core.commitments import CommitmentLedger
-from caramba.core.event import EventEnvelope
-from caramba.core.event_bus import EventBus, EventHandler
-from caramba.core.event_codec import EventDecoder, EventEncoder
-from caramba.infer.context import InferContext
-from caramba.infer.replay import ReplayBuffer
+from core.commitments import CommitmentLedger
+from core.event import EventEnvelope
+from core.event_bus import EventBus, EventHandler
+from core.event_codec import EventDecoder, EventEncoder
+from infer.context import InferContext
+from infer.replay import ReplayBuffer
 
 _logger = logging.getLogger(__name__)
 

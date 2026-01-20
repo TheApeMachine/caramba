@@ -10,8 +10,8 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from caramba.carmath import randomized_svd
-from caramba.initializers.dba.base import DBAInitializer
+from carmath import randomized_svd
+from initializers.dba.base import DBAInitializer
 
 
 class DBASVD(DBAInitializer):

@@ -6,7 +6,9 @@ eval_ckpt.py, implemented in the Caramba benchmarking framework.
 
 from __future__ import annotations
 
+import gc
 import math
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,16 +18,63 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.config.benchmark import ContextBenchmarkConfig
-from caramba.config.kvcache import KVCacheKind
-from caramba.infer.context import InferContext
-from caramba.infer.generate import create_caches
+from config.benchmark import ContextBenchmarkConfig
+from config.kvcache import KVCacheKind
+from infer.context import InferContext
+from infer.generate import create_caches
 from collector.measurement.context.result import ContextResult
 from collector.measurement.context.sweep import ContextSweepMeasurement
 from collector.measurement.context.decode import ContextDecodeMeasurement
 
-from caramba.console.logger import Logger
-logger: Logger = Logger()
+from console import logger
+
+def _rss_mb() -> float | None:
+    """Best-effort process RSS/peak RSS in MB (platform-dependent)."""
+    try:
+        import resource
+
+        r = resource.getrusage(resource.RUSAGE_SELF)
+        x = float(getattr(r, "ru_maxrss"))
+        if x <= 0:
+            return None
+        # macOS: bytes. Linux: kilobytes.
+        if sys.platform == "darwin":
+            return x / (1024.0 * 1024.0)
+        return x / 1024.0
+    except Exception:
+        return None
+
+
+def _mps_mem_mb(device: torch.device) -> dict[str, float] | None:
+    """Best-effort MPS memory stats in MB (if available)."""
+    if device.type != "mps":
+        return None
+    try:
+        alloc = float(torch.mps.current_allocated_memory())
+        drv = float(torch.mps.driver_allocated_memory())
+        rec = float(torch.mps.recommended_max_memory())
+        return {
+            "allocated_mb": alloc / (1024.0 * 1024.0),
+            "driver_allocated_mb": drv / (1024.0 * 1024.0),
+            "recommended_max_mb": rec / (1024.0 * 1024.0),
+        }
+    except Exception:
+        return None
+
+
+def _gc_and_empty_cache(device: torch.device) -> None:
+    """Best-effort cache clearing to reduce cross-run contamination."""
+    try:
+        gc.collect()
+    except Exception:
+        pass
+    try:
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+        elif device.type == "mps":
+            torch.mps.empty_cache()
+    except Exception:
+        pass
 
 
 def _sync(device: torch.device) -> None:
@@ -109,6 +158,14 @@ class BenchmarkContext:
             vocab_size = getattr(cfg, "vocab_size", None) if cfg is not None else None
         if vocab_size is None or int(vocab_size) <= 0:
             vocab_size = 50304
+        model_vocab_size = int(vocab_size)
+        vvs = getattr(self.config, "valid_vocab_size", None)
+        effective_vocab_size = int(vvs) if vvs is not None else int(model_vocab_size)
+        if int(effective_vocab_size) > int(model_vocab_size):
+            raise ValueError(
+                "ContextBenchmark: valid_vocab_size exceeds model vocab_size "
+                f"(valid_vocab_size={effective_vocab_size}, model_vocab_size={model_vocab_size})."
+            )
 
         bs = int(self.config.batch_size)
         chunk_req = int(self.config.chunk_size)
@@ -117,6 +174,11 @@ class BenchmarkContext:
         decode_warmup = int(self.config.decode_warmup)
 
         for ctx_len in [int(x) for x in self.config.context_lengths]:
+            # Capture baseline telemetry for this context length (outside timed regions).
+            _gc_and_empty_cache(self.device)
+            rss_before = _rss_mb()
+            mps_before = _mps_mem_mb(self.device)
+
             # Need ctx_len + 1 for next-token targets and decode-at-context.
             need = int(ctx_len) + 1
             tokens: list[int] | None = None
@@ -124,19 +186,39 @@ class BenchmarkContext:
                 tokens = _load_prefix_tokens(str(self.config.dataset), need)
             if tokens is None:
                 g = torch.Generator(device=self.device).manual_seed(1337)
-                t = torch.randint(0, int(vocab_size), (need,), generator=g, device=self.device, dtype=torch.long)
+                t = torch.randint(
+                    0,
+                    int(effective_vocab_size),
+                    (need,),
+                    generator=g,
+                    device=self.device,
+                    dtype=torch.long,
+                )
                 tokens = [int(x) for x in t.cpu().tolist()]
+            else:
+                # Validate dataset prefix tokens are within effective vocab.
+                mx = max(tokens) if tokens else -1
+                if int(mx) >= int(effective_vocab_size):
+                    raise ValueError(
+                        "ContextBenchmark: dataset token IDs exceed effective vocab "
+                        f"(max_id={mx}, valid_vocab_size={effective_vocab_size}, model_vocab_size={model_vocab_size})."
+                    )
 
             # Create (B, T) tensors for prefill; targets are shifted by 1 for next-token prediction.
             tok = torch.tensor(tokens, device=self.device, dtype=torch.long)
             x_all = tok[: int(ctx_len)].view(1, -1).repeat(bs, 1)
             y_all = tok[1 : int(ctx_len) + 1].view(1, -1).repeat(bs, 1)
 
-            # Allocate KV caches for full sequence length (context + decode).
+            # Allocate KV caches for full sequence length.
+            #
+            # IMPORTANT: We need to include BOTH decode warmup and timed decode tokens.
+            # Otherwise, `ictx.begin(pos_offset=ctx_len + decode_warmup + i)` can exceed
+            # the allocated cache length and the decode-throughput measurement will
+            # fail (producing all-NaN context sweep artifacts).
             caches = create_caches(
                 model,
                 batch_size=bs,
-                max_seq_len=int(ctx_len) + int(decode_len) + 2,
+                max_seq_len=int(ctx_len) + int(decode_warmup) + int(decode_len) + 2,
                 device=self.device,
                 cache_kind=_kv_kind(str(self.config.cache_kind)),
                 cache_qblock=32,
@@ -169,11 +251,23 @@ class BenchmarkContext:
                         ictx.begin(pos_offset=int(pos))
                         tcs = time.perf_counter()
                         logits = model(x, ctx=ictx)  # type: ignore[call-arg]
+                        if isinstance(logits, tuple):
+                            logits = logits[0]
+                        elif hasattr(logits, "logits"):
+                            logits = logits.logits
+                        logits = cast(Tensor, logits)
                         ictx.ensure_consumed()
                         _sync(self.device)
                         tce = time.perf_counter()
 
                         # Accumulate loss across ALL chunks for proper perplexity.
+                        if int(logits.size(-1)) < int(effective_vocab_size):
+                            raise ValueError(
+                                "ContextBenchmark: model returned logits with vocab smaller than effective vocab "
+                                f"(logits_vocab={int(logits.size(-1))}, effective_vocab_size={effective_vocab_size})."
+                            )
+                        if int(logits.size(-1)) > int(effective_vocab_size):
+                            logits = logits[..., : int(effective_vocab_size)]
                         chunk_loss_sum = F.cross_entropy(
                             logits.reshape(-1, logits.size(-1)),
                             y.reshape(-1),
@@ -196,6 +290,11 @@ class BenchmarkContext:
 
             t1 = time.perf_counter()
 
+            # Capture telemetry after prefill/decode computations.
+            _gc_and_empty_cache(self.device)
+            rss_after = _rss_mb()
+            mps_after = _mps_mem_mb(self.device)
+
             # Compute accumulated loss/ppl across all chunks.
             avg_loss = total_loss_sum / max(1, total_tokens) if total_tokens > 0 else float("nan")
             avg_ppl = float(math.exp(avg_loss)) if (not math.isnan(avg_loss) and avg_loss < 20) else float("inf")
@@ -206,7 +305,10 @@ class BenchmarkContext:
             if ok and last_logits is not None:
                 try:
                     # Extract greedy next token from last position logits.
-                    nxt = torch.argmax(last_logits[:, -1, :], dim=-1, keepdim=True)
+                    ll = last_logits[:, -1, :]
+                    if int(ll.size(-1)) > int(effective_vocab_size):
+                        ll = ll[..., : int(effective_vocab_size)]
+                    nxt = torch.argmax(ll, dim=-1, keepdim=True)
                     ictx.begin(pos_offset=int(ctx_len))
                     tds = time.perf_counter()
                     _ = model(nxt, ctx=ictx)  # type: ignore[call-arg]
@@ -232,6 +334,13 @@ class BenchmarkContext:
                     loss_last_chunk=float(last_loss),
                     ppl_last_chunk=float(last_ppl),
                     ok=bool(ok),
+                    rss_mb_before=rss_before,
+                    rss_mb_after=rss_after,
+                    mps_allocated_mb_before=(mps_before or {}).get("allocated_mb"),
+                    mps_allocated_mb_after=(mps_after or {}).get("allocated_mb"),
+                    mps_driver_allocated_mb_before=(mps_before or {}).get("driver_allocated_mb"),
+                    mps_driver_allocated_mb_after=(mps_after or {}).get("driver_allocated_mb"),
+                    mps_recommended_max_mb=(mps_after or mps_before or {}).get("recommended_max_mb"),
                 )
             )
 
@@ -248,6 +357,13 @@ class BenchmarkContext:
                         decode_total_ms=float("nan"),
                         decode_tok_per_s=float("nan"),
                         ok=False,
+                        rss_mb_before=rss_before,
+                        rss_mb_after=rss_after,
+                        mps_allocated_mb_before=(mps_before or {}).get("allocated_mb"),
+                        mps_allocated_mb_after=(mps_after or {}).get("allocated_mb"),
+                        mps_driver_allocated_mb_before=(mps_before or {}).get("driver_allocated_mb"),
+                        mps_driver_allocated_mb_after=(mps_after or {}).get("driver_allocated_mb"),
+                        mps_recommended_max_mb=(mps_after or mps_before or {}).get("recommended_max_mb"),
                     )
                 )
                 continue
@@ -284,6 +400,13 @@ class BenchmarkContext:
                         decode_total_ms=float(dt_ms),
                         decode_tok_per_s=float(tps),
                         ok=True,
+                        rss_mb_before=rss_before,
+                        rss_mb_after=rss_after,
+                        mps_allocated_mb_before=(mps_before or {}).get("allocated_mb"),
+                        mps_allocated_mb_after=(mps_after or {}).get("allocated_mb"),
+                        mps_driver_allocated_mb_before=(mps_before or {}).get("driver_allocated_mb"),
+                        mps_driver_allocated_mb_after=(mps_after or {}).get("driver_allocated_mb"),
+                        mps_recommended_max_mb=(mps_after or mps_before or {}).get("recommended_max_mb"),
                     )
                 )
             except Exception:
@@ -298,6 +421,13 @@ class BenchmarkContext:
                         decode_total_ms=float("nan"),
                         decode_tok_per_s=float("nan"),
                         ok=False,
+                        rss_mb_before=rss_before,
+                        rss_mb_after=rss_after,
+                        mps_allocated_mb_before=(mps_before or {}).get("allocated_mb"),
+                        mps_allocated_mb_after=(mps_after or {}).get("allocated_mb"),
+                        mps_driver_allocated_mb_before=(mps_before or {}).get("driver_allocated_mb"),
+                        mps_driver_allocated_mb_after=(mps_after or {}).get("driver_allocated_mb"),
+                        mps_recommended_max_mb=(mps_after or mps_before or {}).get("recommended_max_mb"),
                     )
                 )
 

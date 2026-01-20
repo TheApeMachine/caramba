@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-from caramba.config import Config
+from config import Config
 
 
 class PersonaType(str, enum.Enum):

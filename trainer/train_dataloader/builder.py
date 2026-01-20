@@ -12,10 +12,10 @@ from typing import Any, cast
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from caramba.carmath import train_val_counts
-from caramba.config.defaults import Defaults
-from caramba.config.train import TrainConfig
-from caramba.runtime.tensordict_utils import TensorDictBase, collate_tensordict
+from carmath import train_val_counts
+from config.defaults import Defaults
+from config.train import TrainConfig
+from runtime.tensordict_utils import TensorDictBase, collate_tensordict
 
 
 class TrainDataLoaderBuilder:

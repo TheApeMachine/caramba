@@ -12,7 +12,7 @@ import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.layer import RNNLayerConfig
+from config.layer import RNNLayerConfig
 
 if TYPE_CHECKING:
     from tensordict import TensorDictBase
@@ -28,7 +28,7 @@ class RNNLayer(nn.Module):
     def __init__(self, config: RNNLayerConfig) -> None:
         super().__init__()
         self.config = config
-        
+
         if config.cell_type == "lstm":
             self.rnn = nn.LSTM(
                 input_size=config.input_size,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from torch.optim import Optimizer
 
-from caramba.trainer.upcycle_context import UpcycleContext
+from trainer.upcycle_context import UpcycleContext
 
 
 class CheckPointer(Protocol):

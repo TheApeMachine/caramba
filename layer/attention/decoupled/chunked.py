@@ -12,7 +12,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from caramba.carmath import neg_inf
+from carmath import neg_inf
 
 
 class DecoupledSDPAChunked:
@@ -123,6 +123,7 @@ class DecoupledSDPAChunked:
 
                 q_cat = torch.cat([q_slice_sem * float(sem_scale), q_slice_geo * float(geo_scale)], dim=-1)
                 k_cat = torch.cat([k_slice_sem, k_slice_geo], dim=-1)
+                q_cat, k_cat = self._pad_qk_to_v_dim(q_cat, k_cat, v_slice)
                 out = F.scaled_dot_product_attention(
                     q_cat,
                     k_cat,
@@ -146,4 +147,24 @@ class DecoupledSDPAChunked:
             outs.append(out)
 
         return torch.cat(outs, dim=2)
+
+    @staticmethod
+    def _pad_qk_to_v_dim(q_cat: Tensor, k_cat: Tensor, v: Tensor) -> tuple[Tensor, Tensor]:
+        """Pad Q/K head dim up to V head dim when needed.
+
+        Some SDPA backends are sensitive to Q/K/V head-dim mismatches. DBA often
+        uses smaller Q/K dims (sem+geo) than V dims (attn_dim). Zero-padding Q/K
+        preserves the attention math while keeping kernels shape-safe.
+        """
+        qk = int(q_cat.size(-1))
+        vd = int(v.size(-1))
+        if qk == vd:
+            return q_cat, k_cat
+        if qk > vd:
+            raise RuntimeError(
+                f"DBA Q/K head dim ({qk}) must be <= V head dim ({vd}). "
+                "Decrease sem_dim+geo_dim or increase attn_dim."
+            )
+        pad = vd - qk
+        return F.pad(q_cat, (0, pad)), F.pad(k_cat, (0, pad))
 

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from caramba.config.eval import CodeBpeTokenizerConfig, LlamaTokenizerConfig, TiktokenTokenizerConfig
-from caramba.data.tokenizers.builder import TokenizerBuilder
-from caramba.data.tokenizers.bpe import CodeBpeTokenizer
+from config.eval import CodeBpeTokenizerConfig, LlamaTokenizerConfig, TiktokenTokenizerConfig
+from data.tokenizers.builder import TokenizerBuilder
+from data.tokenizers.bpe import CodeBpeTokenizer
 import caramba.data.tokenizers.huggingface as hf
 
 

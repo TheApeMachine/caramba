@@ -5,7 +5,7 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
+from config.layer import AttentionLayerConfig, AttentionMode
 
 class AttentionLayer(nn.Module):
     # Common attention metadata (set by AttentionBase)

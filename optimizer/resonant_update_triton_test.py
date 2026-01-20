@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 
 class TestTritonResonantUpdate:
@@ -26,7 +26,7 @@ class TestTritonResonantUpdate:
         damping = 0.02
         zero_diag = True
 
-        from caramba.optimizer.resonant_update_triton import ResonantPhaseUpdateTriton
+        from optimizer.resonant_update_triton import ResonantPhaseUpdateTriton
 
         upd = ResonantPhaseUpdateTriton()
         xo, yo = upd.forward(x=x, y=y, vr=vr, vi=vi, diag=diag, scale=scale, damping=damping, zero_diag=zero_diag)

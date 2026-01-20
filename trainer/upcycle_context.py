@@ -8,11 +8,11 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from caramba.config.defaults import Defaults
-from caramba.config.group import Group
-from caramba.runtime import RuntimePlan
-from caramba.instrumentation import Instrumentation
-from caramba.trainer.distributed import DistributedContext
+from config.defaults import Defaults
+from config.group import Group
+from runtime import RuntimePlan
+from instrumentation import Instrumentation
+from trainer.distributed import DistributedContext
 
 
 @dataclass(frozen=True, slots=True)

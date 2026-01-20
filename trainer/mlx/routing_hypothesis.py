@@ -26,9 +26,9 @@ import mlx.optimizers as optim
 from mlx.utils import tree_flatten, tree_map
 import numpy as np
 
-from caramba.adapter.mlx.surgery import AttentionSurgeryMLX
-from caramba.console import logger
-from caramba.layer.mlx.transformer import DBATransformer
+from adapter.mlx.surgery import AttentionSurgeryMLX
+from console import logger
+from layer.mlx.transformer import DBATransformer
 
 
 @dataclass
@@ -233,7 +233,10 @@ class RoutingHypothesisTrainer:
             if grad_clip_norm > 0:
                 # Compute global norm
                 flat_grads = tree_flatten(scaled_grads)
-                total_norm_sq = sum(mx.sum(g * g) for _, g in flat_grads)
+                total_norm_sq = mx.array(0.0)
+                for _, g in flat_grads:
+                    if isinstance(g, mx.array):
+                        total_norm_sq = total_norm_sq + mx.sum(g * g)
                 total_norm = mx.sqrt(total_norm_sq)
 
                 # Clip factor: min(1.0, clip_norm / total_norm)
@@ -384,9 +387,10 @@ def run_routing_hypothesis_mlx(
     teacher_weights_path: str,
     data_path: str,
     *,
-    sem_dim: int = 256,
-    geo_dim: int = 512,
-    v_dim: int = 768,
+    sem_head_dim: int = 8,
+    sem_init_scale: float = 0.1,
+    out_proj_scale: float = 0.02,
+    decoupled_gate: bool = True,
     max_steps: int = 5000,
     lr: float = 1e-4,
     **kwargs: Any,
@@ -399,9 +403,10 @@ def run_routing_hypothesis_mlx(
     Args:
         teacher_weights_path: Path to pretrained Llama weights
         data_path: Path to tokenized training data (.npy)
-        sem_dim: Semantic dimension for DBA
-        geo_dim: Geometric dimension for DBA
-        v_dim: Value dimension for DBA
+        sem_head_dim: Semantic head dimension for DBA (per-head, default 8)
+        sem_init_scale: Scale for semantic projection initialization
+        out_proj_scale: Scale for output projection initialization
+        decoupled_gate: Enable learnable semantic/geometric gate
         max_steps: Number of training steps
         lr: Learning rate
         **kwargs: Additional config options
@@ -410,9 +415,10 @@ def run_routing_hypothesis_mlx(
 
     # Create surgery adapter
     surgery = AttentionSurgeryMLX(
-        sem_dim=sem_dim,
-        geo_dim=geo_dim,
-        v_dim=v_dim,
+        sem_head_dim=sem_head_dim,
+        sem_init_scale=sem_init_scale,
+        out_proj_scale=out_proj_scale,
+        decoupled_gate=decoupled_gate,
     )
 
     # Load weights and create model
@@ -433,9 +439,10 @@ def run_routing_hypothesis_mlx(
         "Total params": f"{total_params:,}",
         "Trainable params": f"{trainable_params:,}",
         "Trainable %": f"{100*trainable_params/total_params:.1f}%",
-        "Semantic dim": sem_dim,
-        "Geometric dim": geo_dim,
-        "Value dim": v_dim,
+        "Semantic head dim": sem_head_dim,
+        "Sem init scale": sem_init_scale,
+        "Out proj scale": out_proj_scale,
+        "Decoupled gate": decoupled_gate,
     }, title="Model Config")
 
     # Create config

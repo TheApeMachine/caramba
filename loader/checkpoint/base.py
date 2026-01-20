@@ -12,7 +12,7 @@ from pathlib import Path
 
 from torch import Tensor
 
-from caramba.core.platform import Platform
+from core.platform import Platform
 
 StateDict = dict[str, Tensor]
 

@@ -14,8 +14,8 @@ from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import Field
 
-from caramba.config import Config, PositiveInt
-from caramba.config.layer import (
+from config import Config, PositiveInt
+from config.layer import (
     AttentionLayerConfig,
     Conv2dLayerConfig,
     DenseLayerConfig,

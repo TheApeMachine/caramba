@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from torch import nn
 
-from caramba.config.weight_init import GPT2InitConfig, NoInitConfig, WeightInitConfig
-from caramba.initializers.base import Initializer
-from caramba.initializers.gpt2 import GPT2Initializer
+from config.weight_init import GPT2InitConfig, NoInitConfig, WeightInitConfig
+from initializers.base import Initializer
+from initializers.gpt2 import GPT2Initializer
 
 
 class NoOpInitializer(Initializer):

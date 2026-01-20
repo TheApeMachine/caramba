@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from enum import Enum
 
-from caramba.core.error import CoreError, ErrorType
-from caramba.console.logger import Logger
+from core.error import CoreError, ErrorType
+from console.logger import Logger
 
 logger: Logger = Logger()
 

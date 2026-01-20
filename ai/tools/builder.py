@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from caramba.core.event import EventEnvelope
-from caramba.core.event_bus import EventBus, EventHandler
+from core.event import EventEnvelope
+from core.event_bus import EventBus, EventHandler
 
 
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")

@@ -15,7 +15,7 @@ from textual.widgets import Input, Static
 from textual.message import Message
 from textual.binding import Binding
 
-from caramba.tui.commands import Command, command_registry
+from tui.commands import Command, command_registry
 
 
 class CommandPaletteItem(Static):

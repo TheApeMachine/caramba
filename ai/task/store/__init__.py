@@ -11,7 +11,7 @@ from a2a.server.tasks.database_task_store import DatabaseTaskStore
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.sql import select
 
-from caramba.console import logger
+from console import logger
 
 
 class TaskStore(DatabaseTaskStore):

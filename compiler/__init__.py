@@ -13,12 +13,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from caramba.compiler.lower import Lowerer
-from caramba.compiler.plan import Planner
-from caramba.compiler.validate import Validator
+from compiler.lower import Lowerer
+from compiler.plan import Planner
+from compiler.validate import Validator
 
 if TYPE_CHECKING:
-    from caramba.config.manifest import Manifest
+    from config.manifest import Manifest
 
 __all__ = ["Compiler", "Lowerer", "Validator", "Planner"]
 

@@ -12,7 +12,7 @@ from pydantic import (
     Probability,
 )
 
-from caramba.config import Config
+from config import Config
 
 
 class DiffusionLayerType(str, enum.Enum):

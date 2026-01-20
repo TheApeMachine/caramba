@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from caramba.lab.unknown_format.format_family import FormatSpec
+from lab.unknown_format.format_family import FormatSpec
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import torch
 
-from caramba.data.icl_rule import IclRuleInductionDataset
-from caramba.trainer.mosaic_table2 import Table2Telemetry
-from caramba.runtime.tensordict_utils import as_tensordict
+from data.icl_rule import IclRuleInductionDataset
+from trainer.mosaic_table2 import Table2Telemetry
+from runtime.tensordict_utils import as_tensordict
 
 
 def test_icl_rule_emits_teacher_signals_when_enabled() -> None:

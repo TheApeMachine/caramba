@@ -14,9 +14,9 @@ import torch
 from torch import Tensor
 from torch.amp.grad_scaler import GradScaler
 
-from caramba.data.tokenizers.hf_json import HfJsonTokenizer
-from caramba.data.tokenizers.training import TrainingTokenizer
-from caramba.diffusion.schedule import NoiseSchedule
+from data.tokenizers.hf_json import HfJsonTokenizer
+from data.tokenizers.training import TrainingTokenizer
+from diffusion.schedule import NoiseSchedule
 
 
 @dataclass

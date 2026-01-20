@@ -13,13 +13,13 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
-from caramba.layer.attention.base import AttentionBase
-from caramba.layer.attention.standard.chunked import StandardSDPAChunked
-from caramba.layer.attention.standard.viz import AttentionViz
-from caramba.layer.rope import RotaryEmbedding
-from caramba.optimizer.attention import AttentionTraining
-from caramba.cache.layer import LayerKVCache
+from config.layer import AttentionLayerConfig, AttentionMode
+from ..base import AttentionBase
+from .chunked import StandardSDPAChunked
+from .viz import AttentionViz
+from ...rope import RotaryEmbedding
+from optimizer.attention import AttentionTraining
+from cache.layer import LayerKVCache
 
 
 class StandardAttentionLayer(AttentionBase):
@@ -162,6 +162,40 @@ class StandardAttentionLayer(AttentionBase):
             scale=scale,
             causal=bool(self.config.is_causal),
         )
+
+        # Utility-Aligned Attention (UAA) capture path:
+        # record differentiable attention probabilities for selected heads/layers.
+        #
+        # This intentionally recomputes probs from (q,k) because SDPA kernels do not
+        # expose weights. The compute is bounded by (B * H_sel * T_k * D).
+        if ctx is not None and bool(getattr(ctx, "uaa_enabled", False)):
+            try:
+                layer_idx = int(getattr(self, "_viz_index", -1))
+                layers_req = tuple(getattr(ctx, "uaa_layers", ()))
+                if layer_idx >= 0 and (not layers_req or layer_idx in layers_req):
+                    q_idx = int(getattr(ctx, "uaa_query_index", -1))
+                    if q_idx < 0:
+                        q_idx = int(T - 1)
+                    q_idx = max(0, min(int(T - 1), int(q_idx)))
+
+                    heads_req = tuple(getattr(ctx, "uaa_heads", ()))
+                    if not heads_req:
+                        heads_req = (0,)
+                    heads = [int(h) for h in heads_req if 0 <= int(h) < int(qh.size(1))]
+                    if heads:
+                        q_sel = qh[:, heads, q_idx : q_idx + 1, :]  # (B,H,1,D)
+                        k_sel = kh[:, heads, :, :]  # (B,H,Tk,D)
+                        logits = torch.matmul(q_sel, k_sel.transpose(-2, -1)) * float(scale)  # (B,H,1,Tk)
+                        if bool(self.config.is_causal):
+                            tk = int(logits.size(-1))
+                            keep = (torch.arange(tk, device=logits.device) <= int(q_idx)).view(1, 1, 1, tk)
+                            logits = logits.masked_fill(~keep, float("-inf"))
+                        probs = torch.softmax(logits, dim=-1).squeeze(-2)  # (B,H,Tk)
+                        store = getattr(ctx, "uaa_attn", None)
+                        if isinstance(store, dict):
+                            store[int(layer_idx)] = probs
+            except Exception as e:
+                raise RuntimeError(f"UAA attention capture failed: {type(e).__name__}: {e}") from e
 
         q_chunk = q_chunk_override if q_chunk_override is not None else self.config.q_chunk
         local_window = local_window_override if local_window_override is not None else self.config.local_window

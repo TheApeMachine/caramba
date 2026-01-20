@@ -29,7 +29,7 @@ try:
 except ImportError:
     HAS_NUMPY = False
 
-from .attention_extractor import AttentionExtractor, compute_attention_stats
+from .attention_extractor import AttentionExtractor
 from .attention_analysis import (
     AttentionStats,
     AttentionDiff,
@@ -37,6 +37,7 @@ from .attention_analysis import (
     measure_degeneration,
     plot_attention_diff,
     plot_layer_summary,
+    compute_attention_stats,
 )
 from .scoring import (
     compute_degeneration_metrics,
@@ -202,6 +203,9 @@ class DreadRunner:
                 )
 
                 if capture_this_step:
+                    if self.attention_extractor is None:
+                        raise ValueError("Attention extractor is not enabled")
+
                     with self.attention_extractor.capture():
                         outputs = self.model(input_tensor)
                     attention = self.attention_extractor.get_attention()
@@ -286,13 +290,7 @@ class DreadRunner:
         # Compute attention stats if we have attention
         attn_stats = None
         if attention is not None and HAS_NUMPY:
-            stats_dict = compute_attention_stats(attention)
-            attn_stats = AttentionStats(
-                entropy=stats_dict["avg_entropy"],
-                sparsity=stats_dict["sparsity"],
-                peak_concentration=stats_dict["max_attention"],
-                diagonal_ratio=stats_dict["diagonal_ratio"],
-            )
+            attn_stats = compute_attention_stats(attention)
 
         return DreadResult(
             test_id=test_id,

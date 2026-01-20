@@ -5,16 +5,16 @@ benchmarks/eval code so higher-level modules can simply orchestrate.
 """
 from __future__ import annotations
 
-from caramba.config.eval import (
+from config.eval import (
     CodeBpeTokenizerConfig,
     LlamaTokenizerConfig,
     TiktokenTokenizerConfig,
     TokenizerConfig,
 )
-from caramba.data.tokenizers.base import Tokenizer
-from caramba.data.tokenizers.bpe_eval import CodeBpeEvalTokenizer
-from caramba.data.tokenizers.huggingface import HuggingfaceTokenizer
-from caramba.data.tokenizers.tiktoken import TiktokenTokenizer
+from data.tokenizers.base import Tokenizer
+from data.tokenizers.bpe_eval import CodeBpeEvalTokenizer
+from data.tokenizers.huggingface import HuggingfaceTokenizer
+from data.tokenizers.tiktoken import TiktokenTokenizer
 
 
 class TokenizerBuilder:

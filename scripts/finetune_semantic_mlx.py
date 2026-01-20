@@ -27,7 +27,7 @@ import mlx.optimizers as optim
 from mlx.utils import tree_map
 import numpy as np
 
-from caramba.adapter.mlx.surgery import AttentionSurgeryMLX
+from adapter.mlx.surgery import AttentionSurgeryMLX
 
 
 def get_llama_weights_path() -> Path:

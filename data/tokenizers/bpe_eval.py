@@ -12,7 +12,7 @@ from typing import Sequence
 
 from tokenizers import Tokenizer as HFTokenizer
 
-from caramba.data.tokenizers.base import Tokenizer
+from data.tokenizers.base import Tokenizer
 
 
 class CodeBpeEvalTokenizer(Tokenizer):

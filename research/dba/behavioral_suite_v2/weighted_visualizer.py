@@ -69,7 +69,7 @@ def plot_weighted_scores_comparison(
 
     ax.set_xlabel('Model', fontsize=11)
     ax.set_ylabel('Accuracy (%)', fontsize=11)
-    ax.set_title(title, fontsize=13, fontweight='bold')
+    # No title (paper-friendly).
     ax.set_xticks(x)
     ax.set_xticklabels(model_names, rotation=45, ha='right')
     ax.legend(loc='upper right')
@@ -87,14 +87,14 @@ def plot_weighted_scores_comparison(
 
     ax.axhline(y=50, color='gray', linestyle='--', alpha=0.5, linewidth=0.5)
 
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig.savefig(output_path, dpi=150, bbox_inches='tight', pad_inches=0.02)
     plt.close(fig)
 
 
 def plot_difficulty_breakdown(
     summaries: dict[str, WeightedModelSummary],
     output_path: Path,
-    title: str = "Score Contribution by Difficulty",
+    title: str = "Score Contribution by Baseline-Defined Difficulty",
     figsize: tuple[float, float] = (12, 7),
 ) -> None:
     """
@@ -136,23 +136,28 @@ def plot_difficulty_breakdown(
     fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
 
     # Stacked bars
-    bars1 = ax.bar(x, easy_scores, width, label='Easy (1x)', color='#27ae60')
-    bars2 = ax.bar(x, medium_scores, width, bottom=easy_scores, label='Medium (2x)', color='#f39c12')
+    # NOTE: Difficulty here is baseline-defined:
+    # - Easy (1x): baseline EXACT
+    # - Medium (2x): baseline CONTAINED
+    # - Hard (3x): baseline NONE
+    bars1 = ax.bar(x, easy_scores, width, label='Baseline easy (1x)', color='#27ae60')
+    bars2 = ax.bar(x, medium_scores, width, bottom=easy_scores, label='Baseline medium (2x)', color='#f39c12')
     bars3 = ax.bar(x, hard_scores, width,
                    bottom=[e + m for e, m in zip(easy_scores, medium_scores)],
-                   label='Hard (3x)', color='#e74c3c')
+                   label='Baseline hard (3x)', color='#e74c3c')
 
     ax.set_xlabel('Model', fontsize=11)
     ax.set_ylabel('Weighted Score', fontsize=11)
-    ax.set_title(title, fontsize=13, fontweight='bold')
+    # No title (paper-friendly).
     ax.set_xticks(x)
     ax.set_xticklabels(model_names, rotation=45, ha='right')
     ax.legend(loc='upper right')
 
     # Add total labels on top
     totals = [e + m + h for e, m, h in zip(easy_scores, medium_scores, hard_scores)]
-    max_total = max(totals) if totals else 1
-    ax.set_ylim(0, max_total * 1.15)  # Extra room for labels
+    max_total = max(totals) if totals else 0
+    # Ensure a minimum ylim to avoid UserWarning when all scores are 0
+    ax.set_ylim(0, max(max_total * 1.15, 1.0))
 
     for i, total in enumerate(totals):
         ax.annotate(f'{total:.1f}',
@@ -161,7 +166,7 @@ def plot_difficulty_breakdown(
                    textcoords="offset points",
                    ha='center', va='bottom', fontsize=9, fontweight='bold')
 
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig.savefig(output_path, dpi=150, bbox_inches='tight', pad_inches=0.02)
     plt.close(fig)
 
 
@@ -206,7 +211,7 @@ def plot_match_type_distribution(
 
     ax.set_xlabel('Model', fontsize=11)
     ax.set_ylabel('Test Count', fontsize=11)
-    ax.set_title(title, fontsize=13, fontweight='bold')
+    # No title (paper-friendly).
     ax.set_xticks(x)
     ax.set_xticklabels(model_names, rotation=45, ha='right')
     ax.legend(loc='upper right')
@@ -222,7 +227,7 @@ def plot_match_type_distribution(
                        textcoords="offset points",
                        ha='center', va='bottom', fontsize=8)
 
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig.savefig(output_path, dpi=150, bbox_inches='tight', pad_inches=0.02)
     plt.close(fig)
 
 
@@ -275,13 +280,13 @@ def plot_category_breakdown(
 
     ax.set_xlabel('Category', fontsize=11)
     ax.set_ylabel('Soft Accuracy (%)', fontsize=11)
-    ax.set_title(title, fontsize=13, fontweight='bold')
+    # No title (paper-friendly).
     ax.set_xticks(x)
     ax.set_xticklabels(categories, rotation=45, ha='right', fontsize=9)
     ax.legend(loc='upper right')
     ax.set_ylim(0, 105)
 
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig.savefig(output_path, dpi=150, bbox_inches='tight', pad_inches=0.02)
     plt.close(fig)
 
 
@@ -339,12 +344,12 @@ def plot_category_heatmap(
             color = 'white' if val < 50 else 'black'
             ax.text(j, i, f'{val:.0f}', ha='center', va='center', color=color, fontsize=8)
 
-    ax.set_title(title, fontsize=13, fontweight='bold')
+    # No title (paper-friendly).
 
     # Add colorbar on side
     fig.colorbar(im, ax=ax, orientation='vertical', label='Soft Accuracy (%)', shrink=0.8)
 
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig.savefig(output_path, dpi=150, bbox_inches='tight', pad_inches=0.02)
     plt.close(fig)
 
 
@@ -352,10 +357,10 @@ def plot_weighted_ranking_table(
     summaries: dict[str, WeightedModelSummary],
     output_path: Path,
     title: str = "Weighted Scoring Rankings",
-    figsize: tuple[float, float] = (12, 5),
+    figsize: tuple[float, float] = (12, 7),
 ) -> None:
     """
-    Create visual table showing rankings per metric.
+    Create a bar chart showing model rankings by weighted accuracy.
 
     Args:
         summaries: Dict of model_name -> WeightedModelSummary
@@ -367,76 +372,57 @@ def plot_weighted_ranking_table(
         return
 
     model_names = list(summaries.keys())
-    n_models = len(model_names)
-
-    if n_models == 0:
+    if not model_names:
         return
 
-    # Prepare data
+    # Prepare and sort data
     data = []
     for m in model_names:
         s = summaries[m]
-        data.append([
-            m,
-            f"{s.hard_accuracy * 100:.1f}%",
-            f"{s.soft_accuracy * 100:.1f}%",
-            f"{s.weighted_accuracy * 100:.1f}%",
-            f"{s.weighted_score_sum:.1f}/{s.weighted_score_max:.1f}",
-        ])
+        data.append({
+            "name": m,
+            "weighted": s.weighted_accuracy * 100,
+            "hard": s.hard_accuracy * 100,
+            "soft": s.soft_accuracy * 100
+        })
 
     # Sort by weighted accuracy descending
-    data_sorted = sorted(data, key=lambda x: float(x[3].replace('%', '')), reverse=True)
-
-    # Add rank
-    for i, row in enumerate(data_sorted):
-        row.insert(0, str(i + 1))
-
-    columns = ['Rank', 'Model', 'Hard %', 'Soft %', 'Weighted %', 'Score']
+    data_sorted = sorted(data, key=lambda x: x["weighted"], reverse=True)
+    names = [d["name"] for d in data_sorted]
+    weighted = [d["weighted"] for d in data_sorted]
+    hard = [d["hard"] for d in data_sorted]
+    soft = [d["soft"] for d in data_sorted]
 
     fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
-    ax.axis('tight')
-    ax.axis('off')
+    
+    x = np.arange(len(names))
+    width = 0.6
 
-    # Create table
-    table = ax.table(
-        cellText=data_sorted,
-        colLabels=columns,
-        cellLoc='center',
-        loc='center',
-        colColours=['#3498db'] * len(columns),
-    )
+    # Plot weighted as main bars
+    bars = ax.bar(x, weighted, width, color='#9b59b6', alpha=0.8, label='Weighted Accuracy')
+    
+    # Add markers for hard and soft
+    ax.scatter(x, hard, marker='s', color='#2ecc71', s=50, label='Hard Accuracy', zorder=3)
+    ax.scatter(x, soft, marker='o', color='#3498db', s=50, label='Soft Accuracy', zorder=3)
 
-    # Style the table
-    table.auto_set_font_size(False)
-    table.set_fontsize(10)
-    table.scale(1.2, 1.5)
+    ax.set_ylabel('Accuracy (%)', fontsize=12)
+    # No title (paper-friendly).
+    ax.set_xticks(x)
+    ax.set_xticklabels(names, rotation=45, ha='right', fontsize=11)
+    ax.set_ylim(0, 105)
+    ax.grid(axis='y', alpha=0.3)
+    ax.legend()
 
-    # Color header
-    for i in range(len(columns)):
-        table[(0, i)].set_text_props(color='white', fontweight='bold')
+    # Add labels on top of bars
+    for bar in bars:
+        height = bar.get_height()
+        ax.annotate(f'{height:.1f}%',
+                   xy=(bar.get_x() + bar.get_width() / 2, height),
+                   xytext=(0, 3),
+                   textcoords="offset points",
+                   ha='center', va='bottom', fontsize=10, fontweight='bold')
 
-    # Color cells based on values (green=good, red=bad)
-    for row_idx, row_data in enumerate(data_sorted):
-        # Weighted accuracy column (index 4)
-        weighted_val = float(row_data[4].replace('%', ''))
-        if weighted_val >= 70:
-            table[(row_idx + 1, 4)].set_facecolor('#a8e6cf')
-        elif weighted_val >= 50:
-            table[(row_idx + 1, 4)].set_facecolor('#ffeead')
-        else:
-            table[(row_idx + 1, 4)].set_facecolor('#ffaaa5')
-
-        # Rank column highlighting
-        if row_idx == 0:
-            table[(row_idx + 1, 0)].set_facecolor('#ffd700')  # Gold
-        elif row_idx == 1:
-            table[(row_idx + 1, 0)].set_facecolor('#c0c0c0')  # Silver
-        elif row_idx == 2:
-            table[(row_idx + 1, 0)].set_facecolor('#cd7f32')  # Bronze
-
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
-
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig.savefig(output_path, dpi=150, bbox_inches='tight', pad_inches=0.02)
     plt.close(fig)
 
 

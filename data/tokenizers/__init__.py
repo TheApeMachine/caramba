@@ -4,14 +4,14 @@ rest of the platform to any single tokenization strategy.
 """
 from __future__ import annotations
 
-from caramba.data.tokenizers.base import Tokenizer
-from caramba.data.tokenizers.bpe_eval import CodeBpeEvalTokenizer
-from caramba.data.tokenizers.builder import TokenizerBuilder
-from caramba.data.tokenizers.encoding import Encoding
-from caramba.data.tokenizers.hf_json import HfJsonTokenizer
-from caramba.data.tokenizers.huggingface import HuggingfaceTokenizer
-from caramba.data.tokenizers.tiktoken import TiktokenTokenizer
-from caramba.data.tokenizers.training import TrainingTokenizer
+from data.tokenizers.base import Tokenizer
+from data.tokenizers.bpe_eval import CodeBpeEvalTokenizer
+from data.tokenizers.builder import TokenizerBuilder
+from data.tokenizers.encoding import Encoding
+from data.tokenizers.hf_json import HfJsonTokenizer
+from data.tokenizers.huggingface import HuggingfaceTokenizer
+from data.tokenizers.tiktoken import TiktokenTokenizer
+from data.tokenizers.training import TrainingTokenizer
 
 __all__ = [
     "Encoding",

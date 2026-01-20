@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import torch
 
-from caramba.optimizer.runtime import metal_supported
+from optimizer.runtime import metal_supported
 
 from .jit import load_caramba_metal_ops
 

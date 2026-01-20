@@ -10,14 +10,14 @@ import pytest
 import torch
 from torch.utils.data import Dataset
 
-from caramba.config.component import ComponentSpec
-from caramba.config.defaults import Defaults, DefaultsData, DefaultsLogging
-from caramba.config.manifest import Manifest
-from caramba.config.mode import Mode
-from caramba.config.run import Run
-from caramba.config.target import ExperimentTargetConfig
-from caramba.config.train import TrainConfig, TrainPhase
-from caramba.trainer.ccl import CCLTrainer
+from config.component import ComponentSpec
+from config.defaults import Defaults, DefaultsData, DefaultsLogging
+from config.manifest import Manifest
+from config.mode import Mode
+from config.run import Run
+from config.target import ExperimentTargetConfig
+from config.train import TrainConfig, TrainPhase
+from trainer.ccl import CCLTrainer
 
 
 class ToyStripeDataset(Dataset[dict[str, torch.Tensor]]):

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from torch import nn
 
-from caramba.config.kvcache import KVCachePolicyConfig, KVCachePolicyDecoupledConfig
-from caramba.config.layer import AttentionMode
-from caramba.carmath import bytes_per_kind
+from config.kvcache import KVCachePolicyConfig, KVCachePolicyDecoupledConfig
+from config.layer import AttentionMode
+from carmath import bytes_per_kind
 from caramba.layer.attention import AttentionLayer
 
 

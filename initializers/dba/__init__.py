@@ -12,10 +12,10 @@ Available initializers:
 
 from __future__ import annotations
 
-from caramba.initializers.dba.base import DBAInitializer
-from caramba.initializers.dba.fresh import DBAFresh
-from caramba.initializers.dba.random import DBARandom
-from caramba.initializers.dba.svd import DBASVD
+from initializers.dba.base import DBAInitializer
+from initializers.dba.fresh import DBAFresh
+from initializers.dba.random import DBARandom
+from initializers.dba.svd import DBASVD
 
 __all__ = ["DBAInitializer", "DBASVD", "DBARandom", "DBAFresh"]
 

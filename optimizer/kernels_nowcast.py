@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 from typing import TYPE_CHECKING, Callable
-from caramba.optimizer.runtime import triton_supported
+from optimizer.runtime import triton_supported
 
 __all__ = [
     "fused_weight_encode",

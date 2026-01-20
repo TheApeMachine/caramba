@@ -14,9 +14,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from caramba.config import PositiveFloat, PositiveInt, Probability
-from caramba.config.eval import TiktokenTokenizerConfig, TokenizerConfig
-from caramba.config.kvcache import KVCacheConfig
+from config import PositiveFloat, PositiveInt, Probability
+from config.eval import TiktokenTokenizerConfig, TokenizerConfig
+from config.kvcache import KVCacheConfig
 
 
 class BenchmarkType(str, enum.Enum):
@@ -45,6 +45,10 @@ class PerplexityBenchmarkConfig(BaseModel):
     batch_size: PositiveInt = 1
     num_batches: PositiveInt | None = None
     stride: PositiveInt | None = None
+    # Optional "effective" vocab size (tokenizer vocab) to ensure padded model
+    # vocabs (e.g. 50304) are scored fairly against real token IDs (e.g. 50257).
+    # When set, logits are sliced/masked to this size before CE/log-softmax.
+    valid_vocab_size: PositiveInt | None = None
 
 
 class LatencyBenchmarkConfig(BaseModel):
@@ -69,6 +73,9 @@ class LatencyBenchmarkConfig(BaseModel):
     # Optional explicit KV-cache policy (enables heterogeneous DBA caching).
     # If provided, it overrides cache_kind/qblock/residual_len behavior in the generator.
     cache_policy: KVCacheConfig | None = None
+    # Optional "effective" vocab size to sample test tokens from. This helps keep
+    # inputs comparable when model vocab is padded beyond tokenizer vocab.
+    valid_vocab_size: PositiveInt | None = None
 
 
 class MemoryBenchmarkConfig(BaseModel):
@@ -88,6 +95,9 @@ class MemoryBenchmarkConfig(BaseModel):
     quantization_modes: list[str] = Field(
         default_factory=lambda: ["fp16", "q8", "q4"]
     )
+    # Optional "effective" vocab size to sample test tokens from. This helps keep
+    # inputs comparable when model vocab is padded beyond tokenizer vocab.
+    valid_vocab_size: PositiveInt | None = None
 
 
 class AccuracyBenchmarkConfig(BaseModel):
@@ -247,6 +257,10 @@ class ContextBenchmarkConfig(BaseModel):
     # Optional explicit KV-cache policy (enables heterogeneous DBA caching).
     # If provided, it overrides cache_kind/qblock/residual_len behavior in the generator.
     cache_policy: KVCacheConfig | None = None
+    # Optional "effective" vocab size (tokenizer vocab) used for:
+    # - random token fallback (if dataset is missing)
+    # - masking logits for loss/ppl
+    valid_vocab_size: PositiveInt | None = None
 
 
 # Union of all benchmark config types
@@ -287,7 +301,7 @@ class BenchmarkSuite(BaseModel):
     benchmarks: list[BenchmarkSpec]
     output_dir: str = "artifacts"
     formats: list[str] = Field(
-        default_factory=lambda: ["csv", "json", "png"],
+        default_factory=lambda: ["csv", "json", "png", "latex"],
         description="Output formats: csv, json, png, latex",
     )
     comparison_baseline: str | None = "teacher"

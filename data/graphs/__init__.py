@@ -6,8 +6,8 @@ a single sample, avoiding the need for external graph processing libraries.
 """
 from __future__ import annotations
 
-from caramba.data.graphs.npy import GraphNpyDataset
-from caramba.data.graphs.single import SingleGraphDataset
+from data.graphs.npy import GraphNpyDataset
+from data.graphs.single import SingleGraphDataset
 
 
 __all__ = ["GraphNpyDataset", "SingleGraphDataset"]

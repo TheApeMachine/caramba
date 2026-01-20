@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from caramba.core.commitments import CommitmentLedger
-from caramba.core.event import EventEnvelope
+from core.commitments import CommitmentLedger
+from core.event import EventEnvelope
 
 
 class CommitmentLedgerTest(unittest.TestCase):

@@ -12,8 +12,8 @@ from torch.utils.data import Dataset
 import numpy as np
 import torch
 
-from caramba.runtime.tensordict_utils import TensorDictBase
-from caramba.data.graphs.single import SingleGraphDataset
+from runtime.tensordict_utils import TensorDictBase
+from data.graphs.single import SingleGraphDataset
 
 
 @dataclass(frozen=True, slots=True)

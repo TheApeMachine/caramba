@@ -4,13 +4,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from caramba.core.event import EventEnvelope
-from caramba.core.event_bus import EventBus, EventHandler
-from caramba.toolchain.events import ToolCapabilities, ToolDefinitionPayload
-from caramba.toolchain.handler import ToolchainHandler
-from caramba.toolchain.registry import ToolRegistry
-from caramba.toolchain.sandbox import ToolSandbox
-from caramba.toolchain.test_runner import ToolTestRunner
+from core.event import EventEnvelope
+from core.event_bus import EventBus, EventHandler
+from toolchain.events import ToolCapabilities, ToolDefinitionPayload
+from toolchain.handler import ToolchainHandler
+from toolchain.registry import ToolRegistry
+from toolchain.sandbox import ToolSandbox
+from toolchain.test_runner import ToolTestRunner
 
 
 class ToolchainTest(unittest.TestCase):

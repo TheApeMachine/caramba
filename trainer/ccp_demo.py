@@ -18,19 +18,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig
-from caramba.core.event import EventEnvelope
-from caramba.core.event_bus import EventBus
-from caramba.evaluator.policy import PolicyConfig, PolicyGate
-from caramba.evaluator.validity import ValidityGate
-from caramba.lab.unknown_format.dataset import UnknownFormatLabDataset
-from caramba.runtime.trace.writer import TraceWriter
-from caramba.toolchain.events import ToolCapabilities, ToolDefinitionPayload
-from caramba.toolchain.handler import ToolchainHandler
-from caramba.toolchain.registry import ToolRegistry
-from caramba.toolchain.sandbox import ToolSandbox
-from caramba.toolchain.test_runner import ToolTestRunner
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig
+from core.event import EventEnvelope
+from core.event_bus import EventBus
+from evaluator.policy import PolicyConfig, PolicyGate
+from evaluator.validity import ValidityGate
+from lab.unknown_format.dataset import UnknownFormatLabDataset
+from runtime.trace.writer import TraceWriter
+from toolchain.events import ToolCapabilities, ToolDefinitionPayload
+from toolchain.handler import ToolchainHandler
+from toolchain.registry import ToolRegistry
+from toolchain.sandbox import ToolSandbox
+from toolchain.test_runner import ToolTestRunner
 
 
 @dataclass(slots=True)

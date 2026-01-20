@@ -1,0 +1,170 @@
+version: 2
+name: dba_paper_gate_100k_herorun
+notes: >
+  DBA+gate 100k run that is **apples-to-apples** with `config/presets/herorun.yml`
+  (same d_model/n_layers/n_heads/d_ff=5632, same optimizer/schedule, same LR used for decoupled),
+  with the **only** intended change being `decoupled_gate: true`.
+
+defaults:
+  data:
+    tokenizer: tiktoken:gpt2
+    val_frac: 0.0
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-paper
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 0
+  runtime:
+    save_every: ${save_every}
+
+vars:
+  # ----- Dataset -----
+  dataset: HuggingFaceFW/fineweb
+  tokens: 20b
+  dataset_path: fineweb_20b.npy
+  block_size: 2048
+
+  # ----- Model (EXACT MATCH to herorun.yml) -----
+  d_model: 2048
+  n_layers: 22
+  n_heads: 32
+  d_ff: 5632
+  vocab_size: 50304
+  rope_base: 10000.0
+
+  # ----- DBA bottleneck dims (sem8/geo32/v40; EXACT MATCH to herorun.yml) -----
+  sem_dim: 256
+  geo_dim: 1024
+  attn_dim: 1280
+
+  # ----- Training (EXACT MATCH to herorun.yml) -----
+  steps: 100000
+  seed: 42
+  device: cuda
+  dtype: bfloat16
+  batch_size: 8
+  grad_accum: 4
+  num_workers: 1
+  prefetch_factor: 4
+  pin_memory: true
+  # herorun: baseline lr=3e-4, decoupled lr=2e-4
+  lr_decoupled: 1.1e-06
+  weight_decay: 0.1
+  optimizer: adamw
+  fused_optimizer: true
+  scheduler: cosine
+  warmup_steps: 2000
+  save_every: 10000
+
+targets:
+  # ---------------------------------------------------------------------------
+  # DBA+gate: ONLY difference is decoupled_gate: true
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: a100_fw1b_l22_decoupled_gate_s42_paper_sem8geo32v40_herorun
+    description: "DBA+gate 100k (herorun): identical to herorun decoupled except decoupled_gate=true."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      ref: system.language_model
+      config:
+        weight_init:
+          type: GPT2Initializer
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_base}
+                        rope_semantic: false
+                        tie_qk: false
+                        null_attn: false
+                        decoupled_gate: true
+                        is_causal: true
+                        dropout_p: 0.0
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: paper_decoupled_gate_sem8geo32v40_herorun
+        seed: ${seed}
+        steps: ${steps}
+        expected: {}
+        train:
+          phase: standard
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${lr_decoupled}
+          device: ${device}
+          dtype: ${dtype}
+          gradient_accumulation_steps: ${grad_accum}
+          activation_checkpointing: false
+          activation_checkpoint_threshold_mb: 0.0
+          use_amp: true
+          amp_dtype: bfloat16
+          # torch.compile is currently tripping a Dynamo/SymPy error on this
+          # gated variant ("'int' object has no attribute 'xreplace'").
+          # Disable compilation so the run can proceed; re-enable once fixed.
+          compile_model: true
+          compile_mode: default
+          profile_every: 0
+          profile_record_shapes: false
+          grad_clip_norm: 1.0
+          optimizer: ${optimizer}
+          weight_decay: ${weight_decay}
+          fused_optimizer: ${fused_optimizer}
+          scheduler: ${scheduler}
+          warmup_steps: ${warmup_steps}
+          min_lr_ratio: 0.0
+          auto_resume: false
+          skip_if_final: false
+          auto_batch_size: false
+
+entrypoints:
+  gate: "target:a100_fw1b_l22_decoupled_gate_s42_paper_sem8geo32v40_herorun"
+

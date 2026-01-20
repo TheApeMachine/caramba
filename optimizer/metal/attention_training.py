@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from caramba.optimizer.runtime import metal_supported
+from optimizer.runtime import metal_supported
 
 from .attention_jit import load_caramba_metal_attention_ops
 

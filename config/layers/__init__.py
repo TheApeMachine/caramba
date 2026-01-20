@@ -7,8 +7,8 @@ from __future__ import annotations
 from typing import Annotated, TypeAlias
 from pydantic import Field
 
-from caramba.config.layers.diffusion.ddpm import DDPMLayerConfig
-from caramba.config.layers.diffusion.ddim import DdimLayerConfig
+from config.layers.diffusion.ddpm import DDPMLayerConfig
+from config.layers.diffusion.ddim import DdimLayerConfig
 
 
 # Configs specific to diffusion layers; supports automatic deserialization into

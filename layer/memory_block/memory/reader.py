@@ -16,9 +16,9 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.layer.memory_block.memory.vsa import VsaTagProjector
-from caramba.layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
-from caramba.layer.memory_block.state import MemoryBlockState
+from layer.memory_block.memory.vsa import VsaTagProjector
+from layer.memory_block.memory.phase import PhaseSimilarity, PhaseTagProjector
+from layer.memory_block.state import MemoryBlockState
 
 
 @dataclass(slots=True)
@@ -63,7 +63,7 @@ class MemoryReader:
             self._tuner_cache = None
             return None
         if self._tuner_cache is None or self._tuner_cache_mode != mode:
-            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+            from layer.memory_block.memory.tuner import get_shared_tuner
 
             self._tuner_cache = get_shared_tuner(mode=mode)
             self._tuner_cache_mode = mode
@@ -87,13 +87,13 @@ class MemoryReader:
                 raise RuntimeError("mem_vsa_enabled is True but vsa_projector is None")
             qt = self.vsa_projector(qk)
             sim_vsa = self.score_vsa(bt=bt, qt=qt, valid=valid, batch=B, time=T)
-            
+
             # Apply tuner scaling to VSA weight
             vsa_weight = float(self.mem_vsa_weight)
             tuner = self._get_tuner()
             if tuner is not None:
                 vsa_weight = vsa_weight * getattr(tuner, "vsa_novelty_mult", 1.0)
-                
+
             sim_total = sim_key + vsa_weight * sim_vsa
         else:
             sim_vsa = torch.zeros_like(sim_key)
@@ -195,13 +195,13 @@ class MemoryReader:
 
     def slot_weights(self, *, sim: Tensor, valid: Tensor) -> Tensor:
         any_valid = valid.any(dim=-1, keepdim=True)
-        
+
         # Lever for future expansion: read_temp_mult
         read_temp = float(self.mem_read_temp)
         tuner = self._get_tuner()
         if tuner is not None:
             read_temp = read_temp * getattr(tuner, "read_temp_mult", 1.0)
-            
+
         w = torch.softmax(sim / float(max(1e-6, read_temp)), dim=-1)
         return torch.where(any_valid, w, torch.zeros_like(w))
 

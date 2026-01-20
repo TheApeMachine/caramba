@@ -16,10 +16,10 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
-from caramba.config import PositiveInt
-from caramba.config.defaults import Defaults
-from caramba.config.resolve import Resolver
-from caramba.config.target import TargetConfig
+from config import PositiveInt
+from config.defaults import Defaults
+from config.resolve import Resolver
+from config.target import TargetConfig
 
 
 class Manifest(BaseModel):

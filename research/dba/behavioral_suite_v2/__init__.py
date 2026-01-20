@@ -76,6 +76,11 @@ def __getattr__(name):
         from . import cli
         return getattr(cli, name)
 
+    if name in ('HybridScorer', 'HybridResult', 'LogprobResult', 'GenerationResult',
+                'MatchType', 'TerminationStatus', 'ModelResults'):
+        from . import hybrid_scorer
+        return getattr(hybrid_scorer, name)
+
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -112,4 +117,12 @@ __all__ = [
     # Model loading (lazy - requires torch)
     "load_models_from_manifest",
     "CarambaModelWrapper",
+    # Hybrid scorer (lazy - requires torch)
+    "HybridScorer",
+    "HybridResult",
+    "LogprobResult",
+    "GenerationResult",
+    "MatchType",
+    "TerminationStatus",
+    "ModelResults",
 ]

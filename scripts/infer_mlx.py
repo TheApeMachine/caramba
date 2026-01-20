@@ -32,8 +32,8 @@ import numpy as np
 # Add caramba to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from caramba.adapter.mlx.surgery import AttentionSurgeryMLX
-from caramba.layer.mlx.transformer import DBATransformer
+from adapter.mlx.surgery import AttentionSurgeryMLX
+from layer.mlx.transformer import DBATransformer
 
 
 def load_tokenizer(model_path: str | Path | None = None):

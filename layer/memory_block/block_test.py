@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 
 import torch
 
-from caramba.config.layer import MemoryBlockLayerConfig
-from caramba.layer.memory_block.block import MemoryBlockLayer
-from caramba.layer.memory_block.isa import MemoryOpcode
-from caramba.layer.memory_block.state import MemoryBlockState
+from config.layer import MemoryBlockLayerConfig
+from layer.memory_block.block import MemoryBlockLayer
+from layer.memory_block.isa import MemoryOpcode
+from layer.memory_block.state import MemoryBlockState
 
 
 @dataclass(slots=True)

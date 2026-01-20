@@ -16,9 +16,9 @@ from typing import Any, cast
 import torch
 from torch import Tensor, nn
 
-from caramba.carmath import last_write_wins
-from caramba.layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
-from caramba.layer.memory_block.state import MemoryBlockState
+from carmath import last_write_wins
+from layer.memory_block.memory.vsa import VsaNovelty, VsaTagProjector
+from layer.memory_block.state import MemoryBlockState
 
 
 @dataclass(slots=True)
@@ -83,7 +83,7 @@ class MemoryWriter:
             self._tuner_cache = None
             return None
         if self._tuner_cache is None or self._tuner_cache_mode != mode:
-            from caramba.layer.memory_block.memory.tuner import get_shared_tuner
+            from layer.memory_block.memory.tuner import get_shared_tuner
 
             self._tuner_cache = get_shared_tuner(mode=mode)
             self._tuner_cache_mode = mode
@@ -242,13 +242,13 @@ class MemoryWriter:
         idx_w = routing["idx_w"]
         gate_logit = self.mem_write_gate(u).squeeze(-1)
         p = torch.sigmoid(gate_logit)
-        
+
         # Apply tuner scaling to thresholds
         write_threshold = float(self.mem_write_threshold)
         tuner = self._get_tuner()
         if tuner is not None:
             write_threshold = write_threshold * getattr(tuner, "write_threshold_mult", 1.0)
-            
+
         m = (p > write_threshold).to(dtype=u.dtype)
         if mask is not None:
             m = torch.where(mask >= 0, (mask > 0).to(dtype=m.dtype, device=m.device), m)
@@ -281,13 +281,13 @@ class MemoryWriter:
         any_valid = valid.any(dim=-1)
         max_sim = sim.max(dim=-1).values
         max_sim = torch.where(any_valid, max_sim, torch.full_like(max_sim, float("-inf")))
-        
+
         # Apply tuner scaling to novelty threshold
         novelty_threshold = None
         tuner = self._get_tuner()
         if tuner is not None and hasattr(self.vsa_novelty, "threshold"):
             novelty_threshold = float(self.vsa_novelty.threshold) * getattr(tuner, "vsa_novelty_mult", 1.0)
-            
+
         novelty = self.vsa_novelty(max_sim, threshold=novelty_threshold)
         return novelty.to(dtype=wt.dtype), max_sim.to(dtype=wt.dtype)
 

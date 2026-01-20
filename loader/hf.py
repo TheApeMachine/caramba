@@ -5,7 +5,7 @@ New code should use caramba.loader.checkpoint.hf.HFCheckpoint directly.
 """
 from __future__ import annotations
 
-from caramba.loader.checkpoint.hf import HFCheckpoint
+from loader.checkpoint.hf import HFCheckpoint
 
 # Backward compatibility alias
 HFLoader = HFCheckpoint

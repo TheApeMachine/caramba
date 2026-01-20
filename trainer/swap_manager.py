@@ -25,21 +25,21 @@ class SwapManager:
         if not self.offload_optimizer:
             return
         try:
-            from caramba.optimizer.offload import load_optimizer_state
+            from optimizer.offload import load_optimizer_state
 
             load_optimizer_state(optimizer, device=device)
         except Exception as e:
-            from caramba.console import logger as console_logger
+            from console import logger as console_logger
             console_logger.warning(f"SwapManager: Failed to load optimizer state: {e}")
 
     def after_optimizer_step(self, optimizer: torch.optim.Optimizer) -> None:
         if not self.offload_optimizer:
             return
         try:
-            from caramba.optimizer.offload import offload_optimizer_state
+            from optimizer.offload import offload_optimizer_state
 
             offload_optimizer_state(optimizer, device=torch.device(self.offload_device))
         except Exception as e:
-            from caramba.console import logger as console_logger
+            from console import logger as console_logger
             console_logger.warning(f"SwapManager: Failed to offload optimizer state: {e}")
 

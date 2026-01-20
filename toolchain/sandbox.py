@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from caramba.toolchain.events import ToolCapabilities
+from toolchain.events import ToolCapabilities
 
 
 @dataclass(frozen=True, slots=True)

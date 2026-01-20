@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from caramba.core.event import EventEnvelope
+from core.event import EventEnvelope
 
 
 @dataclass(frozen=True, slots=True)

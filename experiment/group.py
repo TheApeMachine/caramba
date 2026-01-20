@@ -5,9 +5,9 @@ view for downstream tooling.
 """
 from __future__ import annotations
 
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig
-from caramba.config.train import TrainConfig
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig
+from config.train import TrainConfig
 
 
 class ExperimentGroup:

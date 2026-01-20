@@ -19,7 +19,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_unflatten
 
-from caramba.layer.mlx.transformer import (
+from layer.mlx.transformer import (
     DBATransformer,
     TransformerConfig,
     create_llama_dba_config,
@@ -36,6 +36,8 @@ def stable_hash(s: str) -> int:
 
 def xavier_uniform(shape: tuple[int, ...], seed: int, scale: float = 1.0) -> mx.array:
     """Xavier uniform initialization."""
+    if len(shape) == 0:
+        raise ValueError("Shape cannot be empty")
     fan_in = shape[-1] if len(shape) > 1 else shape[0]
     fan_out = shape[0]
     bound = math.sqrt(6.0 / (fan_in + fan_out)) * scale
@@ -101,9 +103,24 @@ class AttentionSurgeryMLX:
 
         if weights_path.suffix == ".safetensors":
             # Use MLX's safetensors loader
-            return mx.load(str(weights_path))
+            loaded = mx.load(str(weights_path))
+            if isinstance(loaded, dict):
+                return loaded
+            elif isinstance(loaded, tuple) and len(loaded) >= 1:
+                # Handle tuple return (dict, metadata)
+                return loaded[0] if isinstance(loaded[0], dict) else {}
+            else:
+                raise ValueError(f"Unexpected return type from mx.load: {type(loaded)}")
         elif weights_path.suffix == ".npz":
-            return dict(mx.load(str(weights_path)))
+            loaded = mx.load(str(weights_path))
+            if isinstance(loaded, dict):
+                return loaded
+            elif isinstance(loaded, tuple) and len(loaded) >= 1:
+                # Handle tuple return (dict, metadata)
+                return loaded[0] if isinstance(loaded[0], dict) else {}
+            else:
+                # Convert array or other types to dict format
+                raise ValueError(f"NPZ file did not return a dict: {type(loaded)}")
         else:
             raise ValueError(f"Unsupported weight format: {weights_path.suffix}")
 

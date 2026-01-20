@@ -3,14 +3,14 @@ from __future__ import annotations
 import pytest
 import torch
 
-from caramba.optimizer.runtime import metal_supported
+from optimizer.runtime import metal_supported
 
 
 def _skip_if_no_metal_extension() -> None:
     if not torch.backends.mps.is_available():
         pytest.skip("torch.backends.mps is not available")
     try:
-        from caramba.optimizer.metal.jit import load_caramba_metal_ops
+        from optimizer.metal.jit import load_caramba_metal_ops
 
         _ = load_caramba_metal_ops(verbose=False)
     except Exception as e:
@@ -29,7 +29,7 @@ def test_layernorm_backward_matches_pytorch() -> None:
     w = torch.randn(D, device="mps", dtype=torch.float16, requires_grad=True)
     b = torch.randn(D, device="mps", dtype=torch.float16, requires_grad=True)
 
-    from caramba.optimizer.metal.layernorm import layernorm_fp16
+    from optimizer.metal.layernorm import layernorm_fp16
 
     y_m = layernorm_fp16(x=x, weight=w, bias=b, eps=eps, verbose_build=False)
     loss_m = (y_m.float() ** 2).mean()
@@ -71,7 +71,7 @@ def test_layernorm_weight_only_backward_matches_pytorch() -> None:
     x = torch.randn(B, T, D, device="mps", dtype=torch.float16, requires_grad=True)
     w = torch.randn(D, device="mps", dtype=torch.float16, requires_grad=True)
 
-    from caramba.optimizer.metal.layernorm import layernorm_fp16
+    from optimizer.metal.layernorm import layernorm_fp16
 
     y_m = layernorm_fp16(x=x, weight=w, bias=None, eps=eps, verbose_build=False)
     loss_m = (y_m.float() ** 2).mean()
@@ -109,7 +109,7 @@ def test_layernorm_noweight_backward_matches_pytorch() -> None:
 
     x = torch.randn(B, T, D, device="mps", dtype=torch.float16, requires_grad=True)
 
-    from caramba.optimizer.metal.layernorm import layernorm_fp16
+    from optimizer.metal.layernorm import layernorm_fp16
 
     y_m = layernorm_fp16(x=x, weight=None, bias=None, eps=eps, verbose_build=False)
     loss_m = (y_m.float() ** 2).mean()

@@ -1,0 +1,303 @@
+version: 2
+name: llama32_1b_dba_paper_efficiency_aggressive_finetune_only
+notes: "Finetune-only entrypoint for aggressive DBA. Resumes from the latest blockwise checkpoint (runs/paper/blockwise_blockwise_final.pt)."
+defaults:
+  data:
+    tokenizer: llama
+    val_frac: 0.05
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-upcycle
+    wandb_entity: ""
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    save_every: 500
+targets:
+  - type: experiment
+    name: paper
+    description: Aggressive DBA efficiency run (finetune only).
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_100m.npy
+        block_size: ${block_size}
+        prepare:
+          type: fineweb
+          # Token budget to (re)generate when missing or mismatched.
+          tokens: 100M
+          tokenizer: llama
+          model_id: meta-llama/Llama-3.2-1B
+          dataset: HuggingFaceFW/fineweb
+          subset: null
+          split: train
+          text_field: text
+          max_chars: 50000
+          append_eos: true
+          append_bos: false
+          rebuild_on_failure: true
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.upcycle
+      config:
+        # Resume student weights from the blockwise phase (so we only run global finetune here).
+        resume_from: runs/paper/blockwise_blockwise_final.pt
+    runs:
+      - id: finetune
+        mode: train
+        exp: dba_finetune
+        seed: 42
+        steps: ${global_steps}
+        expected:
+          phase: global
+        train:
+          phase: global
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${global_lr}
+          device: mps
+          dtype: auto
+          teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+          dba_init: svd
+          gradient_accumulation_steps: 4
+          orchestrator_enabled: true
+          # Finetune-only runs often resume from a blockwise checkpoint; allow some
+          # initial loss gap without aborting at step 0.
+          orchestrator_max_loss_increase: 4.0
+          orchestrator_fail_fast: false
+          optimizer: lion
+          fused_optimizer: true
+          use_amp: true
+          amp_dtype: auto
+          # Speed: keep fp16 weights on MPS (Metal kernels). Set true only if you
+          # hit fp16 instability/NaNs and are willing to trade speed for stability.
+          mps_force_fp32_weights: false
+          # Huge speed/memory win on MPS: avoid fp32 logits materialization for CE.
+          mps_fast_ce: true
+          # Speed: keep fp16 autocast even without GradScaler on MPS.
+          mps_allow_fp16_autocast_without_gradscaler: true
+    benchmarks:
+      - id: perplexity
+        config:
+          type: perplexity
+          dataset: fineweb_100m.npy
+          block_size: 2048
+          batch_size: 1
+          num_batches: 100
+        models: [teacher, student]
+        repeats: 1
+
+      - id: behavior_sanity
+        config:
+          type: behavior
+          tokenizer:
+            type: llama
+            model_id: meta-llama/Llama-3.2-1B
+          cases_file: research/dba/behavior_cases.yml
+          max_new_tokens: 32
+          context_window: 2048
+          stream_live: true
+          stream_every: 1
+          # Paper-style attention dumps (same mechanism as checkpoint benchmarks).
+          dump_attention: true
+          dump_attention_max_tokens: 96
+          dump_attention_max_heads: 4
+          dump_attention_anchor: ""
+          dump_attention_paper_dir: research/dba/figs/attention
+          dump_attention_paper_tag: llama32_aggressive_gated
+        models: [teacher, student]
+        repeats: 1
+
+      - id: behavioral_v2
+        config:
+          type: behavioral_v2
+          tokenizer:
+            type: llama
+            model_id: meta-llama/Llama-3.2-1B
+          seed: 42
+          tests_per_category: 30
+          max_new_tokens: 32
+          context_window: 2048
+          stream_live: true
+          stream_every: 10
+          log_file: multi_behavioral_v2_log.txt
+        models: [teacher, student]
+        repeats: 1
+
+      - id: downstream_accuracy
+        config:
+          type: accuracy
+          tasks: [winogrande, arc_easy, boolq, hellaswag]
+          tokenizer:
+            type: llama
+            model_id: meta-llama/Llama-3.2-1B
+          context_window: 2048
+          stream_live: true
+          stream_every: 10
+          log_file: accuracy_log.txt
+        models: [teacher, student]
+        repeats: 1
+
+      - id: latency
+        config:
+          type: latency
+          prompt_lengths: [128, 512, 1024, 2048]
+          generation_lengths: [64, 128, 256]
+          batch_sizes: [1]
+          warmup_runs: 3
+          timed_runs: 10
+          use_cache: true
+          cache_kind: fp16 # enables Metal fused DBA decode on MPS
+        models: [teacher, student]
+        repeats: 1
+
+      - id: memory
+        config:
+          type: memory
+          sequence_lengths: [512, 1024, 2048, 4096]
+          batch_sizes: [1]
+          measure_peak: true
+          measure_kvcache: true
+          quantization_modes: [fp16, q8, q4]
+        models: [teacher, student]
+        repeats: 1
+
+      - id: context_sweep
+        config:
+          type: context
+          dataset: fineweb_100m.npy
+          context_lengths: [2048, 4096, 8192, 16384, 32768, 65536]
+          chunk_size: 1024
+          # Conservative cap on attention mask materialization during chunked prefill.
+          max_mask_elems: 32000000
+          batch_size: 1
+          decode_len: 128
+          decode_warmup: 8
+          cache_kind: fp16
+        models: [teacher, student]
+        repeats: 1
+
+  - type: process
+    name: code_graph_sync
+    description: Index model topology into Graphiti memory for structural audits.
+    team:
+      leader: research_lead
+    process:
+      type: code_graph_sync
+      name: code_graph_sync
+      agent: leader
+      index_namespace: main
+  - type: process
+    name: paper_write
+    description: Draft/update a LaTeX paper artifact (paper.tex).
+    team:
+      writer: writer
+    process:
+      type: paper_write
+      name: paper_write
+      writer: writer
+      output_dir: paper
+  - type: process
+    name: paper_review
+    description: Review the LaTeX paper artifact and propose next steps.
+    team:
+      reviewer: reviewer
+    process:
+      type: paper_review
+      name: paper_review
+      reviewer: reviewer
+      strictness: conference
+      max_proposed_experiments: 3
+      output_dir: paper
+  - type: process
+    name: paper_loop
+    description: Write → review → structural-audit loop (agent process).
+    team:
+      leader: research_lead
+      writer: writer
+      reviewer: reviewer
+    process:
+      type: research_loop
+      name: paper_loop
+      leader: leader
+      writer: writer
+      reviewer: reviewer
+      max_iterations: 3
+      output_dir: paper
+vars:
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  head_dim: 64
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+  rope_theta: 500000.0
+  sem_dim: 32
+  geo_dim: 128
+  attn_dim: 512
+  batch_size: 1
+  block_size: 2048
+  global_steps: 2000
+  global_lr: 5.0e-05
+entrypoints:
+  default: "target:paper"
+  train: "target:paper"
+  graph_sync: "process:code_graph_sync"
+  write: "process:paper_write"
+  review: "process:paper_review"
+  loop: "process:paper_loop"
+

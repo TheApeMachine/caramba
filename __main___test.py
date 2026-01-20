@@ -8,7 +8,7 @@ import pytest
 
 
 def test_caramba_module_main_exits_with_cli_exit_code(monkeypatch) -> None:
-    m = importlib.import_module("caramba.__main__")
+    m = importlib.import_module("__main__")
 
     def fake_cli_main(_argv=None) -> int:
         return 7
@@ -21,7 +21,7 @@ def test_caramba_module_main_exits_with_cli_exit_code(monkeypatch) -> None:
 
 def test_caramba_python_m_executes_dunder_main(monkeypatch) -> None:
     # Covers the `if __name__ == "__main__": main()` branch.
-    import caramba.cli as cli_mod
+    import cli as cli_mod
 
     monkeypatch.setattr(cli_mod, "main", lambda _argv=None: 5)
 
@@ -35,8 +35,8 @@ def test_caramba_python_m_executes_dunder_main(monkeypatch) -> None:
         raise_system_exit,
     )
     # Avoid runpy warning about pre-imported module.
-    sys.modules.pop("caramba.__main__", None)
+    sys.modules.pop("__main__", None)
     with pytest.raises(SystemExit) as e:
-        runpy.run_module("caramba.__main__", run_name="__main__")
+        runpy.run_module("__main__", run_name="__main__")
     assert e.value.code == 5
 

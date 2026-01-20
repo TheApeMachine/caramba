@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
-from caramba.console import logger
+from console import logger
 
 if TYPE_CHECKING:
-    from caramba.cache.decoupled import DecoupledLayerKVCache
+    from cache.decoupled import DecoupledLayerKVCache
 
 
 class DecoupledDecode:
@@ -42,7 +42,7 @@ class DecoupledDecode:
         null_kv,
     ) -> Tensor:
         if q_sem.device.type == "cuda":
-            from caramba.optimizer.fused_attention import (
+            from optimizer.fused_attention import (
                 fused_decode_available,
                 fused_decode_decoupled_q4q8q4,
                 fused_decode_decoupled_q4q8q4_2pass,
@@ -99,7 +99,7 @@ class DecoupledDecode:
             )
 
         if q_sem.device.type == "mps":
-            from caramba.optimizer.metal import dba_decode_fp16, metal_dba_decode_available
+            from optimizer.metal import dba_decode_fp16, metal_dba_decode_available
 
             if not metal_dba_decode_available():
                 raise RuntimeError("Metal DBA decode kernel is unavailable on this runtime.")

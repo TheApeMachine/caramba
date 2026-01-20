@@ -11,14 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig
-from caramba.console import logger
-from caramba.trainer.diffusion_codegen.generation import GenerationRunner, GenerationSettings
-from caramba.trainer.diffusion_codegen.optim import OptimizerFactory
-from caramba.trainer.diffusion_codegen.tokenizer_ops import TokenizerManager
-from caramba.trainer.diffusion_codegen.train_loader import LoaderFactory
-from caramba.trainer.diffusion_codegen.training import TrainingRunner, TrainingSettings
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig
+from console import logger
+from trainer.diffusion_codegen.generation import GenerationRunner, GenerationSettings
+from trainer.diffusion_codegen.optim import OptimizerFactory
+from trainer.diffusion_codegen.tokenizer_ops import TokenizerManager
+from trainer.diffusion_codegen.train_loader import LoaderFactory
+from trainer.diffusion_codegen.training import TrainingRunner, TrainingSettings
 
 
 @dataclass

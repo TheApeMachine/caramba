@@ -10,7 +10,7 @@ from unittest.mock import patch, MagicMock
 import torch
 from torch import nn
 
-from caramba.trainer.distributed import (
+from trainer.distributed import (
     DistributedContext,
     DistributedConfig,
     DistributedStrategy,

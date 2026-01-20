@@ -8,7 +8,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from caramba.optimizer.rope_triton_kernels import rope_bwd, rope_fwd
+from optimizer.rope_triton_kernels import rope_bwd, rope_fwd
 
 
 def _cdiv(n: int, d: int) -> int:

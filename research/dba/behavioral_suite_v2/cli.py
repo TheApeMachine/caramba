@@ -231,7 +231,7 @@ def load_models_from_manifest(
     from pathlib import Path
 
     # Import caramba components
-    from caramba.trainer.checkpoint_compare import CheckpointCompareTrainer
+    from trainer.checkpoint_compare import CheckpointCompareTrainer
 
     manifest_path = Path(manifest_path)
     if not manifest_path.exists():
@@ -378,6 +378,13 @@ class CarambaModelWrapper:
 
         generated_ids = []
 
+        # Mask logits beyond tokenizer vocab (caramba vocab is often padded, e.g., 50304 vs 50257).
+        valid_vocab_size = None
+        if hasattr(self.tokenizer, "n_vocab"):
+            valid_vocab_size = int(self.tokenizer.n_vocab)
+        elif hasattr(self.tokenizer, "vocab_size"):
+            valid_vocab_size = int(self.tokenizer.vocab_size)
+
         with torch.no_grad():
             for _ in range(max_new_tokens):
                 outputs = self.model(input_tensor)
@@ -389,7 +396,9 @@ class CarambaModelWrapper:
                 else:
                     logits = outputs
 
-                next_logits = logits[0, -1, :]
+                next_logits = logits[0, -1, :].clone()
+                if valid_vocab_size is not None and next_logits.shape[0] > valid_vocab_size:
+                    next_logits[valid_vocab_size:] = float("-inf")
 
                 if temperature == 0.0:
                     next_token = next_logits.argmax().item()
@@ -424,7 +433,7 @@ class CarambaModelWrapper:
     ) -> dict[str, float]:
         """
         Get log probabilities for each choice.
-        
+
         Computes the conditional log probability of the full choice string
         by teacher-forcing each token and summing the per-token logprobs.
         This correctly handles multi-token answers.
@@ -434,8 +443,14 @@ class CarambaModelWrapper:
             prompt_ids = self.tokenizer.encode(prompt)
         else:
             prompt_ids = self.tokenizer(prompt, return_tensors="pt")["input_ids"][0].tolist()
-        
+
         prompt_len = len(prompt_ids)
+
+        valid_vocab_size = None
+        if hasattr(self.tokenizer, "n_vocab"):
+            valid_vocab_size = int(self.tokenizer.n_vocab)
+        elif hasattr(self.tokenizer, "vocab_size"):
+            valid_vocab_size = int(self.tokenizer.vocab_size)
 
         result = {}
         for choice in choices:
@@ -444,13 +459,13 @@ class CarambaModelWrapper:
                 choice_ids = self.tokenizer.encode(choice)
             else:
                 choice_ids = self.tokenizer(choice, add_special_tokens=False)["input_ids"]
-            
+
             if not choice_ids:
                 continue
-            
+
             # Create full sequence: prompt + choice tokens
             full_ids = prompt_ids + list(choice_ids)
-            
+
             # Truncate from the front if needed
             if len(full_ids) > self.max_length:
                 excess = len(full_ids) - self.max_length
@@ -458,7 +473,7 @@ class CarambaModelWrapper:
                 effective_prompt_len = max(0, prompt_len - excess)
             else:
                 effective_prompt_len = prompt_len
-            
+
             input_tensor = torch.tensor([full_ids], dtype=torch.long, device=self.device)
 
             with torch.no_grad():
@@ -473,8 +488,11 @@ class CarambaModelWrapper:
 
                 # logits shape: [batch, seq_len, vocab_size]
                 all_logits = logits[0]  # [seq_len, vocab_size]
+                if valid_vocab_size is not None and all_logits.shape[-1] > valid_vocab_size:
+                    all_logits = all_logits.clone()
+                    all_logits[..., valid_vocab_size:] = float("-inf")
                 all_log_probs = torch.log_softmax(all_logits, dim=-1)
-                
+
                 # Sum logprobs for each choice token
                 # Position i's logits predict token at position i+1
                 total_logprob = 0.0
@@ -482,7 +500,7 @@ class CarambaModelWrapper:
                     pred_pos = effective_prompt_len - 1 + i
                     if pred_pos >= 0 and pred_pos < all_log_probs.shape[0]:
                         total_logprob += all_log_probs[pred_pos, token_id].item()
-                
+
                 result[choice] = total_logprob
 
         return result

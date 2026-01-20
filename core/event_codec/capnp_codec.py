@@ -18,7 +18,7 @@ import torch
 from torch import Tensor
 import capnp
 from typing import Any, cast
-from caramba.core.event import EventEnvelope
+from core.event import EventEnvelope
 
 
 def _load_schema():

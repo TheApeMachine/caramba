@@ -8,15 +8,15 @@ from typing import Any, cast
 import torch
 from torch import nn
 
-from caramba.config.initializer import DefaultInitializerConfig
-from caramba.config.model import ModelConfig
-from caramba.config.train import TrainConfig
-from caramba.console import logger
-from caramba.adapter.state_dict import AdapterStateDictTransformer
-from caramba.loader.checkpoint import CheckpointBuilder
-from caramba.loader.hf import HFLoader
-from caramba.model import Model
-from caramba.trainer.upcycle_init_context import UpcycleInitContext
+from config.initializer import DefaultInitializerConfig
+from config.model import ModelConfig
+from config.train import TrainConfig
+from console import logger
+from adapter.state_dict import AdapterStateDictTransformer
+from loader.checkpoint import CheckpointBuilder
+from loader.hf import HFLoader
+from model import Model
+from trainer.upcycle_init_context import UpcycleInitContext
 
 
 def _make_teacher_model_config(model_config: ModelConfig) -> ModelConfig:

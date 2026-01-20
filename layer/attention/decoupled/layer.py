@@ -13,20 +13,20 @@ from typing import TYPE_CHECKING, cast
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-from caramba.console import logger
+from console import logger
 
-from caramba.config.layer import AttentionLayerConfig, AttentionMode
-from caramba.layer.attention.base import AttentionBase
-from caramba.layer.attention.decoupled.chunked import DecoupledSDPAChunked
-from caramba.layer.attention.decoupled.decode import DecoupledDecode
-from caramba.layer.attention.decoupled.memory import DecoupledMemorySummarizer
-from caramba.layer.attention.decoupled.setup import DecoupledSetup
-from caramba.layer.attention.decoupled.viz import DecoupledAttentionViz
-from caramba.layer.rope import RotaryEmbedding
-from caramba.optimizer.dba_attention_triton import DecoupledAttentionTraining
+from config.layer import AttentionLayerConfig, AttentionMode
+from ..base import AttentionBase
+from .chunked import DecoupledSDPAChunked
+from .decode import DecoupledDecode
+from .memory import DecoupledMemorySummarizer
+from .setup import DecoupledSetup
+from .viz import DecoupledAttentionViz
+from ...rope import RotaryEmbedding
+from optimizer.dba_attention_triton import DecoupledAttentionTraining
 
 if TYPE_CHECKING:
-    from caramba.cache.decoupled import DecoupledLayerKVCache
+    from cache.decoupled import DecoupledLayerKVCache
 
 
 class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySummarizer):
@@ -80,13 +80,19 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         """
         if self.decoupled_gate_logit is None:
             return None
-        gate_bias = self.decoupled_gate_logit.view(1, -1, 1, 1).to(dtype=torch.float32, device=x.device)
+        # Avoid `view(..., -1, ...)` here: some torch.compile/SymPy builds have hit
+        # internal shape-substitution bugs (e.g. `'int' object has no attribute 'xreplace'`)
+        # when -1-based inference meets symbolic shape machinery.
+        #
+        # Also avoid redundant device moves: parameters already live on the module device.
+        H = int(self.n_heads)
+        gate_bias = self.decoupled_gate_logit.reshape(1, H, 1, 1).to(dtype=x.dtype)
         if self.decoupled_gate_proj is None:
             gate_logit = gate_bias
         else:
-            dyn = self.decoupled_gate_proj(x).transpose(1, 2).unsqueeze(-1).to(torch.float32)
+            dyn = self.decoupled_gate_proj(x).transpose(1, 2).unsqueeze(-1).to(dtype=x.dtype)
             gate_logit = gate_bias + dyn
-        return torch.sigmoid(gate_logit).to(dtype=x.dtype)
+        return torch.sigmoid(gate_logit.float()).to(dtype=x.dtype)
 
     def _null_kv_tensors(self, *, B: int, dtype: torch.dtype, device: torch.device) -> tuple[Tensor, Tensor, Tensor]:
         """Build null-attention KV tensors
@@ -130,37 +136,47 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         if sem_head_dim is None or geo_head_dim is None:
             raise RuntimeError("Head dims not set")
 
+        # Q projections use n_heads
         q_sem = self.q_sem(x)
+        qsh = self._shape(q_sem, int(sem_head_dim), n_heads=self.n_heads)
+
+        # K projections use n_kv_heads (may be smaller for GQA)
         k_sem = self.k_sem(x)
-        qsh = self._shape(q_sem, int(sem_head_dim))
-        ksh = self._shape(k_sem, int(sem_head_dim))
+        ksh = self._shape(k_sem, int(sem_head_dim), n_heads=self.n_kv_heads)
+
         if self.rotary_sem is not None:
             qsh = self.rotary_sem.rotate(qsh, pos_offset)
             ksh = self.rotary_sem.rotate(ksh, pos_offset)
 
         q_geo = self.q_geo(x)
+        qgh = self._shape(q_geo, int(geo_head_dim), n_heads=self.n_heads)
+
         k_geo = self.k_geo(x)
-        qgh = self._shape(q_geo, int(geo_head_dim))
-        kgh = self._shape(k_geo, int(geo_head_dim))
+        kgh = self._shape(k_geo, int(geo_head_dim), n_heads=self.n_kv_heads)
+
         if self.rotary_geo is not None:
             qgh = self.rotary_geo.rotate(qgh, pos_offset)
             kgh = self.rotary_geo.rotate(kgh, pos_offset)
 
+        # V projection uses n_kv_heads
         v = self.v_proj(x)
-        vh = self._shape(v, int(v_head_dim))
+        vh = self._shape(v, int(v_head_dim), n_heads=self.n_kv_heads)
 
         qsh = self._apply_logit_scale(qsh)
         qgh = self._apply_logit_scale(qgh)
 
         g = self._decoupled_gate(x)
         if g is not None:
-            qsh = qsh * (2.0 * g)
-            qgh = qgh * (2.0 - 2.0 * g)
+            # Reduce scalar ops: compute one scale tensor and reuse it.
+            s_sem = g * 2.0
+            qsh = qsh * s_sem
+            qgh = qgh * (2.0 - s_sem)
 
         cache_pos = None
         if cache is not None:
             cache_pos = int(cache.pos)
             old_len = int(cache.pos)
+            # Store K/V in cache BEFORE GQA expansion to save memory
             _ = cache.append(self._merge(ksh), self._merge(kgh), self._merge(vh))
             is_single_step_decode = (
                 (not self.training)
@@ -173,6 +189,7 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
             if is_single_step_decode:
                 decode_block = int(decode_block_override) if decode_block_override is not None else 1024
                 null_enabled = bool(getattr(self.config, "null_attn", False))
+                # Note: fused decode kernel handles GQA expansion internally
                 out_fused = self._decode.run(
                     q_sem=qsh,
                     q_geo=qgh,
@@ -191,10 +208,18 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                 self._viz.record_activation_sample(ctx=ctx, layer=self, y=y)
                 return y, cache
             if old_len > 0:
+                # Retrieve from cache and reshape with n_kv_heads
                 k_sem_all, k_geo_all, v_all = cache.get(dtype=qsh.dtype)
-                ksh = self._shape(k_sem_all, int(sem_head_dim))
-                kgh = self._shape(k_geo_all, int(geo_head_dim))
-                vh = self._shape(v_all, int(v_head_dim))
+                ksh = self._shape(k_sem_all, int(sem_head_dim), n_heads=self.n_kv_heads)
+                kgh = self._shape(k_geo_all, int(geo_head_dim), n_heads=self.n_kv_heads)
+                vh = self._shape(v_all, int(v_head_dim), n_heads=self.n_kv_heads)
+
+        # Expand K and V for GQA: repeat each KV head to match Q heads
+        # This happens AFTER cache handling to avoid storing expanded tensors
+        if self.group_size > 1:
+            ksh = ksh.repeat_interleave(self.group_size, dim=1)
+            kgh = kgh.repeat_interleave(self.group_size, dim=1)
+            vh = vh.repeat_interleave(self.group_size, dim=1)
 
         q_chunk = q_chunk_override if q_chunk_override is not None else self.config.q_chunk
         local_window = local_window_override if local_window_override is not None else self.config.local_window
@@ -256,6 +281,20 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
             if backend == "sdpa":
                 q_cat = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)
                 k_cat = torch.cat([ksh, kgh], dim=-1)
+                # Some device backends (notably MPS/Metal) are sensitive to Q/K/V head-dim
+                # mismatches. DBA often uses a smaller Q/K dim (sem+geo) than V dim (attn_dim),
+                # so we pad Q/K up to V's head dim with zeros. This preserves the attention math
+                # (extra dims contribute nothing) while keeping kernels shape-safe.
+                qk_dim = int(q_cat.size(-1))
+                if qk_dim != int(v_head_dim):
+                    if qk_dim > int(v_head_dim):
+                        raise RuntimeError(
+                            f"DBA Q/K head dim ({qk_dim}) must be <= V head dim ({int(v_head_dim)}). "
+                            "Decrease sem_dim+geo_dim or increase attn_dim."
+                        )
+                    pad = int(v_head_dim) - qk_dim
+                    q_cat = F.pad(q_cat, (0, pad))
+                    k_cat = F.pad(k_cat, (0, pad))
                 out = F.scaled_dot_product_attention(
                     q_cat,
                     k_cat,
@@ -289,6 +328,21 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                 if mask is not None:
                     keep_null = torch.ones((*mask.shape[:-1], 1), device=mask.device, dtype=torch.bool)
                     mask = torch.cat([keep_null, mask], dim=-1)
+
+            # Some SDPA backends (notably MPS/Metal) are sensitive to Q/K/V head-dim
+            # mismatches. DBA often uses a smaller Q/K dim (sem+geo) than V dim (attn_dim),
+            # so we pad Q/K up to V's head dim with zeros. This preserves the attention math
+            # (extra dims contribute nothing) while keeping kernels shape-safe.
+            qk_dim = int(q_cat.size(-1))
+            if qk_dim != int(v_head_dim):
+                if qk_dim > int(v_head_dim):
+                    raise RuntimeError(
+                        f"DBA Q/K head dim ({qk_dim}) must be <= V head dim ({int(v_head_dim)}). "
+                        "Decrease sem_dim+geo_dim or increase attn_dim."
+                    )
+                pad = int(v_head_dim) - qk_dim
+                q_cat = F.pad(q_cat, (0, pad))
+                k_cat = F.pad(k_cat, (0, pad))
 
             can_use_is_causal = (mask is None) and (cache is None) and (not null_enabled) and bool(self.config.is_causal) and int(T) > 1 and x.device.type == "cuda"
             attn_mask = mask

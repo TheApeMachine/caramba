@@ -15,10 +15,10 @@ from typing import Any
 import torch
 from torch import nn
 
-from caramba.carmath import weight_dtype
-from caramba.console import logger
-from caramba.model import Model
-from caramba.trainer.checkpoint_compare import (
+from carmath import weight_dtype
+from console import logger
+from model import Model
+from trainer.checkpoint_compare import (
     _lower_and_validate_model_config,
     _safe_load_checkpoint,
 )

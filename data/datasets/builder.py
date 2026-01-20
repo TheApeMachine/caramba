@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from caramba.data.npy import NpyDataset
-from caramba.runtime.tensordict_utils import TensorDictBase
+from data.npy import NpyDataset
+from runtime.tensordict_utils import TensorDictBase
 from torch.utils.data import Dataset
 
 

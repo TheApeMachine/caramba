@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import unittest
 
-from caramba.config.benchmark import (
+from config.benchmark import (
     AccuracyBenchmarkConfig,
     BenchmarkSpec,
     BenchmarkSuite,
@@ -45,6 +45,7 @@ class TestPerplexityBenchmarkConfig(unittest.TestCase):
         self.assertEqual(cfg.batch_size, 1)
         self.assertIsNone(cfg.num_batches)
         self.assertIsNone(cfg.stride)
+        self.assertIsNone(cfg.valid_vocab_size)
 
     def test_custom_values(self) -> None:
         """Custom values override defaults."""
@@ -78,6 +79,7 @@ class TestLatencyBenchmarkConfig(unittest.TestCase):
         self.assertEqual(cfg.warmup_runs, 3)
         self.assertEqual(cfg.timed_runs, 10)
         self.assertTrue(cfg.use_cache)
+        self.assertIsNone(cfg.valid_vocab_size)
 
     def test_custom_values(self) -> None:
         """Custom values override defaults."""
@@ -113,6 +115,7 @@ class TestMemoryBenchmarkConfig(unittest.TestCase):
         self.assertTrue(cfg.measure_peak)
         self.assertTrue(cfg.measure_kvcache)
         self.assertEqual(cfg.quantization_modes, ["fp16", "q8", "q4"])
+        self.assertIsNone(cfg.valid_vocab_size)
 
     def test_custom_values(self) -> None:
         """Custom values override defaults."""
@@ -226,7 +229,7 @@ class TestBenchmarkSuite(unittest.TestCase):
         """Default values are applied."""
         suite = BenchmarkSuite(benchmarks=[])
         self.assertEqual(suite.output_dir, "artifacts")
-        self.assertEqual(suite.formats, ["csv", "json", "png"])
+        self.assertEqual(suite.formats, ["csv", "json", "png", "latex"])
         self.assertEqual(suite.comparison_baseline, "teacher")
 
     def test_custom_values(self) -> None:

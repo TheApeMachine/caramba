@@ -10,8 +10,8 @@ Uses MLX built-in optimized operations:
 
 from __future__ import annotations
 
-from caramba.layer.mlx.attention import DecoupledAttentionMLX, DBAConfig
-from caramba.layer.mlx.transformer import (
+from layer.mlx.attention import DecoupledAttentionMLX, DBAConfig
+from layer.mlx.transformer import (
     DBATransformer,
     TransformerConfig,
     TransformerBlock,

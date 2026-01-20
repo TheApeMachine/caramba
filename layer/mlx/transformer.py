@@ -18,7 +18,7 @@ from typing import Any
 import mlx.core as mx
 import mlx.nn as nn
 
-from caramba.layer.mlx.attention import DecoupledAttentionMLX, DBAConfig
+from layer.mlx.attention import DecoupledAttentionMLX, DBAConfig
 
 
 @dataclass
@@ -195,7 +195,7 @@ class DBATransformer(nn.Module):
             cache_in = [None] * len(self.layers)
 
         new_cache = []
-        all_attn_weights = [] if return_attention else None
+        all_attn_weights: list[mx.array] | None = [] if return_attention else None
 
         for i, layer in enumerate(self.layers):
             layer_cache = cache_in[i] if cache_in is not None else None
@@ -205,6 +205,8 @@ class DBATransformer(nn.Module):
             if use_cache:
                 new_cache.append(updated_cache)
             if return_attention:
+                assert all_attn_weights is not None  # Type narrowing
+                assert attn_weights is not None  # Should be non-None when return_weights=True
                 all_attn_weights.append(attn_weights)
 
         x = self.norm(x)

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from caramba.lab.unknown_format.dataset import UnknownFormatLabDataset
-from caramba.lab.unknown_format.oracle import FormatOracle
+from lab.unknown_format.dataset import UnknownFormatLabDataset
+from lab.unknown_format.oracle import FormatOracle
 
 
 class UnknownFormatLabTest(unittest.TestCase):

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from caramba.toolchain.events import ToolCapabilities, ToolDefinitionPayload
+from toolchain.events import ToolCapabilities, ToolDefinitionPayload
 
 
 @dataclass(frozen=True, slots=True)

@@ -395,7 +395,7 @@ The orchestrator includes SWATS, which automatically switches from Adam to SGD w
 
 ```python
 # Programmatic usage
-from caramba.orchestrator import SWATS, SWATSConfig
+orchestrator import SWATS, SWATSConfig
 
 optimizer = SWATS(
     model.parameters(),
@@ -523,7 +523,7 @@ Scale training to multiple GPUs with DDP or FSDP.
 For models that fit on a single GPU:
 
 ```python
-from caramba.trainer import DistributedConfig, DistributedStrategy
+trainer import DistributedConfig, DistributedStrategy
 
 dist_config = DistributedConfig(
     strategy=DistributedStrategy.DDP,
@@ -554,7 +554,7 @@ dist_config = DistributedConfig(
 ### Distributed Utilities
 
 ```python
-from caramba.trainer.distributed import (
+trainer.distributed import (
     is_distributed,
     get_rank,
     get_world_size,

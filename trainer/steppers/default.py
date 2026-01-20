@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from caramba.config.train import TrainPhase
-from caramba.trainer.collectors import Collector
-from caramba.trainer.checkpointers import CheckPointer
-from caramba.trainer.steppers.blockwise import BlockwiseStepper
-from caramba.trainer.steppers.global_stepper import GlobalStepper
-from caramba.trainer.steppers.global_orchestrated import GlobalOrchestratedStepper
-from caramba.trainer.upcycle_context import UpcycleContext
-from caramba.config.run import Run
-from caramba.config.stepper import DefaultStepperConfig
+from config.train import TrainPhase
+from trainer.collectors import Collector
+from trainer.checkpointers import CheckPointer
+from trainer.steppers.blockwise import BlockwiseStepper
+from trainer.steppers.global_stepper import GlobalStepper
+from trainer.steppers.global_orchestrated import GlobalOrchestratedStepper
+from trainer.upcycle_context import UpcycleContext
+from config.run import Run
+from config.stepper import DefaultStepperConfig
 
 
 class DefaultStepper:

@@ -19,7 +19,7 @@ from pathlib import Path
 import torch
 from torch import Tensor
 
-from caramba.runtime.tensordict_utils import TensorDictBase
+from runtime.tensordict_utils import TensorDictBase
 
 
 @dataclass(frozen=True, slots=True)

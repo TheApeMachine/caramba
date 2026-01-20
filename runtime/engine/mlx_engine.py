@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from caramba.config.manifest import Manifest
-from caramba.config.target import ExperimentTargetConfig
-from caramba.console import logger
+from config.manifest import Manifest
+from config.target import ExperimentTargetConfig
+from console import logger
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +84,7 @@ class MLXEngine:
         dry_run: bool = False,
     ) -> dict[str, Any]:
         """Run the routing hypothesis experiment with MLX."""
-        from caramba.trainer.mlx.routing_hypothesis import (
+        from trainer.mlx.routing_hypothesis import (
             run_routing_hypothesis_mlx,
             TrainConfig,
         )
@@ -228,7 +228,7 @@ class MLXEngine:
         giving the student a "hint" about where to look. Much faster convergence
         than pure LM loss.
         """
-        from caramba.trainer.mlx.attention_distillation import run_attention_distillation
+        from trainer.mlx.attention_distillation import run_attention_distillation
 
         # Extract configuration from target
         runs = target.runs
@@ -329,7 +329,7 @@ class MLXEngine:
         to match the original attention output. This learns the optimal
         semantic/geometric decomposition.
         """
-        from caramba.trainer.mlx.dual_attention import run_dual_attention_training
+        from trainer.mlx.dual_attention import run_dual_attention_training
 
         # Extract configuration from target
         runs = target.runs

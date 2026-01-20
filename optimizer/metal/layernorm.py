@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import torch
 
-from caramba.optimizer.runtime import metal_supported
+from optimizer.runtime import metal_supported
 
 from .jit import load_caramba_metal_ops
 
@@ -89,11 +89,11 @@ class _MetalLayerNormFn(torch.autograd.Function):
             raise RuntimeError("Metal LayerNorm backward requires grad_out")
         if grad_out.device.type != "mps":
             raise RuntimeError("Metal LayerNorm backward requires grad_out on MPS")
-        
+
         saved = ctx.saved_tensors
         # x is always first
         x = saved[0]
-        
+
         if grad_out.dtype != x.dtype:
             grad_out = grad_out.to(dtype=x.dtype)
         g = grad_out.contiguous()
@@ -127,7 +127,7 @@ def layernorm_fp16(
     verbose_build: bool = False,
 ) -> "Tensor":
     """Fused LayerNorm (MPS/Metal) for fp16/fp32 tensors.
-    
+
     Supports common forms:
     - (weight,bias) both provided (standard LayerNorm)
     - weight provided, bias None

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from caramba.lab.unknown_format.oracle import Record
+from lab.unknown_format.oracle import Record
 
 
 @dataclass(frozen=True, slots=True)

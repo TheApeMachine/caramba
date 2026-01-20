@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from caramba.console import logger
-from caramba.optimizer.runtime import triton_supported
+from console import logger
+from optimizer.runtime import triton_supported
 
 __all__ = ["rmsnorm_fwd", "rmsnorm_bwd_x", "rmsnorm_bwd_x_noweight", "rmsnorm_bwd_w"]
 

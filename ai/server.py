@@ -12,7 +12,8 @@ from typing import Any
 import httpx
 import litellm
 import uvicorn
-import os  # Added import
+import os
+from .task_store import get_database_url
 
 # Timeout configuration for agent-to-agent communication
 # LLM streaming responses can take a long time, so we need generous timeouts
@@ -44,17 +45,17 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from caramba.ai.agent import Agent
-from caramba.ai.connection import get_pending_task_manager, handle_task_notification
-from caramba.ai.executor import StreamingExecutor
-from caramba.ai.lead import LeadAgent
-from caramba.ai.push_notifications import (
+from .agent import Agent
+from .connection import get_pending_task_manager, handle_task_notification
+from .executor import StreamingExecutor
+from .lead import LeadAgent
+from .push_notifications import (
     HttpPushNotificationSender,
     InMemoryPushNotificationConfigStore,
 )
-from caramba.ai.root import RootAgent
-from caramba.ai.session_store import get_shared_session_service
-from caramba.ai.task_store import get_shared_task_store
+from .root import RootAgent
+from .session_store import get_shared_session_service
+from .task_store import get_shared_task_store
 
 _logger = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ class AgentServer:
 
         # We need to access the underlying TaskQueue if using DatabaseTaskStore
         from a2a.server.tasks import DatabaseTaskStore
-        from caramba.core.task_queue import TaskQueue
+        from core.task_queue import TaskQueue
 
         queue: TaskQueue | None = None
 
@@ -161,12 +162,12 @@ class AgentServer:
             # or we rely on TaskQueue having been initialized as a singleton.
             # But core.task_queue.TaskQueue takes a DSN string.
             # Let's try to get the DSN from environment or connection.
-            from caramba.ai.task_store import get_database_url
             dsn = get_database_url()
             if dsn:
                 queue = TaskQueue(dsn)
-                await queue.connect()
-                _logger.info(f"TRACING [Worker] Connected to TaskQueue at {dsn.split('@')[-1]}")
+                if queue is not None:
+                    await queue.connect()
+                    _logger.info(f"TRACING [Worker] Connected to TaskQueue at {dsn.split('@')[-1]}")
 
         if not queue:
             _logger.warning("TRACING [Worker] No TaskQueue available (in-memory mode?), background processing disabled")

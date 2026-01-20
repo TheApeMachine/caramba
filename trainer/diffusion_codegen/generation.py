@@ -14,13 +14,13 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from caramba.console import logger
-from caramba.data.tokenizers.hf_json import HfJsonTokenizer
-from caramba.data.tokenizers.training import TrainingTokenizer
-from caramba.diffusion.samplers import DdimSampler, DdpmSampler, GuidanceConfig
-from caramba.diffusion.schedule import NoiseSchedule
-from caramba.trainer.diffusion_codegen.checkpoints import CheckpointManager
-from caramba.trainer.diffusion_codegen.prompt import PromptEncoder
+from console import logger
+from data.tokenizers.hf_json import HfJsonTokenizer
+from data.tokenizers.training import TrainingTokenizer
+from diffusion.samplers import DdimSampler, DdpmSampler, GuidanceConfig
+from diffusion.schedule import NoiseSchedule
+from trainer.diffusion_codegen.checkpoints import CheckpointManager
+from trainer.diffusion_codegen.prompt import PromptEncoder
 
 
 @dataclass(frozen=True, slots=True)

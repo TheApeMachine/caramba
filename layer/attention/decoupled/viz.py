@@ -10,7 +10,7 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from caramba.instrumentation.viz import TrainingVizContext
+from instrumentation.viz import TrainingVizContext
 
 
 class DecoupledAttentionViz:

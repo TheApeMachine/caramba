@@ -9,7 +9,7 @@ from __future__ import annotations
 from torch import Tensor, nn
 from typing_extensions import override
 
-from caramba.config.layer import DropoutLayerConfig
+from config.layer import DropoutLayerConfig
 
 
 class DropoutLayer(nn.Module):

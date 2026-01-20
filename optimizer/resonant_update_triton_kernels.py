@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from caramba.console import logger
-from caramba.optimizer.runtime import triton_supported
+from console import logger
+from optimizer.runtime import triton_supported
 
 __all__ = ["resonant_update_fwd", "resonant_update_bwd"]
 

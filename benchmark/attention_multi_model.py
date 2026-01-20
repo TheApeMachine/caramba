@@ -16,21 +16,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-try:
-    import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    np = None  # type: ignore[assignment]
-    HAS_NUMPY = False
-
-try:
-    import matplotlib.pyplot as plt
-    import matplotlib.colors as mcolors
-    from matplotlib.gridspec import GridSpec
-    HAS_MATPLOTLIB = True
-except ImportError:
-    plt = None  # type: ignore[assignment]
-    HAS_MATPLOTLIB = False
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+from matplotlib.gridspec import GridSpec
 
 
 # Distinct colors for N models
@@ -80,6 +69,7 @@ class MultiModelAttentionVisualizer:
         model_events: dict[str, dict[str, Any]],
         tokens: list[str],
         split: int,
+        answer_span: tuple[int, int] | None,
         case_id: str,
         output_path: Path,
         title: str | None = None,
@@ -97,8 +87,6 @@ class MultiModelAttentionVisualizer:
             output_path: Where to save the figure
             title: Optional custom title
         """
-        if not HAS_MATPLOTLIB or not HAS_NUMPY:
-            return
 
         model_names = list(model_events.keys())
         n_models = len(model_names)
@@ -132,6 +120,16 @@ class MultiModelAttentionVisualizer:
             axes = [axes]
 
         split2 = max(0, min(int(split), max_tokens))
+        gold = "#d4af37"
+        a0: int | None = None
+        a1: int | None = None
+        if answer_span is not None:
+            a0 = max(0, min(int(answer_span[0]), max_tokens))
+            a1 = max(0, min(int(answer_span[1]), max_tokens - 1))
+            if a0 > a1:
+                a0 = None
+                a1 = None
+        im = None  # Initialize for colorbar
 
         for i, model_name in enumerate(model_names):
             ax = axes[i]
@@ -154,6 +152,25 @@ class MultiModelAttentionVisualizer:
                 vmax=self.vmax,
             )
             ax.axvline(split2 - 0.5, color='w', linewidth=1.5, alpha=0.9)
+            if a0 is not None and a1 is not None:
+                ax.axvline(a0 - 0.5, color=gold, linewidth=3.0, alpha=0.95)
+                ax.axvline(a1 + 0.5, color=gold, linewidth=3.0, alpha=0.95)
+
+            # Mark argmax per layer to show "where it went instead".
+            try:
+                peaks = M.argmax(axis=1)
+                ys = np.arange(M.shape[0], dtype=np.float32)
+                xs = peaks.astype(np.float32)
+                in_ans = None
+                if a0 is not None and a1 is not None:
+                    in_ans = (xs >= float(a0)) & (xs <= float(a1))
+                if in_ans is None:
+                    ax.scatter(xs, ys, s=10, c="white", marker="o", edgecolors="black", linewidths=0.3, alpha=0.8)
+                else:
+                    ax.scatter(xs[~in_ans], ys[~in_ans], s=10, c="#ff4d4d", marker="o", edgecolors="black", linewidths=0.3, alpha=0.8)
+                    ax.scatter(xs[in_ans], ys[in_ans], s=10, c="#2ecc71", marker="o", edgecolors="black", linewidths=0.3, alpha=0.8)
+            except Exception:
+                pass
             ax.set_ylabel(model_name, fontsize=10, fontweight='bold')
 
             # Only show x-axis labels on bottom plot
@@ -171,12 +188,12 @@ class MultiModelAttentionVisualizer:
 
         # Add shared colorbar on the right side (outside the plot area)
         fig.subplots_adjust(right=0.88)
-        cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
-        fig.colorbar(im, cax=cbar_ax, orientation='vertical', label='attention weight')
+        cbar_ax = fig.add_axes((0.90, 0.15, 0.02, 0.7))
+        if im is not None:
+            fig.colorbar(im, cax=cbar_ax, orientation='vertical', label='attention weight')
 
-        fig_title = title or f"{case_id} • N-Model Attention Heatmaps (final query, mean over heads)"
-        fig.suptitle(fig_title, fontsize=12, y=0.98)
-        fig.savefig(output_path, dpi=200, bbox_inches='tight')
+        # No suptitle (paper-friendly).
+        fig.savefig(output_path, dpi=200, bbox_inches='tight', pad_inches=0.02)
         plt.close(fig)
 
     def plot_last_layer_heads(
@@ -201,8 +218,6 @@ class MultiModelAttentionVisualizer:
             max_heads: Maximum number of heads to display per model
             title: Optional custom title
         """
-        if not HAS_MATPLOTLIB or not HAS_NUMPY:
-            return
 
         model_names = list(model_events.keys())
         n_models = len(model_names)
@@ -238,6 +253,8 @@ class MultiModelAttentionVisualizer:
         elif max_h == 1:
             axes = axes.reshape(-1, 1)
 
+        im = None  # Initialize for colorbar
+
         split2 = max(0, int(split))
 
         for i, model_name in enumerate(model_names):
@@ -266,8 +283,7 @@ class MultiModelAttentionVisualizer:
                         ax.set_ylabel(model_name, fontsize=9, fontweight='bold')
 
                     # Column label (head number) on top row
-                    if i == 0:
-                        ax.set_title(f"head {j}", fontsize=8)
+                    # No title (paper-friendly).
                 else:
                     ax.axis('off')
 
@@ -276,12 +292,12 @@ class MultiModelAttentionVisualizer:
 
         # Add shared colorbar on the right side (outside the plot area)
         fig.subplots_adjust(right=0.88)
-        cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
-        fig.colorbar(im, cax=cbar_ax, orientation='vertical', label='attention weight')
+        cbar_ax = fig.add_axes((0.90, 0.15, 0.02, 0.7))
+        if im is not None:
+            fig.colorbar(im, cax=cbar_ax, orientation='vertical', label='attention weight')
 
-        fig_title = title or f"{case_id} • N-Model Last Layer Heads (normalized to [0,1])"
-        fig.suptitle(fig_title, y=0.98, fontsize=12)
-        fig.savefig(output_path, dpi=200, bbox_inches='tight')
+        # No suptitle (paper-friendly).
+        fig.savefig(output_path, dpi=200, bbox_inches='tight', pad_inches=0.02)
         plt.close(fig)
 
     def plot_attention_mass(
@@ -307,8 +323,6 @@ class MultiModelAttentionVisualizer:
             output_path: Where to save the figure
             title: Optional custom title
         """
-        if not HAS_MATPLOTLIB or not HAS_NUMPY:
-            return
 
         model_names = list(model_events.keys())
         n_models = len(model_names)
@@ -356,10 +370,8 @@ class MultiModelAttentionVisualizer:
         ax.grid(True, alpha=0.25)
         ax.legend(loc='upper right', fontsize=9, ncol=2)
 
-        fig_title = title or f"{case_id} • N-Model Attention Mass vs Depth"
-        ax.set_title(fig_title, fontsize=12)
-        fig.set_constrained_layout(True)
-        fig.savefig(output_path, dpi=200, bbox_inches='tight')
+        fig.tight_layout()
+        fig.savefig(output_path, dpi=200, bbox_inches='tight', pad_inches=0.02)
         plt.close(fig)
 
     def _extract_layer_attention(self, event: dict[str, Any]) -> list[np.ndarray]:
@@ -448,6 +460,7 @@ def render_multi_model_attention_comparison(
     split: int,
     case_id: str,
     output_dir: Path,
+    answer_span: tuple[int, int] | None = None,
     max_heads: int = 4,
 ) -> dict[str, Path]:
     """Render all N-model attention comparison plots.
@@ -481,6 +494,7 @@ def render_multi_model_attention_comparison(
             model_events=model_events,
             tokens=tokens,
             split=split,
+            answer_span=answer_span,
             case_id=case_id,
             output_path=heatmap_path,
         )
