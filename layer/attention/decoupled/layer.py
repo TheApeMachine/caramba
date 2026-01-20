@@ -86,11 +86,11 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         #
         # Also avoid redundant device moves: parameters already live on the module device.
         H = int(self.n_heads)
-        gate_bias = self.decoupled_gate_logit.reshape(1, H, 1, 1).to(dtype=x.dtype)
+        gate_bias = self.decoupled_gate_logit.reshape(1, H, 1, 1)
         if self.decoupled_gate_proj is None:
             gate_logit = gate_bias
         else:
-            dyn = self.decoupled_gate_proj(x).transpose(1, 2).unsqueeze(-1).to(dtype=x.dtype)
+            dyn = self.decoupled_gate_proj(x).transpose(1, 2).unsqueeze(-1)
             gate_logit = gate_bias + dyn
         return torch.sigmoid(gate_logit.float()).to(dtype=x.dtype)
 
@@ -165,12 +165,25 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         qsh = self._apply_logit_scale(qsh)
         qgh = self._apply_logit_scale(qgh)
 
+        # Fold all query-side scaling into q_sem/q_geo once (better fusion + fewer temporaries):
+        # - base sem/geo scales (part of the DBA math)
+        # - optional learned gate (extra architecture knob)
+        #
+        # Doing this once keeps downstream backends (decode/triton/sdpa) simpler and reduces
+        # extra elementwise work in the hot path.
+        sem_scale = float(self._sem_scale)
+        geo_scale = float(self._geo_scale)
         g = self._decoupled_gate(x)
         if g is not None:
-            # Reduce scalar ops: compute one scale tensor and reuse it.
-            s_sem = g * 2.0
-            qsh = qsh * s_sem
-            qgh = qgh * (2.0 - s_sem)
+            g2 = g * 2.0
+            qsh = qsh * (g2 * sem_scale)
+            qgh = qgh * ((2.0 - g2) * geo_scale)
+        else:
+            qsh = qsh * sem_scale
+            qgh = qgh * geo_scale
+        # After folding scales into Q, downstream uses unit scales.
+        sem_scale = 1.0
+        geo_scale = 1.0
 
         cache_pos = None
         if cache is not None:
@@ -198,8 +211,8 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                     sem_head_dim=int(sem_head_dim),
                     geo_head_dim=int(geo_head_dim),
                     v_head_dim=int(v_head_dim),
-                    sem_scale=float(self._sem_scale),
-                    geo_scale=float(self._geo_scale),
+                        sem_scale=float(sem_scale),
+                        geo_scale=float(geo_scale),
                     decode_block=int(decode_block),
                     null_enabled=bool(null_enabled),
                     null_kv=self._null_kv_tensors,
@@ -224,8 +237,6 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         q_chunk = q_chunk_override if q_chunk_override is not None else self.config.q_chunk
         local_window = local_window_override if local_window_override is not None else self.config.local_window
 
-        sem_scale = float(self._sem_scale)
-        geo_scale = float(self._geo_scale)
         dropout_p = float(self.config.dropout_p) if self.training else 0.0
         null_enabled = bool(getattr(self.config, "null_attn", False))
 
@@ -279,7 +290,7 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                 backend = "triton"
 
             if backend == "sdpa":
-                q_cat = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)
+                q_cat = torch.cat([qsh, qgh], dim=-1)
                 k_cat = torch.cat([ksh, kgh], dim=-1)
                 # Some device backends (notably MPS/Metal) are sensitive to Q/K/V head-dim
                 # mismatches. DBA often uses a smaller Q/K dim (sem+geo) than V dim (attn_dim),
@@ -318,7 +329,7 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                     dropout_p=float(dropout_p),
                 )
         elif q_chunk is None and local_window is None:
-            q_cat = torch.cat([qsh * sem_scale, qgh * geo_scale], dim=-1)
+            q_cat = torch.cat([qsh, qgh], dim=-1)
             k_cat = torch.cat([ksh, kgh], dim=-1)
             if null_enabled:
                 ksn, kgn, vn = self._null_kv_tensors(B=B, dtype=x.dtype, device=x.device)
