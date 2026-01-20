@@ -46,7 +46,7 @@ vars:
   d_model: 2048
   n_layers: 22
   n_heads: 32
-  d_ff: 4096
+  d_ff: 5632
   vocab_size: 50304
   rope_base: 10000.0
 

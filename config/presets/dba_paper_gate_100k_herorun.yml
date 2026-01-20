@@ -99,6 +99,11 @@ targets:
                         d_model: ${d_model}
                         n_heads: ${n_heads}
                         mode: decoupled
+                    # Match `config/presets/herorun.yml` (paper apple) by forcing
+                    # the SDPA training backend under torch.compile on A100.
+                    # This avoids Dynamo/SymPy `.xreplace` crashes triggered by
+                    # tracing the custom Triton DBA autograd path.
+                    dba_train_backend: sdpa
                         attn_dim: ${attn_dim}
                         sem_dim: ${sem_dim}
                         geo_dim: ${geo_dim}
