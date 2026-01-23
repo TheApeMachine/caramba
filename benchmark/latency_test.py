@@ -44,9 +44,17 @@ class TestLatencyMeasurement(unittest.TestCase):
     def test_measurement_fields(self) -> None:
         """Measurement stores all required fields."""
         m = LatencyMeasurement(
+            seed=42,
+            input_ids=[[1, 2, 3]],
+            input_ids_sha256="test",
             prompt_len=512,
             gen_len=128,
             batch_size=4,
+            prefill_times_ms=[10.5],
+            first_decode_times_ms=[1.0],
+            decode_times_ms=[50.0],
+            ttft_times_ms=[11.5],
+            total_times_ms=[60.5],
             prefill_time_ms=10.5,
             decode_time_ms=50.0,
             total_time_ms=60.5,
@@ -77,7 +85,15 @@ class TestLatencyResult(unittest.TestCase):
             model_name="test",
             measurements=[
                 LatencyMeasurement(
+                    seed=42,
+                    input_ids=[[1]],
+                    input_ids_sha256="test",
                     prompt_len=128, gen_len=64, batch_size=1,
+                    prefill_times_ms=[5.0],
+                    first_decode_times_ms=[1.0],
+                    decode_times_ms=[20.0],
+                    ttft_times_ms=[6.0],
+                    total_times_ms=[25.0],
                     prefill_time_ms=5.0, decode_time_ms=20.0,
                     total_time_ms=25.0, tokens_per_second=100.0,
                     time_to_first_token_ms=5.0,
@@ -92,13 +108,29 @@ class TestLatencyResult(unittest.TestCase):
             model_name="test",
             measurements=[
                 LatencyMeasurement(
+                    seed=42,
+                    input_ids=[[1]],
+                    input_ids_sha256="test",
                     prompt_len=128, gen_len=64, batch_size=1,
+                    prefill_times_ms=[5.0],
+                    first_decode_times_ms=[1.0],
+                    decode_times_ms=[20.0],
+                    ttft_times_ms=[6.0],
+                    total_times_ms=[25.0],
                     prefill_time_ms=5.0, decode_time_ms=20.0,
                     total_time_ms=25.0, tokens_per_second=100.0,
                     time_to_first_token_ms=5.0,
                 ),
                 LatencyMeasurement(
+                    seed=42,
+                    input_ids=[[1]],
+                    input_ids_sha256="test",
                     prompt_len=256, gen_len=64, batch_size=1,
+                    prefill_times_ms=[10.0],
+                    first_decode_times_ms=[1.0],
+                    decode_times_ms=[20.0],
+                    ttft_times_ms=[11.0],
+                    total_times_ms=[30.0],
                     prefill_time_ms=10.0, decode_time_ms=20.0,
                     total_time_ms=30.0, tokens_per_second=200.0,
                     time_to_first_token_ms=10.0,
@@ -113,13 +145,29 @@ class TestLatencyResult(unittest.TestCase):
             model_name="test",
             measurements=[
                 LatencyMeasurement(
+                    seed=42,
+                    input_ids=[[1]],
+                    input_ids_sha256="test",
                     prompt_len=128, gen_len=64, batch_size=1,
+                    prefill_times_ms=[5.0],
+                    first_decode_times_ms=[1.0],
+                    decode_times_ms=[20.0],
+                    ttft_times_ms=[6.0],
+                    total_times_ms=[25.0],
                     prefill_time_ms=5.0, decode_time_ms=20.0,
                     total_time_ms=25.0, tokens_per_second=100.0,
                     time_to_first_token_ms=5.0,
                 ),
                 LatencyMeasurement(
+                    seed=42,
+                    input_ids=[[1]],
+                    input_ids_sha256="test",
                     prompt_len=256, gen_len=64, batch_size=1,
+                    prefill_times_ms=[15.0],
+                    first_decode_times_ms=[1.0],
+                    decode_times_ms=[20.0],
+                    ttft_times_ms=[16.0],
+                    total_times_ms=[35.0],
                     prefill_time_ms=15.0, decode_time_ms=20.0,
                     total_time_ms=35.0, tokens_per_second=100.0,
                     time_to_first_token_ms=15.0,
@@ -139,6 +187,7 @@ class TestLatencyBenchmark(unittest.TestCase):
     def test_run_returns_result(self) -> None:
         """Benchmark run returns a LatencyResult."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -161,6 +210,7 @@ class TestLatencyBenchmark(unittest.TestCase):
         batch_sizes = [1]
 
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=prompt_lens,
             generation_lengths=gen_lens,
             batch_sizes=batch_sizes,
@@ -179,6 +229,7 @@ class TestLatencyBenchmark(unittest.TestCase):
     def test_times_are_positive(self) -> None:
         """All timing measurements are positive."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -200,6 +251,7 @@ class TestLatencyBenchmark(unittest.TestCase):
     def test_total_equals_prefill_plus_decode(self) -> None:
         """Total time equals prefill + decode."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -219,6 +271,7 @@ class TestLatencyBenchmark(unittest.TestCase):
     def test_measurement_config_matches(self) -> None:
         """Measurement stores correct config values."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[32],
             generation_lengths=[8],
             batch_sizes=[2],
@@ -248,6 +301,7 @@ class TestLatencyBenchmarkWithCache(unittest.TestCase):
     def test_cached_run_returns_result(self) -> None:
         """Cached benchmark run returns a LatencyResult."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -267,6 +321,7 @@ class TestLatencyBenchmarkWithCache(unittest.TestCase):
     def test_cached_measurement_has_use_cache_true(self) -> None:
         """Cached measurements have use_cache=True flag."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -286,6 +341,7 @@ class TestLatencyBenchmarkWithCache(unittest.TestCase):
     def test_uncached_measurement_has_use_cache_false(self) -> None:
         """Uncached measurements have use_cache=False flag."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -305,6 +361,7 @@ class TestLatencyBenchmarkWithCache(unittest.TestCase):
     def test_cached_times_are_positive(self) -> None:
         """All cached timing measurements are positive."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -328,6 +385,7 @@ class TestLatencyBenchmarkWithCache(unittest.TestCase):
     def test_cached_ttft_includes_first_decode(self) -> None:
         """Cached TTFT is at least prefill time (includes first decode step)."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -352,9 +410,17 @@ class TestLatencyMeasurementUseCache(unittest.TestCase):
     def test_measurement_use_cache_default(self) -> None:
         """use_cache defaults to False."""
         m = LatencyMeasurement(
+            seed=1,
+            input_ids=[[0] * 128],
+            input_ids_sha256="test",
             prompt_len=128,
             gen_len=64,
             batch_size=1,
+            prefill_times_ms=[10.0],
+            first_decode_times_ms=[0.1],
+            decode_times_ms=[50.0],
+            ttft_times_ms=[10.1],
+            total_times_ms=[60.0],
             prefill_time_ms=10.0,
             decode_time_ms=50.0,
             total_time_ms=60.0,
@@ -366,9 +432,17 @@ class TestLatencyMeasurementUseCache(unittest.TestCase):
     def test_measurement_use_cache_explicit_true(self) -> None:
         """use_cache can be set to True."""
         m = LatencyMeasurement(
+            seed=1,
+            input_ids=[[0] * 128],
+            input_ids_sha256="test",
             prompt_len=128,
             gen_len=64,
             batch_size=1,
+            prefill_times_ms=[10.0],
+            first_decode_times_ms=[0.1],
+            decode_times_ms=[50.0],
+            ttft_times_ms=[10.1],
+            total_times_ms=[60.0],
             prefill_time_ms=10.0,
             decode_time_ms=50.0,
             total_time_ms=60.0,
@@ -394,6 +468,7 @@ class TestTTFTSemanticConsistency(unittest.TestCase):
     def test_uncached_ttft_includes_first_decode(self) -> None:
         """Uncached TTFT includes first decode step (consistent with cached mode)."""
         config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -422,6 +497,7 @@ class TestTTFTSemanticConsistency(unittest.TestCase):
 
         # Run uncached benchmark
         uncached_config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],
@@ -434,6 +510,7 @@ class TestTTFTSemanticConsistency(unittest.TestCase):
 
         # Run cached benchmark
         cached_config = LatencyBenchmarkConfig(
+            seed=42,
             prompt_lengths=[16],
             generation_lengths=[4],
             batch_sizes=[1],

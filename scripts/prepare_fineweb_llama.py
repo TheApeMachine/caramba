@@ -69,6 +69,11 @@ def main():
         default="sample-10BT",
         help="Dataset subset (sample-10BT, sample-100BT, sample-350BT)"
     )
+    parser.add_argument(
+        "--skip-download",
+        action="store_true",
+        help="Skip download/tokenization if shards exist, just recombine"
+    )
     args = parser.parse_args()
 
     target_tokens = parse_size(args.tokens)
@@ -86,6 +91,18 @@ def main():
     vocab_size = tokenizer.vocab_size
     print(f"Vocab size: {vocab_size:,}")
 
+    # Determine EOS token
+    eos_token_id = tokenizer.eos_token_id
+    if eos_token_id is None:
+        # Fallback for Llama 3 if not explicitly set (usually 128001)
+        if "llama-3" in args.model_id.lower():
+            eos_token_id = 128001
+            print(f"Warning: tokenizer.eos_token_id is None, falling back to Llama-3 default: {eos_token_id}")
+        else:
+            print("Warning: tokenizer.eos_token_id is None, and no fallback available. Documents will not be separated.")
+    else:
+        print(f"EOS token ID: {eos_token_id}")
+
     # Load dataset (streaming to avoid memory issues)
     print(f"\nLoading dataset {args.dataset}...")
     dataset = load_dataset(
@@ -100,48 +117,73 @@ def main():
     total_tokens = 0
     shard_idx = 0
 
-    print(f"\nTokenizing... (target: {target_tokens:,} tokens)")
+    if args.skip_download and any(output_dir.glob("shard_*.npy")):
+        print("\nSkipping download/tokenization as requested. Recombining existing shards...")
+        # Count shards
+        shard_files = sorted(list(output_dir.glob("shard_*.npy")))
+        shard_idx = len(shard_files)
+        total_tokens = 0 # We'll count during recombination
+    else:
+        print(f"\nTokenizing... (target: {target_tokens:,} tokens)")
 
-    pbar = tqdm(total=target_tokens, unit="tok", unit_scale=True)
+        pbar = tqdm(total=target_tokens, unit="tok", unit_scale=True)
 
-    for example in dataset:
-        text = example.get("text", "")
-        if not text:
-            continue
+        for example in dataset:
+            text = example.get("text", "")
+            if not text:
+                continue
 
-        # Tokenize
-        tokens = tokenizer.encode(text, add_special_tokens=False)
-        all_tokens.extend(tokens)
-        total_tokens += len(tokens)
-        pbar.update(len(tokens))
+            # Tokenize
+            tokens = tokenizer.encode(text, add_special_tokens=False)
+            
+            # Append EOS token to separate documents
+            if eos_token_id is not None:
+                tokens.append(eos_token_id)
+                
+            all_tokens.extend(tokens)
+            total_tokens += len(tokens)
+            pbar.update(len(tokens))
 
-        # Save shard when full
-        while len(all_tokens) >= args.shard_size:
-            shard_tokens = all_tokens[:args.shard_size]
-            all_tokens = all_tokens[args.shard_size:]
+            # Save shard when full
+            while len(all_tokens) >= args.shard_size:
+                shard_tokens = all_tokens[:args.shard_size]
+                all_tokens = all_tokens[args.shard_size:]
 
+                shard_path = output_dir / f"shard_{shard_idx:05d}.npy"
+                np.save(shard_path, np.array(shard_tokens, dtype=np.uint32))
+                shard_idx += 1
+
+            # Stop when we have enough
+            if total_tokens >= target_tokens:
+                break
+
+        pbar.close()
+
+        # Save remaining tokens as final shard
+        if all_tokens:
             shard_path = output_dir / f"shard_{shard_idx:05d}.npy"
-            np.save(shard_path, np.array(shard_tokens, dtype=np.uint32))
+            np.save(shard_path, np.array(all_tokens, dtype=np.uint32))
             shard_idx += 1
-
-        # Stop when we have enough
-        if total_tokens >= target_tokens:
-            break
-
-    pbar.close()
-
-    # Save remaining tokens as final shard
-    if all_tokens:
-        shard_path = output_dir / f"shard_{shard_idx:05d}.npy"
-        np.save(shard_path, np.array(all_tokens, dtype=np.uint32))
-        shard_idx += 1
 
     # Concatenate all shards into single file (optional, for simple loading)
     print(f"\nConcatenating {shard_idx} shards into single file...")
     all_data = []
+    
+    # Check if we can reuse existing shards instead of re-downloading
+    # If shards exist but combined file is missing, we can just recombine.
+    # But since we changed the tokenization logic (append_eos), we MUST re-tokenize.
+    # So we assume the user has deleted the output directory or we overwrite.
+    
     for i in range(shard_idx):
         shard_path = output_dir / f"shard_{i:05d}.npy"
+        if not shard_path.exists():
+             print(f"Warning: Shard {shard_path} missing during recombination.")
+             continue
         all_data.append(np.load(shard_path))
+
+    if not all_data:
+        print("Error: No data found to concatenate.")
+        return
 
     combined = np.concatenate(all_data)
     combined_path = output_dir / f"fineweb_llama_{args.tokens.lower()}.npy"

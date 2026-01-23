@@ -11,7 +11,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field, field_validator, model_validator
 
-from config import Config, PositiveFloat, PositiveInt, Probability
+from config import Config, NonNegativeInt, PositiveFloat, PositiveInt, Probability
 
 
 class AttentionMode(str, enum.Enum):
@@ -316,7 +316,8 @@ class RNNLayerConfig(Config):
     batch_first: bool = True
     dropout: Probability = 0.0
     bidirectional: bool = False
-    proj_size: PositiveInt = 0  # LSTM only
+    # LSTM only. 0 disables projection (matches torch.nn.LSTM proj_size semantics).
+    proj_size: NonNegativeInt = 0
 
 
 class GraphConvLayerConfig(Config):

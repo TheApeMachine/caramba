@@ -1,0 +1,13 @@
+{
+  "model_name": "baseline",
+  "checkpoint": "research/dba/100k_checkpoints/baseline/a100_fw20b_l22_baseline_s42_100k.pt",
+  "strict": false,
+  "dtype": "torch.float16",
+  "device": "mps",
+  "num_checkpoint_tensors": 135,
+  "num_model_tensors": 135,
+  "missing_keys_count": 0,
+  "unexpected_keys_count": 0,
+  "missing_keys_head": [],
+  "unexpected_keys_head": []
+}

@@ -25,9 +25,13 @@ vars:
   # ----- Dataset -----
   # Tokenized FineWeb-Edu (20B tokens) produced by your pipeline.
   # Keep as a plain path; generation is intentionally not attempted from manifest.
-  dataset: HuggingFaceFW/fineweb
-  tokens: 20b
-  dataset_path: fineweb_20b.npy
+  # dataset: HuggingFaceFW/fineweb
+  # tokens: 20b
+  # dataset_path: fineweb_20b.npy
+
+  dataset_path: artifacts/datasets/instructions_gpt2/instructions.npy
+  model1: research/dba/100k_checkpoints/baseline/a100_fw1b_l22_baseline_s42_100k.pt
+  model2: research/dba/100k_checkpoints/sem8geo32v40/a100_fw1b_l22_dba_s42_100k.pt
 
   block_size: 2048
 
@@ -47,11 +51,11 @@ vars:
   attn_dim: 1280
 
   # ----- Training -----
-  steps: 100000
+  steps: 1000
   seed: 42
-  device: cuda
+  device: mps
   # Use explicit dtype to avoid "auto" differences across backends.
-  dtype: bfloat16
+  dtype: float32
   # A100 utilization: avoid tiny microbatches + single-worker dataloading.
   # Keep effective tokens/step the same as grad_accum=32,batch_size=1 by using a bigger microbatch:
   # effective_tokens_per_step = batch_size * grad_accum * block_size
@@ -59,23 +63,23 @@ vars:
   # batch_size=16 OOMed; use the largest stable microbatch.
   # NOTE: This changes effective batch from 32 -> 24 sequences/step, but keeps
   # baseline vs decoupled strictly apples-to-apples.
-  batch_size: 8
-  grad_accum: 4
+  batch_size: 2
+  grad_accum: 2
   # Feed the GPU: parallelize mmap slicing + tensor materialization.
-  num_workers: 8
-  prefetch_factor: 4
-  pin_memory: true
-  lr: 3.0e-4
+  num_workers: 0
+  prefetch_factor: 0
+  pin_memory: false
+  lr: 2.0e-4
   # DBA is more sensitive to peak LR; using baseline LR often produces a spike
   # when warmup ends (peak LR). Keep baseline at lr, but run decoupled at a
   # slightly lower peak LR.
   lr_decoupled: 2.0e-4
   weight_decay: 0.1
   optimizer: adamw
-  fused_optimizer: true
+  fused_optimizer: false
   scheduler: cosine
   warmup_steps: 2000
-  save_every: 10000
+  save_every: 500
 
 targets:
   # ---------------------------------------------------------------------------
@@ -161,13 +165,13 @@ targets:
           activation_checkpointing: false
           activation_checkpoint_threshold_mb: 0.0
           # Throughput optimization (CUDA): enable autocast + torch.compile.
-          use_amp: true
-          amp_dtype: bfloat16
-          compile_model: true
+          use_amp: false
+          # amp_dtype: bfloat16
+          compile_model: false
           # 'default' is the most stable mode under gradient accumulation and
           # tends to avoid long autotune/benchmark phases that don't reliably
           # improve cuBLAS GEMMs on A100.
-          compile_mode: default
+          # compile_mode: default
           # Profiling disabled for production runs (avoids step-time spikes).
           profile_every: 0
           profile_record_shapes: false
@@ -273,11 +277,11 @@ targets:
           activation_checkpointing: false
           activation_checkpoint_threshold_mb: 0.0
           # Throughput optimization (CUDA): enable autocast + torch.compile.
-          use_amp: true
-          amp_dtype: bfloat16
-          compile_model: true
+          use_amp: false  
+          # amp_dtype: bfloat16
+          compile_model: false
           # See baseline run notes.
-          compile_mode: default
+          # compile_mode: default
           # Profiling disabled for production runs (avoids step-time spikes).
           profile_every: 0
           profile_record_shapes: false

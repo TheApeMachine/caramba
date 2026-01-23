@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from initializers.dba.base import DBAInitializer
 from initializers.dba.fresh import DBAFresh
-from initializers.dba.random import DBARandom
+from initializers.dba.dba_random import DBARandom
 from initializers.dba.svd import DBASVD
 
 __all__ = ["DBAInitializer", "DBASVD", "DBARandom", "DBAFresh"]

@@ -93,6 +93,8 @@ class TestArtifactGenerator(unittest.TestCase):
             loss=2.14,
             num_tokens=10000,
             num_batches=100,
+            batch_loss_sums=[],
+            batch_token_counts=[],
         )
 
         self.student_ppl = PerplexityResult(
@@ -101,13 +103,23 @@ class TestArtifactGenerator(unittest.TestCase):
             loss=2.16,
             num_tokens=10000,
             num_batches=100,
+            batch_loss_sums=[],
+            batch_token_counts=[],
         )
 
         self.teacher_latency = LatencyResult(
             model_name="teacher",
             measurements=[
                 LatencyMeasurement(
+                    seed=42,
+                    input_ids=[[1, 2, 3]],
+                    input_ids_sha256="test",
                     prompt_len=128, gen_len=64, batch_size=1,
+                    prefill_times_ms=[10.0],
+                    first_decode_times_ms=[1.0],
+                    decode_times_ms=[40.0],
+                    ttft_times_ms=[11.0],
+                    total_times_ms=[50.0],
                     prefill_time_ms=10.0, decode_time_ms=40.0,
                     total_time_ms=50.0, tokens_per_second=150.0,
                     time_to_first_token_ms=10.0,
@@ -119,7 +131,15 @@ class TestArtifactGenerator(unittest.TestCase):
             model_name="student",
             measurements=[
                 LatencyMeasurement(
+                    seed=42,
+                    input_ids=[[1, 2, 3]],
+                    input_ids_sha256="test",
                     prompt_len=128, gen_len=64, batch_size=1,
+                    prefill_times_ms=[8.0],
+                    first_decode_times_ms=[1.0],
+                    decode_times_ms=[30.0],
+                    ttft_times_ms=[9.0],
+                    total_times_ms=[38.0],
                     prefill_time_ms=8.0, decode_time_ms=30.0,
                     total_time_ms=38.0, tokens_per_second=225.0,
                     time_to_first_token_ms=8.0,
@@ -131,6 +151,9 @@ class TestArtifactGenerator(unittest.TestCase):
             model_name="teacher",
             measurements=[
                 MemoryMeasurement(
+                    seed=42,
+                    input_ids=[[1, 2, 3]],
+                    input_ids_sha256="test",
                     seq_len=512, batch_size=1,
                     peak_memory_mb=1000.0, kvcache_memory_mb=200.0,
                     model_memory_mb=800.0, quantization="fp16",
@@ -152,6 +175,9 @@ class TestArtifactGenerator(unittest.TestCase):
             model_name="student",
             measurements=[
                 MemoryMeasurement(
+                    seed=42,
+                    input_ids=[[1, 2, 3]],
+                    input_ids_sha256="test",
                     seq_len=512, batch_size=1,
                     peak_memory_mb=900.0, kvcache_memory_mb=50.0,
                     model_memory_mb=800.0, quantization="fp16",
@@ -509,7 +535,15 @@ class TestLatencyMeasurementUseCacheField(unittest.TestCase):
     def test_latency_measurement_with_use_cache(self) -> None:
         """LatencyMeasurement includes use_cache field."""
         m = LatencyMeasurement(
+            seed=1,
+            input_ids=[[0] * 128],
+            input_ids_sha256="test",
             prompt_len=128, gen_len=64, batch_size=1,
+            prefill_times_ms=[10.0],
+            first_decode_times_ms=[2.0],
+            decode_times_ms=[40.0],
+            ttft_times_ms=[12.0],
+            total_times_ms=[50.0],
             prefill_time_ms=10.0, decode_time_ms=40.0,
             total_time_ms=50.0, tokens_per_second=150.0,
             time_to_first_token_ms=12.0,
@@ -520,7 +554,15 @@ class TestLatencyMeasurementUseCacheField(unittest.TestCase):
     def test_latency_measurement_use_cache_default(self) -> None:
         """LatencyMeasurement use_cache defaults to False."""
         m = LatencyMeasurement(
+            seed=1,
+            input_ids=[[0] * 128],
+            input_ids_sha256="test",
             prompt_len=128, gen_len=64, batch_size=1,
+            prefill_times_ms=[10.0],
+            first_decode_times_ms=[0.1],
+            decode_times_ms=[40.0],
+            ttft_times_ms=[10.1],
+            total_times_ms=[50.0],
             prefill_time_ms=10.0, decode_time_ms=40.0,
             total_time_ms=50.0, tokens_per_second=150.0,
             time_to_first_token_ms=10.0,

@@ -103,6 +103,9 @@ class TrainingVizMosaicContext(TrainingVizContext):
     - carries extra fields needed for MOSAIC curriculum training (teacher actions, input_ids)
     """
 
+    # Global RNG seed for deterministic dropout in attention layers.
+    seed: int | None = None
+
     # For n-gram cache and other token-aware layers.
     input_ids: Tensor | None = None
 

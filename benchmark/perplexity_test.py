@@ -43,6 +43,8 @@ class TestPerplexityResult(unittest.TestCase):
             loss=2.35,
             num_tokens=1000,
             num_batches=10,
+            batch_loss_sums=[],
+            batch_token_counts=[],
         )
         self.assertEqual(result.model_name, "test_model")
         self.assertAlmostEqual(result.perplexity, 10.5)

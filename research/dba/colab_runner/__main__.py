@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from caramba.research.dba.colab_runner.benchmark import BenchmarkConfig, BenchmarkRunner
+from research.dba.colab_runner.benchmark import BenchmarkConfig, BenchmarkRunner
 
 
 def main() -> int:

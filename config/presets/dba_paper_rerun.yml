@@ -25,7 +25,8 @@ vars:
   # ----- Dataset -----
   # Tokenized FineWeb-Edu (20B tokens) produced by your pipeline.
   # Keep as a plain path; generation is intentionally not attempted from manifest.
-  dataset_path: fineweb_20b.npy
+  # dataset_path: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_20b.npy
+  dataset_path: artifacts/datasets/instructions_gpt2/instructions.npy
   block_size: 2048
 
   # ----- Model (Llama-1B-ish) -----
@@ -47,32 +48,33 @@ vars:
   attn_dim: 1536
 
   # ----- Training -----
-  steps: 10000
+  steps: 1000
   seed: 1337
-  device: cuda
+  device: mps
   # Use explicit dtype to avoid "auto" differences across backends.
-  dtype: bfloat16
+  # Note: MPS (Apple Silicon Metal) requires fp16/fp32, not bfloat16 for RMSNorm
+  dtype: float32
   # A100 utilization: avoid tiny microbatches + single-worker dataloading.
   # Keep effective tokens/step the same as grad_accum=32,batch_size=1 by using a bigger microbatch:
   # effective_tokens_per_step = batch_size * grad_accum * block_size
-  batch_size: 4
+  batch_size: 1
   # Match the original effective batch (1 * 32) while keeping larger microbatches:
   # 4 * 8 = 32 sequences/step.
-  grad_accum: 8
+  grad_accum: 4
   # Feed the GPU: parallelize mmap slicing + tensor materialization.
-  num_workers: 8
-  prefetch_factor: 4
-  pin_memory: true
-  lr: 3.0e-4
+  num_workers: 0
+  prefetch_factor: 0
+  pin_memory: false
+  lr: 6.0e-5
   # DBA is more sensitive to peak LR; using baseline LR often produces a spike
   # when warmup ends (peak LR). Keep baseline at lr, but run decoupled at a
   # slightly lower peak LR.
-  lr_decoupled: 2.0e-4
-  weight_decay: 0.1
+  lr_decoupled: 5.0e-5
+  weight_decay: 0.05
   optimizer: adamw
-  fused_optimizer: true
+  fused_optimizer: false
   scheduler: cosine
-  warmup_steps: 2000
+  warmup_steps: 50
   save_every: 500
 
 targets:
@@ -92,6 +94,8 @@ targets:
     system:
       ref: system.language_model
       config:
+        return_features: true
+        features_key: features
         model:
           type: TransformerModel
           tied_embeddings: false
@@ -135,8 +139,8 @@ targets:
                 d_in: ${d_model}
                 d_out: ${vocab_size}
                 bias: false
-    objective: objective.next_token_ce
-    trainer: trainer.standard
+    objective: objective.next_token_ce_chunked
+    trainer: trainer.finetune_minimal
     runs:
       - id: train
         mode: train
@@ -146,6 +150,7 @@ targets:
         expected: {}
         train:
           phase: standard
+          checkpoint: research/dba/checkpoints/a100_fw1b_l22_baseline_s1337_10k.pt
           batch_size: ${batch_size}
           block_size: ${block_size}
           lr: ${lr}
@@ -164,8 +169,9 @@ targets:
           auto_resume: false
           skip_if_final: false
           auto_batch_size: false
-          compile_model: true
-          compile_mode: max-autotune
+          # Disable torch.compile on MPS - Metal kernels already optimized
+          compile_model: false
+          use_amp: false
           # Profiling disabled for production runs (avoids step-time spikes).
           profile_every: 0
           profile_record_shapes: false
@@ -186,6 +192,8 @@ targets:
     system:
       ref: system.language_model
       config:
+        return_features: true
+        features_key: features
         model:
           type: TransformerModel
           tied_embeddings: false
@@ -239,8 +247,8 @@ targets:
                 d_in: ${d_model}
                 d_out: ${vocab_size}
                 bias: false
-    objective: objective.next_token_ce
-    trainer: trainer.standard
+    objective: objective.next_token_ce_chunked
+    trainer: trainer.finetune_minimal
     runs:
       - id: train
         mode: train
@@ -250,6 +258,7 @@ targets:
         expected: {}
         train:
           phase: standard
+          checkpoint: research/dba/checkpoints/a100_fw1b_l22_decoupled_s1337_10k.pt
           batch_size: ${batch_size}
           block_size: ${block_size}
           lr: ${lr_decoupled}
@@ -267,8 +276,8 @@ targets:
           auto_resume: false
           skip_if_final: false
           auto_batch_size: false
-          compile_model: true
-          compile_mode: max-autotune
+          # Disable torch.compile on MPS - Metal kernels already optimized
+          compile_model: false
           # Profiling disabled for production runs (avoids step-time spikes).
           profile_every: 0
           profile_record_shapes: false

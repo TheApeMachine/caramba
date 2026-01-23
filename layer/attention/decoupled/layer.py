@@ -29,6 +29,9 @@ if TYPE_CHECKING:
     from cache.decoupled import DecoupledLayerKVCache
 
 
+_DBA_TRAINING = DecoupledAttentionTraining()
+
+
 class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySummarizer):
     """Decoupled bottleneck attention layer
 
@@ -56,6 +59,13 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
     mem_k_proj_sem: nn.Module | None
     mem_k_proj_geo: nn.Module | None
     mem_v_proj_dba: nn.Module | None
+    _dba_train_backend: str
+    _force_sdpa: bool
+    _force_triton: bool
+    _null_attn_enabled: bool
+    _is_causal: bool
+    _q_chunk_cfg: int | None
+    _local_window_cfg: int | None
 
 
     def __init__(self, config: AttentionLayerConfig) -> None:
@@ -67,6 +77,30 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
         self._viz = DecoupledAttentionViz()
         self._decode = DecoupledDecode()
         self._chunked = DecoupledSDPAChunked()
+        self._init_hotpath_constants(config)
+
+    def _init_hotpath_constants(self, config: AttentionLayerConfig) -> None:
+        # Cache constant config-derived values to reduce per-forward Pydantic/getattr work.
+        self._null_attn_enabled = bool(getattr(config, "null_attn", False))
+        self._is_causal = bool(config.is_causal)
+        self._q_chunk_cfg = getattr(config, "q_chunk", None)
+        self._local_window_cfg = getattr(config, "local_window", None)
+
+        raw_backend = getattr(config, "dba_train_backend", "auto")
+        backend = str(raw_backend or "auto").lower().strip()
+        allowed = {"auto", "triton", "sdpa", "metal"}
+        if backend not in allowed:
+            warnings.warn(
+                f"Invalid dba_train_backend={raw_backend!r}; falling back to 'auto'. "
+                f"Allowed values: {sorted(allowed)}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            backend = "auto"
+        self._dba_train_backend = backend
+        # "metal" is a manifest-friendly alias for the SDPA-style path on MPS.
+        self._force_sdpa = (backend == "sdpa" or backend == "metal")
+        self._force_triton = (backend == "triton")
 
     def _init_common_modules(self) -> None:
         super()._init_common_modules()
@@ -234,30 +268,19 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
             kgh = kgh.repeat_interleave(self.group_size, dim=1)
             vh = vh.repeat_interleave(self.group_size, dim=1)
 
-        q_chunk = q_chunk_override if q_chunk_override is not None else self.config.q_chunk
-        local_window = local_window_override if local_window_override is not None else self.config.local_window
+        q_chunk = q_chunk_override if q_chunk_override is not None else self._q_chunk_cfg
+        local_window = local_window_override if local_window_override is not None else self._local_window_cfg
 
         dropout_p = float(self.config.dropout_p) if self.training else 0.0
-        null_enabled = bool(getattr(self.config, "null_attn", False))
+        null_enabled = bool(self._null_attn_enabled)
 
         # `dba_train_backend` controls which DBA training backend to use:
         # - "auto": prefer the Triton training kernel when eligible (default)
         # - "triton": prefer the Triton training kernel (warn/fallback if ineligible)
         # - "sdpa": force scaled dot-product attention
-        raw_backend = getattr(self.config, "dba_train_backend", "auto")
-        dba_backend = str(raw_backend or "auto").lower().strip()
-        allowed = {"auto", "triton", "sdpa", "metal"}
-        if dba_backend not in allowed:
-            warnings.warn(
-                f"Invalid dba_train_backend={raw_backend!r}; falling back to 'auto'. "
-                f"Allowed values: {sorted(allowed)}",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            dba_backend = "auto"
-        # "metal" is a manifest-friendly alias for the SDPA-style path on MPS.
-        force_sdpa = (dba_backend == "sdpa" or dba_backend == "metal")
-        force_triton = (dba_backend == "triton")
+        dba_backend = self._dba_train_backend
+        force_sdpa = bool(self._force_sdpa)
+        force_triton = bool(self._force_triton)
         is_triton_eligible = (
             q_chunk is None
             and local_window is None
@@ -312,18 +335,19 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                     vh,
                     attn_mask=None,
                     dropout_p=float(dropout_p),
-                    is_causal=bool(self.config.is_causal) and int(T) > 1,
+                    is_causal=bool(self._is_causal) and int(T) > 1,
                     scale=1.0,
                 )
-                self._viz.record_attention_matrix(ctx=ctx, layer=self, q_cat=q_cat, k_cat=k_cat)
+                if ctx is not None:
+                    self._viz.record_attention_matrix(ctx=ctx, layer=self, q_cat=q_cat, k_cat=k_cat)
             else:
-                out = DecoupledAttentionTraining().run(
+                out = _DBA_TRAINING.run(
                     q_sem=qsh,
                     q_geo=qgh,
                     k_sem=ksh,
                     k_geo=kgh,
                     v=vh,
-                    causal=bool(self.config.is_causal) and int(T) > 1,
+                    causal=bool(self._is_causal) and int(T) > 1,
                     sem_scale=float(sem_scale),
                     geo_scale=float(geo_scale),
                     dropout_p=float(dropout_p),
@@ -355,10 +379,10 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                 q_cat = F.pad(q_cat, (0, pad))
                 k_cat = F.pad(k_cat, (0, pad))
 
-            can_use_is_causal = (mask is None) and (cache is None) and (not null_enabled) and bool(self.config.is_causal) and int(T) > 1 and x.device.type == "cuda"
+            can_use_is_causal = (mask is None) and (cache is None) and (not null_enabled) and bool(self._is_causal) and int(T) > 1 and x.device.type == "cuda"
             attn_mask = mask
             is_causal = bool(can_use_is_causal)
-            if attn_mask is None and (not is_causal) and bool(self.config.is_causal) and int(T) > 1:
+            if attn_mask is None and (not is_causal) and bool(self._is_causal) and int(T) > 1:
                 causal = torch.tril(torch.ones(int(T), int(k_cat.size(2)), device=x.device, dtype=torch.bool))
                 if null_enabled:
                     causal[:, 0] = True
@@ -373,7 +397,8 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                 is_causal=bool(is_causal),
                 scale=1.0,
             )
-            self._viz.record_attention_matrix(ctx=ctx, layer=self, q_cat=q_cat, k_cat=k_cat)
+            if ctx is not None:
+                self._viz.record_attention_matrix(ctx=ctx, layer=self, q_cat=q_cat, k_cat=k_cat)
         else:
             out = self._chunked.run(
                 qsh=qsh,
@@ -381,7 +406,7 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
                 qgh=qgh,
                 kgh=kgh,
                 vh=vh,
-                is_causal=bool(self.config.is_causal),
+                is_causal=bool(self._is_causal),
                 mask=mask,
                 cache_pos=cache_pos,
                 q_chunk=int(q_chunk) if q_chunk is not None else int(T),
@@ -395,6 +420,7 @@ class DecoupledAttentionLayer(AttentionBase, DecoupledSetup, DecoupledMemorySumm
             )
 
         y = self.out_proj(self._merge(out))
-        self._viz.record_activation_sample(ctx=ctx, layer=self, y=y)
+        if ctx is not None:
+            self._viz.record_activation_sample(ctx=ctx, layer=self, y=y)
         return y, cache
 

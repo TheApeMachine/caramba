@@ -15,7 +15,7 @@ from adapter.schema import SchemaLoader, StateDictSchema
 from config.layer import AttentionMode
 from initializers.dba.base import DBAInitializer
 from initializers.dba.fresh import DBAFresh, init_fresh_linear
-from initializers.dba.random import DBARandom
+from initializers.dba.dba_random import DBARandom
 from initializers.dba.svd import DBASVD
 from layer.attention import AttentionLayer
 from layer.linear import LinearLayer
@@ -28,18 +28,38 @@ from model.embedder import Embedder
 class AdapterStateDictTransformer:
     """Schema-driven state-dict adapter for transformer-like models."""
 
-    def __init__(self, *, schema: StateDictSchema, dba_initializer: DBAInitializer) -> None:
+    def __init__(
+        self,
+        *,
+        schema: StateDictSchema,
+        dba_initializer: DBAInitializer,
+        gate_init_bias: float | None = None,
+        out_proj_init_std: float | None = None,
+    ) -> None:
         self.schema = schema
         self.dba_initializer = dba_initializer
+        self.gate_init_bias = gate_init_bias
+        self.out_proj_init_std = out_proj_init_std
 
     @classmethod
-    def llama(cls, *, dba_init: str = "svd") -> "AdapterStateDictTransformer":
+    def llama(
+        cls,
+        *,
+        dba_init: str = "svd",
+        gate_init_bias: float | None = None,
+        out_proj_init_std: float | None = None,
+    ) -> "AdapterStateDictTransformer":
         """Build the transformer adapter with the built-in Llama schema."""
 
         schema_path = Path(__file__).resolve().parent.parent / "schema" / "llama.yml"
         schema = SchemaLoader().load(path=str(schema_path))
         init = cls.buildDbaInitializer(dba_init=str(dba_init))
-        return cls(schema=schema, dba_initializer=init)
+        return cls(
+            schema=schema,
+            dba_initializer=init,
+            gate_init_bias=gate_init_bias,
+            out_proj_init_std=out_proj_init_std,
+        )
 
     @staticmethod
     def buildDbaInitializer(*, dba_init: str) -> DBAInitializer:
@@ -267,6 +287,8 @@ class AdapterStateDictTransformer:
         else:
             # SVD/random mode: copy V/O from teacher
             self.copyVO(attn=attn, v=v, o=o)
+            if self.out_proj_init_std is not None:
+                nn.init.normal_(attn.out_proj.weight, mean=0.0, std=self.out_proj_init_std)
 
         # Initialize Q semantic and geometric projections (uses full n_heads)
         self.dba_initializer.initialize(
@@ -290,7 +312,10 @@ class AdapterStateDictTransformer:
 
         # Reset gate to neutral (0.5 semantic/geometric mix)
         if attn.decoupled_gate_logit is not None:
-            attn.decoupled_gate_logit.data.zero_()
+            if self.gate_init_bias is not None:
+                attn.decoupled_gate_logit.data.fill_(self.gate_init_bias)
+            else:
+                attn.decoupled_gate_logit.data.zero_()
 
     def copyVO(self, *, attn: AttentionLayer, v: Tensor, o: Tensor) -> None:
         """Copy V and O weights with truncation/padding."""

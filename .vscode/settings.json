@@ -8,5 +8,6 @@
     },
     "makefile.configureOnOpen": false,
     "typescript.autoClosingTags": false,
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+    "texra.ui.showLoginBanner": false
 }

@@ -1,0 +1,335 @@
+version: 2
+name: llama32_1b_dba_export_blockwise_finetune
+notes: >
+  Single manifest that runs, in order:
+    1) Surgery export (baseline + DBA-surgery checkpoints)
+    2) Upcycle training: blockwise distillation + global finetune
+
+  Tip: run WITHOUT --target to execute all targets sequentially:
+    python3.12 -m caramba run config/presets/llama32_1b_dba_export_blockwise_finetune.yml
+
+defaults:
+  data:
+    tokenizer: llama
+    val_frac: 0.05
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-upcycle
+    wandb_entity: ""
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    # Checkpoint cadence. Blockwise interprets this as "global step across blocks".
+    # Keep this large to avoid filling disk (each checkpoint is multi-GB).
+    save_every: 5000
+
+vars:
+  # ---- Teacher ----
+  teacher_ckpt: hf://meta-llama/Llama-3.2-1B
+
+  # ---- Dataset (llama-tokenized FineWeb) ----
+  dataset_path: artifacts/datasets/fineweb_llama/fineweb_llama_1b.npy
+  block_size: 2048
+
+  # ---- Runtime ----
+  device: mps
+  dtype: fp32
+
+  # ---- Llama 3.2 1B architecture ----
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+  rope_theta: 500000.0
+
+  # ---- DBA dims (sem8/geo32/v40) ----
+  # sem_dim/geo_dim are total across heads; per-head sizes are 8 and 32 when n_heads=32.
+  sem_dim: 256
+  geo_dim: 1024
+  # attn_dim controls V width (total across heads); per-head value dim is 40 when n_heads=32.
+  attn_dim: 1280
+
+  # ---- Training ----
+  # IMPORTANT: in this codebase, blockwise uses `run.steps` as *steps per block*.
+  blockwise_steps: 2000
+  global_steps: 2000
+  blockwise_lr: 0.0001
+  global_lr: 1.0e-5
+  batch_size: 8
+
+  # ---- Export output ----
+  export_dir: artifacts/surgery/llama32_1b_sem8geo32v40_gate
+  export_dba_init: svd
+
+# =============================================================================
+# YAML anchors (models + dummy run)
+# =============================================================================
+
+x-llama32-baseline-model: &baseline_model
+  type: TransformerModel
+  tied_embeddings: false
+  embedder:
+    type: token
+    vocab_size: ${vocab_size}
+    d_model: ${d_model}
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                n_kv_heads: ${n_kv_heads}
+                mode: standard
+                rope_enabled: true
+                rope_base: ${rope_theta}
+                is_causal: true
+                dropout_p: 0.0
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: SwiGLULayer
+                d_model: ${d_model}
+                d_ff: ${d_ff}
+                bias: false
+      - type: RMSNormLayer
+        d_model: ${d_model}
+        eps: 1e-5
+      - type: LinearLayer
+        d_in: ${d_model}
+        d_out: ${vocab_size}
+        bias: false
+
+x-llama32-dba-model: &dba_model
+  type: TransformerModel
+  tied_embeddings: false
+  embedder:
+    type: token
+    vocab_size: ${vocab_size}
+    d_model: ${d_model}
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                n_kv_heads: ${n_kv_heads}
+                mode: decoupled
+                attn_dim: ${attn_dim}
+                sem_dim: ${sem_dim}
+                geo_dim: ${geo_dim}
+                rope_enabled: true
+                rope_base: ${rope_theta}
+                is_causal: true
+                dropout_p: 0.0
+                decoupled_gate: true
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: SwiGLULayer
+                d_model: ${d_model}
+                d_ff: ${d_ff}
+                bias: false
+      - type: RMSNormLayer
+        d_model: ${d_model}
+        eps: 1e-5
+      - type: LinearLayer
+        d_in: ${d_model}
+        d_out: ${vocab_size}
+        bias: false
+
+x-dummy-run: &dummy_run
+  - id: eval
+    mode: train
+    exp: schema_dummy
+    seed: 42
+    steps: 1
+    expected: {phase: global}
+    train:
+      phase: global
+      batch_size: 1
+      block_size: ${block_size}
+      lr: 1.0e-5
+      device: ${device}
+      dtype: ${dtype}
+
+targets:
+  # ---------------------------------------------------------------------------
+  # 1) Export (no training): writes baseline.pt + surgery.pt
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: export
+    description: "Export baseline + DBA-surgery checkpoints (no training)."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    # Unused by the trainer, but required by schema.
+    system:
+      ref: system.language_model
+      config:
+        model: *dba_model
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.surgery_export
+      config:
+        teacher_ckpt: ${teacher_ckpt}
+        teacher_model: *baseline_model
+        student_model: *dba_model
+        dba_init: ${export_dba_init}
+        output_dir: ${export_dir}
+        device: ${device}
+        dtype: ${dtype}
+        gate_init_bias: -4.0
+        out_proj_init_std: 0.0
+    runs: *dummy_run
+
+  # ---------------------------------------------------------------------------
+  # 2) Upcycle: blockwise + global finetune (with benchmarks)
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: paper
+    description: "DBA upcycle: blockwise distillation + deterministic global finetune."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+        prepare:
+          type: fineweb
+          tokens: 1B
+          tokenizer: llama
+          model_id: meta-llama/Llama-3.2-1B
+          dataset: fineweb_llama
+          subset: sample-10BT
+          split: train
+          text_field: text
+          max_chars: 50000
+          append_eos: true
+          append_bos: false
+          rebuild_on_failure: true
+    system:
+      ref: system.language_model
+      config:
+        model: *dba_model
+    objective: objective.next_token_ce
+    trainer: trainer.upcycle
+    runs:
+      - id: blockwise
+        mode: train
+        exp: dba_blockwise
+        seed: 42
+        steps: ${blockwise_steps}
+        expected:
+          phase: blockwise
+        train:
+          phase: blockwise
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${blockwise_lr}
+          device: ${device}
+          dtype: ${dtype}
+          teacher_ckpt: ${teacher_ckpt}
+          dba_init: svd
+          gate_init_bias: -4.0
+          out_proj_init_std: 0.0
+          gradient_accumulation_steps: 8
+          # Distill what the next layer actually consumes (post residual-add),
+          # which is often much more aligned with perplexity than raw attention output.
+          blockwise_distill_target: post_residual
+          # Resume safely after interruptions (disk full, crash, etc).
+          auto_resume: true
+          skip_if_final: true
+          # Keep deterministic: no blockwise autotune.
+          blockwise_autotune_enabled: false
+          orchestrator_enabled: false
+          optimizer: lion
+          fused_optimizer: false
+          # Blockwise is sensitive to fp16 overflow on MPS; keep it stable.
+          use_amp: false
+          mps_fast_ce: false
+          mps_allow_fp16_autocast_without_gradscaler: false
+
+      - id: finetune
+        mode: train
+        exp: dba_finetune
+        seed: 42
+        steps: ${global_steps}
+        expected:
+          phase: global
+        train:
+          phase: global
+          batch_size: ${batch_size}
+          block_size: ${block_size}
+          lr: ${global_lr}
+          device: ${device}
+          dtype: ${dtype}
+          teacher_ckpt: ${teacher_ckpt}
+          dba_init: svd
+          gate_init_bias: -4.0
+          out_proj_init_std: 0.0
+          gradient_accumulation_steps: 8
+          trainable_scope:
+            - ".*norm.*"
+            - ".*q_sem.*"
+            - ".*k_sem.*"
+            - ".*q_geo.*"
+            - ".*k_geo.*"
+            # Let the student repair the truncated V/O projections introduced by surgery
+            # (DBA v_proj/out_proj shapes differ from the teacher's standard attention).
+            - ".*v_proj.*"
+            - ".*out_proj.*"
+            - ".*decoupled_gate_logit.*"
+          param_groups:
+            # 1. The DBA Matrices (The "Muscles") - Needs medium learning rate
+            - regex: ".*(q_sem|k_sem|q_geo|k_geo|v_proj|out_proj).*"
+              lr: 3.0e-4
+              weight_decay: 0.01
+
+            # 2. The Gates (The "Brain") - Needs high learning rate to switch on
+            - regex: ".*decoupled_gate_logit.*"
+              lr: 1.0e-2   # Aggressive, but safe because they start at -4.0
+              weight_decay: 0.0
+          orchestrator_enabled: false
+          scheduler: cosine
+          warmup_steps: 200
+          grad_clip_norm: 1.0
+          optimizer: lion
+          fused_optimizer: false
+          use_amp: false
+          amp_dtype: fp32
+          mps_fast_ce: false
+          mps_allow_fp16_autocast_without_gradscaler: false
+          auto_resume: true
+          skip_if_final: true
+
+entrypoints:
+  export: "target:export"
+  train: "target:paper"

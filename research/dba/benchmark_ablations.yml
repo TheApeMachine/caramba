@@ -491,6 +491,7 @@ x-multi-benchmark-suite: &multi_benchmark_suite
   - id: latency_cached
     config:
       type: latency
+      seed: 1337
       prompt_lengths: [128, 512, 1024, 2048, 4096]
       generation_lengths: [128]
       batch_sizes: [1]
@@ -505,6 +506,7 @@ x-multi-benchmark-suite: &multi_benchmark_suite
   - id: latency_long_context
     config:
       type: latency
+      seed: 1337
       prompt_lengths: [2048, 4096, 8192]
       generation_lengths: [64]
       batch_sizes: [1]
@@ -518,6 +520,7 @@ x-multi-benchmark-suite: &multi_benchmark_suite
   - id: memory_kv
     config:
       type: memory
+      seed: 1337
       sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
       batch_sizes: [1]
       measure_peak: true
@@ -532,7 +535,8 @@ x-multi-benchmark-suite: &multi_benchmark_suite
       tokenizer:
         type: tiktoken
         encoding: gpt2
-      cases_file: research/dba/behavior_cases.yml
+      seed: 1337
+      suite_file: benchmark/behavior/cases.yml
       max_new_tokens: 32
       context_window: 2048
       dump_attention: true
@@ -659,20 +663,6 @@ x-multi-benchmark-suite: &multi_benchmark_suite
       dump_attention_anchor: ""
       dump_attention_paper_dir: research/dba/figs/attention
       dump_attention_paper_tag: dba_10k
-    models: [baseline, bottleneck, decoupled, gqa, baseline_lr2e4, baseline_lr4e4, decoupled_norope, decoupled_tiedqk, decoupled_null, decoupled_gate]
-
-  - id: behavioral_v2
-    config:
-      type: behavioral_v2
-      tokenizer:
-        type: tiktoken
-        encoding: gpt2
-      seed: 42
-      tests_per_category: 30
-      max_new_tokens: 32
-      context_window: 2048
-      stream_live: true
-      stream_every: 10
     models: [baseline, bottleneck, decoupled, gqa, baseline_lr2e4, baseline_lr4e4, decoupled_norope, decoupled_tiedqk, decoupled_null, decoupled_gate]
 
   - id: downstream_accuracy
@@ -813,6 +803,7 @@ x-llama32-benchmark-suite: &llama32_benchmark_suite
   - id: latency_cached_llama
     config:
       type: latency
+      seed: 1337
       prompt_lengths: [128, 512, 1024, 2048, 4096]
       generation_lengths: [128]
       batch_sizes: [1]
@@ -825,6 +816,7 @@ x-llama32-benchmark-suite: &llama32_benchmark_suite
   - id: memory_kv_llama
     config:
       type: memory
+      seed: 1337
       sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
       batch_sizes: [1]
       measure_peak: true
@@ -838,7 +830,8 @@ x-llama32-benchmark-suite: &llama32_benchmark_suite
       tokenizer:
         type: llama
         model_id: meta-llama/Llama-3.2-1B
-      cases_file: research/dba/behavior_cases.yml
+      seed: 42
+      suite_file: benchmark/behavior/cases.yml
       max_new_tokens: 32
       context_window: 2048
       dump_attention: true
@@ -847,20 +840,6 @@ x-llama32-benchmark-suite: &llama32_benchmark_suite
       dump_attention_anchor: ""
       dump_attention_paper_dir: research/dba/figs/attention
       dump_attention_paper_tag: llama32_surgery
-    models: [baseline, student]
-
-  - id: behavioral_v2_llama
-    config:
-      type: behavioral_v2
-      tokenizer:
-        type: llama
-        model_id: meta-llama/Llama-3.2-1B
-      seed: 42
-      tests_per_category: 30
-      max_new_tokens: 32
-      context_window: 2048
-      stream_live: true
-      stream_every: 10
     models: [baseline, student]
 
   - id: downstream_accuracy_llama

@@ -63,18 +63,26 @@ def _mps_mem_mb(device: torch.device) -> dict[str, float] | None:
 
 
 def _gc_and_empty_cache(device: torch.device) -> None:
-    """Best-effort cache clearing to reduce cross-run contamination."""
+    """Clear backend caches to reduce cross-run contamination.
+
+    This is part of benchmark fairness: if we cannot clear the backend cache on an
+    accelerator device, we hard-fail rather than silently continuing with
+    potentially contaminated timing/memory measurements.
+    """
     try:
         gc.collect()
     except Exception:
         pass
-    try:
-        if device.type == "cuda":
+    if device.type == "cuda":
+        try:
             torch.cuda.empty_cache()
-        elif device.type == "mps":
+        except Exception as e:
+            raise RuntimeError(f"Failed to clear CUDA cache: {e!r}") from e
+    elif device.type == "mps":
+        try:
             torch.mps.empty_cache()
-    except Exception:
-        pass
+        except Exception as e:
+            raise RuntimeError(f"Failed to clear MPS cache: {e!r}") from e
 
 
 def _sync(device: torch.device) -> None:
@@ -89,24 +97,35 @@ def _sync(device: torch.device) -> None:
         torch.mps.synchronize()
 
 
-def _load_prefix_tokens(dataset_path: str, n: int) -> list[int] | None:
+def _load_prefix_tokens(dataset_path: str, n: int) -> list[int]:
     """Load prefix tokens from NumPy file
 
     Loads the first n token IDs from a NumPy array file, materializing only
     the needed prefix to minimize memory usage. Returns None if the file
     doesn't exist, can't be read, or doesn't have enough tokens.
     """
-    try:
-        import numpy as np  # type: ignore[import-not-found]
+    import numpy as np  # type: ignore[import-not-found]
 
-        arr = np.load(str(dataset_path), mmap_mode="r").reshape(-1)
-        if int(arr.shape[0]) < int(n):
-            return None
-        # Materialize only the needed prefix.
-        xs = arr[: int(n)].astype("int64", copy=True)
-        return [int(x) for x in xs.tolist()]
-    except Exception:
-        return None
+    p = Path(str(dataset_path))
+    if not p.exists():
+        raise FileNotFoundError(f"ContextBenchmark: dataset not found: {p}")
+    if not p.is_file():
+        raise ValueError(f"ContextBenchmark: dataset path is not a file: {p}")
+
+    try:
+        arr = np.load(str(p), mmap_mode="r").reshape(-1)
+    except Exception as e:
+        raise RuntimeError(f"ContextBenchmark: failed to load dataset {p}: {e!r}") from e
+
+    if int(arr.shape[0]) < int(n):
+        raise ValueError(
+            "ContextBenchmark: dataset does not contain enough tokens for requested prefix "
+            f"(need={int(n)}, available={int(arr.shape[0])}, path={p})."
+        )
+
+    # Materialize only the needed prefix.
+    xs = arr[: int(n)].astype("int64", copy=True)
+    return [int(x) for x in xs.tolist()]
 
 
 def _kv_kind(x: str) -> KVCacheKind:
@@ -119,8 +138,8 @@ def _kv_kind(x: str) -> KVCacheKind:
     s = str(x).strip().lower()
     try:
         return KVCacheKind(s)
-    except Exception:
-        return KVCacheKind.FP16
+    except Exception as e:
+        raise ValueError(f"Invalid cache_kind={x!r} (parsed={s!r}): {e!r}") from e
 
 
 class BenchmarkContext:
@@ -140,13 +159,19 @@ class BenchmarkContext:
         self.config = config
         self.device = device
 
-    def run(self, model: nn.Module, model_name: str) -> ContextResult:
+    def run(
+        self,
+        model: nn.Module,
+        model_name: str,
+        *,
+        on_step=None,
+    ) -> ContextResult:
         """Run context benchmark
 
         Executes the full benchmark suite across all configured context lengths,
         measuring prefill performance, single-token decode latency, and decode
         throughput. Uses chunked prefill to handle long contexts efficiently,
-        and falls back to random tokens if no dataset is provided.
+        and uses a manifest-specified dataset prefix (no random-token fallback).
         """
         model.eval()
         out = ContextResult(model_name=str(model_name))
@@ -173,7 +198,27 @@ class BenchmarkContext:
         decode_len = int(self.config.decode_len)
         decode_warmup = int(self.config.decode_warmup)
 
-        for ctx_len in [int(x) for x in self.config.context_lengths]:
+        ctx_lengths = [int(x) for x in self.config.context_lengths]
+        if not ctx_lengths:
+            raise ValueError("ContextBenchmark: context_lengths must be non-empty.")
+
+        ds = str(getattr(self.config, "dataset", "")).strip()
+        if not ds:
+            raise ValueError("ContextBenchmark: config.dataset is required and must be non-empty.")
+
+        # Load the full prefix once (at max ctx) so the benchmark is deterministic and auditable.
+        max_need = int(max(ctx_lengths)) + 1
+        tokens_full = _load_prefix_tokens(ds, max_need)
+        mx = max(tokens_full) if tokens_full else -1
+        if int(mx) >= int(effective_vocab_size):
+            raise ValueError(
+                "ContextBenchmark: dataset token IDs exceed effective vocab "
+                f"(max_id={mx}, valid_vocab_size={effective_vocab_size}, model_vocab_size={model_vocab_size})."
+            )
+        out.dataset = ds
+        out.prefix_tokens = list(tokens_full)
+
+        for ctx_len in ctx_lengths:
             # Capture baseline telemetry for this context length (outside timed regions).
             _gc_and_empty_cache(self.device)
             rss_before = _rss_mb()
@@ -181,28 +226,7 @@ class BenchmarkContext:
 
             # Need ctx_len + 1 for next-token targets and decode-at-context.
             need = int(ctx_len) + 1
-            tokens: list[int] | None = None
-            if self.config.dataset:
-                tokens = _load_prefix_tokens(str(self.config.dataset), need)
-            if tokens is None:
-                g = torch.Generator(device=self.device).manual_seed(1337)
-                t = torch.randint(
-                    0,
-                    int(effective_vocab_size),
-                    (need,),
-                    generator=g,
-                    device=self.device,
-                    dtype=torch.long,
-                )
-                tokens = [int(x) for x in t.cpu().tolist()]
-            else:
-                # Validate dataset prefix tokens are within effective vocab.
-                mx = max(tokens) if tokens else -1
-                if int(mx) >= int(effective_vocab_size):
-                    raise ValueError(
-                        "ContextBenchmark: dataset token IDs exceed effective vocab "
-                        f"(max_id={mx}, valid_vocab_size={effective_vocab_size}, model_vocab_size={model_vocab_size})."
-                    )
+            tokens = tokens_full[:need]
 
             # Create (B, T) tensors for prefill; targets are shifted by 1 for next-token prediction.
             tok = torch.tensor(tokens, device=self.device, dtype=torch.long)
@@ -285,8 +309,7 @@ class BenchmarkContext:
 
                         pos += ch
             except Exception as e:
-                logger.error(f"Error in context benchmark: {e}")
-                ok = False
+                raise RuntimeError(f"ContextBenchmark failed during chunked prefill at ctx_len={ctx_len}: {e!r}") from e
 
             t1 = time.perf_counter()
 
@@ -296,29 +319,39 @@ class BenchmarkContext:
             mps_after = _mps_mem_mb(self.device)
 
             # Compute accumulated loss/ppl across all chunks.
-            avg_loss = total_loss_sum / max(1, total_tokens) if total_tokens > 0 else float("nan")
-            avg_ppl = float(math.exp(avg_loss)) if (not math.isnan(avg_loss) and avg_loss < 20) else float("inf")
+            if total_tokens <= 0:
+                raise RuntimeError(f"ContextBenchmark: no tokens processed for ctx_len={ctx_len}.")
+            avg_loss = float(total_loss_sum) / float(total_tokens)
+            if (not math.isfinite(float(avg_loss))) or float(avg_loss) <= 0.0:
+                raise RuntimeError(f"ContextBenchmark: invalid avg_loss={avg_loss!r} at ctx_len={ctx_len}.")
+            if avg_loss >= 20:
+                raise RuntimeError(f"ContextBenchmark: avg_loss too large ({avg_loss:.4f}) at ctx_len={ctx_len} (ppl would overflow).")
+            avg_ppl = float(math.exp(avg_loss))
+            if (not math.isfinite(float(avg_ppl))) or float(avg_ppl) <= 0.0:
+                raise RuntimeError(f"ContextBenchmark: invalid avg_ppl={avg_ppl!r} at ctx_len={ctx_len}.")
 
             # Measure single-token decode latency at full context length.
             decode_one_ms = float("nan")
             decode_one_tps = float("nan")
-            if ok and last_logits is not None:
-                try:
-                    # Extract greedy next token from last position logits.
-                    ll = last_logits[:, -1, :]
-                    if int(ll.size(-1)) > int(effective_vocab_size):
-                        ll = ll[..., : int(effective_vocab_size)]
-                    nxt = torch.argmax(ll, dim=-1, keepdim=True)
-                    ictx.begin(pos_offset=int(ctx_len))
-                    tds = time.perf_counter()
-                    _ = model(nxt, ctx=ictx)  # type: ignore[call-arg]
-                    ictx.ensure_consumed()
-                    _sync(self.device)
-                    tde = time.perf_counter()
-                    decode_one_ms = float((tde - tds) * 1000.0)
-                    decode_one_tps = float(bs / max(1e-9, float(tde - tds)))
-                except Exception:
-                    ok = False
+            if last_logits is None:
+                raise RuntimeError(f"ContextBenchmark: missing last_logits at ctx_len={ctx_len}.")
+            # Extract greedy next token from last position logits.
+            ll = last_logits[:, -1, :]
+            if int(ll.size(-1)) > int(effective_vocab_size):
+                ll = ll[..., : int(effective_vocab_size)]
+            nxt = torch.argmax(ll, dim=-1, keepdim=True)
+            ictx.begin(pos_offset=int(ctx_len))
+            tds = time.perf_counter()
+            _ = model(nxt, ctx=ictx)  # type: ignore[call-arg]
+            ictx.ensure_consumed()
+            _sync(self.device)
+            tde = time.perf_counter()
+            decode_one_ms = float((tde - tds) * 1000.0)
+            decode_one_tps = float(bs / max(1e-9, float(tde - tds)))
+            if (not math.isfinite(decode_one_ms)) or decode_one_ms <= 0.0:
+                raise RuntimeError(f"ContextBenchmark: invalid decode_one_ms={decode_one_ms!r} at ctx_len={ctx_len}.")
+            if (not math.isfinite(decode_one_tps)) or decode_one_tps <= 0.0:
+                raise RuntimeError(f"ContextBenchmark: invalid decode_one_tps={decode_one_tps!r} at ctx_len={ctx_len}.")
 
             out.sweep.append(
                 ContextSweepMeasurement(
@@ -343,6 +376,11 @@ class BenchmarkContext:
                     mps_recommended_max_mb=(mps_after or mps_before or {}).get("recommended_max_mb"),
                 )
             )
+            if on_step is not None:
+                try:
+                    on_step(out)
+                except Exception:
+                    pass
 
             # Decode throughput benchmark at context length (optional).
             if not ok:
@@ -366,6 +404,11 @@ class BenchmarkContext:
                         mps_recommended_max_mb=(mps_after or mps_before or {}).get("recommended_max_mb"),
                     )
                 )
+                if on_step is not None:
+                    try:
+                        on_step(out)
+                    except Exception:
+                        pass
                 continue
 
             # Warmup + timed decode using constant token to minimize sampling overhead.
@@ -409,6 +452,11 @@ class BenchmarkContext:
                         mps_recommended_max_mb=(mps_after or mps_before or {}).get("recommended_max_mb"),
                     )
                 )
+                if on_step is not None:
+                    try:
+                        on_step(out)
+                    except Exception:
+                        pass
             except Exception:
                 out.decode.append(
                     ContextDecodeMeasurement(
@@ -430,5 +478,10 @@ class BenchmarkContext:
                         mps_recommended_max_mb=(mps_after or mps_before or {}).get("recommended_max_mb"),
                     )
                 )
+                if on_step is not None:
+                    try:
+                        on_step(out)
+                    except Exception:
+                        pass
 
         return out

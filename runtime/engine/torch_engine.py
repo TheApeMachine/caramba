@@ -20,6 +20,10 @@ from config.benchmark import BenchmarkSuite
 from console import logger
 import torch
 from torch import nn
+import json
+import os
+import subprocess
+import sys
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +54,11 @@ class TorchEngine:
             backend="torch",
             ref="trainer.standard",
             python="caramba.trainer.standard:StandardTrainer",
+        )
+        self.registry.register(
+            backend="torch",
+            ref="trainer.finetune_minimal",
+            python="caramba.trainer.finetune_minimal:FinetuneMinimalTrainer",
         )
         self.registry.register(
             backend="torch",
@@ -291,8 +300,127 @@ class TorchEngine:
                 notes=str(getattr(manifest, "notes", "") or ""),
             )
 
-            # Multi-model format: {"models": dict[str, Module], "baseline_name": str}
-            if "models" in result and isinstance(result["models"], dict):
+            # Multi-model isolation format: {"checkpoint_specs": [...], ...}
+            if "checkpoint_specs" in result and isinstance(result["checkpoint_specs"], list):
+                from benchmark.multi_model_runner import MultiModelBenchmarkRunner
+                from carmath import weight_dtype
+
+                specs = [s for s in result["checkpoint_specs"] if isinstance(s, dict) and "name" in s]
+                specs_by_name = {str(s["name"]): s for s in specs}
+                model_names = sorted(specs_by_name.keys())
+                baseline_name = result.get("baseline_name")
+
+                dtype_str = str(result.get("dtype", "auto")).lower().strip()
+                strict = bool(result.get("strict", True))
+                unsafe_pickle_load = bool(result.get("unsafe_pickle_load", False))
+                # Default to strongest isolation when supported by the trainer.
+                process_isolation = bool(result.get("process_isolation", True))
+
+                if process_isolation:
+                    # Strongest isolation: run the entire multi-model suite in a subprocess.
+                    job = {
+                        "output_dir": str(suite.output_dir),
+                        "suite": suite.model_dump(),
+                        "metadata": {
+                            "name": metadata.name,
+                            "timestamp": metadata.timestamp,
+                            "manifest_path": metadata.manifest_path,
+                            "teacher_checkpoint": metadata.teacher_checkpoint,
+                            "student_config": metadata.student_config,
+                            "device": metadata.device,
+                            "notes": metadata.notes,
+                        },
+                        "checkpoint_specs": list(specs),
+                        "baseline_name": baseline_name,
+                        "device": str(device),
+                        "dtype": dtype_str,
+                        "strict": strict,
+                        "unsafe_pickle_load": unsafe_pickle_load,
+                    }
+
+                    output_dir = Path(str(suite.output_dir))
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    job_path = output_dir / "_process_isolation_job.json"
+                    job_path.write_text(json.dumps(job, indent=2), encoding="utf-8")
+
+                    repo_root = Path(__file__).resolve().parents[2]
+                    env = os.environ.copy()
+                    env["PYTHONPATH"] = str(repo_root) + ((":" + env["PYTHONPATH"]) if env.get("PYTHONPATH") else "")
+                    cmd = [sys.executable, "-m", "benchmark.isolated_multi_model_run", "--job", str(job_path)]
+                    logger.info(f"process-isolation: spawning {' '.join(cmd)}")
+                    subprocess.run(cmd, cwd=str(repo_root), env=env, check=True)
+
+                    index_path = Path(str(suite.output_dir)) / "artifacts_index.json"
+                    if index_path.exists():
+                        try:
+                            index = json.loads(index_path.read_text(encoding="utf-8"))
+                            if isinstance(index, dict):
+                                for k, v in index.items():
+                                    try:
+                                        artifacts[str(k)] = Path(str(v))
+                                    except Exception:
+                                        pass
+                        except Exception as e:
+                            logger.warning(f"Failed to read artifacts_index.json: {e!r}")
+                else:
+                    # In-process load/unload isolation.
+                    from model import Model
+                    from trainer.checkpoint_compare import (
+                        _lower_and_validate_model_config,
+                        _safe_load_checkpoint,
+                    )
+                    import gc
+
+                    dt = weight_dtype(device, dtype_str if dtype_str != "auto" else "auto")
+
+                    def _gc_and_empty_cache() -> None:
+                        try:
+                            gc.collect()
+                        except Exception:
+                            pass
+                        try:
+                            if device.type == "cuda":
+                                torch.cuda.empty_cache()
+                            elif device.type == "mps":
+                                torch.mps.empty_cache()
+                        except Exception:
+                            pass
+
+                    def load_model(model_name: str) -> nn.Module:
+                        spec = specs_by_name.get(str(model_name))
+                        if spec is None:
+                            raise KeyError(f"Unknown model_name={model_name!r}")
+                        ckpt_path = Path(str(spec["checkpoint"]))
+                        if not ckpt_path.exists():
+                            raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+                        cfg = _lower_and_validate_model_config(spec["model_config"])
+                        m = Model(cfg).to(device=device, dtype=dt)
+                        sd = _safe_load_checkpoint(ckpt_path, unsafe_pickle_load=unsafe_pickle_load)
+                        m.load_state_dict(sd, strict=strict)
+                        m.eval()
+                        return self._as_module(m)
+
+                    def unload_model(m: nn.Module) -> None:
+                        try:
+                            m.to("cpu")
+                        except Exception:
+                            pass
+                        try:
+                            del m
+                        except Exception:
+                            pass
+                        _gc_and_empty_cache()
+
+                    runner = MultiModelBenchmarkRunner(suite, device, metadata, baseline_name)
+                    try:
+                        artifacts.update(runner.run_isolated(model_names, load_model, unload_model))
+                    except Exception as e:
+                        logger.warning(f"Multi-model isolated benchmarks failed: {e}")
+                        import traceback
+                        traceback.print_exc()
+
+            # Multi-model eager format: {"models": dict[str, Module], "baseline_name": str}
+            elif "models" in result and isinstance(result["models"], dict):
                 from benchmark.multi_model_runner import MultiModelBenchmarkRunner
 
                 models_dict = result["models"]

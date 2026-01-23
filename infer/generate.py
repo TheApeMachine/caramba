@@ -59,6 +59,9 @@ class GenerateConfig:
     temperature: float = 1.0
     top_k: int | None = None
     top_p: float | None = None
+    # Repetition penalty (1.0 = disabled, >1.0 penalizes repeating tokens).
+    # Applied to tokens already present in (prompt + generated so far).
+    repetition_penalty: float = 1.0
     eos_token_id: int | None = None
     max_seq_len: int = 2048
     cache_kind: KVCacheKind | str = KVCacheKind.FP16
@@ -505,6 +508,39 @@ def sample_next_token(
     return torch.multinomial(probs, num_samples=1).squeeze(-1)
 
 
+def _apply_repetition_penalty_(
+    next_logits: Tensor,
+    *,
+    token_ids: Tensor,
+    penalty: float,
+) -> None:
+    """Apply repetition penalty in-place to (batch, vocab) logits.
+
+    Matches the standard heuristic used in `research/dba/behavioral_suite_v2`:
+    - if logit > 0: divide by penalty
+    - else: multiply by penalty
+    """
+    p = float(penalty)
+    if p == 1.0:
+        return
+    if p <= 0.0:
+        return
+    # next_logits: (B, V), token_ids: (B, T)
+    bsz = int(next_logits.size(0))
+    for b in range(bsz):
+        # unique() stays on-device and keeps this reasonably cheap for small batch sizes.
+        seen = torch.unique(token_ids[b])
+        # Clamp to vocab range.
+        seen = seen[(seen >= 0) & (seen < next_logits.size(-1))]
+        if seen.numel() == 0:
+            continue
+        # Apply per-token in-place.
+        vals = next_logits[b, seen]
+        pos = vals > 0
+        vals = torch.where(pos, vals / p, vals * p)
+        next_logits[b, seen] = vals
+
+
 @torch.inference_mode()
 def generate(
     model: nn.Module,
@@ -574,6 +610,14 @@ def generate(
             logits = lm_head(hidden[:, -1, :])
         else:
             logits = hidden[:, -1, :]
+
+        # Optional repetition penalty (applied to tokens already seen in prompt+generation so far).
+        if float(getattr(config, "repetition_penalty", 1.0)) != 1.0:
+            _apply_repetition_penalty_(
+                logits,
+                token_ids=generated[:, :gen_len],
+                penalty=float(getattr(config, "repetition_penalty", 1.0)),
+            )
 
         next_token = sample_next_token(
             logits,
@@ -800,6 +844,13 @@ class Generator:
         logits = self.prefill(input_ids)
 
         for _ in range(self.config.max_new_tokens):
+            # Optional repetition penalty (applied to tokens already seen in prompt+generation so far).
+            if float(getattr(self.config, "repetition_penalty", 1.0)) != 1.0:
+                _apply_repetition_penalty_(
+                    logits,
+                    token_ids=generated[:, :gen_len],
+                    penalty=float(getattr(self.config, "repetition_penalty", 1.0)),
+                )
             next_token = sample_next_token(
                 logits,
                 temperature=self.config.temperature,

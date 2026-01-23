@@ -1,0 +1,437 @@
+{
+  "output_dir": "research/dba/benchmark100k_gated/dba_l22_100k_gated_benchmark/multi_checkpoint_compare/20260123_230722",
+  "suite": {
+    "benchmarks": [
+      {
+        "id": "ppl_fineweb",
+        "config": {
+          "type": "perplexity",
+          "dataset": "artifacts/datasets/HuggingFaceFW/fineweb/fineweb_20b.npy",
+          "block_size": 2048,
+          "batch_size": 1,
+          "num_batches": 5000,
+          "stride": null,
+          "valid_vocab_size": 50257
+        },
+        "realtime": false,
+        "models": [
+          "baseline",
+          "sem8",
+          "gated_sem8"
+        ],
+        "repeats": 1
+      },
+      {
+        "id": "ppl_fineweb",
+        "config": {
+          "type": "perplexity",
+          "dataset": "artifacts/datasets/HuggingFaceFW/fineweb/fineweb_20b.npy",
+          "block_size": 2048,
+          "batch_size": 2,
+          "num_batches": 5000,
+          "stride": null,
+          "valid_vocab_size": 50257
+        },
+        "realtime": false,
+        "models": [
+          "baseline",
+          "sem8",
+          "gated_sem8"
+        ],
+        "repeats": 1
+      },
+      {
+        "id": "ppl_fineweb",
+        "config": {
+          "type": "perplexity",
+          "dataset": "artifacts/datasets/HuggingFaceFW/fineweb/fineweb_20b.npy",
+          "block_size": 2048,
+          "batch_size": 4,
+          "num_batches": 5000,
+          "stride": null,
+          "valid_vocab_size": 50257
+        },
+        "realtime": false,
+        "models": [
+          "baseline",
+          "sem8",
+          "gated_sem8"
+        ],
+        "repeats": 1
+      },
+      {
+        "id": "ppl_fineweb",
+        "config": {
+          "type": "perplexity",
+          "dataset": "artifacts/datasets/HuggingFaceFW/fineweb/fineweb_20b.npy",
+          "block_size": 2048,
+          "batch_size": 8,
+          "num_batches": 5000,
+          "stride": null,
+          "valid_vocab_size": 50257
+        },
+        "realtime": false,
+        "models": [
+          "baseline",
+          "sem8",
+          "gated_sem8"
+        ],
+        "repeats": 1
+      },
+      {
+        "id": "behavior_sanity",
+        "config": {
+          "type": "behavior",
+          "tokenizer": {
+            "type": "tiktoken",
+            "encoding": "gpt2"
+          },
+          "suite_file": "benchmark/behavior/cases.yml",
+          "seed": 42,
+          "max_new_tokens": 32,
+          "context_window": 2048,
+          "print_outputs": false,
+          "print_only_failures": true,
+          "print_max_chars": 160,
+          "stream_live": true,
+          "log_file": "behavior_log.txt",
+          "dump_attention": true,
+          "dump_attention_case_ids": null,
+          "dump_attention_max_tokens": 96,
+          "dump_attention_max_heads": 4,
+          "dump_attention_anchor": "A7",
+          "dump_attention_paper_dir": "research/dba/figs/attention",
+          "dump_attention_paper_tag": "dba_100k_gated"
+        },
+        "realtime": false,
+        "models": [
+          "baseline",
+          "sem8",
+          "gated_sem8"
+        ],
+        "repeats": 1
+      },
+      {
+        "id": "downstream_accuracy",
+        "config": {
+          "type": "accuracy",
+          "tasks": [
+            "winogrande",
+            "arc_easy",
+            "boolq",
+            "hellaswag",
+            "copa",
+            "piqa",
+            "openbookqa"
+          ],
+          "tokenizer": {
+            "type": "tiktoken",
+            "encoding": "gpt2"
+          },
+          "num_fewshot": 0,
+          "limit": null,
+          "context_window": 2048,
+          "print_examples": 0,
+          "print_only_incorrect": true,
+          "print_max_chars": 240,
+          "stream_live": true,
+          "stream_every": 10,
+          "log_file": "accuracy_log.txt"
+        },
+        "realtime": false,
+        "models": [
+          "baseline",
+          "sem8",
+          "gated_sem8"
+        ],
+        "repeats": 1
+      },
+      {
+        "id": "context_sweep",
+        "config": {
+          "type": "context",
+          "dataset": "artifacts/datasets/HuggingFaceFW/fineweb/fineweb_20b.npy",
+          "context_lengths": [
+            2048,
+            4096,
+            8192,
+            16384,
+            32768,
+            65536,
+            98304,
+            131072
+          ],
+          "chunk_size": 1024,
+          "max_mask_elems": 32000000,
+          "batch_size": 1,
+          "decode_len": 128,
+          "decode_warmup": 8,
+          "cache_kind": "fp16",
+          "cache_policy": null,
+          "valid_vocab_size": 50257
+        },
+        "realtime": false,
+        "models": [
+          "baseline",
+          "sem8",
+          "gated_sem8"
+        ],
+        "repeats": 1
+      }
+    ],
+    "output_dir": "research/dba/benchmark100k_gated/dba_l22_100k_gated_benchmark/multi_checkpoint_compare/20260123_230722",
+    "formats": [
+      "csv",
+      "json",
+      "png",
+      "latex"
+    ],
+    "comparison_baseline": "teacher"
+  },
+  "metadata": {
+    "name": "multi_checkpoint_compare",
+    "timestamp": "2026-01-23T23:07:22.550574",
+    "manifest_path": "dba_l22_100k_gated_benchmark",
+    "teacher_checkpoint": "None",
+    "student_config": "ModelType.TRANSFORMER",
+    "device": "mps",
+    "notes": "Benchmark for gated DBA 100k A100 runs: baseline vs sem8geo32v40 vs gated sem8geo32v40.\n"
+  },
+  "checkpoint_specs": [
+    {
+      "name": "baseline",
+      "checkpoint": "research/dba/100k_checkpoints/baseline/a100_fw20b_l22_baseline_s42_100k.pt",
+      "model_config": {
+        "type": "TransformerModel",
+        "tied_embeddings": false,
+        "embedder": {
+          "type": "token",
+          "vocab_size": 50304,
+          "d_model": 2048
+        },
+        "topology": {
+          "type": "StackedTopology",
+          "layers": [
+            {
+              "type": "NestedTopology",
+              "repeat": 22,
+              "layers": [
+                {
+                  "type": "ResidualTopology",
+                  "layers": [
+                    {
+                      "type": "RMSNormLayer",
+                      "d_model": 2048,
+                      "eps": "1e-5"
+                    },
+                    {
+                      "type": "AttentionLayer",
+                      "d_model": 2048,
+                      "n_heads": 32,
+                      "mode": "standard",
+                      "rope_enabled": true,
+                      "rope_base": 10000.0,
+                      "is_causal": true,
+                      "dropout_p": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "ResidualTopology",
+                  "layers": [
+                    {
+                      "type": "RMSNormLayer",
+                      "d_model": 2048,
+                      "eps": "1e-5"
+                    },
+                    {
+                      "type": "SwiGLULayer",
+                      "d_model": 2048,
+                      "d_ff": 5632,
+                      "bias": false
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "RMSNormLayer",
+              "d_model": 2048,
+              "eps": "1e-5"
+            },
+            {
+              "type": "LinearLayer",
+              "d_in": 2048,
+              "d_out": 50304,
+              "bias": false
+            }
+          ]
+        }
+      },
+      "is_baseline": true
+    },
+    {
+      "name": "sem8",
+      "checkpoint": "research/dba/100k_checkpoints/sem8geo32v40/a100_fw20b_l22_dba_s42_100k.pt",
+      "model_config": {
+        "type": "TransformerModel",
+        "tied_embeddings": false,
+        "embedder": {
+          "type": "token",
+          "vocab_size": 50304,
+          "d_model": 2048
+        },
+        "topology": {
+          "type": "StackedTopology",
+          "layers": [
+            {
+              "type": "NestedTopology",
+              "repeat": 22,
+              "layers": [
+                {
+                  "type": "ResidualTopology",
+                  "layers": [
+                    {
+                      "type": "RMSNormLayer",
+                      "d_model": 2048,
+                      "eps": "1e-5"
+                    },
+                    {
+                      "type": "AttentionLayer",
+                      "d_model": 2048,
+                      "n_heads": 32,
+                      "mode": "decoupled",
+                      "dba_train_backend": "sdpa",
+                      "attn_dim": 1280,
+                      "sem_dim": 256,
+                      "geo_dim": 1024,
+                      "rope_enabled": true,
+                      "rope_base": 10000.0,
+                      "rope_semantic": false,
+                      "tie_qk": false,
+                      "null_attn": false,
+                      "decoupled_gate": false,
+                      "is_causal": true,
+                      "dropout_p": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "ResidualTopology",
+                  "layers": [
+                    {
+                      "type": "RMSNormLayer",
+                      "d_model": 2048,
+                      "eps": "1e-5"
+                    },
+                    {
+                      "type": "SwiGLULayer",
+                      "d_model": 2048,
+                      "d_ff": 5632,
+                      "bias": false
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "RMSNormLayer",
+              "d_model": 2048,
+              "eps": "1e-5"
+            },
+            {
+              "type": "LinearLayer",
+              "d_in": 2048,
+              "d_out": 50304,
+              "bias": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "gated_sem8",
+      "checkpoint": "research/dba/100k_checkpoints/sem8geo32v40_gated/a100_fw20b_l22_dba_gated_s42_100k.pt",
+      "model_config": {
+        "type": "TransformerModel",
+        "tied_embeddings": false,
+        "embedder": {
+          "type": "token",
+          "vocab_size": 50304,
+          "d_model": 2048
+        },
+        "topology": {
+          "type": "StackedTopology",
+          "layers": [
+            {
+              "type": "NestedTopology",
+              "repeat": 22,
+              "layers": [
+                {
+                  "type": "ResidualTopology",
+                  "layers": [
+                    {
+                      "type": "RMSNormLayer",
+                      "d_model": 2048,
+                      "eps": "1e-5"
+                    },
+                    {
+                      "type": "AttentionLayer",
+                      "d_model": 2048,
+                      "n_heads": 32,
+                      "mode": "decoupled",
+                      "dba_train_backend": "sdpa",
+                      "attn_dim": 1280,
+                      "sem_dim": 256,
+                      "geo_dim": 1024,
+                      "rope_enabled": true,
+                      "rope_base": 10000.0,
+                      "rope_semantic": false,
+                      "tie_qk": false,
+                      "null_attn": false,
+                      "decoupled_gate": true,
+                      "is_causal": true,
+                      "dropout_p": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "ResidualTopology",
+                  "layers": [
+                    {
+                      "type": "RMSNormLayer",
+                      "d_model": 2048,
+                      "eps": "1e-5"
+                    },
+                    {
+                      "type": "SwiGLULayer",
+                      "d_model": 2048,
+                      "d_ff": 5632,
+                      "bias": false
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "RMSNormLayer",
+              "d_model": 2048,
+              "eps": "1e-5"
+            },
+            {
+              "type": "LinearLayer",
+              "d_in": 2048,
+              "d_out": 50304,
+              "bias": false
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "baseline_name": "baseline",
+  "device": "mps",
+  "dtype": "float16",
+  "strict": false,
+  "unsafe_pickle_load": false
+}

@@ -1,4 +1,0 @@
-run,last_step,last_loss,last_ppl_proxy
-a100_fw1b_l22_baseline_s1337_paper_strict,10001,3.363281,28.884
-a100_fw1b_l22_decoupled_s1337_paper_sem8geo32v40,1041,5.257812,192.061
-a100_fw1b_l22_decoupled_s1337_paper_strict,10001,3.382812,29.453

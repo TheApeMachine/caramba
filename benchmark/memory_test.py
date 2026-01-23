@@ -101,6 +101,9 @@ class TestMemoryMeasurement(unittest.TestCase):
     def test_measurement_fields(self) -> None:
         """Measurement stores all required fields."""
         m = MemoryMeasurement(
+            seed=42,
+            input_ids=[[1, 2, 3]],
+            input_ids_sha256="test",
             seq_len=512,
             batch_size=4,
             peak_memory_mb=1024.0,
@@ -181,6 +184,9 @@ class TestMemoryResult(unittest.TestCase):
             model_name="test",
             measurements=[
                 MemoryMeasurement(
+                    seed=42,
+                    input_ids=[[1, 2, 3]],
+                    input_ids_sha256="test",
                     seq_len=512,
                     batch_size=1,
                     peak_memory_mb=100.0,
@@ -198,16 +204,25 @@ class TestMemoryResult(unittest.TestCase):
             model_name="test",
             measurements=[
                 MemoryMeasurement(
+                    seed=42,
+                    input_ids=[[1, 2, 3]],
+                    input_ids_sha256="test",
                     seq_len=512, batch_size=1,
                     peak_memory_mb=100.0, kvcache_memory_mb=50.0,
                     model_memory_mb=40.0, quantization="fp16",
                 ),
                 MemoryMeasurement(
+                    seed=42,
+                    input_ids=[[1, 2, 3]],
+                    input_ids_sha256="test",
                     seq_len=1024, batch_size=1,
                     peak_memory_mb=200.0, kvcache_memory_mb=100.0,
                     model_memory_mb=40.0, quantization="fp16",
                 ),
                 MemoryMeasurement(
+                    seed=42,
+                    input_ids=[[1, 2, 3]],
+                    input_ids_sha256="test",
                     seq_len=2048, batch_size=1,
                     peak_memory_mb=150.0, kvcache_memory_mb=75.0,
                     model_memory_mb=40.0, quantization="fp16",
@@ -227,6 +242,7 @@ class TestMemoryBenchmark(unittest.TestCase):
     def test_run_returns_result(self) -> None:
         """Benchmark run returns a MemoryResult."""
         config = MemoryBenchmarkConfig(
+            seed=42,
             sequence_lengths=[32],
             batch_sizes=[1],
             quantization_modes=["fp16"],
@@ -247,6 +263,7 @@ class TestMemoryBenchmark(unittest.TestCase):
         quants = ["fp16", "q8"]
 
         config = MemoryBenchmarkConfig(
+            seed=42,
             sequence_lengths=seq_lens,
             batch_sizes=batch_sizes,
             quantization_modes=quants,
@@ -263,6 +280,7 @@ class TestMemoryBenchmark(unittest.TestCase):
     def test_kvcache_analysis_standard(self) -> None:
         """KV-cache analysis for standard attention model."""
         config = MemoryBenchmarkConfig(
+            seed=42,
             sequence_lengths=[32],
             batch_sizes=[1],
             quantization_modes=["fp16"],
@@ -283,6 +301,7 @@ class TestMemoryBenchmark(unittest.TestCase):
     def test_kvcache_analysis_dba(self) -> None:
         """KV-cache analysis for DBA attention model."""
         config = MemoryBenchmarkConfig(
+            seed=42,
             sequence_lengths=[32],
             batch_sizes=[1],
             quantization_modes=["fp16"],
@@ -315,6 +334,7 @@ class TestMemoryBenchmark(unittest.TestCase):
           - q4: 0.625 bytes/element
         """
         config = MemoryBenchmarkConfig(
+            seed=42,
             sequence_lengths=[32],
             batch_sizes=[1],
             quantization_modes=["fp16", "q8", "q4"],
@@ -343,6 +363,7 @@ class TestMemoryBenchmark(unittest.TestCase):
     def test_kvcache_estimation_scales_with_seq_len(self) -> None:
         """KV-cache memory estimation scales linearly with sequence length."""
         config = MemoryBenchmarkConfig(
+            seed=42,
             sequence_lengths=[32, 64],
             batch_sizes=[1],
             quantization_modes=["fp16"],

@@ -348,299 +348,337 @@ class StandardTrainer:
         checkpoint_dir: Path,
         run_logger: RunLogger,
     ) -> None:
-        torch.manual_seed(run.seed)
-        device = torch.device(train.device)
+        from cProfile import Profile
+        from pstats import SortKey, Stats
 
-        # Reset shared tuner for new training runs
-        reset_shared_tuner()
+        with Profile() as profile:
+            torch.manual_seed(run.seed)
+            device = torch.device(train.device)
 
-        dist_ctx: DistributedContext | None = None
-        dist_strategy = str(getattr(train, "distributed_strategy", "none")).lower()
-        if dist_strategy != "none":
-            try:
-                cfg = DistributedConfig(
-                    strategy=DistributedStrategy(dist_strategy),
-                    backend=str(getattr(train, "distributed_backend", "nccl")),
-                )
-                dist_ctx = DistributedContext.init(cfg)
-                device = dist_ctx.device
-            except Exception as e:
-                raise RuntimeError(f"Failed to initialize distributed training: {e}") from e
+            # Reset shared tuner for new training runs
+            reset_shared_tuner()
 
-            # Only rank0 writes logs.
-            try:
-                if hasattr(dist_ctx, "is_main") and not bool(getattr(dist_ctx, "is_main")):
-                    run_logger.enabled = False
-            except Exception as e:
-                raise RuntimeError("Failed to check if this is the main process") from e
-
-        # W&B writer.
-        wandb_writer: WandBWriter | None = None
-        if bool(getattr(defaults.logging, "wandb", False)):
-            is_main = True
-            if dist_ctx is not None and hasattr(dist_ctx, "is_main"):
+            dist_ctx: DistributedContext | None = None
+            dist_strategy = str(getattr(train, "distributed_strategy", "none")).lower()
+            if dist_strategy != "none":
                 try:
-                    is_main = bool(getattr(dist_ctx, "is_main"))
+                    cfg = DistributedConfig(
+                        strategy=DistributedStrategy(dist_strategy),
+                        backend=str(getattr(train, "distributed_backend", "nccl")),
+                    )
+                    dist_ctx = DistributedContext.init(cfg)
+                    device = dist_ctx.device
+                except Exception as e:
+                    raise RuntimeError(f"Failed to initialize distributed training: {e}") from e
+
+                # Only rank0 writes logs.
+                try:
+                    if hasattr(dist_ctx, "is_main") and not bool(getattr(dist_ctx, "is_main")):
+                        run_logger.enabled = False
                 except Exception as e:
                     raise RuntimeError("Failed to check if this is the main process") from e
 
-            if is_main:
+            # W&B writer.
+            wandb_writer: WandBWriter | None = None
+            if bool(getattr(defaults.logging, "wandb", False)):
+                is_main = True
+                if dist_ctx is not None and hasattr(dist_ctx, "is_main"):
+                    try:
+                        is_main = bool(getattr(dist_ctx, "is_main"))
+                    except Exception as e:
+                        raise RuntimeError("Failed to check if this is the main process") from e
+
+                if is_main:
+                    try:
+                        wandb_writer = WandBWriter(
+                            out_dir=checkpoint_dir / "wandb" / str(run.id),
+                            enabled=True,
+                            project=str(getattr(defaults.logging, "wandb_project", "")),
+                            entity=str(getattr(defaults.logging, "wandb_entity", "") or "") or None,
+                            mode=str(getattr(defaults.logging, "wandb_mode", "online")),
+                            run_name=f"{target.name}:{run.id}",
+                            group=str(target.name),
+                            tags=["standard"],
+                            config={
+                                "trainer": "standard",
+                                "target": str(target.name),
+                                "run_id": str(run.id),
+                                "device": str(device),
+                            },
+                        )
+                    except Exception as e:
+                        wandb_writer = None
+                        logger.fallback_warning(
+                            "WARNING: W&B enabled but failed to initialize; continuing without W&B.\n"
+                            f"reason={type(e).__name__}: {e}"
+                        )
+
+            runtime_plan = self._load_or_create_runtime_plan(
+                checkpoint_dir=checkpoint_dir,
+                device=device,
+                train=train,
+                system_cfg=dict(target.system.config),
+            )
+            dtype = self._parse_dtype(runtime_plan.dtype)
+
+            if hasattr(system, "to"):
+                system.to(device=device, dtype=dtype)  # type: ignore[attr-defined]
+
+            # Explicit checkpoint loading (manifest-driven).
+            load_ckpt = getattr(train, "load_checkpoint", None)
+            if load_ckpt:
+                logger.info(f"Loading explicit checkpoint: {load_ckpt}")
                 try:
-                    wandb_writer = WandBWriter(
-                        out_dir=checkpoint_dir / "wandb" / str(run.id),
-                        enabled=True,
-                        project=str(getattr(defaults.logging, "wandb_project", "")),
-                        entity=str(getattr(defaults.logging, "wandb_entity", "") or "") or None,
-                        mode=str(getattr(defaults.logging, "wandb_mode", "online")),
-                        run_name=f"{target.name}:{run.id}",
-                        group=str(target.name),
-                        tags=["standard"],
-                        config={
-                            "trainer": "standard",
-                            "target": str(target.name),
-                            "run_id": str(run.id),
-                            "device": str(device),
-                        },
-                    )
-                except Exception as e:
-                    wandb_writer = None
-                    logger.fallback_warning(
-                        "WARNING: W&B enabled but failed to initialize; continuing without W&B.\n"
-                        f"reason={type(e).__name__}: {e}"
-                    )
-
-        runtime_plan = self._load_or_create_runtime_plan(
-            checkpoint_dir=checkpoint_dir,
-            device=device,
-            train=train,
-            system_cfg=dict(target.system.config),
-        )
-        dtype = self._parse_dtype(runtime_plan.dtype)
-
-        if hasattr(system, "to"):
-            system.to(device=device, dtype=dtype)  # type: ignore[attr-defined]
-
-        # Optional UAA teacher: must be created before wrapping/compiling the student.
-        uaa_state: UAAState | None = None
-        uaa_cfg = getattr(train, "uaa", None)
-        if uaa_cfg is not None and bool(getattr(uaa_cfg, "enabled", False)):
-            if not _HAS_UAA_CTX:
-                logger.warning(
-                    "UAA is enabled in the manifest, but this build does not provide TrainingUAAContext. "
-                    "Disabling UAA for this run to avoid import/type issues."
-                )
-                uaa_cfg = None
-                uaa_state = None
-            else:
-                system_any = cast(Any, system)
-                student_mod = getattr(system_any, "module", None)
-                if not isinstance(student_mod, nn.Module):
-                    raise TypeError("UAA requires system.module to be an nn.Module.")
-
-                teacher_mode = str(getattr(uaa_cfg, "teacher", "init"))
-                if teacher_mode == "init":
-                    # Avoid deepcopy() on nn.Module graphs with custom factory __new__/__init__
-                    # (it can trigger constructor calls with missing args). Instead, build a
-                    # fresh module of the same type/config and load weights.
-                    cfg = getattr(student_mod, "config", None)
-                    if cfg is None:
-                        raise TypeError("UAA teacher=init requires student_mod.config to exist (ModelConfig).")
-                    teacher_mod = type(student_mod)(cfg)  # type: ignore[call-arg]
-                    teacher_mod.load_state_dict(student_mod.state_dict(), strict=True)
-                elif teacher_mode == "ckpt":
-                    ckpt = getattr(train, "teacher_ckpt", None)
-                    if not isinstance(ckpt, str) or not ckpt:
-                        raise ValueError("UAA teacher=ckpt requires train.teacher_ckpt to be set.")
-                    if str(ckpt).startswith("hf://"):
-                        raise ValueError("UAA teacher=ckpt does not support hf:// checkpoints (use init for now).")
-                    cfg = getattr(student_mod, "config", None)
-                    if cfg is None:
-                        raise TypeError("UAA teacher=ckpt requires student_mod.config to exist (ModelConfig).")
-                    teacher_mod = type(student_mod)(cfg)  # type: ignore[call-arg]
-                    payload = torch.load(str(ckpt), map_location="cpu")
+                    payload = torch.load(str(load_ckpt), map_location=device)
                     if isinstance(payload, dict) and "system_state_dict" in payload:
                         state = payload["system_state_dict"]
+                    elif isinstance(payload, dict) and "model" in payload:
+                        state = payload["model"]
                     else:
                         state = payload
+                    
                     if not isinstance(state, dict):
-                        raise TypeError("UAA teacher checkpoint must be a state_dict or contain system_state_dict.")
-                    missing, unexpected = teacher_mod.load_state_dict(state, strict=False)
-                    if missing or unexpected:
-                        logger.warning(
-                            "UAA teacher checkpoint load had mismatches; continuing with strict=False.\n"
-                            f"missing={len(missing)} unexpected={len(unexpected)}"
-                        )
-                else:
-                    raise ValueError(f"Unknown UAA teacher mode: {teacher_mode!r}")
+                        raise TypeError(f"Checkpoint must be a dict, got {type(state).__name__}")
 
-                teacher_mod = teacher_mod.to(device=device, dtype=dtype)
-                uaa_state = UAAState(teacher=teacher_mod, cfg=cast(Any, uaa_cfg))
+                    # Handle DDP wrapper
+                    system_mod = getattr(system, "module", system)
+                    if not isinstance(system_mod, nn.Module):
+                        raise TypeError(f"System module is not an nn.Module, got {type(system_mod).__name__}")
+                    missing, unexpected = system_mod.load_state_dict(state, strict=False)
+                    if missing:
+                        logger.warning(f"Explicit load missing keys: {len(missing)}")
+                    if unexpected:
+                        logger.warning(f"Explicit load unexpected keys: {len(unexpected)}")
+                    logger.success(f"Loaded weights from {load_ckpt}")
+                except Exception as e:
+                    raise RuntimeError(f"Failed to load explicit checkpoint {load_ckpt}") from e
 
-        # CUDA perf knobs.
-        #
-        # TF32 is safe and commonly enabled on Ampere+ for faster fp32 matmuls
-        # (many reductions / softmax stats run in fp32 even when weights are bf16).
-        if device.type == "cuda":
-            try:
-                torch.backends.cuda.matmul.allow_tf32 = True
-                torch.backends.cudnn.allow_tf32 = True
-                # PyTorch 2.x: nudge matmul towards faster kernels.
-                torch.set_float32_matmul_precision("high")
-            except Exception as e:
-                logger.fallback_warning(
-                   f"WARNING: Failed to enable TF32; continuing without TF32. device={device.type} dtype={dtype} error={e}"
-                )
-
-        # Wrap system module for DDP/FSDP if requested.
-        if dist_ctx is not None:
-            try:
-                # `system` is intentionally generic (typed as `object`), but some systems
-                # expose a `.module: nn.Module` attribute that we can wrap/replace.
-                # Cast to Any so Pyright/Pylance allows dynamic attribute assignment.
-                system_any = cast(Any, system)
-                m = getattr(system_any, "module", None)
-                if isinstance(m, nn.Module):
-                    system_any.module = dist_ctx.wrap_model(m)
-            except Exception as e:
-                raise RuntimeError("Failed to wrap system module for DDP/FSDP") from e
-
-        # torch.compile status (set later; must be defined for telemetry).
-        compiled = False
-        compiled_orig_module: nn.Module | None = None
-
-        loader = self._build_loader(
-            dataset_comp=dataset_comp,
-            defaults=defaults,
-            train=train,
-            device=device,
-            batch_size=int(runtime_plan.batch_size),
-            dist_ctx=dist_ctx,
-        )
-
-        # Export reproducibility artifacts.
-        #
-        # IMPORTANT: export IO shapes BEFORE torch.compile.
-        # Some Inductor versions can fail during the forward-only probe used for IO export.
-        self._export_compiled_plan(checkpoint_dir=checkpoint_dir, target=target)
-        self._export_io_shapes(
-            checkpoint_dir=checkpoint_dir,
-            loader=loader,
-            system=system,
-            device=device,
-        )
-
-        # Activation checkpointing: enable on topology modules when requested.
-        #
-        # The topology stack supports checkpointing, but we must flip the flags here
-        # based on `TrainConfig` (otherwise the knobs are silently ignored).
-        if bool(getattr(train, "activation_checkpointing", False)):
-            thr_mb = float(getattr(train, "activation_checkpoint_threshold_mb", 0.0) or 0.0)
-            try:
-                system_any = cast(Any, system)
-                root = getattr(system_any, "module", None)
-                if isinstance(root, nn.Module):
-                    self._enable_activation_checkpointing(root, enabled=True, threshold_mb=thr_mb)
-                elif isinstance(system, nn.Module):
-                    self._enable_activation_checkpointing(system, enabled=True, threshold_mb=thr_mb)
-            except Exception as e:
-                raise RuntimeError("Failed to enable activation checkpointing") from e
-
-        # Optional torch.compile (if requested and it fails, raise).
-        #
-        # NOTE: torch.compile's "reduce-overhead" mode uses CUDA graphs. When we invoke the
-        # model multiple times per optimizer step (gradient accumulation), CUDA-graph output
-        # buffer reuse can trigger correctness errors:
-        #   "accessing tensor output of CUDAGraphs that has been overwritten..."
-        # In that regime, we must avoid CUDA graphs.
-        if bool(getattr(runtime_plan, "compile", False)):
-            try:
-                system_any = cast(Any, system)
-                m = getattr(system_any, "module", None)
-                if isinstance(m, nn.Module):
-                    compiled_orig_module = m
-                    compile_mode = str(getattr(runtime_plan, "compile_mode", "default"))
-
-                    # Suppress confusing CUDA-specific warnings on MPS
-                    if device.type == "mps":
-                        import warnings
-                        warnings.filterwarnings(
-                            "ignore",
-                            message=".*Not enough SMs to use max_autotune_gemm mode.*",
-                            category=UserWarning
-                        )
-                        if compile_mode in ("max-autotune", "max-autotune-no-cudagraphs"):
-                            logger.info(
-                                f"torch.compile mode '{compile_mode}' on MPS - expect CUDA-optimized warnings "
-                                "to be suppressed for cleaner logging."
-                            )
-                    if device.type == "cuda":
-                        accum_steps_cfg = max(1, int(getattr(train, "gradient_accumulation_steps", 1) or 1))
-                        if compile_mode == "reduce-overhead" and int(accum_steps_cfg) > 1:
-                            compile_mode = "default"
-                            logger.info(
-                                "torch.compile mode reduced from 'reduce-overhead' to 'default' because "
-                                f"gradient_accumulation_steps={accum_steps_cfg} can trip CUDA-graph output reuse."
-                            )
-                        # max-autotune can also enable CUDA graphs internally; prefer the no-cudagraphs
-                        # variant when we have multiple invocations per step.
-                        if compile_mode == "max-autotune" and int(accum_steps_cfg) > 1:
-                            compile_mode = "max-autotune-no-cudagraphs"
-                            logger.info(
-                                "torch.compile mode adjusted from 'max-autotune' to 'max-autotune-no-cudagraphs' because "
-                                f"gradient_accumulation_steps={accum_steps_cfg} requires avoiding CUDA-graph output reuse."
-                            )
-                    try:
-                        logger.info(f"Compiling model with torch.compile (mode={compile_mode}) - this may take 30-60 seconds...")
-                        # Use static-shape compilation when possible.
-                        #
-                        # The Dynamo/Inductor stack can hit internal SymPy errors on some builds when
-                        # dynamic-shape machinery is enabled (e.g. AttributeError: 'int' object has no
-                        # attribute 'xreplace'). Our training shapes are intended to be static
-                        # (fixed block_size), so prefer dynamic=False when supported.
-                        try:
-                            # Extra safety: disable Dynamo dynamic-shape machinery globally if available.
-                            # This avoids SymPy-based shape substitutions that can crash with `.xreplace`
-                            # on some builds, while matching our fixed block_size training regime.
-                            try:
-                                import torch._dynamo as _dynamo  # type: ignore
-
-                                if hasattr(_dynamo, "config") and hasattr(_dynamo.config, "dynamic_shapes"):
-                                    _dynamo.config.dynamic_shapes = False  # type: ignore[attr-defined]
-                            except Exception:
-                                pass
-                            system_any.module = torch.compile(m, mode=str(compile_mode), dynamic=False)
-                        except TypeError:
-                            system_any.module = torch.compile(m, mode=str(compile_mode))
-                    except Exception as e:
-                        # If the runtime doesn't recognize a mode (older PyTorch), fall back to default.
-                        if str(compile_mode) == "max-autotune-no-cudagraphs":
-                            logger.warning(
-                                "torch.compile mode 'max-autotune-no-cudagraphs' failed; falling back to 'default'. "
-                                f"Error: {type(e).__name__}: {e}"
-                            )
-                            try:
-                                system_any.module = torch.compile(m, mode="default", dynamic=False)
-                            except TypeError:
-                                system_any.module = torch.compile(m, mode="default")
-                        else:
-                            raise
-                    compiled = True
-                    if device.type == "mps":
-                        logger.success(
-                            f"torch.compile enabled (mode={compile_mode}) for {target.name}:{run.id} - "
-                            "optimized for Apple Silicon MPS backend"
-                        )
-                    else:
-                        logger.success(
-                            f"torch.compile enabled (mode={compile_mode}) for {target.name}:{run.id}"
-                        )
-                else:
-                    logger.info(
-                        f"torch.compile requested but no nn.Module found on system.module "
-                        f"(target={target.name} run={run.id}); continuing without compile."
+            # Optional UAA teacher: must be created before wrapping/compiling the student.
+            uaa_state: UAAState | None = None
+            uaa_cfg = getattr(train, "uaa", None)
+            if uaa_cfg is not None and bool(getattr(uaa_cfg, "enabled", False)):
+                if not _HAS_UAA_CTX:
+                    logger.warning(
+                        "UAA is enabled in the manifest, but this build does not provide TrainingUAAContext. "
+                        "Disabling UAA for this run to avoid import/type issues."
                     )
-            except Exception as e:
-                raise RuntimeError("Failed to compile model") from e
+                    uaa_cfg = None
+                    uaa_state = None
+                else:
+                    system_any = cast(Any, system)
+                    student_mod = getattr(system_any, "module", None)
+                    if not isinstance(student_mod, nn.Module):
+                        raise TypeError("UAA requires system.module to be an nn.Module.")
+
+                    teacher_mode = str(getattr(uaa_cfg, "teacher", "init"))
+                    if teacher_mode == "init":
+                        # Avoid deepcopy() on nn.Module graphs with custom factory __new__/__init__
+                        # (it can trigger constructor calls with missing args). Instead, build a
+                        # fresh module of the same type/config and load weights.
+                        cfg = getattr(student_mod, "config", None)
+                        if cfg is None:
+                            raise TypeError("UAA teacher=init requires student_mod.config to exist (ModelConfig).")
+                        teacher_mod = type(student_mod)(cfg)  # type: ignore[call-arg]
+                        teacher_mod.load_state_dict(student_mod.state_dict(), strict=True)
+                    elif teacher_mode == "ckpt":
+                        ckpt = getattr(train, "teacher_ckpt", None)
+                        if not isinstance(ckpt, str) or not ckpt:
+                            raise ValueError("UAA teacher=ckpt requires train.teacher_ckpt to be set.")
+                        if str(ckpt).startswith("hf://"):
+                            raise ValueError("UAA teacher=ckpt does not support hf:// checkpoints (use init for now).")
+                        cfg = getattr(student_mod, "config", None)
+                        if cfg is None:
+                            raise TypeError("UAA teacher=ckpt requires student_mod.config to exist (ModelConfig).")
+                        teacher_mod = type(student_mod)(cfg)  # type: ignore[call-arg]
+                        payload = torch.load(str(ckpt), map_location="cpu")
+                        if isinstance(payload, dict) and "system_state_dict" in payload:
+                            state = payload["system_state_dict"]
+                        else:
+                            state = payload
+                        if not isinstance(state, dict):
+                            raise TypeError("UAA teacher checkpoint must be a state_dict or contain system_state_dict.")
+                        missing, unexpected = teacher_mod.load_state_dict(state, strict=False)
+                        if missing or unexpected:
+                            logger.warning(
+                                "UAA teacher checkpoint load had mismatches; continuing with strict=False.\n"
+                                f"missing={len(missing)} unexpected={len(unexpected)}"
+                            )
+                    else:
+                        raise ValueError(f"Unknown UAA teacher mode: {teacher_mode!r}")
+
+                    teacher_mod = teacher_mod.to(device=device, dtype=dtype)
+                    uaa_state = UAAState(teacher=teacher_mod, cfg=cast(Any, uaa_cfg))
+
+            # CUDA perf knobs.
+            #
+            # TF32 is safe and commonly enabled on Ampere+ for faster fp32 matmuls
+            # (many reductions / softmax stats run in fp32 even when weights are bf16).
+            if device.type == "cuda":
+                try:
+                    torch.backends.cuda.matmul.allow_tf32 = True
+                    torch.backends.cudnn.allow_tf32 = True
+                    # PyTorch 2.x: nudge matmul towards faster kernels.
+                    torch.set_float32_matmul_precision("high")
+                except Exception as e:
+                    logger.fallback_warning(
+                    f"WARNING: Failed to enable TF32; continuing without TF32. device={device.type} dtype={dtype} error={e}"
+                    )
+
+            # Wrap system module for DDP/FSDP if requested.
+            if dist_ctx is not None:
+                try:
+                    # `system` is intentionally generic (typed as `object`), but some systems
+                    # expose a `.module: nn.Module` attribute that we can wrap/replace.
+                    # Cast to Any so Pyright/Pylance allows dynamic attribute assignment.
+                    system_any = cast(Any, system)
+                    m = getattr(system_any, "module", None)
+                    if isinstance(m, nn.Module):
+                        system_any.module = dist_ctx.wrap_model(m)
+                except Exception as e:
+                    raise RuntimeError("Failed to wrap system module for DDP/FSDP") from e
+
+            # torch.compile status (set later; must be defined for telemetry).
+            compiled = False
+            compiled_orig_module: nn.Module | None = None
+
+            loader = self._build_loader(
+                dataset_comp=dataset_comp,
+                defaults=defaults,
+                train=train,
+                device=device,
+                batch_size=int(runtime_plan.batch_size),
+                dist_ctx=dist_ctx,
+            )
+
+            # Export reproducibility artifacts.
+            #
+            # IMPORTANT: export IO shapes BEFORE torch.compile.
+            # Some Inductor versions can fail during the forward-only probe used for IO export.
+            self._export_compiled_plan(checkpoint_dir=checkpoint_dir, target=target)
+            self._export_io_shapes(
+                checkpoint_dir=checkpoint_dir,
+                loader=loader,
+                system=system,
+                device=device,
+            )
+
+            # Activation checkpointing: enable on topology modules when requested.
+            #
+            # The topology stack supports checkpointing, but we must flip the flags here
+            # based on `TrainConfig` (otherwise the knobs are silently ignored).
+            if bool(getattr(train, "activation_checkpointing", False)):
+                thr_mb = float(getattr(train, "activation_checkpoint_threshold_mb", 0.0) or 0.0)
+                try:
+                    system_any = cast(Any, system)
+                    root = getattr(system_any, "module", None)
+                    if isinstance(root, nn.Module):
+                        self._enable_activation_checkpointing(root, enabled=True, threshold_mb=thr_mb)
+                    elif isinstance(system, nn.Module):
+                        self._enable_activation_checkpointing(system, enabled=True, threshold_mb=thr_mb)
+                except Exception as e:
+                    raise RuntimeError("Failed to enable activation checkpointing") from e
+
+            # Optional torch.compile (if requested and it fails, raise).
+            #
+            # NOTE: torch.compile's "reduce-overhead" mode uses CUDA graphs. When we invoke the
+            # model multiple times per optimizer step (gradient accumulation), CUDA-graph output
+            # buffer reuse can trigger correctness errors:
+            #   "accessing tensor output of CUDAGraphs that has been overwritten..."
+            # In that regime, we must avoid CUDA graphs.
+            if bool(getattr(runtime_plan, "compile", False)):
+                try:
+                    system_any = cast(Any, system)
+                    m = getattr(system_any, "module", None)
+                    if isinstance(m, nn.Module):
+                        compiled_orig_module = m
+                        compile_mode = str(getattr(runtime_plan, "compile_mode", "default"))
+
+                        # Suppress confusing CUDA-specific warnings on MPS
+                        if device.type == "mps":
+                            import warnings
+                            warnings.filterwarnings(
+                                "ignore",
+                                message=".*Not enough SMs to use max_autotune_gemm mode.*",
+                                category=UserWarning
+                            )
+                            if compile_mode in ("max-autotune", "max-autotune-no-cudagraphs"):
+                                logger.info(
+                                    f"torch.compile mode '{compile_mode}' on MPS - expect CUDA-optimized warnings "
+                                    "to be suppressed for cleaner logging."
+                                )
+                        if device.type == "cuda":
+                            accum_steps_cfg = max(1, int(getattr(train, "gradient_accumulation_steps", 1) or 1))
+                            if compile_mode == "reduce-overhead" and int(accum_steps_cfg) > 1:
+                                compile_mode = "default"
+                                logger.info(
+                                    "torch.compile mode reduced from 'reduce-overhead' to 'default' because "
+                                    f"gradient_accumulation_steps={accum_steps_cfg} can trip CUDA-graph output reuse."
+                                )
+                            # max-autotune can also enable CUDA graphs internally; prefer the no-cudagraphs
+                            # variant when we have multiple invocations per step.
+                            if compile_mode == "max-autotune" and int(accum_steps_cfg) > 1:
+                                compile_mode = "max-autotune-no-cudagraphs"
+                                logger.info(
+                                    "torch.compile mode adjusted from 'max-autotune' to 'max-autotune-no-cudagraphs' because "
+                                    f"gradient_accumulation_steps={accum_steps_cfg} requires avoiding CUDA-graph output reuse."
+                                )
+                        try:
+                            logger.info(f"Compiling model with torch.compile (mode={compile_mode}) - this may take 30-60 seconds...")
+                            # Use static-shape compilation when possible.
+                            #
+                            # The Dynamo/Inductor stack can hit internal SymPy errors on some builds when
+                            # dynamic-shape machinery is enabled (e.g. AttributeError: 'int' object has no
+                            # attribute 'xreplace'). Our training shapes are intended to be static
+                            # (fixed block_size), so prefer dynamic=False when supported.
+                            try:
+                                # Extra safety: disable Dynamo dynamic-shape machinery globally if available.
+                                # This avoids SymPy-based shape substitutions that can crash with `.xreplace`
+                                # on some builds, while matching our fixed block_size training regime.
+                                try:
+                                    import torch._dynamo as _dynamo  # type: ignore
+
+                                    if hasattr(_dynamo, "config") and hasattr(_dynamo.config, "dynamic_shapes"):
+                                        _dynamo.config.dynamic_shapes = False  # type: ignore[attr-defined]
+                                except Exception:
+                                    pass
+                                system_any.module = torch.compile(m, mode=str(compile_mode), dynamic=False)
+                            except TypeError:
+                                system_any.module = torch.compile(m, mode=str(compile_mode))
+                        except Exception as e:
+                            # If the runtime doesn't recognize a mode (older PyTorch), fall back to default.
+                            if str(compile_mode) == "max-autotune-no-cudagraphs":
+                                logger.warning(
+                                    "torch.compile mode 'max-autotune-no-cudagraphs' failed; falling back to 'default'. "
+                                    f"Error: {type(e).__name__}: {e}"
+                                )
+                                try:
+                                    system_any.module = torch.compile(m, mode="default", dynamic=False)
+                                except TypeError:
+                                    system_any.module = torch.compile(m, mode="default")
+                            else:
+                                raise
+                        compiled = True
+                        if device.type == "mps":
+                            logger.success(
+                                f"torch.compile enabled (mode={compile_mode}) for {target.name}:{run.id} - "
+                                "optimized for Apple Silicon MPS backend"
+                            )
+                        else:
+                            logger.success(
+                                f"torch.compile enabled (mode={compile_mode}) for {target.name}:{run.id}"
+                            )
+                    else:
+                        logger.info(
+                            f"torch.compile requested but no nn.Module found on system.module "
+                            f"(target={target.name} run={run.id}); continuing without compile."
+                        )
+                except Exception as e:
+                    raise RuntimeError("Failed to compile model") from e
+            stats = Stats(profile)
+            stats.strip_dirs()
+            stats.sort_stats(SortKey.TIME)
+            stats.print_stats()
+            stats.reverse_order()
 
         # Helper: if we hit the known Dynamo/SymPy `.xreplace` crash during the first compiled
         # execution, fall back to eager (so the run continues).

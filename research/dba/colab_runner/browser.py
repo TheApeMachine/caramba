@@ -13,7 +13,7 @@ from playwright.sync_api import BrowserContext, Page
 from playwright.sync_api import sync_playwright
 from playwright.sync_api import sync_playwright
 
-from caramba.research.dba.colab_runner.base import ColabRunnerBase
+from research.dba.colab_runner.base import ColabRunnerBase
 
 
 class PlaywrightRunner(ColabRunnerBase):
@@ -66,10 +66,10 @@ class PlaywrightRunner(ColabRunnerBase):
 
     def launch_browser(self, headless: bool = False) -> tuple["BrowserContext", "Page"]:
         """Launch browser with persistent profile.
-        
+
         Returns:
             Tuple of (context, page)
-        """        
+        """
         p = sync_playwright().start()
         profile_dir = self.get_profile_dir()
 

@@ -17,6 +17,7 @@ from loader.checkpoint import CheckpointBuilder
 from loader.hf import HFLoader
 from model import Model
 from trainer.upcycle_init_context import UpcycleInitContext
+from caramba.layer.attention import AttentionLayer, AttentionMode
 
 
 def _make_teacher_model_config(model_config: ModelConfig) -> ModelConfig:
@@ -89,7 +90,11 @@ class DefaultInitializer:
 
         logger.info("Applying upcycle surgery to student...")
         dba_init = str(getattr(train, "dba_init", "svd"))
-        AdapterStateDictTransformer.llama(dba_init=dba_init).apply(model=student, state_dict=state_dict)
+        AdapterStateDictTransformer.llama(
+            dba_init=dba_init,
+            gate_init_bias=train.gate_init_bias,
+            out_proj_init_std=train.out_proj_init_std,
+        ).apply(model=student, state_dict=state_dict)
         logger.success("Weight transfer complete")
 
         if ctx.dist_ctx is not None:
@@ -113,6 +118,8 @@ class DefaultInitializer:
         teacher.eval()
         logger.success("Initialization complete")
 
+        self._verify_student_init(student, train)
+
         if bool(getattr(train, "activation_checkpointing", False)):
             threshold = float(getattr(train, "activation_checkpoint_threshold_mb", 0.0))
             for m in student.modules():
@@ -124,6 +131,53 @@ class DefaultInitializer:
                         pass
 
         return teacher, student
+
+    def _verify_student_init(self, student: nn.Module, train: TrainConfig) -> None:
+        """Run pre-flight checks on the student model before training starts."""
+        logger.header("Pre-Flight Check")
+        failures = []
+        
+        # 1. Check Gate Initialization
+        target_gate = getattr(train, "gate_init_bias", None)
+        if target_gate is not None:
+            found_gates = False
+            for name, param in student.named_parameters():
+                if "decoupled_gate_logit" in name:
+                    found_gates = True
+                    val = param.detach().mean().item()
+                    # Allow small float tolerance
+                    if abs(val - float(target_gate)) > 1e-3:
+                        failures.append(f"❌ Gate {name}: expected {target_gate}, got {val:.4f}")
+                    else:
+                        logger.info(f"✅ Gate {name} initialized to {val:.4f}")
+            if not found_gates:
+                logger.warning("⚠️ No gates found in model (check architecture if this is unexpected)")
+
+        # 2. Check Output Projections (Clean Start)
+        target_std = getattr(train, "out_proj_init_std", None)
+        # Only check if we explicitly requested a zero/clean init (std ~ 0)
+        if target_std is not None and float(target_std) < 1e-6:
+            found_projs = False
+            for name, m in student.named_modules():
+                if isinstance(m, AttentionLayer) and m.mode == AttentionMode.DECOUPLED:
+                    if hasattr(m, "out_proj") and m.out_proj is not None:
+                        found_projs = True
+                        w = m.out_proj.weight.detach()
+                        norm = w.norm().item()
+                        if norm > 1e-3:
+                            failures.append(f"❌ DBA out_proj {name} is noisy: norm={norm:.4f} (expected ~0.0)")
+                        else:
+                            logger.info(f"✅ DBA out_proj {name} is clean: norm={norm:.4f}")
+            if not found_projs:
+                logger.warning("⚠️ No DBA output projections found to check")
+
+        if failures:
+            logger.error(f"🚨 PRE-FLIGHT CHECK FAILED ({len(failures)} errors)")
+            for f in failures:
+                logger.error(f"  {f}")
+            raise RuntimeError("Initialization verification failed. Aborting training to save time.")
+        
+        logger.success("🚀 Pre-flight check passed. Student is healthy.")
 
     @staticmethod
     def _resolve_teacher_ckpt(ckpt: str) -> Path:

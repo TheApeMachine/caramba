@@ -43,6 +43,10 @@ class SurgeryCompareTrainer:
         # from student_model by forcing standard attention (Llama parity).
         student_model: dict[str, Any],
         teacher_model: dict[str, Any] | None = None,
+        # Output naming (for MultiModelBenchmarkRunner). Defaults preserve older manifests.
+        teacher_name: str = "baseline",
+        student_name: str = "student",
+        baseline_name: str | None = None,
         # DBA initialization policy (AdapterStateDictTransformer): svd|random|fresh
         dba_init: str = "fresh",
         # Runtime
@@ -52,6 +56,9 @@ class SurgeryCompareTrainer:
         self.teacher_ckpt = str(teacher_ckpt)
         self.student_model = dict(student_model)
         self.teacher_model = dict(teacher_model) if teacher_model is not None else None
+        self.teacher_name = str(teacher_name)
+        self.student_name = str(student_name)
+        self.baseline_name = str(baseline_name) if baseline_name is not None else None
         self.dba_init = str(dba_init).lower().strip()
         self.device = torch.device(str(device))
         self.dtype = str(dtype).lower().strip()
@@ -65,7 +72,8 @@ class SurgeryCompareTrainer:
         dry_run: bool = False,
     ) -> dict[str, Any] | None:
         if dry_run:
-            return {"models": {"baseline": None, "student": None}, "baseline_name": "baseline"}
+            base = self.baseline_name or self.teacher_name
+            return {"models": {self.teacher_name: None, self.student_name: None}, "baseline_name": base}
 
         dt = weight_dtype(self.device, self.dtype if self.dtype != "auto" else "auto")
         logger.header("Surgery Compare", f"device={self.device.type} dtype={dt} dba_init={self.dba_init}")
@@ -101,12 +109,18 @@ class SurgeryCompareTrainer:
         AdapterStateDictTransformer.llama(dba_init=self.dba_init).apply(model=student, state_dict=teacher_state)
         student.eval()
 
+        if not self.teacher_name or not self.student_name:
+            raise ValueError("SurgeryCompareTrainer requires non-empty teacher_name and student_name.")
+        if self.teacher_name == self.student_name:
+            raise ValueError("SurgeryCompareTrainer requires teacher_name != student_name.")
+        base_name = self.baseline_name or self.teacher_name
+
         return {
             "models": {
-                "baseline": cast(nn.Module, baseline),
-                "student": cast(nn.Module, student),
+                self.teacher_name: cast(nn.Module, baseline),
+                self.student_name: cast(nn.Module, student),
             },
-            "baseline_name": "baseline",
+            "baseline_name": base_name,
             "device": self.device,
             # Torch engine will write artifacts under manifest.name/target.name/timestamp.
             "checkpoint_dir": str(Path(getattr(manifest, "artifacts_dir", "artifacts")) / "benchmarks"),

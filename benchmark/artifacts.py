@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 
 from .latency import LatencyResult
 from .memory import MemoryResult
@@ -20,6 +21,7 @@ from .perplexity import PerplexityResult
 from .behavior import BehaviorResult
 from .accuracy import AccuracyResult
 from .context import ContextResult
+from .perplexity_microscope import write_microscope
 from benchmark.stats import mcnemar_exact_pvalue, paired_bootstrap_delta_ci, wilson_ci
 from research.dba.behavioral_suite_v2.weighted_scoring import MatchType
 
@@ -93,30 +95,50 @@ class ArtifactGenerator:
         behavioral_v2: "object | None" = None,  # BehavioralV2Result, avoiding circular import
         teacher_context: ContextResult | None = None,
         student_context: ContextResult | None = None,
+        audit: dict | None = None,
         formats: list[str] | None = None,
     ) -> dict[str, Path]:
         """Generate all artifacts and return a dict of paths."""
         formats = formats or ["csv", "json", "png", "latex"]
         generated: dict[str, Path] = {}
 
-        summary = self._compute_summary(
-            teacher_perplexity=teacher_perplexity,
-            student_perplexity=student_perplexity,
-            teacher_latency=teacher_latency,
-            student_latency=student_latency,
-            teacher_memory=teacher_memory,
-            student_memory=student_memory,
-        )
+        summary: ComparisonSummary | None = None
+        if (
+            teacher_perplexity is not None
+            and student_perplexity is not None
+            and teacher_latency is not None
+            and student_latency is not None
+            and teacher_memory is not None
+            and student_memory is not None
+            and teacher_memory.kvcache_analysis is not None
+            and student_memory.kvcache_analysis is not None
+        ):
+            summary = self._compute_summary(
+                teacher_perplexity=teacher_perplexity,
+                student_perplexity=student_perplexity,
+                teacher_latency=teacher_latency,
+                student_latency=student_latency,
+                teacher_memory=teacher_memory,
+                student_memory=student_memory,
+            )
 
         if "json" in formats:
             path = self._write_json_report(
                 metadata,
                 summary,
+                teacher_perplexity=teacher_perplexity,
+                student_perplexity=student_perplexity,
+                teacher_latency=teacher_latency,
+                student_latency=student_latency,
+                teacher_memory=teacher_memory,
+                student_memory=student_memory,
                 teacher_accuracy=teacher_accuracy,
                 student_accuracy=student_accuracy,
                 behavior=behavior,
+                behavioral_v2=behavioral_v2,
                 teacher_context=teacher_context,
                 student_context=student_context,
+                audit=audit,
             )
             generated["report.json"] = path
 
@@ -137,6 +159,8 @@ class ArtifactGenerator:
             generated.update(paths)
 
         if "png" in formats:
+            if summary is None:
+                raise RuntimeError("PNG artifacts requested but summary is unavailable (missing ppl/latency/memory results).")
             paths = self._generate_charts(
                 summary=summary,
                 teacher_latency=teacher_latency,
@@ -152,19 +176,32 @@ class ArtifactGenerator:
             generated.update(paths)
 
         if "latex" in formats:
+            if summary is None:
+                raise RuntimeError("LaTeX artifacts requested but summary is unavailable (missing ppl/latency/memory results).")
             path = self._write_latex_tables(metadata, summary)
             generated["tables.tex"] = path
             # Optional detailed behavior table for appendices / paper transparency.
             if behavior is not None and behavior.measurements:
-                try:
-                    bpath = self._write_latex_behavior_table(behavior=behavior)
-                    generated["behavior_cases_table.tex"] = bpath
-                    spath = self._write_latex_behavior_summary_table(metadata=metadata, behavior=behavior)
-                    generated[spath.name] = spath
-                except Exception as e:
-                    # Non-critical: do not fail the run due to LaTeX formatting.
-                    from console import logger
-                    logger.warning(f"ArtifactGenerator: Failed to write LaTeX behavior table: {e}")
+                bpath = self._write_latex_behavior_table(behavior=behavior)
+                generated["behavior_cases_table.tex"] = bpath
+                spath = self._write_latex_behavior_summary_table(metadata=metadata, behavior=behavior)
+                generated[spath.name] = spath
+
+        # Perplexity microscope sidecar (batch-level CSV + summary JSON).
+        # This is intentionally independent of the main report to keep `report.json`
+        # reasonably sized while still enabling deep inspection.
+        try:
+            if teacher_perplexity is not None and getattr(teacher_perplexity, "batch_loss_sums", None):
+                generated.update(
+                    write_microscope(output_dir=self.output_dir, result=teacher_perplexity, prefix="teacher")
+                )
+            if student_perplexity is not None and getattr(student_perplexity, "batch_loss_sums", None):
+                generated.update(
+                    write_microscope(output_dir=self.output_dir, result=student_perplexity, prefix="student")
+                )
+        except Exception:
+            # Non-critical: microscope is best-effort.
+            pass
 
         return generated
 
@@ -283,8 +320,8 @@ class ArtifactGenerator:
                 return mt == MatchType.CONTAINED
             return str(getattr(mt, "name", mt)) == "CONTAINED"
 
-        # Collect per-case rows.
-        rows: list[dict[str, object]] = []
+        # Collect per-case rows. `cat` is a string; everything else is numeric.
+        rows: list[dict[str, float | str]] = []
         for m in behavior.measurements:
             cat = _category(str(getattr(m, "case_id", "")))
             t_mt = getattr(m, "teacher_match_type", None)
@@ -305,7 +342,7 @@ class ArtifactGenerator:
 
             rows.append(
                 {
-                    "cat": cat,
+                    "cat": str(cat),
                     "t_hard": 1.0 if _is_exact(t_mt) else 0.0,
                     "s_hard": 1.0 if _is_exact(s_mt) else 0.0,
                     "t_soft": 1.0 if (_is_exact(t_mt) or _is_contained(t_mt)) else 0.0,
@@ -316,19 +353,19 @@ class ArtifactGenerator:
                 }
             )
 
-        by_cat: dict[str, list[dict[str, object]]] = {}
+        by_cat: dict[str, list[dict[str, float | str]]] = {}
         for r in rows:
             by_cat.setdefault(str(r["cat"]), []).append(r)
 
         def _fmt_pct(x: float) -> str:
             return f"{100.0 * float(x):.1f}\\%"
 
-        def _acc(xs: list[dict[str, object]], key: str) -> float:
+        def _acc(xs: list[dict[str, float | str]], key: str) -> float:
             if not xs:
                 return 0.0
             return float(sum(float(v[key]) for v in xs)) / float(len(xs))
 
-        def _wacc(xs: list[dict[str, object]], key: str) -> float:
+        def _wacc(xs: list[dict[str, float | str]], key: str) -> float:
             if not xs:
                 return 0.0
             num = float(sum(float(v[key]) for v in xs))
@@ -384,79 +421,73 @@ class ArtifactGenerator:
 
         path.write_text("\n".join(lines), encoding="utf-8")
 
-        # Machine-readable companions.
-        try:
-            (self.output_dir / "behavior_summary.json").write_text(
-                json.dumps(
-                    {
-                        "overall": {
-                            "teacher_hard": _acc(overall, "t_hard"),
-                            "student_hard": _acc(overall, "s_hard"),
-                            "teacher_soft": _acc(overall, "t_soft"),
-                            "student_soft": _acc(overall, "s_soft"),
-                            "student_weighted": _wacc(overall, "s_w"),
-                            "n": len(overall),
-                        },
-                        "by_category": {
-                            c: {
-                                "teacher_hard": _acc(by_cat[c], "t_hard"),
-                                "student_hard": _acc(by_cat[c], "s_hard"),
-                                "teacher_soft": _acc(by_cat[c], "t_soft"),
-                                "student_soft": _acc(by_cat[c], "s_soft"),
-                                "student_weighted": _wacc(by_cat[c], "s_w"),
-                                "n": len(by_cat[c]),
-                            }
-                            for c in cats
-                        },
+        # Machine-readable companions (required for auditability).
+        (self.output_dir / "behavior_summary.json").write_text(
+            json.dumps(
+                {
+                    "overall": {
+                        "teacher_hard": _acc(overall, "t_hard"),
+                        "student_hard": _acc(overall, "s_hard"),
+                        "teacher_soft": _acc(overall, "t_soft"),
+                        "student_soft": _acc(overall, "s_soft"),
+                        "student_weighted": _wacc(overall, "s_w"),
+                        "n": len(overall),
                     },
-                    indent=2,
-                ),
-                encoding="utf-8",
-            )
-        except Exception:
-            pass
+                    "by_category": {
+                        c: {
+                            "teacher_hard": _acc(by_cat[c], "t_hard"),
+                            "student_hard": _acc(by_cat[c], "s_hard"),
+                            "teacher_soft": _acc(by_cat[c], "t_soft"),
+                            "student_soft": _acc(by_cat[c], "s_soft"),
+                            "student_weighted": _wacc(by_cat[c], "s_w"),
+                            "n": len(by_cat[c]),
+                        }
+                        for c in cats
+                    },
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
-        try:
-            csv_path = self.output_dir / "behavior_summary.csv"
-            with open(csv_path, "w", newline="") as f:
-                w = csv.writer(f)
+        csv_path = self.output_dir / "behavior_summary.csv"
+        with open(csv_path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(
+                [
+                    "category",
+                    "n",
+                    "baseline_hard",
+                    "dba_hard",
+                    "baseline_soft",
+                    "dba_soft",
+                    "dba_weighted",
+                ]
+            )
+            w.writerow(
+                [
+                    "Overall",
+                    len(overall),
+                    _acc(overall, "t_hard"),
+                    _acc(overall, "s_hard"),
+                    _acc(overall, "t_soft"),
+                    _acc(overall, "s_soft"),
+                    _wacc(overall, "s_w"),
+                ]
+            )
+            for c in cats:
+                xs = by_cat[c]
                 w.writerow(
                     [
-                        "category",
-                        "n",
-                        "baseline_hard",
-                        "dba_hard",
-                        "baseline_soft",
-                        "dba_soft",
-                        "dba_weighted",
+                        c,
+                        len(xs),
+                        _acc(xs, "t_hard"),
+                        _acc(xs, "s_hard"),
+                        _acc(xs, "t_soft"),
+                        _acc(xs, "s_soft"),
+                        _wacc(xs, "s_w"),
                     ]
                 )
-                w.writerow(
-                    [
-                        "Overall",
-                        len(overall),
-                        _acc(overall, "t_hard"),
-                        _acc(overall, "s_hard"),
-                        _acc(overall, "t_soft"),
-                        _acc(overall, "s_soft"),
-                        _wacc(overall, "s_w"),
-                    ]
-                )
-                for c in cats:
-                    xs = by_cat[c]
-                    w.writerow(
-                        [
-                            c,
-                            len(xs),
-                            _acc(xs, "t_hard"),
-                            _acc(xs, "s_hard"),
-                            _acc(xs, "t_soft"),
-                            _acc(xs, "s_soft"),
-                            _wacc(xs, "s_w"),
-                        ]
-                    )
-        except Exception:
-            pass
 
         return path
 
@@ -470,26 +501,30 @@ class ArtifactGenerator:
         student_memory: MemoryResult | None,
     ) -> ComparisonSummary:
         """Compute comparison summary from individual results."""
-        t_ppl = teacher_perplexity.perplexity if teacher_perplexity else 0.0
-        s_ppl = student_perplexity.perplexity if student_perplexity else 0.0
+        if teacher_perplexity is None or student_perplexity is None:
+            raise RuntimeError("ArtifactGenerator: perplexity results are required to compute summary.")
+        if teacher_latency is None or student_latency is None:
+            raise RuntimeError("ArtifactGenerator: latency results are required to compute summary.")
+        if teacher_memory is None or student_memory is None:
+            raise RuntimeError("ArtifactGenerator: memory results are required to compute summary.")
+        if teacher_memory.kvcache_analysis is None or student_memory.kvcache_analysis is None:
+            raise RuntimeError("ArtifactGenerator: kvcache_analysis is required to compute summary.")
 
-        t_tps = teacher_latency.avg_tokens_per_second if teacher_latency else 0.0
-        s_tps = student_latency.avg_tokens_per_second if student_latency else 0.0
-
-        t_mem = (
-            teacher_memory.kvcache_analysis.bytes_per_token_fp16
-            if teacher_memory and teacher_memory.kvcache_analysis
-            else 0.0
-        )
-        s_mem = (
+        t_ppl = float(teacher_perplexity.perplexity)
+        s_ppl = float(student_perplexity.perplexity)
+        t_tps = float(teacher_latency.avg_tokens_per_second)
+        s_tps = float(student_latency.avg_tokens_per_second)
+        t_mem = float(teacher_memory.kvcache_analysis.bytes_per_token_fp16)
+        s_mem = float(
             student_memory.kvcache_analysis.bytes_per_token_dba_fp16
-            if student_memory
-            and student_memory.kvcache_analysis
-            and student_memory.kvcache_analysis.bytes_per_token_dba_fp16
+            if student_memory.kvcache_analysis.bytes_per_token_dba_fp16 is not None
             else student_memory.kvcache_analysis.bytes_per_token_fp16
-            if student_memory and student_memory.kvcache_analysis
-            else 0.0
         )
+        if t_ppl <= 0 or s_ppl <= 0 or t_tps <= 0 or s_tps <= 0 or t_mem <= 0 or s_mem <= 0:
+            raise RuntimeError(
+                "ArtifactGenerator: summary inputs must be > 0 "
+                f"(t_ppl={t_ppl}, s_ppl={s_ppl}, t_tps={t_tps}, s_tps={s_tps}, t_mem={t_mem}, s_mem={s_mem})."
+            )
 
         return ComparisonSummary(
             teacher_perplexity=t_ppl,
@@ -506,20 +541,75 @@ class ArtifactGenerator:
     def _write_json_report(
         self,
         metadata: ExperimentMetadata,
-        summary: ComparisonSummary,
+        summary: ComparisonSummary | None,
         *,
+        teacher_perplexity: PerplexityResult | None = None,
+        student_perplexity: PerplexityResult | None = None,
+        teacher_latency: LatencyResult | None = None,
+        student_latency: LatencyResult | None = None,
+        teacher_memory: MemoryResult | None = None,
+        student_memory: MemoryResult | None = None,
         teacher_accuracy: AccuracyResult | None = None,
         student_accuracy: AccuracyResult | None = None,
         behavior: BehaviorResult | None = None,
+        behavioral_v2: object | None = None,
         teacher_context: ContextResult | None = None,
         student_context: ContextResult | None = None,
+        audit: dict | None = None,
     ) -> Path:
         """Write JSON summary report with metadata and comparison."""
         path = self.output_dir / "report.json"
 
+        def _jsonable(x: object) -> object:
+            # Primitives
+            if x is None or isinstance(x, (bool, int, float, str)):
+                return x
+            # Paths
+            if isinstance(x, Path):
+                return str(x)
+            # Dataclasses
+            # Note: dataclasses.is_dataclass returns true for both instances and classes.
+            if is_dataclass(x) and not isinstance(x, type):
+                return _jsonable(asdict(cast(Any, x)))
+            # Containers
+            if isinstance(x, dict):
+                return {str(k): _jsonable(v) for k, v in x.items()}
+            if isinstance(x, (list, tuple)):
+                return [_jsonable(v) for v in x]
+            # NumPy scalars / arrays if present
+            try:
+                import numpy as np  # type: ignore
+
+                if isinstance(x, np.generic):
+                    return x.item()
+                if isinstance(x, np.ndarray):
+                    return x.tolist()
+            except Exception:
+                pass
+            raise TypeError(f"Object of type {type(x).__name__} is not JSON-serializable")
+
         report = {
             "metadata": asdict(metadata),
-            "summary": asdict(summary),
+            "summary": (asdict(summary) if summary is not None else None),
+            "results": {
+                "perplexity": {
+                    "teacher": (asdict(teacher_perplexity) if teacher_perplexity is not None else None),
+                    "student": (asdict(student_perplexity) if student_perplexity is not None else None),
+                },
+                "latency": {
+                    "teacher": (asdict(teacher_latency) if teacher_latency is not None else None),
+                    "student": (asdict(student_latency) if student_latency is not None else None),
+                },
+                "memory": {
+                    "teacher": (asdict(teacher_memory) if teacher_memory is not None else None),
+                    "student": (asdict(student_memory) if student_memory is not None else None),
+                },
+                "behavioral_v2": (
+                    asdict(cast(Any, behavioral_v2))
+                    if (behavioral_v2 is not None and is_dataclass(behavioral_v2) and not isinstance(behavioral_v2, type))
+                    else behavioral_v2
+                ),
+            },
             "accuracy": {
                 "teacher": (
                     {
@@ -581,6 +671,9 @@ class ArtifactGenerator:
             "generated_at": datetime.now().isoformat(),
         }
 
+        if audit is not None:
+            report["audit"] = audit
+
         # Add paired CI/significance for behavior if present.
         if behavior is not None and behavior.measurements:
             n = len(behavior.measurements)
@@ -607,7 +700,7 @@ class ArtifactGenerator:
             }
 
         with open(path, "w") as f:
-            json.dump(report, f, indent=2)
+            json.dump(_jsonable(report), f, indent=2)
 
         return path
 
@@ -899,13 +992,10 @@ class ArtifactGenerator:
         """Generate PNG charts for visual comparison."""
         paths: dict[str, Path] = {}
 
-        try:
-            import matplotlib
+        import matplotlib
 
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
-        except ImportError:
-            return paths
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
 
         # ---------------------------------------------------------------------
         # Paper-compat filenames

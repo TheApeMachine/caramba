@@ -8,11 +8,11 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-from caramba.research.dba.colab_runner.base import ColabRunnerBase
-from caramba.research.dba.colab_runner.cells import get_benchmark_cells
-from caramba.research.dba.colab_runner.colab import ColabRunner
-from caramba.research.dba.colab_runner.paths import normalize_drive_path
-from caramba.research.dba.colab_runner.browser import PlaywrightRunner
+from research.dba.colab_runner.base import ColabRunnerBase
+from research.dba.colab_runner.cells import get_benchmark_cells
+from research.dba.colab_runner.colab import ColabRunner
+from research.dba.colab_runner.paths import normalize_drive_path
+from research.dba.colab_runner.browser import PlaywrightRunner
 
 
 @dataclass

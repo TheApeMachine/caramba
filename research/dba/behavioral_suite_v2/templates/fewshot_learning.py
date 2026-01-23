@@ -70,7 +70,13 @@ class SimpleTransformTemplate(TestTemplate):
             expected=expected,
             kind=EvalKind.GENERATION,
             target_position=TargetPosition.END,
-            metadata={"transform": transform_name, "test_word": test_word},
+            metadata={
+                "transform": transform_name,
+                "test_word": test_word,
+                # Explicitly enable "presence-contained" soft credit in weighted scoring
+                # for few-shot learning tasks.
+                "allow_presence_contained": True,
+            },
         )
 
 
@@ -126,7 +132,13 @@ class PrefixSuffixTemplate(TestTemplate):
             expected=expected,
             kind=EvalKind.GENERATION,
             target_position=TargetPosition.END,
-            metadata={"pattern": pattern_name, "test_word": test_word},
+            metadata={
+                "pattern": pattern_name,
+                "test_word": test_word,
+                # Explicitly enable "presence-contained" soft credit in weighted scoring
+                # for few-shot learning tasks.
+                "allow_presence_contained": True,
+            },
         )
 
 
@@ -172,7 +184,13 @@ class ArithmeticPatternTemplate(TestTemplate):
             expected=expected,
             kind=EvalKind.GENERATION,
             target_position=TargetPosition.END,
-            metadata={"operation": op, "test_input": test_input},
+            metadata={
+                "operation": op,
+                "test_input": test_input,
+                # Explicitly enable "presence-contained" soft credit in weighted scoring
+                # for few-shot learning tasks.
+                "allow_presence_contained": True,
+            },
         )
 
 
@@ -220,7 +238,12 @@ class SymbolMappingTemplate(TestTemplate):
             expected=expected,
             kind=EvalKind.GENERATION,
             target_position=TargetPosition.END,
-            metadata={"test_symbol": test_item[0]},
+            metadata={
+                "test_symbol": test_item[0],
+                # Explicitly enable "presence-contained" soft credit in weighted scoring
+                # for few-shot learning tasks.
+                "allow_presence_contained": True,
+            },
         )
 
 
@@ -281,7 +304,13 @@ class CategoryClassificationTemplate(TestTemplate):
             expected=expected,
             kind=EvalKind.GENERATION,
             target_position=TargetPosition.END,
-            metadata={"category_type": category_type, "test_item": test_item[0]},
+            metadata={
+                "category_type": category_type,
+                "test_item": test_item[0],
+                # Explicitly enable "presence-contained" soft credit in weighted scoring
+                # for few-shot learning tasks.
+                "allow_presence_contained": True,
+            },
         )
 
 
@@ -327,7 +356,12 @@ class WordRelationTemplate(TestTemplate):
             expected=expected,
             kind=EvalKind.GENERATION,
             target_position=TargetPosition.END,
-            metadata={"test_word": test_pair[0]},
+            metadata={
+                "test_word": test_pair[0],
+                # Explicitly enable "presence-contained" soft credit in weighted scoring
+                # for few-shot learning tasks.
+                "allow_presence_contained": True,
+            },
         )
 
 

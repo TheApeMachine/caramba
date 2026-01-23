@@ -10,6 +10,8 @@ attention dimensions reduce compute, even though we need two attention paths.
 """
 from __future__ import annotations
 
+import hashlib
+import math
 import time
 from dataclasses import dataclass, field
 
@@ -25,9 +27,22 @@ from infer.generate import GenerateConfig, Generator, sample_next_token
 class LatencyMeasurement:
     """Single latency measurement for a specific configuration."""
 
+    # Deterministic input provenance (audit trail).
+    seed: int
+    input_ids: list[list[int]]
+    input_ids_sha256: str
+
     prompt_len: int
     gen_len: int
     batch_size: int
+
+    # Raw per-timed-run measurements (every value used to compute averages below).
+    prefill_times_ms: list[float]
+    first_decode_times_ms: list[float]
+    decode_times_ms: list[float]
+    ttft_times_ms: list[float]
+    total_times_ms: list[float]
+
     prefill_time_ms: float
     decode_time_ms: float
     total_time_ms: float
@@ -76,7 +91,13 @@ class LatencyBenchmark:
         self.config = config
         self.device = device
 
-    def run(self, model: nn.Module, model_name: str) -> LatencyResult:
+    def run(
+        self,
+        model: nn.Module,
+        model_name: str,
+        *,
+        on_measurement=None,
+    ) -> LatencyResult:
         """Run the latency benchmark, testing all configured combinations."""
         model.eval()
         result = LatencyResult(model_name=model_name)
@@ -91,8 +112,35 @@ class LatencyBenchmark:
                         gen_len=gen_len,
                     )
                     result.measurements.append(measurement)
+                    if on_measurement is not None:
+                        try:
+                            on_measurement(measurement)
+                        except Exception:
+                            pass
 
         return result
+
+    @staticmethod
+    def _sha256_ids(ids: list[list[int]]) -> str:
+        h = hashlib.sha256()
+        # Stable encoding: join ints with commas; include row separators.
+        for row in ids:
+            h.update((",".join(str(int(x)) for x in row) + "\n").encode("utf-8"))
+        return h.hexdigest()
+
+    def _seed_for(self, *, batch_size: int, prompt_len: int, gen_len: int) -> int:
+        # Deterministically derive a per-measurement seed from the manifest seed.
+        # Keep it explicit and stable across Python versions.
+        base = int(self.config.seed)
+        # Simple reversible mixing.
+        return int((base * 1000003 + batch_size * 1009 + prompt_len * 9176 + gen_len * 131) % (2**31 - 1))
+
+    @staticmethod
+    def _check_finite_positive(*, name: str, value: float) -> None:
+        if not math.isfinite(float(value)):
+            raise ValueError(f"LatencyBenchmark: {name} is not finite: {value!r}")
+        if float(value) <= 0.0:
+            raise ValueError(f"LatencyBenchmark: {name} must be > 0, got {value!r}")
 
     def _measure(
         self,
@@ -121,13 +169,18 @@ class LatencyBenchmark:
         """
         vocab_size = self._resolve_effective_vocab_size(model)
 
+        seed = self._seed_for(batch_size=int(batch_size), prompt_len=int(prompt_len), gen_len=int(gen_len))
+        g = torch.Generator(device=self.device).manual_seed(int(seed))
         input_ids = torch.randint(
             0,
-            vocab_size,
-            (batch_size, prompt_len),
+            int(vocab_size),
+            (int(batch_size), int(prompt_len)),
+            generator=g,
             device=self.device,
             dtype=torch.long,
         )
+        input_ids_list = input_ids.detach().cpu().tolist()
+        input_ids_sha = self._sha256_ids(input_ids_list)
 
         # Warmup
         for _ in range(self.config.warmup_runs):
@@ -201,10 +254,23 @@ class LatencyBenchmark:
             tokens_generated / (avg_total / 1000) if avg_total > 0 else 0
         )
 
+        # Sanity checks (zero impact on measured values; fail-fast on broken runs).
+        self._check_finite_positive(name="avg_total_time_ms", value=float(avg_total))
+        self._check_finite_positive(name="tokens_per_second", value=float(tokens_per_second))
+        self._check_finite_positive(name="avg_ttft_ms", value=float(avg_ttft))
+
         return LatencyMeasurement(
+            seed=int(seed),
+            input_ids=input_ids_list,
+            input_ids_sha256=str(input_ids_sha),
             prompt_len=prompt_len,
             gen_len=gen_len,
             batch_size=batch_size,
+            prefill_times_ms=[float(x) for x in prefill_times],
+            first_decode_times_ms=[float(x) for x in first_decode_times],
+            decode_times_ms=[float(x) for x in decode_times],
+            ttft_times_ms=[float(x) for x in ttft_times],
+            total_times_ms=[float(x) for x in total_times],
             prefill_time_ms=avg_prefill,
             decode_time_ms=avg_decode,
             total_time_ms=avg_total,
@@ -227,13 +293,18 @@ class LatencyBenchmark:
         """
         vocab_size = self._resolve_effective_vocab_size(model)
 
+        seed = self._seed_for(batch_size=int(batch_size), prompt_len=int(prompt_len), gen_len=int(gen_len))
+        g0 = torch.Generator(device=self.device).manual_seed(int(seed))
         input_ids = torch.randint(
             0,
-            vocab_size,
-            (batch_size, prompt_len),
+            int(vocab_size),
+            (int(batch_size), int(prompt_len)),
+            generator=g0,
             device=self.device,
             dtype=torch.long,
         )
+        input_ids_list = input_ids.detach().cpu().tolist()
+        input_ids_sha = self._sha256_ids(input_ids_list)
 
         gen_config = GenerateConfig(
             max_new_tokens=gen_len,
@@ -255,6 +326,7 @@ class LatencyBenchmark:
         self._sync_device()
 
         prefill_times: list[float] = []
+        first_decode_times: list[float] = []
         decode_times: list[float] = []
         ttft_times: list[float] = []
         total_times: list[float] = []
@@ -295,6 +367,7 @@ class LatencyBenchmark:
             decode_time = first_decode_time + (end_decode - start_decode) * 1000
 
             prefill_times.append(prefill_time)
+            first_decode_times.append(first_decode_time)
             decode_times.append(decode_time)
             ttft_times.append(ttft)
             total_times.append(prefill_time + decode_time)
@@ -309,10 +382,23 @@ class LatencyBenchmark:
             tokens_generated / (avg_total / 1000) if avg_total > 0 else 0
         )
 
+        # Sanity checks (zero impact on measured values; fail-fast on broken runs).
+        self._check_finite_positive(name="avg_total_time_ms", value=float(avg_total))
+        self._check_finite_positive(name="tokens_per_second", value=float(tokens_per_second))
+        self._check_finite_positive(name="avg_ttft_ms", value=float(avg_ttft))
+
         return LatencyMeasurement(
+            seed=int(seed),
+            input_ids=input_ids_list,
+            input_ids_sha256=str(input_ids_sha),
             prompt_len=prompt_len,
             gen_len=gen_len,
             batch_size=batch_size,
+            prefill_times_ms=[float(x) for x in prefill_times],
+            first_decode_times_ms=[float(x) for x in first_decode_times],
+            decode_times_ms=[float(x) for x in decode_times],
+            ttft_times_ms=[float(x) for x in ttft_times],
+            total_times_ms=[float(x) for x in total_times],
             prefill_time_ms=avg_prefill,
             decode_time_ms=avg_decode,
             total_time_ms=avg_total,

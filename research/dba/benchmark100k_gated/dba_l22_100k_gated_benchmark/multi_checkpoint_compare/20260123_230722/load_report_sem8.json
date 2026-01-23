@@ -1,0 +1,13 @@
+{
+  "model_name": "sem8",
+  "checkpoint": "research/dba/100k_checkpoints/sem8geo32v40/a100_fw20b_l22_dba_s42_100k.pt",
+  "strict": false,
+  "dtype": "torch.float16",
+  "device": "mps",
+  "num_checkpoint_tensors": 223,
+  "num_model_tensors": 223,
+  "missing_keys_count": 0,
+  "unexpected_keys_count": 0,
+  "missing_keys_head": [],
+  "unexpected_keys_head": []
+}

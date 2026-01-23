@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import nullcontext
+import re
 
 import torch
 from torch import Tensor
@@ -21,7 +22,7 @@ from trainer.scheduler import LRSchedulerConfig, build_lr_scheduler
 from trainer.upcycle_context import UpcycleContext
 from carmath import autocast_dtype
 from runtime.tensordict_utils import TensorDictBase
-from topology.residual import ResidualTopology
+from caramba.topology.residual import ResidualTopology
 
 
 def _int_or(value: object, default: int = 0) -> int:
@@ -43,30 +44,74 @@ def _build_blockwise_config(train: TrainConfig, device: torch.device) -> Blockwi
     )
 
 
-def _build_optimizer(train: TrainConfig, params) -> Optimizer:
+def _build_optimizer(train: TrainConfig, model_or_params) -> Optimizer:
     """Build optimizer for upcycle steppers (blockwise/global)."""
     opt_name = str(getattr(train, "optimizer", "adamw")).lower()
     weight_decay = float(getattr(train, "weight_decay", 0.0))
     fused_opt = bool(getattr(train, "fused_optimizer", False))
+    lr = float(train.lr)
+
+    params: object = model_or_params
+    if isinstance(model_or_params, torch.nn.Module):
+        # Support for param_groups
+        groups_cfg = getattr(train, "param_groups", None)
+        if groups_cfg:
+            grouped_params = []
+            assigned_ids = set()
+
+            # Process configured groups
+            for g in groups_cfg:
+                g_regex = str(g.regex)
+                g_lr = float(g.lr) if g.lr is not None else lr
+                g_wd = float(g.weight_decay) if g.weight_decay is not None else weight_decay
+
+                group_p = []
+                for name, p in model_or_params.named_parameters():
+                    if id(p) in assigned_ids:
+                        continue
+                    if re.search(g_regex, name):
+                        group_p.append(p)
+                        assigned_ids.add(id(p))
+
+                if group_p:
+                    grouped_params.append({"params": group_p, "lr": g_lr, "weight_decay": g_wd})
+                    logger.info(f"Optimizer group '{g_regex}': {len(group_p)} params, lr={g_lr:.2e}, wd={g_wd:.2e}")
+
+            # Remaining params go to default group
+            default_p = []
+            for name, p in model_or_params.named_parameters():
+                if id(p) not in assigned_ids:
+                    default_p.append(p)
+
+            if default_p:
+                grouped_params.append({"params": default_p, "lr": lr, "weight_decay": weight_decay})
+                logger.info(f"Optimizer default group: {len(default_p)} params, lr={lr:.2e}, wd={weight_decay:.2e}")
+            
+            params = grouped_params
+        else:
+            params = model_or_params.parameters()
+    else:
+        params = model_or_params
+
     if opt_name in ("adamw", "adam"):
         return torch.optim.AdamW(
             params,
-            lr=float(train.lr),
-            weight_decay=float(weight_decay),
+            lr=lr,
+            weight_decay=weight_decay,
         )
     if opt_name == "sgd":
         return torch.optim.SGD(
             params,
-            lr=float(train.lr),
-            weight_decay=float(weight_decay),
+            lr=lr,
+            weight_decay=weight_decay,
         )
     if opt_name == "lion":
         from optimizer.lion import Lion
 
         return Lion(
             params,
-            lr=float(train.lr),
-            weight_decay=float(weight_decay),
+            lr=lr,
+            weight_decay=weight_decay,
             fused=bool(fused_opt),
         )
     raise ValueError(f"Unknown optimizer {opt_name!r}")
@@ -127,7 +172,7 @@ class BlockwiseStepper:
         train = run.train
 
         loader, _ = collector.build_loaders(train, ctx)
-        optimizer = _build_optimizer(train, ctx.student.parameters())
+        optimizer = _build_optimizer(train, ctx.student)
 
         distill_target = str(getattr(train, "blockwise_distill_target", "attention")).lower().strip()
         trace_predicate: Callable[[str, torch.nn.Module], bool] | None = None

@@ -94,5 +94,5 @@ fineweb_chunk_aa
 100k_checkpoints/
 behavioral_results/
 benchmark100k/
-benchmark100k_gated/
 benchmark_ablations/
+backup/

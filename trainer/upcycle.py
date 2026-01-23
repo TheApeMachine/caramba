@@ -221,6 +221,52 @@ class _UpcycleSession:
             except Exception:
                 logger.warning("Failed to load resume state, continuing without resume")
                 self._resume_state = None
+        
+        # Explicit checkpoint loading (manifest-driven).
+        # This runs AFTER initialization but BEFORE resume state is applied (if any).
+        # It allows "warm starting" from an arbitrary file.
+        load_ckpt = getattr(train, "load_checkpoint", None)
+        if load_ckpt:
+            logger.info(f"Loading explicit checkpoint: {load_ckpt}")
+            try:
+                # We reuse the checkpointer's loading logic but point it to the specific file.
+                # Note: This loads weights into the system module.
+                # If the checkpoint contains optimizer state, we might want to load that too,
+                # but for fine-tuning (SFT), we usually want fresh optimizer state.
+                # Let's assume we just want weights for now unless it's a full resume.
+                
+                # Use torch.load directly to handle arbitrary paths (checkpointer enforces run dir).
+                payload = torch.load(str(load_ckpt), map_location=self.device)
+                
+                # Handle wrapped state dicts
+                if isinstance(payload, dict) and "system_state_dict" in payload:
+                    state = payload["system_state_dict"]
+                elif isinstance(payload, dict) and "model" in payload:
+                    state = payload["model"]
+                else:
+                    state = payload
+                    
+                if not isinstance(state, dict):
+                    raise TypeError(f"Checkpoint must be a dict, got {type(state).__name__}")
+
+                # Load into system (handle DDP wrapper if present)
+                system_mod = getattr(self.teacher, "module", self.teacher) # Teacher/Student are same class here? No.
+                # Wait, UpcycleTrainer has teacher AND student.
+                # If we are fine-tuning, we usually care about the STUDENT.
+                # But UpcycleTrainer initializes both.
+                # Let's load into STUDENT.
+                
+                student_mod = getattr(self.student, "module", self.student)
+                missing, unexpected = student_mod.load_state_dict(state, strict=False)
+                if missing:
+                    logger.warning(f"Explicit load missing keys: {len(missing)}")
+                if unexpected:
+                    logger.warning(f"Explicit load unexpected keys: {len(unexpected)}")
+                
+                logger.success(f"Loaded weights from {load_ckpt}")
+                
+            except Exception as e:
+                raise RuntimeError(f"Failed to load explicit checkpoint {load_ckpt}") from e
 
     def _teacher_sanity_check(self, train: TrainConfig) -> None:
         """Fail fast if the teacher or dataset is obviously broken."""
@@ -234,9 +280,21 @@ class _UpcycleSession:
         # Use the target's configured dataset path (groups[].data).
         data_path = str(self.group.data)
 
+        # If we need a tokenizer instance for EOS resolution, try to load it properly
+        tokenizer_instance = None
+        if bool(getattr(train, "append_eos", False)):
+             try:
+                 if str(train.teacher_ckpt).startswith("hf://"):
+                     from data.tokenizers.huggingface import HuggingfaceTokenizer
+                     tokenizer_instance = HuggingfaceTokenizer(model_id=str(train.teacher_ckpt)[5:])
+             except Exception as e:
+                 logger.warning(f"Failed to load tokenizer for append_eos: {e}")
+
         dataset = TokenDatasetBuilder.build(
             path=Path(data_path),
             block_size=int(train.block_size),
+            append_eos=bool(getattr(train, "append_eos", False)),
+            tokenizer=tokenizer_instance,
         )
 
         # Resolve vocab size from teacher embeddings (tied or untied).

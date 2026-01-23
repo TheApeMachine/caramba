@@ -18,6 +18,7 @@ from trainer.checkpointers import CheckPointer
 from trainer.upcycle_context import UpcycleContext
 from trainer.steppers.global_stepper import _compute_loss, _has_diffusion_head
 from runtime.tensordict_utils import TensorDictBase
+from trainer.gradient_isolation import apply_trainable_scope
 
 
 class GlobalOrchestratedStepper:
@@ -48,6 +49,16 @@ class GlobalOrchestratedStepper:
         loader, val_loader = collector.build_loaders(train, ctx)
         for p in ctx.student.parameters():
             p.requires_grad = True
+        # Optional gradient isolation: allow manifests to train only a subset of params
+        # (e.g. DBA routing weights + gate) while freezing pretrained FFN/embeddings.
+        trainable_scope = getattr(train, "trainable_scope", None)
+        if trainable_scope:
+            stats = apply_trainable_scope(
+                ctx.student,
+                trainable=[str(x) for x in trainable_scope],
+                frozen=None if getattr(train, "frozen_scope", None) is None else [str(x) for x in train.frozen_scope],
+            )
+            logger.info(f"Trainable scope applied (global_orchestrated): {stats['trainable']}/{stats['total']} params")
         ctx.student.train()
 
         has_diffusion = _has_diffusion_head(ctx.student)

@@ -134,7 +134,12 @@ class MetalAttentionTraining:
         if verbose_build:
             _ = load_caramba_metal_attention_ops(verbose=True)
 
-        seed_i_raw = int(torch.seed()) if seed is None else int(seed)
+        # When dropout is disabled, use a fixed seed to avoid torch.compile recompilation storms.
+        # When dropout is enabled, generate a random seed if none provided.
+        if seed is None:
+            seed_i_raw = 0 if float(dropout_p) == 0.0 else int(torch.seed())
+        else:
+            seed_i_raw = int(seed)
         if seed_i_raw < 0:
             raise ValueError(f"seed must be >= 0 (got {seed_i_raw})")
         seed_u32 = int(seed_i_raw & _MetalAttnTrainFn._U32_MASK)

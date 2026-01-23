@@ -342,7 +342,8 @@ class BlockwiseTrainer:
                 try:
                     _ = self.teacher(x)
                 except TraceStop as e:
-                    logger.trace(f"BlockwiseTrainer: Teacher forward stopped correctly: {e}")
+                    # Normal control-flow for truncated forward; intentionally silent.
+                    pass
 
         outputs = list(self._teacher_trace.outputs)
         self._teacher_trace.max_outputs = None
@@ -369,13 +370,15 @@ class BlockwiseTrainer:
                     try:
                         _ = self.student(x)
                     except TraceStop as e:
-                        logger.trace(f"BlockwiseTrainer: Student forward (AMP) stopped correctly: {e}")
+                        # Normal control-flow for truncated forward; intentionally silent.
+                        pass
         else:
             with self._student_trace:
                 try:
                     _ = self.student(x)
                 except TraceStop as e:
-                    logger.trace(f"BlockwiseTrainer: Student forward stopped correctly: {e}")
+                    # Normal control-flow for truncated forward; intentionally silent.
+                    pass
 
         outputs = list(self._student_trace.outputs)
         self._student_trace.max_outputs = None

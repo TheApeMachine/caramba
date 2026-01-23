@@ -8,7 +8,10 @@ DBA caches semantic keys (sem_dim), geometric keys (geo_dim), and values
 from __future__ import annotations
 
 import gc
+import hashlib
 import logging
+import math
+import sys
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -22,10 +25,31 @@ from caramba.layer.attention import AttentionLayer, AttentionMode
 
 logger = logging.getLogger(__name__)
 
+def _rss_mb() -> float | None:
+    """Best-effort process RSS/peak RSS in MB (platform-dependent)."""
+    try:
+        import resource
+
+        r = resource.getrusage(resource.RUSAGE_SELF)
+        x = float(getattr(r, "ru_maxrss"))
+        if x <= 0:
+            return None
+        # macOS: bytes. Linux: kilobytes.
+        if sys.platform == "darwin":
+            return x / (1024.0 * 1024.0)
+        return x / 1024.0
+    except Exception:
+        return None
+
 
 @dataclass
 class MemoryMeasurement:
     """Single memory measurement for a specific configuration."""
+
+    # Deterministic input provenance (audit trail).
+    seed: int
+    input_ids: list[list[int]]
+    input_ids_sha256: str
 
     seq_len: int
     batch_size: int
@@ -33,6 +57,10 @@ class MemoryMeasurement:
     kvcache_memory_mb: float
     model_memory_mb: float
     quantization: str
+
+    # Optional backend telemetry (does not affect scoring; used for audits).
+    mps_driver_peak_memory_mb: float | None = None
+    mps_recommended_max_mb: float | None = None
 
 
 @dataclass
@@ -104,7 +132,13 @@ class MemoryBenchmark:
         self.config = config
         self.device = device
 
-    def run(self, model: nn.Module, model_name: str) -> MemoryResult:
+    def run(
+        self,
+        model: nn.Module,
+        model_name: str,
+        *,
+        on_measurement=None,
+    ) -> MemoryResult:
         """Run the memory benchmark, measuring both theoretical and actual usage."""
         model.eval()
         result = MemoryResult(model_name=model_name)
@@ -123,6 +157,11 @@ class MemoryBenchmark:
                         quantization=quant,
                     )
                     result.measurements.append(measurement)
+                    if on_measurement is not None:
+                        try:
+                            on_measurement(measurement)
+                        except Exception:
+                            pass
 
         return result
 
@@ -179,6 +218,17 @@ class MemoryBenchmark:
                     layer_sem_dim = int(cfg.sem_dim) if cfg.sem_dim is not None else None
                     layer_geo_dim = int(cfg.geo_dim) if cfg.geo_dim is not None else None
                     layer_v_dim = int(cfg.v_dim) if cfg.v_dim is not None else None
+
+                    # Adjust for GQA: cache stores n_kv_heads * head_dim, but config has n_heads * head_dim
+                    n_heads = int(cfg.n_heads)
+                    kv_heads = int(cfg.n_kv_heads if cfg.n_kv_heads is not None else cfg.n_heads)
+                    
+                    if layer_sem_dim is not None:
+                        layer_sem_dim = (layer_sem_dim // n_heads) * kv_heads
+                    if layer_geo_dim is not None:
+                        layer_geo_dim = (layer_geo_dim // n_heads) * kv_heads
+                    if layer_v_dim is not None:
+                        layer_v_dim = (layer_v_dim // n_heads) * kv_heads
 
                     if sem_dim is None:
                         sem_dim = layer_sem_dim
@@ -265,29 +315,79 @@ class MemoryBenchmark:
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
-
-        if self.device.type == "cuda":
-            model_memory = torch.cuda.memory_allocated() / (1024 * 1024)
+            model_memory = float(torch.cuda.memory_allocated() / (1024 * 1024))
+            mps_driver_peak: float | None = None
+            mps_recommended: float | None = None
+        elif self.device.type == "mps":
+            # MPS does not expose reset_peak_memory_stats(). We instead sample
+            # allocated + driver allocated during the measurement window.
+            torch.mps.empty_cache()
+            try:
+                model_memory = float(torch.mps.current_allocated_memory() / (1024 * 1024))
+            except Exception as e:
+                raise RuntimeError(f"MemoryBenchmark: failed to read MPS current_allocated_memory: {e!r}") from e
+            try:
+                mps_recommended = float(torch.mps.recommended_max_memory() / (1024 * 1024))
+            except Exception:
+                mps_recommended = None
+            # Initialize peak trackers with baseline.
+            try:
+                mps_driver_peak = float(torch.mps.driver_allocated_memory() / (1024 * 1024))
+            except Exception:
+                mps_driver_peak = None
         else:
-            model_memory = 0.0
+            # CPU fallback is explicitly RSS-based (not GPU peak alloc).
+            rss0 = _rss_mb()
+            if rss0 is None:
+                raise RuntimeError("MemoryBenchmark: failed to read RSS for CPU memory measurement.")
+            model_memory = float(rss0)
+            mps_driver_peak = None
+            mps_recommended = None
 
         vocab_size = self._resolve_effective_vocab_size(model)
 
+        seed = int(self.config.seed) * 1000003 + int(batch_size) * 1009 + int(seq_len) * 9176
+        seed = int(seed % (2**31 - 1))
+        g = torch.Generator(device=self.device).manual_seed(int(seed))
         input_ids = torch.randint(
             0,
-            vocab_size,
-            (batch_size, seq_len),
+            int(vocab_size),
+            (int(batch_size), int(seq_len)),
+            generator=g,
             device=self.device,
             dtype=torch.long,
         )
+        input_ids_list = input_ids.detach().cpu().tolist()
+        h = hashlib.sha256()
+        for row in input_ids_list:
+            h.update((",".join(str(int(x)) for x in row) + "\n").encode("utf-8"))
+        input_ids_sha = h.hexdigest()
 
         with torch.no_grad():
             _ = model(input_ids)
 
         if self.device.type == "cuda":
-            peak_memory = torch.cuda.max_memory_allocated() / (1024 * 1024)
+            peak_memory = float(torch.cuda.max_memory_allocated() / (1024 * 1024))
+        elif self.device.type == "mps":
+            # Sample MPS allocated/driver allocated after the forward.
+            try:
+                peak_memory = float(torch.mps.current_allocated_memory() / (1024 * 1024))
+            except Exception as e:
+                raise RuntimeError(f"MemoryBenchmark: failed to read MPS current_allocated_memory: {e!r}") from e
+            try:
+                drv = float(torch.mps.driver_allocated_memory() / (1024 * 1024))
+                if mps_driver_peak is None:
+                    mps_driver_peak = drv
+                else:
+                    mps_driver_peak = max(float(mps_driver_peak), drv)
+            except Exception:
+                # Keep whatever we already have; driver stats may not be available on all builds.
+                pass
         else:
-            peak_memory = 0.0
+            rss1 = _rss_mb()
+            if rss1 is None:
+                raise RuntimeError("MemoryBenchmark: failed to read RSS for CPU memory measurement.")
+            peak_memory = float(rss1)
 
         kvcache_memory = self._estimate_kvcache_memory(
             model=model,
@@ -296,13 +396,30 @@ class MemoryBenchmark:
             quantization=quantization,
         )
 
+        # Sanity checks (zero impact on measured values; fail-fast on broken runs).
+        if not math.isfinite(float(peak_memory)) or float(peak_memory) <= 0.0:
+            raise ValueError(
+                f"MemoryBenchmark: peak_memory_mb must be finite and > 0, got {peak_memory!r} "
+                f"(device={self.device.type}, batch_size={batch_size}, seq_len={seq_len})."
+            )
+        if not math.isfinite(float(kvcache_memory)) or float(kvcache_memory) <= 0.0:
+            raise ValueError(
+                f"MemoryBenchmark: kvcache_memory_mb must be finite and > 0, got {kvcache_memory!r} "
+                f"(batch_size={batch_size}, seq_len={seq_len}, quant={quantization})."
+            )
+
         return MemoryMeasurement(
+            seed=int(seed),
+            input_ids=input_ids_list,
+            input_ids_sha256=str(input_ids_sha),
             seq_len=seq_len,
             batch_size=batch_size,
             peak_memory_mb=peak_memory,
             kvcache_memory_mb=kvcache_memory,
             model_memory_mb=model_memory,
             quantization=quantization,
+            mps_driver_peak_memory_mb=float(mps_driver_peak) if mps_driver_peak is not None else None,
+            mps_recommended_max_mb=float(mps_recommended) if mps_recommended is not None else None,
         )
 
     def _estimate_kvcache_memory(
@@ -330,8 +447,22 @@ class MemoryBenchmark:
                     cfg = attn_layer.config
                     if cfg.sem_dim is not None and cfg.geo_dim is not None:
                         # Convert to int explicitly
-                        dba_k_dim = int(cfg.sem_dim) + int(cfg.geo_dim)
-                        dba_v_dim = int(cfg.v_dim) if cfg.v_dim is not None else None
+                        n_heads = int(cfg.n_heads)
+                        kv_heads = int(cfg.n_kv_heads if cfg.n_kv_heads is not None else cfg.n_heads)
+                        
+                        sem_total = int(cfg.sem_dim)
+                        geo_total = int(cfg.geo_dim)
+                        
+                        dba_k_dim = ((sem_total // n_heads) * kv_heads) + ((geo_total // n_heads) * kv_heads)
+                        
+                        v_total = int(cfg.v_dim) if cfg.v_dim is not None else kv_dim # Fallback might be wrong if v_dim not set?
+                        if cfg.v_dim is not None:
+                             dba_v_dim = (int(cfg.v_dim) // n_heads) * kv_heads
+                        else:
+                             dba_v_dim = None # Will fallback to kv_dim logic below which is correct for standard V
+                    else:
+                        dba_k_dim = None
+                        dba_v_dim = None
 
         bytes_per_elem = {
             "fp16": 2.0,

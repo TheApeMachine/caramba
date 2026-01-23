@@ -1,0 +1,144 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\graphicspath{{./}}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[margin=1in]{geometry}
+\usepackage{placeins}
+\usepackage{float}
+
+% Custom colors
+\definecolor{accent}{RGB}{45, 106, 79}
+
+\title{\textbf{Utility-Aligned Attention (UAA):} \\[0.3em]
+\large Training Attention to Approximate Counterfactual Value of Information}
+
+\author{
+  Daniel Owen van Dommelen\\
+  \textit{Independent Research}\\
+  \texttt{theapemachine@gmail.com}
+}
+
+\date{January 2026}
+
+\begin{document}
+
+\maketitle
+
+% ============================================================================
+% ABSTRACT
+% ============================================================================
+\begin{abstract}
+Attention weights are widely inspected as if they were explanations, yet many analyses show that attention is neither unique nor reliably causal.
+We propose \textbf{Utility-Aligned Attention (UAA)}, a training objective that anchors selected attention heads to a counterfactual quantity: a token should receive attention mass in proportion to how much the model's next-token loss would increase if information from that token were removed.
+
+UAA estimates per-token \emph{utility} with a cheap sampled counterfactual (one extra forward pass per example or batch) and aligns one or a few designated heads to a normalized utility distribution via an auxiliary divergence loss.
+To prevent reward hacking, utilities are computed by a frozen \emph{teacher} model while a \emph{student} model is trained with standard language modeling loss plus utility-alignment.
+
+We position UAA as a low-compute, ablation-friendly research direction that yields a measurable metric (attention--utility alignment) and a practical robustness hypothesis (graceful degradation under function-word deletion and other context corruptions), even when perplexity does not improve.
+\end{abstract}
+
+\paragraph{Keywords:}
+transformers, attention, interpretability, counterfactuals, value of information, robustness, auxiliary losses, distillation
+
+% ============================================================================
+% 1. INTRODUCTION
+% ============================================================================
+\section{Introduction}
+
+Attention is a central mechanism in transformers \cite{vaswani2017attention} and is often visualized as if it provided faithful explanations of model behavior.
+However, multiple studies argue that attention is not explanation \cite{jain2019attention, serrano2019attention}, motivating objectives that make attention more causally grounded.
+
+This paper proposes a simple reframing: instead of trying to make attention \emph{look right}, train some attention to approximate \emph{value of information}.
+Informally, a token deserves attention in proportion to how much the model's prediction would worsen if that token were made unavailable.
+
+% ============================================================================
+% 2. METHOD: COUNTERFACTUAL TOKEN UTILITY ALIGNMENT
+% ============================================================================
+\section{Method: Counterfactual Token Utility Alignment}
+
+Let $x_{1:t}$ be a context prefix and $y$ the next-token target.
+Define baseline loss:
+\[
+\ell_{\text{base}} = -\log p_\theta(y \mid x_{1:t}).
+\]
+
+Choose one (or a small set) of context token indices $i \in \{1,\dots,t\}$ and form a counterfactual input where token $i$ is ``unavailable.'' In practice, we consider inexpensive approximations:
+\begin{itemize}
+  \item replace $x_i$ with a special token (e.g. \texttt{[UNK]}),
+  \item zero its embedding, or
+  \item more surgically, zero its K/V contribution at a chosen layer (so the model can still ``see'' the token id, but cannot route information through that position for attention).
+\end{itemize}
+
+Compute counterfactual loss $\ell_{\text{cf}}(i)$, and define utility:
+\[
+u(i) = \max\left(0, \ell_{\text{cf}}(i) - \ell_{\text{base}}\right).
+\]
+
+Turn utilities into a target distribution over source positions:
+\[
+q(i) \propto u(i) + \epsilon.
+\]
+
+Pick a small set of heads (``utility heads'') and encourage their attention distributions $a(\cdot)$ to match $q$ via an auxiliary loss, e.g.:
+\[
+\mathcal{L}_{\text{att}} = \mathrm{KL}(q \,\|\, a).
+\]
+
+Total objective:
+\[
+\mathcal{L} = \mathcal{L}_{\text{LM}} + \lambda \, \mathcal{L}_{\text{att}}.
+\]
+
+\subsection{Teacher-student utility to prevent gaming}
+If the same model both produces and is trained against the utility signal, it may learn to reduce measured utility without improving behavior.
+We therefore compute $u_T(i)$ using a frozen teacher $T$ and train a student $S$ using $\mathcal{L}_{\text{LM}}(S)$ plus attention alignment to $u_T$.
+
+% ============================================================================
+% 3. EXPERIMENTS (SCAFFOLD)
+% ============================================================================
+\section{Experiments (Scaffold)}
+
+We target small, ablation-friendly runs.
+
+\subsection{Setup}
+\begin{itemize}
+  \item \textbf{Models:} small transformer(s) with a frozen teacher and trainable student.
+  \item \textbf{Utility estimation:} sample 1--2 token indices per example; compute $\ell_{\text{cf}}$ with one extra forward pass.
+  \item \textbf{Alignment scope:} align 2--4 heads in mid/late layers; leave other heads unconstrained.
+\end{itemize}
+
+\subsection{Evaluation}
+\begin{itemize}
+  \item \textbf{Perplexity:} standard LM quality (watch for degradation as $\lambda$ increases).
+  \item \textbf{Robustness:} controlled deletions (function words), entity swaps, and negation sensitivity.
+  \item \textbf{Metric:} attention--utility alignment score per head/layer.
+\end{itemize}
+
+% ============================================================================
+% LIMITATIONS
+% ============================================================================
+\section{Limitations and Open Questions}
+\begin{itemize}
+  \item Utility estimates are approximation-dependent (masking vs. embedding-zero vs. KV ablation).
+  \item Alignment may trade off perplexity for robustness; this should be characterized, not hidden.
+  \item ``Utility heads'' may interact with other heads via residual streams; disentanglement is partial.
+\end{itemize}
+
+% ============================================================================
+% REFERENCES
+% ============================================================================
+\FloatBarrier
+\clearpage
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
+

@@ -26,7 +26,14 @@ class NpyDataset(Dataset[TensorDictBase], CarambaDataset):
     than RAM without loading everything into memory at once.
     """
 
-    def __init__(self, path: str, *, block_size: int) -> None:
+    def __init__(
+        self,
+        path: str,
+        *,
+        block_size: int,
+        append_eos: bool = False,
+        eos_id: int | None = None,
+    ) -> None:
         """Initialize NumPy dataset
 
         Opens the token file using memory-mapping so large datasets don't need
@@ -35,6 +42,11 @@ class NpyDataset(Dataset[TensorDictBase], CarambaDataset):
         """
         if block_size <= 0:
             raise ValueError(f"block_size must be > 0, got {block_size}")
+
+        self.append_eos = append_eos
+        self.eos_id = eos_id
+        if self.append_eos and self.eos_id is None:
+            raise ValueError("append_eos=True requires eos_id to be provided")
 
         # Use mmap_mode="r" to avoid materializing large arrays into RAM.
         # We type hint this explicitly as an ndarray (which memmap is).
@@ -122,4 +134,12 @@ class NpyDataset(Dataset[TensorDictBase], CarambaDataset):
 
         x = block[:-1]
         y = block[1:]
+
+        if self.append_eos and self.eos_id is not None:
+            # Force EOS at the end of the target sequence.
+            # This teaches the model that "at the end of this context, you should stop".
+            # Note: We do NOT append to x, because x needs to be valid input context.
+            # We modify y (target) so that x[last] -> EOS.
+            y[-1] = int(self.eos_id)
+
         return as_tensordict({"input_ids": x, "target_ids": y})

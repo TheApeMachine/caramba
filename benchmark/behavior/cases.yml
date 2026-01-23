@@ -1,0 +1,802 @@
+version: 1
+id: behavior
+seed: 42
+tests_per_category: 30
+
+# NOTE:
+# - This suite is intentionally "completion-style" (not instruction-style).
+# - Every case MUST have `target_text` that exists verbatim in the prompt, because
+#   attention dumps are generated for every case and highlight target spans.
+
+pools:
+  # Short tokens / triplets (space-sensitive tokenizers: keep these without leading spaces).
+  triplets:
+    - ABC
+    - DEF
+    - GHI
+    - JKL
+    - MNO
+    - PQR
+    - STU
+    - VWX
+    - YZA
+    - BCD
+    - CDE
+    - EFG
+    - FGH
+    - HIJ
+    - IJK
+    - KLM
+    - LMN
+    - NOP
+    - OPQ
+    - QRS
+    - RST
+    - TUV
+    - UVW
+    - WXY
+    - XYZ
+    - ZAB
+    - CAT
+    - DOG
+    - SUN
+    - MOON
+    - TREE
+    - BIRD
+    - FISH
+    - LION
+    - BEAR
+    - WOLF
+    - PINE
+    - ROSE
+    - MINT
+    - SAGE
+    - GOLD
+    - BLUE
+    - RED
+    - GREEN
+    - PURP
+    - CYAN
+    - PINK
+    - ORNG
+    - GRAY
+    - SILV
+    - BRNZ
+
+  words_short:
+    - cat
+    - dog
+    - bird
+    - fish
+    - apple
+    - banana
+    - cherry
+    - orange
+    - lemon
+    - grape
+    - table
+    - chair
+    - stone
+    - river
+    - cloud
+    - light
+    - sound
+    - warm
+    - cold
+    - fast
+    - slow
+    - up
+    - down
+    - left
+    - right
+
+  words_long:
+    - elephant
+    - giraffe
+    - dolphin
+    - kangaroo
+    - helicopter
+    - telescope
+    - microscope
+    - arithmetic
+    - semaphore
+    - photograph
+    - atmosphere
+    - electricity
+
+  numbers_1digit: ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+  numbers_2digit: ["10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25"]
+
+  colors: ["RED", "GREEN", "BLUE", "YELLOW", "PURPLE", "ORANGE", "PINK", "CYAN"]
+  animals: ["CAT", "DOG", "BIRD", "FISH", "LION", "BEAR", "WOLF", "HORSE"]
+
+  symbols: ["@#$%", "&*()", "[]{}", "<>||", "++==", "///\\\\", "**--", "!!??"]
+
+categories:
+  # 1) Copy tasks
+  - id: copy_tasks
+    description: "Raw memorization fidelity (copy / echo)"
+    templates:
+      - id: copy_triplets
+        repeat: 12
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: [EXACT_START]
+        prompt: |
+          Copy: ${a}
+          Copy: ${b}
+          Copy: ${c}
+          Copy:
+        expected: "${c}"
+        target_text: "${c}"
+        slots:
+          a: {pool: triplets, unique_key: u, transform: none}
+          b: {pool: triplets, unique_key: u, transform: none}
+          c: {pool: triplets, unique_key: u, transform: none}
+
+      - id: copy_numbers
+        repeat: 9
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: [EXACT_START]
+        prompt: |
+          Echo: ${n1} ${n2} ${n3} ${n4} ${n5}
+          Echo:
+        expected: "${n1} ${n2} ${n3} ${n4} ${n5}"
+        target_text: "${n1} ${n2} ${n3} ${n4} ${n5}"
+        slots:
+          n1: {pool: numbers_1digit, unique_key: n, transform: none}
+          n2: {pool: numbers_1digit, unique_key: n, transform: none}
+          n3: {pool: numbers_1digit, unique_key: n, transform: none}
+          n4: {pool: numbers_1digit, unique_key: n, transform: none}
+          n5: {pool: numbers_1digit, unique_key: n, transform: none}
+
+      - id: copy_symbols
+        repeat: 9
+        difficulty: medium
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: [EXACT_START]
+        prompt: |
+          Pattern: ${s1}
+          Copy: ${s1}
+          Pattern: ${s2}
+          Copy:
+        expected: "${s2}"
+        target_text: "${s2}"
+        slots:
+          s1: {pool: symbols, unique_key: s, transform: none}
+          s2: {pool: symbols, unique_key: s, transform: none}
+
+  # 2) Few-shot transforms (string transforms)
+  - id: fewshot_transform
+    description: "In-context pattern learning (transform input token)"
+    templates:
+      - id: uppercase
+        repeat: 10
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: []
+        prompt: |
+          ${w1} -> ${w1_up}
+          ${w2} -> ${w2_up}
+          ${w3} ->
+        expected: "${w3_up}"
+        target_text: "${w3}"
+        slots:
+          w1: {pool: words_short, unique_key: w, transform: none}
+          w2: {pool: words_short, unique_key: w, transform: none}
+          w3: {pool: words_short, unique_key: w, transform: none}
+          w1_up: {ref: w1, transform: upper}
+          w2_up: {ref: w2, transform: upper}
+          w3_up: {ref: w3, transform: upper}
+
+      - id: double
+        repeat: 10
+        difficulty: medium
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: []
+        prompt: |
+          ${t1} -> ${t1}${t1}
+          ${t2} -> ${t2}${t2}
+          ${t3} ->
+        expected: "${t3}${t3}"
+        target_text: "${t3}"
+        slots:
+          t1: {pool: triplets, unique_key: t, transform: none}
+          t2: {pool: triplets, unique_key: t, transform: none}
+          t3: {pool: triplets, unique_key: t, transform: none}
+
+      - id: reverse
+        repeat: 10
+        difficulty: hard
+        kind: generation_greedy
+        allow_contained: false
+        prompt: |
+          ABC -> CBA
+          DEF -> FED
+          ${t} ->
+        expected: "${t_rev}"
+        target_text: "${t}"
+        slots:
+          t: {pool: triplets, unique_key: t, transform: none}
+          t_rev: {calc: {op: reverse, args: [t]}, transform: none}
+        metadata:
+          note: "Reverse cases expect strict matching; soft credit disabled."
+
+  # 3) Few-shot affix patterns
+  - id: fewshot_affix
+    description: "Prefix/suffix completion patterns"
+    templates:
+      - id: the_prefix
+        repeat: 15
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: []
+        prompt: |
+          cat -> the cat
+          dog -> the dog
+          ${w} ->
+        expected: "the ${w}"
+        target_text: "${w}"
+        slots:
+          w: {pool: words_short, unique_key: w, transform: none}
+
+      - id: ing_suffix
+        repeat: 15
+        difficulty: medium
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: []
+        prompt: |
+          run -> running
+          jump -> jumping
+          swim -> swimming
+          ${v} ->
+        expected: "${v}ing"
+        target_text: "${v}"
+        slots:
+          v: {pool: words_short, unique_key: v, transform: none}
+
+  # 4) Arithmetic (single-step)
+  - id: arithmetic_basic
+    description: "Basic arithmetic completion (single-step)"
+    templates:
+      - id: add
+        repeat: 10
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: false
+        prompt: |
+          ${a} + ${b} =
+        expected: "${sum}"
+        target_text: "${a} + ${b}"
+        slots:
+          a: {pool: numbers_1digit, unique_key: ab, transform: none}
+          b: {pool: numbers_1digit, unique_key: ab, transform: none}
+          sum: {calc: {op: add, args: [a, b]}, transform: none}
+
+      - id: mul
+        repeat: 10
+        difficulty: medium
+        kind: generation_greedy
+        allow_contained: false
+        prompt: |
+          ${a} * ${b} =
+        expected: "${prod}"
+        target_text: "${a} * ${b}"
+        slots:
+          a: {pool: numbers_1digit, unique_key: ab, transform: none}
+          b: {pool: numbers_1digit, unique_key: ab, transform: none}
+          prod: {calc: {op: mul, args: [a, b]}, transform: none}
+
+      - id: sub
+        repeat: 10
+        difficulty: hard
+        kind: generation_greedy
+        allow_contained: false
+        prompt: |
+          ${a} - ${b} =
+        expected: "${diff}"
+        target_text: "${a} - ${b}"
+        slots:
+          a: {pool: numbers_2digit, unique_key: a, transform: none}
+          b: {pool: numbers_1digit, unique_key: b, transform: none}
+          diff: {calc: {op: sub, args: [a, b]}, transform: none}
+
+  # 5) Numeric sequences
+  - id: sequence_numeric
+    description: "Sequence completion (numeric)"
+    templates:
+      - id: arithmetic_step
+        repeat: 15
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: false
+        prompt: |
+          ${a}, ${b}, ${c}, ${d}, ?
+        expected: "${e}"
+        slots:
+          start: {pool: numbers_1digit, unique_key: st, transform: none}
+          step: {pool: numbers_1digit, unique_key: sp, transform: none}
+          a: {ref: start, transform: none}
+          b: {calc: {op: add, args: [a, step]}, transform: none}
+          c: {calc: {op: add, args: [b, step]}, transform: none}
+          d: {calc: {op: add, args: [c, step]}, transform: none}
+          e: {calc: {op: add, args: [d, step]}, transform: none}
+        target_text: "${d}"
+
+      - id: fibonacci_like
+        repeat: 15
+        difficulty: medium
+        kind: generation_greedy
+        allow_contained: false
+        prompt: |
+          1, 1, 2, 3, 5, ?
+        expected: "8"
+        target_text: "5"
+
+  # 6) Letter sequences
+  - id: sequence_letters
+    description: "Sequence completion (letters)"
+    templates:
+      - id: alphabet_next
+        repeat: 15
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: [EXACT_START]
+        prompt: |
+          A, B, C, D, ?
+        expected: "E"
+        target_text: "D"
+
+      - id: skip_one
+        repeat: 15
+        difficulty: medium
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: [EXACT_START]
+        prompt: |
+          A, C, E, G, ?
+        expected: "I"
+        target_text: "G"
+
+  # 7) Distractor focus (choice-logprob)
+  - id: distractor_focus
+    description: "Pick the explicitly marked target among near distractors"
+    templates:
+      - id: number_code
+        repeat: 15
+        difficulty: medium
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          Target: ${code}
+          Similar: ${d1}, ${d2}, ${d3}
+          Target is
+        expected: "${code}"
+        target_text: "${code}"
+        choice:
+          mode: explicit
+          choices: ["${code}", "${d1}", "${d2}", "${d3}"]
+          shuffle: true
+        slots:
+          code: {pool: numbers_2digit, unique_key: c, transform: none}
+          d1: {pool: numbers_2digit, unique_key: c, transform: none}
+          d2: {pool: numbers_2digit, unique_key: c, transform: none}
+          d3: {pool: numbers_2digit, unique_key: c, transform: none}
+
+      - id: word_focus
+        repeat: 15
+        difficulty: medium
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          Remember: ${t}
+          Ignore: ${x1}, ${x2}, ${x3}
+          Remember is
+        expected: " ${t}"
+        target_text: "${t}"
+        choice:
+          mode: explicit
+          choices: [" ${t}", " ${x1}", " ${x2}", " ${x3}"]
+          shuffle: true
+        slots:
+          t: {pool: colors, unique_key: k, transform: none}
+          x1: {pool: colors, unique_key: k, transform: none}
+          x2: {pool: colors, unique_key: k, transform: none}
+          x3: {pool: colors, unique_key: k, transform: none}
+
+  # 8) Binding (entity-attribute association)
+  - id: binding
+    description: "Entity-attribute binding under interference"
+    templates:
+      - id: color_binding
+        repeat: 30
+        difficulty: hard
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          The ${a} ball is ${c1}.
+          The ${b} ball is ${c2}.
+          The ${d} ball is ${c3}.
+          The ${b} ball is
+        expected: " ${c2}"
+        target_text: "${b}"
+        choice:
+          mode: explicit
+          choices: [" ${c1}", " ${c2}", " ${c3}", " ${c4}"]
+          shuffle: true
+        slots:
+          a: {pool: colors, unique_key: abcd, transform: none}
+          b: {pool: colors, unique_key: abcd, transform: none}
+          d: {pool: colors, unique_key: abcd, transform: none}
+          c1: {pool: words_short, unique_key: cc, transform: none}
+          c2: {pool: words_short, unique_key: cc, transform: none}
+          c3: {pool: words_short, unique_key: cc, transform: none}
+          c4: {pool: words_short, unique_key: cc, transform: none}
+
+  # 9) Order sensitivity
+  - id: order_sensitivity
+    description: "First/last selection under ordered lists"
+    templates:
+      - id: first_item
+        repeat: 15
+        difficulty: easy
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          Order: ${a}, ${b}, ${c}
+          First is
+        expected: " ${a}"
+        target_text: "${a}"
+        choice:
+          mode: explicit
+          choices: [" ${a}", " ${b}", " ${c}", " ${d}"]
+          shuffle: true
+        slots:
+          a: {pool: triplets, unique_key: o, transform: none}
+          b: {pool: triplets, unique_key: o, transform: none}
+          c: {pool: triplets, unique_key: o, transform: none}
+          d: {pool: triplets, unique_key: o, transform: none}
+
+      - id: last_item
+        repeat: 15
+        difficulty: easy
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          Order: ${a}, ${b}, ${c}
+          Last is
+        expected: " ${c}"
+        target_text: "${c}"
+        choice:
+          mode: explicit
+          choices: [" ${a}", " ${b}", " ${c}", " ${d}"]
+          shuffle: true
+        slots:
+          a: {pool: triplets, unique_key: o, transform: none}
+          b: {pool: triplets, unique_key: o, transform: none}
+          c: {pool: triplets, unique_key: o, transform: none}
+          d: {pool: triplets, unique_key: o, transform: none}
+
+  # 10) Context update
+  - id: context_update
+    description: "Later facts override earlier facts"
+    templates:
+      - id: overwrite_value
+        repeat: 30
+        difficulty: medium
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          Value: ${v1}
+          Value now: ${v2}
+          Value now: ${v3}
+          Current value is
+        expected: " ${v3}"
+        target_text: "${v3}"
+        choice:
+          mode: explicit
+          choices: [" ${v1}", " ${v2}", " ${v3}", " ${v4}"]
+          shuffle: true
+        slots:
+          v1: {pool: numbers_2digit, unique_key: v, transform: none}
+          v2: {pool: numbers_2digit, unique_key: v, transform: none}
+          v3: {pool: numbers_2digit, unique_key: v, transform: none}
+          v4: {pool: numbers_2digit, unique_key: v, transform: none}
+
+  # 11) JSON-like extraction
+  - id: format_json
+    description: "Extract a value from structured text"
+    templates:
+      - id: json_name
+        repeat: 15
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: []
+        prompt: |
+          {"name": "${w1}"} -> ${w1}
+          {"name": "${w2}"} -> ${w2}
+          {"name": "${w3}"} ->
+        expected: "${w3}"
+        target_text: "\"${w3}\""
+        slots:
+          w1: {pool: words_short, unique_key: w, transform: none}
+          w2: {pool: words_short, unique_key: w, transform: none}
+          w3: {pool: words_short, unique_key: w, transform: none}
+
+      - id: json_id
+        repeat: 15
+        difficulty: medium
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: []
+        prompt: |
+          {"id": ${a}} -> ${a}
+          {"id": ${b}} -> ${b}
+          {"id": ${c}} ->
+        expected: "${c}"
+        target_text: "${c}"
+        slots:
+          a: {pool: numbers_2digit, unique_key: u, transform: none}
+          b: {pool: numbers_2digit, unique_key: u, transform: none}
+          c: {pool: numbers_2digit, unique_key: u, transform: none}
+
+  # 12) CSV-like extraction
+  - id: format_csv
+    description: "Extract a cell from a tiny table"
+    templates:
+      - id: csv_lookup
+        repeat: 30
+        difficulty: medium
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: []
+        prompt: |
+          key,val
+          ${k1},${v1}
+          ${k2},${v2}
+          ${k3},${v3}
+          val of ${k2}:
+        expected: "${v2}"
+        target_text: "${k2}"
+        slots:
+          k1: {pool: triplets, unique_key: k, transform: none}
+          k2: {pool: triplets, unique_key: k, transform: none}
+          k3: {pool: triplets, unique_key: k, transform: none}
+          v1: {pool: numbers_2digit, unique_key: v, transform: none}
+          v2: {pool: numbers_2digit, unique_key: v, transform: none}
+          v3: {pool: numbers_2digit, unique_key: v, transform: none}
+
+  # 13) Bracket completion
+  - id: bracket_balance
+    description: "Complete paired brackets exactly"
+    templates:
+      - id: braces
+        repeat: 30
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: false
+        prompt: |
+          (a) -> (a)
+          [b] -> [b]
+          {c} ->
+        expected: "{c}"
+        target_text: "{c}"
+
+  # 14) List extraction (first/last)
+  - id: list_extract
+    description: "Extract first/last from list"
+    templates:
+      - id: first
+        repeat: 15
+        difficulty: easy
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          List: [${a}, ${b}, ${c}]
+          First is
+        expected: " ${a}"
+        target_text: "${a}"
+        choice:
+          mode: explicit
+          choices: [" ${a}", " ${b}", " ${c}", " ${d}"]
+          shuffle: true
+        slots:
+          a: {pool: words_short, unique_key: x, transform: none}
+          b: {pool: words_short, unique_key: x, transform: none}
+          c: {pool: words_short, unique_key: x, transform: none}
+          d: {pool: words_short, unique_key: x, transform: none}
+
+      - id: last
+        repeat: 15
+        difficulty: easy
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          List: [${a}, ${b}, ${c}]
+          Last is
+        expected: " ${c}"
+        target_text: "${c}"
+        choice:
+          mode: explicit
+          choices: [" ${a}", " ${b}", " ${c}", " ${d}"]
+          shuffle: true
+        slots:
+          a: {pool: words_short, unique_key: x, transform: none}
+          b: {pool: words_short, unique_key: x, transform: none}
+          c: {pool: words_short, unique_key: x, transform: none}
+          d: {pool: words_short, unique_key: x, transform: none}
+
+  # 15) Reasoning (simple compare)
+  - id: reasoning_compare
+    description: "Truth-value completion for comparisons"
+    templates:
+      - id: greater_than
+        repeat: 30
+        difficulty: medium
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          10 > 5: true
+          8 > 3: true
+          ${a} > ${b}:
+        expected: " ${truth}"
+        target_text: "${a} > ${b}"
+        choice:
+          mode: explicit
+          choices: [" true", " false"]
+          shuffle: true
+        slots:
+          a: {pool: numbers_2digit, unique_key: ab, transform: none}
+          b: {pool: numbers_2digit, unique_key: ab, transform: none}
+          truth: {calc: {op: gt, args: [a, b]}, transform: none}
+
+  # 16) Symbol mapping
+  - id: symbol_mapping
+    description: "Map symbols to labels via few-shot pairs"
+    templates:
+      - id: map
+        repeat: 30
+        difficulty: hard
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: []
+        prompt: |
+          ${s1} -> ${w1}
+          ${s2} -> ${w2}
+          ${s3} -> ${w3}
+          ${s2} ->
+        expected: "${w2}"
+        target_text: "${s2}"
+        slots:
+          s1: {pool: symbols, unique_key: s, transform: none}
+          s2: {pool: symbols, unique_key: s, transform: none}
+          s3: {pool: symbols, unique_key: s, transform: none}
+          w1: {pool: words_short, unique_key: w, transform: none}
+          w2: {pool: words_short, unique_key: w, transform: none}
+          w3: {pool: words_short, unique_key: w, transform: none}
+
+  # 17) Noise focus
+  - id: noise_focus
+    description: "Focus on target token under explicit noise"
+    templates:
+      - id: noise_target
+        repeat: 30
+        difficulty: hard
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          NOISE NOISE NOISE NOISE
+          TARGET: ${t}
+          NOISE NOISE NOISE NOISE
+          TARGET is
+        expected: " ${t}"
+        target_text: "${t}"
+        choice:
+          mode: explicit
+          choices: [" ${t}", " ${x1}", " ${x2}", " ${x3}"]
+          shuffle: true
+        slots:
+          t: {pool: triplets, unique_key: u, transform: none}
+          x1: {pool: triplets, unique_key: u, transform: none}
+          x2: {pool: triplets, unique_key: u, transform: none}
+          x3: {pool: triplets, unique_key: u, transform: none}
+
+  # 18) Attention discrimination (fine differences)
+  - id: attention_discrimination
+    description: "Pick the uniquely ordered string among close distractors"
+    templates:
+      - id: alpha_order
+        repeat: 30
+        difficulty: hard
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          Strings: ABCDE, ABCED, ABDCE, ABECD
+          Alphabetical is
+        expected: " ABCDE"
+        target_text: "ABCDE"
+        choice:
+          mode: explicit
+          choices: [" ABCDE", " ABCED", " ABDCE", " ABECD"]
+          shuffle: true
+
+  # 19) Consistency (rephrase the same extraction)
+  - id: consistency
+    description: "Same capability under multiple surface forms"
+    templates:
+      - id: copy_arrow
+        repeat: 10
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: [EXACT_START]
+        prompt: |
+          XYZ -> XYZ
+          ${t} ->
+        expected: "${t}"
+        target_text: "${t}"
+        slots:
+          t: {pool: triplets, unique_key: t, transform: none}
+
+      - id: copy_colon
+        repeat: 10
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: [EXACT_START]
+        prompt: |
+          Input: XYZ Output: XYZ
+          Input: ${t} Output:
+        expected: "${t}"
+        target_text: "${t}"
+        slots:
+          t: {pool: triplets, unique_key: t, transform: none}
+
+      - id: copy_echo
+        repeat: 10
+        difficulty: easy
+        kind: generation_greedy
+        allow_contained: true
+        contained_constraints: [EXACT_START]
+        prompt: |
+          Echo XYZ: XYZ
+          Echo ${t}:
+        expected: "${t}"
+        target_text: "${t}"
+        slots:
+          t: {pool: triplets, unique_key: t, transform: none}
+
+  # 20) Long-ish context retrieval (but still within typical windows)
+  - id: context_retrieval
+    description: "Retrieve a token that appears earlier in the prompt"
+    templates:
+      - id: password
+        repeat: 30
+        difficulty: medium
+        kind: choice_logprob
+        allow_contained: false
+        prompt: |
+          The password is ${p}.
+          filler filler filler filler filler.
+          filler filler filler filler filler.
+          The password is
+        expected: " ${p}"
+        target_text: "${p}"
+        choice:
+          mode: from_pool
+          pool: triplets
+          num_choices: 4
+          correct: " ${p}"
+          shuffle: true
+        slots:
+          p: {pool: triplets, unique_key: p, transform: none}

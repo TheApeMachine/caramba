@@ -35,6 +35,8 @@ class MultiCheckpointCompareTrainer:
         dtype: str = "auto",
         strict: bool = True,
         unsafe_pickle_load: bool = False,
+        isolate_models: bool = True,
+        process_isolation: bool = True,
     ) -> None:
         """Initialize the multi-checkpoint trainer.
 
@@ -54,6 +56,13 @@ class MultiCheckpointCompareTrainer:
         self.dtype = str(dtype).lower().strip()
         self.strict = bool(strict)
         self.unsafe_pickle_load = bool(unsafe_pickle_load)
+        # If True, do not keep multiple models resident simultaneously.
+        # Instead, return checkpoint specs so the engine can benchmark with
+        # per-model load/run/unload isolation (important on MPS / limited VRAM).
+        self.isolate_models = bool(isolate_models)
+        # If True, ask the engine to run benchmarks in a separate process
+        # (strongest isolation; avoids allocator / cache interference).
+        self.process_isolation = bool(process_isolation)
 
         # Validate specs
         if not self.checkpoint_specs:
@@ -86,7 +95,17 @@ class MultiCheckpointCompareTrainer:
                 - "checkpoint_dir": str
         """
         if dry_run:
-            return {"models": {spec["name"]: None for spec in self.checkpoint_specs}}
+            return {
+                "models": {spec["name"]: None for spec in self.checkpoint_specs},
+                "checkpoint_specs": list(self.checkpoint_specs),
+                "baseline_name": next((s["name"] for s in self.checkpoint_specs if s.get("is_baseline")), None)
+                or (self.checkpoint_specs[0]["name"] if self.checkpoint_specs else None),
+                "device": self.device,
+                "dtype": self.dtype,
+                "strict": self.strict,
+                "unsafe_pickle_load": self.unsafe_pickle_load,
+                "process_isolation": self.process_isolation,
+            }
 
         dt = weight_dtype(self.device, self.dtype if self.dtype != "auto" else "auto")
         logger.header(
@@ -94,8 +113,32 @@ class MultiCheckpointCompareTrainer:
             f"{len(self.checkpoint_specs)} models • device={self.device.type} dtype={dt}",
         )
 
-        models: dict[str, nn.Module] = {}
+        # Determine baseline name from specs (even in isolation mode).
         baseline_name: str | None = None
+        for spec in self.checkpoint_specs:
+            if bool(spec.get("is_baseline", False)):
+                baseline_name = str(spec["name"])
+                break
+        if baseline_name is None and self.checkpoint_specs:
+            baseline_name = str(self.checkpoint_specs[0]["name"])
+
+        # Isolation mode: don't load all models upfront.
+        if self.isolate_models:
+            logger.info("Isolation mode enabled: benchmarks will load/unload one model at a time.")
+            return {
+                "checkpoint_specs": list(self.checkpoint_specs),
+                "baseline_name": baseline_name,
+                "device": self.device,
+                "dtype": self.dtype,
+                "strict": self.strict,
+                "unsafe_pickle_load": self.unsafe_pickle_load,
+                "process_isolation": self.process_isolation,
+                "checkpoint_dir": str(
+                    Path(getattr(manifest, "artifacts_dir", "artifacts")) / "benchmarks"
+                ),
+            }
+
+        models: dict[str, nn.Module] = {}
 
         for spec in self.checkpoint_specs:
             name = spec["name"]
@@ -138,7 +181,7 @@ class MultiCheckpointCompareTrainer:
 
             if is_baseline:
                 baseline_name = name
-                logger.info(f"  Marked as baseline")
+                logger.info("  Marked as baseline")
 
             # Log model info
             n_params = sum(p.numel() for p in model.parameters())
@@ -146,7 +189,7 @@ class MultiCheckpointCompareTrainer:
 
         # If no explicit baseline, use first model
         if baseline_name is None and models:
-            baseline_name = self.checkpoint_specs[0]["name"]
+            baseline_name = str(self.checkpoint_specs[0]["name"])
             logger.info(f"Using '{baseline_name}' as baseline (first model)")
 
         logger.success(f"Loaded {len(models)} models")

@@ -148,6 +148,11 @@ targets:
           device: ${device}
           dtype: ${dtype}
           gradient_accumulation_steps: ${grad_accum}
+          # DataLoader performance knobs (vars above were previously unused unless
+          # threaded into the TrainConfig here).
+          num_workers: ${num_workers}
+          prefetch_factor: ${prefetch_factor}
+          pin_memory: ${pin_memory}
           activation_checkpointing: false
           activation_checkpoint_threshold_mb: 0.0
           use_amp: true

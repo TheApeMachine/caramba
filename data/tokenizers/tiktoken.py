@@ -24,6 +24,14 @@ class TiktokenTokenizer(Tokenizer):
         super().__init__(name=f"tiktoken:{encoding}")
         self._enc = tiktoken.get_encoding(str(encoding))
 
+    @property
+    def eos_token_id(self) -> int | None:
+        # tiktoken uses "end of text" (EOT) token for EOS.
+        try:
+            return int(getattr(self._enc, "eot_token"))
+        except Exception:
+            return None
+
     def encode(self, text: str) -> list[int]:
         """Convert text to token IDs using tiktoken.
 

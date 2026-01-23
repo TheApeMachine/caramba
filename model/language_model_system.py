@@ -30,6 +30,8 @@ class LanguageModelSystem:
 
     model: dict[str, Any]
     weight_init: dict[str, Any] | None = None
+    return_features: bool = False
+    features_key: str = "features"
 
     def __post_init__(self) -> None:
         cfg = ModelConfig.model_validate(self.model)
@@ -120,20 +122,24 @@ class LanguageModelSystem:
         # Only request features when a consumer exists (diffusion head training).
         # Doing so unconditionally changes output structure and can hurt torch.compile stability.
         diffusion_head = getattr(self.config, "diffusion_head", None)
-        want_features = bool(getattr(diffusion_head, "enabled", False))
+        want_features = bool(getattr(diffusion_head, "enabled", False) or self.return_features)
         if want_features:
             try:
-                result = self.module(input_ids, ctx=ctx, return_features=True)  # type: ignore[call-arg]
-                if isinstance(result, tuple) and len(result) == 2:
+                if hasattr(self.module, "forward_with_hidden"):
+                    features, logits = self.module.forward_with_hidden(input_ids, ctx=ctx)  # type: ignore[call-arg]
+                else:
+                    result = self.module(input_ids, ctx=ctx, return_features=True)  # type: ignore[call-arg]
+                    if not (isinstance(result, tuple) and len(result) == 2):
+                        raise TypeError("Expected Model(return_features=True) to return (features, out)")
                     features, logits = result
-                    out = {"features": features, "logits": logits, "_system": self.module}
-                    # Attach MOSAIC aux outputs when present on ctx.
-                    aux = getattr(ctx, "memblock_aux_out", None) if ctx is not None else None
-                    if isinstance(aux, dict):
-                        for k, v in aux.items():
-                            if isinstance(k, str) and isinstance(v, Tensor):
-                                out[k] = v
-                    return out
+                out = {str(self.features_key): features, "logits": logits, "_system": self.module}
+                # Attach MOSAIC aux outputs when present on ctx.
+                aux = getattr(ctx, "memblock_aux_out", None) if ctx is not None else None
+                if isinstance(aux, dict):
+                    for k, v in aux.items():
+                        if isinstance(k, str) and isinstance(v, Tensor):
+                            out[k] = v
+                return out
             except TypeError as e:
                 # Don't hide real signature/dispatch issues; this is a common source of
                 # silent feature disablement (e.g., return_features not supported).

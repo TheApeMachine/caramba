@@ -1,4 +1,4 @@
-.PHONY: install install-all test paper discussion brainstorm brainstorm-full ingest platform tui mosaic-smoke benchmark local surgery distill dual prepare-llama-data convert-safetensors verify-surgery infer colab-dispatch colab-dispatch-quick colab-notebook benchmark10k benchmark100k benchmark_ablations benchmark_gated
+.PHONY: install install-all test paper discussion brainstorm brainstorm-full ingest platform tui mosaic-smoke benchmark local surgery distill dual prepare-llama-data convert-safetensors verify-surgery infer colab-dispatch colab-dispatch-quick colab-notebook benchmark10k benchmark100k benchmark_ablations benchmark_gated benchmark_upcycle quickness
 
 install:
 	python3.12 -m venv .venv
@@ -114,6 +114,14 @@ benchmark_gated:
 	. .venv/bin/activate \
 	&& python3.12 -m caramba research/dba/benchmark-gated.yml
 
+benchmark_upcycle:
+	. .venv/bin/activate \
+	&& python3.12 -m caramba research/dba/benchmark_upcycle.yml
+
+benchmark_quickness:
+	. .venv/bin/activate \
+	&& python3.12 -m caramba research/dba/quickness.yml	
+
 benchmark:
 	@echo "Running behavioral benchmark..."
 	@echo "NOTE: For mock testing, use 'make benchmark-mock' instead"
@@ -142,7 +150,7 @@ resume:
 	. .venv/bin/activate \
 	&& python3.12 -m caramba run \
 	--benchmarks-only \
-	--resume-from runs/paper/finetune_global_final.pt \
+	--resume-from runs/paper/finetune_global_orchestrated_final.pt \
 	config/presets/llama32_1b_dba_paper.yml \
 	--group paper
 

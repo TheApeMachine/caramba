@@ -78,6 +78,7 @@ class TestBenchmarkRunner(unittest.TestCase):
                 BenchmarkSpec(
                     id="memory",
                     config=MemoryBenchmarkConfig(
+                        seed=42,
                         sequence_lengths=[32],
                         batch_sizes=[1],
                         quantization_modes=["fp16"],
@@ -103,6 +104,7 @@ class TestBenchmarkRunner(unittest.TestCase):
                 BenchmarkSpec(
                     id="memory",
                     config=MemoryBenchmarkConfig(
+                        seed=42,
                         sequence_lengths=[32],
                         batch_sizes=[1],
                         quantization_modes=["fp16"],
@@ -153,6 +155,7 @@ class TestBenchmarkRunner(unittest.TestCase):
                 BenchmarkSpec(
                     id="memory",
                     config=MemoryBenchmarkConfig(
+                        seed=42,
                         sequence_lengths=[32],
                         batch_sizes=[1],
                         quantization_modes=["fp16"],
@@ -217,6 +220,7 @@ class TestBenchmarkRunner(unittest.TestCase):
                 BenchmarkSpec(
                     id="memory",
                     config=MemoryBenchmarkConfig(
+                        seed=42,
                         sequence_lengths=[32],
                         batch_sizes=[1],
                         quantization_modes=["fp16"],

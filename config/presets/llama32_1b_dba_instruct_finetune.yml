@@ -1,0 +1,149 @@
+version: 2
+name: llama32_1b_dba_instruct_finetune
+notes: >
+  Fine-tune a pretrained DBA model on instruction datasets (Alpaca, Dolly, OASST)
+  to teach it to stop talking (EOS) and follow instructions.
+
+defaults:
+  data:
+    tokenizer: llama
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-instruct
+    wandb_mode: online
+    eval_iters: 50
+  runtime:
+    save_every: 500
+
+vars:
+  # Start from your best DBA checkpoint (update this path!)
+  # Example: artifacts/runs/llama32_1b_dba_export_blockwise_finetune/paper_finetune_final.pt
+  baseline: runs/instruct/10k_run/sft_standard_final.pt
+  decoupled: runs/instruct/10k_run/sft_decoupled_final.pt
+  
+  # Instruction dataset
+  dataset_path: artifacts/datasets/instructions_llama/instructions.npy
+  block_size: 2048
+  
+  device: mps
+  dtype: fp32
+  
+  # Llama 3.2 1B config (must match student)
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+  rope_theta: 500000.0
+  
+  # DBA dims
+  sem_dim: 256
+  geo_dim: 1024
+  attn_dim: 1280
+
+x-llama32-dba-model: &dba_model
+  type: TransformerModel
+  tied_embeddings: false
+  embedder:
+    type: token
+    vocab_size: ${vocab_size}
+    d_model: ${d_model}
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: AttentionLayer
+                d_model: ${d_model}
+                n_heads: ${n_heads}
+                n_kv_heads: ${n_kv_heads}
+                mode: decoupled
+                attn_dim: ${attn_dim}
+                sem_dim: ${sem_dim}
+                geo_dim: ${geo_dim}
+                rope_enabled: true
+                rope_base: ${rope_theta}
+                is_causal: true
+                dropout_p: 0.0
+                decoupled_gate: true
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: SwiGLULayer
+                d_model: ${d_model}
+                d_ff: ${d_ff}
+                bias: false
+      - type: RMSNormLayer
+        d_model: ${d_model}
+        eps: 1e-5
+      - type: LinearLayer
+        d_in: ${d_model}
+        d_out: ${vocab_size}
+        bias: false
+
+targets:
+  - type: experiment
+    name: instruct
+    description: "Instruction fine-tuning for DBA model."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${baseline}
+        block_size: ${block_size}
+        # Ensure EOS is respected if the dataset builder supports it (NpyDataset now does via script)
+        append_eos: false # Already baked into .npy by prepare script
+    system:
+      ref: system.language_model
+      config:
+        model: *dba_model
+    objective: objective.next_token_ce
+    
+    # We use the standard trainer.
+    # To load the pretrained weights, we rely on the "grafting" script to place
+    # the checkpoint in the run directory so auto_resume picks it up.
+    trainer: trainer.standard
+    
+    runs:
+      - id: sft
+        mode: train
+        exp: dba_sft
+        seed: 42
+        steps: 2000
+        expected:
+          phase: standard
+        train:
+          phase: standard
+          batch_size: 8
+          block_size: ${block_size}
+          lr: 5.0e-6
+          device: ${device}
+          dtype: ${dtype}
+          
+          # Standard trainer doesn't need teacher_ckpt
+          
+          trainable_scope:
+            - ".*" # Fine-tune everything (or restrict if you want)
+            
+          optimizer: lion
+          fused_optimizer: false
+          use_amp: false
+          amp_dtype: fp32
+          mps_fast_ce: false
+          mps_allow_fp16_autocast_without_gradscaler: false
+          auto_resume: true
+          skip_if_final: true
+
+entrypoints:
+  train: "target:instruct"

@@ -100,9 +100,26 @@ def estimate_kvcache_bytes(
 
     for cfg in configs:
         if cfg.mode == AttentionMode.DECOUPLED:
-            sem_dim = int(cfg.sem_dim if cfg.sem_dim is not None else cfg.d_model)
-            geo_dim = int(cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model)
-            v_dim = int(cfg.v_dim)
+            # For DBA with GQA, the cache dimension is n_kv_heads * head_dim.
+            # sem_dim/geo_dim in config are total Q dimensions (n_heads * head_dim).
+            n_heads = int(cfg.n_heads)
+            kv_heads = int(cfg.n_kv_heads if cfg.n_kv_heads is not None else cfg.n_heads)
+            
+            sem_total = int(cfg.sem_dim if cfg.sem_dim is not None else cfg.d_model)
+            geo_total = int(cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model)
+            
+            sem_head_dim = sem_total // n_heads
+            geo_head_dim = geo_total // n_heads
+            
+            sem_dim = sem_head_dim * kv_heads
+            geo_dim = geo_head_dim * kv_heads
+            
+            # v_dim is total V dimension (n_heads * v_head_dim).
+            # Cache stores n_kv_heads * v_head_dim.
+            v_total = int(cfg.v_dim)
+            v_head_dim = v_total // n_heads
+            v_dim = v_head_dim * kv_heads
+            
             sem_kind = kind
             geo_kind = kind
             v_kind = kind
@@ -173,9 +190,26 @@ def _create_caches_for_kind(
             continue
         cfg = m.config
         if cfg.mode == AttentionMode.DECOUPLED:
-            sem_dim = int(cfg.sem_dim if cfg.sem_dim is not None else cfg.d_model)
-            geo_dim = int(cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model)
-            v_dim = int(cfg.v_dim)
+            # For DBA with GQA, the cache dimension is n_kv_heads * head_dim.
+            # sem_dim/geo_dim in config are total Q dimensions (n_heads * head_dim).
+            n_heads = int(cfg.n_heads)
+            kv_heads = int(cfg.n_kv_heads if cfg.n_kv_heads is not None else cfg.n_heads)
+            
+            sem_total = int(cfg.sem_dim if cfg.sem_dim is not None else cfg.d_model)
+            geo_total = int(cfg.geo_dim if cfg.geo_dim is not None else cfg.d_model)
+            
+            sem_head_dim = sem_total // n_heads
+            geo_head_dim = geo_total // n_heads
+            
+            sem_dim = sem_head_dim * kv_heads
+            geo_dim = geo_head_dim * kv_heads
+            
+            # v_dim is total V dimension (n_heads * v_head_dim).
+            # Cache stores n_kv_heads * v_head_dim.
+            v_total = int(cfg.v_dim)
+            v_head_dim = v_total // n_heads
+            v_dim = v_head_dim * kv_heads
+            
             sem_cfg = tensor_cfg
             geo_cfg = tensor_cfg
             v_cfg = tensor_cfg

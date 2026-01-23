@@ -1,0 +1,219 @@
+version: 2
+name: uaa_local
+notes: >
+  Utility-Aligned Attention (UAA) starter manifest.
+
+  This is intentionally small and ablation-friendly: train a baseline student LM,
+  then (optionally) enable UAA-style auxiliary losses that align a few attention
+  heads to counterfactual token utility computed by a frozen teacher.
+
+  Convention: research manifests live under `research/<project>/manifests/`.
+
+defaults:
+  data:
+    tokenizer: tiktoken:gpt2
+    val_frac: 0.0
+  logging:
+    instrument: rich
+    wandb: false
+    wandb_project: uaa
+    wandb_entity: ''
+    wandb_mode: offline
+    eval_iters: 0
+  runtime:
+    save_every: ${save_every}
+
+vars:
+  # Dataset (pre-tokenized .npy)
+  dataset: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_100m.npy
+  block_size: 1024
+
+  # Model (small)
+  d_model: 768
+  n_layers: 8
+  n_heads: 12
+  d_ff: 2048
+  vocab_size: 50304
+  rope_base: 10000.0
+
+  # Training
+  steps: 2000
+  save_every: 500
+  device: mps
+  dtype: float32
+  batch_size: 8
+  grad_accum: 1
+  lr: 3.0e-4
+  weight_decay: 0.1
+  optimizer: adamw
+  scheduler: cosine
+  warmup_steps: 200
+
+# Shared token dataset config
+x-token-dataset: &token_dataset
+  path: ${dataset}
+  block_size: ${block_size}
+
+# Shared embedder
+x-embedder: &embedder
+  type: token
+  vocab_size: ${vocab_size}
+  d_model: ${d_model}
+
+# Shared FFN block
+x-ffn-block: &ffn_block
+  type: ResidualTopology
+  layers:
+    - type: RMSNormLayer
+      d_model: ${d_model}
+      eps: 1e-5
+    - type: SwiGLULayer
+      d_model: ${d_model}
+      d_ff: ${d_ff}
+      bias: false
+
+# Shared final layers
+x-final-layers: &final_layers
+  type: SequentialTopology
+  layers:
+    - type: RMSNormLayer
+      d_model: ${d_model}
+      eps: 1e-5
+    - type: LinearLayer
+      d_in: ${d_model}
+      d_out: ${vocab_size}
+      bias: false
+
+# Shared training config base
+x-train-base: &train_base
+  phase: standard
+  batch_size: ${batch_size}
+  block_size: ${block_size}
+  device: ${device}
+  dtype: ${dtype}
+  gradient_accumulation_steps: ${grad_accum}
+  optimizer: ${optimizer}
+  weight_decay: ${weight_decay}
+  scheduler: ${scheduler}
+  warmup_steps: ${warmup_steps}
+  min_lr_ratio: 0.0
+  auto_resume: false
+  skip_if_final: false
+  auto_batch_size: false
+  compile_model: false
+  compile_mode: ""
+
+targets:
+  - type: experiment
+    name: uaa_baseline_small
+    description: "Baseline small transformer (no UAA aux loss)"
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config: *token_dataset
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder: *embedder
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        mode: standard
+                        rope_enabled: true
+                        rope_base: ${rope_base}
+                        is_causal: true
+                        dropout_p: 0.0
+                  - *ffn_block
+              - *final_layers
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: uaa_baseline_small
+        seed: 1337
+        steps: ${steps}
+        expected: {}
+        train:
+          <<: *train_base
+          lr: ${lr}
+
+  - type: experiment
+    name: uaa_utility_aligned_small
+    description: "Small transformer with UAA auxiliary loss (teacher=init copy)"
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config: *token_dataset
+    system:
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder: *embedder
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        mode: standard
+                        rope_enabled: true
+                        rope_base: ${rope_base}
+                        is_causal: true
+                        dropout_p: 0.0
+                  - *ffn_block
+              - *final_layers
+    objective: objective.next_token_ce
+    trainer: trainer.standard
+    runs:
+      - id: train
+        mode: train
+        exp: uaa_utility_aligned_small
+        seed: 1337
+        steps: ${steps}
+        expected: {uaa: true}
+        train:
+          <<: *train_base
+          lr: ${lr}
+          uaa:
+            enabled: true
+            teacher: init
+            every_steps: 1
+            lambda_att: 0.05
+            epsilon: 1e-3
+            counterfactual: embed_zero
+            # AttentionLayer indices are assigned in the order discovered by the trainer.
+            # For a simple transformer stack, 0 is typically the first attention layer.
+            layers: [0]
+            heads: [0]
+
+entrypoints:
+  default: uaa_baseline_small
+  uaa: uaa_utility_aligned_small
+

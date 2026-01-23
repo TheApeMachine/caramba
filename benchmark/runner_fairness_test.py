@@ -55,6 +55,8 @@ class TestBenchmarkRunnerFairness(unittest.TestCase):
                     loss=loss,
                     num_tokens=num_tokens,
                     num_batches=1,
+                    batch_loss_sums=[float(loss) * float(num_tokens)],
+                    batch_token_counts=[int(num_tokens)],
                 )
 
         device = torch.device("cpu")
@@ -123,9 +125,17 @@ class TestBenchmarkRunnerFairness(unittest.TestCase):
                 FakeLatencyBenchmark.calls[model_name] += 1
                 i = FakeLatencyBenchmark.calls[model_name]
                 m = LatencyMeasurement(
+                    seed=42,
+                    input_ids=[[1]],
+                    input_ids_sha256="test",
                     prompt_len=1,
                     gen_len=1,
                     batch_size=1,
+                    prefill_times_ms=[1.0],
+                    first_decode_times_ms=[1.0],
+                    decode_times_ms=[1.0],
+                    ttft_times_ms=[2.0],
+                    total_times_ms=[2.0],
                     prefill_time_ms=1.0,
                     decode_time_ms=1.0,
                     total_time_ms=2.0,
@@ -149,6 +159,7 @@ class TestBenchmarkRunnerFairness(unittest.TestCase):
                 BenchmarkSpec(
                     id="lat",
                     config=LatencyBenchmarkConfig(
+                        seed=42,
                         prompt_lengths=[1],
                         generation_lengths=[1],
                         batch_sizes=[1],

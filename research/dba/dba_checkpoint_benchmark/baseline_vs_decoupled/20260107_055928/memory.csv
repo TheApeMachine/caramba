@@ -1,9 +1,0 @@
-model,seq_len,batch_size,quantization,peak_mb,kvcache_mb,model_mb
-teacher,512,1,fp16,0.00,88.00,0.00
-teacher,1024,1,fp16,0.00,176.00,0.00
-teacher,2048,1,fp16,0.00,352.00,0.00
-teacher,4096,1,fp16,0.00,704.00,0.00
-student,512,1,fp16,0.00,66.00,0.00
-student,1024,1,fp16,0.00,132.00,0.00
-student,2048,1,fp16,0.00,264.00,0.00
-student,4096,1,fp16,0.00,528.00,0.00

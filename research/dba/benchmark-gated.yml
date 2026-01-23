@@ -1,9 +1,9 @@
 version: 2
-name: dba_l22_100k_benchmark_gated
+name: dba_l22_100k_gated_benchmark
 # Write artifacts directly into the paper directory tree.
 artifacts_dir: research/dba/benchmark100k_gated
 notes: >
-  Benchmark for exploratory 100k A100 runs: baseline vs sem8geo32v40 vs gated sem8geo32v40.
+  Benchmark for gated DBA 100k A100 runs: baseline vs sem8geo32v40 vs gated sem8geo32v40.
 
 defaults:
   data:
@@ -21,9 +21,9 @@ defaults:
 
 vars:
   # --- Checkpoints ---
-  baseline_ckpt: research/dba/100k_checkpoints/baseline/a100_fw1b_l22_baseline_s42_100k.pt
-  sem8geo32v40_ckpt: research/dba/100k_checkpoints/sem8geo32v40/a100_fw1b_l22_dba_s42_100k.pt
-  gated_sem8geo32v40_ckpt: research/dba/100k_checkpoints/sem8geo32v40_gated/train_standard_final.pt
+  baseline_ckpt: research/dba/100k_checkpoints/baseline/a100_fw20b_l22_baseline_s42_100k.pt
+  sem8geo32v40_ckpt: research/dba/100k_checkpoints/sem8geo32v40/a100_fw20b_l22_dba_s42_100k.pt
+  gated_sem8geo32v40_ckpt: research/dba/100k_checkpoints/sem8geo32v40_gated/a100_fw20b_l22_dba_gated_s42_100k.pt
 
   # --- Dataset ---
   dataset_path: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_20b.npy
@@ -33,12 +33,16 @@ vars:
   d_model: 2048
   n_layers: 22
   n_heads: 32
-  # baseline + sem8 checkpoints were trained with d_ff=5632
+  # Checkpoints were trained with d_ff=5632
   d_ff: 5632
-  # gated checkpoint was trained with d_ff=4096
-  gated_d_ff: 4096
+  # gated checkpoint was trained with d_ff=5632
+  gated_d_ff: 5632
   vocab_size: 50304
+  rope_enabled: true
   rope_base: 10000.0
+  tie_qk: false
+  null_attn: false
+  bias: false
 
   # --- DBA dims for sem8/geo32/v40 (selected config) ---
   sem8_sem_dim: 256
@@ -75,7 +79,7 @@ x-baseline-model: &baseline_model
                 d_model: ${d_model}
                 n_heads: ${n_heads}
                 mode: standard
-                rope_enabled: true
+                rope_enabled: ${rope_enabled}
                 rope_base: ${rope_base}
                 is_causal: true
                 dropout_p: 0.0
@@ -87,14 +91,14 @@ x-baseline-model: &baseline_model
               - type: SwiGLULayer
                 d_model: ${d_model}
                 d_ff: ${d_ff}
-                bias: false
+                bias: ${bias}
       - type: RMSNormLayer
         d_model: ${d_model}
         eps: 1e-5
       - type: LinearLayer
         d_in: ${d_model}
         d_out: ${vocab_size}
-        bias: false
+        bias: ${bias}
 
 x-decoupled-sem8-model: &decoupled_sem8_model
   type: TransformerModel
@@ -122,7 +126,7 @@ x-decoupled-sem8-model: &decoupled_sem8_model
                 attn_dim: ${sem8_attn_dim}
                 sem_dim: ${sem8_sem_dim}
                 geo_dim: ${sem8_geo_dim}
-                rope_enabled: true
+                rope_enabled: ${rope_enabled}
                 rope_base: ${rope_base}
                 rope_semantic: false
                 tie_qk: false
@@ -138,14 +142,14 @@ x-decoupled-sem8-model: &decoupled_sem8_model
               - type: SwiGLULayer
                 d_model: ${d_model}
                 d_ff: ${d_ff}
-                bias: false
+                bias: ${bias}
       - type: RMSNormLayer
         d_model: ${d_model}
         eps: 1e-5
       - type: LinearLayer
         d_in: ${d_model}
         d_out: ${vocab_size}
-        bias: false
+        bias: ${bias}
 
 x-decoupled-sem8-gated-model: &decoupled_sem8_gated_model
   type: TransformerModel
@@ -173,7 +177,7 @@ x-decoupled-sem8-gated-model: &decoupled_sem8_gated_model
                 attn_dim: ${sem8_attn_dim}
                 sem_dim: ${sem8_sem_dim}
                 geo_dim: ${sem8_geo_dim}
-                rope_enabled: true
+                rope_enabled: ${rope_enabled}
                 rope_base: ${rope_base}
                 rope_semantic: false
                 tie_qk: false
@@ -189,14 +193,14 @@ x-decoupled-sem8-gated-model: &decoupled_sem8_gated_model
               - type: SwiGLULayer
                 d_model: ${d_model}
                 d_ff: ${gated_d_ff}
-                bias: false
+                bias: ${bias}
       - type: RMSNormLayer
         d_model: ${d_model}
         eps: 1e-5
       - type: LinearLayer
         d_in: ${d_model}
         d_out: ${vocab_size}
-        bias: false
+        bias: ${bias}
 
 x-dummy-run: &dummy_run
   - id: eval
@@ -218,219 +222,168 @@ x-dummy-run: &dummy_run
 # =============================================================================
 x-multi-benchmark-suite: &multi_benchmark_suite
   - id: ppl_fineweb
+    realtime: false
     config:
       type: perplexity
       dataset: ${dataset_path}
       block_size: ${block_size}
       batch_size: 1
-      num_batches: 200
+      # Token budget: num_batches * block_size (batch_size=1).
+      # 5000 * 2048 ≈ 10.24M tokens.
+      num_batches: 5000
       # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
       # Slice logits to this size for fair perplexity.
       valid_vocab_size: 50257
     models: [baseline, sem8, gated_sem8]
 
-  - id: latency_cached
+  - id: ppl_fineweb
+    realtime: false
     config:
-      type: latency
-      prompt_lengths: [128, 512, 1024, 2048, 4096]
-      generation_lengths: [128]
-      batch_sizes: [1]
-      warmup_runs: 2
-      timed_runs: 5
-      use_cache: true
-      cache_kind: fp16
-      # Keep token generation in the real tokenizer vocab for comparable inputs.
+      type: perplexity
+      dataset: ${dataset_path}
+      block_size: ${block_size}
+      batch_size: 2
+      # Secondary run kept identical for now (same budget) to avoid duplicating
+      # two different token-budgets under the same benchmark id.
+      num_batches: 5000
+      # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
+      # Slice logits to this size for fair perplexity.
       valid_vocab_size: 50257
     models: [baseline, sem8, gated_sem8]
 
-  - id: latency_long_context
+  - id: ppl_fineweb
+    realtime: false
     config:
-      type: latency
-      prompt_lengths: [2048, 4096, 8192]
-      generation_lengths: [64]
-      batch_sizes: [1]
-      warmup_runs: 1
-      timed_runs: 3
-      use_cache: true
-      cache_kind: fp16
+      type: perplexity
+      dataset: ${dataset_path}
+      block_size: ${block_size}
+      batch_size: 4
+      # Secondary run kept identical for now (same budget) to avoid duplicating
+      # two different token-budgets under the same benchmark id.
+      num_batches: 5000
+      # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
+      # Slice logits to this size for fair perplexity.
       valid_vocab_size: 50257
     models: [baseline, sem8, gated_sem8]
 
-  - id: memory_kv
+  - id: ppl_fineweb
+    realtime: false
     config:
-      type: memory
-      sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
-      batch_sizes: [1]
-      measure_peak: true
-      measure_kvcache: true
-      quantization_modes: [fp16]
+      type: perplexity
+      dataset: ${dataset_path}
+      block_size: ${block_size}
+      batch_size: 8
+      # Secondary run kept identical for now (same budget) to avoid duplicating
+      # two different token-budgets under the same benchmark id.
+      num_batches: 5000
+      # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
+      # Slice logits to this size for fair perplexity.
       valid_vocab_size: 50257
     models: [baseline, sem8, gated_sem8]
+
+  # - id: latency_cached
+  #   realtime: false
+  #   config:
+  #     type: latency
+  #     seed: 42
+  #     prompt_lengths: [128, 512, 1024, 2048, 4096]
+  #     generation_lengths: [128]
+  #     batch_sizes: [1]
+  #     warmup_runs: 2
+  #     timed_runs: 5
+  #     use_cache: true
+  #     cache_kind: fp16
+  #     # Keep token generation in the real tokenizer vocab for comparable inputs.
+  #     valid_vocab_size: 50257
+  #   models: [baseline, sem8, gated_sem8]
+
+  # - id: latency_long_context
+  #   realtime: false
+  #   config:
+  #     type: latency
+  #     seed: 42
+  #     prompt_lengths: [2048, 4096, 8192]
+  #     generation_lengths: [64]
+  #     batch_sizes: [1]
+  #     warmup_runs: 1
+  #     timed_runs: 3
+  #     use_cache: true
+  #     cache_kind: fp16
+  #     valid_vocab_size: 50257
+  #   models: [baseline, sem8, gated_sem8]
+
+  # - id: memory_kv
+  #   realtime: false
+  #   config:
+  #     type: memory
+  #     seed: 42
+  #     sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
+  #     batch_sizes: [1]
+  #     measure_peak: true
+  #     measure_kvcache: true
+  #     quantization_modes: [fp16]
+  #     valid_vocab_size: 50257
+  #   models: [baseline, sem8, gated_sem8]
 
   - id: behavior_sanity
+    realtime: false
     config:
       type: behavior
       tokenizer:
         type: tiktoken
         encoding: gpt2
-      cases_file: research/dba/behavior_cases.yml
+      seed: 42
+      suite_file: benchmark/behavior/cases.yml
       max_new_tokens: 32
       context_window: 2048
       dump_attention: true
-      dump_attention_case_ids:
-        - copy_simple_3
-        - copy_simple_numbers
-        - copy_medium_sequence
-        - copy_long_sequence_15
-        - copy_mixed_alphanumeric
-        - copy_special_chars
-        - copy_with_spaces_preserved
-        - fewshot_simple_transform
-        - fewshot_simple_prefix
-        - fewshot_simple_suffix
-        - fewshot_reverse_words
-        - fewshot_first_last_swap
-        - fewshot_double_letter
-        - fewshot_increment
-        - fewshot_double
-        - fewshot_square
-        - distractor_numbers_explicit
-        - distractor_words_explicit
-        - distractor_implicit_colors
-        - distractor_implicit_numbers
-        - distractor_typo_numbers
-        - distractor_typo_words
-        - distractor_semantic_animals
-        - distractor_semantic_numbers
-        - reason_compare_simple
-        - reason_compare_equal
-        - reason_transitive_simple
-        - reason_transitive_chain
-        - reason_negation_simple
-        - reason_double_negation
-        - reason_conditional_modus_ponens
-        - reason_conditional_modus_tollens
-        - reason_set_membership
-        - reason_set_exclusion
-        - math_add_single
-        - math_sub_single
-        - math_mul_single
-        - math_div_single
-        - math_add_two_digit
-        - math_sub_two_digit
-        - math_mul_two_digit
-        - math_add_fewshot
-        - math_pattern_fewshot
-        - math_negative_result
-        - math_negative_input
-        - seq_arithmetic_add2
-        - seq_arithmetic_add5
-        - seq_arithmetic_sub3
-        - seq_geometric_x2
-        - seq_geometric_x3
-        - seq_letters_simple
-        - seq_letters_skip
-        - seq_alternating
-        - seq_fibonacci_start
-        - fact_capital_france
-        - fact_capital_japan
-        - fact_water_formula
-        - fact_planets_count
-        - fact_days_week
-        - fact_months_year
-        - semantic_synonym_happy
-        - semantic_synonym_big
-        - semantic_antonym_hot
-        - semantic_antonym_up
-        - semantic_category_fruit
-        - semantic_category_animal
-        - semantic_analogy_animal
-        - semantic_analogy_size
-        - format_json_simple
-        - format_json_nested
-        - format_table_extract
-        - format_csv_parse
-        - format_list_first
-        - format_list_last
-        - format_bracket_complete
-        - format_nested_brackets
-        - context_early_retrieval
-        - context_late_retrieval
-        - context_update_value
-        - context_multiple_facts
-        - context_instruction_first
-        - context_instruction_count
-        - robust_rephrase_capital
-        - robust_rephrase_capital_alt
-        - robust_case_upper
-        - robust_case_lower
-        - robust_whitespace_normal
-        - robust_whitespace_extra
-        - edge_single_char
-        - edge_single_digit
-        - edge_zero_result
-        - edge_multiply_zero
-        - edge_large_add
-        - edge_large_compare
-        - edge_repeated_copy
-        - edge_all_same
-        - attention_fine_discrimination
-        - attention_subtle_diff
-        - attention_focus_noise
-        - attention_recent_vs_distant
-        - attention_similar_items
-        - attention_binding
-        - attention_crossref
-        - attention_order_first
-        - attention_order_last
-        - attention_count_interference
-        - instruct_return_first
-        - instruct_return_last
-        - instruct_count_words
-        - instruct_uppercase
-        - instruct_reverse
-        - consist_add_equals
-        - consist_add_question
-        - consist_add_words
-        - consist_copy_arrow
-        - consist_copy_colon
-        - consist_copy_echo
-      dump_attention_max_tokens: 96
-      dump_attention_max_heads: 4
-      dump_attention_anchor: ""
       dump_attention_paper_dir: research/dba/figs/attention
-      dump_attention_paper_tag: dba_10k
+      dump_attention_paper_tag: dba_100k_gated
     models: [baseline, sem8, gated_sem8]
 
-  - id: behavioral_v2
+  - id: downstream_accuracy
+    realtime: false
     config:
-      type: behavioral_v2
+      type: accuracy
+      tasks: [winogrande, arc_easy, boolq, hellaswag, copa, piqa, openbookqa]
       tokenizer:
         type: tiktoken
         encoding: gpt2
       seed: 42
-      tests_per_category: 30
-      max_new_tokens: 32
       context_window: 2048
       stream_live: true
       stream_every: 10
     models: [baseline, sem8, gated_sem8]
 
-  - id: downstream_accuracy
+  - id: adversarial_repeat_penalty
+    realtime: false
     config:
-      type: accuracy
-      tasks: [winogrande, arc_easy, boolq, hellaswag]
+      type: behavior_instruct
       tokenizer:
         type: tiktoken
         encoding: gpt2
+      # v2 suite generator (deterministic).
+      seed: 42
+      tests_per_category: 30
+      categories: [adversarial]
+      # Narrow to the specific forced-repeat template family.
+      subcategories: [dread_induction]
+      # Make it a real "repeat penalty" probe.
+      honor_recommended_settings: true
+      repetition_penalty: 1.4
+      max_new_tokens: 128
       context_window: 2048
       stream_live: true
-      stream_every: 10
+      stream_every: 1
+      transcript_file: behavior_instruct_repeat_penalty_transcript.txt
+      degeneration_metrics_file: behavior_instruct_repeat_penalty_degeneration.csv
     models: [baseline, sem8, gated_sem8]
 
   - id: context_sweep
+    realtime: false
     config:
       type: context
+      seed: 42
       dataset: ${dataset_path}
       context_lengths: [2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072]
       chunk_size: 1024

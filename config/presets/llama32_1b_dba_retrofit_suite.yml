@@ -230,6 +230,7 @@ targets:
       - id: latency_fp16_fp16
         config:
           type: latency
+          seed: 42
           prompt_lengths: [512, 2048]
           generation_lengths: [128]
           batch_sizes: [1]
@@ -247,6 +248,7 @@ targets:
       - id: latency_hyp_q4q8q4
         config:
           type: latency
+          seed: 42
           prompt_lengths: [512, 2048]
           generation_lengths: [128]
           batch_sizes: [1]
@@ -264,6 +266,7 @@ targets:
       - id: latency_counter_q8q4q8
         config:
           type: latency
+          seed: 42
           prompt_lengths: [512, 2048]
           generation_lengths: [128]
           batch_sizes: [1]
@@ -526,6 +529,7 @@ targets:
       - id: latency_fp16_fp16
         config:
           type: latency
+          seed: 42
           prompt_lengths: [512, 2048]
           generation_lengths: [128]
           batch_sizes: [1]
@@ -543,6 +547,7 @@ targets:
       - id: latency_hyp_q4q8q4
         config:
           type: latency
+          seed: 42
           prompt_lengths: [512, 2048]
           generation_lengths: [128]
           batch_sizes: [1]
@@ -560,6 +565,7 @@ targets:
       - id: latency_counter_q8q4q8
         config:
           type: latency
+          seed: 42
           prompt_lengths: [512, 2048]
           generation_lengths: [128]
           batch_sizes: [1]

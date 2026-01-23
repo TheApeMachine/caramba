@@ -23,16 +23,16 @@ targets:
     data:
       ref: dataset.tokens
       config:
-        path: artifacts/datasets/HuggingFaceFW/fineweb/fineweb_100m.npy
+        path: artifacts/datasets/fineweb_llama/fineweb_1b.npy
         block_size: ${block_size}
         prepare:
           type: fineweb
           # Token budget to (re)generate when missing or mismatched.
-          tokens: 100M
+          tokens: 1B
           tokenizer: llama
           model_id: meta-llama/Llama-3.2-1B
-          dataset: HuggingFaceFW/fineweb
-          subset: null
+          dataset: fineweb_llama
+          subset: sample-10BT
           split: train
           text_field: text
           max_chars: 50000
@@ -112,12 +112,22 @@ targets:
           dtype: auto
           teacher_ckpt: hf://meta-llama/Llama-3.2-1B
           dba_init: svd
-          gradient_accumulation_steps: 4
-          orchestrator_enabled: true
-          # Finetune-only runs often resume from a blockwise checkpoint; allow some
-          # initial loss gap without aborting at step 0.
-          orchestrator_max_loss_increase: 4.0
-          orchestrator_fail_fast: false
+          # Increase effective batch for stability (batch_size is 1 on MPS).
+          gradient_accumulation_steps: 16
+          # Train only the DBA routing path + gate (freeze embeddings/MLP/etc).
+          # This relies on the upcycle steppers honoring TrainConfig.trainable_scope.
+          trainable_scope:
+            - ".*q_sem.*"
+            - ".*k_sem.*"
+            - ".*q_geo.*"
+            - ".*k_geo.*"
+            - ".*decoupled_gate_logit.*"
+          # Deterministic finetune: disable the orchestrator (no optimizer switching).
+          orchestrator_enabled: false
+          # Small warmup helps when training only a small parameter subset.
+          scheduler: cosine
+          warmup_steps: 200
+          grad_clip_norm: 1.0
           optimizer: lion
           fused_optimizer: true
           use_amp: true
@@ -129,140 +139,7 @@ targets:
           mps_fast_ce: true
           # Speed: keep fp16 autocast even without GradScaler on MPS.
           mps_allow_fp16_autocast_without_gradscaler: true
-    benchmarks:
-      - id: perplexity
-        config:
-          type: perplexity
-          dataset: fineweb_100m.npy
-          block_size: 2048
-          batch_size: 1
-          num_batches: 100
-        models: [teacher, student]
-        repeats: 1
 
-      - id: behavior_sanity
-        config:
-          type: behavior
-          tokenizer:
-            type: llama
-            model_id: meta-llama/Llama-3.2-1B
-          cases_file: research/dba/behavior_cases.yml
-          max_new_tokens: 32
-          context_window: 2048
-          stream_live: true
-          stream_every: 1
-          # Paper-style attention dumps (same mechanism as checkpoint benchmarks).
-          dump_attention: true
-          dump_attention_max_tokens: 96
-          dump_attention_max_heads: 4
-          dump_attention_anchor: ""
-          dump_attention_paper_dir: research/dba/figs/attention
-          dump_attention_paper_tag: llama32_aggressive_gated
-        models: [teacher, student]
-        repeats: 1
-
-      - id: behavioral_v2
-        config:
-          type: behavioral_v2
-          tokenizer:
-            type: llama
-            model_id: meta-llama/Llama-3.2-1B
-          seed: 42
-          tests_per_category: 30
-          max_new_tokens: 32
-          context_window: 2048
-          stream_live: true
-          stream_every: 10
-          log_file: multi_behavioral_v2_log.txt
-        models: [teacher, student]
-        repeats: 1
-
-      - id: downstream_accuracy
-        config:
-          type: accuracy
-          tasks: [winogrande, arc_easy, boolq, hellaswag]
-          tokenizer:
-            type: llama
-            model_id: meta-llama/Llama-3.2-1B
-          context_window: 2048
-          stream_live: true
-          stream_every: 10
-          log_file: accuracy_log.txt
-        models: [teacher, student]
-        repeats: 1
-
-      - id: latency
-        config:
-          type: latency
-          prompt_lengths: [128, 512, 1024, 2048]
-          generation_lengths: [64, 128, 256]
-          batch_sizes: [1]
-          warmup_runs: 3
-          timed_runs: 10
-          use_cache: true
-          cache_kind: fp16 # enables Metal fused DBA decode on MPS
-        models: [teacher, student]
-        repeats: 1
-
-      - id: memory
-        config:
-          type: memory
-          sequence_lengths: [512, 1024, 2048, 4096]
-          batch_sizes: [1]
-          measure_peak: true
-          measure_kvcache: true
-          quantization_modes: [fp16, q8, q4]
-        models: [teacher, student]
-        repeats: 1
-
-      - id: context_sweep
-        config:
-          type: context
-          dataset: fineweb_100m.npy
-          context_lengths: [2048, 4096, 8192, 16384, 32768, 65536]
-          chunk_size: 1024
-          # Conservative cap on attention mask materialization during chunked prefill.
-          max_mask_elems: 32000000
-          batch_size: 1
-          decode_len: 128
-          decode_warmup: 8
-          cache_kind: fp16
-        models: [teacher, student]
-        repeats: 1
-
-  - type: process
-    name: code_graph_sync
-    description: Index model topology into Graphiti memory for structural audits.
-    team:
-      leader: research_lead
-    process:
-      type: code_graph_sync
-      name: code_graph_sync
-      agent: leader
-      index_namespace: main
-  - type: process
-    name: paper_write
-    description: Draft/update a LaTeX paper artifact (paper.tex).
-    team:
-      writer: writer
-    process:
-      type: paper_write
-      name: paper_write
-      writer: writer
-      output_dir: paper
-  - type: process
-    name: paper_review
-    description: Review the LaTeX paper artifact and propose next steps.
-    team:
-      reviewer: reviewer
-    process:
-      type: paper_review
-      name: paper_review
-      reviewer: reviewer
-      strictness: conference
-      max_proposed_experiments: 3
-      output_dir: paper
-  - type: process
     name: paper_loop
     description: Write → review → structural-audit loop (agent process).
     team:
@@ -286,18 +163,18 @@ vars:
   d_ff: 8192
   vocab_size: 128256
   rope_theta: 500000.0
-  sem_dim: 32
-  geo_dim: 128
-  attn_dim: 512
+  # DBA dims (sem8/geo32/v40):
+  # - sem_dim: 256 (8 per head * 32 heads)
+  # - geo_dim: 1024 (32 per head * 32 heads)
+  # - attn_dim: 1280 (40 per head * 32 heads)
+  sem_dim: 256
+  geo_dim: 1024
+  attn_dim: 1280
   batch_size: 1
   block_size: 2048
   global_steps: 2000
-  global_lr: 5.0e-05
+  # With trainable_scope active (DBA-only), we can usually use a higher fixed LR.
+  global_lr: 1.0e-04
 entrypoints:
   default: "target:paper"
   train: "target:paper"
-  graph_sync: "process:code_graph_sync"
-  write: "process:paper_write"
-  review: "process:paper_review"
-  loop: "process:paper_loop"
-

@@ -28,6 +28,7 @@ from benchmark.multi_model_results import (
     build_comparison_summary,
 )
 from benchmark.perplexity import PerplexityResult
+from benchmark.perplexity_microscope import write_microscope
 from console import logger
 
 
@@ -44,6 +45,49 @@ MODEL_COLORS = [
     "#ff5722",  # deep orange
     "#795548",  # brown
 ]
+
+def _jsonable(x: Any) -> Any:
+    """Convert a nested structure into JSON-serializable primitives.
+
+    This is intentionally strict: we convert known numeric wrapper types
+    (e.g. NumPy scalars) to Python scalars, and otherwise raise.
+    """
+    # Primitives
+    if x is None or isinstance(x, (bool, int, float, str)):
+        return x
+    # NumPy scalar / arrays
+    try:
+        import numpy as _np  # type: ignore
+
+        if isinstance(x, _np.generic):
+            return x.item()
+        if isinstance(x, _np.ndarray):
+            return x.tolist()
+    except Exception:
+        pass
+    # Mappings / sequences
+    if isinstance(x, dict):
+        return {str(k): _jsonable(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_jsonable(v) for v in x]
+    # Dataclasses
+    try:
+        from dataclasses import is_dataclass, asdict as _asdict
+
+        # dataclasses.is_dataclass returns true for instances and classes; asdict needs instances.
+        if is_dataclass(x) and not isinstance(x, type):
+            return _jsonable(_asdict(x))
+    except Exception:
+        pass
+    # Paths
+    try:
+        from pathlib import Path
+
+        if isinstance(x, Path):
+            return str(x)
+    except Exception:
+        pass
+    raise TypeError(f"Object of type {type(x).__name__} is not JSON-serializable")
 
 
 def get_model_color(model_name: str, model_names: list[str]) -> str:
@@ -82,6 +126,7 @@ class MultiModelArtifactGenerator:
         accuracy_results: dict[str, AccuracyResult] | None = None,
         context_results: dict[str, ContextResult] | None = None,
         behavioral_results: dict[str, dict] | None = None,
+        audit: dict | None = None,
         formats: list[str] | None = None,
     ) -> dict[str, Path]:
         """Generate all multi-model artifacts.
@@ -116,7 +161,8 @@ class MultiModelArtifactGenerator:
         if "json" in formats:
             paths = self._write_json_report(
                 metadata, summary, perplexity_results, latency_results,
-                memory_results, accuracy_results, context_results, behavioral_results
+                memory_results, accuracy_results, context_results, behavioral_results,
+                audit=audit,
             )
             generated.update(paths)
 
@@ -147,6 +193,18 @@ class MultiModelArtifactGenerator:
             )
             generated.update(paths)
 
+        # Perplexity microscope sidecar (per-model batch CSV + summary JSON).
+        # Best-effort: never fail the full artifact generation.
+        try:
+            if perplexity_results:
+                for name, r in perplexity_results.items():
+                    if getattr(r, "batch_loss_sums", None):
+                        generated.update(
+                            write_microscope(output_dir=self.output_dir, result=r, prefix=str(name))
+                        )
+        except Exception:
+            pass
+
         return generated
 
     def _write_json_report(
@@ -159,6 +217,8 @@ class MultiModelArtifactGenerator:
         accuracy_results: dict[str, AccuracyResult] | None,
         context_results: dict[str, ContextResult] | None,
         behavioral_results: dict[str, dict] | None,
+        *,
+        audit: dict | None = None,
     ) -> dict[str, Path]:
         """Write comprehensive JSON report."""
         report: dict[str, Any] = {
@@ -182,6 +242,8 @@ class MultiModelArtifactGenerator:
                     "loss": r.loss,
                     "num_tokens": r.num_tokens,
                     "num_batches": r.num_batches,
+                    "batch_loss_sums": list(getattr(r, "batch_loss_sums", [])),
+                    "batch_token_counts": list(getattr(r, "batch_token_counts", [])),
                     "measurements": [
                         {
                             "perplexity": m.perplexity,
@@ -199,18 +261,8 @@ class MultiModelArtifactGenerator:
                 name: {
                     "avg_tokens_per_second": r.avg_tokens_per_second,
                     "avg_time_to_first_token_ms": r.avg_time_to_first_token_ms,
-                    "measurements": [
-                        {
-                            "prompt_len": m.prompt_len,
-                            "gen_len": m.gen_len,
-                            "batch_size": m.batch_size,
-                            "prefill_time_ms": m.prefill_time_ms,
-                            "decode_time_ms": m.decode_time_ms,
-                            "tokens_per_second": m.tokens_per_second,
-                            "time_to_first_token_ms": m.time_to_first_token_ms,
-                        }
-                        for m in r.measurements
-                    ],
+                    # Full audit trail per measurement (includes seed, inputs, and raw timed runs).
+                    "measurements": [asdict(m) for m in r.measurements],
                 }
                 for name, r in latency_results.items()
             }
@@ -219,31 +271,9 @@ class MultiModelArtifactGenerator:
             report["detailed_results"]["memory"] = {
                 name: {
                     "peak_memory_mb": r.peak_memory_mb,
-                    "kvcache_analysis": (
-                        {
-                            "n_layers": r.kvcache_analysis.n_layers,
-                            "n_kv_heads": r.kvcache_analysis.n_kv_heads,
-                            "head_dim": r.kvcache_analysis.head_dim,
-                            "attention_mode": r.kvcache_analysis.attention_mode,
-                            "bytes_per_token_fp16": r.kvcache_analysis.bytes_per_token_fp16,
-                            "bytes_per_token_q8": r.kvcache_analysis.bytes_per_token_q8,
-                            "bytes_per_token_q4": r.kvcache_analysis.bytes_per_token_q4,
-                            "bytes_per_token_dba_fp16": r.kvcache_analysis.bytes_per_token_dba_fp16,
-                            "bytes_per_token_dba_q8": r.kvcache_analysis.bytes_per_token_dba_q8,
-                            "bytes_per_token_dba_q4": r.kvcache_analysis.bytes_per_token_dba_q4,
-                        }
-                        if r.kvcache_analysis
-                        else None
-                    ),
-                    "measurements": [
-                        {
-                            "seq_len": m.seq_len,
-                            "batch_size": m.batch_size,
-                            "peak_memory_mb": m.peak_memory_mb,
-                            "kvcache_memory_mb": m.kvcache_memory_mb,
-                        }
-                        for m in r.measurements
-                    ],
+                    "kvcache_analysis": (asdict(r.kvcache_analysis) if r.kvcache_analysis else None),
+                    # Full audit trail per measurement (includes seed, inputs, and backend telemetry).
+                    "measurements": [asdict(m) for m in r.measurements],
                 }
                 for name, r in memory_results.items()
             }
@@ -278,9 +308,12 @@ class MultiModelArtifactGenerator:
                 for name, r in context_results.items()
             }
 
+        if audit is not None:
+            report["audit"] = audit
+
         path = self.output_dir / "report.json"
         with open(path, "w") as f:
-            json.dump(report, f, indent=2, default=str)
+            json.dump(_jsonable(report), f, indent=2)
 
         return {"report.json": path}
 

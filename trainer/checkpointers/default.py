@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 
 import torch
 from torch.optim import Optimizer
@@ -62,7 +63,21 @@ class DefaultCheckPointer:
         if ctx.dist_ctx is not None:
             ctx.dist_ctx.save_checkpoint(state, str(path))
         else:
-            torch.save(state, path)
+            # Write atomically to avoid corrupt checkpoints on crash/disk-full.
+            # Strategy: write to a temp file in the same directory, then replace.
+            tmp = Path(str(path) + ".tmp")
+            try:
+                torch.save(state, tmp)
+                os.replace(str(tmp), str(path))
+            except Exception as e:
+                # Best-effort cleanup of partial tmp file.
+                try:
+                    if tmp.exists():
+                        tmp.unlink()
+                except Exception:
+                    pass
+                logger.warning(f"Checkpoint save failed (path={path}): {e!r}")
+                raise
 
         logger.info(f"Checkpoint saved: {path}")
         return path

@@ -232,6 +232,7 @@ x-multi-benchmark-suite: &multi_benchmark_suite
   - id: latency_cached
     config:
       type: latency
+      seed: 1337
       prompt_lengths: [128, 512, 1024, 2048, 4096]
       generation_lengths: [128]
       batch_sizes: [1]
@@ -244,6 +245,7 @@ x-multi-benchmark-suite: &multi_benchmark_suite
   - id: latency_long_context
     config:
       type: latency
+      seed: 1337
       prompt_lengths: [2048, 4096, 8192]
       generation_lengths: [64]
       batch_sizes: [1]
@@ -256,6 +258,7 @@ x-multi-benchmark-suite: &multi_benchmark_suite
   - id: memory_kv
     config:
       type: memory
+      seed: 1337
       sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
       batch_sizes: [1]
       measure_peak: true
@@ -269,147 +272,13 @@ x-multi-benchmark-suite: &multi_benchmark_suite
       tokenizer:
         type: tiktoken
         encoding: gpt2
-      cases_file: research/dba/behavior_cases.yml
+      seed: 1337
+      suite_file: benchmark/behavior/cases.yml
       max_new_tokens: 32
       context_window: 2048
       dump_attention: true
-      dump_attention_case_ids:
-        - copy_simple_3
-        - copy_simple_numbers
-        - copy_medium_sequence
-        - copy_long_sequence_15
-        - copy_mixed_alphanumeric
-        - copy_special_chars
-        - copy_with_spaces_preserved
-        - fewshot_simple_transform
-        - fewshot_simple_prefix
-        - fewshot_simple_suffix
-        - fewshot_reverse_words
-        - fewshot_first_last_swap
-        - fewshot_double_letter
-        - fewshot_increment
-        - fewshot_double
-        - fewshot_square
-        - distractor_numbers_explicit
-        - distractor_words_explicit
-        - distractor_implicit_colors
-        - distractor_implicit_numbers
-        - distractor_typo_numbers
-        - distractor_typo_words
-        - distractor_semantic_animals
-        - distractor_semantic_numbers
-        - reason_compare_simple
-        - reason_compare_equal
-        - reason_transitive_simple
-        - reason_transitive_chain
-        - reason_negation_simple
-        - reason_double_negation
-        - reason_conditional_modus_ponens
-        - reason_conditional_modus_tollens
-        - reason_set_membership
-        - reason_set_exclusion
-        - math_add_single
-        - math_sub_single
-        - math_mul_single
-        - math_div_single
-        - math_add_two_digit
-        - math_sub_two_digit
-        - math_mul_two_digit
-        - math_add_fewshot
-        - math_pattern_fewshot
-        - math_negative_result
-        - math_negative_input
-        - seq_arithmetic_add2
-        - seq_arithmetic_add5
-        - seq_arithmetic_sub3
-        - seq_geometric_x2
-        - seq_geometric_x3
-        - seq_letters_simple
-        - seq_letters_skip
-        - seq_alternating
-        - seq_fibonacci_start
-        - fact_capital_france
-        - fact_capital_japan
-        - fact_water_formula
-        - fact_planets_count
-        - fact_days_week
-        - fact_months_year
-        - semantic_synonym_happy
-        - semantic_synonym_big
-        - semantic_antonym_hot
-        - semantic_antonym_up
-        - semantic_category_fruit
-        - semantic_category_animal
-        - semantic_analogy_animal
-        - semantic_analogy_size
-        - format_json_simple
-        - format_json_nested
-        - format_table_extract
-        - format_csv_parse
-        - format_list_first
-        - format_list_last
-        - format_bracket_complete
-        - format_nested_brackets
-        - context_early_retrieval
-        - context_late_retrieval
-        - context_update_value
-        - context_multiple_facts
-        - context_instruction_first
-        - context_instruction_count
-        - robust_rephrase_capital
-        - robust_rephrase_capital_alt
-        - robust_case_upper
-        - robust_case_lower
-        - robust_whitespace_normal
-        - robust_whitespace_extra
-        - edge_single_char
-        - edge_single_digit
-        - edge_zero_result
-        - edge_multiply_zero
-        - edge_large_add
-        - edge_large_compare
-        - edge_repeated_copy
-        - edge_all_same
-        - attention_fine_discrimination
-        - attention_subtle_diff
-        - attention_focus_noise
-        - attention_recent_vs_distant
-        - attention_similar_items
-        - attention_binding
-        - attention_crossref
-        - attention_order_first
-        - attention_order_last
-        - attention_count_interference
-        - instruct_return_first
-        - instruct_return_last
-        - instruct_count_words
-        - instruct_uppercase
-        - instruct_reverse
-        - consist_add_equals
-        - consist_add_question
-        - consist_add_words
-        - consist_copy_arrow
-        - consist_copy_colon
-        - consist_copy_echo
-      dump_attention_max_tokens: 96
-      dump_attention_max_heads: 4
-      dump_attention_anchor: ""
       dump_attention_paper_dir: research/dba/figs/attention
       dump_attention_paper_tag: dba_10k
-    models: [baseline, sem16, sem8]
-
-  - id: behavioral_v2
-    config:
-      type: behavioral_v2
-      tokenizer:
-        type: tiktoken
-        encoding: gpt2
-      seed: 1337
-      tests_per_category: 30
-      max_new_tokens: 32
-      context_window: 2048
-      stream_live: true
-      stream_every: 10
     models: [baseline, sem16, sem8]
 
   - id: downstream_accuracy

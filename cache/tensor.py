@@ -171,7 +171,10 @@ class SeqCacheTensor:
         if self.kind in ("fp16", "fp32"):
             if self.buf is None:
                 raise RuntimeError("Expected fp buffer for fp16/fp32 cache")
-            self.buf[:, old : old + tn] = x_new.to(self.buf.dtype)
+            if x_new.dtype == self.buf.dtype:
+                self.buf[:, old : old + tn] = x_new
+            else:
+                self.buf[:, old : old + tn] = x_new.to(self.buf.dtype)
         elif self.kind == "q8_0":
             apply(self.quantizer.quantize_q8_0)
         elif self.kind == "q4_0":
@@ -186,7 +189,8 @@ class SeqCacheTensor:
             rlen = self._residual_len_eff
             if rlen > 0:
                 if tn >= rlen:
-                    x_tail = x_new[:, -rlen:].to(torch.float16)
+                    x_tail_raw = x_new[:, -rlen:]
+                    x_tail = x_tail_raw if x_tail_raw.dtype == torch.float16 else x_tail_raw.to(torch.float16)
                     idx = torch.arange(
                         old + tn - rlen,
                         old + tn,
@@ -195,7 +199,7 @@ class SeqCacheTensor:
                     ) % rlen
                     self._residual[:, idx] = x_tail
                 else:
-                    x_fp16 = x_new.to(torch.float16)
+                    x_fp16 = x_new if x_new.dtype == torch.float16 else x_new.to(torch.float16)
                     idx = (
                         torch.arange(old, old + tn, device=self.device, dtype=torch.long)
                         % rlen
@@ -232,15 +236,18 @@ class SeqCacheTensor:
         if self.kind in ("fp16", "fp32"):
             if self.buf is None:
                 raise RuntimeError("Expected fp buffer for fp16/fp32 cache")
-            return self.buf[:, start:end].to(dtype)
+            x = self.buf[:, start:end]
+            return x if x.dtype == dtype else x.to(dtype)
 
         r_start = self._residual_start()
         if self._residual is not None and start >= r_start:
-            return self._residual_gather(start, end).to(dtype)
+            x = self._residual_gather(start, end)
+            return x if x.dtype == dtype else x.to(dtype)
 
         if self._residual is not None and end > r_start and start < r_start:
             a = self.get_slice(start, r_start, dtype=dtype)
-            b = self._residual_gather(r_start, end).to(dtype)
+            b0 = self._residual_gather(r_start, end)
+            b = b0 if b0.dtype == dtype else b0.to(dtype)
             return torch.cat([a, b], dim=1)
 
         if self.kind == "q8_0":

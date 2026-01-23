@@ -1,0 +1,344 @@
+version: 2
+name: dba_llama32_1b_upcycle_benchmark
+# Write artifacts under research/dba/benchmark_upcycle/<target>/<timestamp>/.
+artifacts_dir: research/dba/benchmark_upcycle
+notes: >
+  Standalone benchmark manifest for upcycled Llama 3.2 1B runs.
+  Uses trainer.upcycle_eval to load an HF teacher + an Upcycle student checkpoint,
+  then runs the same benchmark suite as the paper efficiency preset.
+
+defaults:
+  data:
+    tokenizer: llama
+    val_frac: 0.0
+  logging:
+    instrument: rich
+    wandb: false
+    wandb_project: ''
+    wandb_entity: ''
+    wandb_mode: disabled
+    eval_iters: 0
+  runtime:
+    # Schema requires positive; trainer.upcycle_eval does no training anyway.
+    save_every: 1
+
+vars:
+  # --- Checkpoints ---
+  teacher: hf://meta-llama/Llama-3.2-1B
+  # Default path for the finetune-only preset's final global checkpoint.
+  # NOTE: The finetune-only preset uses the "global_orchestrated" stepper, which writes:
+  #   runs/paper/finetune_global_orchestrated_final.pt
+  # student: runs/paper/finetune_global_final.pt
+  student: runs/paper/blockwise_blockwise_block1_step4000.pt
+
+  # --- Dataset (used by perplexity + context sweep benchmarks) ---
+  # Match the dataset used for fine-tuning in the preset:
+  # config/presets/llama32_1b_dba_paper_efficiency_aggressive_finetune_only.yml
+  dataset_path: artifacts/datasets/fineweb_llama/fineweb_llama_1b.npy
+  block_size: 2048
+
+  # --- Llama 3.2 1B dims ---
+  d_model: 2048
+  n_heads: 32
+  n_kv_heads: 8
+  n_layers: 16
+  d_ff: 8192
+  vocab_size: 128256
+  rope_theta: 500000.0
+
+  # --- DBA dims (sem8/geo32/v40; matches config/presets/dba_paper_gate_100k.yml) ---
+  sem_dim: 256
+  geo_dim: 1024
+  attn_dim: 1280
+
+  # --- Runtime ---
+  device: mps
+  dtype: auto
+
+# =============================================================================
+# Dummy run entry to satisfy schema (no training happens in upcycle_eval)
+# =============================================================================
+x-dummy-run: &dummy_run
+  - id: eval
+    mode: train
+    exp: benchmark_only
+    seed: 42
+    steps: 1
+    expected: {phase: global}
+    train:
+      phase: global
+      batch_size: 1
+      block_size: ${block_size}
+      lr: 1.0e-9
+      device: ${device}
+      dtype: ${dtype}
+
+# =============================================================================
+# Benchmark suite (copied from config/presets/llama32_1b_dba_paper_efficiency_aggressive_finetune_only.yml)
+# =============================================================================
+x-multi-benchmark-suite: &multi_benchmark_suite
+  - &ppl_fineweb_benchmark
+    id: ppl_fineweb
+    config:
+      type: perplexity
+      dataset: ${dataset_path}
+      block_size: ${block_size}
+      batch_size: 1
+      num_batches: 200
+      # Use the real tokenizer vocab (Llama 3.2 1B = 128256) so dataset ids are valid.
+      # This also keeps comparisons fair if a model pads vocab beyond tokenizer size.
+      valid_vocab_size: ${vocab_size}
+    models: [teacher, student]
+  - id: latency_cached
+    config:
+      type: latency
+      seed: 42
+      prompt_lengths: [128, 512, 1024, 2048, 4096]
+      generation_lengths: [128]
+      batch_sizes: [1]
+      warmup_runs: 2
+      timed_runs: 5
+      use_cache: true
+      cache_kind: fp16
+      # Keep token generation in the real tokenizer vocab for comparable inputs.
+      valid_vocab_size: ${vocab_size}
+    models: [teacher, student]
+
+  - id: latency_long_context
+    config:
+      type: latency
+      seed: 42
+      prompt_lengths: [2048, 4096, 8192]
+      generation_lengths: [64]
+      batch_sizes: [1]
+      warmup_runs: 1
+      timed_runs: 3
+      use_cache: true
+      cache_kind: fp16
+      valid_vocab_size: ${vocab_size}
+    models: [teacher, student]
+
+  - id: memory_kv
+    config:
+      type: memory
+      seed: 42
+      sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
+      batch_sizes: [1]
+      measure_peak: true
+      measure_kvcache: true
+      quantization_modes: [fp16]
+      valid_vocab_size: ${vocab_size}
+    models: [teacher, student]
+
+  - id: behavior_sanity
+    config:
+      type: behavior
+      tokenizer:
+        type: llama
+        model_id: ${teacher}
+      seed: 42
+      suite_file: benchmark/behavior/cases.yml
+      max_new_tokens: 32
+      context_window: 2048
+      dump_attention: true
+      dump_attention_paper_dir: research/dba/figs/attention
+      dump_attention_paper_tag: dba_10k
+    models: [teacher, student]
+
+  - id: downstream_accuracy
+    config:
+      type: accuracy
+      tasks: [winogrande, arc_easy, boolq, hellaswag]
+      tokenizer:
+        type: llama
+        model_id: ${teacher}
+      context_window: 2048
+      stream_live: true
+      stream_every: 10
+    models: [teacher, student]
+
+  - id: context_sweep
+    config:
+      type: context
+      dataset: ${dataset_path}
+      context_lengths: [2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072]
+      chunk_size: 1024
+      max_mask_elems: 32000000
+      batch_size: 1
+      decode_len: 128
+      decode_warmup: 8
+      cache_kind: fp16
+      # Slice logits / validate dataset ids against tokenizer vocab.
+      valid_vocab_size: ${vocab_size}
+    models: [teacher, student]
+  
+
+  - id: perplexity
+    config:
+      type: perplexity
+      dataset: ${dataset_path}
+      block_size: 2048
+      batch_size: 1
+      num_batches: 100
+    models: [teacher, student]
+    repeats: 1
+
+# A tiny suite for quick smoke tests.
+x-perplexity-only-suite: &perplexity_only_suite
+  - *ppl_fineweb_benchmark
+
+targets:
+  - type: experiment
+    name: upcycle_eval
+    description: "HF Llama-3.2-1B teacher vs upcycled DBA student (benchmark-only)."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      # Student model config (matches the finetune-only aggressive DBA preset).
+      ref: system.language_model
+      config:
+        model:
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.upcycle_eval
+      config:
+        teacher_ckpt: ${teacher}
+        student_ckpt: ${student}
+        device: ${device}
+        dtype: ${dtype}
+        unsafe_pickle_load: false
+    runs: *dummy_run
+    benchmarks: *multi_benchmark_suite
+
+  - type: experiment
+    name: surgery_init_only
+    description: "Re-run DBA surgery init from HF teacher weights (no training), then benchmark teacher vs surgery."
+    backend: torch
+    task: task.language_modeling
+    data:
+      ref: dataset.tokens
+      config:
+        path: ${dataset_path}
+        block_size: ${block_size}
+    system:
+      # Student model config: same architecture as upcycle_eval, but built from scratch
+      # and initialized from teacher weights by trainer.surgery_compare.
+      ref: system.language_model
+      config:
+        model: &surgery_student_model
+          type: TransformerModel
+          tied_embeddings: false
+          embedder:
+            type: token
+            vocab_size: ${vocab_size}
+            d_model: ${d_model}
+          topology:
+            type: StackedTopology
+            layers:
+              - type: NestedTopology
+                repeat: ${n_layers}
+                layers:
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: AttentionLayer
+                        d_model: ${d_model}
+                        n_heads: ${n_heads}
+                        n_kv_heads: ${n_kv_heads}
+                        mode: decoupled
+                        attn_dim: ${attn_dim}
+                        sem_dim: ${sem_dim}
+                        geo_dim: ${geo_dim}
+                        rope_enabled: true
+                        rope_base: ${rope_theta}
+                        is_causal: true
+                        dropout_p: 0.0
+                        decoupled_gate: true
+                  - type: ResidualTopology
+                    layers:
+                      - type: RMSNormLayer
+                        d_model: ${d_model}
+                        eps: 1e-5
+                      - type: SwiGLULayer
+                        d_model: ${d_model}
+                        d_ff: ${d_ff}
+                        bias: false
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - type: LinearLayer
+                d_in: ${d_model}
+                d_out: ${vocab_size}
+                bias: false
+    objective: objective.next_token_ce
+    trainer:
+      ref: trainer.surgery_compare
+      config:
+        teacher_ckpt: ${teacher}
+        student_model: *surgery_student_model
+        # Match the benchmark suite naming (models: [teacher, student]).
+        teacher_name: teacher
+        student_name: student
+        baseline_name: teacher
+        dba_init: svd
+        device: ${device}
+        dtype: ${dtype}
+    runs: *dummy_run
+    benchmarks: *multi_benchmark_suite
+
+entrypoints:
+  default: "target:upcycle_eval"
+  init: "target:surgery_init_only"

@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from config import PositiveFloat, PositiveInt, Probability
+from config import NonNegativeInt, PositiveFloat, PositiveInt, Probability
 from config.eval import TiktokenTokenizerConfig, TokenizerConfig
 from config.kvcache import KVCacheConfig
 
@@ -28,7 +28,7 @@ class BenchmarkType(str, enum.Enum):
     ACCURACY = "accuracy"
     GENERATION = "generation"
     BEHAVIOR = "behavior"
-    BEHAVIORAL_V2 = "behavioral_v2"
+    BEHAVIOR_INSTRUCT = "behavior_instruct"
     CONTEXT = "context"
 
 
@@ -59,6 +59,9 @@ class LatencyBenchmarkConfig(BaseModel):
     """
 
     type: Literal[BenchmarkType.LATENCY] = BenchmarkType.LATENCY
+    # REQUIRED: Seed used to generate deterministic synthetic inputs for latency.
+    # This is part of the benchmark definition and must be explicit in the manifest.
+    seed: PositiveInt
     prompt_lengths: list[PositiveInt] = Field(
         default_factory=lambda: [128, 512, 1024, 2048]
     )
@@ -86,6 +89,9 @@ class MemoryBenchmarkConfig(BaseModel):
     """
 
     type: Literal[BenchmarkType.MEMORY] = BenchmarkType.MEMORY
+    # REQUIRED: Seed used to generate deterministic synthetic inputs for memory measurement.
+    # This is part of the benchmark definition and must be explicit in the manifest.
+    seed: PositiveInt
     sequence_lengths: list[PositiveInt] = Field(
         default_factory=lambda: [512, 1024, 2048, 4096]
     )
@@ -112,13 +118,15 @@ class AccuracyBenchmarkConfig(BaseModel):
     # Text tokenizer used to encode prompts/choices for scoring.
     # Default matches the paper's GPT-style experiments.
     tokenizer: TokenizerConfig = Field(default_factory=lambda: TiktokenTokenizerConfig(encoding="gpt2"))
-    num_fewshot: PositiveInt = 0
+    # 0 = zero-shot evaluation.
+    num_fewshot: NonNegativeInt = 0
     limit: PositiveInt | None = None
     # Optional sliding context window for scoring long prompts.
     context_window: PositiveInt | None = None
     # Optional: print a small number of examples per task for insight.
     # This does not affect scoring, only console output.
-    print_examples: PositiveInt = 0
+    # 0 = don't print examples.
+    print_examples: NonNegativeInt = 0
     print_only_incorrect: bool = True
     print_max_chars: PositiveInt = 240
     # Stream examples to console as they are evaluated (live progress).
@@ -147,16 +155,27 @@ class GenerationBenchmarkConfig(BaseModel):
 
 
 class BehaviorBenchmarkConfig(BaseModel):
-    """Run a small behavioral prompt suite against teacher/student.
+    """Run the unified YAML-driven behavior suite (single source of truth).
 
-    This is intended for paper workflows where we want deterministic,
-    structured sanity checks (e.g. copy/format fidelity, simple arithmetic)
-    in addition to perplexity/latency/memory.
+    This replaces the legacy split between `behavior` and `behavioral_v2` by
+    providing one benchmark that:
+    - materializes a fixed number of cases per category (default 30)
+    - randomizes/shuffles deterministically (seeded) to reduce bias
+    - supports both greedy generation and choice-logprob evaluation
+    - produces complete artifacts (raw logs + tables + plots + attention dumps)
+
+    IMPORTANT: The suite is intentionally "fail fast": if the YAML spec is
+    malformed or expectations cannot be met (e.g. missing pools, target spans),
+    execution should raise and stop.
     """
 
     type: Literal[BenchmarkType.BEHAVIOR] = BenchmarkType.BEHAVIOR
     tokenizer: TokenizerConfig
-    cases_file: str
+    # The unified suite spec (YAML). This file defines categories + templates.
+    suite_file: str = "benchmark/behavior/cases.yml"
+    # REQUIRED: seed for deterministic randomization across models.
+    seed: PositiveInt
+
     max_new_tokens: PositiveInt = 32
     context_window: PositiveInt | None = None
     # Optional: print per-case outputs to console for debugging/insight.
@@ -191,40 +210,63 @@ class BehaviorBenchmarkConfig(BaseModel):
     dump_attention_paper_tag: str | None = None
 
 
-class BehavioralV2BenchmarkConfig(BaseModel):
-    """Run the v2 behavioral test suite with template-based generation.
+class BehaviorInstructBenchmarkConfig(BaseModel):
+    """Instruction-formatted behavioral suite (generation-only).
 
-    This is the expanded behavioral evaluation framework supporting:
-    - 500+ parameterized test cases across 18 categories
-    - Template-based generation with randomization
-    - Teacher vs student comparison with match quality tracking
-    - Optional downstream HF tasks (winogrande, arc_easy, etc.)
+    Renders each prompt exactly as:
+        User: <instruction>
+
+        Assistant:
+
+    It reuses the v2 template generator to keep the benchmark randomized
+    (slot-based) and reduce prompt-specific bias, but always evaluates via
+    free generation (no logprob-only choice scoring).
     """
 
-    type: Literal[BenchmarkType.BEHAVIORAL_V2] = BenchmarkType.BEHAVIORAL_V2
+    type: Literal[BenchmarkType.BEHAVIOR_INSTRUCT] = BenchmarkType.BEHAVIOR_INSTRUCT
     tokenizer: TokenizerConfig = Field(default_factory=lambda: TiktokenTokenizerConfig(encoding="gpt2"))
 
-    # Test generation settings
-    seed: PositiveInt = 42
+    # Test generation settings (v2 suite generator)
+    seed: PositiveInt
     tests_per_category: PositiveInt = 30
-    # Override counts for specific categories (e.g., {"copy_tasks": 50, "reasoning": 20})
     category_counts: dict[str, int] | None = None
-    # Categories to include (None = all). Use to focus on specific test types.
     categories: list[str] | None = None
-
-    # Downstream HF tasks (optional, integrated with behavioral suite)
-    # Available: winogrande, arc_easy, arc_challenge, hellaswag, piqa, boolq
-    downstream_tasks: list[str] | None = None
-    downstream_limit: PositiveInt | None = None  # Limit samples per downstream task
+    # Optional finer filter within a category.
+    subcategories: list[str] | None = None
+    # If true, allow v2 template metadata to override generation settings per test
+    # (e.g. adversarial dread induction wants repetition_penalty > 1).
+    honor_recommended_settings: bool = False
 
     # Generation settings
     max_new_tokens: PositiveInt = 32
     context_window: PositiveInt | None = None
+    repetition_penalty: PositiveFloat = 1.0
 
     # Output settings
     stream_live: bool = True
     stream_every: PositiveInt = 10
-    log_file: str | None = "behavioral_v2_log.txt"
+    log_file: str | None = "behavior_instruct_log.txt"
+    # Raw transcript log (exact prompt + decoded model output, no scoring/stripping).
+    transcript_file: str | None = "behavior_instruct_transcript.txt"
+    # Optional: write degeneration/chaos diagnostics (token/word repetition stats).
+    degeneration_metrics_file: str | None = "behavior_instruct_degeneration.csv"
+
+    # ---- Optional attention introspection (paper/debug) ----
+    # If true, run additional forward passes on selected prompts with a viz ctx
+    # and dump small attention matrices + summary stats to output_dir.
+    dump_attention: bool = False
+    # Which test IDs to dump. If empty/None, dumps all tests (can be large).
+    dump_attention_case_ids: list[str] | None = None
+    # Downsample controls (these bounds apply per attention layer).
+    dump_attention_max_tokens: PositiveInt = 96
+    dump_attention_max_heads: PositiveInt = 4
+    # Substring used to split exemplar vs target regions (for mass metrics).
+    # For instruction-style prompts, "Assistant:" is a stable anchor.
+    dump_attention_anchor: str = "Assistant:"
+    # Optional: also copy rendered PNGs into a stable "paper figures" directory.
+    dump_attention_paper_dir: str | None = None
+    # Tag used in filenames when copying to paper dir (e.g. "dba_decoupled").
+    dump_attention_paper_tag: str | None = None
 
 
 class ContextBenchmarkConfig(BaseModel):
@@ -236,9 +278,10 @@ class ContextBenchmarkConfig(BaseModel):
     """
 
     type: Literal[BenchmarkType.CONTEXT] = BenchmarkType.CONTEXT
-    # Optional dataset used only to source a deterministic token prefix.
-    # If missing/unavailable, falls back to random tokens.
-    dataset: str | None = None
+    # REQUIRED dataset used to source a deterministic token prefix.
+    # This benchmark intentionally does not fall back to random tokens: without a
+    # manifest-specified dataset, the benchmark definition is incomplete.
+    dataset: str
     # Context lengths to test.
     context_lengths: list[PositiveInt] = Field(
         default_factory=lambda: [2048, 4096, 8192, 16384, 32768]
@@ -271,7 +314,7 @@ BenchmarkConfig = (
     | AccuracyBenchmarkConfig
     | GenerationBenchmarkConfig
     | BehaviorBenchmarkConfig
-    | BehavioralV2BenchmarkConfig
+    | BehaviorInstructBenchmarkConfig
     | ContextBenchmarkConfig
 )
 
@@ -285,6 +328,9 @@ class BenchmarkSpec(BaseModel):
 
     id: str
     config: BenchmarkConfig = Field(discriminator="type")
+    # If true, show live matplotlib plots for "raw" benchmark metrics while running,
+    # and save those plots to disk at the end of each benchmark.
+    realtime: bool = False
     models: list[str] = Field(
         default_factory=lambda: ["teacher", "student"],
         description="Which models to benchmark",

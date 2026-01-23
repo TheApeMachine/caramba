@@ -16,6 +16,7 @@ from torch import nn
 from collector.measurement.accuracy.task import TaskAccuracy, AccuracySample
 from eval.logprob.scorer import LogprobScorer
 from benchmark.accuracy.utils import TextNormalization
+from benchmark.utils import LivePlotter
 from console import logger
 
 
@@ -40,6 +41,12 @@ class BenchmarkAccuracyTask(ABC):
         self.config = config
         self.output_dir = output_dir
         self.device = device
+        self._live_plotter: LivePlotter | None = None
+        self._live_series: str | None = None
+
+    def set_live_plotter(self, plotter: LivePlotter | None, *, series: str | None = None) -> None:
+        self._live_plotter = plotter
+        self._live_series = str(series) if series is not None else None
 
     @abstractmethod
     def iter_examples(self, *, split: str) -> Iterator[tuple[str, list[str], str, str]]:
@@ -126,6 +133,12 @@ class BenchmarkAccuracyTask(ABC):
                         f"[muted]pred:[/muted] {_tr(pred, 30)} │ "
                         f"[muted]gold:[/muted] {_tr(gold, 30)}"
                     )
+                    if self._live_plotter is not None:
+                        try:
+                            series = self._live_series or f"{model_name}:{self.name}"
+                            self._live_plotter.log(**{series: float(acc_so_far)})
+                        except Exception:
+                            pass
 
                 # Log file: write full untruncated details
                 if log_file:

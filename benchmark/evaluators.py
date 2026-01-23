@@ -24,11 +24,13 @@ class LatencyEvaluator:
     timed_runs: int = 10
     use_cache: bool = True
     cache_kind: str = "fp16"
+    seed: int = 42
 
     def run(
         self, *, model: torch.nn.Module, device: torch.device, name: str = "model"
     ) -> dict[str, Any]:
         cfg = LatencyBenchmarkConfig(
+            seed=int(self.seed),
             prompt_lengths=list(self.prompt_lengths or [128, 512, 1024, 2048]),
             generation_lengths=list(self.generation_lengths or [128, 256, 512]),
             batch_sizes=list(self.batch_sizes or [1, 4, 8]),
@@ -52,11 +54,13 @@ class MemoryEvaluator:
     measure_peak: bool = True
     measure_kvcache: bool = True
     quantization_modes: list[str] | None = None
+    seed: int = 42
 
     def run(
         self, *, model: torch.nn.Module, device: torch.device, name: str = "model"
     ) -> dict[str, Any]:
         cfg = MemoryBenchmarkConfig(
+            seed=int(self.seed),
             sequence_lengths=list(self.sequence_lengths or [512, 1024, 2048, 4096]),
             batch_sizes=list(self.batch_sizes or [1, 4, 8]),
             measure_peak=bool(self.measure_peak),

@@ -9,8 +9,8 @@ import time
 from pathlib import Path
 from playwright.sync_api import Page
 
-from caramba.research.dba.colab_runner.javascript import JavaScriptRunner
-from caramba.research.dba.colab_runner.notebook import NotebookRunner
+from research.dba.colab_runner.javascript import JavaScriptRunner
+from research.dba.colab_runner.notebook import NotebookRunner
 
 
 class ColabRunner:

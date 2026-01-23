@@ -19,6 +19,15 @@ class Tokenizer(abc.ABC):
     def __init__(self, *, name: str) -> None:
         self.name = name
 
+    @property
+    def eos_token_id(self) -> int | None:
+        """Best-effort EOS token id for generation stopping.
+
+        Tokenizers that know their EOS/EOT id should override this. Returning
+        None means "unknown", and generation should rely on max token limits.
+        """
+        return None
+
     @abc.abstractmethod
     def encode(self, text: str) -> list[int]:
         """Convert text to token IDs."""

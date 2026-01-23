@@ -27,6 +27,14 @@ class HuggingfaceTokenizer(Tokenizer):
             trust_remote_code=False,
         )
 
+    @property
+    def eos_token_id(self) -> int | None:
+        try:
+            v = getattr(self._tok, "eos_token_id", None)
+            return int(v) if v is not None else None
+        except Exception:
+            return None
+
     def encode(self, text: str) -> list[int]:
         # For evaluation, we do not want BOS/EOS inserted implicitly.
         return list(self._tok.encode(str(text), add_special_tokens=False))

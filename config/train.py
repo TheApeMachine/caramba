@@ -68,6 +68,13 @@ class UAAConfig(BaseModel):
     counterfactual: Literal["embed_zero"] = "embed_zero"
 
 
+class ParamGroupConfig(BaseModel):
+    """Configuration for a specific parameter group."""
+    regex: str
+    lr: PositiveFloat | None = None
+    weight_decay: NonNegativeFloat | None = None
+
+
 class TrainConfig(BaseModel):
     """Hyperparameters and settings for a training run.
 
@@ -85,6 +92,13 @@ class TrainConfig(BaseModel):
     device: str = "cpu"
     dtype: str = "float32"
 
+    # Parameter groups for differential learning rates.
+    param_groups: list[ParamGroupConfig] | None = None
+
+    # Initialization overrides (student only)
+    gate_init_bias: float | None = None
+    out_proj_init_std: NonNegativeFloat | None = None
+
     # Auto batch sizing: optionally scale batch size inversely with block_size.
     auto_batch_size: bool = False
     auto_batch_ref_block_size: PositiveInt = 512
@@ -95,6 +109,18 @@ class TrainConfig(BaseModel):
     auto_resume: bool = True
     # If true, skip running a phase when a corresponding *_final.pt checkpoint exists.
     skip_if_final: bool = True
+
+    # Append EOS (optional).
+    # If true, appends an EOS token to each sample.
+    # Note: This is primarily for document-based datasets; streaming datasets (like NpyDataset)
+    # typically ignore this as they operate on a continuous token stream.
+    append_eos: bool = False
+
+    # Explicit checkpoint loading (alternative to auto_resume).
+    # If set, the trainer will load weights from this path at the start of the run.
+    # This is useful for fine-tuning or continuing from a specific artifact without
+    # relying on run-directory conventions.
+    load_checkpoint: str | None = None
 
     # Teacher model settings
     teacher_ckpt: str | None = None

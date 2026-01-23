@@ -21,6 +21,8 @@ from torch import Tensor
 from runtime.tensordict_utils import TensorDictBase
 
 from trainer.chunked_cross_entropy import ChunkedCELossConfig, chunked_linear_cross_entropy
+from layer.linear import LinearLayer
+from topology.stacked import StackedTopology
 
 TensorDict = TensorDictBase
 MetricDict = dict[str, float]
@@ -186,11 +188,24 @@ class NextTokenCrossEntropyChunkedObjective:
         feats = _require_tensor(outputs, self.features_key, where="outputs")
         tgt = _require_tensor(batch, self.target_key, where="batch").long()
         sys = outputs.get("_system", None)  # type: ignore[attr-defined]
+        w: Tensor | None = None
+        b: Tensor | None = None
         emb = getattr(getattr(sys, "embedder", None), "token_embedding", None)
-        w = getattr(emb, "weight", None)
+        w_emb = getattr(emb, "weight", None)
+        if isinstance(w_emb, Tensor) and feats.ndim == 3 and int(feats.shape[-1]) == int(w_emb.shape[1]):
+            w = w_emb
+        if w is None:
+            topo = getattr(sys, "topology", None)
+            if isinstance(topo, StackedTopology) and len(topo.layers) > 0:
+                last = topo.layers[-1]
+                if isinstance(last, LinearLayer):
+                    w = last.linear.weight
+                    b = last.linear.bias if isinstance(last.linear.bias, Tensor) else None
         if not isinstance(w, Tensor):
             raise TypeError(
-                "NextTokenCrossEntropyChunkedObjective requires outputs['_system'].embedder.token_embedding.weight"
+                "NextTokenCrossEntropyChunkedObjective requires hidden features and a projection weight. "
+                "Provide outputs['features'] with shape (B,T,D) and ensure the system exposes either "
+                "embedder.token_embedding.weight (tied embeddings) or a final LinearLayer head."
             )
         if feats.ndim != 3:
             raise ValueError(f"features must be (B,T,D), got {tuple(feats.shape)}")
@@ -199,7 +214,7 @@ class NextTokenCrossEntropyChunkedObjective:
         x = feats.reshape(int(feats.size(0) * feats.size(1)), int(feats.size(2)))
         y = tgt.reshape(-1)
         cfg = ChunkedCELossConfig(vocab_chunk=int(self.vocab_chunk), ignore_index=int(self.ignore_index))
-        return chunked_linear_cross_entropy(x=x, weight=w, target=y, bias=None, cfg=cfg)
+        return chunked_linear_cross_entropy(x=x, weight=w, target=y, bias=b, cfg=cfg)
 
     def metrics(self, *, outputs: TensorDict, batch: TensorDict, loss: Tensor) -> MetricDict:
         _ = outputs

@@ -202,6 +202,7 @@ targets:
       - id: latency_cached
         config:
           type: latency
+          seed: 1337
           prompt_lengths: [128, 512, 1024, 2048]
           generation_lengths: [128]
           batch_sizes: [1]
@@ -214,6 +215,7 @@ targets:
       - id: latency_cached_long_prompt
         config:
           type: latency
+          seed: 1337
           prompt_lengths: [2048, 4096, 8192]
           generation_lengths: [64]
           batch_sizes: [1]
@@ -226,6 +228,7 @@ targets:
       - id: memory_kv
         config:
           type: memory
+          seed: 1337
           sequence_lengths: [512, 1024, 2048, 4096]
           batch_sizes: [1]
           measure_peak: true
@@ -236,6 +239,7 @@ targets:
       - id: memory_kv_long
         config:
           type: memory
+          seed: 1337
           sequence_lengths: [2048, 4096, 8192, 16384]
           batch_sizes: [1]
           measure_peak: true
@@ -249,7 +253,8 @@ targets:
           tokenizer:
             type: tiktoken
             encoding: gpt2
-          cases_file: research/dba/behavior_cases.yml
+          seed: 1337
+          suite_file: benchmark/behavior/cases.yml
           max_new_tokens: 32
           context_window: 2048
         models: [teacher, student]

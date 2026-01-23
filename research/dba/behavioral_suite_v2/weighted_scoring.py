@@ -58,7 +58,13 @@ DIFFICULTY_NAMES: dict[float, str] = {
 }
 
 
-def classify_match_type(output: str, expected: str) -> MatchType:
+def classify_match_type(
+    output: str,
+    expected: str,
+    *,
+    prompt: str = "",
+    allow_presence_contained: bool = False,
+) -> MatchType:
     """
     Classify match type between output and expected.
 
@@ -73,6 +79,7 @@ def classify_match_type(output: str, expected: str) -> MatchType:
     """
     output_clean = output.strip()
     expected_clean = str(expected).strip()
+    prompt_clean = str(prompt or "")
 
     if not expected_clean:
         return MatchType.NONE
@@ -86,22 +93,119 @@ def classify_match_type(output: str, expected: str) -> MatchType:
     if first_line == expected_clean:
         return MatchType.EXACT
 
-    # CONTAINED: Expected appears with controlled leeway.
-    # For numeric expected values, avoid degenerate "counting"/lists like "1 2 3 ... 8".
-    if re.fullmatch(r"[+-]?\d+", expected_clean):
-        # If the model wrote the number somewhere, only treat it as SOFT if:
-        # - there's exactly one integer token in the first line, OR
-        # - the line looks like an equation/answer statement (contains '=' or 'answer'/'is'),
-        #   which catches "2 + 2 = 4" and "answer is 4" but rejects pure number lists.
-        ints = re.findall(r"[+-]?\d+", first_line)
-        if expected_clean not in ints:
+    # Boolean-style answers: only count the *first* boolean token emitted.
+    # This prevents outputs like "true, false, true, ..." from being marked correct
+    # for either label just because the expected token appears somewhere later.
+    exp_low = expected_clean.strip().lower()
+    if exp_low in {"true", "false", "yes", "no"}:
+        # Find first whole-word occurrence of any boolean label.
+        m = re.search(r"\b(true|false|yes|no)\b", output_clean.lower())
+        if m is None:
             return MatchType.NONE
-        if len(ints) == 1:
-            return MatchType.CONTAINED
-        low = first_line.lower()
-        if ("=" in first_line) or ("answer" in low) or (" is " in low):
-            return MatchType.CONTAINED
+        first_bool = str(m.group(1)).lower()
+        return MatchType.CONTAINED if first_bool == exp_low else MatchType.NONE
+
+    # Multi-attempt / listy outputs: for "mapping" style tasks (often `->`) and other
+    # multi-line generations, only score the FIRST answer line. This prevents models
+    # from "spraying" many candidates until the expected substring appears somewhere
+    # later (which would be misleadingly marked CONTAINED).
+    #
+    # Heuristic: if the model emitted multiple non-empty lines OR used `->` and has
+    # multiple lines, treat it as multi-attempt and only consider the first line.
+    lines = [ln.strip() for ln in output_clean.splitlines() if ln.strip()]
+    if len(lines) >= 2 or (("->" in output_clean) and len(lines) >= 1 and ("\n" in output_clean)):
+        first = lines[0] if lines else ""
+        candidate = first
+        if "->" in first:
+            # Prefer the first "answer" region after the arrow.
+            rhs = first.split("->", 1)[1].strip()
+            if rhs:
+                candidate = rhs
+        # Exact match on the candidate.
+        if candidate.strip() == expected_clean:
+            return MatchType.EXACT
+        # Contained match on the candidate (token-boundary for short expected).
+        if len(expected_clean) <= 3:
+            pat = r"(?:^|[\s\[\(\{,;:])" + re.escape(expected_clean) + r"(?:[\s\]\)\},;:.]|$)"
+            if re.search(pat, candidate):
+                return MatchType.CONTAINED
+            if candidate.startswith(expected_clean) and (
+                len(candidate) == len(expected_clean) or not candidate[len(expected_clean)].isalnum()
+            ):
+                return MatchType.CONTAINED
+        else:
+            if expected_clean in candidate:
+                return MatchType.CONTAINED
+
+        # Optional "presence-contained" fallback (explicitly enabled per test):
+        # Award soft credit if the expected answer appears anywhere in the output,
+        # but ONLY when the expected answer is not already present verbatim in the prompt.
+        #
+        # This is useful for undertrained base LMs on certain pattern-learning tasks
+        # where the model may repeat structure and include the right answer later.
+        # It is OFF by default and must be enabled per-test to avoid breaking
+        # adversarial/noise/password tasks where "spraying" is common.
+        if allow_presence_contained and expected_clean and (expected_clean not in prompt_clean):
+            # Reuse the same "controlled leeway" rules as the normal contained checks:
+            # - numeric: require digit-boundary match
+            # - short strings: require token boundary
+            # - otherwise: substring match
+            if re.fullmatch(r"[+-]?\d+", expected_clean):
+                pat = r"(?<!\d)" + re.escape(expected_clean) + r"(?!\d)"
+                if re.search(pat, output_clean):
+                    return MatchType.CONTAINED
+            elif len(expected_clean) <= 3:
+                pat = r"(?:^|[\s\[\(\{,;:])" + re.escape(expected_clean) + r"(?:[\s\]\)\},;:.]|$)"
+                if re.search(pat, output_clean):
+                    return MatchType.CONTAINED
+            else:
+                if expected_clean in output_clean:
+                    return MatchType.CONTAINED
         return MatchType.NONE
+
+    # CONTAINED: Expected appears with controlled leeway.
+    # For numeric expected values, avoid degenerate counting/list outputs like "1 2 3 ... 8",
+    # but allow structured contexts like "400 -> 400" or "2 + 2 = 4".
+    if re.fullmatch(r"[+-]?\d+", expected_clean):
+        # First, require a token-boundary match somewhere in the output.
+        # This avoids accepting e.g. expected=8 matching "18" or "800".
+        pat = r"(?<!\d)" + re.escape(expected_clean) + r"(?!\d)"
+        matches = list(re.finditer(pat, output_clean))
+        if not matches:
+            return MatchType.NONE
+
+        out_len = len(output_clean)
+        exp_len = max(1, len(expected_clean))
+
+        # If the output is very long relative to the expected answer and the *last*
+        # match sits near the end, treat it as likely "buried" / low-signal.
+        # This catches cases like: "... lots of stuff ... 8" where the model only
+        # eventually emits the right number.
+        #
+        # Guardrail: don't apply this to short, well-formed explanations like
+        # "2 + 2 = 4" or "the answer is 8".
+        long_ratio = 8  # heuristic
+        tail_frac = 0.25  # last 25% of output counts as "at the end"
+        min_long_chars = 40
+        if (out_len >= min_long_chars) and (out_len >= int(long_ratio * exp_len)):
+            last = matches[-1]
+            if last.start() >= int(out_len * (1.0 - tail_frac)):
+                return MatchType.NONE
+
+        # Reject obvious counting/list outputs that include many integers but no
+        # structure suggesting an answer (equation/arrow/answer statement).
+        # Example to reject: "1 2 3 4 5 6 7 8 9 10 11 12"
+        low = first_line.lower()
+        ints = re.findall(r"[+-]?\d+", first_line)
+        has_answer_cue = ("=" in first_line) or ("->" in first_line) or ("answer" in low) or (" is " in low)
+        if (len(ints) >= 4) and (not has_answer_cue):
+            return MatchType.NONE
+
+        # Otherwise, treat as contained.
+        # This includes structured outputs like "400 -> 400" and equation-like lines.
+        if output_clean.startswith(expected_clean) or ("->" in first_line) or ("=" in first_line) or ("answer" in low) or (" is " in low):
+            return MatchType.CONTAINED
+        return MatchType.CONTAINED
 
     # For short non-numeric expected values (<=3 chars), require token boundary.
     if len(expected_clean) <= 3:
@@ -323,15 +427,29 @@ class WeightedScorer:
 
     def __init__(self, baseline_name: str):
         self.baseline_name = baseline_name
-        self.tests: dict[str, dict[str, Any]] = {}  # {test_id: {expected, category}}
+        self.tests: dict[str, dict[str, Any]] = {}  # {test_id: {expected, category, prompt, metadata}}
         self.model_outputs: dict[str, dict[str, str]] = {}  # {model: {test_id: output}}
         self.baseline_matches: dict[str, MatchType] = {}  # {test_id: match_type}
 
-    def add_test(self, test_id: str, expected: str, category: str = "") -> None:
-        """Register a test case."""
+    def add_test(
+        self,
+        test_id: str,
+        expected: str,
+        category: str = "",
+        prompt: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Register a test case.
+
+        Note: `prompt`/`metadata` are accepted for API compatibility with
+        `BehavioralScorer` call sites; weighted scoring itself only needs
+        `expected` and (optionally) `category`.
+        """
         self.tests[test_id] = {
             "expected": str(expected),
             "category": category,
+            "prompt": str(prompt or ""),
+            "metadata": metadata or {},
         }
 
     def add_output(self, test_id: str, model_name: str, output: str) -> None:
@@ -346,7 +464,14 @@ class WeightedScorer:
         # If this is baseline, compute match type
         if model_name == self.baseline_name:
             expected = self.tests[test_id]["expected"]
-            self.baseline_matches[test_id] = classify_match_type(output, expected)
+            prompt = self.tests[test_id].get("prompt", "")
+            meta = self.tests[test_id].get("metadata", {}) or {}
+            self.baseline_matches[test_id] = classify_match_type(
+                output,
+                expected,
+                prompt=prompt,
+                allow_presence_contained=bool(meta.get("allow_presence_contained", False)),
+            )
 
     def compute_weighted_scores(self, model_name: str) -> list[WeightedTestScore]:
         """Compute weighted scores for a model vs baseline."""
@@ -355,11 +480,18 @@ class WeightedScorer:
         for test_id, test_info in self.tests.items():
             expected = test_info["expected"]
             category = test_info.get("category", "")
+            prompt = test_info.get("prompt", "")
+            meta = test_info.get("metadata", {}) or {}
 
             model_output = self.model_outputs.get(model_name, {}).get(test_id, "")
             baseline_output = self.model_outputs.get(self.baseline_name, {}).get(test_id, "")
 
-            model_match = classify_match_type(model_output, expected)
+            model_match = classify_match_type(
+                model_output,
+                expected,
+                prompt=prompt,
+                allow_presence_contained=bool(meta.get("allow_presence_contained", False)),
+            )
             baseline_match = self.baseline_matches.get(test_id, MatchType.NONE)
 
             raw_score = MATCH_SCORES[model_match]
@@ -385,8 +517,22 @@ class WeightedScorer:
 
         return scores
 
-    def get_model_summary(self, model_name: str) -> WeightedModelSummary:
-        """Get aggregated summary for a model."""
+    def get_model_summary(
+        self,
+        model_name: str,
+        baseline_name: str | None = None,
+    ) -> WeightedModelSummary:
+        """Get aggregated summary for a model.
+
+        The optional `baseline_name` keyword is accepted for compatibility with
+        older benchmark call sites. If provided and it disagrees with the scorer's
+        configured baseline, we raise to avoid silently producing invalid weights.
+        """
+        if baseline_name is not None and str(baseline_name) != str(self.baseline_name):
+            raise ValueError(
+                f"WeightedScorer baseline mismatch: scorer.baseline_name={self.baseline_name!r} "
+                f"but baseline_name={baseline_name!r} was requested."
+            )
         scores = self.compute_weighted_scores(model_name)
 
         n = len(scores)

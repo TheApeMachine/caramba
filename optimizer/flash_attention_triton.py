@@ -305,6 +305,9 @@ class _FlashAttentionTriton:
         return dq.to(dtype=q.dtype).reshape_as(q), dk.to(dtype=k.dtype).reshape_as(k), dv.to(dtype=v.dtype).reshape_as(v)
 
 
+_FLASH_IMPL = _FlashAttentionTriton()
+
+
 class _FlashAttnFn(torch.autograd.Function):
     @staticmethod
     def forward(  # type: ignore[override]
@@ -317,7 +320,7 @@ class _FlashAttnFn(torch.autograd.Function):
         dropout_p: float,
         seed: int,
     ) -> Tensor:
-        impl = _FlashAttentionTriton()
+        impl = _FLASH_IMPL
         out, lse, meta = impl.forward(
             q=q,
             k=k,

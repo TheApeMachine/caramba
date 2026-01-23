@@ -57,6 +57,8 @@ class SurgeryExportTrainer:
         # Runtime
         device: str = "cpu",
         dtype: str = "auto",
+        gate_init_bias: float | None = None,
+        out_proj_init_std: float | None = None,
     ) -> None:
         self.teacher_ckpt = str(teacher_ckpt)
         self.student_model = dict(student_model)
@@ -65,6 +67,8 @@ class SurgeryExportTrainer:
         self.output_dir = str(output_dir)
         self.device = torch.device(str(device))
         self.dtype = str(dtype).lower().strip()
+        self.gate_init_bias = gate_init_bias
+        self.out_proj_init_std = out_proj_init_std
 
     def run(
         self,
@@ -118,7 +122,11 @@ class SurgeryExportTrainer:
         baseline.eval()
 
         logger.info("Applying weights to surgery model (manifest attention)...")
-        AdapterStateDictTransformer.llama(dba_init=self.dba_init).apply(model=surgery, state_dict=teacher_state)
+        AdapterStateDictTransformer.llama(
+            dba_init=self.dba_init,
+            gate_init_bias=self.gate_init_bias,
+            out_proj_init_std=self.out_proj_init_std,
+        ).apply(model=surgery, state_dict=teacher_state)
         surgery.eval()
 
         # ---- Save checkpoints (raw state_dict on CPU for portability) ----

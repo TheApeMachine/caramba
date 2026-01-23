@@ -19,6 +19,9 @@ from layer.diffusion_head import (
     DiffusionNextTokenHead,
 )
 from model.embedder import Embedder
+from layer.linear import LinearLayer
+from topology.stacked import StackedTopology
+from topology.utils import activation_checkpoint, should_activation_checkpoint, unwrap_output
 
 RuntimeDiffusionConfigType = RuntimeDiffusionConfig
 
@@ -138,6 +141,39 @@ class Model(nn.Module):
             )
 
         return features @ emb.weight.t()
+
+    def forward_with_hidden(self, x: Tensor, *, ctx: object | None = None) -> tuple[Tensor, Tensor]:
+        """Return (hidden, logits) with hidden pre-output-projection when possible.
+
+        This is used by chunked CE to avoid materializing logits, while still
+        supporting explicit LM heads (LinearLayer) in the topology.
+        """
+        x = self.embedder(x)
+
+        topo = self.topology
+        if isinstance(topo, StackedTopology) and len(topo.layers) > 0:
+            last = topo.layers[-1]
+            if isinstance(last, LinearLayer):
+                h = x
+                for layer in topo.layers[:-1]:
+                    if topo.activation_checkpointing and h.requires_grad and should_activation_checkpoint(
+                        x=h, threshold_mb=topo.activation_checkpoint_threshold_mb
+                    ):
+                        layer0 = layer
+
+                        def fn(inp: Tensor, *, _layer: nn.Module = layer0, _ctx: object | None = ctx) -> Tensor:
+                            return unwrap_output(_layer(inp, ctx=_ctx))  # type: ignore[call-arg]
+
+                        h = activation_checkpoint(fn, h)
+                    else:
+                        h = unwrap_output(layer(h, ctx=ctx))  # type: ignore[call-arg]
+
+                logits = last(h, ctx=ctx)  # type: ignore[call-arg]
+                return h, logits
+
+        features = self.topology(x, ctx=ctx)  # type: ignore[call-arg]
+        logits = self._features_to_logits(features)
+        return features, logits
 
     def diffusion_loss(
         self,

@@ -129,6 +129,7 @@ targets:
   - id: latency
     config:
       type: latency
+      seed: 42
       prompt_lengths:
       - 128
       - 512
@@ -151,6 +152,7 @@ targets:
   - id: memory
     config:
       type: memory
+      seed: 42
       sequence_lengths:
       - 512
       - 1024

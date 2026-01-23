@@ -73,6 +73,18 @@ class DBASVD(DBAInitializer):
         if int(rank) >= full_rank:
             _U, S, Vh = torch.linalg.svd(A, full_matrices=False)
             return S, Vh
+
+        # For small matrices, prefer the exact, deterministic SVD.
+        #
+        # This keeps unit tests stable and avoids approximation error for the
+        # common upcycling case where projections are relatively small.
+        #
+        # For large projections (e.g. 4096x4096), full SVD is too expensive, so we
+        # fall back to a seeded randomized SVD.
+        if full_rank <= 1024 and int(A.numel()) <= 2_000_000:
+            _U, S, Vh = torch.linalg.svd(A, full_matrices=False)
+            return S, Vh
+
         _U, S, Vh = randomized_svd(A, rank=int(rank), n_iter=2, oversample=8, seed=str(seed))
         return S, Vh
 

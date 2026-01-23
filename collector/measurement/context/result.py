@@ -23,5 +23,8 @@ class ContextResult:
     model performance across different context lengths.
     """
     model_name: str
+    # Provenance for audit trails.
+    dataset: str | None = None
+    prefix_tokens: list[int] = field(default_factory=list)
     sweep: list[ContextSweepMeasurement] = field(default_factory=list)
     decode: list[ContextDecodeMeasurement] = field(default_factory=list)

@@ -22,6 +22,9 @@ from optimizer.attention import AttentionTraining
 from cache.layer import LayerKVCache
 
 
+_ATTN_TRAINING = AttentionTraining()
+
+
 class StandardAttentionLayer(AttentionBase):
     """Standard multi-head attention layer
 
@@ -32,6 +35,10 @@ class StandardAttentionLayer(AttentionBase):
     out_proj: nn.Linear
     rotary: RotaryEmbedding | None
     _scale: float | None
+    _q_dim: int
+    _kv_dim: int
+    _dropout_p: float
+    _is_causal: bool
 
     def __init__(self, config: AttentionLayerConfig) -> None:
         if config.mode == AttentionMode.DECOUPLED:
@@ -54,6 +61,10 @@ class StandardAttentionLayer(AttentionBase):
         d_model = int(config.d_model)
         attn_dim = int(config.attn_dim) if config.attn_dim else d_model
         kv_dim = int(self.n_kv_heads) * int(self.head_dim)
+        self._q_dim = int(attn_dim)
+        self._kv_dim = int(kv_dim)
+        self._dropout_p = float(config.dropout_p)
+        self._is_causal = bool(config.is_causal)
 
         # Packed QKV projection: one GEMM, then split into q/k/v.
         # This reduces kernel launches and is a common throughput win on GPUs.
@@ -124,8 +135,8 @@ class StandardAttentionLayer(AttentionBase):
         softmax-normalized similarity between queries and keys.
         """
         _B, T, _ = x.shape
-        q_dim = int(self.config.attn_dim) if self.config.attn_dim else int(self.config.d_model)
-        kv_dim = int(self.n_kv_heads) * int(self.head_dim)
+        q_dim = int(self._q_dim)
+        kv_dim = int(self._kv_dim)
         qkv = self.qkv_proj(x)
         q, k, v = qkv.split([q_dim, kv_dim, kv_dim], dim=-1)
 
@@ -154,14 +165,15 @@ class StandardAttentionLayer(AttentionBase):
             vh = vh.repeat_interleave(self.group_size, dim=1)
 
         scale = float(self._scale or 1.0)
-        self._viz.record_attention_matrix(
-            ctx=ctx,
-            layer=self,
-            q=qh,
-            k=kh,
-            scale=scale,
-            causal=bool(self.config.is_causal),
-        )
+        if ctx is not None:
+            self._viz.record_attention_matrix(
+                ctx=ctx,
+                layer=self,
+                q=qh,
+                k=kh,
+                scale=scale,
+                causal=bool(self._is_causal),
+            )
 
         # Utility-Aligned Attention (UAA) capture path:
         # record differentiable attention probabilities for selected heads/layers.
@@ -199,7 +211,7 @@ class StandardAttentionLayer(AttentionBase):
 
         q_chunk = q_chunk_override if q_chunk_override is not None else self.config.q_chunk
         local_window = local_window_override if local_window_override is not None else self.config.local_window
-        dropout_p = float(self.config.dropout_p) if self.training else 0.0
+        dropout_p = float(self._dropout_p) if self.training else 0.0
 
         use_chunked = mask is None and (q_chunk is not None or local_window is not None or cache is not None)
 
@@ -208,7 +220,7 @@ class StandardAttentionLayer(AttentionBase):
                 qh=qh,
                 kh=kh,
                 vh=vh,
-                is_causal=bool(self.config.is_causal),
+                is_causal=bool(self._is_causal),
                 scale=self._scale,
                 pos_offset=int(pos_offset),
                 cache_pos=cache_pos,
@@ -218,7 +230,7 @@ class StandardAttentionLayer(AttentionBase):
                 maybe_summarize_kv=self._maybe_summarize_kv,
             )
         else:
-            is_causal = bool(self.config.is_causal) and mask is None and int(T) > 1 and cache is None
+            is_causal = bool(self._is_causal) and mask is None and int(T) > 1 and cache is None
             if self._use_attention_training(
                 qh=qh,
                 mask=mask,
@@ -227,7 +239,7 @@ class StandardAttentionLayer(AttentionBase):
                 local_window=local_window,
                 T=int(T),
             ):
-                out = AttentionTraining().run(
+                out = _ATTN_TRAINING.run(
                     q=qh,
                     k=kh,
                     v=vh,
@@ -248,5 +260,6 @@ class StandardAttentionLayer(AttentionBase):
                 )
 
         y = self.out_proj(self._merge(out))
-        self._viz.record_activation_sample(ctx=ctx, layer=self, y=y)
+        if ctx is not None:
+            self._viz.record_activation_sample(ctx=ctx, layer=self, y=y)
         return y, cache
