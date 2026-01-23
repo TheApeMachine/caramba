@@ -50,8 +50,8 @@ vars:
   sem8_attn_dim: 1280
 
   # --- Runtime ---
-  device: mps
-  dtype: float16
+  device: cuda
+  dtype: bfloat16
 
 # =============================================================================
 # YAML ANCHORS - Shared model definitions
@@ -236,94 +236,49 @@ x-multi-benchmark-suite: &multi_benchmark_suite
       valid_vocab_size: 50257
     models: [baseline, sem8, gated_sem8]
 
-  - id: ppl_fineweb
+  - id: latency_cached
     realtime: false
     config:
-      type: perplexity
-      dataset: ${dataset_path}
-      block_size: ${block_size}
-      batch_size: 2
-      # Secondary run kept identical for now (same budget) to avoid duplicating
-      # two different token-budgets under the same benchmark id.
-      num_batches: 5000
-      # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
-      # Slice logits to this size for fair perplexity.
+      type: latency
+      seed: 42
+      prompt_lengths: [128, 512, 1024, 2048, 4096]
+      generation_lengths: [128]
+      batch_sizes: [1]
+      warmup_runs: 2
+      timed_runs: 5
+      use_cache: true
+      cache_kind: fp16
+      # Keep token generation in the real tokenizer vocab for comparable inputs.
       valid_vocab_size: 50257
     models: [baseline, sem8, gated_sem8]
 
-  - id: ppl_fineweb
+  - id: latency_long_context
     realtime: false
     config:
-      type: perplexity
-      dataset: ${dataset_path}
-      block_size: ${block_size}
-      batch_size: 4
-      # Secondary run kept identical for now (same budget) to avoid duplicating
-      # two different token-budgets under the same benchmark id.
-      num_batches: 5000
-      # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
-      # Slice logits to this size for fair perplexity.
+      type: latency
+      seed: 42
+      prompt_lengths: [2048, 4096, 8192]
+      generation_lengths: [64]
+      batch_sizes: [1]
+      warmup_runs: 1
+      timed_runs: 3
+      use_cache: true
+      cache_kind: fp16
       valid_vocab_size: 50257
     models: [baseline, sem8, gated_sem8]
 
-  - id: ppl_fineweb
+  - id: memory_kv
     realtime: false
     config:
-      type: perplexity
-      dataset: ${dataset_path}
-      block_size: ${block_size}
-      batch_size: 8
-      # Secondary run kept identical for now (same budget) to avoid duplicating
-      # two different token-budgets under the same benchmark id.
-      num_batches: 5000
-      # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
-      # Slice logits to this size for fair perplexity.
+      type: memory
+      seed: 42
+      sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
+      batch_sizes: [1]
+      measure_peak: true
+      measure_kvcache: true
+      quantization_modes: [fp16]
       valid_vocab_size: 50257
     models: [baseline, sem8, gated_sem8]
-
-  # - id: latency_cached
-  #   realtime: false
-  #   config:
-  #     type: latency
-  #     seed: 42
-  #     prompt_lengths: [128, 512, 1024, 2048, 4096]
-  #     generation_lengths: [128]
-  #     batch_sizes: [1]
-  #     warmup_runs: 2
-  #     timed_runs: 5
-  #     use_cache: true
-  #     cache_kind: fp16
-  #     # Keep token generation in the real tokenizer vocab for comparable inputs.
-  #     valid_vocab_size: 50257
-  #   models: [baseline, sem8, gated_sem8]
-
-  # - id: latency_long_context
-  #   realtime: false
-  #   config:
-  #     type: latency
-  #     seed: 42
-  #     prompt_lengths: [2048, 4096, 8192]
-  #     generation_lengths: [64]
-  #     batch_sizes: [1]
-  #     warmup_runs: 1
-  #     timed_runs: 3
-  #     use_cache: true
-  #     cache_kind: fp16
-  #     valid_vocab_size: 50257
-  #   models: [baseline, sem8, gated_sem8]
-
-  # - id: memory_kv
-  #   realtime: false
-  #   config:
-  #     type: memory
-  #     seed: 42
-  #     sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
-  #     batch_sizes: [1]
-  #     measure_peak: true
-  #     measure_kvcache: true
-  #     quantization_modes: [fp16]
-  #     valid_vocab_size: 50257
-  #   models: [baseline, sem8, gated_sem8]
 
   - id: behavior_sanity
     realtime: false
