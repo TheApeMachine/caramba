@@ -166,6 +166,18 @@ class DecoupledDecode:
         k_geo_all = cache.k_geo.buf.narrow(1, 0, S)  # (B, S, n_heads * geo_dim)
         v_all = cache.v.buf.narrow(1, 0, S)  # (B, S, n_heads * v_dim)
 
+        # PyTorch SDPA requires query/key/value dtypes to match. Our decode fallback
+        # is typically used when KV caches are fp16 (for memory/bandwidth), while
+        # the model weights/queries may be bf16 (common on A100 when dtype='auto').
+        # Cast cached K/V to the query dtype for correctness.
+        q_dtype = q_sem.dtype
+        if k_sem_all.dtype != q_dtype:
+            k_sem_all = k_sem_all.to(dtype=q_dtype)
+        if k_geo_all.dtype != q_dtype:
+            k_geo_all = k_geo_all.to(dtype=q_dtype)
+        if v_all.dtype != q_dtype:
+            v_all = v_all.to(dtype=q_dtype)
+
         B = q_sem.size(0)
         n_heads = q_sem.size(1)
         sem_head_dim = q_sem.size(-1)
