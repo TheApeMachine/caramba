@@ -422,7 +422,7 @@ class BenchmarkBehaviorInstruct:
             prompt_ids = self.tokenizer.encode(prompt)
             outputs_by_model: dict[str, str] = {}
             for model_name, model in models.items():
-                out = self._generate(model=model, prompt_ids=prompt_ids)
+                out, _meta = self._generate(model=model, prompt_ids=prompt_ids, test=test)
                 scorer.add_output(test.id, str(model_name), out)
                 outputs_by_model[str(model_name)] = out
 
@@ -539,7 +539,7 @@ class BenchmarkBehaviorInstruct:
                         logger.info(f"  [{i+1}/{len(tests)}] {test.id}")
                     prompt = _to_user_assistant_prompt(test.prompt)
                     prompt_ids = self.tokenizer.encode(prompt)
-                    out = self._generate(model=model, prompt_ids=prompt_ids)
+                    out, _meta = self._generate(model=model, prompt_ids=prompt_ids, test=test)
                     scorer.add_output(test.id, str(model_name), out)
                     if transcript_path is not None:
                         transcript_lines.append(f"--- {test.id} ---")

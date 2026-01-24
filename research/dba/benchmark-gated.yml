@@ -222,94 +222,94 @@ x-dummy-run: &dummy_run
 # Multi-checkpoint benchmark suite for N-way comparison
 # =============================================================================
 x-multi-benchmark-suite: &multi_benchmark_suite
-  # - id: ppl_fineweb
-  #   realtime: false
-  #   config:
-  #     type: perplexity
-  #     dataset: ${dataset_path}
-  #     block_size: ${block_size}
-  #     batch_size: 1
-  #     # Token budget: num_batches * block_size (batch_size=1).
-  #     # 5000 * 2048 ≈ 10.24M tokens.
-  #     num_batches: 5000
-  #     # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
-  #     # Slice logits to this size for fair perplexity.
-  #     valid_vocab_size: 50257
-  #   models: [baseline, sem8, gated_sem8]
+  - id: ppl_fineweb
+    realtime: false
+    config:
+      type: perplexity
+      dataset: ${dataset_path}
+      block_size: ${block_size}
+      batch_size: 1
+      # Token budget: num_batches * block_size (batch_size=1).
+      # 5000 * 2048 ≈ 10.24M tokens.
+      num_batches: 5000
+      # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
+      # Slice logits to this size for fair perplexity.
+      valid_vocab_size: 50257
+    models: [baseline, sem8, gated_sem8]
 
-  # - id: latency_cached
-  #   realtime: false
-  #   config:
-  #     type: latency
-  #     seed: 42
-  #     prompt_lengths: [128, 512, 1024, 2048, 4096]
-  #     generation_lengths: [128]
-  #     batch_sizes: [1]
-  #     warmup_runs: 2
-  #     timed_runs: 5
-  #     use_cache: true
-  #     cache_kind: fp16
-  #     # Keep token generation in the real tokenizer vocab for comparable inputs.
-  #     valid_vocab_size: 50257
-  #   models: [baseline, sem8, gated_sem8]
+  - id: latency_cached
+    realtime: false
+    config:
+      type: latency
+      seed: 42
+      prompt_lengths: [128, 512, 1024, 2048, 4096]
+      generation_lengths: [128]
+      batch_sizes: [1]
+      warmup_runs: 2
+      timed_runs: 5
+      use_cache: true
+      cache_kind: fp16
+      # Keep token generation in the real tokenizer vocab for comparable inputs.
+      valid_vocab_size: 50257
+    models: [baseline, sem8, gated_sem8]
 
-  # - id: latency_long_context
-  #   realtime: false
-  #   config:
-  #     type: latency
-  #     seed: 42
-  #     prompt_lengths: [2048, 4096, 8192]
-  #     generation_lengths: [64]
-  #     batch_sizes: [1]
-  #     warmup_runs: 1
-  #     timed_runs: 3
-  #     use_cache: true
-  #     cache_kind: fp16
-  #     valid_vocab_size: 50257
-  #   models: [baseline, sem8, gated_sem8]
+  - id: latency_long_context
+    realtime: false
+    config:
+      type: latency
+      seed: 42
+      prompt_lengths: [2048, 4096, 8192]
+      generation_lengths: [64]
+      batch_sizes: [1]
+      warmup_runs: 1
+      timed_runs: 3
+      use_cache: true
+      cache_kind: fp16
+      valid_vocab_size: 50257
+    models: [baseline, sem8, gated_sem8]
 
-  # - id: memory_kv
-  #   realtime: false
-  #   config:
-  #     type: memory
-  #     seed: 42
-  #     sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
-  #     batch_sizes: [1]
-  #     measure_peak: true
-  #     measure_kvcache: true
-  #     quantization_modes: [fp16]
-  #     valid_vocab_size: 50257
-  #   models: [baseline, sem8, gated_sem8]
+  - id: memory_kv
+    realtime: false
+    config:
+      type: memory
+      seed: 42
+      sequence_lengths: [512, 1024, 2048, 4096, 8192, 16384]
+      batch_sizes: [1]
+      measure_peak: true
+      measure_kvcache: true
+      quantization_modes: [fp16]
+      valid_vocab_size: 50257
+    models: [baseline, sem8, gated_sem8]
 
-  # - id: behavior_sanity
-  #   realtime: false
-  #   config:
-  #     type: behavior
-  #     tokenizer:
-  #       type: tiktoken
-  #       encoding: gpt2
-  #     seed: 42
-  #     suite_file: benchmark/behavior/cases.yml
-  #     max_new_tokens: 32
-  #     context_window: 2048
-  #     dump_attention: true
-  #     dump_attention_paper_dir: research/dba/figs/attention
-  #     dump_attention_paper_tag: dba_100k_gated
-  #   models: [baseline, sem8, gated_sem8]
+  - id: behavior_sanity
+    realtime: false
+    config:
+      type: behavior
+      tokenizer:
+        type: tiktoken
+        encoding: gpt2
+      seed: 42
+      suite_file: benchmark/behavior/cases.yml
+      max_new_tokens: 32
+      context_window: 2048
+      dump_attention: true
+      dump_attention_paper_dir: research/dba/figs/attention
+      dump_attention_paper_tag: dba_100k_gated
+    models: [baseline, sem8, gated_sem8]
 
-  # - id: downstream_accuracy
-  #   realtime: false
-  #   config:
-  #     type: accuracy
-  #     tasks: [winogrande, arc_easy, boolq, hellaswag, copa, piqa, openbookqa]
-  #     tokenizer:
-  #       type: tiktoken
-  #       encoding: gpt2
-  #     seed: 42
-  #     context_window: 2048
-  #     stream_live: true
-  #     stream_every: 10
-  #   models: [baseline, sem8, gated_sem8]
+  - id: downstream_accuracy
+    realtime: false
+    config:
+      type: accuracy
+      tasks: [winogrande, arc_easy, boolq, hellaswag, copa, piqa, openbookqa]
+      tokenizer:
+        type: tiktoken
+        encoding: gpt2
+      seed: 42
+      context_window: 2048
+      stream_live: true
+      stream_every: 10
+    models: [baseline, sem8, gated_sem8]
 
   - id: adversarial_repeat_penalty
     realtime: false
@@ -335,22 +335,22 @@ x-multi-benchmark-suite: &multi_benchmark_suite
       degeneration_metrics_file: behavior_instruct_repeat_penalty_degeneration.csv
     models: [baseline, sem8, gated_sem8]
 
-  # - id: context_sweep
-  #   realtime: false
-  #   config:
-  #     type: context
-  #     seed: 42
-  #     dataset: ${dataset_path}
-  #     context_lengths: [2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072]
-  #     chunk_size: 1024
-  #     max_mask_elems: 32000000
-  #     batch_size: 1
-  #     decode_len: 128
-  #     decode_warmup: 8
-  #     cache_kind: fp16
-  #     # Slice logits / validate dataset ids against tokenizer vocab.
-  #     valid_vocab_size: 50257
-  #   models: [baseline, sem8, gated_sem8]
+  - id: context_sweep
+    realtime: false
+    config:
+      type: context
+      seed: 42
+      dataset: ${dataset_path}
+      context_lengths: [2048, 4096, 8192, 16384, 32768, 65536, 98304, 131072]
+      chunk_size: 1024
+      max_mask_elems: 32000000
+      batch_size: 1
+      decode_len: 128
+      decode_warmup: 8
+      cache_kind: fp16
+      # Slice logits / validate dataset ids against tokenizer vocab.
+      valid_vocab_size: 50257
+    models: [baseline, sem8, gated_sem8]
 # =============================================================================
 # TARGETS
 # =============================================================================
