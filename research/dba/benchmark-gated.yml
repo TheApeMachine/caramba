@@ -228,10 +228,10 @@ x-multi-benchmark-suite: &multi_benchmark_suite
       type: perplexity
       dataset: ${dataset_path}
       block_size: ${block_size}
-      batch_size: 1
+      batch_size: 4
       # Token budget: num_batches * block_size (batch_size=1).
       # 5000 * 2048 ≈ 10.24M tokens.
-      num_batches: 5000
+      num_batches: 4000
       # GPT-2 tokenizer vocab is 50257; Caramba models often pad to 50304.
       # Slice logits to this size for fair perplexity.
       valid_vocab_size: 50257
