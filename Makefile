@@ -122,6 +122,10 @@ benchmark_quickness:
 	. .venv/bin/activate \
 	&& python3.12 -m caramba research/dba/quickness.yml	
 
+benchmark_opik:
+	. .venv/bin/activate \
+	&& python3.12 scripts/bench.py	
+
 benchmark:
 	@echo "Running behavioral benchmark..."
 	@echo "NOTE: For mock testing, use 'make benchmark-mock' instead"

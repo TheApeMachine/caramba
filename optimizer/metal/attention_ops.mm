@@ -11,6 +11,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#include <dispatch/dispatch.h>
 
 namespace fs = std::filesystem;
 
@@ -225,27 +226,33 @@ std::vector<torch::Tensor> attn_train_fwd(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "attn_train_fwd: failed to get current MPS stream");
-  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
-  TORCH_CHECK(encoder != nil, "attn_train_fwd: failed to get MTLComputeCommandEncoder from MPS stream");
+  // IMPORTANT: MPSStream's Metal objects are synchronized on its serial queue.
+  // Interacting with the command buffer/encoder off-queue can trigger Metal asserts.
+  dispatch_sync(stream->queue(), ^{
+    id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+    TORCH_CHECK(encoder != nil, "attn_train_fwd: failed to get MTLComputeCommandEncoder from MPS stream");
 
-  [encoder setComputePipelineState:pipeline];
+    [encoder setComputePipelineState:pipeline];
 
-  auto set_tensor = [&](const at::Tensor& t, int idx) {
-    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
-    TORCH_CHECK(buf != nil, "attn_train_fwd: tensor has null MTLBuffer");
-    [encoder setBuffer:buf offset:storage_offset_bytes(t) atIndex:(NSUInteger)idx];
-  };
+    auto set_tensor = [&](const at::Tensor& t, int idx) {
+      id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+      TORCH_CHECK(buf != nil, "attn_train_fwd: tensor has null MTLBuffer");
+      [encoder setBuffer:buf offset:storage_offset_bytes(t) atIndex:(NSUInteger)idx];
+    };
 
-  set_tensor(q, 0);
-  set_tensor(k, 1);
-  set_tensor(v, 2);
-  set_tensor(out, 3);
-  set_tensor(lse, 4);
-  [encoder setBytes:&p length:sizeof(AttnParams) atIndex:5];
+    set_tensor(q, 0);
+    set_tensor(k, 1);
+    set_tensor(v, 2);
+    set_tensor(out, 3);
+    set_tensor(lse, 4);
+    [encoder setBytes:&p length:sizeof(AttnParams) atIndex:5];
 
-  const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
-  const MTLSize grid = MTLSizeMake((NSUInteger)q.size(2), (NSUInteger)q.size(1), (NSUInteger)q.size(0));
-  [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+    const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+    const MTLSize grid = MTLSizeMake((NSUInteger)q.size(2), (NSUInteger)q.size(1), (NSUInteger)q.size(0));
+    [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+    stream->endKernelCoalescing();
+  });
 
   return {out, lse};
 }
@@ -289,71 +296,75 @@ std::vector<torch::Tensor> attn_train_bwd(
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "attn_train_bwd: failed to get current MPS stream");
-  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
-  TORCH_CHECK(encoder != nil, "attn_train_bwd: failed to get MTLComputeCommandEncoder from MPS stream");
+  dispatch_sync(stream->queue(), ^{
+    id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+    TORCH_CHECK(encoder != nil, "attn_train_bwd: failed to get MTLComputeCommandEncoder from MPS stream");
 
-  auto set_tensor = [&](const at::Tensor& t, int idx) {
-    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
-    TORCH_CHECK(buf != nil, "attn_train_bwd: tensor has null MTLBuffer");
-    [encoder setBuffer:buf offset:storage_offset_bytes(t) atIndex:(NSUInteger)idx];
-  };
+    auto set_tensor = [&](const at::Tensor& t, int idx) {
+      id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+      TORCH_CHECK(buf != nil, "attn_train_bwd: tensor has null MTLBuffer");
+      [encoder setBuffer:buf offset:storage_offset_bytes(t) atIndex:(NSUInteger)idx];
+    };
 
-  // 1) delta preprocess
-  {
-    id<MTLComputePipelineState> p_pre = ensure_pipeline(device, &g_bwd_pre, "attn_train_bwd_preprocess_fp16");
-    const NSUInteger simdWidth = simd_width_or_default(p_pre);
-    // See note above: simdWidth is guaranteed >= 32 (fallback), so simdgroups_per_threadgroup >= 1.
-    (void)simdWidth;
-    [encoder setComputePipelineState:p_pre];
-    set_tensor(out, 0);
-    set_tensor(grad_out, 1);
-    set_tensor(delta, 2);
-    [encoder setBytes:&p1 length:sizeof(AttnParams) atIndex:3];
-    const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
-    const MTLSize grid = MTLSizeMake((NSUInteger)q.size(2), (NSUInteger)q.size(1), (NSUInteger)q.size(0));
-    [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
-  }
+    // 1) delta preprocess
+    {
+      id<MTLComputePipelineState> p_pre = ensure_pipeline(device, &g_bwd_pre, "attn_train_bwd_preprocess_fp16");
+      const NSUInteger simdWidth = simd_width_or_default(p_pre);
+      // See note above: simdWidth is guaranteed >= 32 (fallback), so simdgroups_per_threadgroup >= 1.
+      (void)simdWidth;
+      [encoder setComputePipelineState:p_pre];
+      set_tensor(out, 0);
+      set_tensor(grad_out, 1);
+      set_tensor(delta, 2);
+      [encoder setBytes:&p1 length:sizeof(AttnParams) atIndex:3];
+      const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+      const MTLSize grid = MTLSizeMake((NSUInteger)q.size(2), (NSUInteger)q.size(1), (NSUInteger)q.size(0));
+      [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+    }
 
-  // 2) dK/dV
-  {
-    id<MTLComputePipelineState> p_dkv = ensure_pipeline(device, &g_bwd_dkv, "attn_train_bwd_dkv_fp16");
-    const NSUInteger simdWidth = simd_width_or_default(p_dkv);
-    // See note above: simdWidth is guaranteed >= 32 (fallback), so simdgroups_per_threadgroup >= 1.
-    (void)simdWidth;
-    [encoder setComputePipelineState:p_dkv];
-    set_tensor(q, 0);
-    set_tensor(k, 1);
-    set_tensor(v, 2);
-    set_tensor(grad_out, 3);
-    set_tensor(lse, 4);
-    set_tensor(delta, 5);
-    set_tensor(dk, 6);
-    set_tensor(dv, 7);
-    [encoder setBytes:&p0 length:sizeof(AttnParams) atIndex:8];
-    const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
-    const MTLSize grid = MTLSizeMake((NSUInteger)q.size(2), (NSUInteger)q.size(1), (NSUInteger)q.size(0));
-    [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
-  }
+    // 2) dK/dV
+    {
+      id<MTLComputePipelineState> p_dkv = ensure_pipeline(device, &g_bwd_dkv, "attn_train_bwd_dkv_fp16");
+      const NSUInteger simdWidth = simd_width_or_default(p_dkv);
+      // See note above: simdWidth is guaranteed >= 32 (fallback), so simdgroups_per_threadgroup >= 1.
+      (void)simdWidth;
+      [encoder setComputePipelineState:p_dkv];
+      set_tensor(q, 0);
+      set_tensor(k, 1);
+      set_tensor(v, 2);
+      set_tensor(grad_out, 3);
+      set_tensor(lse, 4);
+      set_tensor(delta, 5);
+      set_tensor(dk, 6);
+      set_tensor(dv, 7);
+      [encoder setBytes:&p0 length:sizeof(AttnParams) atIndex:8];
+      const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+      const MTLSize grid = MTLSizeMake((NSUInteger)q.size(2), (NSUInteger)q.size(1), (NSUInteger)q.size(0));
+      [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+    }
 
-  // 3) dQ
-  {
-    id<MTLComputePipelineState> p_dq = ensure_pipeline(device, &g_bwd_dq, "attn_train_bwd_dq_fp16");
-    const NSUInteger simdWidth = simd_width_or_default(p_dq);
-    // See note above: simdWidth is guaranteed >= 32 (fallback), so simdgroups_per_threadgroup >= 1.
-    (void)simdWidth;
-    [encoder setComputePipelineState:p_dq];
-    set_tensor(q, 0);
-    set_tensor(k, 1);
-    set_tensor(v, 2);
-    set_tensor(grad_out, 3);
-    set_tensor(lse, 4);
-    set_tensor(delta, 5);
-    set_tensor(dq, 6);
-    [encoder setBytes:&p0 length:sizeof(AttnParams) atIndex:7];
-    const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
-    const MTLSize grid = MTLSizeMake((NSUInteger)q.size(2), (NSUInteger)q.size(1), (NSUInteger)q.size(0));
-    [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
-  }
+    // 3) dQ
+    {
+      id<MTLComputePipelineState> p_dq = ensure_pipeline(device, &g_bwd_dq, "attn_train_bwd_dq_fp16");
+      const NSUInteger simdWidth = simd_width_or_default(p_dq);
+      // See note above: simdWidth is guaranteed >= 32 (fallback), so simdgroups_per_threadgroup >= 1.
+      (void)simdWidth;
+      [encoder setComputePipelineState:p_dq];
+      set_tensor(q, 0);
+      set_tensor(k, 1);
+      set_tensor(v, 2);
+      set_tensor(grad_out, 3);
+      set_tensor(lse, 4);
+      set_tensor(delta, 5);
+      set_tensor(dq, 6);
+      [encoder setBytes:&p0 length:sizeof(AttnParams) atIndex:7];
+      const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+      const MTLSize grid = MTLSizeMake((NSUInteger)q.size(2), (NSUInteger)q.size(1), (NSUInteger)q.size(0));
+      [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+    }
+
+    stream->endKernelCoalescing();
+  });
 
   return {dq, dk, dv};
 }

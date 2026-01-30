@@ -9,5 +9,6 @@
     "makefile.configureOnOpen": false,
     "typescript.autoClosingTags": false,
     "git.ignoreLimitWarning": true,
-    "texra.ui.showLoginBanner": false
+    "texra.ui.showLoginBanner": false,
+    "dependi.python.lockFileEnabled": true
 }

@@ -341,12 +341,33 @@ class BenchmarkBehaviorInstruct:
             int(len(prompt_ids) + int(max_new) + 8),
         )
 
+        # Tokenize stop strings (token-id suffix sequences).
+        stop_sequences: list[list[int]] = []
+        stop_token_ids: list[int] = []
+        stops = getattr(self.config, "stop", None)
+        if isinstance(stops, list):
+            for s in stops:
+                ss = str(s)
+                if not ss:
+                    continue
+                try:
+                    ids = list(self.tokenizer.encode(ss))
+                except Exception:
+                    ids = []
+                if not ids:
+                    continue
+                stop_sequences.append([int(x) for x in ids])
+                if len(ids) == 1:
+                    stop_token_ids.append(int(ids[0]))
+
         gen_cfg = GenerateConfig(
             max_new_tokens=int(max_new),
             temperature=float(temp),
             max_seq_len=int(max_seq_len),
             eos_token_id=self.tokenizer.eos_token_id,
             repetition_penalty=float(rep),
+            stop_sequences=stop_sequences,
+            stop_token_ids=stop_token_ids,
         )
 
         input_ids = torch.tensor([prompt_ids], device=self.device)
@@ -362,6 +383,14 @@ class BenchmarkBehaviorInstruct:
         eos = self.tokenizer.eos_token_id
         if eos is not None and completion_ids and int(completion_ids[-1]) == int(eos):
             completion_ids = completion_ids[:-1]
+
+        # Strip trailing stop sequences (if any) for clean scoring/transcripts.
+        if stop_sequences and completion_ids:
+            for seq in sorted(stop_sequences, key=lambda x: len(x), reverse=True):
+                k = len(seq)
+                if k > 0 and len(completion_ids) >= k and completion_ids[-k:] == seq:
+                    completion_ids = completion_ids[:-k]
+                    break
 
         return str(self.tokenizer.decode(completion_ids)), {
             "max_new_tokens": int(max_new),

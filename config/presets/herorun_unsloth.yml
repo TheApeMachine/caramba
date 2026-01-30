@@ -1,13 +1,11 @@
 version: 2
-name: herorun
+name: herorun_unsloth
 notes: >
-  Performance-optimized instruction fine-tune preset for the DBA paper models:
-  baseline (standard attention) vs decoupled bottleneck attention (DBA).
-  This runs as a *checkpoint finetune* (not scratch init) on a tokenized instruction
-  stream and is tuned for throughput on GPU/MPS.
-  
-  IMPORTANT: `trainer.standard` writes checkpoints to `runs/<target.name>/`.
-  Targets are named to match the paper-style run directory names.
+  Unsloth-backed instruction fine-tune preset for the DBA paper models.
+  This variant routes training through trainer.finetune_unsloth and expects
+  Hugging Face model ids/paths for each target (via trainer.config.hf_model).
+  The data/system blocks mirror the original herorun preset for parity, but
+  the Unsloth trainer loads datasets directly from Hugging Face.
 
 defaults:
   data:
@@ -30,18 +28,15 @@ vars:
   # Keep as a plain path; generation is intentionally not attempted from manifest.
   # dataset: HuggingFaceFW/fineweb
   # tokens: 20b
-  # Note: dataset_path is not used by trainer.finetune_minimal (it loads datasets from HuggingFace),
+  # Note: dataset_path is not used by trainer.finetune_unsloth (it loads datasets from HuggingFace),
   # but it's still required for manifest variable resolution in data sections
-  dataset_path: dummy.npy  # Placeholder - not actually used by finetune_minimal trainer
+  dataset_path: dummy.npy  # Placeholder - not actually used by finetune_unsloth trainer
 
   model1: research/dba/100k_checkpoints/baseline/a100_fw20b_l22_baseline_s42_100k.pt
   model2: research/dba/100k_checkpoints/sem8geo32v40/a100_fw20b_l22_dba_s42_100k.pt
   model3: research/dba/100k_checkpoints/sem8geo32v40_gated/a100_fw20b_l22_dba_gated_s42_100k.pt
 
   block_size: 2048
-
-  # Reduce buffer to save RAM (10k is overkill for 2048-token sequences)
-  finetune_streaming_shuffle_buffer: 1000
 
   # ----- Model (Llama-1B-ish) -----
   d_model: 2048
@@ -60,32 +55,32 @@ vars:
 
   # ----- Training -----
   # Instruction finetune typically needs a small LR + enough steps to "learn EOS".
-  steps: 2000
+  steps: 5000
   seed: 42
   device: mps
   # Use explicit dtype to avoid "auto" differences across backends.
   # For throughput: prefer fp16 weights on MPS/CUDA (use bfloat16 on A100).
-  dtype: float32
+  dtype: float16
   # Prefer larger microbatches over high grad accumulation for better utilization.
-  batch_size: 2
+  batch_size: 1
   grad_accum: 1
   # Feed the accelerator: parallelize mmap slicing + tensor materialization.
-  num_workers: 4
-  prefetch_factor: 2
+  num_workers: 0
+  prefetch_factor: 1
   pin_memory: false
   # SFT-style LR (start small; these checkpoints are already trained).
   lr: 1.0e-5
   lr_decoupled: 1.0e-5
   weight_decay: 0.0
-  optimizer: lion_32bit
-  fused_optimizer: false
+  optimizer: adamw
+  fused_optimizer: true
   scheduler: cosine
-  warmup_steps: 200
+  warmup_steps: 500
   save_every: 500
-  compile_model: false
+  compile_model: true
   compile_mode: default
   use_amp: false
-  amp_dtype: float32
+  amp_dtype: float16
   # MPS-only speed knob for CE; can be disabled if unstable.
   mps_fast_ce: true
   mps_allow_fp16_autocast_without_gradscaler: false
@@ -155,7 +150,23 @@ targets:
                 d_out: ${vocab_size}
                 bias: false
     objective: objective.next_token_ce
-    trainer: trainer.finetune_minimal
+    trainer:
+      ref: trainer.finetune_unsloth
+      config:
+        hf_model: ${model1}
+        trust_remote_code: false
+        full_finetuning: false
+        load_in_4bit: false
+        load_in_8bit: false
+        load_in_16bit: false
+        allow_non_cuda_quantization: false
+        lora:
+          enabled: true
+          r: 8
+          alpha: 16
+          dropout: 0.0
+          bias: none
+          use_gradient_checkpointing: unsloth
     runs:
       - id: train
         mode: train
@@ -171,23 +182,7 @@ targets:
           device: ${device}
           dtype: ${dtype}
           gradient_accumulation_steps: ${grad_accum}
-          append_eos: true
-          finetune_streaming: true
-          finetune_streaming_shuffle_buffer: ${finetune_streaming_shuffle_buffer}
-          finetune_streaming_eval_samples: 1000
-          # Optional dataset mix (example):
-          finetune_dataset_ids:
-            - "HuggingFaceFW/fineweb-edu::sample-10BT"
-            - "OpenAssistant/oasst1"
-          finetune_dataset_probs: [0.9, 0.1]
-          peft:
-            enabled: true
-            type: lora
-            r: 8
-            alpha: 16
-            dropout: 0.05
-            bias: none
-          # Explicit finetune source checkpoint.
+          # Explicit finetune source checkpoint (HF model id/path for Unsloth).
           load_checkpoint: ${model1}
           # DataLoader performance knobs.
           num_workers: ${num_workers}
@@ -293,7 +288,23 @@ targets:
                 d_out: ${vocab_size}
                 bias: false
     objective: objective.next_token_ce
-    trainer: trainer.finetune_minimal
+    trainer:
+      ref: trainer.finetune_unsloth
+      config:
+        hf_model: ${model2}
+        trust_remote_code: false
+        full_finetuning: false
+        load_in_4bit: false
+        load_in_8bit: false
+        load_in_16bit: false
+        allow_non_cuda_quantization: false
+        lora:
+          enabled: true
+          r: 8
+          alpha: 16
+          dropout: 0.0
+          bias: none
+          use_gradient_checkpointing: unsloth
     runs:
       - id: train
         mode: train
@@ -309,21 +320,6 @@ targets:
           device: ${device}
           dtype: ${dtype}
           gradient_accumulation_steps: ${grad_accum}
-          append_eos: true
-          finetune_streaming: true
-          finetune_streaming_shuffle_buffer: ${finetune_streaming_shuffle_buffer}
-          finetune_streaming_eval_samples: 1000
-          finetune_dataset_ids:
-            - "HuggingFaceFW/fineweb-edu::sample-10BT"
-            - "OpenAssistant/oasst1"
-          finetune_dataset_probs: [0.9, 0.1]
-          peft:
-            enabled: true
-            type: lora
-            r: 8
-            alpha: 16
-            dropout: 0.05
-            bias: none
           load_checkpoint: ${model2}
           num_workers: ${num_workers}
           prefetch_factor: ${prefetch_factor}
@@ -424,7 +420,23 @@ targets:
                 bias: false
 
     objective: objective.next_token_ce
-    trainer: trainer.finetune_minimal
+    trainer:
+      ref: trainer.finetune_unsloth
+      config:
+        hf_model: ${model3}
+        trust_remote_code: false
+        full_finetuning: false
+        load_in_4bit: false
+        load_in_8bit: false
+        load_in_16bit: false
+        allow_non_cuda_quantization: false
+        lora:
+          enabled: true
+          r: 8
+          alpha: 16
+          dropout: 0.0
+          bias: none
+          use_gradient_checkpointing: unsloth
     runs:
       - id: train
         mode: train
@@ -440,21 +452,6 @@ targets:
           device: ${device}
           dtype: ${dtype}
           gradient_accumulation_steps: ${grad_accum}
-          append_eos: true
-          finetune_streaming: true
-          finetune_streaming_shuffle_buffer: ${finetune_streaming_shuffle_buffer}
-          finetune_streaming_eval_samples: 1000
-          finetune_dataset_ids:
-            - "HuggingFaceFW/fineweb-edu::sample-10BT"
-            - "OpenAssistant/oasst1"
-          finetune_dataset_probs: [0.9, 0.1]
-          peft:
-            enabled: true
-            type: lora
-            r: 8
-            alpha: 16
-            dropout: 0.05
-            bias: none
           load_checkpoint: ${model3}
           num_workers: ${num_workers}
           prefetch_factor: ${prefetch_factor}

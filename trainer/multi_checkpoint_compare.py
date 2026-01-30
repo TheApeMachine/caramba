@@ -10,6 +10,7 @@ reproducible N-way comparison run.
 from __future__ import annotations
 
 from pathlib import Path
+import json
 from typing import Any
 
 import torch
@@ -18,10 +19,31 @@ from torch import nn
 from carmath import weight_dtype
 from console import logger
 from model import Model
+from adapter.model import CompatibleWrapper, HFConfigShim
+from model.prompt_adapter import PromptTuningAdapter, load_prompt_embeddings
 from trainer.checkpoint_compare import (
     _lower_and_validate_model_config,
     _safe_load_checkpoint,
 )
+from config.layer import AttentionLayerConfig
+from config.embedder import TokenEmbedderConfig
+from config.topology import (
+    BranchingTopologyConfig,
+    CyclicTopologyConfig,
+    NestedTopologyConfig,
+    ParallelTopologyConfig,
+    RecurrentTopologyConfig,
+    ResidualTopologyConfig,
+    SequentialTopologyConfig,
+    StackedTopologyConfig,
+    GraphTopologyConfig,
+)
+
+try:
+    from peft import PeftConfig, PeftModel  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover - optional dependency
+    PeftConfig = None  # type: ignore[assignment]
+    PeftModel = None  # type: ignore[assignment]
 
 
 class MultiCheckpointCompareTrainer:
@@ -138,6 +160,79 @@ class MultiCheckpointCompareTrainer:
                 ),
             }
 
+        def _extract_model_dims(cfg) -> dict[str, int]:
+            def walk(node: object) -> tuple[int, int | None, int | None]:
+                if isinstance(node, AttentionLayerConfig):
+                    return 1, int(node.n_heads), int(node.d_model)
+                if isinstance(
+                    node,
+                    (
+                        NestedTopologyConfig,
+                        StackedTopologyConfig,
+                        ResidualTopologyConfig,
+                        SequentialTopologyConfig,
+                        ParallelTopologyConfig,
+                        BranchingTopologyConfig,
+                        CyclicTopologyConfig,
+                        RecurrentTopologyConfig,
+                    ),
+                ):
+                    total = 0
+                    heads: int | None = None
+                    d_model: int | None = None
+                    for layer in node.layers:
+                        count, layer_heads, layer_d_model = walk(layer)
+                        total += count
+                        if heads is None and layer_heads is not None:
+                            heads = layer_heads
+                        if d_model is None and layer_d_model is not None:
+                            d_model = layer_d_model
+                    total *= int(node.repeat)
+                    return total, heads, d_model
+                if isinstance(node, GraphTopologyConfig):
+                    return 0, None, None
+                return 0, None, None
+
+            attn_layers, attn_heads, attn_d_model = walk(cfg.topology)
+            hidden_size = None
+            vocab_size = None
+            if isinstance(cfg.embedder, TokenEmbedderConfig):
+                hidden_size = int(cfg.embedder.d_model)
+                vocab_size = int(cfg.embedder.vocab_size)
+            if hidden_size is None:
+                hidden_size = attn_d_model
+            if vocab_size is None and cfg.vocab_size is not None:
+                vocab_size = int(cfg.vocab_size)
+            if hidden_size is None or vocab_size is None:
+                raise ValueError("Could not infer hidden_size/vocab_size from model config")
+            num_hidden_layers = int(attn_layers) if attn_layers > 0 else int(getattr(cfg.weight_init, "n_layers", 1))
+            num_attention_heads = int(attn_heads) if attn_heads is not None else max(1, hidden_size // 64)
+            return {
+                "hidden_size": int(hidden_size),
+                "num_attention_heads": int(num_attention_heads),
+                "num_hidden_layers": int(num_hidden_layers),
+                "vocab_size": int(vocab_size),
+            }
+
+        def _resolve_base_checkpoint(spec: dict[str, Any], adapter_path: Path) -> Path | None:
+            base_ckpt = spec.get("base_checkpoint")
+            if isinstance(base_ckpt, str) and base_ckpt:
+                return Path(base_ckpt)
+            cfg_path = adapter_path.parent / "adapter_config.json"
+            if cfg_path.exists():
+                try:
+                    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                    base = cfg.get("base_model_name_or_path")
+                    if isinstance(base, str) and base:
+                        return Path(base)
+                except Exception:
+                    pass
+            for name in ("model.safetensors", "pytorch_model.bin", "model.pt"):
+                cand = adapter_path.parent / name
+                if cand.exists():
+                    return cand
+            return None
+
         models: dict[str, nn.Module] = {}
 
         for spec in self.checkpoint_specs:
@@ -159,10 +254,27 @@ class MultiCheckpointCompareTrainer:
             # Create model
             model = Model(cfg).to(device=self.device, dtype=dt)
 
+            adapter_ckpt = spec.get("adapter_checkpoint")
+            adapter_path = Path(str(adapter_ckpt)) if isinstance(adapter_ckpt, str) else None
+            if adapter_path is None and ckpt_path.name == "adapter_model.safetensors":
+                adapter_path = ckpt_path
+            adapter_dir = adapter_path.parent if adapter_path is not None else None
+
+            base_ckpt_path = ckpt_path
+            if adapter_path is not None:
+                resolved_base = _resolve_base_checkpoint(spec, adapter_path)
+                if resolved_base is None:
+                    raise ValueError(
+                        f"{name}: adapter checkpoint requires a base checkpoint. "
+                        "Set 'base_checkpoint' in the manifest or ensure adapter_config.json includes "
+                        "'base_model_name_or_path'."
+                    )
+                base_ckpt_path = resolved_base
+
             # Load weights
-            logger.info(f"  Loading: {ckpt_path}")
+            logger.info(f"  Loading: {base_ckpt_path}")
             state_dict = _safe_load_checkpoint(
-                ckpt_path, unsafe_pickle_load=self.unsafe_pickle_load
+                base_ckpt_path, unsafe_pickle_load=self.unsafe_pickle_load
             )
             result = model.load_state_dict(state_dict, strict=bool(self.strict))
             missing, unexpected = result
@@ -175,6 +287,40 @@ class MultiCheckpointCompareTrainer:
                     logger.warning(f"  Missing keys (first 5): {missing[:5]}")
                 if unexpected:
                     logger.warning(f"  Unexpected keys (first 5): {unexpected[:5]}")
+
+            if adapter_path is not None:
+                peft_type = None
+                if adapter_dir is not None and (adapter_dir / "adapter_config.json").exists():
+                    try:
+                        cfg_payload = json.loads(
+                            (adapter_dir / "adapter_config.json").read_text(encoding="utf-8")
+                        )
+                        peft_type = str(cfg_payload.get("peft_type", "")).lower()
+                    except Exception:
+                        peft_type = None
+
+                if peft_type == "lora":
+                    if PeftConfig is None or PeftModel is None:
+                        raise RuntimeError("peft is required to load LoRA adapters.")
+                    dims = _extract_model_dims(cfg)
+                    hf_config = HFConfigShim(
+                        hidden_size=dims["hidden_size"],
+                        num_attention_heads=dims["num_attention_heads"],
+                        num_hidden_layers=dims["num_hidden_layers"],
+                        vocab_size=dims["vocab_size"],
+                    )
+                    wrapped = CompatibleWrapper(model, hf_config)
+                    peft_model = PeftModel.from_pretrained(wrapped, str(adapter_dir))  # type: ignore[arg-type]
+                    model = peft_model.to(device=self.device, dtype=dt)
+                    logger.info("  Adapter: LoRA")
+                else:
+                    prompt = load_prompt_embeddings(adapter_path)
+                    if prompt.ndim != 2:
+                        raise ValueError(f"{name}: prompt_embeddings must be rank-2, got {prompt.shape}")
+                    model = PromptTuningAdapter(model, prompt)
+                    logger.info(
+                        f"  Adapter: prompt-tuning ({int(prompt.shape[0])} virtual tokens)"
+                    )
 
             model.eval()
             models[name] = model

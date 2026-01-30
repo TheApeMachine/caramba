@@ -7,6 +7,7 @@ those pieces together based on a ModelConfig.
 """
 from __future__ import annotations
 
+import torch
 from torch import Tensor, nn
 from typing_extensions import override
 
@@ -243,3 +244,57 @@ class Model(nn.Module):
         except Exception as e:
             logger.error(f"Failed to get vocab size, continuing: {e}")
             return None
+
+    @property
+    def device(self) -> torch.device:
+        """Get the device of the model (for PEFT compatibility).
+        
+        Returns the device of the first parameter, or CPU if no parameters exist.
+        """
+        try:
+            # Get device from first parameter
+            first_param = next(self.parameters(), None)
+            if first_param is not None:
+                return first_param.device
+            # Fallback: check embedder if it exists
+            if hasattr(self, "embedder") and hasattr(self.embedder, "token_embedding"):
+                if self.embedder.token_embedding is not None:
+                    return next(self.embedder.token_embedding.parameters()).device
+        except Exception:
+            pass
+        # Ultimate fallback
+        return torch.device("cpu")
+
+    def prepare_inputs_for_generation(
+        self,
+        input_ids: Tensor,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        """Prepare inputs for generation (for PEFT compatibility).
+        
+        This is a HuggingFace-style method that PEFT expects. It ensures
+        inputs are on the correct device and returns them in a dict format.
+        
+        Args:
+            input_ids: Input token IDs
+            **kwargs: Additional generation arguments (attention_mask, past_key_values, etc.)
+            
+        Returns:
+            Dictionary with prepared inputs
+        """
+        # Ensure input_ids are on the model's device
+        model_device = self.device
+        if input_ids.device != model_device:
+            input_ids = input_ids.to(model_device)
+        
+        # Build return dict with input_ids and any other kwargs
+        prepared = {"input_ids": input_ids}
+        
+        # Move other tensor kwargs to the correct device
+        for key, value in kwargs.items():
+            if isinstance(value, Tensor) and value.device != model_device:
+                prepared[key] = value.to(model_device)
+            else:
+                prepared[key] = value
+        
+        return prepared

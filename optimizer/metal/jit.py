@@ -170,6 +170,7 @@ def load_caramba_metal_ops(*, verbose: bool = False) -> Any:
             "-O3",
             "-std=c++17",
             "-fobjc-arc",
+            "-fblocks",
         ]
         extra_ldflags = [
             "-framework",

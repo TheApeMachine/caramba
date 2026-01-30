@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import torch
+from safetensors.torch import load_file as safetensors_load_file
 
 from carmath import weight_dtype
 from compiler.lower import Lowerer
@@ -155,6 +156,12 @@ def _safe_load_checkpoint(
             f"Error: {e}\n"
             "To opt in, set trainer config unsafe_pickle_load=true in the manifest and retry."
         )
+        # Fallback: some checkpoints are safetensors with non-standard extensions.
+        try:
+            obj = safetensors_load_file(path, device="cpu")
+            return _extract_state_dict(obj)
+        except (RuntimeError, ValueError, OSError) as se:
+            logger.warning(f"Safetensors fallback failed: {se}")
         if not unsafe_pickle_load:
             raise
         logger.warning("unsafe_pickle_load=true is set; reloading with weights_only=False (UNSAFE).")

@@ -44,6 +44,19 @@ class _MetalRoPEFn(torch.autograd.Function):
         cos2 = cos.to(device=x.device, dtype=x.dtype).contiguous()
         sin2 = sin.to(device=x.device, dtype=x.dtype).contiguous()
 
+        # Some callsites may pass larger (cached) tables; the Metal op requires
+        # exact (T, rot_dim/2) for the current window.
+        T = int(x2.size(2))
+        half_rot = int(rot_dim) // 2
+        cos2 = cos2[:T, :half_rot].contiguous()
+        sin2 = sin2[:T, :half_rot].contiguous()
+        if cos2.dim() != 2 or sin2.dim() != 2 or cos2.shape != sin2.shape or cos2.shape != (T, half_rot):
+            raise RuntimeError(
+                "Metal RoPE: cos/sin shape mismatch before dispatch. "
+                f"x={tuple(x2.shape)} rot_dim={int(rot_dim)} "
+                f"expected={(T, half_rot)} cos={tuple(cos2.shape)} sin={tuple(sin2.shape)}"
+            )
+
         ops = load_caramba_metal_ops(verbose=bool(verbose_build))
 
         ctx.save_for_backward(cos2, sin2)
@@ -96,6 +109,17 @@ def rope_fp16(
         x2 = x.contiguous()
         cos2 = cos.to(device=x.device, dtype=x.dtype).contiguous()
         sin2 = sin.to(device=x.device, dtype=x.dtype).contiguous()
+
+        T = int(x2.size(2))
+        half_rot = int(rot_dim) // 2
+        cos2 = cos2[:T, :half_rot].contiguous()
+        sin2 = sin2[:T, :half_rot].contiguous()
+        if cos2.dim() != 2 or sin2.dim() != 2 or cos2.shape != sin2.shape or cos2.shape != (T, half_rot):
+            raise RuntimeError(
+                "Metal RoPE: cos/sin shape mismatch before dispatch. "
+                f"x={tuple(x2.shape)} rot_dim={int(rot_dim)} "
+                f"expected={(T, half_rot)} cos={tuple(cos2.shape)} sin={tuple(sin2.shape)}"
+            )
 
         ops = load_caramba_metal_ops(verbose=bool(verbose_build))
 

@@ -6,6 +6,7 @@ out of training code so higher-level modules can simply orchestrate.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from data.npy import NpyDataset
 from runtime.tensordict_utils import TensorDictBase
@@ -21,7 +22,7 @@ class TokenDatasetBuilder:
         path: Path | str,
         block_size: int,
         append_eos: bool = False,
-        tokenizer: object | None = None,
+        tokenizer: Any | None = None,
     ) -> Dataset[TensorDictBase]:
         """Build a token dataset from a NumPy file path.
 
@@ -39,10 +40,10 @@ class TokenDatasetBuilder:
             if tokenizer is None:
                 raise ValueError("append_eos=True requires a tokenizer to resolve EOS ID")
             # Try common attributes for EOS ID
-            if hasattr(tokenizer, "eos_token_id") and tokenizer.eos_token_id is not None:
-                eos_id = int(tokenizer.eos_token_id)
-            elif hasattr(tokenizer, "eos_id") and tokenizer.eos_id is not None:
-                eos_id = int(tokenizer.eos_id)
+            if hasattr(tokenizer, "eos_token_id") and getattr(tokenizer, "eos_token_id") is not None:
+                eos_id = int(getattr(tokenizer, "eos_token_id"))
+            elif hasattr(tokenizer, "eos_id") and getattr(tokenizer, "eos_id") is not None:
+                eos_id = int(getattr(tokenizer, "eos_id"))
             else:
                 raise ValueError(f"Could not determine eos_token_id from tokenizer {type(tokenizer)}")
 

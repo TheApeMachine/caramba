@@ -1,0 +1,556 @@
+version: 2
+name: herorun_dba_paper_local
+notes: >
+  Instruction fine-tune preset for the DBA paper *local* ablation suite.
+
+  This is derived from `config/presets/herorun.yml` (same `trainer.finetune_minimal` + PEFT LoRA),
+  but expands targets to cover *all* runs from `config/presets/dba_paper_local.yml` including the
+  commented baseline/bottleneck/decoupled/GQA seeds and LR sweeps, plus the DBA ablations.
+
+defaults:
+  data:
+    tokenizer: tiktoken:gpt2
+    val_frac: 0.0
+  logging:
+    instrument: rich
+    wandb: true
+    wandb_project: dba-paper
+    wandb_entity: ''
+    wandb_mode: online
+    eval_iters: 0
+  runtime:
+    save_every: ${save_every}
+
+vars:
+  # ----- Base checkpoints (produced by local pretraining runs) -----
+  ckpt_root: research/dba/10k_runs
+
+  # ----- Finetune datasets (HF streaming) -----
+  finetune_dataset_ids:
+    - "HuggingFaceFW/fineweb-edu"
+    - "OpenAssistant/oasst1"
+  finetune_dataset_probs: [0.8, 0.2]
+  finetune_streaming_shuffle_buffer: 1000
+
+  # Placeholder for manifest variable resolution (finetune_minimal loads HF datasets).
+  dataset_path: dummy.npy
+  block_size: 2048
+
+  # ----- Model dims (local suite is 12-layer) -----
+  d_model: 2048
+  n_layers: 12
+  n_heads: 32
+  n_kv_heads_gqa: 4
+  d_ff: 5632
+  vocab_size: 50304
+  rope_base: 10000.0
+
+  # ----- DBA bottleneck dims (per-head sem=8 geo=32 v=40) -----
+  sem_dim: 256
+  geo_dim: 1024
+  attn_dim: 1280
+
+  # ----- Finetune runtime -----
+  device: mps
+  dtype: float32
+  steps: 2000
+  batch_size: 2
+  grad_accum: 1
+  lr: 1.0e-5
+  lr_decoupled: 1.0e-5
+  weight_decay: 0.0
+  optimizer: lion_32bit
+  fused_optimizer: false
+  scheduler: cosine
+  warmup_steps: 200
+  save_every: 500
+  num_workers: 4
+  prefetch_factor: 2
+  pin_memory: false
+  compile_model: false
+  compile_mode: default
+  use_amp: false
+  amp_dtype: float32
+  mps_fast_ce: true
+  mps_allow_fp16_autocast_without_gradscaler: false
+
+  # ----- PEFT LoRA -----
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  lora_bias: none
+
+# =============================================================================
+# YAML anchors (block-style only; safe with ${vars})
+# =============================================================================
+
+x-token-data: &token_data
+  ref: dataset.tokens
+  config:
+    path: ${dataset_path}
+    block_size: ${block_size}
+
+x-embedder: &embedder
+  type: token
+  vocab_size: ${vocab_size}
+  d_model: ${d_model}
+
+x-ffn-block: &ffn_block
+  type: ResidualTopology
+  layers:
+    - type: RMSNormLayer
+      d_model: ${d_model}
+      eps: 1e-5
+    - type: SwiGLULayer
+      d_model: ${d_model}
+      d_ff: ${d_ff}
+      bias: false
+
+x-final-layers: &final_layers
+  - type: RMSNormLayer
+    d_model: ${d_model}
+    eps: 1e-5
+  - type: LinearLayer
+    d_in: ${d_model}
+    d_out: ${vocab_size}
+    bias: false
+
+x-attn-standard: &attn_standard
+  type: AttentionLayer
+  d_model: ${d_model}
+  n_heads: ${n_heads}
+  mode: standard
+  rope_enabled: true
+  rope_base: ${rope_base}
+  is_causal: true
+  dropout_p: 0.0
+
+x-attn-bottleneck: &attn_bottleneck
+  <<: *attn_standard
+  attn_dim: ${attn_dim}
+
+x-attn-gqa: &attn_gqa
+  <<: *attn_standard
+  n_kv_heads: ${n_kv_heads_gqa}
+
+x-attn-decoupled: &attn_decoupled
+  type: AttentionLayer
+  d_model: ${d_model}
+  n_heads: ${n_heads}
+  mode: decoupled
+  attn_dim: ${attn_dim}
+  sem_dim: ${sem_dim}
+  geo_dim: ${geo_dim}
+  rope_enabled: true
+  rope_base: ${rope_base}
+  rope_semantic: false
+  tie_qk: false
+  null_attn: false
+  decoupled_gate: false
+  is_causal: true
+  dropout_p: 0.0
+
+x-attn-decoupled-null: &attn_decoupled_null
+  <<: *attn_decoupled
+  null_attn: true
+
+x-attn-decoupled-tieqk: &attn_decoupled_tieqk
+  <<: *attn_decoupled
+  tie_qk: true
+
+x-attn-decoupled-norope: &attn_decoupled_norope
+  <<: *attn_decoupled
+  rope_enabled: false
+
+x-attn-decoupled-gate: &attn_decoupled_gate
+  <<: *attn_decoupled
+  decoupled_gate: true
+
+x-model-standard: &model_standard
+  type: TransformerModel
+  tied_embeddings: false
+  embedder: *embedder
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - *attn_standard
+          - *ffn_block
+      - type: SequentialTopology
+        layers: *final_layers
+
+x-model-bottleneck: &model_bottleneck
+  <<: *model_standard
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - *attn_bottleneck
+          - *ffn_block
+      - type: SequentialTopology
+        layers: *final_layers
+
+x-model-gqa: &model_gqa
+  <<: *model_standard
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - *attn_gqa
+          - *ffn_block
+      - type: SequentialTopology
+        layers: *final_layers
+
+x-model-decoupled: &model_decoupled
+  <<: *model_standard
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - *attn_decoupled
+          - *ffn_block
+      - type: SequentialTopology
+        layers: *final_layers
+
+x-model-decoupled-null: &model_decoupled_null
+  <<: *model_decoupled
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - *attn_decoupled_null
+          - *ffn_block
+      - type: SequentialTopology
+        layers: *final_layers
+
+x-model-decoupled-tieqk: &model_decoupled_tieqk
+  <<: *model_decoupled
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - *attn_decoupled_tieqk
+          - *ffn_block
+      - type: SequentialTopology
+        layers: *final_layers
+
+x-model-decoupled-norope: &model_decoupled_norope
+  <<: *model_decoupled
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - *attn_decoupled_norope
+          - *ffn_block
+      - type: SequentialTopology
+        layers: *final_layers
+
+x-model-decoupled-gate: &model_decoupled_gate
+  <<: *model_decoupled
+  topology:
+    type: StackedTopology
+    layers:
+      - type: NestedTopology
+        repeat: ${n_layers}
+        layers:
+          - type: ResidualTopology
+            layers:
+              - type: RMSNormLayer
+                d_model: ${d_model}
+                eps: 1e-5
+              - *attn_decoupled_gate
+          - *ffn_block
+      - type: SequentialTopology
+        layers: *final_layers
+
+x-train-base: &train_base
+  phase: standard
+  batch_size: ${batch_size}
+  block_size: ${block_size}
+  device: ${device}
+  dtype: ${dtype}
+  gradient_accumulation_steps: ${grad_accum}
+  append_eos: true
+  finetune_streaming: true
+  finetune_streaming_shuffle_buffer: ${finetune_streaming_shuffle_buffer}
+  finetune_dataset_ids: ${finetune_dataset_ids}
+  finetune_dataset_probs: ${finetune_dataset_probs}
+  peft:
+    enabled: true
+    type: lora
+    r: ${lora_r}
+    alpha: ${lora_alpha}
+    dropout: ${lora_dropout}
+    bias: ${lora_bias}
+  num_workers: ${num_workers}
+  prefetch_factor: ${prefetch_factor}
+  pin_memory: ${pin_memory}
+  activation_checkpointing: false
+  activation_checkpoint_threshold_mb: 0.0
+  use_amp: ${use_amp}
+  amp_dtype: ${amp_dtype}
+  mps_fast_ce: ${mps_fast_ce}
+  mps_allow_fp16_autocast_without_gradscaler: ${mps_allow_fp16_autocast_without_gradscaler}
+  compile_model: ${compile_model}
+  compile_mode: ${compile_mode}
+  profile_every: 0
+  profile_record_shapes: false
+  grad_clip_norm: 1.0
+  optimizer: ${optimizer}
+  weight_decay: ${weight_decay}
+  fused_optimizer: ${fused_optimizer}
+  scheduler: ${scheduler}
+  warmup_steps: ${warmup_steps}
+  min_lr_ratio: 0.0
+  auto_resume: false
+  skip_if_final: false
+  auto_batch_size: false
+
+targets:
+  # ---------------------------------------------------------------------------
+  # Baseline — 3 seeds (commented in dba_paper_local.yml; included here)
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: mac_fw1b_l12_baseline_s1337
+    backend: torch
+    task: task.language_modeling
+    data: *token_data
+    system:
+      ref: system.language_model
+      config: {weight_init: {type: GPT2Initializer}, model: *model_standard}
+    objective: objective.next_token_ce
+    trainer: trainer.finetune_minimal
+    runs:
+      - id: train
+        mode: train
+        exp: local_baseline_sft
+        seed: 1337
+        steps: ${steps}
+        expected: {}
+        train:
+          <<: *train_base
+          lr: ${lr}
+          load_checkpoint: research/dba/10k_runs/mac_fw1b_l12_baseline_s1337/train_standard_final.pt
+
+  - type: experiment
+    name: mac_fw1b_l12_baseline_s1339
+    backend: torch
+    task: task.language_modeling
+    data: *token_data
+    system:
+      ref: system.language_model
+      config: {weight_init: {type: GPT2Initializer}, model: *model_standard}
+    objective: objective.next_token_ce
+    trainer: trainer.finetune_minimal
+    runs:
+      - id: train
+        mode: train
+        exp: local_baseline_sft
+        seed: 1339
+        steps: ${steps}
+        expected: {}
+        train:
+          <<: *train_base
+          lr: ${lr}
+          load_checkpoint: research/dba/10k_runs/mac_fw1b_l12_baseline_s1339/train_standard_final.pt
+
+  # ---------------------------------------------------------------------------
+  # Bottleneck — 3 seeds (commented in dba_paper_local.yml; included here)
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: mac_fw1b_l12_bottleneck_s1337
+    backend: torch
+    task: task.language_modeling
+    data: *token_data
+    system:
+      ref: system.language_model
+      config: {weight_init: {type: GPT2Initializer}, model: *model_bottleneck}
+    objective: objective.next_token_ce
+    trainer: trainer.finetune_minimal
+    runs:
+      - id: train
+        mode: train
+        exp: local_bottleneck_sft
+        seed: 1337
+        steps: ${steps}
+        expected: {}
+        train:
+          <<: *train_base
+          lr: ${lr}
+          load_checkpoint: research/dba/10k_runs/mac_fw1b_l12_bottleneck_s1337/train_standard_final.pt
+
+  - type: experiment
+    name: mac_fw1b_l12_bottleneck_s1339
+    backend: torch
+    task: task.language_modeling
+    data: *token_data
+    system:
+      ref: system.language_model
+      config: {weight_init: {type: GPT2Initializer}, model: *model_bottleneck}
+    objective: objective.next_token_ce
+    trainer: trainer.finetune_minimal
+    runs:
+      - id: train
+        mode: train
+        exp: local_bottleneck_sft
+        seed: 1339
+        steps: ${steps}
+        expected: {}
+        train:
+          <<: *train_base
+          lr: ${lr}
+          load_checkpoint: research/dba/10k_runs/mac_fw1b_l12_bottleneck_s1339/train_standard_final.pt
+
+  # ---------------------------------------------------------------------------
+  # Decoupled DBA — 3 seeds (commented in dba_paper_local.yml; included here)
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: mac_fw1b_l12_decoupled_s1337
+    backend: torch
+    task: task.language_modeling
+    data: *token_data
+    system:
+      ref: system.language_model
+      config: {weight_init: {type: GPT2Initializer}, model: *model_decoupled}
+    objective: objective.next_token_ce
+    trainer: trainer.finetune_minimal
+    runs:
+      - id: train
+        mode: train
+        exp: local_decoupled_sft
+        seed: 1337
+        steps: ${steps}
+        expected: {}
+        train:
+          <<: *train_base
+          lr: ${lr_decoupled}
+          load_checkpoint: research/dba/10k_runs/mac_fw1b_l12_decoupled_s1337/train_standard_final.pt
+
+  - type: experiment
+    name: mac_fw1b_l12_decoupled_s1339
+    backend: torch
+    task: task.language_modeling
+    data: *token_data
+    system:
+      ref: system.language_model
+      config: {weight_init: {type: GPT2Initializer}, model: *model_decoupled}
+    objective: objective.next_token_ce
+    trainer: trainer.finetune_minimal
+    runs:
+      - id: train
+        mode: train
+        exp: local_decoupled_sft
+        seed: 1339
+        steps: ${steps}
+        expected: {}
+        train:
+          <<: *train_base
+          lr: ${lr_decoupled}
+          load_checkpoint: research/dba/10k_runs/mac_fw1b_l12_decoupled_s1339/train_standard_final.pt
+
+  # ---------------------------------------------------------------------------
+  # DBA ablations (seed 1337) — present (uncommented) in dba_paper_local.yml
+  # ---------------------------------------------------------------------------
+  - type: experiment
+    name: mac_fw1b_l12_decoupled_null_s1337
+    backend: torch
+    task: task.language_modeling
+    data: *token_data
+    system:
+      ref: system.language_model
+      config: {weight_init: {type: GPT2Initializer}, model: *model_decoupled_null}
+    objective: objective.next_token_ce
+    trainer: trainer.finetune_minimal
+    runs:
+      - id: train
+        mode: train
+        exp: local_decoupled_ablation_sft
+        seed: 1337
+        steps: ${steps}
+        expected: {}
+        train:
+          <<: *train_base
+          lr: ${lr_decoupled}
+          load_checkpoint: research/dba/10k_runs/mac_fw1b_l12_decoupled_null_s1337/train_standard_final.pt
+
+  - type: experiment
+    name: mac_fw1b_l12_decoupled_gate_s1337
+    backend: torch
+    task: task.language_modeling
+    data: *token_data
+    system:
+      ref: system.language_model
+      config: {weight_init: {type: GPT2Initializer}, model: *model_decoupled_gate}
+    objective: objective.next_token_ce
+    trainer: trainer.finetune_minimal
+    runs:
+      - id: train
+        mode: train
+        exp: local_decoupled_ablation_sft
+        seed: 1337
+        steps: ${steps}
+        expected: {}
+        train:
+          <<: *train_base
+          lr: ${lr_decoupled}
+          load_checkpoint: research/dba/10k_runs/mac_fw1b_l12_decoupled_gate_s1337/train_standard_final.pt
+
+entrypoints:
+  baseline_s1337: "target:mac_fw1b_l12_baseline_s1337"
+  baseline_s1339: "target:mac_fw1b_l12_baseline_s1339"
+  bottleneck_s1337: "target:mac_fw1b_l12_bottleneck_s1337"
+  bottleneck_s1339: "target:mac_fw1b_l12_bottleneck_s1339"
+  decoupled_s1337: "target:mac_fw1b_l12_decoupled_s1337"
+  decoupled_s1339: "target:mac_fw1b_l12_decoupled_s1339"
+  decoupled_null: "target:mac_fw1b_l12_decoupled_null_s1337"
+  decoupled_gate: "target:mac_fw1b_l12_decoupled_gate_s1337"
+

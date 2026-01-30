@@ -75,6 +75,28 @@ class ParamGroupConfig(BaseModel):
     weight_decay: NonNegativeFloat | None = None
 
 
+class PeftLoraConfig(BaseModel):
+    """PEFT LoRA configuration for parameter-efficient fine-tuning."""
+
+    enabled: bool = True
+    type: Literal["lora"] = "lora"
+
+    # LoRA hyperparameters
+    r: PositiveInt = 8
+    alpha: PositiveInt = 16
+    dropout: Probability = 0.0
+    bias: Literal["none", "all", "lora_only"] = "none"
+
+    # Which modules to adapt.
+    # - None: trainer chooses a sensible default (typically all Linear layers)
+    # - list[str]: explicit module name list
+    # - str: regex pattern (passed through to PEFT)
+    target_modules: list[str] | str | None = None
+
+    # Optional: keep certain modules trainable and saved with the adapter.
+    modules_to_save: list[str] | None = None
+
+
 class TrainConfig(BaseModel):
     """Hyperparameters and settings for a training run.
 
@@ -115,12 +137,25 @@ class TrainConfig(BaseModel):
     # Note: This is primarily for document-based datasets; streaming datasets (like NpyDataset)
     # typically ignore this as they operate on a continuous token stream.
     append_eos: bool = False
+    # Optional finetune dataset override (HF dataset IDs).
+    finetune_dataset_ids: list[str] | None = None
+    # Optional dataset sampling probabilities (must match finetune_dataset_ids length).
+    finetune_dataset_probs: list[NonNegativeFloat] | None = None
+    # Stream datasets instead of downloading full corpora.
+    finetune_streaming: bool = False
+    # Shuffle buffer size for streaming datasets (0 disables shuffle).
+    finetune_streaming_shuffle_buffer: NonNegativeInt = 10_000
+    # Optional eval sample count for streaming (0 disables eval dataset).
+    finetune_streaming_eval_samples: NonNegativeInt = 0
 
     # Explicit checkpoint loading (alternative to auto_resume).
     # If set, the trainer will load weights from this path at the start of the run.
     # This is useful for fine-tuning or continuing from a specific artifact without
     # relying on run-directory conventions.
     load_checkpoint: str | None = None
+
+    # Optional PEFT configuration (e.g. LoRA adapters).
+    peft: PeftLoraConfig | None = None
 
     # Teacher model settings
     teacher_ckpt: str | None = None

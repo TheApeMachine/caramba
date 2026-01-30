@@ -21,6 +21,7 @@ from benchmark.context import BenchmarkContext, ContextResult
 from benchmark.latency import LatencyBenchmark, LatencyResult
 from benchmark.memory import MemoryBenchmark, MemoryResult
 from benchmark.perplexity import PerplexityBenchmark, PerplexityResult
+from benchmark.generation import GenerationBenchmark
 from config.benchmark import (
     AccuracyBenchmarkConfig,
     BenchmarkSuite,
@@ -31,6 +32,7 @@ from config.benchmark import (
     LatencyBenchmarkConfig,
     MemoryBenchmarkConfig,
     PerplexityBenchmarkConfig,
+    GenerationBenchmarkConfig,
 )
 from console import logger
 
@@ -385,6 +387,22 @@ class BenchmarkRunner:
                             logger.metric("student", r.micro_accuracy * 100.0, "% micro-acc")
                             repeat_audit["results"]["student"] = asdict(r)  # type: ignore[index]
 
+                    case BenchmarkType.GENERATION:
+                        assert isinstance(spec.config, GenerationBenchmarkConfig)
+                        benchmark = GenerationBenchmark(spec.config, self.device)
+                        if "teacher" in spec.models:
+                            if teacher is None:
+                                raise RuntimeError(f"{spec.id}: teacher model required but not provided.")
+                            _move_model_or_raise(teacher, self.device)
+                            r = benchmark.run(teacher, "teacher", output_dir=self.output_dir)
+                            repeat_audit["results"]["teacher"] = asdict(r)  # type: ignore[index]
+                        if "student" in spec.models:
+                            if student is None:
+                                raise RuntimeError(f"{spec.id}: student model required but not provided.")
+                            _move_model_or_raise(student, self.device)
+                            r = benchmark.run(student, "student", output_dir=self.output_dir)
+                            repeat_audit["results"]["student"] = asdict(r)  # type: ignore[index]
+
                     case BenchmarkType.BEHAVIOR:
                         assert isinstance(spec.config, BehaviorBenchmarkConfig)
                         if teacher is None or student is None:
@@ -412,6 +430,7 @@ class BenchmarkRunner:
                             baseline_name="teacher",
                             seed=int(spec.config.seed),
                             max_new_tokens=int(spec.config.max_new_tokens),
+                            stop=list(getattr(spec.config, "stop", []) or []),
                             context_window=spec.config.context_window,
                             dump_attention=bool(spec.config.dump_attention),
                             dump_attention_max_tokens=int(spec.config.dump_attention_max_tokens),

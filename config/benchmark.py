@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from config import NonNegativeInt, PositiveFloat, PositiveInt, Probability
+from config import NonNegativeFloat, NonNegativeInt, PositiveFloat, PositiveInt, Probability
 from config.eval import TiktokenTokenizerConfig, TokenizerConfig
 from config.kvcache import KVCacheConfig
 
@@ -49,6 +49,20 @@ class PerplexityBenchmarkConfig(BaseModel):
     # vocabs (e.g. 50304) are scored fairly against real token IDs (e.g. 50257).
     # When set, logits are sliced/masked to this size before CE/log-softmax.
     valid_vocab_size: PositiveInt | None = None
+
+    # Optional: ignore label value in the target. When set, any target token equal
+    # to ignore_index is excluded from loss and from the token count denominator.
+    # Common convention is -100 (PyTorch default in many HF datasets).
+    ignore_index: int | None = None
+
+    # Optional mixed precision for eval speed (CUDA/MPS). When enabled, the forward
+    # pass is autocast to amp_dtype (fp16/bf16).
+    use_amp: bool = False
+    amp_dtype: str | None = None  # e.g. "fp16" / "bf16"
+
+    # Token ID sanity checks call `.max().item()` which can sync the device.
+    # Set to 0 to disable; otherwise check on the first batch and then every N batches.
+    token_id_check_every_n_batches: NonNegativeInt = 100
 
 
 class LatencyBenchmarkConfig(BaseModel):
@@ -147,11 +161,22 @@ class GenerationBenchmarkConfig(BaseModel):
     """
 
     type: Literal[BenchmarkType.GENERATION] = BenchmarkType.GENERATION
+    # Tokenizer used to encode prompts / decode generations.
+    tokenizer: TokenizerConfig = Field(default_factory=lambda: TiktokenTokenizerConfig(encoding="gpt2"))
     prompts_file: str
     max_new_tokens: PositiveInt = 256
-    temperature: PositiveFloat = 1.0
+    # 0.0 = greedy (recommended for deterministic probes).
+    temperature: NonNegativeFloat = 1.0
     top_p: Probability = 1.0
     repetition_penalty: PositiveFloat = 1.0
+    # Optional stop strings (tokenized by the benchmark tokenizer and passed to the generator).
+    # Useful for completion-style prompts where EOS is rarely emitted.
+    stop: list[str] = Field(default_factory=list)
+    # Optional: a "target" token/text to define a repetition-breakpoint probe.
+    # If set, the benchmark will compute `break_step` (first generated token that
+    # differs from the target token id). Best used with `temperature: 0.0` and
+    # a prompt that strongly induces repetition.
+    target_text: str | None = None
 
 
 class BehaviorBenchmarkConfig(BaseModel):
@@ -177,6 +202,9 @@ class BehaviorBenchmarkConfig(BaseModel):
     seed: PositiveInt
 
     max_new_tokens: PositiveInt = 32
+    # Completion-style suite: default to stopping at newline so outputs can be exact-match
+    # without relying on EOS.
+    stop: list[str] = Field(default_factory=lambda: ["\n"])
     context_window: PositiveInt | None = None
     # Optional: print per-case outputs to console for debugging/insight.
     print_outputs: bool = False
@@ -241,6 +269,10 @@ class BehaviorInstructBenchmarkConfig(BaseModel):
     max_new_tokens: PositiveInt = 32
     context_window: PositiveInt | None = None
     repetition_penalty: PositiveFloat = 1.0
+    # Instruction-style suite: stop when the model starts a new role/record.
+    stop: list[str] = Field(
+        default_factory=lambda: ["\nUser:", "\n\nUser:", "\nAssociate:", "\n\nAssociate:", "\nSystem:", "\n\nSystem:"]
+    )
 
     # Output settings
     stream_live: bool = True

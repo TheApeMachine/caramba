@@ -84,6 +84,17 @@ class ModelConfig(Config):
     target_kv_reduction: float | None = None
     block_size: int | None = None
 
+    @property
+    def vocab_size(self) -> int | None:
+        """Vocabulary size extracted from embedder (for PEFT compatibility).
+        
+        PEFT expects model.config.vocab_size, so we expose it here.
+        Returns None if embedder doesn't have vocab_size (e.g., patch embedders).
+        """
+        if isinstance(self.embedder, TokenEmbedderConfig):
+            return int(self.embedder.vocab_size)
+        return None
+
     def optimize(self) -> "ModelConfig":
         """Derive a reasonable transformer size from target_params.
 

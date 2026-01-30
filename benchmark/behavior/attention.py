@@ -15,9 +15,14 @@ from torch import nn
 
 from benchmark.attention_multi_model import render_multi_model_attention_comparison
 from benchmark.behavior.types import GeneratedCase
+from console import logger
 from data.tokenizers.builder import TokenizerBuilder
 from instrumentation.viz import TrainingVizContext
-from layer.attention import AttentionLayer
+# IMPORTANT: model configs build layers from the `caramba.layer` namespace
+# (see `config.layer.LayerType.module_name()`), so we must import from the same
+# namespace here. Importing `layer.attention` would create a different module,
+# causing `isinstance(mod, AttentionLayer)` to fail and resulting in empty viz events.
+from caramba.layer.attention import AttentionLayer
 
 
 class ModelWithCtx(Protocol):
@@ -84,10 +89,15 @@ def dump_attention_multi_model(
             text=str(target_text),
         )
         if target_span is None:
-            raise RuntimeError(
-                f"Attention dump: case {case.id!r} target_text not found in prompt tokens "
+            # This commonly happens when:
+            # - prompts are truncated via max_tokens
+            # - target_text includes quoting/formatting that doesn't round-trip through token IDs
+            # Attention visualization is auxiliary; don't fail the whole benchmark run.
+            logger.warning(
+                f"Attention dump: skipping case {case.id!r}: target_text not found in prompt tokens "
                 f"(target_text={target_text!r})."
             )
+            continue
         a0, a1 = target_span
 
         # Case-level JSON for auditability + downstream analysis.
@@ -226,10 +236,11 @@ def dump_attention_multi_model_isolated(
         target_text = str(case.target_text) if case.target_text is not None else str(case.expected)
         target_span = _find_text_span_in_prompt(tok=tok, prompt_ids=prompt_ids, text=str(target_text))
         if target_span is None:
-            raise RuntimeError(
-                f"Attention dump: case {case.id!r} target_text not found in prompt tokens "
+            logger.warning(
+                f"Attention dump: skipping case {case.id!r}: target_text not found in prompt tokens "
                 f"(target_text={target_text!r})."
             )
+            continue
         a0, a1 = target_span
 
         case_json = {
@@ -348,6 +359,12 @@ def _find_text_span_in_prompt(*, tok: Any, prompt_ids: list[int], text: str) -> 
     exp = str(text)
     # Try whitespace variants (space-sensitive tokenizers).
     cands: list[str] = [exp, exp.strip()]
+    # Common formatting variants (e.g. JSON strings like "\"lemon\"").
+    if len(exp) >= 2 and ((exp[0] == exp[-1] == '"') or (exp[0] == exp[-1] == "'")):
+        inner = exp[1:-1]
+        if inner:
+            cands.append(inner)
+            cands.append(inner.strip())
     if exp and not exp.startswith(" "):
         cands.append(" " + exp)
         cands.append(" " + exp.lstrip())
@@ -359,6 +376,38 @@ def _find_text_span_in_prompt(*, tok: Any, prompt_ids: list[int], text: str) -> 
         j = _find_subseq(prompt_ids, list(ids))
         if j is not None and len(ids) > 0:
             return int(j), int(j + len(ids) - 1)
+
+    # Fallback: locate the target as a substring in the decoded token stream and map back
+    # to token indices. This is less strict than token-subsequence matching but avoids
+    # spurious failures from formatting/quoting differences.
+    try:
+        pieces = [str(tok.decode([i])) for i in prompt_ids]
+        full = "".join(pieces)
+        s0 = full.find(exp)
+        if s0 < 0 and exp.strip():
+            s0 = full.find(exp.strip())
+        if s0 < 0:
+            # Try inner (quote-stripped) as well.
+            if len(exp) >= 2 and ((exp[0] == exp[-1] == '"') or (exp[0] == exp[-1] == "'")):
+                inner = exp[1:-1]
+                if inner:
+                    s0 = full.find(inner)
+        if s0 < 0:
+            return None
+        s1 = s0 + len(exp if full.find(exp) == s0 else (exp.strip() if full.find(exp.strip()) == s0 else exp[1:-1]))
+        # Map character span [s0, s1) to token indices using cumulative ends.
+        ends: list[int] = []
+        cur = 0
+        for p in pieces:
+            cur += len(p)
+            ends.append(cur)
+        a0 = next((i for i, e in enumerate(ends) if e > s0), None)
+        a1 = next((i for i, e in enumerate(ends) if e >= s1), None)
+        if a0 is None or a1 is None:
+            return None
+        return int(a0), int(a1)
+    except Exception:
+        return None
     return None
 
 

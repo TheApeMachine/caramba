@@ -20,11 +20,7 @@ import platform
 import torch
 
 from console import logger
-from optimizer.runtime import (
-    metal_build_tools_available,
-    metal_supported,
-    triton_supported,
-)
+from optimizer.runtime import metal_build_tools_available, metal_supported, triton_supported
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,113 +78,10 @@ def initialize_kernels() -> KernelRegistry:
         )
         return _REGISTRY
 
-    # ---- Metal/MPS validation (compile+load extension at startup) ----
+    # NOTE: We no longer hard-require Caramba's custom Triton/Metal kernels at startup.
+    # The project now prefers the Hugging Face Kernel Hub (`kernels`) when available,
+    # and falls back to PyTorch implementations otherwise.
     metal_ops_loaded = False
-    if mps_available:
-        _require(
-            bool(metal_supported()),
-            msg=(
-                "MPS is available but Metal is marked unsupported by caramba.\n"
-                f"platform.system()={platform.system()!r}\n"
-            ),
-        )
-        _require(
-            bool(metal_build_tools_available()),
-            msg=(
-                "Metal/MPS is available but the Metal build toolchain is not.\n"
-                "Install Xcode Command Line Tools and ensure `xcrun -sdk macosx --find metal` works.\n"
-            ),
-        )
-        try:
-            from optimizer.metal.jit import load_caramba_metal_ops
-
-            _ = load_caramba_metal_ops(verbose=False)
-            from optimizer.metal.attention_jit import load_caramba_metal_attention_ops
-
-            _ = load_caramba_metal_attention_ops(verbose=False)
-            from optimizer.metal.resonant_jit import load_caramba_metal_resonant_ops
-
-            _ = load_caramba_metal_resonant_ops(verbose=False)
-            metal_ops_loaded = True
-        except Exception as e:
-            raise RuntimeError(
-                "Metal kernel compilation/loading failed.\n"
-                "This is a hard failure under the kernel policy.\n"
-                f"Error: {type(e).__name__}: {e}\n"
-            ) from e
-
-    # ---- CUDA/Triton validation ----
-    if cuda_available:
-        _require(
-            bool(triton_supported()),
-            msg=(
-                "CUDA is available but Triton is not.\n"
-                "Install Triton (and its CUDA dependencies) so CUDA fused kernels can be used.\n"
-                f"CUDA device: {_cuda_device_summary()}\n"
-            ),
-        )
-        # Validate that required Triton decode kernels are importable/defined.
-        from optimizer.kernels_decoupled import (
-            kv_decode_partition_stats_decoupled_q4q8q4,
-            kv_decode_reduce_partitions,
-            kv_decode_update_decoupled_q4q8q4,
-        )
-        from optimizer.flash_attention_triton_kernels_bwd import (
-            flash_attn_bwd_dkv,
-            flash_attn_bwd_dq,
-            flash_attn_bwd_preprocess,
-        )
-        from optimizer.flash_attention_triton_kernels_fwd import flash_attn_fwd
-        from optimizer.dba_attention_triton_kernels_bwd import (
-            dba_attn_bwd_dkv,
-            dba_attn_bwd_dq,
-            dba_attn_bwd_preprocess,
-        )
-        from optimizer.dba_attention_triton_kernels_fwd import dba_attn_fwd
-        from optimizer.kernels_ssm import selective_scan_triton
-        from optimizer.rmsnorm_triton_kernels import rmsnorm_fwd, rmsnorm_bwd_x, rmsnorm_bwd_x_noweight, rmsnorm_bwd_w
-        from optimizer.layernorm_triton_kernels import layernorm_fwd, layernorm_bwd_x, layernorm_gradw, layernorm_gradb
-        from optimizer.rope_triton_kernels import rope_fwd, rope_bwd
-        from optimizer.adamw_triton_kernels import adamw_master_step
-
-        missing = [
-            name
-            for name, k in [
-                ("kv_decode_update_decoupled_q4q8q4", kv_decode_update_decoupled_q4q8q4),
-                ("kv_decode_partition_stats_decoupled_q4q8q4", kv_decode_partition_stats_decoupled_q4q8q4),
-                ("kv_decode_reduce_partitions", kv_decode_reduce_partitions),
-                ("flash_attn_fwd", flash_attn_fwd),
-                ("flash_attn_bwd_preprocess", flash_attn_bwd_preprocess),
-                ("flash_attn_bwd_dkv", flash_attn_bwd_dkv),
-                ("flash_attn_bwd_dq", flash_attn_bwd_dq),
-                ("dba_attn_fwd", dba_attn_fwd),
-                ("dba_attn_bwd_preprocess", dba_attn_bwd_preprocess),
-                ("dba_attn_bwd_dkv", dba_attn_bwd_dkv),
-                ("dba_attn_bwd_dq", dba_attn_bwd_dq),
-                ("selective_scan_triton", selective_scan_triton),
-                ("rmsnorm_fwd", rmsnorm_fwd),
-                ("rmsnorm_bwd_x", rmsnorm_bwd_x),
-                ("rmsnorm_bwd_x_noweight", rmsnorm_bwd_x_noweight),
-                ("rmsnorm_bwd_w", rmsnorm_bwd_w),
-                ("layernorm_fwd", layernorm_fwd),
-                ("layernorm_bwd_x", layernorm_bwd_x),
-                ("layernorm_gradw", layernorm_gradw),
-                ("layernorm_gradb", layernorm_gradb),
-                ("rope_fwd", rope_fwd),
-                ("rope_bwd", rope_bwd),
-                ("adamw_master_step", adamw_master_step),
-            ]
-            if k is None
-        ]
-        _require(
-            not missing,
-            msg=(
-                "CUDA is available but required Triton kernels are missing.\n"
-                f"Missing: {', '.join(missing)}\n"
-                "This usually indicates Triton import/JIT issues.\n"
-                f"CUDA device: {_cuda_device_summary()}\n"
-            ),
-        )
 
     _REGISTRY = KernelRegistry(
         cuda_available=cuda_available,
@@ -203,26 +96,10 @@ def initialize_kernels() -> KernelRegistry:
     if not _LOGGED:
         _LOGGED = True
         if _REGISTRY.mps_available:
-            logger.info("[KERNEL] RMSNorm: Metal fp16 + backward (MPS)")
-            logger.info("[KERNEL] LayerNorm: Metal fp16 + backward (MPS)")
-            logger.info("[KERNEL] RoPE: Metal fp16 + backward (MPS)")
-            logger.info("[KERNEL] Attention Decode: Metal fp16 (MPS, inference)")
-            logger.info("[KERNEL] Attention Train: Metal fp16 + backward (MPS)")
-            logger.info("[KERNEL] SSM Scan: Metal fp16 + backward (MPS)")
-            logger.info("[KERNEL] Resonant Update: Metal fp32 + backward (MPS)")
-            logger.info("[KERNEL] AdamW Master Step: Metal fused (MPS)")
-            logger.info("[KERNEL] Lion Step: Metal fused (MPS)")
+            logger.info("[KERNEL] MPS: using PyTorch kernels by default (Kernel Hub optional)")
         if _REGISTRY.cuda_available:
             logger.info(f"[KERNEL] CUDA device: {_cuda_device_summary()}")
-            logger.info("[KERNEL] Attention Decode: Triton q4/q8/q4 decode + split-K (CUDA, inference)")
-            logger.info("[KERNEL] Attention Train: Triton FlashAttention forward+backward (CUDA)")
-            logger.info("[KERNEL] DBA Attention Train: Triton decoupled FlashAttention forward+backward (CUDA)")
-            logger.info("[KERNEL] SSM Scan: Triton selective scan forward+backward (CUDA)")
-            logger.info("[KERNEL] RMSNorm: Triton fused forward+backward (CUDA)")
-            logger.info("[KERNEL] LayerNorm: Triton fused forward+backward (CUDA)")
-            logger.info("[KERNEL] RoPE: Triton forward+backward (CUDA)")
-            logger.info("[KERNEL] Resonant Update: Triton fp32 + backward (CUDA)")
-            logger.info("[KERNEL] AdamW Master Step: Triton fused (CUDA)")
+            logger.info("[KERNEL] CUDA: Kernel Hub / PyTorch fallback (no custom-kernel requirement)")
 
     return _REGISTRY
 

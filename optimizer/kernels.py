@@ -41,6 +41,59 @@ def _typed(fn: _F) -> _F:
     return cast(_F, fn)
 
 
+def _use_custom_kernels() -> bool:
+    """Whether to use Caramba's custom Triton/Metal kernels.
+
+    Default is **off**. Set `CARAMBA_USE_CUSTOM_KERNELS=1` to re-enable.
+    """
+    import os
+
+    return str(os.environ.get("CARAMBA_USE_CUSTOM_KERNELS", "0")).lower() in ("1", "true", "yes", "on")
+
+
+# ---- Hugging Face Kernel Hub (kernels) optional integrations ----
+_HF_RMSNORM: Any | None = None
+_HF_RMSNORM_CHECKED: bool = False
+_HF_RMSNORM_ERROR: Exception | None = None
+
+
+def _hf_rmsnorm(*, x: Tensor, weight: Tensor, eps: float) -> Tensor | None:
+    """Best-effort Kernel Hub RMSNorm.
+
+    Uses `kernels-community/rmsnorm` when a compatible build exists for the
+    current environment; otherwise returns None.
+    """
+    global _HF_RMSNORM, _HF_RMSNORM_CHECKED, _HF_RMSNORM_ERROR
+    if not _HF_RMSNORM_CHECKED:
+        _HF_RMSNORM_CHECKED = True
+        try:
+            import kernels as _kernels  # type: ignore[import-not-found]
+            from kernels import has_kernel  # type: ignore[import-not-found]
+
+            # Prefer an explicit version when available.
+            # kernels' typing stubs currently annotate `version` as `str|None`,
+            # but the docs allow ints. Use a string to satisfy type checkers.
+            if has_kernel("kernels-community/rmsnorm", version="1") or has_kernel("kernels-community/rmsnorm"):
+                _HF_RMSNORM = _kernels.get_kernel("kernels-community/rmsnorm", version="1")
+        except Exception as e:
+            _HF_RMSNORM_ERROR = e
+            _HF_RMSNORM = None
+
+    if _HF_RMSNORM is None:
+        return None
+
+    try:
+        fn = getattr(_HF_RMSNORM, "apply_rms_norm", None)
+        if callable(fn):
+            out = fn(x, weight, float(eps))
+            return out if isinstance(out, torch.Tensor) else None
+    except Exception:
+        # Kernel present but failed for this input/device; fall back.
+        return None
+
+    return None
+
+
 # ---- Optional backend imports (top-level; errors raised on use) ----
 _METAL_IMPORT_ERROR: Exception | None = None
 _TRITON_IMPORT_ERROR: Exception | None = None
@@ -85,7 +138,12 @@ except Exception as e:
 @_typed
 def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
     """RMSNorm: y = x * rsqrt(mean(x^2) + eps) * weight."""
-    if x.device.type == "mps":
+    if weight is not None:
+        y_hf = _hf_rmsnorm(x=x, weight=weight, eps=float(eps))
+        if y_hf is not None:
+            return y_hf
+
+    if _use_custom_kernels() and x.device.type == "mps":
         _require(
             bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
             msg="RMSNorm on MPS requires the Metal extension to be available and loaded at startup.",
@@ -98,7 +156,7 @@ def rmsnorm(*, x: Tensor, weight: Tensor | None, eps: float) -> Tensor:
             raise RuntimeError(f"Metal RMSNorm import failed: {_METAL_IMPORT_ERROR!r}")
         return _rmsnorm_fp16(x=x, weight=weight, eps=float(eps))
 
-    if x.device.type == "cuda":
+    if _use_custom_kernels() and x.device.type == "cuda":
         _require(
             bool(KERNELS.cuda_available and KERNELS.triton_available),
             msg="RMSNorm on CUDA requires Triton to be available and validated at startup.",
@@ -127,7 +185,7 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
     - x: (B, H, T, D)
     - cos/sin: (T, rot_dim/2)
     """
-    if x.device.type == "mps":
+    if _use_custom_kernels() and x.device.type == "mps":
         _require(
             bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
             msg="RoPE on MPS requires the Metal extension to be available and loaded at startup.",
@@ -140,7 +198,7 @@ def rope_apply(*, x: Tensor, cos: Tensor, sin: Tensor, rot_dim: int) -> Tensor:
             raise RuntimeError(f"Metal RoPE import failed: {_METAL_IMPORT_ERROR!r}")
         return _rope_fp16(x=x, cos=cos, sin=sin, rot_dim=int(rot_dim))
 
-    if x.device.type == "cuda":
+    if _use_custom_kernels() and x.device.type == "cuda":
         _require(
             bool(KERNELS.cuda_available and KERNELS.triton_available),
             msg="RoPE on CUDA requires Triton to be available and validated at startup.",
@@ -175,7 +233,7 @@ def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: flo
 
     This matches PyTorch's `F.layer_norm(x, normalized_shape=(D,))` behavior.
     """
-    if x.device.type == "mps":
+    if _use_custom_kernels() and x.device.type == "mps":
         _require(
             bool(KERNELS.mps_available and KERNELS.metal_ops_loaded),
             msg="LayerNorm on MPS requires the Metal extension to be available and loaded at startup.",
@@ -188,7 +246,7 @@ def layernorm(*, x: Tensor, weight: Tensor | None, bias: Tensor | None, eps: flo
             raise RuntimeError(f"Metal LayerNorm import failed: {_METAL_IMPORT_ERROR!r}")
         return _layernorm_fp16(x=x, weight=weight, bias=bias, eps=float(eps))
 
-    if x.device.type == "cuda":
+    if _use_custom_kernels() and x.device.type == "cuda":
         _require(
             bool(KERNELS.cuda_available and KERNELS.triton_available),
             msg="LayerNorm on CUDA requires Triton to be available and validated at startup.",

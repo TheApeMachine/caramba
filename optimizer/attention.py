@@ -10,18 +10,104 @@ don't need to embed backend-specific logic.
 
 from __future__ import annotations
 
-from typing import Any
-
+import os
+import contextlib
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from torch._dynamo import is_compiling as _dynamo_is_compiling
 
-from optimizer.kernel_registry import KERNELS
 from console import logger
-from optimizer.flash_attention_triton import FlashAttention
-from optimizer.metal.attention_training import MetalAttentionTraining
+import kernels
 
+
+def _sdpa_pytorch(
+    *,
+    q: Tensor,
+    k: Tensor,
+    v: Tensor,
+    causal: bool,
+    scale: float,
+    dropout_p: float,
+) -> Tensor:
+    """Run PyTorch SDPA with a preference for low-memory kernels on CUDA.
+
+    On older CUDA GPUs (e.g. sm_5.x) the default SDPA kernel selection may fall
+    back to the "math" implementation, which can materialize large (T×T) attention
+    tensors and OOM for moderate seq lengths across many layers.
+    """
+    # PyTorch's memory-efficient SDPA kernel has dtype constraints that can bite when
+    # the surrounding training stack forces bf16 autocast (e.g. accelerate config).
+    # If QKV arrive as bf16 on CUDA, downcast to fp16 for the SDPA op, then cast back.
+    # This both enables the mem-efficient kernel and avoids bf16 unsupported paths on pre-Ampere GPUs.
+    orig_dtype = q.dtype
+    if q.device.type == "cuda" and orig_dtype == torch.bfloat16:
+        q = q.to(dtype=torch.float16)
+        k = k.to(dtype=torch.float16)
+        v = v.to(dtype=torch.float16)
+
+    if q.device.type == "cuda":
+        # Prefer new API if available; torch.backends.cuda.sdp_kernel is deprecated.
+        sdpa_cm = None
+        try:
+            from torch.nn.attention import SDPBackend, sdpa_kernel  # type: ignore[attr-defined]
+
+            # Restrict SDPA to the efficient backend only.
+            sdpa_cm = sdpa_kernel([SDPBackend.EFFICIENT_ATTENTION], True)  # type: ignore[misc]
+        except Exception:
+            sdpa_cm = None
+
+        prefer = str(os.environ.get("CARAMBA_SDPA_PREFER", "mem_efficient")).lower()
+        if prefer in ("mem_efficient", "mem-efficient", "memory_efficient", "memory-efficient"):
+            try:
+                # Accelerate can enable bf16 autocast globally; SDPA's efficient backend
+                # often requires fp16/fp32. Disable autocast locally so our fp16 cast sticks.
+                autocast_off = (
+                    torch.autocast(device_type="cuda", enabled=False)
+                    if hasattr(torch, "autocast")
+                    else contextlib.nullcontext()
+                )
+                if sdpa_cm is not None:
+                    with sdpa_cm, autocast_off:
+                        out = F.scaled_dot_product_attention(
+                            q,
+                            k,
+                            v,
+                            attn_mask=None,
+                            dropout_p=float(dropout_p),
+                            is_causal=bool(causal),
+                            scale=float(scale),
+                        )
+                else:
+                    # Back-compat for older PyTorch.
+                    with autocast_off, torch.backends.cuda.sdp_kernel(  # type: ignore[attr-defined]
+                        enable_flash=False,
+                        enable_mem_efficient=True,
+                        enable_math=False,
+                    ):
+                        out = F.scaled_dot_product_attention(
+                            q,
+                            k,
+                            v,
+                            attn_mask=None,
+                            dropout_p=float(dropout_p),
+                            is_causal=bool(causal),
+                            scale=float(scale),
+                        )
+                return out.to(dtype=orig_dtype) if out.dtype != orig_dtype else out
+            except Exception:
+                # Fall through to default SDPA selection.
+                pass
+
+    out = F.scaled_dot_product_attention(
+        q,
+        k,
+        v,
+        attn_mask=None,
+        dropout_p=float(dropout_p),
+        is_causal=bool(causal),
+        scale=float(scale),
+    )
+    return out.to(dtype=orig_dtype) if out.dtype != orig_dtype else out
 
 class AttentionTraining:
     """Full-sequence attention for training.
@@ -30,145 +116,117 @@ class AttentionTraining:
     - No arbitrary attention masks (padding masks) in the fused CUDA path
     - Dropout is supported (mask is regenerated in backward from a saved seed)
     """
+    def __init__(self):
+        self._cuda_flash_warned = False
+        if torch.cuda.is_available():
+            # FlashAttention kernels typically require Ampere (sm_8.x) or newer.
+            # On older GPUs (e.g. sm_5.2), we must fall back to PyTorch SDPA.
+            try:
+                cc_major, _cc_minor = torch.cuda.get_device_capability(torch.cuda.current_device())
+            except Exception:
+                cc_major = 0
+            if int(cc_major) < 8:
+                self.cuda_flash_sdpa = None
+                return
 
-    def _require(self, cond: bool, *, msg: str) -> None:
-        if not cond:
-            raise RuntimeError(msg)
+            # Prefer Kernel Hub FlashAttention if a compatible build exists for this environment.
+            # Otherwise, fall back to PyTorch SDPA (works everywhere).
+            try:
+                from kernels import has_kernel
 
-    def _validate_common(
-        self,
-        *,
-        q: Tensor,
-        k: Tensor,
-        v: Tensor,
-        attn_mask: Tensor | None,
-        dropout_p: float,
-    ) -> None:
-        self._require(q.shape == k.shape == v.shape, msg="AttentionTraining requires q/k/v shapes to match.")
-        self._require(q.dtype == k.dtype == v.dtype, msg="AttentionTraining requires q/k/v dtypes to match.")
-        self._require(q.ndim == 4, msg="AttentionTraining expects q/k/v shape (B,H,T,D).")
-        self._require(attn_mask is None, msg="AttentionTraining fused path does not support attn_mask; use packing/no-padding.")
-        self._require(0.0 <= float(dropout_p) < 1.0, msg="AttentionTraining requires 0 <= dropout_p < 1.")
-
-    # Cache of the fastest CUDA backend per (dtype, T, D, causal).
-    #
-    # Why:
-    # - PyTorch SDPA on CUDA can dispatch to FlashAttention2 / efficient kernels that may
-    #   outperform our Triton implementation for some shapes/devices.
-    # - We benchmark once per shape and then deterministically reuse the faster backend.
-    _cuda_backend_cache: dict[tuple[torch.dtype, int, int, bool], str] = {}
-
-    def _bench_cuda_fwd_bwd_ms(
-        self,
-        *,
-        fn_name: str,
-        fn: Any,
-        q: Tensor,
-        k: Tensor,
-        v: Tensor,
-    ) -> float:
-        """Benchmark a CUDA attention backend (forward+backward) in milliseconds."""
-        if q.device.type != "cuda":
-            raise RuntimeError("CUDA benchmark requires q on CUDA")
-        if not (q.is_contiguous() and k.is_contiguous() and v.is_contiguous()):
-            raise RuntimeError("CUDA benchmark requires contiguous q/k/v")
-
-        # Reuse the same leaf tensors across iterations; each iteration builds a fresh graph.
-        q1 = q.detach().clone().requires_grad_(True)
-        k1 = k.detach().clone().requires_grad_(True)
-        v1 = v.detach().clone().requires_grad_(True)
-
-        def step() -> None:
-            q1.grad = None
-            k1.grad = None
-            v1.grad = None
-            out = fn(q1, k1, v1)
-            # Use a cheap scalar loss.
-            loss = out.float().mean()
-            loss.backward()
-
-        # Warmup.
-        for _ in range(2):
-            step()
-        torch.cuda.synchronize()
-
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        iters = 5
-        start.record()
-        for _ in range(iters):
-            step()
-        end.record()
-        torch.cuda.synchronize()
-        ms = float(start.elapsed_time(end)) / float(iters)
-        logger.info(f"AttentionTraining CUDA bench {fn_name}: {ms:.3f} ms (fwd+bwd)")
-        return ms
-
-    def _select_cuda_backend(self, *, q: Tensor, k: Tensor, v: Tensor, causal: bool, scale: float, dropout_p: float) -> str:
-        # Only benchmark the deterministic, dropout-free case.
-        if float(dropout_p) != 0.0:
-            return "triton"
-
-        # torch.compile/inductor can crash when we run profiler/event timing + backward
-        # during the compile trace. In compile mode, just use PyTorch SDPA (which will
-        # dispatch to FlashAttention2 on A100) and defer any benchmarking.
-        if bool(_dynamo_is_compiling()):
-            return "sdpa"
-
-        # Do not run backward-based benchmarking under `torch.no_grad()`.
-        # This path is exercised during reproducibility IO-shape export (no_grad),
-        # where we only need a forward pass. Benchmarking is deferred until the
-        # first grad-enabled training step.
-        if not torch.is_grad_enabled():
-            return "triton"
-
-        T = int(q.shape[2])
-        D = int(q.shape[3])
-        key = (q.dtype, T, D, bool(causal))
-        cached = self._cuda_backend_cache.get(key, None)
-        if isinstance(cached, str):
-            return cached
-
-        def triton_fn(qi: Tensor, ki: Tensor, vi: Tensor) -> Tensor:
-            return FlashAttention().run(q=qi, k=ki, v=vi, causal=bool(causal), scale=float(scale), dropout_p=0.0)
-
-        def sdpa_fn(qi: Tensor, ki: Tensor, vi: Tensor) -> Tensor:
-            return F.scaled_dot_product_attention(
-                qi,
-                ki,
-                vi,
-                attn_mask=None,
-                dropout_p=0.0,
-                is_causal=bool(causal),
-                scale=float(scale),
+                self.cuda_flash_sdpa = (
+                    kernels.get_kernel("kernels-community/flash-attn2")
+                    if has_kernel("kernels-community/flash-attn2")
+                    else None
+                )
+            except Exception as e:
+                logger.warning(f"Kernel Hub flash-attn2 unavailable; falling back to PyTorch SDPA. Error: {e}")
+                self.cuda_flash_sdpa = None
+        elif torch.backends.mps.is_available():
+            # The kernels-community Metal Flash-SDPA path has been observed to trigger
+            # MTLCommandBuffer encoder state asserts on some Apple GPUs/toolchains.
+            # Default to PyTorch's native SDPA on MPS unless explicitly enabled.
+            use_mps_flash = str(os.environ.get("CARAMBA_USE_MPS_FLASH_SDPA", "0")).lower() in ("1", "true", "yes")
+            self.metal_flash_sdpa = (
+                kernels.get_kernel("kernels-community/metal-flash-sdpa") if use_mps_flash else None
             )
+        else:
+            raise RuntimeError("AttentionTraining: no supported device found.")
 
-        ms_triton = self._bench_cuda_fwd_bwd_ms(fn_name="triton_flash", fn=triton_fn, q=q, k=k, v=v)
-        ms_sdpa = self._bench_cuda_fwd_bwd_ms(fn_name="pytorch_sdpa", fn=sdpa_fn, q=q, k=k, v=v)
-        backend = "sdpa" if ms_sdpa < ms_triton else "triton"
-        self._cuda_backend_cache[key] = backend
-        logger.info(
-            f"AttentionTraining selected CUDA backend={backend} (sdpa_ms={ms_sdpa:.3f}, triton_ms={ms_triton:.3f}) "
-            f"for dtype={q.dtype} T={T} D={D} causal={bool(causal)}"
-        )
-        return backend
+    @staticmethod
+    def _cu_seqlens_fixed(*, B: int, T: int, device: torch.device) -> Tensor:
+        # flash-attn varlen expects cu_seqlens of shape (B+1,) with inclusive prefix sums.
+        # For fixed-length sequences, this is [0, T, 2T, ..., B*T].
+        return torch.arange(0, (B + 1) * T, step=T, device=device, dtype=torch.int32)
 
-    def _run_cuda(self, *, q: Tensor, k: Tensor, v: Tensor, causal: bool, scale: float, dropout_p: float) -> Tensor:
-        self._require(
-            bool(KERNELS.cuda_available and KERNELS.triton_available),
-            msg="CUDA attention training requires Triton kernels validated at startup.",
-        )
+    @staticmethod
+    def _flatten_bhtd(x: Tensor) -> Tensor:
+        # (B,H,T,D) -> (B*T,H,D)
+        B, H, T, D = x.shape
+        return x.permute(0, 2, 1, 3).contiguous().view(B * T, H, D)
 
-        backend = self._select_cuda_backend(
-            q=q,
-            k=k,
-            v=v,
-            causal=bool(causal),
-            scale=float(scale),
-            dropout_p=float(dropout_p),
-        )
+    @staticmethod
+    def _unflatten_bthd(x: Tensor, *, B: int, H: int, T: int, D: int) -> Tensor:
+        # (B*T,H,D) -> (B,H,T,D)
+        return x.view(B, T, H, D).permute(0, 2, 1, 3).contiguous()
 
-        if backend == "sdpa":
+    def _run_cuda(
+        self, 
+        *, 
+        q: Tensor, 
+        k: Tensor, 
+        v: Tensor, 
+        causal: bool, 
+        scale: float, 
+        dropout_p: float, 
+    ) -> Tensor:
+        if self.cuda_flash_sdpa is None:
+            # Portable fallback.
+            return _sdpa_pytorch(q=q, k=k, v=v, causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p))
+        B, H, Tq, D = q.shape
+        _, _, Tk, _ = k.shape
+        cu_q = self._cu_seqlens_fixed(B=B, T=int(Tq), device=q.device)
+        cu_k = self._cu_seqlens_fixed(B=B, T=int(Tk), device=k.device)
+        try:
+            out = self.cuda_flash_sdpa.flash_attn_varlen_func(
+                q=self._flatten_bhtd(q),
+                k=self._flatten_bhtd(k),
+                v=self._flatten_bhtd(v),
+                cu_seqlens_q=cu_q,
+                cu_seqlens_k=cu_k,
+                max_seqlen_q=int(Tq),
+                max_seqlen_k=int(Tk),
+                dropout_p=float(dropout_p),
+                softmax_scale=float(scale),
+                causal=bool(causal),
+                window_size=(-1, -1),
+                alibi_slopes=None,
+                deterministic=False,
+                return_attn_probs=False,
+            )
+        except RuntimeError as e:
+            # Kernel Hub build exists, but runtime may still reject the GPU (e.g. pre-Ampere).
+            if not self._cuda_flash_warned:
+                self._cuda_flash_warned = True
+                logger.warning(f"FlashAttention kernel failed at runtime; falling back to PyTorch SDPA. Error: {e}")
+            return _sdpa_pytorch(q=q, k=k, v=v, causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p))
+        return self._unflatten_bthd(out, B=B, H=H, T=int(Tq), D=D)
+
+    def _run_mps(
+        self, 
+        *, 
+        q: Tensor, 
+        k: Tensor, 
+        v: Tensor, 
+        causal: bool, 
+        scale: float, 
+        dropout_p: float, 
+        attn_mask: Tensor | None = None
+    ) -> Tensor:
+        # Prefer PyTorch-native SDPA on MPS by default (more stable).
+        if self.metal_flash_sdpa is None:
+            if attn_mask is not None:
+                raise RuntimeError("AttentionTraining MPS path does not support attn_mask (must be None).")
             return F.scaled_dot_product_attention(
                 q,
                 k,
@@ -179,22 +237,28 @@ class AttentionTraining:
                 scale=float(scale),
             )
 
-        return FlashAttention().run(q=q, k=k, v=v, causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p))
-
-    def _run_mps(self, *, q: Tensor, k: Tensor, v: Tensor, causal: bool, scale: float, dropout_p: float) -> Tensor:
-        self._require(
-            cond=bool(KERNELS.mps_available),
-            msg="MPS attention training requires torch.backends.mps to be available."
-        )
-
-        return MetalAttentionTraining().run(
-            q=q,
-            k=k,
-            v=v,
-            causal=bool(causal),
-            scale=float(scale),
+        B, H, Tq, D = q.shape
+        _, _, Tk, _ = k.shape
+        cu_q = self._cu_seqlens_fixed(B=B, T=int(Tq), device=q.device)
+        cu_k = self._cu_seqlens_fixed(B=B, T=int(Tk), device=k.device)
+        out = self.metal_flash_sdpa.flash_attn_varlen_func(
+            q=self._flatten_bhtd(q),
+            k=self._flatten_bhtd(k),
+            v=self._flatten_bhtd(v),
+            cu_seqlens_q=cu_q,
+            cu_seqlens_k=cu_k,
+            max_seqlen_q=int(Tq),
+            max_seqlen_k=int(Tk),
             dropout_p=float(dropout_p),
+            softmax_scale=float(scale),
+            causal=bool(causal),
+            window_size=(-1, -1),
+            alibi_slopes=None,
+            deterministic=False,
+            return_attn_probs=False
         )
+        return self._unflatten_bthd(out, B=B, H=H, T=int(Tq), D=D)
+
 
     def run(
         self,
@@ -216,12 +280,24 @@ class AttentionTraining:
             attn_mask: must be None for the fused path
             dropout_p: dropout probability (mask is regenerated from seed in backward)
         """
-        self._validate_common(q=q, k=k, v=v, attn_mask=attn_mask, dropout_p=float(dropout_p))
-
         if q.device.type == "cuda":
-            return self._run_cuda(q=q, k=k, v=v, causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p))
+            return self._run_cuda(
+                q=q, 
+                k=k, 
+                v=v, 
+                causal=bool(causal), 
+                scale=float(scale), 
+                dropout_p=float(dropout_p), 
+            )
         if q.device.type == "mps":
-            return self._run_mps(q=q, k=k, v=v, causal=bool(causal), scale=float(scale), dropout_p=float(dropout_p))
+            return self._run_mps(
+                q=q, 
+                k=k, 
+                v=v, 
+                causal=bool(causal), 
+                scale=float(scale), 
+                dropout_p=float(dropout_p), 
+            )
 
         raise RuntimeError(f"AttentionTraining: unsupported device.type={q.device.type!r}.")
 

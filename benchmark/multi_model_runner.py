@@ -21,6 +21,7 @@ from benchmark.context import BenchmarkContext, ContextResult
 from benchmark.latency import LatencyBenchmark, LatencyResult
 from benchmark.memory import MemoryBenchmark, MemoryResult
 from benchmark.perplexity import PerplexityBenchmark, PerplexityResult
+from benchmark.generation import GenerationBenchmark
 from benchmark.utils import stitch_images, with_plotter
 from config.benchmark import (
     AccuracyBenchmarkConfig,
@@ -32,6 +33,7 @@ from config.benchmark import (
     LatencyBenchmarkConfig,
     MemoryBenchmarkConfig,
     PerplexityBenchmarkConfig,
+    GenerationBenchmarkConfig,
 )
 from console import logger
 
@@ -212,6 +214,16 @@ class MultiModelBenchmarkRunner:
 
                         # Save incremental artifacts after perplexity benchmark
                         self._save_incremental_artifacts("perplexity")
+
+                    case BenchmarkType.GENERATION:
+                        assert isinstance(spec.config, GenerationBenchmarkConfig)
+                        benchmark = GenerationBenchmark(spec.config, self.device)
+                        for model_name in models_to_run:
+                            if model_name not in models:
+                                raise RuntimeError(f"Model '{model_name}' not found (requested by spec '{spec.id}').")
+                            model = models[model_name]
+                            benchmark.run(model, str(model_name), output_dir=self.output_dir)
+                        self._save_incremental_artifacts("generation")
 
                     case BenchmarkType.LATENCY:
                         assert isinstance(spec.config, LatencyBenchmarkConfig)
@@ -667,6 +679,19 @@ class MultiModelBenchmarkRunner:
                                     pass
                         self._save_incremental_artifacts("perplexity")
 
+                    case BenchmarkType.GENERATION:
+                        assert isinstance(spec.config, GenerationBenchmarkConfig)
+                        benchmark = GenerationBenchmark(spec.config, self.device)
+                        for name in models_to_run:
+                            if name not in model_names:
+                                continue
+                            m = _with_model(name)
+                            try:
+                                benchmark.run(m, str(name), output_dir=self.output_dir)
+                            finally:
+                                unload_model(m)
+                        self._save_incremental_artifacts("generation")
+
                     case BenchmarkType.LATENCY:
                         assert isinstance(spec.config, LatencyBenchmarkConfig)
                         benchmark = LatencyBenchmark(spec.config, self.device)
@@ -793,15 +818,27 @@ class MultiModelBenchmarkRunner:
 
                     case BenchmarkType.BEHAVIOR:
                         assert isinstance(spec.config, BehaviorBenchmarkConfig)
-                        if not self._perplexity_results:
-                            raise RuntimeError(
-                                f"{spec.id}: behavior requires perplexity results to be available "
-                                f"(place perplexity benchmark before behavior in the suite)."
-                            )
                         run_names = [n for n in models_to_run if n in model_names]
                         if not run_names:
                             raise RuntimeError(f"{spec.id}: no models available for behavior benchmark.")
-                        ppl_by_model = {n: float(self._perplexity_results[n].perplexity) for n in run_names}
+                        ppl_by_model = None
+                        if self._perplexity_results:
+                            missing = [n for n in run_names if n not in self._perplexity_results]
+                            if missing:
+                                have = sorted(self._perplexity_results.keys())
+                                logger.warning(
+                                    f"{spec.id}: perplexity results missing for {missing}; "
+                                    f"continuing behavior without ppl_by_model (have={have})."
+                                )
+                            else:
+                                ppl_by_model = {
+                                    n: float(self._perplexity_results[n].perplexity) for n in run_names
+                                }
+                        else:
+                            logger.warning(
+                                f"{spec.id}: no perplexity results available; "
+                                "continuing behavior without ppl_by_model."
+                            )
                         benchmark = BehaviorBenchmark(
                             suite_file=str(spec.config.suite_file),
                             tokenizer_config=spec.config.tokenizer,

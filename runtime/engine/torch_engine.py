@@ -62,6 +62,11 @@ class TorchEngine:
         )
         self.registry.register(
             backend="torch",
+            ref="trainer.finetune_unsloth",
+            python="caramba.trainer.finetune_unsloth:FinetuneUnslothTrainer",
+        )
+        self.registry.register(
+            backend="torch",
             ref="trainer.checkpoint_compare",
             python="caramba.trainer.checkpoint_compare:CheckpointCompareTrainer",
         )

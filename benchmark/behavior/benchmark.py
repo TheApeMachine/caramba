@@ -47,6 +47,7 @@ class BehaviorBenchmark:
         baseline_name: str | None = None,
         seed: int | None = None,
         max_new_tokens: int = 32,
+        stop: list[str] | None = None,
         context_window: int | None = None,
         dump_attention: bool = True,
         dump_attention_max_tokens: int | None = 96,
@@ -122,6 +123,7 @@ class BehaviorBenchmark:
                         max_new_tokens=int(max_new_tokens),
                         context_window=context_window,
                         valid_vocab_size=vv,
+                        stop=stop,
                     )
                 else:
                     raise RuntimeError(f"Unsupported eval kind: {case.kind!r}")
@@ -273,6 +275,7 @@ class BehaviorBenchmark:
         baseline_name: str | None = None,
         seed: int | None = None,
         max_new_tokens: int = 32,
+        stop: list[str] | None = None,
         context_window: int | None = None,
         dump_attention: bool = True,
         dump_attention_max_tokens: int | None = 96,
@@ -348,6 +351,7 @@ class BehaviorBenchmark:
                             max_new_tokens=int(max_new_tokens),
                             context_window=context_window,
                             valid_vocab_size=vv,
+                            stop=stop,
                         )
                     else:
                         raise RuntimeError(f"Unsupported eval kind: {case.kind!r}")

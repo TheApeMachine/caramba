@@ -10,6 +10,33 @@ import torch.nn.functional as F
 from torch import nn
 
 
+def _extract_logits(output: object) -> torch.Tensor:
+    """Extract logits tensor from common model output containers.
+
+    Supports:
+    - raw Tensor
+    - tuple/list where element 0 is logits
+    - dict with "logits" key (HF/PEFT-style wrappers)
+    - objects with `.logits` attribute
+    """
+    if isinstance(output, torch.Tensor):
+        return output
+    if isinstance(output, (tuple, list)) and output:
+        first = output[0]
+        if isinstance(first, torch.Tensor):
+            return first
+        output = first
+    if isinstance(output, dict):
+        v = output.get("logits")
+        if isinstance(v, torch.Tensor):
+            return v
+        raise TypeError("Model output dict did not contain Tensor under key 'logits'.")
+    logits = getattr(output, "logits", None)
+    if isinstance(logits, torch.Tensor):
+        return logits
+    raise TypeError(f"Unsupported model output type for logits: {type(output)!r}")
+
+
 class LogprobCompletionWindowed:
     """Scores completion log-prob with a sliding context window.
 
@@ -50,7 +77,7 @@ class LogprobCompletionWindowed:
             # This avoids issues with custom autograd kernels on some backends
             # (e.g. Metal) when upstream code uses inference tensors.
             with torch.no_grad():
-                logits = self.model(x)
+                logits = _extract_logits(self.model(x))
             v = logits[0, -1, :]
             if self.valid_vocab_size is not None:
                 vv = int(self.valid_vocab_size)
@@ -129,7 +156,7 @@ class LogprobCompletionWindowed:
         # Single batched forward pass
         x = torch.tensor(padded_seqs, device=self.device, dtype=torch.long)
         with torch.no_grad():
-            logits = self.model(x)
+            logits = _extract_logits(self.model(x))
         if self.valid_vocab_size is not None:
             vv = int(self.valid_vocab_size)
             if int(logits.shape[-1]) < vv:

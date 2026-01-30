@@ -10,6 +10,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#include <dispatch/dispatch.h>
 
 namespace fs = std::filesystem;
 
@@ -303,6 +304,8 @@ torch::Tensor dba_decode(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "dba_decode: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
 
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "dba_decode: failed to get MTLComputeCommandEncoder from MPS stream");
@@ -344,6 +347,10 @@ torch::Tensor dba_decode(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake(1, (NSUInteger)H, (NSUInteger)B);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return out;
 }
@@ -437,6 +444,8 @@ torch::Tensor dba_decode_null(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "dba_decode_null: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "dba_decode_null: failed to get MTLComputeCommandEncoder from MPS stream");
 
@@ -480,6 +489,10 @@ torch::Tensor dba_decode_null(
   const MTLSize grid = MTLSizeMake(1, (NSUInteger)H, (NSUInteger)B);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
 
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
+
   return out;
 }
 
@@ -510,6 +523,8 @@ torch::Tensor rmsnorm(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "rmsnorm: failed to get MTLComputeCommandEncoder from MPS stream");
 
@@ -536,6 +551,10 @@ torch::Tensor rmsnorm(
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
 
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
+
   return out;
 }
 
@@ -561,6 +580,8 @@ torch::Tensor rmsnorm_noweight(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_noweight: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "rmsnorm_noweight: failed to get MTLComputeCommandEncoder from MPS stream");
 
@@ -585,6 +606,10 @@ torch::Tensor rmsnorm_noweight(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return out;
 }
@@ -617,31 +642,36 @@ std::vector<torch::Tensor> rmsnorm_forward_with_inv(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_forward_with_inv: failed to get current MPS stream");
-  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
-  TORCH_CHECK(encoder != nil, "rmsnorm_forward_with_inv: failed to get MTLComputeCommandEncoder from MPS stream");
-  [encoder setComputePipelineState:pipeline];
+  // IMPORTANT: Interact with MPSStream Metal objects on its serial queue.
+  dispatch_sync(stream->queue(), ^{
+    id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+    TORCH_CHECK(encoder != nil, "rmsnorm_forward_with_inv: failed to get MTLComputeCommandEncoder from MPS stream");
+    [encoder setComputePipelineState:pipeline];
 
-  auto set_tensor = [&](const at::Tensor& t, int idx) {
-    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
-    TORCH_CHECK(buf != nil, "rmsnorm_forward_with_inv: tensor has null MTLBuffer");
-    const NSUInteger off = storage_offset_bytes(t);
-    [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
-  };
+    auto set_tensor = [&](const at::Tensor& t, int idx) {
+      id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+      TORCH_CHECK(buf != nil, "rmsnorm_forward_with_inv: tensor has null MTLBuffer");
+      const NSUInteger off = storage_offset_bytes(t);
+      [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
+    };
 
-  set_tensor(x, 0);
-  set_tensor(weight, 1);
-  set_tensor(out, 2);
-  set_tensor(inv, 3);
+    set_tensor(x, 0);
+    set_tensor(weight, 1);
+    set_tensor(out, 2);
+    set_tensor(inv, 3);
 
-  RMSNormParams params;
-  params.d_model = (uint32_t)D;
-  params.eps = (float)eps;
-  params.stride_row = (uint32_t)D;
-  [encoder setBytes:&params length:sizeof(RMSNormParams) atIndex:4];
+    RMSNormParams params;
+    params.d_model = (uint32_t)D;
+    params.eps = (float)eps;
+    params.stride_row = (uint32_t)D;
+    [encoder setBytes:&params length:sizeof(RMSNormParams) atIndex:4];
 
-  const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
-  const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
-  [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+    const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+    const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
+    [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+    stream->endKernelCoalescing();
+  });
 
   return {out, inv};
 }
@@ -669,30 +699,35 @@ std::vector<torch::Tensor> rmsnorm_noweight_forward_with_inv(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_noweight_forward_with_inv: failed to get current MPS stream");
-  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
-  TORCH_CHECK(encoder != nil, "rmsnorm_noweight_forward_with_inv: failed to get MTLComputeCommandEncoder from MPS stream");
-  [encoder setComputePipelineState:pipeline];
+  // IMPORTANT: Interact with MPSStream Metal objects on its serial queue.
+  dispatch_sync(stream->queue(), ^{
+    id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+    TORCH_CHECK(encoder != nil, "rmsnorm_noweight_forward_with_inv: failed to get MTLComputeCommandEncoder from MPS stream");
+    [encoder setComputePipelineState:pipeline];
 
-  auto set_tensor = [&](const at::Tensor& t, int idx) {
-    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
-    TORCH_CHECK(buf != nil, "rmsnorm_noweight_forward_with_inv: tensor has null MTLBuffer");
-    const NSUInteger off = storage_offset_bytes(t);
-    [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
-  };
+    auto set_tensor = [&](const at::Tensor& t, int idx) {
+      id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+      TORCH_CHECK(buf != nil, "rmsnorm_noweight_forward_with_inv: tensor has null MTLBuffer");
+      const NSUInteger off = storage_offset_bytes(t);
+      [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
+    };
 
-  set_tensor(x, 0);
-  set_tensor(out, 1);
-  set_tensor(inv, 2);
+    set_tensor(x, 0);
+    set_tensor(out, 1);
+    set_tensor(inv, 2);
 
-  RMSNormParams params;
-  params.d_model = (uint32_t)D;
-  params.eps = (float)eps;
-  params.stride_row = (uint32_t)D;
-  [encoder setBytes:&params length:sizeof(RMSNormParams) atIndex:3];
+    RMSNormParams params;
+    params.d_model = (uint32_t)D;
+    params.eps = (float)eps;
+    params.stride_row = (uint32_t)D;
+    [encoder setBytes:&params length:sizeof(RMSNormParams) atIndex:3];
 
-  const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
-  const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
-  [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+    const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+    const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
+    [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+    stream->endKernelCoalescing();
+  });
 
   return {out, inv};
 }
@@ -732,6 +767,8 @@ torch::Tensor rmsnorm_backward_x(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_backward_x: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "rmsnorm_backward_x: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -758,6 +795,10 @@ torch::Tensor rmsnorm_backward_x(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return grad_x;
 }
@@ -792,6 +833,8 @@ torch::Tensor rmsnorm_backward_x_noweight(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_backward_x_noweight: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "rmsnorm_backward_x_noweight: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -817,6 +860,10 @@ torch::Tensor rmsnorm_backward_x_noweight(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return grad_x;
 }
@@ -851,6 +898,8 @@ torch::Tensor rmsnorm_backward_w(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rmsnorm_backward_w: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "rmsnorm_backward_w: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -876,6 +925,10 @@ torch::Tensor rmsnorm_backward_w(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)D, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return grad_w;
 }
@@ -912,6 +965,8 @@ torch::Tensor layernorm(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm: failed to get MTLComputeCommandEncoder from MPS stream");
 
@@ -938,6 +993,10 @@ torch::Tensor layernorm(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return out;
 }
@@ -969,6 +1028,8 @@ torch::Tensor layernorm_weight(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_weight: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm_weight: failed to get MTLComputeCommandEncoder from MPS stream");
 
@@ -995,6 +1056,10 @@ torch::Tensor layernorm_weight(
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
 
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
+
   return out;
 }
 
@@ -1020,6 +1085,8 @@ torch::Tensor layernorm_noweight(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_noweight: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm_noweight: failed to get MTLComputeCommandEncoder from MPS stream");
 
@@ -1044,6 +1111,10 @@ torch::Tensor layernorm_noweight(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return out;
 }
@@ -1082,6 +1153,8 @@ std::vector<torch::Tensor> layernorm_forward_with_stats(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_forward_with_stats: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm_forward_with_stats: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -1109,6 +1182,10 @@ std::vector<torch::Tensor> layernorm_forward_with_stats(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return {out, mean, inv};
 }
@@ -1142,6 +1219,8 @@ std::vector<torch::Tensor> layernorm_weight_forward_with_stats(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_weight_forward_with_stats: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm_weight_forward_with_stats: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -1168,6 +1247,10 @@ std::vector<torch::Tensor> layernorm_weight_forward_with_stats(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return {out, mean, inv};
 }
@@ -1196,6 +1279,8 @@ std::vector<torch::Tensor> layernorm_noweight_forward_with_stats(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_noweight_forward_with_stats: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm_noweight_forward_with_stats: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -1221,6 +1306,10 @@ std::vector<torch::Tensor> layernorm_noweight_forward_with_stats(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return {out, mean, inv};
 }
@@ -1267,6 +1356,8 @@ torch::Tensor layernorm_backward_x(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_backward_x: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm_backward_x: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -1294,6 +1385,10 @@ torch::Tensor layernorm_backward_x(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return grad_x;
 }
@@ -1334,6 +1429,8 @@ torch::Tensor layernorm_backward_x_noweight(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_backward_x_noweight: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm_backward_x_noweight: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -1360,6 +1457,10 @@ torch::Tensor layernorm_backward_x_noweight(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)rows, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return grad_x;
 }
@@ -1400,6 +1501,8 @@ torch::Tensor layernorm_backward_w(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_backward_w: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm_backward_w: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -1427,6 +1530,10 @@ torch::Tensor layernorm_backward_w(
   const MTLSize grid = MTLSizeMake((NSUInteger)D, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
 
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
+
   return grad_w;
 }
 
@@ -1451,6 +1558,8 @@ torch::Tensor layernorm_backward_b(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "layernorm_backward_b: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "layernorm_backward_b: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -1474,6 +1583,10 @@ torch::Tensor layernorm_backward_b(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)D, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return grad_b;
 }
@@ -1520,33 +1633,38 @@ torch::Tensor rope(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rope: failed to get current MPS stream");
-  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
-  TORCH_CHECK(encoder != nil, "rope: failed to get MTLComputeCommandEncoder from MPS stream");
+  // IMPORTANT: Interact with MPSStream Metal objects on its serial queue.
+  dispatch_sync(stream->queue(), ^{
+    id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+    TORCH_CHECK(encoder != nil, "rope: failed to get MTLComputeCommandEncoder from MPS stream");
 
-  [encoder setComputePipelineState:pipeline];
+    [encoder setComputePipelineState:pipeline];
 
-  auto set_tensor = [&](const at::Tensor& t, int idx) {
-    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
-    TORCH_CHECK(buf != nil, "rope: tensor has null MTLBuffer");
-    const NSUInteger off = storage_offset_bytes(t);
-    [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
-  };
+    auto set_tensor = [&](const at::Tensor& t, int idx) {
+      id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+      TORCH_CHECK(buf != nil, "rope: tensor has null MTLBuffer");
+      const NSUInteger off = storage_offset_bytes(t);
+      [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
+    };
 
-  set_tensor(x, 0);
-  set_tensor(cos, 1);
-  set_tensor(sin, 2);
-  set_tensor(out, 3);
+    set_tensor(x, 0);
+    set_tensor(cos, 1);
+    set_tensor(sin, 2);
+    set_tensor(out, 3);
 
-  RoPEParams params;
-  params.d_model = (uint32_t)D;
-  params.rot_dim = (uint32_t)rot_dim;
-  params.half_rot = (uint32_t)half_rot;
-  params.seq_len = (uint32_t)T;
-  [encoder setBytes:&params length:sizeof(RoPEParams) atIndex:4];
+    RoPEParams params;
+    params.d_model = (uint32_t)D;
+    params.rot_dim = (uint32_t)rot_dim;
+    params.half_rot = (uint32_t)half_rot;
+    params.seq_len = (uint32_t)T;
+    [encoder setBytes:&params length:sizeof(RoPEParams) atIndex:4];
 
-  const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
-  const MTLSize grid = MTLSizeMake((NSUInteger)n_vec, 1, 1);
-  [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+    const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+    const MTLSize grid = MTLSizeMake((NSUInteger)n_vec, 1, 1);
+    [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+    stream->endKernelCoalescing();
+  });
 
   return out;
 }
@@ -1593,33 +1711,38 @@ torch::Tensor rope_backward(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "rope_backward: failed to get current MPS stream");
-  id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
-  TORCH_CHECK(encoder != nil, "rope_backward: failed to get MTLComputeCommandEncoder from MPS stream");
+  // IMPORTANT: Interact with MPSStream Metal objects on its serial queue.
+  dispatch_sync(stream->queue(), ^{
+    id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
+    TORCH_CHECK(encoder != nil, "rope_backward: failed to get MTLComputeCommandEncoder from MPS stream");
 
-  [encoder setComputePipelineState:pipeline];
+    [encoder setComputePipelineState:pipeline];
 
-  auto set_tensor = [&](const at::Tensor& t, int idx) {
-    id<MTLBuffer> buf = storage_as_mtlbuffer(t);
-    TORCH_CHECK(buf != nil, "rope_backward: tensor has null MTLBuffer");
-    const NSUInteger off = storage_offset_bytes(t);
-    [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
-  };
+    auto set_tensor = [&](const at::Tensor& t, int idx) {
+      id<MTLBuffer> buf = storage_as_mtlbuffer(t);
+      TORCH_CHECK(buf != nil, "rope_backward: tensor has null MTLBuffer");
+      const NSUInteger off = storage_offset_bytes(t);
+      [encoder setBuffer:buf offset:off atIndex:(NSUInteger)idx];
+    };
 
-  set_tensor(grad_y, 0);
-  set_tensor(cos, 1);
-  set_tensor(sin, 2);
-  set_tensor(grad_x, 3);
+    set_tensor(grad_y, 0);
+    set_tensor(cos, 1);
+    set_tensor(sin, 2);
+    set_tensor(grad_x, 3);
 
-  RoPEParams params;
-  params.d_model = (uint32_t)D;
-  params.rot_dim = (uint32_t)rot_dim;
-  params.half_rot = (uint32_t)half_rot;
-  params.seq_len = (uint32_t)T;
-  [encoder setBytes:&params length:sizeof(RoPEParams) atIndex:4];
+    RoPEParams params;
+    params.d_model = (uint32_t)D;
+    params.rot_dim = (uint32_t)rot_dim;
+    params.half_rot = (uint32_t)half_rot;
+    params.seq_len = (uint32_t)T;
+    [encoder setBytes:&params length:sizeof(RoPEParams) atIndex:4];
 
-  const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
-  const MTLSize grid = MTLSizeMake((NSUInteger)n_vec, 1, 1);
-  [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+    const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
+    const MTLSize grid = MTLSizeMake((NSUInteger)n_vec, 1, 1);
+    [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+    stream->endKernelCoalescing();
+  });
 
   return grad_x;
 }
@@ -1655,6 +1778,8 @@ torch::Tensor lion_step(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "lion_step: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "lion_step: failed to get MTLComputeCommandEncoder from MPS stream");
 
@@ -1682,6 +1807,10 @@ torch::Tensor lion_step(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake(tg_n, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return p;
 }
@@ -1729,6 +1858,8 @@ torch::Tensor adamw_master_step(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "adamw_master_step: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "adamw_master_step: failed to get MTLComputeCommandEncoder from MPS stream");
 
@@ -1760,6 +1891,10 @@ torch::Tensor adamw_master_step(
   const MTLSize tg = MTLSizeMake(kThreadsPerThreadgroup, 1, 1);
   const MTLSize grid = MTLSizeMake(tg_n, 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return p;
 }
@@ -1831,6 +1966,8 @@ std::vector<torch::Tensor> ssm_scan_forward(
 
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "ssm_scan_forward: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "ssm_scan_forward: failed to get MTLComputeCommandEncoder from MPS stream");
   [encoder setComputePipelineState:pipeline];
@@ -1861,6 +1998,10 @@ std::vector<torch::Tensor> ssm_scan_forward(
   const MTLSize tg = MTLSizeMake(32, 1, 1);
   const MTLSize grid = MTLSizeMake((NSUInteger)(B * D_inner), 1, 1);
   [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return {y, h_hist};
 }
@@ -1908,6 +2049,8 @@ std::vector<torch::Tensor> ssm_scan_backward(
   id<MTLDevice> device = (id<MTLDevice>)at::mps::MPSDevice::getInstance()->device();
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "ssm_scan_backward: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> encoder = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(encoder != nil, "ssm_scan_backward: failed to get MTLComputeCommandEncoder from MPS stream");
 
@@ -2007,6 +2150,10 @@ std::vector<torch::Tensor> ssm_scan_backward(
     const MTLSize grid = MTLSizeMake((NSUInteger)(D_inner * D_state), 1, 1);
     [encoder dispatchThreadgroups:grid threadsPerThreadgroup:tg];
   }
+
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [encoder endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return {grad_x, grad_dt, grad_A, grad_B, grad_C, grad_D};
 }

@@ -176,6 +176,7 @@ class TestGenerationBenchmarkConfig(unittest.TestCase):
         self.assertAlmostEqual(cfg.temperature, 1.0)
         self.assertAlmostEqual(cfg.top_p, 1.0)
         self.assertAlmostEqual(cfg.repetition_penalty, 1.0)
+        self.assertIsNotNone(cfg.tokenizer)
 
 
 class TestBenchmarkSpec(unittest.TestCase):

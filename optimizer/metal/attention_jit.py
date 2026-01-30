@@ -142,7 +142,7 @@ def load_caramba_metal_attention_ops(*, verbose: bool = False) -> Any:
         mod = ce.load(
             name=name,
             sources=[src_ops],
-            extra_cflags=["-O3", "-std=c++17", "-fobjc-arc"],
+            extra_cflags=["-O3", "-std=c++17", "-fobjc-arc", "-fblocks"],
             extra_ldflags=["-framework", "Metal", "-framework", "Foundation"],
             with_cuda=False,
             is_python_module=True,

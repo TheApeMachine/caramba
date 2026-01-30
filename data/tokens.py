@@ -37,6 +37,8 @@ class TokenDataset(Dataset):
         path: str | None = None,
         block_size: int | None = None,
         tokenizer: str | None = None,
+        append_eos: bool | None = None,
+        eos_id: int | None = None,
         source: str | None = None,
         type: str | None = None,
         tokens: int | None = None,
@@ -49,6 +51,9 @@ class TokenDataset(Dataset):
         self.path = path
         self.block_size = block_size
         self.tokenizer = tokenizer
+        # Optional .npy dataset knobs (passed through to NpyDataset).
+        self.append_eos = bool(append_eos) if append_eos is not None else False
+        self.eos_id = eos_id
 
         # Backward compatibility / alternative config
         if config is not None:
@@ -77,7 +82,12 @@ class TokenDataset(Dataset):
             from data.npy import NpyDataset
             if self.block_size is None:
                 raise ValueError("block_size must be specified for NpyDataset")
-            self._dataset = NpyDataset(self.path, block_size=int(self.block_size))
+            self._dataset = NpyDataset(
+                self.path,
+                block_size=int(self.block_size),
+                append_eos=bool(self.append_eos),
+                eos_id=self.eos_id,
+            )
             return self._dataset
 
         # Fallback to existing logic for HF datasets / config-based loading

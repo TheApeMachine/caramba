@@ -13,7 +13,7 @@ from benchmark.behavior.schema import (
     ChoiceExplicitSpec,
     ChoiceFromPoolSpec,
 )
-from benchmark.behavior.types import GeneratedCase, MatchType
+from benchmark.behavior.types import GeneratedCase, MatchType, EvalKind
 
 
 _SLOT_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -142,9 +142,9 @@ def load_behavior_suite(
 
         for tmpl in cat.templates:
             # Validate template-kind vs choice config.
-            if str(tmpl.kind) == "choice_logprob" and tmpl.choice is None:
+            if tmpl.kind == EvalKind.CHOICE_LOGPROB and tmpl.choice is None:
                 raise ValueError(f"{cat.id}:{tmpl.id}: kind=choice_logprob requires `choice` config.")
-            if str(tmpl.kind) != "choice_logprob" and tmpl.choice is not None:
+            if tmpl.kind != EvalKind.CHOICE_LOGPROB and tmpl.choice is not None:
                 raise ValueError(f"{cat.id}:{tmpl.id}: `choice` is only valid for kind=choice_logprob.")
 
             for rep_i in range(int(tmpl.repeat)):

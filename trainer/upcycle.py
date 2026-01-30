@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import copy
+import json
 import re
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -259,9 +260,29 @@ class _UpcycleSession:
                 student_mod = getattr(self.student, "module", self.student)
                 missing, unexpected = student_mod.load_state_dict(state, strict=False)
                 if missing:
-                    logger.warning(f"Explicit load missing keys: {len(missing)}")
+                    sample = "\n".join(f"  - {k}" for k in list(missing)[:25])
+                    if len(missing) > 25:
+                        sample += f"\n  ... (+{len(missing) - 25} more)"
+                    logger.warning(f"Explicit load missing keys: {len(missing)}\n{sample}")
                 if unexpected:
-                    logger.warning(f"Explicit load unexpected keys: {len(unexpected)}")
+                    sample = "\n".join(f"  - {k}" for k in list(unexpected)[:25])
+                    if len(unexpected) > 25:
+                        sample += f"\n  ... (+{len(unexpected) - 25} more)"
+                    logger.warning(f"Explicit load unexpected keys: {len(unexpected)}\n{sample}")
+                if missing or unexpected:
+                    mismatch_path = Path(self.checkpoint_dir) / "explicit_load_key_mismatch.json"
+                    mismatch_path.write_text(
+                        json.dumps(
+                            {
+                                "checkpoint": str(load_ckpt),
+                                "missing_keys": [str(x) for x in list(missing)],
+                                "unexpected_keys": [str(x) for x in list(unexpected)],
+                            },
+                            indent=2,
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
                 
                 logger.success(f"Loaded weights from {load_ckpt}")
                 

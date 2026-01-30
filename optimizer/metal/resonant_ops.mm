@@ -145,6 +145,8 @@ static at::Tensor resonant_update_forward_fp32(
   id<MTLComputePipelineState> pipe = ensure_pipeline(device, &g_fwd_fp32, "resonant_update_fwd_fp32");
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "caramba_metal_resonant_ops: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> enc = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(enc != nil, "caramba_metal_resonant_ops: failed to get MTLComputeCommandEncoder from MPS stream");
   [enc setComputePipelineState:pipe];
@@ -173,7 +175,9 @@ static at::Tensor resonant_update_forward_fp32(
   const NSUInteger tg = kThreadsPerThreadgroup;
   const NSUInteger grid = ((NSUInteger)n + tg - 1) / tg;
   [enc dispatchThreadgroups:MTLSizeMake(grid, 1, 1) threadsPerThreadgroup:MTLSizeMake(tg, 1, 1)];
-  // Do NOT endEncoding/commit here: MPSStream manages encoder lifetime + commit batching.
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [enc endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
   return at::stack({xo, yo, a, b, inv_r}, 0);
 }
 
@@ -214,6 +218,8 @@ static std::vector<at::Tensor> resonant_update_backward_fp32(
   id<MTLComputePipelineState> pipe = ensure_pipeline(device, &g_bwd_fp32, "resonant_update_bwd_fp32");
   at::mps::MPSStream* stream = at::mps::getCurrentMPSStream();
   TORCH_CHECK(stream != nullptr, "caramba_metal_resonant_ops: failed to get current MPS stream");
+  // Ensure no prior encoder is left open before requesting a compute encoder.
+  stream->endKernelCoalescing();
   id<MTLComputeCommandEncoder> enc = (id<MTLComputeCommandEncoder>)stream->commandEncoder();
   TORCH_CHECK(enc != nil, "caramba_metal_resonant_ops: failed to get MTLComputeCommandEncoder from MPS stream");
   [enc setComputePipelineState:pipe];
@@ -244,7 +250,9 @@ static std::vector<at::Tensor> resonant_update_backward_fp32(
   const NSUInteger tg = kThreadsPerThreadgroup;
   const NSUInteger grid = ((NSUInteger)n + tg - 1) / tg;
   [enc dispatchThreadgroups:MTLSizeMake(grid, 1, 1) threadsPerThreadgroup:MTLSizeMake(tg, 1, 1)];
-  // Do NOT endEncoding/commit here: MPSStream manages encoder lifetime + commit batching.
+  // Ask MPSStream to end the current coalesced encoder safely.
+  // (Do NOT call [enc endEncoding] directly; MPSStream owns encoder lifetime.)
+  stream->endKernelCoalescing();
 
   return {gx, gy, gvr, gvi};
 }

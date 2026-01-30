@@ -109,6 +109,7 @@ def generate_greedy(
     max_new_tokens: int,
     context_window: int | None,
     valid_vocab_size: int | None,
+    stop: list[str] | None = None,
 ) -> str:
     """Strict greedy generation using the KV-cache Generator.
 
@@ -119,11 +120,32 @@ def generate_greedy(
     if max_new_tokens <= 0:
         raise ValueError("generate_greedy: max_new_tokens must be > 0.")
 
+    # Tokenize stop strings (if provided) as token-id suffix sequences.
+    stop_sequences: list[list[int]] = []
+    stop_token_ids: list[int] = []
+    if stop:
+        for s in stop:
+            ss = str(s)
+            if not ss:
+                continue
+            try:
+                ids = list(tokenizer.encode(ss))
+            except Exception:
+                ids = []
+            if not ids:
+                continue
+            stop_sequences.append([int(x) for x in ids])
+            # Convenience: if the stop is a single token (e.g. "\n"), treat it as a stop_token_id too.
+            if len(ids) == 1:
+                stop_token_ids.append(int(ids[0]))
+
     input_ids = torch.tensor([list(prompt_ids)], device=device)
     gen_config = GenerateConfig(
         max_new_tokens=int(max_new_tokens),
         temperature=0.0,
         max_seq_len=(int(context_window) if context_window is not None else 2048),
+        stop_sequences=stop_sequences,
+        stop_token_ids=stop_token_ids,
     )
     generator = Generator(model, config=gen_config, device=device)
     vv = int(valid_vocab_size) if valid_vocab_size is not None else None
@@ -135,12 +157,20 @@ def generate_greedy(
             if vv is not None and int(getattr(logits, "shape", [0])[-1]) > int(vv):
                 logits = logits[..., : int(vv)]
             next_token = sample_next_token(logits, temperature=0.0)
-            # NOTE: We do not treat token id 0 as EOS universally; tokenizers differ.
-            # Stop conditions should be expressed via match rules / max_new_tokens only.
             generated.append(int(next_token.item()))
 
             logits = generator.decode_step(next_token)
             if context_window is not None and (len(prompt_ids) + len(generated)) >= int(context_window):
+                break
+
+    # Best-effort strip trailing stop sequences from the decoded completion.
+    # This keeps behavior suite scoring strict (exact/contained) without relying on EOS.
+    if stop_sequences and generated:
+        # Prefer longest match first.
+        for seq in sorted(stop_sequences, key=lambda x: len(x), reverse=True):
+            k = len(seq)
+            if k > 0 and len(generated) >= k and generated[-k:] == seq:
+                generated = generated[:-k]
                 break
 
     return str(tokenizer.decode(generated))

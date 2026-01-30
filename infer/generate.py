@@ -10,7 +10,7 @@ attention layers and generates tokens autoregressively. It handles:
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -63,6 +63,15 @@ class GenerateConfig:
     # Applied to tokens already present in (prompt + generated so far).
     repetition_penalty: float = 1.0
     eos_token_id: int | None = None
+    # Optional stop sequences expressed as token-id suffixes. If any stop sequence
+    # matches the suffix of the generated token stream, generation stops.
+    #
+    # NOTE: These are token IDs (not strings) so they can be used without a tokenizer
+    # in the low-level generation loop. Higher-level callers (benchmarks/CLI) are
+    # expected to tokenize stop strings as needed.
+    stop_sequences: list[list[int]] = field(default_factory=list)
+    # Optional single-token stop IDs (convenience for fast stops like newline).
+    stop_token_ids: list[int] = field(default_factory=list)
     max_seq_len: int = 2048
     cache_kind: KVCacheKind | str = KVCacheKind.FP16
     cache_qblock: int = 32
@@ -508,37 +517,83 @@ def sample_next_token(
     return torch.multinomial(probs, num_samples=1).squeeze(-1)
 
 
+def _stop_sequences_hit(tokens: Tensor, *, stop_sequences: list[list[int]]) -> Tensor:
+    """Return per-batch bool: does `tokens` end with any stop sequence?
+
+    Args:
+        tokens: (B, T) integer token IDs.
+        stop_sequences: list of token-id lists. Empty lists are ignored.
+    """
+    if not stop_sequences:
+        return torch.zeros((tokens.size(0),), device=tokens.device, dtype=torch.bool)
+    if tokens.numel() == 0:
+        return torch.zeros((tokens.size(0),), device=tokens.device, dtype=torch.bool)
+
+    bsz = int(tokens.size(0))
+    t = int(tokens.size(1))
+    out = torch.zeros((bsz,), device=tokens.device, dtype=torch.bool)
+    for seq in stop_sequences:
+        if not seq:
+            continue
+        k = int(len(seq))
+        if k > t:
+            continue
+        tail = tokens[:, t - k : t]
+        seq_t = torch.tensor(seq, device=tokens.device, dtype=tokens.dtype).view(1, k)
+        out = out | (tail == seq_t).all(dim=-1)
+        if bool(out.all()):
+            break
+    return out
+
+
+def _stop_token_ids_hit(next_token: Tensor, *, stop_token_ids: list[int]) -> Tensor:
+    """Return per-batch bool: is `next_token` one of stop_token_ids?"""
+    if not stop_token_ids:
+        return torch.zeros((next_token.size(0),), device=next_token.device, dtype=torch.bool)
+    # next_token is typically shape (B,) in this module.
+    ids = torch.tensor(stop_token_ids, device=next_token.device, dtype=next_token.dtype)
+    if ids.numel() == 0:
+        return torch.zeros((next_token.size(0),), device=next_token.device, dtype=torch.bool)
+    return (next_token.view(-1, 1) == ids.view(1, -1)).any(dim=-1)
+
+
 def _apply_repetition_penalty_(
     next_logits: Tensor,
     *,
     token_ids: Tensor,
     penalty: float,
-) -> None:
-    """Apply repetition penalty in-place to (batch, vocab) logits.
+) -> Tensor:
+    """Apply repetition penalty to (batch, vocab) logits.
 
     Matches the standard heuristic used in `research/dba/behavioral_suite_v2`:
     - if logit > 0: divide by penalty
     - else: multiply by penalty
+
+    IMPORTANT: this returns a new tensor, because the generator commonly runs
+    under `torch.inference_mode()` which disallows in-place updates.
     """
     p = float(penalty)
     if p == 1.0:
-        return
+        return next_logits
     if p <= 0.0:
-        return
+        return next_logits
+    # Clone to avoid in-place edits on inference tensors.
+    logits = next_logits.clone()
     # next_logits: (B, V), token_ids: (B, T)
-    bsz = int(next_logits.size(0))
+    bsz = int(logits.size(0))
     for b in range(bsz):
         # unique() stays on-device and keeps this reasonably cheap for small batch sizes.
         seen = torch.unique(token_ids[b])
         # Clamp to vocab range.
-        seen = seen[(seen >= 0) & (seen < next_logits.size(-1))]
+        seen = seen[(seen >= 0) & (seen < logits.size(-1))]
         if seen.numel() == 0:
             continue
         # Apply per-token in-place.
-        vals = next_logits[b, seen]
+        vals = logits[b, seen]
         pos = vals > 0
         vals = torch.where(pos, vals / p, vals * p)
-        next_logits[b, seen] = vals
+        logits[b, seen] = vals
+    return logits
 
 
 @torch.inference_mode()
@@ -613,7 +668,7 @@ def generate(
 
         # Optional repetition penalty (applied to tokens already seen in prompt+generation so far).
         if float(getattr(config, "repetition_penalty", 1.0)) != 1.0:
-            _apply_repetition_penalty_(
+            logits = _apply_repetition_penalty_(
                 logits,
                 token_ids=generated[:, :gen_len],
                 penalty=float(getattr(config, "repetition_penalty", 1.0)),
@@ -631,6 +686,14 @@ def generate(
 
         if config.eos_token_id is not None:
             if (next_token == config.eos_token_id).all():
+                break
+
+        # Optional stop tokens / sequences (token-id based).
+        if getattr(config, "stop_token_ids", None):
+            if _stop_token_ids_hit(next_token, stop_token_ids=list(config.stop_token_ids)).all():
+                break
+        if getattr(config, "stop_sequences", None):
+            if _stop_sequences_hit(generated[:, :gen_len], stop_sequences=list(config.stop_sequences)).all():
                 break
 
     return generated[:, :gen_len]
@@ -675,17 +738,19 @@ class Generator:
         if self._caches is not None:
             return
 
+        prompt_len = int(getattr(self.model, "prompt_len", 0) or 0)
+        max_seq_len = int(self.config.max_seq_len) + prompt_len
         kind = _resolve_cache_kind(
             self.model,
             batch_size=int(batch_size),
-            max_seq_len=int(self.config.max_seq_len),
+            max_seq_len=max_seq_len,
             config=self.config,
         )
         self._resolved_cache_kind = kind
         self._caches = create_caches(
             self.model,
             batch_size=batch_size,
-            max_seq_len=self.config.max_seq_len,
+            max_seq_len=max_seq_len,
             device=self.device,
             cache_kind=kind,
             cache_qblock=self.config.cache_qblock,
@@ -735,7 +800,14 @@ class Generator:
                 return hidden, None
         else:
             result3 = self.model(tokens, ctx=self._ctx)  # type: ignore[call-arg]
-            hidden = result3 if isinstance(result3, Tensor) else result3[0]  # type: ignore[index]
+            if isinstance(result3, Tensor):
+                hidden = result3
+            elif isinstance(result3, dict):
+                hidden = result3.get("logits")
+            else:
+                hidden = result3[0]  # type: ignore[index]
+            if hidden is None:
+                raise ValueError("Model did not return logits for generation.")
             return hidden, None
 
     @torch.inference_mode()
@@ -762,7 +834,8 @@ class Generator:
         )
 
         self._ctx.ensure_consumed()
-        self._pos = input_ids.size(1)
+        prompt_len = int(getattr(self.model, "prompt_len", 0) or 0)
+        self._pos = int(input_ids.size(1)) + prompt_len
 
         if use_diffusion and self._last_features is not None:
             features_last = self._last_features.narrow(
@@ -846,7 +919,7 @@ class Generator:
         for _ in range(self.config.max_new_tokens):
             # Optional repetition penalty (applied to tokens already seen in prompt+generation so far).
             if float(getattr(self.config, "repetition_penalty", 1.0)) != 1.0:
-                _apply_repetition_penalty_(
+                logits = _apply_repetition_penalty_(
                     logits,
                     token_ids=generated[:, :gen_len],
                     penalty=float(getattr(self.config, "repetition_penalty", 1.0)),
@@ -863,6 +936,16 @@ class Generator:
 
             if self.config.eos_token_id is not None:
                 if (next_token == self.config.eos_token_id).all():
+                    break
+
+            # Optional stop tokens / sequences (token-id based).
+            if getattr(self.config, "stop_token_ids", None):
+                if _stop_token_ids_hit(next_token, stop_token_ids=list(self.config.stop_token_ids)).all():
+                    break
+            if getattr(self.config, "stop_sequences", None):
+                if _stop_sequences_hit(
+                    generated[:, :gen_len], stop_sequences=list(self.config.stop_sequences)
+                ).all():
                     break
 
             logits = self.decode_step(next_token)

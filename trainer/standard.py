@@ -78,6 +78,17 @@ class _Engine(Protocol):
     registry: Any
 
 
+def _format_state_keys_sample(keys: list[str], *, limit: int = 25) -> str:
+    if not keys:
+        return ""
+    n = len(keys)
+    k = [str(x) for x in keys[: max(0, min(limit, n))]]
+    out = "\n".join(f"  - {x}" for x in k)
+    if n > len(k):
+        out += f"\n  ... (+{n - len(k)} more)"
+    return out
+
+
 def _bytes_to_mb(n: int) -> float:
     return float(n) / (1024.0 * 1024.0)
 
@@ -446,9 +457,30 @@ class StandardTrainer:
                         raise TypeError(f"System module is not an nn.Module, got {type(system_mod).__name__}")
                     missing, unexpected = system_mod.load_state_dict(state, strict=False)
                     if missing:
-                        logger.warning(f"Explicit load missing keys: {len(missing)}")
+                        logger.warning(
+                            "Explicit load missing keys: "
+                            f"{len(missing)}\n{_format_state_keys_sample(list(missing))}"
+                        )
                     if unexpected:
-                        logger.warning(f"Explicit load unexpected keys: {len(unexpected)}")
+                        logger.warning(
+                            "Explicit load unexpected keys: "
+                            f"{len(unexpected)}\n{_format_state_keys_sample(list(unexpected))}"
+                        )
+                    if missing or unexpected:
+                        # Persist the full lists for debugging (too noisy to log in full).
+                        mismatch_path = Path(checkpoint_dir) / "explicit_load_key_mismatch.json"
+                        mismatch_path.write_text(
+                            json.dumps(
+                                {
+                                    "checkpoint": str(load_ckpt),
+                                    "missing_keys": [str(x) for x in list(missing)],
+                                    "unexpected_keys": [str(x) for x in list(unexpected)],
+                                },
+                                indent=2,
+                                sort_keys=True,
+                            )
+                            + "\n"
+                        )
                     logger.success(f"Loaded weights from {load_ckpt}")
                 except Exception as e:
                     raise RuntimeError(f"Failed to load explicit checkpoint {load_ckpt}") from e
