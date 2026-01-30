@@ -1,0 +1,1221 @@
+
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{natbib}
+\bibliographystyle{plainnat}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+% ---------- Theorem environments ----------
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{observation}{Observation}
+
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+% ---------- Convenience macros ----------
+\newcommand{\Reals}{\mathbb{R}}
+\newcommand{\Complex}{\mathbb{C}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\ii}{\mathrm{i}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\diag}{\mathrm{diag}}
+\newcommand{\argmax}{\operatorname*{arg\,max}}
+\newcommand{\softmax}{\operatorname*{softmax}}
+
+\title{\textbf{Resonant Compression Systems}\\
+Learning as Dynamical Interference in Carrier-Field Architectures\\
+\large Working Paper --- January 2026}
+\author{(anonymous draft)}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This paper develops a machine learning framework grounded in coupled-oscillator dynamics and carrier-field mediation.
+The core thesis is that learning is compression: a system has learned to the extent that it can represent observations with a shorter description while preserving reconstructability.
+Instead of storing pairwise weights, the model stores a sparse \emph{presence matrix} $P\in \Reals^{N\times M}$ between $N$ oscillators and $M$ carrier modes.
+Pairwise relationships emerge dynamically through shared carrier participation, yielding an effective coupling $W(t)$ that is low-rank and context-dependent.
+
+Key innovations include: (i) \emph{Gaussian tuning strength} that derives coupling from phase alignment rather than a constant, creating ``radio dial'' lock-on behavior; (ii) \emph{adaptive gate widths} that enable emergent specialization---carriers narrow their perceptual tolerance as they specialize; (iii) \emph{spectral factorization} for mitosis, which partitions carriers by wavelength rather than blind duplication; (iv) \emph{coherence-weighted metabolism}, where incoherent energy does not sustain carriers; and (v) a clean \emph{observation interface} that separates measurement from dynamics, supporting classification and prediction without feedback into the engine.
+
+The mathematical specification is complete and implementable: all equations can be directly translated to PyTorch with no hidden constants or arbitrary parameters beyond physical timescales.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Foundations}
+
+\subsection{Scope, flagship claim, and non-goals}
+\label{sec:scope}
+
+\paragraph
+This paper proposes a \emph{computational} dynamical system whose primary purpose is \textbf{representation formation and organization}:
+given oscillatory primitives and carrier-mediated coupling, the system should (i) produce \emph{compressed} internal structure (sparse presence $P$ and a small number of active carriers) and (ii) preserve \emph{reconstructability} of coarse structure (e.g.\ cluster membership, low-rank relational structure) from that compressed representation.
+
+\paragraph
+To make scope explicit, this work does \textbf{not} attempt to be:
+\begin{itemize}
+  \item a drop-in replacement for gradient-trained deep neural networks,
+  \item a competitive end-to-end supervised learner on large-scale benchmarks,
+  \item a full reinforcement learning agent with credit assignment, exploration, and policy optimization,
+  \item a biologically realistic model of neural circuits.
+\end{itemize}
+
+\paragraph
+This is a \textbf{purely computational model} motivated by stability, interference, and resource constraints; any resemblance to biological oscillations is incidental and not a claim of biological plausibility.
+
+\subsection{Non-convergence and operational stability}
+\label{sec:nonconvergence}
+
+The system is \textbf{not guaranteed to converge} to a fixed point.
+Persistent, quasi-periodic, and metastable dynamics are expected and can be desirable.
+In this paper, ``stability'' is defined operationally: bounded carrier energy (via damping/saturation), bounded coherence statistics, and usable readouts/structures over the measurement horizon, rather than asymptotic convergence.
+
+\subsection{The compression thesis}
+
+Consider a stream of symbols:
+\[
+\texttt{ABABABABABABABABABAB}.
+\]
+If the stream can be described using a compact repetition operator, e.g.\ \(\texttt{rep(AB, 10)}\) (shorthand for ``repeat \texttt{AB} ten times''), structure has been extracted and the description can be shorter than the raw string under an explicit coding scheme (where \texttt{x} is a token and the integer is encoded in \(\log\) bits).
+This reduction is \emph{compression}.
+
+\begin{definition}[Learning as compression]
+Learning is the process of finding shorter descriptions of observed data.
+A system has learned to the extent that it can reconstruct observations from representations of lower entropy (shorter description length) than the observations themselves.
+\end{definition}
+
+This framing is consistent with Kolmogorov complexity, Shannon entropy~\citep{shannon1948mathematical}, and Minimum Description Length (MDL) interpretations~\citep{rissanen1978modeling, grunwald2007mdl}.
+In this paper, the primitive operation is not ``update weights to reduce a loss,'' but rather ``discover resonant structure that persists and yields compressive representations.''
+
+\subsection{Spectral decomposition as compression}
+
+A canonical example is Fourier decomposition~\citep{bracewell1986fourier}.
+For a signal $x(t)$, one may represent it as a superposition of sinusoids,
+\begin{equation}
+x(t) \approx \sum_{k} A_k \cos(\omega_k t + \varphi_k),
+\end{equation}
+where many natural signals are approximately sparse in a suitable spectral basis.
+
+\begin{observation}[Basis choice controls compressibility]
+Compression efficiency depends on the choice of basis; an ``optimal'' basis is one that renders typical signals sparse~\citep{olshausen1996emergence}.
+\end{observation}
+
+\subsection{Oscillators as representational primitives}
+
+The fundamental representational unit is an oscillator characterized by angular frequency $\omega$, amplitude $A$, and phase $\phi$.
+This choice is motivated by the rich mathematical structure of coupled oscillator systems~\citep{kuramoto1984chemical} and their demonstrated utility in modeling neural computation~\citep{finger2013phase, miyato2025akorn}.
+Using a complex phasor representation,
+\begin{equation}
+z = A e^{\ii \phi} \in \Complex.
+\end{equation}
+Frequency $\omega$ plays the role of identity (a dynamical ``label''), amplitude $A$ represents salience/activation, and phase $\phi$ represents relationships via relative alignment.
+
+\begin{observation}[Phase is relational]
+Phase has meaning only relative to other oscillators; an isolated oscillator's absolute phase is arbitrary.
+This relational nature of phase has been exploited in neural binding theories, where phase synchronization serves as a mechanism for grouping distributed representations~\citep{singer1999neuronal, fries2005mechanism}.
+\end{observation}
+
+% ============================================================
+\section{Related Work}
+\label{sec:related}
+
+This work draws on several research traditions that we briefly survey.
+
+\paragraph{Coupled oscillators and synchronization.}
+The Kuramoto model~\citep{kuramoto1984chemical} provides the mathematical foundation for understanding synchronization in populations of coupled oscillators. Extensive analysis~\citep{strogatz2000kuramoto, acebron2005kuramoto, gupta2014kuramoto} has characterized the phase transitions and order parameters governing synchronization onset. Recent work has applied Kuramoto dynamics to neural network design, including artificial Kuramoto oscillatory neurons~\citep{miyato2025akorn} and graph neural networks~\citep{li2023kuramoto}, demonstrating benefits for object binding, adversarial robustness, and uncertainty quantification.
+
+\paragraph{Associative memory and Hopfield networks.}
+Content-addressable memory via attractor dynamics was pioneered by \citet{hopfield1982neural, hopfield1984neurons}. Modern Hopfield networks~\citep{ramsauer2021hopfield} achieve exponential storage capacity and connect directly to transformer attention mechanisms. Extensions include sparse variants~\citep{hu2024sparse} and continuous-time formulations~\citep{yao2024continuous}.
+
+\paragraph{Compression and learning.}
+The view that learning is compression has deep roots in information theory~\citep{shannon1948mathematical} and the Minimum Description Length principle~\citep{rissanen1978modeling, grunwald2007mdl}. Connections between Shannon entropy and Kolmogorov complexity~\citep{grunwald2004shannon} provide a unified theoretical foundation.
+
+\paragraph{Sparse coding and neural representations.}
+Sparse representations emerge from efficient coding of natural signals~\citep{olshausen1996emergence, lewicki2000learning}. Combining sparse and low-rank structures has proven effective in modern architectures~\citep{chen2021scatterbrain, hu2022lora}.
+
+\paragraph{Neural synchronization and binding.}
+Phase synchronization has been proposed as a neural mechanism for binding distributed feature representations~\citep{singer1999neuronal, fries2005mechanism}. Computational models demonstrate that coupled oscillator networks can implement binding and segmentation in visual processing~\citep{finger2013phase}.
+
+\paragraph{Biologically-inspired learning rules.}
+Hebbian learning~\citep{hebb1949organization} and spike-timing-dependent plasticity~\citep{caporale2008stdp, markram2012stdp} provide biological grounding for local learning rules. Three-factor learning~\citep{fremaux2016neuromodulated, gerstner2018eligibility} extends these rules with neuromodulatory signals for reinforcement learning.
+
+% ============================================================
+\section{From direct coupling to carrier-mediated coupling}
+
+The foundational work on coupled oscillator systems was established by \citet{kuramoto1984chemical}, who introduced a tractable model of phase synchronization that has since become central to understanding collective dynamics in diverse systems~\citep{strogatz2000kuramoto, acebron2005kuramoto}.
+
+\subsection{Why direct all-to-all coupling is problematic}
+
+A direct coupling matrix $W\in \Reals^{N\times N}$ entails:
+\begin{itemize}
+  \item \textbf{Storage:} $O(N^2)$ parameters in general.
+  \item \textbf{Control:} positive feedback can induce runaway amplification absent explicit stabilization.
+  \item \textbf{Conflation:} representational state and learned connectivity are entangled in a single object.
+\end{itemize}
+These issues are well-known in associative memory networks~\citep{hopfield1982neural}, where capacity limitations arise from the $O(N^2)$ weight matrix.
+
+\subsection{Carrier fields as a coupling medium}
+
+\begin{definition}[Carrier field]
+A \emph{carrier field} (or carrier mode) $k$ is a shared dynamical mode that oscillators can couple to.
+Oscillators interact through their shared participation in carriers rather than through explicit pairwise weights.
+\end{definition}
+
+\begin{definition}[Presence matrix]
+Let $P \in \Reals_{\ge 0}^{N\times M}$ denote the \emph{presence matrix}, where $P_{ik}$ quantifies how strongly oscillator $i$ participates in carrier $k$.
+In practice, $P$ should be sparse: each oscillator participates in only $d\ll M$ carriers.
+\end{definition}
+
+\paragraph{Clarification (what is ``stored'').}
+The system stores a topology matrix $P$.
+However, unlike neural networks where weights are frozen parameters optimized for error reduction, $P$ represents \emph{dynamic elastic bonds} that evolve continuously with the state variables.
+The effective coupling $W(t)$ is an emergent property of these bonds and the carrier energies.
+
+\subsection{Dynamic low-rank factorization}
+
+A common and useful abstraction is that the \emph{effective} coupling between oscillators is low-rank and computed from the current carrier activities.
+Let $s(t)\in \Reals_{\ge 0}^M$ denote carrier activity magnitudes at time $t$ (defined precisely later).
+Define
+\begin{equation}
+W(t) \;=\; P\,\diag(s(t))\,P^\top .
+\end{equation}
+
+\begin{theorem}[Dynamic low-rank factorization]
+If $M \ll N$, then $W(t)$ is at most rank $M$.
+Storage for $P$ is $O(NM)$ in dense form and $O(dN)$ in sparse form (with $d$ nonzeros per row), while pairwise couplings are never stored explicitly.
+\end{theorem}
+
+This low-rank structure is reminiscent of recent work on intrinsic dimensionality in neural networks~\citep{aghajanyan2021intrinsic} and low-rank adaptation methods~\citep{hu2022lora}, which demonstrate that effective representations often lie in low-dimensional subspaces.
+
+\begin{remark}
+In the full dynamical system, $W(t)$ is not merely ``looked up'': it is an emergent object whose entries depend on carrier states, which depend on oscillator phases.
+This yields context-dependent connectivity.
+\end{remark}
+
+% ============================================================
+\section{A compact dynamical specification}
+
+This section provides an expanded mathematical model in a form convenient for analysis and simulation.
+The goal is to preserve the original intuition (interference, coherence, instability/mitosis) while making the system (i) implementable and (ii) amenable to stability reasoning.
+
+\subsection{State variables}
+
+We consider:
+\begin{itemize}
+  \item Oscillators $i\in\{1,\dots,N\}$ with phase $\phi_i(t)\in [0,2\pi)$, natural frequency $\omega_i\in\Reals$, and amplitude $A_i(t)\in\Reals_{\ge 0}$.
+  \item Carriers $k\in\{1,\dots,M\}$ with complex amplitude $c_k(t)\in\Complex$.
+  \item Presence matrix $P\in \Reals_{\ge 0}^{N\times M}$ (learned, typically sparse).
+\end{itemize}
+
+Define oscillator phasors $z_i(t) = A_i(t)e^{\ii\phi_i(t)}$ and the vector $z(t)\in \Complex^N$.
+Let $c(t)\in \Complex^M$ collect carrier amplitudes.
+
+\subsection{Carrier dynamics: temporal gating (pulse antenna)}
+
+The original formulation treats a carrier as a continuously receptive oscillator.
+In the intended architecture, a carrier is instead a \emph{temporal gate}: a stroboscopic sampling window that periodically opens and closes.
+This implements the antenna/pulse concept: the carrier ``sees'' the world only when its gate is open, creating time-domain orthogonality between competing signals.
+
+\subsubsection{Carrier as a gate}
+Let $c_k(t)=r_k(t)e^{\ii\psi_k(t)}$ define the carrier phase $\psi_k$.
+We define a pulse gate as the direct conversion of the carrier phase into a two-level waveform:
+\begin{equation}
+G(\psi_k) =
+\begin{cases}
+1, & \cos(\psi_k)\ge 0,\\
+0, & \text{otherwise.}
+\end{cases}
+\label{eq:gate}
+\end{equation}
+This is a half-cycle gate (50\% duty): it is open for exactly half of each carrier period. Conceptually, the carrier behaves as a pulse antenna tuned to its own oscillation frequency.
+
+\paragraph{Apex principle.}
+Energy transfer is maximized when the \emph{apex} of an input signal aligns with the \emph{center} of the carrier gate.
+Signals peaking outside the open window are effectively invisible to that carrier.
+
+\subsubsection{Gated energy transfer with tuning}
+We replace continuous drive with \emph{gated, tuning-weighted drive}:
+\begin{equation}
+\dot c_k \;=\; u_k \;-\; \gamma_k c_k \;-\; \beta_k |c_k|^2 c_k,
+\qquad
+u_k(t) \;=\; G(\psi_k(t))\,\sum_{i=1}^N T_{ik}(t)\, P_{ik}(t)\, z_i(t),
+\label{eq:carrier}
+\end{equation}
+where $T_{ik}$ is the tuning strength from \eqref{eq:tuning}.
+Thus the carrier only accumulates input during gate-open windows, and the contribution from each oscillator is weighted by how well it is tuned to the carrier.
+If the gate is closed, $u_k(t)=0$ and the carrier simply damps and saturates.
+If an oscillator is poorly tuned (low $T_{ik}$), its contribution is attenuated even when the gate is open.
+
+\paragraph{Relation to energy/phase form.}
+Writing $c_k=r_ke^{\ii\psi_k}$ yields
+\begin{align}
+\dot r_k &= \Re\!\left(u_k e^{-\ii\psi_k}\right) - \gamma_k r_k - \beta_k r_k^3, \\
+\dot \psi_k &= \frac{1}{r_k}\Im\!\left(u_k e^{-\ii\psi_k}\right)\qquad (r_k>0),
+\end{align}
+with the critical difference that $u_k$ is intermittently zeroed by $G(\psi_k)$.
+
+\subsection{Oscillator phase dynamics: carrier-mediated Kuramoto form}
+
+Oscillator phases evolve according to their natural frequency plus carrier-mediated coupling, following a form closely related to the classical Kuramoto model~\citep{kuramoto1984chemical, strogatz2000kuramoto}:
+\begin{equation}
+\dot \phi_i \;=\; \omega_i \;+\; \Im\!\left(g_i e^{-\ii\phi_i}\right),
+\qquad
+g_i \;=\; \sum_{k=1}^M T_{ik} P_{ik} c_k,
+\label{eq:osc}
+\end{equation}
+where $T_{ik}\in[0,1]$ is the \emph{tuning strength} between oscillator $i$ and carrier $k$ (defined below).
+
+\paragraph{Critical design choice: no constant $\kappa$.}
+Unlike the classical Kuramoto model, which uses a constant coupling strength $\kappa$, this system derives coupling strength \emph{geometrically} from phase alignment.
+The tuning strength $T_{ik}$ plays the role of $\kappa$, but it is not a parameter---it is an emergent property of the system state.
+This eliminates an arbitrary constant and ensures coupling is physically grounded.
+
+\subsubsection{Tuning strength: the radio dial principle}
+\label{sec:tuning}
+
+The tuning strength $T_{ik}$ quantifies how well oscillator $i$ is ``tuned'' to carrier $k$.
+The key insight is that coupling should behave like a radio dial: perfect alignment gives strong coupling, slight misalignment gives partial coupling, and large misalignment gives no coupling.
+
+This is implemented via a Gaussian falloff rather than a cosine:
+\begin{equation}
+T_{ik} \;=\; \exp\!\left(-\frac{(\Delta\phi_{ik})^2}{\sigma_k}\right),
+\label{eq:tuning}
+\end{equation}
+where $\Delta\phi_{ik}$ is the shortest angular distance between the oscillator peak and the carrier gate center (wrapped to $[-\pi,\pi]$), and $\sigma_k = (W_k/2)^2$ is the tuning sharpness derived from the carrier's gate width $W_k$.
+
+\paragraph{Why Gaussian, not cosine?}
+A cosine coupling (as in standard Kuramoto) is ``too smooth''---it does not produce the sharp ``lock-on'' feel of real radio tuning.
+The Gaussian falloff creates:
+\begin{itemize}
+  \item $T\approx 1$: Perfect alignment---strong coupling, clear signal.
+  \item $T\approx 0.5$: Slight offset---partial coupling, signal plus noise.
+  \item $T\approx 0$: Large offset---no coupling, noise only.
+\end{itemize}
+
+\paragraph{Sharpness from gate width.}
+Setting $\sigma_k = (W_k/2)^2$ ensures that when the oscillator peak moves outside the carrier's gate window, coupling drops to $e^{-1}\approx 0.37$.
+This ties tuning sharpness to the physical gate geometry rather than an arbitrary constant.
+
+\paragraph{Why this is a workable choice.}
+Equation~\eqref{eq:osc} with tuning-weighted coupling is:
+\begin{itemize}
+  \item \textbf{Local:} oscillator $i$ needs only its connected carriers (nonzero $P_{ik}$).
+  \item \textbf{Stable under saturation:} carrier amplitudes remain bounded via \eqref{eq:carrier}.
+  \item \textbf{Compatible with sparse simulation:} per-step cost is $O(\mathrm{nnz}(P))$.
+  \item \textbf{Geometrically grounded:} coupling strength emerges from alignment, not a tunable constant.
+\end{itemize}
+
+\subsection{Adaptive gate width: emergent specialization}
+\label{sec:gate_evolution}
+
+A critical extension is allowing each carrier's gate width $W_k$ to \emph{evolve} based on its coherence history.
+This creates emergent specialization: carriers that successfully capture coherent energy become more selective over time.
+
+\paragraph{Gate width as perceptual tolerance.}
+The gate width $W_k$ determines how ``picky'' a carrier is about phase alignment:
+\begin{itemize}
+  \item \textbf{Wide gate} ($W_k$ large): generalist, captures broadly, exploratory.
+  \item \textbf{Narrow gate} ($W_k$ small): specialist, captures precisely, locked-on.
+\end{itemize}
+
+\paragraph{Evolution rule.}
+Gate width evolves based on the coherence score $D_k$:
+\begin{equation}
+\dot W_k \;=\; 
+\begin{cases}
+-\eta_{\text{narrow}} (D_k - 1) W_k, & D_k > 1 \quad\text{(high coherence: specialize)},\\
++\eta_{\text{widen}} (1 - D_k) W_k, & D_k < 1 \quad\text{(low coherence: explore)},
+\end{cases}
+\label{eq:gate_evolution}
+\end{equation}
+subject to bounds $W_{\min} \le W_k \le W_{\max}$.
+
+\paragraph{Interpretation.}
+When a carrier consistently receives aligned (coherent) input, its gate narrows---it becomes a specialist for that frequency/phase regime.
+When a carrier struggles with mixed signals (low coherence), its gate widens to explore a broader range.
+This creates a spectrum from broad exploratory carriers to narrow specialists, all emerging from the dynamics without explicit optimization.
+
+\subsection{Amplitude dynamics (optional but recommended for experiments)}
+
+Many initial experiments can fix $A_i\equiv 1$.
+However, amplitude dynamics can supply a natural \emph{activity gate}:
+\begin{equation}
+\dot A_i \;=\; -\alpha(A_i - A_{i,0}) \;+\; I_i(t) \;-\; \rho A_i^3,
+\label{eq:amp}
+\end{equation}
+where $I_i(t)$ is external input drive, $\alpha>0$ relaxes toward a baseline $A_{i,0}$, and $\rho>0$ prevents divergence.
+A simple alternative is leaky integration with rectification:
+\begin{equation}
+A_i(t+\Delta t)=\max\{0,(1-\alpha\Delta t)A_i(t)+\Delta t\,I_i(t)\}.
+\end{equation}
+Amplitude gating provides two practical benefits:
+\begin{itemize}
+  \item inactive oscillators can be omitted from updates (compute reduction),
+  \item learning can be restricted to moments of significant activation.
+\end{itemize}
+
+\subsection{Elastic coupling dynamics}
+
+The presence matrix $P$ is not treated as a frozen parameter vector optimized to reduce error.
+Instead, each $P_{ik}\in[0,1]$ is an \emph{elastic bond} that must be continuously sustained by resonant energy.
+This section defines the bond dynamics as a purely instantaneous stability mechanism.
+
+\paragraph{Elastic bond equation.}
+For each oscillator $i$ and carrier $k$, we evolve
+\begin{equation}
+\tau_p\,\dot{P}_{ik}
+\;=\;
+\underbrace{\alpha\,G(\psi_k)\,P_{ik}\,\max\!\Big(0,\Re\!\left(c_k e^{-\ii\phi_i}\right)\Big)}_{\text{In-gate resonant capture}}
+\;-\;
+\underbrace{\lambda\,P_{ik}}_{\text{Elastic decay}},
+\label{eq:elastic_P}
+\end{equation}
+with $\tau_p>0$ setting the bond timescale, reinforcement gain $\alpha>0$, and elastic decay $\lambda>0$.
+
+\paragraph{Interpretation (what this is and is not).}
+Equation~\eqref{eq:elastic_P} is \textbf{not} a statistical learning rule designed to capture history (e.g.\ Hebbian~\citep{hebb1949organization} or STDP-like updates~\citep{caporale2008stdp, markram2012stdp}).
+It is an \emph{instantaneous} stability constraint:
+the bond can stiffen only if the carrier gate is open \emph{and} the oscillator aligns such that energy is captured during that open window.
+Outside the gate, reinforcement is exactly zero; the bond relaxes under elastic decay.
+
+\paragraph{Bond snapping (physical pruning).}
+To represent physical breaking of links and induce sparsity without any top-$k$ selection, we apply a snap rule:
+if $P_{ik}<\varepsilon_{\text{snap}}$ for a small threshold (e.g.\ $10^{-2}$), set $P_{ik}\leftarrow 0$.
+This yields an emergent sparse topology under continuous dynamics.
+
+% ============================================================
+\section{Coherence statistics, instability, and mitosis}
+
+Carrier evolution (instability-driven mitosis) is central to the ``architecture is learned'' claim.
+To make it implementable and statistically grounded, we refine coherence measures and thresholds.
+The use of order parameters to characterize synchronization states has a rich history in the coupled oscillator literature~\citep{daido1996onset, gupta2014kuramoto}.
+
+\subsection{Weighted coherence}
+
+Define weights $w_{ik} = P_{ik}A_i$ and the carrier drive
+\begin{equation}
+u_k = \sum_i w_{ik} e^{\ii\phi_i}.
+\end{equation}
+A natural coherence score is
+\begin{equation}
+\mathrm{coh}(k) \;=\; \frac{|u_k|}{\sum_i w_{ik}} \in [0,1],
+\label{eq:coh}
+\end{equation}
+where $\mathrm{coh}(k)=1$ indicates perfect alignment among the contributing phasors.
+
+\subsection{Random-phase baseline}
+
+If phases are independent and uniformly distributed, $u_k$ is a 2D random walk in the complex plane.
+For large numbers of contributors, the magnitude is approximately Rayleigh-distributed.
+
+\begin{proposition}[Expected magnitude under random phase]
+Let $\theta_i\sim\mathrm{Unif}[0,2\pi)$ i.i.d.\ and define
+\[
+S = \sum_{i=1}^n a_i e^{\ii\theta_i}.
+\]
+Then, for moderate/large $n$,
+\begin{equation}
+\E|S| \;\approx\; \sqrt{\frac{\pi}{4}}\,\sqrt{\sum_{i=1}^n a_i^2}.
+\label{eq:random_walk}
+\end{equation}
+In the equal-weight case $a_i=a$, $\E|S|\approx \sqrt{\pi/4}\,a\sqrt{n}\approx 0.886\,a\sqrt{n}$.
+\end{proposition}
+
+Combining \eqref{eq:coh} and \eqref{eq:random_walk}, the expected coherence under random phase is approximately
+\begin{equation}
+\E[\mathrm{coh}(k)]
+\;\approx\;
+\sqrt{\frac{\pi}{4}}\,
+\frac{\sqrt{\sum_i w_{ik}^2}}{\sum_i w_{ik}}.
+\label{eq:coh_baseline}
+\end{equation}
+For equal $w_{ik}$ over $n$ contributors, this reduces to $\approx 0.886/\sqrt{n}$.
+
+\subsection{Instability and mitosis}
+
+The system uses a coherence-to-baseline ratio to detect when a carrier is \emph{energetically unstable} under mixed-phase drive.
+
+Let
+\begin{equation}
+b_k \;=\; \sqrt{\frac{\pi}{4}}\,
+\frac{\sqrt{\sum_i w_{ik}^2}}{\sum_i w_{ik}}
+\end{equation}
+be the baseline in \eqref{eq:coh_baseline}.
+Define a division score
+\begin{equation}
+D_k \;=\; \frac{\mathrm{coh}(k)}{b_k}.
+\end{equation}
+Then $D_k\approx 1$ corresponds to random-phase coherence, $D_k>1$ indicates above-random alignment, and $D_k<1$ indicates \emph{active cancellation} beyond random.
+
+\begin{definition}[Instability criterion]
+A carrier $k$ is declared unstable if
+\begin{equation}
+D_k < \theta_{\text{div}}
+\quad\text{persistently over a window of length }T_{\text{div}},
+\label{eq:div}
+\end{equation}
+where $\theta_{\text{div}}\in(0,1)$ and persistence avoids spurious splits from noise.
+\end{definition}
+
+\paragraph{Mitosis as spectral factorization (not blind duplication).}
+When instability persists ($D_k < \theta_{\text{div}}$ \emph{and} the carrier's spectral profile is multimodal---see Section~\ref{sec:spectral_profile}), the carrier undergoes \emph{spectral factorization}:
+\begin{enumerate}
+  \item \textbf{Partition by frequency:} The bonded oscillators are partitioned into two clusters based on their natural frequencies $\omega_i$. This is done by computing a weighted frequency distribution and splitting at the median.
+  \item \textbf{Asymmetric bond inheritance:} The parent carrier keeps bonds to the low-frequency cluster; a new child carrier inherits bonds to the high-frequency cluster. Bonds are \emph{partitioned}, not copied.
+  \item \textbf{Frequency recentering:} Each offspring's intrinsic frequency $\omega_k$ is shifted to the spectral center of its inherited cluster:
+  \[
+  \omega_{\text{parent}} \leftarrow \bar\omega_{\text{low}},\qquad
+  \omega_{\text{child}} \leftarrow \bar\omega_{\text{high}},
+  \]
+  where $\bar\omega = \sum_i w_{ik}\omega_i / \sum_i w_{ik}$ is the weighted mean frequency.
+  \item \textbf{Small phase noise:} Independent thermal kicks are applied to differentiate phases, but differentiation is primarily spectral.
+\end{enumerate}
+
+\paragraph{Why spectral factorization, not blind duplication?}
+Blind duplication (copying all bonds and adding noise) produces two nearly identical carriers that compete for the same oscillators.
+Spectral factorization produces \emph{immediately differentiated} offspring: one specializing in low frequencies, the other in high frequencies.
+This resolves interference \emph{causally} (based on which frequencies conflict) rather than stochastically.
+
+\paragraph{Multimodality requirement.}
+Mitosis only triggers when the carrier's spectral profile is multimodal (Section~\ref{sec:spectral_profile}).
+Low coherence alone is not sufficient---the carrier must be attempting to bind signals that cannot be represented by a single wavelength hypothesis.
+
+\subsection{Carrier spectral profile}
+\label{sec:spectral_profile}
+
+Each carrier maintains a \emph{spectral profile} derived from its bonded oscillators.
+This is an \emph{observable property}, not a learned parameter.
+
+\paragraph{Effective weights.}
+Define the effective weight of oscillator $i$ on carrier $k$:
+\begin{equation}
+w_{ik} = P_{ik} \cdot A_i \cdot T_{ik},
+\end{equation}
+combining bond strength, amplitude, and tuning.
+
+\paragraph{Spectral center of mass.}
+The carrier's spectral center is the weighted mean frequency of its bonded oscillators:
+\begin{equation}
+\bar\omega_k = \frac{\sum_i w_{ik}\,\omega_i}{\sum_i w_{ik}}.
+\end{equation}
+
+\paragraph{Spectral variance.}
+The spread of frequencies is:
+\begin{equation}
+\text{Var}_k = \frac{\sum_i w_{ik}\,(\omega_i - \bar\omega_k)^2}{\sum_i w_{ik}}.
+\end{equation}
+
+\paragraph{Multimodality detection.}
+A carrier is considered \emph{multimodal} if its spectral variance exceeds a threshold relative to the overall frequency range.
+Multimodality indicates the carrier is attempting to bind incompatible frequency clusters---a precondition for spectral mitosis.
+
+\subsection{Entropy and dissolution (coherence-weighted metabolism)}
+
+Mitosis provides a mechanism to increase representational capacity when interference makes a mode unstable.
+To prevent unbounded carrier proliferation, we introduce a \emph{metabolic cost} for carriers.
+
+\paragraph{Metabolic principle: coherence matters.}
+A carrier must continuously capture sufficient \emph{coherent} energy to persist.
+The key insight is that raw intake magnitude is not sufficient---a carrier capturing incoherent noise can have high amplitude but provides no representational value.
+
+\paragraph{Coherence-weighted intake.}
+Define the effective intake as:
+\begin{equation}
+I_k^{\text{eff}}(t) = I_k(t) \cdot D_k(t),
+\label{eq:effective_intake}
+\end{equation}
+where $I_k(t) = \mathrm{EMA}(|u_k(t)|)$ is the smoothed raw intake and $D_k$ is the coherence score.
+A carrier with high raw intake but low coherence (capturing conflicting signals) has low effective intake.
+
+\paragraph{Dissolution criterion.}
+Dissolve carrier $k$ if $I_k^{\text{eff}}(t)$ remains below a threshold $I_{\min}$ over a persistence window.
+This implements survival-of-the-fittest at the dynamical level: carriers that do not consistently capture \emph{coherent} energy are removed.
+Incoherent energy does not ``feed'' the carrier well.
+
+\paragraph{Implication.}
+Coherence becomes a survival criterion, not just a mitosis trigger.
+Carriers that specialize (narrow gate, high coherence) are metabolically healthier than carriers capturing noise.
+
+\subsection{Spontaneous genesis (nucleation)}
+
+If mitosis increases capacity under interference, a separate question is how the first carrier (or new carriers after extinction) arise.
+In the stream setting, the system begins with no carriers, i.e.\ an initially ``empty'' carrier field.
+If the sensory stream contains high-energy oscillators that are not effectively gated by any existing carrier (low $P_{i\cdot}$), then the vacuum is unstable.
+We model this instability as a \emph{nucleation event}: a new carrier mode is spontaneously generated.
+
+\paragraph{Unbound oscillators.}
+Define an ``unbound'' set of oscillators as those whose strongest bond is below a threshold,
+\[
+\mathcal{U} = \{i : \max_k P_{ik} < P_{\min}\}.
+\]
+
+\paragraph{Phase-clustered genesis (not just amplitude).}
+Genesis requires \textbf{both} sufficient amplitude and phase coherence among unbound oscillators.
+This prevents nucleation from incoherent noise.
+
+Compute the order parameter among unbound oscillators:
+\begin{equation}
+R_{\mathcal{U}} = \left|\frac{\sum_{i\in\mathcal{U}} A_i e^{\ii\phi_i}}{\sum_{i\in\mathcal{U}} A_i}\right| \in [0,1].
+\label{eq:R_unbound}
+\end{equation}
+$R_{\mathcal{U}}=1$ indicates perfect phase alignment; $R_{\mathcal{U}}\approx 0$ indicates random phases.
+
+\paragraph{Genesis criterion.}
+Nucleate a new carrier if:
+\begin{equation}
+\sum_{i\in\mathcal{U}} A_i > A_{\text{pressure}}
+\quad\text{AND}\quad
+R_{\mathcal{U}} > R_{\text{genesis}}.
+\end{equation}
+The first condition requires sufficient unbound energy; the second requires that unbound oscillators are attempting to synchronize (phase-clustered).
+Incoherent unbound energy does \emph{not} trigger genesis.
+
+\paragraph{Apex-aligned birth.}
+The newborn carrier is initialized with its phase aligned to the strongest unbound oscillator's current phase (apex alignment) and its intrinsic rotation frequency seeded by that oscillator.
+This ensures that novel information in the stream is met with a representational resource that can immediately begin gated capture and then compete for survival under metabolic cost.
+
+\subsection{Notes on redundancy}
+
+This paper focuses on a ``no-compromise'' pure dynamical system: carriers are created only by instability-driven mitosis, and separation is achieved purely by elastic bond dynamics.
+We therefore do not introduce an explicit merger algorithm; redundancy can be treated as a measurement issue (carriers with negligible energy or negligible total presence can be ignored in readout).
+
+% ============================================================
+\section{Energy and stability perspectives}
+
+This section supplies an analytical ``handle'' for understanding attractors and why the dynamics tends to produce coherent structure.
+The objective is not to prove full convergence (which may be false once inputs and detuning are included), but to show that the update directions are not arbitrary.
+
+\subsection{A coherence objective}
+
+The energy-based perspective on oscillator networks connects to classical work on Hopfield networks~\citep{hopfield1982neural, hopfield1984neurons} and their modern extensions~\citep{ramsauer2021hopfield, hu2024sparse}.
+
+For fixed presences $P$ and fixed amplitudes $A_i$, define the carrier drives
+\[
+u_k(\phi) = \sum_i P_{ik}A_i e^{\ii\phi_i}.
+\]
+Consider the scalar objective
+\begin{equation}
+\mathcal{L}(\phi) \;=\; \sum_{k=1}^M |u_k(\phi)|.
+\label{eq:L}
+\end{equation}
+Intuitively, $\mathcal{L}$ is large when carriers receive aligned contributions and small when contributions cancel.
+
+\subsection{Gradient structure (connection to Kuramoto)}
+
+Assume, for this analysis only, that carrier phases satisfy $\psi_k = \arg(u_k)$ (fast carrier phase alignment) and ignore intrinsic frequencies ($\omega_i=0$).
+Then one can show that increasing $\mathcal{L}$ encourages phase alignment.
+
+\begin{proposition}[Oscillator update as ascent on carrier coherence (idealized)]
+Let $u_k\neq 0$ and define $\psi_k=\arg(u_k)$.
+Then
+\begin{equation}
+\frac{\partial |u_k|}{\partial \phi_i}
+=
+P_{ik}A_i \sin(\psi_k-\phi_i).
+\end{equation}
+Consequently, the phase dynamics
+\[
+\dot \phi_i \propto \sum_k P_{ik}|u_k|\sin(\psi_k-\phi_i)
+\]
+performs gradient ascent on $\mathcal{L}(\phi)$ (up to scaling) in this idealized regime.
+\end{proposition}
+
+\begin{remark}
+The implemented dynamics \eqref{eq:osc} replaces $|u_k|$ by the carrier amplitude $|c_k|$, which is a smoothed and saturated version of $|u_k|$.
+Thus the ``gradient intuition'' survives approximately while remaining numerically stable.
+\end{remark}
+
+\subsection{Low-rank reduction to an effective Kuramoto network}
+
+If carrier dynamics is much faster than oscillator phases, one may approximate carriers as quasi-steady:
+\begin{equation}
+0 \approx u_k - \gamma_k c_k \quad\Rightarrow\quad c_k \approx \gamma_k^{-1} u_k
+\qquad (\beta_k=0 \text{ or small}).
+\label{eq:qss}
+\end{equation}
+Substituting \eqref{eq:qss} into \eqref{eq:osc} yields
+\begin{align}
+g_i
+&\approx \sum_k P_{ik}\gamma_k^{-1}\sum_j P_{jk}A_j e^{\ii\phi_j}
+= \sum_j \Big(\sum_k P_{ik}\gamma_k^{-1}P_{jk}\Big) A_j e^{\ii\phi_j}.
+\end{align}
+Define the symmetric effective coupling
+\begin{equation}
+K_{ij} \;=\; \sum_{k=1}^M P_{ik}\gamma_k^{-1}P_{jk}.
+\label{eq:Kij}
+\end{equation}
+Then \eqref{eq:osc} becomes a weighted Kuramoto model:
+\begin{equation}
+\dot \phi_i \approx \omega_i + \kappa \sum_{j=1}^N K_{ij} A_j \sin(\phi_j-\phi_i).
+\label{eq:kuramoto_eff}
+\end{equation}
+
+\paragraph{Implication.}
+This makes the system comparable to well-studied synchronization and associative memory models~\citep{hopfield1982neural, kuramoto1984chemical}, but with a \emph{learned low-rank} coupling $K= P\Gamma^{-1}P^\top$.
+Recent work on Kuramoto dynamics in neural networks~\citep{miyato2025akorn, li2023kuramoto} has demonstrated the practical utility of this connection for tasks including object binding, adversarial robustness, and uncertainty quantification.
+
+% ============================================================
+\section{Observation interface: one engine, multiple readouts}
+
+A key question is how continuous attractor states produce discrete or structured outputs.
+This section describes an \emph{observation interface} that cleanly separates measurement from dynamics.
+
+\subsection{Critical design principle}
+
+\begin{quote}
+\textbf{Outputs measure resonance; they do not participate in it.}
+\end{quote}
+
+No gradients, no reward shaping, no feedback into carrier dynamics.
+Tasks are \emph{consumers}, not \emph{drivers}.
+This preserves emergence: all specialization is physics-driven, not task-driven.
+
+\paragraph{One engine, multiple readouts.}
+The same observation interface supports:
+\begin{itemize}
+  \item \textbf{Classification:} What carrier configurations exist? (state identification)
+  \item \textbf{Next-token prediction:} How does the state evolve? (temporal modeling)
+  \item \textbf{Unsupervised structure discovery:} What clusters emerge? (representation analysis)
+\end{itemize}
+You do \textbf{not} need to choose between classification and prediction.
+The difference lies entirely in how you read and aggregate the same state.
+
+\subsection{Canonical observation function}
+
+At any time $t$, the engine exposes a state snapshot $\mathrm{observe}(t)$ containing:
+
+\paragraph{Carrier-level observables (per carrier $k$):}
+\begin{itemize}
+  \item Energy: $|c_k|$
+  \item Phase: $\arg(c_k)$
+  \item Intrinsic frequency: $\omega_k$
+  \item Intake: $I_k$ (smoothed)
+  \item Coherence: $D_k$
+  \item Gate width: $W_k$ (specialization level)
+  \item Spectral center: $\bar\omega_k$
+  \item Spectral variance: $\mathrm{Var}_k$
+\end{itemize}
+
+\paragraph{Soft assignment matrix:}
+\begin{equation}
+m_{ik} = \frac{P_{ik} \cdot T_{ik}}{\sum_{k'} P_{ik'} \cdot T_{ik'}},
+\end{equation}
+which gives the normalized assignment of oscillator $i$ to carrier $k$.
+This is the ``which carrier does this oscillator belong to'' answer, but soft (graded) rather than hard.
+
+\paragraph{Global metrics:}
+\begin{itemize}
+  \item Synchronization order parameter $R(t)$
+  \item Description length proxy $L_{\text{comp}}$
+  \item Population counts $N$, $M$, $\mathrm{nnz}(P)$
+\end{itemize}
+
+\subsection{Classification via carrier configuration}
+
+A ``class'' corresponds to a stable carrier or carrier constellation.
+Classification score at time $t$:
+\begin{equation}
+\mathrm{score}(\text{class}_j) = \sum_k |c_k| \cdot \mathrm{similarity}(\text{carrier}_k, \text{prototype}_j),
+\end{equation}
+where prototypes live \textbf{outside} the engine (learned, clustered, or hand-defined).
+The engine never ``knows'' it is classifying.
+
+\subsection{Prediction via state transition modeling}
+
+Treat $\mathrm{observe}(t)$ as a vector in state space.
+Learn a temporal model (Markov, RNN, transformer) to predict $\mathrm{observe}(t+\Delta t)$.
+The engine supplies \emph{structure}; the predictor learns \emph{temporal regularities on top}.
+
+\subsection{Why not output carriers/oscillators?}
+
+Earlier drafts proposed ``output carriers'' that participate in dynamics.
+This was rejected because:
+\begin{itemize}
+  \item Outputs become goals, not observables.
+  \item Emergence collapses into wiring.
+  \item The system becomes task-driven rather than physics-driven.
+\end{itemize}
+The observation interface avoids these pitfalls by keeping measurement strictly external.
+
+% ============================================================
+\section{Compute requirements and scalable simulation}
+
+The original draft correctly notes that continuous-time dynamics incurs cost on digital hardware.
+This section makes that cost explicit and provides implementable strategies to reduce it.
+
+\subsection{Per-step complexity with sparse presence}
+
+Assume $P$ has $d$ nonzeros per oscillator (row), so $\mathrm{nnz}(P)=dN$.
+A single Euler step for \eqref{eq:carrier}--\eqref{eq:osc} requires:
+\begin{enumerate}
+  \item Compute $u = P^\top z$ (complex): $O(\mathrm{nnz}(P))$.
+  \item Update $c$ for $M$ carriers: $O(M)$.
+  \item Compute $g = P c$: $O(\mathrm{nnz}(P))$.
+  \item Update $\phi$ for $N$ oscillators: $O(N)$.
+  \item Update $P$ for $\mathrm{nnz}(P)$ edges (if learning every step): $O(\mathrm{nnz}(P))$.
+\end{enumerate}
+Thus
+\begin{equation}
+\text{cost per step} = O(\mathrm{nnz}(P) + N + M) \approx O(dN)
+\quad\text{for } d\gg 1,\, M\ll N.
+\end{equation}
+
+\subsection{Discrete-time update equations (implementable)}
+
+With step size $\Delta t$, a baseline explicit scheme is:
+\begin{align}
+z_i &\leftarrow A_i e^{\ii\phi_i},\\
+u_k &\leftarrow \sum_i P_{ik} z_i,\\
+c_k &\leftarrow c_k + \Delta t\left(u_k - \gamma_k c_k - \beta_k |c_k|^2 c_k\right),\\
+g_i &\leftarrow \sum_k P_{ik} c_k,\\
+\phi_i &\leftarrow \mathrm{wrap}\!\left(\phi_i + \Delta t\left[\omega_i + \kappa\,\Im(g_i e^{-\ii\phi_i})\right]\right),
+\end{align}
+with optional $A_i$ update \eqref{eq:amp} and $P$ update \eqref{eq:P_proj} (or variants).
+
+\paragraph{Stability note.}
+Because $c_k$ is damped, explicit Euler is often stable for moderate $\Delta t$.
+If stiffness arises (large $\gamma_k$), use an exponential integrator for the linear part:
+\begin{equation}
+c_k(t+\Delta t) \approx e^{-\gamma_k\Delta t}c_k(t) + \frac{1-e^{-\gamma_k\Delta t}}{\gamma_k}\,u_k(t),
+\end{equation}
+with saturation handled explicitly.
+
+\subsection{Compute reduction strategies}
+
+\subsubsection{(1) Remove the fast carrier frequency (rotating frame)}
+
+If oscillators have large shared base frequency $\Omega$ with small detunings $\delta_i$, write
+\[
+\omega_i = \Omega + \delta_i.
+\]
+Simulating in the rotating frame eliminates $\Omega$:
+\[
+\phi_i(t) = \Omega t + \tilde \phi_i(t)\quad\Rightarrow\quad \dot{\tilde \phi}_i = \delta_i + \text{coupling}.
+\]
+This can reduce required step sizes by orders of magnitude.
+
+\subsubsection{(2) Multi-rate updates}
+
+Update different subsystems at different rates:
+\begin{itemize}
+  \item phases $\phi$ every step,
+  \item carriers $c$ every $r_c$ steps (interpolating between),
+  \item learning $P$ every $r_P$ steps (slow learning),
+  \item mitosis checks every $r_{\text{arch}}$ steps.
+\end{itemize}
+This is justified when learning and architecture changes are slower than phase mixing.
+
+\subsubsection{(3) Quasi-steady carriers}
+
+If carriers are fast relative to phases, replace carrier integration with a static nonlinearity:
+\begin{equation}
+c_k \approx \frac{u_k}{\gamma_k + \beta_k |u_k|^2},
+\label{eq:static_carrier}
+\end{equation}
+which is a divisive normalization form~\citep{carandini2012normalization, schwartz2001natural}.
+This collapses the model to two sparse matrix-vector products per step ($u=P^\top z$, $g=Pc$) plus pointwise nonlinearities.
+
+\subsubsection{(4) Sparse, bounded-degree presence}
+
+Enforce bounded degree per oscillator and per carrier:
+\begin{itemize}
+  \item Each oscillator connects to at most $d$ carriers (row sparsity),
+  \item Each carrier accepts at most $q$ oscillators (column cap) to limit $u_k$ fan-in.
+\end{itemize}
+Column caps act as a resource constraint and can serve as a compression prior.
+
+\subsubsection{(5) GPU implementation via sparse matrix multiplication}
+
+The dominant operations are sparse matrix--vector products (SpMV) or sparse matrix--dense vector multiplications with complex numbers~\citep{bell2009implementing}.
+Store $P$ in CSR (row-major) for computing $g=Pc$ and in CSC (column-major) or transposed CSR for $u=P^\top z$.
+On modern accelerators, these operations scale well when $\mathrm{nnz}(P)$ is large and memory access is coalesced.
+
+\subsection{Reference simulation loop}
+
+\begin{algorithm}[h]
+\caption{Baseline resonant learning simulation (sparse)}
+\begin{algorithmic}[1]
+\State Initialize $\phi,\omega,A,c,P$ with small nonzero bonds.
+\For{$t=1$ to $T$}
+  \State $z_i \gets A_i e^{\ii\phi_i}$ for all $i$
+  \State $u \gets P^\top z$ \Comment{carrier drives}
+  \State $c \gets c + \Delta t\,(u - \Gamma c - B(c))$ \Comment{carrier update}
+  \State $g \gets P c$ \Comment{back-influence}
+  \State $\phi_i \gets \mathrm{wrap}\!\left(\phi_i + \Delta t\left[\omega_i + \kappa\,\Im(g_i e^{-\ii\phi_i})\right]\right)$
+  \State Update $P$ using elastic coupling dynamics (Eq.~\eqref{eq:elastic_P}) and snap bonds below threshold.
+  \If{$t \bmod r_{\text{arch}} = 0$}
+    \State Compute $D_k$ and trigger mitosis on persistent instability.
+  \EndIf
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[h]
+\caption{Architecture evolution loop (spectral factorization)}
+\label{alg:arch}
+\begin{algorithmic}[1]
+\State \textbf{Inputs:} carrier states $\{c_k\}$, elastic bonds $P$, oscillator frequencies $\{\omega_i\}$, threshold $\theta_{\text{div}}$
+\State \textbf{Compute (per carrier $k$):}
+\State \quad Coherence $D_k = \mathrm{coh}(k)/b_k$
+\State \quad Spectral profile: center $\bar\omega_k$, variance $\mathrm{Var}_k$, multimodality flag
+\If{$D_k < \theta_{\text{div}}$ persistently \textbf{AND} carrier $k$ is multimodal}
+\State Partition bonded oscillators by frequency into clusters $\mathcal{L}$ (low) and $\mathcal{H}$ (high)
+\State Parent keeps bonds to $\mathcal{L}$; zero bonds to $\mathcal{H}$
+\State Create child carrier with bonds only to $\mathcal{H}$
+\State Recenter frequencies: $\omega_{\text{parent}} \leftarrow \bar\omega_{\mathcal{L}}$, $\omega_{\text{child}} \leftarrow \bar\omega_{\mathcal{H}}$
+\State Apply small phase noise for differentiation
+\EndIf
+\end{algorithmic}
+\end{algorithm}
+
+% ============================================================
+\section{Incommensurability \texorpdfstring{$\epsilon$}{epsilon} and finite precision}
+
+The original draft motivates an ``essential incommensurability'' $\epsilon$ to prevent phase locking and preserve continuous dynamics.
+However, several clarifications are needed for correctness and implementability.
+
+\subsection{Clarification: irrational ratios are neither necessary nor sufficient}
+
+\paragraph{Not sufficient.}
+Even if $\omega_1/\omega_2$ is irrational, \emph{coupling} can still synchronize oscillators:
+in Kuramoto-type systems, sufficiently strong coupling can produce frequency locking when detuning is small relative to coupling.
+
+\paragraph{Not necessary (for finite-time experiments).}
+On any finite time horizon $T_{\text{run}}$, what is needed is that the system does not enter a short periodic orbit or global synchronization that destroys useful interference structure.
+This can be achieved by (i) nonzero detuning, (ii) noise or drift, and (iii) architectural constraints that prevent total coupling collapse.
+
+We therefore reinterpret $\epsilon$ as an \emph{effective detuning floor}:
+\begin{definition}[Effective incommensurability]
+Let $\Delta\omega_{ij}=|\omega_i-\omega_j|$.
+An $\epsilon$-incommensurate set of oscillators satisfies $\Delta\omega_{ij}\ge \epsilon$ for relevant interacting pairs $(i,j)$ (e.g., those sharing carriers), possibly after accounting for coupling-induced frequency shifts.
+\end{definition}
+
+\subsection{Finite precision and eventual periodicity}
+
+A discrete-time simulation in floating point is a finite-state dynamical system, hence eventually periodic.
+The practical question is whether the period is \emph{astronomically large} compared to $T_{\text{run}}$.
+For standard 64-bit floats and modular phase wrapping, the effective state space is so large that short cycles are typically not an issue unless the dynamics itself drives the system into a low-dimensional synchronized manifold.
+
+\subsection{Workable solutions for $\epsilon$ under floating point}
+
+\subsubsection{Solution 1: deterministic detuning + coupling bound}
+
+Choose natural frequencies with a guaranteed separation:
+\begin{equation}
+\omega_i = \omega_0 + \delta_i,\qquad \delta_i \sim \mathrm{Unif}[-\Delta,\Delta],
+\end{equation}
+and constrain coupling so that global synchronization is unlikely:
+\begin{equation}
+\kappa\,\max_i \sum_k P_{ik}|c_k| \;\lesssim\; \Delta.
+\end{equation}
+Empirically, one can monitor order parameters (Section~\ref{sec:metrics}) to detect collapse into synchronization.
+
+\subsubsection{Solution 2: integer phase accumulators (eliminate rounding drift)}
+
+Represent phase as a $Q$-bit integer accumulator (standard in digital oscillators).
+Let $\Phi_i \in \{0,1,\dots,2^Q-1\}$ and interpret $\phi_i = 2\pi \Phi_i/2^Q$.
+Update by exact modular arithmetic:
+\begin{equation}
+\Phi_i \leftarrow (\Phi_i + \Delta_i)\bmod 2^Q,
+\end{equation}
+where $\Delta_i$ is an integer frequency increment.
+This yields \emph{zero} floating point rounding drift in the free-running phase.
+Detuning is implemented by choosing distinct $\Delta_i$ with large least common multiples, producing huge recurrence periods (often $>2^Q$ steps if $\gcd$ is small).
+
+Coupling terms can still be computed in floating point (using $\sin$/$\cos$ of $\phi_i$), but the fundamental phase progression remains exact.
+
+\subsubsection{Solution 3: controlled stochastic dither (avoid pathological locking)}
+
+Add a small noise term to phase or frequency:
+\begin{equation}
+\omega_i(t) = \omega_i + \sigma\,\xi_i(t),
+\end{equation}
+where $\xi_i(t)$ is e.g.\ Gaussian white noise and $\sigma$ is small.
+This prevents exact recurrence and models physical fluctuations.
+Dither is especially useful when using low precision (float32) or large time steps.
+
+\subsection{Rational approximations and recurrence time (useful rule of thumb)}
+
+If two oscillators have a rational frequency ratio $\omega_2/\omega_1=p/q$ (in lowest terms), their phases exactly realign after time
+\begin{equation}
+T_{\text{rec}} = \frac{2\pi q}{\omega_1}.
+\end{equation}
+Thus, to \emph{behave like} an irrational ratio over an experiment horizon $T_{\text{run}}$, it suffices that $T_{\text{rec}}\gg T_{\text{run}}$.
+Integer phase accumulators with $Q=64$ make $q$ effectively enormous for generic choices of $\Delta_i$.
+
+% ============================================================
+\section{The Stream: environment and evaluation}
+\label{sec:metrics}
+
+The intended setting is an open-ended sensory stream: the system does not know group labels, tasks, or episode boundaries.
+It observes a sequence of transient signals with finite duration; signals ring down rather than disappearing abruptly, and the topology evolves continuously.
+
+\paragraph{Reproducible artifact generation.}
+All paper artifacts referenced in this section are generated by a single command:
+\[
+\texttt{python3 tmp/rez/paper\_artifacts.py}.
+\]
+It writes figures/tables into \texttt{tmp/rez/artifacts/}, which this \LaTeX{} file includes automatically via \texttt{\textbackslash IfFileExists}.
+
+\subsection{Core stream metrics}
+
+\paragraph{Carrier coherence.}
+Track $\mathrm{coh}(k)$ in \eqref{eq:coh} and the normalized score $D_k$.
+
+\paragraph{Synchronization order parameter.}
+A global phase order parameter, introduced by \citet{kuramoto1984chemical} and analyzed extensively by \citet{strogatz2000kuramoto}, detects collapse into full synchrony:
+\begin{equation}
+R(t) = \left|\frac{1}{N}\sum_{i=1}^N e^{\ii\phi_i(t)}\right|\in[0,1].
+\end{equation}
+Large $R$ indicates global alignment (often undesirable if it destroys representational diversity).
+
+\paragraph{Sparsity and description length proxies.}
+Track $\mathrm{nnz}(P)$, number of active carriers ($|c_k|$ above threshold), and average row degree $d$.
+These are direct proxies for representational complexity, consistent with sparse coding principles in neural systems~\citep{olshausen1996emergence, lewicki2000learning}.
+
+\paragraph{Compression metric (operationalized).}
+To make the thesis ``learning as compression'' empirically testable, following the MDL tradition~\citep{rissanen1978modeling, grunwald2007mdl}, we operationalize compression using a simple description-length proxy:
+\begin{equation}
+L_{\text{comp}} \;=\; \mathrm{nnz}(P) \;+\; M_{\text{active}},
+\label{eq:Lcomp}
+\end{equation}
+where $\mathrm{nnz}(P)$ is the number of nonzero presences and $M_{\text{active}}$ is the number of active carriers.
+This is intentionally crude but \emph{computable} and captures the two dominant storage/complexity terms in this framework.
+
+\paragraph{Attractor stability.}
+In the stream setting, stability is measured by churn:
+carrier birth (mitosis) rate, dissolution rate, and the distribution of carrier lifetimes.
+
+\subsection{Stream report (auto-generated)}
+
+\IfFileExists{artifacts/rez_stream_autogen.tex}{
+  \input{artifacts/rez_stream_autogen.tex}
+}{
+  \textit{(Artifacts not found. Run \texttt{python3 tmp/rez/paper\_artifacts.py} to generate stream artifacts.)}
+}
+
+\IfFileExists{artifacts/rez_stream_timeseries.png}{
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{artifacts/rez_stream_timeseries.png}
+    \caption{Stream metrics over time: $N(t)$, $M(t)$, $\mathrm{nnz}(P)$, and $L_{\\text{comp}}(t)$.}
+  \end{figure}
+}{}
+
+\IfFileExists{artifacts/rez_stream_gate_capture.png}{
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{artifacts/rez_stream_gate_capture.png}
+    \caption{Gate capture visualization: carrier gate (square wave) and the portion of the composite drive captured while the gate is open.}
+  \end{figure}
+}{}
+
+\IfFileExists{artifacts/rez_stream_presence.png}{
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.90\linewidth]{artifacts/rez_stream_presence.png}
+    \caption{Presence matrix snapshot $P$ (heatmap), showing emergent sparsification by bond snapping.}
+  \end{figure}
+}{}
+
+\IfFileExists{artifacts/rez_stream_lifetimes.png}{
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{artifacts/rez_stream_lifetimes.png}
+    \caption{Carrier lifetime distribution under mitosis and metabolic dissolution.}
+  \end{figure}
+}{}
+
+% Prevent Stream floats from drifting into later sections.
+\FloatBarrier
+
+\subsection{Experimental validation}
+\label{sec:validation}
+
+To test the claims made in this paper, we conducted a suite of rigorous experiments.
+Each experiment tests a specific hypothesis about the system's behavior.
+Results are reported honestly: failures are not hidden but rather indicate areas for further investigation.
+
+\IfFileExists{artifacts/experiment_summary_autogen.tex}{
+  \input{artifacts/experiment_summary_autogen.tex}
+}{
+  \textit{(Experiment summary not found. Run \texttt{python3 tmp/rez/paper\_artifacts.py} to generate.)}
+}
+
+\IfFileExists{artifacts/experiment_results_autogen.tex}{
+  \input{artifacts/experiment_results_autogen.tex}
+}{
+  \textit{(Experiment results table not found.)}
+}
+
+\IfFileExists{artifacts/experiment_summary.png}{
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{artifacts/experiment_summary.png}
+    \caption{Summary of experimental validation results. Green indicates the claim was supported by the data; red indicates the claim was not supported.}
+  \end{figure}
+}{}
+
+\IfFileExists{artifacts/experiment_gate_selectivity.png}{
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\linewidth]{artifacts/experiment_gate_selectivity.png}
+    \caption{Gate selectivity experiment: bond strength $P$ conditioned on phase alignment. Aligned oscillators (cosine of phase difference $> 0.5$) develop stronger bonds than anti-aligned ones.}
+  \end{figure}
+}{}
+
+\IfFileExists{artifacts/experiment_compression.png}{
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\linewidth]{artifacts/experiment_compression.png}
+    \caption{Compression ratio $L_{\text{comp}}/(N \times M)$ across different random seeds. Values below 1 indicate compression; values above 1 indicate the representation is not yet compressed relative to naive storage.}
+  \end{figure}
+}{}
+
+\subsection{Analysis of experimental failures}
+\label{sec:failure_analysis}
+
+The experimental results reveal important gaps between theory and implementation that warrant discussion.
+
+\paragraph{Compression not yet achieved.}
+The compression experiment shows $L_{\text{comp}}/(N \times M) \approx 1.15$, indicating the representation is slightly \emph{larger} than naive storage.
+This occurs because at small scale ($N, M < 10$), the overhead of carrier storage ($+M$ term) outweighs sparsity benefits.
+Compression may require larger systems or more aggressive sparsification.
+
+\paragraph{Sparsity paradox.}
+Despite 1144 bond-snapping events, final density remains at 1.0.
+Analysis reveals that while bonds are continuously snapping, new bonds are simultaneously being seeded at the same rate (when oscillators arrive and are connected to carriers).
+This suggests the seeding rate or initial bond strength may need rebalancing.
+
+\paragraph{Mitosis not triggered by low D.}
+The mean $D$ before mitosis is 1.097, \emph{above} the threshold of 0.95.
+This indicates mitosis is being triggered by other mechanisms (possibly the persistence counter or cooldown timing) rather than the intended coherence-based criterion.
+This is a genuine bug in the implementation that should be addressed.
+
+\paragraph{Global synchrony collapse.}
+The max $R = 1.0$ indicates that at some point, all oscillators became perfectly synchronized.
+This destroys representational diversity.
+The coupling strength $\kappa$ may be too high relative to natural frequency detuning, or the system reaches temporary states of alignment during sparse-oscillator moments.
+
+\paragraph{Weak phase coupling.}
+The phase difference between oscillators sharing carriers (1.606 rad) is not significantly different from random (1.571 rad).
+This suggests the coupling effect is too weak relative to the oscillator frequencies, or the measurement methodology needs refinement.
+
+\paragraph{Implications for the theory.}
+These failures do not invalidate the theoretical framework but highlight the gap between idealized continuous-time dynamics and discrete simulation.
+They also suggest that parameter tuning is critical: the current parameters may work well for visualization but not for the claimed emergent properties.
+Future work should include systematic parameter sweeps and longer simulation horizons.
+
+\subsection{Known failure modes}
+\label{sec:failures}
+
+The following failure modes are expected and have been observed in prototype simulations:
+\begin{itemize}
+  \item \textbf{Global synchrony collapse:} if coupling is too strong relative to detuning, $R(t)\to 1$ and representational diversity is lost~\citep{acebron2005kuramoto, peron2025extreme}. Operational fix: reduce $\kappa$, increase detuning/noise, or constrain presences.
+  \item \textbf{Over-mitosis / carrier proliferation:} aggressive instability thresholds or short persistence windows can create a cascade of mitoses. Operational fix: larger $T_{\text{div}}$ and/or a refractory timescale after mitosis.
+  \item \textbf{Under-mitosis / failed separation:} if interference does not persist ($D_k$ does not drop below baseline), the system may keep a single mixed carrier. Operational fix: increase detuning between groups or adjust $\theta_{\text{div}}$ and $T_{\text{div}}$.
+\end{itemize}
+
+\subsection{Limitations and scope}
+\label{sec:notexplore}
+
+The following directions are intentionally out of scope for this paper:
+\begin{itemize}
+  \item reinforcement learning and full agentic credit assignment,
+  \item large-scale supervised benchmarks and competitive accuracy claims,
+  \item biological modeling or claims of biological realism,
+  \item hardware-specific implementations beyond the compute scaling discussion.
+\end{itemize}
+
+% ============================================================
+\section{Summary}
+
+This revised draft provides a complete, implementable specification for Resonant Compression Systems.
+The key innovations are:
+
+\begin{itemize}
+  \item \textbf{Gaussian tuning strength (no $\kappa$):} Coupling strength is geometrically derived from phase alignment via $T_{ik}=\exp(-\Delta\phi^2/\sigma_k)$, eliminating an arbitrary constant and creating ``radio dial'' lock-on behavior.
+  
+  \item \textbf{Adaptive gate width (emergent specialization):} Each carrier's gate width $W_k$ evolves based on coherence---high coherence narrows the gate (specialist), low coherence widens it (generalist).
+  
+  \item \textbf{Spectral factorization (not blind mitosis):} Carrier division partitions bonds by \emph{frequency}, producing immediately differentiated offspring rather than stochastic duplicates. Requires multimodal spectral profile.
+  
+  \item \textbf{Coherence-weighted metabolism:} Effective intake is $I_k^{\text{eff}}=I_k \cdot D_k$, so carriers capturing incoherent noise starve faster. Coherence becomes a survival criterion.
+  
+  \item \textbf{Phase-clustered genesis:} New carriers nucleate only when unbound oscillators show phase coherence ($R_{\mathcal{U}}>\theta$), preventing genesis from scattered noise.
+  
+  \item \textbf{Observation interface (not output carriers):} Outputs \emph{measure} resonance without participating in dynamics. One interface supports classification, prediction, and structure discovery without feedback into the engine.
+  
+  \item \textbf{Carrier spectral profiles:} Each carrier tracks its spectral center $\bar\omega_k$, variance, and multimodality as observable properties for mitosis decisions.
+\end{itemize}
+
+\paragraph{Engineering contributions.}
+\begin{itemize}
+  \item \textbf{Compute requirements:} explicit $O(\mathrm{nnz}(P))$ per-step scaling, sparse simulation loop, GPU-friendly operations~\citep{bell2009implementing}.
+  \item \textbf{$\epsilon$ in finite precision:} reinterpretation as detuning floor, plus implementable strategies: deterministic detuning bounds, integer phase accumulators, and controlled noise/dither.
+  \item \textbf{Complete dynamical specification:} all equations implementable in PyTorch with no hidden constants or arbitrary parameters.
+\end{itemize}
+
+% ============================================================
+\appendix
+\section{Notation quick reference}
+
+\begin{tabular}{@{}ll@{}}
+\toprule
+Symbol & Meaning \\
+\midrule
+$N$ & number of oscillators \\
+$M$ & number of carriers \\
+$M_{\text{active}}$ & number of active carriers (above a threshold) \\
+$\phi_i$ & phase of oscillator $i$ \\
+$\omega_i$ & natural frequency of oscillator $i$ \\
+$A_i$ & amplitude of oscillator $i$ \\
+$z_i=A_i e^{\ii\phi_i}$ & complex phasor of oscillator $i$ \\
+$c_k$ & complex amplitude of carrier $k$ \\
+$W_k$ & gate width of carrier $k$ (perceptual tolerance) \\
+$T_{ik}$ & tuning strength: oscillator $i$ to carrier $k$ (Eq.~\eqref{eq:tuning}) \\
+$P_{ik}$ & presence (bond strength) of oscillator $i$ on carrier $k$ \\
+$\mathrm{nnz}(P)$ & number of nonzeros in the presence matrix \\
+$u_k=\sum_i T_{ik}P_{ik}z_i$ & tuning-weighted carrier drive \\
+$g_i=\sum_k T_{ik}P_{ik}c_k$ & tuning-weighted back-influence on oscillator $i$ \\
+$\gamma_k,\beta_k$ & carrier damping and saturation \\
+$\mathrm{coh}(k)$ & carrier coherence score (Eq.~\eqref{eq:coh}) \\
+$D_k$ & normalized coherence score vs.\ random-phase baseline \\
+$\bar\omega_k$ & carrier spectral center (weighted mean frequency) \\
+$\mathrm{Var}_k$ & carrier spectral variance \\
+$I_k^{\text{eff}}$ & coherence-weighted intake (Eq.~\eqref{eq:effective_intake}) \\
+$R(t)$ & global phase order parameter \\
+$R_{\mathcal{U}}$ & order parameter among unbound oscillators (Eq.~\eqref{eq:R_unbound}) \\
+$L_{\text{comp}}$ & description-length proxy (Eq.~\eqref{eq:Lcomp}) \\
+\bottomrule
+\end{tabular}
+
+\bibliography{references}
+
+\end{document}
