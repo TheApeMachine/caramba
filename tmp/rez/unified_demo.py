@@ -11,8 +11,7 @@ This script demonstrates the complete "System 2" loop:
 import torch
 from tensordict import TensorDict
 from semantic import SemanticManifold
-from physics import PhysicsConfig as SemanticPhysicsConfig
-from manifold_refactored import SpectralManifold, PhysicsConfig as SpectralPhysicsConfig, DTYPE_REAL, TAU
+from physics import PhysicsConfig as SemanticPhysicsConfig, SpectralManifold, PhysicsConfig as SpectralPhysicsConfig, DTYPE_REAL, TAU
 
 
 def run_unified_demo() -> None:
@@ -138,7 +137,7 @@ def run_unified_demo() -> None:
         },
         batch_size=[n_harmonics],
     )
-    voice.state.set("attractors", carriers)
+    voice.attractors = carriers
 
     # Create Noise (The raw material)
     n_particles = 100
@@ -152,7 +151,7 @@ def run_unified_demo() -> None:
         },
         batch_size=[n_particles],
     )
-    voice.state.set("particles", noise)
+    voice.particles = noise
 
     # Run Diffusion (Speaking)
     print("    Speaking (Diffusing Noise into Sound)...")
@@ -163,8 +162,8 @@ def run_unified_demo() -> None:
         sharpness = 0.1 + prog * 10.0  # Soft -> Hard
 
         # 1. Calculate Distances (1D Audio)
-        p_pos = voice.state.get("particles").get("position").unsqueeze(1)
-        a_pos = voice.state.get("attractors").get("position").unsqueeze(0)
+        p_pos = voice.particles.get("position").unsqueeze(1)
+        a_pos = voice.attractors.get("position").unsqueeze(0)
         dists = (p_pos - a_pos).abs()
 
         # 2. Softmax Gravity
@@ -172,18 +171,18 @@ def run_unified_demo() -> None:
 
         # 3. Drift
         targets = (weights * a_pos).sum(dim=1)
-        current = voice.state.get("particles").get("position")
+        current = voice.particles.get("position")
         drift = -2.0 * (current - targets)
 
         # 4. Update
         new_pos = current + drift * spec_cfg.dt
-        voice.state.get("particles").set("position", new_pos)
+        voice.particles.set("position", new_pos)
 
     # ==================================================================
     # 5. Result
     # ==================================================================
     print("\n[5] Output Analysis")
-    final_freqs = voice.state.get("particles").get("position")
+    final_freqs = voice.particles.get("position")
     print("    Generated Particle Frequencies (Mean):")
 
     # Check clustering

@@ -7,12 +7,14 @@ This is the base class that handles the raw physics loop:
 - No domain-specific assumptions (no Hertz, Tokens, Embeddings)
 """
 
+import math
 import torch
 from tensordict import TensorDict
 from dataclasses import dataclass
 from typing import Optional
 
 DTYPE_REAL = torch.float32
+TAU = 2.0 * math.pi
 
 
 @dataclass
@@ -117,3 +119,72 @@ class ThermodynamicEngine:
             # Exponential moving average
             new_e = current_e * 0.9 + energy_in * 0.1
             self.attractors.set("energy", new_e)
+
+
+# ============================================================
+# Audio Domain: SpectralManifold
+# ============================================================
+
+class SpectralManifold(ThermodynamicEngine):
+    """
+    The Audio Domain.
+    Handles STFT, Hertz, Phase Wrapping.
+    """
+
+    def __init__(self, config: PhysicsConfig, device: torch.device):
+        super().__init__(config, device)
+        # Audio-specific: phase tracking
+        self.particles.set("phase", torch.empty(0, dtype=DTYPE_REAL, device=device))
+        self.attractors.set("phase", torch.empty(0, dtype=DTYPE_REAL, device=device))
+
+    def ingest_frame(self, freq_bins: torch.Tensor, magnitudes: torch.Tensor, phases: torch.Tensor):
+        """
+        Type-safe ingestion for Audio.
+        Converts STFT data into 'Particles'.
+
+        Args:
+            freq_bins: [N] frequencies in Hz
+            magnitudes: [N] magnitudes
+            phases: [N] phases in radians
+        """
+        n = freq_bins.shape[0]
+        new_particles = TensorDict(
+            {
+                "position": freq_bins,  # Position is Frequency (Hz)
+                "energy": magnitudes * freq_bins.abs(),  # Energy = magnitude * frequency
+                "phase": phases,  # Specific to Audio
+                "ttl": torch.full((n,), self.config.dt * 10.0, dtype=DTYPE_REAL, device=self.device),
+            },
+            batch_size=[n],
+        )
+
+        self.step_physics()
+        # Append new particles after step to keep physics core minimal
+        if self.particles.shape[0] == 0:
+            self.particles = new_particles
+        else:
+            self.particles = TensorDict(
+                {
+                    "position": torch.cat([self.particles.get("position"), new_particles.get("position")], dim=0),
+                    "energy": torch.cat([self.particles.get("energy"), new_particles.get("energy")], dim=0),
+                    "phase": torch.cat([self.particles.get("phase"), new_particles.get("phase")], dim=0),
+                    "ttl": torch.cat([self.particles.get("ttl"), new_particles.get("ttl")], dim=0),
+                },
+                batch_size=[self.particles.shape[0] + n],
+            )
+
+    def compute_distances(self) -> torch.Tensor:
+        """
+        Audio uses Log-Frequency metric with Duty Cycle scaling.
+        """
+        p = self.particles.get("position")  # [N]
+        a = self.attractors.get("position")  # [M]
+        if p.numel() == 0 or a.numel() == 0:
+            return torch.empty(0, 0, dtype=DTYPE_REAL, device=self.device)
+        log_p = torch.log(p.abs() + self.config.eps).unsqueeze(1)
+        log_a = torch.log(a.abs() + self.config.eps).unsqueeze(0)
+        return (log_p - log_a).abs()
+
+    def compute_targets(self, weights: torch.Tensor) -> torch.Tensor:
+        a_pos = self.attractors.get("position")
+        return torch.mm(weights, a_pos.unsqueeze(1)).squeeze(1) if a_pos.dim() == 1 else torch.mm(weights, a_pos)

@@ -55,8 +55,7 @@ def main():
     # Define all test files (in order of complexity)
     tests = [
         ("test_grammar.py", "Thermodynamic Grammar (Bond Topology)"),
-        ("test_refactored.py", "Refactored Architecture (Spectral/Semantic Split)"),
-        ("test_manifold.py", "Original Synthesis (Diffusion, Next Token, Semantic Bridge, Training)"),
+        ("test_refactored.py", "Unified Architecture (Spectral + Semantic)"),
     ]
     
     results = []
@@ -85,9 +84,7 @@ def main():
         print("\nKey Achievements:")
         print("  ✓ Thermodynamic Grammar (energy flow)")
         print("  ✓ Refactored Architecture (domain separation)")
-        print("  ✓ Synthesis Mode (diffusion generation)")
-        print("  ✓ Semantic Bridge (concept → audio)")
-        print("  ✓ Differentiable Physics (trainable)")
+        print("  ✓ Unified Architecture (one system)")
         return 0
     else:
         print(f"\n⚠ {total - passed} test suite(s) failed")

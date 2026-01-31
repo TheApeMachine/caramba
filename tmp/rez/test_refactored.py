@@ -6,13 +6,8 @@ Demonstrates the split between SpectralManifold and SemanticManifold.
 
 import torch
 from tensordict import TensorDict
-from manifold_refactored import (
-    ThermodynamicEngine,
-    SpectralManifold,
-    SemanticManifold,
-    PhysicsConfig,
-    DTYPE_REAL
-)
+from physics import ThermodynamicEngine, SpectralManifold, PhysicsConfig, DTYPE_REAL
+from semantic import SemanticManifold
 
 def test_spectral_manifold():
     """Test 1: Audio domain (SpectralManifold)"""
@@ -37,8 +32,8 @@ def test_spectral_manifold():
     manifold.ingest_frame(freq_bins, magnitudes, phases)
     
     # Check state
-    particles = manifold.state.get("particles")
-    attractors = manifold.state.get("attractors")
+    particles = manifold.particles
+    attractors = manifold.attractors
     
     print(f"\nResults:")
     print(f"  Particles: {particles.shape[0]}")
@@ -64,7 +59,7 @@ def test_semantic_manifold():
     embed_dim = 128
     config = PhysicsConfig(dt=0.01, hold_cost=5.0)
     
-    manifold = SemanticManifold(config, device, embed_dim)
+    manifold = SemanticManifold(config, device, embed_dim, vocab_size=128)
     
     # Simulate token embeddings
     n_tokens = 5
@@ -75,10 +70,10 @@ def test_semantic_manifold():
     print(f"  Tokens: {n_tokens}")
     print(f"  Embedding dimension: {embed_dim}")
     
-    manifold.ingest_tokens(embeddings)
+    manifold.ingest_context(embeddings)
     
     # Set up grammar transition matrix
-    n_attractors = manifold.state.get("attractors").shape[0]
+    n_attractors = manifold.attractors.shape[0]
     if n_attractors > 0:
         # Create a simple transition matrix (random for demo)
         transition_matrix = torch.rand(n_attractors, n_attractors, dtype=DTYPE_REAL, device=device)
@@ -90,8 +85,8 @@ def test_semantic_manifold():
         print(f"  Example: transition_matrix[0, :] = {transition_matrix[0, :3].cpu().numpy()}")
     
     # Check state
-    particles = manifold.state.get("particles")
-    attractors = manifold.state.get("attractors")
+    particles = manifold.particles
+    attractors = manifold.attractors
     
     print(f"\nResults:")
     print(f"  Particles: {particles.shape[0]}")
@@ -121,21 +116,29 @@ def test_distance_metrics():
     spectral = SpectralManifold(PhysicsConfig(), device)
     freq_a = torch.tensor([261.63], dtype=DTYPE_REAL, device=device)  # C4
     freq_b = torch.tensor([523.25], dtype=DTYPE_REAL, device=device)  # C5 (octave)
-    dist_spectral = spectral.distance_metric(freq_a, freq_b)
+    spectral.particles = TensorDict({"position": freq_a, "energy": torch.ones(1, device=device), "ttl": torch.ones(1, device=device)}, batch_size=[1])
+    spectral.attractors = TensorDict({"position": freq_b, "energy": torch.ones(1, device=device), "excitation": torch.zeros(1, device=device)}, batch_size=[1])
+    dist_spectral = spectral.compute_distances()[0, 0]
     print(f"\nSpectralManifold distance:")
     print(f"  C4 (261.63 Hz) vs C5 (523.25 Hz): {dist_spectral.item():.4f}")
     print(f"  (Should be small - octave relationship)")
     
     # Test SemanticManifold distance (cosine)
-    semantic = SemanticManifold(PhysicsConfig(), device, embed_dim=128)
+    semantic = SemanticManifold(PhysicsConfig(), device, embed_dim=128, vocab_size=128)
     emb_a = torch.randn(1, 128, dtype=DTYPE_REAL, device=device)
     emb_a = emb_a / (emb_a.norm() + 1e-8)
     emb_b = emb_a.clone()  # Same vector
     emb_c = torch.randn(1, 128, dtype=DTYPE_REAL, device=device)
     emb_c = emb_c / (emb_c.norm() + 1e-8)
-    
-    dist_same = semantic.distance_metric(emb_a, emb_b)
-    dist_diff = semantic.distance_metric(emb_a, emb_c)
+
+    semantic.particles = TensorDict({"position": emb_a, "energy": torch.ones(1, device=device)}, batch_size=[1])
+    semantic.attractors = TensorDict(
+        {"position": torch.cat([emb_b, emb_c], dim=0), "energy": torch.ones(2, device=device), "excitation": torch.zeros(2, device=device)},
+        batch_size=[2],
+    )
+    dists = semantic.compute_distances()
+    dist_same = dists[0, 0]
+    dist_diff = dists[0, 1]
     
     print(f"\nSemanticManifold distance:")
     print(f"  Same vector: {dist_same.item():.4f} (should be ~0.0)")
@@ -154,29 +157,23 @@ def test_thermodynamic_grammar():
     embed_dim = 64
     config = PhysicsConfig(dt=0.01)
     
-    manifold = SemanticManifold(config, device, embed_dim)
+    manifold = SemanticManifold(config, device, embed_dim, vocab_size=3)
     
     # Create concept attractors manually
     n_concepts = 3
     concept_embeddings = torch.randn(n_concepts, embed_dim, dtype=DTYPE_REAL, device=device)
     concept_embeddings = concept_embeddings / (concept_embeddings.norm(dim=1, keepdim=True) + 1e-8)
     
-    # Add positional encoding
-    pos_enc = manifold._get_positional_encoding(n_concepts)
-    concept_positions = concept_embeddings + pos_enc
+    concept_positions = concept_embeddings
     
     # Create attractors
-    attractors = manifold.state.get("attractors")
     new_attractors = {
         "id": torch.arange(n_concepts, dtype=torch.int64, device=device),
         "position": concept_positions,
-        "gate_width": torch.ones(n_concepts, dtype=DTYPE_REAL, device=device),
-        "heat": torch.zeros(n_concepts, dtype=DTYPE_REAL, device=device),
         "energy": torch.tensor([1.0, 0.5, 0.2], dtype=DTYPE_REAL, device=device),
-        "temperature": torch.zeros(n_concepts, dtype=DTYPE_REAL, device=device),
         "excitation": torch.zeros(n_concepts, dtype=DTYPE_REAL, device=device),
     }
-    manifold.state.set("attractors", TensorDict(new_attractors, batch_size=[n_concepts]))
+    manifold.attractors = TensorDict(new_attractors, batch_size=[n_concepts])
     
     # Set up grammar: Concept 0 ("The") -> Concept 1 ("Dog") -> Concept 2 ("Barks")
     transition_matrix = torch.zeros(n_concepts, n_concepts, dtype=DTYPE_REAL, device=device)
@@ -191,13 +188,13 @@ def test_thermodynamic_grammar():
     
     # Apply grammar
     print(f"\nBefore grammar:")
-    excitation_before = manifold.state.get("attractors").get("excitation").clone()
+    excitation_before = manifold.attractors.get("excitation").clone()
     print(f"  Excitation: {excitation_before.cpu().numpy()}")
     
-    manifold.apply_thermodynamic_grammar()
+    manifold.step_grammar()
     
     print(f"\nAfter grammar:")
-    excitation_after = manifold.state.get("attractors").get("excitation")
+    excitation_after = manifold.attractors.get("excitation")
     print(f"  Excitation: {excitation_after.cpu().numpy()}")
     print(f"  Change: {(excitation_after - excitation_before).cpu().numpy()}")
     

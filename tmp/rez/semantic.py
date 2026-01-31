@@ -7,9 +7,8 @@ This replaces "Transformer Attention" with "Thermodynamic Flow".
 
 import torch
 from tensordict import TensorDict
-from physics import ThermodynamicEngine, PhysicsConfig
+from physics import ThermodynamicEngine, PhysicsConfig, DTYPE_REAL
 
-DTYPE_REAL = torch.float32
 
 
 class SemanticManifold(ThermodynamicEngine):
@@ -159,3 +158,13 @@ class SemanticManifold(ThermodynamicEngine):
         # Normalize rows (Probability)
         row_sums = self.transition_matrix.sum(dim=1, keepdim=True) + 1e-6
         self.transition_matrix = self.transition_matrix / row_sums
+
+    def set_transition_matrix(self, matrix: torch.Tensor) -> None:
+        """Directly set a transition matrix (already normalized)."""
+        if matrix.shape[0] != matrix.shape[1]:
+            raise ValueError("Transition matrix must be square")
+        if matrix.shape[0] != self.vocab_size:
+            raise ValueError(
+                f"Transition matrix size {matrix.shape[0]} does not match vocab_size {self.vocab_size}"
+            )
+        self.transition_matrix = matrix.to(device=self.device, dtype=DTYPE_REAL)
