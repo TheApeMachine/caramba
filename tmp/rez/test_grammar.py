@@ -106,7 +106,7 @@ def test_thermodynamic_grammar():
         print(f"  {words[i]}: {p.item():.4f}{marker}")
     
     # Expectation: "Sat" (2) should be highest because "Cat" (1) flows to "Sat" (2)
-    best = torch.argmax(probs).item()
+    best = int(torch.argmax(probs).item())
     print(f"\nWinner: {words[best]}")
     
     if best == 2:
