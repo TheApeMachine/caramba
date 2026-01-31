@@ -16,30 +16,225 @@ Key visualizations:
 """
 
 import math
+import sys
+import wave
+from dataclasses import dataclass
 from collections import deque
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Protocol
 
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import torchaudio
+from matplotlib.figure import Figure
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Circle, Wedge
 from matplotlib.collections import LineCollection
 import matplotlib.gridspec as gridspec
 from matplotlib.colors import Normalize
 
-from main import (
-    ResonantEngine,
-    StochasticStream,
-    PhysicsConfig,
-    Signal,
-    compute_alignment,
-    compute_tuning_strength_per_carrier,
-    DEVICE,
-    DTYPE_REAL,
-)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from tmp.rez.manifold import Manifold, ManifoldConfig
+
+@dataclass
+class SignalFrame:
+    frequency: float
+    amplitude: float
+    phase: float
+    duration: float
 
 
+class SignalSource(Protocol):
+    def get_signals(self, t: float, dt: float) -> list[SignalFrame]:
+        ...
+
+
+class AudioTokenizer:
+    """Tokenize audio into SignalFrame lists."""
+
+    def __init__(
+        self,
+        frame_ms: float = 25.0,
+        hop_ms: float = 10.0,
+        top_k: int = 12,
+        min_energy: float = 0.02,
+        amplitude_scale: float = 1.5,
+    ):
+        self.frame_ms = frame_ms
+        self.hop_ms = hop_ms
+        self.top_k = top_k
+        self.min_energy = min_energy
+        self.amplitude_scale = amplitude_scale
+
+    @staticmethod
+    def _mixdown(audio: torch.Tensor) -> torch.Tensor:
+        if audio.dim() == 2:
+            return audio.mean(dim=0)
+        return audio
+
+    @staticmethod
+    def _next_pow2(n: int) -> int:
+        return 1 << (n - 1).bit_length()
+
+    def tokenize(self, audio_stream: torch.Tensor, sample_rate: int) -> list[list[SignalFrame]]:
+        audio = self._mixdown(audio_stream).to(dtype=torch.float32)
+        if audio.numel() == 0:
+            return []
+        peak = float(audio.abs().max())
+        if peak > 0:
+            audio = audio / peak
+
+        frame_len = max(16, int(round(self.frame_ms * sample_rate / 1000.0)))
+        hop_len = max(8, int(round(self.hop_ms * sample_rate / 1000.0)))
+        n_fft = self._next_pow2(frame_len)
+        window = torch.hann_window(n_fft, device=audio.device)
+        spec = torch.stft(
+            audio,
+            n_fft=n_fft,
+            hop_length=hop_len,
+            window=window,
+            return_complex=True,
+        )
+        freqs = torch.fft.rfftfreq(n_fft, d=1.0 / sample_rate).to(audio.device)
+        n_frames = spec.shape[1]
+        frame_dt = frame_len / float(sample_rate)
+        frames: list[list[SignalFrame]] = []
+
+        for t in range(n_frames):
+            frame_spec = spec[:, t]
+            mags = frame_spec.abs()
+            mags = mags.clone()
+            mags[0] = 0.0
+            frame_max = float(mags.max())
+            if frame_max <= 0:
+                frames.append([])
+                continue
+            threshold = frame_max * self.min_energy
+            valid = mags >= threshold
+            if not torch.any(valid):
+                frames.append([])
+                continue
+            mags_valid = mags.clone()
+            mags_valid[~valid] = 0.0
+            k = min(self.top_k, mags_valid.numel())
+            top_vals, top_idx = torch.topk(mags_valid, k=k)
+
+            sigs: list[SignalFrame] = []
+            for val, idx in zip(top_vals, top_idx):
+                amp = float(val) / frame_max
+                if amp <= 0:
+                    continue
+                sigs.append(
+                    SignalFrame(
+                        frequency=float(freqs[int(idx)]),
+                        amplitude=amp * self.amplitude_scale,
+                        phase=float(torch.angle(frame_spec[int(idx)])),
+                        duration=frame_dt,
+                    )
+                )
+            frames.append(sigs)
+        return frames
+
+
+def compute_tuning_strength(carrier_phases: torch.Tensor, osc_phases: torch.Tensor, gate_width: torch.Tensor) -> torch.Tensor:
+    """Gaussian tuning strength T = exp(-(Δφ^2/σ))."""
+    if carrier_phases.numel() == 0 or osc_phases.numel() == 0:
+        return torch.empty(osc_phases.numel(), carrier_phases.numel())
+    diff = (osc_phases[:, None] - carrier_phases[None, :]) % (2 * math.pi)
+    diff = torch.where(diff > math.pi, diff - 2 * math.pi, diff)
+    sigma = (gate_width / 2.0) ** 2
+    return torch.exp(-(diff ** 2) / sigma[None, :])
+
+
+class _OscState:
+    def __init__(self, phases: torch.Tensor, amplitudes: torch.Tensor, omegas: torch.Tensor):
+        self.phases = phases
+        self.amplitudes = amplitudes
+        self.omegas = omegas
+        self.n = int(phases.numel())
+
+
+class _CarrierState:
+    def __init__(
+        self,
+        phases: torch.Tensor,
+        energies: torch.Tensor,
+        omegas: torch.Tensor,
+        gate_widths: torch.Tensor,
+        coherence: torch.Tensor,
+    ):
+        self.phases = phases
+        self.energies = energies
+        self.omegas = omegas
+        self.gate_widths = gate_widths
+        self.coherence_ema = coherence
+        self.m = int(phases.numel())
+
+    def gate(self) -> torch.Tensor:
+        return (torch.cos(self.phases) >= 0).float()
+
+
+class _PState:
+    def __init__(self, presence: torch.Tensor):
+        self.P = presence
+
+
+class _ConfigState:
+    def __init__(self, dt: float):
+        self.dt = dt
+
+
+class _EventsState:
+    def __init__(self):
+        self.births: list[dict] = []
+        self.deaths: list[dict] = []
+        self.mitoses: list[dict] = []
+
+
+class ManifoldAdapter:
+    """Expose manifold state with a minimal engine-like interface."""
+
+    def __init__(self, manifold: Manifold):
+        self.manifold = manifold
+        self.config = _ConfigState(dt=manifold.config.dt)
+        self.events = _EventsState()
+        self.refresh()
+
+    def refresh(self) -> None:
+        po = self.manifold.state
+        osc = po.get("oscillators")
+        carriers = po.get("carriers")
+        bonds = po.get("bonds")
+        self.t = self.manifold.t
+        self.oscillators = _OscState(
+            phases=osc.get("phase"),
+            amplitudes=osc.get("amplitude"),
+            omegas=2 * math.pi * osc.get("frequency"),
+        )
+        # Map Manifold carrier fields: heat -> energies, no coherence field (use zeros)
+        n_carriers = carriers.shape[0]
+        coherence = torch.zeros(n_carriers, dtype=torch.float32, device=carriers.get("phase").device)
+        self.carriers = _CarrierState(
+            phases=carriers.get("phase"),
+            energies=carriers.get("heat"),  # Manifold uses "heat" instead of "energy"
+            omegas=2 * math.pi * carriers.get("frequency"),
+            gate_widths=carriers.get("gate_width"),
+            coherence=coherence,  # Not tracked in Manifold, use zeros
+        )
+        self.P = _PState(bonds.get("presence"))
+
+    def nnz_P(self) -> int:
+        return self.manifold.nnz_P()
+
+    def global_sync_R(self) -> float:
+        return self.manifold.global_sync_R()
+
+    def L_comp(self) -> float:
+        return self.manifold.L_comp()
 class Dashboard:
     """
     Real-time visualization dashboard.
@@ -53,12 +248,13 @@ class Dashboard:
     
     def __init__(
         self,
-        engine: ResonantEngine,
-        signal_source: Optional[StochasticStream] = None,
+        signal_source: Optional[SignalSource] = None,
+        manifold: Optional[Manifold] = None,
         history_len: int = 400,
     ):
-        self.engine = engine
-        self.signal_source = signal_source or StochasticStream(seed=0)
+        self.manifold = manifold or Manifold()
+        self.signal_source = signal_source
+        self.engine = ManifoldAdapter(self.manifold)
         
         # History for time series (last N steps)
         self.history_len = history_len
@@ -69,7 +265,7 @@ class Dashboard:
         self.R_history = deque(maxlen=history_len)
         self.L_history = deque(maxlen=history_len)
         
-        self.fig = None
+        self.fig: Optional[Figure] = None
         self.ani = None
         self._build()
     
@@ -198,10 +394,10 @@ class Dashboard:
             return
         
         # Compute tuning strength with per-carrier gate widths
-        tuning = compute_tuning_strength_per_carrier(
+        tuning = compute_tuning_strength(
             self.engine.carriers.phases,
             self.engine.oscillators.phases,
-            self.engine.carriers.gate_widths
+            self.engine.carriers.gate_widths,
         ).cpu().numpy()
         
         # Show as heatmap - no colorbar (bonds panel has it)
@@ -225,8 +421,9 @@ class Dashboard:
         ax.clear()
         ax.set_facecolor('#0d1117')
         ax.set_title('Bonds P', color='white', fontsize=9, fontweight='bold')
+        assert self.fig is not None, "Dashboard figure was not initialized."
         
-        if self.engine.P.P.numel() == 0:
+        if self.engine.oscillators.n == 0 or self.engine.carriers.m == 0 or self.engine.P.P.numel() == 0:
             ax.text(0.5, 0.5, 'No bonds', 
                     ha='center', va='center', color='gray', fontsize=9,
                     transform=ax.transAxes)
@@ -402,6 +599,19 @@ SPECIALIZATION
         else:
             spec_line = ""
         
+        audio_line = ""
+        if hasattr(self.signal_source, "frame_idx"):
+            total_frames = len(getattr(self.signal_source, "frames", []))
+            frame_idx = getattr(self.signal_source, "frame_idx", 0)
+            sig_count = getattr(self.signal_source, "last_signals_count", 0)
+            sig_energy = getattr(self.signal_source, "last_signal_energy", 0.0)
+            loop_flag = getattr(self.signal_source, "loop", False)
+            loop_text = "on" if loop_flag else "off"
+            audio_line = (
+                f"\nAUDIO\n  Frame: {frame_idx}/{total_frames}\n  "
+                f"Signals: {sig_count}\n  Sig energy: {sig_energy:.2f}\n  Loop: {loop_text}"
+            )
+
         stats = f"""TIME: {self.engine.t:.2f}s
 
 POPULATION
@@ -421,6 +631,7 @@ EVENTS
   Births: {births}
   Deaths: {deaths}
   Mitoses: {mitoses}
+{audio_line}
 """
         
         ax.text(0.05, 0.95, stats, transform=ax.transAxes,
@@ -500,8 +711,18 @@ EVENTS
         """Update the dashboard for one frame."""
         # Run several simulation steps per frame for smoother animation
         for _ in range(4):
-            signals = self.signal_source.get_signals(self.engine.t, self.engine.config.dt)
-            self.engine.step(signals)
+            signals = self.signal_source.get_signals(self.engine.t, self.engine.config.dt) if self.signal_source else []
+            payload = [
+                {
+                    "frequency": s.frequency,
+                    "amplitude": s.amplitude,
+                    "phase": s.phase,
+                    "duration": s.duration,
+                }
+                for s in signals
+            ]
+            self.manifold.step(payload)
+            self.engine.refresh()
         
         # Record history
         self.t_history.append(self.engine.t)
@@ -526,6 +747,7 @@ EVENTS
     
     def run(self):
         """Start the dashboard."""
+        assert self.fig is not None, "Dashboard figure was not initialized."
         self.ani = FuncAnimation(
             self.fig, self.update, 
             interval=50,  # 20 FPS
@@ -533,6 +755,55 @@ EVENTS
             cache_frame_data=False
         )
         plt.show()
+
+
+class AudioFrameSource:
+    """Signal source that yields per-frame signals from audio."""
+
+    def __init__(
+        self,
+        audio: torch.Tensor,
+        sample_rate: int,
+        *,
+        engine_dt: float,
+        frame_ms: float = 25.0,
+        hop_ms: float = 10.0,
+        top_k: int = 12,
+        min_energy: float = 0.02,
+        amplitude_scale: float = 1.5,
+        loop: bool = True,
+    ):
+        self.tokenizer = AudioTokenizer(
+            frame_ms=frame_ms,
+            hop_ms=hop_ms,
+            top_k=top_k,
+            min_energy=min_energy,
+            amplitude_scale=amplitude_scale,
+        )
+        self.frames = self.tokenizer.tokenize(audio, sample_rate)
+        self.frame_dt = hop_ms / 1000.0
+        self.steps_per_frame = max(1, int(round(self.frame_dt / engine_dt)))
+        self.frame_idx = 0
+        self.substep = 0
+        self.last_signals_count = 0
+        self.last_signal_energy = 0.0
+        self.loop = loop
+
+    def get_signals(self, t: float, dt: float) -> list[SignalFrame]:
+        if self.frame_idx >= len(self.frames):
+            if self.loop and self.frames:
+                self.frame_idx = 0
+            else:
+                return []
+        signals = self.frames[self.frame_idx] if self.substep == 0 else []
+        if self.substep == 0:
+            self.last_signals_count = len(signals)
+            self.last_signal_energy = float(sum(sig.amplitude for sig in signals)) if signals else 0.0
+        self.substep += 1
+        if self.substep >= self.steps_per_frame:
+            self.substep = 0
+            self.frame_idx += 1
+        return signals
 
 
 def main():
@@ -549,12 +820,73 @@ def main():
     print("  Gray = gate CLOSED (carrier is not listening)")
     print()
     
-    engine = ResonantEngine(seed=0)
-    stream = StochasticStream(seed=0)
-    
-    dashboard = Dashboard(engine, stream)
+    manifold = Manifold()
+    dashboard = Dashboard(manifold=manifold)
+    dashboard.run()
+
+
+def main_two_speakers():
+    """Launch the dashboard on two-speaker audio."""
+    print("=" * 60)
+    print("Resonant Compression Systems — Audio Dashboard (Two Speakers)")
+    print("=" * 60)
+    print()
+    print("Key:")
+    print("  Phase Circle: Shows WHERE oscillators (dots) and carriers (squares) are")
+    print("  Alignment: Shows HOW WELL each oscillator matches each carrier (antenna principle)")
+    print("  Bonds P: Shows WHO is connected to WHOM")
+    print("  Orange = gate OPEN (carrier is listening)")
+    print("  Gray = gate CLOSED (carrier is not listening)")
+    print()
+
+    manifold = Manifold()
+    def _load_wav_fallback(path: str) -> tuple[torch.Tensor, int]:
+        with wave.open(path, "rb") as wf:
+            n_channels = wf.getnchannels()
+            sample_rate = wf.getframerate()
+            sampwidth = wf.getsampwidth()
+            n_frames = wf.getnframes()
+            raw = wf.readframes(n_frames)
+
+        if sampwidth == 1:
+            dtype = np.uint8
+            audio = np.frombuffer(raw, dtype=dtype).astype(np.int16) - 128
+            max_val = 128.0
+        elif sampwidth == 2:
+            dtype = np.int16
+            audio = np.frombuffer(raw, dtype=dtype)
+            max_val = 32768.0
+        elif sampwidth == 3:
+            data = np.frombuffer(raw, dtype=np.uint8)
+            audio = data.reshape(-1, 3)
+            audio = (audio[:, 0].astype(np.int32) |
+                     (audio[:, 1].astype(np.int32) << 8) |
+                     (audio[:, 2].astype(np.int32) << 16))
+            audio = (audio.astype(np.int32) << 8) >> 8
+            max_val = float(1 << 23)
+        elif sampwidth == 4:
+            dtype = np.int32
+            audio = np.frombuffer(raw, dtype=dtype)
+            max_val = float(1 << 31)
+        else:
+            raise RuntimeError(f"Unsupported sample width: {sampwidth}")
+
+        audio = audio.astype(np.float32) / max_val
+        if n_channels > 1:
+            audio = audio.reshape(-1, n_channels).T
+        else:
+            audio = audio.reshape(1, -1)
+        return torch.from_numpy(audio), int(sample_rate)
+
+    try:
+        audio, sr = torchaudio.load("tmp/rez/two_speakers.wav")
+    except Exception:
+        audio, sr = _load_wav_fallback("tmp/rez/two_speakers.wav")
+
+    source = AudioFrameSource(audio, sr, engine_dt=manifold.config.dt)
+    dashboard = Dashboard(source, manifold=manifold)
     dashboard.run()
 
 
 if __name__ == "__main__":
-    main()
+    main_two_speakers()

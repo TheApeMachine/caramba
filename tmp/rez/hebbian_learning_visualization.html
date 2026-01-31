@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hebbian Learning: Two Oscillators Wiring Together</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-weight: 300;
+            font-size: 1.8em;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 0.95em;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .canvas-container {
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        canvas {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .control-group {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 15px;
+        }
+        
+        .control-group h3 {
+            font-size: 0.9em;
+            margin-bottom: 12px;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .control-group.oscillator-a h3 { color: #ff6b6b; }
+        .control-group.oscillator-b h3 { color: #4ecdc4; }
+        .control-group.coupling h3 { color: #ffe66d; }
+        
+        .slider-row {
+            margin-bottom: 10px;
+        }
+        
+        .slider-row label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.85em;
+        }
+        
+        .slider-row input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            outline: none;
+        }
+        
+        .slider-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .coupling-display {
+            text-align: center;
+            padding: 15px;
+            background: rgba(255,230,109,0.1);
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        
+        .coupling-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #ffe66d;
+        }
+        
+        .coupling-label {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 5px;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        button.primary {
+            background: rgba(78, 205, 196, 0.3);
+            border-color: #4ecdc4;
+        }
+        
+        button.danger {
+            background: rgba(255, 107, 107, 0.3);
+            border-color: #ff6b6b;
+        }
+        
+        .explanation {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            line-height: 1.6;
+        }
+        
+        .explanation h3 {
+            margin-bottom: 10px;
+            color: #ffe66d;
+        }
+        
+        .explanation p {
+            margin-bottom: 10px;
+            color: #ccc;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85em;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 4px;
+            border-radius: 2px;
+        }
+        
+        .phase-indicator {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #888;
+        }
+        
+        .phase-indicator span {
+            color: #ffe66d;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Hebbian Learning: Oscillators Wiring Together</h1>
+        <p class="subtitle">"Neurons that fire together, wire together" — but with waves</p>
+        
+        <div class="canvas-container">
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff6b6b;"></div>
+                    <span>Oscillator A</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4ecdc4;"></div>
+                    <span>Oscillator B</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffe66d;"></div>
+                    <span>Combined (interference)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(255,255,255,0.3);"></div>
+                    <span>Coupling strength</span>
+                </div>
+            </div>
+            <canvas id="canvas" width="960" height="500"></canvas>
+            <div class="phase-indicator">
+                Phase difference: <span id="phaseDiff">0°</span> — 
+                Co-activation: <span id="coactivation">0%</span>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group oscillator-a">
+                <h3>Oscillator A (Red)</h3>
+                <div class="slider-row">
+                    <label>
+                        <span>Frequency</span>
+                        <span id="freqA-val">1.0 Hz</span>
+                    </label>
+                    <input type="range" id="freqA" min="0.5" max="3" step="0.1" value="1.0">
+                </div>
+                <div class="slider-row">
+                    <label>
+                        <span>Phase offset</span>
+                        <span id="phaseA-val">0°</span>
+                    </label>
+                    <input type="range" id="phaseA" min="0" max="360" step="5" value="0">
+                </div>
+            </div>
+            
+            <div class="control-group oscillator-b">
+                <h3>Oscillator B (Cyan)</h3>
+                <div class="slider-row">
+                    <label>
+                        <span>Frequency</span>
+                        <span id="freqB-val">1.0 Hz</span>
+                    </label>
+                    <input type="range" id="freqB" min="0.5" max="3" step="0.1" value="1.0">
+                </div>
+                <div class="slider-row">
+                    <label>
+                        <span>Phase offset</span>
+                        <span id="phaseB-val">0°</span>
+                    </label>
+                    <input type="range" id="phaseB" min="0" max="360" step="5" value="0">
+                </div>
+            </div>
+            
+            <div class="control-group coupling">
+                <h3>Hebbian Learning</h3>
+                <div class="slider-row">
+                    <label>
+                        <span>Learning rate (η)</span>
+                        <span id="eta-val">0.02</span>
+                    </label>
+                    <input type="range" id="eta" min="0.001" max="0.05" step="0.001" value="0.02">
+                </div>
+                <div class="coupling-display">
+                    <div class="coupling-value" id="coupling-val">0.00</div>
+                    <div class="coupling-label">Coupling Strength (wᵢⱼ)</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="buttons">
+            <button class="primary" id="toggleLearn">Start Learning</button>
+            <button id="resetCoupling">Reset Coupling</button>
+            <button id="syncPhase">Sync Phases</button>
+            <button id="oppositePhase">Opposite Phases</button>
+            <button id="diffFreq">Different Frequencies</button>
+        </div>
+        
+        <div class="explanation">
+            <h3>What You're Seeing</h3>
+            <p>
+                <strong>Two oscillators</strong> (A and B) are shown as waves. Each has a frequency (how fast it oscillates) 
+                and a phase (where it is in its cycle). The <strong>yellow line</strong> shows what happens when they combine.
+            </p>
+            <p>
+                <strong>Hebbian learning</strong> says: when two oscillators are active at the same time (both "up" or both "down"), 
+                strengthen the connection between them. When they're out of sync (one up, one down), weaken it.
+            </p>
+            <p>
+                The <strong>white glow</strong> between the waves represents coupling strength. Watch it grow when waves are in sync, 
+                and shrink when they're not. Try setting them to <em>opposite phases</em> and see what happens!
+            </p>
+            <p>
+                <strong>Key insight:</strong> The coupling doesn't just store "how often" — it stores the <em>phase relationship</em>. 
+                This is why the math uses complex numbers (zᵢ · z̄ⱼ captures both magnitude AND phase).
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // State
+        let time = 0;
+        let learning = false;
+        let coupling = 0;
+        
+        // Get controls
+        const freqASlider = document.getElementById('freqA');
+        const freqBSlider = document.getElementById('freqB');
+        const phaseASlider = document.getElementById('phaseA');
+        const phaseBSlider = document.getElementById('phaseB');
+        const etaSlider = document.getElementById('eta');
+        
+        // Update display values
+        function updateDisplays() {
+            document.getElementById('freqA-val').textContent = parseFloat(freqASlider.value).toFixed(1) + ' Hz';
+            document.getElementById('freqB-val').textContent = parseFloat(freqBSlider.value).toFixed(1) + ' Hz';
+            document.getElementById('phaseA-val').textContent = phaseASlider.value + '°';
+            document.getElementById('phaseB-val').textContent = phaseBSlider.value + '°';
+            document.getElementById('eta-val').textContent = parseFloat(etaSlider.value).toFixed(3);
+            document.getElementById('coupling-val').textContent = coupling.toFixed(3);
+        }
+        
+        freqASlider.addEventListener('input', updateDisplays);
+        freqBSlider.addEventListener('input', updateDisplays);
+        phaseASlider.addEventListener('input', updateDisplays);
+        phaseBSlider.addEventListener('input', updateDisplays);
+        etaSlider.addEventListener('input', updateDisplays);
+        
+        // Buttons
+        document.getElementById('toggleLearn').addEventListener('click', function() {
+            learning = !learning;
+            this.textContent = learning ? 'Stop Learning' : 'Start Learning';
+            this.classList.toggle('danger', learning);
+            this.classList.toggle('primary', !learning);
+        });
+        
+        document.getElementById('resetCoupling').addEventListener('click', function() {
+            coupling = 0;
+            updateDisplays();
+        });
+        
+        document.getElementById('syncPhase').addEventListener('click', function() {
+            phaseASlider.value = 0;
+            phaseBSlider.value = 0;
+            freqASlider.value = 1.0;
+            freqBSlider.value = 1.0;
+            updateDisplays();
+        });
+        
+        document.getElementById('oppositePhase').addEventListener('click', function() {
+            phaseASlider.value = 0;
+            phaseBSlider.value = 180;
+            freqASlider.value = 1.0;
+            freqBSlider.value = 1.0;
+            updateDisplays();
+        });
+        
+        document.getElementById('diffFreq').addEventListener('click', function() {
+            phaseASlider.value = 0;
+            phaseBSlider.value = 0;
+            freqASlider.value = 1.0;
+            freqBSlider.value = 1.5;
+            updateDisplays();
+        });
+        
+        // Complex number helpers
+        function complexFromPolar(magnitude, phase) {
+            return {
+                re: magnitude * Math.cos(phase),
+                im: magnitude * Math.sin(phase)
+            };
+        }
+        
+        function complexMultiply(a, bConj) {
+            // a * conj(b) = (a.re + i*a.im) * (b.re - i*b.im)
+            return {
+                re: a.re * bConj.re + a.im * bConj.im,
+                im: a.im * bConj.re - a.re * bConj.im
+            };
+        }
+        
+        // Animation
+        function animate() {
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear
+            ctx.fillStyle = 'rgba(26, 26, 46, 1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Parameters
+            const freqA = parseFloat(freqASlider.value);
+            const freqB = parseFloat(freqBSlider.value);
+            const phaseA = parseFloat(phaseASlider.value) * Math.PI / 180;
+            const phaseB = parseFloat(phaseBSlider.value) * Math.PI / 180;
+            const eta = parseFloat(etaSlider.value);
+            
+            // Calculate current complex values for each oscillator
+            const thetaA = 2 * Math.PI * freqA * time + phaseA;
+            const thetaB = 2 * Math.PI * freqB * time + phaseB;
+            
+            const zA = complexFromPolar(1, thetaA);
+            const zB = complexFromPolar(1, thetaB);
+            
+            // Hebbian update: w += eta * zA * conj(zB)
+            if (learning) {
+                const product = complexMultiply(zA, zB);
+                coupling += eta * product.re * 0.016; // Scale by frame time
+                coupling = Math.max(-1, Math.min(1, coupling)); // Clamp
+            }
+            
+            // Calculate co-activation for display
+            const valA = Math.sin(thetaA);
+            const valB = Math.sin(thetaB);
+            const coactivation = valA * valB; // +1 when same, -1 when opposite
+            
+            // Phase difference
+            let phaseDiff = ((thetaB - thetaA) * 180 / Math.PI) % 360;
+            if (phaseDiff < 0) phaseDiff += 360;
+            document.getElementById('phaseDiff').textContent = phaseDiff.toFixed(0) + '°';
+            document.getElementById('coactivation').textContent = ((coactivation + 1) * 50).toFixed(0) + '%';
+            
+            // Drawing dimensions
+            const margin = 60;
+            const waveHeight = 60;
+            const yA = 100;
+            const yB = 250;
+            const yCombined = 400;
+            
+            // Draw coupling glow between waves
+            const glowIntensity = Math.abs(coupling);
+            const glowColor = coupling >= 0 ? `rgba(255, 230, 109, ${glowIntensity * 0.5})` : `rgba(255, 100, 100, ${glowIntensity * 0.5})`;
+            
+            if (glowIntensity > 0.01) {
+                ctx.fillStyle = glowColor;
+                ctx.beginPath();
+                ctx.ellipse(width / 2, (yA + yB) / 2, width * 0.4, 60 * glowIntensity, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Draw labels
+            ctx.fillStyle = '#ff6b6b';
+            ctx.font = '14px Segoe UI';
+            ctx.fillText('Oscillator A', margin, yA - waveHeight - 10);
+            
+            ctx.fillStyle = '#4ecdc4';
+            ctx.fillText('Oscillator B', margin, yB - waveHeight - 10);
+            
+            ctx.fillStyle = '#ffe66d';
+            ctx.fillText('Combined (A + B)', margin, yCombined - waveHeight - 10);
+            
+            // Draw waves
+            function drawWave(yCenter, freq, phase, color, alpha = 1) {
+                ctx.strokeStyle = color;
+                ctx.globalAlpha = alpha;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                
+                for (let x = margin; x < width - margin; x++) {
+                    const t = time + (x - margin) / 100;
+                    const y = yCenter + Math.sin(2 * Math.PI * freq * t + phase) * waveHeight;
+                    if (x === margin) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+            
+            // Draw combined wave
+            function drawCombinedWave(yCenter) {
+                ctx.strokeStyle = '#ffe66d';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                
+                for (let x = margin; x < width - margin; x++) {
+                    const t = time + (x - margin) / 100;
+                    const yA_val = Math.sin(2 * Math.PI * freqA * t + phaseA);
+                    const yB_val = Math.sin(2 * Math.PI * freqB * t + phaseB);
+                    const y = yCenter + (yA_val + yB_val) * waveHeight * 0.5;
+                    if (x === margin) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+                
+                // Draw envelope if frequencies differ
+                if (Math.abs(freqA - freqB) > 0.05) {
+                    ctx.strokeStyle = 'rgba(255, 230, 109, 0.3)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    
+                    // Upper envelope
+                    ctx.beginPath();
+                    for (let x = margin; x < width - margin; x++) {
+                        const t = time + (x - margin) / 100;
+                        const envelope = 2 * Math.abs(Math.cos(Math.PI * (freqA - freqB) * t + (phaseA - phaseB) / 2));
+                        const y = yCenter - envelope * waveHeight * 0.5;
+                        if (x === margin) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                    
+                    // Lower envelope
+                    ctx.beginPath();
+                    for (let x = margin; x < width - margin; x++) {
+                        const t = time + (x - margin) / 100;
+                        const envelope = 2 * Math.abs(Math.cos(Math.PI * (freqA - freqB) * t + (phaseA - phaseB) / 2));
+                        const y = yCenter + envelope * waveHeight * 0.5;
+                        if (x === margin) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+            
+            drawWave(yA, freqA, phaseA, '#ff6b6b');
+            drawWave(yB, freqB, phaseB, '#4ecdc4');
+            drawCombinedWave(yCombined);
+            
+            // Draw current position markers
+            const markerX = margin + 50;
+            const markerYA = yA + valA * waveHeight;
+            const markerYB = yB + valB * waveHeight;
+            
+            ctx.fillStyle = '#ff6b6b';
+            ctx.beginPath();
+            ctx.arc(markerX, markerYA, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#4ecdc4';
+            ctx.beginPath();
+            ctx.arc(markerX, markerYB, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw connection line between markers (thickness = coupling)
+            if (Math.abs(coupling) > 0.01) {
+                const lineWidth = Math.abs(coupling) * 20;
+                ctx.strokeStyle = coupling >= 0 ? `rgba(255, 230, 109, ${Math.abs(coupling)})` : `rgba(255, 100, 100, ${Math.abs(coupling)})`;
+                ctx.lineWidth = lineWidth;
+                ctx.beginPath();
+                ctx.moveTo(markerX, markerYA);
+                ctx.lineTo(markerX, markerYB);
+                ctx.stroke();
+            }
+            
+            // Draw axis lines
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1;
+            [yA, yB, yCombined].forEach(y => {
+                ctx.beginPath();
+                ctx.moveTo(margin, y);
+                ctx.lineTo(width - margin, y);
+                ctx.stroke();
+            });
+            
+            // Update
+            time += 0.016;
+            updateDisplays();
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>

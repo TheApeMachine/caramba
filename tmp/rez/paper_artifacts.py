@@ -61,9 +61,11 @@ def main() -> None:
 
     rez = _load_rez_main()
     engine = rez.ResonantEngine(seed=0)
+    stream = rez.StochasticStream(seed=0)
 
     sim_s = 60.0
-    steps = int(sim_s / float(rez.DT))
+    dt = float(engine.config.dt)
+    steps = int(sim_s / dt)
 
     t_series = []
     N_series = []
@@ -84,57 +86,64 @@ def main() -> None:
     snap_osc_freqs = None
     snap_nnz = -1
 
+    # Track per-step best carrier (by energy) to later build a gate-capture window.
+    best_carrier_id: int | None = None
+
     for _ in range(steps):
-        engine.step()
-        t_series.append(float(engine.t))
-        N_series.append(int(len(engine.oscillators)))
-        M_series.append(int(len(engine.carriers)))
-        nnz = int(engine.nnz_P())
+        signals = stream.get_signals(float(engine.t), dt)
+        engine.step(signals=signals)
+
+        obs = engine.observe()
+        t_series.append(float(obs["t"]))
+        N_series.append(int(obs["n_oscillators"]))
+        M_series.append(int(obs["n_carriers"]))
+        nnz = int(obs["n_bonds"])
         nnz_series.append(nnz)
-        Lcomp_series.append(int(nnz + len(engine.carriers)))
-        R_series.append(float(engine.global_sync_R()))
+        Lcomp_series.append(int(obs["L_comp"]))
+        R_series.append(float(obs["global_sync_R"]))
 
         # Select carrier with maximum energy (proxy for meaningful capture).
-        if engine.carriers:
-            c = max(engine.carriers, key=lambda cc: float(cc.energy))
-            score = float(c.energy)
-            if score > best_score and getattr(c, "u_raw_history", None) is not None:
-                u_raw = np.asarray(list(c.u_raw_history), dtype=np.complex128)
-                gate = np.asarray(list(c.gate_history), dtype=float)
-                if u_raw.size > 8 and gate.size == u_raw.size:
-                    best_score = score
-                    best_u_raw = u_raw.copy()
-                    best_gate = gate.copy()
-                    best_name = str(c.name)
+        if int(obs["n_carriers"]) > 0:
+            energies = obs["carrier_energy"].detach().cpu().numpy()
+            idx = int(np.argmax(energies))
+            score = float(energies[idx])
+            if score > best_score:
+                best_score = score
+                # Map index -> carrier id/name using engine state (not part of observe snapshot)
+                best_carrier_id = engine.carriers._ids[idx]
+                best_name = engine.carriers._names[idx]
 
         # Save a presence snapshot when topology is most developed (highest nnz).
-        if nnz > snap_nnz and engine.carriers and engine.oscillators:
-            osc_items = sorted(engine.oscillators.values(), key=lambda o: o.freq_hz)
+        if nnz > snap_nnz and engine.oscillators.n > 0 and engine.carriers.m > 0 and engine.P.P.numel() > 0:
             # Show only a bounded number of oscillators/carriers for paper readability.
             max_osc = 40
             max_car = 8
-            carriers = engine.carriers[: min(max_car, len(engine.carriers))]
-            # Build a dense matrix for snapshot
-            mat = np.zeros((min(max_osc, len(osc_items)), len(carriers)), dtype=float)
-            freqs = [float(o.freq_hz) for o in osc_items[: mat.shape[0]]]
-            for j, c in enumerate(carriers):
-                for i, o in enumerate(osc_items[: mat.shape[0]]):
-                    mat[i, j] = float(c.bonds.get(int(o.id), 0.0))
+
+            osc_omegas = engine.oscillators.omegas.detach().cpu().numpy()
+            osc_order = np.argsort(osc_omegas)
+            osc_keep = osc_order[: min(max_osc, osc_order.shape[0])]
+
+            car_energies = engine.carriers.energies.detach().cpu().numpy()
+            car_order = np.argsort(-car_energies)
+            car_keep = car_order[: min(max_car, car_order.shape[0])]
+
+            P = engine.P.P.detach().cpu().numpy()
+            mat = P[osc_keep][:, car_keep]
             snap_mat = mat
-            snap_carrier_names = [str(c.name) for c in carriers]
-            snap_osc_freqs = freqs
+            snap_carrier_names = [engine.carriers._names[int(j)] for j in car_keep.tolist()]
+            snap_osc_freqs = (osc_omegas[osc_keep] / (2 * np.pi)).tolist()
             snap_nnz = nnz
 
     # --- Results JSON ---
     results = {
         "seed": 0,
         "sim_s": sim_s,
-        "dt": float(rez.DT),
+        "dt": dt,
         "steps": steps,
         "stream": {
-            "event_rate_hz": float(rez.STREAM_EVENT_RATE_HZ),
-            "freq_range_hz": [float(x) for x in rez.STREAM_FREQ_RANGE_HZ],
-            "duration_range_s": [float(x) for x in rez.STREAM_DURATION_S_RANGE],
+            "event_rate_hz": float(stream.event_rate_hz),
+            "freq_range_hz": [float(stream.freq_range[0]), float(stream.freq_range[1])],
+            "duration_range_s": [float(stream.duration_range[0]), float(stream.duration_range[1])],
         },
         "metrics": {
             "N_mean": float(np.mean(N_series)) if N_series else 0.0,
@@ -142,12 +151,14 @@ def main() -> None:
             "nnz_mean": float(np.mean(nnz_series)) if nnz_series else 0.0,
             "Lcomp_mean": float(np.mean(Lcomp_series)) if Lcomp_series else 0.0,
             "R_mean": float(np.mean(R_series)) if R_series else 0.0,
-            "births": int(len(engine.birth_events)),
-            "deaths": int(len(engine.death_events)),
+            "births": int(len(engine.events.births)),
+            "deaths": int(len(engine.events.deaths)),
+            "mitoses": int(len(engine.events.mitoses)),
         },
         "events": {
-            "births": engine.birth_events,
-            "deaths": engine.death_events,
+            "births": engine.events.births,
+            "deaths": engine.events.deaths,
+            "mitoses": engine.events.mitoses,
         },
         "series": {
             "t": t_series,
@@ -180,16 +191,56 @@ def main() -> None:
     fig.savefig(ARTIFACTS_DIR / "rez_stream_timeseries.png", dpi=200, bbox_inches="tight", pad_inches=0.05)
     plt.close(fig)
 
-    # --- Gate capture figure (from best observed carrier) ---
-    if best_u_raw is not None and best_gate is not None:
-        t_c = np.linspace(-float(rez.WINDOW_SIZE_S), 0.0, best_u_raw.size)
+    # --- Gate capture figure (re-simulate and log a chosen carrier) ---
+    if best_carrier_id is not None:
+        engine2 = rez.ResonantEngine(seed=0)
+        stream2 = rez.StochasticStream(seed=0)
+        dt2 = float(engine2.config.dt)
+        steps2 = int(sim_s / dt2)
+
+        window_s = 1.0
+        window_steps = int(window_s / dt2)
+        u_raw_hist: list[complex] = []
+        gate_hist: list[float] = []
+
+        for _ in range(steps2):
+            sigs = stream2.get_signals(float(engine2.t), dt2)
+            engine2.step(signals=sigs)
+
+            # Track only the last window
+            # Compute u_raw + gate in torch for correctness
+            if engine2.carriers.m > 0 and best_carrier_id in engine2.carriers._ids:
+                idx = engine2.carriers._ids.index(best_carrier_id)
+                tuning_t = rez.compute_tuning_strength_per_carrier(
+                    engine2.carriers.phases,
+                    engine2.oscillators.phases,
+                    engine2.carriers.gate_widths,
+                )  # [N,M]
+                u_raw_t = (tuning_t.T.to(rez.DTYPE_COMPLEX) @ engine2.oscillators.phasors)  # [M]
+                gate_t = engine2.carriers.gate()  # [M]
+                u0 = complex(u_raw_t[idx].detach().cpu().numpy())
+                g0 = float(gate_t[idx].detach().cpu().numpy())
+            else:
+                u0 = 0.0 + 0.0j
+                g0 = 0.0
+
+            u_raw_hist.append(u0)
+            gate_hist.append(g0)
+            if len(u_raw_hist) > window_steps:
+                u_raw_hist = u_raw_hist[-window_steps:]
+                gate_hist = gate_hist[-window_steps:]
+
+        best_u_raw = np.asarray(u_raw_hist, dtype=np.complex128)
+        best_gate = np.asarray(gate_hist, dtype=float)
+
+        t_c = np.linspace(-window_s, 0.0, best_u_raw.size)
         sig = best_u_raw.real
         cap = sig * best_gate
         fig = plt.figure(figsize=(9.6, 3.6), facecolor="white")
         ax = fig.add_subplot(1, 1, 1)
         ax.plot(t_c, sig, linewidth=1.5, label="Re(u_raw)")
         ax.plot(t_c, 2.4 * (best_gate - 0.5), linewidth=1.4, label="gate")
-        ax.fill_between(t_c, 0.0, cap, where=(best_gate > 0.5), alpha=0.25, label="captured")
+        ax.fill_between(t_c, 0.0, cap, where=(best_gate > 0.5).tolist(), alpha=0.25, label="captured")
         title_name = best_name or "carrier"
         ax.set_title(f"Gate capture example ({title_name}, half-cycle gate)", fontsize=11)
         ax.set_xlabel("time (s)")
@@ -216,16 +267,11 @@ def main() -> None:
 
     # --- Lifetime histogram ---
     lifetimes = []
-    # Track birth times to compute lifetimes for dead carriers
-    birth_times = {e.get("carrier"): e.get("t", 0) for e in engine.birth_events}
-    for d in engine.death_events:
-        carrier_name = d.get("carrier", "")
-        birth_t = birth_times.get(carrier_name, 0)
-        death_t = d.get("t", 0)
+    for d in engine.events.deaths:
+        birth_t = float(d.get("birth_t", 0.0))
+        death_t = float(d.get("t", 0.0))
         if death_t > birth_t:
             lifetimes.append(float(death_t - birth_t))
-    # Add lifetimes of still-alive carriers (need to track their birth somehow)
-    # For now, skip alive carriers as we don't store born_at in new system
     if lifetimes:
         fig = plt.figure(figsize=(7.2, 3.4), facecolor="white")
         ax = fig.add_subplot(1, 1, 1)
@@ -243,11 +289,11 @@ def main() -> None:
     lines.append(r"% Generated by tmp/rez/paper_artifacts.py.")
     lines.append(r"\paragraph{Stream run.}")
     lines.append(
-        rf"We simulate an open-ended sensory stream for {sim_s:.0f}\,s (seed=0, $\Delta t$={float(rez.DT):.3f}\,s). "
+        rf"We simulate an open-ended sensory stream for {sim_s:.0f}\,s (seed=0, $\Delta t$={dt:.3f}\,s). "
         rf"Mean $N$={results['metrics']['N_mean']:.1f}, mean $M$={results['metrics']['M_mean']:.1f}, "
         rf"mean $\mathrm{{nnz}}(P)$={results['metrics']['nnz_mean']:.1f}, "
         rf"mean $L_{{\text{{comp}}}}$={results['metrics']['Lcomp_mean']:.1f}. "
-        rf"Births={results['metrics']['births']}, deaths={results['metrics']['deaths']}."
+        rf"Births={results['metrics']['births']}, deaths={results['metrics']['deaths']}, mitoses={results['metrics']['mitoses']}."
     )
     lines.append("")
     lines.append(r"\begin{table}[H]")
