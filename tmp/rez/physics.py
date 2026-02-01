@@ -79,7 +79,17 @@ class ThermodynamicEngine:
         # Sharpness emerges from system scale: tighter when distances are small.
         # Negative distances because softmax maximizes (we want to minimize distance)
         dists_scale = torch.std(dists) + self.config.eps
-        sharpness = 1.0 / dists_scale
+        # Gravity strengthens as heat rises (concentration counters entropy)
+        heat_level = 0.0
+        if "heat" in self.attractors.keys() and self.attractors.get("heat").numel() > 0:
+            h = self.attractors.get("heat")
+            h_scale = torch.mean(h.abs()) + self.config.eps
+            heat_level = float((h_scale / (h_scale + 1.0)).item())
+        elif "heat" in self.particles.keys() and self.particles.get("heat").numel() > 0:
+            h = self.particles.get("heat")
+            h_scale = torch.mean(h.abs()) + self.config.eps
+            heat_level = float((h_scale / (h_scale + 1.0)).item())
+        sharpness = (1.0 / dists_scale) * (1.0 + heat_level)
         weights = torch.softmax(-dists * sharpness, dim=1)  # [N, M]
         
         # 3. Apply Forces (Drift particles toward attractors)
@@ -95,6 +105,23 @@ class ThermodynamicEngine:
         new_pos = current + drift * self.config.dt + noise * self.config.dt
         self.particles.set("position", new_pos)
         
+        # Heat transport: kinetic activity raises particle heat, which diffuses via weights
+        if "heat" in self.particles.keys():
+            p_heat = self.particles.get("heat")
+            drift_mag = drift.abs() if drift.dim() == 1 else torch.norm(drift, dim=1)
+            d_scale = torch.mean(drift_mag.abs()) + self.config.eps
+            p_heat = p_heat + (drift_mag / d_scale) * self.config.dt
+            if "heat" in self.attractors.keys():
+                a_heat = self.attractors.get("heat")
+                h_scale = torch.mean(a_heat.abs()) + self.config.eps
+                p_heat = p_heat + self.config.dt * (torch.matmul(weights, a_heat) - p_heat) / h_scale
+            # Cooling proportional to current heat scale
+            h_scale = torch.mean(p_heat.abs()) + self.config.eps
+            p_heat = p_heat * torch.exp(-self.config.dt / h_scale)
+            self.particles.set("heat", p_heat)
+            # Heat raises kinetic activity (noise scale)
+            noise_scale = noise_scale * (1.0 + torch.mean(p_heat.abs()))
+
         # 4. Update Energy/Heat (Abstracted)
         self.update_thermodynamics(weights)
         
@@ -137,6 +164,20 @@ class ThermodynamicEngine:
             new_e = current_e * (1.0 - alpha) + energy_in * alpha
             self.attractors.set("energy", new_e)
 
+        # Heat transport follows energy flow when heat is present
+        if "heat" in self.attractors.keys():
+            heat_in = energy_in
+            if "heat" in self.particles.keys():
+                p_heat = self.particles.get("heat")
+                heat_in = torch.matmul(weights.T, p_heat)
+            current_h = self.attractors.get("heat")
+            dt = float(self.config.dt)
+            h_scale = torch.mean(current_h.abs()) + self.config.eps
+            tau = 1.0 / h_scale
+            alpha = dt / (tau + dt)
+            new_h = current_h * (1.0 - alpha) + heat_in * alpha
+            self.attractors.set("heat", new_h)
+
 
 # ============================================================
 # Audio Domain: SpectralManifold
@@ -153,6 +194,8 @@ class SpectralManifold(ThermodynamicEngine):
         # Audio-specific: phase tracking
         self.particles.set("phase", torch.empty(0, dtype=DTYPE_REAL, device=device))
         self.attractors.set("phase", torch.empty(0, dtype=DTYPE_REAL, device=device))
+        self.particles.set("heat", torch.empty(0, dtype=DTYPE_REAL, device=device))
+        self.attractors.set("heat", torch.empty(0, dtype=DTYPE_REAL, device=device))
 
     def ingest_frame(self, freq_bins: torch.Tensor, magnitudes: torch.Tensor, phases: torch.Tensor):
         """
@@ -205,6 +248,27 @@ class SpectralManifold(ThermodynamicEngine):
     def compute_targets(self, weights: torch.Tensor) -> torch.Tensor:
         a_pos = self.attractors.get("position")
         return torch.mm(weights, a_pos.unsqueeze(1)).squeeze(1) if a_pos.dim() == 1 else torch.mm(weights, a_pos)
+
+    def step_physics(self):
+        """
+        Run physics step and clean up expired particles.
+        """
+        super().step_physics()
+        if self.particles.shape[0] == 0 or "ttl" not in self.particles.keys():
+            return
+        ttl = self.particles.get("ttl") - self.config.dt
+        alive = ttl > 0
+        if alive.all():
+            self.particles.set("ttl", ttl)
+            return
+        if alive.any():
+            self.particles = TensorDict(
+                {key: self.particles.get(key)[alive] for key in self.particles.keys()},
+                batch_size=[int(alive.sum().item())],
+            )
+            self.particles.set("ttl", ttl[alive])
+        else:
+            self.particles = TensorDict({}, batch_size=[0])
 
     def output_state(self) -> OutputState:
         """Return unified output state for spectral generation."""

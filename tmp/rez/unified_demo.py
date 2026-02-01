@@ -10,6 +10,7 @@ This script demonstrates the complete "System 2" loop:
 
 import argparse
 import json
+import math
 import os
 import torch
 import wave
@@ -35,7 +36,7 @@ def run_unified_demo() -> None:
 
     # Physics Config: semantic integration step
     sem_cfg = SemanticPhysicsConfig(dt=0.1)
-    brain = SemanticManifold(sem_cfg, device, embed_dim, vocab_size)
+    brain = SemanticManifold(sem_cfg, device, embed_dim, vocab_size, num_modes=3)
 
     print("    Grammar: emergent from attractor geometry (no explicit seeding)")
 
@@ -93,6 +94,8 @@ def run_unified_demo() -> None:
     probs = semantic_out.probs
     next_token_idx = semantic_out.token_index
     predicted_word = semantic_out.token
+    if probs is None or next_token_idx is None:
+        raise RuntimeError("Semantic output missing probabilities or token index")
 
     print(f"    Brain Prediction: '{predicted_word}' (Confidence: {probs[next_token_idx]:.2f})")
     print(f"    (Ran {steps_used} grammar step(s); no manual tuning)")
@@ -239,7 +242,7 @@ def run_beefy_test() -> None:
     vocab = [f"T{i}" for i in range(vocab_size)]
     embed_dim = vocab_size
     sem_cfg = SemanticPhysicsConfig(dt=0.1)
-    brain = SemanticManifold(sem_cfg, device, embed_dim, vocab_size)
+    brain = SemanticManifold(sem_cfg, device, embed_dim, vocab_size, num_modes=4)
 
     # Deterministic next-token grammar (ring)
     next_map = {i: (i + 1) % vocab_size for i in range(vocab_size)}
@@ -263,6 +266,15 @@ def run_beefy_test() -> None:
     correct = 0
     steps_used_total = 0
     dominance_total = 0.0
+    entropy_total = 0.0
+    entropy_delta_total = 0.0
+    mode_entropy_total = 0.0
+    confidence_total = 0.0
+    mode_entropy_norm_total = 0.0
+    heat_total = 0.0
+    heat_var_total = 0.0
+    dbg_totals: dict[str, float] = {}
+    dbg_counts: dict[str, int] = {}
     max_steps = brain.vocab_size + seq_len
     for _ in range(test_cases):
         start = int(torch.randint(0, vocab_size, (1,)).item())
@@ -275,13 +287,31 @@ def run_beefy_test() -> None:
         brain.attractors.set("excitation", exc)
 
         steps_used = 0
+        ent_start = float(brain.entropy().item())
         while steps_used < max_steps:
             brain.step_grammar()
             steps_used += 1
+            if hasattr(brain, "last_debug"):
+                for key, value in brain.last_debug.items():
+                    dbg_totals[key] = dbg_totals.get(key, 0.0) + float(value)
+                    dbg_counts[key] = dbg_counts.get(key, 0) + 1
             if brain.thinking_complete():
                 break
         steps_used_total += steps_used
         dominance_total += brain.dominance_metrics()["dominance"]
+        ent_end = float(brain.entropy().item())
+        entropy_total += ent_end
+        entropy_delta_total += ent_start - ent_end
+        if brain.last_mode_weights is not None:
+            m = brain.last_mode_weights
+            mode_entropy_total += float(-(m * torch.log(m + 1e-8)).sum().item())
+        confidence_total += brain.thinking_confidence()
+        if brain.num_modes > 1 and brain.last_mode_entropy is not None:
+            mode_entropy_norm_total += brain.last_mode_entropy / max(1e-8, math.log(float(brain.num_modes)))
+        if "heat" in brain.attractors.keys():
+            h = brain.attractors.get("heat")
+            heat_total += float(h.mean().item()) if h.numel() > 0 else 0.0
+            heat_var_total += float(h.var(unbiased=False).item()) if h.numel() > 0 else 0.0
         out = brain.output_state(vocab=vocab)
         if out.token_index == expected:
             correct += 1
@@ -289,6 +319,14 @@ def run_beefy_test() -> None:
     accuracy = correct / max(1, test_cases)
     avg_steps = steps_used_total / max(1, test_cases)
     avg_dominance = dominance_total / max(1, test_cases)
+    avg_entropy = entropy_total / max(1, test_cases)
+    avg_entropy_delta = entropy_delta_total / max(1, test_cases)
+    avg_mode_entropy = mode_entropy_total / max(1, test_cases)
+    avg_confidence = confidence_total / max(1, test_cases)
+    avg_mode_entropy_norm = mode_entropy_norm_total / max(1, test_cases)
+    avg_heat = heat_total / max(1, test_cases)
+    avg_heat_var = heat_var_total / max(1, test_cases)
+    dbg_avgs = {key: (dbg_totals[key] / max(1, dbg_counts.get(key, 1))) for key in dbg_totals.keys()}
 
     print(f"    Vocab size: {vocab_size}")
     print(f"    Train sequences: {train_sequences} (len={seq_len})")
@@ -296,6 +334,18 @@ def run_beefy_test() -> None:
     print(f"    Accuracy: {accuracy:.3f}")
     print(f"    Avg thinking steps: {avg_steps:.2f}")
     print(f"    Avg grammar dominance: {avg_dominance:.3f}")
+    print(f"    Avg confidence: {avg_confidence:.3f}")
+    print(f"    Avg entropy: {avg_entropy:.4f}")
+    print(f"    Avg entropy drop: {avg_entropy_delta:.4f}")
+    print(f"    Avg heat: {avg_heat:.4f}")
+    print(f"    Avg heat var: {avg_heat_var:.6f}")
+    if dbg_avgs:
+        print("    Debug means:")
+        for key in sorted(dbg_avgs.keys()):
+            print(f"      {key}: {dbg_avgs[key]:.6f}")
+    if brain.num_modes > 1:
+        print(f"    Avg mode entropy: {avg_mode_entropy:.4f}")
+        print(f"    Avg mode entropy (norm): {avg_mode_entropy_norm:.4f}")
 
     report = {
         "vocab_size": vocab_size,
@@ -305,6 +355,15 @@ def run_beefy_test() -> None:
         "accuracy": accuracy,
         "avg_steps": avg_steps,
         "avg_dominance": avg_dominance,
+        "avg_confidence": avg_confidence,
+        "avg_entropy": avg_entropy,
+        "avg_entropy_drop": avg_entropy_delta,
+        "avg_mode_entropy": avg_mode_entropy,
+        "avg_mode_entropy_norm": avg_mode_entropy_norm,
+        "avg_heat": avg_heat,
+        "avg_heat_var": avg_heat_var,
+        "debug_means": dbg_avgs,
+        "energy_metrics": brain.energy_metrics(),
     }
     artifacts_dir = "tmp/rez/artifacts"
     os.makedirs(artifacts_dir, exist_ok=True)
@@ -315,11 +374,180 @@ def run_beefy_test() -> None:
     print("============================================================")
 
 
+def run_probabilistic_beefy_test() -> None:
+    print("============================================================")
+    print("THERMODYNAMIC MANIFOLD: Probabilistic Beefy Test")
+    print("============================================================")
+    torch.manual_seed(0)
+    device = torch.device("cpu")
+
+    vocab_size = 64
+    vocab = [f"T{i}" for i in range(vocab_size)]
+    embed_dim = vocab_size
+    sem_cfg = SemanticPhysicsConfig(dt=0.1)
+    brain = SemanticManifold(sem_cfg, device, embed_dim, vocab_size, num_modes=4)
+
+    # Build probabilistic grammar: 3 outgoing edges per token
+    probs = torch.zeros(vocab_size, vocab_size, dtype=DTYPE_REAL, device=device)
+    for i in range(vocab_size):
+        choices = torch.randperm(vocab_size)[:3]
+        weights = torch.rand(3, dtype=DTYPE_REAL, device=device)
+        weights = weights / (weights.sum() + 1e-8)
+        probs[i, choices] = weights
+
+    def sample_next(token: int) -> int:
+        return int(torch.multinomial(probs[token], 1).item())
+
+    # Training: sample sequences from the probabilistic grammar
+    train_sequences = 800
+    seq_len = 8
+    for _ in range(train_sequences):
+        start = int(torch.randint(0, vocab_size, (1,)).item())
+        seq = [start]
+        for _ in range(seq_len - 1):
+            seq.append(sample_next(seq[-1]))
+        embeddings = brain.attractors.get("position")[seq]
+        brain.ingest_context(embeddings)
+        exc = brain.attractors.get("excitation")
+        exc[seq[-1]] = 1.0
+        brain.attractors.set("excitation", exc)
+        for _ in range(seq_len):
+            brain.step_grammar()
+
+    # Evaluation: compare predicted distribution to ground-truth
+    test_cases = 200
+    kl_total = 0.0
+    correct = 0
+    steps_used_total = 0
+    dominance_total = 0.0
+    entropy_total = 0.0
+    entropy_delta_total = 0.0
+    mode_entropy_total = 0.0
+    confidence_total = 0.0
+    mode_entropy_norm_total = 0.0
+    heat_total = 0.0
+    heat_var_total = 0.0
+    dbg_totals: dict[str, float] = {}
+    dbg_counts: dict[str, int] = {}
+    max_steps = brain.vocab_size + seq_len
+    for _ in range(test_cases):
+        start = int(torch.randint(0, vocab_size, (1,)).item())
+        next_tok = sample_next(start)
+        context = [start, next_tok]
+        embeddings = brain.attractors.get("position")[context]
+        brain.ingest_context(embeddings)
+        exc = brain.attractors.get("excitation")
+        exc[context[-1]] = 1.0
+        brain.attractors.set("excitation", exc)
+
+        steps_used = 0
+        ent_start = float(brain.entropy().item())
+        while steps_used < max_steps:
+            brain.step_grammar()
+            steps_used += 1
+            if hasattr(brain, "last_debug"):
+                for key, value in brain.last_debug.items():
+                    dbg_totals[key] = dbg_totals.get(key, 0.0) + float(value)
+                    dbg_counts[key] = dbg_counts.get(key, 0) + 1
+            if brain.thinking_complete():
+                break
+        steps_used_total += steps_used
+        dominance_total += brain.dominance_metrics()["dominance"]
+        ent_end = float(brain.entropy().item())
+        entropy_total += ent_end
+        entropy_delta_total += ent_start - ent_end
+        if brain.last_mode_weights is not None:
+            m = brain.last_mode_weights
+            mode_entropy_total += float(-(m * torch.log(m + 1e-8)).sum().item())
+        confidence_total += brain.thinking_confidence()
+        if brain.num_modes > 1 and brain.last_mode_entropy is not None:
+            mode_entropy_norm_total += brain.last_mode_entropy / max(1e-8, math.log(float(brain.num_modes)))
+        if "heat" in brain.attractors.keys():
+            h = brain.attractors.get("heat")
+            heat_total += float(h.mean().item()) if h.numel() > 0 else 0.0
+            heat_var_total += float(h.var(unbiased=False).item()) if h.numel() > 0 else 0.0
+
+        out = brain.output_state(vocab=vocab)
+        pred = out.probs
+        if pred is None:
+            continue
+        target = probs[context[-1]]
+        kl = (target * (torch.log(target + 1e-8) - torch.log(pred + 1e-8))).sum()
+        kl_total += float(kl.item())
+
+        expected = int(torch.argmax(target).item())
+        if out.token_index == expected:
+            correct += 1
+
+    accuracy = correct / max(1, test_cases)
+    avg_steps = steps_used_total / max(1, test_cases)
+    avg_dominance = dominance_total / max(1, test_cases)
+    avg_kl = kl_total / max(1, test_cases)
+    avg_entropy = entropy_total / max(1, test_cases)
+    avg_entropy_delta = entropy_delta_total / max(1, test_cases)
+    avg_mode_entropy = mode_entropy_total / max(1, test_cases)
+    avg_confidence = confidence_total / max(1, test_cases)
+    avg_mode_entropy_norm = mode_entropy_norm_total / max(1, test_cases)
+    avg_heat = heat_total / max(1, test_cases)
+    avg_heat_var = heat_var_total / max(1, test_cases)
+    dbg_avgs = {key: (dbg_totals[key] / max(1, dbg_counts.get(key, 1))) for key in dbg_totals.keys()}
+
+    print(f"    Vocab size: {vocab_size}")
+    print(f"    Train sequences: {train_sequences} (len={seq_len})")
+    print(f"    Test cases: {test_cases}")
+    print(f"    Top-1 Accuracy: {accuracy:.3f}")
+    print(f"    Avg KL (target || pred): {avg_kl:.4f}")
+    print(f"    Avg thinking steps: {avg_steps:.2f}")
+    print(f"    Avg grammar dominance: {avg_dominance:.3f}")
+    print(f"    Avg confidence: {avg_confidence:.3f}")
+    print(f"    Avg entropy: {avg_entropy:.4f}")
+    print(f"    Avg entropy drop: {avg_entropy_delta:.4f}")
+    print(f"    Avg heat: {avg_heat:.4f}")
+    print(f"    Avg heat var: {avg_heat_var:.6f}")
+    if dbg_avgs:
+        print("    Debug means:")
+        for key in sorted(dbg_avgs.keys()):
+            print(f"      {key}: {dbg_avgs[key]:.6f}")
+    if brain.num_modes > 1:
+        print(f"    Avg mode entropy: {avg_mode_entropy:.4f}")
+        print(f"    Avg mode entropy (norm): {avg_mode_entropy_norm:.4f}")
+
+    report = {
+        "vocab_size": vocab_size,
+        "train_sequences": train_sequences,
+        "sequence_length": seq_len,
+        "test_cases": test_cases,
+        "top1_accuracy": accuracy,
+        "avg_kl": avg_kl,
+        "avg_steps": avg_steps,
+        "avg_dominance": avg_dominance,
+        "avg_confidence": avg_confidence,
+        "avg_entropy": avg_entropy,
+        "avg_entropy_drop": avg_entropy_delta,
+        "avg_mode_entropy": avg_mode_entropy,
+        "avg_mode_entropy_norm": avg_mode_entropy_norm,
+        "avg_heat": avg_heat,
+        "avg_heat_var": avg_heat_var,
+        "debug_means": dbg_avgs,
+        "energy_metrics": brain.energy_metrics(),
+    }
+    artifacts_dir = "tmp/rez/artifacts"
+    os.makedirs(artifacts_dir, exist_ok=True)
+    report_path = os.path.join(artifacts_dir, "beefy_report_prob.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    print(f"    Wrote report: {report_path}")
+    print("============================================================")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--beefy", action="store_true", help="Run a larger-scale grammar test")
+    parser.add_argument("--beefy-prob", action="store_true", help="Run a probabilistic grammar test")
     args = parser.parse_args()
     if args.beefy:
         run_beefy_test()
+    elif args.beefy_prob:
+        run_probabilistic_beefy_test()
     else:
         run_unified_demo()
