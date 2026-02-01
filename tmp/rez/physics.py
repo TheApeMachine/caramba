@@ -5,13 +5,16 @@ This is the base class that handles the raw physics loop:
 - Energy, Heat, Diffusion
 - Particle-Attractor interactions
 - No domain-specific assumptions (no Hertz, Tokens, Embeddings)
+
+Note: This research explicitly rejects backpropagation. Learning emerges
+from thermodynamic dynamics (energy flow, metabolic maintenance, decay).
 """
 
 import math
 import torch
 from tensordict import TensorDict
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any
 
 DTYPE_REAL = torch.float32
 TAU = 2.0 * math.pi
@@ -21,13 +24,20 @@ TAU = 2.0 * math.pi
 class PhysicsConfig:
     """Pure physics parameters. No domain assumptions."""
     dt: float = 0.01
-    hold_cost: float = 0.1
-    # Interaction radius: If distance > this, force is zero (Optimization)
-    interaction_radius: float = 10.0
-    # How much active concepts heat up their neighbors (Grammar strength)
-    transition_flux: float = 1.0
     # Numerical stability
     eps: float = 1e-8
+
+
+@dataclass
+class OutputState:
+    """Unified output container for semantic/audio domains."""
+    logits: Optional[torch.Tensor] = None
+    probs: Optional[torch.Tensor] = None
+    token_index: Optional[int] = None
+    token: Optional[str] = None
+    audio_particles: Optional[torch.Tensor] = None
+    audio_targets: Optional[torch.Tensor] = None
+    meta: Optional[dict[str, Any]] = None
 
 
 class ThermodynamicEngine:
@@ -66,9 +76,11 @@ class ThermodynamicEngine:
         dists = self.compute_distances()  # [N_particles, M_attractors]
         
         # 2. Bonding (Softmax Gravity)
-        # We use a "Sharpness" temperature for the softmax
+        # Sharpness emerges from system scale: tighter when distances are small.
         # Negative distances because softmax maximizes (we want to minimize distance)
-        weights = torch.softmax(-dists, dim=1)  # [N, M]
+        dists_scale = torch.std(dists) + self.config.eps
+        sharpness = 1.0 / dists_scale
+        weights = torch.softmax(-dists * sharpness, dim=1)  # [N, M]
         
         # 3. Apply Forces (Drift particles toward attractors)
         # Target position for each particle is weighted avg of attractors
@@ -76,7 +88,9 @@ class ThermodynamicEngine:
         current = self.particles.get("position")  # [N, ...]
         
         drift = (targets - current)
-        noise = torch.randn_like(current) * 0.1  # Simple noise for now
+        # Noise emerges from system dispersion (no fixed scale)
+        noise_scale = torch.std(current) + self.config.eps
+        noise = torch.randn_like(current) * noise_scale
         
         new_pos = current + drift * self.config.dt + noise * self.config.dt
         self.particles.set("position", new_pos)
@@ -113,11 +127,14 @@ class ThermodynamicEngine:
         
         current_e = self.attractors.get("energy")
         if current_e.numel() == 0:
-            # Initialize if needed
             self.attractors.set("energy", energy_in)
         else:
-            # Exponential moving average
-            new_e = current_e * 0.9 + energy_in * 0.1
+            # EMA where alpha emerges from system energy scale
+            dt = float(self.config.dt)
+            energy_scale = torch.mean(current_e.abs()) + self.config.eps
+            tau = 1.0 / energy_scale
+            alpha = dt / (tau + dt)
+            new_e = current_e * (1.0 - alpha) + energy_in * alpha
             self.attractors.set("energy", new_e)
 
 
@@ -188,3 +205,9 @@ class SpectralManifold(ThermodynamicEngine):
     def compute_targets(self, weights: torch.Tensor) -> torch.Tensor:
         a_pos = self.attractors.get("position")
         return torch.mm(weights, a_pos.unsqueeze(1)).squeeze(1) if a_pos.dim() == 1 else torch.mm(weights, a_pos)
+
+    def output_state(self) -> OutputState:
+        """Return unified output state for spectral generation."""
+        particles = self.particles.get("position") if self.particles.shape[0] > 0 else None
+        targets = self.attractors.get("position") if self.attractors.shape[0] > 0 else None
+        return OutputState(audio_particles=particles, audio_targets=targets)

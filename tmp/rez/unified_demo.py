@@ -8,7 +8,9 @@ This script demonstrates the complete "System 2" loop:
 3. Spectral Physics: "Speaking" (Diffusion generates audio)
 """
 
+import os
 import torch
+import wave
 from tensordict import TensorDict
 from semantic import SemanticManifold
 from physics import PhysicsConfig as SemanticPhysicsConfig, SpectralManifold, PhysicsConfig as SpectralPhysicsConfig, DTYPE_REAL, TAU
@@ -27,20 +29,17 @@ def run_unified_demo() -> None:
     print("\n[1] Initializing The Brain (Semantic Physics)...")
     vocab = ["The", "Cat", "Sat", "On", "Mat"]
     vocab_size = len(vocab)
-    embed_dim = 4
+    embed_dim = vocab_size
 
-    # Physics Config: High flux for strong grammar flow
-    sem_cfg = SemanticPhysicsConfig(dt=0.1, transition_flux=2.0)
+    # Physics Config: semantic integration step
+    sem_cfg = SemanticPhysicsConfig(dt=0.1)
     brain = SemanticManifold(sem_cfg, device, embed_dim, vocab_size)
 
-    # Teach Grammar: The -> Cat -> Sat -> On -> Mat
-    print("    Learning Grammar: The -> Cat -> Sat -> On -> Mat")
-    seq = torch.tensor([0, 1, 2, 3, 4], dtype=torch.int64, device=device)
-    brain.learn_transition(seq)
+    print("    Grammar: emergent from attractor geometry (no explicit seeding)")
 
     # Define "Musical Concepts" (The Bridge)
     # We map each word's embedding to a specific Chord (Target Frequencies)
-    # In a real model, this is the learned 'bridge_matrix'
+    # In this setup, this stands in for the learned 'bridge_matrix'
     print("    Defining Semantic-to-Audio Bridge...")
 
     # Map: Word Index -> Frequency List
@@ -55,8 +54,15 @@ def run_unified_demo() -> None:
     # ==================================================================
     # 2. The "Thinking" Phase
     # ==================================================================
-    print("\n[2] Input Context: 'The Cat'")
+    print("\n[2] Learning Grammar from Context...")
+    # Provide a short sequence so grammar bonds can emerge from context order
+    full_embeddings = brain.attractors.get("position")
+    brain.ingest_context(full_embeddings)
+    learn_steps = int(brain.particles.shape[0])
+    for _ in range(learn_steps):
+        brain.step_grammar()
 
+    print("\n[3] Input Context: 'The Cat'")
     # Ingest "The Cat"
     embeddings = brain.attractors.get("position")[[0, 1]]
     brain.ingest_context(embeddings)
@@ -67,50 +73,38 @@ def run_unified_demo() -> None:
     brain.attractors.set("excitation", exc)
 
     print("    Thinking (Running Thermodynamic Grammar)...")
-    # Self-tuning loop: let grammar flow until it predicts the immediate next token.
-    # This prevents over-shooting further down the chain (e.g., jumping to "Mat").
-    max_think_steps = 20
-    context_idx = 1  # "Cat" is the most recent token
-    desired_next_idx = 2  # "Sat" is the immediate grammatical successor
-    next_token_idx = context_idx
-    probs = None
-
-    for step in range(max_think_steps):
+    # No tuning: let the system decide when to stop (entropy settles)
+    steps_used = 0
+    entropy_history = []
+    dominance_history = []
+    max_steps = brain.vocab_size + int(brain.particles.shape[0])
+    while steps_used < max_steps:
         brain.step_grammar()
-
-        logits = brain.predict_next()
-        probs = torch.softmax(logits, dim=0)
-
-        # Self-regularize: discourage skipping multiple steps ahead
-        # (e.g., jumping directly from "Cat" to "Mat")
-        adjusted_probs = probs.clone()
-        if desired_next_idx + 1 < adjusted_probs.numel():
-            adjusted_probs[desired_next_idx + 1 :] *= 0.5
-
-        next_token_idx = int(torch.argmax(adjusted_probs).item())
-
-        if next_token_idx == desired_next_idx:
+        steps_used += 1
+        entropy = brain.entropy()
+        entropy_history.append(float(entropy.item()))
+        dominance_history.append(brain.dominance_metrics()["dominance"])
+        if brain.thinking_complete():
             break
 
-        # Auto-tune: boost grammar flow, dampen context dominance
-        brain.config.transition_flux = min(brain.config.transition_flux * 1.1, 6.0)
-        exc = brain.attractors.get("excitation")
-        exc[context_idx] *= 0.9
-        # Damp far-future concepts to avoid overshoot
-        if desired_next_idx + 1 < exc.numel():
-            exc[desired_next_idx + 1 :] *= 0.7
-        brain.attractors.set("excitation", exc)
-
-    predicted_word = vocab[next_token_idx]
-    steps_used = step + 1
+    semantic_out = brain.output_state(vocab=vocab)
+    probs = semantic_out.probs
+    next_token_idx = semantic_out.token_index
+    predicted_word = semantic_out.token
 
     print(f"    Brain Prediction: '{predicted_word}' (Confidence: {probs[next_token_idx]:.2f})")
-    print(f"    (Auto-tuned in {steps_used} step(s), transition_flux={brain.config.transition_flux:.2f})")
+    print(f"    (Ran {steps_used} grammar step(s); no manual tuning)")
+    if entropy_history:
+        formatted = ", ".join(f"{e:.4f}" for e in entropy_history)
+        print(f"    Entropy curve: [{formatted}]")
+    if dominance_history:
+        formatted = ", ".join(f"{d:.3f}" for d in dominance_history)
+        print(f"    Grammar dominance: [{formatted}]")
 
     # ==================================================================
     # 3. The Bridge (Concept -> Physics)
     # ==================================================================
-    print("\n[3] Bridging Concept to Physics...")
+    print("\n[4] Bridging Concept to Physics...")
 
     target_freqs = word_to_audio[next_token_idx]
     print(f"    Concept '{predicted_word}' maps to Frequencies: {target_freqs} Hz")
@@ -118,7 +112,7 @@ def run_unified_demo() -> None:
     # ==================================================================
     # 4. The "Speaking" Phase (Spectral Manifold)
     # ==================================================================
-    print("\n[4] Initializing The Voice (Spectral Physics)...")
+    print("\n[5] Initializing The Voice (Spectral Physics)...")
 
     # Audio Config: Fast integration for synthesis
     spec_cfg = SpectralPhysicsConfig(dt=0.01)
@@ -181,11 +175,13 @@ def run_unified_demo() -> None:
     # ==================================================================
     # 5. Result
     # ==================================================================
-    print("\n[5] Output Analysis")
-    final_freqs = voice.particles.get("position")
+    print("\n[6] Output Analysis")
+    audio_out = voice.output_state()
+    final_freqs = audio_out.audio_particles
     print("    Generated Particle Frequencies (Mean):")
 
     # Check clustering
+    rendered_partials: list[tuple[float, float]] = []
     for target in target_freqs:
         # Find particles near target
         mask = (final_freqs - target).abs() < 20.0
@@ -193,8 +189,33 @@ def run_unified_demo() -> None:
         if count > 0:
             actual = final_freqs[mask].mean().item()
             print(f"    Target {target} Hz -> Generated {actual:.2f} Hz ({count} particles)")
+            rendered_partials.append((actual, count))
         else:
             print(f"    Target {target} Hz -> No particles captured")
+
+    # Render a simple waveform from the generated partials
+    if rendered_partials:
+        max_freq = max(freq for freq, _ in rendered_partials)
+        sample_rate = max(8000, int(max_freq * 4.0))
+        duration = steps * spec_cfg.dt
+        n_samples = max(1, int(sample_rate * duration))
+        t = torch.linspace(0.0, duration, n_samples, dtype=DTYPE_REAL, device=device)
+        total_count = sum(count for _, count in rendered_partials)
+        wave_sum = torch.zeros_like(t)
+        for freq, count in rendered_partials:
+            amp = count / max(1.0, total_count)
+            wave_sum = wave_sum + amp * torch.sin(2.0 * TAU * freq * t)
+        peak = torch.max(torch.abs(wave_sum)) + 1e-8
+        wave_sum = wave_sum / peak
+        audio = (wave_sum.cpu().numpy() * 32767.0).astype("<i2")
+        wav_path = "tmp/rez/unified_demo.wav"
+        os.makedirs(os.path.dirname(wav_path), exist_ok=True)
+        with wave.open(wav_path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(audio.tobytes())
+        print(f"    Wrote WAV: {wav_path} ({sample_rate} Hz, {duration:.2f}s)")
 
     print("\n============================================================")
     print("DEMO COMPLETE: The system 'Thought' of a word and 'Spoke' it.")

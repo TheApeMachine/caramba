@@ -16,7 +16,7 @@ def test_spectral_manifold():
     print("=" * 60)
     
     device = torch.device("cpu")
-    config = PhysicsConfig(dt=0.01, hold_cost=5.0)
+    config = PhysicsConfig(dt=0.01)
     
     manifold = SpectralManifold(config, device)
     
@@ -57,7 +57,7 @@ def test_semantic_manifold():
     
     device = torch.device("cpu")
     embed_dim = 128
-    config = PhysicsConfig(dt=0.01, hold_cost=5.0)
+    config = PhysicsConfig(dt=0.01)
     
     manifold = SemanticManifold(config, device, embed_dim, vocab_size=128)
     
@@ -72,17 +72,8 @@ def test_semantic_manifold():
     
     manifold.ingest_context(embeddings)
     
-    # Set up grammar transition matrix
-    n_attractors = manifold.attractors.shape[0]
-    if n_attractors > 0:
-        # Create a simple transition matrix (random for demo)
-        transition_matrix = torch.rand(n_attractors, n_attractors, dtype=DTYPE_REAL, device=device)
-        transition_matrix = transition_matrix / (transition_matrix.sum(dim=1, keepdim=True) + 1e-8)  # Normalize
-        manifold.set_transition_matrix(transition_matrix)
-        
-        print(f"\nGrammar transition matrix set:")
-        print(f"  Shape: {transition_matrix.shape}")
-        print(f"  Example: transition_matrix[0, :] = {transition_matrix[0, :3].cpu().numpy()}")
+    # Grammar now emerges from geometry; no explicit transition matrix.
+    print("\nGrammar transition matrix: emergent (no explicit seeding).")
     
     # Check state
     particles = manifold.particles
@@ -175,16 +166,7 @@ def test_thermodynamic_grammar():
     }
     manifold.attractors = TensorDict(new_attractors, batch_size=[n_concepts])
     
-    # Set up grammar: Concept 0 ("The") -> Concept 1 ("Dog") -> Concept 2 ("Barks")
-    transition_matrix = torch.zeros(n_concepts, n_concepts, dtype=DTYPE_REAL, device=device)
-    transition_matrix[0, 1] = 0.8  # "The" -> "Dog"
-    transition_matrix[1, 2] = 0.7  # "Dog" -> "Barks"
-    transition_matrix[0, 2] = 0.1  # "The" -> "Barks" (weak)
-    manifold.set_transition_matrix(transition_matrix)
-    
-    print(f"\nGrammar setup:")
-    print(f"  Concept 0 ('The') -> Concept 1 ('Dog'): {transition_matrix[0, 1]:.2f}")
-    print(f"  Concept 1 ('Dog') -> Concept 2 ('Barks'): {transition_matrix[1, 2]:.2f}")
+    print(f"\nGrammar setup: emergent from attractor geometry.")
     
     # Apply grammar
     print(f"\nBefore grammar:")
