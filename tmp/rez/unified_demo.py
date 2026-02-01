@@ -8,6 +8,8 @@ This script demonstrates the complete "System 2" loop:
 3. Spectral Physics: "Speaking" (Diffusion generates audio)
 """
 
+import argparse
+import json
 import os
 import torch
 import wave
@@ -180,18 +182,22 @@ def run_unified_demo() -> None:
     final_freqs = audio_out.audio_particles
     print("    Generated Particle Frequencies (Mean):")
 
-    # Check clustering
-    rendered_partials: list[tuple[float, float]] = []
-    for target in target_freqs:
-        # Find particles near target
-        mask = (final_freqs - target).abs() < 20.0
-        count = mask.sum().item()
-        if count > 0:
-            actual = final_freqs[mask].mean().item()
-            print(f"    Target {target} Hz -> Generated {actual:.2f} Hz ({count} particles)")
-            rendered_partials.append((actual, count))
-        else:
-            print(f"    Target {target} Hz -> No particles captured")
+    if final_freqs is None or final_freqs.numel() == 0:
+        print("    No particles available for clustering")
+        rendered_partials = []
+    else:
+        # Check clustering
+        rendered_partials: list[tuple[float, float]] = []
+        for target in target_freqs:
+            # Find particles near target
+            mask = (final_freqs - target).abs() < 20.0
+            count = mask.sum().item()
+            if count > 0:
+                actual = final_freqs[mask].mean().item()
+                print(f"    Target {target} Hz -> Generated {actual:.2f} Hz ({count} particles)")
+                rendered_partials.append((actual, count))
+            else:
+                print(f"    Target {target} Hz -> No particles captured")
 
     # Render a simple waveform from the generated partials
     if rendered_partials:
@@ -222,5 +228,98 @@ def run_unified_demo() -> None:
     print("============================================================")
 
 
+def run_beefy_test() -> None:
+    print("============================================================")
+    print("THERMODYNAMIC MANIFOLD: Beefy Test")
+    print("============================================================")
+    torch.manual_seed(0)
+    device = torch.device("cpu")
+
+    vocab_size = 64
+    vocab = [f"T{i}" for i in range(vocab_size)]
+    embed_dim = vocab_size
+    sem_cfg = SemanticPhysicsConfig(dt=0.1)
+    brain = SemanticManifold(sem_cfg, device, embed_dim, vocab_size)
+
+    # Deterministic next-token grammar (ring)
+    next_map = {i: (i + 1) % vocab_size for i in range(vocab_size)}
+
+    # Training: expose many short sequences to build bond energy
+    train_sequences = 500
+    seq_len = 8
+    for _ in range(train_sequences):
+        start = int(torch.randint(0, vocab_size, (1,)).item())
+        seq = [(start + i) % vocab_size for i in range(seq_len)]
+        embeddings = brain.attractors.get("position")[seq]
+        brain.ingest_context(embeddings)
+        exc = brain.attractors.get("excitation")
+        exc[seq[-1]] = 1.0
+        brain.attractors.set("excitation", exc)
+        for _ in range(seq_len):
+            brain.step_grammar()
+
+    # Evaluation: predict next token for short contexts
+    test_cases = 200
+    correct = 0
+    steps_used_total = 0
+    dominance_total = 0.0
+    max_steps = brain.vocab_size + seq_len
+    for _ in range(test_cases):
+        start = int(torch.randint(0, vocab_size, (1,)).item())
+        context = [start, next_map[start]]
+        expected = next_map[context[-1]]
+        embeddings = brain.attractors.get("position")[context]
+        brain.ingest_context(embeddings)
+        exc = brain.attractors.get("excitation")
+        exc[context[-1]] = 1.0
+        brain.attractors.set("excitation", exc)
+
+        steps_used = 0
+        while steps_used < max_steps:
+            brain.step_grammar()
+            steps_used += 1
+            if brain.thinking_complete():
+                break
+        steps_used_total += steps_used
+        dominance_total += brain.dominance_metrics()["dominance"]
+        out = brain.output_state(vocab=vocab)
+        if out.token_index == expected:
+            correct += 1
+
+    accuracy = correct / max(1, test_cases)
+    avg_steps = steps_used_total / max(1, test_cases)
+    avg_dominance = dominance_total / max(1, test_cases)
+
+    print(f"    Vocab size: {vocab_size}")
+    print(f"    Train sequences: {train_sequences} (len={seq_len})")
+    print(f"    Test cases: {test_cases}")
+    print(f"    Accuracy: {accuracy:.3f}")
+    print(f"    Avg thinking steps: {avg_steps:.2f}")
+    print(f"    Avg grammar dominance: {avg_dominance:.3f}")
+
+    report = {
+        "vocab_size": vocab_size,
+        "train_sequences": train_sequences,
+        "sequence_length": seq_len,
+        "test_cases": test_cases,
+        "accuracy": accuracy,
+        "avg_steps": avg_steps,
+        "avg_dominance": avg_dominance,
+    }
+    artifacts_dir = "tmp/rez/artifacts"
+    os.makedirs(artifacts_dir, exist_ok=True)
+    report_path = os.path.join(artifacts_dir, "beefy_report.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    print(f"    Wrote report: {report_path}")
+    print("============================================================")
+
+
 if __name__ == "__main__":
-    run_unified_demo()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--beefy", action="store_true", help="Run a larger-scale grammar test")
+    args = parser.parse_args()
+    if args.beefy:
+        run_beefy_test()
+    else:
+        run_unified_demo()

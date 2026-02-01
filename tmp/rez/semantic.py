@@ -36,6 +36,8 @@ class SemanticManifold(ThermodynamicEngine):
         # Transition bonds are not learned by heuristics.
         # They emerge from the geometry of attractors and excitation flow.
         self.transition_matrix = torch.zeros(vocab_size, vocab_size, dtype=DTYPE_REAL, device=device)
+        # Each bond maintains its own energy ledger (metabolic budget).
+        self.bond_energy = torch.zeros(vocab_size, vocab_size, dtype=DTYPE_REAL, device=device)
         
         # Initialize attractors (Concepts)
         # These can be seeded with pretrained embeddings when available.
@@ -185,7 +187,7 @@ class SemanticManifold(ThermodynamicEngine):
         # plus observed context flow (sequence-driven, no tuning).
         # Expense: mean excitation scale (metabolic maintenance).
         exc_scale = torch.mean(exc_active.abs()) + self.config.eps
-        tm = self.transition_matrix[active_idx[:, None], active_idx]
+        tm = self.bond_energy[active_idx[:, None], active_idx]
         income = adjacency * exc_active.unsqueeze(1)
         if self.particles.shape[0] > 1:
             # Context-driven transitions from particle order (energy encodes position)
@@ -205,8 +207,11 @@ class SemanticManifold(ThermodynamicEngine):
             flow_scale = torch.mean(context_flow.abs()) + self.config.eps
             context_flow = context_flow / flow_scale
             income = context_flow
-        expense = tm * exc_scale
+        mean_tm = torch.mean(tm.abs()) + self.config.eps
+        # Metabolic cost: proportional + flat, both derived from system scale
+        expense = exc_scale * (tm / mean_tm + 1.0)
         tm = (tm + self.config.dt * (income - expense)).clamp(min=0.0)
+        self.bond_energy[active_idx[:, None], active_idx] = tm
         self.transition_matrix[active_idx[:, None], active_idx] = tm
 
         # 4. Flow Energy: Excitation * Transition Matrix
