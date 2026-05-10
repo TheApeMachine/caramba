@@ -1,0 +1,62 @@
+#include "textflag.h"
+
+DATA ·geluConst27+0(SB)/8, $27.0
+GLOBL ·geluConst27(SB), RODATA, $8
+DATA ·geluConst9+0(SB)/8, $9.0
+GLOBL ·geluConst9(SB), RODATA, $8
+DATA ·geluHalf+0(SB)/8, $0.5
+GLOBL ·geluHalf(SB), RODATA, $8
+DATA ·geluOne+0(SB)/8, $1.0
+GLOBL ·geluOne(SB), RODATA, $8
+DATA ·geluC1+0(SB)/8, $0.79788456080286535587989211986876
+GLOBL ·geluC1(SB), RODATA, $8
+DATA ·geluC2+0(SB)/8, $0.044715
+GLOBL ·geluC2(SB), RODATA, $8
+
+// GeLUAVX2(dst, x []float64)
+// ABI0: dst+0(FP)=ptr, dst_len+8(FP)=len, dst_cap+16(FP)=cap,
+//       x_base+24(FP)=ptr, x_len+32(FP)=len, x_cap+40(FP)=cap
+TEXT ·GeLUAVX2(SB), NOSPLIT, $0-48
+	MOVQ dst+0(FP), AX
+	MOVQ x_len+32(FP), BX
+	MOVQ x_base+24(FP), DI
+	CMPQ BX, $0
+	JLE  done
+	VMOVSD ·geluConst27(SB), X10
+	VBROADCASTSD X10, Y10
+	VMOVSD ·geluConst9(SB), X11
+	VBROADCASTSD X11, Y11
+	VMOVSD ·geluHalf(SB), X12
+	VBROADCASTSD X12, Y12
+	VMOVSD ·geluC1(SB), X8
+	VBROADCASTSD X8, Y8
+	VMOVSD ·geluC2(SB), X9
+	VBROADCASTSD X9, Y9
+	VMOVSD ·geluOne(SB), X13
+	VBROADCASTSD X13, Y13
+
+loop:
+	VMOVUPD (DI), Y0
+	VMULPD Y0, Y0, Y1
+	VMULPD Y0, Y1, Y2
+	VMULPD Y2, Y9, Y3
+	VADDPD Y0, Y3, Y3
+	VMULPD Y3, Y8, Y3
+	VMULPD Y3, Y3, Y4
+	VADDPD Y4, Y10, Y5
+	VMULPD Y4, Y11, Y6
+	VADDPD Y6, Y10, Y6
+	VMULPD Y3, Y5, Y5
+	VDIVPD Y6, Y5, Y7
+	VADDPD Y7, Y13, Y5
+	VMULPD Y0, Y5, Y5
+	VMULPD Y5, Y12, Y5
+	VMOVUPD Y5, (AX)
+	ADDQ $32, AX
+	ADDQ $32, DI
+	SUBQ $4, BX
+	CMPQ BX, $4
+	JGE  loop
+done:
+	VZEROUPPER
+	RET

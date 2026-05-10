@@ -1,0 +1,56 @@
+#include "textflag.h"
+
+// Constants defined in gelu_avx2_amd64.s
+
+// GeLUSSE2(dst, x []float64)
+// ABI0: dst+0(FP)=ptr, x_base+24(FP)=ptr, x_len+32(FP)=len
+TEXT ·GeLUSSE2(SB), NOSPLIT, $0-48
+	MOVQ dst+0(FP), AX
+	MOVQ x_len+32(FP), BX
+	MOVQ x_base+24(FP), DI
+	CMPQ BX, $0
+	JLE  done
+	MOVSD  ·geluConst27(SB), X10
+	MOVDDUP X10, X10
+	MOVSD  ·geluConst9(SB), X11
+	MOVDDUP X11, X11
+	MOVSD  ·geluHalf(SB), X12
+	MOVDDUP X12, X12
+	MOVSD  ·geluC1(SB), X8
+	MOVDDUP X8, X8
+	MOVSD  ·geluC2(SB), X9
+	MOVDDUP X9, X9
+	MOVSD  ·geluOne(SB), X13
+	MOVDDUP X13, X13
+
+loop:
+	MOVUPD (DI), X0
+	MOVAPD X0, X1
+	MULPD  X0, X1
+	MOVAPD X1, X2
+	MULPD  X0, X2
+	MOVAPD X2, X3
+	MULPD  X9, X3
+	ADDPD  X0, X3
+	MULPD  X8, X3
+	MOVAPD X3, X4
+	MULPD  X3, X4
+	MOVAPD X4, X5
+	ADDPD  X10, X5
+	MOVAPD X4, X6
+	MULPD  X11, X6
+	ADDPD  X10, X6
+	MULPD  X3, X5
+	MOVAPD X5, X7
+	DIVPD  X6, X7
+	ADDPD  X13, X7
+	MULPD  X0, X7
+	MULPD  X12, X7
+	MOVUPD X7, (AX)
+	ADDQ $16, AX
+	ADDQ $16, DI
+	SUBQ $2, BX
+	CMPQ BX, $2
+	JGE  loop
+done:
+	RET

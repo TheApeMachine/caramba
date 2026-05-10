@@ -1,0 +1,72 @@
+# Local Postgres + Electric sync for Caramba (dev).
+#
+# Run: docker compose up -d
+#
+# Postgres init (docker/postgres/init/*.sql) runs ONLY the first time the data volume is empty.
+# If you see no tables: connect with "-d electric" (not the default "postgres" DB), then either:
+#   ./scripts/apply-postgres-schema.sh
+# or reset the volume: docker compose down -v && docker compose up -d
+#
+# Electric is published on host port 3010 so it does not clash with Vite (pnpm dev on 3000).
+# Frontend env (see frontend/src/lib/research-projects-collection.ts):
+#   VITE_ELECTRIC_SHAPE_URL=http://127.0.0.1:3010/v1/shape
+#
+# Server env for inserts (TanStack createServerFn), from frontend/.env:
+#   DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54321/electric
+# Optional: RESEARCH_PROJECT_INSERT_URL=<HTTP API returning {"txid":number}> overrides direct DB inserts.
+#
+# Postgres: localhost:54321 user postgres / password postgres / db electric
+#
+# If research_projects existed before REPLICA IDENTITY FULL was added to init SQL:
+#   docker compose exec postgres psql -U postgres -d electric -c "ALTER TABLE research_projects REPLICA IDENTITY FULL;"
+
+name: caramba
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8118:8118"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        
+  postgres:
+    image: docker.io/postgres:16-alpine
+    environment:
+      POSTGRES_DB: electric
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "54321:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    command:
+      - postgres
+      - -c
+      - listen_addresses=*
+      - -c
+      - wal_level=logical
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d electric"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  electric:
+    image: docker.io/electricsql/electric:latest
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/electric?sslmode=disable
+      # Dev only — do not use in production without securing the Electric HTTP API.
+      ELECTRIC_INSECURE: "true"
+    ports:
+      - "3010:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

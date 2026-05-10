@@ -1,0 +1,14 @@
+manifest:
+  kind: Activation
+  name: GELU
+  description: GELU activation function
+  created: {{ .Created }}
+  updated: {{ .Updated }}
+  inputs:
+    - name: input
+      type: float
+      description: The input to the GELU activation function
+  outputs:
+    - name: output
+      type: float
+      description: The output of the GELU activation function

@@ -1,0 +1,145 @@
+package manifest
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
+)
+
+type scaleOp struct{ factor float64 }
+
+func (scale *scaleOp) Forward(_ []int, data ...[]float64) []float64 {
+	out := make([]float64, len(data[0]))
+
+	for index, value := range data[0] {
+		out[index] = value * scale.factor
+	}
+
+	return out
+}
+
+func TestCompiler_Compile(t *testing.T) {
+	Convey("Given a Compiler with an isolated operation registry", t, func() {
+		operationRegistry := NewOperationRegistry()
+
+		operationRegistry.Register("math.scale", func(cfg map[string]any) (operation.Operation, error) {
+			factor, _ := cfg["factor"].(float64)
+
+			return &scaleOp{factor: factor}, nil
+		})
+
+		root := t.TempDir()
+
+		write := func(rel, content string) {
+			path := filepath.Join(root, rel)
+			So(os.MkdirAll(filepath.Dir(path), 0o755), ShouldBeNil)
+			So(os.WriteFile(path, []byte(content), 0o644), ShouldBeNil)
+		}
+
+		compiler := NewCompilerWithRegistry(root, operationRegistry)
+
+		Convey("Compile", func() {
+			Convey("It should build a graph from a valid manifest", func() {
+				write("master.yml", `
+system:
+  topology:
+    type: GraphTopology
+    nodes:
+      - id: scale
+        op: math.scale
+        in: [x]
+        out: [y]
+        config:
+          factor: 3.0
+`)
+				graph, err := compiler.Compile("master.yml")
+				So(err, ShouldBeNil)
+				So(graph, ShouldNotBeNil)
+				So(graph.nodes, ShouldHaveLength, 1)
+			})
+
+			Convey("It should execute the graph correctly", func() {
+				write("master.yml", `
+system:
+  topology:
+    type: GraphTopology
+    nodes:
+      - id: scale
+        op: math.scale
+        in: [x]
+        out: [y]
+        config:
+          factor: 2.0
+`)
+				graph, err := compiler.Compile("master.yml")
+				So(err, ShouldBeNil)
+
+				result, err := graph.Execute(map[string][]float64{"x": {1, 2, 3, 4}}, []int{4})
+				So(err, ShouldBeNil)
+				So(result["y"], ShouldResemble, []float64{2, 4, 6, 8})
+			})
+
+			Convey("It should return an error for an unknown operation", func() {
+				write("bad.yml", `
+system:
+  topology:
+    nodes:
+      - id: mystery
+        op: does.not.exist
+        in: [x]
+        out: [y]
+`)
+				_, err := compiler.Compile("bad.yml")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("It should return an error when system key is missing", func() {
+				write("nosystem.yml", "name: bare\n")
+				_, err := compiler.Compile("nosystem.yml")
+				So(err, ShouldNotBeNil)
+			})
+
+			Convey("It should return an error when topology lacks nodes", func() {
+				write("nonodes.yml", "system:\n  topology:\n    type: GraphTopology\n")
+				_, err := compiler.Compile("nonodes.yml")
+				So(err, ShouldNotBeNil)
+			})
+		})
+	})
+}
+
+func BenchmarkCompiler_Compile(b *testing.B) {
+	operationRegistry := NewOperationRegistry()
+
+	operationRegistry.Register("math.scale", func(cfg map[string]any) (operation.Operation, error) {
+		return &scaleOp{factor: 1.0}, nil
+	})
+
+	root := b.TempDir()
+	content := `
+system:
+  topology:
+    nodes:
+      - id: s
+        op: math.scale
+        in: [x]
+        out: [y]
+        config:
+          factor: 1.0
+`
+
+	manifestPath := filepath.Join(root, "bench.yml")
+
+	_ = os.WriteFile(manifestPath, []byte(content), 0o644)
+
+	compiler := NewCompilerWithRegistry(root, operationRegistry)
+
+	b.ResetTimer()
+
+	for repeat := 0; repeat < b.N; repeat++ {
+		_, _ = compiler.Compile("bench.yml")
+	}
+}

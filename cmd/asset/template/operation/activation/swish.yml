@@ -1,0 +1,14 @@
+manifest:
+  kind: Activation
+  name: Swish
+  description: Swish activation function
+  created: {{ .Created }}
+  updated: {{ .Updated }}
+  inputs:
+    - name: input
+      type: float
+      description: The input to the Swish activation function
+  outputs:
+    - name: output
+      type: float
+      description: The output of the Swish activation function

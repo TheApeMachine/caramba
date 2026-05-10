@@ -1,0 +1,14 @@
+manifest:
+  kind: Activation
+  name: ReLU
+  description: ReLU activation function
+  created: {{ .Created }}
+  updated: {{ .Updated }}
+  inputs:
+    - name: input
+      type: float
+      description: The input to the ReLU activation function
+  outputs:
+    - name: output
+      type: float
+      description: The output of the ReLU activation function
