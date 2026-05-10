@@ -214,15 +214,18 @@ async def commit(self, approval: Approval) -> Model:
     txn = await self.storage.beginTransaction()
     
     try:
-        # Write all artifacts atomically
+        # Write all artifacts atomically — serialize payloads off-thread/async so commits never block UI/workers while buffers are hydrated.
         for protocol_id, weights in self.weights.items():
             await txn.put(f"weights/{protocol_id}.safetensors", weights)
         
         for protocol_id, metrics in self.metrics.items():
             await txn.put(f"metrics/{protocol_id}.json", metrics)
         
-        await txn.put("ledger/events.jsonl", self.ledger.serialize())
-        await txn.put("model.capnp", self.build_index().serialize())
+        ledger_blob = await self.ledger.serialize()
+        index_blob = await self.build_index().serialize()
+
+        await txn.put("ledger/events.jsonl", ledger_blob)
+        await txn.put("model.capnp", index_blob)
         
         await txn.commit()
         

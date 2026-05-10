@@ -1,6 +1,7 @@
 package math
 
 import (
+	"fmt"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -28,24 +29,43 @@ func TestOuter_Forward(t *testing.T) {
 				out := op.Forward([]int{3, 3}, []float64{1, -1, 1}, []float64{1, -1, 1})
 				So(out, ShouldResemble, []float64{1, -1, 1, -1, 1, -1, 1, -1, 1})
 			})
+
+			Convey("It should handle single-element vectors", func() {
+				out := op.Forward([]int{1, 1}, []float64{3}, []float64{4})
+				So(out, ShouldResemble, []float64{12})
+			})
+
+			Convey("It should handle a row containing zeros", func() {
+				out := op.Forward([]int{2, 2}, []float64{0, 1}, []float64{5, 7})
+				So(out, ShouldResemble, []float64{0, 0, 5, 7})
+			})
+
+			Convey("It should return empty for zero dimensions", func() {
+				out := op.Forward([]int{0, 0}, []float64{}, []float64{})
+				So(len(out), ShouldEqual, 0)
+			})
 		})
 	})
 }
 
 func BenchmarkOuter_Forward(b *testing.B) {
 	op := NewOuter()
-	N := 128
-	a := make([]float64, N)
-	bb := make([]float64, N)
+	// sizes to cover SIMD stride boundaries
+	sizes := []int{32, 64, 128, 256, 512}
 
-	for idx := range N {
-		a[idx] = float64(idx%2*2 - 1)
-		bb[idx] = float64(idx%2*2 - 1)
-	}
-
-	b.ResetTimer()
-
-	for repeat := 0; repeat < b.N; repeat++ {
-		op.Forward([]int{N, N}, a, bb)
+	for _, N := range sizes {
+		N := N
+		b.Run(fmt.Sprintf("N=%d", N), func(b *testing.B) {
+			vecA := make([]float64, N)
+			vecB := make([]float64, N)
+			for idx := range N {
+				vecA[idx] = float64(idx%2*2 - 1)
+				vecB[idx] = float64(idx%2*2 - 1)
+			}
+			b.ResetTimer()
+			for range b.N {
+				op.Forward([]int{N, N}, vecA, vecB)
+			}
+		})
 	}
 }

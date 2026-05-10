@@ -12,11 +12,10 @@ func TestHebbian_Step(t *testing.T) {
 		Convey("Step", func() {
 			Convey("It should strengthen correlated weights", func() {
 				opt := NewHebbian(0.1, 0)
-				// pre*post signal: both positive → weight grows
 				params := []float64{0.0}
-				grads := []float64{1.0} // outer product signal
+				grads := []float64{1.0}
 				out := opt.Step(params, grads)
-				So(out[0], ShouldBeGreaterThan, params[0])
+				So(out[0], ShouldAlmostEqual, 0.1)
 			})
 
 			Convey("It should clip weights when MaxNorm is set", func() {
@@ -43,7 +42,7 @@ func TestOjaRule_Step(t *testing.T) {
 				for idx := range params {
 					params[idx] = 0.5
 				}
-				for range 1000 {
+				for range 5000 {
 					// simulate unit post-synaptic activity
 					grads := make([]float64, 4)
 					for idx := range grads {
@@ -51,12 +50,12 @@ func TestOjaRule_Step(t *testing.T) {
 					}
 					params = opt.Step(params, grads)
 				}
-				// weight norm should converge rather than diverge
+				// weight norm should converge to ~1.0 (unit sphere)
 				norm := 0.0
 				for _, v := range params {
 					norm += v * v
 				}
-				So(stdmath.Sqrt(norm), ShouldBeLessThan, 10.0)
+				So(stdmath.Sqrt(norm), ShouldAlmostEqual, 1.0, 0.1)
 			})
 		})
 	})

@@ -10,6 +10,9 @@ type Sign struct{}
 func NewSign() *Sign { return &Sign{} }
 
 func (op *Sign) Forward(shape []int, data ...[]float64) []float64 {
+	if len(data) == 0 || len(data[0]) == 0 {
+		return nil
+	}
 	out := make([]float64, len(data[0]))
 	signVec(out, data[0])
 	return out

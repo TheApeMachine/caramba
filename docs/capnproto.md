@@ -140,13 +140,21 @@ When everything speaks in Cap’n Proto messages:
 
 ## Build/CI: schema validation
 
-Even though Python doesn’t typically check in generated code, it’s still valuable to ensure schemas compile:
+Even though Python doesn’t typically check in generated code, it’s still valuable to ensure schemas compile.
+
+For CI you can validate without emitting C++ by using the **`capnpc-capnp`** plugin (same parsing rules as codegen, **no `.h` / `.c++` outputs**):
+
+```bash
+capnp compile -ocapnp path/to/schema.capnp
+```
+
+The classic codegen check remains available when you do want emitted sources:
 
 ```bash
 capnp compile -oc++ path/to/schema.capnp
 ```
 
-This is a **syntax/consistency check** and catches issues early (bad imports, invalid field numbers, etc.).
+Either path is a **syntax/consistency check** (bad imports, invalid field numbers, etc.); **`-ocapnp` is preferable in pipelines that should not clutter the tree with generated C++**.
 
 ## References
 

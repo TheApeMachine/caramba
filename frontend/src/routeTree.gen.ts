@@ -17,6 +17,7 @@ import { Route as ResearchNewRouteImport } from './routes/research/new'
 import { Route as ResearchEditRouteImport } from './routes/research/edit'
 import { Route as PaperEditRouteImport } from './routes/paper/edit'
 import { Route as ApiAssistantRouteImport } from './routes/api/assistant'
+import { Route as ApiComputeOptimizerRouteImport } from './routes/api/compute/optimizer'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -58,6 +59,11 @@ const ApiAssistantRoute = ApiAssistantRouteImport.update({
   path: '/api/assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
+  id: '/api/compute/optimizer',
+  path: '/api/compute/optimizer',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/research/paper': typeof ResearchPaperRoute
   '/docs/': typeof DocsIndexRoute
   '/research/': typeof ResearchIndexRoute
+  '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/research/paper': typeof ResearchPaperRoute
   '/docs': typeof DocsIndexRoute
   '/research': typeof ResearchIndexRoute
+  '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/research/paper': typeof ResearchPaperRoute
   '/docs/': typeof DocsIndexRoute
   '/research/': typeof ResearchIndexRoute
+  '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/research/paper'
     | '/docs/'
     | '/research/'
+    | '/api/compute/optimizer'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/research/paper'
     | '/docs'
     | '/research'
+    | '/api/compute/optimizer'
   id:
     | '__root__'
     | '/'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/research/paper'
     | '/docs/'
     | '/research/'
+    | '/api/compute/optimizer'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -132,6 +144,7 @@ export interface RootRouteChildren {
   ResearchPaperRoute: typeof ResearchPaperRoute
   DocsIndexRoute: typeof DocsIndexRoute
   ResearchIndexRoute: typeof ResearchIndexRoute
+  ApiComputeOptimizerRoute: typeof ApiComputeOptimizerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -192,6 +205,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/compute/optimizer': {
+      id: '/api/compute/optimizer'
+      path: '/api/compute/optimizer'
+      fullPath: '/api/compute/optimizer'
+      preLoaderRoute: typeof ApiComputeOptimizerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -204,6 +224,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResearchPaperRoute: ResearchPaperRoute,
   DocsIndexRoute: DocsIndexRoute,
   ResearchIndexRoute: ResearchIndexRoute,
+  ApiComputeOptimizerRoute: ApiComputeOptimizerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

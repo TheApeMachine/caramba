@@ -9,19 +9,21 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
-	"github.com/theapemachine/caramba/backend/compute"
+	"github.com/theapemachine/caramba/pkg/backend/architecture"
+	"github.com/theapemachine/caramba/pkg/backend/compute"
 )
 
 /*
 Server is the main server for the API.
 */
 type Server struct {
-	app      *fiber.App
-	handlers map[string]Service
+	app          *fiber.App
+	compute      *compute.Service
+	architecture *architecture.Service
 }
 
 /*
-NewServer creates a new Server with the default handlers.
+NewServer creates a new Server.
 */
 func NewServer() *Server {
 	return &Server{
@@ -29,11 +31,10 @@ func NewServer() *Server {
 			CaseSensitive: true,
 			StrictRouting: true,
 			ServerHeader:  "Fiber",
-			AppName:       "Test App v1.0.1",
+			AppName:       "Caramba v1.0.0",
 		}),
-		handlers: map[string]Service{
-			"operation": compute.NewService(),
-		},
+		compute:      compute.NewService(),
+		architecture: architecture.NewService(),
 	}
 }
 
@@ -48,27 +49,15 @@ func (server *Server) Up() error {
 		favicon.New(),
 	)
 
-	server.app.Get(
-		"/backend/compute/:operation",
-		timeout.New(func(ctx fiber.Ctx) (err error) {
-			handler := server.handlers[ctx.Params("operation")]
+	wrap := func(h func(fiber.Ctx) error) fiber.Handler {
+		return timeout.New(h, timeout.Config{Timeout: 2 * time.Second})
+	}
 
-			if handler == nil {
-				return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
-					"error": "Operation not found",
-				})
-			}
+	server.app.Get("/backend/compute/:kind", wrap(server.compute.Request))
 
-			if err = handler.Request(ctx); err != nil {
-				return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error": err.Error(),
-				})
-			}
-
-			return nil
-		}, timeout.Config{
-			Timeout: 2 * time.Second,
-		}))
+	server.app.Get("/backend/architecture", wrap(server.architecture.List))
+	server.app.Get("/backend/architecture/:name", wrap(server.architecture.Load))
+	server.app.Post("/backend/architecture/:name", wrap(server.architecture.Save))
 
 	return server.app.Listen(":8118")
 }

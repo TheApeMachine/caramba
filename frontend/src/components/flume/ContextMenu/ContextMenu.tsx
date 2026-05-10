@@ -90,7 +90,7 @@ function ContextMenuFilteredBody({
 	const filteredItems = Autocomplete.useFilteredItems();
 
 	const renderItem = (item: SelectOption) => (
-		<CommandItem value={item} onClick={() => onPick(item)}>
+		<CommandItem key={item.value} value={item} onClick={() => onPick(item)}>
 			<div className="flex min-w-0 flex-col gap-0.5 text-left">
 				<span>{item.label}</span>
 				{item.description ? (

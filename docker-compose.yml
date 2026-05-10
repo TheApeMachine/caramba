@@ -27,6 +27,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    command: ["./main", "serve"]
     ports:
       - "8118:8118"
     depends_on:

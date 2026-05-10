@@ -374,13 +374,13 @@ Which examples are easy? Which are hard? Which are the model memorizing?
 
 ---
 
-## 6. The "Learning Curve Microscope" — What's Being Learned When?
+## 6. Emergence Tracker — What's Being Learned When?
 
 Track when specific capabilities emerge:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  CAPABILITY EMERGENCE TRACKER                                               │
+│  EMERGENCE TRACKER                                                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Tracking capabilities across training:                                     │

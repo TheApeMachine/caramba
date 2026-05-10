@@ -354,16 +354,6 @@ TEXT ·signVecSSE2(SB), NOSPLIT, $0-48
 	JL   tail_sign2
 loop_sign2:
 	MOVUPD (DI), X0
-	MOVAPD X0, X1
-	MOVAPD X0, X2
-	CMPPD  $1, X15, X1                 // X1 = src > 0
-	CMPPD  $1, X0,  X2                 // X2 = 0 > src (src < 0); note: args reversed
-	// CMPPD $1 is LT_OS: dst[i] < src[i], so: X2: X15 < X0 means 0 < src → positive
-	// We need negative: src < 0 → X15 > X0 → use pred $2 (LE) or swap
-	// Redo: X1 = (X0 > X15): CMPPD $6 (NLE = GT)
-	// X2 = (X15 > X0): compare X15 and X0 with NLE
-	// Go asm doesn't have CMPPD with immediate easily — use CMPLTPD
-	// Recompute cleanly:
 	MOVAPD X15, X3
 	CMPLTPD X0, X3                     // X3 = 0 < src (positive mask)
 	MOVAPD  X0, X4
@@ -604,48 +594,6 @@ loop_dv2:
 done_dv2:
 	RET
 
-// l2NormSqAVX2(a []float64) float64  — sum(a[i]^2)
-// ABI0: a+0(FP), a_len+8(FP), a_cap+16(FP), ret+24(FP)
-TEXT ·l2NormSqAVX2(SB), NOSPLIT, $0-32
-	MOVQ   a+0(FP), AX
-	MOVQ   a_len+8(FP), BX
-	VXORPD Y0, Y0, Y0
-	CMPQ   BX, $4
-	JL     done_l2a
-loop_l2a:
-	VMOVUPD (AX), Y1
-	VFMADD231PD Y1, Y1, Y0
-	ADDQ $32, AX
-	SUBQ $4, BX
-	CMPQ BX, $4
-	JGE  loop_l2a
-done_l2a:
-	VEXTRACTF128 $1, Y0, X1
-	VADDPD X1, X0, X0
-	VHADDPD X0, X0, X0
-	MOVSD  X0, ret+24(FP)
-	VZEROUPPER
-	RET
-
-// l2NormSqSSE2(a []float64) float64
-TEXT ·l2NormSqSSE2(SB), NOSPLIT, $0-32
-	MOVQ  a+0(FP), AX
-	MOVQ  a_len+8(FP), BX
-	XORPS X0, X0
-	CMPQ  BX, $2
-	JL    done_l2b
-loop_l2b:
-	MOVUPD (AX), X1
-	MULPD  X1, X1
-	ADDPD  X1, X0
-	ADDQ $16, AX
-	SUBQ $2, BX
-	CMPQ BX, $2
-	JGE  loop_l2b
-done_l2b:
-	HADDPD X0, X0
-	MOVSD  X0, ret+24(FP)
-	RET
 
 // clampVecAVX2(dst []float64, lo, hi float64)
 // ABI0: dst+0(FP), dst_len+8(FP), dst_cap+16(FP), lo+24(FP), hi+32(FP)

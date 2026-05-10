@@ -60,7 +60,7 @@ If you want a crisp contract boundary:
   - artifacts (checkpoints, eval reports, plots)
   - derived metrics and diagnostics
 
-This is the seam where Cap’n Proto becomes extremely valuable:
+This is the seam where Cap’n Proto becomes extremely valuable—**Cap’n Proto** (“Cap’n Proto is a fast data interchange format and RPC system”; see [`https://capnproto.org/`](https://capnproto.org/)):
 
 - Plans and records can be defined as **Cap’n Proto structs**.
 - Components can communicate via **typed messages** and/or **capabilities** while keeping the same conceptual split.

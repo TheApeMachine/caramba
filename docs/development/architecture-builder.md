@@ -78,7 +78,7 @@ The editor should be the primary way to build architectures—not a "nice to hav
 │  │  ✓ Graph is connected                                                │   │
 │  │  ✓ All required inputs provided                                      │   │
 │  │  ✓ Shapes are compatible                                             │   │
-│  │  ⚠ W_q.d_out (2048) ≠ n_heads × d_head (32 × 64 = 2048) — OK        │   │
+│  │  ✓ W_q.d_out (2048) = n_heads × d_head (32 × 64 = 2048) — aligned   │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -126,18 +126,35 @@ def infer_shapes(graph: GraphTopology, input_shapes: dict[str, Shape]) -> dict[s
     Given input shapes, propagate through the graph.
     Returns shape at every node output.
     """
-    shapes = {}
-    
-    for node in topological_sort(graph.nodes):
-        input_shapes_for_node = [shapes[inp] for inp in node.inputs]
+    shapes = dict(input_shapes)
+
+    try:
+        ordered_nodes = topological_sort(graph.nodes)
+    except Exception as exc:  # graphlib.CycleError, missing deps, etc.
+        raise ValueError("infer_shapes requires an acyclic graph with resolvable deps") from exc
+
+    graph_inputs = getattr(graph, "inputs", ()) or ()
+
+    for name in graph_inputs:
+        if name not in shapes:
+            raise ValueError(f"missing inferred shape for graph input `{name}`")
+
+    for node in ordered_nodes:
+        missing = [inp for inp in node.inputs if inp not in shapes]
+
+        if missing:
+            raise ValueError(f"cannot infer `{node.op}` — missing upstream shapes for {missing}")
+
+        resolved_inputs = [shapes[inp] for inp in node.inputs]
         output_shapes = infer_node_output_shapes(
             op=node.op,
             config=node.config,
-            input_shapes=input_shapes_for_node,
+            input_shapes=resolved_inputs,
         )
+
         for name, shape in zip(node.outputs, output_shapes):
             shapes[name] = shape
-    
+
     return shapes
 ```
 
@@ -176,6 +193,29 @@ Drag-and-drop common patterns:
 
 A template is just a pre-wired sub-graph with configurable variables.
 
+#### Template schema (canonical = manifest-aligned YAML)
+
+Treat every template manifest as **`GraphTopology` inside the same YAML envelope shipped to **`/api/manifest`/save**:
+
+```yaml
+version: editor-template/v1            # tooling header (ignored by compilers if unrecognized)
+topology:
+  type: GraphTopology
+  inputs: [x]
+  nodes: []                            # mirrored from editor selection
+variables:                             # surfaced to UI sliders / forms
+  d_model:
+    type: int
+    default: 2048
+    min: 256
+    max: 8192
+    expose: true
+    label: "Hidden size"
+expose_policy: annotated               # each node/config key gains optional `expose: bool`
+```
+
+Declarative knobs follow **`{ name → { type, default, min/max/bounds?, label?, expose }}`**. **`expose: false`** pins constants that never appear in condensed UI; **`expose: true`** mandates editor controls backed by manifests. Serialization round-trips verbatim through loader validation so infra and UI share one structure.
+
 ### 4. Sub-Graph Grouping (Blocks)
 
 Select multiple nodes → "Group into Block":
@@ -200,6 +240,8 @@ Blocks can be:
 - Collapsed for cleaner view
 - Saved as templates
 - Repeated (with weight sharing options)
+
+**Block bundle schema:** extend the canonical manifest fragment with deterministic editor metadata (`block_id`, `instances[]`, `"sharedWeights": [{"source": "..", "target": ".."}]`). Serialized JSON/YAML snapshots always include **`nodes[].id`, port wiring (`node.in/out`), flattened `topology.variables` substitutions, plus weight-sharing arcs** (`sharedWeights[].templateBinding`) so reloading reproduces semantics bit-for-bit. Treat this as **`GraphTopology` + `attachments.editor.block`** to avoid drifting from production manifests.
 
 ### 5. Live Validation
 
@@ -249,8 +291,41 @@ Without training, just validate the architecture compiles and runs:
 │  • Activations: 67 MB (batch=1)                                             │
 │  • Peak: 612 MB                                                             │
 │                                                                             │
+│  Failure playbook (surfaced uniformly in JSON payloads + UI badges):       │
+│  • Compilation failure — status=failed stage=compile code=GRAPH_COMPILE_*   │
+│      errorType=graph_compile message="unsupported op XYZ" diagnostics=[…]    │
+│      suggestedFix=["pin manifest hash", …] ux=inspector banner + toast     │
+│      exitCode=65 http=424 retry=after manifest fix                           │
+│  • Runtime error — stage=runtime code=GRAPH_RUNTIME_SHAPE / *_OOM           │
+│      message actionable ("increase shard", shrink batch) retry=guided      │
+│  • Timeout — `timeoutSeconds` breached → status=timed_out code=GRAPH_TIME  │
+│      abort downstream kernels, omit partial logits, keep compile artifacts   │
+│  • Partial failure — per-stage booleans `{compile,allocate,launch,finalize}` │
+│      machine.codes[] + friendly summary; UX=log drawer with jump-to-node     │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Performance & Accessibility (non-functional requirements)
+
+### Performance
+
+- **Canvas virtualization / culling** — only lay out viewport ± buffer; LOD collapse far nodes.
+- **Incremental validation** — diff invalidates subgraphs touching edited edges instead of re-walking thousands of stale nodes (`infer_shapes` only for dirty SCCs).
+- **Lazy shape propagation** — schedule `infer_node_output_shapes` after quiet period; hydrate inspector on-demand.
+- **Large graphs (`>500` ops)** — batch manifest saves, offload layout to Web Worker/async jobs, throttle auto-layout previews.
+
+Acceptance telemetry: FPS floor, keystroke→validation latency SLA, autosave jitter.
+
+### Accessibility
+
+- **Keyboard** — deterministic tab order Ops → Canvas → Inspector; shortcuts `⌘/` for picker, arrows for marquee nudge (`aria-keyshortcuts` documented).
+- **Focus management** — modals/tests return focus via `restoreFocus`; announce validation errors politely (`role="alert"` scoped to inspector).
+- **ARIA semantics** — `aria-label` on nodes with op id + arity; templated rails expose `aria-describedby` strings.
+- **Screen reader narration** — live region summarizing `[Templates|Blocks]` drag targets and Test Run summaries.
+- **Inspector parity** — Node Configuration Panel, Templates rail, Blocks panel, Live Validation banners all expose named regions + instructions.
+
+Automate with **axe**/Playwright ARIA assertions in CI for critical flows.
 
 ## Implementation Priority
 

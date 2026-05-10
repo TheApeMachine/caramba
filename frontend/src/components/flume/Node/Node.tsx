@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, Maximize2Icon, Minimize2Icon, NetworkIcon } from "lucide-react";
 import type { RefObject } from "react";
 import React from "react";
 import { createPortal } from "react-dom";
@@ -16,6 +16,7 @@ import {
 	EditorIdContext,
 	NodeDispatchContext,
 	NodeTypesContext,
+	PortTypesContext,
 	StageContext,
 	useEdgeRouting,
 } from "#/components/flume/context";
@@ -26,6 +27,7 @@ import type {
 	Coordinate,
 	InputData,
 	NodeHeaderRenderCallback,
+	NodeMap,
 	SelectOption,
 } from "#/components/flume/types";
 import { Card, CardPanel } from "#/components/ui/card";
@@ -49,6 +51,14 @@ import ContextMenu from "../ContextMenu/ContextMenu";
 import Draggable from "../Draggable/Draggable";
 import IoPorts from "../IoPorts/IoPorts";
 
+/* Lazy to avoid circular dep — NodeEditor imports Node */
+const NodeEditor = React.lazy(
+	() => import("../NodeEditor").then((m) => ({ default: m.NodeEditor })),
+);
+
+const SUBGRAPH_WIDTH = 560;
+const SUBGRAPH_HEIGHT = 360;
+
 interface NodeProps {
 	id: string;
 	width: number;
@@ -61,6 +71,7 @@ interface NodeProps {
 	onDragStart: () => void;
 	renderNodeHeader?: NodeHeaderRenderCallback;
 	root?: boolean;
+	subGraph?: NodeMap;
 }
 
 const Node = ({
@@ -75,17 +86,27 @@ const Node = ({
 	root,
 	onDragStart,
 	renderNodeHeader,
+	subGraph,
 }: NodeProps) => {
 	const cache = React.useContext(CacheContext) ?? undefined;
 	const nodeTypes = React.useContext(NodeTypesContext) ?? {};
+	const portTypes = React.useContext(PortTypesContext) ?? {};
 	const nodesDispatch = React.useContext(NodeDispatchContext);
 	const editorId = React.useContext(EditorIdContext);
 	const stageState = React.useContext(StageContext) ?? {
 		scale: 0,
 		translate: { x: 0, y: 0 },
 	};
+
 	const currentNodeType = nodeTypes[type];
 	const edgeRouting = useEdgeRouting();
+	const isBlock = Boolean(
+		currentNodeType?.defaultSubGraph ||
+		currentNodeType?.category === "memory" ||
+		String(currentNodeType?.type ?? "").startsWith("block."),
+	);
+
+
 	const {
 		label,
 		deletable,
@@ -96,10 +117,9 @@ const Node = ({
 
 	const nodeWrapper = React.useRef<HTMLDivElement>(null);
 	const [menuOpen, setMenuOpen] = React.useState(false);
-	const [menuCoordinates, setMenuCoordinates] = React.useState({
-		x: 0,
-		y: 0,
-	});
+	const [menuCoordinates, setMenuCoordinates] = React.useState({ x: 0, y: 0 });
+	const [subGraphOpen, setSubGraphOpen] = React.useState(false);
+	const [subGraphFullscreen, setSubGraphFullscreen] = React.useState(false);
 
 	const byScale = (value: number) => (1 / stageState.scale) * value;
 
@@ -109,48 +129,31 @@ const Node = ({
 	) => {
 		Object.entries(transput).forEach(([portName, outputs]) => {
 			outputs.forEach((output) => {
-				const toRect = getPortRect(
-					id,
-					portName,
-					isOutput ? "output" : "input",
-					cache,
-				);
-				const fromRect = getPortRect(
-					output.nodeId,
-					output.portName,
-					isOutput ? "input" : "output",
-					cache,
-				);
+				const toRect = getPortRect(id, portName, isOutput ? "output" : "input", cache);
+				const fromRect = getPortRect(output.nodeId, output.portName, isOutput ? "input" : "output", cache);
 				const fromHalfW = (fromRect?.width ?? 0) / 2;
 				const fromHalfH = (fromRect?.height ?? 0) / 2;
 				const toHalfW = (toRect?.width ?? 0) / 2;
 				const toHalfH = (toRect?.height ?? 0) / 2;
-				let combined: string;
-				if (isOutput) {
-					combined = id + portName + output.nodeId + output.portName;
-				} else {
-					combined = output.nodeId + output.portName + id + portName;
-				}
+				const combined = isOutput
+					? id + portName + output.nodeId + output.portName
+					: output.nodeId + output.portName + id + portName;
 				let cnx: SVGPathElement | Connections | null;
 				const cachedConnection = cache?.current?.connections[combined];
 				if (cachedConnection) {
 					cnx = cachedConnection;
 				} else {
-					cnx = document.querySelector<SVGPathElement>(
-						`[data-connection-id="${combined}"]`,
-					);
+					cnx = document.querySelector<SVGPathElement>(`[data-connection-id="${combined}"]`);
 					if (cnx && cache && cache.current) {
 						cache.current.connections[combined] = cnx;
 					}
 				}
-
 				const sx = stageRect.current?.x ?? 0;
 				const sy = stageRect.current?.y ?? 0;
 				const sHw = (stageRect.current?.width ?? 0) / 2;
 				const sHh = (stageRect.current?.height ?? 0) / 2;
 				const tx = byScale(stageState.translate.x);
 				const ty = byScale(stageState.translate.y);
-
 				const from = {
 					x: byScale((fromRect?.x ?? 0) - sx + fromHalfW - sHw) + tx,
 					y: byScale((fromRect?.y ?? 0) - sy - sHh + fromHalfH) + ty,
@@ -168,11 +171,7 @@ const Node = ({
 						: undefined;
 				const obstaclesHorizontal =
 					edgeRouting === "orthogonal" && connStage
-						? collectDomObstacleRects(
-								connStage,
-								stageState.scale,
-								new Set([id, output.nodeId]),
-							)
+						? collectDomObstacleRects(connStage, stageState.scale, new Set([id, output.nodeId]))
 						: undefined;
 				cnx?.setAttribute(
 					"d",
@@ -210,10 +209,6 @@ const Node = ({
 		}
 	};
 
-	const startDrag = () => {
-		onDragStart();
-	};
-
 	const handleContextMenu = (e: MouseEvent | React.MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
@@ -222,15 +217,10 @@ const Node = ({
 		return false;
 	};
 
-	const closeContextMenu = () => {
-		setMenuOpen(false);
-	};
+	const closeContextMenu = () => setMenuOpen(false);
 
 	const deleteNode = () => {
-		nodesDispatch?.({
-			type: NodesActionType.REMOVE_NODE,
-			nodeId: id,
-		});
+		nodesDispatch?.({ type: NodesActionType.REMOVE_NODE, nodeId: id });
 	};
 
 	const handleMenuOption = ({ value }: SelectOption) => {
@@ -243,12 +233,26 @@ const Node = ({
 		}
 	};
 
+	const handleSubGraphChange = React.useCallback(
+		(next: NodeMap) => {
+			nodesDispatch?.({
+				type: NodesActionType.SET_NODE_SUBGRAPH,
+				nodeId: id,
+				subGraph: next,
+			});
+		},
+		[id, nodesDispatch],
+	);
+
 	const suppressEmbeddedPortControlPrep = React.useCallback(
-		(e: React.MouseEvent<HTMLDivElement>) =>
-			Boolean(
-				e.target instanceof Element &&
-					e.target.closest("button, input, textarea, select, option"),
-			),
+		(e: React.MouseEvent<HTMLDivElement>) => {
+			if (!(e.target instanceof Element)) return false;
+			if (e.target.closest("button, input, textarea, select, option")) return true;
+			// Suppress only when the click originates inside the nested sub-graph
+			// editor, not the outer stage that the block node itself lives in.
+			const subgraphContainer = e.currentTarget.querySelector("[data-subgraph-editor]");
+			return Boolean(subgraphContainer?.contains(e.target));
+		},
 		[],
 	);
 
@@ -267,14 +271,73 @@ const Node = ({
 		];
 	}, [id]);
 
+	const resolvedSubGraph = subGraph ?? currentNodeType?.defaultSubGraph;
+
+	const subGraphEditor = resolvedSubGraph !== undefined && subGraphOpen ? (
+		<React.Suspense fallback={null}>
+			<NodeEditor
+				nodes={resolvedSubGraph}
+				nodeTypes={nodeTypes}
+				portTypes={portTypes}
+				onChange={handleSubGraphChange}
+				disableComments
+				disableFocusCapture
+				className="rounded-lg border border-border/48 bg-background/80"
+				style={{
+					width: SUBGRAPH_WIDTH,
+					height: SUBGRAPH_HEIGHT,
+					pointerEvents: "all",
+				}}
+			/>
+		</React.Suspense>
+	) : null;
+
+	const fullscreenOverlay =
+		resolvedSubGraph !== undefined && subGraphOpen && subGraphFullscreen && portalContainer
+			? createPortal(
+					<div className="fixed inset-0 z-50 flex flex-col bg-background">
+						<div className="flex items-center gap-3 border-b px-4 py-2 text-sm text-muted-foreground">
+							<NetworkIcon className="size-4" />
+							<span className="font-medium text-foreground">{label}</span>
+							<span className="flex-1">{description}</span>
+							<button
+								type="button"
+								onClick={() => setSubGraphFullscreen(false)}
+								className="ml-auto flex items-center gap-1.5 rounded px-2 py-1 hover:bg-muted/60"
+							>
+								<Minimize2Icon className="size-4" />
+								Exit full screen
+							</button>
+						</div>
+						<div className="min-h-0 flex-1">
+							<React.Suspense fallback={null}>
+								<NodeEditor
+									nodes={resolvedSubGraph}
+									nodeTypes={nodeTypes}
+									portTypes={portTypes}
+									onChange={handleSubGraphChange}
+									disableComments
+									className="h-full w-full"
+								/>
+							</React.Suspense>
+						</div>
+					</div>,
+					portalContainer,
+				)
+			: null;
+
+	const nodeWidth = subGraphOpen && !subGraphFullscreen
+		? Math.max(width, SUBGRAPH_WIDTH + 32)
+		: width;
+
 	return (
 		<Draggable
 			className="absolute left-0 top-0 cursor-default select-none"
 			style={{
-				width,
+				width: nodeWidth,
 				transform: `translate(${x}px, ${y}px)`,
 			}}
-			onDragStart={startDrag}
+			onDragStart={onDragStart}
 			onDrag={handleDrag}
 			onDragEnd={stopDrag}
 			innerRef={nodeWrapper}
@@ -287,7 +350,7 @@ const Node = ({
 			stageState={stageState}
 			stageRect={stageRect}
 		>
-			<Frame className="min-w-0 w-full max-w-xs">
+			<Frame className="min-w-0 w-full">
 				<FrameHeader className="gap-2 py-3">
 					<Collapsible defaultOpen={false}>
 						<CollapsibleTrigger
@@ -313,6 +376,7 @@ const Node = ({
 						</CollapsiblePanel>
 					</Collapsible>
 				</FrameHeader>
+
 				<Card>
 					<CardPanel>
 						<Form>
@@ -329,6 +393,41 @@ const Node = ({
 						</Form>
 					</CardPanel>
 				</Card>
+
+				{isBlock && (
+					<div className="border-t border-border/48 px-3 py-2">
+						<Flex.Row align="center" gap={2}>
+							<button
+								type="button"
+								onClick={() => setSubGraphOpen((v) => !v)}
+								className="flex flex-1 items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+							>
+								<NetworkIcon className="size-3.5" />
+								{subGraphOpen ? "Collapse operations" : "Expand operations"}
+							</button>
+							{subGraphOpen && (
+								<button
+									type="button"
+									onClick={() => setSubGraphFullscreen(true)}
+									className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+								>
+									<Maximize2Icon className="size-3.5" />
+									Full screen
+								</button>
+							)}
+						</Flex.Row>
+						{subGraphOpen && !subGraphFullscreen && (
+							<div
+								className="mt-2"
+								data-subgraph-editor
+								style={{ pointerEvents: "all" }}
+							>
+								{subGraphEditor}
+							</div>
+						)}
+					</div>
+				)}
+
 				<FrameFooter>
 					<Flex.Column fullWidth gap={3}>
 						<Flex.Column className="min-w-0 w-full" gap={1} fullWidth>
@@ -354,6 +453,9 @@ const Node = ({
 					</Flex.Column>
 				</FrameFooter>
 			</Frame>
+
+			{fullscreenOverlay}
+
 			{portalContainer && menuOpen
 				? createPortal(
 						<ContextMenu
@@ -365,8 +467,7 @@ const Node = ({
 											{
 												label: "Delete Node",
 												value: "deleteNode",
-												description:
-													"Deletes a node and all of its connections.",
+												description: "Deletes a node and all of its connections.",
 											},
 										]
 									: []),

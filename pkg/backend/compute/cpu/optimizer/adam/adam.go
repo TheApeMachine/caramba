@@ -28,6 +28,7 @@ func NewAdam(lr, beta1, beta2, eps, wd float64) *Adam {
 	return &Adam{LR: lr, Beta1: beta1, Beta2: beta2, Eps: eps, WD: wd}
 }
 
+// NewAdamW is identical to NewAdam; AdamW behaviour is enabled by passing wd > 0.
 func NewAdamW(lr, beta1, beta2, eps, wd float64) *Adam {
 	return NewAdam(lr, beta1, beta2, eps, wd)
 }

@@ -199,6 +199,8 @@ export interface NodeType {
 	/** Optional section title for context menus and other grouped pickers (e.g. "Hugging Face"). */
 	category?: string;
 	root?: boolean;
+	/** Pre-wired sub-graph seeded when this node type is first added to the canvas. */
+	defaultSubGraph?: NodeMap;
 }
 
 export type NodeTypeMap = { [nodeType: string]: NodeType };
@@ -260,6 +262,7 @@ export type FlumeNode = {
 	connections: Connections;
 	defaultNode?: boolean;
 	root?: boolean;
+	subGraph?: NodeMap;
 };
 
 export type DefaultNode = {

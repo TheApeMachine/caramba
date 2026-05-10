@@ -32,6 +32,7 @@ export enum NodesActionType {
 	HYDRATE_DEFAULT_NODES = "HYDRATE_DEFAULT_NODES",
 	SET_PORT_DATA = "SET_PORT_DATA",
 	SET_NODE_COORDINATES = "SET_NODE_COORDINATES",
+	SET_NODE_SUBGRAPH = "SET_NODE_SUBGRAPH",
 }
 
 const addConnection = (
@@ -337,6 +338,11 @@ export type NodesAction =
 			x: number;
 			y: number;
 			nodeId: string;
+	  }
+	| {
+			type: NodesActionType.SET_NODE_SUBGRAPH;
+			nodeId: string;
+			subGraph: NodeMap;
 	  };
 
 interface FlumeEnvironment {
@@ -439,6 +445,9 @@ const nodesReducer = (
 			if (nodeTypes[nodeType].root) {
 				newNode.root = true;
 			}
+			if (nodeTypes[nodeType].defaultSubGraph) {
+				newNode.subGraph = nodeTypes[nodeType].defaultSubGraph;
+			}
 			return {
 				...nodes,
 				[newNodeId]: newNode,
@@ -499,6 +508,17 @@ const nodesReducer = (
 					...nodes[nodeId],
 					x,
 					y,
+				},
+			};
+		}
+
+		case NodesActionType.SET_NODE_SUBGRAPH: {
+			const { nodeId, subGraph } = action;
+			return {
+				...nodes,
+				[nodeId]: {
+					...nodes[nodeId],
+					subGraph,
 				},
 			};
 		}

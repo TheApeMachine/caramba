@@ -299,6 +299,10 @@ export class FlumeConfig {
 			}
 		}
 
+		if (config.defaultSubGraph !== undefined) {
+			node.defaultSubGraph = config.defaultSubGraph;
+		}
+
 		this.nodeTypes[config.type] = node as NodeType;
 		return this;
 	}

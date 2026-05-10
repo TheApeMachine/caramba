@@ -19,7 +19,7 @@ Agents address the “loneliness + idea ingestion” part by providing a structu
 
 ## The “Research Team” interface
 
-The frontend presents a single conversation surface that can route to the “Big 3” LLM ecosystems (provider-backed personas).
+The frontend presents a single conversation surface that can route to major LLM providers—**OpenAI, Anthropic, and Google**—as provider-backed personas.
 
 The key requirement is **non-linear group discussion**:
 

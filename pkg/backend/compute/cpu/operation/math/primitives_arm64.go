@@ -127,9 +127,6 @@ func addScalarVecNEON(dst []float64, scalar float64)
 func divVecNEON(dst, a, b []float64)
 
 //go:noescape
-func l2NormSqNEON(a []float64) float64
-
-//go:noescape
 func clampVecNEON(dst []float64, lo, hi float64)
 
 func addScaledVec(dst, src []float64, scale float64) {
@@ -141,8 +138,11 @@ func addScaledVec(dst, src []float64, scale float64) {
 }
 
 func sqrtVec(dst, src []float64) {
+	n := len(src)
 	sqrtVecNEON(dst, src)
-	scalarSqrtTail(dst, src, (len(src)/2)*2)
+	if n%2 != 0 {
+		scalarSqrtTail(dst, src, n-1)
+	}
 }
 
 func addScalarVec(dst []float64, scalar float64) {
@@ -162,12 +162,7 @@ func divVec(dst, a, b []float64) {
 }
 
 func l2NormSq(a []float64) float64 {
-	n := len(a)
-	sum := l2NormSqNEON(a)
-	if n%2 != 0 {
-		sum += a[n-1] * a[n-1]
-	}
-	return sum
+	return reduceSumSq(a)
 }
 
 func clampVec(dst []float64, lo, hi float64) {

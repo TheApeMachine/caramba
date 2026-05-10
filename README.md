@@ -32,6 +32,8 @@ MANIFEST (driver) → PROTOCOL (actor) → MODEL (collector)
 | **Protocol** | Defines procedures for execution | How to execute, embeds the Manifest                        |
 | **Model**    | Outcome *and* ledger             | Architecture, weights, full audit trail, embeds everything |
 
+A **`.cbm` file** is the **Caramba model bundle**: the serialized weights plus manifests, protocol references, ledger slices, and other metadata/config needed to load, inspect (`caramba inspect model.cbm`), or share a Model as one artifact.
+
 The Model isn't just the output—it's the complete provenance. When you share a Model, you share its entire history. When you resume training, you resume from complete state, not a partial snapshot.
 
 → [Deep dive: Governance Model](./docs/governance.md)
@@ -78,7 +80,7 @@ The Notary maintains continuous custody over the entire research process. It is 
 
 1. **Submit** — Researcher submits a Manifest declaring intent
 2. **Validate** — Notary checks compatibility with Protocols and current Model state
-3. **Execute** — Experiment runs on a copy of the Model; weights update in place
+3. **Execute** — Experiment runs on a copy of the Model; weights are updated in the copy only (the original model is not modified).
 4. **Checkpoint** — At defined points, Notary validates against Protocol expectations
 5. **Commit or Void** — Pass: the copy becomes the new source of truth. Fail: the copy is destroyed, original remains untouched.
 
@@ -111,6 +113,8 @@ Consider the alternative:
 6. Six months later: *"wait, were these all from the same sweep?"*
 
 Caramba prevents this by design. A quick void and clean re-run is nearly always cheaper than discovering later that your published comparison had a confound you forgot about.
+
+**Recovery workflow (forward pointer):** when an intent voids, use the preserved attempt record ([Voiding Isn't Waste](#voiding-isnt-waste) below, plus [Notary & ledger](./docs/notary-ledger.md) for auditing) to inspect failures, adjust configs, then resubmit the **entire** atomic comparison—never a cherry-picked subset. Intermediate timelines, checkpoints, ledger entries, and failure diagnostics remain available until you explicitly supersede them with a verified run ([Validation & Trust](./docs/validation.md) lays out checkpoints and audit expectations).
 
 **There is no "approved" with an asterisk.**
 

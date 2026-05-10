@@ -1,40 +1,28 @@
 package operation
 
 import (
-	"os"
-
 	"github.com/gofiber/fiber/v3"
+	"github.com/theapemachine/caramba/pkg/asset"
 )
 
-type OperationSchema struct {
-	Name         string   `json:"name"`
-	Label        string   `json:"label"`
-	Description  string   `json:"description"`
-	InitialWidth int      `json:"initial_width"`
-	Inputs       []string `json:"inputs"`
-	Outputs      []string `json:"outputs"`
-}
+/*
+Service serves operation schemas to the frontend node graph editor.
+Schemas are derived dynamically from the embedded YAML manifests.
+*/
+type Service struct{}
 
-type Service struct {
-	operations map[string]Operation
-}
-
+/*
+NewService creates a new Service.
+*/
 func NewService() *Service {
-	return &Service{
-		operations: make(map[string]Operation),
-	}
+	return &Service{}
 }
 
 /*
-Request walks the operation directories to find all operations
-dynamically and hands them back to the caller. This is used to
-populate the frontend's node graph editor, where users can
-visually compose architectures.
+Request returns all operation schemas as JSON, keyed by op identifier.
 */
 func (service *Service) Request(ctx fiber.Ctx) error {
-	operations := make(map[string]OperationSchema)
-
-	dir, err := os.Open(".")
+	schemas, err := asset.Walk("template/operation")
 
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -42,32 +30,5 @@ func (service *Service) Request(ctx fiber.Ctx) error {
 		})
 	}
 
-	defer dir.Close()
-
-	files, err := dir.Readdir(0)
-
-	if err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
-
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		operation := service.operations[file.Name()]
-
-		if operation == nil {
-			continue
-		}
-
-		operations[file.Name()] = OperationSchema{
-			Name: file.Name(),
-		}
-		_ = operation
-	}
-
-	return ctx.JSON(operations)
+	return ctx.JSON(schemas)
 }

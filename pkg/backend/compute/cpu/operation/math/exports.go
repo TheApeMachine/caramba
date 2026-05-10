@@ -18,7 +18,7 @@ func SqrtVec(dst, src []float64) { sqrtVec(dst, src) }
 // AddScalarVec: dst[i] += scalar
 func AddScalarVec(dst []float64, scalar float64) { addScalarVec(dst, scalar) }
 
-// DivVec: dst[i] = a[i] / b[i]
+// DivVec: dst[i] = a[i] / b[i]; follows IEEE-754 — b[i]==0 yields ±Inf or NaN, no panic.
 func DivVec(dst, a, b []float64) { divVec(dst, a, b) }
 
 // L2NormSq: returns sum(a[i]^2)

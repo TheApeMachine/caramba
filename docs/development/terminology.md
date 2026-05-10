@@ -134,7 +134,10 @@ class Experiment:
         self.weights: dict[str, StateDict] = {}
         self.ledger = Ledger()
         self.metrics: dict[str, Metrics] = {}
-        # ... etc
+        self.protocols: list[Protocol] = []
+        self.benchmarks: dict[str, BenchmarkResult] = {}
+        self.analysis: Analysis | None = None
+        self.artifacts: list[Artifact] = []
         
         # Execution state (not persisted to Model)
         self.runs: dict[str, Run] = {}

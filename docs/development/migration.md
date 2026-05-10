@@ -209,8 +209,13 @@ compiler/         # Transformation logic
 # operation/registry.py
 OPERATION_REGISTRY: dict[str, type[Operation]] = {}
 
-def register_op(op_id: str):
+def register_op(op_id: str, *, force: bool = False):
     def decorator(cls):
+        if op_id in OPERATION_REGISTRY and not force:
+            raise ValueError(
+                f"operation `{op_id}` already registered ({OPERATION_REGISTRY[op_id].__name__})",
+            )
+
         OPERATION_REGISTRY[op_id] = cls
         return cls
     return decorator
@@ -224,23 +229,40 @@ class LinearOperation(Operation):
 ### 4. Worker Actor for Distribution
 
 ```capnp
+# actor/schema/run_results.capnp
+enum RejectionReason {
+  insufficientResources @0;
+  incompatibleBackend @1;
+  manifestValidationFailed @2;
+}
+
+struct AcceptResult {
+  union {
+    acceptedRun @0 :RunRef;
+    rejected @1 :RejectionReason;
+  }
+}
+
+struct RunEvent {}
+
+struct RunResult {}
+
+interface RunSubscriber {
+  onEvent @0 (event :RunEvent) -> ();
+  onComplete @1 (result :RunResult) -> ();
+  onError @2 (error :Text) -> ();
+}
+
 # actor/worker/worker.capnp
 interface Worker {
-  # Worker reports its capabilities
   getCapabilities @0 () -> (caps :WorkerCapabilities);
-  
-  # Accept a job
-  accept @1 (job :Job) -> (run :RunRef);
-  
-  # Health check
+  accept @1 (job :Job) -> (result :AcceptResult);
   ping @2 () -> (timestamp :UInt64);
+  shutdown @3 (gracePeriodMillis :UInt32) -> ();
 }
 
 interface RunRef {
-  # Stream events
   subscribe @0 (subscriber :RunSubscriber) -> ();
-  
-  # Control
   getMetrics @1 () -> (metrics :Metrics);
   pause @2 () -> ();
   resume @3 () -> ();
@@ -248,11 +270,25 @@ interface RunRef {
 }
 ```
 
-## Migration Path
+`Worker.accept`, `AcceptResult`, **`RunSubscriber`/`RunEvent`/`RunResult`**, and **`RunRef.subscribe`** interoperate—clients stream events, converge on completions, or surface structured errors emitted by backends.
 
-1. **Phase 1**: Create `schema/` with all Cap'n Proto data definitions
-2. **Phase 2**: Create `actor/` structure, move RPC code there
-3. **Phase 3**: Add operation registry, migrate operations to use `@register_op`
-4. **Phase 4**: Restructure `compiler/` to be a clean pipeline
-5. **Phase 5**: Implement `Experiment` and `Run` properly
-6. **Phase 6**: Add `Worker` actor for distribution
+### 5. Backward Compatibility & Rollbacks
+
+Legacy RPC endpoints stay routed during **Phase ≥2**, while decorators accept `force=True` only for migration shims. Keep manifest IDs stable when dual-registering transitional ops (**Phase ≥3**). Roll back any phase by removing its introduced directories, flipping feature guards, restoring old import aliases, then rerunning the previous toolchain entrypoint. **Phase 10** removes shims entirely and freezes documentation deltas.
+
+### 6. Migration Path (Phases + Gate Checklists)
+
+Below, each phase exits only once **three** artefacts pass simultaneously.
+
+| Phase | Goal | ✅ Unit Tests | ✅ Integration Tests | ✅ Acceptance Criteria |
+|-------|------|---------------|----------------------|-----------------------|
+| 1 | Canonical `schema/*.capnp` | Schema compile coverage | Produce/consume parity harness | Snapshot golden structs |
+| 2 | Actor shell + guarded RPC bridges | Capability negotiation tests | Failover drills with legacy clients | Smoke Notary stubs |
+| 3 | `register_op` guardrails | Duplicate registration errors | Manifest resolution across ops registry | Coverage on every `@register_op` path |
+| 4 | Compiler pipeline unification | Per-stage compilers unit suite | Perf regression manifests | Deterministic logs |
+| 5 | Experiment/`RunRef` choreography | Checkpoint fuzz + void drills | Replay identical seeds | Ledger trace equals golden |
+| 6 | Workers + clustering | Worker accept/`shutdown` mocks | Synthetic GPU fleets | Telemetry parity |
+| 7 | **CLI ships** (`cli/run.py`, `cli/status.py`, `cli/inspect.py`) | Argparse/unit snapshots | Thin e2e shell tests | Smoke `caramba run|status|inspect` |
+| 8 | **Telemetry/`training/` migration** (`telemetry/`, `training/`) relocations | SSE hook reorder tests | Training recipe smoke reruns | No PYTHONPATH hacks |
+| 9 | Harden dashboards + alerting | SLA metric unit tests | Staging rehearsal | Incident runbooks authored |
+| 10 | Compatibility cleanup | Delete shim dirs | Freeze CI baselines | Docs + migration note archived |

@@ -99,10 +99,10 @@ The Notary:
 - **Explains results**
   - if invalid, provide a minimal reason chain (“A depends on B; B cannot be validated because …”)
 - **Caches safely**
-  - caching is allowed, but cache entries are only valid relative to a specific ledger boundary
-  - caches must be invalidated by new ledger entries (because new evidence can change provability)
+  - caching uses **snapshot-based memoization**: a proof is keyed to a ledger **snapshot identifier** (“as-of” that head) rather than invalidated eagerly on each append.
+  - when the ledger advances, older cache entries remain valid **only relative to older snapshots**; answers for “truth right now” must be recomputed or served from proofs tied to **newer snapshots**.
 
-Important: caching is not “eager invalidation”. It’s memoizing proofs that are valid **as-of a ledger snapshot**.
+Important: caches should never pretend to prove something “globally”; they summarize **verification work for `snapshot = S`** until `snapshot` moves forward.
 
 ## Determination vs Outcome
 
@@ -110,6 +110,11 @@ We separate:
 
 - **Determination**: verification work (“I checked these invariants and got these results”)
 - **Outcome**: a notarial decision (“Given current ledger, claim C is provable / not provable”)
+
+**Example**
+
+- Determination: *“Verified checksum of artifact **A** matches hash **H** under manifest **M**.”*
+- Outcome: *“Ledger entry #1234 (HEAD): Notary confirms artifact **A** is admissible for claim **C**.”*
 
 In an append-only system, “Outcome” does not delete history; it creates a new ledger entry describing the Notary’s conclusion.
 

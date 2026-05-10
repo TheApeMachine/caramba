@@ -158,6 +158,7 @@ TEXT ·signVecNEON(SB), NOSPLIT, $0-48
 loop_sv:
 	FMOVD.P 8(R1), F0
 	FCMPD   F31, F0
+	BVS  nan_sv
 	BEQ  zero_sv
 	BMI  neg_sv
 	FMOVD.P F29, 8(R0)
@@ -167,6 +168,9 @@ neg_sv:
 	B    next_sv
 zero_sv:
 	FMOVD.P F31, 8(R0)
+	B    next_sv
+nan_sv:
+	FMOVD.P F0, 8(R0)
 next_sv:
 	SUBS $1, R2, R2
 	BNE  loop_sv
@@ -283,28 +287,6 @@ loop_dv:
 	SUBS $1, R4, R4
 	BNE  loop_dv
 done_dv:
-	RET
-
-// l2NormSqNEON(a []float64) float64
-// Returns sum(a[i]^2)
-// FMADDD Fm, Fa, Fn, Fd  ⟹  Fd = Fa + Fn*Fm
-// To compute F0 += F1*F1: FMADDD F1, F0, F1, F0
-// ABI0: a+0(FP)..16, ret+24(FP)
-TEXT ·l2NormSqNEON(SB), NOSPLIT, $0-32
-	MOVD  a+0(FP), R0
-	MOVD  a_len+8(FP), R1
-	FMOVD $0.0, F0
-	LSR   $1, R1, R2
-	CBZ   R2, done_l2
-loop_l2:
-	FMOVD.P 8(R0), F1
-	FMADDD  F1, F0, F1, F0
-	FMOVD.P 8(R0), F2
-	FMADDD  F2, F0, F2, F0
-	SUBS $1, R2, R2
-	BNE  loop_l2
-done_l2:
-	FMOVD F0, ret+24(FP)
 	RET
 
 // clampVecNEON(dst []float64, lo, hi float64)

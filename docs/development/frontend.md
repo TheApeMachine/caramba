@@ -1,6 +1,8 @@
-This is the right question. You're correct that real-time visualization of every weight update in a billion-parameter model is physically impossible—the data volume would be terabytes per second.
+This document outlines the design for an ML training visualization system framed as a research **microscope**: it never tries to visualize every tensor at training speed, yet still supports deep, query-driven inspection of what the model is doing.
 
-But "microscope" is the right metaphor. A microscope doesn't show you everything at once. It lets you:
+Real-time visualization of every weight update in a billion-parameter model remains physically impractical—the data volume would overwhelm any channel—but **microscopic** tooling can still expose what matters **on demand**, at the zoom level where questions become answerable.
+
+But "microscope" remains the operative metaphor because it matches how investigators actually work:
 
 1. **Zoom** to different magnifications
 2. **Focus** on specific regions
@@ -321,5 +323,21 @@ At different times, capture different granularities:
 6. **Annotation** — mark interesting findings, link to paper
 
 The real-time aspect is just the "heartbeat." The analysis is query-driven, computed on demand, and the results become part of the Model's audit trail.
+
+### Next Steps / Implementation Roadmap
+
+Adjacent to the microscope framing above (“What aspects would you want to prioritize first?”), tie work to sibling specs and phased delivery:
+
+- **Specs & infra:** [`compiler.md`](./compiler.md), [`architecture.md`](./architecture.md), [`architecture-builder.md`](./architecture-builder.md), [`migration.md`](./migration.md).
+- **Stack / runtime:** frontend uses **TanStack Start + Router** with **SSE** bridging to Cap’n-backed services (capture exact versions in whichever release checklist you attach to milestones).
+- **CI / deployments:** derive from workspace root automation (reuse the canonical pipeline README once published); snapshot environment expectations alongside feature flags controlling experimental UI shells.
+- **Tracking:** populate **Linear/Jira/epic IDs** on the canonical project board (placeholder until numbers exist: `TRACKER_BOARD_URL`).
+
+**Prioritized checklist (handoff)**
+
+1. PoC: live SSE heartbeat + timeline snapshot picker + anomaly drill-through path.
+2. Required APIs surfaced in Cap’n-RPC contracts (streaming metrics, replay queries).
+3. Instrumentation parity: trace IDs bridging UI actions ↔ backend executions.
+4. UX flows anchored in trust states (void → inspect → revise manifest → rerun).
 
 Does this framing help? What aspects would you want to prioritize first?

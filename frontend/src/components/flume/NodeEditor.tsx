@@ -69,6 +69,7 @@ interface NodeEditorProps {
 	className?: string;
 	edgeRoutingMode?: EdgeRoutingMode;
 	graphLayoutMode?: GraphLayoutMode;
+	style?: React.CSSProperties;
 }
 
 export const NodeEditor = React.forwardRef(
@@ -93,6 +94,7 @@ export const NodeEditor = React.forwardRef(
 			renderNodeHeader,
 			debug,
 			className,
+			style,
 			edgeRoutingMode = "smooth",
 			graphLayoutMode = "freeform",
 		}: NodeEditorProps,
@@ -220,6 +222,7 @@ export const NodeEditor = React.forwardRef(
 		return (
 			<Flex.Column
 				className={cn("min-h-0 flex-1", className)}
+				style={style}
 				fullHeight
 				fullWidth
 			>

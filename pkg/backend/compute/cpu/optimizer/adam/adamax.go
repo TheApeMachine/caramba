@@ -10,7 +10,7 @@ import (
 AdaMax uses the infinity norm for the second moment estimate.
 m  = β1*m + (1-β1)*g
 u  = max(β2*u, |g|)
-p -= (lr / (1-β1^t)) * m / u
+p -= (lr / (1-β1^t)) * m / (u + ε)
 */
 type AdaMax struct {
 	LR    float64
@@ -27,12 +27,14 @@ func NewAdaMax(lr, beta1, beta2, eps float64) *AdaMax {
 
 func (ax *AdaMax) Step(params, grads []float64) []float64 {
 	n := len(params)
-	ax.step++
 
-	if ax.m == nil {
+	if ax.m == nil || len(ax.m) != n {
 		ax.m = make([]float64, n)
 		ax.u = make([]float64, n)
+		ax.step = 0
 	}
+
+	ax.step++
 
 	prim.ScaleVec(ax.m, ax.Beta1)
 	prim.AddScaledVec(ax.m, grads, 1-ax.Beta1)

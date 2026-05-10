@@ -25,6 +25,16 @@ func TestSign_Forward(t *testing.T) {
 				out := op.Forward([]int{3}, []float64{-1.0, -2.0, -3.0})
 				So(out, ShouldResemble, []float64{-1, -1, -1})
 			})
+
+			Convey("It should return nil for an empty input", func() {
+				out := op.Forward([]int{0}, []float64{})
+				So(out, ShouldBeNil)
+			})
+
+			Convey("It should return nil when no data slices are provided", func() {
+				out := op.Forward([]int{3})
+				So(out, ShouldBeNil)
+			})
 		})
 	})
 }

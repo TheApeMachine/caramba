@@ -32,3 +32,12 @@ export const RecalculateStageRectContext = React.createContext<
 	null | (() => void)
 >(null);
 export const EditorIdContext = React.createContext<string>("");
+
+/*
+SubGraphContext is set by a block Node when it renders an inline NodeEditor.
+It gives the nested editor a callback to write its NodeMap back into the
+parent node's subGraph field, keeping the outer graph in sync.
+*/
+export const SubGraphContext = React.createContext<
+	((subGraph: import("./types").NodeMap) => void) | null
+>(null);

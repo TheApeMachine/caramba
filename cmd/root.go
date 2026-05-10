@@ -16,7 +16,7 @@ Embed a mini filesystem into the binary to hold the default config file.
 This will be written to the home directory of the user running the service,
 which allows a developer to easily override the config file.
 */
-//go:embed asset/*
+//go:embed asset/config.yml
 var embedded embed.FS
 
 /*
@@ -29,9 +29,9 @@ var (
 		Use:   "caramba",
 		Short: "Caramba is a fully featured machine learning research platform.",
 		Long:  rootLong,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("Hello, World!")
-		},
+		// Run: func(cmd *cobra.Command, args []string) {
+		// 	fmt.Println("Hello, World!")
+		// },
 	}
 )
 

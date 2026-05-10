@@ -12,4 +12,4 @@ RUN go build -o main main.go
 
 EXPOSE 8118
 
-CMD ["./main"]
+CMD ["./main", "serve"]

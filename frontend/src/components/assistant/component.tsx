@@ -50,9 +50,9 @@ function messagePartsWithStableKeys(
 				const hasStepId =
 					typeof thinkingPart.stepId === "string" && thinkingPart.stepId !== "";
 
-				const discriminator = hasStepId
-					? thinkingPart.stepId
-					: `slot-${thinkingFallbackOccurrence++}`;
+				const fallbackId = `slot-${thinkingFallbackOccurrence}`;
+				thinkingFallbackOccurrence += 1;
+				const discriminator = hasStepId ? thinkingPart.stepId : fallbackId;
 
 				keyed.push({
 					stableKey: `${messageId}:thinking:${discriminator}`,
@@ -122,6 +122,37 @@ export function Chat() {
 										return <div key={stableKey}>{part.content}</div>;
 									}
 
+									if (part.type === "tool-call") {
+										return (
+											<div
+												key={stableKey}
+												className="text-xs rounded border border-blue-100 bg-blue-50 text-blue-900 p-3 mb-2"
+											>
+												<p className="font-semibold">Tool • {part.name}</p>
+												<pre className="mt-1 whitespace-pre-wrap wrap-break-word">
+													{part.arguments}
+												</pre>
+											</div>
+										);
+									}
+
+									if (part.type === "tool-result") {
+										return (
+											<div
+												key={stableKey}
+												className="text-xs rounded border border-emerald-100 bg-emerald-50 text-emerald-900 p-3 mb-2"
+											>
+												<p className="font-semibold">Tool result</p>
+												<p className="text-[11px] uppercase tracking-wide text-emerald-700">
+													{part.state}
+												</p>
+												<pre className="mt-1 whitespace-pre-wrap wrap-break-word">
+													{part.error ?? part.content}
+												</pre>
+											</div>
+										);
+									}
+
 									return null;
 								},
 							)}
@@ -133,7 +164,11 @@ export function Chat() {
 			{/* Input */}
 			<form onSubmit={handleSubmit} className="p-4 border-t">
 				<div className="flex gap-2">
+					<label htmlFor="assistant-message-input" className="sr-only">
+						Message input
+					</label>
 					<input
+						id="assistant-message-input"
 						type="text"
 						value={input}
 						onChange={(e) => setInput(e.target.value)}

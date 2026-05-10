@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/theapemachine/caramba/pkg/asset"
 )
 
 var researchCmd = &cobra.Command{
@@ -44,11 +45,11 @@ func runResearch(cmd *cobra.Command, args []string) error {
 		Updated:     time.Now().Format(time.RFC3339),
 	}
 
-	return renderTemplate("asset/template/manifest/project.yml", filepath.Join(root, "manifest", "master.yml"), data)
+	return renderTemplate("manifest/project.yml", filepath.Join(root, "manifest", "master.yml"), data)
 }
 
 func renderTemplate(assetPath, dest string, data templateData) error {
-	raw, err := embedded.ReadFile(assetPath)
+	raw, err := asset.ReadFile(assetPath)
 
 	if err != nil {
 		return fmt.Errorf("research: cannot read template %s: %w", assetPath, err)

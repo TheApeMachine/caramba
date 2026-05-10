@@ -10,7 +10,13 @@ type Outer struct{}
 func NewOuter() *Outer { return &Outer{} }
 
 func (op *Outer) Forward(shape []int, data ...[]float64) []float64 {
+	if len(shape) < 2 || len(data) < 2 {
+		return nil
+	}
 	M, N := shape[0], shape[1]
+	if M == 0 || N == 0 {
+		return []float64{}
+	}
 	a, b := data[0], data[1]
 	out := make([]float64, M*N)
 

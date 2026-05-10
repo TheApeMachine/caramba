@@ -174,11 +174,8 @@ func divVecAVX2(dst, a, b []float64)
 //go:noescape
 func divVecSSE2(dst, a, b []float64)
 
-//go:noescape
-func l2NormSqAVX2(a []float64) float64
-
-//go:noescape
-func l2NormSqSSE2(a []float64) float64
+func l2NormSqAVX2(a []float64) float64 { return reduceSumSqAVX2(a) }
+func l2NormSqSSE2(a []float64) float64 { return reduceSumSqSSE2(a) }
 
 //go:noescape
 func clampVecAVX2(dst []float64, lo, hi float64)

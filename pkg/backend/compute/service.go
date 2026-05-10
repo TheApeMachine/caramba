@@ -2,43 +2,46 @@ package compute
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/block"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer"
 )
 
 /*
-Service provides handlers for the compute API.
+Service routes compute schema requests to the appropriate sub-service.
 */
 type Service struct {
-	operations map[string]operation.Operation
+	handlers map[string]handler
+}
+
+type handler interface {
+	Request(fiber.Ctx) error
 }
 
 /*
-NewService creates a new Service with the default operations.
+NewService creates a new Service with operation, optimizer, and block sub-services.
 */
 func NewService() *Service {
-	return &Service{}
+	return &Service{
+		handlers: map[string]handler{
+			"operation": operation.NewService(),
+			"optimizer": optimizer.NewService(),
+			"block":     block.NewService(),
+		},
+	}
 }
 
 /*
-Handle computes the result of the operation.
-*/
-func (service *Service) Handle(ctx fiber.Ctx) error {
-	return ctx.SendString("Hello, World!")
-}
-
-/*
-Request walks the operation directories to find all operations
-dynamically and hands them back to the caller. This is used to
-populate the frontend's node graph editor, where users can
-visually compose architectures.
+Request dispatches to the correct sub-service based on the :kind route param.
 */
 func (service *Service) Request(ctx fiber.Ctx) error {
-	switch ctx.Params("operation") {
-	case "operation":
-		return operation.NewService().Request(ctx)
-	default:
+	h, ok := service.handlers[ctx.Params("kind")]
+
+	if !ok {
 		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Operation not found",
+			"error": "unknown kind: " + ctx.Params("kind"),
 		})
 	}
+
+	return h.Request(ctx)
 }

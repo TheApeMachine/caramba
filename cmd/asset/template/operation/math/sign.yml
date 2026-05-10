@@ -1,4 +1,0 @@
-id: sign
-op: math.sign
-in: [x]
-out: [sign_x]

@@ -4,12 +4,14 @@ Compilation in Caramba means transforming a YAML manifest through multiple stage
 
 ## Overview
 
-The compilation pipeline has three main phases:
+The compilation pipeline spans **parse → lower → validate → build → backend compile**, then **`run → verify → benchmark`** on the staged executable artifact. Earlier sections still group work into numbered phases below; align this diagram when reading about **Validation**.
 
 ```
 YAML Manifest
     ↓
-[Manifest Compilation] includes/substitutions/defaults
+Parse YAML (deterministic canonical dict)
+    ↓
+[Manifest Compilation] includes / substitutions / defaults
     ↓
 Cap'n Proto Manifest Message
     ↓
@@ -17,13 +19,21 @@ Cap'n Proto Manifest Message
     ↓
 GraphTopology
     ↓
+[Validation] structural + semantic graph checks (see Validators section)
+    ↓
 [Runtime IR Building] graph → program
     ↓
 Program (backend-agnostic IR)
     ↓
 [Backend Compilation] IR → executable module
     ↓
-TorchProgram / MLXProgram
+TorchProgram / MLXProgram (executable staging)
+    ↓
+Run
+    ↓
+Verify (invariants against manifest / checkpoints)
+    ↓
+Benchmark
 ```
 
 ## Phase 1: Manifest Compilation
@@ -185,10 +195,17 @@ builder = ManifestCompilerBuilder(
         VariableResolver(manifest=manifest),
         TopologyLowerer(manifest=manifest),
         Validator(manifest=manifest),
+        # IR Builder stays in Phase 3 (see boundary note below), not ManifestCompilerBuilder.
     ]
 )
-builder.build()  # Runs all compilers in order
+builder.build()  # Runs chained manifest stages (≤ canonical GraphTopology)
 ```
+
+**Boundary with Phase 3 (IR Building):**
+
+- `ManifestCompilerBuilder` terminates once the resolved manifest exposes a **`GraphTopology` ready for codegen** (`TopologyLowerer` + `Validator` are chain tail).
+- `build_program(..)` (**Runtime IR Builder**, `framework/runtime/ir/builder.py`) starts **after** that chain—it is not another `manifest_compilers[]` plug-in today because its inputs (`GraphTopology` + lowered bindings) belong to Phase 3, not textual manifest mutation.
+- **Full ordering** echoed everywhere else: **`parse → lower → validate → build (IR + backend) → run → verify → benchmark`**.
 
 ### Adding a New Compiler Stage
 

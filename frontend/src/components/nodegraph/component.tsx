@@ -1,8 +1,9 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { FlumeConfig, NodeEditor, type NodeMap } from "#/components/flume";
 import type { EdgeRoutingMode } from "#/components/flume/connectionCalculator";
 import type { GraphLayoutMode } from "#/components/flume/graphLayout";
 import { Flex } from "#/components/ui/flex";
+import { Input } from "#/components/ui/input";
 import {
 	Select,
 	SelectItem,
@@ -10,47 +11,68 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select";
-
-import { registerHuggingFaceNodes } from "./nodes";
-import { registerHuggingFacePorts } from "./ports";
-
-/** Hugging Face–oriented graph: chain `hf_text` between Text → HF Model nodes; root sink marks pipeline output. */
-export const huggingFaceNodeGraphConfig = registerHuggingFaceNodes(
-	registerHuggingFacePorts(new FlumeConfig()),
-	[],
-);
+import {
+	useArchitectures,
+	useBlocks,
+	useLoadArchitecture,
+	useOperations,
+	useOptimizers,
+	useSaveArchitecture,
+} from "#/service/compute";
+import { registerNodes } from "./nodes";
+import { registerPorts } from "./ports";
 
 export type NodeGraphProps = {
-	/** Controlled graph state. Omit to keep nodes in component state. */
 	nodes?: NodeMap;
 	onNodesChange?: (nodes: NodeMap) => void;
 	context?: unknown;
-	config?: FlumeConfig;
 };
 
 export const NodeGraph = ({
 	nodes: controlledNodes,
 	onNodesChange,
 	context,
-	config = huggingFaceNodeGraphConfig,
 }: NodeGraphProps) => {
+	const editorRef = useRef<{ getNodes: () => NodeMap }>(null);
 	const [internalNodes, setInternalNodes] = useState<NodeMap>({});
 	const [edgeRoutingMode, setEdgeRoutingMode] =
 		useState<EdgeRoutingMode>("smooth");
 	const [graphLayoutMode, setGraphLayoutMode] =
 		useState<GraphLayoutMode>("freeform");
+	const [saveName, setSaveName] = useState("");
+	const [loadName, setLoadName] = useState("");
 
-	const nodes = controlledNodes ?? internalNodes;
+	const { data: operations } = useOperations();
+	const { data: optimizers } = useOptimizers();
+	const { data: blocks } = useBlocks();
+	const { data: architectureNames = [] } = useArchitectures();
+	const { data: loadedArchitecture } = useLoadArchitecture(loadName);
+	const saveArchitecture = useSaveArchitecture();
+
+	const config = useMemo(() => {
+		const cfg = registerPorts(new FlumeConfig());
+		const allSchemas = { ...operations, ...optimizers, ...blocks };
+		if (operations) registerNodes(cfg, operations, allSchemas);
+		if (optimizers) registerNodes(cfg, optimizers, allSchemas);
+		if (blocks) registerNodes(cfg, blocks, allSchemas);
+		return cfg;
+	}, [operations, optimizers, blocks]);
+
+	const nodes = loadedArchitecture ?? controlledNodes ?? internalNodes;
 
 	const handleChange = useCallback(
 		(next: NodeMap) => {
 			onNodesChange?.(next);
-			if (controlledNodes === undefined) {
-				setInternalNodes(next);
-			}
+			if (controlledNodes === undefined) setInternalNodes(next);
 		},
 		[controlledNodes, onNodesChange],
 	);
+
+	const handleSave = useCallback(() => {
+		if (!saveName.trim()) return;
+		const current = editorRef.current?.getNodes() ?? internalNodes;
+		saveArchitecture.mutate({ name: saveName.trim(), nodes: current });
+	}, [saveName, internalNodes, saveArchitecture]);
 
 	return (
 		<Flex.Column className="min-h-0 w-full flex-1" fullHeight fullWidth gap={2}>
@@ -66,9 +88,8 @@ export const NodeGraph = ({
 					</span>
 					<Select
 						onValueChange={(next) => {
-							if (next !== null && next !== edgeRoutingMode) {
+							if (next !== null && next !== edgeRoutingMode)
 								setEdgeRoutingMode(next as EdgeRoutingMode);
-							}
 						}}
 						value={edgeRoutingMode}
 					>
@@ -82,15 +103,15 @@ export const NodeGraph = ({
 						</SelectPopup>
 					</Select>
 				</Flex.Row>
+
 				<Flex.Row align="center" className="min-w-44" gap={2}>
 					<span className="whitespace-nowrap text-muted-foreground text-xs">
-						Node layout
+						Layout
 					</span>
 					<Select
 						onValueChange={(next) => {
-							if (next !== null && next !== graphLayoutMode) {
+							if (next !== null && next !== graphLayoutMode)
 								setGraphLayoutMode(next as GraphLayoutMode);
-							}
 						}}
 						value={graphLayoutMode}
 					>
@@ -108,13 +129,43 @@ export const NodeGraph = ({
 						</SelectPopup>
 					</Select>
 				</Flex.Row>
+
+				<Flex.Row align="center" gap={2}>
+					<span className="whitespace-nowrap text-muted-foreground text-xs">
+						Load
+					</span>
+					<Select
+						onValueChange={(next) => { if (next) setLoadName(next); }}
+						value={loadName}
+					>
+						<SelectTrigger className="min-w-36" size="sm">
+							<SelectValue placeholder="Architecture…" />
+						</SelectTrigger>
+						<SelectPopup>
+							{architectureNames.map((n) => (
+								<SelectItem key={n} value={n}>{n}</SelectItem>
+							))}
+						</SelectPopup>
+					</Select>
+				</Flex.Row>
+
+				<Flex.Row align="center" gap={2}>
+					<span className="whitespace-nowrap text-muted-foreground text-xs">
+						Save as
+					</span>
+					<Input
+						className="h-7 w-32 text-xs"
+						placeholder="name…"
+						value={saveName}
+						onChange={(e) => setSaveName(e.target.value)}
+						onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+					/>
+				</Flex.Row>
 			</Flex.Row>
-			<Flex.Column
-				className="min-h-[55dvh] min-w-0 flex-1"
-				fullHeight
-				fullWidth
-			>
+
+			<Flex.Column className="min-h-[55dvh] min-w-0 flex-1" fullHeight fullWidth>
 				<NodeEditor
+					ref={editorRef}
 					portTypes={config.portTypes}
 					nodeTypes={config.nodeTypes}
 					nodes={nodes}
@@ -122,11 +173,6 @@ export const NodeGraph = ({
 					onChange={handleChange}
 					edgeRoutingMode={edgeRoutingMode}
 					graphLayoutMode={graphLayoutMode}
-					defaultNodes={[
-						{ type: "hf_pipeline_root", x: 260, y: -40 },
-						{ type: "hf_text_source", x: -260, y: -80 },
-						{ type: "hf_inference", x: 0, y: -60 },
-					]}
 				/>
 			</Flex.Column>
 		</Flex.Column>

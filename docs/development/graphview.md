@@ -173,29 +173,47 @@ But here's what we CAN do—a **semantic zoom** approach:
 ```python
 def extract_module_graph(state_dict: dict[str, Tensor]) -> GraphData:
     """
-    Convert a state_dict into a module-level graph.
+    Convert a state_dict into a module-level GraphData shaped as::
     
-    state_dict keys like:
-      "layers.0.attention.W_q.weight"
-      "layers.0.attention.W_k.weight"
-      "layers.0.ffn.W_1.weight"
+      {
+          "nodes": [{"id": str, "label": str, "params": int}],
+          "edges": [{"source": str, "target": str}],
+      }
+
+    Derived from PyTorch-ish naming where tensor keys carry dotted module prefixes.
     
-    Become nodes:
-      "layers.0.attention"
-      "layers.0.ffn"
+    Empty `state_dict` returns `{"nodes": [], "edges": []}` immediately.
     
-    With edges inferred from the naming hierarchy.
+    Skip keys lacking at least **two dotted segments** (must include one boundary between a module-ish prefix and trailing tensor leaf).
+    
+    Guards protect against orphan parameter keys (e.g. bare `"embedding.weight"`) whose implied module never materialized inside `modules`.
+    
+    Uses `nodes`, `edges`, `modules`, and `param_module` together for hierarchical aggregation prior to emitting JSON-friendly lists.
+    
+    Raises:
+        Nothing — malformed keys are skipped or ignored defensively while keeping partial graphs usable.
+    
+    Examples:
+    
+    >>> isinstance(extract_module_graph({}), dict)
+    True
     """
     
-    modules = {}
+    modules: dict[str, dict[str, object]] = {}
+
+    if not state_dict:
+        return {"nodes": [], "edges": []}
     
     for key in state_dict.keys():
         # "layers.0.attention.W_q.weight" → "layers.0.attention"
         parts = key.split(".")
+
+        if len(parts) < 2:
+            continue
         
         # Walk up the hierarchy, creating module nodes
-        for i in range(1, len(parts)):
-            module_path = ".".join(parts[:i])
+        for idx in range(1, len(parts)):
+            module_path = ".".join(parts[:idx])
             if module_path not in modules:
                 modules[module_path] = {
                     "id": module_path,
@@ -204,30 +222,39 @@ def extract_module_graph(state_dict: dict[str, Tensor]) -> GraphData:
                 }
             
             # Track parent-child relationships
-            if i > 1:
-                parent_path = ".".join(parts[:i-1])
-                modules[parent_path]["children"].add(module_path)
+            if idx > 1:
+                parent_path = ".".join(parts[: idx - 1])
+                modules[parent_path]["children"].add(module_path)  # type: ignore[arg-type]
+
+        # Count parameters against the submodule that owns this tensor leaf.
+        param_module = ".".join(parts[:-1])
+
+        if not param_module:
+            param_module = parts[0]
         
-        # Add parameter count to the immediate parent module
-        param_module = ".".join(parts[:-1])  # strip "weight" or "bias"
-        param_module = ".".join(param_module.split(".")[:-1])  # strip param name
-        modules[param_module]["params"] += state_dict[key].numel()
-    
-    # Convert to graph format
-    nodes = []
-    edges = []
+        if param_module not in modules:
+            continue
+        
+        tens = state_dict[key]
+        modules[param_module]["params"] += int(tens.numel())
+
+    # Convert to graph format — materialize deterministic edge lists instead of lingering sets on wire.
+    nodes: list[dict[str, object]] = []
+    edges: list[dict[str, object]] = []
     
     for path, module in modules.items():
+        children = sorted(module["children"])
+
         nodes.append({
             "id": path,
             "label": path.split(".")[-1],
             "params": module["params"],
         })
         
-        for child in module["children"]:
+        for child_path in children:
             edges.append({
                 "source": path,
-                "target": child,
+                "target": child_path,
             })
     
     return {"nodes": nodes, "edges": edges}
@@ -298,7 +325,7 @@ function ModelGraphView({ modelId }: { modelId: string }) {
     <div>
       <Breadcrumb viewState={viewState} onBack={handleBack} />
       
-      {viewState.level === "weight" ? (
+      {viewState.level === "weight" && viewState.selectedParam !== null ? (
         <WeightInspector modelId={modelId} param={viewState.selectedParam} />
       ) : (
         <NodeGraph
