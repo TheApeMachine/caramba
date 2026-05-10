@@ -392,4 +392,99 @@ int xla_rmsnorm(const double* src, double* dst,
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// Optimizer primitives — scalar fallbacks; StableHLO variants follow same
+// pattern as unary/elementwise_module above.
+// ---------------------------------------------------------------------------
+
+int xla_axpy(double* dst, const double* src, double scale, int n) {
+    for (int i = 0; i < n; i++) dst[i] += scale * src[i];
+    return 0;
+}
+
+int xla_scale(double* dst, double s, int n) {
+    for (int i = 0; i < n; i++) dst[i] *= s;
+    return 0;
+}
+
+int xla_sqrt_vec(const double* src, double* dst, int n) {
+    char key[64];
+    snprintf(key, sizeof(key), "sqrt_%d", n);
+    auto* exec = compile_module(key, unary_module("stablehlo.sqrt", n));
+    if (!exec) {
+        for (int i = 0; i < n; i++) dst[i] = std::sqrt(src[i]);
+        return 0;
+    }
+    return run_exec(exec, (const double**)&src, 1, (size_t[]){(size_t)n*sizeof(double)}, dst, (size_t)n*sizeof(double));
+}
+
+int xla_add_scalar(double* dst, double scalar, int n) {
+    for (int i = 0; i < n; i++) dst[i] += scalar;
+    return 0;
+}
+
+int xla_div_vec(const double* a, const double* b, double* dst, int n) {
+    char key[64];
+    snprintf(key, sizeof(key), "div_%d", n);
+    auto* exec = compile_module(key, elementwise_module("stablehlo.divide", n));
+    if (!exec) {
+        for (int i = 0; i < n; i++) dst[i] = a[i] / b[i];
+        return 0;
+    }
+    const double* in[2] = {a, b};
+    size_t in_sz[2] = {(size_t)n*sizeof(double), (size_t)n*sizeof(double)};
+    return run_exec(exec, in, 2, in_sz, dst, (size_t)n*sizeof(double));
+}
+
+int xla_clamp_vec(double* dst, double lo, double hi, int n) {
+    for (int i = 0; i < n; i++) {
+        if (dst[i] < lo) dst[i] = lo;
+        else if (dst[i] > hi) dst[i] = hi;
+    }
+    return 0;
+}
+
+int xla_sign(const double* src, double* dst, int n) {
+    // StableHLO: stablehlo.sign is the standard op for elementwise sign.
+    char key[64];
+    snprintf(key, sizeof(key), "sign_%d", n);
+    auto* exec = compile_module(key, unary_module("stablehlo.sign", n));
+    if (!exec) {
+        // scalar fallback
+        for (int i = 0; i < n; i++) {
+            double v = src[i];
+            dst[i] = (v > 0.0) ? 1.0 : (v < 0.0) ? -1.0 : 0.0;
+        }
+        return 0;
+    }
+    return run_exec(exec, (const double**)&src, 1, (size_t[]){(size_t)n*sizeof(double)}, dst, (size_t)n*sizeof(double));
+}
+
+int xla_outer(const double* a, const double* b, double* dst, int M, int N) {
+    // StableHLO: broadcast a to [M,N] and b to [M,N], then multiply.
+    char key[64];
+    snprintf(key, sizeof(key), "outer_%d_%d", M, N);
+    char buf[2048];
+    snprintf(buf, sizeof(buf),
+        "module @m {"
+        "  func.func @main(%%a: tensor<%df64>, %%b: tensor<%df64>) -> tensor<%dx%df64> {"
+        "    %%ab = stablehlo.broadcast_in_dim %%a, dims=[0] : (tensor<%df64>) -> tensor<%dx%df64>"
+        "    %%bb = stablehlo.broadcast_in_dim %%b, dims=[1] : (tensor<%df64>) -> tensor<%dx%df64>"
+        "    %%r  = stablehlo.multiply %%ab, %%bb : tensor<%dx%df64>"
+        "    return %%r : tensor<%dx%df64>"
+        "  }"
+        "}", M, M, N, M, M, N, N, M, N, M, N);
+    auto* exec = compile_module(key, std::string(buf));
+    if (!exec) {
+        // scalar fallback
+        for (int row = 0; row < M; row++)
+            for (int col = 0; col < N; col++)
+                dst[row*N+col] = a[row] * b[col];
+        return 0;
+    }
+    const double* in[2] = {a, b};
+    size_t in_sz[2] = {(size_t)M*sizeof(double), (size_t)N*sizeof(double)};
+    return run_exec(exec, in, 2, in_sz, dst, (size_t)M*N*sizeof(double));
+}
+
 } // extern "C"

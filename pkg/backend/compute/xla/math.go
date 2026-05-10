@@ -180,3 +180,32 @@ func (x *XLAMathOps) RMSNorm(shape []int, eps float64, weight []float64, data ..
 	}
 	return dst
 }
+
+func (x *XLAMathOps) Sign(shape []int, data ...[]float64) []float64 {
+	n := len(data[0])
+	dst := make([]float64, n)
+	rc := C.xla_sign(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(n),
+	)
+	if rc != 0 {
+		panic(fmt.Sprintf("xla_sign failed"))
+	}
+	return dst
+}
+
+func (x *XLAMathOps) Outer(shape []int, data ...[]float64) []float64 {
+	M, N := shape[0], shape[1]
+	dst := make([]float64, M*N)
+	rc := C.xla_outer(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&data[1][0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(M), C.int(N),
+	)
+	if rc != 0 {
+		panic(fmt.Sprintf("xla_outer failed"))
+	}
+	return dst
+}

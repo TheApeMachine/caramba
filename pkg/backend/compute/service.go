@@ -2,7 +2,7 @@ package compute
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"github.com/theapemachine/caramba/backend/compute/cpu/operation"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
 )
 
 /*

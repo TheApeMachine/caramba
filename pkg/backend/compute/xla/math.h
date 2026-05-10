@@ -46,6 +46,20 @@ int xla_rmsnorm(const double* src, double* dst,
                 const double* weight,
                 int num_rows, int d_model, double eps);
 
+// Elementwise sign: dst[i] = +1 if src[i] > 0, -1 if < 0, 0 if == 0.
+int xla_sign(const double* src, double* dst, int n);
+
+// Outer product: dst[i*N+j] = a[i] * b[j].
+int xla_outer(const double* a, const double* b, double* dst, int M, int N);
+
+// Optimizer primitives
+int xla_axpy(double* dst, const double* src, double scale, int n);
+int xla_scale(double* dst, double s, int n);
+int xla_sqrt_vec(const double* src, double* dst, int n);
+int xla_add_scalar(double* dst, double scalar, int n);
+int xla_div_vec(const double* a, const double* b, double* dst, int n);
+int xla_clamp_vec(double* dst, double lo, double hi, int n);
+
 #ifdef __cplusplus
 }
 #endif

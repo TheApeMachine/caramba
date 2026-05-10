@@ -164,3 +164,34 @@ func (c *CUDAMathOps) RMSNorm(shape []int, eps float64, weight []float64, data .
 	}
 	return dst
 }
+
+// Sign: elementwise sign
+func (c *CUDAMathOps) Sign(shape []int, data ...[]float64) []float64 {
+	n := len(data[0])
+	dst := make([]float64, n)
+	rc := C.cuda_sign(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(n),
+	)
+	if rc != 0 {
+		panic(fmt.Sprintf("cuda_sign failed (rc=%d)", rc))
+	}
+	return dst
+}
+
+// Outer: outer product a[M] x b[N] → dst[M*N]
+func (c *CUDAMathOps) Outer(shape []int, data ...[]float64) []float64 {
+	M, N := shape[0], shape[1]
+	dst := make([]float64, M*N)
+	rc := C.cuda_outer(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&data[1][0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(M), C.int(N),
+	)
+	if rc != 0 {
+		panic(fmt.Sprintf("cuda_outer failed (rc=%d)", rc))
+	}
+	return dst
+}

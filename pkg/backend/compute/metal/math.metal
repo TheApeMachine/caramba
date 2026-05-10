@@ -248,3 +248,89 @@ kernel void rmsnorm_kernel(
         dst[offset + i] = src[offset + i] * inv_rms * weight[i];
     }
 }
+
+// ---------------------------------------------------------------------------
+// sign_kernel: out[i] = sign(src[i])
+// Buffers: 0=src, 1=dst; thread_position_in_grid = i
+// ---------------------------------------------------------------------------
+kernel void sign_kernel(
+    device const float* src [[buffer(0)]],
+    device float* dst       [[buffer(1)]],
+    uint i                  [[thread_position_in_grid]])
+{
+    float v = src[i];
+    dst[i] = (v > 0.0f) ? 1.0f : (v < 0.0f) ? -1.0f : 0.0f;
+}
+
+// ---------------------------------------------------------------------------
+// outer_kernel: dst[row*N+col] = a[row] * b[col]
+// Buffers: 0=a, 1=b, 2=dst, 3=dims (uint2: M, N)
+// Launch as 2D: grid=(N,M), threadgroup=(1,1) or tuned
+// ---------------------------------------------------------------------------
+kernel void outer_kernel(
+    device const float* a  [[buffer(0)]],
+    device const float* b  [[buffer(1)]],
+    device float* dst      [[buffer(2)]],
+    constant uint2& dims   [[buffer(3)]],
+    uint2 gid              [[thread_position_in_grid]])
+{
+    uint col = gid.x;
+    uint row = gid.y;
+    if (row < dims.x && col < dims.y)
+        dst[row * dims.y + col] = a[row] * b[col];
+}
+
+// ---------------------------------------------------------------------------
+// Optimizer kernels
+// ---------------------------------------------------------------------------
+
+kernel void axpy_kernel(
+    device float* dst       [[buffer(0)]],
+    device const float* src [[buffer(1)]],
+    constant float& scale   [[buffer(2)]],
+    uint i                  [[thread_position_in_grid]])
+{
+    dst[i] += scale * src[i];
+}
+
+kernel void scale_kernel2(
+    device float* dst     [[buffer(0)]],
+    constant float& s     [[buffer(1)]],
+    uint i                [[thread_position_in_grid]])
+{
+    dst[i] *= s;
+}
+
+kernel void sqrt_vec_kernel(
+    device const float* src [[buffer(0)]],
+    device float* dst       [[buffer(1)]],
+    uint i                  [[thread_position_in_grid]])
+{
+    dst[i] = sqrt(src[i]);
+}
+
+kernel void add_scalar_kernel(
+    device float* dst       [[buffer(0)]],
+    constant float& scalar  [[buffer(1)]],
+    uint i                  [[thread_position_in_grid]])
+{
+    dst[i] += scalar;
+}
+
+kernel void div_vec_kernel(
+    device const float* a [[buffer(0)]],
+    device const float* b [[buffer(1)]],
+    device float* dst     [[buffer(2)]],
+    uint i                [[thread_position_in_grid]])
+{
+    dst[i] = a[i] / b[i];
+}
+
+kernel void clamp_vec_kernel(
+    device float* dst   [[buffer(0)]],
+    constant float& lo  [[buffer(1)]],
+    constant float& hi  [[buffer(2)]],
+    uint i              [[thread_position_in_grid]])
+{
+    dst[i] = clamp(dst[i], lo, hi);
+}

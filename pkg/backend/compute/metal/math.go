@@ -216,3 +216,37 @@ func (m *MathOps) RMSNorm(shape []int, eps float64, weight []float64, data ...[]
 	}
 	return toFloat64(dst)
 }
+
+// Sign: elementwise sign
+func (m *MathOps) Sign(shape []int, data ...[]float64) []float64 {
+	n := len(data[0])
+	src := toFloat32(data[0])
+	dst := make([]float32, n)
+	rc := C.metal_sign(
+		(*C.float)(unsafe.Pointer(&src[0])),
+		(*C.float)(unsafe.Pointer(&dst[0])),
+		C.int(n),
+	)
+	if rc != 0 {
+		return make([]float64, n)
+	}
+	return toFloat64(dst)
+}
+
+// Outer: outer product a[M] x b[N] → dst[M*N]
+func (m *MathOps) Outer(shape []int, data ...[]float64) []float64 {
+	M, N := shape[0], shape[1]
+	a := toFloat32(data[0])
+	b := toFloat32(data[1])
+	dst := make([]float32, M*N)
+	rc := C.metal_outer(
+		(*C.float)(unsafe.Pointer(&a[0])),
+		(*C.float)(unsafe.Pointer(&b[0])),
+		(*C.float)(unsafe.Pointer(&dst[0])),
+		C.int(M), C.int(N),
+	)
+	if rc != 0 {
+		return make([]float64, M*N)
+	}
+	return toFloat64(dst)
+}

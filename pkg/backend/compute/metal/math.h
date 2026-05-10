@@ -43,6 +43,20 @@ int metal_rmsnorm(const float* src, float* dst,
                   const float* weight,
                   int num_rows, int d_model, float eps);
 
+// Elementwise sign: dst[i] = +1 if src[i] > 0, -1 if < 0, 0 if == 0.
+int metal_sign(const float* src, float* dst, int n);
+
+// Outer product: dst[i*N+j] = a[i] * b[j]. M=len(a), N=len(b).
+int metal_outer(const float* a, const float* b, float* dst, int M, int N);
+
+// Optimizer primitives
+int metal_axpy(float* dst, const float* src, float scale, int n);
+int metal_scale(float* dst, float s, int n);
+int metal_sqrt_vec(const float* src, float* dst, int n);
+int metal_add_scalar(float* dst, float scalar, int n);
+int metal_div_vec(const float* a, const float* b, float* dst, int n);
+int metal_clamp_vec(float* dst, float lo, float hi, int n);
+
 #ifdef __cplusplus
 }
 #endif

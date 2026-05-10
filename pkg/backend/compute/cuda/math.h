@@ -40,6 +40,20 @@ int cuda_rmsnorm(const double* src, double* dst,
                  const double* weight,
                  int num_rows, int d_model, double eps);
 
+// Elementwise sign: out[i] = +1 if src[i] > 0, -1 if < 0, 0 if == 0.
+int cuda_sign(const double* src, double* dst, int n);
+
+// Outer product: dst[i*N+j] = a[i] * b[j]. M=len(a), N=len(b).
+int cuda_outer(const double* a, const double* b, double* dst, int M, int N);
+
+// Optimizer primitives
+int cuda_axpy(double* dst, const double* src, double scale, int n);
+int cuda_scale(double* dst, double s, int n);
+int cuda_sqrt_vec(const double* src, double* dst, int n);
+int cuda_add_scalar(double* dst, double scalar, int n);
+int cuda_div_vec(const double* a, const double* b, double* dst, int n);
+int cuda_clamp_vec(double* dst, double lo, double hi, int n);
+
 #ifdef __cplusplus
 }
 #endif

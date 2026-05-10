@@ -356,3 +356,164 @@ int cuda_rmsnorm(const double* src, double* dst,
 }
 
 } // extern "C"
+
+__global__ void sign_kernel(const double* src, double* dst, int n) {
+    int i = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (i < n) {
+        double v = src[i];
+        dst[i] = (v > 0.0) ? 1.0 : (v < 0.0) ? -1.0 : 0.0;
+    }
+}
+
+__global__ void outer_kernel(const double* a, const double* b, double* dst, int M, int N) {
+    int row = blockIdx.y * BLOCK_SIZE + threadIdx.y;
+    int col = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (row < M && col < N) dst[row * N + col] = a[row] * b[col];
+}
+
+extern "C" {
+
+int cuda_sign(const double* src, double* dst, int n) {
+    double *dSrc, *dDst;
+    size_t nb = (size_t)n * sizeof(double);
+    if (alloc_copy_free(src, (void**)&dSrc, nb)) return -1;
+    CUDA_CHECK(cudaMalloc((void**)&dDst, nb));
+    sign_kernel<<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(dSrc, dDst, n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
+    cudaFree(dSrc); cudaFree(dDst);
+    return 0;
+}
+
+int cuda_outer(const double* a, const double* b, double* dst, int M, int N) {
+    double *dA, *dB, *dDst;
+    size_t ab = (size_t)M * sizeof(double);
+    size_t bb = (size_t)N * sizeof(double);
+    size_t db = (size_t)M * N * sizeof(double);
+    if (alloc_copy_free(a, (void**)&dA, ab)) return -1;
+    if (alloc_copy_free(b, (void**)&dB, bb)) { cudaFree(dA); return -1; }
+    CUDA_CHECK(cudaMalloc((void**)&dDst, db));
+    dim3 block(BLOCK_SIZE, 1);
+    dim3 grid((N + BLOCK_SIZE - 1) / BLOCK_SIZE, M);
+    outer_kernel<<<grid, block>>>(dA, dB, dDst, M, N);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, db, cudaMemcpyDeviceToHost));
+    cudaFree(dA); cudaFree(dB); cudaFree(dDst);
+    return 0;
+}
+
+} // extern "C"
+
+// ---------------------------------------------------------------------------
+// Optimizer kernels
+// ---------------------------------------------------------------------------
+
+// axpy: dst[i] += scale * src[i]
+__global__ void axpy_kernel(double* dst, const double* src, double scale, int n) {
+    int i = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (i < n) dst[i] += scale * src[i];
+}
+
+// scale: dst[i] *= s
+__global__ void scale_kernel(double* dst, double s, int n) {
+    int i = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (i < n) dst[i] *= s;
+}
+
+// sqrt_vec: dst[i] = sqrt(src[i])
+__global__ void sqrt_vec_kernel(const double* src, double* dst, int n) {
+    int i = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (i < n) dst[i] = sqrt(src[i]);
+}
+
+// add_scalar: dst[i] += scalar
+__global__ void add_scalar_kernel(double* dst, double scalar, int n) {
+    int i = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (i < n) dst[i] += scalar;
+}
+
+// div_vec: dst[i] = a[i] / b[i]
+__global__ void div_vec_kernel(const double* a, const double* b, double* dst, int n) {
+    int i = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (i < n) dst[i] = a[i] / b[i];
+}
+
+// clamp_vec: dst[i] = clamp(dst[i], lo, hi)
+__global__ void clamp_vec_kernel(double* dst, double lo, double hi, int n) {
+    int i = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (i < n) dst[i] = fmax(lo, fmin(hi, dst[i]));
+}
+
+extern "C" {
+
+int cuda_axpy(double* dst, const double* src, double scale, int n) {
+    double *dDst, *dSrc;
+    size_t nb = (size_t)n * sizeof(double);
+    if (alloc_copy_free(dst, (void**)&dDst, nb)) return -1;
+    if (alloc_copy_free(src, (void**)&dSrc, nb)) { cudaFree(dDst); return -1; }
+    axpy_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(dDst, dSrc, scale, n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
+    cudaFree(dDst); cudaFree(dSrc);
+    return 0;
+}
+
+int cuda_scale(double* dst, double s, int n) {
+    double *dDst;
+    size_t nb = (size_t)n * sizeof(double);
+    if (alloc_copy_free(dst, (void**)&dDst, nb)) return -1;
+    scale_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(dDst, s, n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
+    cudaFree(dDst);
+    return 0;
+}
+
+int cuda_sqrt_vec(const double* src, double* dst, int n) {
+    double *dSrc, *dDst;
+    size_t nb = (size_t)n * sizeof(double);
+    if (alloc_copy_free(src, (void**)&dSrc, nb)) return -1;
+    CUDA_CHECK(cudaMalloc((void**)&dDst, nb));
+    sqrt_vec_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(dSrc, dDst, n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
+    cudaFree(dSrc); cudaFree(dDst);
+    return 0;
+}
+
+int cuda_add_scalar(double* dst, double scalar, int n) {
+    double *dDst;
+    size_t nb = (size_t)n * sizeof(double);
+    if (alloc_copy_free(dst, (void**)&dDst, nb)) return -1;
+    add_scalar_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(dDst, scalar, n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
+    cudaFree(dDst);
+    return 0;
+}
+
+int cuda_div_vec(const double* a, const double* b, double* dst, int n) {
+    double *dA, *dB, *dDst;
+    size_t nb = (size_t)n * sizeof(double);
+    if (alloc_copy_free(a, (void**)&dA, nb)) return -1;
+    if (alloc_copy_free(b, (void**)&dB, nb)) { cudaFree(dA); return -1; }
+    CUDA_CHECK(cudaMalloc((void**)&dDst, nb));
+    div_vec_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(dA, dB, dDst, n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
+    cudaFree(dA); cudaFree(dB); cudaFree(dDst);
+    return 0;
+}
+
+int cuda_clamp_vec(double* dst, double lo, double hi, int n) {
+    double *dDst;
+    size_t nb = (size_t)n * sizeof(double);
+    if (alloc_copy_free(dst, (void**)&dDst, nb)) return -1;
+    clamp_vec_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(dDst, lo, hi, n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
+    cudaFree(dDst);
+    return 0;
+}
+
+} // extern "C"

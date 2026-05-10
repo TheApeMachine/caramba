@@ -18,6 +18,14 @@ static id<MTLComputePipelineState> gPSO_log        = nil;
 static id<MTLComputePipelineState> gPSO_softmax    = nil;
 static id<MTLComputePipelineState> gPSO_layernorm  = nil;
 static id<MTLComputePipelineState> gPSO_rmsnorm    = nil;
+static id<MTLComputePipelineState> gPSO_sign        = nil;
+static id<MTLComputePipelineState> gPSO_outer       = nil;
+static id<MTLComputePipelineState> gPSO_axpy        = nil;
+static id<MTLComputePipelineState> gPSO_scale2      = nil;
+static id<MTLComputePipelineState> gPSO_sqrt_vec    = nil;
+static id<MTLComputePipelineState> gPSO_add_scalar  = nil;
+static id<MTLComputePipelineState> gPSO_div_vec     = nil;
+static id<MTLComputePipelineState> gPSO_clamp_vec   = nil;
 
 static id<MTLComputePipelineState> make_mpso(id<MTLLibrary> lib, NSString* name) {
     NSError* err = nil;
@@ -48,10 +56,21 @@ int metal_math_init(const char* metallib_path) {
         gPSO_softmax   = make_mpso(lib, @"softmax_kernel");
         gPSO_layernorm = make_mpso(lib, @"layernorm_kernel");
         gPSO_rmsnorm   = make_mpso(lib, @"rmsnorm_kernel");
+        gPSO_sign       = make_mpso(lib, @"sign_kernel");
+        gPSO_outer      = make_mpso(lib, @"outer_kernel");
+        gPSO_axpy       = make_mpso(lib, @"axpy_kernel");
+        gPSO_scale2     = make_mpso(lib, @"scale_kernel2");
+        gPSO_sqrt_vec   = make_mpso(lib, @"sqrt_vec_kernel");
+        gPSO_add_scalar = make_mpso(lib, @"add_scalar_kernel");
+        gPSO_div_vec    = make_mpso(lib, @"div_vec_kernel");
+        gPSO_clamp_vec  = make_mpso(lib, @"clamp_vec_kernel");
 
         if (!gPSO_matmul || !gPSO_add || !gPSO_mul || !gPSO_isdscale ||
             !gPSO_exp    || !gPSO_log || !gPSO_softmax ||
-            !gPSO_layernorm || !gPSO_rmsnorm) return -1;
+            !gPSO_layernorm || !gPSO_rmsnorm ||
+            !gPSO_sign || !gPSO_outer ||
+            !gPSO_axpy || !gPSO_scale2 || !gPSO_sqrt_vec ||
+            !gPSO_add_scalar || !gPSO_div_vec || !gPSO_clamp_vec) return -1;
 
         return 0;
     }
@@ -322,6 +341,173 @@ int metal_rmsnorm(const float* src, float* dst,
         NSUInteger tgs = (NSUInteger)d_model < 256 ? (NSUInteger)d_model : 256;
         [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)num_rows,1,1)
         threadsPerThreadgroup:MTLSizeMake(tgs,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
+int metal_sign(const float* src, float* dst, int n) {
+    @autoreleasepool {
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        id<MTLBuffer> bSrc = make_buf_ro(gMDevice, src, nb);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, nb);
+        if (!bSrc || !bDst) return -1;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_sign];
+        [enc setBuffer:bSrc offset:0 atIndex:0];
+        [enc setBuffer:bDst offset:0 atIndex:1];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
+int metal_outer(const float* a, const float* b, float* dst, int M, int N) {
+    @autoreleasepool {
+        NSUInteger ab  = (NSUInteger)M * sizeof(float);
+        NSUInteger bb  = (NSUInteger)N * sizeof(float);
+        NSUInteger db  = (NSUInteger)(M * N) * sizeof(float);
+        id<MTLBuffer> bA   = make_buf_ro(gMDevice, a,   ab);
+        id<MTLBuffer> bB   = make_buf_ro(gMDevice, b,   bb);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, db);
+        if (!bA || !bB || !bDst) return -1;
+        unsigned int dims[2] = { (unsigned int)M, (unsigned int)N };
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_outer];
+        [enc setBuffer:bA   offset:0 atIndex:0];
+        [enc setBuffer:bB   offset:0 atIndex:1];
+        [enc setBuffer:bDst offset:0 atIndex:2];
+        [enc setBytes:dims  length:sizeof(dims) atIndex:3];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)N,(NSUInteger)M,1)
+        threadsPerThreadgroup:MTLSizeMake(16,16,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, db);
+        return 0;
+    }
+}
+
+int metal_axpy(float* dst, const float* src, float scale, int n) {
+    @autoreleasepool {
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, nb);
+        id<MTLBuffer> bSrc = make_buf_ro(gMDevice, src, nb);
+        if (!bDst || !bSrc) return -1;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_axpy];
+        [enc setBuffer:bDst offset:0 atIndex:0];
+        [enc setBuffer:bSrc offset:0 atIndex:1];
+        [enc setBytes:&scale length:sizeof(float) atIndex:2];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
+int metal_scale(float* dst, float s, int n) {
+    @autoreleasepool {
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, nb);
+        if (!bDst) return -1;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_scale2];
+        [enc setBuffer:bDst offset:0 atIndex:0];
+        [enc setBytes:&s length:sizeof(float) atIndex:1];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
+int metal_sqrt_vec(const float* src, float* dst, int n) {
+    @autoreleasepool {
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        id<MTLBuffer> bSrc = make_buf_ro(gMDevice, src, nb);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, nb);
+        if (!bSrc || !bDst) return -1;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_sqrt_vec];
+        [enc setBuffer:bSrc offset:0 atIndex:0];
+        [enc setBuffer:bDst offset:0 atIndex:1];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
+int metal_add_scalar(float* dst, float scalar, int n) {
+    @autoreleasepool {
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, nb);
+        if (!bDst) return -1;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_add_scalar];
+        [enc setBuffer:bDst offset:0 atIndex:0];
+        [enc setBytes:&scalar length:sizeof(float) atIndex:1];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
+int metal_div_vec(const float* a, const float* b, float* dst, int n) {
+    @autoreleasepool {
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        id<MTLBuffer> bA   = make_buf_ro(gMDevice, a, nb);
+        id<MTLBuffer> bB   = make_buf_ro(gMDevice, b, nb);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, nb);
+        if (!bA || !bB || !bDst) return -1;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_div_vec];
+        [enc setBuffer:bA   offset:0 atIndex:0];
+        [enc setBuffer:bB   offset:0 atIndex:1];
+        [enc setBuffer:bDst offset:0 atIndex:2];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
+int metal_clamp_vec(float* dst, float lo, float hi, int n) {
+    @autoreleasepool {
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, nb);
+        if (!bDst) return -1;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_clamp_vec];
+        [enc setBuffer:bDst offset:0 atIndex:0];
+        [enc setBytes:&lo length:sizeof(float) atIndex:1];
+        [enc setBytes:&hi length:sizeof(float) atIndex:2];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [enc endEncoding];
         commit_wait(cb);
         copy_back_if_needed(bDst, dst, nb);

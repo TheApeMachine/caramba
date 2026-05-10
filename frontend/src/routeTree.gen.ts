@@ -16,6 +16,7 @@ import { Route as ResearchPaperRouteImport } from './routes/research/paper'
 import { Route as ResearchNewRouteImport } from './routes/research/new'
 import { Route as ResearchEditRouteImport } from './routes/research/edit'
 import { Route as PaperEditRouteImport } from './routes/paper/edit'
+import { Route as ApiAssistantRouteImport } from './routes/api/assistant'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,9 +53,15 @@ const PaperEditRoute = PaperEditRouteImport.update({
   path: '/paper/edit',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAssistantRoute = ApiAssistantRouteImport.update({
+  id: '/api/assistant',
+  path: '/api/assistant',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
   '/research/edit': typeof ResearchEditRoute
   '/research/new': typeof ResearchNewRoute
@@ -64,6 +71,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
   '/research/edit': typeof ResearchEditRoute
   '/research/new': typeof ResearchNewRoute
@@ -74,6 +82,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
   '/research/edit': typeof ResearchEditRoute
   '/research/new': typeof ResearchNewRoute
@@ -85,6 +94,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/api/assistant'
     | '/paper/edit'
     | '/research/edit'
     | '/research/new'
@@ -94,6 +104,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/api/assistant'
     | '/paper/edit'
     | '/research/edit'
     | '/research/new'
@@ -103,6 +114,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/api/assistant'
     | '/paper/edit'
     | '/research/edit'
     | '/research/new'
@@ -113,6 +125,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiAssistantRoute: typeof ApiAssistantRoute
   PaperEditRoute: typeof PaperEditRoute
   ResearchEditRoute: typeof ResearchEditRoute
   ResearchNewRoute: typeof ResearchNewRoute
@@ -172,11 +185,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PaperEditRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/assistant': {
+      id: '/api/assistant'
+      path: '/api/assistant'
+      fullPath: '/api/assistant'
+      preLoaderRoute: typeof ApiAssistantRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiAssistantRoute: ApiAssistantRoute,
   PaperEditRoute: PaperEditRoute,
   ResearchEditRoute: ResearchEditRoute,
   ResearchNewRoute: ResearchNewRoute,

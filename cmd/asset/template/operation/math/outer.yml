@@ -1,0 +1,4 @@
+id: outer
+op: math.outer
+in: [a, b]
+out: [W]
