@@ -9,7 +9,7 @@ func matmulAVX2(dst, a, b []float64, M, K, N int)
 func matmulSSE2(dst, a, b []float64, M, K, N int)
 
 func applyMatmul(dst, a, b []float64, M, K, N int) {
-	if useAVX2 {
+	if useAVX2 && useFMA {
 		matmulAVX2(dst, a, b, M, K, N)
 	} else {
 		matmulSSE2(dst, a, b, M, K, N)

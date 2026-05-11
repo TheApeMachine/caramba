@@ -16,6 +16,7 @@ package xla
 // #cgo CXXFLAGS: -std=c++17
 // #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
+// #include <stdlib.h>
 // #include "math.h"
 import "C"
 

@@ -2,24 +2,32 @@
 
 package metal
 
+import "errors"
+
+var errMetalUnavailable = errors.New("metal backend unavailable: requires darwin + cgo")
+
 type MetalAttention struct{}
 
-func NewAttention(metallib string) (*MetalAttention, error) { return &MetalAttention{}, nil }
+func NewAttention(metallib string) (*MetalAttention, error) {
+	return nil, errMetalUnavailable
+}
 
-func (m *MetalAttention) Forward(shape []int, data ...[]float64) []float64 { return data[0] }
+func (m *MetalAttention) Forward(shape []int, data ...[]float64) []float64 {
+	panic(errMetalUnavailable)
+}
 
 func (m *MetalAttention) SDPA(q, k, v []float64, batch, numHeads, seqLen, headDim int) ([]float64, error) {
-	return q, nil
+	return nil, errMetalUnavailable
 }
 
 func (m *MetalAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim int) ([]float64, error) {
-	return q, nil
+	return nil, errMetalUnavailable
 }
 
 func (m *MetalAttention) GQA(q, k, v []float64, batch, numHeads, numKVHeads, seqLen, headDim int) ([]float64, error) {
-	return q, nil
+	return nil, errMetalUnavailable
 }
 
 func (m *MetalAttention) SlidingWindow(q, k, v []float64, batch, numHeads, seqLen, headDim, window int) ([]float64, error) {
-	return q, nil
+	return nil, errMetalUnavailable
 }

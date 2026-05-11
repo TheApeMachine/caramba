@@ -25,8 +25,8 @@
 // Globals
 // ---------------------------------------------------------------------------
 
-static const PJRT_Api*        g_api     = nullptr;
-static PJRT_Client*           g_client  = nullptr;
+const PJRT_Api*        g_api     = nullptr;
+PJRT_Client*           g_client  = nullptr;
 
 // One cached executable per activation name.
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_execs;

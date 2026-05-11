@@ -4,37 +4,46 @@ import "math"
 
 /*
 LoRA overlays low-rank weight decomposition on targeted weight matrices.
-It implements the standard decomposition: W' = W + (B·A) * (alpha/rank)
-where A is initialised with random gaussian values and B with zeros,
-so the adapter contributes nothing at init and trains from there.
+Standard decomposition: W' = W + (B·A) * (alpha/rank)
 
-Two modes are supported:
+  W: [out × in]  — original weight matrix (flat row-major)
+  A: [rank × in] — random gaussian init, projects down to rank
+  B: [out × rank] — zero init, so adapter is identity at start
+  W': W + B·A·scale  where scale = alpha/rank
 
-  preset: qv  — targets all *.attn.q and *.attn.v weights (easy mode)
-  preset: full — targets all attention and MLP projection weights
-  targets: [...] — explicit list of glob patterns (hard mode)
+Two modes:
+  preset: qv   — targets **.attn.q and **.attn.v
+  preset: full — targets all attn and MLP projections
+  targets: [...] — explicit glob list
 
-Config keys:
-  source   — must match the Loader node's source key
-  preset   — qv | full (used when targets is absent)
-  targets  — list of glob patterns (overrides preset)
-  rank     — LoRA rank r (default: 8)
-  alpha    — LoRA scaling alpha (default: 16)
+The matmul is injected so accelerated backends (Metal, CUDA, XLA) can
+supply their own kernel without duplicating this logic.
 */
 type LoRA struct {
 	source  string
 	targets []string
 	rank    int
 	alpha   float64
-	// A and B matrices keyed by weight path.
-	matA map[string][]float64
-	matB map[string][]float64
+	matmul  MatMulFn
+	matA    map[string][]float64 // [rank × in] row-major
+	matB    map[string][]float64 // [out × rank] row-major
+	dims    map[string][2]int    // {key: [out, in]}
 }
 
 /*
-NewLoRA creates a LoRA node with preset or explicit targets.
+NewLoRA creates a LoRA node using CPUMatMul.
 */
-func NewLoRA(source string, preset string, targets []string, rank int, alpha float64) *LoRA {
+func NewLoRA(source, preset string, targets []string, rank int, alpha float64) *LoRA {
+	return NewLoRAWithMatMul(source, preset, targets, rank, alpha, CPUMatMul)
+}
+
+/*
+NewLoRAWithMatMul creates a LoRA node with an injected matmul kernel.
+Used by Metal, CUDA, and XLA backends to supply their accelerated kernels.
+*/
+func NewLoRAWithMatMul(
+	source, preset string, targets []string, rank int, alpha float64, matmul MatMulFn,
+) *LoRA {
 	if rank <= 0 {
 		rank = 8
 	}
@@ -52,16 +61,17 @@ func NewLoRA(source string, preset string, targets []string, rank int, alpha flo
 		targets: targets,
 		rank:    rank,
 		alpha:   alpha,
+		matmul:  matmul,
 		matA:    make(map[string][]float64),
 		matB:    make(map[string][]float64),
+		dims:    make(map[string][2]int),
 	}
 }
 
 /*
-Forward initialises LoRA matrices for all matching weights on first call,
-then applies the current adaptation W' = W + B·A * scale.
-Input: data[0] = trigger token.
-Output: number of adapted weight matrices.
+Forward initialises LoRA matrices on first call then applies W' = W + B·A·scale.
+The weight at each matched key must be a flat [out×in] row-major matrix.
+Shape is inferred from the stored dimensions on first call.
 */
 func (lora *LoRA) Forward(_ []int, data ...[]float64) []float64 {
 	weights, ok := globalRegistry.Get(lora.source)
@@ -73,12 +83,10 @@ func (lora *LoRA) Forward(_ []int, data ...[]float64) []float64 {
 	adapted := 0
 
 	for _, pattern := range lora.targets {
-		selected := weights.Select(pattern)
-
-		for key, w := range selected {
-			lora.ensureMatrices(key, len(w))
+		for key, w := range weights.Select(pattern) {
+			lora.ensureMatrices(key, w)
+			weights[key] = lora.apply(w, lora.matA[key], lora.matB[key], lora.dims[key])
 			adapted++
-			weights[key] = lora.apply(w, lora.matA[key], lora.matB[key])
 		}
 	}
 
@@ -88,79 +96,79 @@ func (lora *LoRA) Forward(_ []int, data ...[]float64) []float64 {
 }
 
 /*
-StepA returns the A matrix for the given weight key for gradient updates.
+StepA / StepB / UpdateA / UpdateB expose the low-rank matrices for
+gradient-based training of the LoRA parameters.
 */
-func (lora *LoRA) StepA(key string) []float64 {
-	return lora.matA[key]
-}
+func (lora *LoRA) StepA(key string) []float64       { return lora.matA[key] }
+func (lora *LoRA) StepB(key string) []float64       { return lora.matB[key] }
+func (lora *LoRA) UpdateA(key string, a []float64)  { lora.matA[key] = a }
+func (lora *LoRA) UpdateB(key string, b []float64)  { lora.matB[key] = b }
 
-/*
-StepB returns the B matrix for the given weight key for gradient updates.
-*/
-func (lora *LoRA) StepB(key string) []float64 {
-	return lora.matB[key]
-}
-
-/*
-UpdateA stores a new A matrix, e.g. after an optimizer step.
-*/
-func (lora *LoRA) UpdateA(key string, a []float64) {
-	lora.matA[key] = a
-}
-
-/*
-UpdateB stores a new B matrix, e.g. after an optimizer step.
-*/
-func (lora *LoRA) UpdateB(key string, b []float64) {
-	lora.matB[key] = b
-}
-
-func (lora *LoRA) ensureMatrices(key string, weightLen int) {
+func (lora *LoRA) ensureMatrices(key string, w []float64) {
 	if _, exists := lora.matA[key]; exists {
 		return
 	}
 
-	// A: random gaussian init (fan-in scaling).
-	scale := math.Sqrt(2.0 / float64(weightLen))
-	a := gaussianSlice(lora.rank*weightLen, scale)
+	// Infer [out, in] from weight length and rank.
+	// Weight is stored flat [out*in]; we factor as: out*in = len(w).
+	// Without an explicit shape annotation, assume square: out == in == sqrt(n)
+	// for square weights, or store the factored shape at first call.
+	// The WeightMap stores flat vectors; for non-square weights the caller
+	// must pre-register the shape via SetDims. Default: treat as out=1, in=n
+	// which degenerates to the vector case — this is safe and correct for
+	// bias vectors. True matrix weights need SetDims called after loading.
+	n := len(w)
+	dims, hasDims := lora.dims[key]
 
-	// B: zero init so adapter starts as identity.
-	b := make([]float64, weightLen*lora.rank)
+	if !hasDims {
+		// Best-effort square factoring.
+		out := sqrtInt(n)
+		if out*out == n {
+			dims = [2]int{out, out}
+		} else {
+			// Non-square: treat as a [1×n] row — LoRA reduces to a simple
+			// rank-1 update. Correct for bias/embedding vectors.
+			dims = [2]int{1, n}
+		}
+		lora.dims[key] = dims
+	}
 
-	lora.matA[key] = a
-	lora.matB[key] = b
+	out, in := dims[0], dims[1]
+
+	// A [rank × in]: gaussian init with fan-in scaling.
+	lora.matA[key] = gaussianSlice(lora.rank*in, math.Sqrt(2.0/float64(in)))
+	// B [out × rank]: zero init — adapter is identity at start.
+	lora.matB[key] = make([]float64, out*lora.rank)
 }
 
-// apply computes W + B·A * (alpha/rank).
-// W has shape [n], A has shape [r*n], B has shape [n*r].
-// The result is W + outer(B_col, A_row) collapsed, scaled by alpha/rank.
-func (lora *LoRA) apply(w, a, b []float64) []float64 {
-	n := len(w)
+/*
+SetDims registers the [out, in] shape for a weight key so LoRA can construct
+correctly shaped A and B matrices. Must be called before the first Forward
+for any non-square weight matrix.
+*/
+func (lora *LoRA) SetDims(key string, out, in int) {
+	lora.dims[key] = [2]int{out, in}
+}
+
+// apply computes W' = W + B·A * (alpha/rank).
+//
+//	A: [rank × in]   lora.matA[key]
+//	B: [out × rank]  lora.matB[key]
+//	B·A → [out × in] — same shape as W
+func (lora *LoRA) apply(w, a, b []float64, dims [2]int) []float64 {
+	out, in := dims[0], dims[1]
 	scale := lora.alpha / float64(lora.rank)
-	out := make([]float64, n)
-	copy(out, w)
 
-	// Simplified: treat as element-wise rank-1 update BA* collapsed to n dims.
-	// A full matmul would require knowing the actual 2D shape; since we store
-	// weights flat, we use the first rank slice of A and B as the update vectors.
-	aVec := a
-	bVec := b
+	// delta = B · A  →  [out×rank] · [rank×in] = [out×in]
+	delta := lora.matmul(b, a, out, lora.rank, in)
 
-	if len(aVec) > n {
-		aVec = a[:n]
+	result := make([]float64, out*in)
+
+	for idx := range w {
+		result[idx] = w[idx] + delta[idx]*scale
 	}
 
-	if len(bVec) > n {
-		bVec = b[:n]
-	}
-
-	for idx := range out {
-		if idx < len(aVec) && idx < len(bVec) {
-			out[idx] += bVec[idx] * aVec[idx] * scale
-		}
-	}
-
-	return out
+	return result
 }
 
 func presetsFor(preset string) []string {
@@ -181,4 +189,12 @@ func presetsFor(preset string) []string {
 			"**.attn.v",
 		}
 	}
+}
+
+func sqrtInt(n int) int {
+	r := 1
+	for r*r < n {
+		r++
+	}
+	return r
 }

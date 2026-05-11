@@ -23,9 +23,11 @@ __global__ void leaky_relu_kernel(const double* src, double* dst, double alpha, 
 __global__ void gelu_kernel(const double* src, double* dst, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
-    // Exact GELU: 0.5 * x * (1 + erf(x / sqrt(2)))
+    // Tanh-approx GELU matches CPU/Metal/XLA semantics.
     double x = src[i];
-    dst[i] = 0.5 * x * (1.0 + erf(x * 0.7071067811865476)); // 1/sqrt(2)
+    double x3 = x * x * x;
+    double inner = 0.7978845608028654 * (x + 0.044715 * x3);
+    dst[i] = 0.5 * x * (1.0 + tanh(inner));
 }
 
 __global__ void tanh_kernel(const double* src, double* dst, int n) {

@@ -86,6 +86,14 @@ func (c *ConvTranspose2d) Forward(shape []int, data ...[]float64) []float64 {
 	n, inC, h, w := shape[0], shape[1], shape[2], shape[3]
 	x := data[0]
 
+	if c.DilationH == 1 && c.DilationW == 1 && c.PadH == 0 && c.PadW == 0 && c.OutPadH == 0 && c.OutPadW == 0 {
+		return convTranspose2dForwardFast(x, n, inC, h, w,
+			c.Weight, c.Bias,
+			c.OutChannels, c.KernelH, c.KernelW,
+			c.StrideH, c.StrideW, c.Groups,
+		)
+	}
+
 	kH, kW := c.KernelH, c.KernelW
 	hOut := (h-1)*c.StrideH - 2*c.PadH + c.DilationH*(kH-1) + c.OutPadH + 1
 	wOut := (w-1)*c.StrideW - 2*c.PadW + c.DilationW*(kW-1) + c.OutPadW + 1

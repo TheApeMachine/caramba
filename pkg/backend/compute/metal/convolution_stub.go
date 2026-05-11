@@ -6,7 +6,7 @@ type ConvolutionOps struct{}
 
 func NewConvolutionOps(metallib string) (*ConvolutionOps, error) { return &ConvolutionOps{}, nil }
 
-func (m *ConvolutionOps) Forward(shape []int, data ...[]float64) []float64 { return data[0] }
+func (m *ConvolutionOps) Forward(shape []int, data ...[]float64) []float64 { panic(errMetalUnavailable) }
 
 func (m *ConvolutionOps) Conv1d(x []float64, N, InC, L int, weight, bias []float64, OutC, K, stride, pad, dilation, groups, LOut int) ([]float64, error) {
 	return x, nil

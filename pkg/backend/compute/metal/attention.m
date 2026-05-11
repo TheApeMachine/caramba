@@ -158,8 +158,9 @@ int metal_mqa(const float* q, const float* k, const float* v, float* out,
         [enc setBuffer:bufK   offset:0 atIndex:1];
         [enc setBuffer:bufV   offset:0 atIndex:2];
         [enc setBuffer:bufOut offset:0 atIndex:3];
-        [enc setBytes:&seq_len  length:sizeof(int) atIndex:4];
-        [enc setBytes:&head_dim length:sizeof(int) atIndex:5];
+        [enc setBytes:&seq_len   length:sizeof(int) atIndex:4];
+        [enc setBytes:&head_dim  length:sizeof(int) atIndex:5];
+        [enc setBytes:&num_heads length:sizeof(int) atIndex:6];
         [enc setThreadgroupMemoryLength:smem_bytes atIndex:0];
 
         MTLSize threadgroups    = MTLSizeMake((NSUInteger)total_q_heads, 1, 1);

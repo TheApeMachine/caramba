@@ -8,7 +8,7 @@ func NewEmbeddingOps(metallib string, vocabSize, dModel int) (*EmbeddingOps, err
 	return &EmbeddingOps{}, nil
 }
 
-func (e *EmbeddingOps) Forward(shape []int, data ...[]float64) []float64 { return data[0] }
+func (e *EmbeddingOps) Forward(shape []int, data ...[]float64) []float64 { panic(errMetalUnavailable) }
 
 func (e *EmbeddingOps) TokenEmbedding(tokens []float64, weight []float64) ([]float64, error) {
 	return tokens, nil

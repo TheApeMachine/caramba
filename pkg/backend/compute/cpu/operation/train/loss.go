@@ -1,6 +1,10 @@
 package train
 
-import "math"
+import (
+	gomath "math"
+
+	cpumath "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+)
 
 /*
 MSELoss computes mean squared error between predictions (data[0]) and targets (data[1]).
@@ -36,7 +40,7 @@ func (cel *CrossEntropyLoss) Forward(_ []int, data ...[]float64) []float64 {
 	var loss float64
 
 	for idx, prob := range probs {
-		loss -= targets[idx] * math.Log(prob+1e-9)
+		loss -= targets[idx] * gomath.Log(prob+1e-9)
 	}
 
 	return []float64{loss}
@@ -82,25 +86,9 @@ func (g *CrossEntropyGrad) Forward(_ []int, data ...[]float64) []float64 {
 }
 
 func softmax(xs []float64) []float64 {
-	max := xs[0]
-
-	for _, v := range xs[1:] {
-		if v > max {
-			max = v
-		}
-	}
-
 	out := make([]float64, len(xs))
-	var sum float64
-
-	for idx, v := range xs {
-		out[idx] = math.Exp(v - max)
-		sum += out[idx]
-	}
-
-	for idx := range out {
-		out[idx] /= sum
-	}
+	copy(out, xs)
+	cpumath.SoftmaxSlice(out)
 
 	return out
 }

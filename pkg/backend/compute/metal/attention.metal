@@ -79,14 +79,16 @@ kernel void mqa_forward(
     device float*       out [[buffer(3)]],
     constant int&       seq_len  [[buffer(4)]],
     constant int&       head_dim [[buffer(5)]],
+    constant int&       num_heads [[buffer(6)]],
     threadgroup float*  smem     [[threadgroup(0)]],
     uint head_idx [[threadgroup_position_in_grid]],
     uint t_idx    [[thread_position_in_threadgroup]])
 {
     if ((int)t_idx >= seq_len) return;
 
+    int batch_idx      = (int)head_idx / num_heads;
     int q_head_offset  = (int)head_idx * seq_len * head_dim;
-    int kv_head_offset = 0; // single KV head
+    int kv_head_offset = batch_idx * seq_len * head_dim; // one KV head per batch item
     float scale = rsqrt((float)head_dim);
 
     const device float* q_row = q + q_head_offset + (int)t_idx * head_dim;
@@ -140,11 +142,13 @@ kernel void gqa_forward(
 {
     if ((int)t_idx >= seq_len) return;
 
-    int group_size    = num_heads / num_kv_heads;
-    int kv_head_idx   = (int)head_idx / group_size;
+    int group_size         = num_heads / num_kv_heads;
+    int batch_idx          = (int)head_idx / num_heads;
+    int head_within_batch  = (int)head_idx % num_heads;
+    int kv_head_idx        = head_within_batch / group_size;
 
     int q_head_offset  = (int)head_idx * seq_len * head_dim;
-    int kv_head_offset = kv_head_idx   * seq_len * head_dim;
+    int kv_head_offset = (batch_idx * num_kv_heads + kv_head_idx) * seq_len * head_dim;
     float scale = rsqrt((float)head_dim);
 
     const device float* q_row = q + q_head_offset + (int)t_idx * head_dim;

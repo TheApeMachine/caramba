@@ -65,6 +65,13 @@ func (c *Conv1d) Forward(shape []int, data ...[]float64) []float64 {
 	n, inC, l := shape[0], shape[1], shape[2]
 	x := data[0]
 
+	if c.Dilation == 1 && c.Padding == 0 {
+		return conv1dForwardFast(x, n, inC, l,
+			c.Weight, c.Bias,
+			c.OutChannels, c.KernelSize, c.Stride, c.Groups,
+		)
+	}
+
 	k := c.KernelSize
 	lOut := (l+2*c.Padding-c.Dilation*(k-1)-1)/c.Stride + 1
 	outC := c.OutChannels
