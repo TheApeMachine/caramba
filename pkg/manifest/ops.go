@@ -14,6 +14,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/positional"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/projection"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/shape"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/train"
 )
 
@@ -23,6 +24,7 @@ func init() {
 	registerBench()
 	registerConvolution()
 	registerData()
+	registerModel()
 	registerEmbedding()
 	registerMasking()
 	registerMath()
@@ -477,6 +479,86 @@ func boolParamDefault(config map[string]any, key string, defaultVal bool) bool {
 
 	result, _ := val.(bool)
 	return result
+}
+
+func registerModel() {
+	Register("model.load", func(config map[string]any) (operation.Operation, error) {
+		source, _ := config["source"].(string)
+		file, _ := config["file"].(string)
+		cache, _ := config["cache"].(string)
+
+		return model.NewLoader(source, file, cache), nil
+	})
+	Register("model.surgery", func(config map[string]any) (operation.Operation, error) {
+		source, _ := config["source"].(string)
+		op, _ := config["op"].(string)
+		at, _ := config["at"].(string)
+		after, _ := config["after"].(string)
+		name, _ := config["name"].(string)
+
+		var layer []float64
+
+		if raw, ok := config["layer"].([]any); ok {
+			layer = make([]float64, len(raw))
+
+			for idx, v := range raw {
+				layer[idx] = floatFromAny(v)
+			}
+		}
+
+		return model.NewSurgery(source, op, at, after, name, layer), nil
+	})
+	Register("model.graft", func(config map[string]any) (operation.Operation, error) {
+		source, _ := config["source"].(string)
+		at, _ := config["at"].(string)
+		mode, _ := config["mode"].(string)
+
+		return model.NewGraft(source, at, mode), nil
+	})
+	Register("model.lora", func(config map[string]any) (operation.Operation, error) {
+		source, _ := config["source"].(string)
+		preset, _ := config["preset"].(string)
+		rank := intParamDefault(config, "rank", 8)
+		alpha := floatParamDefault(config, "alpha", 0)
+
+		var targets []string
+
+		if raw, ok := config["targets"].([]any); ok {
+			for _, v := range raw {
+				if s, ok := v.(string); ok {
+					targets = append(targets, s)
+				}
+			}
+		}
+
+		return model.NewLoRA(source, preset, targets, rank, alpha), nil
+	})
+	Register("model.adapter", func(config map[string]any) (operation.Operation, error) {
+		source, _ := config["source"].(string)
+		at, _ := config["at"].(string)
+		reduction := intParamDefault(config, "reduction", 16)
+
+		return model.NewAdapter(source, at, reduction), nil
+	})
+	Register("model.freeze", func(config map[string]any) (operation.Operation, error) {
+		source, _ := config["source"].(string)
+		pattern, _ := config["pattern"].(string)
+		except, _ := config["except"].(string)
+		frozen := boolParamDefault(config, "frozen", true)
+
+		return model.NewFreeze(source, pattern, except, frozen), nil
+	})
+}
+
+func floatFromAny(v any) float64 {
+	switch cast := v.(type) {
+	case float64:
+		return cast
+	case int:
+		return float64(cast)
+	default:
+		return 0
+	}
 }
 
 func anyToInt(val any) int {

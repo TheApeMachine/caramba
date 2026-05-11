@@ -1,0 +1,113 @@
+package model
+
+/*
+Graft is a tap point on a named layer. In read mode it emits the layer's
+current weights as a tensor output. In read_write mode it also accepts an
+injection input that is added back into the weights — enabling activation
+steering, representation editing, and probing exactly as described in the
+LARQL mechanistic interpretability model.
+
+The LARQL insight: a graft with read_write is activation patching.
+Wire a trained steering vector or probe output to data[1] and it will be
+added to the layer's weight slice before being stored back.
+
+Config keys:
+  source  — must match the Loader node's source key
+  at      — dot-path or glob pattern of the layer to tap
+  mode    — read | read_write (default: read)
+*/
+type Graft struct {
+	source string
+	at     string
+	mode   string
+}
+
+/*
+NewGraft creates a Graft node.
+*/
+func NewGraft(source, at, mode string) *Graft {
+	if mode == "" {
+		mode = "read"
+	}
+
+	return &Graft{source: source, at: at, mode: mode}
+}
+
+/*
+Forward reads the targeted layer weights and, in read_write mode, adds
+data[1] (the injection vector) back before storing. Returns the (possibly
+patched) layer weights as the output tensor.
+
+Inputs:
+  data[0] — trigger token (from Loader or Surgery)
+  data[1] — (read_write only) injection vector to add to the layer
+
+Output:
+  flat float64 slice of the targeted layer's weights
+*/
+func (graft *Graft) Forward(_ []int, data ...[]float64) []float64 {
+	weights, ok := globalRegistry.Get(graft.source)
+
+	if !ok {
+		return nil
+	}
+
+	selected := weights.Select(graft.at)
+
+	flat := flatten(selected)
+
+	if graft.mode != "read_write" || len(data) < 2 || len(data[1]) == 0 {
+		return flat
+	}
+
+	injection := data[1]
+	patched := make([]float64, len(flat))
+	copy(patched, flat)
+
+	for idx := range patched {
+		if idx < len(injection) {
+			patched[idx] += injection[idx]
+		}
+	}
+
+	// Write the patched values back into the matching keys.
+	writeBack(weights, graft.at, patched)
+	globalRegistry.store(graft.source, weights)
+
+	return patched
+}
+
+// flatten returns all values from a WeightMap as a single ordered slice.
+func flatten(weights WeightMap) []float64 {
+	total := 0
+
+	for _, v := range weights {
+		total += len(v)
+	}
+
+	out := make([]float64, 0, total)
+
+	for _, v := range weights {
+		out = append(out, v...)
+	}
+
+	return out
+}
+
+// writeBack distributes a flat slice back into the matching weight keys,
+// preserving per-key lengths.
+func writeBack(weights WeightMap, pattern string, patched []float64) {
+	selected := weights.Select(pattern)
+	offset := 0
+
+	for key, val := range selected {
+		end := offset + len(val)
+
+		if end > len(patched) {
+			end = len(patched)
+		}
+
+		copy(weights[key], patched[offset:end])
+		offset = end
+	}
+}
